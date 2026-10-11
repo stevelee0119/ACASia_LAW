@@ -11,35 +11,35 @@
    "status": "open",
    "kind": "regression",
    "found_on": "2026-10-03",
-   "note": "#78 c6e 직접SPACE 보존·#86 ebd UNKNOWN lazy대안/진단 메타데이터 제한범위내용수용·844평가통합CI성공. 실제명시SPACE48/48·UNKNOWN24·legacy29출력동일9/29. primary폭의존/ActualText잔여유지·완전해소아님·최종full/봉인/운영배포전. 승인된 부분만 0.13.0 main8280a59 배포; 티켓 전체 잔여는 미완료 유지."
+   "note": "0.13.0 운영8280의 SPACE/UNKNOWN 진단 부분은 배포됨. PR90 b1e506f exact CI38132618288/점수38132618289/Docker 성공·요청6108248291. root 공개239·수용/회귀2163 PASS/기존24 xfail 및 전체verify_all 종료0(수용1214/원장949/전체6723/브라우저197/실패0), 고정81.7/79.2/FP0 유지. root5483100719 inline ActualText provider 제한범위 내용 수용·신규 통합/배포 전. 비태그/resource/Form/structure-tree/UNKNOWN primary/floor/consumer 잔여·전체 open 유지."
   },
   {
    "id": "TK-45",
    "status": "open",
    "kind": "regression",
    "found_on": "2026-10-03",
-   "note": "PR84 e21c40d442f521782cd7d85a18b8fb40655b403d 불수용5482338759(요청6106648755). exactCI38120377539/점수38120377556/Docker SUCCESS·공개815/독립26 PASS. 원래20 및actualTXT20 부인8/8·정상7/8·확장1/4로 정상8/8 필수미달; 고정18은3/4·4/4·1/4·1/2·4/4. 출력불변진단 새case/순서/공백 통과하나 regular/AUXILIARY attachment fullmatchfalse→proof없음·resolved0, 소비자LOCAL_SUBJECT 면제 미도달. 수용3389에서 제외·미통합/미배포. 기준/기대값 불변; 별도 공개 문법·논항 설계 승인 후 보완, 비공개 어휘/좌표 공유금지. 이전3736/258 시험 생성기·타이밍 실패는 역사기록으로 보존."
+   "note": "이전 PR84 e21 정상8/8 필수 미달 불수용·미통합/미배포 유지. PR93 5a51dd3 설계112 root5483024001 조건부 승인, 제품0dd4b8 제출. 독립 actualTXT20 사전감사에서 문장간 인용/상대·보고·반박4와 다른 법률 출처2의 새 proof 오인증으로 HOLD6108540760. 화자/민사규범 보호 보완 중, CI·정식3줄 요청 후 원래 정상8/8·부정/확장 시작2/8·0/4 대비 엄격 증가로 판정. 기존finding·UNKNOWN 보호와 기대값 유지·전체 open."
   },
   {
    "id": "TK-49",
    "status": "open",
    "kind": "regression",
    "found_on": "2026-10-03",
-   "note": "#78 c6e 직접SPACE 보존·#86 ebd UNKNOWN lazy대안/진단 메타데이터 제한범위내용수용·844평가통합CI성공. 실제명시SPACE48/48·UNKNOWN24·legacy29출력동일9/29. primary폭의존/ActualText잔여유지·완전해소아님·최종full/봉인/운영배포전. 승인된 부분만 0.13.0 main8280a59 배포; 티켓 전체 잔여는 미완료 유지."
+   "note": "0.13.0 운영8280의 SPACE/UNKNOWN 진단 부분은 배포됨. PR90 b1e506f exact CI38132618288/점수38132618289/Docker 성공·요청6108248291. root 공개239·수용/회귀2163 PASS/기존24 xfail 및 전체verify_all 종료0(수용1214/원장949/전체6723/브라우저197/실패0), 고정81.7/79.2/FP0 유지. root5483100719 inline ActualText provider 제한범위 내용 수용·신규 통합/배포 전. 비태그/resource/Form/structure-tree/UNKNOWN primary/floor/consumer 잔여·전체 open 유지."
   },
   {
    "id": "TK-55",
    "status": "known_open",
    "kind": "regression",
    "found_on": "2026-10-04",
-   "note": "#82 ce83355 first-party계약/손실없는JSON 제한범위 내용 수용. 기존개인정보/라우터 보호 유지·#81과 통합PHONE/RRN 도달0. 호환성 결정에 따라 legacy역할키24/encoded불명역할 잔여 유지·전체해소 아님·최종릴리스 대기. 승인된 부분만 0.13.0 main8280a59 배포; 티켓 전체 잔여는 미완료 유지."
+   "note": "0.13.0 운영8280의 first-party closed/lossless JSON 부분은 배포됨. PR91 86e75e3 exact CI38132924102/점수38132924186/Docker 성공·요청6108286856. root 공개101/독립24/4adapter mockwire PASS·원래 privacy 게이트 충족. 최초전체exit1(전체6945 PASS/기존TK71 시간검사1FAIL)은 보존, 시작/후보 동일검사 각PASS 및 원래full_tests 단계만 단독1회 보완6946 PASS/실패0/290.3초, 코드/시험/임계값 변경0·첫원인미확정. root5483126695 요청별cascade source 추가검사 제한범위 내용 수용·신규통합/배포 전. arbitrary legacy unknown-role은 기존 호환성 계약에 따라 known_open·전체 완료 아님."
   },
   {
    "id": "TK-73",
    "status": "open",
    "kind": "existing",
    "found_on": "2026-10-10",
-   "note": "PR79 214334ddb916a0a856e7a4a55d39cbd180c5ec1a 불수용5482229717. 요청6106394284·exactCI38118526548/점수38118526520/Docker 모두SUCCESS. 평가측 원래4 재실행19.0/29.6/36.2 FP0 유지;20261010 시작15.2/.302/FP3(control3/A3)→25.2/.302/FP1(control1/A1), 기존9ab와동일·필수AFP/control0 미달. 네세트 인젝션방어유지. 공개936/독립GLOBAL실제형식감사PASS는대체불가. 미통합·미배포·새봉인미실행·기준/채점/기대값불변. 출력불변214 진단: control7rows/scope1/excluded2/keys4·남은group1 inventorykindNone1/모든narrative종료뒤prose1. 새inventory_atom4회/PASS0·row정규화mapping/단일itemorigin/원래offset순서/definitionmarker4통과. wholeparagraphsource0·nativeatom0→eligible/certified/rowdomain0·latercitation원시함수호출0. 4paragraph모두multi-reading-segment(total16), source없음으로단정하지않음. row정규화일치와originalphysicalglyph proof는구별하며 UNKNOWNjoin을원문으로인증/가상whole-source span생성금지. 원문/어휘/IDs/좌표공유0·기존globalall-origin충돌/UNKNOWN 및interval/936expects 유지. 수용3389에서 제외·미통합/미배포. 기존 name-field+colon feasibility 0/4로 해당 공개 gap은 남은 AFP의 원인 증명이 아님. 제품214 동결·새 공개 wholecaption/source-role 설계 승인 전 제품추가 금지."
+   "note": "이전 PR79 214 필수AFP0 미달 불수용·미통합/미배포 유지. PR92 ab5378e는 설계/진단/기준안 검토 메모만·제품diff0. root5483050614 source-role5822 제품 HOLD. public bounded108은 원래 대상 적용 증명 없음, root source-role27 재현·DOCX native rows0 별도 coverage잔여. 사용자가 확인 필요 분리 설계·기준안 검토를 선택하여 구체안 작성·평가 진행, 제품/등급/원래 시험/수용기준 변경 승인0. A/confirmed/pending 및 진짜양성 이동을 별도 기록하며 단순AFP0 수치 이동 금지·open."
   }
  ],
  "weekly": {
