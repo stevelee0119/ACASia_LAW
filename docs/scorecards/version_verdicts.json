@@ -93,5 +93,38 @@
   "decided_by": "evaluator(claude-code)",
   "decided_at": "2026-10-10",
   "note": "봉인 점수는 운영본과 같아 상향 근거로 쓰지 않았다. 0.11.0(TK-64)과 같은 기준인 '인계 티켓 수용 기준 충족·해소'로 첫째 자리 하나만 적용."
+ },
+ {
+  "version": "0.13.0",
+  "from": "0.12.0",
+  "level": "minor",
+  "measured_commit": "3389e9e5cf55aea55eb8327a3bba463cdc44eac4",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.11.15",
+   "tesseract": "5.5.0 kor; localallow-env-mismatch explicit, independent exactCI tesseract5.3.4 cited",
+   "scoring": "Unchanged fixedscorer, original20+18/actualTXT20 and retired4 maintenance; firstsealedprod/candidatepair in separate newPythonprocesses/cleanworktrees; publicactualTK57 M4 samefixtures54files"
+  },
+  "evidence": {
+   "M1": {
+    "production": "9c1b218 existingevaluator fixed81.7/79.2/FP0; freshsameprocessconditions holdout79.2/FP0",
+    "candidate": "3389 full fixed81.7/79.2/FP0; freshholdout79.2/FP0",
+    "delta": "0; no historicalbaseline79.9/77.3 improvement reused"
+   },
+   "M2": "Firstsealed8documents57defects, fingerprint1abd74597ec4b25a: production9c=3389candidate28.1/.281/FP0/control0/A0/injectiontrue. Originalretired4 alsoequalproduction19.0/29.6/36.2/15.2,FP0/0/0/3. No globalprivate passrate improvement claimed.",
+   "M3": "TK57 #81 accepted0261 andcombined244: originalPHONE omission1/54→0/54,RRN0/84,mockprovider0/216·0/336,normalFP0/10; alloriginalmandatorygates met. Onecompletehandoverticket+M4 satisfiesminor. Partial44/49/55 and rejected45/73 notcountedasclosed.",
+   "M4": "Samepublicactual54TXT/PDF/DOCXfiles atphysicalwidths240/600; contactwhole-span0/36→36/36, contactmockprovider0/144 both, legalcontrolsFP0/18 andnormalprovider72/72 both. FixturesSHA25607ab9c519e5c0f5ae551b5dc0cee8b3eb23b442a8e1b1ee966a3aa63fc32538b. NarrowpublicM4, notglobalM2/major evidence; no livecalls.",
+   "P1": "3389 evaluator verify_all full --base9c regression_gate exit0; no regression",
+   "P2": "Fixed81.7/79.2/FP0 maintained; firstsealed28.1/.281/FP0 equalproduction; injections maintained",
+   "P3": "3389 wholehardcoding/test-edits/protected-path gatesexit0; newunapprovedrule_id0",
+   "P4": "3389 exactCI38120524487/score38120524471/DockerALLSUCCESS; evaluator corrected-permissionfull exit0 acceptance1214/ledger949/full6653/browser197, realfailures0/strictXPASS0. Originaldefault-sandboxfull interruptedacceptance229reports/1ChromiumIPC failure andTestClientwait retained; neverrewrittenasPASS. Candidate/prod same2screen/authPASS withrequiredIPCpermissions; no source/test/limit change.",
+   "P5": "NewopenP1regression0 inacceptedsubset, publicindependent3389auditPASS/synthetic7PASS. ExistingUNKNOWNprimary/ActualText,legacyroles,excludedTK45/TK73,LEG2/RAG2 stayknown/open.",
+   "P6": "f1_gate_verdict deployment-first accepted3389scope verdict; Codexevaluatorsession",
+   "not_measured": "OnlineAI/officialDB/Drive, ClaudeOFF/ONquality/tokens/latency andoneblindedlawyer grading pendingpostdeploy. User42documentfixedbenchmark notconnected/notmeasured; old20.5 notcandidate result."
+  },
+  "decided_by": "evaluator(Codex evaluation session)",
+  "decided_at": "2026-10-11",
+  "note": "Deployment-first acceptedsubset only. Minorone-step0.12→0.13 throughcompleteTK57criteria+M4; no globalM2/majorclaim/no baselinechange. Version-onlyimplementercommit3files1commit andfinalSHA3requiredchecks pending; deployment/featureON notyetclaimed."
  }
 ]

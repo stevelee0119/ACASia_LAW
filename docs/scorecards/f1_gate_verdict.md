@@ -1627,3 +1627,100 @@ ACADEMIC_RE 저자 상한 `{0,9}`로 저자 11/12명의 선행 저자가 빠지�
 - 유일한 실패는 `tests/test_durability.py::test_mount_detection_uses_the_filesystem_not_the_path`. 운영9c1b218·후보ba12d25의 해당제품/시험 diff0이며 같은 환경의 기본 `/tmp`에서 양쪽 모두 같은assertion 실패를 직접 재현했다. stat device `/`=27, `/tmp`=33, `/workspace`=27: `/tmp`가 별도파일시스템이라 시험의 비마운트 가정이 맞지 않았다.
 - 제품/시험 수정이나 가짜 mount 응답 없이 pytest `--basetemp=/workspace/scratch/<대상>-pytest`로 실패1건만 재검증했다. 운영본exit0/후보exit0 **각1건 통과**. 통과한 나머지 묶음은 재실행하지 않았다. 전체원본1·별도환경보완2통과를 구분하며 full명령 전체종료0으로 표현하지 않는다. 현재 확인된 후보 고유 코드 실패0; 최종같은SHA CI 및 새봉인/버전/사용자배포승인은 별도다.
 - 고정 성적표 후보 dev81.7/holdout79.2/FP0, A0·인젝션방어. 환경이 다른 사용자 고정비공개벤치마크20.5와 같은 측정으로 합치지 않는다. 실제법률품질/과금/지연·새봉인·최종고정비공개벤치마크 미측정.
+
+
+## 2026-10-11 10시간 계획 중간: TK44/49 제한 범위
+
+| 후보 | 판정 | 근거와 한계 |
+| --- | --- | --- |
+| #78 c6e5437 | 직접SPACE 보존·명시신호 우선 범위 내용 수용; 완전해소 아님 | 동일SHA CI38101638906/점수38101638895 성공 인용. 평가측 실제 PDF/DOCX·폭 관련105 PASS, PDF47/19/1·DOCX40/19/1. UNKNOWN 비공개29개 시작5dea 대비 출력동일29/29·성공9/29·새회귀0. UNKNOWN 역사적 쪽폭 잔여 유지. 최종전체verify_all/통합CI/봉인/배포 미완료. TK45 설계 후속 허용. |
+
+| #81 0261ea0 | TK57 경계 내용 수용 | 같은SHA CI38101696450/점수38101696470 성공. 평가측 기존3판 PHONE 누락1/54→0/54, RRN0/84, mockprovider0/216·0/336, 정상FP0/10. 최종전체검증/봉인/배포 별도. |
+| #79 fe65851 | TK73 불승인·병합 보류 | 같은SHA CI38102175364/점수38102175327 성공이나 평가측 은퇴20261010 15.2/재현율.302/FP3·대조AFP3, 요구0 미달. 다른19.0/29.6/36.2·FP0 유지. 설계6dd414c 보완 진행. 새봉인 아님. |
+
+| #82 ce83355 | First-party계약/손실없는JSON 검사 내용 수용 | 동일SHA CI38102664256/점수38102664398 성공. 보호144 PASS·공개독립감사 통과. 과마스킹10/100·8/80/불가림30/40·24/32, 이름330/330·60/60·stem16/16·JSON0/432·평문0/240·정상차단6/28·현재faithful16/16 유지. Legacy24/encoded역할 잔여 유지. #81과 합친 평가 후보244 PASS, PHONE누락0/54·RRN0/84·mockprovider0/216·0/336. 최종전체/CI/봉인/배포 미완료. |
+
+
+## TK73 04a30fd 재판정 (2026-10-11 한국 시각)
+
+정확한 제출 SHA04a30fda7b5341536e30d94437e137f1a65f3042의 CI38103249519/점수38103249461 모두 SUCCESS 후 기존 은퇴 검증4종을 오프라인으로 재측정했다. 20261010은15.2/가중재현율.302/FP3·대조군3·A등급3으로 앞선fe65851과 동일해 필수 A등급 오탐0 미달, **불수용·통합 보류**다. 다른19.0/29.6/36.2·FP0, 인젝션 방어는 유지했다. 공개 독립 문서 경로에서는 위치 뒤 수식어가 줄을 넘어 붙는 잔여를 재현했다. 단일행 파싱 통과로 실제 줄바꿈 불변성을 주장하지 않는다. 동일한 좁은 접미사 접근으로 두 차례 필수지표를 해결하지 못해 별도 Codex 구현 세션에 provenance/문서 재구성의 새 설계를 요청했다. [리뷰5481563349](https://github.com/stevelee0119/verify_ACAS_LAW/pull/79#pullrequestreview-5481563349). 새 봉인 세트·최종전체검증·배포를 수행하지 않았다.
+
+TK45 #84 ba4718b는 제출/점수 게이트 성공·CI 대기 중이다. 별도 공개 독립 감사에서 강조 따옴표의 경고삭제와 직접 지배동사 부정의 불확실 처리 문제를 실제 TXT에서 재현했다. 이는 사전검토이며 정식 수용 판정이나 비공개 성능 측정으로 기록하지 않는다. 보완 설계 요청, 새 비공개 변형은 동결해 두었다.
+
+
+## 2026-10-11 TK45 제출 SHA 재판정
+
+| 후보 | 판정 | 근거와 한계 |
+| --- | --- | --- |
+| #84 268769cc6d691bb4528323cf883f8715433fbfd6 | 불승인·미통합 | 검토 요청6104569512 및 동일SHA CI38104860268/점수38104860287 성공 인용. 평가측 기존 비공개 재실행: 부정2/8→8/8, 정상8/8→7/8, 확장0/4→0/4. 정상유지·확장개선 조건 미달. 별도 사전동결 신규18건: 부정1/4→3/4·정상4/4·화자1/4·재반박1/2 유지·확장1/4→4/4. 공개실제TXT 감사13건 통과는 기존 조건을 대체하지 않음. 리뷰5481619515. |
+
+TK73의 be654f9·67865f는 최종 공식 재측정 전 공개 사전감사에서 제목충돌/어휘접두사/물리줄 경계 문제가 확인되어 보류했다. 줄/블록 경계만으로 의미상 단어 끝을 인증하지 않는 보완 진행. 새봉인·최종전체검증·배포·실제Claude OFF/ON은 미완료다.
+
+
+## 2026-10-11 UNKNOWN 진단 첫단계 수용
+
+| 후보 | 판정 | 근거와 한계 |
+| --- | --- | --- |
+| #86 ebd6b51 | UNKNOWN 대안·진단연관 첫단계 내용 수용 | 검토요청6104657283·동일SHA CI38105566637/점수38105566825 성공 인용. 평가측 실제PDF72 명시SPACE48/48·UNKNOWN24·warning0, 기존줄결합29 출력동일·성공9/29 유지. 독립공개1452본문/실제PDF2 pipeline 호환성·lazy/NFKC/coarse/마스킹후원문복원거부 확인. 리뷰5481655173. ActualText미구현·기존UNKNOWN폭의존잔여 유지·전체해소아님. 최종전체/통합CI/봉인/배포별도. |
+
+사용자 최신 결정으로 별도 비용계산 절차·비용 증가율 조건을 삭제하고 가격PR87은 미병합 폐기했다. 기존USD40 예산보호 유지. 법률품질은 배포후 동일조건OFF/ON·독립변호사1명으로 판정하고 실제토큰차이는ON분석JSON의 참고항목으로추가한다.
+
+
+## 2026-10-11 12:37 KST TK45·TK73 최종 제출 재판정
+
+| 후보 | 판정 | 근거와 한계 |
+| --- | --- | --- |
+| #84 d11ae3e68ae966822416317adffccacf630a308d | 불수용·미통합 | 요청6105008283·같은SHA CI38107675155/점수38107675152 SUCCESS 인용. 기존20개 입력/기대값 불변 평가측 재실행: 부정8/8·정상7/8·확장0/4, 268과 동일. 실제TXT 전체pipeline에서도 동일하므로 직접함수와 현재통합경로 차이로 해명되지 않음. 별도동결18 부정3/4·정상4/4·화자1/4·재반박1/2·확장4/4 유지. 공개증분actualTXT11 PASS는 필수조건 대체불가. 리뷰5481744949. 정상8/8 유지·부정/확장 각각 시작보다 증가라는 원래필수계약 유지;6/8·3/4는 목표/미달사유보고이지 새하한 아님. 새일반화 설계 요청. |
+| #79 2f1424dc82923bf7a7baab555050114e42b39806 | 불수용·미통합 | 요청6104992700·같은SHA CI38107536587/점수38107536580 SUCCESS 인용. 기존은퇴4종 평가측 재실행19.0/29.6/36.2/15.2·FP0/0/0/3, 마지막대조군/A등급3 유지·필수0 미달. 인젝션방어 유지. 공개증분actualTXT/PDF28 PASS는 대체불가. 리뷰5481729440. 별도논리불변계측: 관련대조행7모두line/source보존, table0; 중복3그룹/6행에anchor3·prose3, 후보-anchor완전일치0, 다중prose충돌0. 신규공개table-gap은 유효잔여지만 이 필수실패의 원인이 아니므로 제품확장보류·line후보/제목경계 새설계 요청. |
+
+측정은 Linux/Python3.11.15/Tesseract5.5.0 kor·network0으로 CI5.3.4와 환경차이를 명시했다. 측정도구/기대값/기준선을 바꾸지 않았다. 구현 측에는 원문/사건문구/IDs/spans를 제공하지 않았다. 수용분8446107과 동SHA CI 성공은 보존하며 두 미수용 제품을 통합하지 않는다. 새봉인·최종full·배포·실제OFF/ON은 아직 수행 전이다.
+
+
+## 2026-10-11 13:17 KST TK73 source-prefix 최종 제출 재판정
+
+| 후보 | 판정 | 근거와 한계 |
+| --- | --- | --- |
+| #79 30a2029256585b8136e077ea3f3d44270aa3dbd6 | 불수용·미통합 | 요청6105309164·exactCI38110044088/점수38110044065 SUCCESS 인용. 기존입력/기대값/채점기불변 평가측재실행 은퇴4종19.0/29.6/36.2/15.2·재현율.190/.296/.362/.302·FP0/0/0/3, 마지막대조군/A3 유지·필수0 미달. 인젝션방어유지. 공개652/좁은감사PASS는대체불가. 리뷰5481848611. |
+
+출력불변metadata계측: 중복3그룹6행·None3/prose3·source_mapping6·prefix인증6이지만 legacy comparison_offset 변화0. unknown첫original-source 재구성0. proposed=anchor와 어느쪽proper-prefix0, unknown구분자앞candidate가다른proposed와완전일치0. 출처prefix/단순앞구분자제거는현필수실패원인해소를입증하지못함. 새공개일반화설계부터진행·미수용제품미통합. 원문/IDs/spans미전달. Linux/Python3.11.15/Tesseract5.5.0 kor/network0·CI5.3.4환경차이명시. 새릴리스봉인미채점.
+
+
+## TK45 1a324c9 최종 재판정 (2026-10-11 13:32 KST)
+
+| 후보 | 판정 | 근거 |
+| --- | --- | --- |
+| #84 1a324c9 | 불수용·미통합 | PR84 1a324c922a81e7481ca31b6a415829821fba2447 불수용5481892889. 요청6105422572·exactCI38110886498/점수38110886552 SUCCESS 인용. 기존20 평가측재실행 부정8/8·정상7/8·확장1/4, actualTXT전체경로 동일. 시작2/8·8/8·0/4 대비 부정/확장증가이나 정상8/8 필수미달. 고정18 부정3/4·정상4/4·화자1/4·반박1/2·확장4/4. 공개430·독립actualTXT14 PASS는 대체불가. 원래기준/채점/expectations 유지·미통합/미배포·새봉인미채점. |
+
+출력불변metadata 원인: 정상실패1은 CHANGED_ARGUMENT/UNCERTAIN + ASSERTED_REQUIREMENT_REALIZATION/POSITIVE의 동시존재, CONFIGURED authored limited1·scope_uncertain false·typed0·uncertain_quote false. 새효과분기가 아닌 한정요건확인 선택분기. 원문/IDs/spans 전달0. 독립 실제행위 단언과 문맥참조의 관계를 공개일반화설계부터 보완하며 POSITIVE존재만으로 실제부정/다른요건/주체/미확정을면제하지 않는다.
+
+평가환경 Linux/Python3.11.15/Tesseract5.5.0 kor/network0, CI Tesseract5.3.4 차이 명시.
+
+
+## TK45·TK73 최신 정식 재판정 (2026-10-11 한국 시각; bcea 및9ab)
+
+| 후보 | 판정 | 근거 |
+| --- | --- | --- |
+| #84 3736c9e | 불수용·미통합 | PR84 3736c9ec971c40e85bf3e180a6d656d3185966d0 불수용5482209439. 요청6106331973·완료CI38118075725 양쪽DB FAIL(새PDF생성용 fitz누락4건), 점수38118075720/DockerSUCCESS 구분. 평가측 원래20 부인8/8·정상7/8·확장1/4, actualTXT전체경로동일; 정상8/8 필수미달. 고정18 부인3/4·정상4/4·화자1/4·반박1/2·확장4/4 불변. 공개594/독립actual22 PASS 대체불가. 원래기준/기대값/채점불변·미통합/미배포·새봉인미실행. |
+| #79 214334d | 불수용·미통합 | PR79 214334ddb916a0a856e7a4a55d39cbd180c5ec1a 불수용5482229717. 요청6106394284·exactCI38118526548/점수38118526520/Docker 모두SUCCESS. 평가측 원래4 재실행19.0/29.6/36.2 FP0 유지;20261010 시작15.2/.302/FP3(control3/A3)→25.2/.302/FP1(control1/A1), 기존9ab와동일·필수AFP/control0 미달. 네세트 인젝션방어유지. 공개936/독립GLOBAL실제형식감사PASS는대체불가. 미통합·미배포·새봉인미실행·기준/채점/기대값불변. |
+
+출력불변metadata: 실패정상1은 CHANGED_ARGUMENT/UNCERTAIN + ASSERTED_REQUIREMENT_REALIZATION/POSITIVE. configured requirement identity2이고 두 observation identity는서로다름. 신규same-identity resolution resolved0, qualifier abstention까지도달하지않음. 원문/IDs/spans공유0·다른POSITIVE로독립요건/직접부정/불확실면제금지. 같은정상지표정체뒤제품전새공개일반화설계필수.
+
+Linux/Python3.11.15/Tesseract5.5.0 kor/network0. CI5.3.4와 차이 명시.
+
+TK73 출력불변metadata: control rows7/scope1/excluded2/keys4. 남은group1의2rows는기등록key·itemorigin/reference_span유지, inventory內kindNone1와모든narrative interval종료뒤kindprose1. 원문/IDs/좌표 공유0. 문서전역등록key면제·현재interval임의확장금지·별도공개source role/proposition 설계부터.
+
+출력불변 진단: 남은 정상1의 독립요건 identity2와 UNCERTAIN/CHANGED_ARGUMENT·POSITIVE/ASSERTED_REQUIREMENT_REALIZATION 유지. reference_frame 호출0, immediate argument pattern 미일치·기존 event_frame case 존재·predicate_chain 없음. contextual_proposition 생성 전 거절되므로 기존 nominal-modifier/object-tail 설계가 해당 원인을 설명하지 못한다. 원문/식별자/좌표 전달0. 다른 POSITIVE를 이용한 요건 면제나 낱말목록 확장 대신 공개 source 논항·술어 결합 설계부터 재검토.
+
+
+## 2026-10-11 16:34 KST 배포 우선 수용 범위 최종 판정
+
+| 후보/항목 | 판정 | 근거와 한계 |
+| --- | --- | --- |
+| #83 3389e9e5cf55aea55eb8327a3bba463cdc44eac4 | 수용 범위 릴리스 검증 PASS | 제품844와 동일. 기존8TK 및 #78/#81/#82/#86 수용분만 포함, TK45/73 제품 제외. exactCI38120524487·점수38120524471·Docker 모두SUCCESS 인용. 평가측 보정권한 full 종료0: acceptance1214·원장949·전체6653·브라우저197, realfailures/strictXPASS0; 회귀/하드코딩/시험편집/보호/버전게이트0. CI5.3.4와 로컬OCR5.5kor 환경차이 명시. |
+| 실행 환경 원본 | 실패·중단 이력 보존 | 기본명령sandbox Chromium IPC shutdown EPERM·화면1실패/229report 뒤 TestClient portal대기로 중단(종료143). 운영/후보 같은 화면·권한2개는 필요한 IPC실행권한에서 각각PASS. 동일코드/시험/상한으로 완료한full0과 원본미완료를 구분; 성공한검증단계 반복없음. |
+| 수용 범위 기존 비공개 지표 | 운영본 유지 | 원래20 및actualTXT20 2/8·8/8·0/4, 고정18 1/4·4/4·1/4·1/2·1/4. 원래4 retired19.0/29.6/36.2/15.2 FP0/0/0/3 모두injectiontrue. TK45/73 제품이 없는 범위의 유지검증이며 두 티켓 수용목표 통과로 주장하지 않음. #81/#82 개인정보필수·성명·과마스킹/불가림/faithfulrouter gates는 같은844제품 수용판정/결합244를 재사용. |
+| 새 봉인 최초 비교 | PASS, 상승 미확인 | 지문1abd74597ec4b25a, 8문서57결함. 운영9c=후보3389 28.1/.281/FP0·control0·A0, 인젝션방어유지. 양쪽exit0/clean/같은Python3.11.15·OCR5.5kor/network0/scorer/deps/baselinehash. 별도새Pythonprocess, 같은평가LLM세션; 구현/봉인작성역할없음·원문/정답/문서상세 미열람. 반복새봉인시험금지. |
+| 버전 | 0.13.0 minor 판정 | TK57 PHONE1/54→0/54·RRN0/84·provider0 및 공개actual54파일M4/대조 충족에 의한 완전티켓1건해소. 고정/봉인점수상승0. 좁은M4를globalM2/major로확대하지않음. 별도판정서·3파일1버전commit/최종CI대기. |
+| #84 e21c40d | 불수용5482338759·이번범위제외 | 요청6106648755·exactCI38120377539/점수38120377556/DockerSUCCESS. 원래20/actualTXT20 8/8·7/8·1/4로 정상8/8 미달·고정18불변. 공개815/독립26PASS는대체불가. 양쪽attachment fullmatch없어proof/consumer미도달·identity2보존. 원문/어휘/IDs/좌표공유0. |
+| #79 214334d | 불수용5482229717·이번범위제외 | 원래control/A FP1/필수0 미달 유지. 공개936/독립GLOBAL/CI 성공대체불가. 명시name-field+colon feasibility0/4이므로 공개fieldgap은대상원인아님·새제품추가0. |
+| 실제 배포/온라인 | 대기 | 버전commit·최종필수CI·Steve/main 병합·Renderhealth/DB/APIworkerOFF 확인 뒤만 배포등록. 사용자 배포우선승인 적용. 온라인6입력 검증/조건고정은배포후·유료호출전. oneblindlawyer·실제ClaudeOFFON·토큰JSON·끝OFF·정식ON사용자결정. 별도가격/비용조회/증가율조건없음·가격87미병합폐기·기존예산보호유지. |
