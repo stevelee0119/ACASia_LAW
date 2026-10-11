@@ -199,3 +199,24 @@ def test_synthetic_numbered_proposition_is_not_an_independent_close_heading(tmp_
         '갑 제1호증: 점검기록, 북쪽 구역. 갑 제2호증: 배치대장, 별도 부분.',
         peer, '갑 제1호증 점검기록: 순서를 설명한다.', '첨부서류'])
     assert len(_duplicates(doc)) == 1
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+def test_synthetic_nested_inventory_has_more_specific_child_narrative_role(tmp_path, extension):
+    doc = _parsed(tmp_path, extension, ['1. 제출문서 목록',
+        '갑 제1호증: 점검기록, 북쪽 구역. 갑 제2호증: 배치대장, 별도 부분.',
+        '가. 추가문헌 목록', '갑 제3호증: 확인표, 중앙 구역. 갑 제4호증: 작업도, 동쪽 부분.',
+        '나. 문헌 검토', '갑 제3호증 확인표: 순서를 설명한다.',
+        '갑 제4호증 작업도: 위치를 기록한다.', '2. 자료 검토',
+        '갑 제1호증 점검기록: 순서를 설명한다.', '갑 제2호증 배치대장: 경로를 기록한다.', '첨부서류'])
+    assert not _duplicates(doc)
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+def test_synthetic_next_inventory_heading_is_not_a_narrative_exemption(tmp_path, extension):
+    doc = _parsed(tmp_path, extension, ['가. 수집문헌 목록',
+        '갑 제1호증: 점검기록, 북쪽 구역. 갑 제2호증: 배치대장, 별도 부분.',
+        '나. 추가문헌 목록', '갑 제1호증: 표본보고, 다른 부분. 갑 제3호증: 확인표, 중앙 구역.',
+        '첨부서류'])
+    found = _duplicates(doc)
+    assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
