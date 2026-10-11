@@ -96,9 +96,9 @@ _PROPOSITION_RE = re.compile(
     r'(?<![가-힣])(?P<argument>[가-힣]+?)(?P<case>을|를|이|가|은|는|도|조차|마저)\s+'
     r'(?P<adjunct>(?:[가-힣]+\s+){0,4}?)'
     r'(?P<predicate>'
-    r'받을\s+필요(?:가|는|도)?\s+없(?:다|고)|'
-    r'받지\s+않을\s+권리(?:가|는|도)?\s+있(?:다|고)|'
-    r'[가-힣]+(?:할|될|을)\s+수\s+(?:있다|없다)|'
+    r'받을\s+필요(?:가|는|도)?\s+없(?:습니다|다|고)|'
+    r'받지\s+않을\s+권리(?:가|는|도)?\s+있(?:습니다|다|고)|'
+    r'[가-힣]+(?:할|될|을)\s+수\s+(?:있다|없다|있습니다|없습니다)|'
     r'[가-힣]+?지\s*(?:않는다|않습니다)|[가-힣]+?(?:한다|된다|하고|되고|하지만|다))'
     r'(?=\s|[,;.!?]|$)')
 _BOUNDARY_RE = re.compile(
@@ -107,6 +107,21 @@ _BOUNDARY_RE = re.compile(
 _ACTOR_RE = re.compile(r'(?<![가-힣])[가-힣]+(?:이|가|은|는)(?=\s|[,;.!?]|$)')
 _INDEPENDENT_ARGUMENT_RE = re.compile(r'(?<![가-힣])[가-힣]+(?:을|를|이|가|은|는|도|조차|마저)(?=\s|[,;.!?]|$)')
 _MODAL_RE = re.compile(r'(?:라면|다면|으면|가능|예정|계획|가정)(?=\s|[,;.!?]|$)')
+_FINITE_LEXEME_RE = re.compile(
+    r'(?P<stem>[가-힣]+?)(?P<ending>한다|된다|합니다|됩니다|하고|되고|하지만|되지만|했다|됐다|하였(?:다|고)|되었(?:다|고)|'
+    r'할\s+수\s+(?:있다|없다|있습니다|없습니다)|될\s+수\s+(?:있다|없다|있습니다|없습니다)|'
+    r'하지\s*(?:않는다|않습니다)|되지\s*(?:않는다|않습니다))')
+
+
+def _predicate_lemma(predicate: str) -> str | None:
+    """Bind a complete finite 하다/되다 form, not a lexical prefix."""
+    match = _FINITE_LEXEME_RE.fullmatch(predicate)
+    if not match:
+        return None
+    stem = match.group('stem')
+    ending = match.group('ending')
+    passive = ending.startswith(('된다', '됩니다', '되고', '되지만', '됐다', '되었', '될', '되지'))
+    return stem + ('되다' if passive else '하다')
 
 
 def _source(keys: list[str]) -> list[dict]:
@@ -186,36 +201,37 @@ def effect_candidates(text: str, *, previous: str = '') -> list[dict]:
 def interpret_effect(candidate: dict) -> dict:
     """Compose observed argument, predicate and grammatical negation scope."""
     predicate = candidate['predicate_text']
-    normative = '권리' in predicate
-    necessity = '필요' in predicate
+    lemma = _predicate_lemma(predicate)
+    normative = bool(re.fullmatch(r'받지\s+않을\s+권리(?:가|는|도)?\s+있(?:습니다|다|고)', predicate))
+    necessity = bool(re.fullmatch(r'받을\s+필요(?:가|는|도)?\s+없(?:습니다|다|고)', predicate))
     role = argument_role(candidate['argument_text'], receipt=normative)
     keys, category = [], 'UNKNOWN'
     if normative:
         keys, category = ['받다:1:1', '권리:0:1'], 'NORMATIVE_PERMISSION'
     elif necessity and role['role'] in {'SANCTION', 'SANCTION_DECISION'}:
         keys, category = ['받다:1:10', '필요:0:1'], 'EXEMPTION_FROM_NECESSITY'
-    elif predicate.startswith('면제'):
-        keys = ['면제되다:0:1' if predicate.startswith('면제되') else '면제하다:0:1']
+    elif lemma in {'면제하다', '면제되다'}:
+        keys = [lemma + ':0:1']
         if role['role'] in {'SANCTION', 'SANCTION_DECISION', 'LEGAL_OBLIGATION'}:
             category = 'OBLIGATION_RELEASE'
-    elif predicate.startswith('면'):
+    elif lemma == '면하다':
         if role['role'] in {'SANCTION', 'SANCTION_DECISION'}:
             keys, category = ['면하다:1:2'], 'SANCTION_AVOIDANCE'
         elif role['role'] == 'LEGAL_OBLIGATION':
             keys, category = ['면하다:1:1'], 'OBLIGATION_RELEASE'
         else:
             keys = [row['source_sense_key'] for row in SOURCE_SENSES if row['lemma'] == '면하다']
-    elif predicate.startswith('소멸'):
+    elif lemma == '소멸하다':
         keys = ['소멸하다:0:1']
         if role['role'] in {'SANCTION', 'SANCTION_DECISION', 'LEGAL_OBLIGATION'}:
             category = 'LEGAL_EFFECT_ELIMINATION'
-    elif predicate.startswith('배제'):
+    elif lemma in {'배제하다', '배제되다'}:
         keys = ['배제하다:0:1']
         if role['role'] in {'SANCTION', 'SANCTION_DECISION', 'LEGAL_OBLIGATION'}:
             category = 'LEGAL_EFFECT_EXCLUSION'
     denial = bool(re.search(r'지\s*(?:않는다|않습니다)', predicate))
     semantic_candidate = normative or necessity or bool(keys)
-    if predicate.startswith(('소멸', '배제')) and role['role'] == 'UNKNOWN':
+    if lemma in {'소멸하다', '배제하다', '배제되다'} and role['role'] == 'UNKNOWN':
         # Disappearance/exclusion alone does not assert a legal exemption.
         # A known ambiguous legal nominal retains a verification candidate;
         # an unrelated unknown noun is not proof of legal effect. Existing
@@ -238,6 +254,7 @@ def interpret_effect(candidate: dict) -> dict:
     if candidate['modal'] or extent:
         category = 'UNKNOWN'
     return {'version': VERSION, 'argument': role, 'predicate_senses': _source(keys),
+            'observed_predicate_lemma': lemma,
             'category': category, 'sense_resolved': category != 'UNKNOWN',
             'necessity_negation': necessity, 'normative_permission': normative,
             'authored_actor': candidate['authored'], 'actor_span': candidate['actor_span'],

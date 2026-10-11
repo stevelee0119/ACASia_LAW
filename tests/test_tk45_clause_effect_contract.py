@@ -195,6 +195,53 @@ def test_partial_effect_evidence_keeps_original_local_span(monkeypatch, tmp_path
     assert extent['attachment'] == 'PREDICATE_ARGUMENT'
 
 
+@pytest.mark.parametrize('effect,lemma', [
+    ('형사처벌도 면한다.', '면하다'),
+    ('행정제재를 면제한다.', '면제하다'),
+    ('행정제재가 면제된다.', '면제되다'),
+])
+def test_source_lemma_is_bound_to_its_complete_finite_form(monkeypatch, tmp_path, effect, lemma):
+    findings, trace = _trace_pipeline(monkeypatch, tmp_path, LEAD + FULFILLED + ' ' + effect)
+    assert findings and all('요건 확인 요청' not in row.confidence_features['verdict'] for row in findings)
+    meaning = next(row['effect_interpretation'] for row in trace['conclusions'] if row.get('candidate_kind') == 'FINITE_PROPOSITION' and row['is_conclusion'])
+    assert meaning['known_extension']
+    assert any(sense['lemma'] == lemma for sense in meaning['predicate_senses'])
+
+
+@pytest.mark.parametrize('effect', [
+    '참석자를 면담한다.', '지원자를 면접한다.',
+    '행정제재를 면제신청한다.', '행정제재를 면제 신청한다.',
+])
+def test_other_lemma_and_compound_action_do_not_inherit_an_exemption_sense(monkeypatch, tmp_path, effect):
+    findings, trace = _trace_pipeline(monkeypatch, tmp_path, LEAD + FULFILLED + LIMIT_CONNECTIVE + effect)
+    assert not findings, trace
+    assert not any(row.get('effect_interpretation', {}).get('known_extension') for row in trace['conclusions'] if row.get('candidate_kind') == 'FINITE_PROPOSITION')
+
+
+@pytest.mark.parametrize('effect,category', [
+    ('행정제재를 받을 필요가 없습니다.', 'EXEMPTION_FROM_NECESSITY'),
+    ('행정제재를 받을 필요는 없습니다.', 'EXEMPTION_FROM_NECESSITY'),
+    ('소포를 받지 않을 권리가 있습니다.', 'NORMATIVE_PERMISSION'),
+])
+def test_polite_special_predicate_keeps_necessity_or_right_inside_its_frame(monkeypatch, tmp_path, effect, category):
+    findings, trace = _trace_pipeline(monkeypatch, tmp_path, LEAD + FULFILLED + ' ' + effect)
+    assert findings and all('요건 확인 요청' not in row.confidence_features['verdict'] for row in findings)
+    source = findings[0].confidence_features['claim']
+    row = next(row for row in trace['conclusions'] if row.get('effect_interpretation', {}).get('category') == category)
+    assert source[slice(*row['predicate_span'])] == effect.split(' ', 1)[1][:-1]
+    assert row['effect_interpretation']['known_extension']
+
+
+@pytest.mark.parametrize('effect', [
+    '행정제재를 받을 필요가 없다는 것은 아닙니다.',
+    '소포를 받지 않을 권리가 있다는 것은 아닙니다.',
+    '원고는 행정제재를 받을 필요가 없습니다.',
+])
+def test_polite_special_predicate_does_not_erase_embedded_denial_or_new_actor(monkeypatch, tmp_path, effect):
+    findings, trace = _trace_pipeline(monkeypatch, tmp_path, LEAD + FULFILLED + LIMIT_CONNECTIVE + effect)
+    assert not findings, trace
+
+
 @pytest.mark.parametrize('length', [8000, 16000, 32000])
 def test_local_candidate_traversal_does_not_recheck_the_growing_prefix(monkeypatch, length):
     from packages.legal_engine import effect_propositions
