@@ -1701,7 +1701,7 @@ TK73의 be654f9·67865f는 최종 공식 재측정 전 공개 사전감사에서
 | 후보 | 판정 | 근거 |
 | --- | --- | --- |
 | #84 3736c9e | 불수용·미통합 | PR84 3736c9ec971c40e85bf3e180a6d656d3185966d0 불수용5482209439. 요청6106331973·완료CI38118075725 양쪽DB FAIL(새PDF생성용 fitz누락4건), 점수38118075720/DockerSUCCESS 구분. 평가측 원래20 부인8/8·정상7/8·확장1/4, actualTXT전체경로동일; 정상8/8 필수미달. 고정18 부인3/4·정상4/4·화자1/4·반박1/2·확장4/4 불변. 공개594/독립actual22 PASS 대체불가. 원래기준/기대값/채점불변·미통합/미배포·새봉인미실행. |
-| #79 9ab6764 | 불수용·미통합 | PR79 9ab6764b218628ca4979f84c245edb83a24123b8 불수용5482055280. 요청6105908060·exactCI38114012034 attempt2 completedFAIL(TK24 0.216606초/기존0.1초), PG/Docker/점수38114012021 SUCCESS 구분. 평가측 원래4 재실행19.0/29.6/36.2 FP0 유지; 20261010 시작15.2/.302/FP3(control3/A3)→25.2/.302/FP1(control1/A1), 필수AFP/control0 미달. 네세트 인젝션방어 유지. 공개823/독립15 PASS 대체불가·새봉인 미실행·미통합·미배포. |
+| #79 214334d | 불수용·미통합 | PR79 214334ddb916a0a856e7a4a55d39cbd180c5ec1a 불수용5482229717. 요청6106394284·exactCI38118526548/점수38118526520/Docker 모두SUCCESS. 평가측 원래4 재실행19.0/29.6/36.2 FP0 유지;20261010 시작15.2/.302/FP3(control3/A3)→25.2/.302/FP1(control1/A1), 기존9ab와동일·필수AFP/control0 미달. 네세트 인젝션방어유지. 공개936/독립GLOBAL실제형식감사PASS는대체불가. 미통합·미배포·새봉인미실행·기준/채점/기대값불변. |
 
 출력불변metadata: 실패정상1은 CHANGED_ARGUMENT/UNCERTAIN + ASSERTED_REQUIREMENT_REALIZATION/POSITIVE. configured requirement identity2이고 두 observation identity는서로다름. 신규same-identity resolution resolved0, qualifier abstention까지도달하지않음. 원문/IDs/spans공유0·다른POSITIVE로독립요건/직접부정/불확실면제금지. 같은정상지표정체뒤제품전새공개일반화설계필수.
 

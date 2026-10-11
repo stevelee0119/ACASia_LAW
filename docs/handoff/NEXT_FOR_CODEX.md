@@ -1,6 +1,6 @@
 # Codex 구현 전달문 (현행 통합본)
 
-갱신: 2026-10-11 15:49 KST. 이전 전달문 전체를 대체한다. 미배포 TK 보완·수용·릴리스에 집중한다. 구현은별도공개전용세션/clone·봉인/비공개/정답/평가원문 접근·요청금지. 제품전설계/관련양방향합성대조·기존expects불변·Agent: implementer. 보호경로·버전판정은평가측·강제push/Steve/main직접push금지.
+갱신: 2026-10-11 16:03 KST. 이전 전달문 전체를 대체한다. 미배포 TK 보완·수용·릴리스에 집중한다. 구현은별도공개전용세션/clone·봉인/비공개/정답/평가원문 접근·요청금지. 제품전설계/관련양방향합성대조·기존expects불변·Agent: implementer. 보호경로·버전판정은평가측·강제push/Steve/main직접push금지.
 
 ## 수용분과 릴리스
 - 운영main9c1b218/0.12.0. Steve5dea의TK24/43/56/69/70/72/74/75 기술수용·병합·미배포. TK75 기본OFF·실제품질미측정.
@@ -16,6 +16,7 @@
 - PR84 3736c9ec971c40e85bf3e180a6d656d3185966d0 불수용5482209439. 요청6106331973·완료CI38118075725 양쪽DB FAIL(새PDF생성용 fitz누락4건), 점수38118075720/DockerSUCCESS 구분. 평가측 원래20 부인8/8·정상7/8·확장1/4, actualTXT전체경로동일; 정상8/8 필수미달. 고정18 부인3/4·정상4/4·화자1/4·반박1/2·확장4/4 불변. 공개594/독립actual22 PASS 대체불가. 원래기준/기대값/채점불변·미통합/미배포·새봉인미실행.
 - 출력불변3736 진단: 새case_bound_event primitive호출1·원래case/argument순서/공백검사통과·interveningcase0·predicate_chain없음. 새attachment grammar_fullmatchfalse→proof없음·resolved0. 기존SOURCE_SENSES의 exactfinitepast/regularadnominal 인식0. generic -한/-했/-하였 rawshape0은punctuation/다른활용 미확인이라 nonpast판정근거아님. 두독립identity와 원래UNCERTAIN/POSITIVE 불변. 원문/어휘/식별자/좌표전달0. 새 source 논항/술어·closure 설계메모전 제품추가금지·다른POSITIVE로요건면제금지.
 - 최종258907052d538192187cf4356338715e648b27fb은공개PDF fixture생성기만fitz→기존reportlab/CID로보완·폭/원문/6expects그대로·6PASS. 제품326diff0. 새CI38118978843/점수38118978817대기이며원래정상7/8 불수용을해소하지않음.
+- f51abebe31395a2b2d0faa3371f854785db797a6 auxiliary source-composition 설계조건부승인6106464870. 평가측actualTXT37 오류/skip0·5genuineFAIL32PASS·제품diff0, 독립NIKL5source 뜻/동음구분일치. 자기case→독립dynamichead/observedconnective→resultativeauxiliary→rawpastadnominal→relativeclosure만최소구현중. bare하다 authored-direct-action을COMPLETION/전체fulfillment/facts/legal과분리하며false필드를명시시험으로고정. 기존594/조건guard/관찰identity불변·source자모가상좌표금지·다른act비병합. exact certified auxiliary와동일span의LOCAL_SUBJECT collision만local처리하고다른origin blocker는보존.
 - 원래수용은정상8/8유지·부정/확장각시작2/8·0/4보다증가/어느것도감소없음.6/8·3/4는목표/미달사유보고이며새하한아님. 고정18/공개대조는원래20대체불가. 다른요건/주체/독립부정/계획/부분/quote/조건/UNKNOWN면제금지·newrule_id0.
 
 ## 경로 B
@@ -25,7 +26,9 @@
 - 최종측정/버전판정후root확정SHA에서새version-only브랜치/3파일/1commit; 폐기가격branch재사용금지.
 
 ## 경로 C
-- TK73 c17/26ce 공개P2 HOLD6106246266의최소globalguard d456승인6106256180 후 제품faff1a4/최종214334ddb916a0a856e7a4a55d39cbd180c5ec1a 동결. 관련936·기존906expects불변. 독립후속 actual6전역충돌모두A1복구·normal0/wholeweakcaption/UNKNOWNorigin보호·원래15rows/source/identity불변·새helper.003854/.006897/.013136s. 좁은공개PASS이며 exactCI38118526548 DB대기·Docker/점수38118526520SUCCESS. 정식원래4AFP0 미측정·기존9ab불수용유지.
+- PR79 214334ddb916a0a856e7a4a55d39cbd180c5ec1a 불수용5482229717. 요청6106394284·exactCI38118526548/점수38118526520/Docker 모두SUCCESS. 평가측 원래4 재실행19.0/29.6/36.2 FP0 유지;20261010 시작15.2/.302/FP3(control3/A3)→25.2/.302/FP1(control1/A1), 기존9ab와동일·필수AFP/control0 미달. 네세트 인젝션방어유지. 공개936/독립GLOBAL실제형식감사PASS는대체불가. 미통합·미배포·새봉인미실행·기준/채점/기대값불변.
+- 출력불변214 진단: control7rows/scope1/excluded2/keys4·남은group1 inventorykindNone1/모든narrative종료뒤prose1. 새inventory_atom4회/PASS0·row정규화mapping/단일itemorigin/원래offset순서/definitionmarker4통과. wholeparagraphsource0·nativeatom0→eligible/certified/rowdomain0·latercitation원시함수호출0. 4paragraph모두multi-reading-segment(total16), source없음으로단정하지않음. row정규화일치와originalphysicalglyph proof는구별하며 UNKNOWNjoin을원문으로인증/가상whole-source span생성금지. 원문/어휘/IDs/좌표공유0·기존globalall-origin충돌/UNKNOWN 및interval/936expects 유지.
+- 전역guard214는공개독립PASS/936불변이나원래AFP0미달. 원래item/refsource조각을보존하는whole-caption 비교local proof 새설계만검토중·제품은동결. paired-native-title없음을이유로잘라내거나전체registeredkey를면제하지않음.
 - TK73 #79 최신9ab6764/95e11e5·관련823·독립actualTXT/PDF/DOCX15 PASS. 요청6105908060 후정식불수용5482055280: 원래4 세트19.0/29.6/36.2 FP0유지·20261010 15.2/.302/FP3→25.2/.302/FP1(control1/A1), 필수0미달·모두injection유지.
 - exactCI38114012034 attempt2 completedFAIL TK24 timing.216606/기존.1; PG/Docker/점수38114012021SUCCESS 구분. 최초실패및1회retry보존·같은9ab추가blindretry/시험/상한완화금지. 新정당한제품보완의exactCI는새SHA에서시행.
 - 출력불변metadata: scope1/excludedrows2/registeredkeys4, 남은group1 두rows의원래itemorigin/reference_span·등록key유지. inventory內kindNone1 vs모든narrative interval종료뒤kindprose1. 원문/IDs/좌표공유0.
