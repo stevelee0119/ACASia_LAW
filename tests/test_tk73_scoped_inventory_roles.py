@@ -451,3 +451,28 @@ def test_synthetic_long_reference_label_materialization_is_not_new_role_work(tmp
     elapsed = time.perf_counter() - started
     assert not excluded and not scopes
     assert elapsed < 0.1
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt', 'docx'])
+def test_synthetic_protected_middle_reference_stops_entry_certification(tmp_path, extension):
+    lines = ['가. 수집문헌 목록',
+        '갑 제1호증: 관측기록 「갑 제2호증: 인용자료」 갑 제3호증: 측정대장',
+        '나. 문헌 검토', '갑 제1호증 다른표', '첨부서류']
+    if extension == 'docx':
+        from docx import Document
+        from packages.document_engine.registry import parse_document
+        out = Document()
+        for line in lines:
+            out.add_paragraph(line)
+        path = tmp_path / 'public_middle_reference_scope.docx'
+        out.save(path)
+        doc = parse_document(str(path), document_id='public_middle_reference_scope', filename=path.name,
+            mime_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document', sha256='0' * 64)
+    else:
+        doc = _parsed(tmp_path, extension, lines)
+    from packages.claim_engine.evidence_consistency import _duplicate_inventory_roles
+    from packages.document_engine.reading_text import build_reading_text
+    excluded, scopes = _duplicate_inventory_roles(build_reading_text(doc), exhibit_rows(doc))
+    assert not scopes and not excluded
+    found = _duplicates(doc)
+    assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
