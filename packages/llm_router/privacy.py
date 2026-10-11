@@ -462,8 +462,10 @@ def inspect_request(request, *, _original_system: str = None):
     - _original_system이 주어지면 조립 전 원본 system을 별도 검사한다.
     """
     from .input_contracts import valid_input_contract
+    from .cascade_source import cascade_inspection_text, valid_cascade_source
 
-    contract_valid = valid_input_contract(request, original_system=_original_system)
+    contract_valid = (valid_input_contract(request, original_system=_original_system)
+                      and valid_cascade_source(request, original_system=_original_system))
     payload = asdict(request)
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
 
@@ -471,6 +473,25 @@ def inspect_request(request, *, _original_system: str = None):
     blocked_kinds = Counter()
     static_fp_kinds = Counter()
     detected_paths = set()
+
+    # Additional source inspection never replaces the original/assembled scans.
+    # Even a mismatched context is inspected so PII keeps failure precedence.
+    source_text = cascade_inspection_text(request)
+    if source_text is not None:
+        uncertain_paths = []
+        for path, text in _walk_fields(source_text, "cascade_source", _uncertain_paths=uncertain_paths):
+            matches = [m for m in detect(text) if m.confidence >= 0.6]
+            for match in matches:
+                kinds[match.kind] += 1
+                blocked_kinds[match.kind] += 1
+                # Encoded evidence can contain arbitrary keys. Do not disclose
+                # those source strings through an otherwise safe receipt path.
+                detected_paths.add("cascade_source." + hashlib.sha256(path.encode("utf-8")).hexdigest())
+        if uncertain_paths:
+            kinds["PERSON"] += len(uncertain_paths)
+            blocked_kinds["PERSON"] += len(uncertain_paths)
+            detected_paths.update("cascade_source." + hashlib.sha256(path.encode("utf-8")).hexdigest()
+                                  for path in uncertain_paths)
 
     # R8-A: 조립 전 원본 system이 있으면 별도 검사 (JSON 구조 보존)
     if _original_system is not None:
