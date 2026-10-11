@@ -177,7 +177,7 @@ def _observe(path):
     (720, 'HYGothic-Medium', 14, 2),
 ])
 @pytest.mark.parametrize('separator,state', [('', 'JOIN_CONFIRMED'), (' ', 'SPACE_CONFIRMED')])
-def test_exact_inline_source_capability_and_current_parser_gap(tmp_path, width, font, size, unrelated, separator, state):
+def test_exact_inline_source_capability_and_provider_absence_gap(tmp_path, monkeypatch, width, font, size, unrelated, separator, state):
     path = tmp_path / 'source.pdf'
     _pdf(path, width=width, font=font, size=size, unrelated=unrelated,
          logical='자료는 새' + separator + '문서로 정리된다.')
@@ -187,6 +187,9 @@ def test_exact_inline_source_capability_and_current_parser_gap(tmp_path, width, 
     assert len(evidence['original_glyph_indices']) == len('자료는 새문서로 정리된다.')
     assert evidence['logical_boundary_span'] == [5, 5 + len(separator)]
     json.dumps(evidence)
+    # Freeze the original absence contract explicitly after provider addition.
+    monkeypatch.setattr('packages.document_engine.pdf_parser.inline_actualtext_edges',
+                        lambda *args, **kwargs: ({}, None))
     doc = parse_document(str(path), document_id='generated', filename=path.name,
                          mime_type='application/pdf', sha256='generated')
     block = next(b for b in doc.blocks if '자료는 새' in b.text)

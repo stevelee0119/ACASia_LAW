@@ -21,6 +21,7 @@ from .line_tables import rebuild_line_tables
 from .ocr import get_ocr_adapter, page_quality
 from .rasterize import render_pages
 from .boundary_signals import glyph_line_evidence
+from .actualtext_boundaries import inline_actualtext_edges
 
 HIDDEN_MIN_FONT_SIZE = 3.5
 WHITE_THRESHOLD = 0.92
@@ -286,6 +287,17 @@ class PdfParser(DocumentParser):
 
                 page_texts[index] = "".join(str(c.get("text") or "") for c in chars)
                 lines = self._group_chars_to_lines(chars)
+                active_visibility_facts = [group for group in facts.values() if group]
+                excluded_glyphs = {
+                    i for i, char in enumerate(chars)
+                    if any((index, round(float(char['x0']), 1), round(float(char['y0']), 1)) in group
+                           for group in active_visibility_facts)
+                } if active_visibility_facts else set()
+                actualtext_edges, actualtext_accounting = inline_actualtext_edges(
+                    page, chars, lines, excluded_glyphs=excluded_glyphs,
+                )
+                if actualtext_accounting is not None:
+                    p.attributes['actualtext_boundary_provider'] = actualtext_accounting
                 glyph_indices = {id(char): i for i, char in enumerate(chars)}
                 # 스캔본은 쪽 전체 이미지 위에 Tr 3 OCR 글자층을 얹는 것이 정상이다. 그 쪽의 Tr 3은 숨김이 아니다.
                 scan_like = _image_coverage(page) >= 0.5
@@ -326,6 +338,9 @@ class PdfParser(DocumentParser):
                     attributes["glyph_boundary_evidence"] = glyph_line_evidence(
                         line, [glyph_indices[id(char)] for char in line],
                     )
+                    logical_edge = actualtext_edges.get(glyph_indices[id(line[-1])])
+                    if logical_edge is not None:
+                        attributes['actualtext_boundary_evidence'] = logical_edge
                     if hidden_reason or scan_like or any(
                         unicodedata.category(str(char.get("text", ""))) == "Co"
                         for char in line if len(str(char.get("text", ""))) == 1
