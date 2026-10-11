@@ -156,7 +156,7 @@ def test_synthetic_citation_forward_work_is_bounded_after_old_parser(tmp_path):
 
 
 @pytest.mark.parametrize('extension', ['txt', 'pdf', 'docx'])
-@pytest.mark.parametrize('mode', ['repeat', 'inventory', 'prose', 'condition', 'negation', 'degree'])
+@pytest.mark.parametrize('mode', ['repeat', 'inventory', 'prose', 'condition', 'negation', 'degree', 'weak'])
 def test_synthetic_global_same_atom_complete_alternatives_survive_local_certificates(tmp_path,
                                                                                      extension, mode):
     first = _lines(title='「점검기록」')[:-1]
@@ -164,8 +164,45 @@ def test_synthetic_global_same_atom_complete_alternatives_survive_local_certific
     second[0] = '2. 별도 제출'
     if mode == 'inventory':
         second[2] = second[2].replace('북쪽에 있다.', '남쪽에 있다.')
+    elif mode == 'weak':
+        first.insert(8, '갑 제1호증 「점검기록」, 부록 7쪽 북쪽 풍경.')
+        second.insert(8, '갑 제1호증 「점검기록」, 부록 7쪽 남쪽 풍경.')
     elif mode != 'repeat':
         predicate = {'prose': '경로를 설명한다.', 'condition': '조건이 성립하면 순서를 설명한다.',
                      'negation': '순서를 설명하지 않는다.', 'degree': '일부 순서를 설명한다.'}[mode]
         second[7] = '갑 제1호증 「점검기록」: ' + predicate
     _assert(_parsed(tmp_path, extension, first + second), 0 if mode == 'repeat' else 1)
+
+
+@pytest.mark.parametrize('extension', ['txt', 'pdf', 'docx'])
+@pytest.mark.parametrize('mode', ['missing_source', 'missing_origin', 'protected'])
+def test_synthetic_global_uncertain_inventory_alternative_vetoes_other_parent(tmp_path, extension, mode):
+    first = _lines(title='「점검기록」')[:-1]
+    second = _lines(title='「점검기록」')
+    second[0] = '2. 별도 제출'
+    extra = '갑 제1호증: 「점검기록」, 북쪽에 있다.'
+    second[2] += ' ' + ('「' + extra + '」' if mode == 'protected' else extra)
+    doc = _parsed(tmp_path, extension, first + second)
+    rows = exhibit_rows(doc)
+    repeated = [row for row in rows if row['number'] == 1 and row['line_group'][0] > 8]
+    assert len(repeated) == 3
+    alternative = repeated[1]
+    if mode == 'missing_source':
+        alternative['duplicate_sources'] = []
+    elif mode == 'missing_origin':
+        alternative['duplicate_sources'][0].pop('origin')
+    before = copy.deepcopy(rows)
+    metadata = {}
+    reading = build_reading_text(doc)
+    _, scopes = _duplicate_inventory_roles(reading, rows, metadata)
+    assert len(scopes) == 2
+    views = {id(row): _duplicate_mention_view(row) for row in rows}
+    anchors = _duplicate_citation_anchors(rows, scopes, metadata, views)
+    assert not anchors or not any(domain[2] == ('갑', 1, None) for domain in anchors['certified'])
+    found = [f for f in _numbering(doc, rows)
+             if f.confidence_features.get('rule_id') == 'EVI.EVIDENCE_NUMBER_DUPLICATE']
+    assert sum(f.confidence_features['exhibit'] == '갑 제1호증' for f in found) == 1
+    # Existing split-at-reference parsing appends the outer quote opener to the
+    # preceding other-party item; its separate legacy difference stays visible.
+    assert len(found) == (2 if mode == 'protected' else 1)
+    assert rows == before

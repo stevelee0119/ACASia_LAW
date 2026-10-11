@@ -1105,14 +1105,23 @@ def _duplicate_citation_anchors(rows, scopes, metadata, views):
                         state["atoms"].add(atom)
                     state["rows"].add(id(row))
                     state["end"] = max(state["end"], scope["narrative_end"])
+    global_inventory = {}
+    for (_, _, key), state in inventory.items():
+        complete = global_inventory.setdefault(key, {"identities": set(), "atoms": set(),
+                                                    "valid": True, "rows": set()})
+        complete["identities"].update(state["identities"])
+        complete["atoms"].update(state["atoms"])
+        complete["valid"] &= state["valid"]
+        complete["rows"].update(state["rows"])
     unplaced_keys = set()
     for row in rows:
         if not row.get("from_lines") or not row.get("line_group"):
             unplaced_keys.update((row["party"], row["number"], branch)
                                 for branch in row.get("branches") or [None])
     eligible = {domain: state for domain, state in inventory.items()
-                if domain[2] not in unplaced_keys and state["valid"]
-                and len(state["identities"]) == len(state["atoms"]) == 1}
+                if domain[2] not in unplaced_keys and global_inventory[domain[2]]["valid"]
+                and len(global_inventory[domain[2]]["identities"]) ==
+                    len(global_inventory[domain[2]]["atoms"]) == 1}
     if not eligible:
         return {}
     witnesses = {}
@@ -1148,7 +1157,8 @@ def _duplicate_citation_anchors(rows, scopes, metadata, views):
                 domain = (heading["parent"], heading["rank"], key)
                 if domain in certified:
                     row_domains[(id(row), key)] = domain
-    return {"certified": certified, "inventory": eligible, "row_domains": row_domains}
+    return {"certified": certified, "inventory": eligible, "row_domains": row_domains,
+            "inventory_ids": {key: state["rows"] for key, state in global_inventory.items()}}
 
 
 def _duplicate_projected_names(parts):
@@ -1215,9 +1225,16 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
         domains = {}
         if citation_anchors:
             group_key = (party, number, branch)
+            inventory_ids = citation_anchors["inventory_ids"].get(group_key, ())
+            complete_alternatives = {}
+            for row, (fallback, proposed, kind, identity) in zip(same, title_parts):
+                if id(row) not in inventory_ids and kind in ("prose", "locator"):
+                    complete_alternatives.setdefault((kind, proposed), set()).add(identity)
+            conflicting_atoms = {proposed for (_, proposed), identities in complete_alternatives.items()
+                                 if len(identities) > 1}
             for index, row in enumerate(same):
                 domain = citation_anchors["row_domains"].get((id(row), group_key))
-                if domain is not None:
+                if domain is not None and citation_anchors["certified"][domain] not in conflicting_atoms:
                     domains.setdefault(domain, []).append(index)
             for domain, indexes in domains.items():
                 atom = citation_anchors["certified"][domain]
