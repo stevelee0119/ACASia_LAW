@@ -13,14 +13,17 @@
 - PR84 bcea17c660f9cbd3055952b2ae0f1b26f2cfda49 불수용5482118915. 요청6106067158·동일SHA CI38116124746/점수38116124743/Docker SUCCESS 인용. 원래20 평가측 재실행 부인8/8·정상7/8·확장1/4, 실제TXT전체경로 동일. 정상8/8 필수조건 미달. 고정18 부인3/4·정상4/4·화자1/4·반박1/2·확장4/4. 공개537 및 독립 조건부 보호 감사 PASS는 원래 조건 대체불가. 미통합·미배포·새봉인 미실행·기대값/기준선 불변.
 - 출력불변 진단: 남은 정상1의 독립요건 identity2와 UNCERTAIN/CHANGED_ARGUMENT·POSITIVE/ASSERTED_REQUIREMENT_REALIZATION 유지. reference_frame 호출0, immediate argument pattern 미일치·기존 event_frame case 존재·predicate_chain 없음. contextual_proposition 생성 전 거절되므로 기존 nominal-modifier/object-tail 설계가 해당 원인을 설명하지 못한다. 원문/식별자/좌표 전달0. 다른 POSITIVE를 이용한 요건 면제나 낱말목록 확장 대신 공개 source 논항·술어 결합 설계부터 재검토.
 - bb68a009 공개 case-bound past-event attachment 설계 사전승인6106168162. root actualTXT22에서 기존 확인요청으로3FAIL/19PASS·제품diff0; 독립 NIKL -ㄴ/이후 출처검토 뜻풀이일치. 첫 source의 case→동적 개별lemma→관측 -한→상대적 이후 결합만 증명하며 original state/reason/identity/event_frame 불변·다른행위 비병합·조건/부분/계획/인용/보고/UNKNOWN 보호·원문에 없는 분해자모 source span 생성금지. 이후·형태조합만으로 사실/법적충족/과거발생 추정금지. 기존537 고정. 최소제품/형식대조/선형계측·최종독립감사·exactCI 및 원래필수판정 대기.
+- TK45 32692f9/최종3736c9e 공개독립actual22(TXT16/PDF3/DOCX3) PASS: 정상4warning0·반대18warning유지·원래관찰필드/두행위identity·raw한/이후/source/JSONfactsfalse 불변.7N+새attachment1회8chars/.0053s dense1000(관찰생성제외). 관련594/기존537불변. final3736 productdiff0. exactCI38118075725 DB2 진행중·DockerSUCCESS/점수38118075720SUCCESS. 정식원래20/18/actual20 아직미재측정·이전bcea 불수용5482118915 유지.
 - 원래수용은정상8/8유지·부정/확장각시작2/8·0/4보다증가/어느것도감소없음.6/8·3/4는목표/미달사유보고이며새하한아님. 고정18/공개대조는원래20대체불가. 다른요건/주체/독립부정/계획/부분/quote/조건/UNKNOWN면제금지·newrule_id0.
 
 ## 경로 B
+- TK57 제한 M4 평가측 actual54파일(TXT/PDF/DOCX·물리폭240/600): 동일공개6국제번호의전체원문contact span 운영9c0/36→수용84436/36. contact mockprovider0/144 양쪽동일, 법적번호대조18파일 numericFP0·정상mockprovider72/72 양쪽동일, kind/route/coverage 불변. 같은 fixture SHA256 07ab9c519e5c0f5ae551b5dc0cee8b3eb23b442a8e1b1ee966a3aa63fc32538b. 실제유료호출0/network0; 공개좁은형식증거이고 비공개M2/전체bench/새봉인 결과로쓰지않음.
 - TK55/57 수용내용유지·추가제품작업없음. PHONE0/54·RRN0/84·mockprovider0·보호144/결합244·faithfulrouter16/16·JSON손실없는PII우선·legacy잔여구분.
 - 가격PR87 명시폐기closed/unmerged. 재개/후속가격작업/계정조회/비용계산/비용증가율기준없음. 기존프로그램예산보호/USD40상한유지.
 - 최종측정/버전판정후root확정SHA에서새version-only브랜치/3파일/1commit; 폐기가격branch재사용금지.
 
 ## 경로 C
+- TK73 c17/26ce 공개P2 HOLD6106246266: 독립과root actual6(두구조×세형식)에서 다른parent의complete inventory 또는later proposition충돌 A1→0. originalrows/source/endpoints불변. d456 설계조건부승인6106256180·root 새actual18 precheck12FAIL/6PASS. 모든originalglobal same-key inventory/UNKNOWN 및noninventory complete-prose/weak-caption multiplicity의전역veto를먼저적용하는최소guard만보완중·기존906 기대값불변. 새formalAFP0/CI 미완료.
 - TK73 #79 최신9ab6764/95e11e5·관련823·독립actualTXT/PDF/DOCX15 PASS. 요청6105908060 후정식불수용5482055280: 원래4 세트19.0/29.6/36.2 FP0유지·20261010 15.2/.302/FP3→25.2/.302/FP1(control1/A1), 필수0미달·모두injection유지.
 - exactCI38114012034 attempt2 completedFAIL TK24 timing.216606/기존.1; PG/Docker/점수38114012021SUCCESS 구분. 최초실패및1회retry보존·같은9ab추가blindretry/시험/상한완화금지. 新정당한제품보완의exactCI는새SHA에서시행.
 - 출력불변metadata: scope1/excludedrows2/registeredkeys4, 남은group1 두rows의원래itemorigin/reference_span·등록key유지. inventory內kindNone1 vs모든narrative interval종료뒤kindprose1. 원문/IDs/좌표공유0.

@@ -56,3 +56,10 @@ TK73 bb4d300 설계 전용 사전승인6106093910: 평가측 actualTXT/PDF/DOCX9
 
 
 bb68a009 공개 case-bound past-event attachment 설계 사전승인6106168162. root actualTXT22에서 기존 확인요청으로3FAIL/19PASS·제품diff0; 독립 NIKL -ㄴ/이후 출처검토 뜻풀이일치. 첫 source의 case→동적 개별lemma→관측 -한→상대적 이후 결합만 증명하며 original state/reason/identity/event_frame 불변·다른행위 비병합·조건/부분/계획/인용/보고/UNKNOWN 보호·원문에 없는 분해자모 source span 생성금지. 이후·형태조합만으로 사실/법적충족/과거발생 추정금지. 기존537 고정. 최소제품/형식대조/선형계측·최종독립감사·exactCI 및 원래필수판정 대기.
+
+
+TK57 제한 M4 평가측 actual54파일(TXT/PDF/DOCX·물리폭240/600): 동일공개6국제번호의전체원문contact span 운영9c0/36→수용84436/36. contact mockprovider0/144 양쪽동일, 법적번호대조18파일 numericFP0·정상mockprovider72/72 양쪽동일, kind/route/coverage 불변. 같은 fixture SHA256 07ab9c519e5c0f5ae551b5dc0cee8b3eb23b442a8e1b1ee966a3aa63fc32538b. 실제유료호출0/network0; 공개좁은형식증거이고 비공개M2/전체bench/새봉인 결과로쓰지않음.
+
+TK73 c17/26ce 공개P2 HOLD6106246266: 독립과root actual6(두구조×세형식)에서 다른parent의complete inventory 또는later proposition충돌 A1→0. originalrows/source/endpoints불변. d456 설계조건부승인6106256180·root 새actual18 precheck12FAIL/6PASS. 모든originalglobal same-key inventory/UNKNOWN 및noninventory complete-prose/weak-caption multiplicity의전역veto를먼저적용하는최소guard만보완중·기존906 기대값불변. 새formalAFP0/CI 미완료.
+
+TK45 32692f9/최종3736c9e 공개독립actual22(TXT16/PDF3/DOCX3) PASS: 정상4warning0·반대18warning유지·원래관찰필드/두행위identity·raw한/이후/source/JSONfactsfalse 불변.7N+새attachment1회8chars/.0053s dense1000(관찰생성제외). 관련594/기존537불변. final3736 productdiff0. exactCI38118075725 DB2 진행중·DockerSUCCESS/점수38118075720SUCCESS. 정식원래20/18/actual20 아직미재측정·이전bcea 불수용5482118915 유지.
