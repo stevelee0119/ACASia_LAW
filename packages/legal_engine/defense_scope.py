@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from .polarity import ASSERTED, REPORTED, REPORT_VERB_RE, polarity
+from .effect_propositions import effect_candidates, factual_receipt_evidence, interpret_effect, negative_receipt_evidence
 
 
 def quotation_projection(text: str, *, previous: str = '') -> tuple[str, list[dict[str, Any]]]:
@@ -105,6 +106,18 @@ def linked_conclusion_text(
         return None
     current, _ = quotation_projection(text, previous=previous_text)
     subjects = list(SUBJECT_CASE_RE.finditer(current[link.end():]))
+    typed = [(row, interpret_effect(row)) for row in effect_candidates(current, previous=previous_text)]
+    # Necessity/right subjects inside a governing predicate are its grammatical
+    # complements. A source-bound legal effect subject also differs from a new
+    # actor. Neither exemption is licensed by a noun standing alone.
+    subjects = [subject for subject in subjects if not any(
+        (row['predicate_span'][0] <= subject.start() + link.end()
+         and subject.end() + link.end() <= row['predicate_span'][1]
+         and (meaning['necessity_negation'] or meaning['normative_permission']))
+        or (row['authored'] and meaning['known_extension']
+            and row['argument_span'][0] <= subject.start() + link.end()
+            and subject.end() + link.end() <= row['case_span'][1])
+        for row, meaning in typed)]
     if subjects:
         heads = [argument.group('argument') for pattern in limited
                  for limit in re.finditer(pattern, projected)
@@ -135,6 +148,9 @@ def conclusion_scopes(
     else:
         masked, uncertain_quote = projected_text, quotation_uncertain
     limits = [match.span() for pattern in limited for match in re.finditer(pattern, masked)]
+    finite_propositions = effect_candidates(masked, previous=previous)
+    finite_by_spans = {(tuple(row['argument_span']), tuple(row['predicate_span'])): row
+                       for row in finite_propositions}
     observed = []
     for pattern in categorical_patterns(categorical):
         # Focus particles occupy the same grammatical subject slot as nominative
@@ -187,12 +203,47 @@ def conclusion_scopes(
                 match.start('predicate') < right
                 and re.fullmatch(r"\s*(?:않는다|않습니다|못한다)", masked[right:match.end()])))
             for left, right in limits)
-        observed.append({'span': list(match.span()), 'clause_end': end,
+        row = {'span': list(match.span()), 'clause_end': end,
                          'candidate_kind': 'FINITE_NEGATIVE', 'scope_uncertain': True,
                          'speaker': speaker, 'uncertain_quotation': uncertain_quote,
                          'limited': limited_effect,
                          'authored': speaker == ASSERTED,
                          'argument_span': list(match.span('argument')),
                          'predicate_span': list(match.span('predicate')),
-                         'anchor_span': anchor['span']})
+                         'anchor_span': anchor['span']}
+        factual = factual_receipt_evidence(masked, row)
+        if factual:
+            row['effect_interpretation'] = factual
+            row['is_conclusion'] = False
+        else:
+            receipt = negative_receipt_evidence(masked, row)
+            if receipt:
+                row['effect_interpretation'] = receipt
+            proposition = finite_by_spans.get((tuple(row['argument_span']), tuple(row['predicate_span'])))
+            if proposition:
+                meaning = interpret_effect(proposition)
+                if meaning['exemption_denied'] and meaning['sense_resolved']:
+                    # A resolved exemption predicate under direct finite denial
+                    # is a denial of release, rather than an extra release.
+                    # Unknown negatives retain the existing verification path.
+                    row['effect_interpretation'] = meaning
+                    row['is_conclusion'] = False
+        observed.append(row)
+    for candidate in finite_propositions:
+        left, right = candidate['span']
+        if left < start or any(a < right and left < b for a, b in excluded_spans or []):
+            continue
+        if any(a['span'][0] < right and left < a['span'][1] for a in observed):
+            continue
+        if not structural_anchor and not any(row['authored'] for row in anchors):
+            continue
+        interpretation = interpret_effect(candidate)
+        candidate.pop('prefix_text', None)
+        candidate.pop('adjunct_text', None)
+        candidate.update({'effect_interpretation': interpretation,
+                          'uncertain_quotation': uncertain_quote,
+                          'scope_uncertain': interpretation['category'] == 'UNKNOWN',
+                          'limited': candidate.get('limited_argument_scope', False) or any(a <= left and right <= b for a, b in limits),
+                          'is_conclusion': interpretation['eligible_effect'] and not interpretation['exemption_denied']})
+        observed.append(candidate)
     return sorted(observed, key=lambda observation: observation['span'])

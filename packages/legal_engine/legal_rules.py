@@ -53,7 +53,7 @@ def load_defense_groups() -> Dict[str, Any]:
 
 
 @lru_cache(maxsize=1)
-def get_defense_overclaim_pattern() -> re.Pattern[str]:
+def _defense_pattern_parts() -> tuple[str, str, str]:
     """legal_defense_groups.json으로부터 체계로 닫힌 법리 군집 기반 과대주장 정규식을 동적 생성."""
     groups = load_defense_groups()
     clusters = groups.get("clusters", {})
@@ -88,7 +88,27 @@ def get_defense_overclaim_pattern() -> re.Pattern[str]:
     # a preceding reported claim; effects are scoped separately below.
     p3 = rf"(?:{c_alt}|{structural_effect_pattern()})"
 
+    return p1, p2, p3
+
+
+@lru_cache(maxsize=1)
+def get_defense_overclaim_pattern() -> re.Pattern[str]:
+    """Compatibility view of the configured lexical conclusion trigger."""
+    p1, p2, p3 = _defense_pattern_parts()
     return re.compile(rf"{p1}[^.\n]{{0,100}}?{p2}[^.\n]{{0,100}}?{p3}")
+
+
+@lru_cache(maxsize=1)
+def get_defense_scope_anchor_pattern() -> re.Pattern[str]:
+    """Enter proposition review from a concession and configured legal anchor.
+
+    A lexical conclusion or character distance is not proof of consequence.
+    The caller already supplies one local reading sentence, or its explicitly
+    linked immediate predecessor, rather than the complete document prefix.
+    """
+    p1, p2, _ = _defense_pattern_parts()
+    p1 = p1.replace(r'[^.\n]{0,60}?', r'[^.\n]*?')
+    return re.compile(rf"{p1}[^.\n]*?{p2}")
 
 
 def _sections(text: str) -> Dict[str, str]:
@@ -513,6 +533,31 @@ def _defense_requirement_observations(
                 state, reason = "UNCERTAIN", "UNRESOLVED_QUOTATION"
             observations.append({"span": list(match.span()), "predicate_span": [match.end(), end],
                                  "state": state, "reason": reason, "legacy_syntax_state": syntax_state})
+            # Some configured anchors include an event verb (전액을 지급),
+            # rather than a nominal alone. Preserve the observed argument and
+            # predicate coordinates without changing the legacy polarity.
+            embedded_case = re.search(r'(?P<argument>[가-힣]+?)(?P<case>[을를이가은는])(?=\s)', match.group())
+            if embedded_case:
+                argument_span = [match.start() + offset for offset in embedded_case.span('argument')]
+                case_span = [match.start() + offset for offset in embedded_case.span('case')]
+                predicate_start = match.start() + embedded_case.end()
+                word = re.search(r'[가-힣]+', masked[predicate_start:first_end])
+                event_predicate_span = ([predicate_start + offset for offset in word.span()] if word else None)
+            else:
+                argument_span = list(match.span())
+                attached_case = re.match(r'\s*(?P<case>[을를이가은는])(?:도|만)?(?=\s)', after)
+                case_span = ([match.end() + offset for offset in attached_case.span('case')] if attached_case else None)
+                event_predicate_span = ([match.end() + offset for offset in auxiliary.span('predicate')]
+                                        if auxiliary else semantic_evidence.get('span') if semantic_evidence else None)
+                if event_predicate_span is None and syntax_state in {'POSITIVE', 'DENIED'}:
+                    finite_words = list(re.finditer(r'[가-힣]+', masked[match.end():first_end]))
+                    if finite_words and _has_requirement_predicate(finite_words[-1].group()):
+                        event_predicate_span = [match.end() + offset for offset in finite_words[-1].span()]
+            observations[-1]['event_frame'] = {'argument_span': argument_span, 'case_span': case_span,
+                                              'predicate_span': event_predicate_span,
+                                              'argument_binding': ('OBSERVED_CASE_ARGUMENT' if case_span
+                                                                   else 'UNRESOLVED_CONFIGURED_ANCHOR'),
+                                              'source': 'OBSERVED_SYNTAX', 'polarity_changed': False}
             if semantic_evidence:
                 observations[-1]['predicate_semantics'] = semantic_evidence
             if chain:
@@ -570,6 +615,9 @@ def _review_defense_statement(
                                   start=local_match.end("concession"), speaker_prefix=masked[:match.start()],
                                   excluded_spans=excluded, projected_text=local_masked,
                                   quotation_uncertain=uncertain_quote, structural_anchor=True)
+        non_effects = [row for row in scopes if not row.get('is_conclusion', True)]
+        scopes = [row for row in scopes if row.get('is_conclusion', True)]
+        has_lim = has_lim or any(row['authored'] and row['limited'] for row in scopes)
         if context_link and not any(
             row['authored'] and row['span'][0] + match.start() >= context_link['current_sentence_span'][0]
             for row in scopes):
@@ -590,6 +638,8 @@ def _review_defense_statement(
                                      "quotations": quote_rows,
                                      "uncertain_quotation": uncertain_quote,
                                      "statement_span": [match.start(), stop]}
+        if non_effects:
+            mod_rule['defense_scope']['non_effects'] = non_effects
         if context_link:
             mod_rule['defense_scope']['context_link'] = context_link
         if uncertain_quote or needs_scope_review or (has_lim and not denied and not is_extended and (not positive or uncertain)):
@@ -630,7 +680,7 @@ def review_legal_rules(doc: NormalizedDocument) -> List[Finding]:
         if rule.get("context") and not re.search(rule["context"], text):
             continue
         if rule.get("rule_id") == "GEN.DEFENSE_OVERCLAIM_WITHOUT_REQUIREMENTS":
-            pattern = get_defense_overclaim_pattern()
+            pattern = get_defense_scope_anchor_pattern()
         else:
             pattern = re.compile(rule["pattern"])
         scope = rule.get("scope", "BODY")
