@@ -18,6 +18,7 @@ from packages.common.schemas import Evidence, Finding, NormalizedDocument
 from packages.document_engine.reading_text import build_reading_text, sentence_bounds
 
 from .predicate_semantics import assertion_extent_evidence, past_predicate_evidence, sense_evidence
+from .reference_propositions import reference_frame_evidence
 from .polarity import ASSERTED, OPPONENT_REPORT_RE, REPORT_VERB_RE, asserted, polarity
 from .defense_scope import (
     categorical_patterns, clause_end, conclusion_scopes, linked_conclusion_text, mask_quotations,
@@ -712,6 +713,65 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
                 'unqualified_argument_attachment': True,
                 'source_semantic_support': True, 'original_state': row['state'],
                 'underlying_facts_verified': False, 'legal_sufficiency_verified': False,
+            }
+            resolved.add(index)
+    # The first proposition can independently refer to an informational
+    # object without asserting its nominal modifier's requirement event.
+    # A later actual assertion only establishes normal-selection eligibility;
+    # it neither fulfills that modifier nor merges configured identities.
+    actual = sorted((row['span'][0], index, row) for index, row in enumerate(observations)
+                    if row['state'] == 'POSITIVE' and row['reason'] == 'ASSERTED_REQUIREMENT_REALIZATION'
+                    and row.get('predicate_semantics', {}).get('supports_asserted_fulfillment')
+                    and row['predicate_semantics'].get('tense') == 'PAST'
+                    and row['predicate_semantics'].get('case_span')
+                    and not row['predicate_semantics'].get('extent_evidence'))
+    actual_starts = [first for first, _, _ in actual]
+    for index, row in enumerate(observations):
+        if row['state'] != 'UNCERTAIN' or row['reason'] != 'CHANGED_ARGUMENT':
+            continue
+        first, end = row['predicate_span']
+        argument = _CONTEXT_ARGUMENT_RE.match(text, first, end)
+        if (not argument or row.get('event_frame', {}).get('case_span') or row.get('predicate_chain')
+                or bisect_left(argument_starts, end) != bisect_left(argument_starts, argument.end())):
+            continue
+        boundary = boundary_by_end.get(end)
+        frame_end = boundary.start() if boundary and boundary.group() in ',;.!?\n' else end
+        proof = reference_frame_evidence(text, first, frame_end)
+        if proof is None:
+            continue
+        context_prefix, subject_span, context_unqualified = argument_prefix(row['span'][0])
+        if (not context_unqualified
+                or bisect_left(attribution, end) != bisect_left(attribution, context_prefix[0])
+                or bisect_left(quote_starts, end) != bisect_right(quote_ends, row['span'][0])):
+            continue
+        if polarity(text[first:end], (argument.end() - first, end - first)) != ASSERTED:
+            continue
+        row['contextual_proposition'] = {**proof, 'original_state': row['state'],
+                                         'original_reason': row['reason'],
+                                         'requirement_modifier_span': row['span'],
+                                         'local_subject_span': subject_span,
+                                         'argument_prefix_span': context_prefix,
+                                         'clause_boundary_span': list(boundary.span()) if boundary else None,
+                                         'authored': True}
+        target_position = bisect_left(actual_starts, end)
+        if target_position == len(actual):
+            continue
+        _, target_index, target = actual[target_position]
+        target_end = target['predicate_semantics']['span'][1]
+        target_prefix, _, target_unqualified = argument_prefix(target['span'][0])
+        if (not target_unqualified
+                or bisect_left(blockers, target_end) != bisect_left(blockers, argument.end())
+                or bisect_left(quote_starts, target_end) != bisect_right(quote_ends, row['span'][0])):
+            continue
+        if target_index not in target_authorship:
+            target_first = target['span'][0]
+            target_authorship[target_index] = polarity(text[target_first:target_end],
+                                                       (0, target_end - target_first)) == ASSERTED
+        if target_authorship[target_index]:
+            row['reference_selection_support'] = {
+                'actual_observation_index': target_index, 'shared_local_subject_scope': True,
+                'actual_argument_prefix_span': target_prefix,
+                'discharges_reference_requirement': False,
             }
             resolved.add(index)
     return resolved
