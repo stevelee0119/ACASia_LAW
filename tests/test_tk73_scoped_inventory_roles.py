@@ -229,3 +229,65 @@ def test_synthetic_ancestor_close_does_not_create_a_sibling_exemption(tmp_path, 
         '2. 새로운 문서 정의', '갑 제1호증 표본기록', '갑 제1호증 표본보고', '첨부서류'])
     found = _duplicates(doc)
     assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
+
+
+def _fragmented_peer_document(tmp_path, extension, heading, peer, fragmented):
+    if extension == 'txt':
+        marker, title = peer.split(' ', 1)
+        peer_lines = [marker, title + ' A 설명'] if fragmented else [peer + ' A 설명']
+        return _parsed(tmp_path, extension, [heading,
+            '갑 제1호증: 점검기록, 북쪽 구역. 갑 제2호증: 배치대장, 별도 부분.'] + peer_lines +
+            ['갑 제1호증 점검기록: 순서를 설명한다.', '첨부서류'])
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfgen import canvas
+    from scripts.audit.corpus import _register_font, FONT
+    from packages.document_engine.registry import parse_document
+    _register_font()
+    path = tmp_path / 'public_fragmented_peer.pdf'
+    out = canvas.Canvas(str(path), pagesize=A4)
+    part = peer + ' A'
+    width_size = 450 / pdfmetrics.stringWidth(part, FONT, 1)
+    lines = [(11, 790, heading),
+             (11, 740, '갑 제1호증: 점검기록, 북쪽 구역. 갑 제2호증: 배치대장, 별도 부분.')]
+    lines += [(width_size, 650, part), (11, 550, '설명')] if fragmented else [(11, 650, part + ' 설명')]
+    lines += [(11, 450, '갑 제1호증 점검기록: 순서를 설명한다.'), (11, 400, '첨부서류')]
+    for size, y, text in lines:
+        out.setFont(FONT, size)
+        out.drawString(50, y, text)
+    out.save()
+    return parse_document(str(path), document_id='public_fragmented_peer', filename=path.name,
+                          mime_type='application/pdf', sha256='0' * 64)
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+@pytest.mark.parametrize('heading,peer', _HEADINGS)
+@pytest.mark.parametrize('fragmented', [False, True])
+def test_synthetic_original_peer_heading_vs_virtual_or_incomplete_source(tmp_path, extension, heading,
+                                                                       peer, fragmented):
+    from packages.claim_engine.evidence_consistency import _duplicate_inventory_roles
+    from packages.document_engine.reading_text import build_reading_text
+    doc = _fragmented_peer_document(tmp_path, extension, heading, peer, fragmented)
+    rows = exhibit_rows(doc)
+    assert len(rows) == 3
+    reading = build_reading_text(doc)
+    if extension == 'pdf' and fragmented:
+        first = next(segment for segment in reading.segments if segment.block.text == peer + ' A')
+        assert reading.text[first.end:first.end + 1] == ' '
+        assert not any(segment.start <= first.end < segment.end for segment in reading.segments)
+    _, scopes = _duplicate_inventory_roles(reading, rows)
+    assert bool(scopes) is not fragmented
+    assert len(_duplicates(doc)) == (1 if fragmented else 0)
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+@pytest.mark.parametrize('legacy', ['가. 증거 목록', '가. 입증방법', '가. 소명방법'])
+@pytest.mark.parametrize('new_heading', [False, True])
+def test_synthetic_original_recognized_sticky_population_is_not_rescoped(tmp_path, extension, legacy,
+                                                                      new_heading):
+    doc = _parsed(tmp_path, extension, [legacy] + (['나. 수집문헌 목록'] if new_heading else []) + [
+        '갑 제1호증: 점검기록, 북쪽 구역. 갑 제2호증: 배치대장, 별도 부분.',
+        '다. 문헌 검토', '갑 제1호증 점검기록: 순서를 설명한다.', '첨부서류'])
+    rows = exhibit_rows(doc)
+    assert len(rows) == 3 and all(row['in_section'] for row in rows)
+    assert len(_duplicates(doc)) == 1
