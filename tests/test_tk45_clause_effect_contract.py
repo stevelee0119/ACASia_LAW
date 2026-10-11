@@ -205,6 +205,7 @@ def test_source_lemma_is_bound_to_its_complete_finite_form(monkeypatch, tmp_path
     assert findings and all('요건 확인 요청' not in row.confidence_features['verdict'] for row in findings)
     meaning = next(row['effect_interpretation'] for row in trace['conclusions'] if row.get('candidate_kind') == 'FINITE_PROPOSITION' and row['is_conclusion'])
     assert meaning['known_extension']
+    assert meaning['observed_predicate_lemma'] == lemma
     assert any(sense['lemma'] == lemma for sense in meaning['predicate_senses'])
 
 
