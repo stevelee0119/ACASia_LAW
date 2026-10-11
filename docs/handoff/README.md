@@ -13,10 +13,10 @@
 
 | 잔여 항목 | 현재 결정 | 후속 조치·선행요건 |
 | --- | --- | --- |
-| TK44/49 | #90 b1e inline ActualText provider 제한범위 내용 수용; 전체 open | 수용 SHA만 통합. 비태그/resource/Form/structure-tree/UNKNOWN primary/floor/consumer는 별도 설계·보완·원래 보호 판정 필요 |
+| TK44/49 | #90 b1e inline ActualText provider 제한범위 내용 수용; 전체 open | PR95 ad8d capture 상한은 독립확인·미지원PAGE 스트림 검사완료 표시HOLD. 좁은보완 뒤 제한제품 적용 판단. 비태그/Form/structure-tree/UNKNOWN primary/floor/consumer 잔여 유지 |
 | TK45 | #93 f8f6e(제품982e7) 정식 불수용5483280439; #84 e21 불수용 유지 | 원래20/actualTXT20 시작과같은2/8·8/8·0/4·고정18 유지로 strictincrease 미달. 보호계약 유지·새 공개applicability 설계부터 검토. 기존 classifier 장문 미측정 잔여 유지 |
-| TK55 | #91 86e cascade source 제한범위 내용 수용; 전체 known_open. 두 발췌 producer 후속 설계 보완 | 최초 시간실패와 단독보완 구분. selected-source 보완안도 제거된 source substring 과차단·깊은JSON 예외로 HOLD. once-transform 생존대응 및 예산/예외 새설계 후 제품 승인. 기존 legacy 호환 계약과 정상/필수 보호 게이트 유지 |
-| TK73 | #92 c16 날짜/EOF 포함 확인 필요 기준안 검토·제품 HOLD; 날짜/EOF 대응 보완 | 공개111과 날짜/EOF117의 진짜양성 확인손실·기존AFP 유지 및 여전히 일부인 target applicability를 구분. 제품/등급/기존 기대값 변경 승인 아님. 구체 보완안 검토 후 결정 대상 제시 |
+| TK55 | #91 86e cascade source 제한범위 내용 수용; 전체 known_open. 두 발췌 producer 후속 설계 보완 | 최초 시간실패와 단독보완 구분. 새124259 once-transform 위치추적은 이전과차단/deepJSON을 해소했으나 invalid-present range 경계HOLD. 검증/decoder abstain 분리 보완 후 제한제품승인. legacy 및 필수/정상보호 유지 |
+| TK73 | #92 5c8 기준안 검토 HOLD5483360308; 날짜 초기 확대 보류 권고 | 같은111 독립재집계에서 추가오탐분리0·진짜확인손실+9. Form/sh 원문지원 새설계 후 검토. [구체 기준안 검토](requests/TK-73_confirmation_criteria_evaluator_review.md) 반영·제품/등급/기준 승인0·TK전체해소 아님 |
 
 수용 범위 통합은 전체 티켓 해소와 구분한다. 최종 통합 후보 전체 검증·정확 CI 후 새 봉인 운영/후보 비교, 릴리스·실제 배포 확인을 순서대로 수행한다. 0.13.0 최초 봉인은 이미 소비했으며 재사용하지 않는다. 새 봉인 준비는 현재 구현을 막는 선행조건이 아니다. 새 후보 main 병합/배포는 아직 없다.
 

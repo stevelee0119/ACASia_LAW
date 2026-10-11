@@ -924,3 +924,11 @@ TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/
 
 - TK45 f8f6e 정식원래20 및actualTXT20 2/8·8/8·0/4·고정18 1/4·4/4·1/4·1/2·1/4 불변. exactCI38138090194/score38138090222/Docker SUCCESS·요청6108963482. 평가자전체 미실행·제품미통합/미배포·새봉인0.
 - TK55 688a 별도공개17actual producer/mockrouter+원자4: argument removed/masked원문origin을다른위치동일substring으로재인증한 정상provider/예약1→0 대조2, claim post-mask대조1→1. claim 1200중첩JSON에서 baseline1→comparisonRecursionError, argument baseline차단은별도기록. 중간literal/nestedduplicate/startinside7복구·정상6유지. 제품diff0.
+
+### 2026-10-11 21:53 KST — 확인 필요 기준안 독립 손익·출처 검토
+
+- TK73 5c8 공개282 PASS는 구현측 측정(원래111/별도117/신규54). 신규54의 원래A54/decodedEOF51/usable36, tier변경15=image3/sym3/trailingquote9, namespace3은기존legacy. 원래111/117 tier변경0 vs c16. 제품/등급/원래기대값0 변경.
+- 독립 실제17문서 원래rows/findings17/17 유지. 이미지/annotation/외부vector/DOCXsym·unknownXML·foreignnamespace/열린인용 거절 유지. 실제Form/sh음영 PDF2는지원/usableEOF true·pending유지로source지원 오인증.
+- 독립 같은111 재집계: 원래A93·진짜탐지66·false27/nativeTITLE3/invaliddateA9/finding111/111 유지. narrowpending18(true9,false9)/legacy72→expandedguard27(true18,false9)/legacy63; date_guard9만변경·false추가분리0/진짜확인손실+9. guard vs c16 tier변경0. 별도54/117/936 및whole/CI/봉인/유료 독립재실행0.
+- TK55 trace124259 구현측 새245+기존12=257PASS. 독립두producer 기존masked-origin 과차단해소·rootPython3.11 deep1200 READY/예외0 및 원래argument0/claim1 유지. malformed present ranges endpoint/tuple은 decoder ABSTAIN→actual provider/예약1로 새invalid-evidence 경계. 제품86e0변경.
+- TK44/49 named cap ad8d 구현측 관련88PASS/2.49초/제품0·독립cap 감사대기.
