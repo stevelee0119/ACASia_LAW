@@ -819,13 +819,17 @@ def _duplicate_inventory_roles(reading, rows):
                 sources = row.get("duplicate_sources") or []
                 origin = sources[0] if sources else {}
                 reference = origin.get("reference_span")
-                if origin.get("origin") != "item" or not reference:
+                if (origin.get("origin") != "item" or not isinstance(reference, (tuple, list))
+                        or len(reference) != 2 or not all(isinstance(value, int) for value in reference)):
+                    reference_intervals.setdefault((None, row["line_group"][1]), False)
                     continue
                 left, right = reference[0] - start, reference[1] - start
-                if (0 <= left < right <= len(text)
-                        and (counts is None or counts[right] == counts[left])):
+                certified = (0 <= left < right <= len(text)
+                             and (counts is None or counts[right] == counts[left]))
+                # Witness continuity includes unknown/protected references.
+                reference_intervals.setdefault((left, right), certified)
+                if certified:
                     unprotected_rows.append(row)
-                    reference_intervals.setdefault((left, right), None)
             by_paragraph[index] = unprotected_rows
         if protected[0]:
             for candidate in pending:
@@ -875,7 +879,10 @@ def _duplicate_inventory_roles(reading, rows):
         if not spans or next(iter(spans))[0] != first_start:
             candidate["entry_scan_done"] = True
             continue
-        for left, right in spans:
+        for (left, right), certified in spans.items():
+            if not certified:
+                candidate["entry_scan_done"] = True
+                break
             colon = right
             while colon < len(text) and text[colon].isspace():
                 colon += 1
