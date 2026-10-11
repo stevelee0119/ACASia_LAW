@@ -763,10 +763,31 @@ def _duplicate_inventory_roles(reading, rows):
 
     offset = 0
     paragraphs = reading.text.split("\n")
+    protection = []
     for index, paragraph in enumerate(paragraphs):
         start = offset + len(paragraph) - len(paragraph.lstrip())
         offset += len(paragraph) + 1
         text = paragraph.strip()
+        protected = bytearray(len(text) + 1)
+        for position, char in enumerate(text):
+            protected[position] = bool(protection)
+            if protection and char == protection[-1]:
+                protection.pop()
+            elif protection and protection[-1] in ('"', "'", "”", "’", "」", "』"):
+                pass
+            elif char in _TITLE_BRACKETS:
+                protection.append(_TITLE_BRACKETS[char])
+            elif char in ('"', "'"):
+                protection.append(char)
+        protected[-1] = bool(protection)
+        # Quoted references are unknown mentions, never role keys/exemptions.
+        if index in by_paragraph:
+            by_paragraph[index] = [row for row in by_paragraph[index]
+                                   if not protected[row["line_group"][1][0]]]
+        if protected[0]:
+            for candidate in pending:
+                candidate["entry_scan_done"] = True
+            continue
         marker = _SCOPE_HEADING_PREFIX_RE.match(text)
         heading = None
         if marker:
@@ -820,7 +841,7 @@ def _duplicate_inventory_roles(reading, rows):
                 candidate["entry_scan_done"] = True
                 break
             proof = observed(start + left, start + colon + 1)
-            if not proof:
+            if not proof or any(protected[left:colon + 1]):
                 candidate["entry_scan_done"] = True
                 break
             candidate["entries"] += 1
