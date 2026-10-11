@@ -44,7 +44,7 @@ def test_actual_txt_32k_conclusion_consumer_keeps_source_and_verdict(tmp_path,kn
     findings=[finding for finding in review_legal_rules(doc) if RULE in finding.tags]
     if known:
         assert len(findings)==1
-        check_proof(findings[0],text,'DIRECT_REQUIREMENT_DENIAL')
+        check_proof(findings[0],text,'DIRECT_REQUIREMENT_DENIAL',expected_full_claim=body)
         proof=findings[0].confidence_features['source_defense_proof']
         a,b=proof['source_spans']['conclusion']
         assert ' '*32000 in body[a:b]
@@ -73,7 +73,7 @@ def test_product_view_and_original_nonzero_bounds_match_independent_spike():
     assert actual==expected and list(zip(starts,ends))==spans
 
 
-@pytest.mark.parametrize('pattern',['',r'\s*',r'(?:\s*)??',r'(?:이)?',r'(?:이|\s*)'])
+@pytest.mark.parametrize('pattern',['',r'\s*',r'(?:\s*)??',r'(?:이)?',r'(?:이|\s*)','(', 'a)'])
 def test_empty_or_optional_zero_width_conclusion_cannot_make_a_proof(pattern):
     assert not _supported_conclusion_pattern(pattern)
     groups=copy.deepcopy(load_defense_groups())

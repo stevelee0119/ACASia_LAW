@@ -34,7 +34,7 @@ def run_source(path, body, format='txt', width=595):
     return result,text,findings
 
 
-def check_proof(finding,text,kind):
+def check_proof(finding,text,kind,expected_full_claim=None):
     proof=finding.confidence_features['source_defense_proof']
     assert proof['kind']==kind
     assert proof['selected_sense']['id'] in SOURCE_SENSES
@@ -63,7 +63,11 @@ def check_proof(finding,text,kind):
     assert proof['source_slices']['predicate']
     assert proof['source_slices']['civil_norm']=='민법 제487조'
     assert 'authored_scope' not in proof['source_slices']
-    assert finding.span==(offset,offset+len(finding.confidence_features['claim']))
+    full_claim=finding.confidence_features['claim'] if expected_full_claim is None else expected_full_claim
+    assert finding.span==(offset,offset+len(full_claim))
+    if expected_full_claim is not None:
+        assert text[slice(*finding.span)]==expected_full_claim
+        assert finding.confidence_features['claim']==expected_full_claim[:300]
     assert str(finding.status)=='SUSPICIOUS'
     assert str(finding.evidence_grade)=='B'
     assert '과대주장' in finding.confidence_features['verdict'] or '범주적' in finding.confidence_features['verdict']

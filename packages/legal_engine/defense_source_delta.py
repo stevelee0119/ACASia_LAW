@@ -81,7 +81,10 @@ def _supported_conclusion_pattern(pattern: str) -> bool:
         if char == "(" and pattern[index + 1:index + 2] == "?":
             return False
         index += 1
-    return re.compile(pattern).match("") is None
+    try:
+        return re.compile(pattern).match("") is None
+    except re.error:
+        return False
 
 
 def _conclusion_view(source: str, start: int) -> tuple[str, list[int], list[int]]:
@@ -110,7 +113,8 @@ def _patterns(requirements: tuple[str, ...], limited: tuple[str, ...], leads: tu
     art = "|".join(re.escape(a) for a in articles)
     citation = re.compile(rf"\s*(?P<norm>(?P<law>민법)\s*제\s*(?:{art})\s*조(?:의\s*\d+)?)"
                           r"(?P<link>의|에\s*(?:따라|의하여))?\s*")
-    return anchor, citation, tuple(re.compile(p) for p in requirements), tuple(re.compile(p) for p in limited)
+    return anchor, citation, tuple(re.compile(p) for p in requirements), tuple(
+        re.compile(p) for p in limited if _supported_conclusion_pattern(p))
 
 
 def _record(kind: str, spans: dict[str, tuple[int, int]], sense: str, role: str, accounting: dict[str, int]) -> dict[str, Any]:
