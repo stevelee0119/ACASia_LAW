@@ -713,8 +713,158 @@ def _complete_prose_identity(key: str) -> str:
     return key
 
 
+_SCOPE_HEADING_PREFIX_RE = re.compile(
+    r"^\s*(?:(?P<number>\d{1,2})\s*[.)]|(?P<hangul>[가-하])\s*[.)]|"
+    r"\(\s*(?P<paren_number>\d{1,2})\s*\)|\(\s*(?P<paren_hangul>[가-하])\s*\)|"
+    r"(?P<circled>[①-⑳]))\s+")
+_SCOPE_ITEM_PREFIX_RE = re.compile(r"^\s*(?:\d{1,2}\s*[.)]|[가-하]\s*[.)]|[-*•·]|[①-⑳])\s+")
+
+
+def _duplicate_inventory_roles(reading, rows):
+    """Prove local inventory/peer roles without changing parser rows or fields."""
+    by_paragraph = {}
+    for row in rows:
+        if (row.get("from_lines") and row.get("line_group")
+                and not row.get("in_section", False)):
+            by_paragraph.setdefault(row["line_group"][0], []).append(row)
+    scopes, pending, waiting = [], [], []
+    source_cursor = [0]
+    source_blocks = {}
+    for segment in reading.segments:
+        source_blocks[segment.block.block_id] = segment.block
+    original_cache = {}
+
+    def observed(start, end):
+        projected = _exhibit_source_spans(reading, start, end, source_cursor)
+        if len(projected) != 1 or projected[0]["reading_span"] != (start, end):
+            return None
+        source = projected[0]
+        block = source_blocks[source["block_id"]]
+        if block.block_id not in original_cache:
+            lines = block.attributes.get("lines") or []
+            original = block.text
+            precision = "block"
+            if lines:
+                first = lines[0] if isinstance(lines[0], str) else lines[0].get("text", "")
+                first = first.strip()
+                # Only an exact original first-line prefix has a local mapping.
+                original = first if block.text == first or block.text.startswith(first) else ""
+                precision = "original_first_line"
+            original_cache[block.block_id] = (original, precision)
+        original, precision = original_cache[block.block_id]
+        left, right = source["block_span"]
+        if right > len(original):
+            return None
+        raw = original[left:right]
+        shown = raw.translate({0x00A0: " ", 0x2007: " ", 0x202F: " ", 0x3000: " "})
+        if shown != reading.text[start:end]:
+            return None
+        return {**source, "text": raw, "precision": precision}
+
+    offset = 0
+    paragraphs = reading.text.split("\n")
+    for index, paragraph in enumerate(paragraphs):
+        start = offset + len(paragraph) - len(paragraph.lstrip())
+        offset += len(paragraph) + 1
+        text = paragraph.strip()
+        marker = _SCOPE_HEADING_PREFIX_RE.match(text)
+        heading = None
+        if marker:
+            title = text[marker.end():].strip()
+            if (title and not any(char in title for char in ".!?。！？")
+                    and not title.split()[-1].endswith(_TITLE_PREDICATE_ENDINGS)
+                    and not parse_exhibits(title)):
+                proof = observed(start, start + len(text))
+                if proof:
+                    rank, ordinal = next((rank, value) for rank, value in enumerate(marker.groups()) if value)
+                    ordinal = int(ordinal) if rank in (0, 2) else ord(ordinal)
+                    heading = (rank, ordinal, title, proof)
+        if heading:
+            for scope in waiting:
+                scope["narrative_end"] = index
+            waiting = []
+            rank, ordinal, title, proof = heading
+            while pending and pending[-1]["rank"] >= rank:
+                candidate = pending.pop()
+                if (candidate["entries"] >= 2
+                        and (rank < candidate["rank"] or ordinal > candidate["ordinal"])):
+                    scope = {**candidate, "end": index, "close": proof,
+                             "narrative_start": index + 1, "narrative_end": len(paragraphs)}
+                    scopes.append(scope)
+                    if rank != candidate["rank"] or re.search(r"목\s*록$", title):
+                        scope["narrative_end"] = scope["narrative_start"]
+                    else:
+                        waiting.append(scope)
+            for candidate in pending:
+                candidate["entry_scan_done"] = True
+            if re.search(r"목\s*록$", title) and not _EXHIBIT_SECTION_HEAD_RE.search(text):
+                pending.append({"start": index + 1, "rank": rank, "ordinal": ordinal,
+                                "heading": proof, "entries": 0, "entry_proofs": [],
+                                "entry_scan_done": False})
+            continue
+        if not pending or pending[-1]["entry_scan_done"] or not text:
+            continue
+        candidate = pending[-1]
+        refs = parse_exhibits(text)
+        item_prefix = _SCOPE_ITEM_PREFIX_RE.match(text)
+        first_start = item_prefix.end() if item_prefix else 0
+        spans = dict.fromkeys(tuple(ref["span"]) for ref in refs)
+        if not spans or next(iter(spans))[0] != first_start:
+            candidate["entry_scan_done"] = True
+            continue
+        for left, right in spans:
+            colon = right
+            while colon < len(text) and text[colon].isspace():
+                colon += 1
+            if colon >= len(text) or text[colon] not in ":：":
+                candidate["entry_scan_done"] = True
+                break
+            proof = observed(start + left, start + colon + 1)
+            if not proof:
+                candidate["entry_scan_done"] = True
+                break
+            candidate["entries"] += 1
+            candidate["entry_proofs"].append(proof)
+            if candidate["entries"] >= 2:
+                candidate["entry_scan_done"] = True
+                break
+    scopes = [scope for scope in scopes
+              if any(by_paragraph.get(index) for index in range(scope["start"], scope["end"]))]
+    excluded, roles = {}, {}
+    # The grammar has five fixed heading families, so nested coverage is bounded.
+    for scope in scopes:
+        for index in range(scope["start"], scope["end"]):
+            for row in by_paragraph.get(index, []):
+                if scope["rank"] >= roles.get(id(row), (-1,))[0]:
+                    roles[id(row)] = (scope["rank"], "inventory")
+        for index in range(scope["narrative_start"], scope["narrative_end"]):
+            for row in by_paragraph.get(index, []):
+                if scope["rank"] > roles.get(id(row), (-1,))[0]:
+                    roles[id(row)] = (scope["rank"], "narrative")
+    for scope in scopes:
+        keys = set()
+        for index in range(scope["start"], scope["end"]):
+            for row in by_paragraph.get(index, []):
+                if roles[id(row)][1] == "inventory":
+                    keys.update((row["party"], row["number"], branch)
+                                for branch in row.get("branches") or [None])
+        scope["keys"] = keys
+    for scope in scopes:
+        for index in range(scope["narrative_start"], scope["narrative_end"]):
+            for row in by_paragraph.get(index, []):
+                if roles[id(row)] != (scope["rank"], "narrative"):
+                    continue
+                matches = {(row["party"], row["number"], branch)
+                           for branch in row.get("branches") or [None]} & scope["keys"]
+                if matches:
+                    excluded.setdefault(id(row), set()).update(matches)
+    return excluded, scopes
+
+
 def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Finding]:
     out: List[Finding] = []
+    reading = build_reading_text(doc)
+    narrative_keys, _ = _duplicate_inventory_roles(reading, rows)
     # 같은 호증 번호(가지번호까지 같음)가 목록에 두 번 이상 나온다(v4 P4)
     # 목록 구역(표 또는 번호 붙은 입증방법 섹션)에 존재하는 호증 번호는 본문 언급을 중복 판단에서 제외 (TK-64)
     section_keys = {
@@ -731,7 +881,8 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
             continue
         keys = [(row["party"], row["number"], b) for b in row.get("branches") or []] or [(row["party"], row["number"], None)]
         for key in keys:
-            seen.setdefault(key, []).append(row)
+            if key not in narrative_keys.get(id(row), ()):
+                seen.setdefault(key, []).append(row)
     title_cache, title_values = {}, {}
     for (party, number, branch), same in seen.items():
         if len(same) < 2:
@@ -822,7 +973,7 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
                                 "증거 목록의 번호가 연속하지 않는다. 누락된 증거가 있는지 확인해야 한다.",
                                 ", ".join(f"{party} 제{n}호증" for n in sorted(target_nums)),
                                 features={"party": party, "missing": gaps}))
-    text = build_reading_text(doc).text
+    text = reading.text
     mentioned = exhibit_keys(text)
     missing = sorted((p, n) for p, n in mentioned if p in listed and n not in listed[p])
     if missing:
