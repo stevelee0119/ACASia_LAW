@@ -19,6 +19,7 @@ from packages.document_engine.reading_text import build_reading_text, sentence_b
 
 from .predicate_semantics import assertion_extent_evidence, past_predicate_evidence, sense_evidence
 from .reference_propositions import reference_frame_evidence
+from .event_temporal_propositions import case_bound_event_evidence
 from .polarity import ASSERTED, OPPONENT_REPORT_RE, REPORT_VERB_RE, asserted, polarity
 from .defense_scope import (
     categorical_patterns, clause_end, conclusion_scopes, linked_conclusion_text, mask_quotations,
@@ -835,6 +836,57 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
                 'discharges_reference_requirement': False,
             }
             resolved.add(index)
+    # An original case-bound event needs its own governing action proof,
+    # rather than the separate informational-object reference frame above.
+    for index, row in enumerate(observations):
+        case = row.get('event_frame', {}).get('case_span')
+        if (row['state'] != 'UNCERTAIN' or row['reason'] != 'CHANGED_ARGUMENT'
+                or not case or case[0] < row['span'][1] or row.get('predicate_chain')):
+            continue
+        target_position = bisect_left(actual_starts, case[1])
+        if target_position == len(actual):
+            continue
+        target_start, target_index, target = actual[target_position]
+        # Another case-bound argument before the candidate's action closure
+        # prevents proving a direct attachment, without copying its suffix.
+        if bisect_left(argument_starts, target_start) != bisect_left(argument_starts, case[1]):
+            continue
+        proof = case_bound_event_evidence(
+            text, row['event_frame']['argument_span'], case, target_start)
+        if proof is None:
+            continue
+        context_prefix, subject_span, context_unqualified = argument_prefix(row['span'][0])
+        scope_start, closure_witness, abstention = condition_scope(row, context_prefix)
+        if abstention:
+            row['case_bound_event_scope_abstention'] = abstention
+            continue
+        target_end = target['predicate_semantics']['span'][1]
+        # Only this independently observed temporal attachment supplies a
+        # local prefix bound. Global/legacy clause boundaries stay unchanged.
+        target_prefix = [proof['temporal_span'][1], target_start]
+        target_unqualified = _NONSPACE_RE.search(text, *target_prefix) is None
+        if (not context_unqualified or not target_unqualified
+                or bisect_left(blockers, target_end) != bisect_left(blockers, case[1])
+                or bisect_left(attribution, proof['temporal_span'][1]) != bisect_left(attribution, context_prefix[0])
+                or bisect_left(quote_starts, target_end) != bisect_right(quote_ends, row['span'][0])):
+            continue
+        if target_index not in target_authorship:
+            target_authorship[target_index] = polarity(text[target_start:target_end],
+                                                       (0, target_end - target_start)) == ASSERTED
+        if not target_authorship[target_index]:
+            continue
+        row['case_bound_event_assertion'] = {
+            **proof, 'original_state': row['state'], 'original_reason': row['reason'],
+            'local_subject_span': subject_span, 'argument_prefix_span': context_prefix,
+            'condition_scope_start': scope_start, 'sentence_closure_witness': closure_witness,
+            'authored': True,
+        }
+        row['case_bound_event_selection_support'] = {
+            'later_observation_index': target_index, 'shared_local_subject_scope': True,
+            'later_argument_prefix_span': target_prefix,
+            'different_acts_merged': False, 'later_act_certifies_first': False,
+        }
+        resolved.add(index)
     return resolved
 
 
