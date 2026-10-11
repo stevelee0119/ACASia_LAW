@@ -45,6 +45,7 @@ def test_current_language_and_original_spans_match_the_compact_view(index,separa
     if unknown: body=body.replace('책임','관측불명',1).replace('소멸','관측불명',1).replace('면책','관측불명',1)
     view,mapping=compact_range(body)
     original=re.compile(pattern).match(body);compact=re.compile(pattern).match(view)
+    assert bool(original) is (not unknown)
     assert bool(original)==bool(compact)
     if original:
         assert (mapping[compact.start()][0],mapping[compact.end()-1][1])==original.span()
@@ -54,3 +55,16 @@ def test_current_language_and_original_spans_match_the_compact_view(index,separa
 @pytest.mark.parametrize('pattern',[r'a b',r'a\s+',r'a\s{2}',r'a(?=\s)b',r'a(?<!\s)b',r'a(?s:.+)b',r'a\tb',r'a\s*?b',r'a\s*+b'])
 def test_sensitive_future_patterns_require_a_new_contract(pattern):
     assert not supported_pattern(pattern)
+
+
+def test_nonzero_local_range_preserves_whole_original_whitespace_run():
+    text='이전 범위; 논항을 하지 않았으나 채무에\t\u00a0  관한 책임을 질 수 없다.'
+    start=text.index('채무에')
+    view,mapping=compact_range(text,start)
+    original=re.compile(PATTERNS[0]).match(text,start)
+    compact=re.compile(PATTERNS[0]).match(view)
+    assert original and compact
+    assert original.span()==(mapping[compact.start()][0],mapping[compact.end()-1][1])
+    whitespace=view.index(' ')
+    a,b=mapping[whitespace]
+    assert text[a:b]=='\t\u00a0  '
