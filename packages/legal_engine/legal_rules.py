@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from bisect import bisect_left, bisect_right
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List
@@ -17,7 +18,7 @@ from packages.common.schemas import Evidence, Finding, NormalizedDocument
 from packages.document_engine.reading_text import build_reading_text, sentence_bounds
 
 from .predicate_semantics import assertion_extent_evidence, past_predicate_evidence, sense_evidence
-from .polarity import asserted
+from .polarity import ASSERTED, OPPONENT_REPORT_RE, REPORT_VERB_RE, asserted, polarity
 from .defense_scope import (
     categorical_patterns, clause_end, conclusion_scopes, linked_conclusion_text, mask_quotations,
     quotation_projection, structural_effect_pattern,
@@ -382,7 +383,7 @@ def _defense_requirement_observations(
         m.span() for pat in limited_conclusions for m in re.finditer(pat, masked)
     ]
     observations = []
-    for pattern in requirements:
+    for requirement_identity, pattern in enumerate(requirements):
         for match in re.finditer(pattern, masked):
             end = clause_end(masked, match.end(), _REQUIREMENT_CLAUSE_END_RE)
             later_conclusions = [
@@ -532,7 +533,8 @@ def _defense_requirement_observations(
             if uncertain_quote and state != "CONTEXT":
                 state, reason = "UNCERTAIN", "UNRESOLVED_QUOTATION"
             observations.append({"span": list(match.span()), "predicate_span": [match.end(), end],
-                                 "state": state, "reason": reason, "legacy_syntax_state": syntax_state})
+                                 "state": state, "reason": reason, "legacy_syntax_state": syntax_state,
+                                 "requirement_identity": requirement_identity})
             # Some configured anchors include an event verb (전액을 지급),
             # rather than a nominal alone. Preserve the observed argument and
             # predicate coordinates without changing the legacy polarity.
@@ -570,6 +572,107 @@ def _defense_requirement_observations(
                              if m.end() <= match.start()), default=0)
                 observations[-1]["modifier_span"] = [start, match.start()]
     return observations
+
+
+_CONTEXT_ARGUMENT_RE = re.compile(r'^\s+(?P<argument>[가-힣]+?)(?P<case>을|를)\s+')
+_LOCAL_SUBJECT_RE = re.compile(r'(?<![가-힣])[가-힣]+(?:이|가|은|는)(?=\s|[,;.!?]|$)')
+_LOCAL_CONDITION_RE = re.compile(r'(?:라면|다면|으면|하면|되면|(?:을|는|한)\s+경우)(?=\s|[,;.!?]|$)')
+_RESOLUTION_SCOPE_BREAK_RE = re.compile('|'.join('(?:' + pattern.pattern + ')' for pattern in (
+    _LOCAL_SUBJECT_RE, _LOCAL_CONDITION_RE, REPORT_VERB_RE, OPPONENT_REPORT_RE)))
+_RESOLUTION_ATTRIBUTION_RE = re.compile('|'.join('(?:' + pattern.pattern + ')' for pattern in (
+    _LOCAL_CONDITION_RE, REPORT_VERB_RE, OPPONENT_REPORT_RE)))
+
+
+def _contextual_requirement_resolution(text: str, observations: list[dict], quotations: list[dict]) -> set[int]:
+    """Relate a nominal context to an independently asserted same-event act.
+
+    Original uncertainty remains recorded. These links can only inform normal
+    limited selection, never cancel denial or certify facts/legal sufficiency.
+    Token/boundary indexes avoid checking a growing statement prefix per row.
+    """
+    boundaries = list(_REQUIREMENT_CLAUSE_END_RE.finditer(text))
+    boundary_ends = [match.end() for match in boundaries]
+    boundary_by_end = {match.end(): match for match in boundaries}
+    subjects = list(_LOCAL_SUBJECT_RE.finditer(text))
+    subject_starts = [match.start() for match in subjects]
+    blockers = [match.start() for match in _RESOLUTION_SCOPE_BREAK_RE.finditer(text)]
+    attribution = [match.start() for match in _RESOLUTION_ATTRIBUTION_RE.finditer(text)]
+    # quotation_projection emits disjoint outer ranges in source order.
+    quote_starts = [row['span'][0] for row in quotations]
+    quote_ends = [row['span'][1] for row in quotations]
+    groups = {}
+    for index, row in enumerate(observations):
+        groups.setdefault(row['requirement_identity'], []).append((index, row))
+    resolved = set()
+    target_authorship = {}
+    for group in groups.values():
+        realization = None
+        for index, row in reversed(group):
+            meaning = row.get('predicate_semantics', {})
+            if (row['state'] == 'POSITIVE' and row['reason'] == 'ASSERTED_REQUIREMENT_REALIZATION'
+                    and meaning.get('supports_asserted_fulfillment')
+                    and meaning.get('observed_direct_object') and meaning.get('tense') == 'PAST'
+                    and meaning.get('case_span') and not meaning.get('scope_limitations')):
+                realization = (index, row)
+                continue
+            if not realization or row['state'] != 'UNCERTAIN' or row['reason'] != 'CHANGED_ARGUMENT':
+                continue
+            first, end = row['predicate_span']
+            if row.get('event_frame', {}).get('case_span') or row.get('predicate_chain'):
+                continue
+            argument = _CONTEXT_ARGUMENT_RE.match(text[first:end])
+            boundary = boundary_by_end.get(end)
+            if not argument or not boundary:
+                continue
+            argument_end = first + argument.end()
+            words = list(re.finditer(r'[가-힣]+', text[argument_end:end]))
+            if not words or _ARGUMENT_CASE_RE.search(text[argument_end:end]):
+                continue
+            predicate = words[-2] if words[-1].group() in {'뒤', '후', '다음'} and len(words) > 1 else words[-1]
+            if not _has_requirement_predicate(text[argument_end:end]):
+                continue
+            target_index, target = realization
+            target_meaning = target['predicate_semantics']
+            target_end = target_meaning['span'][1]
+            if end > target['span'][0]:
+                continue
+            # New subjects, conditions, attribution or quotation block shared
+            # local grammatical scope; they are not resolved by any positive.
+            if bisect_left(blockers, target_end) != bisect_left(blockers, argument_end):
+                continue
+            if bisect_left(quote_starts, target_end) != bisect_right(quote_ends, row['span'][0]):
+                continue
+            if polarity(text[first:end], (argument.end(), end - first)) != ASSERTED:
+                continue
+            target_first = target['span'][0]
+            if target_index not in target_authorship:
+                target_authorship[target_index] = polarity(text[target_first:target['predicate_span'][1]],
+                                                          (0, target_end - target_first)) == ASSERTED
+            if not target_authorship[target_index]:
+                continue
+            subject_index = bisect_left(subject_starts, row['span'][0]) - 1
+            boundary_index = bisect_right(boundary_ends, row['span'][0]) - 1
+            preceding_boundary = boundary_ends[boundary_index] if boundary_index >= 0 else 0
+            if bisect_left(attribution, first) != bisect_left(attribution, preceding_boundary):
+                continue
+            subject_span = (list(subjects[subject_index].span()) if subject_index >= 0
+                            and subjects[subject_index].start() >= preceding_boundary else None)
+            row['contextual_resolution'] = {
+                'relation': 'CONTEXTUAL_MENTION_WITH_INDEPENDENT_REALIZATION',
+                'requirement_identity': row['requirement_identity'],
+                'realization_observation_index': target_index,
+                'context_argument_span': [first + offset for offset in argument.span('argument')],
+                'context_case_span': [first + offset for offset in argument.span('case')],
+                'context_predicate_span': [argument_end + offset for offset in predicate.span()],
+                'context_clause_boundary_span': list(boundary.span()),
+                'realization_argument_span': target_meaning['argument_span'],
+                'realization_predicate_span': target_meaning['span'],
+                'local_subject_span': subject_span, 'shared_local_subject_scope': True,
+                'source_semantic_support': True, 'original_state': row['state'],
+                'underlying_facts_verified': False, 'legal_sufficiency_verified': False,
+            }
+            resolved.add(index)
+    return resolved
 
 
 def _defense_requirement_state(
@@ -629,6 +732,10 @@ def _review_defense_statement(
         established_unlimited = any(row['authored'] and not row['limited']
                                     and not row.get('scope_uncertain', False) for row in scopes)
         needs_scope_review = scope_uncertain and not denied and not established_unlimited
+        if has_lim and not is_extended and not scope_uncertain and not uncertain_quote and not denied:
+            resolved = _contextual_requirement_resolution(local_masked, observations, quote_rows)
+            uncertain = any(row['state'] == 'UNCERTAIN' and index not in resolved
+                            for index, row in enumerate(observations))
         if positive and not denied and not uncertain and not uncertain_quote and has_lim and not is_extended:
             continue
         mod_rule = dict(rule)
