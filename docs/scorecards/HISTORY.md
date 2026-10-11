@@ -901,3 +901,11 @@ Linux/Python3.11.15/Tesseract5.5.0 kor/network0. CI5.3.4와 차이 명시.
 PR77 main `8280a597db40b0905dbacf10c56fa3e9915cafd5`, `v.0.13.0` 배포 완료. 릴리스 head3ad의 필수CI38123137556/점수38123137444/Docker 모두SUCCESS. Render `dep-db5k8uek1f9s73ef0tg0` Live17:11:16KST, health17:11:24KST `0.13.0`/동일SHA/database ok 확인. a4→Steve3ad→main8280 파일 트리 동일, 최초 봉인3389 엔진에는 버전 메타데이터 외 변경없음. 전체/봉인 재실행 없음.
 
 TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/49/55 부분 구현은 배포했으나 전체 티켓은 open/known_open, TK45/73 불수용제품은 제외했다. 완결 잔여5건을 유지한다. TK75 기본OFF 기술범위 배포와 법률 품질을 구별하며 실제 배포후 API/내부worker OFF 영수증 및 서면9/Drive/6쌍 실제OFFON·독립변호사1명·토큰 비교는 아직 미측정이다. 운영자에게 기존05/06의 배포후 절차를 요청했으며 원문/비밀/가격 조사 없이 기존상한·종료OFF를 유지한다. 기록: release_completion_2026-10-11.json.
+
+
+### 2026-10-11 20:30 KST — post013 정확 SHA 측정
+
+- #90 b1e506f 평가자 관련239·수용/회귀2163 PASS/기존24xfail. 전체verify_all exit0: acceptance1214/ledger949/full6723/browser197·realfail/strictXPASS0·fixed81.7/79.2/FP0. exactCI38132618288/score38132618289/Docker SUCCESS 인용. 원래법리20 2/8·8/8·0/4 및고정18 1/4·4/4·1/4·1/2·1/4 유지. 독립shading2 PASS.
+- #91 86e75e3 root공개101·독립24·mock-wire4 source노출0·원래privacy 게이트충족. 최초full exit1: acceptance1214/ledger1242/full6945 PASS+TK71 timing1FAIL/browser197. 시작/후보 동일단독검사 각1PASS. 원래full_tests 단계만 단독1회 보완6946 PASS/실패0/strictXPASS0/290.3초. 첫 실패원인미확정·원본보존·코드/시험/임계값변경0. exactCI38132924102/score38132924186/Docker SUCCESS 인용·fixed81.7/79.2/FP0.
+- #93 0dd4b8 독립공개actualTXT20: 양성2 새proof1씩, 문장간화자4/다른법률2에서 baseline finding0→추가finding1, 나머지 반대12 새proof0·오류0·span/slices일치. 원래비공개/full 판정은 아직실행하지 않음.
+- #92 source-role5822 root공개27 PASS(원래PDF9/원래DOCX row-free9/untypedA9), 최신ab5378e 문서만 제품0. 새봉인/유료/온라인 실행0. 새운영배포0.

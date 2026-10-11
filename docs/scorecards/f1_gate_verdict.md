@@ -1730,3 +1730,16 @@ TK73 출력불변metadata: control rows7/scope1/excluded2/keys4. 남은group1의
 PR77 main `8280a597db40b0905dbacf10c56fa3e9915cafd5`, `v.0.13.0` 배포 완료. 릴리스 head3ad의 필수CI38123137556/점수38123137444/Docker 모두SUCCESS. Render `dep-db5k8uek1f9s73ef0tg0` Live17:11:16KST, health17:11:24KST `0.13.0`/동일SHA/database ok 확인. a4→Steve3ad→main8280 파일 트리 동일, 최초 봉인3389 엔진에는 버전 메타데이터 외 변경없음. 전체/봉인 재실행 없음.
 
 TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/49/55 부분 구현은 배포했으나 전체 티켓은 open/known_open, TK45/73 불수용제품은 제외했다. 완결 잔여5건을 유지한다. TK75 기본OFF 기술범위 배포와 법률 품질을 구별하며 실제 배포후 API/내부worker OFF 영수증 및 서면9/Drive/6쌍 실제OFFON·독립변호사1명·토큰 비교는 아직 미측정이다. 운영자에게 기존05/06의 배포후 절차를 요청했으며 원문/비밀/가격 조사 없이 기존상한·종료OFF를 유지한다. 기록: release_completion_2026-10-11.json.
+
+
+## 2026-10-11 20:30 KST — 잔여 5건 구현 우선 판정
+
+| 제출/항목 | 판정 | 근거와 한계 |
+| --- | --- | --- |
+| #90 b1e506f · TK44/49 | inline ActualText provider 제한범위 내용 수용5483100719 | exactCI38132618288/점수38132618289/Docker SUCCESS 인용·요청6108248291. 평가자 공개239·수용/회귀2163 PASS/기존24 xfail. evaluator full 종료0: 수용1214/원장949/전체6723/브라우저197/실패0/strictXPASS0·fixed81.7/79.2/FP0. 원래 법리20/고정18 유지. 독립 shading-after UNKNOWN/prior JOIN 확인. 비태그/resource/Form/structure-tree/UNKNOWN primary/floor/consumer 미완료, 신규 통합/배포 전. |
+| #91 86e75e3 · TK55 | 요청별cascade source 추가검사 제한범위 내용 수용5483126695 | exactCI38132924102/점수38132924186/Docker SUCCESS 인용·요청6108286856. root 공개101·독립24 및4adapter mock-wire 내부source노출0·원래 개인정보 필수/보호 게이트 충족. 최초full 종료1: 수용1214/원장1242/전체6945 PASS+기존TK71 시간1FAIL/브라우저197. 원본 보존, 시작/후보 단독 같은검사 각PASS, 원래full_tests 단계만 단독1회 보완6946 PASS/실패0/strictXPASS0/290.3초. 첫실패 원인 미확정·코드/시험/임계값 변경0·고정81.7/79.2/FP0. legacy unknown-role known_open·신규통합/배포 전. |
+| #93 0dd4b8 · TK45 | 공개 사전점검 HOLD6108540760·보완 중 | 설계5a51 root5483024001 조건부 승인·공개baseline25 PASS. 제품 독립actualTXT20의 문장간 인용/상대·보고·반박4와 다른 법률 출처2에서 새 proof 오인증. 양성2/다른반대12 유지·span정확하나 화자/규범 범위 문제. CI·정식요청 이후 원래20/고정18·정상8/8·부정/확장 strict increase·필수full로 판정하며 현재 미수용. |
+| #92 ab5378e · TK73 | 설계/기준안 검토·제품 HOLD 유지 | root source-role5822 공개27 독립재현·제품diff0·HOLD5483050614. 사용자가 확인 필요 분리 설계·기준안 검토 선택, 구체안 작성·검토로 진행하며 제품/기존시험/등급/원래기준 변경 승인0. 현재 target-applicable source-role proof 미확보, DOCX coverage잔여. 확정A·확인필요 및 진짜양성의 이동을 별도 집계해 단순AFP0 수치 이동 금지. |
+| 전체 상태 | 구현 우선·5건 미완결 | 현재 운영0.13.0/main8280·시작2a85 유지, 새 main병합/배포0·유료호출0. 10시간 최초19:51KST 목표 경과. 수용SHA 통합최종검증·새봉인·릴리스 후에만 배포, 온라인Claude OFF/ON·한명blind법률채점·토큰JSON 후속 이연. 기존USD40 보호 유지·가격87 폐기. |
+
+환경: Linux/Python3.11.15/Tesseract5.5.0 kor, CI5.3.4 차이 명시. local IPC/브라우저 캐시/평가글꼴 설정 사용. A 최초 기본환경 중단 이력은 보존하며 해당 최초 실패 원인을 확정하지 않는다. B 최초실패와 원래 단계의 단독보완을 구분하고 최초 전체를 exit0으로 재작성하지 않는다. 별도 공개 감사는 verify_all/비공개/봉인 재실행 없음. 새 제품 릴리스 봉인 미실행·0.13.0 첫봉인 재사용0.
