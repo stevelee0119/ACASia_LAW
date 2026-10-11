@@ -40,6 +40,7 @@ def source_support(path):
             allowed={'p','r','t'} if tag=='p' else layout if tag=='sectPr' else set()
             for node in child.iter():
                 kind=node.tag.rsplit('}',1)[-1]
+                if not node.tag.startswith('{'+ns['w']+'}'):reasons.append('unsupported_word_namespace')
                 if kind not in allowed:reasons.append('unsupported_word_node:'+kind)
     else:
         raw=path.read_text(encoding='utf-8')
@@ -140,6 +141,25 @@ def new_controls(directory):
             assert old['source_EOF_proved'] and not new['source_EOF_proved'] and not new['source_supported']
             assert [i['tier'] for i in new['tiers']]==['LEGACY_A_RETAINED']
             records.append(observation(old,new,mode,extension,number,False))
+    for number,title in enumerate(('점검기록','작업대장','관측도면')):
+        from docx import Document
+        from lxml import etree
+        folder=directory/f'docx_foreign_namespace_{number}';folder.mkdir(parents=True,exist_ok=True)
+        path=folder/'public_caption.docx';out=Document()
+        for line in ['1. 자료 제출','가. 공개 자료 목록',f'갑 제1호증: {title}, 확인 부분 2025. 3. 4. 경로 기록.',
+                     '을 제2호증: 비교자료, 확인 부분 2025. 3. 4. 경로 기록.','나. 자료 확인',
+                     '기본 순서는 여러 단계로 구성되어 있다.','다. 처리 분석',
+                     f'갑 제1호증 {title}: 순서를 설명한다. 2025. 3. 4. 확인 기록.']:out.add_paragraph(line)
+        node=etree.Element('{urn:tk73-public-unknown}t');node.text='별도 원출처'
+        out.add_paragraph().add_run()._r.append(node);out.save(path)
+        old,new=refined(read_document(path),path)
+        # The product reading includes this foreign node's text, while the
+        # native w:t provider does not. Existing lexical binding already
+        # abstains; namespace support is an independent rejection, not a gain.
+        assert not old['source_EOF_proved'] and [i['tier'] for i in old['tiers']]==['LEGACY_A_RETAINED']
+        assert not new['source_EOF_proved'] and 'unsupported_word_namespace' in new['support_rejections']
+        assert [i['tier'] for i in new['tiers']]==['LEGACY_A_RETAINED']
+        records.append(observation(old,new,'foreign_namespace_at_end','docx',number,False))
     return records
 
 
