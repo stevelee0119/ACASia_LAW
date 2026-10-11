@@ -1724,3 +1724,9 @@ TK73 출력불변metadata: control rows7/scope1/excluded2/keys4. 남은group1의
 | #84 e21c40d | 불수용5482338759·이번범위제외 | 요청6106648755·exactCI38120377539/점수38120377556/DockerSUCCESS. 원래20/actualTXT20 8/8·7/8·1/4로 정상8/8 미달·고정18불변. 공개815/독립26PASS는대체불가. 양쪽attachment fullmatch없어proof/consumer미도달·identity2보존. 원문/어휘/IDs/좌표공유0. |
 | #79 214334d | 불수용5482229717·이번범위제외 | 원래control/A FP1/필수0 미달 유지. 공개936/독립GLOBAL/CI 성공대체불가. 명시name-field+colon feasibility0/4이므로 공개fieldgap은대상원인아님·새제품추가0. |
 | 실제 배포/온라인 | 대기 | 버전commit·최종필수CI·Steve/main 병합·Renderhealth/DB/APIworkerOFF 확인 뒤만 배포등록. 사용자 배포우선승인 적용. 온라인6입력 검증/조건고정은배포후·유료호출전. oneblindlawyer·실제ClaudeOFFON·토큰JSON·끝OFF·정식ON사용자결정. 별도가격/비용조회/증가율조건없음·가격87미병합폐기·기존예산보호유지. |
+
+### 실제 배포 완료 — 2026-10-11 17:11 KST
+
+PR77 main `8280a597db40b0905dbacf10c56fa3e9915cafd5`, `v.0.13.0` 배포 완료. 릴리스 head3ad의 필수CI38123137556/점수38123137444/Docker 모두SUCCESS. Render `dep-db5k8uek1f9s73ef0tg0` Live17:11:16KST, health17:11:24KST `0.13.0`/동일SHA/database ok 확인. a4→Steve3ad→main8280 파일 트리 동일, 최초 봉인3389 엔진에는 버전 메타데이터 외 변경없음. 전체/봉인 재실행 없음.
+
+TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/49/55 부분 구현은 배포했으나 전체 티켓은 open/known_open, TK45/73 불수용제품은 제외했다. 완결 잔여5건을 유지한다. TK75 기본OFF 기술범위 배포와 법률 품질을 구별하며 실제 배포후 API/내부worker OFF 영수증 및 서면9/Drive/6쌍 실제OFFON·독립변호사1명·토큰 비교는 아직 미측정이다. 운영자에게 기존05/06의 배포후 절차를 요청했으며 원문/비밀/가격 조사 없이 기존상한·종료OFF를 유지한다. 기록: release_completion_2026-10-11.json.

@@ -44,4 +44,4 @@
 
 
 
-| 10-11 (한국) | 고정81.7/79.2/0·첫 봉인 운영9c=수용3389 28.1/.281/FP0(8문서57결함·1abd74597ec4b25a) | TK57 PHONE1/54→0/54·공개 실제54파일 M4; 기존8TK+SPACE/PII/UNKNOWN 제한범위 수용·45/73 제외 | 수용범위 새 회귀0·44/49/55 잔여 및45 정상7/8·73 AFP1 불수용 유지 | full acceptance1214/ledger949/full6653/browser197·exactCI/점수SUCCESS·독립 공개PASS·첫 봉인PASS·0.13minor판정. 원래 sandbox IPC 실패/중단 보존·코드/시험/상한 불변·운영/후보 동일 화면·인증2시험 권한보완PASS. 버전commit/배포/온라인 대기; f1/HISTORY16:34절 |
+| 10-11 (한국) | 고정81.7/79.2/0·첫 봉인 운영9c=수용3389 28.1/.281/FP0(8문서57결함·1abd74597ec4b25a) | TK57 PHONE1/54→0/54·공개 실제54파일 M4; 기존8TK+SPACE/PII/UNKNOWN 제한범위 수용·45/73 제외 | 수용범위 새 회귀0·44/49/55 잔여 및45 정상7/8·73 AFP1 불수용 유지 | full acceptance1214/ledger949/full6653/browser197·exactCI/점수SUCCESS·독립 공개PASS·첫 봉인PASS·0.13minor판정. 원래 sandbox IPC 실패/중단 보존·코드/시험/상한 불변·운영/후보 동일 화면·인증2시험 권한보완PASS. 0.13.0·main8280/Render Live17:11KST·health SHA/DB 확인, 온라인 대기; f1/HISTORY16:34절 |

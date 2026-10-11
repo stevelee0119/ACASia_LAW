@@ -125,6 +125,9 @@
   },
   "decided_by": "evaluator(Codex evaluation session)",
   "decided_at": "2026-10-11",
-  "note": "Deployment-first acceptedsubset only. Minorone-step0.12→0.13 throughcompleteTK57criteria+M4; no globalM2/majorclaim/no baselinechange. Version-onlyimplementercommit3files1commit andfinalSHA3requiredchecks pending; deployment/featureON notyetclaimed."
+  "note": "Deployment-first acceptedsubset only. Minorone-step0.12→0.13 throughcompleteTK57criteria+M4; no globalM2/majorclaim/no baselinechange. Version-onlyimplementercommit3files1commit andfinalSHA3requiredchecks pending; deployment/featureON notyetclaimed.",
+  "implementation_commit": "a4b0688a36f1c1f1a0e8dc8b13c01dd97ab26964",
+  "release_commit": "8280a597db40b0905dbacf10c56fa3e9915cafd5",
+  "deployment_receipt": "docs/scorecards/release_completion_2026-10-11.json"
  }
 ]

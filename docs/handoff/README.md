@@ -269,3 +269,9 @@ python scripts/scorecard.py && python scripts/score_gate.py
 - **TK-75(2026-10-10 사용자 결정):** [Claude for Legal 한국법 검토 워크플로우](TK-75_claude_legal_korean_workflow.md). 다음 릴리스 포함, TK-72 수용 완료 후 별도 Codex 구현.  실제 모델 A/B 품질·근거·보안·예산 수용 후 활성화.
 
 2026-10-11 16:34 KST 결정: 사용자 “우선 배포부터”에 따라 수용3389 범위만 배포한다. 전체시험·필수CI·독립 공개감사·첫봉인 PASS, 0.13 minor 판정. 버전 반영·최종CI·Steve/main 병합·Render 확인 대기. TK44/45/49/55/73은 완결되지 않았고, 온라인 OFF/ON·한 명 독립 법률 채점은 배포 후 한다.
+
+### 실제 배포 완료 — 2026-10-11 17:11 KST
+
+PR77 main `8280a597db40b0905dbacf10c56fa3e9915cafd5`, `v.0.13.0` 배포 완료. 릴리스 head3ad의 필수CI38123137556/점수38123137444/Docker 모두SUCCESS. Render `dep-db5k8uek1f9s73ef0tg0` Live17:11:16KST, health17:11:24KST `0.13.0`/동일SHA/database ok 확인. a4→Steve3ad→main8280 파일 트리 동일, 최초 봉인3389 엔진에는 버전 메타데이터 외 변경없음. 전체/봉인 재실행 없음.
+
+TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/49/55 부분 구현은 배포했으나 전체 티켓은 open/known_open, TK45/73 불수용제품은 제외했다. 완결 잔여5건을 유지한다. TK75 기본OFF 기술범위 배포와 법률 품질을 구별하며 실제 배포후 API/내부worker OFF 영수증 및 서면9/Drive/6쌍 실제OFFON·독립변호사1명·토큰 비교는 아직 미측정이다. 운영자에게 기존05/06의 배포후 절차를 요청했으며 원문/비밀/가격 조사 없이 기존상한·종료OFF를 유지한다. 기록: release_completion_2026-10-11.json.

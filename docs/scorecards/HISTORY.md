@@ -895,3 +895,9 @@ Linux/Python3.11.15/Tesseract5.5.0 kor/network0. CI5.3.4와 차이 명시.
 - 봉인 최초1쌍: 9c=3389 28.1/.281/FP0/control0/A0/injectiontrue,8문서57결함·지문1abd74597ec4b25a·같은환경/도구hash·별도Pythonprocess. 성능상승0/원문·정답·문서상세미열람/새세트재시험안함.
 - 같은수용제품 원래법리2/8·8/8·0/4 및TXT동일/18기준유지, retired4 19.0/29.6/36.2/15.2 FP0/0/0/3유지. TK57 PHONE1/54→0/54/RRN0/84/provider0 및narrowactual54M4로 minor0.13판정. 44/49/55부분·45/73불수용잔여보존·미배포.
 - e21정식불수용5482338759: exactCIgreen/요청6106648755,원래8/8·7/8·1/4 정상8미달·actualTXT동일·18불변. 공개815/독립26PASS대체불가.
+
+### 실제 배포 완료 — 2026-10-11 17:11 KST
+
+PR77 main `8280a597db40b0905dbacf10c56fa3e9915cafd5`, `v.0.13.0` 배포 완료. 릴리스 head3ad의 필수CI38123137556/점수38123137444/Docker 모두SUCCESS. Render `dep-db5k8uek1f9s73ef0tg0` Live17:11:16KST, health17:11:24KST `0.13.0`/동일SHA/database ok 확인. a4→Steve3ad→main8280 파일 트리 동일, 최초 봉인3389 엔진에는 버전 메타데이터 외 변경없음. 전체/봉인 재실행 없음.
+
+TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/49/55 부분 구현은 배포했으나 전체 티켓은 open/known_open, TK45/73 불수용제품은 제외했다. 완결 잔여5건을 유지한다. TK75 기본OFF 기술범위 배포와 법률 품질을 구별하며 실제 배포후 API/내부worker OFF 영수증 및 서면9/Drive/6쌍 실제OFFON·독립변호사1명·토큰 비교는 아직 미측정이다. 운영자에게 기존05/06의 배포후 절차를 요청했으며 원문/비밀/가격 조사 없이 기존상한·종료OFF를 유지한다. 기록: release_completion_2026-10-11.json.

@@ -1,0 +1,59 @@
+{
+  "version": "0.13.0",
+  "tag": "v.0.13.0",
+  "release_pr": 77,
+  "main_sha": "8280a597db40b0905dbacf10c56fa3e9915cafd5",
+  "steve_sha": "3ad0a1a0a54c0644982a374c4b86c8d85b20a487",
+  "measured_engine_sha": "3389e9e5cf55aea55eb8327a3bba463cdc44eac4",
+  "version_metadata_sha": "a4b0688a36f1c1f1a0e8dc8b13c01dd97ab26964",
+  "engine_equivalence": "3389→a4 evaluator docs/version3files only; Settings.version/comment only; a4→Steve3ad→main8280 whole tree identical",
+  "required_ci": {
+    "head": "3ad0a1a",
+    "ci_run": 38123137556,
+    "score_run": 38123137444,
+    "aggregate_job": 114423924436,
+    "docker_job": 114421835876,
+    "result": "success"
+  },
+  "render": {
+    "deploy_id": "dep-db5k8uek1f9s73ef0tg0",
+    "status": "live",
+    "finished_at": "2026-10-11T08:11:16.623868Z"
+  },
+  "health": {
+    "checked_at": "2026-10-11T08:11:24.860429+00:00",
+    "status": "ok",
+    "version": "0.13.0",
+    "commit": "8280a597db40b0905dbacf10c56fa3e9915cafd5",
+    "database_status": "ok",
+    "expected_sha": "8280a597db40b0905dbacf10c56fa3e9915cafd5",
+    "matches_release": true
+  },
+  "fully_deployed_tickets": [
+    "TK-24",
+    "TK-43",
+    "TK-56",
+    "TK-57",
+    "TK-69",
+    "TK-70",
+    "TK-72",
+    "TK-74",
+    "TK-75"
+  ],
+  "partial_only": [
+    "TK-44",
+    "TK-49",
+    "TK-55"
+  ],
+  "excluded": [
+    "TK-45",
+    "TK-73"
+  ],
+  "still_unmeasured": [
+    "actual postdeploy API/worker OFF receipt",
+    "case9/Drive online regression",
+    "six actual ClaudeOFFON pairs/one blinded lawyer/Claude token comparison",
+    "42-document private fixed benchmark for this candidate"
+  ],
+  "sealed": "firstpair3389 score28.1/.281/FP0 equal9c; no repeat and no performance-rise claim"
+}
