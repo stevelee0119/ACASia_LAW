@@ -153,3 +153,19 @@ def test_synthetic_citation_forward_work_is_bounded_after_old_parser(tmp_path):
     assert anchors['certified']
     assert elapsed < 0.1
     assert not _duplicates(doc)
+
+
+@pytest.mark.parametrize('extension', ['txt', 'pdf', 'docx'])
+@pytest.mark.parametrize('mode', ['repeat', 'inventory', 'prose', 'condition', 'negation', 'degree'])
+def test_synthetic_global_same_atom_complete_alternatives_survive_local_certificates(tmp_path,
+                                                                                     extension, mode):
+    first = _lines(title='「점검기록」')[:-1]
+    second = _lines(title='「점검기록」')
+    second[0] = '2. 별도 제출'
+    if mode == 'inventory':
+        second[2] = second[2].replace('북쪽에 있다.', '남쪽에 있다.')
+    elif mode != 'repeat':
+        predicate = {'prose': '경로를 설명한다.', 'condition': '조건이 성립하면 순서를 설명한다.',
+                     'negation': '순서를 설명하지 않는다.', 'degree': '일부 순서를 설명한다.'}[mode]
+        second[7] = '갑 제1호증 「점검기록」: ' + predicate
+    _assert(_parsed(tmp_path, extension, first + second), 0 if mode == 'repeat' else 1)
