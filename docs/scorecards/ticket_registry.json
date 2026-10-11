@@ -180,7 +180,7 @@
   },
   "TK-45": {
    "status": "open",
-   "note": "PR84 bcea17c660f9cbd3055952b2ae0f1b26f2cfda49 불수용5482118915. 요청6106067158·동일SHA CI38116124746/점수38116124743/Docker SUCCESS 인용. 원래20 평가측 재실행 부인8/8·정상7/8·확장1/4, 실제TXT전체경로 동일. 정상8/8 필수조건 미달. 고정18 부인3/4·정상4/4·화자1/4·반박1/2·확장4/4. 공개537 및 독립 조건부 보호 감사 PASS는 원래 조건 대체불가. 미통합·미배포·새봉인 미실행·기대값/기준선 불변. 출력불변 진단: 남은 정상1의 독립요건 identity2와 UNCERTAIN/CHANGED_ARGUMENT·POSITIVE/ASSERTED_REQUIREMENT_REALIZATION 유지. reference_frame 호출0, immediate argument pattern 미일치·기존 event_frame case 존재·predicate_chain 없음. contextual_proposition 생성 전 거절되므로 기존 nominal-modifier/object-tail 설계가 해당 원인을 설명하지 못한다. 원문/식별자/좌표 전달0. 다른 POSITIVE를 이용한 요건 면제나 낱말목록 확장 대신 공개 source 논항·술어 결합 설계부터 재검토."
+   "note": "PR84 3736c9ec971c40e85bf3e180a6d656d3185966d0 불수용5482209439. 요청6106331973·완료CI38118075725 양쪽DB FAIL(새PDF생성용 fitz누락4건), 점수38118075720/DockerSUCCESS 구분. 평가측 원래20 부인8/8·정상7/8·확장1/4, actualTXT전체경로동일; 정상8/8 필수미달. 고정18 부인3/4·정상4/4·화자1/4·반박1/2·확장4/4 불변. 공개594/독립actual22 PASS 대체불가. 원래기준/기대값/채점불변·미통합/미배포·새봉인미실행. 출력불변3736 진단: 새case_bound_event primitive호출1·원래case/argument순서/공백검사통과·interveningcase0·predicate_chain없음. 새attachment grammar_fullmatchfalse→proof없음·resolved0. 기존SOURCE_SENSES의 exactfinitepast/regularadnominal 인식0. generic -한/-했/-하였 rawshape0은punctuation/다른활용 미확인이라 nonpast판정근거아님. 두독립identity와 원래UNCERTAIN/POSITIVE 불변. 원문/어휘/식별자/좌표전달0. 새 source 논항/술어·closure 설계메모전 제품추가금지·다른POSITIVE로요건면제금지. 최종2589070은reportlab PDF생성기만보완(6testsPASS)·제품326불변·새CI진행중."
   },
   "TK-46": {
    "status": "deployed",

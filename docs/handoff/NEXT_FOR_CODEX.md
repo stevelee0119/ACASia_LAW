@@ -1,6 +1,6 @@
 # Codex 구현 전달문 (현행 통합본)
 
-갱신: 2026-10-11 15:07 KST. 이전 전달문 전체를 대체한다. 미배포 TK 보완·수용·릴리스에 집중한다. 구현은별도공개전용세션/clone·봉인/비공개/정답/평가원문 접근·요청금지. 제품전설계/관련양방향합성대조·기존expects불변·Agent: implementer. 보호경로·버전판정은평가측·강제push/Steve/main직접push금지.
+갱신: 2026-10-11 15:49 KST. 이전 전달문 전체를 대체한다. 미배포 TK 보완·수용·릴리스에 집중한다. 구현은별도공개전용세션/clone·봉인/비공개/정답/평가원문 접근·요청금지. 제품전설계/관련양방향합성대조·기존expects불변·Agent: implementer. 보호경로·버전판정은평가측·강제push/Steve/main직접push금지.
 
 ## 수용분과 릴리스
 - 운영main9c1b218/0.12.0. Steve5dea의TK24/43/56/69/70/72/74/75 기술수용·병합·미배포. TK75 기본OFF·실제품질미측정.
@@ -13,7 +13,9 @@
 - PR84 bcea17c660f9cbd3055952b2ae0f1b26f2cfda49 불수용5482118915. 요청6106067158·동일SHA CI38116124746/점수38116124743/Docker SUCCESS 인용. 원래20 평가측 재실행 부인8/8·정상7/8·확장1/4, 실제TXT전체경로 동일. 정상8/8 필수조건 미달. 고정18 부인3/4·정상4/4·화자1/4·반박1/2·확장4/4. 공개537 및 독립 조건부 보호 감사 PASS는 원래 조건 대체불가. 미통합·미배포·새봉인 미실행·기대값/기준선 불변.
 - 출력불변 진단: 남은 정상1의 독립요건 identity2와 UNCERTAIN/CHANGED_ARGUMENT·POSITIVE/ASSERTED_REQUIREMENT_REALIZATION 유지. reference_frame 호출0, immediate argument pattern 미일치·기존 event_frame case 존재·predicate_chain 없음. contextual_proposition 생성 전 거절되므로 기존 nominal-modifier/object-tail 설계가 해당 원인을 설명하지 못한다. 원문/식별자/좌표 전달0. 다른 POSITIVE를 이용한 요건 면제나 낱말목록 확장 대신 공개 source 논항·술어 결합 설계부터 재검토.
 - bb68a009 공개 case-bound past-event attachment 설계 사전승인6106168162. root actualTXT22에서 기존 확인요청으로3FAIL/19PASS·제품diff0; 독립 NIKL -ㄴ/이후 출처검토 뜻풀이일치. 첫 source의 case→동적 개별lemma→관측 -한→상대적 이후 결합만 증명하며 original state/reason/identity/event_frame 불변·다른행위 비병합·조건/부분/계획/인용/보고/UNKNOWN 보호·원문에 없는 분해자모 source span 생성금지. 이후·형태조합만으로 사실/법적충족/과거발생 추정금지. 기존537 고정. 최소제품/형식대조/선형계측·최종독립감사·exactCI 및 원래필수판정 대기.
-- TK45 32692f9/최종3736c9e 공개독립actual22(TXT16/PDF3/DOCX3) PASS: 정상4warning0·반대18warning유지·원래관찰필드/두행위identity·raw한/이후/source/JSONfactsfalse 불변.7N+새attachment1회8chars/.0053s dense1000(관찰생성제외). 관련594/기존537불변. final3736 productdiff0. exactCI38118075725 DB2 진행중·DockerSUCCESS/점수38118075720SUCCESS. 정식원래20/18/actual20 아직미재측정·이전bcea 불수용5482118915 유지.
+- PR84 3736c9ec971c40e85bf3e180a6d656d3185966d0 불수용5482209439. 요청6106331973·완료CI38118075725 양쪽DB FAIL(새PDF생성용 fitz누락4건), 점수38118075720/DockerSUCCESS 구분. 평가측 원래20 부인8/8·정상7/8·확장1/4, actualTXT전체경로동일; 정상8/8 필수미달. 고정18 부인3/4·정상4/4·화자1/4·반박1/2·확장4/4 불변. 공개594/독립actual22 PASS 대체불가. 원래기준/기대값/채점불변·미통합/미배포·새봉인미실행.
+- 출력불변3736 진단: 새case_bound_event primitive호출1·원래case/argument순서/공백검사통과·interveningcase0·predicate_chain없음. 새attachment grammar_fullmatchfalse→proof없음·resolved0. 기존SOURCE_SENSES의 exactfinitepast/regularadnominal 인식0. generic -한/-했/-하였 rawshape0은punctuation/다른활용 미확인이라 nonpast판정근거아님. 두독립identity와 원래UNCERTAIN/POSITIVE 불변. 원문/어휘/식별자/좌표전달0. 새 source 논항/술어·closure 설계메모전 제품추가금지·다른POSITIVE로요건면제금지.
+- 최종258907052d538192187cf4356338715e648b27fb은공개PDF fixture생성기만fitz→기존reportlab/CID로보완·폭/원문/6expects그대로·6PASS. 제품326diff0. 새CI38118978843/점수38118978817대기이며원래정상7/8 불수용을해소하지않음.
 - 원래수용은정상8/8유지·부정/확장각시작2/8·0/4보다증가/어느것도감소없음.6/8·3/4는목표/미달사유보고이며새하한아님. 고정18/공개대조는원래20대체불가. 다른요건/주체/독립부정/계획/부분/quote/조건/UNKNOWN면제금지·newrule_id0.
 
 ## 경로 B
@@ -23,7 +25,7 @@
 - 최종측정/버전판정후root확정SHA에서새version-only브랜치/3파일/1commit; 폐기가격branch재사용금지.
 
 ## 경로 C
-- TK73 c17/26ce 공개P2 HOLD6106246266: 독립과root actual6(두구조×세형식)에서 다른parent의complete inventory 또는later proposition충돌 A1→0. originalrows/source/endpoints불변. d456 설계조건부승인6106256180·root 새actual18 precheck12FAIL/6PASS. 모든originalglobal same-key inventory/UNKNOWN 및noninventory complete-prose/weak-caption multiplicity의전역veto를먼저적용하는최소guard만보완중·기존906 기대값불변. 새formalAFP0/CI 미완료.
+- TK73 c17/26ce 공개P2 HOLD6106246266의최소globalguard d456승인6106256180 후 제품faff1a4/최종214334ddb916a0a856e7a4a55d39cbd180c5ec1a 동결. 관련936·기존906expects불변. 독립후속 actual6전역충돌모두A1복구·normal0/wholeweakcaption/UNKNOWNorigin보호·원래15rows/source/identity불변·새helper.003854/.006897/.013136s. 좁은공개PASS이며 exactCI38118526548 DB대기·Docker/점수38118526520SUCCESS. 정식원래4AFP0 미측정·기존9ab불수용유지.
 - TK73 #79 최신9ab6764/95e11e5·관련823·독립actualTXT/PDF/DOCX15 PASS. 요청6105908060 후정식불수용5482055280: 원래4 세트19.0/29.6/36.2 FP0유지·20261010 15.2/.302/FP3→25.2/.302/FP1(control1/A1), 필수0미달·모두injection유지.
 - exactCI38114012034 attempt2 completedFAIL TK24 timing.216606/기존.1; PG/Docker/점수38114012021SUCCESS 구분. 최초실패및1회retry보존·같은9ab추가blindretry/시험/상한완화금지. 新정당한제품보완의exactCI는새SHA에서시행.
 - 출력불변metadata: scope1/excludedrows2/registeredkeys4, 남은group1 두rows의원래itemorigin/reference_span·등록key유지. inventory內kindNone1 vs모든narrative interval종료뒤kindprose1. 원문/IDs/좌표공유0.
@@ -34,3 +36,5 @@
 ## 제출·배포후
 최종제품SHA/관련시험·독립공개delta·필수CI후3줄검토요청. root원래조건평가·수용품만통합. 공개green/기존같은문제만으로수용/배포/전체해소주장금지.
 배포후법률profile6쌍 actualOFF/ON·독립변호사1명조건가림채점·끝OFF. ON분석JSON 실제Claude top-level model_executions만1회집계 input/output/total·차이/증감률·IDs/hash/coverage(cache/fallback/실패). 미상null·OFF0percentnull·도큐먼트복사본중복합산/동일값실제호출삭제금지. 통화환산/토큰의무기준없음.
+
+최신 사용자: “우선 배포부터”. 온라인 대표6개 사전준비 회신은배포후로이연·배포선행요건추가없음. 실제유료OFFON전에는기존입력/변호사검증/조건고정절차를지킨다.
