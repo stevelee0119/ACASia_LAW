@@ -23,6 +23,8 @@ class LLMRequest:
     metadata: Dict[str, Any] = field(default_factory=dict)
     # First-party input envelope, independent of the provider output schema.
     input_contract: Optional[str] = None
+    # Opaque inspection-only context; excluded from repr and redacted by asdict.
+    inspection_source: Any = field(default=None, repr=False, compare=False)
 
 
 @dataclass

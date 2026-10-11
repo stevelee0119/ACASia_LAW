@@ -368,7 +368,9 @@ class LLMRouter:
         original_system = request.system
         request = replace(request, system=f"{SYSTEM_BASE}\n[역할] {role}\n{request.system}")
         privacy = {}
-        if provider.config.kind != "local" and policy == ExternalAIPolicy.MASKED:
+        from .cascade_source import valid_cascade_source
+        if ((provider.config.kind != "local" and policy == ExternalAIPolicy.MASKED)
+                or not valid_cascade_source(request, original_system=original_system)):
             from .privacy import inspect_request
 
             try:
@@ -556,14 +558,11 @@ class LLMRouter:
             )
 
         # Stage 2: Primary Reasoner
+        from .cascade_source import build_cascade_request
+
         primary = await self.run_any(
             LLMRole.PRIMARY_REASONER,
-            LLMRequest(
-                system="공식 Source와 문서를 대조해 판단하고 근거를 제시하라. JSON으로만 답하라.",
-                user=_build_prompt(question, evidence),
-                schema=_VERDICT_SCHEMA,
-                max_tokens=_VERDICT_MAX_TOKENS,
-            ),
+            build_cascade_request("primary", question, evidence),
             policy=policy,
             expected_task=question,
         )
@@ -603,15 +602,7 @@ class LLMRouter:
         # Stage 3: Independent Critic (다른 Provider 우선)
         critic = await self.run_any(
             LLMRole.INDEPENDENT_CRITIC,
-            LLMRequest(
-                system=(
-                    "1차 판단이 틀렸다고 가정하고 반증하라. 반증 근거가 없으면 없다고 답하라. "
-                    "새로운 판례나 문헌을 지어내지 마라. JSON으로만 답하라."
-                ),
-                user=_build_prompt(question, evidence, primary_verdict=primary_verdict),
-                schema=_VERDICT_SCHEMA,
-                max_tokens=_VERDICT_MAX_TOKENS,
-            ),
+            build_cascade_request("critic", question, evidence, primary_verdict=primary_verdict),
             policy=policy,
             exclude=[e.provider for e in primary.executions],
             expected_task=question,
@@ -631,12 +622,7 @@ class LLMRouter:
         if cross_all or (disagreement and profile == VerificationProfile.DEEP_VERIFY):
             third = await self.run_any(
                 LLMRole.WEB_GROUNDER,
-                LLMRequest(
-                    system="공개 자료를 근거로 사실관계만 확인하라. 확인되지 않으면 UNVERIFIED로 답하라. JSON으로만 답하라.",
-                    user=_build_prompt(question, evidence),
-                    schema=_VERDICT_SCHEMA,
-                max_tokens=_VERDICT_MAX_TOKENS,
-                ),
+                build_cascade_request("grounder", question, evidence),
                 policy=policy,
                 exclude=[e.provider for e in executions],
                 expected_task=question,

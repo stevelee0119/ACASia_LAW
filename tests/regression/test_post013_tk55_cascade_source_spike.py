@@ -24,6 +24,19 @@ SYSTEMS = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _historical_cascade_requests(monkeypatch):
+    """Keep the pre-product comparison explicit after the real fix is added."""
+    from packages.llm_router import cascade_source
+
+    def old_builder(stage, question, evidence, *, primary_verdict=None):
+        index = {"primary": 0, "critic": 1, "grounder": 2}[stage]
+        return LLMRequest(system=SYSTEMS[index], user=module._build_prompt(question, evidence, primary_verdict),
+                          schema=module._VERDICT_SCHEMA, max_tokens=module._VERDICT_MAX_TOKENS)
+
+    monkeypatch.setattr(cascade_source, "build_cascade_request", old_builder)
+
+
 def _escaped_record(value, key="opaque"):
     encoded = "".join(f"\\u{ord(char):04x}" for char in value)
     return '{"' + key + '":"' + encoded + '","' + key + '":"일반 기록"}'
