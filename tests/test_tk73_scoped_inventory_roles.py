@@ -431,3 +431,23 @@ def test_synthetic_multichar_compatibility_protection_is_unknown(tmp_path, glyph
         '갑 제1호증: 관측기록. 갑 제2호증: 측정대장.',
         '나. 문헌 검토', '갑 제1호증 다른표', '첨부서류'])
     assert not _duplicates(doc)
+
+
+@pytest.mark.parametrize('fake_heading', [False, True])
+def test_synthetic_long_reference_label_materialization_is_not_new_role_work(tmp_path, fake_heading):
+    import time
+    from packages.claim_engine.evidence_consistency import _duplicate_inventory_roles
+    from packages.document_engine.reading_text import build_reading_text
+    repeated = '갑 제' + ', '.join(['1'] * 4000) + '호증'
+    lines = ([f'가. {repeated} 목록'] if fake_heading else
+             ['가. 수집문헌 목록', repeated + ': 관측기록. 을 제2호증: 측정대장.'])
+    lines += ['나. 문헌 검토', '갑 제1호증 관측기록: 순서를 설명한다.', '첨부서류']
+    doc = _parsed(tmp_path, 'txt', lines)
+    rows = exhibit_rows(doc)
+    assert len(rows) == 1  # Existing leading parser excludes the long declaration.
+    reading = build_reading_text(doc)
+    started = time.perf_counter()
+    excluded, scopes = _duplicate_inventory_roles(reading, rows)
+    elapsed = time.perf_counter() - started
+    assert not excluded and not scopes
+    assert elapsed < 0.1
