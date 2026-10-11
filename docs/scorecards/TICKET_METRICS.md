@@ -41,7 +41,7 @@
 | TK-69 | merged | existing | 2026-10-07 | PR #56 ce68dc4 수용·통합 #67 병합. Steve 통합 반영, 운영 main 미배포 |
 | TK-70 | merged | existing | 2026-10-09 | PR #60 db21f19 수용·통합 #69 병합. Steve 통합 반영, 운영 main 미배포. 배포 후 온라인 v2/서면9 확인 |
 | TK-72 | merged | existing | 2026-10-10 | #72 최종f184253 수용·c26afede 통합·#73 head46774df 필수 CI 성공·Steve8ed13e8 병합. 기존32k/1초 게이트 유지. 과거543fc69 성능 실패와 local full 종료1 보존. 독립 합성 문법20k/전체필드1000 차이0·32k0.295740초는 별도 감사 표본. 새 봉인/운영 배포 전. |
-| TK-73 | open | existing | 2026-10-10 | 원래formal30a AFP3/필수0 불수용5481848611 유지. scoped-role 후속74d85b 공개continuity P2actual3format A1→0 보류6105693708. c53 continuity설계승인6105703232·원래817expects/source/runtime유지·최소보완중. 정식AFP0 미실행/미통합. |
+| TK-73 | open | existing | 2026-10-10 | PR79 9ab6764b218628ca4979f84c245edb83a24123b8 불수용5482055280. 요청6105908060·exactCI38114012034 attempt2 completedFAIL(TK24 0.216606초/기존0.1초), PG/Docker/점수38114012021 SUCCESS 구분. 평가측 원래4 재실행19.0/29.6/36.2 FP0 유지; 20261010 시작15.2/.302/FP3(control3/A3)→25.2/.302/FP1(control1/A1), 필수AFP/control0 미달. 네세트 인젝션방어 유지. 공개823/독립15 PASS 대체불가·새봉인 미실행·미통합·미배포. 공개source-role metadata 이후독립section 관계증명 설계검토중·source/rows/기존823 기대값유지. |
 | TK-74 | merged | existing | 2026-10-10 | #68 30f9f92 수용·#73 head46774df CI 성공·Steve8ed13e8 병합. 표 색인·일반TXT/PDF/DOCX 캐시 복구. 기존 교체1건 최소 승인·불승인 이력 유지. 실제 온라인 효과/운영 배포 전. |
 | TK-75 | merged | existing | 2026-10-10 | #74 최종3805e949 기술 수용 리뷰5481214189·CI38094767858/점수38094767864 성공·Steveba12d25 병합. Claude 전용/fallback 유지·수용 참조4a6c651·공개70건. 기본OFF 기술 릴리스, 품질은 배포 후 실제 프로그램OFF/ON 온라인 대조·독립한국변호사1명 조건가림·제3판정 없음. 비용평가·증가율조건은사용자최신결정으로삭제·가격PR87폐기. 기존USD40예산보호유지·배포후ON분석JSON실제Claude토큰변화참고. 실제 개선 미측정; 운영 미배포. 40fd3a9 불승인 이력 보존/사전A/B 조건 대체. |
 

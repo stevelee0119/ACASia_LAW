@@ -863,3 +863,9 @@
 - PR84 0c09885a557d879f50d21870111a27426bee9db3 불수용5481987480. 요청6105692046·exactCI38113014109/점수38113014100 SUCCESS 인용. 원래20 평가측 재실행 부정8/8·정상7/8·확장1/4, 실제TXT전체경로 동일. 정상8/8필수미달. 고정18 부정3/4·정상4/4·화자1/4·재반박1/2·확장4/4. 공개465·독립13 PASS는 대체불가. 미통합·미배포·원래기준/expectations/채점불변·새봉인미실행.
 
 Linux/Python3.11.15/Tesseract5.5.0 kor/network0. CI5.3.4와 차이 명시.
+
+
+## TK73 9ab6764 재측정 (2026-10-11 14:47 KST)
+
+- PR79 9ab6764b218628ca4979f84c245edb83a24123b8 불수용5482055280. 요청6105908060·exactCI38114012034 attempt2 completedFAIL(TK24 0.216606초/기존0.1초), PG/Docker/점수38114012021 SUCCESS 구분. 평가측 원래4 재실행19.0/29.6/36.2 FP0 유지; 20261010 시작15.2/.302/FP3(control3/A3)→25.2/.302/FP1(control1/A1), 필수AFP/control0 미달. 네세트 인젝션방어 유지. 공개823/독립15 PASS 대체불가·새봉인 미실행·미통합·미배포.
+- Linux/Python3.11.15/Tesseract5.5.0 kor/network0; CI5.3.4와 차이 명시. 첫CI 실패 및1회재실행 보존·추가blindretry0. 전체collection단일timing0.001초PASS는CI실패의원인입증/면제근거아님. prior-workload관측은target도달전중단으로무효·실제GC원인미입증.

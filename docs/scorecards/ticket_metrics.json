@@ -90,7 +90,7 @@
    "status": "open",
    "kind": "existing",
    "found_on": "2026-10-10",
-   "note": "원래formal30a AFP3/필수0 불수용5481848611 유지. scoped-role 후속74d85b 공개continuity P2actual3format A1→0 보류6105693708. c53 continuity설계승인6105703232·원래817expects/source/runtime유지·최소보완중. 정식AFP0 미실행/미통합."
+   "note": "PR79 9ab6764b218628ca4979f84c245edb83a24123b8 불수용5482055280. 요청6105908060·exactCI38114012034 attempt2 completedFAIL(TK24 0.216606초/기존0.1초), PG/Docker/점수38114012021 SUCCESS 구분. 평가측 원래4 재실행19.0/29.6/36.2 FP0 유지; 20261010 시작15.2/.302/FP3(control3/A3)→25.2/.302/FP1(control1/A1), 필수AFP/control0 미달. 네세트 인젝션방어 유지. 공개823/독립15 PASS 대체불가·새봉인 미실행·미통합·미배포. 공개source-role metadata 이후독립section 관계증명 설계검토중·source/rows/기존823 기대값유지."
   },
   {
    "id": "TK-74",
