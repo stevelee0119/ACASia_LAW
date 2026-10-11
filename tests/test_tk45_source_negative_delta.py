@@ -162,3 +162,24 @@ def test_focus_binds_to_direct_action_not_a_new_subject(tmp_path,focus):
     body=DIRECT.replace('하지',focus)
     _,text,findings=run_source(tmp_path/'focus.txt',body)
     assert len(findings)==1;check_proof(findings[0],text,'DIRECT_REQUIREMENT_DENIAL')
+
+
+# The first implementation cannot certify inherited speaker scope. Any prior
+# BODY statement keeps the new proof UNKNOWN; the original rule still runs.
+INHERITED_SCOPE=[
+ '피고 주장의 인용문은 다음과 같다. 「이는 피고의 설명이다. '+DIRECT+' 이는 인용문의 끝이다.」 원고는 이를 부인한다.',
+ '다음 두 문장은 피고의 주장이다. '+DIRECT+' 원고는 위 주장을 반박한다.',
+ '조사자가 아래 주장을 그대로 보고하였다. '+EFFECT+' 원고는 이러한 결론에 동의하지 않는다.',
+ '다음 주장은 옳지 않다. '+DIRECT+' 위 주장은 법정 요건과 모순된다.',
+ '이 항목은 진행 경과를 설명한다. '+DIRECT,
+ '새 항목에서 작성자의 결론을 제시한다. '+EFFECT,
+]
+
+@pytest.mark.parametrize('body',INHERITED_SCOPE+[DIRECT.replace('민법 제487조','헌법 제487조'),DIRECT.replace('민법 제487조','헌법 제23조'),DIRECT.replace('민법 제487조','형법 제487조')])
+def test_inherited_unknown_speaker_and_non_civil_norm_preserve_baseline(tmp_path,monkeypatch,body):
+    with monkeypatch.context() as patch:
+        patch.setattr('packages.legal_engine.legal_rules.source_defense_proof',lambda *args:None)
+        _,_,baseline=run_source(tmp_path/'prior-baseline.txt',body)
+    _,_,findings=run_source(tmp_path/'prior-enabled.txt',body)
+    assert [(f.status,f.confidence_features) for f in findings]==[(f.status,f.confidence_features) for f in baseline]
+    assert not any('source_defense_proof' in f.confidence_features for f in findings)
