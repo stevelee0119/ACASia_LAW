@@ -1694,3 +1694,14 @@ TK73의 be654f9·67865f는 최종 공식 재측정 전 공개 사전감사에서
 출력불변metadata 원인: 정상실패1은 CHANGED_ARGUMENT/UNCERTAIN + ASSERTED_REQUIREMENT_REALIZATION/POSITIVE의 동시존재, CONFIGURED authored limited1·scope_uncertain false·typed0·uncertain_quote false. 새효과분기가 아닌 한정요건확인 선택분기. 원문/IDs/spans 전달0. 독립 실제행위 단언과 문맥참조의 관계를 공개일반화설계부터 보완하며 POSITIVE존재만으로 실제부정/다른요건/주체/미확정을면제하지 않는다.
 
 평가환경 Linux/Python3.11.15/Tesseract5.5.0 kor/network0, CI Tesseract5.3.4 차이 명시.
+
+
+## TK45 0c09885 최종 재판정 (2026-10-11 14:11 KST)
+
+| 후보 | 판정 | 근거 |
+| --- | --- | --- |
+| #84 0c09885 | 불수용·미통합 | PR84 0c09885a557d879f50d21870111a27426bee9db3 불수용5481987480. 요청6105692046·exactCI38113014109/점수38113014100 SUCCESS 인용. 원래20 평가측 재실행 부정8/8·정상7/8·확장1/4, 실제TXT전체경로 동일. 정상8/8필수미달. 고정18 부정3/4·정상4/4·화자1/4·재반박1/2·확장4/4. 공개465·독립13 PASS는 대체불가. 미통합·미배포·원래기준/expectations/채점불변·새봉인미실행. |
+
+출력불변metadata: 실패정상1은 CHANGED_ARGUMENT/UNCERTAIN + ASSERTED_REQUIREMENT_REALIZATION/POSITIVE. configured requirement identity2이고 두 observation identity는서로다름. 신규same-identity resolution resolved0, qualifier abstention까지도달하지않음. 원문/IDs/spans공유0·다른POSITIVE로독립요건/직접부정/불확실면제금지. 같은정상지표정체뒤제품전새공개일반화설계필수.
+
+Linux/Python3.11.15/Tesseract5.5.0 kor/network0. CI5.3.4와 차이 명시.

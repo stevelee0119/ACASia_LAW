@@ -1,45 +1,33 @@
 # Codex 구현 전달문 (현행 통합본)
 
-갱신: 2026-10-11 13:26 KST. 이전 전달문 전체를 대체한다. 미배포·보완 TK 완료와 릴리스에 집중한다. 구현은 공개전용별도세션/clone, 평가대화·첨부·비공개/봉인/정답 열람·복사·요청금지. 보호경로/기대값/기준선/버전은평가측담당. 설계먼저·양방향합성대조·관련시험만·Agent: implementer·강제푸시/Steve/main직접푸시금지.
+갱신: 2026-10-11 14:11 KST. 이전 전달문 전체를 대체한다. 미배포·보완 TK 완료와 릴리스에 집중한다. 구현은별도공개전용세션/clone, 평가대화·첨부·비공개·봉인·정답 접근/복사/요청금지. 보호경로/expectations/기준선/버전은평가측담당. 제품전설계메모·양방향합성대조·관련시험만·Agent: implementer·강제푸시/Steve/main직접푸시금지.
 
 ## 수용분·릴리스
-- 운영main9c1b218/0.12.0. Steve5dea에 TK24/43/56/69/70/72/74/75 기술수용·병합·미배포. TK75 기본OFF, 실제품질개선 미측정.
-- #78 c6e5437 직접SPACE보존·#81 0261ea0 연락처국가코드경계·#82 ce83355 first-party스키마/손실없는JSON검사·#86 ebd6b51 출처정렬UNKNOWN진단메타데이터 제한범위내용수용. 제품통합8446107 및 기록전용69553cc exactCI/점수SUCCESS(695:38109108790/38109108770).
-- UNKNOWNprimary쪽폭/ActualText미구현·TK55legacy24/encoded불명역할잔여를 완전해소로기록하지않는다. 내용수용/통합/운영배포/티켓완전해소를구분한다. 기존수용분추가제품배정없음.
-- 미수용TK45/73제품은미통합. 최종수용범위확정후 평가측이full1회/동SHA통합CI/새봉인/버전/릴리스/온라인을수행한다. 새봉인미채점. 최종제출14:21KST목표·전체19:51KST·기준완화없음.
+- main9c1b218/0.12.0. Steve5dea의TK24/43/56/69/70/72/74/75 기술수용·병합·미배포. TK75 기본OFF·실제품질개선미측정.
+- #78 c6e5437 TK44/49 직접SPACE보존·#81 0261ea0 TK57 연락처경계·#82 ce83355 TK55 first-party스키마/손실없는JSON·#86 ebd6b51 UNKNOWN진단메타데이터 내용수용. accepted제품통합8446107·remote기록69553cc exactCI38109108790/점수38109108770 SUCCESS. local기록b33d 미푸시.
+- UNKNOWNprimary쪽폭/ActualText미구현·TK55legacy24/encoded불명역할잔여를완전해소로기록하지않는다. 수용·통합·운영배포·티켓전체해소구분.
+- TK45/73 미수용제품미통합. 수용확정후평가측전체1회/동SHA통합CI/새봉인1쌍/버전/릴리스/온라인. 새봉인미채점. 원래제출14:21KST목표는최소보완검증으로조정: A설계14:25/제품관련14:40/CI후정식14:55 목표, 전체19:51/온라인17:51창 유지. CI/수용생략·기준완화없음.
 
-## 경로 A: TK44/49 수용 유지·TK45 정상오탐 원인보완
-- #78 c6e 실제PDF/DOCX/폭105 PASS·보호문자열기대값유지·명시SPACE48/48. #86 ebd 독립1452본문/2실제PDF 호환성·72비공개PDF/기존29출력동일, 수용5481655173. ActualText/primary선택변경배정없음.
-- #84 최신1a324c922a81e7481ca31b6a415829821fba2447/제품81657495309dc9634fe0648653d14cc0d179d100. f929dc8 clause-first typed-effect 승인설계, 기존363/417기대값불변·관련430 PASS 보고. 공개P2 정중체/lemma-prefix 최소보완후 독립actualTXT14·source/span/JSON/후속중복제외 PASS. 공식sense와application분류 구분·새차단점없음. PR84 1a324c922a81e7481ca31b6a415829821fba2447 불수용5481892889. 요청6105422572·exactCI38110886498/점수38110886552 SUCCESS 인용. 기존20 평가측재실행 부정8/8·정상7/8·확장1/4, actualTXT전체경로 동일. 시작2/8·8/8·0/4 대비 부정/확장증가이나 정상8/8 필수미달. 고정18 부정3/4·정상4/4·화자1/4·반박1/2·확장4/4. 공개430·독립actualTXT14 PASS는 대체불가. 원래기준/채점/expectations 유지·미통합/미배포·새봉인미채점. 출력불변metadata 원인: 정상실패1은 CHANGED_ARGUMENT/UNCERTAIN + ASSERTED_REQUIREMENT_REALIZATION/POSITIVE의 동시존재, CONFIGURED authored limited1·scope_uncertain false·typed0·uncertain_quote false. 새효과분기가 아닌 한정요건확인 선택분기. 원문/IDs/spans 전달0. 독립 실제행위 단언과 문맥참조의 관계를 공개일반화설계부터 보완하며 POSITIVE존재만으로 실제부정/다른요건/주체/미확정을면제하지 않는다.
-- 이전d11은exactCI성공이나 기존20 부정8/8·정상7/8·확장0/4/실제TXT동일로불수용5481744949. 원래계약: 정상8/8하한·부정/타책임확장 각각시작보다증가/어느것도감소없음. 6/8·3/4는목표/미달사유보고이며새하한아님. 동결18/공개감사는이계약을대체하지않음.
-- 새rule_id0·R6-02/R7-03/R7-08·기존210기대값/판정상태·severity·grade 유지. source논항/술어/actor·필요성/부정·다의sense를분리하고 UNKNOWN은확인요청. 낱말명사만으로sense·법률효과/전부이행인증금지. 부분/계획/준비/타객체/독립주어·절/상대방인용/화자/재반박/정중체/유한활용 보호유지. 불수용1a제품은미통합·아래승인설계만보완.
+## 경로 A: TK44/49 수용유지·TK45 접근재검토
+- #78 c6e 실제PDF/DOCX/폭105 PASS·명시SPACE48/48·보호기대값유지. #86 ebd1452본문/2실제PDF·72비공개PDF/29기존출력불변 내용수용5481655173. ActualText/primary선택 추가배정없음.
+- PR84 0c09885a557d879f50d21870111a27426bee9db3 불수용5481987480. 요청6105692046·exactCI38113014109/점수38113014100 SUCCESS 인용. 원래20 평가측 재실행 부정8/8·정상7/8·확장1/4, 실제TXT전체경로 동일. 정상8/8필수미달. 고정18 부정3/4·정상4/4·화자1/4·재반박1/2·확장4/4. 공개465·독립13 PASS는 대체불가. 미통합·미배포·원래기준/expectations/채점불변·새봉인미실행.
+- 출력불변metadata: 실패정상1은 CHANGED_ARGUMENT/UNCERTAIN + ASSERTED_REQUIREMENT_REALIZATION/POSITIVE. configured requirement identity2이고 두 observation identity는서로다름. 신규same-identity resolution resolved0, qualifier abstention까지도달하지않음. 원문/IDs/spans공유0·다른POSITIVE로독립요건/직접부정/불확실면제금지. 같은정상지표정체뒤제품전새공개일반화설계필수.
+- 기존정식1a/d11/268 불수용유지. 원래수용: 정상8/8하한·부정/확장각시작2/8·0/4보다증가/어느것도감소없음.6/8·3/4는목표/미달사유보고이지새하한아님. 고정18/공개시험/감사 대체불가.
+- clause-first typed-effect와officialsense/applicationmapping구분 유지. same-identity context설계1c8/5203의공개P2 최소보완은통과했지만정상필수실패원인해소안됨. 다음제품전에서로다른configured요건의참조/검증/행위진술을 source논항·술어·actor·부정·화자·조건으로독립구별하는새공개일반화설계부터. ANYPOSITIVE로다른요건면제금지·사실충족/법률충족인증금지·UNKNOWN확인요청.
+- 기존465expects·R6-02/R7-03/R7-08·state/reason/source/grade 유지·newrule_id0·부분/계획/준비/타객체/독립절·주어/상대방인용/화자/재반박/정중체/유한lemma 보호.
 
-- 새설계1c8ebe8204b4861ded1f03ae776a63c94e877936 조건부승인6105481991·actualTXT15 사전3FAIL/12PASS. 같은configured requirement와관측case/절경계/국소주체·화자/source-supported later direct past assertion 증명시normal limited선택에서 contextual uncertainty만해소. 원래observation/state/source유지·ANY POSITIVE면제금지·중간주체/인용/조건/다른요건/부분/계획/legacy-only 반대보호. 관련430불변·14:21제출목표.
+## 경로 B: TK55/57 수용유지·버전대기
+- #80 설계draft유지/중복구현없음. #81 PHONE누락0/54·RRN0/84·mockprovider0 필수. #82 4first-party스키마/system/output바인딩·PII우선·중복키거부/Unicode/encoded 모든값손실없는검사·providerpayload 유지. 보호144/결합244 PASS·정상차단6/28·faithfulrouter16/16·legacy24/불명역할잔여.
+- 가격PR87 사용자명시폐기closed/unmerged. 가격조회/비용계산/증가율조건/후속제품PR재개금지. 기존프로그램예산보호/USD40상한 유지.
+- 배포후ON분석JSON 기존실제Claude top-level model_executions만1회집계: input/output/total OFF/ON·차이·변화율·coverage·실행/해시바인딩. missingnull/OFF0percentnull·도큐먼트복사본중복합산금지·동일값인실제별도호출삭제금지. 통화변환/토큰기준없음.
+- root최종수용integration SHA/측정판정서후새브랜치version-only1commit. 폐기가격브랜치재사용금지·현재추가제품변경없음.
 
-## 경로 B: TK55/57 수용 유지
-- #80 설계draft유지·중복구현금지. #81 0261ea0 PHONE누락0/54·RRN0/84·mockprovider0·종류/임계값유지. #82 ce83355 first-party4스키마/system/output바인딩·PII우선차단·중복키거부/Unicode/인코딩 모든값손실없는검사·providerpayload호환성유지. 보호144/통합244 PASS·정상차단6/28·faithful라우터16/16, legacy24/불명역할잔여유지.
-- 가격PR87은사용자명시결정으로미병합폐기closed·가격조회/비용계산/증가율조건/후속제품PR재개금지. 기존프로그램예산보호/USD40상한유지. 배포후ON 분석JSON에기존실제Claude model_executions input/output/total OFF/ON·차이·변화율·coverage를참고기록. 제품PR/배포선행조건추가없음.
-- 버전작업은root 최종수용integration SHA와측정판정서후새브랜치에서version-only1커밋. 폐기가격브랜치재사용금지·현재추가제품변경없음.
-
-## 경로 C: TK73 새구역역할설계 승인·구현
-- #79 현재30a2029256585b8136e077ea3f3d44270aa3dbd6/제품471625d. 요청6105309164·exactCI38110044088/점수38110044065 SUCCESS. 원래은퇴4종19.0/29.6/36.2/15.2·FP0/0/0/3·마지막대조군/A3·필수0미달로불수용5481848611·미통합. 공개652/독립좁은PASS는대체불가. 원문/IDs/spans비공개·새봉인미채점.
-- 출력불변계측: 3그룹6행·None3/prose3·mapping6·prefix인증6이나legacy offset변화0. proposed=anchor/양쪽proper-prefix/unknown구분자prefix와다른proposed완전일치0. source-prefix/단순구분자제거가현필수실패원인해소를입증하지못함. balanced outer wrapper만으로표시인증/일괄제거금지.
-- 새접근5097af6e5fe5e8099f33dce948a957ec36f8eeb0 scoped-inventory 조건부승인6105395055. 공개actualTXT/PDF36 사전6fail/30pass, root 기존TK64 직접14 PASS. 관측generic목록+구조enumerator·≥2 reference-colon 항목·독립peer/ancestor 종료와원본source의완전범위증거를갖춘comparison-local rolemap만진행.
-- 원본row/source/in_section/이전652기대값불변·기존sticky/TK64 의미론유지. exactparty/number/branch가해당proved inventory에있는bodymention만역할구분, 미등록party/branch·상이inventory제목·목록없는상이body양성A 유지. fake/one-entry/child-only/unclosed/가상join/NFKC/애매source는fallback. sibling narrative는다음독립heading경계까지만·이후caption/list임의면제금지. nested/repeatedscope·복수refs·순서변경·TXT/PDF/가능하면DOCX source-span/원본불변대조추가.
-- 많은fake/child/미종결heading에도forward O(N)/새처리0.1budget·기존parser전체시간과분리. gap/date/amount/listmissing 모집단/규칙변경0·실질prose충돌/날짜/인용/괄호/Unicode/물리경계/가지별격리보호유지. inferred-table gap은별도잔여제품보류·진단3 expected0보존·자동strictxfail추가없음. private어휘/경고삭제/기준완화금지. 설계승인≠원인/정식수용증명.
-
-## 최신 공개 사전보류 뒤 적용
-
-- A: 32a/cfec는 새source-resolution 초선형 및other-event/possessor 동일성 P2로보류·정식private미실행. 승인5203/6105568141의source index·early conflict·actualworkaccounting과양쪽unknownqualification abstention만보완. 456expectations/source-state불변·당사자/사건낱말예외금지.
-- C: a393/97c는 numbereditemprefix의cand-relative→rawparagraph quote-mask 좌표불일치 P2로보류·정식AFP미실행. 승인250318/6105568716에따라original first-item absolute reference_span→paragraph origin완전coverage증명·불명scope기여0. 원래786expectations/rows/title/date/legacy불변.
-- 이전formal1a/30a 불수용은그대로이며새제품최종SHA와완료CI·독립공개delta 뒤원래수용기준으로판정한다. 새로운제품범위/가격작업/기준완화없음.
+## 경로 C: TK73 최소연속성 보완
+- #79 현재74d85b/제품28f2edd·관련817PASS/원래815불변. exactCI38113643591/점수38113643595 진행중. 원래formal30a AFP3/필수0 불수용5481848611 유지·새formalAFP미실행.
+- 이전a357 호환보호독립actualTXT/PDF/DOCX30 PASS, ［］3 row-free는 A보존근거아님. 새74runtime최대.0025초/bool1296조합/원본rows15 불변이나연속성P2보류6105693708.
+- c53ae13776c48d3c50d921ab5df0dc5bbfc7c66f 승인6105703232: original 모든item-origin reference순서를 witness view에보존, protected/불명origin/범위누락을UNKNOWNstop으로처리하고뒤항목건너뛰기금지. role key/exemption view만verified/unprotected filter. 원래817expects/source/rows·정확Boolean existinggrammar/runtime회복유지·parser/어휘/입력범위확장0.
+- source-covered genericenumerated목록·≥2연속reference-colon·독립peer/ancestor 종료, 원래in_section/sticky/TK64 그대로. rawglyph/sourceproof로만인증·NFKC생성구문/합성join/unknownorigin/oneentry/unclosed/childonly fallback. ancestor narrative면제없음·sibling 다음heading까지만·exactparty/number/branch등록key만 제외. conflictinginventory/미등록key/no-listbody의A 유지. 인용/fullwidth/불릿absolute좌표/continuation/physical-source gap/날짜/amount/gap/listmissing 보호유지.
+- inferred-table 진단3 expected0실패+12통과는별도잔여/제품보류·자동strictxfail없음. private어휘/경고삭제/기준완화금지.
 
 ## 제출
-정확최종SHA의 바꾼것·남은것·검토요청3줄을PR에남긴다. 구현측verify_all미실행. 동일SHA필수CI끝난뒤평가측정식판정. 새실패/잔여/미측정은사실대로기록하며공개시험green으로전체해소/배포를주장하지않는다.
-
-
-## 14:02 KST 현행 후보와 최소 잔여
-
-- A 최종후보0c09885/제품5b998ee·관련465 PASS·독립actualTXT13 PASS, exactCI38113014109 진행중/점수38113014100 SUCCESS. 제품동결·완료CI/3줄 요청 후 원래20+고정18 및 actualTXT20 판정. 아직 미수용·미통합.
-- C 후보a357716/제품e387df1·관련815 PASS·독립actualTXT/PDF/DOCX30 호환 보호 PASS. ［］3 row-free는 A보존증명 아님. 추가 long reference label runtime 반례2 새helper .604/.571초, 기존TK64 14 PASS. 설계f01c876 승인6105661781의 정확 기존문법 Boolean·원래 item absolute reference_span 재사용·원래좌표 보호prefix계수만 최소보완. 원래815기대값/rows/source 유지·불명origin/row-free UNKNOWN·기존parser와새처리비용 구분. 최종SHA CI/3줄 후 원래AFP0 수용 판정.
-- 범위확장/가격PR 재개/기준완화 없이 미배포 TK 완료와 릴리스에 집중한다. 기존正式1a/30a 불수용 기록 유지.
+정확최종SHA의바꾼것·남은것·검토요청3줄을PR에등록한다. 같은SHA 필수CI완료와독립공개delta뒤원래기준으로정식판정. 구현verify_all미실행. 미측정/잔여는사실대로기록·공개green으로전체해소/배포주장금지.
