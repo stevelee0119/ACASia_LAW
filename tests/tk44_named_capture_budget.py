@@ -19,6 +19,8 @@ class CaptureBudget:
         self.decoded_chars=self.raw_cache_bytes=self.retained_chars=0
         self.exceeded=False;self.inspection_complete=True
         self.availability_queries=self.resolution_failures=0
+        self.unsupported_actualtext_values=self.actualtext_absent=0
+        self.selected_property_missing=self.selected_property_invalid=0
 
     def fail(self):
         self.exceeded=True;self.inspection_complete=False
@@ -35,12 +37,15 @@ class CaptureBudget:
             self.fail();return None
         self.reference_fetches+=1
         try: value=ref.resolve()
-        except Exception: value=None;self.inspection_complete=False
+        except Exception: value=None
+        if value is None:
+            self.resolution_failures+=1;self.inspection_complete=False
         self.references[key]=value
         return value
 
     def entry(self,raw):
-        if not isinstance(raw,bytes): return None
+        if not isinstance(raw,bytes):
+            self.unsupported_actualtext_values+=1;self.inspection_complete=False;return None
         key=id(raw)
         if key in self.decoded:
             self.decode_hits+=1;return self.decoded[key][1]
@@ -73,6 +78,9 @@ class CaptureBudget:
         if end<len(text): self.inspection_complete=False
 
     def strict(self,raw):
+        # Certification rejection is separate from inspection of the resolved
+        # indirect string. Do not report it as a missed inspection source.
+        if not isinstance(raw,bytes): return None
         value=self.entry(raw)
         return value[1] if value else None
 
@@ -91,4 +99,8 @@ class CaptureBudget:
                     retained_inspection_chars=self.retained_chars,budget_exceeded=self.exceeded,
                     inspection_complete=self.inspection_complete,availability_queries=self.availability_queries,
                     resolution_failures=self.resolution_failures,
+                    unsupported_actualtext_values=self.unsupported_actualtext_values,
+                    actualtext_absent=self.actualtext_absent,
+                    selected_property_missing=self.selected_property_missing,
+                    selected_property_invalid=self.selected_property_invalid,
                     inspection_scope='SELECTED_PAGE_NAMED_PROPERTIES')

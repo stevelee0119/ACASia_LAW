@@ -99,9 +99,18 @@ def activation_adapter():
                     # Inspection and strict certification are separate: an
                     # indirect string may be inspected but remains uncertified.
                     if not self.device.form_depth:
-                        raw=resolve(selected.get('ActualText'))
-                        capture.inspect(raw)
+                        if 'ActualText' in selected:
+                            raw=resolve(selected['ActualText'])
+                            capture.inspect(raw)
+                        else:
+                            capture.actualtext_absent+=1
                     props=selected
+                elif not self.device.form_depth:
+                    capture.inspection_complete=False
+                    if isinstance(properties,dict) and name not in properties:
+                        capture.selected_property_missing+=1
+                    else:
+                        capture.selected_property_invalid+=1
                 self.device.resource_hops+=len(hops)
             self.device.pending_named=witness is not None
             provider._Interpreter.do_BDC(self,tag,props)
