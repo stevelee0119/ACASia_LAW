@@ -7,7 +7,7 @@ from reportlab.pdfgen.canvas import Canvas
 from packages.document_engine import pdf_parser
 from packages.document_engine.reading_text import build_reading_text
 from packages.adversarial_engine.scanner import scan_document
-from test_tk44_actualtext_provider import _parse
+from tk44_named_public_baseline import _parse
 from test_tk44_named_actualtext_activation_spike import activation_adapter
 
 

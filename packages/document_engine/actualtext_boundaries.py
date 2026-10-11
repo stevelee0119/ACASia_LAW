@@ -1,7 +1,8 @@
 """Conservative inline Span replacement-to-original-glyph boundary evidence.
 
 This provider is independent of layout fullness and lexical word segmentation.
-Named properties, Form content and any unproved scope/rendering stay unsupported.
+PAGE named properties are resolved locally. Form content and any unproved
+scope/rendering stay unsupported; inspection is separate from certification.
 """
 from __future__ import annotations
 
@@ -13,8 +14,10 @@ from typing import Any
 
 from pdfminer.converter import PDFPageAggregator
 from pdfminer.pdfinterp import PDFPageInterpreter
-from pdfminer.psparser import literal_name
+from pdfminer.pdftypes import PDFObjRef
+from pdfminer.psparser import PSLiteral, literal_name
 from pdfminer.utils import PDFDocEncoding
+from .named_actualtext_capture import NamedActualTextCapture
 
 MAX_DEPTH = 32
 MAX_GLYPHS = 500_000
@@ -41,8 +44,11 @@ def _strict_text(value: Any) -> str | None:
 
 
 class _Device(PDFPageAggregator):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, named_capture=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.named_capture = named_capture
+        self.named_witness = None
+        self.resource_queries = self.resource_hops = self.resource_max_hops = 0
         self.contexts, self.stack, self.glyphs = [], [], []
         self.form_depth = 0
         self.unsafe_graphics = False
@@ -61,6 +67,21 @@ class _Device(PDFPageAggregator):
             self.over_budget = True
             return
         name = literal_name(tag)
+        if self.named_capture is not None and self.named_witness is not None and isinstance(props, dict) and 'ActualText' in props:
+            capture = self.named_capture
+            if not capture.context():
+                self.over_budget = True
+                self.stack.append({'closed': False, 'unknown': True, 'eligible': False,
+                                   'ancestors': tuple(self.stack), 'glyphs': []})
+                return
+            actual = capture.strict(props['ActualText'])
+            self.over_budget |= capture.exceeded
+            context = {'closed': False, 'unknown': name != 'Span' or actual is None or 'OC' in props,
+                       'actual': actual, 'ancestors': tuple(self.stack), 'glyphs': [], 'eligible': True,
+                       'id': len(self.contexts), 'resource_witness': self.named_witness}
+            self.contexts.append(context)
+            self.stack.append(context)
+            return
         unknown = name == 'OC' or (props is not None and not isinstance(props, dict))
         context = {'closed': False, 'unknown': unknown, 'actual': None,
                    'ancestors': tuple(self.stack), 'glyphs': [], 'eligible': True}
@@ -152,6 +173,69 @@ class _Interpreter(PDFPageInterpreter):
         super().init_state(ctm)
         self._unsafe_stack = []
 
+    def process_page(self, page):
+        capture = self.device.named_capture
+        if capture is None:
+            return super().process_page(page)
+        capture.begin_page()
+        completed = False
+        try:
+            result = super().process_page(page)
+            completed = True
+            return result
+        finally:
+            capture.end_page(completed)
+
+    def do_BDC(self, tag, props):
+        capture = self.device.named_capture
+        witness = None
+        if capture is not None and isinstance(props, PSLiteral) and not self.device.form_depth:
+            capture.named_selection_requests += 1
+            self.device.resource_queries += 1
+            hops = []
+            scope = (self.device.pageno, id(self.resources))
+            def resolve(value):
+                seen = set()
+                depth = 0
+                while isinstance(value, PDFObjRef):
+                    identity = (id(value.doc), value.objid)
+                    if identity in seen or len(hops) == 8:
+                        capture.resolution_failures += 1
+                        capture.inspection_complete = False
+                        return None
+                    seen.add(identity)
+                    hops.append(value.objid)
+                    depth += 1
+                    self.device.resource_max_hops = max(self.device.resource_max_hops, depth)
+                    value = capture.reference(value, scope)
+                return value
+            resources = resolve(self.resources)
+            properties = resolve(resources.get('Properties')) if isinstance(resources, dict) else None
+            name = literal_name(props)
+            selected = resolve(properties.get(name)) if isinstance(properties, dict) else None
+            if isinstance(selected, dict):
+                witness = {'name': name, 'object_reference_chain': list(hops),
+                           'scope': 'CURRENT_INTERPRETER_RESOURCES', 'max_reference_depth': 8}
+                if 'ActualText' in selected:
+                    capture.inspect(resolve(selected['ActualText']))
+                else:
+                    capture.actualtext_absent += 1
+                props = selected
+            else:
+                capture.inspection_complete = False
+                if isinstance(properties, dict) and name not in properties:
+                    capture.selected_property_missing += 1
+                else:
+                    capture.selected_property_invalid += 1
+            self.device.resource_hops += len(hops)
+        self.device.named_witness = witness
+        try:
+            super().do_BDC(tag, props)
+        finally:
+            self.device.named_witness = None
+        if capture is not None:
+            self.device.over_budget |= capture.exceeded
+
     def do_q(self):
         self._unsafe_stack.append(self.device.unsafe_graphics)
         super().do_q()
@@ -235,25 +319,52 @@ def _occluded(device):
                     'paint_bucket_binary_queries': queries}
 
 
-def inline_actualtext_edges(page, chars: list[dict[str, Any]], lines: list[list[dict[str, Any]]], *, excluded_glyphs=frozenset()):
+def _named_available(page, capture):
+    capture.availability_queries += 1
+    seen, hops = set(), 0
+    def resolve(value):
+        nonlocal hops
+        while isinstance(value, PDFObjRef):
+            identity = (id(value.doc), value.objid)
+            if identity in seen or hops == 8:
+                capture.resolution_failures += 1
+                capture.inspection_complete = False
+                return None
+            seen.add(identity)
+            hops += 1
+            value = capture.reference(value, (page.page_number, 'AVAILABILITY'))
+        return value
+    resources = resolve(page.page_obj.resources)
+    properties = resolve(resources.get('Properties')) if isinstance(resources, dict) else None
+    return isinstance(properties, dict)
+
+
+def inline_actualtext_edges(page, chars: list[dict[str, Any]], lines: list[list[dict[str, Any]]], *, excluded_glyphs=frozenset(), named_capture=None):
     """Return certified line-edge records and deterministic mapping accounting.
 
     Each source character is indexed once; nested associations are bounded by
     MAX_DEPTH. No per-boundary whole-page scans or duplicate logical text records.
     Exceptions/capabilities unavailable return no proof, without parse warnings.
     """
-    if not chars or getattr(page, 'rotation', 0):
-        return {}, None
+    capture = named_capture if named_capture is not None else NamedActualTextCapture()
     try:
-        if not any(b'/ActualText' in stream.get_data() for stream in page.page_obj.contents):
-            return {}, None
-        device = _Device(page.pdf.rsrcmgr, pageno=page.page_number, laparams=page.pdf.laparams)
+        if not any(b'/ActualText' in stream.get_data() for stream in page.page_obj.contents) and not _named_available(page, capture):
+            capture.inspection_unavailable_pages += 1
+            return {}, {'version': 1, 'provider': 'INLINE_SPAN_ACTUALTEXT', 'certified_edges': 0,
+                        'inspection_unavailable': True, 'document_capture_snapshot': capture.snapshot()}
+        device = _Device(page.pdf.rsrcmgr, pageno=page.page_number, laparams=page.pdf.laparams, named_capture=capture)
         _Interpreter(page.pdf.rsrcmgr, device).process_page(page.page_obj)
         accounting = {'version': 1, 'provider': 'INLINE_SPAN_ACTUALTEXT',
                       'original_glyphs': len(chars), 'rendered_glyphs': len(device.glyphs),
                       'source_spans': len(device.contexts), 'association_visits': device.association_visits,
                       'max_depth': MAX_DEPTH, 'over_budget': device.over_budget,
-                      'unbounded_paints': device.unbounded_paints}
+                      'unbounded_paints': device.unbounded_paints,
+                      'resource_queries': device.resource_queries, 'resource_reference_hops': device.resource_hops,
+                      'resource_max_hops': device.resource_max_hops, 'resource_property_entries_scanned': 0,
+                      'document_capture_snapshot': capture.snapshot()}
+        if not chars or getattr(page, 'rotation', 0):
+            accounting.update(certified_edges=0, inspection_only=True)
+            return {}, accounting
         if device.over_budget:
             return {}, accounting
         if not any(context['eligible'] and not context['unknown'] and context['closed']
@@ -333,8 +444,11 @@ def inline_actualtext_edges(page, chars: list[dict[str, Any]], lines: list[list[
                                'previous_glyph_index': left, 'following_glyph_index': right,
                                'separator': separator, 'coverage': 'EXACT_ORIGINAL_GLYPHS',
                                'balanced_scope': True, 'mcid_is_identity': False}
+                if 'resource_witness' in context:
+                    edges[left]['resource_source'] = context['resource_witness']
         accounting['certified_edges'] = len(edges)
         return edges, accounting
     except Exception:
+        capture.inspection_complete = False
         return {}, {'version': 1, 'provider': 'INLINE_SPAN_ACTUALTEXT',
-                    'unsupported': True, 'certified_edges': 0}
+                    'unsupported': True, 'certified_edges': 0, 'document_capture_snapshot': capture.snapshot()}

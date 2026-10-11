@@ -8,7 +8,7 @@ from reportlab.pdfbase.pdfdoc import PDFDictionary, PDFString, PDFName
 from reportlab.pdfgen.canvas import Canvas
 
 from packages.document_engine import actualtext_boundaries as provider
-from test_tk44_actualtext_provider import _parse
+from tk44_named_public_baseline import _parse
 
 
 def bounded_resolve(value, limit=8):
