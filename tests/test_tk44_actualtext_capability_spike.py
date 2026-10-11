@@ -22,22 +22,28 @@ from packages.document_engine.pdf_parser import PdfParser
 
 def _pdf(path, *, width=595, font='HYSMyeongJo-Medium', size=12,
          logical='자료는 새문서로 정리된다.', mode='inline', direct_space=False,
-         unrelated=0):
+         unrelated=0, render_mode=None):
     pdfmetrics.registerFont(UnicodeCIDFont(font))
     canvas = Canvas(str(path), pagesize=(width, 842), pageCompression=1)
     canvas.setFont(font, size)
     prop = '<< /MCID 0 /ActualText <FEFF' + logical.encode('utf-16-be').hex() + '> >>'
+    if mode == 'named-outer':
+        canvas.addLiteral('/Span /UnknownOuter BDC')
+    if mode == 'outer-unclosed':
+        canvas.addLiteral('/P BMC')
     if mode == 'named':
         canvas.addLiteral('/Span /NamedProperty BDC')
     elif mode != 'untagged':
-        canvas.addLiteral('/Span ' + prop + ' BDC')
-    canvas.drawString(72, 700, '자료는 새' + (' ' if direct_space else ''))
+        canvas.addLiteral(('/Div ' if mode == 'nonspan' else '/Span ') + prop + ' BDC')
+    canvas.drawString(72, 700, '자료는 새' + (' ' if direct_space else ''), mode=render_mode)
     if mode == 'nested':
         canvas.addLiteral('/Span ' + prop + ' BDC')
-    canvas.drawString(72, 700 - size * 1.5, '문서로 정리된다.')
+    canvas.drawString(72, 700 - size * 1.5, '문서로 정리된다.', mode=render_mode)
     if mode == 'nested':
         canvas.addLiteral('EMC')
-    if mode != 'untagged':
+    if mode not in {'untagged', 'unclosed'}:
+        canvas.addLiteral('EMC')
+    if mode == 'named-outer':
         canvas.addLiteral('EMC')
     for i in range(unrelated):
         canvas.drawString(72, 550 - i * 24, '별도 문단을 살펴본다.')
@@ -52,7 +58,8 @@ class _MarkedDevice(PDFPageAggregator):
         self.unsupported = []
 
     def begin_tag(self, tag, props=None):
-        context = None
+        context = {'closed': False, 'unknown': False, 'has_actual': False,
+                   'ancestors': list(self.stack)}
         if isinstance(props, dict) and 'ActualText' in props:
             raw = props['ActualText']
             text = None
@@ -62,16 +69,19 @@ class _MarkedDevice(PDFPageAggregator):
                     text = raw[2:].decode('utf-16-be')
                 except UnicodeDecodeError:
                     pass
-            context = {'invocation': len(self.spans), 'tag': literal_name(tag),
-                       'mcid': props.get('MCID'), 'logical': text, 'glyphs': []}
+            context.update(invocation=len(self.spans), tag=literal_name(tag),
+                           mcid=props.get('MCID'), logical=text, glyphs=[], has_actual=True,
+                           unknown=literal_name(tag) != 'Span' or text is None,
+                           inherited_unknown=any(parent['unknown'] for parent in self.stack))
             self.spans.append(context)
         elif props is not None and not isinstance(props, dict):
             self.unsupported.append('NAMED_PROPERTY_NOT_RESOLVED')
+            context['unknown'] = True
         self.stack.append(context)
 
     def end_tag(self):
         if self.stack:
-            self.stack.pop()
+            self.stack.pop()['closed'] = True
         else:
             self.unsupported.append('UNBALANCED_MARKED_CONTENT')
 
@@ -81,7 +91,7 @@ class _MarkedDevice(PDFPageAggregator):
         index = len(self.glyphs)
         self.glyphs.append(glyph)
         for context in self.stack:
-            if context is not None:
+            if context['has_actual']:
                 context['glyphs'].append(index)
         return advance
 
@@ -119,6 +129,10 @@ def _observe(path):
         if len(target) != 2 or len(candidates) != 1:
             return answer
         span = candidates[0]
+        if (not span['closed'] or span['unknown'] or span['inherited_unknown']
+                or any(not parent['closed'] for parent in span['ancestors'])):
+            answer['reason'] = 'UNPROVED_MARKED_CONTENT_SCOPE'
+            return answer
         mapped = [mapping[i] for i in span['glyphs']]
         ordered = [source[id(c)] for line in target for c in line]
         if mapped != ordered or any(i is None for i in mapped):
@@ -126,6 +140,20 @@ def _observe(path):
             return answer
         if any(sum(i in other['glyphs'] for other in device.spans) != 1 for i in span['glyphs']):
             answer['reason'] = 'OVERLAPPING_LOGICAL_SOURCES'
+            return answer
+        doc = parse_document(str(path), document_id='generated', filename=path.name,
+                             mime_type='application/pdf', sha256='generated')
+        usable = [line['glyph_boundary_evidence']['source_glyph_indices']
+                  for block in doc.blocks if block.visible and block.source_layer == 'visible_text'
+                  for line in block.attributes.get('lines', [])
+                  if line.get('glyph_boundary_evidence', {}).get('usable')]
+        if any(not any(set(indices) <= set(row) for row in usable)
+               for indices in [[source[id(c)] for c in line] for line in target]):
+            answer['reason'] = 'UNPROVED_VISIBLE_SOURCE'
+            return answer
+        if any(c['x0'] < 0 or c['x1'] > page.width or c['top'] < 0
+               or c['bottom'] > page.height for line in target for c in line):
+            answer['reason'] = 'SOURCE_OUTSIDE_PAGE'
             return answer
         left, right = [''.join(c['text'] for c in line) for line in target]
         logical = span['logical']
@@ -187,3 +215,18 @@ def test_visually_identical_untagged_boundary_cannot_be_resolved_from_geometry(t
     assert _observe(path)['state'] == 'UNKNOWN'
     with pdfplumber.open(path) as pdf:
         assert all(c['mcid'] is None for c in pdf.pages[0].chars)
+
+
+@pytest.mark.parametrize('mode,render_mode,reason', [
+    ('inline', 3, 'UNPROVED_VISIBLE_SOURCE'),
+    ('unclosed', None, 'UNPROVED_MARKED_CONTENT_SCOPE'),
+    ('named-outer', None, 'UNPROVED_MARKED_CONTENT_SCOPE'),
+    ('outer-unclosed', None, 'UNPROVED_MARKED_CONTENT_SCOPE'),
+    ('nonspan', None, 'UNPROVED_MARKED_CONTENT_SCOPE'),
+])
+def test_audit_scope_and_visibility_opposites(tmp_path, mode, render_mode, reason):
+    path = tmp_path / 'audit-opposite.pdf'
+    _pdf(path, mode=mode, render_mode=render_mode)
+    evidence = _observe(path)
+    assert evidence['state'] == 'UNKNOWN'
+    assert evidence['reason'] == reason
