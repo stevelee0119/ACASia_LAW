@@ -17,14 +17,21 @@ def test_public_original_attachment_survives_actual_format_pipeline(tmp_path, fi
     text = LEAD + first + ' 변제공탁을 완료하였으므로' + LIMIT
     path = tmp_path / ('attachment.' + kind)
     if kind == 'pdf':
-        import fitz
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        from reportlab.pdfgen import canvas
 
-        pdf = fitz.open()
-        page = pdf.new_page(width=width, height=842)
-        page.insert_text((36, 48), '청구원인', fontname='korea', fontsize=12)
-        page.insert_text((36, 84), text, fontname='korea', fontsize=6)
-        pdf.save(path)
-        pdf.close()
+        font = 'HYSMyeongJo-Medium'
+        try:
+            pdfmetrics.getFont(font)
+        except KeyError:
+            pdfmetrics.registerFont(UnicodeCIDFont(font))
+        pdf = canvas.Canvas(str(path), pagesize=(width, 842))
+        pdf.setFont(font, 12)
+        pdf.drawString(36, 842 - 48, '청구원인')
+        pdf.setFont(font, 6)
+        pdf.drawString(36, 842 - 84, text)
+        pdf.save()
         mime = 'application/pdf'
     else:
         from docx import Document
