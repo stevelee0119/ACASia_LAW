@@ -189,3 +189,25 @@ def test_synthetic_title_locator_and_narrative_offsets_after_prefix_projection(t
         absolute = origin['reading_span'][0] + offset
         assert reading.text[absolute + start:absolute + end] == view['comparison_text'][start:end]
     assert not _duplicates(doc)
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+@pytest.mark.parametrize('section', [False, True])
+@pytest.mark.parametrize('literal,other', [('.NET기록', 'NET기록'), ('-계약안', '계약안'),
+                                        (')점검표', '점검표')])
+def test_synthetic_unspaced_separator_is_not_proven_reference_notation(tmp_path, extension, section,
+                                                                      literal, other):
+    doc = _parsed(tmp_path, extension, (['입증방법'] if section else []) + [
+        f'갑 제1호증 {literal}', f'갑 제1호증 {other}: 보관 순서를 설명한다.', '첨부서류'])
+    found = _duplicates(doc)
+    assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+@pytest.mark.parametrize('section', [False, True])
+@pytest.mark.parametrize('prefix,title', [('. ', 'NET기록'), ('- ', '계약안'), (') ', '점검표')])
+def test_synthetic_observed_separator_space_proves_reference_boundary(tmp_path, extension, section,
+                                                                    prefix, title):
+    doc = _parsed(tmp_path, extension, (['입증방법'] if section else []) + [
+        f'갑 제1호증 {prefix}{title}', f'갑 제1호증 {title}: 보관 순서를 설명한다.', '첨부서류'])
+    assert not _duplicates(doc)
