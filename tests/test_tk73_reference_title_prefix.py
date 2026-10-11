@@ -151,7 +151,7 @@ def test_synthetic_long_actual_prefix_and_shared_branches_stay_bounded(tmp_path)
     assert len(rows) == 2 and rows[0]['name'] == '점검기록'
     assert all(len(row['branches']) == 999 for row in rows)
     started = time.perf_counter()
-    assert not _numbering(doc, rows)
+    assert len(_numbering(doc, rows)) == 999
     assert time.perf_counter() - started < 0.1
 
 
@@ -211,3 +211,15 @@ def test_synthetic_observed_separator_space_proves_reference_boundary(tmp_path, 
     doc = _parsed(tmp_path, extension, (['입증방법'] if section else []) + [
         f'갑 제1호증 {prefix}{title}', f'갑 제1호증 {title}: 보관 순서를 설명한다.', '첨부서류'])
     assert not _duplicates(doc)
+
+
+def test_synthetic_long_observed_space_prefix_and_shared_branches_stay_bounded(tmp_path):
+    line = '갑 제1호증의 1~999 ' + '.' * 50000 + ' 점검기록'
+    doc = _parsed(tmp_path, 'txt', ['입증방법', line,
+        '갑 제1호증의 1~999 점검기록: 순서를 설명한다.', '첨부서류'])
+    rows = exhibit_rows(doc)
+    assert len(rows) == 2 and rows[0]['name'] == '점검기록'
+    assert all(len(row['branches']) == 999 for row in rows)
+    started = time.perf_counter()
+    assert not _numbering(doc, rows)
+    assert time.perf_counter() - started < 0.1
