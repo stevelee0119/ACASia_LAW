@@ -38,3 +38,12 @@ TK45 최소보완8165749 좁은후속actualTXT14 감사PASS: 필요/권리 정�
 
 
 TK73 74d85b 최소runtime delta 독립감사 보류6105693708: actualTXT/PDF/DOCX3 중간인용ref뒤항목을두번째연속entry로인증해a357 A1→74 A0. role filter를entry증거순서와합침이원인. bool1296공개조합일치·긴1k/2k/4k helper최대.0025초/scope0·실제파일15 원본rows/source불변은별도통과. c53 continuity설계승인6105703232·rootactual3format FAIL직접재현·protected/UNKNOWN stop보존 및keyfilter분리 최소보완중. 비공개/whole/봉인 미실행.
+
+
+## 14:32 KST TK73 연속성 최종 공개 점검
+
+- 제품95e11e5/보고9ab6764 독립actualTXT/PDF/DOCX15 PASS. 이전 중간인용ref 3형식 A1 복구, origin/span누락·범위밖·wrongorigin UNKNOWNstop 유지, 같은span의다수번호 singleentry·일반2refs/quote/bullet 대조 보존. 생성block_id 제외 원래rows/source 불변. related823·원래817 expects불변. 공개좁은delta 감사이며 원래AFP/whole/봉인 수용을 대신하지 않는다.
+- exact CI38114012034 attempt1에서 변경하지 않은 TK71 PG 0.749669초 및 TK24 SQLite 0.211590초가 기존0.1초 상한 실패. 각각 source/test start5dea 대비diff0·격리 candidate9ab/start5dea 모두PASS를 확인했다. 원본실패 보존·상한/시험/제품수정0·같은SHA 실패job만1회 재실행중. 점수38114012021 및 Docker SUCCESS와 전체CI성공을 구분한다.
+
+
+TK45 제품58200ca/보고441249b 공개좁은감사 보류: 앞조건절이comma/semicolon source boundary로국소prefix밖이되며새reference선택이무조건정상경고0으로바뀜. 독립조건comma2·semicolon1에서기준0c warning1→0, root comma1 직접재현. 다른actualTXT26은 원래observation state/reason/identity/span불변·의도정상5만1→0·반대21판정보존. 별도단독검토한경우구조는root warning1/context0 보존되어fail로확대하지않음. 승인ea80의condition보호계약 내최소source-index guard 및unconditional punctuation 정상대조유지 메모대기. formal20/18·whole·봉인 미실행.

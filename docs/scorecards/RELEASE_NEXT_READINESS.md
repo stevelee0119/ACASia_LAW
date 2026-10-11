@@ -6,7 +6,7 @@
 |---|---|
 | 기존8TK | 24·43·56·69·70·72·74·75, Steve5dea에 기술수용/병합·운영미배포 |
 | 잔여6TK 목표 | 44·45·49·55·57·73. #78/#81/#82/#86 수용분만 평가통합. TK44/49 직접SPACE·UNKNOWN진단 및 TK55 first-party 경계는 제한범위이며 역사적UNKNOWNprimary/legacy역할 잔여를 완전해소로 기록하지 않음 |
-| 최종 미수용 | TK45 #84 0c09885 exactCI 성공/원래20 8/8·7/8·1/4(actualTXT 동일) 불수용5481987480; configured identity2로same-identity link 미도달, 새설계필수. TK73 #79 74d85b 공개continuity P2actual3format A1→0 보류; c53승인최소보완중, 원래formal30a AFP3/필수0 불수용유지. 미통합·새봉인미실행 |
+| 최종 미수용 | TK45 #84 441249b/58200ca 독립source-bound reference 구현·관련521·앞조건 comma/semicolon scope P2로공개감사HOLD·최소guard대기; 이전0c 원래20 정상7/8 불수용 보존. TK73 #79 9ab6764/95e11e5 공개연속성15 PASS/관련823; exactCI attempt1 시간시험2 실패 원본보존·같은SHA 실패job1회 재실행중·원래AFP0 미평가. 둘다 미통합·새봉인미실행 |
 | 독립 감사 | 기존8TK [감사](RELEASE_AUDIT_73_74.md), 추가수용분/최종공개후보 [10시간 감사](RELEASE_10H_PUBLIC_AUDIT.md). 공개감사는 비공개/봉인/전체 수용을 대신하지 않음 |
 | 전체 verify_all | 최종수용 통합 후보에서 full1회 예정. 아래ba12 원본exit1/환경보완 이력은 이전8TK 증거로 보존하며 새후보 full통과로 사용하지 않음 |
 | 통합 SHA CI | 수용제품8446107 및 기록전용69553cc 모두 exactCI/점수 SUCCESS(695:38109108790/38109108770). 후속45/73 포함 최종SHA CI는 별도이며 미완료 |
