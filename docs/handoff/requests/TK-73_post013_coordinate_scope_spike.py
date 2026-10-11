@@ -49,7 +49,11 @@ def inspect(doc,path):
         group=row.get('line_group');identities=[(row['party'],row['number'],b) for b in row['branches'] or [None]]
         for identity in identities:
             matches=by_occurrence.get((group[0],tuple(group[1]),identity),[]) if group else []
-            if not row.get('from_lines') or len(matches)!=1 or not matches[0][4]:unplaced.add(identity)
+            if not row.get('from_lines') or len(matches)!=1 or not matches[0][4]:
+                unplaced.add(identity);continue
+            record=matches[0]
+            native_value=record[2][record[5].end():] if record[3]['inventory'] and record[5] else record[2].strip()
+            if s.key(row.get('name',''))!=s.key(native_value):unplaced.add(identity)
     candidates=[]
     for identity,defs in definitions.items():
         eq=equalities.get(identity,[])
@@ -74,12 +78,13 @@ def inspect(doc,path):
 def run(directory):
     out=[]
     for extension in ('txt','pdf','docx'):
-        for n,(title,location) in enumerate((('점검기록','7쪽.'),('작업대장','3-5페이지.'),('관측도면','12행.'))):
-            for mode in ('same','different_title','qualifier','unit_prefix','negative_equality','quoted','global_conflict','missing_equality','other_parent'):
+        for n,(base_title,location) in enumerate((('점검기록','7쪽.'),('작업대장','3-5페이지.'),('관측도면','12행.'))):
+            for mode in ('same','different_title','qualifier','unit_prefix','negative_equality','quoted','global_conflict','missing_equality','other_parent','coordinate_title_difference','date_unknown','compat_equality'):
+                title=base_title+', 7쪽' if mode=='coordinate_title_difference' else base_title+' [2024. 1. 2.]' if mode=='date_unknown' else base_title
                 loc=location+' 추가 조건' if mode=='qualifier' else '7행성.' if mode=='unit_prefix' else location
-                lines=['1. 자료 제출','가. 공개 자료 목록',f'갑 제1호증: {title}, {loc}','을 제2호증: 비교자료, 9쪽.','나. 자료 확인',f'갑 제1호증 {title+" 추가" if mode=="different_title" else title}','다. 대응 정리']
+                lines=['1. 자료 제출','가. 공개 자료 목록',f'갑 제1호증: {title}, {loc}','을 제2호증: 비교자료, 9쪽.','나. 자료 확인',f'갑 제1호증 {title+" 추가" if mode=="different_title" else base_title if mode=="coordinate_title_difference" else title}','다. 대응 정리']
                 if mode=='other_parent':lines[-1]='2. 별도 정리'
-                if mode!='missing_equality':lines.append(f'{title} {"≠" if mode=="negative_equality" else "="} 갑 제1호증')
+                if mode!='missing_equality':lines.append(f'{title} {"≠" if mode=="negative_equality" else "＝" if mode=="compat_equality" else "="} 갑 제1호증')
                 if mode=='global_conflict':lines.insert(4,f'갑 제1호증: {title}, 8쪽.')
                 lines+=['라. 종료 구역','첨부서류']
                 if mode=='quoted':lines=['「']+lines+['」']
