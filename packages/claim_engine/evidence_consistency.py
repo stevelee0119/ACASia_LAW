@@ -592,7 +592,14 @@ def _duplicate_comparison_text(row: Dict[str, Any]) -> Tuple[str, str, List[Dict
         prefix_end = match.end()
         prefix = first["text"][:prefix_end]
         projected_prefix = unicodedata.normalize("NFKC", prefix)
-        if separated and normalized.startswith(projected_prefix):
+        physical = first["sources"][0]
+        physical_reading = physical.get("reading_span")
+        original_prefix = (physical_reading and not physical.get("physical_lines")
+                           and physical_reading[0] <= reading[0]
+                           and reading[0] + prefix_end <= physical_reading[1])
+        # A reading item may span blocks: its joining spaces are not source
+        # glyphs. Reconstructed blocks lack an original character mapping here.
+        if original_prefix and separated and normalized.startswith(projected_prefix):
             left = max(left, len(projected_prefix))
             origins[0]["reference_title_prefix"] = {
                 "text": prefix, "raw_span": (0, prefix_end),
