@@ -1,4 +1,6 @@
-# TK45 직접 원문 부정·효과 증분 제출 기록
+# TK45 직접 원문 부정·효과 증분 제출 기록 (현재 HOLD)
+
+현재 제품 b582e777b711823a4fb1ed548517993bba4a2697은 원문 heading 앞 UNKNOWN 보호까지 관련152 PASS/3.54s이나, 직접부정 뒤 configured conclusion의 malformed 장공백 초선형 반례로 **HOLD**다. 이전2d/ae 제출 기록은 아래 역사적 결과이며 최종 수용 가능한 tip이 아니다. 새 설계116/47e42d8은 제품diff0·공개 language/mapping59 PASS로 승인 대기다. 정확 최종 CI/3줄 요청은 이 차단 해소 이후 제출한다. source grammar O(R*N) 주장을 철회하고 전체 regex 내부 비용을 계측했다고 주장하지 않는다.
 
 시작 `2a85aa0e043cb6d13993742c2a053a8b048c48d5`, 설계 `5a51dd35dcc8ffb3ccfbc6547d12d7dcf706369b`/PR93 review5483024001, 범위 보완 메모 `97c622d`. 최종 제품 `2d487ad15e2e010b9f81b8755fc0ae5889124b7b`. 이 보고서만 추가한 제출 tip의 제품 diff는 0이다. 최종 diff stat: 7 files, +563/-0. 보호 기대값/설정/의존성/CI/버전/기준선/new rule_id 변경 0.
 
