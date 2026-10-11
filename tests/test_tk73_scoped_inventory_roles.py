@@ -53,3 +53,42 @@ def test_synthetic_inventory_heading_requires_independent_scope_evidence(tmp_pat
     lines += ['갑 제1호증 점검기록: 순서를 설명한다.', '첨부서류']
     found = _duplicates(_parsed(tmp_path, extension, lines))
     assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+@pytest.mark.parametrize('title,other', [('기록: 봄', '기록: 겨울'), ('관측, 동쪽', '관측, 서쪽'),
+                                       ('관측 [2024. 1. 2.]', '관측 [2024. 1. 3.]')])
+def test_synthetic_context_preserves_real_inventory_title_content(tmp_path, extension, title, other):
+    doc = _parsed(tmp_path, extension, ['가. 수집문헌 목록',
+        f'갑 제1호증: {title}, 북쪽 보관 구역. 갑 제1호증: {other}, 별도 제출 부분.',
+        '나. 문헌 검토', f'갑 제1호증 {title}: 순서를 설명한다.', '첨부서류'])
+    found = _duplicates(doc)
+    assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+@pytest.mark.parametrize('label', ['을 제1호증', '갑 제1호증의 2', '갑 제3호증'])
+def test_synthetic_scope_does_not_exclude_other_party_number_or_branch(tmp_path, extension, label):
+    doc = _parsed(tmp_path, extension, ['가. 수집문헌 목록',
+        '갑 제1호증의 1: 점검기록, 북쪽 보관 구역. 갑 제2호증: 배치대장, 별도 제출 부분.',
+        '나. 문헌 검토', f'{label} 표본기록', f'{label} 표본보고', '첨부서류'])
+    found = _duplicates(doc)
+    assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+def test_synthetic_child_heading_does_not_prove_inventory_end(tmp_path, extension):
+    doc = _parsed(tmp_path, extension, ['가. 수집문헌 목록',
+        '갑 제1호증: 점검기록, 북쪽 보관 구역. 갑 제2호증: 배치대장, 별도 제출 부분.',
+        '(1) 내용 설명', '갑 제1호증 점검기록: 순서를 설명한다.', '첨부서류'])
+    assert len(_duplicates(doc)) == 1
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+def test_synthetic_ancestor_boundary_ends_authoritative_parent_context(tmp_path, extension):
+    doc = _parsed(tmp_path, extension, ['1. 제출 경위', '가. 수집문헌 목록',
+        '갑 제1호증: 점검기록, 북쪽 보관 구역. 갑 제2호증: 배치대장, 별도 제출 부분.',
+        '나. 문헌 검토', '갑 제1호증 점검기록: 순서를 설명한다.',
+        '2. 새로운 자료 정의', '갑 제1호증 표본기록', '갑 제1호증 표본보고', '첨부서류'])
+    found = _duplicates(doc)
+    assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
