@@ -68,3 +68,7 @@ TK45 32692f9/최종3736c9e 공개독립actual22(TXT16/PDF3/DOCX3) PASS: 정상4w
 
 - TK73 제품faff1a4a8fc5a400dcd47007e368c2ce7e780cd6·최종214334ddb916a0a856e7a4a55d39cbd180c5ec1a(보고서만차이). 독립 후속에서 기존6 actual TXT/PDF/DOCX 전역 inventory/prose 충돌 모두 A1 복구. 정상/동일반복0, 상이제목/whole weak-caption차이A1, UNKNOWNorigin대안은다른parent인증까지차단. 기존15문서 rows/source/identity는 generatedblockID 제외정확동일·scopeend유지. 기존helper500/1000/2000 약0.003854/0.006897/0.013136초(원래parser/exhibit_rows제외). 좁은공개PASS이며936/CI/비공개/봉인수용을대체하지않음.
 - TK45 최종3736 CI38118075725 양쪽DB완료FAIL: 새PDF생성시험4건에 fitz모듈미설치. SQLite7973PASS/13skip/24xfail·PG7977PASS/9skip/24xfail, Docker·점수38118075720SUCCESS. 원래제품326을바꾸지않고 기존reportlab로 공개fixture생성만보완한다. 시험6개·폭·원문·기대값/기준/의존성/CI유지·skip/xfail추가없음. 이CI실패를면제하지않으며 정식비공개충족여부와분리한다.
+
+### 3389 수용범위 독립 공개 감사 — 2026-10-11
+
+독립 평가 에이전트의 공개 감사 PASS·새 P1/P2 없음·공개 합성7시험 PASS. 844→3389는 문서13개만 변경되고 제품/시험 트리가 같으며 불수용 #84/#79 제품은 포함하지 않았다. 공개54파일 M4는 평가 측 기록의 좁은 원본 전체span 개선 근거를 확인했으며 독립 재측정으로 과장하지 않는다. #78의 이전 SPACE 보호시험/xfail 승격은 평가 승인 기록이 있어 844→3389 동등성과 구별한다. 기존 실행 예산 보호와 기본OFF 코드는 확인하되 실제 운영$40 상한·배포후OFF는 운영자 영수증으로 별도 확인한다. 감사자는 비공개/봉인/전체시험/CI를 재실행하지 않았다.

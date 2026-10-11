@@ -887,3 +887,11 @@ Linux/Python3.11.15/Tesseract5.5.0 kor/network0. CI5.3.4와 차이 명시.
 
 - PR79 214334ddb916a0a856e7a4a55d39cbd180c5ec1a 불수용5482229717. 요청6106394284·exactCI38118526548/점수38118526520/Docker 모두SUCCESS. 평가측 원래4 재실행19.0/29.6/36.2 FP0 유지;20261010 시작15.2/.302/FP3(control3/A3)→25.2/.302/FP1(control1/A1), 기존9ab와동일·필수AFP/control0 미달. 네세트 인젝션방어유지. 공개936/독립GLOBAL실제형식감사PASS는대체불가. 미통합·미배포·새봉인미실행·기준/채점/기대값불변.
 - Linux/Python3.11.15/Tesseract5.5.0 kor/network0, CI5.3.4차이 명시. 기존채점기/4세트 불변·상세는저장소밖보관.
+
+
+### 2026-10-11 16:34 KST — 수용 범위 릴리스 측정3389
+
+- full correctedIPC exit0: 보호1214/원장949/전체6653/브라우저197·실제실패0/strictXPASS0·회귀/점수/하드코딩/보호/버전 게이트0. 原sandbox229reports/화면IPC1실패·TestClient대기로중단된 원본 보존. 운영/후보 화면권한2개각PASS로환경차이구분. exactCI38120524487/점수38120524471/DockerSUCCESS. fixed81.7/79.2/FP0.
+- 봉인 최초1쌍: 9c=3389 28.1/.281/FP0/control0/A0/injectiontrue,8문서57결함·지문1abd74597ec4b25a·같은환경/도구hash·별도Pythonprocess. 성능상승0/원문·정답·문서상세미열람/새세트재시험안함.
+- 같은수용제품 원래법리2/8·8/8·0/4 및TXT동일/18기준유지, retired4 19.0/29.6/36.2/15.2 FP0/0/0/3유지. TK57 PHONE1/54→0/54/RRN0/84/provider0 및narrowactual54M4로 minor0.13판정. 44/49/55부분·45/73불수용잔여보존·미배포.
+- e21정식불수용5482338759: exactCIgreen/요청6106648755,원래8/8·7/8·1/4 정상8미달·actualTXT동일·18불변. 공개815/독립26PASS대체불가.

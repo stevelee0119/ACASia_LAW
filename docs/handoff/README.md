@@ -267,3 +267,5 @@ python scripts/scorecard.py && python scripts/score_gate.py
 - **측정 체계 추가(2026-10-10, 사용자 지시):** 고정 비공개 벤치마크([FIXED_BENCHMARK](../scorecards/FIXED_BENCHMARK.md), 작성 프롬프트 [PROMPT_FOR_CODEX_FIXED_BENCHMARK](PROMPT_FOR_CODEX_FIXED_BENCHMARK.md), `scripts/fixed_benchmark.py`)와 티켓 지표([TICKET_METRICS](../scorecards/TICKET_METRICS.md), 등록부 `ticket_registry.json`, `scripts/ticket_metrics.py`). 초기값: 티켓 74건·회귀 24건·미해결 13건, 주별 회귀 비율 W40 36% → W41 20%.
 
 - **TK-75(2026-10-10 사용자 결정):** [Claude for Legal 한국법 검토 워크플로우](TK-75_claude_legal_korean_workflow.md). 다음 릴리스 포함, TK-72 수용 완료 후 별도 Codex 구현.  실제 모델 A/B 품질·근거·보안·예산 수용 후 활성화.
+
+2026-10-11 16:34 KST 결정: 사용자 “우선 배포부터”에 따라 수용3389 범위만 배포한다. 전체시험·필수CI·독립 공개감사·첫봉인 PASS, 0.13 minor 판정. 버전 반영·최종CI·Steve/main 병합·Render 확인 대기. TK44/45/49/55/73은 완결되지 않았고, 온라인 OFF/ON·한 명 독립 법률 채점은 배포 후 한다.

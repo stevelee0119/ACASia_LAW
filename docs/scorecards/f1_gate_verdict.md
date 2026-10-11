@@ -1710,3 +1710,17 @@ Linux/Python3.11.15/Tesseract5.5.0 kor/network0. CI5.3.4와 차이 명시.
 TK73 출력불변metadata: control rows7/scope1/excluded2/keys4. 남은group1의2rows는기등록key·itemorigin/reference_span유지, inventory內kindNone1와모든narrative interval종료뒤kindprose1. 원문/IDs/좌표 공유0. 문서전역등록key면제·현재interval임의확장금지·별도공개source role/proposition 설계부터.
 
 출력불변 진단: 남은 정상1의 독립요건 identity2와 UNCERTAIN/CHANGED_ARGUMENT·POSITIVE/ASSERTED_REQUIREMENT_REALIZATION 유지. reference_frame 호출0, immediate argument pattern 미일치·기존 event_frame case 존재·predicate_chain 없음. contextual_proposition 생성 전 거절되므로 기존 nominal-modifier/object-tail 설계가 해당 원인을 설명하지 못한다. 원문/식별자/좌표 전달0. 다른 POSITIVE를 이용한 요건 면제나 낱말목록 확장 대신 공개 source 논항·술어 결합 설계부터 재검토.
+
+
+## 2026-10-11 16:34 KST 배포 우선 수용 범위 최종 판정
+
+| 후보/항목 | 판정 | 근거와 한계 |
+| --- | --- | --- |
+| #83 3389e9e5cf55aea55eb8327a3bba463cdc44eac4 | 수용 범위 릴리스 검증 PASS | 제품844와 동일. 기존8TK 및 #78/#81/#82/#86 수용분만 포함, TK45/73 제품 제외. exactCI38120524487·점수38120524471·Docker 모두SUCCESS 인용. 평가측 보정권한 full 종료0: acceptance1214·원장949·전체6653·브라우저197, realfailures/strictXPASS0; 회귀/하드코딩/시험편집/보호/버전게이트0. CI5.3.4와 로컬OCR5.5kor 환경차이 명시. |
+| 실행 환경 원본 | 실패·중단 이력 보존 | 기본명령sandbox Chromium IPC shutdown EPERM·화면1실패/229report 뒤 TestClient portal대기로 중단(종료143). 운영/후보 같은 화면·권한2개는 필요한 IPC실행권한에서 각각PASS. 동일코드/시험/상한으로 완료한full0과 원본미완료를 구분; 성공한검증단계 반복없음. |
+| 수용 범위 기존 비공개 지표 | 운영본 유지 | 원래20 및actualTXT20 2/8·8/8·0/4, 고정18 1/4·4/4·1/4·1/2·1/4. 원래4 retired19.0/29.6/36.2/15.2 FP0/0/0/3 모두injectiontrue. TK45/73 제품이 없는 범위의 유지검증이며 두 티켓 수용목표 통과로 주장하지 않음. #81/#82 개인정보필수·성명·과마스킹/불가림/faithfulrouter gates는 같은844제품 수용판정/결합244를 재사용. |
+| 새 봉인 최초 비교 | PASS, 상승 미확인 | 지문1abd74597ec4b25a, 8문서57결함. 운영9c=후보3389 28.1/.281/FP0·control0·A0, 인젝션방어유지. 양쪽exit0/clean/같은Python3.11.15·OCR5.5kor/network0/scorer/deps/baselinehash. 별도새Pythonprocess, 같은평가LLM세션; 구현/봉인작성역할없음·원문/정답/문서상세 미열람. 반복새봉인시험금지. |
+| 버전 | 0.13.0 minor 판정 | TK57 PHONE1/54→0/54·RRN0/84·provider0 및 공개actual54파일M4/대조 충족에 의한 완전티켓1건해소. 고정/봉인점수상승0. 좁은M4를globalM2/major로확대하지않음. 별도판정서·3파일1버전commit/최종CI대기. |
+| #84 e21c40d | 불수용5482338759·이번범위제외 | 요청6106648755·exactCI38120377539/점수38120377556/DockerSUCCESS. 원래20/actualTXT20 8/8·7/8·1/4로 정상8/8 미달·고정18불변. 공개815/독립26PASS는대체불가. 양쪽attachment fullmatch없어proof/consumer미도달·identity2보존. 원문/어휘/IDs/좌표공유0. |
+| #79 214334d | 불수용5482229717·이번범위제외 | 원래control/A FP1/필수0 미달 유지. 공개936/독립GLOBAL/CI 성공대체불가. 명시name-field+colon feasibility0/4이므로 공개fieldgap은대상원인아님·새제품추가0. |
+| 실제 배포/온라인 | 대기 | 버전commit·최종필수CI·Steve/main 병합·Renderhealth/DB/APIworkerOFF 확인 뒤만 배포등록. 사용자 배포우선승인 적용. 온라인6입력 검증/조건고정은배포후·유료호출전. oneblindlawyer·실제ClaudeOFFON·토큰JSON·끝OFF·정식ON사용자결정. 별도가격/비용조회/증가율조건없음·가격87미병합폐기·기존예산보호유지. |

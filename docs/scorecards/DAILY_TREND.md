@@ -44,4 +44,4 @@
 
 
 
-| 10-11 (한국) | 고정81.7/79.2/0(이전8TK후보); 연락처누락1/54→0/54·RRN0/84; 명시SPACE12/48→48/48·UNKNOWN24; TK45 3736 부정8/8·정상7/8·확장1/4; TK73 214 은퇴19.0/29.6/36.2/25.2·FP0/0/0/1 | 기존8TK Steve병합미배포; #78/#81/#82/#86 제한범위 내용수용·844통합CI성공 | TK45 정상유지/확장개선·TK73 AFP0 미달로 불수용. UNKNOWNprimary/legacy역할 잔여 유지 | 동일SHA CI 인용과 평가측 재실행 구분. TK45 actualTXT동일·새attachment grammar미포괄/시험PDF생성의존성 별도보완; TK73 214 exactCI/독립PASS이나원래AFP1불수용·원래multi-source전체caption 증명설계 대기. 과거full환경실패보존; 최종full/새봉인/배포/OFFON 미완료. f1_gate_verdict 최신절/HISTORY 근거 |
+| 10-11 (한국) | 고정81.7/79.2/0·첫 봉인 운영9c=수용3389 28.1/.281/FP0(8문서57결함·1abd74597ec4b25a) | TK57 PHONE1/54→0/54·공개 실제54파일 M4; 기존8TK+SPACE/PII/UNKNOWN 제한범위 수용·45/73 제외 | 수용범위 새 회귀0·44/49/55 잔여 및45 정상7/8·73 AFP1 불수용 유지 | full acceptance1214/ledger949/full6653/browser197·exactCI/점수SUCCESS·독립 공개PASS·첫 봉인PASS·0.13minor판정. 원래 sandbox IPC 실패/중단 보존·코드/시험/상한 불변·운영/후보 동일 화면·인증2시험 권한보완PASS. 버전commit/배포/온라인 대기; f1/HISTORY16:34절 |
