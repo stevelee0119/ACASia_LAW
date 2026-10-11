@@ -932,3 +932,9 @@ TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/
 - 독립 같은111 재집계: 원래A93·진짜탐지66·false27/nativeTITLE3/invaliddateA9/finding111/111 유지. narrowpending18(true9,false9)/legacy72→expandedguard27(true18,false9)/legacy63; date_guard9만변경·false추가분리0/진짜확인손실+9. guard vs c16 tier변경0. 별도54/117/936 및whole/CI/봉인/유료 독립재실행0.
 - TK55 trace124259 구현측 새245+기존12=257PASS. 독립두producer 기존masked-origin 과차단해소·rootPython3.11 deep1200 READY/예외0 및 원래argument0/claim1 유지. malformed present ranges endpoint/tuple은 decoder ABSTAIN→actual provider/예약1로 새invalid-evidence 경계. 제품86e0변경.
 - TK44/49 named cap ad8d 구현측 관련88PASS/2.49초/제품0·독립cap 감사대기.
+
+### 2026-10-12 06:53 KST — #95·#97 최종 SHA 측정
+
+- #95 5e6e859 평가자 전체1회 exit0: 수용1214/원장949/전체6914/브라우저197·realfail0/strictXPASS0. exactCI38144023479/score38144023440/Docker SUCCESS 인용. 별도 공개actual PDF18파일 PASS·원래 경계/접합/법리 보호 결과 동일. fixed81.7/79.2/FP0·TC06 .357.
+- #97 2f4e798 평가자 전체1회 exit0: 수용1214/원장2357/전체8061/브라우저197·realfail0/strictXPASS0. exactCI38143165314/score38143165365/Docker SUCCESS 인용. 별도 공개actual producer/router27대조 PASS·원래 개인정보 필수/보호 게이트 충족. fixed81.7/79.2/FP0.
+- 로컬 Python3.11.15/Tesseract5.5.0 kor·CI5.3.4 환경차이 명시. 기존 글꼴/테스트IPC 설정 사용·제품/시험/임계값 변경0. 첫#95 full을 중단하지 않고 이전측정CPU잔여3프로세스만 종료; 이전미완료측정은 성공으로 바꾸지 않음. 새 통합/봉인/배포/유료호출0.

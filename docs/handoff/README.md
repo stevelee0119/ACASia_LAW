@@ -260,3 +260,5 @@ python scripts/scorecard.py && python scripts/score_gate.py
 PR77 main `8280a597db40b0905dbacf10c56fa3e9915cafd5`, `v.0.13.0` 배포 완료. 릴리스 head3ad의 필수CI38123137556/점수38123137444/Docker 모두SUCCESS. Render `dep-db5k8uek1f9s73ef0tg0` Live17:11:16KST, health17:11:24KST `0.13.0`/동일SHA/database ok 확인. a4→Steve3ad→main8280 파일 트리 동일, 최초 봉인3389 엔진에는 버전 메타데이터 외 변경없음. 전체/봉인 재실행 없음.
 
 TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/49/55 부분 구현은 배포했으나 전체 티켓은 open/known_open, TK45/73 불수용제품은 제외했다. 완결 잔여5건을 유지한다. TK75 기본OFF 기술범위 배포와 법률 품질을 구별하며 실제 배포후 API/내부worker OFF 영수증 및 서면9/Drive/6쌍 실제OFFON·독립변호사1명·토큰 비교는 아직 미측정이다. 운영자에게 기존05/06의 배포후 절차를 요청했으며 원문/비밀/가격 조사 없이 기존상한·종료OFF를 유지한다. 기록: release_completion_2026-10-11.json.
+
+- **2026-10-12 06:53 KST #95·#97 최종 내용 판정:** #95 5e6e859 named PAGE ActualText/capture 및 #97 2f4e798 두first-party 발췌 추가검사를 각각 제한 범위 수용했다. 수용 SHA만 통합 후보로 넘긴다. TK44/49/55 전체완료·배포승인은 아니며 TK45/73 미승인제품은 제외한다. 원래게이트/기준/보호 유지·현재 운영ON 유지. 통합전달문 NEXT_FOR_CODEX가 이전지시를대체한다.
