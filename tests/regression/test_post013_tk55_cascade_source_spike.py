@@ -59,7 +59,13 @@ def _install_source_comparison(monkeypatch):
                     "detected_field_paths": ["cascade_source." + path for path in source_report.get("detected_field_paths", [])]}
         frozen = json.loads(source.snapshot)
         rendered = build(frozen["question"], {"official": frozen["official"], "document": frozen["document"]}, frozen["primary_verdict"])
-        if original not in SYSTEMS or llm_request.schema != module._VERDICT_SCHEMA or rendered != llm_request.user:
+        role_prefix = module.SYSTEM_BASE + "\n[역할] "
+        role = llm_request.system[len(role_prefix):].split("\n", 1)[0] if llm_request.system.startswith(role_prefix) else None
+        expected = {str(LLMRole.PRIMARY_REASONER): SYSTEMS[0], str(LLMRole.INDEPENDENT_CRITIC): SYSTEMS[1],
+                    str(LLMRole.WEB_GROUNDER): SYSTEMS[2]}.get(role)
+        critic_source = frozen["primary_verdict"] is not None
+        if (expected != original or critic_source != (role == str(LLMRole.INDEPENDENT_CRITIC))
+                or llm_request.schema != module._VERDICT_SCHEMA or rendered != llm_request.user):
             return {**report, "status": "BLOCKED", "failure_code": "SPIKE_SOURCE_CONTRACT_INVALID"}
         return report
 
@@ -148,7 +154,7 @@ def test_actual_critic_inspects_decoded_primary_reply_before_its_budget(monkeypa
     assert any(item.input_privacy.get("failure_code") == "PII_INPUT_BLOCKED" for item in result.executions)
 
 
-@pytest.mark.parametrize("mutation", ("system", "schema", "source"))
+@pytest.mark.parametrize("mutation", ("system", "schema", "source", "role"))
 def test_source_snapshot_binding_rejects_mismatch_without_budget(monkeypatch, mutation):
     sources = _install_source_comparison(monkeypatch)
     user = module._build_prompt("제공 자료 대조", {"official": {"full_text": "일반 자료"}})
@@ -157,6 +163,8 @@ def test_source_snapshot_binding_rejects_mismatch_without_budget(monkeypatch, mu
         request = replace(request, system="다른 검토")
     elif mutation == "schema":
         request = replace(request, schema={"type": "object"})
+    elif mutation == "role":
+        request = replace(request, system=SYSTEMS[1])  # a real, but wrong, consumer stage
     else:
         data = json.loads(sources[user].snapshot)
         data["official"]["full_text"] = "대체 자료"
