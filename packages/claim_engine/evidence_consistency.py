@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from itertools import accumulate
 from datetime import date
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -24,7 +25,8 @@ from packages.common.enums import EvidenceGrade, FindingType, Severity, Verifica
 from packages.common.schemas import Evidence, Finding, NormalizedDocument
 from packages.document_engine.reading_text import build_reading_text, join_separator, sentence_bounds
 
-from .exhibits import exhibit_keys, parse_exhibits, split_items
+from .exhibits import (CRIMINAL_PARTIES, NUMBER_GROUP_RE, PARTY_RE, SPACES, SUFFIX_RE,
+                       exhibit_keys, parse_exhibits, split_items)
 
 ENGINE_NAME = "claim_engine.evidence_consistency"
 
@@ -722,6 +724,21 @@ _SCOPE_PROTECTION_SYNTAX_RE = re.compile(
     "[" + re.escape("".join(_TITLE_BRACKETS) + "".join(_TITLE_BRACKETS.values()) + "\"'") + "]")
 
 
+
+def _scope_has_reference(text):
+    """Existing reference grammar, without label/number-list materialization."""
+    clean = text.translate(SPACES)
+    for party in PARTY_RE.finditer(clean):
+        group = NUMBER_GROUP_RE.match(clean, party.end())
+        if not group:
+            continue
+        suffix = SUFFIX_RE.match(clean, group.end())
+        if suffix and (suffix.group(0) != "호" or
+                       re.sub(r"\s+", "", party.group("party")) in CRIMINAL_PARTIES):
+            return True
+    return False
+
+
 def _duplicate_inventory_roles(reading, rows):
     """Prove local inventory/peer roles without changing parser rows or fields."""
     by_paragraph = {}
@@ -794,7 +811,9 @@ def _duplicate_inventory_roles(reading, rows):
                     protection.append(char)
         protected[-1] = bool(protection)
         # Quoted references are unknown mentions, never role keys/exemptions.
+        reference_intervals = {}
         if index in by_paragraph:
+            counts = list(accumulate(protected, initial=0)) if any(protected) else None
             unprotected_rows = []
             for row in by_paragraph[index]:
                 sources = row.get("duplicate_sources") or []
@@ -803,8 +822,10 @@ def _duplicate_inventory_roles(reading, rows):
                 if origin.get("origin") != "item" or not reference:
                     continue
                 left, right = reference[0] - start, reference[1] - start
-                if 0 <= left < right <= len(text) and not any(protected[left:right]):
+                if (0 <= left < right <= len(text)
+                        and (counts is None or counts[right] == counts[left])):
                     unprotected_rows.append(row)
+                    reference_intervals.setdefault((left, right), None)
             by_paragraph[index] = unprotected_rows
         if protected[0]:
             for candidate in pending:
@@ -816,7 +837,7 @@ def _duplicate_inventory_roles(reading, rows):
             title = text[marker.end():].strip()
             if (title and not any(char in title for char in ".!?。！？")
                     and not title.split()[-1].endswith(_TITLE_PREDICATE_ENDINGS)
-                    and not parse_exhibits(title)):
+                    and not _scope_has_reference(title)):
                 proof = observed(start, start + len(text))
                 if proof:
                     rank, ordinal = next((rank, value) for rank, value in enumerate(marker.groups()) if value)
@@ -848,10 +869,9 @@ def _duplicate_inventory_roles(reading, rows):
         if not pending or pending[-1]["entry_scan_done"] or not text:
             continue
         candidate = pending[-1]
-        refs = parse_exhibits(text)
         item_prefix = _SCOPE_ITEM_PREFIX_RE.match(text)
         first_start = item_prefix.end() if item_prefix else 0
-        spans = dict.fromkeys(tuple(ref["span"]) for ref in refs)
+        spans = reference_intervals
         if not spans or next(iter(spans))[0] != first_start:
             candidate["entry_scan_done"] = True
             continue
