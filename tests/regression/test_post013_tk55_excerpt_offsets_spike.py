@@ -1,4 +1,8 @@
-"""Comparison-only source→decoded selection tests for two actual producers."""
+"""Historical privatecap-free source→decoded comparison, not current gates.
+
+Actual captured requests stay intact; historical baseline copies omit only
+inspection source. Product checks explicitly select historical_baseline=False.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -13,7 +17,7 @@ from packages.llm_router import privacy
 from packages.llm_router.providers import LLMRequest
 from packages.pii_engine.detector import detect
 from .post013_excerpt_projection import projected_numeric_matches, projection_json
-from .test_post013_tk55_boundary_spike import _route
+from .test_post013_tk55_boundary_spike import _route, _historical_payload_request
 from .test_post013_tk55_cascade_source_spike import PHONES, RRNS
 
 
@@ -24,7 +28,7 @@ def enc(value):
     return ''.join(f'\\u{ord(char):04x}' for char in value)
 
 
-def _argument(source, *, exclude=None):
+def _argument(source, *, exclude=None, historical_baseline=True):
     from korean_law_profile.test_review_path import pii_engine
     from packages.legal_engine.argument_validity_verifier import _attach_ai_opinions
     from packages.verification_engine.sanitized_input import strip_injections
@@ -45,10 +49,11 @@ def _argument(source, *, exclude=None):
     request = captured[0]
     rendered = json.loads(request.user)["items"][0]["surrounding_context_and_claim"]
     assert source[:1000] in masked_inputs  # Real cut→mask, not mask→cut.
-    return request, source, ((0, min(1000, len(source))),), rendered
+    baseline = _historical_payload_request(request) if historical_baseline else request
+    return baseline, source, ((0, min(1000, len(source))),), rendered
 
 
-def _claim(source, *, exclude=None, claim="표식단어"):
+def _claim(source, *, exclude=None, claim="표식단어", historical_baseline=True):
     from korean_law_profile.test_review_path import inputs, pii_engine
     from packages.rag_engine.review import review_document, _claim_salient_words
     from packages.verification_engine.sanitized_input import strip_injections
@@ -85,7 +90,8 @@ def _claim(source, *, exclude=None, claim="표식단어"):
     if pos != -1 and end - start < 800 and len(inspected_source) > end - start:
         start = max(0, end - 800)
     assert rendered == inspected_source[start:end]
-    return request, inspected_source, ((start, end),), rendered
+    baseline = _historical_payload_request(request) if historical_baseline else request
+    return baseline, inspected_source, ((start, end),), rendered
 
 
 def _compare(monkeypatch, request, source, ranges, rendered, *, candidate=None):

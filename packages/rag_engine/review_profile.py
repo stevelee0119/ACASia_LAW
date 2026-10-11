@@ -63,8 +63,10 @@ def build_review_comparison_request(request, *, korean_profile=False, reference_
     if request.metadata["stage"] == "claim_rag_advisory" and not validate_claim_request_payload(payload):
         raise ValueError("Claim review payload violates its existing allowlist")
     metadata = {k: v for k, v in request.metadata.items() if k != REVIEW_CONTEXT_KEY}
-    return replace(request, system=KOREAN_RAG_REVIEW_SYSTEM_PROMPT if korean_profile else RAG_REVIEW_SYSTEM_PROMPT,
-                   user=json.dumps(payload, ensure_ascii=False), metadata=metadata)
+    updated = replace(request, system=KOREAN_RAG_REVIEW_SYSTEM_PROMPT if korean_profile else RAG_REVIEW_SYSTEM_PROMPT,
+                      user=json.dumps(payload, ensure_ascii=False), metadata=metadata)
+    from packages.llm_router.excerpt_source import _rebind_review_profile
+    return _rebind_review_profile(request, updated)
 
 
 def select_review_profile(request, *, provider_name, role, enabled=False):

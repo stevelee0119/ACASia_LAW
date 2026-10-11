@@ -917,9 +917,9 @@ class VerificationPipeline:
         result.engine_data["model_input"] = {"instructions_removed": len(instruction_texts),
                                              "quarantined": result.quarantined}
 
-        def mask_for_models(text, _texts=instruction_texts):
-            text = strip_injections(text, _texts)
-            return text if context.external_ai_policy == ExternalAIPolicy.ORIGINAL else pii.mask_text(text).masked_text
+        from packages.common.source_trace import model_input_renderer
+        mask_for_models = model_input_renderer(pii, instruction_texts,
+                                              original=context.external_ai_policy == ExternalAIPolicy.ORIGINAL)
 
         # 법리 주장 검토: 주장 유형 분류 → 근거 조회 → 판단(추가지시 G4). 조문 요건 대조에는 위에서 조회한
         # 공식 조문 원문을, 위헌 주장에는 헌재 결정 이력을 쓴다. 기존 규칙이 이미 판정한 문장은 다시 보지 않는다.

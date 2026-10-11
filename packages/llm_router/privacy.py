@@ -463,9 +463,11 @@ def inspect_request(request, *, _original_system: str = None):
     """
     from .input_contracts import valid_input_contract
     from .cascade_source import cascade_inspection_text, valid_cascade_source
+    from .excerpt_source import excerpt_inspection, valid_excerpt_source
 
     contract_valid = (valid_input_contract(request, original_system=_original_system)
-                      and valid_cascade_source(request, original_system=_original_system))
+                      and valid_cascade_source(request, original_system=_original_system)
+                      and valid_excerpt_source(request, original_system=_original_system))
     payload = asdict(request)
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
 
@@ -473,6 +475,14 @@ def inspect_request(request, *, _original_system: str = None):
     blocked_kinds = Counter()
     static_fp_kinds = Counter()
     detected_paths = set()
+
+    excerpt_statuses, excerpt_matches = excerpt_inspection(request)
+    if 'INVALID_TRACE' in excerpt_statuses:
+        contract_valid = False
+    for path, kind, _ in excerpt_matches:
+        kinds[kind] += 1
+        blocked_kinds[kind] += 1
+        detected_paths.add('excerpt_source.' + hashlib.sha256(repr(path).encode('utf-8')).hexdigest())
 
     # Additional source inspection never replaces the original/assembled scans.
     # Even a mismatched context is inspected so PII keeps failure precedence.
@@ -566,6 +576,11 @@ def inspect_request(request, *, _original_system: str = None):
         "status": status,
         "detected_types": dict(kinds),
     }
+    if excerpt_statuses:
+        from packages.common.source_trace import MAX_SOURCE_CHARS, MAX_TRACE_CHARS
+        res['excerpt_projection'] = {'statuses': dict(Counter(excerpt_statuses)),
+                                    'source_char_limit': MAX_SOURCE_CHARS, 'trace_char_limit': MAX_TRACE_CHARS,
+                                    'decoder_work_multiple': 8}
     if failure_code:
         res["failure_code"] = failure_code
         res["detected_field_paths"] = sorted(detected_paths)

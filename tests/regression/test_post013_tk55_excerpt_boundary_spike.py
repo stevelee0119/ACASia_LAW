@@ -1,4 +1,4 @@
-"""Public comparison only: actual producer truncation can destroy JSON context.
+"""Historical privatecap-free comparison, never current product gate evidence.
 
 The token projection is a diagnostic for numeric literals, not a product rule
 or authenticated source contract. No existing expectations are changed.
@@ -15,7 +15,7 @@ import pytest
 from packages.common.enums import ExternalAIPolicy
 from packages.llm_router import privacy
 from packages.llm_router.providers import LLMRequest
-from .test_post013_tk55_boundary_spike import _route
+from .test_post013_tk55_boundary_spike import _route, _historical_payload_request
 from .test_post013_tk55_cascade_source_spike import PHONES, RRNS
 
 
@@ -73,7 +73,7 @@ def _argument_request(source):
     request = captured[0]
     selected = json.loads(request.user)["items"][0]["surrounding_context_and_claim"]
     assert selected == source[:1000]
-    return request, selected
+    return _historical_payload_request(request), selected
 
 
 def _claim_request(source):
@@ -97,7 +97,7 @@ def _claim_request(source):
     request = next(item for item in captured if item.input_contract == "claim_review_v1")
     selected = json.loads(request.user)["reference_sources"][0]["text"]
     assert selected == source[:800]
-    return request, selected
+    return _historical_payload_request(request), selected
 
 
 @pytest.mark.parametrize("producer", (_argument_request, _claim_request), ids=("argument", "claim"))

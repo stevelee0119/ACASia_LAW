@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import replace
+from dataclasses import replace, fields
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -20,6 +20,16 @@ from packages.llm_router.providers import LLMRequest, LLMResponse
 
 NAMES = ("한예솔", "유다린", "남궁서율")
 KEYS = ("opaque_a", "record_slot", "観測欄")
+
+
+def _historical_payload_request(actual):
+    """Historical privatecap-free diagnostic, never current gate evidence.
+
+    Actual producer requests remain held by their caller. Preserve every
+    payload/option/input-contract field; omit only private inspection source.
+    """
+    return LLMRequest(**{field.name: getattr(actual, field.name) for field in fields(LLMRequest)
+                        if field.name != 'inspection_source'})
 
 
 def _atoms(value, path=""):
@@ -125,6 +135,7 @@ def _check_producer_evidence(monkeypatch, captured):
 
 
 def _check_one_evidence(monkeypatch, original, evidence, blocked):
+    original = _historical_payload_request(original)
     payload = json.loads(original.user)
     contract = original.input_contract
     if contract == "ai_document_v1":

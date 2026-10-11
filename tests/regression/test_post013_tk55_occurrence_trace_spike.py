@@ -1,4 +1,4 @@
-"""New comparison after P2: actual occurrence traces, no product mutation."""
+"""Historical privatecap-free P2 comparison, not current product gate evidence."""
 from __future__ import annotations
 
 import asyncio
@@ -17,7 +17,7 @@ from packages.pii_engine import PIIEngine
 from packages.pii_engine.detector import detect
 from .post013_occurrence_projection import occurrence_projection, _validated_tokens
 from .post013_trace_rendering import Snapshot, TracedText, source_text, strip_once, mask_once
-from .test_post013_tk55_boundary_spike import _route
+from .test_post013_tk55_boundary_spike import _route, _historical_payload_request
 from .test_post013_tk55_cascade_source_spike import PHONES, RRNS
 from .test_post013_tk55_excerpt_offsets_spike import _claim, _argument, _source, enc
 from .post013_excerpt_projection import projected_numeric_matches
@@ -61,7 +61,7 @@ def _traced_argument(raw, *, excluded=()):
     assert rendered == str(trace)
     owner, origins = trace._evidence()
     assert owner is snapshot
-    return request, owner._value(), ((0, min(1000, len(raw))),), rendered, origins
+    return _historical_payload_request(request), owner._value(), ((0, min(1000, len(raw))),), rendered, origins
 
 
 def _claim_slice(raw, *, excluded=(), claim='표식단어'):
