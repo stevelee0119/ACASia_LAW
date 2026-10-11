@@ -25,7 +25,7 @@ from packages.common.enums import EvidenceGrade, FindingType, Severity, Verifica
 from packages.common.schemas import Evidence, Finding, NormalizedDocument
 from packages.document_engine.reading_text import build_reading_text, join_separator, sentence_bounds
 
-from .exhibits import (CRIMINAL_PARTIES, NUMBER_GROUP_RE, PARTY_RE, SPACES, SUFFIX_RE,
+from .exhibits import (BRANCH_RE, CRIMINAL_PARTIES, NUMBER_GROUP_RE, PARTY_RE, SPACES, SUFFIX_RE,
                        exhibit_keys, parse_exhibits, split_items)
 
 ENGINE_NAME = "claim_engine.evidence_consistency"
@@ -739,14 +739,19 @@ def _scope_has_reference(text):
     return False
 
 
-def _duplicate_inventory_roles(reading, rows):
+def _duplicate_inventory_roles(reading, rows, metadata=None):
     """Prove local inventory/peer roles without changing parser rows or fields."""
-    by_paragraph = {}
+    by_paragraph, all_by_paragraph = {}, {}
     for row in rows:
+        if row.get("from_lines") and row.get("line_group"):
+            all_by_paragraph.setdefault(row["line_group"][0], []).append(row)
         if (row.get("from_lines") and row.get("line_group")
                 and not row.get("in_section", False)):
             by_paragraph.setdefault(row["line_group"][0], []).append(row)
     scopes, pending, waiting = [], [], []
+    heading_stack = []
+    if metadata is not None:
+        metadata.update(paragraphs=[], headings={}, original_rows={})
     source_cursor = [0]
     source_blocks = {}
     for segment in reading.segments:
@@ -810,6 +815,15 @@ def _duplicate_inventory_roles(reading, rows):
                 elif char in ('"', "'"):
                     protection.append(char)
         protected[-1] = bool(protection)
+        if metadata is not None:
+            original_rows = list(all_by_paragraph.get(index, ()))
+            metadata["original_rows"][index] = original_rows
+            # Store original coordinates, not a re-search of repeated strings.
+            proof = observed(start, start + len(text)) if (original_rows or
+                (heading_stack and PARTY_RE.search(text))) and text else None
+            metadata["paragraphs"].append({"text": text, "start": start,
+                "protected": protected, "source": proof,
+                "heading": heading_stack[-1] if heading_stack else None})
         # Quoted references are unknown mentions, never role keys/exemptions.
         reference_intervals = {}
         if index in by_paragraph:
@@ -848,6 +862,19 @@ def _duplicate_inventory_roles(reading, rows):
                     ordinal = int(ordinal) if rank in (0, 2) else ord(ordinal)
                     heading = (rank, ordinal, title, proof)
         if heading:
+            if metadata is not None:
+                rank, ordinal, title, proof = heading
+                while heading_stack and heading_stack[-1]["rank"] >= rank:
+                    previous = heading_stack.pop()
+                    previous.update(end=index, closed=(rank < previous["rank"] or
+                                                      ordinal > previous["ordinal"]))
+                parent = tuple(item["index"] for item in heading_stack)
+                entry = {"index": index, "rank": rank, "ordinal": ordinal,
+                         "parent": parent, "proof": proof, "end": None, "closed": False,
+                         "inventory_heading": bool(re.search(r"목\s*록$", title))}
+                metadata["headings"][index] = entry
+                heading_stack.append(entry)
+                metadata["paragraphs"][-1]["heading"] = entry
             for scope in waiting:
                 scope["narrative_end"] = index
             waiting = []
@@ -858,6 +885,8 @@ def _duplicate_inventory_roles(reading, rows):
                         and (rank < candidate["rank"] or ordinal > candidate["ordinal"])):
                     scope = {**candidate, "end": index, "close": proof,
                              "narrative_start": index + 1, "narrative_end": len(paragraphs)}
+                    if metadata is not None:
+                        scope["parent"] = metadata["headings"][candidate["start"] - 1]["parent"]
                     scopes.append(scope)
                     if rank != candidate["rank"] or re.search(r"목\s*록$", title):
                         scope["narrative_end"] = scope["narrative_start"]
@@ -931,10 +960,217 @@ def _duplicate_inventory_roles(reading, rows):
     return excluded, scopes
 
 
+
+def _native_title_atom(text, start):
+    """A complete native quoted atom; compatibility folding supplies no proof."""
+    quotes = {"「": "」", "『": "』", "“": "”", "‘": "’", '"': '"', "'": "'"}
+    if start >= len(text) or text[start] not in quotes:
+        return None
+    stack = [quotes[text[start]]]
+    closers = set(_TITLE_BRACKETS.values())
+    for index in range(start + 1, len(text)):
+        char = text[index]
+        if unicodedata.normalize("NFKC", char) != char and _SCOPE_PROTECTION_SYNTAX_RE.search(
+                unicodedata.normalize("NFKC", char)):
+            return None
+        if char == stack[-1]:
+            stack.pop()
+            if not stack:
+                return index + 1
+        elif char in _TITLE_BRACKETS:
+            stack.append(_TITLE_BRACKETS[char])
+        elif char in ('"', "'"):
+            stack.append(char)
+        elif char in closers:
+            return None
+    return None
+
+
+_CITATION_PARTICLE_RE = re.compile(r"(?:으로|에서|에게|로|에|을|를|은|는|이|가|와|과)\s+")
+
+
+def _source_inventory_atom(row, paragraph, view):
+    """Certify a whole inventory alternative before inspecting its title."""
+    sources = row.get("duplicate_sources") or []
+    if (len(sources) != 1 or not paragraph["source"] or row.get("in_section")
+            or not view.get("source_mapping_verified")):
+        return None
+    origin = sources[0]
+    reference, item = origin.get("reference_span"), origin.get("reading_span")
+    if (origin.get("origin") != "item" or not reference or not item
+            or len(reference) != 2 or len(item) != 2
+            or not all(isinstance(v, int) for v in (*reference, *item))):
+        return None
+    start, text = paragraph["start"], paragraph["text"]
+    left, right, end = reference[0] - start, reference[1] - start, item[1] - start
+    if (not 0 <= left < right == item[0] - start <= end <= len(text)
+            or any(paragraph["protected"][left:right])
+            or text[right:end] != origin.get("text")):
+        return None
+    tail = text[right:end]
+    marker = re.match(r"\s*[:：]\s*", tail)
+    if not marker or any(paragraph["protected"][right:right + marker.end()]):
+        return None
+    atom_start = marker.end()
+    atom_end = _native_title_atom(tail, atom_start)
+    if atom_end is None:
+        return None
+    atom = "".join(tail[atom_start:atom_end].split())
+    # Description boundaries were independently proved by the original view;
+    # a qualified/opaque tail cannot become a title through the citation alone.
+    if not (view["title_key"] == atom and view["kind"] in ("prose", "locator")
+            or view["title_key"] is None and view["fallback"] == atom):
+        return None
+    return atom
+
+
+def _source_citation(paragraph):
+    """One non-leading native reference/atom argument in a whole proposition."""
+    text, mask = paragraph["text"], paragraph["protected"]
+    if not paragraph["source"] or not text or text[-1] not in ".!。！":
+        return None
+    parties = list(PARTY_RE.finditer(text))
+    if len(parties) != 1:
+        return None
+    party = parties[0]
+    group = NUMBER_GROUP_RE.match(text, party.end())
+    if not group or group.group("more"):
+        return None  # Bundled references have no single atomic argument here.
+    suffix = SUFFIX_RE.match(text, group.end())
+    label = re.sub(r"\s+", "", party.group("party"))
+    if not suffix or (suffix.group(0) == "호" and label not in CRIMINAL_PARTIES):
+        return None
+    right = suffix.end()
+    branch = BRANCH_RE.match(text, right)
+    if branch and branch.group("more"):
+        return None
+    if branch:
+        right = branch.end()
+    left = party.start()
+    subject = text[:left].rstrip()
+    if (not subject or not text[left - 1].isspace() or
+            not subject.endswith(("은", "는", "이", "가")) or
+            any(mask[:right]) or not all(c.isspace() or "가" <= c <= "힣" for c in subject)):
+        return None
+    atom_start = right
+    while atom_start < len(text) and text[atom_start].isspace():
+        atom_start += 1
+    if atom_start == right:
+        return None
+    atom_end = _native_title_atom(text, atom_start)
+    if atom_end is None:
+        return None
+    particle = _CITATION_PARTICLE_RE.match(text, atom_end)
+    if not particle or any(mask[atom_end:particle.end()]):
+        return None
+    predicate = text[particle.end():-1].strip()
+    if (not predicate or not predicate.split()[-1].endswith(_TITLE_PREDICATE_ENDINGS)
+            or not all(c.isspace() or "가" <= c <= "힣" for c in predicate)
+            or mask[-2] or mask[-1]):
+        return None
+    # Every condition, degree, negation and date stays in the whole identity.
+    # No outside definition colon, extra sentence, or trailing qualification.
+    if any(c in ":：.!?。！？" and not mask[i] for i, c in enumerate(text[:-1])):
+        return None
+    key = (label, int(group.group("first")), int(branch.group("first")) if branch else None)
+    return {"key": key, "atom": "".join(text[atom_start:atom_end].split()),
+            "identity": _complete_prose_identity("".join(text.split())),
+            "reference_span": (paragraph["start"] + left, paragraph["start"] + right),
+            "title_span": (paragraph["start"] + atom_start, paragraph["start"] + atom_end),
+            "proposition_span": (paragraph["start"], paragraph["start"] + len(text))}
+
+
+def _duplicate_citation_anchors(rows, scopes, metadata, views):
+    """Parent/key-indexed certificates; never modify a row or exclude a group."""
+    if not scopes:
+        return {}
+    inventory, row_domains = {}, {}
+    paragraphs = metadata["paragraphs"]
+    # All original alternatives participate, including protected/unknown rows.
+    # Fixed grammar depth bounds overlapping inventory coverage.
+    for scope in scopes:
+        for index in range(scope["start"], scope["end"]):
+            for row in metadata["original_rows"].get(index, ()):
+                view = views[id(row)]
+                atom = _source_inventory_atom(row, paragraphs[index], view)
+                for branch in row.get("branches") or [None]:
+                    key = (row["party"], row["number"], branch)
+                    domain = (scope["parent"], scope["rank"], key)
+                    state = inventory.setdefault(domain, {"identities": set(), "atoms": set(),
+                                                         "valid": True, "rows": set(), "end": -1})
+                    state["identities"].add(_complete_prose_identity(view["fallback"])
+                                            if view["kind"] == "prose" else view["fallback"])
+                    state["valid"] &= atom is not None
+                    if atom is not None:
+                        state["atoms"].add(atom)
+                    state["rows"].add(id(row))
+                    state["end"] = max(state["end"], scope["narrative_end"])
+    unplaced_keys = set()
+    for row in rows:
+        if not row.get("from_lines") or not row.get("line_group"):
+            unplaced_keys.update((row["party"], row["number"], branch)
+                                for branch in row.get("branches") or [None])
+    eligible = {domain: state for domain, state in inventory.items()
+                if domain[2] not in unplaced_keys and state["valid"]
+                and len(state["identities"]) == len(state["atoms"]) == 1}
+    if not eligible:
+        return {}
+    witnesses = {}
+    for index, paragraph in enumerate(paragraphs):
+        heading = paragraph["heading"]
+        if (not heading or not heading["closed"] or heading["inventory_heading"]
+                or metadata["original_rows"].get(index)):
+            continue
+        citation = _source_citation(paragraph)
+        if not citation:
+            continue
+        domain = (heading["parent"], heading["rank"], citation["key"])
+        state = eligible.get(domain)
+        if state is None or index < state["end"]:
+            continue
+        witnesses.setdefault(domain, []).append(citation)
+    certified = {}
+    for domain, citations in witnesses.items():
+        state = eligible[domain]
+        atom = next(iter(state["atoms"]))
+        if ({citation["atom"] for citation in citations} != {atom}
+                or len({citation["identity"] for citation in citations}) != 1):
+            continue
+        certified[domain] = atom
+    # Parent-local row associations are comparison metadata, not global caches.
+    for index, original in metadata["original_rows"].items():
+        heading = paragraphs[index]["heading"]
+        if not heading:
+            continue
+        for row in original:
+            for branch in row.get("branches") or [None]:
+                key = (row["party"], row["number"], branch)
+                domain = (heading["parent"], heading["rank"], key)
+                if domain in certified:
+                    row_domains[(id(row), key)] = domain
+    return {"certified": certified, "inventory": eligible, "row_domains": row_domains}
+
+
+def _duplicate_projected_names(parts):
+    anchors = {key for key, proposed, _, _ in parts if proposed is None and key}
+    weak_identities, prose_identities = {}, {}
+    for key, proposed, kind, identity in parts:
+        if kind == "locator":
+            weak_identities.setdefault(proposed, set()).add(key)
+        elif kind == "prose":
+            prose_identities.setdefault(proposed, set()).add(identity)
+    locators = {proposed for proposed, identities in weak_identities.items() if len(identities) == 1}
+    prose = {proposed for proposed, identities in prose_identities.items() if len(identities) == 1}
+    corroborated = locators & prose
+    prose_anchors = (anchors & prose) | corroborated
+    return [proposed if proposed in (corroborated if kind == "locator" else prose_anchors) else key
+            for key, proposed, kind, _ in parts]
+
 def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Finding]:
     out: List[Finding] = []
     reading = build_reading_text(doc)
-    narrative_keys, _ = _duplicate_inventory_roles(reading, rows)
+    role_metadata = {}
+    narrative_keys, scopes = _duplicate_inventory_roles(reading, rows, role_metadata)
     # 같은 호증 번호(가지번호까지 같음)가 목록에 두 번 이상 나온다(v4 P4)
     # 목록 구역(표 또는 번호 붙은 입증방법 섹션)에 존재하는 호증 번호는 본문 언급을 중복 판단에서 제외 (TK-64)
     section_keys = {
@@ -953,7 +1189,10 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
         for key in keys:
             if key not in narrative_keys.get(id(row), ()):
                 seen.setdefault(key, []).append(row)
-    title_cache, title_values = {}, {}
+    title_cache, title_values, original_views = {}, {}, {}
+    if scopes:
+        original_views = {id(row): _duplicate_mention_view(row) for row in rows}
+    citation_anchors = _duplicate_citation_anchors(rows, scopes, role_metadata, original_views)
     for (party, number, branch), same in seen.items():
         if len(same) < 2:
             continue
@@ -962,7 +1201,9 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
         for row in same:
             row_key = id(row)
             if row_key not in title_cache:
-                key, proposed, kind = _duplicate_title_parts(row)
+                view = original_views.get(row_key)
+                key, proposed, kind = ((view["fallback"], view["title_key"], view["kind"])
+                                      if view is not None else _duplicate_title_parts(row))
                 key = title_values.setdefault(key, key)
                 if proposed is not None:
                     proposed = title_values.setdefault(proposed, proposed)
@@ -970,26 +1211,24 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
                 identity = title_values.setdefault(identity, identity)
                 title_cache[row_key] = (key, proposed, kind, identity)
             title_parts.append(title_cache[row_key])
-        anchors = {key for key, proposed, _, _ in title_parts if proposed is None and key}
-        weak_identities, prose_identities = {}, {}
-        for key, proposed, kind, identity in title_parts:
-            if kind == "locator":
-                weak_identities.setdefault(proposed, set()).add(key)
-            elif kind == "prose":
-                prose_identities.setdefault(proposed, set()).add(identity)
-        locators = {proposed for proposed, identities in weak_identities.items() if len(identities) == 1}
-        prose = {proposed for proposed, identities in prose_identities.items() if len(identities) == 1}
-        # A numeric coordinate with qualifiers may itself be a true subtitle.
-        # Only exact agreement with a separate prose candidate corroborates it;
-        # conflicting weak captions or a complete generic prefix cannot confirm it.
-        corroborated = locators & prose
-        # Predicate wording does not establish title/narrative role either.
-        # Even a locator cannot erase conflicting complete prose identities.
-        prose_anchors = (anchors & prose) | corroborated
-        distinct_names = {
-            proposed if proposed in (corroborated if kind == "locator" else prose_anchors) else key
-            for key, proposed, kind, _ in title_parts
-        }
+        projected = _duplicate_projected_names(title_parts)
+        domains = {}
+        if citation_anchors:
+            group_key = (party, number, branch)
+            for index, row in enumerate(same):
+                domain = citation_anchors["row_domains"].get((id(row), group_key))
+                if domain is not None:
+                    domains.setdefault(domain, []).append(index)
+            for domain, indexes in domains.items():
+                atom = citation_anchors["certified"][domain]
+                inventory_ids = citation_anchors["inventory"][domain]["rows"]
+                local_parts = [(atom, None, None, atom) if id(same[index]) in inventory_ids
+                               else title_parts[index] for index in indexes]
+                # Full caption multiplicity still applies to later original rows.
+                # The final set also retains every other parent's legacy value.
+                for index, value in zip(indexes, _duplicate_projected_names(local_parts)):
+                    projected[index] = value
+        distinct_names = set(projected)
         distinct_names.discard("")
         if len(distinct_names) < 2 and len(same) >= 2 and all(r.get("name") for r in same):
             continue

@@ -78,7 +78,7 @@ def citation_source(reading, citation, title):
             'source_slice_verified': True}
 
 
-def run(directory):
+def run(directory, emit=True):
     examples = [('갑 제1호증', '「점검기록」', '「점검보고」'),
                 ('을 제2호증의 1', '『작업대장』', '『작업도면』'),
                 ('병 제3호증', '“관측 [2024. 1. 2.]”', '“관측 [2024. 1. 3.]”')]
@@ -144,7 +144,9 @@ def run(directory):
                     'citation_source_proof': citation_proof,
                     'original_reader_row_free_residual': row_free_residual,
                     'source_slices_verified': origins_verified, 'original_rows_unchanged': rows == before})
-    print(json.dumps(results, ensure_ascii=False, indent=2))
+    if emit:
+        print(json.dumps(results, ensure_ascii=False, indent=2))
+    return results
 
 
 if __name__ == '__main__':
