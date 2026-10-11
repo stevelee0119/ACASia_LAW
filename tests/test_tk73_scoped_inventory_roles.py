@@ -291,3 +291,19 @@ def test_synthetic_original_recognized_sticky_population_is_not_rescoped(tmp_pat
     rows = exhibit_rows(doc)
     assert len(rows) == 3 and all(row['in_section'] for row in rows)
     assert len(_duplicates(doc)) == 1
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+@pytest.mark.parametrize('opening,closing', [('「', '」'), ('『', '』'), ('“', '”')])
+def test_synthetic_multiline_quoted_numbered_lines_do_not_certify_document_scope(
+        tmp_path, extension, opening, closing):
+    doc = _parsed(tmp_path, extension, [opening, '가. 수집문헌 목록',
+        '갑 제1호증: 점검기록, 북쪽 구역. 갑 제2호증: 배치대장, 별도 부분.',
+        '나. 문헌 검토', '갑 제1호증 표본보고', closing, '첨부서류'])
+    from packages.claim_engine.evidence_consistency import _duplicate_inventory_roles
+    from packages.document_engine.reading_text import build_reading_text
+    rows = exhibit_rows(doc)
+    excluded, scopes = _duplicate_inventory_roles(build_reading_text(doc), rows)
+    assert not scopes and not excluded
+    found = _duplicates(doc)
+    assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
