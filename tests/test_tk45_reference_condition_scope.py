@@ -27,3 +27,15 @@ def test_condition_in_an_independent_prior_sentence_is_not_document_global(monke
     text = prior + LEAD + REFERENCE_ACT + LIMIT
     findings, trace = _trace_pipeline(monkeypatch, tmp_path, text)
     assert not findings, trace
+
+
+@pytest.mark.parametrize('prefix,act', [
+    ('절차가 유효하다면, ', '변제공탁 서류를 확인한 뒤 변제공탁을 완료하였으므로'),
+    ('서류를 검토한 경우, ', '변제공탁 기록을 검토한 후 변제공탁을 이행하였으므로'),
+    ('절차가 유효하다면; ', '변제공탁 내역을 정리한 다음 변제공탁을 마쳤으므로'),
+])
+def test_old_same_identity_proof_also_requires_closed_conditional_scope(monkeypatch, tmp_path, prefix, act):
+    text = LEAD + prefix + act + LIMIT
+    findings, trace = _trace_pipeline(monkeypatch, tmp_path, text)
+    assert findings, trace
+    assert all('contextual_resolution' not in row for row in trace['requirements'])
