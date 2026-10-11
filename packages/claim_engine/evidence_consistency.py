@@ -543,7 +543,7 @@ def _description_token(text: str) -> Tuple[Optional[str], Optional[Tuple[int, in
     return None, None
 
 
-_REFERENCE_TITLE_PREFIX_RE = re.compile(r"^[\s:.)\]\-]*(?:각\s+)?")
+_REFERENCE_TITLE_PREFIX_RE = re.compile(r"^(?P<separator>[\s:.)\]\-]*)(?:각\s+)?")
 
 
 def _duplicate_comparison_text(row: Dict[str, Any]) -> Tuple[str, str, List[Dict[str, Any]], bool]:
@@ -586,10 +586,13 @@ def _duplicate_comparison_text(row: Dict[str, Any]) -> Tuple[str, str, List[Dict
             and reference[1] == reading[0] and first.get("sources")):
         # Match only the original first item fragment: NFKC punctuation and
         # join_separator whitespace do not prove consumed reference grammar.
-        prefix_end = _REFERENCE_TITLE_PREFIX_RE.match(first["text"]).end()
+        match = _REFERENCE_TITLE_PREFIX_RE.match(first["text"])
+        separator = match.group("separator")
+        separated = not separator or separator[-1].isspace()
+        prefix_end = match.end()
         prefix = first["text"][:prefix_end]
         projected_prefix = unicodedata.normalize("NFKC", prefix)
-        if normalized.startswith(projected_prefix):
+        if separated and normalized.startswith(projected_prefix):
             left = max(left, len(projected_prefix))
             origins[0]["reference_title_prefix"] = {
                 "text": prefix, "raw_span": (0, prefix_end),
