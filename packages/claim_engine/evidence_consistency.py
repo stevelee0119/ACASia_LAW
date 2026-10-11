@@ -718,6 +718,7 @@ _SCOPE_HEADING_PREFIX_RE = re.compile(
     r"\(\s*(?P<paren_number>\d{1,2})\s*\)|\(\s*(?P<paren_hangul>[가-하])\s*\)|"
     r"(?P<circled>[①-⑳]))\s+")
 _SCOPE_ITEM_PREFIX_RE = re.compile(r"^\s*(?:\d{1,2}\s*[.)]|[가-하]\s*[.)]|[-*•·]|[①-⑳])\s+")
+_SCOPE_PROTECTION_START_RE = re.compile("[" + re.escape("".join(_TITLE_BRACKETS) + "\"'") + "]")
 
 
 def _duplicate_inventory_roles(reading, rows):
@@ -769,21 +770,31 @@ def _duplicate_inventory_roles(reading, rows):
         offset += len(paragraph) + 1
         text = paragraph.strip()
         protected = bytearray(len(text) + 1)
-        for position, char in enumerate(text):
-            protected[position] = bool(protection)
-            if protection and char == protection[-1]:
-                protection.pop()
-            elif protection and protection[-1] in ('"', "'", "”", "’", "」", "』"):
-                pass
-            elif char in _TITLE_BRACKETS:
-                protection.append(_TITLE_BRACKETS[char])
-            elif char in ('"', "'"):
-                protection.append(char)
+        if protection or _SCOPE_PROTECTION_START_RE.search(text):
+            for position, char in enumerate(text):
+                protected[position] = bool(protection)
+                if protection and char == protection[-1]:
+                    protection.pop()
+                elif protection and protection[-1] in ('"', "'", "”", "’", "」", "』"):
+                    pass
+                elif char in _TITLE_BRACKETS:
+                    protection.append(_TITLE_BRACKETS[char])
+                elif char in ('"', "'"):
+                    protection.append(char)
         protected[-1] = bool(protection)
         # Quoted references are unknown mentions, never role keys/exemptions.
         if index in by_paragraph:
-            by_paragraph[index] = [row for row in by_paragraph[index]
-                                   if not protected[row["line_group"][1][0]]]
+            unprotected_rows = []
+            for row in by_paragraph[index]:
+                sources = row.get("duplicate_sources") or []
+                origin = sources[0] if sources else {}
+                reference = origin.get("reference_span")
+                if origin.get("origin") != "item" or not reference:
+                    continue
+                left, right = reference[0] - start, reference[1] - start
+                if 0 <= left < right <= len(text) and not any(protected[left:right]):
+                    unprotected_rows.append(row)
+            by_paragraph[index] = unprotected_rows
         if protected[0]:
             for candidate in pending:
                 candidate["entry_scan_done"] = True
