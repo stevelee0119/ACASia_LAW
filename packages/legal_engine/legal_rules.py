@@ -595,18 +595,44 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
     boundaries = list(_REQUIREMENT_CLAUSE_END_RE.finditer(text))
     boundary_ends = [match.end() for match in boundaries]
     boundary_by_end = {match.end(): match for match in boundaries}
-    finite_starts = [match.start() for match in _FINITE_PREDICATE_RE.finditer(text)]
+    finite_matches = list(_FINITE_PREDICATE_RE.finditer(text))
+    finite_starts = [match.start() for match in finite_matches]
     connective_starts = [match.start() for match in boundaries if match.group() not in ',;.!?\n']
     argument_starts = [match.start() for match in _ARGUMENT_CASE_RE.finditer(text)]
     words = list(re.finditer(r'[가-힣]+', text))
     word_ends = [word.end() for word in words]
     subjects = list(_LOCAL_SUBJECT_RE.finditer(text))
     subject_starts = [match.start() for match in subjects]
-    blockers = [match.start() for match in _RESOLUTION_SCOPE_BREAK_RE.finditer(text)]
-    attribution = [match.start() for match in _RESOLUTION_ATTRIBUTION_RE.finditer(text)]
+    scope_breaks = list(_RESOLUTION_SCOPE_BREAK_RE.finditer(text))
+    blockers = [match.start() for match in scope_breaks]
+    conditions = [match for match in scope_breaks
+                  if _LOCAL_CONDITION_RE.fullmatch(text, match.start(), match.end())]
+    condition_starts = [match.start() for match in conditions]
+    report_starts = [match.start() for match in scope_breaks
+                     if REPORT_VERB_RE.fullmatch(text, match.start(), match.end())
+                     or OPPONENT_REPORT_RE.fullmatch(text, match.start(), match.end())]
     # quotation_projection emits disjoint outer ranges in source order.
     quote_starts = [row['span'][0] for row in quotations]
     quote_ends = [row['span'][1] for row in quotations]
+    closed_sentences = []
+    previous_terminal_end = 0
+    for boundary in boundaries:
+        if (boundary.group() not in '.!?'
+                or boundary.end() < len(text) and not text[boundary.end()].isspace()):
+            continue
+        terminal_start = previous_terminal_end
+        previous_terminal_end = boundary.end()
+        finite_index = bisect_left(finite_starts, boundary.start()) - 1
+        if finite_index < 0:
+            continue
+        finite = finite_matches[finite_index]
+        if (bisect_left(quote_starts, boundary.end()) != bisect_right(quote_ends, finite.start())
+                or bisect_left(report_starts, boundary.end()) != bisect_left(report_starts, terminal_start)):
+            continue
+        if _NONSPACE_RE.search(text, finite.end(), boundary.start()) is None:
+            closed_sentences.append((boundary, finite))
+    closed_ends = [boundary.end() for boundary, _ in closed_sentences]
+    attribution = [match.start() for match in _RESOLUTION_ATTRIBUTION_RE.finditer(text)]
     groups = {}
     for index, row in enumerate(observations):
         groups.setdefault(row['requirement_identity'], []).append((index, row))
@@ -630,6 +656,29 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
                  unqualified or carried_subject)
         prefix_cache[start] = proof
         return proof
+
+    def condition_scope(row, prefix):
+        """Source closure, rather than separators, bounds conditional evidence."""
+        start = row['span'][0]
+        closed_index = bisect_right(closed_ends, start) - 1
+        scope_start = closed_ends[closed_index] if closed_index >= 0 else 0
+        condition_index = bisect_left(condition_starts, start) - 1
+        witness = None
+        if closed_index >= 0:
+            boundary, finite = closed_sentences[closed_index]
+            witness = {'boundary_span': list(boundary.span()),
+                       'finite_span': list(finite.span())}
+        abstention = None
+        if condition_index >= 0 and condition_starts[condition_index] >= scope_start:
+            reset = boundary_by_end.get(prefix[0])
+            abstention = {
+                'reason': 'PRECEDING_CONDITION_UNCLOSED',
+                'condition_witness_span': list(conditions[condition_index].span()),
+                'scope_start': scope_start,
+                'reset_boundary_span': list(reset.span()) if reset else None,
+                'conditional_attachment': 'UNKNOWN', 'original_state': row['state'],
+            }
+        return scope_start, witness, abstention
 
     for group in groups.values():
         realization = None
@@ -672,6 +721,10 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
             if end > target['span'][0]:
                 continue
             context_prefix, subject_span, context_unqualified = argument_prefix(row['span'][0])
+            scope_start, closure_witness, abstention = condition_scope(row, context_prefix)
+            if abstention:
+                row['contextual_resolution_scope_abstention'] = abstention
+                continue
             target_prefix, _, target_unqualified = argument_prefix(target['span'][0])
             if not context_unqualified or not target_unqualified:
                 row['contextual_resolution_abstention'] = {
@@ -710,6 +763,8 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
                 'local_subject_span': subject_span, 'shared_local_subject_scope': True,
                 'context_argument_prefix_span': context_prefix,
                 'realization_argument_prefix_span': target_prefix,
+                'condition_scope_start': scope_start,
+                'sentence_closure_witness': closure_witness,
                 'unqualified_argument_attachment': True,
                 'source_semantic_support': True, 'original_state': row['state'],
                 'underlying_facts_verified': False, 'legal_sufficiency_verified': False,
@@ -740,6 +795,10 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
         if proof is None:
             continue
         context_prefix, subject_span, context_unqualified = argument_prefix(row['span'][0])
+        scope_start, closure_witness, abstention = condition_scope(row, context_prefix)
+        if abstention:
+            row['reference_scope_abstention'] = abstention
+            continue
         if (not context_unqualified
                 or bisect_left(attribution, end) != bisect_left(attribution, context_prefix[0])
                 or bisect_left(quote_starts, end) != bisect_right(quote_ends, row['span'][0])):
@@ -752,6 +811,8 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
                                          'local_subject_span': subject_span,
                                          'argument_prefix_span': context_prefix,
                                          'clause_boundary_span': list(boundary.span()) if boundary else None,
+                                         'condition_scope_start': scope_start,
+                                         'sentence_closure_witness': closure_witness,
                                          'authored': True}
         target_position = bisect_left(actual_starts, end)
         if target_position == len(actual):
