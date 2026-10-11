@@ -1,94 +1,53 @@
-# Codex 전달문 (통합본 — 이 파일 하나만 전달한다)
+# Codex 구현 전달문 (현행 통합본)
 
-갱신: 2026-10-10 평가 측(장기 미해결 4묶음 재개, 사용자 지시). 이전 전달문을 모두 대체한다. 이 파일에 없는 지시는 없다.
+갱신: 2026-10-11 16:03 KST. 이전 전달문 전체를 대체한다. 미배포 TK 보완·수용·릴리스에 집중한다. 구현은별도공개전용세션/clone·봉인/비공개/정답/평가원문 접근·요청금지. 제품전설계/관련양방향합성대조·기존expects불변·Agent: implementer. 보호경로·버전판정은평가측·강제push/Steve/main직접push금지.
 
-```
-[Codex 작업 — 통합 지시 2026-10-10 (11)]
+## 수용분과 릴리스
+- 운영main9c1b218/0.12.0. Steve5dea의TK24/43/56/69/70/72/74/75 기술수용·병합·미배포. TK75 기본OFF·실제품질미측정.
+- #78 c6e5437(TK44/49 SPACE)·#81 0261ea0(TK57)·#82 ce83355(TK55 first-party)·#86 ebd6b51(UNKNOWN진단) 제한범위 내용수용. accepted제품통합8446107·remote기록69553cc exactCI/점수성공. 후속평가기록은local이며최종수용품통합후push한다.
+- TK44/49 UNKNOWNprimary폭의존/ActualText미구현 및 TK55 legacy24/encoded불명역할 잔여는완전해소아님. 수용scope·통합·실제배포·전체티켓해소구분.
+- 최종TK45/73 미수용. 수용후최종통합SHA동결→full1회/동SHA필수CI→새봉인운영/후보최초1쌍→버전정책판정/필요버전-only1commit/CI→Steve/main릴리스·Render실제health/APIworkerOFF확인. 원래기준/상한/기준선완화없음. 온라인17:51–19:21KST·전체19:51KST목표.
 
-0. 규칙(AGENTS.md)
- - 시작: 최신 Steve_ACASiaLAW에서 항목마다 새 작업 브랜치를 만든다. 티켓의 '재개(2026-10-10)' 절이 이번 기준이다.
- - 한 번에 한 항목만 한다(사용자 결정 2026-10-03 '한 라운드 한 영역'). 앞 항목이 평가 측 수용을 받으면 다음 항목을 시작한다.
-   예외: [G]의 1단계 설계 메모는 다른 항목과 함께 올려도 된다(코드 변경 없음).
- - 리베이스·강제 푸시 금지(병합 커밋). 커밋 메시지 끝에 'Agent: implementer'와 게이트 출력의 점수 변화를 적는다.
- - 보호 경로(tests/acceptance/**, tests/fixtures/**, scripts/의 평가 도구, docs/scorecards/**, .github/workflows/ci.yml) 수정 금지,
-   skip·xfail 표시 변경 금지, 기존 시험 기대값 변경 금지(원장 고정 사본이 막는다).
- - 서면·시험의 문장·이름·명사·낱말에 맞춘 규칙 금지. 경고를 없애거나 결합을 정하는 '예외 낱말 목록'·낱말 사전 금지
-   (개인정보의 범주 단위 닫힌 불용어는 [E]의 조건 안에서만 허용).
- - 새 규칙마다 양성 3건 이상·대조 3건 이상 시험(합성임을 시험 설명에 적음). 두 방향(놓침·오탐, 유출·과차단)을 같은 커밋에서 함께 시험한다.
- - 문장·문서마다 도는 새 분석 경로(정규식뿐 아니라 반복·재탐색 로직 포함)는 반복 입력(수천 번) 시간 시험을 둔다(0.1초 이내).
- - 커밋 전에는 바꾼 파일과 관련 시험만 돌린다. 푸시 뒤 CI가 실패하면 job 로그 끝 '실패 시험 목록'으로 고친다.
-   목표 시험의 strict xfail이 XPASS가 되어 생기는 실패는 고치지 않는다(표시는 평가 측이 지운다). 실패 목록이 그것뿐이면 '검토 요청'을 남긴다.
- - 보고: PR 코멘트 3줄(바꾼 것·남은 것·'검토 요청') + `python scripts/scorecard.py` 전후 출력 원문 + 관련 시험 pytest 요약 줄 원문
-   + 푸시 전 `python scripts/check_test_edits.py --base origin/Steve_ACASiaLAW` 출력.
- - 평가 측 비공개 세트는 주지 않는다. 수용은 그 세트의 건수로 판정한다(평가 측이 PR 코멘트에 건수만 적는다).
- - 수용되면 평가 측이 자기 브랜치에서 병합해 표시를 지우고 verify_all 전체 모드를 돌려 평가 측 PR로 들인다. 구현 PR은 직접 병합하지 않는다.
- - 다른 구현 담당(Antigravity)이 같은 시기에 packages/legal_engine/temporal_review.py(TK-69),
-   packages/verification_engine/pipeline.py·candidate_verifier.py·gate.py, packages/common/config.py(TK-70·버전 커밋),
-   docs/releases.json을 고친다. 이 파일들은 건드리지 않는다.
+## 경로 A
+- TK44/49 직접SPACE48/48·UNKNOWN24불변·actualPDF/DOCX/width105 PASS·metadata1452본문/2PDF불변 내용수용유지. 추가primary/ActualText제품작업없음.
+- PR84 bcea17c660f9cbd3055952b2ae0f1b26f2cfda49 불수용5482118915. 요청6106067158·동일SHA CI38116124746/점수38116124743/Docker SUCCESS 인용. 원래20 평가측 재실행 부인8/8·정상7/8·확장1/4, 실제TXT전체경로 동일. 정상8/8 필수조건 미달. 고정18 부인3/4·정상4/4·화자1/4·반박1/2·확장4/4. 공개537 및 독립 조건부 보호 감사 PASS는 원래 조건 대체불가. 미통합·미배포·새봉인 미실행·기대값/기준선 불변.
+- 출력불변 진단: 남은 정상1의 독립요건 identity2와 UNCERTAIN/CHANGED_ARGUMENT·POSITIVE/ASSERTED_REQUIREMENT_REALIZATION 유지. reference_frame 호출0, immediate argument pattern 미일치·기존 event_frame case 존재·predicate_chain 없음. contextual_proposition 생성 전 거절되므로 기존 nominal-modifier/object-tail 설계가 해당 원인을 설명하지 못한다. 원문/식별자/좌표 전달0. 다른 POSITIVE를 이용한 요건 면제나 낱말목록 확장 대신 공개 source 논항·술어 결합 설계부터 재검토.
+- bb68a009 공개 case-bound past-event attachment 설계 사전승인6106168162. root actualTXT22에서 기존 확인요청으로3FAIL/19PASS·제품diff0; 독립 NIKL -ㄴ/이후 출처검토 뜻풀이일치. 첫 source의 case→동적 개별lemma→관측 -한→상대적 이후 결합만 증명하며 original state/reason/identity/event_frame 불변·다른행위 비병합·조건/부분/계획/인용/보고/UNKNOWN 보호·원문에 없는 분해자모 source span 생성금지. 이후·형태조합만으로 사실/법적충족/과거발생 추정금지. 기존537 고정. 최소제품/형식대조/선형계측·최종독립감사·exactCI 및 원래필수판정 대기.
+- PR84 3736c9ec971c40e85bf3e180a6d656d3185966d0 불수용5482209439. 요청6106331973·완료CI38118075725 양쪽DB FAIL(새PDF생성용 fitz누락4건), 점수38118075720/DockerSUCCESS 구분. 평가측 원래20 부인8/8·정상7/8·확장1/4, actualTXT전체경로동일; 정상8/8 필수미달. 고정18 부인3/4·정상4/4·화자1/4·반박1/2·확장4/4 불변. 공개594/독립actual22 PASS 대체불가. 원래기준/기대값/채점불변·미통합/미배포·새봉인미실행.
+- 출력불변3736 진단: 새case_bound_event primitive호출1·원래case/argument순서/공백검사통과·interveningcase0·predicate_chain없음. 새attachment grammar_fullmatchfalse→proof없음·resolved0. 기존SOURCE_SENSES의 exactfinitepast/regularadnominal 인식0. generic -한/-했/-하였 rawshape0은punctuation/다른활용 미확인이라 nonpast판정근거아님. 두독립identity와 원래UNCERTAIN/POSITIVE 불변. 원문/어휘/식별자/좌표전달0. 새 source 논항/술어·closure 설계메모전 제품추가금지·다른POSITIVE로요건면제금지.
+- 최종258907052d538192187cf4356338715e648b27fb은공개PDF fixture생성기만fitz→기존reportlab/CID로보완·폭/원문/6expects그대로·6PASS. 제품326diff0. 새CI38118978843/점수38118978817대기이며원래정상7/8 불수용을해소하지않음.
+- f51abebe31395a2b2d0faa3371f854785db797a6 auxiliary source-composition 설계조건부승인6106464870. 평가측actualTXT37 오류/skip0·5genuineFAIL32PASS·제품diff0, 독립NIKL5source 뜻/동음구분일치. 자기case→독립dynamichead/observedconnective→resultativeauxiliary→rawpastadnominal→relativeclosure만최소구현중. bare하다 authored-direct-action을COMPLETION/전체fulfillment/facts/legal과분리하며false필드를명시시험으로고정. 기존594/조건guard/관찰identity불변·source자모가상좌표금지·다른act비병합. exact certified auxiliary와동일span의LOCAL_SUBJECT collision만local처리하고다른origin blocker는보존.
+- 원래수용은정상8/8유지·부정/확장각시작2/8·0/4보다증가/어느것도감소없음.6/8·3/4는목표/미달사유보고이며새하한아님. 고정18/공개대조는원래20대체불가. 다른요건/주체/독립부정/계획/부분/quote/조건/UNKNOWN면제금지·newrule_id0.
 
-[A] TK-58 — 수용·병합(Steve 3daf7b6). 0.12.0 릴리스로 배포 예정. 할 일 없음.
-[B] TK-24 — PR #53(0ad4fac) 수용. 0.12.0 릴리스 뒤 평가 측이 통합한다. 그때까지 PR #53에 커밋을 올리지 않는다.
-[C] CodeQL 로그 정리 — 수용·병합(Steve 5d7ac6c). 할 일 없음.
-[D] TK-71 — 수용·병합(Steve 3c89a4e). 할 일 없음.
+## 경로 B
+- TK57 제한 M4 평가측 actual54파일(TXT/PDF/DOCX·물리폭240/600): 동일공개6국제번호의전체원문contact span 운영9c0/36→수용84436/36. contact mockprovider0/144 양쪽동일, 법적번호대조18파일 numericFP0·정상mockprovider72/72 양쪽동일, kind/route/coverage 불변. 같은 fixture SHA256 07ab9c519e5c0f5ae551b5dc0cee8b3eb23b442a8e1b1ee966a3aa63fc32538b. 실제유료호출0/network0; 공개좁은형식증거이고 비공개M2/전체bench/새봉인 결과로쓰지않음.
+- TK55/57 수용내용유지·추가제품작업없음. PHONE0/54·RRN0/84·mockprovider0·보호144/결합244·faithfulrouter16/16·JSON손실없는PII우선·legacy잔여구분.
+- 가격PR87 명시폐기closed/unmerged. 재개/후속가격작업/계정조회/비용계산/비용증가율기준없음. 기존프로그램예산보호/USD40상한유지.
+- 최종측정/버전판정후root확정SHA에서새version-only브랜치/3파일/1commit; 폐기가격branch재사용금지.
 
-[E] (1순위, 지금) TK-43 이름 과마스킹 축소 — 유출 0 하한 유지
- - 티켓: docs/handoff/TK-43_explicit_label_relaxation_overreach.md '재개' 절. 대상: packages/pii_engine/(detector 등).
- - 사용자 지시(2026-10-10)로 성명 자동 마스킹 동결(2026-10-04)을 이 항목에 한해 풀고 개선한다. 실명 유출 0은 하한 그대로다.
- - 시작(평가 측 비공개, 0bf4ccc): 새 라벨 + 일반 명사 과마스킹 60/140(43%), 기존 당사자 라벨 + 일반 명사 48/112(43%).
-   유출 쪽 지표는 모두 0, 이름 330/330·60/60, stem 16/16, 정상 문장 오탐 4/35.
- - 방법: 범주 단위 닫힌 불용어를 보충한다. 목록 머리에 범주 정의·출처를 적고, 보호 시험의 명사만 골라 넣지 않는다.
-   불용어와 같은 글자로 시작하는 실명(성씨 + 이름)이 지워지지 않는지 같이 본다. 판단이 서지 않으면 마스킹한다.
-   형태소 분석기 등 새 의존성은 오프라인 동작·용량·라이선스를 적어 docs/handoff/requests/로 먼저 제안하고 사용자 승인 뒤에 쓴다.
- - 수용: 과마스킹 두 지표 각 10% 이하, 유출 쪽 지표 전부 시작값 유지, 개인정보 필수 게이트(연락처·주민등록번호 누락 0) 유지,
-   보호 시험 R7-02·R7-06·R7-07·R7-09·R7-10·R7-11·R7-12·R6-01 유지, 고정 81.7/79.2/0.
- - 보고에 추가: 불용어 추가 표(범주·낱말 수·출처).
+## 경로 C
+- PR79 214334ddb916a0a856e7a4a55d39cbd180c5ec1a 불수용5482229717. 요청6106394284·exactCI38118526548/점수38118526520/Docker 모두SUCCESS. 평가측 원래4 재실행19.0/29.6/36.2 FP0 유지;20261010 시작15.2/.302/FP3(control3/A3)→25.2/.302/FP1(control1/A1), 기존9ab와동일·필수AFP/control0 미달. 네세트 인젝션방어유지. 공개936/독립GLOBAL실제형식감사PASS는대체불가. 미통합·미배포·새봉인미실행·기준/채점/기대값불변.
+- 출력불변214 진단: control7rows/scope1/excluded2/keys4·남은group1 inventorykindNone1/모든narrative종료뒤prose1. 새inventory_atom4회/PASS0·row정규화mapping/단일itemorigin/원래offset순서/definitionmarker4통과. wholeparagraphsource0·nativeatom0→eligible/certified/rowdomain0·latercitation원시함수호출0. 4paragraph모두multi-reading-segment(total16), source없음으로단정하지않음. row정규화일치와originalphysicalglyph proof는구별하며 UNKNOWNjoin을원문으로인증/가상whole-source span생성금지. 원문/어휘/IDs/좌표공유0·기존globalall-origin충돌/UNKNOWN 및interval/936expects 유지.
+- 전역guard214는공개독립PASS/936불변이나원래AFP0미달. 원래item/refsource조각을보존하는whole-caption 비교local proof 새설계만검토중·제품은동결. paired-native-title없음을이유로잘라내거나전체registeredkey를면제하지않음.
+- TK73 #79 최신9ab6764/95e11e5·관련823·독립actualTXT/PDF/DOCX15 PASS. 요청6105908060 후정식불수용5482055280: 원래4 세트19.0/29.6/36.2 FP0유지·20261010 15.2/.302/FP3→25.2/.302/FP1(control1/A1), 필수0미달·모두injection유지.
+- exactCI38114012034 attempt2 completedFAIL TK24 timing.216606/기존.1; PG/Docker/점수38114012021SUCCESS 구분. 최초실패및1회retry보존·같은9ab추가blindretry/시험/상한완화금지. 新정당한제품보완의exactCI는새SHA에서시행.
+- 출력불변metadata: scope1/excludedrows2/registeredkeys4, 남은group1 두rows의원래itemorigin/reference_span·등록key유지. inventory內kindNone1 vs모든narrative interval종료뒤kindprose1. 원문/IDs/좌표공유0.
+- TK73 bb4d300 설계 전용 사전승인6106093910: 평가측 actualTXT/PDF/DOCX90에서 동일관계9 duplicate1/목표0, 반대·불확실81 duplicate1 유지·원래rows/source 불변. 독립설계감사 조건부 진행 권고. 모든 inventory 대안의 충돌 검사 선행·source parent/exact party/number/branch별 anchor·native 균형제목/조사결합/완결명제 전체source proof·실제 occurrence/선형성·기존interval/prose multiplicity 유지. 비공개AFP 해결/제품수용 근거 아님.
+- 현재inventory/narrative interval닫힘불변, 승인설계의 최소source proposition/citation identity 보완만 수행. 등록key+heading+predicate suffix만으로면제금지·문서전역scope확장금지·fullcaption/title충돌·날짜/amount/gap/listmissing/branch/party/quote/UNKNOWN/source/TK64/sticky/원래823expects 보호.
+- publiccounter3 inferred-table진단실패는별도잔여/제품보류·자동strictxfail 없음. 원래AFP0 수용조건유지.
 
-[F] (2순위, [E] 수용 뒤) TK-56 구조화 요청의 남은 성명 유형
- - 티켓: docs/handoff/TK-56_round8e_structured_regression_and_convergence.md '재개' 절. 대상: 개인정보 경계(키 문맥·값 모양·fail-closed) 코드.
- - 사용자 지시(2026-10-10)로 8C 수렴·동결을 이 항목에 한해 푼다.
- - 목표 시험: tests/regression/test_r8d_key_context.py·test_r8e_key_context.py의 'TK-56 알려진 미해결' 7함수 21건(현재 XFAIL).
-   여기에는 과차단 방향 시험(사람 키가 아닌 키는 계속 검사)도 있다.
- - 수용: 위 21건 XPASS, 정상 구조화 요청 과차단 6/28 이하(증가 금지), 키 변형 0/120·구조화 실명 도달 0/432·평문 0/240 유지,
-   개인정보 필수 게이트 유지, 고정 81.7/79.2/0.
- - 8D·8E에서 유출과 과차단이 서로를 밀어냈다. 실제 LLMRouter.run 경로(system 위치 포함)로 두 방향을 함께 시험하고 보고한다.
- - 범위 밖: TK-55 3절(키 신호 없는 역할 명사 키, 표시 24건)은 손대지 않는다.
+## 제출·배포후
+최종제품SHA/관련시험·독립공개delta·필수CI후3줄검토요청. root원래조건평가·수용품만통합. 공개green/기존같은문제만으로수용/배포/전체해소주장금지.
+배포후법률profile6쌍 actualOFF/ON·독립변호사1명조건가림채점·끝OFF. ON분석JSON 실제Claude top-level model_executions만1회집계 input/output/total·차이/증감률·IDs/hash/coverage(cache/fallback/실패). 미상null·OFF0percentnull·도큐먼트복사본중복합산/동일값실제호출삭제금지. 통화환산/토큰의무기준없음.
 
-[G] (3순위) TK-44·TK-49 줄 결합 — 낱말 목록 없이 레이아웃 신호로
- - 티켓: docs/handoff/TK-44_line_join_word_lists_and_ledger_regression.md '재개' 절, TK-49. 대상: packages/document_engine/paragraph_reconstruction.py, PDF 파서의 신호 전달부.
- - 평가 측 사전 점검: join_lines(prev, nxt, prev_full=True)라는 같은 인자로 원장(붙임: 어절 중간 1음절 끝)과
-   R7-05의 prev_full 3건(띄움: 의존명사 1음절 끝)이 반대 결과를 요구한다. 문자열만으로는 낱말 사전 없이 가를 수 없다.
-   → 이 3건을 문자열 규칙으로 맞추지 않는다.
- - 1단계(지금 가능, 코드 변경 없음): 설계 메모를 docs/handoff/requests/에 올린다.
-   ① 레이아웃 신호(문단 단위 글자 줄바꿈 여부를 확인됨/아님/모름 세 상태로, 또는 줄 끝 여백·글자 간격 값)를
-     PDF 글자 좌표에서 문단 국소로 얻는 방법
-   ② join_lines에 넘기는 형태
-   ③ 신호가 '모름'일 때의 동작 — 기존 원장 기대값을 그대로 지킨다
-   ④ 괄호 뒤 경우(R6-03 3건·R7-05 2건 대 원장 '(대|법원' 붙임)를 문자열 구조로 가를 수 있는지, 없으면 신호로 넘길지
-   평가 측이 승인하면서 R7-05 prev_full 3건(필요하면 괄호 뒤 경우도)을 그 신호를 넘기는 형태로 고친다(평가 측 보호 경로).
- - 2단계(평가 측 시험 수정 뒤, [F] 수용 뒤): 구현. 문단 국소 right_edge·prev_full, 실제 PDF(글자 좌표) 경로 시험,
-   줄 결합 판정 반복 입력 시간 시험.
- - 수용: 고친 R7-05·R6-03·원장 test_tk41·고정 사본 test_tk41 XPASS, tests/regression·고정 원장 사본 2종 전부 통과(기대값 변경 0),
-   R7-04(쪽 배치 불변) 유지, TC-06 0.357·고정 dev 81.7 이상·holdout 79.2 이상, Google Docs PDF 47/19/1·DOCX 40/19/1·폭 변형 9 유지,
-   평가 측 새 비공개 줄 결합 세트(수용 판정 전에 새로 짓는다)에서 어절 중간 대조 시작 이상, 목록 밖 쌍·쪽 배치 불변 개선 또는 유지.
+최신 사용자: “우선 배포부터”. 온라인 대표6개 사전준비 회신은배포후로이연·배포선행요건추가없음. 실제유료OFFON전에는기존입력/변호사검증/조건고정절차를지킨다.
 
-[H] (4순위, 평가 측 TK-24 통합 PR 병합 뒤) TK-45 요건 부정·타 책임 확장 미탐 — 정상 항변 오탐 0 유지
- - 티켓: docs/handoff/TK-45_defense_negation_by_word_match.md '재개' 절. 대상: packages/legal_engine/legal_rules.py
-   (claim_review.py는 TK-24와 같은 경로이므로 통합 병합 뒤 최신 Steve에서 시작).
- - 시작(평가 측 비공개, 0bf4ccc·0ad4fac 같음): 요건 부정 경고 2/8, 정상 한정 항변 오탐 없음 8/8, 타 책임 확장 경고 0/4.
- - 방법: 낱말 위치가 아니라 문장 구조로 가른다(요건 낱말이 서술어의 대상인지, 부정이 요건 충족 행위에 걸리는지 결론에 걸리는지,
-   인용·상대방 주장 여부). 부정 표지·결론 낱말·사이에 올 말을 목록으로 늘려 맞추지 않는다.
-   판단이 서지 않으면 경고를 지우지 않고 '요건 확인 요청'으로 낮춘다. 새 rule_id 금지.
- - 시험: 요건 부정·인용·상대방 주장·재반박 각 2건 이상과 각 반대 방향, 실제 TXT → VerificationPipeline.run 경로까지.
- - 수용: 정상 항변 8/8 유지(하한), 요건 부정·타 책임 확장 모두 시작보다 증가하고 어느 것도 감소하지 않음
-   (목표 요건 부정 6/8 이상·타 책임 3/4 이상, 미달이면 사유 보고), 보호 시험 R6-02·R7-03·R7-08 유지, 고정 81.7/79.2/0.
-   평가 측은 판정 때 새 문장 세트를 한 벌 더 지어 함께 잰다.
+### 배포 우선 최종 평가 기록 — 2026-10-11 16:34 KST
 
-각 항목은 따로 Steve_ACASiaLAW 대상 PR로 올리고, CI가 끝난 뒤 '검토 요청'을 남긴다. 병합은 평가 측 통합 PR로 하며 사용자가 승인한다.
-네 항목 모두 탐지·개인정보 엔진 변경이므로, 들어간 다음 릴리스에서 봉인 시험을 한다(평가 측).
-```
+수용 엔진 3389e9e(제품8446107)는 전체 검증 exit0: acceptance1214·ledger949·full6653·browser197, 실제 실패0/strictXPASS0. 동일 SHA CI38120524487·점수38120524471·Docker 모두 성공했다. 최초 기본 sandbox 실행의 Chromium IPC 실패와 인증 대기는 보존했고, 코드·시험·기준·상한 변경 없이 필요한 로컬 IPC 권한으로 운영/후보 동일 시험과 전체 검증을 통과했다.
 
-## 평가 측 메모(전달하지 않는다)
-- RAG-2(Drive 대조 모순을 finding 목록에 올림)는 Codex에 넘기지 않았다. 사용자가 D4를 '단계적 조건부 승격'으로 바꿨고(2026-10-09), 1단계 측정 충족 뒤 TK-70으로 Antigravity (40) [D]에 넘겼다.
-- (11) 장기 미해결 4묶음 재개(사용자 지시 2026-10-10). 성명 마스킹 동결(2026-10-04)은 [E]·[F]에 한해 풀었다. 시작값은 Steve 0bf4ccc 평가 측 측정(각 티켓 '재개' 절).
-- 사전 점검(2026-10-10): `join_lines`에 같은 인자(prev_full=True)로 원장(붙임)과 R7-05 prev_full 3건(띄움)이 반대 결과를 요구 — 낱말 사전 없이는 둘 다 만족 불가. [G] 1단계 설계 메모 승인 때 평가 측이 R7-05를 신호 인자 형태로 고친다.
-- 비공개 줄 결합 세트(`hidden_join`)는 오염 상태 — [G] 수용 판정 전에 새로 짓는다. 법리 세트는 `hidden_legal2` + 판정 때 새 문장 한 벌.
+첫 봉인 비교(8문서57결함, 지문1abd74597ec4b25a)는 운영9c1b218과 후보3389e9e 모두28.1/.281/FP0·대조군0·A등급0·인젝션방어 성공이다. 별도 깨끗한 작업트리와 Python 프로세스로 실행했고 재측정하지 않는다. 봉인 점수 상승은 없으며 온라인 품질은 미측정이다. 이후 문서·버전 메타데이터만 달라지는 릴리스는 엔진 동등성을 확인한다.
+
+기존8TK+TK57 완료범위와 TK44/49/55 부분보완만 포함한다. TK45(e21, 정상7/8)·TK73(214, AFP1)은 불수용·제외, TK44/49/55의 잔여도 미완료다. 0.13.0 minor 판정은 완결 TK57와 공개 실제54파일 M4 개선에 근거하며 고정/봉인 점수 불변을 성능상승으로 기록하지 않는다. 버전 전용3파일1커밋·최종 SHA 필수CI·병합·Render 실제 SHA/health 확인 후 배포 완료를 기록한다. 온라인 OFF/ON과 독립 법률 채점은 배포 후 진행한다.
+
+구현 담당 B는 평가 기록 커밋을 정확한 시작 SHA로 삼아 새 codex/10h-version-only 브랜치에서 config 버전·docs/releases.json·생성 README만 0.13.0으로 바꾼다. 가격 PR87·제품·시험·CI·평가 기준은 변경하지 않는다. A/C 제품은 이번 릴리스에 추가하지 않는다.
