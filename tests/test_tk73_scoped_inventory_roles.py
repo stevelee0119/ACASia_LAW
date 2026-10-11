@@ -307,3 +307,46 @@ def test_synthetic_multiline_quoted_numbered_lines_do_not_certify_document_scope
     assert not scopes and not excluded
     found = _duplicates(doc)
     assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+@pytest.mark.parametrize('opening,closing', [('「', '」'), ('『', '』'), ('“', '”')])
+@pytest.mark.parametrize('mode', ['hidden_reference', 'unclosed', 'quoted_close', 'balanced_title'])
+def test_synthetic_quote_context_witnesses_and_balanced_title_opposites(
+        tmp_path, extension, opening, closing, mode):
+    if mode == 'hidden_reference':
+        lines = ['가. 수집문헌 목록',
+            f'갑 제1호증: 진술서 {opening}갑 제2호증: 참고 기재{closing}',
+            '나. 문헌 검토', '갑 제1호증 확인서, 다른 자료.', '첨부서류']
+    elif mode == 'unclosed':
+        lines = [opening, '가. 수집문헌 목록',
+            '갑 제1호증: 점검기록, 북쪽 구역. 갑 제2호증: 배치대장, 별도 부분.',
+            '나. 문헌 검토', '갑 제1호증 표본보고', '첨부서류']
+    elif mode == 'quoted_close':
+        lines = ['가. 수집문헌 목록',
+            '갑 제1호증: 점검기록, 북쪽 구역. 갑 제2호증: 배치대장, 별도 부분.',
+            opening, '나. 문헌 검토', closing, '갑 제1호증 표본보고', '첨부서류']
+    else:
+        lines = ['(1) 수집문헌 목록',
+            f'갑 제1호증: {opening}점검기록{closing}, 북쪽 구역. 갑 제2호증: 배치대장, 별도 부분.',
+            '(2) 문헌 검토', f'갑 제1호증 {opening}점검기록{closing}: 순서를 설명한다.', '첨부서류']
+    doc = _parsed(tmp_path, extension, lines)
+    assert len(_duplicates(doc)) == (0 if mode == 'balanced_title' else 1)
+
+
+@pytest.mark.parametrize('hidden', [False, True])
+def test_synthetic_docx_quoted_scope_and_hidden_reference_remain_unknown(tmp_path, hidden):
+    from docx import Document
+    from packages.document_engine.registry import parse_document
+    lines = (['가. 수집문헌 목록', '갑 제1호증: 진술서 「갑 제2호증: 참고 기재」']
+             if hidden else ['「', '가. 수집문헌 목록',
+              '갑 제1호증: 점검기록, 북쪽 구역. 갑 제2호증: 배치대장, 별도 부분.'])
+    lines += ['나. 문헌 검토', '갑 제1호증 확인서, 다른 자료.', '」', '첨부서류']
+    out = Document()
+    for line in lines:
+        out.add_paragraph(line)
+    path = tmp_path / 'public_quoted_scope.docx'
+    out.save(path)
+    doc = parse_document(str(path), document_id='public_quoted_scope', filename=path.name,
+        mime_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document', sha256='0' * 64)
+    assert len(_duplicates(doc)) == 1
