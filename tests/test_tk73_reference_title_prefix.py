@@ -223,3 +223,59 @@ def test_synthetic_long_observed_space_prefix_and_shared_branches_stay_bounded(t
     started = time.perf_counter()
     assert not _numbering(doc, rows)
     assert time.perf_counter() - started < 0.1
+
+
+def _physical_prefix_document(tmp_path, extension, marker, observed_space):
+    if extension == 'txt':
+        first = f'갑 제1호증 {marker}' + (' NET기록' if observed_space else '')
+        return _parsed(tmp_path, extension, ['입증방법', first] +
+                       ([] if observed_space else ['NET기록']) +
+                       ['갑 제1호증 NET기록: 순서를 설명한다.', '첨부서류'])
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+    from scripts.audit.corpus import _register_font, FONT
+    _register_font()
+    path = tmp_path / 'public_physical_prefix.pdf'
+    out = canvas.Canvas(str(path), pagesize=A4)
+    for size, y, text in [(11, 760, '입증방법'),
+                          (40, 700, f'갑 제1호증 {marker}' + (' NET기록' if observed_space else '')),
+                          (10, 660, '' if observed_space else 'NET기록'),
+                          (10, 620, '갑 제1호증 NET기록: 순서를 설명한다.'),
+                          (11, 580, '첨부서류')]:
+        if text:
+            out.setFont(FONT, size)
+            out.drawString(50, y, text)
+    out.save()
+    return parse_document(str(path), document_id='public_physical_prefix', filename=path.name,
+                          mime_type='application/pdf', sha256='0' * 64)
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+@pytest.mark.parametrize('marker', ['.', '-', '각'])
+def test_synthetic_reflow_space_does_not_certify_original_prefix(tmp_path, extension, marker):
+    doc = _physical_prefix_document(tmp_path, extension, marker, False)
+    rows = exhibit_rows(doc)
+    assert len(rows) == 2
+    first = rows[0]['duplicate_sources'][0]
+    if extension == 'pdf' and marker in ('-', '각'):
+        assert f'{marker} NET기록' in first['text']
+        physical = first['sources']
+        assert len(physical) == 2
+        assert physical[0]['reading_span'][1] < physical[1]['reading_span'][0]
+    found = _duplicates(doc)
+    assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
+    certificate = _duplicate_mention_view(rows[0])['origins'][0].get('reference_title_prefix')
+    assert not certificate or marker not in certificate['text']
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+@pytest.mark.parametrize('marker', ['.', '-', '각'])
+def test_synthetic_physical_prefix_observed_space_counterpart(tmp_path, extension, marker):
+    doc = _physical_prefix_document(tmp_path, extension, marker, True)
+    rows = exhibit_rows(doc)
+    prefix = _duplicate_mention_view(rows[0])['origins'][0]['reference_title_prefix']
+    physical = rows[0]['duplicate_sources'][0]['sources'][0]
+    assert physical['reading_span'][0] <= prefix['reading_span'][0]
+    assert prefix['reading_span'][1] <= physical['reading_span'][1]
+    assert not physical['physical_lines']
+    assert not _duplicates(doc)
