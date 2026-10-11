@@ -114,8 +114,10 @@ def proposal_admission(doc):
     # ReadingText's TXT whitespace normalization joins the source heading line
     # with a space. Preserve its original reading-source coordinate contract.
     heading=re.match(r'\A\s*청구\s*원인(?=\s)\s*',text)
-    if not heading:return None
-    body=text[heading.end():]
+    offset=heading.end() if heading else 0
+    # The original consumer also allows an empty source prefix. A whole-source
+    # closed frame proves that case; a leading preamble still cannot be skipped.
+    body=text[offset:]
     node=norm_binding(body)
     if not node:return None
     if 'effect_argument' in node['slices']:
@@ -133,11 +135,11 @@ def proposal_admission(doc):
         }
     else:
         kind='DIRECT_DENIAL_ADMISSION_CANDIDATE';premise_source=None
-    spans={key:[heading.end()+a,heading.end()+b] for key,(a,b) in node['spans'].items()}
+    spans={key:[offset+a,offset+b] for key,(a,b) in node['spans'].items()}
     return {
         'kind':kind,'source_spans':spans,
         'source_slices':{key:text[a:b] for key,(a,b) in spans.items()},
-        'source_prefix_span':[0,heading.end()],
+        'source_prefix_span':[0,offset],
         'speaker_scope_verified':True,'first_body_verified':True,
         'source_prefix_scope':'WHITESPACE_OR_GROUNDS_HEADING_ONLY',
         'local_source_attachment_admitted':True,

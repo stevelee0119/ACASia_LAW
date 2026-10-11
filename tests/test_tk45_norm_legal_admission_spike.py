@@ -76,3 +76,11 @@ def test_candidate_body_label_cannot_skip_original_source_prefix(tmp_path,prefix
 def test_actual_opposite_consumer_never_borrows_citation(tmp_path,body):
     result,doc=actual(tmp_path/'opposite.txt','청구원인\n'+body)
     assert proposal_admission(doc) is None
+
+
+@pytest.mark.parametrize('body',[POSITIVE[0][1],EFFECT])
+def test_original_empty_source_prefix_contract_is_preserved(tmp_path,body):
+    result,doc=actual(tmp_path/'no-heading.txt',body)
+    admitted=proposal_admission(doc)
+    assert admitted and admitted['source_prefix_span']==[0,0]
+    assert not admitted['findings_created'] and not admitted['product_consumer_installed']
