@@ -40,13 +40,14 @@ class ResourceInterpreter(provider._Interpreter):
 
 
 def source(path, left, right, separator, width, mode='named', indirect=True,
-           font='HYSMyeongJo-Medium', size=12, unrelated=0):
+           font='HYSMyeongJo-Medium', size=12, unrelated=0, preflight=True,
+           replacement=None):
     pdfmetrics.registerFont(UnicodeCIDFont(font))
     canvas = Canvas(str(path), pagesize=(width, 842), pageCompression=1)
     canvas.setFont(font, size)
     # Activate existing provider's byte preflight only. This comment is not a
     # replacement source; only the actual resource dictionary can prove text.
-    canvas.addLiteral('% /ActualText page resource capability preflight')
+    if preflight: canvas.addLiteral('% /ActualText page resource capability preflight')
     if mode == 'alpha': canvas.setFillAlpha(0)
     if mode == 'rotation': canvas.rotate(5)
     if mode == 'unknown_outer': canvas.addLiteral('/Div /Absent BDC')
@@ -64,12 +65,15 @@ def source(path, left, right, separator, width, mode='named', indirect=True,
         canvas.drawString(72, 550 - index * 30, '별도 문단을 확인한다.')
     canvas.showPage()
     page = canvas._doc.Pages.pages[-1]
+    if mode == 'page_rotation': page.Rotate = 90
     page.check_format(canvas._doc)
-    logical = left + separator + right
+    logical = left + separator + right if replacement is None else replacement
     if mode == 'disagree': logical += '별개'
     if mode == 'zero_width': logical = left + '\u200b' + right
     value = PDFDictionary({'ActualText': PDFString(logical), 'MCID': 0})
     if mode == 'wrong_type': value = PDFString(logical)
+    if mode == 'unrelated': value = PDFDictionary({'MCID': 0})
+    if mode == 'indirect_string': value = PDFDictionary({'ActualText': canvas._doc.Reference(PDFString(logical), 'PublicLogicalString')})
     if mode == 'bad_utf16': value = PDFDictionary({'ActualText': PDFString(b'\xfe\xff\xd8\x00')})
     if mode == 'ocg_property': value = PDFDictionary({'ActualText': PDFString(logical), 'OC': PDFName('Other')})
     if indirect: value = canvas._doc.Reference(value, 'PublicBoundaryProperty')
