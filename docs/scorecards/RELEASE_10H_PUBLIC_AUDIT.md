@@ -63,3 +63,8 @@ TK57 제한 M4 평가측 actual54파일(TXT/PDF/DOCX·물리폭240/600): 동일�
 TK73 c17/26ce 공개P2 HOLD6106246266: 독립과root actual6(두구조×세형식)에서 다른parent의complete inventory 또는later proposition충돌 A1→0. originalrows/source/endpoints불변. d456 설계조건부승인6106256180·root 새actual18 precheck12FAIL/6PASS. 모든originalglobal same-key inventory/UNKNOWN 및noninventory complete-prose/weak-caption multiplicity의전역veto를먼저적용하는최소guard만보완중·기존906 기대값불변. 새formalAFP0/CI 미완료.
 
 TK45 32692f9/최종3736c9e 공개독립actual22(TXT16/PDF3/DOCX3) PASS: 정상4warning0·반대18warning유지·원래관찰필드/두행위identity·raw한/이후/source/JSONfactsfalse 불변.7N+새attachment1회8chars/.0053s dense1000(관찰생성제외). 관련594/기존537불변. final3736 productdiff0. exactCI38118075725 DB2 진행중·DockerSUCCESS/점수38118075720SUCCESS. 정식원래20/18/actual20 아직미재측정·이전bcea 불수용5482118915 유지.
+
+### TK73 GLOBAL guard 후속 공개 감사 및 TK45 CI 분리 (2026-10-11 15:42 KST)
+
+- TK73 제품faff1a4a8fc5a400dcd47007e368c2ce7e780cd6·최종214334ddb916a0a856e7a4a55d39cbd180c5ec1a(보고서만차이). 독립 후속에서 기존6 actual TXT/PDF/DOCX 전역 inventory/prose 충돌 모두 A1 복구. 정상/동일반복0, 상이제목/whole weak-caption차이A1, UNKNOWNorigin대안은다른parent인증까지차단. 기존15문서 rows/source/identity는 generatedblockID 제외정확동일·scopeend유지. 기존helper500/1000/2000 약0.003854/0.006897/0.013136초(원래parser/exhibit_rows제외). 좁은공개PASS이며936/CI/비공개/봉인수용을대체하지않음.
+- TK45 최종3736 CI38118075725 양쪽DB완료FAIL: 새PDF생성시험4건에 fitz모듈미설치. SQLite7973PASS/13skip/24xfail·PG7977PASS/9skip/24xfail, Docker·점수38118075720SUCCESS. 원래제품326을바꾸지않고 기존reportlab로 공개fixture생성만보완한다. 시험6개·폭·원문·기대값/기준/의존성/CI유지·skip/xfail추가없음. 이CI실패를면제하지않으며 정식비공개충족여부와분리한다.
