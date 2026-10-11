@@ -17,6 +17,7 @@ from packages.document_engine import actualtext_boundaries as provider, pdf_pars
 from packages.document_engine.reading_text import build_reading_text
 from test_tk44_actualtext_provider import _parse
 from test_tk44_named_actualtext_capability_spike import source, observations, ResourceInterpreter, bounded_resolve
+from tk44_named_capture_budget import CaptureBudget
 
 
 def available(page):
@@ -34,12 +35,45 @@ def activation_adapter():
     assert isinstance(guard, ast.If) and '/ActualText' in ast.unparse(guard.test)
     guard.test = ast.parse('not available(page)', mode='eval').body
     ast.fix_missing_locations(tree)
-    devices=[]
+    devices=[];capture=CaptureBudget()
+    def scoped_available(page):
+        capture.availability_queries+=1
+        seen=set();hops=0
+        def resolve(value):
+            nonlocal hops
+            while isinstance(value,PDFObjRef):
+                identity=(id(value.doc),value.objid)
+                if identity in seen or hops==8:
+                    capture.resolution_failures+=1;capture.inspection_complete=False;return None
+                seen.add(identity);hops+=1
+                value=capture.reference(value,(page.page_number,'AVAILABILITY'))
+            return value
+        resources=resolve(page.page_obj.resources)
+        properties=resolve(resources.get('Properties')) if isinstance(resources,dict) else None
+        return isinstance(properties,dict) or any(b'/ActualText' in stream.get_data() for stream in page.page_obj.contents)
     class Device(provider._Device):
         def __init__(self,*args,**kwargs):
             super().__init__(*args,**kwargs);devices.append(self)
             self.resource_queries=0;self.resource_hops=0;self.resource_max_hops=0
-            self.inspection=[]
+            self.pending_named=False
+        def begin_tag(self,tag,props=None):
+            if not self.pending_named or not isinstance(props,dict) or 'ActualText' not in props:
+                return super().begin_tag(tag,props)
+            if len(self.stack)>=provider.MAX_DEPTH:
+                self.over_budget=True;return
+            permitted=capture.context()
+            if not permitted:
+                self.over_budget=True
+                self.stack.append({'closed':False,'unknown':True,'eligible':False,
+                                   'ancestors':tuple(self.stack),'glyphs':[]})
+                return
+            actual=capture.strict(props['ActualText']) if permitted else None
+            self.over_budget|=capture.exceeded
+            name=literal_name(tag)
+            context={'closed':False,'unknown':name!='Span' or actual is None or 'OC' in props,
+                     'actual':actual,'ancestors':tuple(self.stack),'glyphs':[],'eligible':True,
+                     'id':len(self.contexts)}
+            self.contexts.append(context);self.stack.append(context)
     class Interpreter(ResourceInterpreter):
         def do_BDC(self,tag,props):
             witness=None
@@ -49,10 +83,11 @@ def activation_adapter():
                     seen=set();depth=0
                     while isinstance(value,PDFObjRef):
                         identity=(id(value.doc),value.objid)
-                        if identity in seen or len(hops)==8: return None
+                        if identity in seen or len(hops)==8:
+                            capture.resolution_failures+=1;capture.inspection_complete=False;return None
                         seen.add(identity);hops.append(value.objid);depth+=1
-                        try: value=value.resolve()
-                        except Exception: return None
+                        self.device.resource_max_hops=max(self.device.resource_max_hops,depth)
+                        value=capture.reference(value,(self.device.pageno,id(self.resources)))
                     self.device.resource_max_hops=max(self.device.resource_max_hops,depth)
                     return value
                 resources=resolve(self.resources)
@@ -63,23 +98,22 @@ def activation_adapter():
                     witness={'name':name,'object_reference_chain':list(hops),'scope':'CURRENT_INTERPRETER_RESOURCES','max_reference_depth':8}
                     # Inspection and strict certification are separate: an
                     # indirect string may be inspected but remains uncertified.
-                    raw=resolve(selected.get('ActualText'))
-                    if isinstance(raw,bytes) and len(raw)<=128000:
-                        try:
-                            text=raw[2:].decode('utf-16-be') if raw.startswith(b'\xfe\xff') else ''.join(PDFDocEncoding[c] for c in raw)
-                            if len(text.strip())>=8 or any(c in text for c in '\u200b\u200c\u200d\ufeff'):
-                                self.device.inspection.append(text[:2000])
-                        except (UnicodeError,IndexError): pass
+                    if not self.device.form_depth:
+                        raw=resolve(selected.get('ActualText'))
+                        capture.inspect(raw)
                     props=selected
                 self.device.resource_hops+=len(hops)
+            self.device.pending_named=witness is not None
             provider._Interpreter.do_BDC(self,tag,props)
+            self.device.pending_named=False
+            self.device.over_budget|=capture.exceeded
             if witness and self.device.stack:
                 self.device.stack[-1]['resource_witness']=witness
-    namespace = dict(provider.__dict__, available=available, _Interpreter=Interpreter, _Device=Device)
+    namespace = dict(provider.__dict__, available=scoped_available, _Interpreter=Interpreter, _Device=Device)
     exec(compile(tree, '<test-only resource activation>', 'exec'), namespace)
     def trial(*args,**kwargs):
         page=args[0]
-        if (not args[1] or page.rotation) and available(page):
+        if (not args[1] or page.rotation) and scoped_available(page):
             # Source inspection must not inherit the proof's early geometry
             # rejection. This branch interprets the selected page only once.
             device=Device(page.pdf.rsrcmgr,pageno=page.page_number,laparams=page.pdf.laparams)
@@ -90,11 +124,13 @@ def activation_adapter():
         if devices and accounting:
             device=devices[-1]
             accounting.update(resource_queries=device.resource_queries,resource_reference_hops=device.resource_hops,
-                              resource_max_hops=device.resource_max_hops,resource_property_entries_scanned=0)
+                              resource_max_hops=device.resource_max_hops,resource_property_entries_scanned=0,
+                              document_capture_snapshot=capture.snapshot())
             for evidence in edges.values():
                 evidence['resource_source']=device.contexts[evidence['invocation_id']]['resource_witness']
         return edges,accounting
-    trial.inspection=lambda:[text for device in devices for text in device.inspection]
+    trial.inspection=lambda:list(capture.inspection)
+    trial.capture=capture;trial.devices=devices
     return trial
 
 
