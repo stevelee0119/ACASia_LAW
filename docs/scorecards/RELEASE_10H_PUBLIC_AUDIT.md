@@ -11,3 +11,14 @@
 - TK45 0078572: 독립actualTXT20건 오류0. 계획/타객체/다의어/모달/보고/독립부정·정상한정재진술/새주어/인용효과 표본 보존, source/sense/범주와국소span 확인. 그러나 요건앞/부수부정앞의 부분extent가 새완료인증에서 누락돼 POSITIVE·경고0으로 바뀌는 P2를 확인해 공식요청 전 보류. 별도c70b2de 메모85·제품변경전4fail/7pass 제어 승인, 같은event의국소extent 위치보존 보완중. 비법률적 비과거부정도 효과확인요청을 만드는 보수후보 잔여 명시.
 - TK73 2f1424d 좁은delta 감사: 독립actualTXT/PDF28개에서 단일종결부호 등가반복1→0 복구, 실질명제/부정/한정/날짜/내부부호/물음표/복수끝부호1→1 유지. 원본rows(생성ID 제외)·출처slice·실행중불변 확인, row별투영1회·가지별anchor격리 유지. shared-block1k/2k/4k 0.0009/0.0018/0.0034초·branch-reference0.0087/0.0175/0.0358초(기존parser 제외). 이번공개delta 차단점없음; 정확CI·검토요청·정식AFP0/최종통합/봉인/배포 별도.
 - TK45 d11ae3e 좁은extent 후속감사: 독립actualTXT11개 오류0, argument앞/사슬앞뒤 및연속한정 모두UNCERTAIN/확인요청·supports/total_completion=false. 다른독립절/주어/목적어 extent전파없음, 일부러·무한정 정상경고0 보호, ARGUMENT_PREFIX/PREDICATE_CHAIN 및원문span 일치. 이전007 P2는이범위해소·새차단점없음. 전체/비공개/봉인/CI 재실행하지않았으며 정식판정은별도.
+
+
+TK45 새clause-first설계f929dc8 공개사전감사: 공식NIKL10query HTTP200·개별면하다/면제하다/소멸하다/받다/제재/책임/징계/우편/소포 sense구분 확인. application role은별도이며사전조회가현문맥법적sense인증을대체하지않음. 새22actualTXT의known-categorical vsUNKNOWNverification 최종판정/source논항·술어·actor·필요성부정근거까지대조하도록조건부승인·제품미감사.
+
+TK73 prefix제품dbda376/기록6570e91 공개사전감사: source경계/어휘각/인용/fullwidth/continuation/내부부제/날짜/locator48개PASS 및총64개원본rows생성block_id제외불변, parser제외12.5k/249·25k/499·50k/999prefix/가지0.0021/0.0041/0.0081초. 그러나무공백실질제목선두부호와명칭차이가TXT/PDF×섹션유무8개모두중복1→0으로합쳐지는새P2를확인해사전수용보류·좁은경계보완요청. 관측공백분리표기대조는1→0으로의도대로였음. 필수비공개/새봉인/full평가대체아님. 비공개자료접근없음.
+
+TK73 최종30a2029/제품471625d 좁은후속감사: 무공백literal8 중복1·관측공백대조8 중복0 구분, 추가actualTXT/PDF12에서continuation/가상공백 인증거부 및 실제원본block 관측공백 긍정대조 PASS. PDF dash/quantifier뒤합성공백 중복1·동일원본block실제공백0. 재구성 physical-line 복사본 prefix인증거부·NFKC raw/global/normalized좌표와원본제목 유지. literal16 원본rows 생성ID제외동일·최종보고SHA의제품차이0. 새차단점없음·기존전체/비공개/봉인/게이트미재실행; exactCI와원래AFP0 정식판정 별도.
+
+TK45 247f64c/보고f71186f 공개actualTXT20 좁은감사: 정중체 필요/권리 frame categorical누락 및면제신청→면제하다 source-prefix오인 두P2 확인·사전보류. 나머지known/UNKNOWN·사실수령/법적객체·화자/과거/부분/직접부정 반대 유지. source근거10 span/JSON/후속중복제외와8k/16k/32k 국소순회0.0069/0.0108/0.0248초 통과. 추가공식6자료 뜻풀이일치·행정처분 SANCTION_DECISION은제품매핑임 명시.
+
+TK45 최소보완8165749 좁은후속actualTXT14 감사PASS: 필요/권리 정중체categorical복구·다른lemma/신청행위면제sense인증없음·능동/피동sense분리·직접/중첩부정/새actor/인용보존·모호책임은확인요청유지. source/span/JSON/후속중복제외PASS·새차단점없음. 최종1a324c9 exactCI/정식20+18은별도. 비공개/봉인/전체미재실행.

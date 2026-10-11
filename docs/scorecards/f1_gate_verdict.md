@@ -1674,3 +1674,23 @@ TK73의 be654f9·67865f는 최종 공식 재측정 전 공개 사전감사에서
 | #79 2f1424dc82923bf7a7baab555050114e42b39806 | 불수용·미통합 | 요청6104992700·같은SHA CI38107536587/점수38107536580 SUCCESS 인용. 기존은퇴4종 평가측 재실행19.0/29.6/36.2/15.2·FP0/0/0/3, 마지막대조군/A등급3 유지·필수0 미달. 인젝션방어 유지. 공개증분actualTXT/PDF28 PASS는 대체불가. 리뷰5481729440. 별도논리불변계측: 관련대조행7모두line/source보존, table0; 중복3그룹/6행에anchor3·prose3, 후보-anchor완전일치0, 다중prose충돌0. 신규공개table-gap은 유효잔여지만 이 필수실패의 원인이 아니므로 제품확장보류·line후보/제목경계 새설계 요청. |
 
 측정은 Linux/Python3.11.15/Tesseract5.5.0 kor·network0으로 CI5.3.4와 환경차이를 명시했다. 측정도구/기대값/기준선을 바꾸지 않았다. 구현 측에는 원문/사건문구/IDs/spans를 제공하지 않았다. 수용분8446107과 동SHA CI 성공은 보존하며 두 미수용 제품을 통합하지 않는다. 새봉인·최종full·배포·실제OFF/ON은 아직 수행 전이다.
+
+
+## 2026-10-11 13:17 KST TK73 source-prefix 최종 제출 재판정
+
+| 후보 | 판정 | 근거와 한계 |
+| --- | --- | --- |
+| #79 30a2029256585b8136e077ea3f3d44270aa3dbd6 | 불수용·미통합 | 요청6105309164·exactCI38110044088/점수38110044065 SUCCESS 인용. 기존입력/기대값/채점기불변 평가측재실행 은퇴4종19.0/29.6/36.2/15.2·재현율.190/.296/.362/.302·FP0/0/0/3, 마지막대조군/A3 유지·필수0 미달. 인젝션방어유지. 공개652/좁은감사PASS는대체불가. 리뷰5481848611. |
+
+출력불변metadata계측: 중복3그룹6행·None3/prose3·source_mapping6·prefix인증6이지만 legacy comparison_offset 변화0. unknown첫original-source 재구성0. proposed=anchor와 어느쪽proper-prefix0, unknown구분자앞candidate가다른proposed와완전일치0. 출처prefix/단순앞구분자제거는현필수실패원인해소를입증하지못함. 새공개일반화설계부터진행·미수용제품미통합. 원문/IDs/spans미전달. Linux/Python3.11.15/Tesseract5.5.0 kor/network0·CI5.3.4환경차이명시. 새릴리스봉인미채점.
+
+
+## TK45 1a324c9 최종 재판정 (2026-10-11 13:32 KST)
+
+| 후보 | 판정 | 근거 |
+| --- | --- | --- |
+| #84 1a324c9 | 불수용·미통합 | PR84 1a324c922a81e7481ca31b6a415829821fba2447 불수용5481892889. 요청6105422572·exactCI38110886498/점수38110886552 SUCCESS 인용. 기존20 평가측재실행 부정8/8·정상7/8·확장1/4, actualTXT전체경로 동일. 시작2/8·8/8·0/4 대비 부정/확장증가이나 정상8/8 필수미달. 고정18 부정3/4·정상4/4·화자1/4·반박1/2·확장4/4. 공개430·독립actualTXT14 PASS는 대체불가. 원래기준/채점/expectations 유지·미통합/미배포·새봉인미채점. |
+
+출력불변metadata 원인: 정상실패1은 CHANGED_ARGUMENT/UNCERTAIN + ASSERTED_REQUIREMENT_REALIZATION/POSITIVE의 동시존재, CONFIGURED authored limited1·scope_uncertain false·typed0·uncertain_quote false. 새효과분기가 아닌 한정요건확인 선택분기. 원문/IDs/spans 전달0. 독립 실제행위 단언과 문맥참조의 관계를 공개일반화설계부터 보완하며 POSITIVE존재만으로 실제부정/다른요건/주체/미확정을면제하지 않는다.
+
+평가환경 Linux/Python3.11.15/Tesseract5.5.0 kor/network0, CI Tesseract5.3.4 차이 명시.

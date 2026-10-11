@@ -44,4 +44,4 @@
 
 
 
-| 10-11 (한국) | 고정81.7/79.2/0(이전8TK후보); 연락처누락1/54→0/54·RRN0/84; 명시SPACE12/48→48/48·UNKNOWN24; TK45 d11 부정8/8·정상7/8·확장0/4; TK73 2f 은퇴19.0/29.6/36.2/15.2·FP0/0/0/3 | 기존8TK Steve병합미배포; #78/#81/#82/#86 제한범위 내용수용·844통합CI성공 | TK45 정상유지/확장개선·TK73 AFP0 미달로 불수용. UNKNOWNprimary/legacy역할 잔여 유지 | 동일SHA CI 인용과 평가측 재실행 구분. TK45 actualTXT전체경로도 동일·TK73 line후보-anchor불일치 계측. 과거full환경실패보존; 최종full/새봉인/배포/OFFON 미완료. f1_gate_verdict 최신절/HISTORY 근거 |
+| 10-11 (한국) | 고정81.7/79.2/0(이전8TK후보); 연락처누락1/54→0/54·RRN0/84; 명시SPACE12/48→48/48·UNKNOWN24; TK45 1a 부정8/8·정상7/8·확장1/4; TK73 30a 은퇴19.0/29.6/36.2/15.2·FP0/0/0/3 | 기존8TK Steve병합미배포; #78/#81/#82/#86 제한범위 내용수용·844통합CI성공 | TK45 정상유지/확장개선·TK73 AFP0 미달로 불수용. UNKNOWNprimary/legacy역할 잔여 유지 | 동일SHA CI 인용과 평가측 재실행 구분. TK45 actualTXT전체경로도 동일·TK73 line후보-anchor불일치 계측. 과거full환경실패보존; 최종full/새봉인/배포/OFFON 미완료. f1_gate_verdict 최신절/HISTORY 근거 |
