@@ -1696,12 +1696,11 @@ TK73의 be654f9·67865f는 최종 공식 재측정 전 공개 사전감사에서
 평가환경 Linux/Python3.11.15/Tesseract5.5.0 kor/network0, CI Tesseract5.3.4 차이 명시.
 
 
-## TK45·TK73 최신 정식 재판정 (2026-10-11 한국 시각; 이전0c 및9ab)
+## TK45·TK73 최신 정식 재판정 (2026-10-11 한국 시각; bcea 및9ab)
 
 | 후보 | 판정 | 근거 |
 | --- | --- | --- |
-| #84 0c09885 | 불수용·미통합 | PR84 0c09885a557d879f50d21870111a27426bee9db3 불수용5481987480. 요청6105692046·exactCI38113014109/점수38113014100 SUCCESS 인용. 원래20 평가측 재실행 부정8/8·정상7/8·확장1/4, 실제TXT전체경로 동일. 정상8/8필수미달. 고정18 부정3/4·정상4/4·화자1/4·재반박1/2·확장4/4. 공개465·독립13 PASS는 대체불가. 미통합·미배포·원래기준/expectations/채점불변·새봉인미실행. |
-
+| #84 bcea17c | 불수용·미통합 | PR84 bcea17c660f9cbd3055952b2ae0f1b26f2cfda49 불수용5482118915. 요청6106067158·동일SHA CI38116124746/점수38116124743/Docker SUCCESS 인용. 원래20 평가측 재실행 부인8/8·정상7/8·확장1/4, 실제TXT전체경로 동일. 정상8/8 필수조건 미달. 고정18 부인3/4·정상4/4·화자1/4·반박1/2·확장4/4. 공개537 및 독립 조건부 보호 감사 PASS는 원래 조건 대체불가. 미통합·미배포·새봉인 미실행·기대값/기준선 불변. |
 | #79 9ab6764 | 불수용·미통합 | PR79 9ab6764b218628ca4979f84c245edb83a24123b8 불수용5482055280. 요청6105908060·exactCI38114012034 attempt2 completedFAIL(TK24 0.216606초/기존0.1초), PG/Docker/점수38114012021 SUCCESS 구분. 평가측 원래4 재실행19.0/29.6/36.2 FP0 유지; 20261010 시작15.2/.302/FP3(control3/A3)→25.2/.302/FP1(control1/A1), 필수AFP/control0 미달. 네세트 인젝션방어 유지. 공개823/독립15 PASS 대체불가·새봉인 미실행·미통합·미배포. |
 
 출력불변metadata: 실패정상1은 CHANGED_ARGUMENT/UNCERTAIN + ASSERTED_REQUIREMENT_REALIZATION/POSITIVE. configured requirement identity2이고 두 observation identity는서로다름. 신규same-identity resolution resolved0, qualifier abstention까지도달하지않음. 원문/IDs/spans공유0·다른POSITIVE로독립요건/직접부정/불확실면제금지. 같은정상지표정체뒤제품전새공개일반화설계필수.
@@ -1709,3 +1708,5 @@ TK73의 be654f9·67865f는 최종 공식 재측정 전 공개 사전감사에서
 Linux/Python3.11.15/Tesseract5.5.0 kor/network0. CI5.3.4와 차이 명시.
 
 TK73 출력불변metadata: control rows7/scope1/excluded2/keys4. 남은group1의2rows는기등록key·itemorigin/reference_span유지, inventory內kindNone1와모든narrative interval종료뒤kindprose1. 원문/IDs/좌표 공유0. 문서전역등록key면제·현재interval임의확장금지·별도공개source role/proposition 설계부터.
+
+출력불변 진단: 남은 정상1의 독립요건 identity2와 UNCERTAIN/CHANGED_ARGUMENT·POSITIVE/ASSERTED_REQUIREMENT_REALIZATION 유지. reference_frame 호출0, immediate argument pattern 미일치·기존 event_frame case 존재·predicate_chain 없음. contextual_proposition 생성 전 거절되므로 기존 nominal-modifier/object-tail 설계가 해당 원인을 설명하지 못한다. 원문/식별자/좌표 전달0. 다른 POSITIVE를 이용한 요건 면제나 낱말목록 확장 대신 공개 source 논항·술어 결합 설계부터 재검토.

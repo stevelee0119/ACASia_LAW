@@ -47,3 +47,9 @@ TK73 74d85b 최소runtime delta 독립감사 보류6105693708: actualTXT/PDF/DOC
 
 
 TK45 제품58200ca/보고441249b 공개좁은감사 보류: 앞조건절이comma/semicolon source boundary로국소prefix밖이되며새reference선택이무조건정상경고0으로바뀜. 독립조건comma2·semicolon1에서기준0c warning1→0, root comma1 직접재현. 다른actualTXT26은 원래observation state/reason/identity/span불변·의도정상5만1→0·반대21판정보존. 별도단독검토한경우구조는root warning1/context0 보존되어fail로확대하지않음. 승인ea80의condition보호계약 내최소source-index guard 및unconditional punctuation 정상대조유지 메모대기. formal20/18·whole·봉인 미실행.
+
+
+TK45 제품2d39ce9/최종bcea17c 조건 source 최소 후속 독립 감사 PASS 권고: 이전 조건 comma2/semicolon1의 warning1 복구·newline2/old same-identity3 보호, 무조건 finite punctuation/기본/작성자 정상0 유지. 원래 state/reason/identity/source 및 condition UNKNOWN/reset witness 보존, quote/report/uncertain 종료 소비 금지 확인. dense1000의 source index7call/7N·추가 fullscan0, lookup 비용 별도 명시. period TXT4는 이전582부터 rows0/finding0이므로 신규 보호의 E2E 근거에서 제외. 별도 independent prior sentence+new concession actualTXT 정상2는 경고0·claim-local slicing 일치. 새 P1/P2 없음; whole/CI/비공개/새봉인 미재실행.
+
+
+TK73 bb4d300 설계 전용 사전승인6106093910: 평가측 actualTXT/PDF/DOCX90에서 동일관계9 duplicate1/목표0, 반대·불확실81 duplicate1 유지·원래rows/source 불변. 독립설계감사 조건부 진행 권고. 모든 inventory 대안의 충돌 검사 선행·source parent/exact party/number/branch별 anchor·native 균형제목/조사결합/완결명제 전체source proof·실제 occurrence/선형성·기존interval/prose multiplicity 유지. 비공개AFP 해결/제품수용 근거 아님.
