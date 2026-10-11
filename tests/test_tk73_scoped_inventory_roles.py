@@ -381,3 +381,23 @@ def test_synthetic_quote_mask_uses_absolute_reference_origin_after_item_prefix(
     assert reading.text[slice(*reference)] == '갑 제3호증'
     found = _duplicates(doc)
     assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt', 'docx'])
+def test_synthetic_unquoted_prefixed_inventory_keeps_source_role_positive(tmp_path, extension):
+    lines = ['가. 수집문헌 목록',
+        '1. 갑 제1호증: 관측기록. 갑 제2호증: 측정대장. 갑 제3호증: 인용표',
+        '나. 문헌 검토', '갑 제3호증 인용표: 순서를 설명한다.', '첨부서류']
+    if extension == 'docx':
+        from docx import Document
+        from packages.document_engine.registry import parse_document
+        out = Document()
+        for line in lines:
+            out.add_paragraph(line)
+        path = tmp_path / 'public_unquoted_origin_scope.docx'
+        out.save(path)
+        doc = parse_document(str(path), document_id='public_unquoted_origin_scope', filename=path.name,
+            mime_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document', sha256='0' * 64)
+    else:
+        doc = _parsed(tmp_path, extension, lines)
+    assert not _duplicates(doc)
