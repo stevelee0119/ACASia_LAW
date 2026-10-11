@@ -27,6 +27,7 @@ GROUNDS_HEAD_RE = re.compile(r"청\s*구\s*원\s*인")
 DEFENDANT_HEAD_RE = re.compile(r"(?:^|\n)\s*피\s*고")
 ITEM_SPLIT_RE = re.compile(r"\n|(?=(?:^|\s)\d{1,2}\.\s)")
 CITATION_HINT_RE = re.compile(r"(?:19|20)?\d{2}\s*[가-힣]{1,3}\s*\d{2,6}|제\s*\d+\s*조|헌법재판소|결정")
+SOURCE_LEADING_WHITESPACE_RE = re.compile(r"\s*")
 GRADES = {"A": EvidenceGrade.A, "B": EvidenceGrade.B, "C": EvidenceGrade.C}
 CONFIDENCE = {"A": 0.9, "B": 0.75, "C": 0.5}
 
@@ -447,6 +448,14 @@ def review_legal_rules(doc: NormalizedDocument) -> List[Finding]:
     if defense:
         body = sections["BODY"]
         body_offset = len(text) - len(body)
+        grounds_heading = GROUNDS_HEAD_RE.search(text, 0, body_offset)
+        # A section heading does not close an earlier speaker or quotation.
+        # Certify only an empty source prefix or whitespace + the exact heading
+        # mapped to this BODY. Query the original range once without copying it.
+        source_prefix_clear = body_offset == 0 or bool(
+            grounds_heading and grounds_heading.end() == body_offset
+            and SOURCE_LEADING_WHITESPACE_RE.fullmatch(text, 0, grounds_heading.start())
+        )
         unwrapped = re.sub(r"(?<![.\?!:;])\n(?!\s*(?:\d+[\.)]|[가-하][\.)]|[-•*]))", " ", body)
         previous_body_statement = False
         for start, end in sentence_bounds(unwrapped):
@@ -460,7 +469,7 @@ def review_legal_rules(doc: NormalizedDocument) -> List[Finding]:
             # This bounded provider cannot prove that inherited quotation,
             # report or rebuttal scope has closed. A prior BODY statement is
             # UNKNOWN for this addition; original rule selection is unchanged.
-            if not is_first_statement:
+            if not is_first_statement or not source_prefix_clear:
                 continue
             key = (defense["rule_id"], unit[:80])
             if key in seen:
@@ -472,6 +481,12 @@ def review_legal_rules(doc: NormalizedDocument) -> List[Finding]:
             offset = body_offset + start + left
             proof["reading_text_offset"] = offset
             proof["speaker_scope"] = "FIRST_NONEMPTY_BODY_SENTENCE_ONLY"
+            proof["source_prefix_scope"] = {
+                "state": "WHITESPACE_OR_GROUNDS_HEADING_ONLY",
+                "prefix_span": [0, body_offset],
+                "grounds_heading_span": list(grounds_heading.span()) if grounds_heading else None,
+                "prior_statements": 0,
+            }
             # Keep exact primitive slices; the scope/claim already exists in
             # normalized reading text and need not be duplicated in metadata.
             proof["source_slices"] = {key: unit[a:b] for key, (a, b) in proof["source_spans"].items()

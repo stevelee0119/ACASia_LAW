@@ -41,6 +41,17 @@ def check_proof(finding,text,kind):
     assert proof['selected_sense']['definition']==SOURCE_SENSES[proof['selected_sense']['id']]['definition']
     assert proof['authored_speaker']=='IMPLICIT_WRITER'
     assert proof['speaker_scope']=='FIRST_NONEMPTY_BODY_SENTENCE_ONLY'
+    prefix=proof['source_prefix_scope']
+    assert prefix['state']=='WHITESPACE_OR_GROUNDS_HEADING_ONLY'
+    assert prefix['prior_statements']==0
+    assert prefix['prefix_span'][0]==0
+    if prefix['grounds_heading_span'] is not None:
+        a,b=prefix['grounds_heading_span']
+        assert not text[:a].strip()
+        assert ''.join(text[a:b].split())=='청구원인'
+        assert prefix['prefix_span'][1]==b
+    else:
+        assert prefix['prefix_span']==[0,0]
     assert proof['authored_actor']=='UNSPECIFIED_WITHIN_CLOSED_LOCAL_CHAIN'
     assert proof['normative_scope']=='SAME_SENTENCE_EXPLICIT_CIVIL_DEFENSE'
     assert proof['application_role'] in ('ASSERTED_DIRECT_ACT_DENIAL','ASSERTED_CATEGORICAL_LEGAL_EFFECT')
@@ -229,3 +240,14 @@ def test_earlier_source_statement_or_open_scope_before_heading_keeps_baseline(tm
     actual=findings()
     assert [(f.status,f.confidence_features) for f in actual]==[(f.status,f.confidence_features) for f in baseline]
     assert not any('source_defense_proof' in f.confidence_features for f in actual)
+
+
+@pytest.mark.parametrize('prefix',['','\n  청구원인\n','청 구 원 인\n'])
+def test_empty_or_observed_grounds_heading_source_prefix_remains_positive(tmp_path,prefix):
+    path=tmp_path/'first-source.txt';path.write_text(prefix+DIRECT,encoding='utf-8')
+    result=VerificationPipeline(audit=AuditChain()).run('first-source',ProjectContext('public'),[
+        DocumentInput('generated',str(path),path.name,'text/plain',sha256_file(path))])
+    assert not result.errors
+    findings=[f for f in result.all_findings if RULE in f.tags]
+    assert len(findings)==1
+    check_proof(findings[0],build_reading_text(result.documents[0].normalized).text,'DIRECT_REQUIREMENT_DENIAL')
