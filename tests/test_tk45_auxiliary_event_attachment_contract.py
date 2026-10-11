@@ -1,4 +1,5 @@
-"""Design-only source-composition controls; product326 remains frozen."""
+"""Approved source-composition controls; original observations stay frozen."""
+import json
 import pytest
 
 from tests.test_tk45_clause_effect_contract import LEAD, _trace_pipeline
@@ -32,6 +33,22 @@ def test_direct_first_event_action_composes_with_result_maintaining_auxiliary(
         assert proof['supports_authored_event_assertion'] is True
         assert proof['underlying_facts_verified'] is False
         assert proof['legal_sufficiency_verified'] is False
+        assert proof['total_requirement_completion'] is False
+        assert proof['fulfillment_verified'] is False
+        assert text[slice(*proof['morphology_span'])] == ('은' if auxiliary == '놓은' else '둔')
+        assert text[slice(*proof['connective_span'])] == '해'
+        if head == '해':
+            assert proof['head_lemma'] == '하다'
+            assert proof['head_category'] == 'AUTHORED_DIRECT_ACTION'
+            assert proof['supports_asserted_fulfillment'] is False
+            assert proof['total_completion_asserted'] is False
+        if auxiliary == '놓은':
+            scope = proof['auxiliary_scope_resolution']
+            assert scope['origin'] == 'LOCAL_SUBJECT_MATCH'
+            assert scope['source_span'] == proof['auxiliary_span']
+            assert scope['original_scope_index_preserved'] is True
+            assert scope['other_breaks_ignored'] is False
+        assert json.loads(json.dumps(proof)) == proof
         support = row['case_bound_event_selection_support']
         assert support['later_act_certifies_first'] is False
         assert support['different_acts_merged'] is False

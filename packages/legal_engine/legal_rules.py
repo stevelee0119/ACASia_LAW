@@ -865,8 +865,28 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
         # local prefix bound. Global/legacy clause boundaries stay unchanged.
         target_prefix = [proof['temporal_span'][1], target_start]
         target_unqualified = _NONSPACE_RE.search(text, *target_prefix) is None
+        blocker_count = bisect_left(blockers, target_end) - bisect_left(blockers, case[1])
+        auxiliary_scope_resolution = None
+        auxiliary_span = proof.get('auxiliary_span')
+        if auxiliary_span:
+            blocker_index = bisect_left(blockers, auxiliary_span[0])
+            subject_index = bisect_left(subject_starts, auxiliary_span[0])
+            if (blocker_index < len(scope_breaks)
+                    and list(scope_breaks[blocker_index].span()) == auxiliary_span
+                    and subject_index < len(subjects)
+                    and list(subjects[subject_index].span()) == auxiliary_span
+                    and not _RESOLUTION_ATTRIBUTION_RE.match(text, auxiliary_span[0])):
+                # The original index is unchanged: a source-certified
+                # auxiliary predicate is not a new noun+topic subject.
+                blocker_count -= 1
+                auxiliary_scope_resolution = {
+                    'source_span': auxiliary_span,
+                    'origin': 'LOCAL_SUBJECT_MATCH',
+                    'interpretation': 'CERTIFIED_AUXILIARY_PREDICATE',
+                    'original_scope_index_preserved': True, 'other_breaks_ignored': False,
+                }
         if (not context_unqualified or not target_unqualified
-                or bisect_left(blockers, target_end) != bisect_left(blockers, case[1])
+                or blocker_count
                 or bisect_left(attribution, proof['temporal_span'][1]) != bisect_left(attribution, context_prefix[0])
                 or bisect_left(quote_starts, target_end) != bisect_right(quote_ends, row['span'][0])):
             continue
@@ -880,6 +900,8 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
             'local_subject_span': subject_span, 'argument_prefix_span': context_prefix,
             'condition_scope_start': scope_start, 'sentence_closure_witness': closure_witness,
             'authored': True,
+            **({'auxiliary_scope_resolution': auxiliary_scope_resolution}
+               if auxiliary_scope_resolution else {}),
         }
         row['case_bound_event_selection_support'] = {
             'later_observation_index': target_index, 'shared_local_subject_scope': True,
