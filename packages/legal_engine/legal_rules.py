@@ -574,7 +574,8 @@ def _defense_requirement_observations(
     return observations
 
 
-_CONTEXT_ARGUMENT_RE = re.compile(r'^\s+(?P<argument>[가-힣]+?)(?P<case>을|를)\s+')
+_CONTEXT_ARGUMENT_RE = re.compile(r'\s+(?P<argument>[가-힣]+?)(?P<case>을|를)\s+')
+_NONSPACE_RE = re.compile(r'\S')
 _LOCAL_SUBJECT_RE = re.compile(r'(?<![가-힣])[가-힣]+(?:이|가|은|는)(?=\s|[,;.!?]|$)')
 _LOCAL_CONDITION_RE = re.compile(r'(?:라면|다면|으면|하면|되면|(?:을|는|한)\s+경우)(?=\s|[,;.!?]|$)')
 _RESOLUTION_SCOPE_BREAK_RE = re.compile('|'.join('(?:' + pattern.pattern + ')' for pattern in (
@@ -593,6 +594,11 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
     boundaries = list(_REQUIREMENT_CLAUSE_END_RE.finditer(text))
     boundary_ends = [match.end() for match in boundaries]
     boundary_by_end = {match.end(): match for match in boundaries}
+    finite_starts = [match.start() for match in _FINITE_PREDICATE_RE.finditer(text)]
+    connective_starts = [match.start() for match in boundaries if match.group() not in ',;.!?\n']
+    argument_starts = [match.start() for match in _ARGUMENT_CASE_RE.finditer(text)]
+    words = list(re.finditer(r'[가-힣]+', text))
+    word_ends = [word.end() for word in words]
     subjects = list(_LOCAL_SUBJECT_RE.finditer(text))
     subject_starts = [match.start() for match in subjects]
     blockers = [match.start() for match in _RESOLUTION_SCOPE_BREAK_RE.finditer(text)]
@@ -605,6 +611,25 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
         groups.setdefault(row['requirement_identity'], []).append((index, row))
     resolved = set()
     target_authorship = {}
+    prefix_cache = {}
+
+    def argument_prefix(start):
+        if start in prefix_cache:
+            return prefix_cache[start]
+        boundary_index = bisect_right(boundary_ends, start) - 1
+        prefix_start = boundary_ends[boundary_index] if boundary_index >= 0 else 0
+        subject_index = bisect_left(subject_starts, start) - 1
+        subject = (subjects[subject_index] if subject_index >= 0
+                   and subjects[subject_index].start() >= prefix_start else None)
+        unqualified = _NONSPACE_RE.search(text, prefix_start, start) is None
+        carried_subject = (subject is not None
+                           and _NONSPACE_RE.search(text, prefix_start, subject.start()) is None
+                           and _NONSPACE_RE.search(text, subject.end(), start) is None)
+        proof = ([prefix_start, start], (list(subject.span()) if subject else None),
+                 unqualified or carried_subject)
+        prefix_cache[start] = proof
+        return proof
+
     for group in groups.values():
         realization = None
         for index, row in reversed(group):
@@ -620,21 +645,39 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
             first, end = row['predicate_span']
             if row.get('event_frame', {}).get('case_span') or row.get('predicate_chain'):
                 continue
-            argument = _CONTEXT_ARGUMENT_RE.match(text[first:end])
+            argument = _CONTEXT_ARGUMENT_RE.match(text, first, end)
             boundary = boundary_by_end.get(end)
             if not argument or not boundary:
                 continue
-            argument_end = first + argument.end()
-            words = list(re.finditer(r'[가-힣]+', text[argument_end:end]))
-            if not words or _ARGUMENT_CASE_RE.search(text[argument_end:end]):
+            argument_end = argument.end()
+            # Reject another case-bound argument before any suffix copying,
+            # token enumeration or polarity inspection for this context.
+            if bisect_left(argument_starts, end) != bisect_left(argument_starts, argument_end):
                 continue
-            predicate = words[-2] if words[-1].group() in {'뒤', '후', '다음'} and len(words) > 1 else words[-1]
-            if not _has_requirement_predicate(text[argument_end:end]):
+            word_index = bisect_right(word_ends, end) - 1
+            if word_index < 0 or words[word_index].start() < argument_end:
+                continue
+            if words[word_index].group() in {'뒤', '후', '다음'}:
+                word_index -= 1
+            if word_index < 0 or words[word_index].start() < argument_end:
+                continue
+            predicate = words[word_index]
+            if (bisect_left(finite_starts, end) == bisect_left(finite_starts, argument_end)
+                    and bisect_left(connective_starts, end) == bisect_left(connective_starts, argument_end)):
                 continue
             target_index, target = realization
             target_meaning = target['predicate_semantics']
             target_end = target_meaning['span'][1]
             if end > target['span'][0]:
+                continue
+            context_prefix, subject_span, context_unqualified = argument_prefix(row['span'][0])
+            target_prefix, _, target_unqualified = argument_prefix(target['span'][0])
+            if not context_unqualified or not target_unqualified:
+                row['contextual_resolution_abstention'] = {
+                    'reason': 'ARGUMENT_QUALIFIER_UNRESOLVED',
+                    'context_prefix_span': context_prefix, 'realization_prefix_span': target_prefix,
+                    'requirement_identity_only': True,
+                }
                 continue
             # New subjects, conditions, attribution or quotation block shared
             # local grammatical scope; they are not resolved by any positive.
@@ -642,7 +685,7 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
                 continue
             if bisect_left(quote_starts, target_end) != bisect_right(quote_ends, row['span'][0]):
                 continue
-            if polarity(text[first:end], (argument.end(), end - first)) != ASSERTED:
+            if polarity(text[first:end], (argument_end - first, end - first)) != ASSERTED:
                 continue
             target_first = target['span'][0]
             if target_index not in target_authorship:
@@ -650,24 +693,23 @@ def _contextual_requirement_resolution(text: str, observations: list[dict], quot
                                                           (0, target_end - target_first)) == ASSERTED
             if not target_authorship[target_index]:
                 continue
-            subject_index = bisect_left(subject_starts, row['span'][0]) - 1
-            boundary_index = bisect_right(boundary_ends, row['span'][0]) - 1
-            preceding_boundary = boundary_ends[boundary_index] if boundary_index >= 0 else 0
+            preceding_boundary = context_prefix[0]
             if bisect_left(attribution, first) != bisect_left(attribution, preceding_boundary):
                 continue
-            subject_span = (list(subjects[subject_index].span()) if subject_index >= 0
-                            and subjects[subject_index].start() >= preceding_boundary else None)
             row['contextual_resolution'] = {
                 'relation': 'CONTEXTUAL_MENTION_WITH_INDEPENDENT_REALIZATION',
                 'requirement_identity': row['requirement_identity'],
                 'realization_observation_index': target_index,
-                'context_argument_span': [first + offset for offset in argument.span('argument')],
-                'context_case_span': [first + offset for offset in argument.span('case')],
-                'context_predicate_span': [argument_end + offset for offset in predicate.span()],
+                'context_argument_span': list(argument.span('argument')),
+                'context_case_span': list(argument.span('case')),
+                'context_predicate_span': list(predicate.span()),
                 'context_clause_boundary_span': list(boundary.span()),
                 'realization_argument_span': target_meaning['argument_span'],
                 'realization_predicate_span': target_meaning['span'],
                 'local_subject_span': subject_span, 'shared_local_subject_scope': True,
+                'context_argument_prefix_span': context_prefix,
+                'realization_argument_prefix_span': target_prefix,
+                'unqualified_argument_attachment': True,
                 'source_semantic_support': True, 'original_state': row['state'],
                 'underlying_facts_verified': False, 'legal_sufficiency_verified': False,
             }
