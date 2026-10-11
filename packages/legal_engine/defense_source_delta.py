@@ -38,8 +38,8 @@ SOURCE_SENSES = {
 # These are grammatical scopes, not exceptions for particular sample verbs.
 _QUOTE = re.compile(r'["“”‘’「」『』]')
 _REPORT = re.compile(r"(?:다고|라고|라는|다는|다며|이라며)(?=\s|[,;.!?]|$)")
-_CONDITION = re.compile(r"[가-힣]+면(?=\s|[,;.!?]|$)")
-_TERMINAL = re.compile(r"\s*(?:다|습니다|어요)?\s*[.!]?\s*\Z")
+_CONDITION = re.compile(r"(?<![가-힣])[가-힣]+면(?=\s|[,;.!?]|$)")
+_TERMINAL = re.compile(r"\s*(?:(?:다|습니다|어요)\s*)?(?:[.!]\s*)?\Z")
 _DIRECT_DENIAL = re.compile(
     r"\s*(?P<case>을|를)\s+"
     r"(?P<predicate>(?P<action>하지)(?:는|도)?\s*"
@@ -64,7 +64,7 @@ def _patterns(requirements: tuple[str, ...], limited: tuple[str, ...], leads: tu
     # Existing configured statutory numbers delimit a civil norm reference;
     # a naked number or an unrelated noun is not a legal-effect source link.
     art = "|".join(re.escape(a) for a in articles)
-    citation = re.compile(rf"\s*(?P<norm>(?P<law>헌법|민법|형법)\s*제\s*(?:{art})\s*조(?:의\s*\d+)?)"
+    citation = re.compile(rf"\s*(?P<norm>(?P<law>민법)\s*제\s*(?:{art})\s*조(?:의\s*\d+)?)"
                           r"(?P<link>의|에\s*(?:따라|의하여))?\s*")
     return anchor, citation, tuple(re.compile(p) for p in requirements), tuple(re.compile(p) for p in limited)
 

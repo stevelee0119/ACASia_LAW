@@ -448,11 +448,19 @@ def review_legal_rules(doc: NormalizedDocument) -> List[Finding]:
         body = sections["BODY"]
         body_offset = len(text) - len(body)
         unwrapped = re.sub(r"(?<![.\?!:;])\n(?!\s*(?:\d+[\.)]|[가-하][\.)]|[-•*]))", " ", body)
+        previous_body_statement = False
         for start, end in sentence_bounds(unwrapped):
             raw = body[start:end]
             left = len(raw) - len(raw.lstrip())
             unit = raw.strip()
             if not unit:
+                continue
+            is_first_statement = not previous_body_statement
+            previous_body_statement = True
+            # This bounded provider cannot prove that inherited quotation,
+            # report or rebuttal scope has closed. A prior BODY statement is
+            # UNKNOWN for this addition; original rule selection is unchanged.
+            if not is_first_statement:
                 continue
             key = (defense["rule_id"], unit[:80])
             if key in seen:
@@ -463,6 +471,7 @@ def review_legal_rules(doc: NormalizedDocument) -> List[Finding]:
             finding = _finding(doc, defense, unit, sources)
             offset = body_offset + start + left
             proof["reading_text_offset"] = offset
+            proof["speaker_scope"] = "FIRST_NONEMPTY_BODY_SENTENCE_ONLY"
             # Keep exact primitive slices; the scope/claim already exists in
             # normalized reading text and need not be duplicated in metadata.
             proof["source_slices"] = {key: unit[a:b] for key, (a, b) in proof["source_spans"].items()

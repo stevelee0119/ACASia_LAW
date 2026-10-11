@@ -40,6 +40,7 @@ def check_proof(finding,text,kind):
     assert proof['selected_sense']['id'] in SOURCE_SENSES
     assert proof['selected_sense']['definition']==SOURCE_SENSES[proof['selected_sense']['id']]['definition']
     assert proof['authored_speaker']=='IMPLICIT_WRITER'
+    assert proof['speaker_scope']=='FIRST_NONEMPTY_BODY_SENTENCE_ONLY'
     assert proof['authored_actor']=='UNSPECIFIED_WITHIN_CLOSED_LOCAL_CHAIN'
     assert proof['normative_scope']=='SAME_SENTENCE_EXPLICIT_CIVIL_DEFENSE'
     assert proof['application_role'] in ('ASSERTED_DIRECT_ACT_DENIAL','ASSERTED_CATEGORICAL_LEGAL_EFFECT')
@@ -183,3 +184,23 @@ def test_inherited_unknown_speaker_and_non_civil_norm_preserve_baseline(tmp_path
     _,_,findings=run_source(tmp_path/'prior-enabled.txt',body)
     assert [(f.status,f.confidence_features) for f in findings]==[(f.status,f.confidence_features) for f in baseline]
     assert not any('source_defense_proof' in f.confidence_features for f in findings)
+
+
+@pytest.mark.parametrize('tail',['다.','습니다.','어요!','다  .  ','다'])
+def test_terminal_grouping_preserves_observed_endings(tmp_path,tail):
+    body=DIRECT.removesuffix('다.')+tail
+    assert source_defense_proof(body,load_defense_groups()) is not None
+    # Reading text trims outer paragraph whitespace, preserving internal gaps.
+    body=body.rstrip()
+    _,text,findings=run_source(tmp_path/'terminal.txt',body)
+    assert len(findings)==1
+    check_proof(findings[0],text,'DIRECT_REQUIREMENT_DENIAL')
+
+
+@pytest.mark.parametrize('shape',['trailing-whitespace','single-token','condition-token'])
+def test_long_unknown_tail_never_creates_a_source_proof(shape):
+    if shape=='trailing-whitespace':
+        body=DIRECT.removesuffix('.')+' '*32000+'x'
+    else:
+        body=DIRECT.replace('하지 않았으나','가'*32000+('면' if shape=='condition-token' else '')+' 하지 않았으나')
+    assert source_defense_proof(body,load_defense_groups()) is None
