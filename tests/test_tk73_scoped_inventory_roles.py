@@ -350,3 +350,34 @@ def test_synthetic_docx_quoted_scope_and_hidden_reference_remain_unknown(tmp_pat
     doc = parse_document(str(path), document_id='public_quoted_scope', filename=path.name,
         mime_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document', sha256='0' * 64)
     assert len(_duplicates(doc)) == 1
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt', 'docx'])
+@pytest.mark.parametrize('item_prefix', ['1. ', ''])
+def test_synthetic_quote_mask_uses_absolute_reference_origin_after_item_prefix(
+        tmp_path, extension, item_prefix):
+    lines = ['가. 수집문헌 목록',
+        item_prefix + '갑 제1호증: 관측기록. 갑 제2호증: 측정대장. 「갑 제3호증: 인용표」',
+        '나. 문헌 검토', '갑 제3호증 다른표', '첨부서류']
+    if extension == 'docx':
+        from docx import Document
+        from packages.document_engine.registry import parse_document
+        out = Document()
+        for line in lines:
+            out.add_paragraph(line)
+        path = tmp_path / 'public_reference_origin_scope.docx'
+        out.save(path)
+        doc = parse_document(str(path), document_id='public_reference_origin_scope', filename=path.name,
+            mime_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document', sha256='0' * 64)
+    else:
+        doc = _parsed(tmp_path, extension, lines)
+    from packages.claim_engine.evidence_consistency import _duplicate_inventory_roles
+    from packages.document_engine.reading_text import build_reading_text
+    reading = build_reading_text(doc)
+    rows = exhibit_rows(doc)
+    _, scopes = _duplicate_inventory_roles(reading, rows)
+    assert scopes and scopes[0]['keys'] == {('갑', 1, None), ('갑', 2, None)}
+    reference = next(row for row in rows if row['number'] == 3)['duplicate_sources'][0]['reference_span']
+    assert reading.text[slice(*reference)] == '갑 제3호증'
+    found = _duplicates(doc)
+    assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
