@@ -75,9 +75,16 @@ def activation_adapter():
                      'id':len(self.contexts)}
             self.contexts.append(context);self.stack.append(context)
     class Interpreter(ResourceInterpreter):
+        def process_page(self,page):
+            capture.begin_page();completed=False
+            try:
+                result=super().process_page(page);completed=True;return result
+            finally:
+                capture.end_page(completed)
         def do_BDC(self,tag,props):
             witness=None
             if isinstance(props,PSLiteral):
+                if not self.device.form_depth:capture.named_selection_requests+=1
                 self.device.resource_queries+=1;hops=[]
                 def resolve(value):
                     seen=set();depth=0
@@ -122,6 +129,7 @@ def activation_adapter():
     exec(compile(tree, '<test-only resource activation>', 'exec'), namespace)
     def trial(*args,**kwargs):
         page=args[0]
+        attempted_before=capture.inspection_attempted_pages
         if (not args[1] or page.rotation) and scoped_available(page):
             # Source inspection must not inherit the proof's early geometry
             # rejection. This branch interprets the selected page only once.
@@ -130,6 +138,10 @@ def activation_adapter():
             edges,accounting={}, {'certified_edges':0,'inspection_only':True}
         else:
             edges,accounting=namespace['inline_actualtext_edges'](*args,**kwargs)
+        if capture.inspection_attempted_pages==attempted_before:
+            capture.inspection_unavailable_pages+=1
+            if accounting is None:
+                accounting={'certified_edges':0,'inspection_unavailable':True}
         if devices and accounting:
             device=devices[-1]
             accounting.update(resource_queries=device.resource_queries,resource_reference_hops=device.resource_hops,
@@ -137,6 +149,8 @@ def activation_adapter():
                               document_capture_snapshot=capture.snapshot())
             for evidence in edges.values():
                 evidence['resource_source']=device.contexts[evidence['invocation_id']]['resource_witness']
+        if accounting is not None:
+            accounting['document_capture_snapshot']=capture.snapshot()
         return edges,accounting
     trial.inspection=lambda:list(capture.inspection)
     trial.capture=capture;trial.devices=devices

@@ -17,10 +17,40 @@ class CaptureBudget:
         self.reference_visits=self.reference_hits=self.reference_fetches=self.reference_requests=0
         self.contexts=self.context_attempts=self.decode_calls=self.decode_hits=0
         self.decoded_chars=self.raw_cache_bytes=self.retained_chars=0
-        self.exceeded=False;self.inspection_complete=True
+        self.exceeded=False;self._inspection_ok=True
+        self.inspection_attempted_pages=self.inspection_completed_pages=0
+        self.inspection_failed_pages=self.inspection_active_pages=0
+        self.inspection_unavailable_pages=self.named_selection_requests=0
         self.availability_queries=self.resolution_failures=0
         self.unsupported_actualtext_values=self.actualtext_absent=0
         self.selected_property_missing=self.selected_property_invalid=0
+
+    @property
+    def inspection_complete(self):
+        return bool(self._inspection_ok and self.inspection_completed_pages>0
+                    and self.inspection_attempted_pages==self.inspection_completed_pages
+                    and not self.inspection_active_pages and not self.inspection_unavailable_pages)
+
+    @inspection_complete.setter
+    def inspection_complete(self,value):
+        # Failure is sticky; only a finished lifecycle can derive success.
+        if not value: self._inspection_ok=False
+
+    def begin_page(self):
+        self.inspection_attempted_pages+=1;self.inspection_active_pages+=1
+
+    def end_page(self,completed):
+        self.inspection_active_pages-=1
+        if completed:self.inspection_completed_pages+=1
+        else:self.inspection_failed_pages+=1;self._inspection_ok=False
+
+    def inspection_state(self):
+        if self.inspection_active_pages:return 'IN_PROGRESS'
+        if not self.inspection_attempted_pages:
+            return 'UNAVAILABLE_UNINSPECTED' if self.inspection_unavailable_pages else 'NOT_ATTEMPTED'
+        if not self.inspection_complete:return 'INSPECTED_INCOMPLETE'
+        if not self.decoded:return 'INSPECTED_NO_SELECTED_PAGE_NAMED_SOURCE'
+        return 'INSPECTED_SUPPORTED'
 
     def fail(self):
         self.exceeded=True;self.inspection_complete=False
@@ -98,6 +128,13 @@ class CaptureBudget:
                     raw_cache_bytes=self.raw_cache_bytes,retained_inspection_strings=len(self.inspection),
                     retained_inspection_chars=self.retained_chars,budget_exceeded=self.exceeded,
                     inspection_complete=self.inspection_complete,availability_queries=self.availability_queries,
+                    inspection_state=self.inspection_state(),
+                    inspection_attempted_pages=self.inspection_attempted_pages,
+                    inspection_completed_pages=self.inspection_completed_pages,
+                    inspection_failed_pages=self.inspection_failed_pages,
+                    inspection_active_pages=self.inspection_active_pages,
+                    inspection_unavailable_pages=self.inspection_unavailable_pages,
+                    named_selection_requests=self.named_selection_requests,
                     resolution_failures=self.resolution_failures,
                     unsupported_actualtext_values=self.unsupported_actualtext_values,
                     actualtext_absent=self.actualtext_absent,
