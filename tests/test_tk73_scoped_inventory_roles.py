@@ -418,3 +418,11 @@ def test_synthetic_compatibility_quotes_only_signal_protection_uncertainty(
             '나. 문헌 검토', '갑 제1호증 다른표', closing, '첨부서류']
     doc = _parsed(tmp_path, extension, lines)
     assert len(_duplicates(doc)) == (0 if balanced_title else 1)
+
+
+@pytest.mark.parametrize('glyph', ['⑴', '㈎', '㈠'])
+def test_synthetic_multichar_compatibility_protection_is_unknown(tmp_path, glyph):
+    doc = _parsed(tmp_path, 'txt', [glyph, '가. 수집문헌 목록',
+        '갑 제1호증: 관측기록. 갑 제2호증: 측정대장.',
+        '나. 문헌 검토', '갑 제1호증 다른표', '첨부서류'])
+    assert len(_duplicates(doc)) == 1
