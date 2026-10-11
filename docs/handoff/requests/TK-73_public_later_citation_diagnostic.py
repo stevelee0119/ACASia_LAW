@@ -6,7 +6,7 @@ from pathlib import Path
 
 from packages.claim_engine.evidence_consistency import (
     _EXHIBIT_REF_SENTENCE_RE, _duplicate_inventory_roles,
-    _duplicate_mention_view, _TITLE_BRACKETS, exhibit_rows,
+    _duplicate_mention_view, _TITLE_BRACKETS, _TITLE_PREDICATE_ENDINGS, exhibit_rows,
 )
 from packages.claim_engine.exhibits import parse_exhibits
 from packages.document_engine.reading_text import build_reading_text
@@ -70,6 +70,11 @@ def citation_source(reading, citation, title):
             'reference_unprotected': not any(mask[left-paragraph_start:right-paragraph_start]),
             'complete_native_title': title[0] in _TITLE_BRACKETS and
                                      title[-1] == _TITLE_BRACKETS[title[0]],
+            'complete_proposition': citation.endswith('.') and
+                                    citation[:-1].endswith(_TITLE_PREDICATE_ENDINGS),
+            'predicate_unprotected': not mask[end - paragraph_start - 2],
+            'competing_definition_colon': any(char in ':：' and not mask[index]
+                                              for index, char in enumerate(paragraph)),
             'source_slice_verified': True}
 
 
@@ -123,6 +128,10 @@ def run(directory):
                     assert citation_proof['complete_native_title']
                     assert citation_proof['observed_particle'] == '으로'
                     assert citation_proof['reference_unprotected'] is (mode != 'quoted_citation')
+                    if mode != 'quoted_citation':
+                        assert citation_proof['predicate_unprotected']
+                    assert citation_proof['complete_proposition']
+                    assert not citation_proof['competing_definition_colon']
                 expected = 0 if mode == 'same' else 1
                 row_free_residual = mode == 'quoted_citation' and len(rows) < 3
                 if row_free_residual:
