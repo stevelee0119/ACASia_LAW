@@ -53,3 +53,6 @@ TK45 제품2d39ce9/최종bcea17c 조건 source 최소 후속 독립 감사 PASS 
 
 
 TK73 bb4d300 설계 전용 사전승인6106093910: 평가측 actualTXT/PDF/DOCX90에서 동일관계9 duplicate1/목표0, 반대·불확실81 duplicate1 유지·원래rows/source 불변. 독립설계감사 조건부 진행 권고. 모든 inventory 대안의 충돌 검사 선행·source parent/exact party/number/branch별 anchor·native 균형제목/조사결합/완결명제 전체source proof·실제 occurrence/선형성·기존interval/prose multiplicity 유지. 비공개AFP 해결/제품수용 근거 아님.
+
+
+bb68a009 공개 case-bound past-event attachment 설계 사전승인6106168162. root actualTXT22에서 기존 확인요청으로3FAIL/19PASS·제품diff0; 독립 NIKL -ㄴ/이후 출처검토 뜻풀이일치. 첫 source의 case→동적 개별lemma→관측 -한→상대적 이후 결합만 증명하며 original state/reason/identity/event_frame 불변·다른행위 비병합·조건/부분/계획/인용/보고/UNKNOWN 보호·원문에 없는 분해자모 source span 생성금지. 이후·형태조합만으로 사실/법적충족/과거발생 추정금지. 기존537 고정. 최소제품/형식대조/선형계측·최종독립감사·exactCI 및 원래필수판정 대기.
