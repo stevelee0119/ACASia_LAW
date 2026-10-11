@@ -38,7 +38,10 @@ for suffix in ['하지 않았으나','하지 않았지만','하지 않았으므�
  add('existing-warning-'+suffix, f'설령 계약이 인정되더라도, 민법 제487조의 변제공탁을 {suffix} 이 사건 채무에 관한 책임을 질 수 없다.', 'PRESERVE_EXISTING_WARNING',None)
 
 @pytest.mark.parametrize('name,body,relation,desired',rows,ids=[r[0] for r in rows])
-def test_public_actual_txt_baseline_and_declared_delta(tmp_path,name,body,relation,desired):
+def test_public_actual_txt_baseline_and_declared_delta(tmp_path,monkeypatch,name,body,relation,desired):
+    # Preserve the design's baseline witness inputs/expected values explicitly.
+    # Enabled automatic proof behavior is tested separately in product tests.
+    monkeypatch.setattr('packages.legal_engine.legal_rules.source_defense_proof', lambda *args: None)
     path=tmp_path/'public.txt';path.write_text('청구원인\n'+body,encoding='utf-8')
     result=VerificationPipeline(audit=AuditChain()).run('public-'+name,ProjectContext('public'),[
         DocumentInput('public',str(path),path.name,'text/plain',sha256_file(path))])

@@ -17,6 +17,7 @@ from packages.common.schemas import Evidence, Finding, NormalizedDocument
 from packages.document_engine.reading_text import build_reading_text, sentence_bounds
 
 from .polarity import asserted
+from .defense_source_delta import source_defense_proof
 
 ENGINE_NAME = "legal_engine.legal_rules"
 RULES_PATH = Path(__file__).resolve().parents[2] / "config" / "legal_rules" / "rules.json"
@@ -439,4 +440,35 @@ def review_legal_rules(doc: NormalizedDocument) -> List[Finding]:
                 continue
             seen.add(key)
             out.append(_finding(doc, rule, unit, sources))
+    # Source-certified additions are separate from the original selection.
+    # Existing findings, including verification requests, are never changed.
+    defense = next((r for r in table.get("rules", [])
+                    if r.get("rule_id") == "GEN.DEFENSE_OVERCLAIM_WITHOUT_REQUIREMENTS"), None)
+    if defense:
+        body = sections["BODY"]
+        body_offset = len(text) - len(body)
+        unwrapped = re.sub(r"(?<![.\?!:;])\n(?!\s*(?:\d+[\.)]|[가-하][\.)]|[-•*]))", " ", body)
+        for start, end in sentence_bounds(unwrapped):
+            raw = body[start:end]
+            left = len(raw) - len(raw.lstrip())
+            unit = raw.strip()
+            if not unit:
+                continue
+            key = (defense["rule_id"], unit[:80])
+            if key in seen:
+                continue
+            proof = source_defense_proof(unit, load_defense_groups())
+            if proof is None:
+                continue
+            finding = _finding(doc, defense, unit, sources)
+            offset = body_offset + start + left
+            proof["reading_text_offset"] = offset
+            # Keep exact primitive slices; the scope/claim already exists in
+            # normalized reading text and need not be duplicated in metadata.
+            proof["source_slices"] = {key: unit[a:b] for key, (a, b) in proof["source_spans"].items()
+                                      if key not in ("authored_scope", "concession", "conclusion")}
+            finding.confidence_features["source_defense_proof"] = proof
+            finding.span = (offset, offset + len(unit))
+            seen.add(key)
+            out.append(finding)
     return out
