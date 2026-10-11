@@ -401,3 +401,20 @@ def test_synthetic_unquoted_prefixed_inventory_keeps_source_role_positive(tmp_pa
     else:
         doc = _parsed(tmp_path, extension, lines)
     assert not _duplicates(doc)
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+@pytest.mark.parametrize('opening,closing', [('＂', '＂'), ('＇', '＇'), ('［', '］')])
+@pytest.mark.parametrize('balanced_title', [False, True])
+def test_synthetic_compatibility_quotes_only_signal_protection_uncertainty(
+        tmp_path, extension, opening, closing, balanced_title):
+    if balanced_title:
+        lines = ['(1) 수집문헌 목록',
+            f'갑 제1호증: {opening}관측기록{closing}. 갑 제2호증: 측정대장.',
+            '(2) 문헌 검토', f'갑 제1호증 {opening}관측기록{closing}: 순서를 설명한다.', '첨부서류']
+    else:
+        lines = [opening, '가. 수집문헌 목록',
+            '갑 제1호증: 관측기록. 갑 제2호증: 측정대장.',
+            '나. 문헌 검토', '갑 제1호증 다른표', closing, '첨부서류']
+    doc = _parsed(tmp_path, extension, lines)
+    assert len(_duplicates(doc)) == (0 if balanced_title else 1)
