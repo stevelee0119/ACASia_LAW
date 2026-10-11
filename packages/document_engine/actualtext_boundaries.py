@@ -53,6 +53,8 @@ class _Device(PDFPageAggregator):
         self.sequence = 0
         self.glyph_sequence = []
         self.paints = []
+        self.unbounded_paint_sequence = 0
+        self.unbounded_paints = 0
 
     def begin_tag(self, tag, props=None):
         if len(self.stack) >= MAX_DEPTH:
@@ -137,6 +139,12 @@ class _Device(PDFPageAggregator):
         else:
             self.paints.append((self.sequence, item.bbox))
 
+    def unsupported_paint(self):
+        self._unsupported_paint()
+        self.sequence += 1
+        self.unbounded_paint_sequence = self.sequence
+        self.unbounded_paints += 1
+
 
 class _Interpreter(PDFPageInterpreter):
     """Unproved alpha/soft masks/clipping are local graphics-state blockers."""
@@ -167,6 +175,12 @@ class _Interpreter(PDFPageInterpreter):
         self.device.unsafe_graphics = True
         super().do_W_a()
 
+    def do_sh(self, name):
+        # pdfminer does not expose shading bounds/opacity to the layout device.
+        # Its unknown coverage cannot certify previously drawn source glyphs.
+        self.device.unsupported_paint()
+        super().do_sh(name)
+
 
 def _key(text, x0, y0, x1, y1, font):
     return text, x0, y0, x1, y1, font
@@ -189,7 +203,7 @@ def _occluded(device):
     exceeding the explicit linear candidate budget has no provider proof.
     """
     buckets = defaultdict(list)
-    references = checks = 0
+    references = checks = queries = 0
     for sequence, box in device.paints:
         cells = _cells(box)
         if cells is None:
@@ -205,6 +219,7 @@ def _occluded(device):
             continue
         for cell in cells:
             records = buckets.get(cell, [])
+            queries += 1
             start = bisect_right(records, device.glyph_sequence[index], key=lambda item: item[0])
             for paint_index in range(start, len(records)):
                 checks += 1
@@ -216,7 +231,8 @@ def _occluded(device):
                     break
             if index in hidden:
                 break
-    return hidden, {'paint_bucket_references': references, 'paint_candidate_visits': checks}
+    return hidden, {'paint_bucket_references': references, 'paint_candidate_visits': checks,
+                    'paint_bucket_binary_queries': queries}
 
 
 def inline_actualtext_edges(page, chars: list[dict[str, Any]], lines: list[list[dict[str, Any]]], *, excluded_glyphs=frozenset()):
@@ -236,7 +252,8 @@ def inline_actualtext_edges(page, chars: list[dict[str, Any]], lines: list[list[
         accounting = {'version': 1, 'provider': 'INLINE_SPAN_ACTUALTEXT',
                       'original_glyphs': len(chars), 'rendered_glyphs': len(device.glyphs),
                       'source_spans': len(device.contexts), 'association_visits': device.association_visits,
-                      'max_depth': MAX_DEPTH, 'over_budget': device.over_budget}
+                      'max_depth': MAX_DEPTH, 'over_budget': device.over_budget,
+                      'unbounded_paints': device.unbounded_paints}
         if device.over_budget:
             return {}, accounting
         if not any(context['eligible'] and not context['unknown'] and context['closed']
@@ -268,6 +285,8 @@ def inline_actualtext_edges(page, chars: list[dict[str, Any]], lines: list[list[
         for context in device.contexts:
             if (context['unknown'] or not context['closed'] or not context['eligible']
                     or any(parent['unknown'] or not parent['closed'] for parent in context['ancestors'])):
+                continue
+            if context['glyphs'] and device.glyph_sequence[context['glyphs'][0]] < device.unbounded_paint_sequence:
                 continue
             logical, cursor, previous = context['actual'], 0, None
             proposals, valid = [], bool(context['glyphs'])

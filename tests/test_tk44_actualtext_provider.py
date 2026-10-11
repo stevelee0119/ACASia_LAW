@@ -31,6 +31,8 @@ def _source(path, *, left='공개된 새', right='자료를 검토한다.', sepa
         canvas.setFillColorRGB(1, 1, 1)
         canvas.rect(65, 670, 200, 70, stroke=0, fill=1)
         canvas.setFillColorRGB(0, 0, 0)
+    if mode == 'prior_shading':
+        canvas.linearGradient(0, 0, width, 842, [(1, 1, 1), (1, 1, 1)], extend=True)
     for repeat in range(repetitions):
         logical = left + separator + right
         if mode == 'disagree': logical += '추가내용'
@@ -63,6 +65,8 @@ def _source(path, *, left='공개된 새', right='자료를 검토한다.', sepa
         canvas.drawImage(ImageReader(buffer), 68, 688, width=200, height=40)
     if mode == 'unrelated_future_paint':
         canvas.rect(68, 430, 200, 40, stroke=0, fill=1)
+    if mode == 'future_shading':
+        canvas.linearGradient(0, 0, width, 842, [(1, 1, 1), (1, 1, 1)], extend=True)
     canvas.save()
 
 
@@ -95,7 +99,7 @@ def test_original_logical_separator_controls_primary_reading_and_provenance(tmp_
 
 @pytest.mark.parametrize('mode', ['untagged', 'rotation', 'alpha', 'clip', 'unknown_outer', 'ocg_outer',
                                 'nonspan', 'bad_utf16', 'zero_width', 'disagree', 'invisible', 'unclosed',
-                                'form', 'overlap', 'future_paint', 'future_colored_paint', 'future_image'])
+                                'form', 'overlap', 'future_paint', 'future_colored_paint', 'future_image', 'future_shading'])
 def test_unproved_scope_rendering_or_mapping_has_no_join_proof(tmp_path, mode):
     path = tmp_path / 'opposite.pdf'
     _source(path, mode=mode)
@@ -104,7 +108,7 @@ def test_unproved_scope_rendering_or_mapping_has_no_join_proof(tmp_path, mode):
     assert not any(o['boundary_signal'] == 'JOIN_CONFIRMED' for o in observations)
 
 
-@pytest.mark.parametrize('mode', ['visible', 'prior_paint', 'unrelated_future_paint'])
+@pytest.mark.parametrize('mode', ['visible', 'prior_paint', 'unrelated_future_paint', 'prior_shading'])
 def test_reused_mcid_has_independent_invocations_and_unrelated_paint_is_local(tmp_path, mode):
     path = tmp_path / 'repeat.pdf'
     _source(path, mode=mode, repetitions=2)
@@ -136,6 +140,18 @@ def test_mapping_accounting_is_bounded_without_per_boundary_text_copies(tmp_path
     assert stats['association_visits'] <= 32 * stats['rendered_glyphs']
     assert stats['paint_candidate_visits'] <= 32 * max(1, stats['rendered_glyphs'])
     assert stats['source_spans'] == repetitions
+
+
+@pytest.mark.parametrize('mode,state', [('future_shading', 'UNKNOWN'), ('prior_shading', 'JOIN_CONFIRMED')])
+def test_unbounded_shading_has_ordered_visibility_witness(tmp_path, mode, state):
+    path = tmp_path / 'shading.pdf'
+    _source(path, mode=mode)
+    doc = _parse(path)
+    observations = [o for b in doc.blocks for o in b.attributes.get('boundary_observations', [])]
+    assert len(observations) == 1 and observations[0]['boundary_signal'] == state
+    stats = doc.pages[0].attributes['actualtext_boundary_provider']
+    assert stats['unbounded_paints'] == 1
+    assert stats['certified_edges'] == (0 if state == 'UNKNOWN' else 1)
 
 
 @pytest.mark.parametrize('format', ['txt', 'docx'])
