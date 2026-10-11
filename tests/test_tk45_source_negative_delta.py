@@ -204,3 +204,28 @@ def test_long_unknown_tail_never_creates_a_source_proof(shape):
     else:
         body=DIRECT.replace('하지 않았으나','가'*32000+('면' if shape=='condition-token' else '')+' 하지 않았으나')
     assert source_defense_proof(body,load_defense_groups()) is None
+
+
+SOURCE_PREFIX_SCOPE=[
+ '「청구원인\n'+DIRECT+' 이는 인용문의 끝이다.」',
+ '다음 두 문장은 피고의 주장이다.\n청구원인\n'+DIRECT,
+ '조사자가 아래 주장을 보고하였다.\n청구원인\n'+EFFECT,
+ '다음 주장은 옳지 않다.\n청구원인\n'+DIRECT,
+ '다른 항목의 경과를 설명한다.\n청구원인\n'+EFFECT,
+ '청구취지\n청구를 기각한다.\n청구원인\n'+DIRECT,
+]
+
+@pytest.mark.parametrize('body',SOURCE_PREFIX_SCOPE)
+def test_earlier_source_statement_or_open_scope_before_heading_keeps_baseline(tmp_path,monkeypatch,body):
+    path=tmp_path/'source-prefix.txt';path.write_text(body,encoding='utf-8')
+    def findings():
+        result=VerificationPipeline(audit=AuditChain()).run('source-prefix',ProjectContext('public'),[
+            DocumentInput('generated',str(path),path.name,'text/plain',sha256_file(path))])
+        assert not result.errors
+        return [f for f in result.all_findings if RULE in f.tags]
+    with monkeypatch.context() as patch:
+        patch.setattr('packages.legal_engine.legal_rules.source_defense_proof',lambda *args:None)
+        baseline=findings()
+    actual=findings()
+    assert [(f.status,f.confidence_features) for f in actual]==[(f.status,f.confidence_features) for f in baseline]
+    assert not any('source_defense_proof' in f.confidence_features for f in actual)
