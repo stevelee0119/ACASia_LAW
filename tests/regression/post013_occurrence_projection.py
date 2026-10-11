@@ -117,25 +117,48 @@ def _mapped_nodes(source):
     return 'READY', tuple(nodes)
 
 
+def _validated_trace(source, ranges, rendered, output_origins):
+    """Validate immutable capability data before any decoder abstention.
+
+    Only exact built-in types are read. Mutable/arbitrary collections cannot
+    execute iteration/comparison hooks and become decoder-error fallbacks.
+    Empty selection is represented by an explicit zero-width range.
+    """
+    if type(source) is not str or type(rendered) is not str or type(ranges) is not tuple or not ranges:
+        return 'INVALID_TRACE', None
+    previous_end = 0
+    for pair in ranges:
+        if type(pair) is not tuple or len(pair) != 2:
+            return 'INVALID_TRACE', None
+        start, end = pair
+        if type(start) is not int or type(end) is not int or not previous_end <= start <= end <= len(source):
+            return 'INVALID_TRACE', None
+        previous_end = end
+    if output_origins is None:
+        return 'ABSTAIN_NO_TRACE', None  # Explicit opaque renderer, not malformed present data.
+    if type(output_origins) is not tuple or len(rendered) != len(output_origins):
+        return 'INVALID_TRACE', None
+    source_to_output, previous = {}, -1
+    for output, origin in enumerate(output_origins):
+        if origin is None:
+            continue  # Inserted/replaced characters have no source owner.
+        if (type(origin) is not int or not previous < origin < len(source)
+                or source[origin] != rendered[output]
+                or not any(start <= origin < end for start, end in ranges)):
+            return 'INVALID_TRACE', None
+        previous = origin
+        source_to_output[origin] = output
+    return 'VALID_TRACE', source_to_output
+
+
 def occurrence_projection(source, ranges, rendered, output_origins):
     """Return safe status/matches; never authenticate via substring existence."""
-    if output_origins is None:
-        return 'ABSTAIN_NO_TRACE', ()
+    status, source_to_output = _validated_trace(source, ranges, rendered, output_origins)
+    if status != 'VALID_TRACE':
+        return status, ()
+    # Decoder exceptions are eligible to abstain only after valid capability
+    # structure, types, ranges and source→rendered correspondence are proven.
     try:
-        if (type(source) is not str or type(rendered) is not str
-                or len(rendered) != len(output_origins)
-                or any(not (0 <= start <= end <= len(source)) for start, end in ranges)):
-            return 'INVALID_TRACE', ()
-        source_to_output, previous = {}, -1
-        for output, origin in enumerate(output_origins):
-            if origin is None:
-                continue  # Inserted/replaced characters have no source owner.
-            if (type(origin) is not int or not previous < origin < len(source)
-                    or source[origin] != rendered[output]
-                    or not any(start <= origin < end for start, end in ranges)):
-                return 'INVALID_TRACE', ()
-            previous = origin
-            source_to_output[origin] = output
         status, nodes = _mapped_nodes(source)
         if status != 'READY':
             return status, ()

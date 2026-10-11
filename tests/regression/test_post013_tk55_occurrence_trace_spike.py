@@ -76,7 +76,14 @@ def _compare(monkeypatch, evidence, *, candidate=None):
     request, source, ranges, rendered, origins = evidence
     baseline = privacy.inspect_request
     expected = (request.system, request.user, json.dumps(request.schema, sort_keys=True, ensure_ascii=False))
-    status, matches = occurrence_projection(source, ranges, rendered, origins)
+    payload = json.loads(request.user)
+    actual_leaf = (payload['items'][0]['surrounding_context_and_claim']
+                   if request.input_contract == 'argument_review_v1'
+                   else payload['reference_sources'][0]['text'])
+    if rendered != actual_leaf:
+        status, matches = 'INVALID_TRACE', ()
+    else:
+        status, matches = occurrence_projection(source, ranges, rendered, origins)
     projection = json.dumps([value for _, value, _ in matches], ensure_ascii=False)
 
     def inspect(actual, *, _original_system=None):
