@@ -7,6 +7,7 @@ underlying facts, or legal sufficiency. Unproved candidates add nothing.
 from __future__ import annotations
 
 import re
+from bisect import bisect_left
 from functools import lru_cache
 from typing import Any
 
@@ -57,6 +58,49 @@ _EFFECT = re.compile(
 _PREMISE_CASE = re.compile(r"\s*(?P<case>을|를)\s+(?P<finite>[가-힣]+(?:으므로|므로))\s*\Z")
 
 
+@lru_cache(maxsize=64)
+def _supported_conclusion_pattern(pattern: str) -> bool:
+    """Only whitespace-star separators and nonspace literal/group syntax.
+
+    Future whitespace counts, literals, lookarounds or other regex constructs
+    need a new source-language contract; they cannot certify this addition.
+    """
+    index = 0
+    while index < len(pattern):
+        if pattern.startswith(r"\s*", index):
+            index += 3
+            if index < len(pattern) and pattern[index] in "?+":
+                return False
+            continue
+        if pattern.startswith("(?:", index):
+            index += 3
+            continue
+        char = pattern[index]
+        if char.isspace() or char in r"\.^$[]{}*+":
+            return False
+        if char == "(" and pattern[index + 1:index + 2] == "?":
+            return False
+        index += 1
+    return re.compile(pattern).match("") is None
+
+
+def _conclusion_view(source: str, start: int) -> tuple[str, list[int], list[int]]:
+    """One local range walk; each view character retains its exact source run."""
+    chars: list[str] = []
+    starts: list[int] = []
+    ends: list[int] = []
+    for index in range(start, len(source)):
+        char = source[index]
+        if char.isspace():
+            if chars and chars[-1] == " ":
+                ends[-1] = index + 1
+            else:
+                chars.append(" "); starts.append(index); ends.append(index + 1)
+        else:
+            chars.append(char); starts.append(index); ends.append(index + 1)
+    return "".join(chars), starts, ends
+
+
 @lru_cache(maxsize=32)
 def _patterns(requirements: tuple[str, ...], limited: tuple[str, ...], leads: tuple[str, ...], articles: tuple[str, ...]):
     lead = "|".join(leads)
@@ -89,9 +133,10 @@ def _record(kind: str, spans: dict[str, tuple[int, int]], sense: str, role: str,
 def source_defense_proof(unit: str, groups: dict[str, Any]) -> dict[str, Any] | None:
     """Return only a closed own-source proof; all other inputs preserve baseline.
 
-    The patterns use source pos/endpos, without copying each candidate suffix.
-    Fixed configuration count R gives O(R*N) regex visits. This is a bound on
-    this additional grammar, not on observation generation or the pipeline.
+    Patterns use source pos/endpos without copying each candidate suffix.
+    Supported conclusion patterns share one lazy whitespace view with original
+    bounds. Counters record range walks and queries, not regex-internal visits
+    or a complexity bound on the full observation/verification pipeline.
     """
     if "\n" in unit or _QUOTE.search(unit) or _REPORT.search(unit):
         return None
@@ -122,7 +167,10 @@ def source_defense_proof(unit: str, groups: dict[str, Any]) -> dict[str, Any] | 
     base["authored_scope"] = (0, len(unit))
     accounting = {"source_chars": len(unit), "source_scope_scans": 4,
                   "requirement_prefix_queries": 0, "conclusion_prefix_queries": 0,
-                  "effect_suffix_queries": 0, "whole_document_prefix_searches": 0}
+                  "effect_suffix_queries": 0, "whole_document_prefix_searches": 0,
+                  "conclusion_view_builds": 0, "conclusion_view_scan_chars": 0,
+                  "conclusion_view_join_chars": 0, "conclusion_binary_queries": 0}
+    local_view: tuple[str, list[int], list[int]] | None = None
 
     for requirement_re, pattern in zip(requirements, signals.get("stated_requirements", [])):
         if signals.get("requirement_polarities", {}).get(pattern) == "absent":
@@ -134,14 +182,29 @@ def source_defense_proof(unit: str, groups: dict[str, Any]) -> dict[str, Any] | 
         denial = _DIRECT_DENIAL.match(unit, requirement.end())
         if not denial:
             continue
+        if local_view is None:
+            local_view = _conclusion_view(unit, first)
+            accounting["conclusion_view_builds"] = 1
+            accounting["conclusion_view_scan_chars"] = len(unit) - first
+            accounting["conclusion_view_join_chars"] = len(local_view[0])
+        view, source_starts, source_ends = local_view
+        accounting["conclusion_binary_queries"] += 1
+        view_start = bisect_left(source_starts, denial.end())
+        if view_start == len(source_starts) or source_starts[view_start] != denial.end():
+            continue
         for conclusion_re in limited:
+            if not _supported_conclusion_pattern(conclusion_re.pattern):
+                continue
             accounting["conclusion_prefix_queries"] += 1
-            conclusion = conclusion_re.match(unit, denial.end())
-            if conclusion and _TERMINAL.fullmatch(unit, conclusion.end()):
+            conclusion = conclusion_re.match(view, view_start)
+            if (conclusion and conclusion.end() > conclusion.start()
+                    and any(not view[index].isspace() for index in range(conclusion.start(), conclusion.end()))
+                    and _TERMINAL.fullmatch(view, conclusion.end())):
                 spans = {**base, "argument": requirement.span(), "case": denial.span("case"),
                          "predicate": denial.span("predicate"), "action": denial.span("action"),
                          "negation": denial.span("negative"), "past": denial.span("past"),
-                         "closure": denial.span("closure"), "conclusion": conclusion.span()}
+                         "closure": denial.span("closure"),
+                         "conclusion": (source_starts[conclusion.start()], source_ends[conclusion.end() - 1])}
                 return _record("DIRECT_REQUIREMENT_DENIAL", spans, "하다1:1", "ASSERTED_DIRECT_ACT_DENIAL", accounting)
 
     # A legal noun + case is insufficient. Require its strict selected finite

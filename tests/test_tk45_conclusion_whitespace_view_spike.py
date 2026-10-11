@@ -30,7 +30,7 @@ def supported_pattern(pattern):
         if char.isspace() or char in r'\.^$[]{}*+': return False
         if char=='(' and pattern[index+1:index+2]=='?': return False
         index+=1
-    return True
+    return re.compile(pattern).match('') is None
 
 
 PATTERNS=load_defense_groups()['structural_signals']['limited_conclusions']
