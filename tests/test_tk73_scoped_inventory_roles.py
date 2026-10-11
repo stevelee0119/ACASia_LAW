@@ -220,3 +220,12 @@ def test_synthetic_next_inventory_heading_is_not_a_narrative_exemption(tmp_path,
         '첨부서류'])
     found = _duplicates(doc)
     assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
+
+
+@pytest.mark.parametrize('extension', ['pdf', 'txt'])
+def test_synthetic_ancestor_close_does_not_create_a_sibling_exemption(tmp_path, extension):
+    doc = _parsed(tmp_path, extension, ['1. 기존 자료', '가. 수집문헌 목록',
+        '갑 제1호증: 점검기록, 북쪽 구역. 갑 제2호증: 배치대장, 별도 부분.',
+        '2. 새로운 문서 정의', '갑 제1호증 표본기록', '갑 제1호증 표본보고', '첨부서류'])
+    found = _duplicates(doc)
+    assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
