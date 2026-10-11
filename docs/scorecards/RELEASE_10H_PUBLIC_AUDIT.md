@@ -22,3 +22,16 @@ TK73 최종30a2029/제품471625d 좁은후속감사: 무공백literal8 중복1·
 TK45 247f64c/보고f71186f 공개actualTXT20 좁은감사: 정중체 필요/권리 frame categorical누락 및면제신청→면제하다 source-prefix오인 두P2 확인·사전보류. 나머지known/UNKNOWN·사실수령/법적객체·화자/과거/부분/직접부정 반대 유지. source근거10 span/JSON/후속중복제외와8k/16k/32k 국소순회0.0069/0.0108/0.0248초 통과. 추가공식6자료 뜻풀이일치·행정처분 SANCTION_DECISION은제품매핑임 명시.
 
 TK45 최소보완8165749 좁은후속actualTXT14 감사PASS: 필요/권리 정중체categorical복구·다른lemma/신청행위면제sense인증없음·능동/피동sense분리·직접/중첩부정/새actor/인용보존·모호책임은확인요청유지. source/span/JSON/후속중복제외PASS·새차단점없음. 최종1a324c9 exactCI/정식20+18은별도. 비공개/봉인/전체미재실행.
+
+
+## TK45 context / TK73 scoped-role 후속 공개 감사
+
+- TK45 cfec/보고32a: 공개 same-finite-endpoint250/500/1000/2000 contexts의 새resolution단계만0.0122/0.0725/0.3346/1.6852초(이전observation생성제외). 반복긴suffix문자열/words순회초선형 P2. 실제TXT 다른사건/소유자3개도원래1a경고1→0으로same-event증명 P2. 나머지10 반대보존. 설계5203 source-index/actualscan accounting 및양쪽argument-prefix unknown qualification abstention 조건부승인6105568141, 관련456불변. 정식20+18 미재측정.
+- TK73 f16: 독립actualTXT/PDF/DOCX42+소수source검사에서 multiline quote 및단일item내인용ref를독립entry로인증하는P2. automatic-number-only DOCX·virtual-peer-gap PDF는UNKNOWN/A유지, glyph-coveredDOCX proof slicing 일치. 보완a393는기존인용P2를복구했지만 numbereditemprefix에서cand-relative line_group 좌표를원문paragraph mask에적용하는P2로세형식 A1→0; unprefixed대조A1 유지. 설계250318 absolute first-item reference span의원문paragraph 투영/완전unprotectedcoverage 조건부승인6105568716. 기존786기대값/원본row/source/TK64경로불변. 정식AFP미실행·비공개/봉인/whole/CI 재실행없음.
+
+
+## 14:02 KST 최종 공개 보완 점검
+
+- TK45 제품5b998ee/보고0c09885: 독립 actualTXT13 PASS. 다른사건/소유자3 경고 유지, 같은 미확정 수식도 일치만으로 인증하지 않음. 직접부정/다른요건/새주체/인용/조건/부분 보호 및 원래 state/reason/source/JSON 유지. 같은 finite endpoint 250/500/1000/2000 새 source-index 단계0.0011/0.0024/0.0075/0.0092초(기존 observation 생성 제외). 명시 pattern scan7N 및 index lookup O(KlogN); 전체 pipeline 선형 주장 아님. 관련465 PASS, exactCI38113014109 진행중/점수38113014100 SUCCESS. 정식20+18 및 actualTXT20 미실행·미수용.
+- TK73 제품e387df1/보고a357716: 독립 actualTXT/PDF/DOCX30 좁은 호환 보호 PASS. 전각 quote/parenthesis 보호 복구, balanced title·정상 괄호형 목록 유지, 전각 heading 새 구문 인증없음, multi-char fold 이후 독립 목록 유지, 이전 bullet 좌표 반례 경고 유지. 생성block_id 제외 원본rows/source 동일·raw glyph/proof slicing 확인. ［］3개 기존reader row-free는 A보존 근거에서 제외. 관련815 PASS; 비공개AFP/whole/봉인 미실행.
+- TK73 추가 runtime 사전반례: 원래parser row1/UNKNOWN 그대로이나 새helper가 long reference label을 다시 생성. actualTXT2에서 기존parser 제외0.604/0.571초. 기존TK64 14 PASS. 설계f01c876 조건부승인6105661781: 정확 기존문법 bool existence·원래 eligible first item absolute reference_span 재사용·보호prefix계수만 최소보완. 원래815expects/source/rows 불변·최종SHA CI/3줄 뒤 정식AFP0 판정. a357 호환 보호 PASS는 이 추가 runtime 보완 수용을 대체하지 않는다.

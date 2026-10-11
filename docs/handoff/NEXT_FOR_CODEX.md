@@ -28,5 +28,18 @@
 - 원본row/source/in_section/이전652기대값불변·기존sticky/TK64 의미론유지. exactparty/number/branch가해당proved inventory에있는bodymention만역할구분, 미등록party/branch·상이inventory제목·목록없는상이body양성A 유지. fake/one-entry/child-only/unclosed/가상join/NFKC/애매source는fallback. sibling narrative는다음독립heading경계까지만·이후caption/list임의면제금지. nested/repeatedscope·복수refs·순서변경·TXT/PDF/가능하면DOCX source-span/원본불변대조추가.
 - 많은fake/child/미종결heading에도forward O(N)/새처리0.1budget·기존parser전체시간과분리. gap/date/amount/listmissing 모집단/규칙변경0·실질prose충돌/날짜/인용/괄호/Unicode/물리경계/가지별격리보호유지. inferred-table gap은별도잔여제품보류·진단3 expected0보존·자동strictxfail추가없음. private어휘/경고삭제/기준완화금지. 설계승인≠원인/정식수용증명.
 
+## 최신 공개 사전보류 뒤 적용
+
+- A: 32a/cfec는 새source-resolution 초선형 및other-event/possessor 동일성 P2로보류·정식private미실행. 승인5203/6105568141의source index·early conflict·actualworkaccounting과양쪽unknownqualification abstention만보완. 456expectations/source-state불변·당사자/사건낱말예외금지.
+- C: a393/97c는 numbereditemprefix의cand-relative→rawparagraph quote-mask 좌표불일치 P2로보류·정식AFP미실행. 승인250318/6105568716에따라original first-item absolute reference_span→paragraph origin완전coverage증명·불명scope기여0. 원래786expectations/rows/title/date/legacy불변.
+- 이전formal1a/30a 불수용은그대로이며새제품최종SHA와완료CI·독립공개delta 뒤원래수용기준으로판정한다. 새로운제품범위/가격작업/기준완화없음.
+
 ## 제출
 정확최종SHA의 바꾼것·남은것·검토요청3줄을PR에남긴다. 구현측verify_all미실행. 동일SHA필수CI끝난뒤평가측정식판정. 새실패/잔여/미측정은사실대로기록하며공개시험green으로전체해소/배포를주장하지않는다.
+
+
+## 14:02 KST 현행 후보와 최소 잔여
+
+- A 최종후보0c09885/제품5b998ee·관련465 PASS·독립actualTXT13 PASS, exactCI38113014109 진행중/점수38113014100 SUCCESS. 제품동결·완료CI/3줄 요청 후 원래20+고정18 및 actualTXT20 판정. 아직 미수용·미통합.
+- C 후보a357716/제품e387df1·관련815 PASS·독립actualTXT/PDF/DOCX30 호환 보호 PASS. ［］3 row-free는 A보존증명 아님. 추가 long reference label runtime 반례2 새helper .604/.571초, 기존TK64 14 PASS. 설계f01c876 승인6105661781의 정확 기존문법 Boolean·원래 item absolute reference_span 재사용·원래좌표 보호prefix계수만 최소보완. 원래815기대값/rows/source 유지·불명origin/row-free UNKNOWN·기존parser와새처리비용 구분. 최종SHA CI/3줄 후 원래AFP0 수용 판정.
+- 범위확장/가격PR 재개/기준완화 없이 미배포 TK 완료와 릴리스에 집중한다. 기존正式1a/30a 불수용 기록 유지.
