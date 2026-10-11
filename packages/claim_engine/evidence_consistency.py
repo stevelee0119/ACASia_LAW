@@ -718,7 +718,8 @@ _SCOPE_HEADING_PREFIX_RE = re.compile(
     r"\(\s*(?P<paren_number>\d{1,2})\s*\)|\(\s*(?P<paren_hangul>[가-하])\s*\)|"
     r"(?P<circled>[①-⑳]))\s+")
 _SCOPE_ITEM_PREFIX_RE = re.compile(r"^\s*(?:\d{1,2}\s*[.)]|[가-하]\s*[.)]|[-*•·]|[①-⑳])\s+")
-_SCOPE_PROTECTION_START_RE = re.compile("[" + re.escape("".join(_TITLE_BRACKETS) + "\"'") + "]")
+_SCOPE_PROTECTION_SYNTAX_RE = re.compile(
+    "[" + re.escape("".join(_TITLE_BRACKETS) + "".join(_TITLE_BRACKETS.values()) + "\"'") + "]")
 
 
 def _duplicate_inventory_roles(reading, rows):
@@ -765,14 +766,24 @@ def _duplicate_inventory_roles(reading, rows):
     offset = 0
     paragraphs = reading.text.split("\n")
     protection = []
+    protection_tokens = {}
     for index, paragraph in enumerate(paragraphs):
         start = offset + len(paragraph) - len(paragraph.lstrip())
         offset += len(paragraph) + 1
         text = paragraph.strip()
         protected = bytearray(len(text) + 1)
-        if protection or _SCOPE_PROTECTION_START_RE.search(text):
-            for position, char in enumerate(text):
+        # Compatibility syntax signals uncertainty only; proof stays raw.
+        if protection or _SCOPE_PROTECTION_SYNTAX_RE.search(unicodedata.normalize("NFKC", text)):
+            for position, original_char in enumerate(text):
                 protected[position] = bool(protection)
+                if original_char not in protection_tokens:
+                    normalized = unicodedata.normalize("NFKC", original_char)
+                    protection_tokens[original_char] = (normalized if len(normalized) == 1 else
+                        None if _SCOPE_PROTECTION_SYNTAX_RE.search(normalized) else original_char)
+                char = protection_tokens[original_char]
+                if char is None:
+                    protected[position] = True
+                    continue
                 if protection and char == protection[-1]:
                     protection.pop()
                 elif protection and protection[-1] in ('"', "'", "”", "’", "」", "』"):
