@@ -476,3 +476,29 @@ def test_synthetic_protected_middle_reference_stops_entry_certification(tmp_path
     assert not scopes and not excluded
     found = _duplicates(doc)
     assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
+
+
+@pytest.mark.parametrize('mode', ['missing_origin', 'missing_span', 'outside_span'])
+def test_synthetic_uncertain_middle_origin_is_not_skipped_for_witnesses(tmp_path, mode):
+    import copy
+    from packages.claim_engine.evidence_consistency import _duplicate_inventory_roles, _numbering
+    from packages.document_engine.reading_text import build_reading_text
+    doc = _parsed(tmp_path, 'txt', ['가. 수집문헌 목록',
+        '갑 제1호증: 관측기록. 갑 제2호증: 인용자료. 갑 제3호증: 측정대장.',
+        '나. 문헌 검토', '갑 제1호증 다른표', '첨부서류'])
+    rows = exhibit_rows(doc)
+    reading = build_reading_text(doc)
+    middle = next(row for row in rows if row['number'] == 2)
+    if mode == 'missing_origin':
+        middle['duplicate_sources'] = []
+    elif mode == 'missing_span':
+        middle['duplicate_sources'][0].pop('reference_span')
+    else:
+        middle['duplicate_sources'][0]['reference_span'] = (len(reading.text), len(reading.text) + 1)
+    before = copy.deepcopy(rows)
+    excluded, scopes = _duplicate_inventory_roles(reading, rows)
+    assert not excluded and not scopes
+    found = [f for f in _numbering(doc, rows)
+             if f.confidence_features.get('rule_id') == 'EVI.EVIDENCE_NUMBER_DUPLICATE']
+    assert len(found) == 1 and str(found[0].evidence_grade) == 'A'
+    assert rows == before
