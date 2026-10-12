@@ -13,10 +13,10 @@
 
 | 잔여 항목 | 현재 결정 | 후속 조치·선행요건 |
 | --- | --- | --- |
-| TK44/49 | #90 b1e inline ActualText provider 제한범위 내용 수용; 전체 open | 수용 SHA만 통합. 비태그/resource/Form/structure-tree/UNKNOWN primary/floor/consumer는 별도 설계·보완·원래 보호 판정 필요 |
-| TK45 | #93 제품 보완 및 최종 제출 진행; #84 e21 불수용 유지 | 공개 화자·규범 범위 결함 보완, exact CI·정식 요청 뒤 정상8/8 및 부인/확장 시작 대비 엄격 증가·전체검증으로 판정 |
-| TK55 | #91 86e 요청별 cascade source 추가검사 제한범위 내용 수용; 전체 known_open | 최초 시간실패와 원래 단계의 단독보완 기록 구분. 임의 legacy unknown-role은 기존 좁게+스키마 고정/호환 계약 유지, 추가 first-party 손실 경로를 공개 점검 |
-| TK73 | #92 설계 HOLD; 사용자는 확인 필요 분리 설계·기준안 검토 선택 | 실제 중복·확인 필요·진짜양성 이동과 충돌 조항을 담은 구체안 검토. 기준안 검토 선택은 제품/등급/기존 기대값 변경 승인 아님 |
+| TK44/49 | #90 b1e inline ActualText provider 제한범위 내용 수용; 전체 open | PR95 ad8d capture 상한은 독립확인·미지원PAGE 스트림 검사완료 표시HOLD. 좁은보완 뒤 제한제품 적용 판단. 비태그/Form/structure-tree/UNKNOWN primary/floor/consumer 잔여 유지 |
+| TK45 | #93 f8f6e(제품982e7) 정식 불수용5483280439; #84 e21 불수용 유지 | 원래20/actualTXT20 시작과같은2/8·8/8·0/4·고정18 유지로 strictincrease 미달. 보호계약 유지·새 공개applicability 설계부터 검토. 기존 classifier 장문 미측정 잔여 유지 |
+| TK55 | #91 86e cascade source 제한범위 내용 수용; 전체 known_open. 두 발췌 producer 후속 설계 보완 | 최초 시간실패와 단독보완 구분. 새124259 once-transform 위치추적은 이전과차단/deepJSON을 해소했으나 invalid-present range 경계HOLD. 검증/decoder abstain 분리 보완 후 제한제품승인. legacy 및 필수/정상보호 유지 |
+| TK73 | #92 5c8 기준안 검토 HOLD5483360308; 날짜 초기 확대 보류 권고 | 같은111 독립재집계에서 추가오탐분리0·진짜확인손실+9. Form/sh 원문지원 새설계 후 검토. [구체 기준안 검토](requests/TK-73_confirmation_criteria_evaluator_review.md) 반영·제품/등급/기준 승인0·TK전체해소 아님 |
 
 수용 범위 통합은 전체 티켓 해소와 구분한다. 최종 통합 후보 전체 검증·정확 CI 후 새 봉인 운영/후보 비교, 릴리스·실제 배포 확인을 순서대로 수행한다. 0.13.0 최초 봉인은 이미 소비했으며 재사용하지 않는다. 새 봉인 준비는 현재 구현을 막는 선행조건이 아니다. 새 후보 main 병합/배포는 아직 없다.
 
@@ -260,3 +260,5 @@ python scripts/scorecard.py && python scripts/score_gate.py
 PR77 main `8280a597db40b0905dbacf10c56fa3e9915cafd5`, `v.0.13.0` 배포 완료. 릴리스 head3ad의 필수CI38123137556/점수38123137444/Docker 모두SUCCESS. Render `dep-db5k8uek1f9s73ef0tg0` Live17:11:16KST, health17:11:24KST `0.13.0`/동일SHA/database ok 확인. a4→Steve3ad→main8280 파일 트리 동일, 최초 봉인3389 엔진에는 버전 메타데이터 외 변경없음. 전체/봉인 재실행 없음.
 
 TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/49/55 부분 구현은 배포했으나 전체 티켓은 open/known_open, TK45/73 불수용제품은 제외했다. 완결 잔여5건을 유지한다. TK75 기본OFF 기술범위 배포와 법률 품질을 구별하며 실제 배포후 API/내부worker OFF 영수증 및 서면9/Drive/6쌍 실제OFFON·독립변호사1명·토큰 비교는 아직 미측정이다. 운영자에게 기존05/06의 배포후 절차를 요청했으며 원문/비밀/가격 조사 없이 기존상한·종료OFF를 유지한다. 기록: release_completion_2026-10-11.json.
+
+- **2026-10-12 06:53 KST #95·#97 최종 내용 판정:** #95 5e6e859 named PAGE ActualText/capture 및 #97 2f4e798 두first-party 발췌 추가검사를 각각 제한 범위 수용했다. 수용 SHA만 통합 후보로 넘긴다. TK44/49/55 전체완료·배포승인은 아니며 TK45/73 미승인제품은 제외한다. 원래게이트/기준/보호 유지·현재 운영ON 유지. 통합전달문 NEXT_FOR_CODEX가 이전지시를대체한다.
