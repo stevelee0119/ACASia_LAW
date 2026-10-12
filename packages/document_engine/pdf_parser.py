@@ -22,6 +22,7 @@ from .ocr import get_ocr_adapter, page_quality
 from .rasterize import render_pages
 from .boundary_signals import glyph_line_evidence
 from .actualtext_boundaries import inline_actualtext_edges
+from .named_actualtext_capture import NamedActualTextCapture
 
 HIDDEN_MIN_FONT_SIZE = 3.5
 WHITE_THRESHOLD = 0.92
@@ -217,6 +218,7 @@ class PdfParser(DocumentParser):
         raw_bytes = Path(path).read_bytes()
         doc.structure["file_size"] = len(raw_bytes)
         self._collect_pdf_structure(raw_bytes, doc)
+        named_capture = NamedActualTextCapture()
 
         rendered_parts: List[str] = []
         raw_parts: List[str] = []
@@ -295,6 +297,7 @@ class PdfParser(DocumentParser):
                 } if active_visibility_facts else set()
                 actualtext_edges, actualtext_accounting = inline_actualtext_edges(
                     page, chars, lines, excluded_glyphs=excluded_glyphs,
+                    named_capture=named_capture,
                 )
                 if actualtext_accounting is not None:
                     p.attributes['actualtext_boundary_provider'] = actualtext_accounting
@@ -484,7 +487,25 @@ class PdfParser(DocumentParser):
                     )
                 )
 
-        # 스캔 PDF 본문 OCR 및 독립 OCR 교차검증 (제6장, 제7.3장)
+        # PAGE named-source inspection is separate from boundary certification.
+        # Preserve earlier inspection strings; report any merge truncation.
+        selected_strings = doc.structure.get('actual_text_strings', [])
+        for value in named_capture.inspection:
+            if value in selected_strings:
+                continue
+            if len(selected_strings) == 50:
+                named_capture.inspection_complete = False
+                break
+            selected_strings.append(value)
+        if selected_strings:
+            doc.structure['actual_text_strings'] = selected_strings
+        snapshot = named_capture.snapshot()
+        doc.structure['named_actualtext_inspection'] = snapshot
+        for parsed_page in doc.pages:
+            accounting = parsed_page.attributes.get('actualtext_boundary_provider')
+            if accounting is not None:
+                accounting['document_capture_snapshot'] = snapshot
+
         # 두 파서의 글자 추출이 크게 다른 쪽(PARSER_DISAGREEMENT). 글자층이 손상·조작된 신호일 수 있다.
         disagreement = parser_disagreement(raw_bytes, page_texts)
         if disagreement:
