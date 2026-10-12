@@ -1744,8 +1744,14 @@ TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/
 | #92 545c917 · TK73 | source-tree 안전성 제한 PASS·기준/제품 HOLD | 최신설계만/제품0·별도공개 source-tree/native 지원보호 좁은감사 PASS. 앞선5c8 Form/sh음영 및464 Parent/Kids 연결 HOLD는 최신보완과구분한다. 원래111의 finding/A93·진짜탐지66·false27 유지, 날짜확대 pending18→27/진짜pending9→18/false이득0·추가진짜확인손실9 유지. 기존4종AFP3 불변·별도117 기존미탐9은해소아님. 사용자 선택은기준안검토이며구체기준/제품승인0. native EOF는제목/명제 역할증명아님. [기준안 검토](../handoff/requests/TK-73_confirmation_criteria_evaluator_review.md). |
 | #98 0702386 → Steve aa40019 | 수용 범위 통합 PASS·병합 완료5485754303 | #90→#95/#91→#97 제품17파일 원본blob 합집합·병합 전체tree 동일. 원래privacy 필수/보호 PASS·경계/UNKNOWN/접합/법리 유지. 평가자 full1회 종료0 수용1214/원장2357/전체8322/브라우저197/실패0/strictXPASS0·fixed81.7/79.2/FP0·TC06 .357. exactCI38188744443의 SQLite/PG+Celery/SQLite+PG+Redis/Docker 및score38188744440 모두SUCCESS. 독립actual PDF3파일→두producer→mockrouter8대조 PASS(전체pipeline과구분). 새봉인 미사용입력미제공/미실행·main 릴리스/배포 대기. |
 | 새 봉인 bd746c475dd2cdab / 버전 | 회귀 기준 PASS·상향없음/0.13.0 유지 | 8문서54결함·대조2/인젝션1, 운영8280=후보070 15.7/.157/FP0·대조0·A0·방어true. 최초별도process/clean/동일env/scorer/deps/baseline·원문/토큰수정0. 끝문장부호경고16·형식오류0·서면별상세공개0. M2credit8.5/완전7/부분포함13 양쪽동일·fixed불변/strictXPASS0/완결TK0. 새봉인소비완료·재사용금지·새mainCI/배포 대기. |
-| 전체 상태 | 통합·전체검증·새봉인 완료·릴리스 준비 | 수용 #90→#95/#91→#97 제한 범위 Steve 통합·같은engine 고정. 버전0.13.0유지·새태그없음. TK44/49/55 전체open/known_open·TK45/73 미승인제품제외 유지. 운영main8280·사용자 요청ON 유지. 새릴리스CI/병합/RenderSHA·DB 확인은 후속. |
+| 전체 상태 | 제한 범위 실제 배포 완료 | #100 main b68cfee, 버전0.13.0·새태그없음. release CI38253829678/점수38253829611·Docker SUCCESS, Render Live·실제health 동일SHA/DB ok. TK44/49/55 수용부분만 배포, 전체open/known_open·TK45/73 미승인제품제외·미완료5건 유지. 기존운영ON 설정 변경0·온라인/독립 법률채점 후속. |
 
 환경: Linux/Python3.11.15/Tesseract5.5.0 kor, CI5.3.4 차이 명시. local IPC/브라우저 캐시/평가글꼴 설정 사용. A 최초 기본환경 중단 이력은 보존하며 해당 최초 실패 원인을 확정하지 않는다. B 최초실패와 원래 단계의 단독보완을 구분하고 최초 전체를 exit0으로 재작성하지 않는다. 별도 공개 감사는 verify_all/비공개/봉인 재실행 없음. 새 제품 릴리스 봉인 미실행·0.13.0 첫봉인 재사용0.
 
-이번 #95/#97 각각 동일 제출에서 전체 verify_all 1회 종료0. 비공개 원문/정답/항목 상세 게시0·제품/시험/임계값 수정0. 이전 #91 첫 전체 exit1은 해당 이전 SHA의 이력으로 보존하며 이번 #97 결과로 덮어쓰지 않는다. 새 릴리스 봉인은 아직 실행하지 않았다.
+이번 #95/#97 각각 동일 제출에서 전체 verify_all 1회 종료0. 비공개 원문/정답/항목 상세 게시0·제품/시험/임계값 수정0. 이전 #91 첫 전체 exit1은 해당 이전 SHA의 이력으로 보존하며 이번 #97 결과로 덮어쓰지 않는다. 이 개별 판정 뒤 새 릴리스 봉인 최초쌍을 실행했고 회귀 기준 PASS로 기록했다. 세트는 소비 완료다.
+
+### 2026-10-12 22:31 KST 실제 배포 확인
+
+#99 관찰 기록 병합 후 #100 head0847109 필수 CI38253829678·점수38253829611 모두 SUCCESS(원본 포함 SQLite9732/PG9736 PASS). main `b68cfeec2c5c168a3b9e6e2e92653ea6892521bf`와 검증 릴리스 전체트리 동일. Render `dep-db6dvjnavr4c73fvnopg` Live, 실제 health 동일commit/0.13.0/database ok. TK44/49/55 수용부분만 배포 등록, 전체상태·잔여5건 유지.
+
+f64 기존 시간실패 .625568/.748032초는 원인미확정으로 보존한다. 관찰 전용525 및 release084의 원본.1초 기준 통과는 이전실패 원인/해결 증거가 아니다. clock/GC/assert/입력/순서/상한 변경·시험분리0, 공개 독립 관찰 감사 적합. 가격절차/유료호출/봉인 재시험0. 법률 지침 사용자ON 설정 변경0, 정식품질채택HOLD.

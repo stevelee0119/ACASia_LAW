@@ -949,3 +949,7 @@ TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/
 - 지문bd746c475dd2cdab·8문서54결함/대조2·인젝션1. 운영8280=후보070 15.7/.157/오탐0·대조0·A0·인젝션true, 최초쌍각exit0/clean/network0·samePython3.11.15/OCR5.5.0 kor/scorer/deps/baselinehash. 전체credit8.5/fullcredit7/positivecredit13 양쪽동일.
 - 형식오류0·끝문장부호경고16, 원문일치확인·파일/토큰변경0. 구별미상법률내용을임의정답교체0·출제Antigravity provenance/사용자신규제공·독립성별도감사0·이전소비PDF bytehash동일0. 새세트소비완료·재사용금지.
 - 버전상향없음/0.13.0유지: M1 81.7/79.2/FP0 불변·M2동일·strictXPASS0/전체티켓해소0·M4확대완료미증명. 고정비공개벤치마크데이터없어미측정·온라인법률품질근거아님. 새main릴리스/실제배포는아직대기.
+
+### 2026-10-12 22:31 KST Post-0.13 실제 배포 측정
+
+PR100 main `b68cfeec2c5c168a3b9e6e2e92653ea6892521bf`/0.13.0 유지. 고정81.7/79.2/FP0, 새 봉인 최초쌍 운영=후보15.7/재현율15.7%/FP0·대조0·A0/방어true. full1214/2357/8322/197 실패0·release CI SQLite9732/PG9736 PASS·점수/Docker SUCCESS. Render Live·health 동일SHA/DB ok. 전체TK종결0·미완료5건, 새태그0. 이전CI 시간실패2건 원인미확정 추적 유지.
