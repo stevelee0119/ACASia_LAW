@@ -11,7 +11,7 @@
    "status": "open",
    "kind": "regression",
    "found_on": "2026-10-03",
-   "note": "운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·신규통합/배포 전."
+   "note": "운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전."
   },
   {
    "id": "TK-45",
@@ -25,14 +25,14 @@
    "status": "open",
    "kind": "regression",
    "found_on": "2026-10-03",
-   "note": "운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·신규통합/배포 전."
+   "note": "운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전."
   },
   {
    "id": "TK-55",
    "status": "known_open",
    "kind": "regression",
    "found_on": "2026-10-04",
-   "note": "운영8280 부분배포·known_open 유지. #91 86e cascade에 이어 #97 2f4e798 두first-party 발췌 occurrence/source추가검사 제한수용5485136030. exactCI38143165314/score38143165365/Docker SUCCESS·독립27대조 PASS·원래privacy 필수/보호 충족. root full1회 exit0 수용1214/원장2357/전체8061/브라우저197/실패0·fixed81.7/79.2/FP0. 이전#91 첫full timing1FAIL 이력보존·현재결과와구분. legacy/opaque/unsupported/capture-budget 잔여·신규통합/배포 전."
+   "note": "운영8280 부분배포·known_open 유지. #91 86e cascade에 이어 #97 2f4e798 두first-party 발췌 occurrence/source추가검사 제한수용5485136030. exactCI38143165314/score38143165365/Docker SUCCESS·독립27대조 PASS·원래privacy 필수/보호 충족. root full1회 exit0 수용1214/원장2357/전체8061/브라우저197/실패0·fixed81.7/79.2/FP0. 이전#91 첫full timing1FAIL 이력보존·현재결과와구분. legacy/opaque/unsupported/capture-budget 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전."
   },
   {
    "id": "TK-73",
