@@ -1,0 +1,130 @@
+{
+  "recorded_at_kst": "2026-10-12 20:53 KST",
+  "measured_candidate": "070238666686ac734c92d3bb26d1bbd96702634e",
+  "production_comparison": "8280a597db40b0905dbacf10c56fa3e9915cafd5",
+  "Steve_initial_integration": "aa400191fc263dee063ecac68ad9b9917646430b",
+  "sealed": {
+    "fingerprint": "bd746c475dd2cdab",
+    "documents": 8,
+    "defects": 54,
+    "controls": 2,
+    "injection_marked": 1,
+    "production": {
+      "documents": 8,
+      "overall": 15.7,
+      "weighted_recall": 0.157,
+      "defect_items": 54,
+      "false_positives": 0,
+      "fp_trap": 0,
+      "control_fp": 0,
+      "a_grade_fp": 0,
+      "injection_defended": true,
+      "duplicate_citation_verdicts": 0,
+      "findings_without_document_id": 0
+    },
+    "candidate": {
+      "documents": 8,
+      "overall": 15.7,
+      "weighted_recall": 0.157,
+      "defect_items": 54,
+      "false_positives": 0,
+      "fp_trap": 0,
+      "control_fp": 0,
+      "a_grade_fp": 0,
+      "injection_defended": true,
+      "duplicate_citation_verdicts": 0,
+      "findings_without_document_id": 0
+    },
+    "conditions": {
+      "overall": true,
+      "weighted_recall": true,
+      "false_positives": true,
+      "control_fp": true,
+      "a_grade_fp": true,
+      "injection_defended": true
+    },
+    "all_passed": true,
+    "first_pair_only": true,
+    "consumed": true,
+    "format_errors": 0,
+    "format_warnings": 16,
+    "warnings": "terminal punctuation; original source match confirmed; files/tokens unchanged"
+  },
+  "environment": {
+    "network": false,
+    "tesseract": "5.5.0",
+    "ocr_langs": [
+      "\"/workspace/scratch/tessdata/\"",
+      "(3):",
+      "eng",
+      "in",
+      "kor",
+      "osd"
+    ],
+    "python": "3.11.15"
+  },
+  "same_scorer_dependencies_baseline": true,
+  "author_role": "user supplied fresh Antigravity provenance; independence not separately audited",
+  "version": {
+    "from": "0.13.0",
+    "to": "0.13.0",
+    "decision": "no increase",
+    "M1": {
+      "dev": 81.7,
+      "holdout": 79.2,
+      "false_positives": 0,
+      "delta": 0
+    },
+    "M2": {
+      "production": {
+        "defect_items": 54,
+        "credit_sum": 8.5,
+        "full_credit_items": 7,
+        "positive_credit_items": 13,
+        "credit_counts": {
+          "0.0": 41,
+          "0.25": 6,
+          "1.0": 7
+        }
+      },
+      "candidate": {
+        "defect_items": 54,
+        "credit_sum": 8.5,
+        "full_credit_items": 7,
+        "positive_credit_items": 13,
+        "credit_counts": {
+          "0.0": 41,
+          "0.25": 6,
+          "1.0": 7
+        }
+      }
+    },
+    "M3": {
+      "strict_xpass": 0,
+      "whole_ticket_closures": 0,
+      "remaining_tickets": 5
+    },
+    "M4": "existing format/width protection retained; no new whole-ticket three-format improvement established",
+    "reason": "M1/M2 unchanged; no registered whole-ticket or protection residual closure; scoped public gains do not establish version thresholds"
+  },
+  "engine_full": {
+    "acceptance": 1214,
+    "ledger": 2357,
+    "full": 8322,
+    "browser": 197,
+    "real_failures": 0,
+    "strict_xpass": 0,
+    "exit": 0
+  },
+  "CI": {
+    "engine_run": 38188744443,
+    "engine_score_run": 38188744440,
+    "status": "SUCCESS"
+  },
+  "migration_changes": 0,
+  "deployment_completed": false,
+  "runtime_profile": "ON held per user instruction; program default OFF unchanged",
+  "legal_quality_adoption": "HOLD; offline sealed result is not online legal-profile quality evidence",
+  "fixed_private_benchmark": "not measured in this environment; original uploaded fixed benchmark data unavailable",
+  "private_documents_answers_cases_in_repo": false
+}

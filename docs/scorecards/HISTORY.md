@@ -943,3 +943,9 @@ TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/
 
 - #98 0702386 평가자 full1회 종료0: 수용1214/원장2357/전체8322/브라우저197·realfail0/strictXPASS0·fixed81.7/79.2/FP0·TC06 .357. 원래 개인정보필수/보호 및 경계/UNKNOWN/접합/법리 유지. sameSHA CI38188744443 전4jobs/점수38188744440 SUCCESS 인용. 로컬Python3.11.15/OCR5.5.0 kor·CI5.3.4 차이 명시.
 - 제품17파일 모두수용원본blob 일치. 별도 공개actualPDF3/producer-router8대조PASS·감사자는전체pipeline/비공개/봉인 재측정0. Steve aa40019 병합 전체tree=검증070. Render latest live8280 동일SHA·신규배포0/새봉인0/유료호출0. 미사용새봉인 미제공·첫봉인재사용0.
+
+### 2026-10-12 20:53 KST — 새 봉인 최초 운영/후보 비교·버전 유지
+
+- 지문bd746c475dd2cdab·8문서54결함/대조2·인젝션1. 운영8280=후보070 15.7/.157/오탐0·대조0·A0·인젝션true, 최초쌍각exit0/clean/network0·samePython3.11.15/OCR5.5.0 kor/scorer/deps/baselinehash. 전체credit8.5/fullcredit7/positivecredit13 양쪽동일.
+- 형식오류0·끝문장부호경고16, 원문일치확인·파일/토큰변경0. 구별미상법률내용을임의정답교체0·출제Antigravity provenance/사용자신규제공·독립성별도감사0·이전소비PDF bytehash동일0. 새세트소비완료·재사용금지.
+- 버전상향없음/0.13.0유지: M1 81.7/79.2/FP0 불변·M2동일·strictXPASS0/전체티켓해소0·M4확대완료미증명. 고정비공개벤치마크데이터없어미측정·온라인법률품질근거아님. 새main릴리스/실제배포는아직대기.
