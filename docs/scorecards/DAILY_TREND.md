@@ -44,4 +44,5 @@
 
 
 
-| 10-11 (한국) | 고정81.7/79.2/0·첫 봉인 운영9c=수용3389 28.1/.281/FP0(8문서57결함·1abd74597ec4b25a) | TK57 PHONE1/54→0/54·공개 실제54파일 M4; 기존8TK+SPACE/PII/UNKNOWN 제한범위 수용·45/73 제외 | 수용범위 새 회귀0·44/49/55 잔여 및45 정상7/8·73 AFP1 불수용 유지 | full acceptance1214/ledger949/full6653/browser197·exactCI/점수SUCCESS·독립 공개PASS·첫 봉인PASS·0.13minor판정. 원래 sandbox IPC 실패/중단 보존·코드/시험/상한 불변·운영/후보 동일 화면·인증2시험 권한보완PASS. 0.13.0·main8280/Render Live17:11KST·health SHA/DB 확인, 온라인 대기; f1/HISTORY16:34절 |
+| 10-11 (한국) | 고정81.7/79.2/0·첫봉인9c=3389 28.1/.281/FP0(8문서57결함·1abd74597ec4b25a) | 0.13.0 배포17:11KST·TK57 PHONE1/54→0/54; post013 #90 inline/#91 cascade 제한범위 수용 | 잔여44/45/49/55/73 유지·#93 f8f2/8·8/8·0/4 strictincrease미달·TK55 trace invalid-evidence/C nativeEOF설계HOLD·같은111 false이득0/진짜확인손실+9·기준변경0 | #90 full exit0 1214/949/6723/197·#91 최초exit1 timing1 보존/단독단계6946 PASS. #93 exactCIgreen/원래지표재실행·full미실행. C 기존AFP3 유지·신규배포/봉인0·온라인이연·10시간경과. f1 최신표/HISTORY |
+| 10-12 (한국) | 고정81.7/79.2/오탐0·TC06 .357 유지 | #95 named PAGE/#97 surviving excerpt 제한범위 수용 | 원래 경계·법리·개인정보 보호 충족·미완료44/45/49/55/73 유지 | #95 full0 수용1214/원장949/전체6914/브라우저197·#97 full0 수용1214/원장2357/전체8061/브라우저197·각실패0. exactCI/Docker SUCCESS·독립18파일/27대조 PASS. 신규통합/봉인/배포0·f1 최신표/HISTORY |
