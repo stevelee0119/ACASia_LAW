@@ -895,3 +895,57 @@ Linux/Python3.11.15/Tesseract5.5.0 kor/network0. CI5.3.4와 차이 명시.
 - 봉인 최초1쌍: 9c=3389 28.1/.281/FP0/control0/A0/injectiontrue,8문서57결함·지문1abd74597ec4b25a·같은환경/도구hash·별도Pythonprocess. 성능상승0/원문·정답·문서상세미열람/새세트재시험안함.
 - 같은수용제품 원래법리2/8·8/8·0/4 및TXT동일/18기준유지, retired4 19.0/29.6/36.2/15.2 FP0/0/0/3유지. TK57 PHONE1/54→0/54/RRN0/84/provider0 및narrowactual54M4로 minor0.13판정. 44/49/55부분·45/73불수용잔여보존·미배포.
 - e21정식불수용5482338759: exactCIgreen/요청6106648755,원래8/8·7/8·1/4 정상8미달·actualTXT동일·18불변. 공개815/독립26PASS대체불가.
+
+### 실제 배포 완료 — 2026-10-11 17:11 KST
+
+PR77 main `8280a597db40b0905dbacf10c56fa3e9915cafd5`, `v.0.13.0` 배포 완료. 릴리스 head3ad의 필수CI38123137556/점수38123137444/Docker 모두SUCCESS. Render `dep-db5k8uek1f9s73ef0tg0` Live17:11:16KST, health17:11:24KST `0.13.0`/동일SHA/database ok 확인. a4→Steve3ad→main8280 파일 트리 동일, 최초 봉인3389 엔진에는 버전 메타데이터 외 변경없음. 전체/봉인 재실행 없음.
+
+TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/49/55 부분 구현은 배포했으나 전체 티켓은 open/known_open, TK45/73 불수용제품은 제외했다. 완결 잔여5건을 유지한다. TK75 기본OFF 기술범위 배포와 법률 품질을 구별하며 실제 배포후 API/내부worker OFF 영수증 및 서면9/Drive/6쌍 실제OFFON·독립변호사1명·토큰 비교는 아직 미측정이다. 운영자에게 기존05/06의 배포후 절차를 요청했으며 원문/비밀/가격 조사 없이 기존상한·종료OFF를 유지한다. 기록: release_completion_2026-10-11.json.
+
+
+### 2026-10-11 20:30 KST — post013 정확 SHA 측정
+
+- #90 b1e506f 평가자 관련239·수용/회귀2163 PASS/기존24xfail. 전체verify_all exit0: acceptance1214/ledger949/full6723/browser197·realfail/strictXPASS0·fixed81.7/79.2/FP0. exactCI38132618288/score38132618289/Docker SUCCESS 인용. 원래법리20 2/8·8/8·0/4 및고정18 1/4·4/4·1/4·1/2·1/4 유지. 독립shading2 PASS.
+- #91 86e75e3 root공개101·독립24·mock-wire4 source노출0·원래privacy 게이트충족. 최초full exit1: acceptance1214/ledger1242/full6945 PASS+TK71 timing1FAIL/browser197. 시작/후보 동일단독검사 각1PASS. 원래full_tests 단계만 단독1회 보완6946 PASS/실패0/strictXPASS0/290.3초. 첫 실패원인미확정·원본보존·코드/시험/임계값변경0. exactCI38132924102/score38132924186/Docker SUCCESS 인용·fixed81.7/79.2/FP0.
+- #93 0dd4b8 독립공개actualTXT20: 양성2 새proof1씩, 문장간화자4/다른법률2에서 baseline finding0→추가finding1, 나머지 반대12 새proof0·오류0·span/slices일치. 원래비공개/full 판정은 아직실행하지 않음.
+- #92 source-role5822 root공개27 PASS(원래PDF9/원래DOCX row-free9/untypedA9), 최신ab5378e 문서만 제품0. 새봉인/유료/온라인 실행0. 새운영배포0.
+
+### 2026-10-11 21:06 KST — 공개 원문 계약 보완 및 기준안 사전점검
+
+- TK45 2d487 독립actualTXT20 PASS, b582 화자/규범/prefix 실제TXT15 PASS. b582 source helper 공백 mismatch 2k/4k/8k 0.08695/0.36428/1.49223초. 최신982e7 구현자 관련245 PASS/12.82초, 기존 짧은 기대값 변경0. 이전589 실제242PASS/새 장문 preview/fullspan 1FAIL 및 잘못된243PASS 커밋 문구 정정 보존. parser→legal32k 소비자 PASS, 전체pipeline32k classifier60초 초과 중단·미측정. 원래비공개/full 판정 아직0.
+- TK55 abdfa4 공개 새 비교36 PASS. 두 실제producer 발췌의 PHONE/RRN12건 provider/예약12→0 비교, 선택 밖12/정상6/완전JSON6 대조 유지. 독립12건 중 selected4→차단/밖2·정상2 통과/완전2 기존차단 유지, mid-literal2는 비교 누락 유지. 제품diff0.
+- TK73 5cd 공개실제형식111: 원래A93/native확정3/legacy72/pending18, pending오탐9·진짜9; 원래진짜66/오탐27 불변. root 기존4종 설계 applicability는 앞3A0/행불변, 마지막A3→병렬pending2/legacy1·기존AFP3 불변·parser오류0. 제품/채점/등급/기존 시험 변경0·새봉인/유료/온라인0.
+
+- TK45 최종제출f8f6e08의 products/tests는982e7 동일. 별도 공개감사37 PASS(기존출처15/현재5설정 양방향10/미래불명설정10/32k 소비자2). 실제32k parse→legal 단발5.236988/6.291550초·성장/임계값충족 주장0.
+- TK73 c16 별도공개117: 원래A108/pending54(false45·true9)/legacy51/nativeTITLE3/invaliddateA36/EOF99·진짜39중detected30/missed9·원래false78 유지. 기존4종 설계applicability는 앞3A0/행불변·마지막A3 병렬pending2/legacy1·AFP3 불변, sourceEOF 미증명·parser오류0. 제품/기존111/채점변경0.
+
+- TK55 688a84 제품0: 구현측 새offset191/관련239 PASS(7.49초), actual selected90 provider/예약90→0·밖/masked/정상48의48→48·payload불변. 별도공개감사대기.
+- TK73 c16 별도공개감사24 actual문서·3 owner fault: 행/finding24/24 유지·unsupportedEOF image-onlyPDF/w:symDOCX2 및 trailingopenquote TXT/PDF/DOCX3 반례 확인. 구현측 기존111병렬 새진단 pending18→27/legacy72→63/native3·진짜pending9→18·falsepending9/원래A93/false27/진짜탐지66/invaliddateA9 유지, date_guard 가족9만 이동.
+
+- TK45 f8f6e 정식원래20 및actualTXT20 2/8·8/8·0/4·고정18 1/4·4/4·1/4·1/2·1/4 불변. exactCI38138090194/score38138090222/Docker SUCCESS·요청6108963482. 평가자전체 미실행·제품미통합/미배포·새봉인0.
+- TK55 688a 별도공개17actual producer/mockrouter+원자4: argument removed/masked원문origin을다른위치동일substring으로재인증한 정상provider/예약1→0 대조2, claim post-mask대조1→1. claim 1200중첩JSON에서 baseline1→comparisonRecursionError, argument baseline차단은별도기록. 중간literal/nestedduplicate/startinside7복구·정상6유지. 제품diff0.
+
+### 2026-10-11 21:53 KST — 확인 필요 기준안 독립 손익·출처 검토
+
+- TK73 5c8 공개282 PASS는 구현측 측정(원래111/별도117/신규54). 신규54의 원래A54/decodedEOF51/usable36, tier변경15=image3/sym3/trailingquote9, namespace3은기존legacy. 원래111/117 tier변경0 vs c16. 제품/등급/원래기대값0 변경.
+- 독립 실제17문서 원래rows/findings17/17 유지. 이미지/annotation/외부vector/DOCXsym·unknownXML·foreignnamespace/열린인용 거절 유지. 실제Form/sh음영 PDF2는지원/usableEOF true·pending유지로source지원 오인증.
+- 독립 같은111 재집계: 원래A93·진짜탐지66·false27/nativeTITLE3/invaliddateA9/finding111/111 유지. narrowpending18(true9,false9)/legacy72→expandedguard27(true18,false9)/legacy63; date_guard9만변경·false추가분리0/진짜확인손실+9. guard vs c16 tier변경0. 별도54/117/936 및whole/CI/봉인/유료 독립재실행0.
+- TK55 trace124259 구현측 새245+기존12=257PASS. 독립두producer 기존masked-origin 과차단해소·rootPython3.11 deep1200 READY/예외0 및 원래argument0/claim1 유지. malformed present ranges endpoint/tuple은 decoder ABSTAIN→actual provider/예약1로 새invalid-evidence 경계. 제품86e0변경.
+- TK44/49 named cap ad8d 구현측 관련88PASS/2.49초/제품0·독립cap 감사대기.
+
+### 2026-10-12 06:53 KST — #95·#97 최종 SHA 측정
+
+- #95 5e6e859 평가자 전체1회 exit0: 수용1214/원장949/전체6914/브라우저197·realfail0/strictXPASS0. exactCI38144023479/score38144023440/Docker SUCCESS 인용. 별도 공개actual PDF18파일 PASS·원래 경계/접합/법리 보호 결과 동일. fixed81.7/79.2/FP0·TC06 .357.
+- #97 2f4e798 평가자 전체1회 exit0: 수용1214/원장2357/전체8061/브라우저197·realfail0/strictXPASS0. exactCI38143165314/score38143165365/Docker SUCCESS 인용. 별도 공개actual producer/router27대조 PASS·원래 개인정보 필수/보호 게이트 충족. fixed81.7/79.2/FP0.
+- 로컬 Python3.11.15/Tesseract5.5.0 kor·CI5.3.4 환경차이 명시. 기존 글꼴/테스트IPC 설정 사용·제품/시험/임계값 변경0. 첫#95 full을 중단하지 않고 이전측정CPU잔여3프로세스만 종료; 이전미완료측정은 성공으로 바꾸지 않음. 새 통합/봉인/배포/유료호출0.
+
+### 2026-10-12 09:55 KST — 수용 SHA 통합 후보 및 CI
+
+- #98 0702386 평가자 full1회 종료0: 수용1214/원장2357/전체8322/브라우저197·realfail0/strictXPASS0·fixed81.7/79.2/FP0·TC06 .357. 원래 개인정보필수/보호 및 경계/UNKNOWN/접합/법리 유지. sameSHA CI38188744443 전4jobs/점수38188744440 SUCCESS 인용. 로컬Python3.11.15/OCR5.5.0 kor·CI5.3.4 차이 명시.
+- 제품17파일 모두수용원본blob 일치. 별도 공개actualPDF3/producer-router8대조PASS·감사자는전체pipeline/비공개/봉인 재측정0. Steve aa40019 병합 전체tree=검증070. Render latest live8280 동일SHA·신규배포0/새봉인0/유료호출0. 미사용새봉인 미제공·첫봉인재사용0.
+
+### 2026-10-12 20:53 KST — 새 봉인 최초 운영/후보 비교·버전 유지
+
+- 지문bd746c475dd2cdab·8문서54결함/대조2·인젝션1. 운영8280=후보070 15.7/.157/오탐0·대조0·A0·인젝션true, 최초쌍각exit0/clean/network0·samePython3.11.15/OCR5.5.0 kor/scorer/deps/baselinehash. 전체credit8.5/fullcredit7/positivecredit13 양쪽동일.
+- 형식오류0·끝문장부호경고16, 원문일치확인·파일/토큰변경0. 구별미상법률내용을임의정답교체0·출제Antigravity provenance/사용자신규제공·독립성별도감사0·이전소비PDF bytehash동일0. 새세트소비완료·재사용금지.
+- 버전상향없음/0.13.0유지: M1 81.7/79.2/FP0 불변·M2동일·strictXPASS0/전체티켓해소0·M4확대완료미증명. 고정비공개벤치마크데이터없어미측정·온라인법률품질근거아님. 새main릴리스/실제배포는아직대기.
