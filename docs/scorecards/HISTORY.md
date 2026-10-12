@@ -938,3 +938,8 @@ TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/
 - #95 5e6e859 평가자 전체1회 exit0: 수용1214/원장949/전체6914/브라우저197·realfail0/strictXPASS0. exactCI38144023479/score38144023440/Docker SUCCESS 인용. 별도 공개actual PDF18파일 PASS·원래 경계/접합/법리 보호 결과 동일. fixed81.7/79.2/FP0·TC06 .357.
 - #97 2f4e798 평가자 전체1회 exit0: 수용1214/원장2357/전체8061/브라우저197·realfail0/strictXPASS0. exactCI38143165314/score38143165365/Docker SUCCESS 인용. 별도 공개actual producer/router27대조 PASS·원래 개인정보 필수/보호 게이트 충족. fixed81.7/79.2/FP0.
 - 로컬 Python3.11.15/Tesseract5.5.0 kor·CI5.3.4 환경차이 명시. 기존 글꼴/테스트IPC 설정 사용·제품/시험/임계값 변경0. 첫#95 full을 중단하지 않고 이전측정CPU잔여3프로세스만 종료; 이전미완료측정은 성공으로 바꾸지 않음. 새 통합/봉인/배포/유료호출0.
+
+### 2026-10-12 09:55 KST — 수용 SHA 통합 후보 및 CI
+
+- #98 0702386 평가자 full1회 종료0: 수용1214/원장2357/전체8322/브라우저197·realfail0/strictXPASS0·fixed81.7/79.2/FP0·TC06 .357. 원래 개인정보필수/보호 및 경계/UNKNOWN/접합/법리 유지. sameSHA CI38188744443 전4jobs/점수38188744440 SUCCESS 인용. 로컬Python3.11.15/OCR5.5.0 kor·CI5.3.4 차이 명시.
+- 제품17파일 모두수용원본blob 일치. 별도 공개actualPDF3/producer-router8대조PASS·감사자는전체pipeline/비공개/봉인 재측정0. Steve aa40019 병합 전체tree=검증070. Render latest live8280 동일SHA·신규배포0/새봉인0/유료호출0. 미사용새봉인 미제공·첫봉인재사용0.
