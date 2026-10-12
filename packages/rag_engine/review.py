@@ -594,6 +594,7 @@ def review_document(result, library, router, context, pii):
 
         # 3) 발췌문 구성 (주장 관련 문맥 구간 추출, 최대 5개 항목, 항목당 800자 이내, 총합 4,000자 이내)
         ref_sources_items = []
+        excerpt_pieces = []
         total_chars = 0
         for s in relevant_sources[:5]:
             s_text = s.get("text", "")
@@ -617,11 +618,14 @@ def review_document(result, library, router, context, pii):
                     start_pos = max(0, end_pos - 800)
                 s_excerpt = s_text[start_pos:end_pos]
             else:
+                start_pos, end_pos = 0, min(len(s_text), 800)
                 s_excerpt = s_text[:800]
 
             if total_chars + len(s_excerpt) > EXCERPT_CHARS:
                 break
             total_chars += len(s_excerpt)
+            from packages.common.source_trace import capture_slice
+            excerpt_pieces.append(capture_slice(s_text, start_pos, end_pos, s_excerpt))
             ref_sources_items.append({
                 "source_id": s.get("source_id", "R1"),
                 "text": s_excerpt,
@@ -655,6 +659,8 @@ def review_document(result, library, router, context, pii):
             metadata={"stage": "claim_rag_advisory", "claim_id": c_id},
         )
         claim_req = with_review_context(claim_req, enabled=korean_profile, reference_date=getattr(context, "case_date", None))
+        from packages.llm_router.excerpt_source import bind_claim_excerpts
+        claim_req = bind_claim_excerpts(claim_req, excerpt_pieces)
 
         c_outcome = asyncio.run(router.run(
             LLMRole.PRIMARY_REASONER, claim_req,

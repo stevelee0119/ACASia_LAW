@@ -369,8 +369,10 @@ class LLMRouter:
         request = replace(request, system=f"{SYSTEM_BASE}\n[역할] {role}\n{request.system}")
         privacy = {}
         from .cascade_source import valid_cascade_source
+        from .excerpt_source import valid_excerpt_source
         if ((provider.config.kind != "local" and policy == ExternalAIPolicy.MASKED)
-                or not valid_cascade_source(request, original_system=original_system)):
+                or not valid_cascade_source(request, original_system=original_system)
+                or not valid_excerpt_source(request, original_system=original_system)):
             from .privacy import inspect_request
 
             try:

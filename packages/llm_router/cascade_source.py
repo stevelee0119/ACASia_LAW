@@ -98,6 +98,9 @@ def build_cascade_request(stage, question, evidence, *, primary_verdict=None):
 
 
 def valid_cascade_source(request, *, original_system=None):
+    from .excerpt_source import is_excerpt_request
+    if is_excerpt_request(request):
+        return True  # Its independent additive validator runs at the same gate.
     source = request.inspection_source
     if source is None:
         return not isinstance(request, _CascadeRequest)
