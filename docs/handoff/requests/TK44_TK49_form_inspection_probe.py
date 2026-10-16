@@ -25,11 +25,11 @@ def sample(count):
         page = PdfReader(str(path)).pages[0]
         form = next(iter(page["/Resources"]["/XObject"].values())).get_object()
         content_bytes = len(form.get_data())
-        before = _parse(path)
         with MonkeyPatch.context() as patch:
             start = time.perf_counter()
             after = parse_candidate(path, patch)
             elapsed = time.perf_counter() - start
+        before = _parse(path)
         assert build_reading_text(before).text == build_reading_text(after).text
         assert before.raw_layers == after.raw_layers
         assert any("ACTUAL_TEXT" in f.tags for f in scan_document(after).findings)
