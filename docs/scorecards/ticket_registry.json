@@ -180,7 +180,7 @@
   },
   "TK-44": {
    "status": "open",
-   "note": "운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전.",
+   "note": "2026-10-17 #108 86b7fa5 Form 검사 설계 조건부 승인(잔여 시험 처음 두 단언만 반전 승인, 종결 계획 요구). 이전: 운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전.",
    "deployed_scope_sha": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
    "accepted_scope_sha": "5e6e85932a5579eedb84b7bc9ba8f75ec3c7d25d",
    "merged_scope_sha": "aa400191fc263dee063ecac68ad9b9917646430b",
@@ -188,7 +188,7 @@
   },
   "TK-45": {
    "status": "open",
-   "note": "전체open·미배포. #93 f8f6e08 root5483280439 불수용 유지: 원래2/8·8/8·0/4 불변으로 두strictincrease 미달·정상8/8 보호. 최신 #96 8d237496f32868f339828bb6ab8cf7622f641263은 source reference/법적적용 구분 설계·공개65PASS 제출(구현측)/제품0·root 설계검토 대기. 승인 뒤 제품/원래수용 시험·불수용제품 통합금지."
+   "note": "2026-10-17 #96 5c69062 설계 불승인: 비공개 대상 문장에 법조문 인용 0건이라 설계가 지표를 못 바꿈. 멈춤 규칙 적용, known_open 전환 여부 사용자 결정 대기. 이전: 전체open·미배포. #93 f8f6e08 root5483280439 불수용 유지: 원래2/8·8/8·0/4 불변으로 두strictincrease 미달·정상8/8 보호. 최신 #96 8d237496f32868f339828bb6ab8cf7622f641263은 source reference/법적적용 구분 설계·공개65PASS 제출(구현측)/제품0·root 설계검토 대기. 승인 뒤 제품/원래수용 시험·불수용제품 통합금지."
   },
   "TK-46": {
    "status": "deployed",
@@ -204,7 +204,7 @@
   },
   "TK-49": {
    "status": "open",
-   "note": "운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전.",
+   "note": "2026-10-17 #108 86b7fa5 Form 검사 설계 조건부 승인(잔여 시험 처음 두 단언만 반전 승인, 종결 계획 요구). 이전: 운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전.",
    "deployed_scope_sha": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
    "accepted_scope_sha": "5e6e85932a5579eedb84b7bc9ba8f75ec3c7d25d",
    "merged_scope_sha": "aa400191fc263dee063ecac68ad9b9917646430b",
@@ -232,7 +232,7 @@
   },
   "TK-55": {
    "status": "known_open",
-   "note": "운영8280 부분배포·known_open 유지. #91 86e cascade에 이어 #97 2f4e798 두first-party 발췌 occurrence/source추가검사 제한수용5485136030. exactCI38143165314/score38143165365/Docker SUCCESS·독립27대조 PASS·원래privacy 필수/보호 충족. root full1회 exit0 수용1214/원장2357/전체8061/브라우저197/실패0·fixed81.7/79.2/FP0. 이전#91 첫full timing1FAIL 이력보존·현재결과와구분. legacy/opaque/unsupported/capture-budget 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전.",
+   "note": "2026-10-17 #106 2936764 생성 claim ID 충돌 수정 수용·평가 측 통합(미배포). 기존 저장 16진수 ID·unknown-role/opaque/capture-budget 잔여로 known_open 유지. 이전: 운영8280 부분배포·known_open 유지. #91 86e cascade에 이어 #97 2f4e798 두first-party 발췌 occurrence/source추가검사 제한수용5485136030. exactCI38143165314/score38143165365/Docker SUCCESS·독립27대조 PASS·원래privacy 필수/보호 충족. root full1회 exit0 수용1214/원장2357/전체8061/브라우저197/실패0·fixed81.7/79.2/FP0. 이전#91 첫full timing1FAIL 이력보존·현재결과와구분. legacy/opaque/unsupported/capture-budget 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전.",
    "deployed_scope_sha": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
    "accepted_scope_sha": "2f4e798a052ef2bd6b581d7e69c3738aa1c79eb2",
    "merged_scope_sha": "aa400191fc263dee063ecac68ad9b9917646430b",
@@ -318,7 +318,7 @@
   },
   "TK-73": {
    "status": "open",
-   "note": "전체open·미배포. #92 최신545c917fd12f9fec40eb52bbccfffaf566bc9fdc 설계/공개시험·제품0. 별도 source-tree/native 안전성 제한PASS는 제품/기준승인과구분·구체 기준안 검토 HOLD. 원래111 날짜확대 진짜확인손실+9/false추가이득0·기존4종AFP3 불변. 사용자 확인필요분리 선택은 검토이며 승인0·원래A/finding/GLOBAL/UNKNOWN 보호 유지."
+   "note": "2026-10-17 #92 401d098 계약안 보류. 평가 측 사전 점검: 서증명 첫 구분 기호 앞 비교 임시 패치로 은퇴 c A3→0·재현율 유지·나머지 불변. 최소 수정+공개 111/330 손실 측정 지시. 이전: 전체open·미배포. #92 최신545c917fd12f9fec40eb52bbccfffaf566bc9fdc 설계/공개시험·제품0. 별도 source-tree/native 안전성 제한PASS는 제품/기준승인과구분·구체 기준안 검토 HOLD. 원래111 날짜확대 진짜확인손실+9/false추가이득0·기존4종AFP3 불변. 사용자 확인필요분리 선택은 검토이며 승인0·원래A/finding/GLOBAL/UNKNOWN 보호 유지."
   },
   "TK-74": {
    "status": "deployed",
