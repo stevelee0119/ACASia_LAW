@@ -1,7 +1,8 @@
 """Generated public actual TXT and source-index comparisons, product diff zero."""
 import importlib.util
+import hashlib
 import json
-import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -63,9 +64,11 @@ NEGATIVE = [
 
 @pytest.fixture(scope='module')
 def historical_provider(tmp_path_factory):
-    # Own frozen public commit, not evaluator inputs or fixture answers.
+    # Byte-identical test-only snapshot of public f8f6e08. Shallow/no-Git
+    # checkouts must not depend on an unrelated branch's object store.
     path=tmp_path_factory.mktemp('historical')/'source_delta.py'
-    data=subprocess.check_output(['git','show','f8f6e0899f4e80a10ae73fa750fc26d5ecf3adbd:packages/legal_engine/defense_source_delta.py'])
+    data=Path(__file__).with_name('tk45_f8_source_delta_baseline.py').read_bytes()
+    assert hashlib.sha256(data).hexdigest()=='dbdb261ef1d4543d7ba25f62d3a668397ef1dcd0c3516341088659541d515e06'
     path.write_bytes(data)
     spec=importlib.util.spec_from_file_location('historical_source_delta',path)
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)

@@ -21,3 +21,17 @@ Linux/Python3.12.14 reproduction:
 ```
 
 The probe invokes the existing unmodified design consumer over long nonmatching normalized source in a fresh process each sample. It does not measure the whole legal classifier/pipeline or resolve the previously disclosed long-pipeline performance residual. No new detector or regex is added here. Product remains frozen pending source-admission/effect-role design acceptance and the original normal8/8 plus strict-increase gates. No retired/private/check/train/sealed score or paid model execution is claimed.
+
+## Historical comparison fixture portability correction
+
+The public historical CI failure is confirmed, not waived: PR96 original8d23749, run38142837612/job114480114502, has39 setup errors because the shallow checkout cannot read the unrelated f8 source object. The new readiness05061e2 also retained that historical dependency; its local113 pass used a prepared object store and is not evidence of portable CI success. It is superseded by the final fixture-portability submission identified in the PR.
+
+Store public `f8f6e0899f4e80a10ae73fa750fc26d5ecf3adbd:packages/legal_engine/defense_source_delta.py` byte-for-byte as `tests/tk45_f8_source_delta_baseline.py`, SHA256 `dbdb261ef1d4543d7ba25f62d3a668397ef1dcd0c3516341088659541d515e06`. The historical fixture now reads that test-only snapshot and verifies its hash. No test body, parameter, expected value, marker, skip or product import changes. Rejected f8 code remains solely a frozen historical comparator, never an installed consumer. CI/workflow and fetch-depth settings are untouched.
+
+A separate public tree with packages/apps/config/scripts and just the necessary test files, no `.git` metadata or historical objects, passes **113 tests in11.32s** on Linux/Python3.12.14. The repeatable packaged command is:
+
+```sh
+/workspace/tk73-venv/bin/python docs/handoff/requests/TK45_no_git_reproduce.py
+```
+
+This corrects a comparison-harness setup failure. It is not a TK45 legal detector improvement or independent acceptance. Earlier CI failures/cancellations remain their own SHA/run records; only the new exact-head CI may establish this submission's CI status.
