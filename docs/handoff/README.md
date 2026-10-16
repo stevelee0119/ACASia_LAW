@@ -1,6 +1,6 @@
 # 인계 티켓(평가 → 구현)
 
-평가 에이전트(Codex 평가 세션)가 측정에서 나온 결함을 **원인 유형별**로 적는다. 구현 에이전트(Codex 구현 세션·Antigravity)는 티켓 단위로 고친다.
+평가 에이전트(Claude Code 평가 세션, 2026-10-17부터)가 측정에서 나온 결함을 **원인 유형별**로 적는다. 구현 에이전트(Antigravity, Codex는 열린 TK-44·45·49·55·73만)는 티켓 단위로 고친다.
 서면 한 건에 맞춘 수정은 하지 않는다(AGENTS.md). 수용 기준은 측정 도구의 출력이다. 기준 커밋은 측정한 코드다.
 
 <a id="pr73-current-status"></a>
@@ -16,7 +16,7 @@
 | TK55 | #97 2f4e798 발췌검사 제한부분 배포,known_open | legacy/unsupported 등 잔여와 내부생성ID PHONE과차단 후속. 키일괄면제금지·필수개인정보보호 유지 |
 | TK73 | #92 545c917 source-tree안전성 제한PASS·기준/제품HOLD | 구체확인필요상태·진짜확정손실·보호계약 검토후 사용자결정. 원래AFP3해소로계산금지 |
 
-최신 구현 지시는 [Codex 통합본](NEXT_FOR_CODEX.md)·[Antigravity 통합본](NEXT_FOR_ANTIGRAVITY.md)으로 전달한다. 사용자10/16 승인 잠정목표는 [FIXED_BENCHMARK9절](../scorecards/FIXED_BENCHMARK.md#9-목표와-릴리스-참고-기준-2026-10-16-사용자-승인), 공통제출조건 사전점검은 [전용기록](requests/SUBMISSION_CHECKLIST_PREFLIGHT_20261016.md)을 따른다. 비공개벤치 결과로 구현티켓을 만들지 않는다. 개발말뭉치dev_20261016의train/check양쪽원본지문확인·같은운영본첫측정·gap계산을완료했다. train.115/check.145·격차−.030,중점.175/.225·격차−.050이다. [DEV_CORPUS](../scorecards/DEV_CORPUS.md)의집계/접근분리/노출교체규칙을따른다. train전용ZIP과NEXT만별도구현세션에전달하고check는평가측보관이다.
+최신 구현 지시는 [Antigravity 통합본](NEXT_FOR_ANTIGRAVITY.md)(새 구현, 첫 배정 [TK-76](TK-76_focus_types_generalization_cycle1.md))·[Codex 통합본](NEXT_FOR_CODEX.md)(잔여 티켓, 평가 검토 중지)으로 전달한다. 체제 전환(2026-10-17): [AGENT_ROLES](../AGENT_ROLES.md) 1절. 사용자10/16 승인 잠정목표는 [FIXED_BENCHMARK9절](../scorecards/FIXED_BENCHMARK.md#9-목표와-릴리스-참고-기준-2026-10-16-사용자-승인), 공통제출조건 사전점검은 [전용기록](requests/SUBMISSION_CHECKLIST_PREFLIGHT_20261016.md)을 따른다. 비공개벤치 결과로 구현티켓을 만들지 않는다. 개발말뭉치dev_20261016의train/check양쪽원본지문확인·같은운영본첫측정·gap계산을완료했다. train.115/check.145·격차−.030,중점.175/.225·격차−.050이다. [DEV_CORPUS](../scorecards/DEV_CORPUS.md)의집계/접근분리/노출교체규칙을따른다. train전용ZIP과NEXT만별도구현세션에전달하고check는평가측보관이다.
 
 사용자께 지금 가능한 일: ①구현을하지않는 환경에서0.13.0 고정비공개벤치집계 제출(기록은평가측), ②준비된train전용ZIP·NEXT를별도구현세션에전달(원본추가제출불필요), ③Steve대상PR CodeQL저장소설정, ④독립변호사 시범사용섭외·관찰/채점자료 준비다. 자료수신뒤 평가측이기준측정/기록을진행한다. 새제품병합/배포는수용SHA CI와릴리스선행요건 완료뒤별도다. 원래10시간 전체목표 미달은보존하며 과거실패를성공으로바꾸지 않는다.
 
@@ -266,3 +266,7 @@ TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/
 - **2026-10-12 22:31 KST #100 실제 배포 완료:** main `b68cfeec2c5c168a3b9e6e2e92653ea6892521bf`, Render Live·health commit 일치/DB ok. 버전0.13.0유지·새태그없음. #95/#97 수용부분만 배포했으며 TK44·45·49·55·73 전체 미완료5건 유지. 새 봉인 최초쌍 회귀PASS/상승미확인·소비완료. 법률지침 기존사용자ON 설정 변경0, 온라인1회/JSON 및 독립법률채점자1명 품질판정 후속. 가격절차 재개0·과거CI 시간실패2건 원인미확정 추적. NEXT_FOR_CODEX가 이전 전달문을 대체한다.
 
 - **2026-10-13 05:13 KST 배포 후 온라인 점검 수신:** b68/ON 사용자JSON의 기존명세23/23, 모델실행27/29 성공·JSON거절1/생성claim_id PHONE과차단1·참고미완료 유지. ID과차단은 이전운영도 공개재현돼 TK55 기존문제 후속이다. 법률품질채택은 동일배포OFF/동일발췌·독립법률채점 없으므로 HOLD, 사용자ON유지·2~3일자체평가/한명채점 후 보완. 최신 NEXT_FOR_CODEX와 통합후속메모 참조. 새배포/유료호출/봉인재시험0.
+
+- **개발 체제 전환(2026-10-17, 사용자):** Antigravity 구현·Claude Code 평가. Codex는 열린 TK-44·45·49·55·73만 마무리하고 그 PR(#63·#79·#80·#84·#85·#92·#93·#95·#96·#97) 검토는 사용자 재개 지시 전까지 중지. 출제(봉인·고정 벤치·말뭉치)는 Codex 격리 세션 유지. → [AGENT_ROLES](../AGENT_ROLES.md) 1절, [EVALUATOR_HANDOVER](EVALUATOR_HANDOVER.md) 0절
+
+- **TK-76(2026-10-17, P1·탐지 성능):** [개발 말뭉치 중점 6유형 1주기](TK-76_focus_types_generalization_cycle1.md). 기준 train/check: INCONS .20/.20·SRC-UNV 0/0·NUM .20/.40·FORM .25/.25·DATE .40/.50·COPY 0/0. 진단 메모 → 유형별 PR. Antigravity 배정.
