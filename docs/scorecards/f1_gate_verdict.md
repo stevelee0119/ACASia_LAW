@@ -1730,3 +1730,38 @@ TK73 출력불변metadata: control rows7/scope1/excluded2/keys4. 남은group1의
 PR77 main `8280a597db40b0905dbacf10c56fa3e9915cafd5`, `v.0.13.0` 배포 완료. 릴리스 head3ad의 필수CI38123137556/점수38123137444/Docker 모두SUCCESS. Render `dep-db5k8uek1f9s73ef0tg0` Live17:11:16KST, health17:11:24KST `0.13.0`/동일SHA/database ok 확인. a4→Steve3ad→main8280 파일 트리 동일, 최초 봉인3389 엔진에는 버전 메타데이터 외 변경없음. 전체/봉인 재실행 없음.
 
 TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/49/55 부분 구현은 배포했으나 전체 티켓은 open/known_open, TK45/73 불수용제품은 제외했다. 완결 잔여5건을 유지한다. TK75 기본OFF 기술범위 배포와 법률 품질을 구별하며 실제 배포후 API/내부worker OFF 영수증 및 서면9/Drive/6쌍 실제OFFON·독립변호사1명·토큰 비교는 아직 미측정이다. 운영자에게 기존05/06의 배포후 절차를 요청했으며 원문/비밀/가격 조사 없이 기존상한·종료OFF를 유지한다. 기록: release_completion_2026-10-11.json.
+
+
+## 2026-10-12 06:53 KST 잔여 5건 — PR95·97 최종 평가
+
+| 제출/항목 | 판정 | 근거와 한계 |
+| --- | --- | --- |
+| #90 b1e506f · TK44/49 | inline ActualText provider 제한범위 내용 수용5483100719 | exactCI38132618288/점수38132618289/Docker SUCCESS 인용·요청6108248291. 평가자 공개239·수용/회귀2163 PASS/기존24 xfail. evaluator full 종료0: 수용1214/원장949/전체6723/브라우저197/실패0/strictXPASS0·fixed81.7/79.2/FP0. 원래 법리20/고정18 유지. 독립 shading-after UNKNOWN/prior JOIN 확인. 비태그/resource/Form/structure-tree/UNKNOWN primary/floor/consumer 미완료, 신규 통합/배포 전. |
+| #95 5e6e859 · TK44/49 후속 | 제한 범위 내용 수용5485088907 | 제품88b0cfd·요청6109737405. exactCI38144023479/점수38144023440/Docker SUCCESS 인용. 독립 actual PDF18파일 PASS; 원래 경계/UNKNOWN/접합/법리 보호 결과 유지. 평가자 full 1회 종료0: 수용1214/원장949/전체6914/브라우저197/실패0/strictXPASS0·fixed81.7/79.2/FP0·TC06 .357. named PAGE direct cert/indirect inspection-only UNKNOWN·capture caps/partial lifecycle 유지. 앞선설계P2는 보완됨. Form/structure/미지원/untagged/UNKNOWN primary/floor/consumer 및 전체parser 성능은 잔여, 신규통합/배포 전. |
+| #91 86e75e3 · TK55 | 요청별cascade source 추가검사 제한범위 내용 수용5483126695 | exactCI38132924102/점수38132924186/Docker SUCCESS 인용·요청6108286856. root 공개101·독립24 및4adapter mock-wire 내부source노출0·원래 개인정보 필수/보호 게이트 충족. 최초full 종료1: 수용1214/원장1242/전체6945 PASS+기존TK71 시간1FAIL/브라우저197. 원본 보존, 시작/후보 단독 같은검사 각PASS, 원래full_tests 단계만 단독1회 보완6946 PASS/실패0/strictXPASS0/290.3초. 첫실패 원인 미확정·코드/시험/임계값 변경0·고정81.7/79.2/FP0. legacy unknown-role known_open·신규통합/배포 전. |
+| #93 f8f6e08 (제품982e7) · TK45 | 정식 불수용5483280439·두 strictincrease 미달 | 0dd 공개 화자4/규범2 HOLD 이후 2d487 독립20 및 b582 prefix15 통과. 첫BODY·원래heading/source offset만 허용하는 제한범위이며 앞선SOURCE/이후BODY는 새proof0. b582 공백 초선형 문제로 HOLD 후 memo116 source-offset 보존 view 조건부 승인6108706839. 실제 관련245 PASS/12.82초·별도 공개감사37 PASS(출처/5설정 양방향/미래불명설정/32k 소비자); 이전589의 잘못된243PASS 문구와 실제242PASS/새 preview/fullspan 1FAIL·교정 기록 보존, 기존 기대값 변경0. 전체pipeline32k는 변경없는 classifier에서60초 초과 중단·미측정, parse→legal32k 소비자 검증만 구분. exactCI38138090194/점수38138090222/Docker SUCCESS·요청6108963482 후 원래20 및 actualTXT20 2/8·8/8·0/4·고정18 불변. 정상 보호충족/부인·확장 strictincrease 모두미달. 수용성능FAIL로 evaluator full 미실행·미통합/미배포·새applicability 설계 필요. |
+| #97 2f4e798 · TK55 발췌 후속 | 제한 범위 내용 수용5485136030 | 요청6109620195·exactCI38143165314/점수38143165365/Docker SUCCESS 인용. 독립 actual producer→router27대조 PASS; 원래 연락처/RRN 필수·성명·과마스킹·불가림·유출·정상 게이트 충족. 평가자 full 1회 종료0: 수용1214/원장2357/전체8061/브라우저197/실패0/strictXPASS0·fixed81.7/79.2/FP0. once-render/strip/mask surviving occurrence·request/batch/profile binding·malformed-present pre-budget 거절/opaque abstain 유지. 이전688 과차단/예외 및124 invalid-present HOLD 이력 보존. 역사864와 실제product3664는 구별하고 기존기대/보호시험 변경0. legacy/opaque/unsupported 잔여 known_open·전체완료/신규배포 아님. |
+| #92 545c917 · TK73 | source-tree 안전성 제한 PASS·기준/제품 HOLD | 최신설계만/제품0·별도공개 source-tree/native 지원보호 좁은감사 PASS. 앞선5c8 Form/sh음영 및464 Parent/Kids 연결 HOLD는 최신보완과구분한다. 원래111의 finding/A93·진짜탐지66·false27 유지, 날짜확대 pending18→27/진짜pending9→18/false이득0·추가진짜확인손실9 유지. 기존4종AFP3 불변·별도117 기존미탐9은해소아님. 사용자 선택은기준안검토이며구체기준/제품승인0. native EOF는제목/명제 역할증명아님. [기준안 검토](../handoff/requests/TK-73_confirmation_criteria_evaluator_review.md). |
+| #98 0702386 → Steve aa40019 | 수용 범위 통합 PASS·병합 완료5485754303 | #90→#95/#91→#97 제품17파일 원본blob 합집합·병합 전체tree 동일. 원래privacy 필수/보호 PASS·경계/UNKNOWN/접합/법리 유지. 평가자 full1회 종료0 수용1214/원장2357/전체8322/브라우저197/실패0/strictXPASS0·fixed81.7/79.2/FP0·TC06 .357. exactCI38188744443의 SQLite/PG+Celery/SQLite+PG+Redis/Docker 및score38188744440 모두SUCCESS. 독립actual PDF3파일→두producer→mockrouter8대조 PASS(전체pipeline과구분). 새봉인 미사용입력미제공/미실행·main 릴리스/배포 대기. |
+| 새 봉인 bd746c475dd2cdab / 버전 | 회귀 기준 PASS·상향없음/0.13.0 유지 | 8문서54결함·대조2/인젝션1, 운영8280=후보070 15.7/.157/FP0·대조0·A0·방어true. 최초별도process/clean/동일env/scorer/deps/baseline·원문/토큰수정0. 끝문장부호경고16·형식오류0·서면별상세공개0. M2credit8.5/완전7/부분포함13 양쪽동일·fixed불변/strictXPASS0/완결TK0. 새봉인소비완료·재사용금지·새mainCI/배포 대기. |
+| 전체 상태 | 제한 범위 실제 배포 완료 | #100 main b68cfee, 버전0.13.0·새태그없음. release CI38253829678/점수38253829611·Docker SUCCESS, Render Live·실제health 동일SHA/DB ok. TK44/49/55 수용부분만 배포, 전체open/known_open·TK45/73 미승인제품제외·미완료5건 유지. 기존운영ON 설정 변경0·온라인/독립 법률채점 후속. |
+
+환경: Linux/Python3.11.15/Tesseract5.5.0 kor, CI5.3.4 차이 명시. local IPC/브라우저 캐시/평가글꼴 설정 사용. A 최초 기본환경 중단 이력은 보존하며 해당 최초 실패 원인을 확정하지 않는다. B 최초실패와 원래 단계의 단독보완을 구분하고 최초 전체를 exit0으로 재작성하지 않는다. 별도 공개 감사는 verify_all/비공개/봉인 재실행 없음. 새 제품 릴리스 봉인 미실행·0.13.0 첫봉인 재사용0.
+
+이번 #95/#97 각각 동일 제출에서 전체 verify_all 1회 종료0. 비공개 원문/정답/항목 상세 게시0·제품/시험/임계값 수정0. 이전 #91 첫 전체 exit1은 해당 이전 SHA의 이력으로 보존하며 이번 #97 결과로 덮어쓰지 않는다. 이 개별 판정 뒤 새 릴리스 봉인 최초쌍을 실행했고 회귀 기준 PASS로 기록했다. 세트는 소비 완료다.
+
+### 2026-10-12 22:31 KST 실제 배포 확인
+
+#99 관찰 기록 병합 후 #100 head0847109 필수 CI38253829678·점수38253829611 모두 SUCCESS(원본 포함 SQLite9732/PG9736 PASS). main `b68cfeec2c5c168a3b9e6e2e92653ea6892521bf`와 검증 릴리스 전체트리 동일. Render `dep-db6dvjnavr4c73fvnopg` Live, 실제 health 동일commit/0.13.0/database ok. TK44/49/55 수용부분만 배포 등록, 전체상태·잔여5건 유지.
+
+f64 기존 시간실패 .625568/.748032초는 원인미확정으로 보존한다. 관찰 전용525 및 release084의 원본.1초 기준 통과는 이전실패 원인/해결 증거가 아니다. clock/GC/assert/입력/순서/상한 변경·시험분리0, 공개 독립 관찰 감사 적합. 가격절차/유료호출/봉인 재시험0. 법률 지침 사용자ON 설정 변경0, 정식품질채택HOLD.
+
+### 2026-10-13 05:13 KST 배포 후 온라인 점검
+
+| 항목 | 판정 | 근거 |
+|---|---|---|
+| b68 사용자ON JSON | 선택된온라인명세 PASS23/23, 전체무오류아님 | 실제배포SHA·동일PDF/모델설정·ON/kr2 확인. PARTIAL_COMPLETED/DRAFT·모델성공27/29, JSON거절1·PII전송전차단1·참고동기화부분. 법률엔진7 핵심필드유지·주장연결11/19. |
+| 내부claim_id 과차단 | TK55 기존문제 후속 | PHONE2의경로 metadata/user.claim_id, 생성UUID형ID1이미대조목록에있음. 공개합성ID3개BLOCK/안전3개PASS, 이전8280/현재b68 동일. 실제사용자ID/원문공개0·전체차단요청재구성0·키/모양일괄면제금지. |
+| 법률지침채택 | HOLD, 사용자ON유지 | 기존OFF대비Claude 입력+10.76%/총+10.31%. 배포·참고발췌·응답성공조건달라 지침단일변수평가아님. 독립법률채점자1명 후속. |
+
+집계: online_post013_review_2026-10-13.json. 공개원문/Drive식별자/키0·제품/시험/채점/기준선변경0·새봉인/유료호출/추가배포0.

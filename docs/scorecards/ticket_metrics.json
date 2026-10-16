@@ -11,35 +11,35 @@
    "status": "open",
    "kind": "regression",
    "found_on": "2026-10-03",
-   "note": "#78 c6e 직접SPACE 보존·#86 ebd UNKNOWN lazy대안/진단 메타데이터 제한범위내용수용·844평가통합CI성공. 실제명시SPACE48/48·UNKNOWN24·legacy29출력동일9/29. primary폭의존/ActualText잔여유지·완전해소아님·최종full/봉인/운영배포전. 승인된 부분만 0.13.0 main8280a59 배포; 티켓 전체 잔여는 미완료 유지."
+   "note": "운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전."
   },
   {
    "id": "TK-45",
    "status": "open",
    "kind": "regression",
    "found_on": "2026-10-03",
-   "note": "PR84 e21c40d442f521782cd7d85a18b8fb40655b403d 불수용5482338759(요청6106648755). exactCI38120377539/점수38120377556/Docker SUCCESS·공개815/독립26 PASS. 원래20 및actualTXT20 부인8/8·정상7/8·확장1/4로 정상8/8 필수미달; 고정18은3/4·4/4·1/4·1/2·4/4. 출력불변진단 새case/순서/공백 통과하나 regular/AUXILIARY attachment fullmatchfalse→proof없음·resolved0, 소비자LOCAL_SUBJECT 면제 미도달. 수용3389에서 제외·미통합/미배포. 기준/기대값 불변; 별도 공개 문법·논항 설계 승인 후 보완, 비공개 어휘/좌표 공유금지. 이전3736/258 시험 생성기·타이밍 실패는 역사기록으로 보존."
+   "note": "전체open·미배포. #93 f8f6e08 root5483280439 불수용 유지: 원래2/8·8/8·0/4 불변으로 두strictincrease 미달·정상8/8 보호. 최신 #96 8d237496f32868f339828bb6ab8cf7622f641263은 source reference/법적적용 구분 설계·공개65PASS 제출(구현측)/제품0·root 설계검토 대기. 승인 뒤 제품/원래수용 시험·불수용제품 통합금지."
   },
   {
    "id": "TK-49",
    "status": "open",
    "kind": "regression",
    "found_on": "2026-10-03",
-   "note": "#78 c6e 직접SPACE 보존·#86 ebd UNKNOWN lazy대안/진단 메타데이터 제한범위내용수용·844평가통합CI성공. 실제명시SPACE48/48·UNKNOWN24·legacy29출력동일9/29. primary폭의존/ActualText잔여유지·완전해소아님·최종full/봉인/운영배포전. 승인된 부분만 0.13.0 main8280a59 배포; 티켓 전체 잔여는 미완료 유지."
+   "note": "운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전."
   },
   {
    "id": "TK-55",
    "status": "known_open",
    "kind": "regression",
    "found_on": "2026-10-04",
-   "note": "#82 ce83355 first-party계약/손실없는JSON 제한범위 내용 수용. 기존개인정보/라우터 보호 유지·#81과 통합PHONE/RRN 도달0. 호환성 결정에 따라 legacy역할키24/encoded불명역할 잔여 유지·전체해소 아님·최종릴리스 대기. 승인된 부분만 0.13.0 main8280a59 배포; 티켓 전체 잔여는 미완료 유지."
+   "note": "운영8280 부분배포·known_open 유지. #91 86e cascade에 이어 #97 2f4e798 두first-party 발췌 occurrence/source추가검사 제한수용5485136030. exactCI38143165314/score38143165365/Docker SUCCESS·독립27대조 PASS·원래privacy 필수/보호 충족. root full1회 exit0 수용1214/원장2357/전체8061/브라우저197/실패0·fixed81.7/79.2/FP0. 이전#91 첫full timing1FAIL 이력보존·현재결과와구분. legacy/opaque/unsupported/capture-budget 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전."
   },
   {
    "id": "TK-73",
    "status": "open",
    "kind": "existing",
    "found_on": "2026-10-10",
-   "note": "PR79 214334ddb916a0a856e7a4a55d39cbd180c5ec1a 불수용5482229717. 요청6106394284·exactCI38118526548/점수38118526520/Docker 모두SUCCESS. 평가측 원래4 재실행19.0/29.6/36.2 FP0 유지;20261010 시작15.2/.302/FP3(control3/A3)→25.2/.302/FP1(control1/A1), 기존9ab와동일·필수AFP/control0 미달. 네세트 인젝션방어유지. 공개936/독립GLOBAL실제형식감사PASS는대체불가. 미통합·미배포·새봉인미실행·기준/채점/기대값불변. 출력불변214 진단: control7rows/scope1/excluded2/keys4·남은group1 inventorykindNone1/모든narrative종료뒤prose1. 새inventory_atom4회/PASS0·row정규화mapping/단일itemorigin/원래offset순서/definitionmarker4통과. wholeparagraphsource0·nativeatom0→eligible/certified/rowdomain0·latercitation원시함수호출0. 4paragraph모두multi-reading-segment(total16), source없음으로단정하지않음. row정규화일치와originalphysicalglyph proof는구별하며 UNKNOWNjoin을원문으로인증/가상whole-source span생성금지. 원문/어휘/IDs/좌표공유0·기존globalall-origin충돌/UNKNOWN 및interval/936expects 유지. 수용3389에서 제외·미통합/미배포. 기존 name-field+colon feasibility 0/4로 해당 공개 gap은 남은 AFP의 원인 증명이 아님. 제품214 동결·새 공개 wholecaption/source-role 설계 승인 전 제품추가 금지."
+   "note": "전체open·미배포. #92 최신545c917fd12f9fec40eb52bbccfffaf566bc9fdc 설계/공개시험·제품0. 별도 source-tree/native 안전성 제한PASS는 제품/기준승인과구분·구체 기준안 검토 HOLD. 원래111 날짜확대 진짜확인손실+9/false추가이득0·기존4종AFP3 불변. 사용자 확인필요분리 선택은 검토이며 승인0·원래A/finding/GLOBAL/UNKNOWN 보호 유지."
   }
  ],
  "weekly": {

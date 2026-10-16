@@ -1,0 +1,104 @@
+name: CodeQL (Steve 대상 PR)
+
+# 저장소의 CodeQL 기본 설정(default setup)은 main 대상 PR만 검사했고 Steve_ACASiaLAW 대상 PR에서는 돌지 않았다
+# (2026-10-16 확인: PR #98·#102·#103에 CodeQL 검사 없음, main 대상 #100에는 있음). 그래서 TK-66(정규식 ReDoS)이
+# Steve 병합 뒤 main 릴리스 PR에서야 잡혔다. 이 워크플로는 그 공백을 메운다(사용자 지시 2026-10-16).
+# - 기본 설정과 충돌하지 않도록 결과를 GitHub에 업로드하지 않는다(upload: never, security-events 쓰기 권한 없음).
+#   경고 목록·상태 관리는 지금처럼 main 기준 기본 설정이 맡는다.
+# - 기준 커밋(base)과 PR 병합본을 각각 분석해 PR이 새로 만든 결과만 본다(scripts/codeql_pr_diff.py).
+# - 실패 기준: 새 결과 중 보안 심각도 High(7.0) 이상, 또는 보안 심각도가 없는 error 수준(GitHub 코드 스캔 기본 기준과 같음).
+# 병합을 막으려면 Steve_ACASiaLAW 보호 규칙의 필수 상태 확인에 'CodeQL 새 경고 게이트'를 넣는다(사용자 설정).
+on:
+  pull_request:
+    branches: [Steve_ACASiaLAW]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: codeql-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: CodeQL 분석 (${{ matrix.language }} · ${{ matrix.side }})
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript]
+        side: [base, head]
+    steps:
+      # head는 pull_request 이벤트의 기본 체크아웃(PR 병합본), base는 기준 브랜치의 현재 커밋이다.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.side == 'base' && github.event.pull_request.base.sha || '' }}
+          persist-credentials: false
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}/${{ matrix.side }}
+          upload: never
+          output: sarif-out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sarif-${{ matrix.side }}-${{ matrix.language }}
+          path: sarif-out/
+          retention-days: 7
+          if-no-files-found: error
+
+  gate:
+    name: CodeQL 새 경고 게이트
+    needs: analyze
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: 분석 작업 결과 확인
+        if: needs.analyze.result != 'success'
+        run: |
+          echo "CodeQL 분석 작업이 성공하지 않았다(${{ needs.analyze.result }}). 분석 없이 통과로 보지 않는다."
+          exit 1
+
+      # 비교 스크립트는 기준 브랜치의 것을 쓴다(PR이 스크립트를 고쳐 게이트를 약하게 만들지 못하게).
+      # 기준 브랜치에 아직 없을 때(이 워크플로를 처음 들이는 PR)만 PR 쪽 스크립트를 쓴다.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base-src
+          persist-credentials: false
+
+      - uses: actions/checkout@v4
+        with:
+          path: head-src
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sarif-*
+          path: sarif
+
+      - name: 새 결과 비교
+        run: |
+          script=base-src/scripts/codeql_pr_diff.py
+          if [ ! -f "$script" ]; then
+            echo "기준 브랜치에 비교 스크립트가 없어 PR 쪽 스크립트를 쓴다(최초 도입)."
+            script=head-src/scripts/codeql_pr_diff.py
+          fi
+          python "$script" --base sarif/sarif-base-* --head sarif/sarif-head-*
