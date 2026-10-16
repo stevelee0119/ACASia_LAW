@@ -62,7 +62,7 @@ def observe_boundary(previous: dict[str, Any], following: dict[str, Any]) -> dic
     spaces = left.get("trailing_space_glyphs", []) + right.get("leading_space_glyphs", [])
     usable = bool(left.get("usable") and right.get("usable"))
     confirmed = usable and bool(spaces)
-    return {
+    observation = {
         "boundary_signal": SPACE_CONFIRMED if confirmed else UNKNOWN,
         "reason": ("DIRECT_SPACE_GLYPH" if confirmed else
                    "NO_DIRECT_BOUNDARY_EVIDENCE" if usable else "UNUSABLE_GLYPH_GEOMETRY"),
@@ -72,3 +72,12 @@ def observe_boundary(previous: dict[str, Any], following: dict[str, Any]) -> dic
         "char_gap_em": left.get("char_gap_em"),
         "space_gap_em": left.get("space_gap_em"),
     }
+    logical = previous.get('actualtext_boundary_evidence')
+    if logical and usable and not confirmed:
+        left_indices, right_indices = left.get('source_glyph_indices', []), right.get('source_glyph_indices', [])
+        if (left_indices and right_indices and logical['previous_glyph_index'] == left_indices[-1]
+                and logical['following_glyph_index'] == right_indices[0]):
+            signal = JOIN_CONFIRMED if logical['separator'] == '' else SPACE_CONFIRMED
+            observation.update(boundary_signal=signal, reason='DIRECT_ACTUALTEXT_' + ('JOIN' if signal == JOIN_CONFIRMED else 'SPACE'),
+                               logical_source_evidence=logical)
+    return observation

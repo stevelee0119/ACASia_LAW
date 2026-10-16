@@ -554,7 +554,7 @@ def _answer_provider(answer) -> str:
 
 
 async def _retry_truncated_singly(router: Any, replies: List[Any], batch: List[Dict[str, Any]],
-                                  policy: ExternalAIPolicy) -> List[Any]:
+                                  policy: ExternalAIPolicy, *, excerpt_pieces=None) -> List[Any]:
     if len(batch) < 2:
         return []
     providers = [p for p in (_answer_provider(a) for a in replies) if p]
@@ -567,6 +567,9 @@ async def _retry_truncated_singly(router: Any, replies: List[Any], batch: List[D
             single = LLMRequest(system=_OPINION_SYSTEM, user=json.dumps({"items": [item]}, ensure_ascii=False),
                                 temperature=0.1, max_tokens=4096, schema=_OPINION_SCHEMA,
                                 input_contract="argument_review_v1")
+            if excerpt_pieces is not None:
+                from packages.llm_router.excerpt_source import bind_argument_excerpts
+                single = bind_argument_excerpts(single, (excerpt_pieces[item['item_id']],))
             reply = await router.run(LLMRole.PRIMARY_REASONER, single, policy=policy, exclude=others,
                                      expected_task="법률 주장 타당성 검토")
             if _answer_provider(reply) == provider or not reply.executions:
@@ -583,12 +586,20 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
     from packages.llm_router.router import failure_summary
 
     hide = mask or (lambda text: text)
+    from packages.common.source_trace import render_argument_context
+    from packages.llm_router.excerpt_source import bind_argument_excerpts
+    excerpt_pieces = {}
+
+    def context_for(index, item):
+        rendered, piece = render_argument_context(hide, item['context'])
+        excerpt_pieces[index] = piece
+        return rendered
     items = [{
         "item_id": index,
         "page": item["citation"].page or 1,
         "cited_case": hide(item["citation"].raw_text),
         "확인 상태": _BASIS_LABEL.get(item.get("basis", "UNCONFIRMED"), _BASIS_LABEL["UNCONFIRMED"]),
-        "surrounding_context_and_claim": hide(item["context"][:1000]),
+        "surrounding_context_and_claim": context_for(index, item),
         **({"원문 대조(어절 단위, 원문 기준)": hide(item["quote_diff"])} if item.get("quote_diff") else {}),
     } for index, item in enumerate(unverified_cases, 1)]
     # 한 번에 모두 물으면 인용이 많을 때 응답이 출력 한도에서 잘린다. 한국어 JSON은
@@ -599,13 +610,15 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
                              user=json.dumps({"items": items[start:start + _OPINION_BATCH]}, ensure_ascii=False),
                              temperature=0.1, max_tokens=4096, schema=_OPINION_SCHEMA,
                              input_contract="argument_review_v1")
+        request = bind_argument_excerpts(request, tuple(excerpt_pieces[item['item_id']]
+                                                       for item in items[start:start + _OPINION_BATCH]))
         try:
             batch = items[start:start + _OPINION_BATCH]
             replies = await router.consult_all(LLMRole.PRIMARY_REASONER, request, policy=policy,
                                                expected_task="법률 주장 타당성 검토")
             answers += replies
             # 2건 묶음도 출력 한도에서 잘린 공급자(0.9.8 실제 실행 1건)에는 그 공급자에게만 1건씩 다시 묻는다.
-            answers += await _retry_truncated_singly(router, replies, batch, policy)
+            answers += await _retry_truncated_singly(router, replies, batch, policy, excerpt_pieces=excerpt_pieces)
         except Exception as exc:  # 참고 의견이 없어도 판정은 이미 끝났다.
             result.ai_summary = f"AI 교차검토를 수행하지 못함({type(exc).__name__})."
             return

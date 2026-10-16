@@ -46,11 +46,13 @@ class PIIEngine:
     def __init__(self, store: PseudonymStore) -> None:
         self.store = store
 
-    def mask_text(self, text: str, *, block_id: Optional[str] = None, page: Optional[int] = None) -> MaskResult:
+    def mask_text(self, text: str, *, block_id: Optional[str] = None, page: Optional[int] = None, _trace=None) -> MaskResult:
         matches = [m for m in detect(text, block_id=block_id, page=page) if m.confidence >= MIN_CONFIDENCE]
-        return self._mask_matches(text, matches)
+        if _trace is None:
+            return self._mask_matches(text, matches)
+        return self._mask_matches(text, matches, _trace=_trace)
 
-    def _mask_matches(self, text, matches):
+    def _mask_matches(self, text, matches, *, _trace=None):
         if not matches:
             return MaskResult(text, [], {})
         replacements: Dict[str, str] = {}
@@ -64,8 +66,14 @@ class PIIEngine:
             replacements[token] = match.kind
             out.append(text[cursor : match.start])
             out.append(f"[{token}]")
+            if _trace is not None:
+                _trace.keep(cursor, match.start)
+                _trace.insert(len(out[-1]))
             cursor = match.end
         out.append(text[cursor:])
+        if _trace is not None:
+            _trace.keep(cursor, len(text))
+            _trace.finish_mask()
         return MaskResult("".join(out), matches, replacements)
 
     def mask_document(self, doc: NormalizedDocument, *, policy: ExternalAIPolicy = ExternalAIPolicy.MASKED) -> MaskedDocument:
