@@ -4,9 +4,20 @@
 
 ## 역할·시작점
 
-- 저장소 stevelee0119/verify_ACAS_LAW. 라운드 시작2a85aa0e043cb6d13993742c2a053a8b048c48d5, 실제 운영 b68cfeec2c5c168a3b9e6e2e92653ea6892521bf/0.13.0. 이번 확인 Steve는 a47fb6f849618463d54b0107c27bbd85e4921477이며, 새 작업은 착수 시 최신 origin/Steve_ACASiaLAW를 다시 확인하고 시작 SHA를 보고한다. 배포 제품과 동일한 시작점은 main b68cfeec2c5c168a3b9e6e2e92653ea6892521bf.
+- 저장소 stevelee0119/verify_ACAS_LAW. 라운드 시작2a85aa0e043cb6d13993742c2a053a8b048c48d5, 실제 운영 b68cfeec2c5c168a3b9e6e2e92653ea6892521bf/0.13.0. 이번 확인 Steve는 93acef5774f2076c34f28a5a45c80313c4b9fd99이며, 새 작업은 착수 시 최신 origin/Steve_ACASiaLAW를 다시 확인하고 시작 SHA를 보고한다. 배포 제품과 동일한 시작점은 main b68cfeec2c5c168a3b9e6e2e92653ea6892521bf.
 - 평가 세션은 제품을 직접 고치지 않고 게이트·판정·수용 SHA 통합·릴리스 준비를 맡는다. 공개 구현 세션은 한 세션 한 경로 A/B/C. 비공개 세트/원문/봉인/정답 열람·요청 금지.
 - 설계→공개 양방향 대조→설계 승인→제품→정확SHA CI/3줄 요청→원래 게이트 판정. 같은 접근 두 실패 후 새 설계 필수. 보호 경로·기존 기대값·기준선·CI·버전 변경 금지. 정상 구현브랜치 push/PR 승인됨·Steve/main 직접/강제 push 금지.
+
+## TK45 제출 SHA·현재 HEAD·다음 푸시 동기화 (사용자 전달)
+
+| PR | 본문에 고정된 제출·판정 대상 | 이번 확인 최신 HEAD | 원격 브랜치 |
+|---|---|---|---|
+| #93 | f8f6e0899f4e80a10ae73fa750fc26d5ecf3adbd | 9ebd28735949b8c5d4a7080b527b9444d0c0980a | codex/post013-track-a-tk45-design |
+| #96 | 8d237496f32868f339828bb6ab8cf7622f641263 | bb9b7a4fd0b2aa94f3be5d3e5542ad9483f70027 | codex/post013-track-a-tk45-applicability |
+
+두HEAD는각제출SHA와Steve93acef5의실제병합커밋이며제출SHA는이력에그대로남아있다. 제출SHA대비제품17파일이바뀌었으므로기존판정/CI를새HEAD의판정으로확장하지않는다. CI인용에는대상SHA·runID를붙이고, 실제체크아웃이PR병합ref이면그SHA도구분한다. 제출#93의기존불수용과#96의설계검토대기를이번동기화로승인으로바꾸지않는다. 조회시제출#93 f8f6e08의CI/점수는SUCCESS,제출#96 8d23749는CI failure/점수success이며최신HEAD검사는별도실행중/대기였다. 과거실패를지우거나새HEAD성공으로덮지않는다.
+
+이브랜치에추가푸시하기전, 로컬작업을보존한뒤해당브랜치에서 `git pull --ff-only origin <위 원격브랜치>`로병합커밋을먼저받고HEAD를확인한다. 분기하면멈춰이력을정합시키며강제푸시·원격병합삭제금지다. 두PR은draft를유지하고새설계승인/검토요청/제품착수로해석하지않는다. 이번통지만으로전체시험·비공개재측정·새보완을시작하지않는다.
 
 ## 공통 제출 점검표 — 2026-10-16 사용자 승인
 
