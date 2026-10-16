@@ -36,6 +36,18 @@ def new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
 
 
+_CLAIM_ID_ALPHABET = str.maketrans("0123456789abcdef", "abcdefghijklmnop")
+
+
+def _new_claim_id() -> str:
+    """Keep 48 random bits without numeric runs in outbound claim references.
+
+    This prevents generated IDs from resembling contacts; it confers no trust
+    or privacy exemption on either new identifiers or existing claim data.
+    """
+    return "CLM_" + uuid.uuid4().hex[:12].translate(_CLAIM_ID_ALPHABET)
+
+
 # ---------------------------------------------------------------------------
 # 6.2 Normalized Document
 # ---------------------------------------------------------------------------
@@ -425,7 +437,7 @@ class Claim:
 
     @staticmethod
     def create(type: ClaimType, text: str, **kw: Any) -> "Claim":
-        return Claim(claim_id=new_id("CLM"), type=type, text=text, **kw)
+        return Claim(claim_id=_new_claim_id(), type=type, text=text, **kw)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
