@@ -1,0 +1,333 @@
+{
+  "schema": "post_release_online_aggregate_v1",
+  "recorded_at_kst": "2026-10-13 05:13 KST",
+  "deployment_sha": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
+  "version": "0.13.0",
+  "profile_config_ON": true,
+  "prompt_version": "v0.2+kr2",
+  "score_spec_rule_version": "2",
+  "selected_online_checks": {
+    "OFF_8280": "23/23",
+    "ON_8280": "23/23",
+    "ON_b68": "23/23"
+  },
+  "new_run": {
+    "program_version": "0.13.0",
+    "deployment_sha": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
+    "profile_enabled": true,
+    "prompt_version": "v0.2+kr2",
+    "state": "PARTIAL_COMPLETED",
+    "report_state": "DRAFT",
+    "duration_seconds": 410.738054,
+    "timestamp_timezone_offset_present": false,
+    "model_calls": 29,
+    "successful_model_calls": 27,
+    "top_level_errors": 0,
+    "engine_stage_errors": {
+      "reference_sync": 1
+    },
+    "unverified_items": 8,
+    "unavailable_sources": 1,
+    "findings": 16,
+    "finding_types": {
+      "META_INSTRUCTION": 1,
+      "AUTHORSHIP_METADATA_LEAK": 1,
+      "CASE_NOT_FOUND": 1,
+      "LAW_CITATION_ERROR": 3,
+      "TEMPORAL_LAW_MISMATCH": 1,
+      "LEGAL_ARGUMENT_INVALID": 2,
+      "AI_AUTHORSHIP_LIKELY": 5,
+      "FACT_CONTRADICTION": 2
+    },
+    "severity_counts": {
+      "HIGH": 3,
+      "INFO": 6,
+      "CRITICAL": 1,
+      "LOW": 3,
+      "MEDIUM": 3
+    },
+    "status_counts": {
+      "SUSPICIOUS": 6,
+      "VERIFIED": 1,
+      "NOT_FOUND": 3,
+      "UNVERIFIED": 5,
+      "CONTRADICTED": 1
+    },
+    "document_submission_gate": "BLOCK",
+    "human_review_history_entries": 0,
+    "providers": {
+      "anthropic": {
+        "model_ids": [
+          "claude-opus-5-5"
+        ],
+        "calls": 23,
+        "successful": 21,
+        "failed": 2,
+        "input_tokens": 122627,
+        "output_tokens": 30466,
+        "total_tokens": 153093,
+        "missing_token_fields": 0,
+        "cache_read_tokens": null,
+        "cache_write_tokens": null
+      },
+      "gemini": {
+        "model_ids": [
+          "gemini-3.8-flash"
+        ],
+        "calls": 3,
+        "successful": 3,
+        "failed": 0,
+        "input_tokens": 4491,
+        "output_tokens": 1306,
+        "total_tokens": 5797,
+        "missing_token_fields": 0,
+        "cache_read_tokens": null,
+        "cache_write_tokens": null
+      },
+      "openai": {
+        "model_ids": [
+          "gpt-6-luna"
+        ],
+        "calls": 3,
+        "successful": 3,
+        "failed": 0,
+        "input_tokens": 4404,
+        "output_tokens": 3338,
+        "total_tokens": 7742,
+        "missing_token_fields": 0,
+        "cache_read_tokens": null,
+        "cache_write_tokens": null
+      }
+    },
+    "rag": {
+      "status": "ADVISORY_REVIEWED",
+      "review_completed": true,
+      "coverage": "INCOMPLETE_COVERAGE",
+      "observations_accepted": 24,
+      "observations_rejected": 0,
+      "rejection_codes": {},
+      "relationship_counts": {
+        "CONTRADICTS": 2,
+        "CONTEXT": 12,
+        "INSUFFICIENT": 10
+      },
+      "eligible_claims": 19,
+      "linked_claims": 11,
+      "total_source_excerpt_entries": 86,
+      "source_quotes_validated_as_reported": true,
+      "legal_binding_determined": false,
+      "seconds": 229.053
+    },
+    "reference_library": {
+      "status": "PARTIAL",
+      "case_table_indexed_rows": 2185,
+      "case_table_pending_rows": 1371,
+      "case_table_chunk_count": 2748
+    },
+    "source_pool": {
+      "objects": 15,
+      "canonical_hash_mismatches": 0,
+      "whole_review_snapshot_hash_verified": false
+    },
+    "lawyer_approval_items_count": 2
+  },
+  "Claude_tokens": {
+    "canonical_source": "top-level model_executions only; nested copies not added",
+    "new_ON_vs_old_OFF": {
+      "baseline": {
+        "calls": 23,
+        "successful": 23,
+        "failed": 0,
+        "input_tokens": 110716,
+        "output_tokens": 28073,
+        "total_tokens": 138789
+      },
+      "current": {
+        "calls": 23,
+        "successful": 21,
+        "failed": 2,
+        "input_tokens": 122627,
+        "output_tokens": 30466,
+        "total_tokens": 153093
+      },
+      "delta_current_minus_baseline": {
+        "input_tokens": 11911,
+        "output_tokens": 2393,
+        "total_tokens": 14304
+      },
+      "change_percent": {
+        "input_tokens": 10.758156002745764,
+        "output_tokens": 8.52420475189684,
+        "total_tokens": 10.306292285411669
+      },
+      "attribution": "Observed usage only; changed build/excerpts, stochastic responses, one non-JSON answer and one request blocked before dispatch confound profile-only overhead."
+    },
+    "new_ON_vs_old_ON": {
+      "baseline": {
+        "calls": 23,
+        "successful": 23,
+        "failed": 0,
+        "input_tokens": 128245,
+        "output_tokens": 33930,
+        "total_tokens": 162175
+      },
+      "current": {
+        "calls": 23,
+        "successful": 21,
+        "failed": 2,
+        "input_tokens": 122627,
+        "output_tokens": 30466,
+        "total_tokens": 153093
+      },
+      "delta_current_minus_baseline": {
+        "input_tokens": -5618,
+        "output_tokens": -3464,
+        "total_tokens": -9082
+      },
+      "change_percent": {
+        "input_tokens": -4.380677609263519,
+        "output_tokens": -10.209254347185382,
+        "total_tokens": -5.600123323570217
+      },
+      "attribution": "Observed usage only; changed build/excerpts, stochastic responses, one non-JSON answer and one request blocked before dispatch confound profile-only overhead."
+    },
+    "cache_usage": null,
+    "unexported_retries_or_fallback_usage": null,
+    "wire_or_billing_independently_verified": false,
+    "currency_conversion_performed": false,
+    "cost_adoption_gate_applied": false
+  },
+  "comparison_controls": {
+    "OFF": {
+      "same_input_document_sha256": true,
+      "same_build": false,
+      "same_input_context": true,
+      "same_provider_configuration": true,
+      "same_other_settings": true,
+      "same_recorded_library_snapshot_hash": true,
+      "same_canonical_source_object_pool": false,
+      "same_reported_reference_excerpt_content_multiset": false,
+      "common_reported_excerpt_entries": 15,
+      "exact_common_observation_pairs": 6,
+      "common_pair_relationship_transition_counts": {
+        "INSUFFICIENT -> INSUFFICIENT": 2,
+        "CONTEXT -> CONTEXT": 4
+      },
+      "legal_engine_count_before": 7,
+      "legal_engine_count_after": 7,
+      "legal_engine_core_fields_unchanged": true,
+      "controlled_single_variable_profile_trial": false
+    },
+    "old_ON": {
+      "same_input_document_sha256": true,
+      "same_build": false,
+      "same_input_context": true,
+      "same_provider_configuration": true,
+      "same_other_settings": true,
+      "same_recorded_library_snapshot_hash": true,
+      "same_canonical_source_object_pool": false,
+      "same_reported_reference_excerpt_content_multiset": false,
+      "common_reported_excerpt_entries": 57,
+      "exact_common_observation_pairs": 10,
+      "common_pair_relationship_transition_counts": {
+        "INSUFFICIENT -> INSUFFICIENT": 3,
+        "CONTEXT -> CONTEXT": 4,
+        "CONTEXT -> INSUFFICIENT": 1,
+        "INSUFFICIENT -> CONTEXT": 1,
+        "CONTRADICTS -> CONTEXT": 1
+      },
+      "legal_engine_count_before": 7,
+      "legal_engine_count_after": 7,
+      "legal_engine_core_fields_unchanged": true,
+      "controlled_single_variable_profile_trial": false
+    }
+  },
+  "failures": [
+    {
+      "execution_index_zero_based": 14,
+      "provider": "anthropic",
+      "role": "PRIMARY_REASONER",
+      "error_code": "INVALID_RESPONSE_SCHEMA",
+      "input_tokens": 6184,
+      "output_tokens": 2448,
+      "privacy_status": "PASSED",
+      "detected_types": {},
+      "detected_field_paths": [],
+      "sent_to_provider": true,
+      "excerpt_projection_statuses": {
+        "ABSTAIN_UNSUPPORTED": 5
+      }
+    },
+    {
+      "execution_index_zero_based": 17,
+      "provider": "anthropic",
+      "role": "PRIMARY_REASONER",
+      "error_code": "INPUT_PRIVACY_BLOCKED",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "privacy_status": "BLOCKED",
+      "detected_types": {
+        "PHONE": 2
+      },
+      "detected_field_paths": [
+        "metadata.claim_id",
+        "user.claim_id"
+      ],
+      "sent_to_provider": false,
+      "excerpt_projection_statuses": {
+        "ABSTAIN_UNSUPPORTED": 5
+      }
+    }
+  ],
+  "identifier_diagnosis": {
+    "reported_paths": [
+      "metadata.claim_id",
+      "user.claim_id"
+    ],
+    "phone_matches_reported": 2,
+    "distinct_internal_claim_ids_matching_PHONE": 1,
+    "same_id_in_unreviewed_claims": true,
+    "source_generator": "packages/common/schemas.py new_id/Claim.create: CLM_ plus random UUID hex prefix",
+    "synthetic_phone_shaped_valid_ids_blocked": 3,
+    "synthetic_safe_controls_passed": 3,
+    "reproduced_on_operating_8280_and_current_b68": true,
+    "baseline_candidate_probe_results_identical": true,
+    "classification": "existing generated-ID overblocking; manifested in this run; not evidence of newly introduced excerpt safeguard or ON-profile regression",
+    "exact_full_blocked_request_reconstructed": false,
+    "actual_user_id_in_public_examples": false
+  },
+  "assessment": {
+    "deployment_online_selected_checks": "PASS 23/23, rule2; all three user reports rescored with identical unmodified tool/spec",
+    "full_program_error_free": false,
+    "top_level_errors_zero_does_not_mean_no_model_or_reference_errors": true,
+    "RAG_partial": true,
+    "review_completed_true_does_not_mean_all_claims_verified": true,
+    "formal_legal_profile_adoption": "HOLD pending one independent lawyer assessment; no profile-only causal comparison",
+    "runtime_ON": "preserved; no setting changes",
+    "same_deployment_OFF_report_received": false,
+    "accuracy_or_recall": null,
+    "latency_p95": null,
+    "legal_quality_score": null,
+    "root_paid_calls": 0,
+    "new_sealed_execution": false,
+    "new_deployment": false
+  },
+  "followup": [
+    {
+      "ticket": "TK-55",
+      "issue": "Internal generated opaque claim IDs mistaken for PHONE in schema-governed first-party user/metadata; existing issue seen now",
+      "constraints": "Do not blanket exempt claim_id or phone-shaped arbitrary data; preserve contact/RRN required gates, source provenance, metadata/capability validation and original expectations."
+    },
+    {
+      "ticket": "TK-75 follow-up",
+      "issue": "One Claude non-JSON response rejected; raw model response absent so exact formatting cause unresolved",
+      "constraints": "Preserve strict output schema and quote grounding; no weakening validation or arbitrary retry/cost procedure."
+    },
+    {
+      "ticket": "TK-74 follow-up",
+      "issue": "Reference sync still partial; structured table indexing2185, pending1371; one unavailable source",
+      "constraints": "Partial coverage remains explicit; no absence or legal-authority proof from unavailable/unfinished sources."
+    }
+  ],
+  "raw_document_or_case_or_Drive_identifiers_exported": false
+}

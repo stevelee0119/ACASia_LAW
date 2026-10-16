@@ -121,3 +121,39 @@ def test_approval_list_written_by_implementer_is_ignored(repo):
 
 def test_unknown_base_is_unmeasured(repo):
     assert _check(repo, "0" * 40).returncode == 2
+
+
+CODEQL_POLICY_PATHS = (".github/workflows/codeql-pr.yml", "scripts/codeql_pr_diff.py")
+
+
+@pytest.mark.parametrize("path", CODEQL_POLICY_PATHS)
+def test_codeql_policy_change_requires_evaluator_review(repo, path):
+    base = _git(repo, "rev-parse", "HEAD")
+    _commit(repo, {path: "policy = 'weakened'\n"}, "implementer")
+    result = _check(repo, base)
+    assert result.returncode == 1, result.stdout
+    assert f"[보호 경로 변경] {path}" in result.stdout
+
+
+@pytest.mark.parametrize("path", CODEQL_POLICY_PATHS)
+def test_codeql_policy_evaluator_change_is_allowed(repo, path):
+    base = _git(repo, "rev-parse", "HEAD")
+    _commit(repo, {path: "policy = 'reviewed'\n"}, "evaluator")
+    result = _check(repo, base)
+    assert result.returncode == 0, result.stdout
+    assert f"[평가 측] {path}" in result.stdout
+
+
+@pytest.mark.parametrize("path", CODEQL_POLICY_PATHS)
+def test_codeql_initial_approval_does_not_authorize_a_later_edit(repo, path):
+    base = _git(repo, "rev-parse", "HEAD")
+    initial = _commit(repo, {path: "policy = 'initial'\n"}, "implementer")
+    approval = {"approved": [{"path": path, "commit": initial}]}
+    _commit(repo, {"docs/scorecards/approved_protected_changes.json": json.dumps(approval)}, "evaluator")
+    accepted = _check(repo, base)
+    assert accepted.returncode == 0, accepted.stdout
+    assert f"[승인] {path}" in accepted.stdout
+    _commit(repo, {path: "policy = 'later-unreviewed'\n"}, "implementer")
+    rejected = _check(repo, base)
+    assert rejected.returncode == 1, rejected.stdout
+    assert f"[보호 경로 변경] {path}" in rejected.stdout

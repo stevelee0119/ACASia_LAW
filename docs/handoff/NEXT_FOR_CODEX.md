@@ -1,59 +1,83 @@
-# Codex 구현 전달문 (현행 통합본)
+# Codex 구현 전달문 — 2026-10-16 승인 목표·제출 조건 및 잔여 5건
 
-갱신: 2026-10-11 16:03 KST. 이전 전달문 전체를 대체한다. 미배포 TK 보완·수용·릴리스에 집중한다. 구현은별도공개전용세션/clone·봉인/비공개/정답/평가원문 접근·요청금지. 제품전설계/관련양방향합성대조·기존expects불변·Agent: implementer. 보호경로·버전판정은평가측·강제push/Steve/main직접push금지.
+갱신: 2026-10-17 한국 시각. 이전 전달문 전체를 대체한다. 사용자 최신 지시 순서에 따라 #95·#97 수용 SHA 통합·통합 검증·새 봉인·릴리스·health 확인까지 완료했다. 전체 미완료 TK는 44·45·49·55·73이다.
 
-## 수용분과 릴리스
-- 운영main9c1b218/0.12.0. Steve5dea의TK24/43/56/69/70/72/74/75 기술수용·병합·미배포. TK75 기본OFF·실제품질미측정.
-- #78 c6e5437(TK44/49 SPACE)·#81 0261ea0(TK57)·#82 ce83355(TK55 first-party)·#86 ebd6b51(UNKNOWN진단) 제한범위 내용수용. accepted제품통합8446107·remote기록69553cc exactCI/점수성공. 후속평가기록은local이며최종수용품통합후push한다.
-- TK44/49 UNKNOWNprimary폭의존/ActualText미구현 및 TK55 legacy24/encoded불명역할 잔여는완전해소아님. 수용scope·통합·실제배포·전체티켓해소구분.
-- 최종TK45/73 미수용. 수용후최종통합SHA동결→full1회/동SHA필수CI→새봉인운영/후보최초1쌍→버전정책판정/필요버전-only1commit/CI→Steve/main릴리스·Render실제health/APIworkerOFF확인. 원래기준/상한/기준선완화없음. 온라인17:51–19:21KST·전체19:51KST목표.
+## 역할·시작점
 
-## 경로 A
-- TK44/49 직접SPACE48/48·UNKNOWN24불변·actualPDF/DOCX/width105 PASS·metadata1452본문/2PDF불변 내용수용유지. 추가primary/ActualText제품작업없음.
-- PR84 bcea17c660f9cbd3055952b2ae0f1b26f2cfda49 불수용5482118915. 요청6106067158·동일SHA CI38116124746/점수38116124743/Docker SUCCESS 인용. 원래20 평가측 재실행 부인8/8·정상7/8·확장1/4, 실제TXT전체경로 동일. 정상8/8 필수조건 미달. 고정18 부인3/4·정상4/4·화자1/4·반박1/2·확장4/4. 공개537 및 독립 조건부 보호 감사 PASS는 원래 조건 대체불가. 미통합·미배포·새봉인 미실행·기대값/기준선 불변.
-- 출력불변 진단: 남은 정상1의 독립요건 identity2와 UNCERTAIN/CHANGED_ARGUMENT·POSITIVE/ASSERTED_REQUIREMENT_REALIZATION 유지. reference_frame 호출0, immediate argument pattern 미일치·기존 event_frame case 존재·predicate_chain 없음. contextual_proposition 생성 전 거절되므로 기존 nominal-modifier/object-tail 설계가 해당 원인을 설명하지 못한다. 원문/식별자/좌표 전달0. 다른 POSITIVE를 이용한 요건 면제나 낱말목록 확장 대신 공개 source 논항·술어 결합 설계부터 재검토.
-- bb68a009 공개 case-bound past-event attachment 설계 사전승인6106168162. root actualTXT22에서 기존 확인요청으로3FAIL/19PASS·제품diff0; 독립 NIKL -ㄴ/이후 출처검토 뜻풀이일치. 첫 source의 case→동적 개별lemma→관측 -한→상대적 이후 결합만 증명하며 original state/reason/identity/event_frame 불변·다른행위 비병합·조건/부분/계획/인용/보고/UNKNOWN 보호·원문에 없는 분해자모 source span 생성금지. 이후·형태조합만으로 사실/법적충족/과거발생 추정금지. 기존537 고정. 최소제품/형식대조/선형계측·최종독립감사·exactCI 및 원래필수판정 대기.
-- PR84 3736c9ec971c40e85bf3e180a6d656d3185966d0 불수용5482209439. 요청6106331973·완료CI38118075725 양쪽DB FAIL(새PDF생성용 fitz누락4건), 점수38118075720/DockerSUCCESS 구분. 평가측 원래20 부인8/8·정상7/8·확장1/4, actualTXT전체경로동일; 정상8/8 필수미달. 고정18 부인3/4·정상4/4·화자1/4·반박1/2·확장4/4 불변. 공개594/독립actual22 PASS 대체불가. 원래기준/기대값/채점불변·미통합/미배포·새봉인미실행.
-- 출력불변3736 진단: 새case_bound_event primitive호출1·원래case/argument순서/공백검사통과·interveningcase0·predicate_chain없음. 새attachment grammar_fullmatchfalse→proof없음·resolved0. 기존SOURCE_SENSES의 exactfinitepast/regularadnominal 인식0. generic -한/-했/-하였 rawshape0은punctuation/다른활용 미확인이라 nonpast판정근거아님. 두독립identity와 원래UNCERTAIN/POSITIVE 불변. 원문/어휘/식별자/좌표전달0. 새 source 논항/술어·closure 설계메모전 제품추가금지·다른POSITIVE로요건면제금지.
-- 최종258907052d538192187cf4356338715e648b27fb은공개PDF fixture생성기만fitz→기존reportlab/CID로보완·폭/원문/6expects그대로·6PASS. 제품326diff0. 새CI38118978843/점수38118978817대기이며원래정상7/8 불수용을해소하지않음.
-- f51abebe31395a2b2d0faa3371f854785db797a6 auxiliary source-composition 설계조건부승인6106464870. 평가측actualTXT37 오류/skip0·5genuineFAIL32PASS·제품diff0, 독립NIKL5source 뜻/동음구분일치. 자기case→독립dynamichead/observedconnective→resultativeauxiliary→rawpastadnominal→relativeclosure만최소구현중. bare하다 authored-direct-action을COMPLETION/전체fulfillment/facts/legal과분리하며false필드를명시시험으로고정. 기존594/조건guard/관찰identity불변·source자모가상좌표금지·다른act비병합. exact certified auxiliary와동일span의LOCAL_SUBJECT collision만local처리하고다른origin blocker는보존.
-- 원래수용은정상8/8유지·부정/확장각시작2/8·0/4보다증가/어느것도감소없음.6/8·3/4는목표/미달사유보고이며새하한아님. 고정18/공개대조는원래20대체불가. 다른요건/주체/독립부정/계획/부분/quote/조건/UNKNOWN면제금지·newrule_id0.
+- 저장소 stevelee0119/verify_ACAS_LAW. 라운드 시작2a85aa0e043cb6d13993742c2a053a8b048c48d5, 실제 운영 b68cfeec2c5c168a3b9e6e2e92653ea6892521bf/0.13.0. 이번 확인 Steve는 93acef5774f2076c34f28a5a45c80313c4b9fd99이며, 새 작업은 착수 시 최신 origin/Steve_ACASiaLAW를 다시 확인하고 시작 SHA를 보고한다. 배포 제품과 동일한 시작점은 main b68cfeec2c5c168a3b9e6e2e92653ea6892521bf.
+- 평가 세션은 제품을 직접 고치지 않고 게이트·판정·수용 SHA 통합·릴리스 준비를 맡는다. 공개 구현 세션은 한 세션 한 경로 A/B/C. 비공개 세트/원문/봉인/정답 열람·요청 금지.
+- 설계→공개 양방향 대조→설계 승인→제품→정확SHA CI/3줄 요청→원래 게이트 판정. 같은 접근 두 실패 후 새 설계 필수. 보호 경로·기존 기대값·기준선·CI·버전 변경 금지. 정상 구현브랜치 push/PR 승인됨·Steve/main 직접/강제 push 금지.
 
-## 경로 B
-- TK57 제한 M4 평가측 actual54파일(TXT/PDF/DOCX·물리폭240/600): 동일공개6국제번호의전체원문contact span 운영9c0/36→수용84436/36. contact mockprovider0/144 양쪽동일, 법적번호대조18파일 numericFP0·정상mockprovider72/72 양쪽동일, kind/route/coverage 불변. 같은 fixture SHA256 07ab9c519e5c0f5ae551b5dc0cee8b3eb23b442a8e1b1ee966a3aa63fc32538b. 실제유료호출0/network0; 공개좁은형식증거이고 비공개M2/전체bench/새봉인 결과로쓰지않음.
-- TK55/57 수용내용유지·추가제품작업없음. PHONE0/54·RRN0/84·mockprovider0·보호144/결합244·faithfulrouter16/16·JSON손실없는PII우선·legacy잔여구분.
-- 가격PR87 명시폐기closed/unmerged. 재개/후속가격작업/계정조회/비용계산/비용증가율기준없음. 기존프로그램예산보호/USD40상한유지.
-- 최종측정/버전판정후root확정SHA에서새version-only브랜치/3파일/1commit; 폐기가격branch재사용금지.
+## TK45 제출 SHA·현재 HEAD·다음 푸시 동기화 (사용자 전달)
 
-## 경로 C
-- PR79 214334ddb916a0a856e7a4a55d39cbd180c5ec1a 불수용5482229717. 요청6106394284·exactCI38118526548/점수38118526520/Docker 모두SUCCESS. 평가측 원래4 재실행19.0/29.6/36.2 FP0 유지;20261010 시작15.2/.302/FP3(control3/A3)→25.2/.302/FP1(control1/A1), 기존9ab와동일·필수AFP/control0 미달. 네세트 인젝션방어유지. 공개936/독립GLOBAL실제형식감사PASS는대체불가. 미통합·미배포·새봉인미실행·기준/채점/기대값불변.
-- 출력불변214 진단: control7rows/scope1/excluded2/keys4·남은group1 inventorykindNone1/모든narrative종료뒤prose1. 새inventory_atom4회/PASS0·row정규화mapping/단일itemorigin/원래offset순서/definitionmarker4통과. wholeparagraphsource0·nativeatom0→eligible/certified/rowdomain0·latercitation원시함수호출0. 4paragraph모두multi-reading-segment(total16), source없음으로단정하지않음. row정규화일치와originalphysicalglyph proof는구별하며 UNKNOWNjoin을원문으로인증/가상whole-source span생성금지. 원문/어휘/IDs/좌표공유0·기존globalall-origin충돌/UNKNOWN 및interval/936expects 유지.
-- 전역guard214는공개독립PASS/936불변이나원래AFP0미달. 원래item/refsource조각을보존하는whole-caption 비교local proof 새설계만검토중·제품은동결. paired-native-title없음을이유로잘라내거나전체registeredkey를면제하지않음.
-- TK73 #79 최신9ab6764/95e11e5·관련823·독립actualTXT/PDF/DOCX15 PASS. 요청6105908060 후정식불수용5482055280: 원래4 세트19.0/29.6/36.2 FP0유지·20261010 15.2/.302/FP3→25.2/.302/FP1(control1/A1), 필수0미달·모두injection유지.
-- exactCI38114012034 attempt2 completedFAIL TK24 timing.216606/기존.1; PG/Docker/점수38114012021SUCCESS 구분. 최초실패및1회retry보존·같은9ab추가blindretry/시험/상한완화금지. 新정당한제품보완의exactCI는새SHA에서시행.
-- 출력불변metadata: scope1/excludedrows2/registeredkeys4, 남은group1 두rows의원래itemorigin/reference_span·등록key유지. inventory內kindNone1 vs모든narrative interval종료뒤kindprose1. 원문/IDs/좌표공유0.
-- TK73 bb4d300 설계 전용 사전승인6106093910: 평가측 actualTXT/PDF/DOCX90에서 동일관계9 duplicate1/목표0, 반대·불확실81 duplicate1 유지·원래rows/source 불변. 독립설계감사 조건부 진행 권고. 모든 inventory 대안의 충돌 검사 선행·source parent/exact party/number/branch별 anchor·native 균형제목/조사결합/완결명제 전체source proof·실제 occurrence/선형성·기존interval/prose multiplicity 유지. 비공개AFP 해결/제품수용 근거 아님.
-- 현재inventory/narrative interval닫힘불변, 승인설계의 최소source proposition/citation identity 보완만 수행. 등록key+heading+predicate suffix만으로면제금지·문서전역scope확장금지·fullcaption/title충돌·날짜/amount/gap/listmissing/branch/party/quote/UNKNOWN/source/TK64/sticky/원래823expects 보호.
-- publiccounter3 inferred-table진단실패는별도잔여/제품보류·자동strictxfail 없음. 원래AFP0 수용조건유지.
+| PR | 본문에 고정된 제출·판정 대상 | 이번 확인 최신 HEAD | 원격 브랜치 |
+|---|---|---|---|
+| #93 | f8f6e0899f4e80a10ae73fa750fc26d5ecf3adbd | 9ebd28735949b8c5d4a7080b527b9444d0c0980a | codex/post013-track-a-tk45-design |
+| #96 | 8d237496f32868f339828bb6ab8cf7622f641263 | bb9b7a4fd0b2aa94f3be5d3e5542ad9483f70027 | codex/post013-track-a-tk45-applicability |
 
-## 제출·배포후
-최종제품SHA/관련시험·독립공개delta·필수CI후3줄검토요청. root원래조건평가·수용품만통합. 공개green/기존같은문제만으로수용/배포/전체해소주장금지.
-배포후법률profile6쌍 actualOFF/ON·독립변호사1명조건가림채점·끝OFF. ON분석JSON 실제Claude top-level model_executions만1회집계 input/output/total·차이/증감률·IDs/hash/coverage(cache/fallback/실패). 미상null·OFF0percentnull·도큐먼트복사본중복합산/동일값실제호출삭제금지. 통화환산/토큰의무기준없음.
+두HEAD는각제출SHA와Steve93acef5의실제병합커밋이며제출SHA는이력에그대로남아있다. 제출SHA대비제품17파일이바뀌었으므로기존판정/CI를새HEAD의판정으로확장하지않는다. CI인용에는대상SHA·runID를붙이고, 실제체크아웃이PR병합ref이면그SHA도구분한다. 제출#93의기존불수용과#96의설계검토대기를이번동기화로승인으로바꾸지않는다. 조회시제출#93 f8f6e08의CI/점수는SUCCESS,제출#96 8d23749는CI failure/점수success이며최신HEAD검사는별도실행중/대기였다. 과거실패를지우거나새HEAD성공으로덮지않는다.
 
-최신 사용자: “우선 배포부터”. 온라인 대표6개 사전준비 회신은배포후로이연·배포선행요건추가없음. 실제유료OFFON전에는기존입력/변호사검증/조건고정절차를지킨다.
+이브랜치에추가푸시하기전, 로컬작업을보존한뒤해당브랜치에서 `git pull --ff-only origin <위 원격브랜치>`로병합커밋을먼저받고HEAD를확인한다. 분기하면멈춰이력을정합시키며강제푸시·원격병합삭제금지다. 두PR은draft를유지하고새설계승인/검토요청/제품착수로해석하지않는다. 이번통지만으로전체시험·비공개재측정·새보완을시작하지않는다.
 
-### 배포 우선 최종 평가 기록 — 2026-10-11 16:34 KST
+## 공통 제출 점검표 — 2026-10-16 사용자 승인
 
-수용 엔진 3389e9e(제품8446107)는 전체 검증 exit0: acceptance1214·ledger949·full6653·browser197, 실제 실패0/strictXPASS0. 동일 SHA CI38120524487·점수38120524471·Docker 모두 성공했다. 최초 기본 sandbox 실행의 Chromium IPC 실패와 인증 대기는 보존했고, 코드·시험·기준·상한 변경 없이 필요한 로컬 IPC 권한으로 운영/후보 동일 시험과 전체 검증을 통과했다.
+| # | 제출 조건 | 제출 시 첨부 |
+|---|---|---|
+| 1 | 실제 진입점(파이프라인·API)에서 새 동작을 실행하는 시험1개 이상 | 시험 이름 |
+| 2 | 새 정규식·분석 경로마다 길이1배/4배 입력을 각각3회 측정해 최솟값 비<8, 4배 최솟값<1초 | 경로·입력 크기·각3회 값·최솟값·비·재현 명령 |
+| 3 | 보고 수치는 재현 명령과 그 출력을 그대로 첨부 | 명령·공개 합성/집계 원본 출력·최종 SHA·환경 |
+| 4 | 탐지 변경이면 공개 개발용 은퇴4세트와 고정 dev/holdout의 전후 점수표 | 기준/후보 SHA·동일 조건의 점수/재현율/오탐/A등급/방어 표 |
+| 5 | 탐지 변경이면 개발 말뭉치 `train/` 해당 유형의 전후 재현율 — 말뭉치 수신·기준 측정 뒤부터 | 유형·분모·전후 재현율 표. train전용ZIP 수령 뒤부터 적용(최초기준 측정 완료) |
 
-첫 봉인 비교(8문서57결함, 지문1abd74597ec4b25a)는 운영9c1b218과 후보3389e9e 모두28.1/.281/FP0·대조군0·A등급0·인젝션방어 성공이다. 별도 깨끗한 작업트리와 Python 프로세스로 실행했고 재측정하지 않는다. 봉인 점수 상승은 없으며 온라인 품질은 미측정이다. 이후 문서·버전 메타데이터만 달라지는 릴리스는 엔진 동등성을 확인한다.
+시간 조건은 새 경로의 합성 입력 처리 측정이며 전체 API/LLM 왕복 지연에1초를 요구하는 뜻이 아니다. TK24처럼 각 표본의 캐시를 비우거나 독립 프로세스로 cold 실행하고 실제 경로·출력 보존도 확인한다. 분모 최솟값이0.0001초보다 작으면 기존 TK24와 같이0.0001초를 사용하고 원값과 보정값을 함께 쓴다. 기존 더 엄격한 시간·호환 시험은 그대로 유지한다. 1배/4배 크기와 고정 prefix가 있으면 실제 길이도 보고한다. 이 비율 통과를 전체 파서의 선형성 증명으로 과장하지 않는다.
 
-기존8TK+TK57 완료범위와 TK44/49/55 부분보완만 포함한다. TK45(e21, 정상7/8)·TK73(214, AFP1)은 불수용·제외, TK44/49/55의 잔여도 미완료다. 0.13.0 minor 판정은 완결 TK57와 공개 실제54파일 M4 개선에 근거하며 고정/봉인 점수 불변을 성능상승으로 기록하지 않는다. 버전 전용3파일1커밋·최종 SHA 필수CI·병합·Render 실제 SHA/health 확인 후 배포 완료를 기록한다. 온라인 OFF/ON과 독립 법률 채점은 배포 후 진행한다.
+4항은 이미 공개된 `tests/fixtures/retired_sealed/{sealed_20261008,sealed_20261008b,sealed_20261009,sealed_20261010}`만 사용한다. **현재/소비한 비공개 새 봉인이나 고정 비공개 벤치를 구현 측이 열거나 재시험하지 않는다.** 같은 기준SHA·채점기/명세/문서·환경의 기존 결과는 출처·해시를 붙여 재사용하고, 같은SHA CI의 dev/holdout 결과를 인용할 수 있다. 미측정은 미측정으로 표시하며 표를 만들기 위해 같은 점검을 불필요하게 반복하지 않는다. 새4세트 CI job이나 `verify_all` 추가 실행 의무를 만들지 않는다. 관련 시험 실행 분담은 유지한다.
 
-구현 담당 B는 평가 기록 커밋을 정확한 시작 SHA로 삼아 새 codex/10h-version-only 브랜치에서 config 버전·docs/releases.json·생성 README만 0.13.0으로 바꾼다. 가격 PR87·제품·시험·CI·평가 기준은 변경하지 않는다. A/C 제품은 이번 릴리스에 추가하지 않는다.
+기존 시험 삭제·약화 차단/하드코딩/보호 경로 점검은 score-gate가 담당하므로 위 표에 중복 항목을 넣지 않는다. 세부 사전점검·출처: [제출 조건 사전점검](requests/SUBMISSION_CHECKLIST_PREFLIGHT_20261016.md). 고정 비공개 벤치 개선 목표는 [승인 목표](../scorecards/FIXED_BENCHMARK.md#9-목표와-릴리스-참고-기준-2026-10-16-사용자-승인)를 따르되 개별 구현 수용 기준으로 삼지 않는다.
 
-### 실제 배포 완료 — 2026-10-11 17:11 KST
+## 개발 말뭉치 dev_20261016 — 구현용train 제공
 
-PR77 main `8280a597db40b0905dbacf10c56fa3e9915cafd5`, `v.0.13.0` 배포 완료. 릴리스 head3ad의 필수CI38123137556/점수38123137444/Docker 모두SUCCESS. Render `dep-db5k8uek1f9s73ef0tg0` Live17:11:16KST, health17:11:24KST `0.13.0`/동일SHA/database ok 확인. a4→Steve3ad→main8280 파일 트리 동일, 최초 봉인3389 엔진에는 버전 메타데이터 외 변경없음. 전체/봉인 재실행 없음.
+- 양쪽원본지문/구성검증·같은운영b68 첫측정을완료했다. train지문d058b04f03579336/check0c6479fbcad6c753,각4묶음32문서대조4/400결함/중점240항목이다. 구현세션에는**별도로제공하는train전용ZIP만**사용하며지문을확인한다. check원본·정답·문서별결과를요청하지않는다.
+- 두부분과출력모두저장소밖에둔다. train은개발자료로문서별실패에서원인유형티켓을만들수있지만 원문/값맞춤규칙·시험은금지한다. check는평가측만보관·집계공개·문서별티켓/힌트금지,노출시해당계열을끊고새check를만든다. 고정비공개벤치4절도그대로다.
+- 다음개발주기는 EVI-INCONS·SRC-UNV·EVI-NUM·EVI-FORM·EVI-DATE·EVI-COPY의**유형단위**개선을목표로한다. train실제진입점실패의원인·기존보호와충돌을진단한설계부터제출한다. 기존A/B/C의역할/접근제한을유지하며별도배정없는여러영역을한세션에서수정하지않는다. 기존5TK를자료수신만으로닫지않는다.
+- train수령시점부터탐지변경의공통제출5항(해당train유형전후재현율·분모·환경·SHA표)을적용한다. 기준은유형순서대로train .20/0/.20/.25/.40/0,check .20/0/.40/.25/.50/0이다. 후보전후표를원문/값맞춤으로만들지않고공개양방향합성및원래필수보호를지킨다.
+- 평가측재실행:first train46/400=.115·중점42/240=.175·FP0/A0; check58/400=.145·중점54/240=.225·FP2/A2. 전체격차train−check=−.030,중점−.050으로초기≤.10범위이나성능상승/일반화입증은아니다. 승인check+0.20잠정목표는 .40/.20/.60/.45/.70/.20이며개별PR의비공개수용하한으로쓰지않는다.
+- 운영규칙·최초집계/환경은 [DEV_CORPUS](../scorecards/DEV_CORPUS.md)를따른다. 제품수용/통합/릴리스는원래절차로판정하며이전원문/기준선/CI/보호를바꾸지않는다.
 
-TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/49/55 부분 구현은 배포했으나 전체 티켓은 open/known_open, TK45/73 불수용제품은 제외했다. 완결 잔여5건을 유지한다. TK75 기본OFF 기술범위 배포와 법률 품질을 구별하며 실제 배포후 API/내부worker OFF 영수증 및 서면9/Drive/6쌍 실제OFFON·독립변호사1명·토큰 비교는 아직 미측정이다. 운영자에게 기존05/06의 배포후 절차를 요청했으며 원문/비밀/가격 조사 없이 기존상한·종료OFF를 유지한다. 기록: release_completion_2026-10-11.json.
+## 경로 A — TK44/49 및 TK45
+
+- #90 b1e506f inline provider 제한 수용에 이어 #95 정확 5e6e85932a5579eedb84b7bc9ba8f75ec3c7d25d (제품88b0cfd) named PAGE ActualText/capture 제한 범위 최종 수용5485088907. 요청6109737405, CI38144023479/점수38144023440/Docker SUCCESS, 독립 실제PDF18파일 PASS. 평가자 full1회 종료0: 수용1214/원장949/전체6914/브라우저197·실패0/strictXPASS0. 원래 경계/UNKNOWN·접합/법리 결과 및 고정81.7/79.2/0 유지. #98 통합 후 #100/main b68cfee 제한 범위 배포 확인 완료.
+- 현재 PAGE resources/direct string의 엄격한 경계증명만 추가하며 indirect는 inspection-only UNKNOWN. capture 상한·partial/unsupported/lifecycle 불완전 상태를 유지한다. 간접문자열 검사 수집과 경계 인증을 혼동하지 않는다. 전체 파서 선형/처리시간 보장을 주장하지 않는다.
+- Form/structure-tree/미해석resource/비태그/UNKNOWN primary·0.75 floor·consumer 잔여로 TK44/49 전체open 유지. 낱말사전/항상JOIN/SPACE/기대값교체 금지. 원래61/7ad/TC06 .357/PDF47·19·1/DOCX40·19·1/폭9/fixed 보호 유지.
+- TK45 #93 f8f6e0899f4e80a10ae73fa750fc26d5ecf3adbd 불수용 유지: 원래20/actualTXT20 시작과같은2/8·8/8·0/4, 부인·확장 strictincrease 모두미달. #96 최신8d237496f32868f339828bb6ab8cf7622f641263은 공개설계65 PASS 제출/제품0·root 설계검토 대기. reference availability와 법적적용/효과 인증을 구분한 설계부터 승인받는다. 불수용제품 이식금지.
+- TK45 원래 정상8/8, 부인·확장 각각시작2/8·0/4보다엄격증가/어느지표도하락0. 기존 finding 삭제/등급완화/다른POSITIVE 요건면제/UNKNOWN·화자·규범·인용 오인증 금지. 목표6/8·3/4는 새하한아님. R6/R7·fixed 보호. 장문 전체pipeline 미완료 측정은 완료로 쓰지 않는다.
+
+## 경로 B — TK55
+
+- #91 86e75e3 cascade source 제한 수용에 이어 #97 정확 2f4e798a052ef2bd6b581d7e69c3738aa1c79eb2 발췌 PHONE/RRN 추가검사 최종 제한수용5485136030. 요청6109620195, CI38143165314/점수38143165365/Docker SUCCESS·독립 actual producer→router27대조 PASS. 원래 개인정보필수/보호 충족. 평가자 full1회 종료0: 수용1214/원장2357/전체8061/브라우저197·실패0/strictXPASS0·fixed81.7/79.2/0. #98 통합 후 #100/main b68cfee 제한 범위 배포 확인 완료.
+- 실제 argument context1000자/claim post-mask exactslice의 once-render→cut→strip/mask surviving occurrence, 불변 request/consumer/batch/profile binding만 추가검사한다. malformed-present는 pre-budget 거절, opaque/지원한계/상한초과는 기존payload/예외 유지하며추가검사 ABSTAIN. 기존system/assembled/schema/metadata 검사와 PII 우선순위 유지·추가source는면책아님.
+- 역사864 대조와 actual product3664 구현측결과를 구분한다. 승인된4개 역사helper는 inspection_source를 분리해 원래공개 기대값만 유지하며 실제product gate의typed capability는 제거하지 않는다. 기존기대/보호시험 변경0.
+- 외부/legacy unknown-role·opaque/unsupported/capture-budget 잔여 known_open, 전체TK55 완료아님. 임의JSON전체폐쇄/키사전확대/value-only명사 추가차단/동일substring 재인증 금지. 성명330/330·60/60/stem16/16, 연락처/RRN 필수·정상≤6/28, TK43 가능≤10/100·8/80/불가≥30/40·24/32 유지. 시작누락이같다는이유로필수게이트 PASS 처리금지.
+- 이전#91 최초full exit1/TK71 timing1 및 단독보완6946PASS 기록을 보존한다. 이번#97 full0과는다른SHA/다른실행이다.
+
+- 2026-10-13 온라인 후속: 생성한 claim_id를 PHONE으로 오인한 1건을 확인했다. 공개합성3양성/3대조가 이전8280·현재b68에서 동일해 기존과차단으로 추적한다. actual사용자ID/원문은 전달하지 않는다. 키/UUID모양 일괄면제 금지·근원인증 설계 먼저·원래필수/보호 게이트 유지. 원인·공개대조·제약은 [통합 후속 메모](requests/POST_RELEASE_ONLINE_FOLLOWUP_20261013.md)를 따른다.
+
+## 경로 C — TK73
+
+- #92 최신545c917fd12f9fec40eb52bbccfffaf566bc9fdc은 설계·합성시험만/제품0. 독립 source-tree/native 안전성 제한PASS는 제품·등급·수용기준 승인과 다르다.
+- 사용자의 확인필요분리 선택은 구체 기준안 검토다. 기준변경 승인0. 원래A/finding·GLOBAL·UNKNOWN 보호를 유지한다. native EOF는 의미상 제목·명제 역할의 증명이 아니다. 원래111 진짜확인손실+9·오탐추가분리0 및 기존4종AFP3 불변을숨기지않는다.
+- 구체 기준/영향/보호 계약 및 승인대상을 검토한 뒤 사용자결정과제품구현. 날짜초기확대보류권고 유지. 원래은퇴4종 앞3 유지/마지막 대조·A FP0/재현≥.302/injection·936/fixed·GLOBAL/party/number/branch/parent/interval/date/amount/list/time 보호 유지.
+
+## 릴리스 완료 및 후속 순서
+
+1. 수용 #90→#95와 #91→#97을 통합한 후보 0702386의 원래 필수·보호 게이트, full 1회(1214/2357/8322/197, 실제실패0), 동일 SHA CI를 통과했다. 불수용 TK45와 미승인 TK73 제품은 제외했다.
+2. 새 봉인 bd746c475dd2cdab의 최초 운영/후보 비교는 회귀 기준 PASS다. 8문서·54결함에서 양쪽15.7/재현율15.7%/오탐0·대조0·A0·인젝션 방어 유지. 형식오류0·끝문장부호 경고16, 자료·정답·토큰 변경0. 소비 완료이며 새 봉인으로 재사용하지 않는다. 출제 독립성이나 온라인 법률 품질을 별도 입증한 결과는 아니다.
+3. #99 관찰 전용 기록 head525a0b5의 원본 CI·점수·Docker와 #100 release head0847109의 필수 CI38253829678/점수38253829611 모두 성공했다. main b68cfeec2c5c168a3b9e6e2e92653ea6892521bf와 검증 릴리스 트리가 같다. Render dep-db6dvjnavr4c73fvnopg Live, 실제 health 동일commit/0.13.0/database ok 확인 완료. 버전 유지·새 태그 없음.
+4. TK44·49·55의 수용 부분만 deployed_scope_sha를 갱신한다. 전체 티켓은 open/known_open이고 TK45·73도 미완료다. 전체 미해결5건, 이번 완결 판정0건이다. 원래 10시간 목표의 미달 기록은 보존한다.
+5. f64 시간 시험 실패2건(.625568/.748032초, 원래.1초 상한)의 원인·해결은 미확정이다. clock/GC 설정/assert/입력/순서/상한 변경과 node 분리는 없다. 관찰 코드 독립 감사 적합, 이후 원본 CI 통과와 과거 실패를 구별해 CI 신뢰성 잔여로 추적한다. 새 실패를 면제하거나 상한을 낮추지 않는다.
+6. 사용자가 요청한 법률 검토 지침 운영ON 설정은 변경하지 않았다. 기본OFF·다른 모델/fallback은 유지한다. 배포 후 사용자 온라인 JSON을 수신해 같은명세2판23/23을 확인했다. 모델실행29건 중 성공27·실패2(JSON거절1/내부ID 개인정보 과차단1), 참고자료는 부분상태다. 기존OFF 대비 Claude 입력+10.76%/총+10.31%, 이전ON 대비 입력-4.38%/총-5.60%이나 참고발췌·배포·응답실패 조건이 달라 지침효과로 귀속하지 않는다.
+7. 독립 법률 채점자1명의 조건가림 품질 검토·정식 채택 판정은 별도 후속/HOLD다. 사용자 단일 OFF/ON 쌍의 참고자료 조건 차이를 통제품질 개선으로 처리하지 않는다. 가격PR87 폐기·가격/비용조회 절차 재개0·기존USD40 보호 유지. 사용자 자체평가·독립 법률 채점 자료는 아직 미수령이며 잔여 보완 순서는 실제 관찰 자료로 조정한다.
+
+최신 판정·실제 배포 기록은 f1_gate_verdict/HISTORY/DAILY_TREND/TICKET_METRICS 및 release_post013_verdict_2026-10-12.json을 따른다. 봉인 원문·정답·항목 상세는 구현 세션에 전달하지 않는다.
+
+현재 온라인 점검은 수신·분석 완료다. 자체평가·독립 법률 채점 완료를 가정하지 않는다. 개발말뭉치양쪽첫측정완료·train전용ZIP준비완료다. 구현세션이train을받으면5항을적용하며 `check/` 접근은평가측만허용한다. 사용자 승인 잠정 목표는 고정벤치와 개발 말뭉치/과정 지표를 구분해 관리한다. 추가 유료 실행·ON/OFF 변경·새 배포를 이 전달문만으로 진행하지 않는다.

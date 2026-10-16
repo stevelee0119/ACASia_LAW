@@ -1,0 +1,88 @@
+{
+  "corpus": "dev_20261016",
+  "message_date": "2026-10-16",
+  "measurement_date_kst": "2026-10-17",
+  "independent_selfcheck": "user-provided separate Codex session, not independently audited here",
+  "reported_selfcheck": {
+    "verdict": "전달 가능",
+    "train_fingerprint": "d058b04f03579336",
+    "check_fingerprint": "0c6479fbcad6c753",
+    "each_part": {
+      "subsets": 4,
+      "documents": 32,
+      "controls": 4,
+      "defect_items": 400
+    },
+    "format_errors": 0,
+    "format_warnings": 0,
+    "separation_leakage_injection_errors": 0,
+    "separation_leakage_injection_warnings": 0,
+    "max_text_overlap_percent": 2.38,
+    "injection_auto_confirmed": 72,
+    "injection_total": 80,
+    "remaining_manual_confirmed": 8,
+    "sample_defects": 24,
+    "sample_defects_ok": 24,
+    "sample_FP_TRAP_per_part": 10,
+    "sample_issues": 0,
+    "sample_uncertain": 0,
+    "minimum_focus_FP_TRAP_each_type": 8,
+    "control_inconsistency_issues": 0
+  },
+  "actual_received": {
+    "check": {
+      "archive_sha256": "611d0f6afdc07f08fd27da6363ba20a14b4140985c146d1afd0f45d738a8b43b",
+      "fingerprint": "0c6479fbcad6c753",
+      "subsets": 4,
+      "documents": 32,
+      "controls": 4,
+      "defect_items": 400,
+      "fp_trap": 88,
+      "focus_type_items": {
+        "EVI-INCONS": 40,
+        "SRC-UNV": 40,
+        "EVI-NUM": 40,
+        "EVI-FORM": 40,
+        "EVI-DATE": 40,
+        "EVI-COPY": 40
+      }
+    },
+    "train": {
+      "archive_sha256": "d17fdb196376759eda0a568407208b2dcd6ed229bc7ac846483d368311209cbc",
+      "fingerprint": "d058b04f03579336",
+      "subsets": 4,
+      "documents": 32,
+      "controls": 4,
+      "defect_items": 400,
+      "fp_trap": 88,
+      "focus_type_items": {
+        "EVI-INCONS": 40,
+        "SRC-UNV": 40,
+        "EVI-NUM": 40,
+        "EVI-FORM": 40,
+        "EVI-DATE": 40,
+        "EVI-COPY": 40
+      }
+    }
+  },
+  "status": "BOTH_PARTS_VERIFIED_FIRST_BASELINES_COMPLETE",
+  "whole_corpus_receipt_complete": true,
+  "health": {
+    "status": "ok",
+    "version": "0.13.0",
+    "commit": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
+    "database": {
+      "status": "ok"
+    },
+    "verification": "read-only /api/health in this evaluation session before measurement"
+  },
+  "raw_corpus_in_repository": false,
+  "output_in_repository": false,
+  "train_shared_to_implementation": false,
+  "check_document_results_published": false,
+  "legal_gold_independently_verified": false,
+  "source_message_sha256": "a9fe2f0b4f47ad7f8113211ab18c555289b0e777099d41fe5244cc055d507e19",
+  "train_provisioning": "train-only original ZIP prepared for delivery to separate implementation session; actual implementation receipt not confirmed",
+  "train_provisioning_archive_sha256": "d17fdb196376759eda0a568407208b2dcd6ed229bc7ac846483d368311209cbc",
+  "check_in_train_package": false
+}

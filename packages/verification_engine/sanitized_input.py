@@ -32,7 +32,7 @@ def injection_parts(findings: Iterable, doc=None) -> Tuple[Set[str], List[str]]:
     return blocks, sorted(set(texts), key=len, reverse=True)
 
 
-def strip_injections(text: str, texts: Iterable[str]) -> str:
+def strip_injections(text: str, texts: Iterable[str], *, _trace=None) -> str:
     for observed in texts:
         needle = re.sub(r"\s+", "", observed)
         if not needle:
@@ -46,6 +46,8 @@ def strip_injections(text: str, texts: Iterable[str]) -> str:
             start = end
         for start, end in reversed(spans):
             text = text[:start] + PLACEHOLDER + text[end:]
+            if _trace is not None:
+                _trace.replace(start, end, len(PLACEHOLDER))
     return text
 
 
