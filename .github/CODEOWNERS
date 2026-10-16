@@ -17,3 +17,7 @@
 /docs/AGENT_ROLES.md                  @stevelee0119
 /AGENTS.md                            @stevelee0119
 /CLAUDE.md                            @stevelee0119
+
+# Steve 대상 PR의 보안 판정 정책·비교 도구 (2026-10-17 평가 측 결정)
+/.github/workflows/codeql-pr.yml      @stevelee0119
+/scripts/codeql_pr_diff.py            @stevelee0119
