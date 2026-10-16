@@ -19,6 +19,7 @@
 - `scripts/verify_all.py`, `scripts/eval_testset.py`, `scripts/scorecard.py`, `scripts/score_gate.py`, `scripts/probe_document.py`, `scripts/score_report.py`, `scripts/check_case_literals.py`, `scripts/check_version_policy.py`, `scripts/review_feedback_report.py`
 - `scripts/regression_gate.py`, `scripts/check_hardcoding_diff.py`, `scripts/check_test_edits.py`, `scripts/check_protected_paths.py`, `scripts/ci_failed_tests.py`(2026-10-04 명시)
 - `docs/scorecards/**`, `.github/workflows/score-gate.yml`, `.github/workflows/ci.yml`(2026-10-04 추가: 같은 SHA CI를 판정에 쓰기 위한 전제)
+- `.github/workflows/codeql-pr.yml`, `scripts/codeql_pr_diff.py`(2026-10-17: Steve 대상 보안 판정 정책·SARIF 비교는 평가 자산)
 - `docs/AGENT_ROLES.md`, `AGENTS.md`, `CLAUDE.md`, `.github/CODEOWNERS`
 
 구현 에이전트가 보호 경로의 변경이 필요하다고 판단하면 `docs/handoff/`에 요청 티켓을 남긴다. 평가 에이전트가 검토해 반영한다.
