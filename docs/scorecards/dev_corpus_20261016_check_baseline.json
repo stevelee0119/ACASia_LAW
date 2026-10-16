@@ -1,0 +1,200 @@
+{
+  "schema": "dev_corpus_measurement_v1",
+  "source": "Codex evaluation session execution",
+  "part": "check",
+  "fingerprint": "0c6479fbcad6c753",
+  "sha": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
+  "version": "0.13.0",
+  "environment": {
+    "network": false,
+    "tesseract": "5.5.0",
+    "ocr_langs": [
+      "eng",
+      "kor",
+      "osd"
+    ],
+    "python": "3.11.17"
+  },
+  "dependencies": {
+    "pdfplumber": "0.11.10",
+    "pypdf": "6.21.0",
+    "pypdfium2": "5.14.0",
+    "python-docx": "1.2.0",
+    "reportlab": "5.0.1"
+  },
+  "scorer_sha256": "29e1aa087f77267bf4cb8f34b4184584638097988218e4b6404a87ec595ef8b1",
+  "aggregator_sha256": "592f4920487c009cc183cf654cb5e1ed6e3694f0e573cb74dfd1c19777f030e8",
+  "documents": 32,
+  "subsets": 4,
+  "elapsed_seconds": 34.157008947004215,
+  "aggregation_rule": "unique defect rows for whole/focus totals; each distinct slash label contributes once to its type; no splitting inflation of whole denominator",
+  "raw_text_or_document_results_exported": false,
+  "defect_items": 400,
+  "credit": 58.0,
+  "weighted_recall": 0.145,
+  "focus_unique_items": 240,
+  "focus_unique_credit": 54.0,
+  "focus_weighted_recall": 0.225,
+  "by_type": {
+    "AIGEN": {
+      "items": 40,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "CIT-FAB-Q": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "CIT-META": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "CIT-MIS": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "CIT-NX": {
+      "items": 4,
+      "credit": 4.0,
+      "recall": 1.0
+    },
+    "CIT-NX-DB": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "EVI-COPY": {
+      "items": 40,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "EVI-DATE": {
+      "items": 40,
+      "credit": 20.0,
+      "recall": 0.5
+    },
+    "EVI-FAKECIT": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "EVI-FORM": {
+      "items": 40,
+      "credit": 10.0,
+      "recall": 0.25
+    },
+    "EVI-INCONS": {
+      "items": 40,
+      "credit": 8.0,
+      "recall": 0.2
+    },
+    "EVI-LOGIC": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "EVI-NUM": {
+      "items": 40,
+      "credit": 16.0,
+      "recall": 0.4
+    },
+    "EVI-OVR": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "INJ-ANNOT": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "INJ-ATTACH": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "INJ-COVERED": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "INJ-INVISIBLE-TR3": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "INJ-META": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "INJ-OFFPAGE": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "INJ-TINY": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "INJ-VISIBLE": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "INJ-WHITE": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "INJ-ZWSP": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "LAW-MIS": {
+      "items": 40,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "LAW-NX": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "OVR": {
+      "items": 4,
+      "credit": 0.0,
+      "recall": 0.0
+    },
+    "SRC-UNV": {
+      "items": 40,
+      "credit": 0.0,
+      "recall": 0.0
+    }
+  },
+  "false_positives": 2,
+  "fp_trap_false_positives": 0,
+  "control_false_positives": 2,
+  "a_grade_false_positives": 2,
+  "models_called": false,
+  "injection_defended": true,
+  "recorded_date_kst": "2026-10-17",
+  "source_label_ko": "평가 측 재실행",
+  "privacy": "aggregate only; no document names, source paths, per-document scores, targets or evidence excerpts",
+  "target_per_focus_type": {
+    "EVI-INCONS": 0.4,
+    "SRC-UNV": 0.2,
+    "EVI-NUM": 0.6,
+    "EVI-FORM": 0.45,
+    "EVI-DATE": 0.7,
+    "EVI-COPY": 0.2
+  },
+  "baseline_comparison": "first operating baseline only; no candidate or prior dataset comparison",
+  "train_weighted_recall": null,
+  "generalization_gap_train_minus_check": null
+}

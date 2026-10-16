@@ -970,3 +970,15 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
 - 개발말뭉치/train/check/제작프롬프트초안과0.13.0 고정비공개벤치집계는미수령. 말뭉치수신뒤자체점검건수→제품변경전운영본train/check첫측정·6유형기준값고정,train만구현공개/check평가보관. 현재baseline없는5항N/A·측정결과를꾸미지않음. 제품수용/배포/버전/전체TK종결0·잔여5건/운영ON/HOLD유지.
 
 원결정·집계: [development_targets_2026-10-16.json](development_targets_2026-10-16.json), [제출조건사전점검](../handoff/requests/SUBMISSION_CHECKLIST_PREFLIGHT_20261016.md), [목표와릴리스참고](FIXED_BENCHMARK.md#9-목표와-릴리스-참고-기준-2026-10-16-사용자-승인).
+
+
+## 2026-10-17 개발 말뭉치 dev_20261016 접수·check 최초 기준
+
+- 사용자전달MSG_TO_CODEX_DEV_CORPUS_20261016.md(작성10/16)의독립새Codex자체점검보고를접수: train/check각4묶음32문서(대조4)400결함,지문d058b04f03579336/0c6479fbcad6c753,형식·분리/누설점검오류경고0/최대공유2.38%·인젝션72/80자동+8수동·표본결함24/24·FP-TRAP부분별10/10문제0. 이는사용자보고이며평가측동일자체점검재실행아님.
+- 실제원본은check ZIP만수신,기존fixed_benchmark지문함수로0c6479fbcad6c753일치·4묶음32문서대조4/400결함/FP-TRAP88/중점각40항목확인. train원본미수령·제공전으로전체수신완료처리0. 입력/결과모두저장소밖평가전용보관·원문/정답/문서별출력공개0.
+- `/api/health` statusok/version0.13.0/commit b68cfee/databaseok확인후clean운영SHA동일첫측정. **평가 측 재실행**: network0/모델0/Python3.11.17/pdfplumber.11.10/Tesseract5.5.0·eng/kor/osd,각묶음새프로세스/전후지문같음·34.157초. CI OCR5.3.4와환경차이구분. check전체58/400=.145,중점54/240=.225,오탐2(대조2/A2/FP-TRAP0),기존scorer방어표시true. 다른세트/새후보대비상승판정아님.
+- check중점첫기준 EVI-INCONS8/40=.20,SRC-UNV0/40,EVI-NUM16/40=.40,EVI-FORM10/40=.25,EVI-DATE20/40=.50,EVI-COPY0/40. 승인+0.20잠정목표는각.40/.20/.60/.45/.70/.20. train재현율/gap은null/미측정,은퇴/고정dev로대체0. train수신뒤같은SHA/도구/환경첫측정→train만제공→공통제출5항적용.
+- 제공집계스크립트검토후평가측저장소밖도구준비. 기존공개은퇴2보고서재사용으로99항목/24.75점/.250/FP3(A3)확인·pipeline중복재실행0. 결합유형은유형별다중귀속하되전체/중점분모는원행1회계수,공개합성2행검사PASS. 빈세트·stale JSON·입력지문변경·원본/출력worktree반입중단. check원문/문서별결과로티켓생성금지·노출시계열중단/교체. 고정벤치4절변경0.
+- 이전10/16사전점검JSON OCR언어메타데이터는기본경로probe의eng/osd가들어간부분을실제측정prefix의eng/kor/osd로정정했다. 원래측정은kor사용/원본영수증보존·점수/채점/제품변경0/재측정0. #103 최초83b86cc의필수CI38896906276/점수38896906363SUCCESS확인(새후속커밋은별도SHA).
+
+접수/운영규칙: [DEV_CORPUS](DEV_CORPUS.md), [접수집계](dev_corpus_20261016_intake.json), [check첫기준](dev_corpus_20261016_check_baseline.json). 제품/기존시험/기준선/새봉인/고정비공개벤치/유료호출/배포0·전체잔여5TK/운영ON/독립법률품질HOLD유지.

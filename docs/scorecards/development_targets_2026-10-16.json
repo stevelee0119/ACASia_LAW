@@ -28,7 +28,7 @@
     "details_exported": false
   },
   "corpus": {
-    "status": "NOT_RECEIVED",
+    "status": "CHECK_BASELINED_TRAIN_NOT_RECEIVED",
     "prompt_draft_status": "referenced draft not supplied; no repository prompt created",
     "train_access": "implementation",
     "check_access": "evaluation only; aggregates only",
@@ -42,8 +42,60 @@
     ],
     "per_type_check_recall_absolute_gain_goal_min": 0.2,
     "train_minus_check_weighted_recall_goal_max": 0.1,
-    "baseline_sha": "operating SHA pinned at corpus receipt, before product changes",
-    "baseline_results": null
+    "baseline_sha": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
+    "baseline_results": {
+      "check": {
+        "weighted_recall": 0.145,
+        "focus_weighted_recall": 0.225,
+        "focus_types": {
+          "EVI-INCONS": {
+            "items": 40,
+            "credit": 8.0,
+            "recall": 0.2
+          },
+          "SRC-UNV": {
+            "items": 40,
+            "credit": 0.0,
+            "recall": 0.0
+          },
+          "EVI-NUM": {
+            "items": 40,
+            "credit": 16.0,
+            "recall": 0.4
+          },
+          "EVI-FORM": {
+            "items": 40,
+            "credit": 10.0,
+            "recall": 0.25
+          },
+          "EVI-DATE": {
+            "items": 40,
+            "credit": 20.0,
+            "recall": 0.5
+          },
+          "EVI-COPY": {
+            "items": 40,
+            "credit": 0.0,
+            "recall": 0.0
+          }
+        }
+      },
+      "train": null,
+      "train_minus_check": null
+    },
+    "reported_fingerprints": {
+      "train": "d058b04f03579336",
+      "check": "0c6479fbcad6c753"
+    },
+    "provisional_check_targets_after_plus_0_20": {
+      "EVI-INCONS": 0.4,
+      "SRC-UNV": 0.2,
+      "EVI-NUM": 0.6,
+      "EVI-FORM": 0.45,
+      "EVI-DATE": 0.7,
+      "EVI-COPY": 0.2
+    },
+    "train_shared_to_implementation": false
   },
   "process_goals": {
     "first_submission_acceptance": {
@@ -75,13 +127,14 @@
       "tesseract": "5.5.0",
       "ocr_langs": [
         "eng",
+        "kor",
         "osd"
       ],
       "python": "3.11.17",
       "pdfplumber": "0.11.10"
     },
     "original_scorecard_language_parser_metadata_contaminated": true,
-    "language_metadata_note": "scorecard.tesseract_info splits whitespace in header; independent tesseract --list-langs lines confirm eng/kor/osd. Original local receipt preserved; scorer code unchanged.",
+    "language_metadata_note": "Scoring used TESSDATA_PREFIX with eng/kor/osd. Earlier independent metadata probe used default path and stored eng/osd; corrected2026-10-17 after checking the actual scoring prefix. Original raw receipt with kor preserved; score/scorer unchanged.",
     "ci_environment_difference": "local tesseract5.5.0 versus CI5.3.4; Python3.11.17 local; no strict-environment CI equivalence claim",
     "related_pytest": {
       "tests": 16,
