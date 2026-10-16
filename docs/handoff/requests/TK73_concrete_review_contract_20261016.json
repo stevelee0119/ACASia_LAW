@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "proposal_only": true,
+  "approval_state": "NOT_APPROVED",
+  "product_installed": false,
+  "initial_scope": "NARROW_CLOSED_INVENTORY_AND_BODY_PARALLEL_OBSERVATION",
+  "date_or_eof_expansion": false,
+  "semantic_title_certification_from_eof": false,
+  "candidate_eligibility": {
+    "same_party_number_branch_and_parent": true,
+    "complete_original_occurrences_and_protection": true,
+    "closed_inventory_and_closed_body_extents": true,
+    "different_existing_full_comparison_keys": true,
+    "generic_unknown_is_sufficient": false,
+    "native_title_fields_remain_separate_positive_evidence": true
+  },
+  "existing_finding_contract": {
+    "rule_id": "EVI.EVIDENCE_NUMBER_DUPLICATE",
+    "delete_or_suppress": false,
+    "change_grade_or_severity": false,
+    "change_status": false,
+    "change_original_payload_or_source_spans": false,
+    "auto_certify_same_title": false,
+    "auto_certify_different_formal_titles": false
+  },
+  "proposed_additional_observation": {
+    "code": "FORMAL_EXHIBIT_TITLE_NEEDS_REVIEW",
+    "text": "동일 호증 번호에서 서로 다른 표기가 관찰되었습니다. 각 원문 위치에서 정식 서증명을 확인해야 합니다.",
+    "carries_original_finding_reference": true,
+    "carries_complete_alternative_source_references": true,
+    "creates_another_scored_finding": false,
+    "is_a_new_verification_status": false
+  },
+  "measurement_contract": {
+    "legacy_a_and_control_fp_count_pending": true,
+    "legacy_recall_unchanged_by_observation": true,
+    "confirmation_candidates_are_additional_metric_only": true,
+    "pending_is_not_afp_zero": true,
+    "frozen_111_narrow_reference": {
+      "original_duplicate_a": 93,
+      "independent_native_title_a": 3,
+      "pending_candidates": 18,
+      "pending_true_duplicates": 9,
+      "pending_false_candidates": 9,
+      "legacy_a_retained": 72
+    },
+    "frozen_111_date_expansion_reference": {
+      "additional_false_separation": 0,
+      "additional_true_confirmation_loss": 9,
+      "initial_adoption_recommended": false
+    }
+  },
+  "completion_contract": {
+    "observation_feature_equals_tk73_complete": false,
+    "original_afp_zero_gate_replaced": false,
+    "legacy_and_coverage_residuals_remain_open": true,
+    "independent_acceptance_required": true,
+    "integration_or_release_authorized": false
+  }
+}
