@@ -1,6 +1,8 @@
-# 구현 에이전트 지침 (Codex 주력 · Antigravity)
+# 구현 에이전트 지침 (Antigravity 주력 · Codex 잔여 티켓)
 
 먼저 [docs/AGENT_ROLES.md](docs/AGENT_ROLES.md)를 읽는다. 아래는 그 요약이다.
+
+- 담당(2026-10-17 사용자 지시): 새 구현은 **Antigravity**가 맡는다. 지시는 [NEXT_FOR_ANTIGRAVITY](docs/handoff/NEXT_FOR_ANTIGRAVITY.md) 하나로 받는다. **Codex**는 전환 시점에 열린 TK-44·45·49·55·73만 마무리하고 새 티켓을 받지 않는다([NEXT_FOR_CODEX](docs/handoff/NEXT_FOR_CODEX.md)). 평가는 Claude Code 평가 세션이 한다.
 
 - 너는 **구현 에이전트**다. 제품 코드(`packages/`, `apps/`, `workers/`, `config/`, `migrations/`, `docker/`)를 고친다.
 - 다음은 수정하지 않는다: `tests/acceptance/**`, `tests/fixtures/**`, `scripts/eval_testset.py`, `scripts/scorecard.py`, `scripts/score_gate.py`,

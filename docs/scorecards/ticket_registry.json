@@ -332,6 +332,11 @@
    "note": "#74 최종3805e949 기술 수용 리뷰5481214189·CI38094767858/점수38094767864 성공·Steveba12d25 병합. Claude 전용/fallback 유지·수용 참조4a6c651·공개70건. 기본OFF 기술 릴리스, 품질은 배포 후 실제 프로그램OFF/ON 온라인 대조·독립한국변호사1명 조건가림·제3판정 없음. 비용평가·증가율조건은사용자최신결정으로삭제·가격PR87폐기. 기존USD40예산보호유지·배포후ON분석JSON실제Claude토큰변화참고. 실제 개선 미측정; 운영 미배포. 40fd3a9 불승인 이력 보존/사전A/B 조건 대체. 0.13.0 main8280a59/Render dep-db5k8uek1f9s73ef0tg0 Live17:11KST·health SHA/version/DB일치 확인。 기본OFF 기술범위 배포만 기록; 배포후 실제OFF 운영자영수증·실제6쌍/독립변호사1명 법률품질·토큰비교 미측정.",
    "deployed_on": "2026-10-11",
    "deployed_sha": "8280a597db40b0905dbacf10c56fa3e9915cafd5"
+  },
+  "TK-76": {
+   "status": "open",
+   "kind": "existing",
+   "note": "2026-10-17 Antigravity 배정(사용자 '승인 목표 우선'). 개발 말뭉치 중점6유형 1주기. 1단계 진단 메모 → 유형별 PR."
   }
  },
  "updated_on": "2026-10-11"

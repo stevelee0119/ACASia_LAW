@@ -1,8 +1,8 @@
 {
- "total": 75,
+ "total": 76,
  "status": {
   "deployed": 70,
-  "open": 4,
+  "open": 5,
   "known_open": 1
  },
  "open": [
@@ -40,6 +40,13 @@
    "kind": "existing",
    "found_on": "2026-10-10",
    "note": "전체open·미배포. #92 최신545c917fd12f9fec40eb52bbccfffaf566bc9fdc 설계/공개시험·제품0. 별도 source-tree/native 안전성 제한PASS는 제품/기준승인과구분·구체 기준안 검토 HOLD. 원래111 날짜확대 진짜확인손실+9/false추가이득0·기존4종AFP3 불변. 사용자 확인필요분리 선택은 검토이며 승인0·원래A/finding/GLOBAL/UNKNOWN 보호 유지."
+  },
+  {
+   "id": "TK-76",
+   "status": "open",
+   "kind": "existing",
+   "found_on": "2026-10-16",
+   "note": "2026-10-17 Antigravity 배정(사용자 '승인 목표 우선'). 개발 말뭉치 중점6유형 1주기. 1단계 진단 메모 → 유형별 PR."
   }
  ],
  "weekly": {
@@ -52,6 +59,11 @@
    "deployed": 9,
    "found": 16,
    "regression": 3,
+   "recurrence": 0
+  },
+  "2026-W42": {
+   "found": 1,
+   "regression": 0,
    "recurrence": 0
   }
  },
@@ -94,6 +106,10 @@
   },
   "2026-10-10": {
    "found": 4,
+   "regression": 0
+  },
+  "2026-10-16": {
+   "found": 1,
    "regression": 0
   }
  },
