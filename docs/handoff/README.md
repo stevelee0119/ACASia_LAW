@@ -16,9 +16,9 @@
 | TK55 | #97 2f4e798 발췌검사 제한부분 배포,known_open | legacy/unsupported 등 잔여와 내부생성ID PHONE과차단 후속. 키일괄면제금지·필수개인정보보호 유지 |
 | TK73 | #92 545c917 source-tree안전성 제한PASS·기준/제품HOLD | 구체확인필요상태·진짜확정손실·보호계약 검토후 사용자결정. 원래AFP3해소로계산금지 |
 
-최신 구현 지시는 [Codex 통합본](NEXT_FOR_CODEX.md)·[Antigravity 통합본](NEXT_FOR_ANTIGRAVITY.md)으로 전달한다. 사용자10/16 승인 잠정목표는 [FIXED_BENCHMARK9절](../scorecards/FIXED_BENCHMARK.md#9-목표와-릴리스-참고-기준-2026-10-16-사용자-승인), 공통제출조건 사전점검은 [전용기록](requests/SUBMISSION_CHECKLIST_PREFLIGHT_20261016.md)을 따른다. 비공개벤치 결과로 구현티켓을 만들지 않는다. 개발말뭉치dev_20261016은check원본만수신·지문일치·첫기준측정완료,train원본은미수령/제공전이다. [DEV_CORPUS](../scorecards/DEV_CORPUS.md)의check집계·접근분리·노출교체규칙을따른다. train수신뒤같은운영본첫측정→train만공개·check평가보관이다.
+최신 구현 지시는 [Codex 통합본](NEXT_FOR_CODEX.md)·[Antigravity 통합본](NEXT_FOR_ANTIGRAVITY.md)으로 전달한다. 사용자10/16 승인 잠정목표는 [FIXED_BENCHMARK9절](../scorecards/FIXED_BENCHMARK.md#9-목표와-릴리스-참고-기준-2026-10-16-사용자-승인), 공통제출조건 사전점검은 [전용기록](requests/SUBMISSION_CHECKLIST_PREFLIGHT_20261016.md)을 따른다. 비공개벤치 결과로 구현티켓을 만들지 않는다. 개발말뭉치dev_20261016의train/check양쪽원본지문확인·같은운영본첫측정·gap계산을완료했다. train.115/check.145·격차−.030,중점.175/.225·격차−.050이다. [DEV_CORPUS](../scorecards/DEV_CORPUS.md)의집계/접근분리/노출교체규칙을따른다. train전용ZIP과NEXT만별도구현세션에전달하고check는평가측보관이다.
 
-사용자께 지금 가능한 일: ①구현을하지않는 환경에서0.13.0 고정비공개벤치집계 제출(기록은평가측), ②dev_20261016의남은train원본·제작프롬프트전달, ③Steve대상PR CodeQL저장소설정, ④독립변호사 시범사용섭외·관찰/채점자료 준비다. 자료수신뒤 평가측이기준측정/기록을진행한다. 새제품병합/배포는수용SHA CI와릴리스선행요건 완료뒤별도다. 원래10시간 전체목표 미달은보존하며 과거실패를성공으로바꾸지 않는다.
+사용자께 지금 가능한 일: ①구현을하지않는 환경에서0.13.0 고정비공개벤치집계 제출(기록은평가측), ②준비된train전용ZIP·NEXT를별도구현세션에전달(원본추가제출불필요), ③Steve대상PR CodeQL저장소설정, ④독립변호사 시범사용섭외·관찰/채점자료 준비다. 자료수신뒤 평가측이기준측정/기록을진행한다. 새제품병합/배포는수용SHA CI와릴리스선행요건 완료뒤별도다. 원래10시간 전체목표 미달은보존하며 과거실패를성공으로바꾸지 않는다.
 
 <a id="tk72-integration-history"></a>
 

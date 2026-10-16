@@ -28,7 +28,7 @@
     "details_exported": false
   },
   "corpus": {
-    "status": "CHECK_BASELINED_TRAIN_NOT_RECEIVED",
+    "status": "BOTH_PARTS_VERIFIED_FIRST_BASELINES_COMPLETE",
     "prompt_draft_status": "referenced draft not supplied; no repository prompt created",
     "train_access": "implementation",
     "check_access": "evaluation only; aggregates only",
@@ -80,8 +80,44 @@
           }
         }
       },
-      "train": null,
-      "train_minus_check": null
+      "train": {
+        "weighted_recall": 0.115,
+        "focus_weighted_recall": 0.175,
+        "focus_types": {
+          "EVI-INCONS": {
+            "items": 40,
+            "credit": 8.0,
+            "recall": 0.2
+          },
+          "SRC-UNV": {
+            "items": 40,
+            "credit": 0.0,
+            "recall": 0.0
+          },
+          "EVI-NUM": {
+            "items": 40,
+            "credit": 8.0,
+            "recall": 0.2
+          },
+          "EVI-FORM": {
+            "items": 40,
+            "credit": 10.0,
+            "recall": 0.25
+          },
+          "EVI-DATE": {
+            "items": 40,
+            "credit": 16.0,
+            "recall": 0.4
+          },
+          "EVI-COPY": {
+            "items": 40,
+            "credit": 0.0,
+            "recall": 0.0
+          }
+        }
+      },
+      "train_minus_check": -0.03,
+      "focus_train_minus_check": -0.05
     },
     "reported_fingerprints": {
       "train": "d058b04f03579336",
@@ -95,7 +131,8 @@
       "EVI-DATE": 0.7,
       "EVI-COPY": 0.2
     },
-    "train_shared_to_implementation": false
+    "train_shared_to_implementation": false,
+    "train_package_ready_for_separate_implementation": true
   },
   "process_goals": {
     "first_submission_acceptance": {

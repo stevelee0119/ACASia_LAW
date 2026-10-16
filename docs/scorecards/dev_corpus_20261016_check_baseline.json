@@ -195,6 +195,7 @@
     "EVI-COPY": 0.2
   },
   "baseline_comparison": "first operating baseline only; no candidate or prior dataset comparison",
-  "train_weighted_recall": null,
-  "generalization_gap_train_minus_check": null
+  "train_weighted_recall": 0.115,
+  "generalization_gap_train_minus_check": -0.03,
+  "train_baseline_reference": "dev_corpus_20261016_train_baseline.json"
 }

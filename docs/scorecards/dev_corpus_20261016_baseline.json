@@ -1,0 +1,134 @@
+{
+  "schema": "dev_corpus_first_baseline_comparison_v1",
+  "source_label_ko": "평가 측 재실행",
+  "corpus": "dev_20261016",
+  "recorded_date_kst": "2026-10-17",
+  "sha": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
+  "version": "0.13.0",
+  "same_environment_scorer_aggregator_dependencies": true,
+  "input_fingerprints": {
+    "train": "d058b04f03579336",
+    "check": "0c6479fbcad6c753"
+  },
+  "train": {
+    "subsets": 4,
+    "documents": 32,
+    "defect_items": 400,
+    "credit": 46.0,
+    "weighted_recall": 0.115,
+    "focus_unique_items": 240,
+    "focus_unique_credit": 42.0,
+    "focus_weighted_recall": 0.175,
+    "false_positives": 0,
+    "a_grade_false_positives": 0,
+    "injection_defended": true
+  },
+  "check": {
+    "subsets": 4,
+    "documents": 32,
+    "defect_items": 400,
+    "credit": 58.0,
+    "weighted_recall": 0.145,
+    "focus_unique_items": 240,
+    "focus_unique_credit": 54.0,
+    "focus_weighted_recall": 0.225,
+    "false_positives": 2,
+    "a_grade_false_positives": 2,
+    "injection_defended": true
+  },
+  "generalization_gap_train_minus_check": -0.03,
+  "focus_gap_train_minus_check": -0.05,
+  "signed_gap_goal_max": 0.1,
+  "signed_gap_initial_condition_met": true,
+  "not_a_quality_improvement_or_generalization_proof": true,
+  "focus_types": {
+    "EVI-INCONS": {
+      "train": {
+        "items": 40,
+        "credit": 8.0,
+        "recall": 0.2
+      },
+      "check": {
+        "items": 40,
+        "credit": 8.0,
+        "recall": 0.2
+      },
+      "train_minus_check": 0.0,
+      "provisional_check_goal": 0.4
+    },
+    "SRC-UNV": {
+      "train": {
+        "items": 40,
+        "credit": 0.0,
+        "recall": 0.0
+      },
+      "check": {
+        "items": 40,
+        "credit": 0.0,
+        "recall": 0.0
+      },
+      "train_minus_check": 0.0,
+      "provisional_check_goal": 0.2
+    },
+    "EVI-NUM": {
+      "train": {
+        "items": 40,
+        "credit": 8.0,
+        "recall": 0.2
+      },
+      "check": {
+        "items": 40,
+        "credit": 16.0,
+        "recall": 0.4
+      },
+      "train_minus_check": -0.2,
+      "provisional_check_goal": 0.6
+    },
+    "EVI-FORM": {
+      "train": {
+        "items": 40,
+        "credit": 10.0,
+        "recall": 0.25
+      },
+      "check": {
+        "items": 40,
+        "credit": 10.0,
+        "recall": 0.25
+      },
+      "train_minus_check": 0.0,
+      "provisional_check_goal": 0.45
+    },
+    "EVI-DATE": {
+      "train": {
+        "items": 40,
+        "credit": 16.0,
+        "recall": 0.4
+      },
+      "check": {
+        "items": 40,
+        "credit": 20.0,
+        "recall": 0.5
+      },
+      "train_minus_check": -0.1,
+      "provisional_check_goal": 0.7
+    },
+    "EVI-COPY": {
+      "train": {
+        "items": 40,
+        "credit": 0.0,
+        "recall": 0.0
+      },
+      "check": {
+        "items": 40,
+        "credit": 0.0,
+        "recall": 0.0
+      },
+      "train_minus_check": 0.0,
+      "provisional_check_goal": 0.2
+    }
+  },
+  "paid_calls": 0,
+  "product_changes": false,
+  "candidate_compared": false,
+  "raw_text_exported": false
+}

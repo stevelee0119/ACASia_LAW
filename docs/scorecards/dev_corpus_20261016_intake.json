@@ -47,10 +47,26 @@
         "EVI-COPY": 40
       }
     },
-    "train": null
+    "train": {
+      "archive_sha256": "d17fdb196376759eda0a568407208b2dcd6ed229bc7ac846483d368311209cbc",
+      "fingerprint": "d058b04f03579336",
+      "subsets": 4,
+      "documents": 32,
+      "controls": 4,
+      "defect_items": 400,
+      "fp_trap": 88,
+      "focus_type_items": {
+        "EVI-INCONS": 40,
+        "SRC-UNV": 40,
+        "EVI-NUM": 40,
+        "EVI-FORM": 40,
+        "EVI-DATE": 40,
+        "EVI-COPY": 40
+      }
+    }
   },
-  "status": "CHECK_BASELINED_TRAIN_NOT_RECEIVED",
-  "whole_corpus_receipt_complete": false,
+  "status": "BOTH_PARTS_VERIFIED_FIRST_BASELINES_COMPLETE",
+  "whole_corpus_receipt_complete": true,
   "health": {
     "status": "ok",
     "version": "0.13.0",
@@ -65,5 +81,8 @@
   "train_shared_to_implementation": false,
   "check_document_results_published": false,
   "legal_gold_independently_verified": false,
-  "source_message_sha256": "a9fe2f0b4f47ad7f8113211ab18c555289b0e777099d41fe5244cc055d507e19"
+  "source_message_sha256": "a9fe2f0b4f47ad7f8113211ab18c555289b0e777099d41fe5244cc055d507e19",
+  "train_provisioning": "train-only original ZIP prepared for delivery to separate implementation session; actual implementation receipt not confirmed",
+  "train_provisioning_archive_sha256": "d17fdb196376759eda0a568407208b2dcd6ed229bc7ac846483d368311209cbc",
+  "check_in_train_package": false
 }

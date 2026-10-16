@@ -76,4 +76,4 @@
 
 첫 제출25%는 사용자 승인 전달문의 **잠정 출발값**으로, 산출 기간·분자·분모 자료를 아직 받지 않았다. 검증된 실측 수용률로 표시하지 않는다. 향후 구현PR의 최초 제품 제출 SHA에 대한 필수CI·정식 판정으로 분자/분모를 남기고 평가 기록/설계 전용 PR은 별도 구분한다. 주간19%는 원장 W41의3/16=18.75% 반올림이며 전체 커밋 실패율이나 배포 장애율이 아니다.
 
-원결정·평가 측 사전점검 집계: [development_targets_2026-10-16.json](development_targets_2026-10-16.json). 개발 말뭉치 dev_20261016은10/17 한국시각 check만 원본확인·첫측정했고 train과 `PROMPT_FOR_CODEX_DEV_CORPUS.md` 제작초안은 미수령이다. 상세상태는 [DEV_CORPUS](DEV_CORPUS.md)를 따른다. 전체수신·train제공·gap측정 완료를 미리 선언하지 않으며 고정 벤치와 새 봉인을 대체하지 않는다.
+원결정·평가 측 사전점검 집계: [development_targets_2026-10-16.json](development_targets_2026-10-16.json). 개발말뭉치dev_20261016은10/17한국시각train/check양쪽원본지문확인·운영본첫측정·격차계산을완료했다. train전용ZIP을준비했고실제별도구현세션수령은미확인이다. `PROMPT_FOR_CODEX_DEV_CORPUS.md`제작초안은미수령이다. 상세는 [DEV_CORPUS](DEV_CORPUS.md)를따르며고정벤치와새봉인을대체하지않는다.
