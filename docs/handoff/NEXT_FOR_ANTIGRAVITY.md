@@ -17,11 +17,10 @@
 
 ## 3. 할 일 (순서대로)
 
-### ① #118 EVI-COPY — Steve 받기 푸시 1회
-- 정정 커밋 `d7ce5e7`은 평가 측이 재측정 중이다. 결과는 #118 코멘트로 낸다.
-- **push 쪽 '점수 하락 게이트' 실패는 코드 결함이 아니다.** push 실행이 직전 커밋 `765de10`과 비교해서, PR 안에서 만들었다가 지운 시험 2개(`test_copy_positive_case_2_multiple_sections_split_findings`, `test_copy_positive_case_3_body_heading_with_brackets`)를 '삭제'로 봤다. 이 2개는 평가 측 지시로 뺀 소제목 분할 기능의 시험이고 Steve에 들어간 적이 없다. **삭제는 평가 측이 승인한다.**
-- 할 일: 같은 브랜치에 최신 `origin/Steve_ACASiaLAW`를 **병합 커밋으로** 받아 푸시한다(PR 기준이 `aefd55e`라 어차피 필요하다). 빈 커밋은 금지다.
-- 그 뒤 '검토 요청 + SHA'(`git rev-parse HEAD` 출력 그대로)를 남긴다. 평가 측 재측정에서 추가 요구가 나오면 같은 커밋에 함께 반영한다.
+### ① #118 EVI-COPY — 수용 (할 일 없음)
+- 정정본 `ba59fbb`을 [수용](https://github.com/stevelee0119/verify_ACAS_LAW/pull/118#issuecomment-6232629094)했다. 병합은 사용자가 한다.
+- 평가 측 재실행: train COPY 0→4/40, 은퇴 `sealed_20261008` 19.0→21.2, 나머지·고정 불변, 오탐 0.
+- 남는 것(다음 릴리스): 같은 진술서 8번 항목 4건은 상대 서면이 같은 finding 2개가 기존 중복 제거 키로 합쳐지는 문제다. 비진술서 32건 설계 메모에서 함께 다룬다.
 
 ### ② #114 EVI-DATE — 재제출 (이번 릴리스에 필요)
 판정: [불승인(수정 요청)](https://github.com/stevelee0119/verify_ACAS_LAW/pull/114#issuecomment-6231748986). 같은 브랜치에 정정 커밋을 올린다. 최신 Steve를 먼저 병합 커밋으로 받는다.
@@ -34,7 +33,8 @@
 4. **제출 점검표:** 성능 측정 스크립트를 커밋한다(2항). 16건 증가분을 '탐지 개선'(요일 뒤 조사 허용)과 '표시 보강'(항목명)으로 나눠 재현 명령·출력과 함께 보고한다(3·5항).
 - 회귀를 빨리 풀기 어려우면, **요일 뒤 조사 허용만 따로 PR로** 먼저 내도 된다. 이 경우 #114는 닫고 위치 보강은 다음 릴리스로 미룬다고 PR에 적는다.
 
-### ③ #109 진단 메모 — 정정 커밋 1개
+### ③ #109 진단 메모 — 수용·병합 완료 (할 일 없음)
+이하는 기록용이다.
 판정: [조건부 승인](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109#issuecomment-6229122189) · [평가 측 train 재실행 보완](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109#issuecomment-6229233886).
 - 메모 표를 평가 측 재현 결과에 맞춘다.
   - EVI-INCONS 한글병기 8건·EVI-DATE 하이픈날짜 8건: 탐지는 정상이고 발췌에 항목명이 없는 (d)다.
