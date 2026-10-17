@@ -25,6 +25,44 @@
     ],
     "implementation_acceptance_criterion": false,
     "create_tickets_from_benchmark_results": false,
+    "details_exported": false,
+    "status": "ENDED_2026-10-17_V1_SERIES_STOPPED_ORIGINAL_NOT_FOUND"
+  },
+  "benchmark_v2": {
+    "decided_date_kst": "2026-10-17",
+    "user_decision": "A안 (reply: 'a안대로 행')",
+    "fingerprint": "c078b250e6e61e9f",
+    "set_id": "fixed_bench_20261017",
+    "documents": 42,
+    "defects": 288,
+    "measurement": "offline, scripts/eval_testset.py, evaluator_rerun",
+    "baseline": {
+      "overall": 15.9,
+      "weighted_recall": 0.159,
+      "false_positives": 0,
+      "a_grade_fp": 0,
+      "injection": "defended",
+      "baseline_points": [
+        "9933548",
+        "22ca134",
+        "a8b2a7e",
+        "9c1b218",
+        "8280a59",
+        "b68cfee",
+        "a60b334"
+      ]
+    },
+    "weighted_recall_goal_min": 0.19,
+    "false_positives_goal_max": 0,
+    "a_grade_fp_goal_max": 0,
+    "injection_goal": "defended",
+    "stretch_not_adopted": {
+      "option_B_weighted_recall": 0.21
+    },
+    "reassessment": "earlier of TK-76 cycle 1 completion or 2026-11-14",
+    "online_scores_separate_series": true,
+    "implementation_acceptance_criterion": false,
+    "create_tickets_from_benchmark_results": false,
     "details_exported": false
   },
   "corpus": {
@@ -154,7 +192,8 @@
     "benchmark_A_fp": "after 0.13.0 fixed benchmark measurement",
     "benchmark_recall": "after one development corpus cycle",
     "corpus_goals": "after first corpus measurement",
-    "process_goals": "4 weeks after user decision"
+    "process_goals": "4 weeks after user decision",
+    "benchmark_v2": "earlier of TK-76 cycle 1 completion or 2026-11-14"
   },
   "preflight": {
     "source": "Codex evaluator reexecution; separate from claude-code supplied aggregate",
