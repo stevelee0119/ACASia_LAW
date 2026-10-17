@@ -83,6 +83,41 @@ def parse_korean_amount(text: str) -> Optional[Decimal]:
     return Decimal(total)
 
 
+ITEM_HEADING_RE = re.compile(
+    r"\[(?P<h1>[^\]\n]{2,30})\]|"
+    r"【(?P<h2>[^】\n]{2,30})】|"
+    r"<\s*(?P<h3>[^>\n]{2,30})\s*>|"
+    r"(?:^|\n)\s*(?P<num>[0-9]{1,3}|[가나다라마바사아자차카타파하])\s*[\.\)]\s*(?P<title>[^\n]{2,30})"
+)
+
+
+def _find_item_heading(text: str, offset: int) -> Optional[str]:
+    """매칭 위치 이전의 같은 줄 또는 최근 선행 텍스트에서 항목 머리(예: [검수대장 1차])를 추출한다."""
+    line_start = text.rfind("\n", 0, offset)
+    s_idx = 0 if line_start == -1 else line_start + 1
+    line_prefix = text[s_idx:offset]
+
+    # 1. 같은 줄 앞머리에서 항목 머리 탐색
+    matches = list(ITEM_HEADING_RE.finditer(line_prefix))
+    if matches:
+        m = matches[-1]
+        heading = m.group("h1") or m.group("h2") or m.group("h3") or m.group(0).strip()
+        return heading.strip("[]【】<> ")
+
+    # 2. 직전 줄이 짧은 항목 머리줄인 경우 탐색
+    if line_start > 0:
+        prev_line_start = text.rfind("\n", 0, line_start)
+        p_idx = 0 if prev_line_start == -1 else prev_line_start + 1
+        prev_line = text[p_idx:line_start].strip()
+        if len(prev_line) <= 40:
+            m_prev = ITEM_HEADING_RE.search(prev_line)
+            if m_prev:
+                heading = m_prev.group("h1") or m_prev.group("h2") or m_prev.group("h3") or m_prev.group(0).strip()
+                return heading.strip("[]【】<> ")
+
+    return None
+
+
 def words_digits_mismatches(doc: NormalizedDocument) -> List[Finding]:
     text = build_reading_text(doc).text
     out: List[Finding] = []
@@ -94,18 +129,27 @@ def words_digits_mismatches(doc: NormalizedDocument) -> List[Finding]:
         digit_value = Decimal(digits.replace(",", ""))
         if word_value == digit_value:
             continue
+        eff_h = _find_item_heading(text, m.start())
+        h_prefix = f"[{eff_h}] " if eff_h else ""
+
         excerpt = " ".join(m.group(0).split())
+        if eff_h:
+            excerpt = f"{h_prefix}{excerpt}"
+
         features = {"deterministic_rule": True, "arithmetic_proof": True, "rule_id": "AMOUNT.WORDS_MISMATCH",
                     "defect_code": "AMOUNT_WORDS_MISMATCH", "words": words.strip(), "words_value": str(word_value),
                     "digits_value": str(digit_value), "difference": str(digit_value - word_value)}
+        if eff_h:
+            features["heading"] = eff_h
+
         out.append(Finding.create(
             type=FindingType.ARITHMETIC_MISMATCH, status=VerificationStatus.CONTRADICTED, severity=Severity.HIGH,
             evidence_grade=EvidenceGrade.A,
             title=f"한글 금액과 숫자 금액이 다르다(AMOUNT_WORDS_MISMATCH): '{words.strip()}'={word_value:,}원 / 숫자 {digit_value:,}원",
-            detail=(f"같은 자리에 병기한 한글 금액 '{words.strip()}'은 {word_value:,}원이고 숫자 금액은 {digit_value:,}원이다"
+            detail=(f"{h_prefix}같은 자리에 병기한 한글 금액 '{words.strip()}'은 {word_value:,}원이고 숫자 금액은 {digit_value:,}원이다"
                     f"(차이 {digit_value - word_value:,}원). 어느 쪽이 맞는지는 문서만으로 알 수 없으므로 원본을 확인해야 한다."),
             confidence=0.95, confidence_features=features, document_id=doc.document_id, engine=ENGINE_NAME,
             tags=["CALCULATION", "AMOUNT"],
-            evidence=[Evidence.create(description="한글·숫자 병기", grade=EvidenceGrade.A, document_id=doc.document_id,
+            evidence=[Evidence.create(description=f"{h_prefix}한글·숫자 병기".strip(), grade=EvidenceGrade.A, document_id=doc.document_id,
                                       excerpt=excerpt[:200])]))
     return out
