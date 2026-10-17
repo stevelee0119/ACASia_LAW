@@ -80,9 +80,10 @@ def show() -> int:
         print("기록 없음")
         return 0
     rows = [json.loads(line) for line in LOG.read_text(encoding="utf-8").splitlines() if line.strip()]
-    print(f"{'기록일':<11}{'지문':<18}{'역할':<6}{'커밋':<9}{'종합':>7}{'재현율':>8}{'오탐':>5}{'A오탐':>6}")
+    print(f"{'기록일':<11}{'지문':<18}{'계열':<5}{'역할':<6}{'커밋':<9}{'종합':>7}{'재현율':>8}{'오탐':>5}{'A오탐':>6}")
     for r in rows:
-        print(f"{r['recorded'][:10]:<11}{r['fingerprint']:<18}{r['role']:<6}{(r['git'] or '')[:7]:<9}"
+        series = "온라인" if (r.get("environment") or {}).get("network") else "오프라인"
+        print(f"{r['recorded'][:10]:<11}{r['fingerprint']:<18}{series:<5}{r['role']:<6}{(r['git'] or '')[:7]:<9}"
               f"{r['overall']:>7}{r['weighted_recall']:>8}{r['false_positives']:>5}{r['a_grade_fp']:>6}")
     return 0
 

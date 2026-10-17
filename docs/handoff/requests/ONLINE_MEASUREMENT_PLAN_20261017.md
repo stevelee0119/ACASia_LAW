@@ -122,3 +122,10 @@
 - ragbench는 set01 한 묶음 값으로 늘렸다. 묶음마다 주장 수가 달라 실제는 다를 수 있다.
 - 원장은 Gemini를 예약액 전액으로 계상하므로 실제 청구는 토큰 단가 기준에 더 가까울 것으로 본다(사고 토큰 미포함). 실제 청구는 공급자 콘솔 확인이 필요하다.
 - **운영 설정과 다른 점:** 시험 실행은 코드 기본값(`LV_HTTP_TIMEOUT` 12 등)으로 돌았다. 운영 `render.yaml`은 `LV_HTTP_TIMEOUT`=30, `LV_SOURCE_LOOKUP_MAX_DOCUMENT_SECONDS`=240, `LV_SOURCE_LOOKUP_RECOVERY_SECONDS`=30, `LV_SOURCE_LOOKUP_ATTEMPTS`=2를 둔다. 본 측정에서 이 값을 맞출지는 사용자 결정이다(모든 지점에 같은 값이면 판 비교는 성립한다).
+
+### 5.7 본 측정 실행 (2026-10-17, 평가 측 재실행)
+- 사용자 승인: 최소안(운영 `b68cfee`·후보 Steve `aefd55e`), 원장 상한 $120 → $150, 운영 설정값 적용, 2판 1회분 $30 한도.
+- 실행기(저장소 밖): 작업마다 별도 프로세스·별도 저장 폴더, 원장은 하나를 공유했다. 각 작업 시작 전에 남은 원장이 예상 비용의 1.15배 이상인지 확인했다. 2판 1회분 $30 초과 시 멈추는 감시를 따로 두었다(발동 0).
+- 8작업 모두 완료(2회차 ragbench 운영은 작업 프로세스 재시작으로 한 번 끊겨 처음부터 다시 실행). 원장 합계 $114.61, 토큰 단가 기준 약 $33.4.
+- 집계·읽는 법: [FIXED_BENCHMARK](../../scorecards/FIXED_BENCHMARK.md) 10절 '온라인 첫 측정'. 2판 4행은 `fixed_benchmark_log.jsonl`에 `series: online`으로 남겼다(`--show`의 '계열' 칸).
+- 정리(6절): 세트 사본·`.sealed_out/`·결과 JSON·원장 DB·worktree를 지웠다. 측정 전용 Drive 폴더는 그대로 둔다.
