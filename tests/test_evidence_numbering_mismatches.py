@@ -1,199 +1,198 @@
-# -*- coding: utf-8 -*-
-"""서증 번호 및 목록 불일치(EVI-NUM) 3대 변형 검출 단위 시험.
+"""서증 번호 및 목록 불일치(EVI-NUM) 구조 기반 검증 시험.
 
-민사소송법 제277조 및 민사소송규칙 제105조에 따른 서증 정합성 검증.
-- 1. 별지 목록 대조 불일치 (별지 제출목록에 없는 호증 원용)
-- 2. 본문-제출목록 서증명 불일치
-- 3. 연속 목록 중간 호증 누락 (순번 누락)
-
-규정 준수:
-- 실제 파이프라인 진입점 시험 1건 이상 (개수 및 내용 검증)
-- 변형별 양성 3건, 대조군 3건
-- 사건 고유값(사건번호, 금액, 당사자명), 서면 문구 하드코딩 없음
+실제 진입점(VerificationPipeline.run), 다른 표현 양성 5건(축 1~4),
+대조군 4건(완결 선언 없음, 기제출 원용, 가지번호 묶음, 통상 정상 서면) 포함.
+사건 고유 리터럴 하드코딩 금지 규칙 준수.
 """
 from __future__ import annotations
 
-import timeit
-from packages.common.enums import EvidenceGrade, FindingType, Severity, VerificationStatus
+import pytest
+
+from packages.common.config import reset_settings
+from packages.common.enums import FindingType, EvidenceGrade
 from packages.common.schemas import Block, NormalizedDocument, Page
-from packages.claim_engine.evidence_consistency import (
-    check_evidence_numbering_mismatches,
-    ANNEX_LIST_RE,
-    ANNEX_CLAIM_RE,
-    BODY_EVI_RE,
-    LIST_CONFIRM_RE,
-    INTERMEDIATE_OMIT_RE,
+from packages.claim_engine.evidence_consistency import check_evidence_numbering_mismatches
+from packages.verification_engine.pipeline import (
+    DocumentInput,
+    ProjectContext,
+    VerificationPipeline,
 )
 
 
-def _make_doc(text: str, doc_id: str = "DOC-NUM-01") -> NormalizedDocument:
-    lines = text.strip().split("\n")
-    blocks = [
-        Block(
-            block_id=f"b_{i}",
-            text=line,
-            page=1,
-            block_type="paragraph",
-            source_layer="visible_text",
-            visible=True,
-        )
-        for i, line in enumerate(lines)
-    ]
-    page = Page(page_number=1, blocks=blocks)
+def _make_doc(lines: list[str], doc_id: str = "test-doc") -> NormalizedDocument:
+    """테스트용 NormalizedDocument 헬퍼 (한국어 주석)."""
+    blocks = [Block(block_id=f"b{i}", text=line, page=1) for i, line in enumerate(lines)]
     return NormalizedDocument(
         document_id=doc_id,
         filename=f"{doc_id}.pdf",
         mime_type="application/pdf",
         sha256="0" * 64,
-        pages=[page],
+        pages=[Page(page_number=1, blocks=blocks)],
     )
 
 
-# --- 1항: 실제 파이프라인 진입점 시험 ---------------------------------------------
-def test_pipeline_entrypoint_evidence_numbering_mismatches():
+# --- 1. 실제 진입점 파이프라인 시험 (VerificationPipeline.run) ---
+def test_pipeline_entrypoint_evidence_numbering_mismatches(tmp_path, monkeypatch):
+    """실제 파이프라인 진입점(VerificationPipeline.run)을 통한 EVI-NUM 검출 검증."""
     sample_text = (
-        "소장\n"
-        "1. 청구 원인 및 증거 방법\n"
-        "별지 제출목록을 확정한다: 갑 제10호증 차용증, 갑 제11호증 입금증.\n"
-        "증거요약에서는 별지에 기재된 갑 제12호증 거래명세표를 근거로 대여 사실을 주장한다.\n"
-        "2. 거래 내역 검토\n"
-        "본문의 입증자료는 갑 제20호증 물품인수증이다.\n"
-        "제출목록에서 갑 제20호증의 자료명은 물품공급계약서로 확정한다.\n"
-        "3. 추가 소명 자료\n"
-        "연속된 세 자료 전부를 아래에 나열한다: 갑 제31호증 영수증, 갑 제33호증 견적서.\n"
-        "중간 자료인 갑 제32호증 납품확인서도 제출목록에 적었다.\n"
+        "원고는 피고의 의무 불이행을 입증하기 위하여 별지 증거목록에 없는 갑 제6호증 발주서를 근거로 주장합니다.\n"
+        "입증방법: 갑 제1호증 계약서, 갑 제2호증 내역서 (이 서면의 제출 증거 전부)"
     )
-    doc = _make_doc(sample_text, doc_id="DOC-ENTRY-01")
-    findings = check_evidence_numbering_mismatches(doc)
+    doc_path = tmp_path / "brief_num_mismatch.txt"
+    doc_path.write_text(sample_text, encoding="utf-8")
 
-    assert len(findings) == 3, f"예상 finding 3건 불일치: {len(findings)}건 검출"
+    with monkeypatch.context() as patch:
+        patch.setenv("LV_ALLOW_NETWORK", "0")
+        patch.setenv("LV_DATA_DIR", str(tmp_path / "data"))
+        reset_settings()
+        try:
+            pipeline = VerificationPipeline()
+            result = pipeline.run(
+                "pipeline-num-run",
+                ProjectContext("pipeline-num-project"),
+                [DocumentInput("brief-num-1", str(doc_path), doc_path.name)],
+            )
+        finally:
+            reset_settings()
 
-    # 1. 별지대조 불일치 검증
-    annex_findings = [f for f in findings if f.confidence_features.get("defect_code") == "ANNEX_LIST_MISMATCH"]
-    assert len(annex_findings) == 1
-    f_annex = annex_findings[0]
-    assert f_annex.type == FindingType.EVIDENCE_LIST_MISMATCH
-    assert f_annex.evidence_grade == EvidenceGrade.B
-    assert "갑 제12호증" in f_annex.title
-    assert "거래명세표" in f_annex.title
-    assert f_annex.evidence[0].excerpt == "갑 제12호증 거래명세표"
+    assert not result.errors
+    assert len(result.documents) == 1
+    doc_result = result.documents[0]
 
-    # 2. 본문-목록 명칭 불일치 검증
-    name_findings = [f for f in findings if f.confidence_features.get("defect_code") == "BODY_LIST_NAME_MISMATCH"]
-    assert len(name_findings) == 1
-    f_name = name_findings[0]
-    assert f_name.type == FindingType.EVIDENCE_LIST_MISMATCH
-    assert "갑 제20호증" in f_name.title
-    assert "물품인수증" in f_name.title
-    assert "물품공급계약서" in f_name.title
-    assert f_name.evidence[0].excerpt == "갑 제20호증 물품인수증"
-
-    # 3. 순번 누락 검증
-    omit_findings = [f for f in findings if f.confidence_features.get("defect_code") == "INTERMEDIATE_EXHIBIT_OMITTED"]
-    assert len(omit_findings) == 1
-    f_omit = omit_findings[0]
-    assert f_omit.type == FindingType.EVIDENCE_LIST_MISMATCH
-    assert "갑 제32호증" in f_omit.title
-    assert "납품확인서" in f_omit.title
-    assert f_omit.evidence[0].excerpt == "갑 제32호증 납품확인서"
+    num_findings = [
+        f for f in doc_result.findings
+        if f.type == FindingType.EVIDENCE_LIST_MISMATCH
+        and f.confidence_features.get("defect_code") == "EVIDENCE_REFERENCE_MISSING"
+    ]
+    assert len(num_findings) >= 1
+    finding = num_findings[0]
+    assert finding.evidence_grade == EvidenceGrade.B
+    assert "갑 제6호증" in finding.title or "갑 제6호증" in finding.detail
 
 
-# --- 변형별 양성 3건 -------------------------------------------------------------
-def test_positive_annex_list_mismatch():
-    """양성 1: 별지 목록에 없는 호증을 별지 기재 서증으로 원용"""
-    text = (
-        "별지 제출목록을 확정한다: 을 제5호증 영수증, 을 제6호증 세금계산서.\n"
-        "별지에 기재된 을 제7호증 입금확인서를 근거로 지급 사실을 주장한다.\n"
-    )
-    doc = _make_doc(text, doc_id="DOC-POS-01")
+# --- 2. 양성 시험 1 (축 1: 완결 목록에 없는 호증 번호 인용) ---
+def test_positive_complete_list_missing_exhibit():
+    """축 1: 완결을 선언한 증거목록에 없는 호증을 본문에서 인용."""
+    doc = _make_doc([
+        "원고는 갑 제12호증 배수 점검일지로 피고의 과실을 입증합니다.",
+        "증거목록: 갑 제1호증 ~ 갑 제11호증, 이 서면의 제출 증거 전부",
+    ])
     findings = check_evidence_numbering_mismatches(doc)
     assert len(findings) == 1
-    assert findings[0].confidence_features.get("defect_code") == "ANNEX_LIST_MISMATCH"
-    assert "을 제7호증" in findings[0].title
-    assert "입금확인서" in findings[0].title
+    f = findings[0]
+    assert f.confidence_features.get("defect_code") == "EVIDENCE_REFERENCE_MISSING"
+    assert "갑 제12호증" in f.title
 
 
-def test_positive_body_list_name_mismatch():
-    """양성 2: 본문 입증자료명과 제출목록 확정 자료명이 상이"""
-    text = (
-        "본문의 입증자료는 갑 제15호증 근무일지이다.\n"
-        "제출목록에서 갑 제15호증의 자료명은 급여대장으로 확정한다.\n"
-    )
-    doc = _make_doc(text, doc_id="DOC-POS-02")
+# --- 3. 양성 시험 2 (축 2: 연속 범위 선언 후 중간 누락) ---
+def test_positive_continuous_range_gap():
+    """축 2: 을 제1호증부터 제4호증까지 연속 제출 선언 후 중간 번호 누락."""
+    doc = _make_doc([
+        "피고는 을 제1호증부터 을 제4호증까지 빠짐없이 연속 제출하며 본건 사실관계를 소명합니다.",
+        "입증방법",
+        "1. 을 제1호증 견적서",
+        "2. 을 제2호증 세금계산서",
+        "3. 을 제4호증 출고확인서",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    assert len(findings) >= 1
+    gap_findings = [f for f in findings if f.confidence_features.get("defect_code") == "CONTINUOUS_RANGE_GAP"]
+    assert len(gap_findings) == 1
+    assert "을 제3호증" in gap_findings[0].title
+
+
+# --- 4. 양성 시험 3 (축 3: 본문·목록 동일 자료명의 호증 번호 불일치) ---
+def test_positive_mismatched_exhibit_number_same_name():
+    """축 3: 동일한 자료명(운반 사진)이 본문과 목록에서 서로 다른 호증 번호로 매핑됨."""
+    doc = _make_doc([
+        "본문에서는 갑 제22호증 운반 사진에 나타난 바와 같이 하자 상태가 심각합니다.",
+        "입증방법",
+        "1. 갑 제23호증 운반 사진",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    assert len(findings) >= 1
+    name_mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(name_mismatches) == 1
+    assert "운반 사진" in name_mismatches[0].title
+    assert "갑 제22호증" in name_mismatches[0].detail and "갑 제23호증" in name_mismatches[0].detail
+
+
+# --- 5. 양성 시험 4 (축 1: 별지 목록 밖 번호 원용) ---
+def test_positive_annex_missing_reference():
+    """축 1: 별지 증거목록에 없는 호증을 원용."""
+    doc = _make_doc([
+        "원고는 별지 증거목록에 없는 갑 제6호증 발주서를 근거로 납품이 완료되었다고 주장합니다.",
+        "별지 증거목록 전부: 갑 제1호증, 갑 제2호증",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    assert len(findings) >= 1
+    annex_missing = [f for f in findings if f.confidence_features.get("defect_code") == "EVIDENCE_REFERENCE_MISSING"]
+    assert len(annex_missing) >= 1
+    assert "갑 제6호증" in annex_missing[0].title
+
+
+# --- 6. 양성 시험 5 (축 4: 선언 개수와 실제 목록 수 불일치) ---
+def test_positive_count_mismatch():
+    """축 4: 증거목록에서 총 4개 선언했으나 실제 목록은 3개."""
+    doc = _make_doc([
+        "입증방법: 총 4개 서증을 제출합니다.",
+        "1. 갑 제1호증 계약서",
+        "2. 갑 제2호증 영수증",
+        "3. 갑 제3호증 통장사본",
+    ])
     findings = check_evidence_numbering_mismatches(doc)
     assert len(findings) == 1
-    assert findings[0].confidence_features.get("defect_code") == "BODY_LIST_NAME_MISMATCH"
-    assert "갑 제15호증" in findings[0].title
-    assert "근무일지" in findings[0].title
+    f = findings[0]
+    assert f.confidence_features.get("defect_code") == "EXHIBIT_COUNT_MISMATCH"
+    assert f.confidence_features.get("declared_count") == 4
+    assert f.confidence_features.get("actual_count") == 3
 
 
-def test_positive_intermediate_exhibit_omitted():
-    """양성 3: 연속 목록 표방 시 중간 호증 누락"""
-    text = (
-        "연속된 세 자료를 제출합니다: 갑 제1호증 계약서, 갑 제3호증 확인서.\n"
-        "중간 자료인 갑 제2호증 시방서도 제출목록에 적었다.\n"
-    )
-    doc = _make_doc(text, doc_id="DOC-POS-03")
+# --- 7. 대조군 시험 1 (완결 선언 없는 부분 목록 정상 보호) ---
+def test_control_incomplete_list_not_flagged():
+    """대조군 1: 완결 선언 없는 목록에서 본문이 다른 호증을 인용해도 결함 아님 (정상 서면)."""
+    doc = _make_doc([
+        "원고는 갑 제1호증 및 갑 제5호증을 참조하여 변론을 준비하였습니다.",
+        "입증방법",
+        "1. 갑 제1호증 품의서",
+    ])
     findings = check_evidence_numbering_mismatches(doc)
-    assert len(findings) == 1
-    assert findings[0].confidence_features.get("defect_code") == "INTERMEDIATE_EXHIBIT_OMITTED"
-    assert "갑 제2호증" in findings[0].title
-    assert "시방서" in findings[0].title
+    assert len(findings) == 0, f"완결 선언 없는 부분 목록은 결함으로 잡히지 않아야 함: {findings}"
 
 
-# --- 대조군 3건 -----------------------------------------------------------------
-def test_control_annex_list_consistent():
-    """대조군 1: 별지 목록에 정상 포함된 호증 원용"""
-    text = (
-        "별지 제출목록을 확정한다: 갑 제1호증 계약서, 갑 제2호증 영수증.\n"
-        "별지에 기재된 갑 제2호증 영수증을 근거로 지급 사실을 주장한다.\n"
-    )
-    doc = _make_doc(text, doc_id="DOC-CTRL-01")
+# --- 8. 대조군 시험 2 (이전 제출 호증 재인용 정상 보호) ---
+def test_control_prior_submission_reference():
+    """대조군 2: 앞서 제출한 호증 재인용은 목록에 없더라도 규칙 레벨에서 정상 보호."""
+    doc = _make_doc([
+        "원고는 앞서 제출한 갑 제2호증 영수증에 기재된 금액을 다시 원용합니다.",
+        "증거목록 (이 서면의 제출 증거 전부)",
+        "1. 갑 제5호증 점검표",
+    ])
     findings = check_evidence_numbering_mismatches(doc)
-    assert len(findings) == 0, f"정상 별지 인용에서 오탐 발생: {findings}"
+    assert len(findings) == 0, f"앞서 제출한 호증 재인용은 제외되어야 함: {findings}"
 
 
-def test_control_body_list_name_consistent():
-    """대조군 2: 본문과 제출목록의 서증명이 동일하게 일치"""
-    text = (
-        "본문의 입증자료는 갑 제10호증 거래내역서이다.\n"
-        "제출목록에서 갑 제10호증의 자료명은 거래내역서로 확정한다.\n"
-    )
-    doc = _make_doc(text, doc_id="DOC-CTRL-02")
+# --- 9. 대조군 시험 3 (정상적인 가지번호 묶음 제출 정상 보호) ---
+def test_control_normal_sub_numbering():
+    """대조군 3: 정상적인 가지번호(갑 제1호증의 1, 2) 묶음 제출은 결함 아님."""
+    doc = _make_doc([
+        "원고는 갑 제1호증의 1 및 갑 제1호증의 2를 제출합니다.",
+        "입증방법",
+        "1. 갑 제1호증의 1 사진",
+        "2. 갑 제1호증의 2 사진",
+    ])
     findings = check_evidence_numbering_mismatches(doc)
-    assert len(findings) == 0, f"일치하는 서증명에서 오탐 발생: {findings}"
+    assert len(findings) == 0
 
 
+# --- 10. 대조군 시험 4 (통상 정상 소송서면) ---
 def test_control_normal_pleading_no_defects():
-    """대조군 3: 일반 소송서면 본문 서술 (규칙 어구 없음)"""
-    text = (
-        "준비서면\n"
-        "1. 원고의 주장에 대하여\n"
-        "원고는 피고가 공사대금을 미지급하였다고 주장하나 이는 사실과 다릅니다.\n"
-        "피고는 공사 완료 확인 후 약정된 대금을 전액 계좌로 송금하였습니다.\n"
-        "이에 관한 객관적 자료를 추후 입증방법으로 제출하겠습니다.\n"
-    )
-    doc = _make_doc(text, doc_id="DOC-CTRL-03")
+    """대조군 4: 번호 불일치가 없는 통상 소송서면."""
+    doc = _make_doc([
+        "원고는 갑 제1호증 계약서에 따라 피고에게 이행을 촉구하였습니다.",
+        "입증방법",
+        "1. 갑 제1호증 계약서",
+        "2. 갑 제2호증 내용증명",
+    ])
     findings = check_evidence_numbering_mismatches(doc)
-    assert len(findings) == 0, f"일반 서면 서술에서 오탐 발생: {findings}"
-
-
-# --- 2항: 정규식 성능비 검증 (< 8.0x, 4배 < 1.0s) -------------------------------
-def _check_perf(name: str, pattern, sample_line: str):
-    text_1x = sample_line * 10
-    text_4x = sample_line * 40
-    runs = 50
-    t1 = min(timeit.repeat(lambda: list(pattern.finditer(text_1x)), number=runs, repeat=3)) / runs
-    t4 = min(timeit.repeat(lambda: list(pattern.finditer(text_4x)), number=runs, repeat=3)) / runs
-    t1_adj = max(t1, 0.0001)
-    ratio = t4 / t1_adj
-    assert ratio < 8.0, f"{name} 정규식 성능비 초과: {ratio:.2f} >= 8.0"
-    assert t4 < 1.0, f"{name} 정규식 4배 수행시간 초과: {t4:.4f}s >= 1.0s"
-
-
-def test_regex_performance():
-    _check_perf("ANNEX_LIST_RE", ANNEX_LIST_RE, "별지 제출목록을 확정한다: 갑 제1호증 발송표, 갑 제2호증 분류표.\n")
-    _check_perf("ANNEX_CLAIM_RE", ANNEX_CLAIM_RE, "별지에 기재된 갑 제3호증 도착표를 근거로 도착 사실을 주장한다.\n")
-    _check_perf("BODY_EVI_RE", BODY_EVI_RE, "본문의 입증자료는 갑 제4호증 송금내역이다.\n")
-    _check_perf("LIST_CONFIRM_RE", LIST_CONFIRM_RE, "제출목록에서 갑 제4호증의 자료명은 통화내역으로 확정한다.\n")
-    _check_perf("INTERMEDIATE_OMIT_RE", INTERMEDIATE_OMIT_RE, "중간 자료인 갑 제5호증 인수증도 제출목록에 적었다.\n")
+    assert len(findings) == 0

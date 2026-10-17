@@ -676,118 +676,253 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
     return out
 
 
-# --- 서증 번호 및 목록 불일치(EVI-NUM) ----------------------------------------------
-# 1. 별지 목록 대조 불일치 (별지 제출목록에 없는 호증을 별지 기재 서증으로 원용)
-ANNEX_LIST_RE = re.compile(r"별지\s*제출목록(?:을\s*확정한다)?\s*[:：]\s*(?P<list_text>[^\n.]+)")
-ANNEX_CLAIM_RE = re.compile(
-    r"별지에\s*기재된\s*(?P<label>[갑을병정]\s*제\s*\d+\s*호증(?:의\s*\d+)?)\s+"
-    r"(?P<name>[^\n,.:;]+?)"
-    r"(?=(?:를|을|이|가|은|는|도|에|으로|로)\s+(?:근거로|참조|원용|주장))"
-)
+# --- 서증 번호 및 목록 불일치(EVI-NUM) 구조 기반 검출 ----------------------------------
 
-# 2. 본문-제출목록 서증명 불일치
-BODY_EVI_RE = re.compile(
-    r"본문의\s*입증자료는\s*(?P<label>[갑을병정]\s*제\s*\d+\s*호증(?:의\s*\d+)?)\s+"
-    r"(?P<name>[^\n,.:;]+?)(?:이다|입니다|\.)"
+_PRIOR_SUBMISSION_RE = re.compile(r"(?:이미|앞서|종전(?:\s*에)?|기|제?\s*\d+\s*차\s*준비서면에서?)\s*제출(?:한|된|하여)?")
+_CONTINUOUS_RANGE_RE = re.compile(
+    r"(?P<p1>[갑을병정])\s*제\s*(?P<n1>\d+)\s*호증부터\s*(?:(?P<p2>[갑을병정])\s*제\s*)?(?P<n2>\d+)\s*호증까지"
+    r"(?:\s*(?P<mod>빠짐없이|모두|전부|일체|연속))?"
 )
-LIST_CONFIRM_RE = re.compile(
-    r"제출목록(?:에서)?\s*(?P<label>[갑을병정]\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:의\s*자료명은|\s*자료명은)\s*"
-    r"(?P<name>[^\n,.:;]+?)(?:으로|로)\s*확정"
+_COMPLETE_DECLARATION_RE = re.compile(
+    r"(?:증거목록|입증방법|제출\s*증거|제출목록|별지\s*증거목록|별지\s*제출목록)[^.\n]{0,30}(?:전부|모두|일체|빠짐없이|추가\s*제출\s*없음|확정)"
+    r"|(?:이\s*서면의\s*제출\s*증거\s*전부|별지\s*증거목록\s*전부|별지\s*제출목록\s*전부)"
+    r"|별지\s*(?:증거|제출)?목록에\s*없는"
 )
-
-# 3. 연속 목록 중간 호증 누락 (순번 누락)
-INTERMEDIATE_OMIT_RE = re.compile(
-    r"중간\s*자료인\s*(?P<label>[갑을병정]\s*제\s*\d+\s*호증(?:의\s*\d+)?)\s+"
-    r"(?P<name>[^\n,.:;]+?)(?:도|를|은|이)\s*제출목록"
+_COUNT_DECLARATION_RE = re.compile(
+    r"(?:증거목록|입증방법|제출\s*증거|제출목록)[^.\n]{0,30}(?:총|모두)\s*(?P<count>\d+)\s*개"
+    r"|(?P<count2>\d+)\s*개의\s*(?:서증|증거)(?:를|을)?\s*제출"
 )
 
 
-def check_evidence_numbering_mismatches(doc: NormalizedDocument) -> List[Finding]:
-    """소송서면 본문과 증거 목록(별지 목록 포함) 사이의 호증 번호 및 명칭 불일치를 검출한다 (EVI-NUM).
+def check_evidence_numbering_mismatches(
+    doc: NormalizedDocument, exhibits: Optional[Sequence[Dict[str, Any]]] = None
+) -> List[Finding]:
+    """서증 목록 구역(exhibit_rows)과 본문 호증 인용(parse_exhibits) 사이의 구조적 불일치를 검출한다 (EVI-NUM).
 
-    민사소송법 제277조(서증의 인용과 첨부) 및 민사소송규칙 제105조에 따라, 서면 본문에서 호증을
-    인용할 때 목록과의 서증명 불일치, 별지 목록 미포함 호증 원용, 연속 목록 순번 누락을 검출한다.
+    1. 완결 선언 목록에 없는 호증 번호 인용 (축 1) -> CONTRADICTED·B
+    2. 연속 범위 선언 후 중간 호증 누락 (축 2) -> CONTRADICTED·B
+    3. 본문과 목록에서 동일 서증명에 서로 다른 호증 번호 부여 (축 3) -> SUSPICIOUS·B
+    4. 선언 개수와 실제 목록 수 불일치 (축 4) -> CONTRADICTED·B
     """
+    if exhibits is None:
+        exhibits = exhibit_rows(doc)
     text = build_reading_text(doc).text
-    lines = text.split("\n")
     out: List[Finding] = []
 
-    # 1. 별지 목록 대조 불일치
-    for i, line in enumerate(lines):
-        m_list = ANNEX_LIST_RE.search(line)
-        if m_list:
-            list_refs = parse_exhibits(m_list.group("list_text"))
-            list_keys = {(r["party"], r["number"]) for r in list_refs}
-            window = "\n".join(lines[i:i + 4])
-            for m_claim in ANNEX_CLAIM_RE.finditer(window):
-                claim_refs = parse_exhibits(m_claim.group("label"))
-                if claim_refs:
-                    ref = claim_refs[0]
-                    if (ref["party"], ref["number"]) not in list_keys:
-                        lbl = ref["label"]
-                        nm = m_claim.group("name").strip()
-                        out.append(_finding(
-                            doc, FindingType.EVIDENCE_LIST_MISMATCH, EvidenceGrade.B, Severity.MEDIUM,
-                            f"별지 증거목록에 없는 호증이 별지 기재 서증으로 원용되었다: {lbl} {nm}",
-                            f"별지 제출목록에 포함되지 않은 {lbl}을 별지에 기재된 증거라고 주장하였다.",
-                            f"{lbl} {nm}",
-                            features={"rule_id": "EVI.ANNEX_LIST_MISMATCH", "defect_code": "ANNEX_LIST_MISMATCH",
-                                      "exhibit": lbl, "name": nm}
-                        ))
+    # 목록의 호증 정보 집합 구성
+    list_keys = set()
+    list_name_by_key = {}
+    for row in exhibits:
+        party = row.get("party")
+        num = row.get("number")
+        if party and num is not None:
+            key = (party, num)
+            list_keys.add(key)
+            name = (row.get("name") or "").strip()
+            if name:
+                norm_name = re.sub(r"\s+", "", name)
+                list_name_by_key[key] = (name, norm_name)
 
-    # 2. 본문-제출목록 서증명 불일치
-    for i in range(len(lines)):
-        window = "\n".join(lines[i:i + 5])
-        m_body = BODY_EVI_RE.search(window)
-        m_list = LIST_CONFIRM_RE.search(window)
-        if m_body and m_list:
-            body_ref = parse_exhibits(m_body.group("label"))
-            list_ref = parse_exhibits(m_list.group("label"))
-            if body_ref and list_ref and (body_ref[0]["party"], body_ref[0]["number"]) == (list_ref[0]["party"], list_ref[0]["number"]):
-                b_name = m_body.group("name").strip()
-                l_name = m_list.group("name").strip()
-                if b_name != l_name:
-                    lbl = body_ref[0]["label"]
-                    dup = any(f.confidence_features.get("exhibit") == lbl and
-                              f.confidence_features.get("defect_code") == "BODY_LIST_NAME_MISMATCH"
-                              for f in out)
+    # 인라인/한 줄 증거목록 및 범위 표기 보강
+    for line in text.split("\n"):
+        if re.search(r"(?:증거목록|입증방법|제출\s*증거|제출목록|별지\s*(?:증거|제출)?목록)", line):
+            for rm in re.finditer(
+                r"(?P<p>[갑을병정])\s*제\s*(?P<n1>\d+)\s*호증\s*(?:~|내지|-)\s*(?:[갑을병정]\s*제\s*)?(?P<n2>\d+)\s*호증",
+                line,
+            ):
+                p = rm.group("p")
+                n1 = int(rm.group("n1"))
+                n2 = int(rm.group("n2"))
+                for k in range(n1, n2 + 1):
+                    list_keys.add((p, k))
+            for ref in parse_exhibits(line):
+                k = (ref.get("party"), ref.get("number"))
+                if k[0] and k[1] is not None:
+                    list_keys.add(k)
+
+    # 1. 완결 선언 목록과 본문 번호 대조 (축 1)
+    has_completion = bool(_COMPLETE_DECLARATION_RE.search(text))
+    missing_annex_match = re.search(
+        r"별지\s*(?:증거|제출)?목록에\s*없는\s*(?P<exhibit>[갑을병정]\s*제\s*\d+\s*호증(?:의\s*\d+)?)",
+        text,
+    )
+
+    if missing_annex_match:
+        m_ref = parse_exhibits(missing_annex_match.group("exhibit"))
+        if m_ref:
+            ref = m_ref[0]
+            lbl = ref["label"]
+            ctx_start = max(0, text.rfind(".", 0, missing_annex_match.start()) + 1)
+            ctx_end = text.find(".", missing_annex_match.end())
+            ctx_end = len(text) if ctx_end == -1 else ctx_end + 1
+            excerpt = text[ctx_start:ctx_end].strip()
+            out.append(
+                _finding(
+                    doc,
+                    FindingType.EVIDENCE_LIST_MISMATCH,
+                    EvidenceGrade.B,
+                    Severity.MEDIUM,
+                    f"증거목록에 없는 호증이 서면에 원용되었다: {lbl}",
+                    f"별지 증거목록에 포함되지 않은 호증 {lbl}을 서면에서 원용하였다.",
+                    excerpt or lbl,
+                    features={
+                        "rule_id": "EVI.EVIDENCE_REFERENCE_MISSING",
+                        "defect_code": "EVIDENCE_REFERENCE_MISSING",
+                        "exhibit": lbl,
+                    },
+                )
+            )
+
+    if has_completion and list_keys:
+        for sentence in re.split(r"[.\n]+", text):
+            # 이전 제출 호증 재인용 제외 (규칙 레벨 제외)
+            if _PRIOR_SUBMISSION_RE.search(sentence):
+                continue
+            # 서증 목록/입증방법 자체 문장은 제외
+            if any(h in sentence for h in ("증거목록", "입증방법", "제출 증거", "첨부서류")):
+                continue
+            for ref in parse_exhibits(sentence):
+                key = (ref.get("party"), ref.get("number"))
+                if key[0] and key[1] is not None and key not in list_keys:
+                    lbl = ref["label"]
+                    if not any(f.confidence_features.get("exhibit") == lbl for f in out):
+                        out.append(
+                            _finding(
+                                doc,
+                                FindingType.EVIDENCE_LIST_MISMATCH,
+                                EvidenceGrade.B,
+                                Severity.MEDIUM,
+                                f"완결 목록에 없는 호증 번호가 인용되었다: {lbl}",
+                                f"증거 목록의 완결을 선언하였으나, 목록에 포함되지 않은 {lbl}이 본문에 원용되었다.",
+                                sentence.strip()[:200],
+                                features={
+                                    "rule_id": "EVI.EVIDENCE_REFERENCE_MISSING",
+                                    "defect_code": "EVIDENCE_REFERENCE_MISSING",
+                                    "exhibit": lbl,
+                                },
+                            )
+                        )
+
+    # 2. 연속 범위 선언과 중간 번호 누락 (축 2)
+    for m in _CONTINUOUS_RANGE_RE.finditer(text):
+        p1 = m.group("p1")
+        p2 = m.group("p2") or p1
+        if p1 != p2:
+            continue
+        n1 = int(m.group("n1"))
+        n2 = int(m.group("n2"))
+        if n2 > n1 + 1:
+            missing_nums = [k for k in range(n1 + 1, n2) if (p1, k) not in list_keys]
+            if missing_nums:
+                missing_lbl = f"{p1} 제{missing_nums[0]}호증"
+                ctx_start = max(0, text.rfind(".", 0, m.start()) + 1)
+                ctx_end = text.find(".", m.end())
+                ctx_end = len(text) if ctx_end == -1 else ctx_end + 1
+                excerpt = text[ctx_start:ctx_end].strip()
+                if not any(
+                    f.confidence_features.get("defect_code") == "CONTINUOUS_RANGE_GAP"
+                    and f.confidence_features.get("exhibit") == missing_lbl
+                    for f in out
+                ):
+                    out.append(
+                        _finding(
+                            doc,
+                            FindingType.EVIDENCE_LIST_MISMATCH,
+                            EvidenceGrade.B,
+                            Severity.MEDIUM,
+                            f"연속 제출 선언 내 중간 호증이 목록에서 누락되었다: {missing_lbl}",
+                            f"{p1} 제{n1}호증부터 제{n2}호증까지 연속 제출을 선언하였으나 중간의 {missing_lbl}이 목록에 없다.",
+                            excerpt or missing_lbl,
+                            features={
+                                "rule_id": "EVI.CONTINUOUS_RANGE_GAP",
+                                "defect_code": "CONTINUOUS_RANGE_GAP",
+                                "exhibit": missing_lbl,
+                                "range": f"{p1} 제{n1}호증 ~ 제{n2}호증",
+                            },
+                        )
+                    )
+
+    # 3. 본문·목록 동일 자료명의 호증 번호 불일치 (축 3)
+    body_exhibit_pattern = re.compile(
+        r"(?P<label>[갑을병정]\s*제\s*\d+\s*호증(?:의\s*\d+)?)\s*(?P<rest>[^\n.,;:]{2,40})"
+    )
+    for m in body_exhibit_pattern.finditer(text):
+        lbl = m.group("label")
+        rest = m.group("rest").strip()
+        window = text[max(0, m.start() - 30) : min(len(text), m.end() + 30)]
+        if _PRIOR_SUBMISSION_RE.search(window):
+            continue
+        body_refs = parse_exhibits(lbl)
+        if not body_refs:
+            continue
+        body_key = (body_refs[0]["party"], body_refs[0]["number"])
+        rest_norm = re.sub(r"\s+", "", rest)
+
+        for list_key, (l_name, l_norm) in list_name_by_key.items():
+            if body_key != list_key and body_key[0] == list_key[0] and len(l_norm) >= 2:
+                if rest_norm.startswith(l_norm):
+                    list_lbl = f"{list_key[0]} 제{list_key[1]}호증"
+                    dup = any(
+                        f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"
+                        and f.confidence_features.get("body_exhibit") == lbl
+                        for f in out
+                    )
                     if not dup:
-                        out.append(_finding(
-                            doc, FindingType.EVIDENCE_LIST_MISMATCH, EvidenceGrade.B, Severity.MEDIUM,
-                            f"본문과 증거목록의 서증명이 다르다: {lbl} — 본문 '{b_name}', 목록 '{l_name}'",
-                            f"같은 호증 {lbl}에 대해 본문과 증거 목록이 서로 다른 자료명을 기재하였다.",
-                            f"{lbl} {b_name}",
-                            features={"rule_id": "EVI.BODY_LIST_NAME_MISMATCH", "defect_code": "BODY_LIST_NAME_MISMATCH",
-                                      "exhibit": lbl, "body_name": b_name, "list_name": l_name}
-                        ))
+                        out.append(
+                            _finding(
+                                doc,
+                                FindingType.EVIDENCE_LIST_MISMATCH,
+                                EvidenceGrade.B,
+                                Severity.MEDIUM,
+                                f"본문과 증거목록의 호증 번호가 일치하지 않는다: 본문 '{lbl} {l_name}', 목록 '{list_lbl} {l_name}'",
+                                f"같은 서증명 '{l_name}'에 대해 본문에서는 {lbl}, 증거목록에서는 {list_lbl}으로 서로 다른 번호를 기재하였다.",
+                                f"본문: {lbl} {l_name} ↔ 목록: {list_lbl} {l_name}",
+                                features={
+                                    "rule_id": "EVI.EXHIBIT_NUMBER_NAME_MISMATCH",
+                                    "defect_code": "EXHIBIT_NUMBER_NAME_MISMATCH",
+                                    "body_exhibit": lbl,
+                                    "list_exhibit": list_lbl,
+                                    "name": l_name,
+                                },
+                            )
+                        )
 
-    # 3. 연속 목록 중간 호증 누락 (순번 누락)
-    for line in lines:
-        m_omit = INTERMEDIATE_OMIT_RE.search(line)
-        if m_omit:
-            omit_ref = parse_exhibits(m_omit.group("label"))
-            if omit_ref:
-                lbl = omit_ref[0]["label"]
-                nm = m_omit.group("name").strip()
-                dup = any(f.confidence_features.get("exhibit") == lbl and
-                          f.confidence_features.get("defect_code") == "INTERMEDIATE_EXHIBIT_OMITTED"
-                          for f in out)
-                if not dup:
-                    out.append(_finding(
-                        doc, FindingType.EVIDENCE_LIST_MISMATCH, EvidenceGrade.B, Severity.MEDIUM,
-                        f"본문이 언급한 중간 증거가 증거 목록에서 누락되었다: {lbl} {nm}",
-                        f"연속된 증거 목록이라고 하면서 중간 호증인 {lbl} {nm}이 목록에서 빠졌다.",
-                        f"{lbl} {nm}",
-                        features={"rule_id": "EVI.INTERMEDIATE_EXHIBIT_OMITTED", "defect_code": "INTERMEDIATE_EXHIBIT_OMITTED",
-                                  "exhibit": lbl, "name": nm}
-                    ))
+    # 4. 선언 개수와 실제 목록 수 불일치 (축 4)
+    m_count = _COUNT_DECLARATION_RE.search(text)
+    if m_count and exhibits:
+        declared_str = m_count.group("count") or m_count.group("count2")
+        if declared_str:
+            declared_cnt = int(declared_str)
+            actual_cnt = len(list_keys)
+            if declared_cnt != actual_cnt and declared_cnt > 0 and actual_cnt > 0:
+                ctx_start = max(0, text.rfind(".", 0, m_count.start()) + 1)
+                ctx_end = text.find(".", m_count.end())
+                ctx_end = len(text) if ctx_end == -1 else ctx_end + 1
+                excerpt = text[ctx_start:ctx_end].strip()
+                out.append(
+                    _finding(
+                        doc,
+                        FindingType.EVIDENCE_LIST_MISMATCH,
+                        EvidenceGrade.B,
+                        Severity.MEDIUM,
+                        f"증거 목록 선언 개수({declared_cnt}개)와 실제 서증 수({actual_cnt}개)가 일치하지 않는다",
+                        f"증거 목록에서 총 {declared_cnt}개 제출을 선언하였으나 실제 목록에는 {actual_cnt}개만 기재되었다.",
+                        excerpt or f"선언 {declared_cnt}개 ↔ 실제 {actual_cnt}개",
+                        features={
+                            "rule_id": "EVI.EXHIBIT_COUNT_MISMATCH",
+                            "defect_code": "EXHIBIT_COUNT_MISMATCH",
+                            "declared_count": declared_cnt,
+                            "actual_count": actual_cnt,
+                        },
+                    )
+                )
 
     return out
 
 
 def check_document(doc: NormalizedDocument) -> List[Finding]:
     exhibits = exhibit_rows(doc)
-    return check_exhibits(doc) + check_statements(doc, exhibits) + check_evidence_numbering_mismatches(doc)
+    return check_exhibits(doc) + check_statements(doc, exhibits) + check_evidence_numbering_mismatches(doc, exhibits)
 
 
 # --- 서면 간 문장 복사 -------------------------------------------------------------
