@@ -83,39 +83,68 @@ def parse_korean_amount(text: str) -> Optional[Decimal]:
     return Decimal(total)
 
 
-ITEM_HEADING_RE = re.compile(
-    r"\[(?P<h1>[^\]\n]{2,30})\]|"
-    r"【(?P<h2>[^】\n]{2,30})】|"
-    r"<\s*(?P<h3>[^>\n]{2,30})\s*>|"
-    r"(?:^|\n)\s*(?P<num>[0-9]{1,3}|[가나다라마바사아자차카타파하])\s*[\.\)]\s*(?P<title>[^\n]{2,30})"
+# 괄호형 항목 표지 ([항목명], 【항목명】, <항목명>)
+BRACKET_HEADING_RE = re.compile(r"[\[【<](?P<title>[^\]】>\n]{2,25})[\]】>]")
+# 날짜 형태 정규식 (항목명에서 배제)
+_DATE_STRIP_RE = re.compile(
+    r"(?:(?:19|20)\d{2}[.\-/년]\s*)?\d{1,2}[.\-/월]\s*\d{1,2}[일.]?(?:\s*\([월화수목금토일]\))?"
+)
+# 번호/불릿 머리 정규식
+_BULLET_NUM_RE = re.compile(
+    r"^(?:[\s\-\*•·◦▪※▶▷○●□■\t|]+|"
+    r"(?:\(?[0-9]{1,3}\)?|[0-9]{1,3}[.)]|[가나다라마바사아자차카타파하][.)]|\([가나다라마바사아자차카타파하]\))\s*)+"
+)
+# 서술어 종결어미, 연결어미 및 조사 패턴 (일반 문장의 주어/목적어/부사어 등 배제용)
+_JOSA_PREDICATE_RE = re.compile(
+    r"(?:에서|으로|로|에게|에는|은|는|이|가|을|를|의|에|와|과|도|만|부터|까지|"
+    r"하고|하며|하여|하였으나|하였으며|있으나|있으며|있고|바|임|함|음|다|대하여|따라|관하여|기준으로|청구함|지급함)\s*[,.]?$"
+)
+# 금액 형태 정규식 (통화 기호 또는 단위가 포함된 경우만 금액으로 인식)
+_AMOUNT_STRIP_RE = re.compile(
+    r"(?:일금\s*|금\s*|[₩\\￥]\s*|KRW\s*)[-−+]?\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:억|천만|백만|만|천))?(?:\s*(?:원정|원))?|"
+    r"[-−+]?\s*\d[\d,]*(?:\.\d+)?\s*(?:억|천만|백만|만|천)\s*(?:원정|원)?|"
+    r"[-−+]?\s*\d[\d,]*(?:\.\d+)?\s*(?:원정|원)"
 )
 
 
 def _find_item_heading(text: str, offset: int) -> Optional[str]:
-    """매칭 위치 이전의 같은 줄 또는 최근 선행 텍스트에서 항목 머리(예: [검수대장 1차])를 추출한다."""
+    """매칭 위치 이전의 같은 줄에서 결함 값 바로 앞의 짧은 항목명(예: '창고정산 1차')을 추출한다.
+
+    소제목이나 이전 줄로는 대체하지 않으며, 날짜·금액·번호·조사·서술문을 배제한 2~20자 명사구만 반환한다.
+    """
     line_start = text.rfind("\n", 0, offset)
     s_idx = 0 if line_start == -1 else line_start + 1
-    line_prefix = text[s_idx:offset]
+    line_prefix = text[s_idx:offset].strip()
 
-    # 1. 같은 줄 앞머리에서 항목 머리 탐색
-    matches = list(ITEM_HEADING_RE.finditer(line_prefix))
-    if matches:
-        m = matches[-1]
-        heading = m.group("h1") or m.group("h2") or m.group("h3") or m.group(0).strip()
-        return heading.strip("[]【】<> ")
+    if not line_prefix or len(line_prefix) > 40:
+        return None
 
-    # 2. 직전 줄이 짧은 항목 머리줄인 경우 탐색
-    if line_start > 0:
-        prev_line_start = text.rfind("\n", 0, line_start)
-        p_idx = 0 if prev_line_start == -1 else prev_line_start + 1
-        prev_line = text[p_idx:line_start].strip()
-        if len(prev_line) <= 40:
-            m_prev = ITEM_HEADING_RE.search(prev_line)
-            if m_prev:
-                heading = m_prev.group("h1") or m_prev.group("h2") or m_prev.group("h3") or m_prev.group(0).strip()
-                return heading.strip("[]【】<> ")
+    # 1. 괄호형 항목 표지 우선 검사 ([창고정산 1차], <검수대장> 등)
+    m_bracket = BRACKET_HEADING_RE.search(line_prefix)
+    if m_bracket:
+        return m_bracket.group(0).strip()
 
-    return None
+    # 2. 선행 불릿 및 번호 머리 제거
+    cleaned = _BULLET_NUM_RE.sub("", line_prefix).strip()
+
+    # 3. 날짜 패턴 제거 (날짜 뒤에 항목명이 있는 경우 대비, 날짜 문자열 유입 방지)
+    cleaned = _DATE_STRIP_RE.sub("", cleaned).strip()
+
+    # 4. 선행 금액 패턴 제거 (이전 금액이 있을 경우 그 이후부터 결함 금액 직전까지)
+    amounts_in_prefix = list(_AMOUNT_STRIP_RE.finditer(cleaned))
+    if amounts_in_prefix:
+        cleaned = cleaned[amounts_in_prefix[-1].end():].strip()
+
+    # 5. 서술문, 조사 및 구두점 배제 (문장의 일부인 경우 항목명이 아님)
+    if not cleaned or len(cleaned) < 2 or len(cleaned) > 20:
+        return None
+    if any(p in cleaned for p in [".", ",", ";", "!", "?"]):
+        return None
+    if _JOSA_PREDICATE_RE.search(cleaned):
+        return None
+
+    # 6. 유효한 짧은 명사구 항목명 반환
+    return cleaned
 
 
 def words_digits_mismatches(doc: NormalizedDocument) -> List[Finding]:
@@ -130,7 +159,7 @@ def words_digits_mismatches(doc: NormalizedDocument) -> List[Finding]:
         if word_value == digit_value:
             continue
         eff_h = _find_item_heading(text, m.start())
-        h_prefix = f"[{eff_h}] " if eff_h else ""
+        h_prefix = f"{eff_h} " if eff_h else ""
 
         excerpt = " ".join(m.group(0).split())
         if eff_h:
@@ -153,3 +182,4 @@ def words_digits_mismatches(doc: NormalizedDocument) -> List[Finding]:
             evidence=[Evidence.create(description=f"{h_prefix}한글·숫자 병기".strip(), grade=EvidenceGrade.A, document_id=doc.document_id,
                                       excerpt=excerpt[:200])]))
     return out
+

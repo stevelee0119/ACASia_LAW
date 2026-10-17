@@ -15,11 +15,10 @@ from packages.verification_engine.pipeline import (
 # --- 0. 공통 점검표 1항: 실제 진입점 실행 시험 ---
 
 def test_pipeline_entrypoint_leading_multiplier_calculation(tmp_path: Path):
-    """공통 점검표 1항: VerificationPipeline 실제 진입점에서 수 × 금액 산식 불일치 탐지 검증."""
+    """공통 점검표 1항: VerificationPipeline 실제 진입점에서 선행 항목명이 결합된 수 × 금액 산식 불일치 탐지 검증."""
     doc_path = tmp_path / "sample_calc_brief.txt"
     doc_path.write_text(
-        "1. 용역 대금 청구\n"
-        "청구 내역 : 3 × 500,000원 = 2,000,000원\n",
+        "물품대장 1차 12건 × 15,000원 = 210,000원 수량과 단가를 곱한 금액을 원금으로 적는다.\n",
         encoding="utf-8",
     )
 
@@ -41,7 +40,8 @@ def test_pipeline_entrypoint_leading_multiplier_calculation(tmp_path: Path):
     doc_res = run_res.documents[0]
     calc_findings = [f for f in doc_res.findings if f.type == FindingType.ARITHMETIC_MISMATCH]
     assert len(calc_findings) == 1
-    assert "차이 500,000원" in calc_findings[0].title
+    assert "차이 30,000원" in calc_findings[0].title
+    assert "물품대장 1차 12건 × 15,000원 = 210,000원" in (calc_findings[0].evidence[0].excerpt if calc_findings[0].evidence else "")
     assert calc_findings[0].status == VerificationStatus.CONTRADICTED
 
 
