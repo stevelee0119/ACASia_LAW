@@ -116,11 +116,43 @@ def day_count(start: date, end: date, *, inclusive: bool = False) -> int:
 
 OPERATOR_RE = re.compile(r"\s*([+\-−×xX*＋])\s*")
 MULTIPLIER_RE = re.compile(r"^\s*[×xX*]\s*(\d[\d,]*(?:\.\d+)?)\s*(?:개월|개|회|일|명|건|배)?")
+# '수 × 금액' 순서 산식 패턴 (예: 3 × 500,000원, 3개월 × 1,000,000원)
+LEADING_MULTIPLIER_RE = re.compile(r"^\s*(\d[\d,]*(?:\.\d+)?)\s*(?:개월|개|회|일|명|건|배)?\s*[×xX*]\s*")
 AMOUNT_HEADER_RE = re.compile(r"(금액|합계|청구액|손해액|피해액|소계|청구\s*금액|총액|계)")
 
 
 def evaluate_expression(text: str) -> Optional[Decimal]:
-    """'3,100,000원 + 1,250,000원', '500,000원 × 3' 같은 산식의 값. 산식이 아니면 None."""
+    """'3,100,000원 + 1,250,000원', '500,000원 × 3', '3 × 500,000원' 같은 산식의 값. 산식이 아니면 None."""
+    # 1. '수 × 금액' 선행 배수 산식 처리 (수량/개월수 × 단가)
+    lead_match = LEADING_MULTIPLIER_RE.match(text)
+    if lead_match:
+        lead_mult = Decimal(lead_match.group(1).replace(",", ""))
+        remainder = text[lead_match.end():]
+        amounts = parse_amounts(remainder)
+        if not amounts:
+            amt = parse_cell_amount(remainder)
+            if amt and re.search(r"[원₩\\]|천|만|억", remainder):
+                return lead_mult * amt.value
+            return None
+        total = lead_mult * amounts[0].value
+        cursor = amounts[0].end
+        for amount in amounts[1:]:
+            between = remainder[cursor:amount.start]
+            if not between.strip() and amount.raw.lstrip()[:1] in "+-−":
+                total += amount.value
+                cursor = amount.end
+                continue
+            op = OPERATOR_RE.fullmatch(between)
+            if not op:
+                return None
+            total = total - amount.value if op.group(1) in "-−" else total + amount.value
+            cursor = amount.end
+        tail = MULTIPLIER_RE.match(remainder[cursor:])
+        if tail:
+            total *= Decimal(tail.group(1).replace(",", ""))
+        return total
+
+    # 2. 일반 '금액 + 금액' 또는 '금액 × 수' 산식 처리
     amounts = parse_amounts(text)
     if not amounts:
         return None
