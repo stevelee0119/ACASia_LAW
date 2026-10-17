@@ -235,3 +235,14 @@ def test_explicit_default_model_has_distinct_identity_and_routing_is_frozen(tran
     assert task_provider(provider, LLMRole.PRIMARY_REASONER, request, explicit).config.model == "gpt-6.1-sol"
     monkeypatch.delenv("LV_OPENAI_MODEL")
     assert task_provider(provider, LLMRole.PRIMARY_REASONER, request, explicit).config.model == "gpt-6.1-sol"
+
+
+def test_old_queue_snapshot_cannot_silently_use_new_routing(transport, monkeypatch):
+    from apps.api.job_control import execution_settings_snapshot
+    from apps.worker import runtime
+    router, _, _ = transport
+    monkeypatch.setattr(runtime, "get_settings", lambda: router.settings)
+    snapshot = {"execution": execution_settings_snapshot()}
+    snapshot["execution"]["settings"].pop("llm_routing")
+    with pytest.raises(runtime.ExecutionSettingsChanged, match="routing snapshot missing"):
+        runtime.snapshot_settings(snapshot)

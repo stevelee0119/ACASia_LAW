@@ -1366,6 +1366,16 @@ class VerificationPipeline:
             if consensus["disagreement"] or consensus["incomplete_models"]:
                 reason = "모델 의견 불일치 또는 일부 미완료로 전문가 검토 필요. " + reason
 
+            additional_advice = []
+            for stage in outcome.stages:
+                advice = stage.get("advisory_verdict") or {}
+                advice_quotes = advice.get("evidence_quotes") or []
+                if (stage.get("name") == "escalation" and stage.get("used") and advice_quotes
+                        and all(isinstance(q, str) and q.strip() and q in source_text for q in advice_quotes)):
+                    additional_advice.append({"rationale": str(advice.get("rationale", ""))[:800],
+                                              "evidence_quotes": advice_quotes, "advisory_only": True})
+                    reason += " 추가 정밀 검토 의견(참고): " + str(advice.get("rationale", ""))[:800]
+
             review = {"citation_id": citation.citation_id, "status": sem_status,
                       "semantic_status": sem_status,
                       "review_id": verdict.get("review_id"),
@@ -1375,6 +1385,7 @@ class VerificationPipeline:
                       "consensus": consensus,
                       "source_truncated": len(str(official["full_text"])) > len(source_text),
                       "reason": reason,
+                      "additional_advice": additional_advice,
                       "stages": outcome.stages, "evidence_quotes": quotes if grounded else []}
             reviews.append(review)
             verdict["semantic_status"] = sem_status
