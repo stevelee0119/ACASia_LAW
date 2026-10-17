@@ -59,7 +59,16 @@ PROXIMITY_RE = re.compile(r"같은\s*테이블|바로\s*옆|옆\s*자리|함께\
 DISTANCE_RE = re.compile(r"\d+\s*(?:미터|m|M)\s*(?:가량|정도|쯤)?\s*떨어진|다른\s*테이블|멀리\s*떨어")
 # 진술인 명의 문서의 제목 줄(문단 전체가 제목). 증거 목록 속 "각 진술서"는 제목이 아니다.
 STATEMENT_HEADING_RE = re.compile(r"(?:^|\n)\s*(?:진\s*술\s*서|사\s*실\s*확\s*인\s*서|확\s*인\s*서)\s*(?:\n|$)")
-COPY_MIN_CHARS = 30
+# 소제목·항목 구분 패턴 (예: "1. 제목", "가. 제목", "(1) 제목", "[제목]", "제1조" 등)
+HEADING_SPLIT_RE = re.compile(
+    r"(?:^|\n)\s*(?:"
+    r"(?:[0-9]{1,3}|[가-하]|[IVXLCDM]+)\s*[\.\)]\s*|"
+    r"\([0-9]{1,3}|[가-하]\)\s*|"
+    r"\[[^\]\n]+\]|"
+    r"제\s*[0-9]{1,3}\s*[조항조]\s*"
+    r")\s*([^\n]{0,80})"
+)
+COPY_MIN_CHARS = 24
 COPY_SIMILARITY = 0.9
 
 
@@ -581,7 +590,7 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
                             if pleading else "진술인의 서명·날인이 생략되어 작성 명의를 확인할 수 없다.",
                             text[max(0, m.start() - 40):m.end() + 20],
                             status=VerificationStatus.UNVERIFIED if pleading else VerificationStatus.CONTRADICTED))
-    statement_start = _statement_start(text)
+    statement_start = _statement_start(doc, text)
     proximity: List[str] = []
     distance: List[str] = []
     for start, end in sentence_bounds(text):
@@ -669,9 +678,59 @@ def _sentences_for_copy(doc: NormalizedDocument) -> List[Tuple[str, str]]:
     return out
 
 
-def _statement_start(text: str) -> Optional[int]:
+# 서면 공통 서두 표제부(송달장소, 요청취지, 제출경위 등) 패턴
+# 진술서 제목이 머리글로만 분리된 경우, 표제부 뒤부터가 실제 진술 구역이다.
+PREAMBLE_HEADING_RE = re.compile(
+    r"(?:송달장소\s*:[^\n]+(?:\n|$)|"
+    r"(?:요청|청구)\s*취지[^\n]+(?:\n|$)|"
+    r"제출\s*경위[^\n]+(?:\n|$))"
+)
+
+
+def _statement_start(doc_or_text: NormalizedDocument | str, reading_text: Optional[str] = None) -> Optional[int]:
+    """진술서·확인서 문서의 실제 진술 본문 시작 오프셋을 반환한다.
+    
+    1. 본문 텍스트 내에 '진술서·사실확인서·확인서' 제목 줄이 직접 있는 경우 그 제목 줄 바로 뒤의 오프셋을 반환한다.
+    2. 여러 쪽에 반복되는 머리글(running_head)로 분류되어 본문 텍스트에서는 제외되었으나
+       문서 블록에 해당 제목이 있는 경우, 서면 표제부(송달장소·요청취지 등 공통 서두) 뒤의 실제 진술 구역 시작 오프셋을 반환한다.
+    진술서·확인서 계열 문서가 아니면 None을 반환한다.
+    """
+    if isinstance(doc_or_text, str):
+        text = doc_or_text
+        doc = None
+    else:
+        doc = doc_or_text
+        text = reading_text if reading_text is not None else build_reading_text(doc).text
+
+    # 1. 본문 텍스트 내 직접 제목 줄 탐색
     heading = STATEMENT_HEADING_RE.search(text)
-    return heading.end() if heading else None
+    if heading:
+        return heading.end()
+
+    # 2. doc 객체가 주어진 경우, 머리글(running_head) 또는 상단 블록의 진술서 제목 탐색
+    if doc is not None:
+        is_statement = any(
+            STATEMENT_HEADING_RE.search(b.text or "")
+            for b in doc.blocks
+            if b.block_type in ("running_head", "paragraph")
+        )
+        if is_statement:
+            # 진술서 제목이 머리글로만 분리된 경우:
+            # 서면 서두의 표제부(송달장소, 요청취지, 제출경위 등 다른 서면과 공통인 부분)가 있으면 그 뒤부터 진술 구역으로 본다.
+            preamble_matches = list(PREAMBLE_HEADING_RE.finditer(text[:2000]))
+            if preamble_matches:
+                return preamble_matches[-1].end()
+            return 0
+
+    return None
+
+
+def _find_section_heading(text: str, offset: int) -> str:
+    """주어진 오프셋 이전에 등장하는 가장 가까운 소제목/항목명을 반환한다."""
+    headings = list(HEADING_SPLIT_RE.finditer(text[:offset]))
+    if headings:
+        return headings[-1].group(0).strip()
+    return ""
 
 
 def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Finding]:
@@ -682,7 +741,7 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
     """
     docs = list(documents)
     texts = {d.document_id: build_reading_text(d).text for d in docs}
-    statements = {d.document_id: _statement_start(texts[d.document_id]) for d in docs}
+    statements = {d.document_id: _statement_start(d, texts[d.document_id]) for d in docs}
     if not any(start is not None for start in statements.values()):
         return []
     prepared = {d.document_id: _sentences_for_copy(d) for d in docs}
@@ -697,10 +756,17 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
         start = statements[owner.document_id]
         if start is None:
             continue
-        pairs: Dict[str, List[Tuple[str, str, float]]] = {}
+        owner_text = texts[owner.document_id]
+        matched_items: List[Tuple[str, str, str, float, int]] = []
+        last_offset = start
         for sentence, key in prepared[owner.document_id]:
-            if texts[owner.document_id].find(sentence, start) == -1:
+            offset = owner_text.find(sentence, last_offset)
+            if offset == -1:
+                offset = owner_text.find(sentence, start)
+            if offset == -1:
                 continue
+            last_offset = offset
+
             hits: Dict[Tuple[str, int], int] = {}
             for gram in _shingles(key, 8):
                 for hit in index.get(gram, ()):
@@ -714,15 +780,25 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                 other_grams = _shingles(other_key)
                 overlap = len(grams & other_grams) / max(1, min(len(grams), len(other_grams)))
                 if overlap >= COPY_SIMILARITY:
-                    pairs.setdefault(other_id, []).append((sentence, other_sentence, round(overlap, 2)))
-        for other_id, matched in pairs.items():
+                    matched_items.append((other_id, sentence, other_sentence, round(overlap, 2), offset))
+
+        # 소제목/구역별 및 상대 서면별로 묶어 항목 단위로 발견 사항(Finding)을 생성한다
+        grouped_pairs: Dict[Tuple[str, str], List[Tuple[str, str, float]]] = {}
+        for other_id, s_owner, s_other, overlap, offset in matched_items:
+            heading = _find_section_heading(owner_text, offset)
+            grouped_pairs.setdefault((other_id, heading), []).append((s_owner, s_other, overlap))
+
+        for (other_id, heading), matched in grouped_pairs.items():
             other = by_id[other_id]
+            heading_info = f" [{heading}]" if heading else ""
             out.append(_finding(owner, FindingType.CROSS_DOC_COPY, EvidenceGrade.B, Severity.MEDIUM,
-                                f"진술 문서에 다른 서면({other.filename})과 같은 문장이 {len(matched)}건 있다",
+                                f"진술 문서{heading_info}에 다른 서면({other.filename})과 같은 문장이 {len(matched)}건 있다",
                                 "진술인 명의의 문서에 대리인 서면 등 다른 문서의 문장이 그대로 있으면 대필·작출을 "
                                 "의심할 단서가 된다. 작성 경위는 사람이 확인한다.",
                                 matched[0][0], status=VerificationStatus.SUSPICIOUS,
                                 features={"other_document_id": other_id, "similarity": matched[0][2],
+                                          "section_heading": heading,
                                           "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
                                                     for a, b, s in matched[:5]]}))
     return out
+
