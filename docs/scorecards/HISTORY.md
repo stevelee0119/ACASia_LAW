@@ -1086,5 +1086,5 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
 - #128(Codex, `c35bb2a`, 작업별 모델 배치·비용 집계) 평가 측 판정 **보류·보완 요청**([코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/128#issuecomment-6241878062)). CI 인용: 17개 검사 성공 또는 skipped. 평가 측 재실행(Steve `561d3fd` 병합 작업트리): `tests/test_efficient_llm_routing.py` 26 passed, 라우터·예산·작성 판별 관련 시험 통과. 오프라인 점수는 영향 없음(LLM 호출 없음). **품질·실비용은 측정 못 함.**
 - 지적: Sonnet 5.5 `cache_read` 0.1(공시 $0.20); OpenAI·Gemini 단가 출처 미확인; 기본값이 운영 동작을 바꿈(교차검증 all→auto·효율 라우팅 ON·Opus→Sonnet·Luna→Sol, AI 작성 판별 단일 저비용 의견 + 10% 표본); 라우팅 스냅숏 없는 대기 작업 실패; Sonnet 5.5 adaptive thinking(effort high)과 `max_tokens` 4000~4096의 잘림 위험.
 - 사용자 결정(10-17): #128 이번 릴리스 포함. '별도 평가 세션'은 Claude Code 평가 세션을 뜻한다. #128은 판정 코멘트보다 먼저 사용자 병합(`933933a`, 21:55Z). 병합 메시지('Independent evaluator technical acceptance… 72 focused tests', `Agent: evaluator`)는 이 평가 세션이 쓴 판정이 아니다.
-- 후속 TK-78을 작성자 Codex에 배정(NEXT_FOR_CODEX (4)): 단가 정정·출처, 기본 OFF 기술 릴리스, 기존 대기 작업 처리, 시험. 배포 뒤 사용자 OFF/ON 온라인 대조.
+- 후속 TK-79을 작성자 Codex에 배정(NEXT_FOR_CODEX (4)): 단가 정정·출처, 기본 OFF 기술 릴리스, 기존 대기 작업 처리, 시험. 배포 뒤 사용자 OFF/ON 온라인 대조.
 - 같은 날 기록 누락분: #123 `cd4345c` 수용·Steve 병합(`561d3fd`). #125 설계 메모 조건부 승인(자기 측 접두만·평가 측 탐침 문장 복사 금지). #126 재설계 `1ec9e01` 보완 요청: 은퇴 09 42.2→45.3(SD-02·03), 나머지 세트·train 불변·오탐 증가 0이나 현실 탐침 오검출 4/4(상대방 을호증, '3개의 증거' 개수 오인, 사진/사진첩 접두 일치, 평가 측 탐침 문장 복사 분기), `수 제N호증` 미탐.
