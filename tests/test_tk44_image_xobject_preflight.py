@@ -15,7 +15,7 @@ def image_pdf(path, pages=1, color="white"):
     from PIL import Image
     from reportlab.lib.utils import ImageReader
     from reportlab.pdfgen.canvas import Canvas
-    canvas = Canvas(str(path), pageCompression=1)
+    canvas = Canvas(str(path), pageCompression=1, invariant=1)
     image = ImageReader(Image.new("RGB", (8, 8), color))
     for page in range(pages):
         canvas.setFont("Helvetica", 10)

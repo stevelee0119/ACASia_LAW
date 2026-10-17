@@ -32,6 +32,10 @@ passed); fixed to the document's real blocks, no behavioral expectation changed.
 
 Image workload:5/20pages,30fabricated lines and one8x8image/page; alphabetic
 page variation avoids repeated-header stripping of the whole synthetic body.
+PDF generation uses invariant metadata so independently generated samples have
+the same raw metadata text. Initial cross-process hash assertion at9ac9056
+failed because creation timestamps differed; same-file baseline/candidate
+reading/raw were equal. No product behavior or expected result was changed.
 Three fresh processes/mode/size; time parse_document, exclude PDF generation
 and imports, unchanged GC. Compare preserved b1e provider on this input without
 ActualText/Properties, exact ad848b1 any-XObject predicate with all other current
