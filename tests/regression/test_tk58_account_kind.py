@@ -118,9 +118,20 @@ def test_synthetic_repeated_separator_input_is_fast():
     # synthetic candidates, isolating unrelated person/address detector costs.
     text = ("계좌: 4682·1357·24689 확인\n" * 2000)
     normalized, positions = detector._normalise_contact_view(text)
-    start = perf_counter()
-    matches = detector._contact_matches(text, normalized, positions, [], None, None)
-    elapsed = perf_counter() - start
-    assert len(matches) == 2000
-    assert all(match.kind == "ACCOUNT" for match in matches)
+    import gc
+    timings = []
+    # TK-77: CI 러너 환경의 GC 개입·지연을 배제하고 3회 측정 최솟값으로 판정
+    gc_was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        for _ in range(3):
+            start = perf_counter()
+            matches = detector._contact_matches(text, normalized, positions, [], None, None)
+            timings.append(perf_counter() - start)
+            assert len(matches) == 2000
+            assert all(match.kind == "ACCOUNT" for match in matches)
+    finally:
+        if gc_was_enabled:
+            gc.enable()
+    elapsed = min(timings)
     assert elapsed < 0.1

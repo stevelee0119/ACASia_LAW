@@ -1815,3 +1815,42 @@ f64 기존 시간실패 .625568/.748032초는 원인미확정으로 보존한다
 - EVI-COPY 진술서 8: `reading_text` 반복 머리글 제거가 페이지마다 반복되는 '진술서' 제목을 지워 train 32문서 모두 `_statement_start=None` → (c). 나머지 32는 (b).
 - 오탐 모의: COPY 제목 제한 해제 시 매 묶음 대조군이 나머지 7문서 모두와 유사도 ≥0.9 문장 공유(묶음당 15~22쌍) → 4묶음 대조군 오탐. 발췌를 줄 전체로 넓히면 INCONS +4·DATE +4점이나 FP-TRAP 오탐 0→4.
 - 채점기·match_spec 변경 없음(항목명 그룹은 한 문서 안 유사 항목 구분용). 표시 보강분은 탐지 개선과 따로 보고. [보완 판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109#issuecomment-6229233886)
+
+## 2026-10-17 TK-76 EVI-DATE PR(#114) 판정
+
+| PR·SHA | 판정 | 근거(재실행/인용 구분) |
+|---|---|---|
+| #114 `5d3eeb2` | **불승인(수정 요청)** | CI 인용: PR 병합본 필수 4개 성공, 푸시 실행 SQLite 1건 실패(TK-43 정규식 시간 시험, 측정 구간 안 GC 0.746초. PR과 무관하고 평가 측 전체 재실행에서 통과). 평가 측 재실행(Steve `a60b334`+PR, 오프라인): train EVI-DATE 16 → 32/40, 오탐 0. 고정 81.7/79.2/0 유지. **은퇴 `sealed_20261008b` 29.6 → 27.8 회귀.** [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/114#issuecomment-6231748986) |
+
+회귀 원인: detail에 붙인 문맥 문장의 날짜 문자열 때문에 `calendar_dates`가 중복으로 보고 판정을 생략했다(`written in judged`). 남은 판정은 문맥 추출이 점 표기 날짜에서 잘려 토큰과 맞지 않았다. 지시(항목명만 보강)와 다르게 구현됐다. '일' 상한 31 → 35는 train의 32일 8건에 맞춘 경계로 보여 근거를 요청했다. `HEADING_LINE_RE` 교대 우선순위·음절 범위 결함이 있다. 성능 측정 스크립트가 저장소에 없다. 증가분 16건의 탐지 개선·표시 보강 구분이 없다. 요일 조사 허용(요일병기 8건)은 실제 탐지 개선이며 분리 제출을 허용했다.
+
+## 2026-10-17 TK-76·TK-44/49·TK-73 PR 판정 (#109·#116·#117·#118)
+
+사용자 결정(10-17): 지금 열린 PR(#109·#114·#116·#117·#118)을 모두 이번 릴리스 범위에 넣고, 각각 수용·병합된 뒤 릴리스한다. 이번 릴리스는 봉인 시험을 생략한다(사용자 결정, 탐지 변경 포함). 생략 대신 은퇴 4세트·고정 dev/holdout·고정 벤치 2판 오프라인 결과를 릴리스 PR에 붙인다.
+
+| PR·SHA | 판정 | 근거(재실행/인용 구분) |
+|---|---|---|
+| #109 `8b91ea5` | **수용**, 병합 `097c7dc` | CI 인용(필수 4개 성공). 진단 메모 표가 평가 측 train 재실행과 일치, 범주 합 208. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109#issuecomment-6232502576) |
+| #118 `765de10` | 조건부 승인 | 평가 측 재실행: train COPY 0→4/40(보고 8/8 재현 안 됨). 소제목 분할은 파이프라인 중복 제거(`pipeline.py` 1426~1435)로 합쳐져 실제 진입점 효과 0. `HEADING_SPLIT_RE` 결함. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/118#issuecomment-6232308908) |
+| #118 `ba59fbb` (정정 `d7ce5e7`) | **수용** | CI 인용(PR 실행 필수 4개 성공). 평가 측 재실행: 고정 81.7/79.2/0, 은퇴 `08` **19.0→21.2**, 나머지 불변, 인젝션 방어, train .115→.125·COPY 0→4/40·오탐 0. `COPY_MIN_CHARS`를 30으로 되돌리면 COPY 0/40(24자 필요). push 게이트의 시험 삭제 2개는 평가 측 승인. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/118#issuecomment-6232629094) |
+| #116 `ad848b1` | **조건부 승인** | CI 인용(필수 4개 성공, 관련 시험 포함). 평가 측 재실행: 고정·은퇴 4세트 불변, 인젝션 방어. 보완 1개: `_named_available`이 이미지만 있는 페이지도 해석 경로로 보내 합성 20쪽 1.628→2.042초(+25%). Form XObject로 한정. 잔여 known_open 제안 수용. `verify_all` 전체는 릴리스 후보 SHA 1회로 갈음. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/116#issuecomment-6232639223) |
+| #117 `a9f90c2` | **보완 요청(설계 승인 보류)** | CI 인용(push 성공, PR attempt2 성공). 평가 측 모의(PR의 `minimal_numbering` 임시 적용): 은퇴 c 15.2/A3 → 보호 조건 20.2/A2, 최소 수정 30.2/A0. 숫자 규칙이 긴 설명 속 숫자에 걸린다. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/117#issuecomment-6232562505) |
+
+
+## 2026-10-17 #114·#116·#117·#120·#121·#122 판정 (릴리스 범위 마무리)
+
+| PR·SHA | 판정 | 근거(재실행/인용 구분) |
+|---|---|---|
+| #114 `78fc3df` (재제출) | **수용**, 병합 `c3595a7` | CI 인용(필수 4개). 평가 측 재실행(Steve `d2080a1`+PR): 은퇴 4세트 불변(`08b` 회귀 해소), train .115·DATE 16/40(요일병기 탐지 +8 A등급, 항목명 토큰 미일치로 채점 0). 보고 28/40 재현 안 됨 → 정정 요청. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/114#issuecomment-6232748040) |
+| #114+#118 합산 | 간섭 없음 | 평가 측 재실행(Steve `c3595a7`): 은퇴 `08` 19.0→21.2(#118), 나머지 불변, train .115→.125, 오탐 0. |
+| #116 `3f9aef2` (보완) | **수용**, 병합 `e331234` | CI 인용(필수 4개, 관련 시험 387개). diff: `/Subtype /Form` 스트림이 있을 때만 해석 경로. 평가 측 재실행: 은퇴 불변, 합성 이미지 20쪽 +25%→+5.6%. 잔여 known_open. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/116#issuecomment-6233278233) |
+| #117 `59b62fc` (설계 보완) | **설계 승인** | CI 인용. 평가 측 모의: 은퇴 c 15.2/A3 → 25.2/A1, 나머지 불변. 남은 1건(한쪽 날짜) known_open. 구현은 새 PR로. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/117#issuecomment-6233150342) |
+| #121 `01593e3` (TK-77) | **수용**, 병합 `d62bb57` | CI 인용. 시험 파일 3개만(제품 diff 0), GC 끄기+3회 최솟값, 상한·입력·단언 불변. 평가 측 재실행: 바뀐 시간 시험 4개 통과. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/121#issuecomment-6233194792) |
+| #122 `9a56188` (TK-73 제품) | **수용**, 병합 `46acf51` | CI 인용: dev 81.7/holdout 79.2/FP0/A0, 은퇴 c 15.2/A3→25.2/A1·나머지 불변. 평가 측 재실행(Steve `e331234`=#116 포함 + PR): 은퇴 동일, 관련 시험 300 passed. 변경은 `_numbering` 비교 키 결정만. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/122#issuecomment-6233372558) |
+| #120 `5aef198` | 보완 요청 | 평가 측 재실행: 회귀 없음, train INCONS 8/40 그대로(소제목이 붙어 같은 줄 항목명 토큰 불일치, 수×금액 산식 finding 미발생). [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/120#issuecomment-6233280415) |
+| #120 `c49df80` | **수용**(병합 전 푸시 1회) | CI 인용(PR 실행 필수 성공, dev/holdout 81.7/79.2/FP0/A0). 평가 측 재실행(Steve `46acf51`+PR): train .125→**.165**, INCONS 8→**24/40**, 오탐 0, 은퇴 `08b` 29.6→**31.5**, 나머지 불변. 보고 수치와 일치. 조건: 최신 Steve 병합 푸시(push 게이트의 1차 시험 6개 삭제는 평가 측 승인), 날짜 앞붙음 대조 시험 1개. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/120#issuecomment-6233735661) |
+
+- 설계·검토 PR #117·#92·#108은 제품 PR 병합 뒤 평가 측이 닫았다.
+- 평가 측 도구 정정: CI '은퇴 세트 비교'가 `pull_request.base.sha`를 기준으로 써서, PR이 갱신된 뒤 병합된 다른 PR(#122)의 효과가 #120 몫으로 표시됐다. 병합 시험 커밋의 첫 부모(현재 기준 브랜치 끝)를 기준으로 쓰도록 고쳤다.
+- 필수 검사: 사용자가 `main`·`Steve_ACASiaLAW` 규칙 세트에 '은퇴 세트 비교'를 더했다(읽기 API 확인).
+- `verify_all` 전체 모드는 릴리스 후보 SHA에서 1회 돈다(#116·#118·#120·#122 탐지·파서 변경 포함).

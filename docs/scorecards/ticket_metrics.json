@@ -1,17 +1,18 @@
 {
- "total": 76,
+ "total": 77,
  "status": {
   "deployed": 70,
-  "open": 4,
-  "known_open": 2
+  "known_open": 5,
+  "open": 1,
+  "merged": 1
  },
  "open": [
   {
    "id": "TK-44",
-   "status": "open",
+   "status": "known_open",
    "kind": "regression",
    "found_on": "2026-10-03",
-   "note": "2026-10-17 #108 86b7fa5 Form 검사 설계 조건부 승인(잔여 시험 처음 두 단언만 반전 승인, 종결 계획 요구). 이전: 운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전."
+   "note": "2026-10-17 #108 86b7fa5 Form 검사 설계 조건부 승인(잔여 시험 처음 두 단언만 반전 승인, 종결 계획 요구). 이전: 운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전. 2026-10-17 #116(ad848b1) 선택 Form ActualText 보안 검사 조건부 승인: 고정·은퇴 불변·인젝션 방어, 보완 1개(_named_available을 Form XObject로 한정, 이미지 20쪽 +25%). 잔여(structure-tree·비태그 UNKNOWN primary·0.75 floor·대체 consumer)는 수용 시 known_open. 2026-10-17 #116 보완(3f9aef2) 수용·Steve 병합(e331234): _named_available을 /Subtype /Form 스트림이 있을 때만 열도록 한정(이미지 20쪽 +25%→+5.6%), 은퇴 4세트 불변·인젝션 방어, CI 필수 성공(인용). 수용 범위는 호출된 Form의 선택 named ActualText를 보안 검사로 전달하는 것까지(경계 인증·읽기 텍스트 불변, inspection_complete=false 유지). 잔여(structure-tree 연결·비태그 UNKNOWN primary·0.75 floor·대체 consumer)는 종결 계획대로 known_open. 설계 PR #108 닫음. verify_all 전체는 릴리스 후보 1회."
   },
   {
    "id": "TK-45",
@@ -22,10 +23,10 @@
   },
   {
    "id": "TK-49",
-   "status": "open",
+   "status": "known_open",
    "kind": "regression",
    "found_on": "2026-10-03",
-   "note": "2026-10-17 #108 86b7fa5 Form 검사 설계 조건부 승인(잔여 시험 처음 두 단언만 반전 승인, 종결 계획 요구). 이전: 운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전."
+   "note": "2026-10-17 #108 86b7fa5 Form 검사 설계 조건부 승인(잔여 시험 처음 두 단언만 반전 승인, 종결 계획 요구). 이전: 운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전. 2026-10-17 #116(ad848b1) 선택 Form ActualText 보안 검사 조건부 승인: 고정·은퇴 불변·인젝션 방어, 보완 1개(_named_available을 Form XObject로 한정, 이미지 20쪽 +25%). 잔여(structure-tree·비태그 UNKNOWN primary·0.75 floor·대체 consumer)는 수용 시 known_open. 2026-10-17 #116 보완(3f9aef2) 수용·Steve 병합(e331234): _named_available을 /Subtype /Form 스트림이 있을 때만 열도록 한정(이미지 20쪽 +25%→+5.6%), 은퇴 4세트 불변·인젝션 방어, CI 필수 성공(인용). 수용 범위는 호출된 Form의 선택 named ActualText를 보안 검사로 전달하는 것까지(경계 인증·읽기 텍스트 불변, inspection_complete=false 유지). 잔여(structure-tree 연결·비태그 UNKNOWN primary·0.75 floor·대체 consumer)는 종결 계획대로 known_open. 설계 PR #108 닫음. verify_all 전체는 릴리스 후보 1회."
   },
   {
    "id": "TK-55",
@@ -36,17 +37,24 @@
   },
   {
    "id": "TK-73",
-   "status": "open",
+   "status": "known_open",
    "kind": "existing",
    "found_on": "2026-10-10",
-   "note": "2026-10-17 #92 401d098 계약안 보류. 평가 측 사전 점검: 서증명 첫 구분 기호 앞 비교 임시 패치로 은퇴 c A3→0·재현율 유지·나머지 불변. 최소 수정+공개 111/330 손실 측정 지시. 이전: 전체open·미배포. #92 최신545c917fd12f9fec40eb52bbccfffaf566bc9fdc 설계/공개시험·제품0. 별도 source-tree/native 안전성 제한PASS는 제품/기준승인과구분·구체 기준안 검토 HOLD. 원래111 날짜확대 진짜확인손실+9/false추가이득0·기존4종AFP3 불변. 사용자 확인필요분리 선택은 검토이며 승인0·원래A/finding/GLOBAL/UNKNOWN 보호 유지."
+   "note": "2026-10-17 #92 401d098 계약안 보류. 평가 측 사전 점검: 서증명 첫 구분 기호 앞 비교 임시 패치로 은퇴 c A3→0·재현율 유지·나머지 불변. 최소 수정+공개 111/330 손실 측정 지시. 이전: 전체open·미배포. #92 최신545c917fd12f9fec40eb52bbccfffaf566bc9fdc 설계/공개시험·제품0. 별도 source-tree/native 안전성 제한PASS는 제품/기준승인과구분·구체 기준안 검토 HOLD. 원래111 날짜확대 진짜확인손실+9/false추가이득0·기존4종AFP3 불변. 사용자 확인필요분리 선택은 검토이며 승인0·원래A/finding/GLOBAL/UNKNOWN 보호 유지. 2026-10-17 #117 보호 조건 설계 보완 요청: 공개 330 손실0이나 은퇴 c A등급 오탐 3→2(1건만), 숫자 규칙 범위 축소 요청. 최소 수정은 30.2/A0이지만 공개 진짜중복 48 손실. 2026-10-17 #117 59b62fc 설계 승인(첫 토큰 식별자 규칙, 은퇴 c 15.2/A3→25.2/A1 모의) → 제품 PR #122(9a56188) 수용·Steve 병합(46acf51): CI 필수·은퇴 비교 성공(c 25.2/A1, 나머지 불변), 현재 Steve(#116 포함) 합산 재실행 동일, 관련 시험 300 passed. 변경은 _numbering 비교 키 결정만. 잔여: 한쪽 행에만 날짜가 있는 1건(날짜 보호 유지 판단)은 known_open. 설계·검토 PR #117·#92 닫음."
   },
   {
    "id": "TK-76",
    "status": "open",
    "kind": "existing",
    "found_on": "2026-10-16",
-   "note": "2026-10-17 Antigravity 배정(사용자 '승인 목표 우선'). 개발 말뭉치 중점6유형 1주기. 1단계 진단 메모 → 유형별 PR. 2026-10-17 #109 진단 메모 조건부 승인(정정 커밋 1개 뒤 병합 건의): INCONS 한글병기는 기존 검사 있음→재진단, FORM (d)40→제품 공백 재분류, COPY 문서종류 건수표 선행, SRC-UNV .invalid 금지·UNVERIFIED 잡음 보고, NUM 가지번호중복·별지구역은 TK-73. 2단계 순서 승인. 평가측 train 재실행 보완: 한글병기8 탐지정상·발췌토큰(d), COPY 진술서8 반복머리글 제거(c)→COPY 첫 PR 대상, 일괄해제 시 대조군 오탐4묶음."
+   "note": "2026-10-17 Antigravity 배정(사용자 '승인 목표 우선'). 개발 말뭉치 중점6유형 1주기. 1단계 진단 메모 → 유형별 PR. 2026-10-17 #109 진단 메모 조건부 승인(정정 커밋 1개 뒤 병합 건의): INCONS 한글병기는 기존 검사 있음→재진단, FORM (d)40→제품 공백 재분류, COPY 문서종류 건수표 선행, SRC-UNV .invalid 금지·UNVERIFIED 잡음 보고, NUM 가지번호중복·별지구역은 TK-73. 2단계 순서 승인. 평가측 train 재실행 보완: 한글병기8 탐지정상·발췌토큰(d), COPY 진술서8 반복머리글 제거(c)→COPY 첫 PR 대상, 일괄해제 시 대조군 오탐4묶음. #114(EVI-DATE) 불승인: train DATE .40→.80이나 은퇴 08b 29.6→27.8 회귀, 항목명만 보강 지시 위반, 일 상한 35 근거 요청, 요일 조사 부분 분리 제출 허용. #109 정정 2차(8b91ea5) 수용·병합(097c7dc). #118(EVI-COPY) 1차 조건부(소제목 분할 실제 진입점 효과 0·보고 8/8 재현 안 됨) → 정정 ba59fbb 수용: train COPY 0→4/40, 은퇴 08 19.0→21.2, 나머지·고정 불변, 오탐0. 사용자 결정(10-17): 열린 TK-76 PR 전부 이번 릴리스 범위. #114 재제출(78fc3df) 수용·병합(c3595a7): 은퇴 08b 회귀 해소, 요일병기 탐지 +8(A등급)이나 항목명 토큰 미일치로 train DATE 16/40 그대로, 보고 28/40 재현 안 됨(정정 요청). #118 병합(ad8ac0f). #120(후속: 수×금액 산식·INCONS 항목명·설계 메모 2건) 사용자 결정으로 이번 릴리스 범위 포함. #120 1차(5aef198) 보완 요청: 회귀 없음·목표 개선 0(소제목이 붙어 항목명 토큰 불일치, 수×금액 산식 미발생). #120 보완(c49df80) 수용(병합 전 Steve 병합 푸시·날짜 대조 시험 1개 조건): 평가 측 재실행 train .125→.165·INCONS 8→24/40·오탐0, 은퇴 08b 29.6→31.5·나머지 불변, 고정 81.7/79.2/FP0(CI 인용). 1차 시험 6개 삭제 평가 측 승인(approved_test_marks)."
+  },
+  {
+   "id": "TK-77",
+   "status": "merged",
+   "kind": "existing",
+   "found_on": "2026-10-17",
+   "note": "2026-10-17 평가 측 발견·사용자 승인으로 Antigravity 배정. TK-43 정규식 시간 시험이 CI에서 한 번 측정·GC 개입으로 간헐 실패(#114 0.748s·#117 0.597s·0.840s, 상한 0.1s). 측정 방법만 GC 끄기+3회 최솟값으로 견고화, 상한·입력 불변. 제품 diff 0. 2026-10-17 #121(01593e3) 수용·Steve 병합(d62bb57): 시간 시험 4개(TK-43 3·TK-58 1)에 GC 끄기+3회 최솟값, 상한·입력·단언 불변, 제품 diff 0. 수용 뒤 1주(~10-24) CI 재발 관찰."
   }
  ],
  "weekly": {
@@ -62,7 +70,7 @@
    "recurrence": 0
   },
   "2026-W42": {
-   "found": 1,
+   "found": 2,
    "regression": 0,
    "recurrence": 0
   }
@@ -109,6 +117,10 @@
    "regression": 0
   },
   "2026-10-16": {
+   "found": 1,
+   "regression": 0
+  },
+  "2026-10-17": {
    "found": 1,
    "regression": 0
   }

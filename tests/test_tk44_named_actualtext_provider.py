@@ -128,8 +128,8 @@ def test_real_unresolved_original_reference_is_unknown_and_incomplete(tmp_path,b
 def test_form_only_indirect_inspection_remains_explicit_residual(tmp_path):
     path=tmp_path/'form-only.pdf';repeated(path,1,2000,True,form_only=True)
     doc=_parse(path)
-    assert not doc.structure.get('actual_text_strings')
-    assert not any('ACTUAL_TEXT' in row.tags for row in scan_document(doc).findings)
+    assert doc.structure.get('actual_text_strings')
+    assert any('ACTUAL_TEXT' in row.tags for row in scan_document(doc).findings)
     assert not stats(doc)['inspection_complete']
 
 

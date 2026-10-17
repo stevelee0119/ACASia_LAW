@@ -3,8 +3,8 @@
 `python scripts/ticket_metrics.py`가 만든다. 손으로 고치지 않는다. 상태는 `ticket_registry.json`(평가 측 갱신)을 따른다.
 티켓 번호는 발견한 문제 수다. 해소 여부·회귀(구현 수정이 새로 만든 결함)·재발은 아래처럼 따로 센다.
 
-- 전체 76건 · 회귀 24건 · 미해결(open·accepted·merged·known_open) 6건
-- 상태별: open 4 · accepted 0 · merged 0 · known_open 2 · deployed 70 · closed 0
+- 전체 77건 · 회귀 24건 · 미해결(open·accepted·merged·known_open) 7건
+- 상태별: open 1 · accepted 0 · merged 1 · known_open 5 · deployed 70 · closed 0
 - 해소일(deployed_on·closed_on)은 2026-10-10 이후 기록분만 있다. 그 전 해소 건은 날짜 미상이라 주간 해소 수에 들어가지 않는다.
 
 ## 주별
@@ -12,7 +12,7 @@
 |---|---|---|---|---|---|---|
 | 2026-W40 | 59 | 21 | 36% | 0 | 0 | 0 |
 | 2026-W41 | 16 | 3 | 19% | 0 | 9 | 0 |
-| 2026-W42 | 1 | 0 | 0% | 0 | 0 | 0 |
+| 2026-W42 | 2 | 0 | 0% | 0 | 0 | 0 |
 
 ## 일별 발견
 | 날짜 | 발견 | 그중 회귀 |
@@ -28,16 +28,18 @@
 | 2026-10-09 | 7 | 1 |
 | 2026-10-10 | 4 | 0 |
 | 2026-10-16 | 1 | 0 |
+| 2026-10-17 | 1 | 0 |
 
 ## 미해결 목록
 | 티켓 | 상태 | 종류 | 발견일 | 메모 |
 |---|---|---|---|---|
-| TK-44 | open | regression | 2026-10-03 | 2026-10-17 #108 86b7fa5 Form 검사 설계 조건부 승인(잔여 시험 처음 두 단언만 반전 승인, 종결 계획 요구). 이전: 운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전. |
+| TK-44 | known_open | regression | 2026-10-03 | 2026-10-17 #108 86b7fa5 Form 검사 설계 조건부 승인(잔여 시험 처음 두 단언만 반전 승인, 종결 계획 요구). 이전: 운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전. 2026-10-17 #116(ad848b1) 선택 Form ActualText 보안 검사 조건부 승인: 고정·은퇴 불변·인젝션 방어, 보완 1개(_named_available을 Form XObject로 한정, 이미지 20쪽 +25%). 잔여(structure-tree·비태그 UNKNOWN primary·0.75 floor·대체 consumer)는 수용 시 known_open. 2026-10-17 #116 보완(3f9aef2) 수용·Steve 병합(e331234): _named_available을 /Subtype /Form 스트림이 있을 때만 열도록 한정(이미지 20쪽 +25%→+5.6%), 은퇴 4세트 불변·인젝션 방어, CI 필수 성공(인용). 수용 범위는 호출된 Form의 선택 named ActualText를 보안 검사로 전달하는 것까지(경계 인증·읽기 텍스트 불변, inspection_complete=false 유지). 잔여(structure-tree 연결·비태그 UNKNOWN primary·0.75 floor·대체 consumer)는 종결 계획대로 known_open. 설계 PR #108 닫음. verify_all 전체는 릴리스 후보 1회. |
 | TK-45 | known_open | regression | 2026-10-03 | 2026-10-17 사용자 결정 known_open 전환(작업 중지). 근거: #96 설계가 비공개 대상 문장(법조문 인용 0건)에 작동하지 않음, #84·#93·#96 반복 실패로 멈춤 규칙. 원래 회귀(정상 항변 오탐)는 해소 상태, 남은 것은 요건 부정 2/8·타 책임 확장 0/4 탐지 확대. 재개는 사용자 결정. 이전: 2026-10-17 #96 5c69062 설계 불승인: 비공개 대상 문장에 법조문 인용 0건이라 설계가 지표를 못 바꿈. 멈춤 규칙 적용, known_open 전환 여부 사용자 결정 대기. 이전: 전체open·미배포. #93 f8f6e08 root5483280439 불수용 유지: 원래2/8·8/8·0/4 불변으로 두strictincrease 미달·정상8/8 보호. 최신 #96 8d237496f32868f339828bb6ab8cf7622f641263은 source reference/법적적용 구분 설계·공개65PASS 제출(구현측)/제품0·root 설계검토 대기. 승인 뒤 제품/원래수용 시험·불수용제품 통합금지. |
-| TK-49 | open | regression | 2026-10-03 | 2026-10-17 #108 86b7fa5 Form 검사 설계 조건부 승인(잔여 시험 처음 두 단언만 반전 승인, 종결 계획 요구). 이전: 운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전. |
+| TK-49 | known_open | regression | 2026-10-03 | 2026-10-17 #108 86b7fa5 Form 검사 설계 조건부 승인(잔여 시험 처음 두 단언만 반전 승인, 종결 계획 요구). 이전: 운영8280 부분배포·전체open 유지. #90 b1e inline에 이어 #95 5e6e859 named PAGE ActualText/capture 제한범위 수용5485088907. exactCI38144023479/score38144023440/Docker SUCCESS·독립PDF18 PASS·원래 경계/접합/법리 보호 유지. root full1회 exit0 수용1214/원장949/전체6914/브라우저197/실패0·fixed81.7/79.2/FP0. 미지원/Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전. 2026-10-17 #116(ad848b1) 선택 Form ActualText 보안 검사 조건부 승인: 고정·은퇴 불변·인젝션 방어, 보완 1개(_named_available을 Form XObject로 한정, 이미지 20쪽 +25%). 잔여(structure-tree·비태그 UNKNOWN primary·0.75 floor·대체 consumer)는 수용 시 known_open. 2026-10-17 #116 보완(3f9aef2) 수용·Steve 병합(e331234): _named_available을 /Subtype /Form 스트림이 있을 때만 열도록 한정(이미지 20쪽 +25%→+5.6%), 은퇴 4세트 불변·인젝션 방어, CI 필수 성공(인용). 수용 범위는 호출된 Form의 선택 named ActualText를 보안 검사로 전달하는 것까지(경계 인증·읽기 텍스트 불변, inspection_complete=false 유지). 잔여(structure-tree 연결·비태그 UNKNOWN primary·0.75 floor·대체 consumer)는 종결 계획대로 known_open. 설계 PR #108 닫음. verify_all 전체는 릴리스 후보 1회. |
 | TK-55 | known_open | regression | 2026-10-04 | 2026-10-17 #106 2936764 생성 claim ID 충돌 수정 수용·평가 측 통합(미배포). 기존 저장 16진수 ID·unknown-role/opaque/capture-budget 잔여로 known_open 유지. 이전: 운영8280 부분배포·known_open 유지. #91 86e cascade에 이어 #97 2f4e798 두first-party 발췌 occurrence/source추가검사 제한수용5485136030. exactCI38143165314/score38143165365/Docker SUCCESS·독립27대조 PASS·원래privacy 필수/보호 충족. root full1회 exit0 수용1214/원장2357/전체8061/브라우저197/실패0·fixed81.7/79.2/FP0. 이전#91 첫full timing1FAIL 이력보존·현재결과와구분. legacy/opaque/unsupported/capture-budget 잔여·#98 Steve aa40019 통합완료·새봉인/릴리스/배포 전. |
-| TK-73 | open | existing | 2026-10-10 | 2026-10-17 #92 401d098 계약안 보류. 평가 측 사전 점검: 서증명 첫 구분 기호 앞 비교 임시 패치로 은퇴 c A3→0·재현율 유지·나머지 불변. 최소 수정+공개 111/330 손실 측정 지시. 이전: 전체open·미배포. #92 최신545c917fd12f9fec40eb52bbccfffaf566bc9fdc 설계/공개시험·제품0. 별도 source-tree/native 안전성 제한PASS는 제품/기준승인과구분·구체 기준안 검토 HOLD. 원래111 날짜확대 진짜확인손실+9/false추가이득0·기존4종AFP3 불변. 사용자 확인필요분리 선택은 검토이며 승인0·원래A/finding/GLOBAL/UNKNOWN 보호 유지. |
-| TK-76 | open | existing | 2026-10-16 | 2026-10-17 Antigravity 배정(사용자 '승인 목표 우선'). 개발 말뭉치 중점6유형 1주기. 1단계 진단 메모 → 유형별 PR. 2026-10-17 #109 진단 메모 조건부 승인(정정 커밋 1개 뒤 병합 건의): INCONS 한글병기는 기존 검사 있음→재진단, FORM (d)40→제품 공백 재분류, COPY 문서종류 건수표 선행, SRC-UNV .invalid 금지·UNVERIFIED 잡음 보고, NUM 가지번호중복·별지구역은 TK-73. 2단계 순서 승인. 평가측 train 재실행 보완: 한글병기8 탐지정상·발췌토큰(d), COPY 진술서8 반복머리글 제거(c)→COPY 첫 PR 대상, 일괄해제 시 대조군 오탐4묶음. |
+| TK-73 | known_open | existing | 2026-10-10 | 2026-10-17 #92 401d098 계약안 보류. 평가 측 사전 점검: 서증명 첫 구분 기호 앞 비교 임시 패치로 은퇴 c A3→0·재현율 유지·나머지 불변. 최소 수정+공개 111/330 손실 측정 지시. 이전: 전체open·미배포. #92 최신545c917fd12f9fec40eb52bbccfffaf566bc9fdc 설계/공개시험·제품0. 별도 source-tree/native 안전성 제한PASS는 제품/기준승인과구분·구체 기준안 검토 HOLD. 원래111 날짜확대 진짜확인손실+9/false추가이득0·기존4종AFP3 불변. 사용자 확인필요분리 선택은 검토이며 승인0·원래A/finding/GLOBAL/UNKNOWN 보호 유지. 2026-10-17 #117 보호 조건 설계 보완 요청: 공개 330 손실0이나 은퇴 c A등급 오탐 3→2(1건만), 숫자 규칙 범위 축소 요청. 최소 수정은 30.2/A0이지만 공개 진짜중복 48 손실. 2026-10-17 #117 59b62fc 설계 승인(첫 토큰 식별자 규칙, 은퇴 c 15.2/A3→25.2/A1 모의) → 제품 PR #122(9a56188) 수용·Steve 병합(46acf51): CI 필수·은퇴 비교 성공(c 25.2/A1, 나머지 불변), 현재 Steve(#116 포함) 합산 재실행 동일, 관련 시험 300 passed. 변경은 _numbering 비교 키 결정만. 잔여: 한쪽 행에만 날짜가 있는 1건(날짜 보호 유지 판단)은 known_open. 설계·검토 PR #117·#92 닫음. |
+| TK-76 | open | existing | 2026-10-16 | 2026-10-17 Antigravity 배정(사용자 '승인 목표 우선'). 개발 말뭉치 중점6유형 1주기. 1단계 진단 메모 → 유형별 PR. 2026-10-17 #109 진단 메모 조건부 승인(정정 커밋 1개 뒤 병합 건의): INCONS 한글병기는 기존 검사 있음→재진단, FORM (d)40→제품 공백 재분류, COPY 문서종류 건수표 선행, SRC-UNV .invalid 금지·UNVERIFIED 잡음 보고, NUM 가지번호중복·별지구역은 TK-73. 2단계 순서 승인. 평가측 train 재실행 보완: 한글병기8 탐지정상·발췌토큰(d), COPY 진술서8 반복머리글 제거(c)→COPY 첫 PR 대상, 일괄해제 시 대조군 오탐4묶음. #114(EVI-DATE) 불승인: train DATE .40→.80이나 은퇴 08b 29.6→27.8 회귀, 항목명만 보강 지시 위반, 일 상한 35 근거 요청, 요일 조사 부분 분리 제출 허용. #109 정정 2차(8b91ea5) 수용·병합(097c7dc). #118(EVI-COPY) 1차 조건부(소제목 분할 실제 진입점 효과 0·보고 8/8 재현 안 됨) → 정정 ba59fbb 수용: train COPY 0→4/40, 은퇴 08 19.0→21.2, 나머지·고정 불변, 오탐0. 사용자 결정(10-17): 열린 TK-76 PR 전부 이번 릴리스 범위. #114 재제출(78fc3df) 수용·병합(c3595a7): 은퇴 08b 회귀 해소, 요일병기 탐지 +8(A등급)이나 항목명 토큰 미일치로 train DATE 16/40 그대로, 보고 28/40 재현 안 됨(정정 요청). #118 병합(ad8ac0f). #120(후속: 수×금액 산식·INCONS 항목명·설계 메모 2건) 사용자 결정으로 이번 릴리스 범위 포함. #120 1차(5aef198) 보완 요청: 회귀 없음·목표 개선 0(소제목이 붙어 항목명 토큰 불일치, 수×금액 산식 미발생). #120 보완(c49df80) 수용(병합 전 Steve 병합 푸시·날짜 대조 시험 1개 조건): 평가 측 재실행 train .125→.165·INCONS 8→24/40·오탐0, 은퇴 08b 29.6→31.5·나머지 불변, 고정 81.7/79.2/FP0(CI 인용). 1차 시험 6개 삭제 평가 측 승인(approved_test_marks). |
+| TK-77 | merged | existing | 2026-10-17 | 2026-10-17 평가 측 발견·사용자 승인으로 Antigravity 배정. TK-43 정규식 시간 시험이 CI에서 한 번 측정·GC 개입으로 간헐 실패(#114 0.748s·#117 0.597s·0.840s, 상한 0.1s). 측정 방법만 GC 끄기+3회 최솟값으로 견고화, 상한·입력 불변. 제품 diff 0. 2026-10-17 #121(01593e3) 수용·Steve 병합(d62bb57): 시간 시험 4개(TK-43 3·TK-58 1)에 GC 끄기+3회 최솟값, 상한·입력·단언 불변, 제품 diff 0. 수용 뒤 1주(~10-24) CI 재발 관찰. |
 
 ## 읽는 법
 - 회귀 비율이 줄면 수정 과정의 품질 관리가 나아지는 것이다. 성능(처음 보는 문서의 탐지율)은 고정 비공개 벤치마크로 따로 본다(`FIXED_BENCHMARK.md`).
