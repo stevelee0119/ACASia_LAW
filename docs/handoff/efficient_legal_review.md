@@ -66,11 +66,11 @@ Gemini 공시는 `through December 31, 2026` / `starting January 1, 2027`을 명
 출력 요금은 thinking tokens를 포함한다. 코드의 `after_2026-12-31` 전환과 일치한다.
 명시 캐시 보관료는 읽기 요금과 별도이며, 이 앱은 Gemini 명시 캐시를 생성하지 않는다.
 
-**Sonnet 캐시 읽기 불일치:** TK-78 ①의 명시 지시에 따라 `claude-sonnet-5-5.cache_read`를 **0.20**으로
-수정했다. 다만 위 확인일의 [Anthropic 공식 가격 페이지](https://platform.claude.com/docs/en/about-claude/pricing)는
-Sonnet 5.5 캐시 읽기를 **0.10**, 입력 2.00, 5분 쓰기 2.50으로 표시했다.
-따라서 **0.20의 공시 근거는 미확인**이다. 지시값 구현과 공식 조회 결과를 구분하며 Claude Code 평가 세션이
-이 차이를 확인해야 한다. 0.20을 공식 조회로 검증했다고 주장하지 않는다.
+**Sonnet 캐시 읽기: 공식 0.10 반영(평가 측 지시 정정).**
+`claude-sonnet-5-5.cache_read`는 **0.10**이다.
+[평가 측 정정](https://github.com/stevelee0119/ACASia_LAW/pull/132#issuecomment-6242393439)에 따라
+[Anthropic 공식 가격 페이지](https://platform.claude.com/docs/en/about-claude/pricing)의 입력 단가 2.00의
+5%인 0.10을 반영했다. Opus 5.5의 캐시 읽기 단가 0.20과 구분한다.
 
 Claude API prompt cache는 5분 쓰기 방식이며 기본 OFF다. 단발 요청마다 쓰기만 발생하면 비용이 늘 수 있다.
 캐시·사고 토큰 정산 개선은 유지하되 사용량이 불완전하면 추정 상태를 유지한다.

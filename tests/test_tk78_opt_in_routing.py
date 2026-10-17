@@ -103,7 +103,7 @@ def test_on_flag_selects_task_models_without_changing_provider_defaults(transpor
     assert {name: p.model for name, p in router.settings.providers.items()} == LEGACY_MODELS
 
 
-@pytest.mark.parametrize("model,read_rate", [("claude-sonnet-5-5", "0.2"),
+@pytest.mark.parametrize("model,read_rate", [("claude-sonnet-5-5", "0.1"),
     ("gpt-6.1-sol", "0.1"), ("gpt-6-luna", "0.01")])
 def test_configured_cache_rates_are_used_in_settlement(tmp_path, model, read_rate):
     settings = Settings(storage_root=tmp_path)

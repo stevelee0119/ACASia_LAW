@@ -1,5 +1,5 @@
 {
-  "_comment": "USD / 1M tokens. Standard short-context rates; sources and verification date in docs/handoff/efficient_legal_review.md. Sonnet cache_read=0.20 per TK-78 instruction; retrieved public price differs (documented). Gemini promotional rates expire 2026-12-31. Model-specific rates take precedence; provider entries are legacy fallback only.",
+  "_comment": "USD / 1M tokens. Standard short-context rates; sources and verification date in docs/handoff/efficient_legal_review.md. Sonnet cache_read: 공식 0.10 반영(평가 측 지시 정정). Gemini promotional rates expire 2026-12-31. Model-specific rates take precedence; provider entries are legacy fallback only.",
   "openai": {
     "input": 2.0,
     "output": 8.0
@@ -29,7 +29,7 @@
   "claude-sonnet-5-5": {
     "input": 2.0,
     "output": 10.0,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
   },
   "claude-opus-5-5": {
