@@ -60,6 +60,23 @@ def test_fixed_benchmark_fingerprint_and_combine(tmp_path):
     assert fb.combine([row(10, 0.5, 50, 0, True), row(10, 0.5, 50, 0, False)])["injection_defended"] is False
 
 
+def test_fixed_benchmark_fingerprint_order_is_codepoint_not_os(tmp_path):
+    """지문은 OS와 무관하게 이름의 코드포인트 순서로 만든다(대문자 'SD-'가 소문자 json보다 앞). 2026-10-17 Windows·Linux 지문 불일치 재발 방지."""
+    import hashlib
+    fb = _load("fixed_benchmark")
+    d = tmp_path / "set01"
+    d.mkdir()
+    files = {"ground_truth.json": b"{}", "match_spec.json": b"{\"tokens\": {}}", "SD-01.pdf": b"a", "SD-02.pdf": b"b"}
+    for name, data in files.items():
+        (d / name).write_bytes(data)
+    digest = hashlib.sha256()
+    digest.update(b"set01")
+    for name in ("SD-01.pdf", "SD-02.pdf", "ground_truth.json", "match_spec.json"):
+        digest.update(name.encode("utf-8"))
+        digest.update(hashlib.sha256(files[name]).digest())
+    assert fb.fingerprint(tmp_path) == digest.hexdigest()[:16]
+
+
 def test_fixed_benchmark_refuses_folder_inside_repo():
     fb = _load("fixed_benchmark")
     assert fb.main(["--bench-dir", str(ROOT / "tests" / "fixtures" / "retired_sealed" / "sealed_20261010")]) == 2

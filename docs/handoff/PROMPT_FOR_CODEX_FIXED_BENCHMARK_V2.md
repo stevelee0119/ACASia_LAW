@@ -313,11 +313,11 @@ from collections import Counter
 from pathlib import Path
 
 root = Path(sys.argv[1])
-sets = sorted(p for p in root.iterdir() if p.is_dir() and (p / "ground_truth.json").is_file())
+sets = sorted((p for p in root.iterdir() if p.is_dir() and (p / "ground_truth.json").is_file()), key=lambda q: q.name)
 errors, keys, docs, controls, types, digest = [], set(), 0, 0, Counter(), hashlib.sha256()
 for s in sets:
     digest.update(s.relative_to(root).as_posix().encode("utf-8"))
-    for p in sorted(s.iterdir()):
+    for p in sorted(s.iterdir(), key=lambda q: q.name):  # OS와 무관한 순서
         if p.is_file() and (p.name in ("ground_truth.json", "match_spec.json") or p.suffix.lower() == ".pdf"):
             digest.update(p.name.encode("utf-8")); digest.update(hashlib.sha256(p.read_bytes()).digest())
     gt = json.loads((s / "ground_truth.json").read_text(encoding="utf-8"))

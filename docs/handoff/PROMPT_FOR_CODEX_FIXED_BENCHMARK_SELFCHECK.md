@@ -65,7 +65,7 @@ if inside:
 stray = [p for p in root.iterdir() if not (p.is_dir() and p.name.startswith("set"))]
 if stray:
     errors.append(f"벤치마크 폴더에 묶음(setNN) 밖 항목 {len(stray)}개")
-sets = sorted(p for p in root.iterdir() if p.is_dir() and p.name.startswith("set"))
+sets = sorted((p for p in root.iterdir() if p.is_dir() and p.name.startswith("set")), key=lambda q: q.name)
 
 # 지문: scripts/fixed_benchmark.py와 같은 방식(묶음 이름 + 허용 파일 이름·내용 해시)
 digest = hashlib.sha256()
@@ -77,7 +77,7 @@ for s in sets:
         errors.append(f"{tag}: ground_truth.json·match_spec.json 없음")
         continue
     digest.update(s.relative_to(root).as_posix().encode("utf-8"))
-    for p in sorted(s.iterdir()):
+    for p in sorted(s.iterdir(), key=lambda q: q.name):  # OS와 무관한 순서
         if p.is_file() and (p.name in ALLOWED or p.suffix.lower() == ".pdf"):
             digest.update(p.name.encode("utf-8")); digest.update(hashlib.sha256(p.read_bytes()).digest())
     extra = [p for p in s.iterdir() if p.name not in ALLOWED and not (p.is_file() and p.suffix.lower() == ".pdf")]

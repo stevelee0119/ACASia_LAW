@@ -28,8 +28,13 @@ LOG = ROOT / "docs" / "scorecards" / "fixed_benchmark_log.jsonl"
 ALLOWED = {"ground_truth.json", "match_spec.json"}
 
 
+def _name(p: Path) -> str:
+    """정렬 기준은 파일 이름의 코드포인트 순서다. Path 기본 정렬은 Windows에서 대소문자를 무시해 지문이 OS마다 달라진다."""
+    return p.name
+
+
 def _feed(digest, folder: Path) -> None:
-    for p in sorted(folder.iterdir()):
+    for p in sorted(folder.iterdir(), key=_name):
         if p.is_file() and (p.name in ALLOWED or p.suffix.lower() == ".pdf"):
             digest.update(p.name.encode("utf-8"))
             digest.update(hashlib.sha256(p.read_bytes()).digest())
@@ -39,7 +44,7 @@ def subsets(bench: Path) -> list:
     """벤치마크 폴더 자체가 한 묶음이거나, 하위 폴더마다 한 묶음(한 사건)이다."""
     if (bench / "ground_truth.json").is_file():
         return [bench]
-    return [p for p in sorted(bench.iterdir()) if p.is_dir() and (p / "ground_truth.json").is_file()
+    return [p for p in sorted(bench.iterdir(), key=_name) if p.is_dir() and (p / "ground_truth.json").is_file()
             and (p / "match_spec.json").is_file()]
 
 
