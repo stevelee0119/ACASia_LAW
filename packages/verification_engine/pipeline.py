@@ -242,8 +242,13 @@ def execution_summary(log):
     summary: Dict[str, Any] = {"calls": len(log), "providers": {}}
     for entry in log:
         provider = summary["providers"].setdefault(entry.get("provider") or "unknown",
-                                                   {"calls": 0, "ok": 0, "failed": 0, "errors": {}})
+                                                   {"calls": 0, "ok": 0, "failed": 0, "errors": {},
+                                                    "reused": 0, "external_calls": 0})
         provider["calls"] += 1
+        if entry.get("reused") or entry.get("cost_status") == "CACHED":
+            provider["reused"] += 1
+        elif entry.get("cost_status") not in {"LOCAL", "NOT_SENT"}:
+            provider["external_calls"] += 1
         if entry.get("ok"):
             provider["ok"] += 1
         else:
@@ -280,6 +285,8 @@ class VerificationPipeline:
         단계마다 따로 모으면 빠지는 단계가 생긴다(법리 교차검토·AI 작성 판별이 집계에서 빠졌다). 기존 훅
         (워커의 체크포인트)은 그대로 호출한다."""
         log: List[Dict[str, Any]] = []
+        if hasattr(self.router, "clear_result_cache"):
+            self.router.clear_result_cache()
         self._execution_document = None
         previous = getattr(self.router, "on_execution", None)
 
