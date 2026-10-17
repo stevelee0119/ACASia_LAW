@@ -13,17 +13,25 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from packages.claim_engine.date_verifier import DATE_WEEKDAY_RE, HEADING_LINE_RE
+from packages.legal_engine.citation_extractor import REPORT_CITATION_RE, INDICATOR_STAT_RE
 
 
 def measure_regex(name: str, pattern, base_text: str):
+    import gc
     text_1x = base_text
     text_4x = base_text * 4
 
     runs = 100
     repeats = 3
 
-    t1_raw = min(timeit.repeat(lambda: list(pattern.finditer(text_1x)), number=runs, repeat=repeats)) / runs
-    t4_raw = min(timeit.repeat(lambda: list(pattern.finditer(text_4x)), number=runs, repeat=repeats)) / runs
+    gc_was_enabled = gc.isenabled()
+    try:
+        gc.disable()
+        t1_raw = min(timeit.repeat(lambda: list(pattern.finditer(text_1x)), number=runs, repeat=repeats)) / runs
+        t4_raw = min(timeit.repeat(lambda: list(pattern.finditer(text_4x)), number=runs, repeat=repeats)) / runs
+    finally:
+        if gc_was_enabled:
+            gc.enable()
 
     # 분모 보정 (0.0001초 미만인 경우)
     t1_adj = max(t1_raw, 0.0001)
@@ -55,9 +63,18 @@ def main():
         "제1조 목적 및 적용 범위\n"
     ) * 10
 
-    print("=== TK-76 EVI-DATE 정규식 성능 측정 (공통 점검표 2항) ===")
+    sample_text_src_unv = (
+        "원고는 여러 서증을 제출하며 주장을 이어갔습니다.\n"
+        "한편 자료조사위원회의 「2025 유통환경 실태백서」 미공개 요약에 따르면 반품률은 68.5%에 이릅니다.\n"
+        "피고는 이러한 조사의 신빙성을 다투고 있습니다.\n"
+        "물가 및 거래 동향에 따르면 납품지수 94.73 및 정확도 99.8%를 기록하였습니다.\n"
+    ) * 10
+
+    print("=== TK-76 정규식 성능 측정 (공통 점검표 2항) ===")
     measure_regex("DATE_WEEKDAY_RE", DATE_WEEKDAY_RE, sample_text_weekday)
     measure_regex("HEADING_LINE_RE", HEADING_LINE_RE, sample_text_heading)
+    measure_regex("REPORT_CITATION_RE", REPORT_CITATION_RE, sample_text_src_unv)
+    measure_regex("INDICATOR_STAT_RE", INDICATOR_STAT_RE, sample_text_src_unv)
     print("모든 정규식 성능 기준(비 < 8.0, 4배 < 1.0s) 충족 확인 완료.")
 
 
