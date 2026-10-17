@@ -1800,3 +1800,11 @@ f64 기존 시간실패 .625568/.748032초는 원인미확정으로 보존한다
 조건: 로컬 Linux·Python 3.11.15·오프라인. 비공개 세트는 범주 수준 사실(법조문 인용 유무)만 공개, 입력·건별 결과 비공개.
 
 - **TK-45 known_open 전환(2026-10-17 사용자 결정):** #96 불승인 판정 뒤 사용자가 작업 중지를 결정. 기존 보호 시험·xfail 유지, 재개는 사용자 결정.
+
+## 2026-10-17 TK-76 진단 메모 판정(Antigravity #109)
+
+| PR·SHA | 판정 | 근거(재실행/인용 구분) |
+|---|---|---|
+| #109 `936edd5`(실제 head `936edd53ba04…`; 보고문 전체 SHA `936edd5d428c…`는 오기) | **조건부 승인** — 정정 커밋 1개 뒤 병합 건의, 2단계 순서 승인 | CI 결과 인용(필수 4개 성공). 유형별 집계 42.0/240=.175는 train 기준 json과 일치. 원인 범주별 건수는 평가 측 미재현(이 환경에 train 원본 없음). 코드 대조·합성 입력으로 확인: 한글·숫자 병기 대조(`korean_amount.words_digits_mismatches`→`ARITHMETIC_MISMATCH` A)는 이미 있고 EVI-INCONS 대응표 안 → '산술 미지원' 진단 오류, 재진단. `수 × 금액` 순서는 `calculation.evaluate_expression` 확장. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109#issuecomment-6229122189) |
+
+조건(요약): EVI-COPY 제목 제한 일괄 해제 금지(대조군 B등급 SUSPICIOUS는 대조군 오탐, 같은 당사자 서면 반복은 정상) — 복사 쪽→원문 쪽 문서 종류 건수표 먼저. SRC-UNV `.invalid` 규칙 금지·새 UNVERIFIED 건수(문서당) 보고·결함 단정 금지. EVI-FORM의 (d) 40건은 제품 탐지 공백으로 재분류(채점기 쪽 (d)는 DATE 8건뿐), 서명 공란은 진정성립 추정(민사소송법 제358조) 불가일 뿐 확정 결함 아님. EVI-NUM 가지번호 중복·별지 구역은 TK-73 영역. EVI-DATE 위치 문맥 보강은 모든 날짜 finding에 일관된 위치 정보로만.
