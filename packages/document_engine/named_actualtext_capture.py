@@ -1,7 +1,7 @@
-"""Document-local, bounded PAGE named replacement capture.
+"""Document-local, bounded PAGE and selected Form replacement capture.
 
 Inspection coverage is a lifecycle result, not an optimistic default. Source
-certification and inspection stay independent; Form resource restoration is
+certification and inspection stay independent; complete Form coverage is
 outside this provider's scope. Cached values never establish entity identity.
 """
 from pdfminer.utils import PDFDocEncoding
@@ -145,4 +145,4 @@ class NamedActualTextCapture:
                     actualtext_absent=self.actualtext_absent,
                     selected_property_missing=self.selected_property_missing,
                     selected_property_invalid=self.selected_property_invalid,
-                    inspection_scope='SELECTED_PAGE_NAMED_PROPERTIES', version=1)
+                    inspection_scope='SELECTED_PAGE_AND_FORM_NAMED_PROPERTIES', version=1)
