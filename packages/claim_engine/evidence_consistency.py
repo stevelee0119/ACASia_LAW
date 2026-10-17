@@ -59,7 +59,8 @@ PROXIMITY_RE = re.compile(r"같은\s*테이블|바로\s*옆|옆\s*자리|함께\
 DISTANCE_RE = re.compile(r"\d+\s*(?:미터|m|M)\s*(?:가량|정도|쯤)?\s*떨어진|다른\s*테이블|멀리\s*떨어")
 # 진술인 명의 문서의 제목 줄(문단 전체가 제목). 증거 목록 속 "각 진술서"는 제목이 아니다.
 STATEMENT_HEADING_RE = re.compile(r"(?:^|\n)\s*(?:진\s*술\s*서|사\s*실\s*확\s*인\s*서|확\s*인\s*서)\s*(?:\n|$)")
-COPY_MIN_CHARS = 30
+# 복사 문장 탐지 최소 길이 (24자 이상 문장 대상, 짧은 확인 문장 누락 방지)
+COPY_MIN_CHARS = 24
 COPY_SIMILARITY = 0.9
 
 
@@ -581,7 +582,7 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
                             if pleading else "진술인의 서명·날인이 생략되어 작성 명의를 확인할 수 없다.",
                             text[max(0, m.start() - 40):m.end() + 20],
                             status=VerificationStatus.UNVERIFIED if pleading else VerificationStatus.CONTRADICTED))
-    statement_start = _statement_start(text)
+    statement_start = _statement_start(doc, text)
     proximity: List[str] = []
     distance: List[str] = []
     for start, end in sentence_bounds(text):
@@ -651,6 +652,8 @@ def check_document(doc: NormalizedDocument) -> List[Finding]:
 # --- 서면 간 문장 복사 -------------------------------------------------------------
 _QUOTED_RE = re.compile(r"[“\"「『][^”\"」』]{6,}[”\"」』]")
 _NORMALIZE_RE = re.compile(r"[\s\W_]+", re.UNICODE)
+# 서명·날인·제출 확인 등 서면 간 겹치기 쉬운 정형 상투구 문구 패턴
+_BOILERPLATE_RE = re.compile(r"(?:사실과\s*다름없음을\s*확인|서명\s*날인\s*(?:합니다|함|하였음)|작성하여\s*제출합니다|본인의\s*자유로운\s*의사)")
 
 
 def _shingles(text: str, n: int = 5) -> set:
@@ -663,15 +666,60 @@ def _sentences_for_copy(doc: NormalizedDocument) -> List[Tuple[str, str]]:
     for start, end in sentence_bounds(text):
         sentence = text[start:end].strip()
         body = _QUOTED_RE.sub("", sentence)  # 판례·법령 인용문은 서면끼리 겹치는 것이 정상이다
+        # 서명·날인 확인 등 정형 상투구는 서면 간 겹칠 수 있으므로 복사 탐지 대상에서 제외한다
+        if _BOILERPLATE_RE.search(body):
+            continue
         key = _NORMALIZE_RE.sub("", body)
         if len(key) >= COPY_MIN_CHARS:
             out.append((sentence, key))
     return out
 
 
-def _statement_start(text: str) -> Optional[int]:
+# 서면 공통 서두 표제부(송달장소, 요청취지, 제출경위 등) 패턴
+# 진술서 제목이 머리글로만 분리된 경우, 표제부 뒤부터가 실제 진술 구역이다.
+PREAMBLE_HEADING_RE = re.compile(
+    r"(?:송달장소\s*:[^\n]+(?:\n|$)|"
+    r"(?:요청|청구)\s*취지[^\n]+(?:\n|$)|"
+    r"제출\s*경위[^\n]+(?:\n|$))"
+)
+
+
+def _statement_start(doc_or_text: NormalizedDocument | str, reading_text: Optional[str] = None) -> Optional[int]:
+    """진술서·확인서 문서의 실제 진술 본문 시작 오프셋을 반환한다.
+    
+    1. 본문 텍스트 내에 '진술서·사실확인서·확인서' 제목 줄이 직접 있는 경우 그 제목 줄 바로 뒤의 오프셋을 반환한다.
+    2. 여러 쪽에 반복되는 머리글(running_head)로 분류되어 본문 텍스트에서는 제외되었으나
+       문서 블록에 해당 제목이 있는 경우, 서면 표제부(송달장소·요청취지 등 공통 서두) 뒤의 실제 진술 구역 시작 오프셋을 반환한다.
+    진술서·확인서 계열 문서가 아니면 None을 반환한다.
+    """
+    if isinstance(doc_or_text, str):
+        text = doc_or_text
+        doc = None
+    else:
+        doc = doc_or_text
+        text = reading_text if reading_text is not None else build_reading_text(doc).text
+
+    # 1. 본문 텍스트 내 직접 제목 줄 탐색
     heading = STATEMENT_HEADING_RE.search(text)
-    return heading.end() if heading else None
+    if heading:
+        return heading.end()
+
+    # 2. doc 객체가 주어진 경우, 머리글(running_head) 또는 상단 블록의 진술서 제목 탐색
+    if doc is not None:
+        is_statement = any(
+            STATEMENT_HEADING_RE.search(b.text or "")
+            for b in doc.blocks
+            if b.block_type in ("running_head", "paragraph")
+        )
+        if is_statement:
+            # 진술서 제목이 머리글로만 분리된 경우:
+            # 서면 서두의 표제부(송달장소, 요청취지, 제출경위 등 다른 서면과 공통인 부분)가 있으면 그 뒤부터 진술 구역으로 본다.
+            preamble_matches = list(PREAMBLE_HEADING_RE.finditer(text[:2000]))
+            if preamble_matches:
+                return preamble_matches[-1].end()
+            return 0
+
+    return None
 
 
 def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Finding]:
@@ -682,7 +730,7 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
     """
     docs = list(documents)
     texts = {d.document_id: build_reading_text(d).text for d in docs}
-    statements = {d.document_id: _statement_start(texts[d.document_id]) for d in docs}
+    statements = {d.document_id: _statement_start(d, texts[d.document_id]) for d in docs}
     if not any(start is not None for start in statements.values()):
         return []
     prepared = {d.document_id: _sentences_for_copy(d) for d in docs}
@@ -726,3 +774,4 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                                           "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
                                                     for a, b, s in matched[:5]]}))
     return out
+
