@@ -32,6 +32,26 @@ def minimal_numbering(*, guarded=False):
     return namespace["_numbering"]
 
 
+def first_token_identifier(suffix):
+    """Only an immediately attached token can veto the repeated-name pair.
+
+    Later narrative tokens are deliberately outside this grammar. No title,
+    source-location or narrative vocabulary is used to recognize a suffix.
+    """
+    import re
+    match = re.match(r"\s*(\S+)", suffix)
+    if match is None:
+        return False
+    token = match.group(1).rstrip(".,;:")
+    wrappers = {"(": ")", "[": "]", "{": "}", "<": ">"}
+    if token[:1] in wrappers:
+        closing = wrappers[token[0]]
+        token = token[1:-1] if token.endswith(closing) else token[1:]
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", token):
+        return False
+    return bool(re.search(r"[0-9_/-]", token) or re.fullmatch(r"[A-Z]+", token))
+
+
 def guarded_comparison_name(row, same):
     """Unapproved narrow design: retain native/GLOBAL/ambiguous identities."""
     import re
@@ -49,17 +69,8 @@ def guarded_comparison_name(row, same):
     # EOF or from untyped words here. Unequal observed dates preserve A.
     if len({re.sub(r"\s", "", item.get("date") or "") for item in same}) != 1:
         return original
-    # Remove only explicit source-location units when looking for identity
-    # numbers. Other numerals and alphanumeric IDs keep the old comparison.
-    for pair in pairs:
-        suffix = pair[2]
-        for token in re.finditer(r"[0-9]+|[A-Za-z_-]+", suffix):
-            value = token.group()
-            if value[0].isdigit():
-                if not re.compile(r"\s*(?:쪽|행|페이지)").match(suffix, token.end()):
-                    return original
-            elif '-' in value or '_' in value:
-                return original
+    if any(first_token_identifier(pair[2]) for pair in pairs):
+        return original
     return re.sub(r"\s", "", pairs[0][0])
 
 
