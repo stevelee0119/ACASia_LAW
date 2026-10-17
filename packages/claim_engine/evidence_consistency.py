@@ -680,13 +680,13 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
 
 _PRIOR_SUBMISSION_RE = re.compile(r"(?:이미|앞서|종전(?:\s*에)?|기|제?\s*\d+\s*차\s*준비서면에서?)\s*제출(?:한|된|하여)?")
 _CONTINUOUS_RANGE_RE = re.compile(
-    r"(?P<p1>[갑을병정])\s*제\s*(?P<n1>\d+)\s*호증부터\s*(?:(?P<p2>[갑을병정])\s*제\s*)?(?P<n2>\d+)\s*호증까지"
+    r"(?P<p1>[가-힣])\s*제\s*(?P<n1>\d+)\s*호증부터\s*(?:(?P<p2>[가-힣])\s*제\s*)?(?P<n2>\d+)\s*호증까지"
     r"(?:\s*(?P<mod>빠짐없이|모두|전부|일체|연속))?"
 )
 _COMPLETE_DECLARATION_RE = re.compile(
     r"(?:증거목록|입증방법|제출\s*증거|제출목록|별지\s*증거목록|별지\s*제출목록)[^.\n]{0,30}(?:전부|모두|일체|빠짐없이|추가\s*제출\s*없음|확정)"
-    r"|(?:이\s*서면의\s*제출\s*증거\s*전부|별지\s*증거목록\s*전부|별지\s*제출목록\s*전부)"
-    r"|별지\s*(?:증거|제출)?목록에\s*없는"
+    r"|(?:이\s*서면의\s*제출\s*증거\s*전부|별지\s*증거목록\s*전부|별지\s*제출목록\s*전부|이\s*(?:세|두|\d+)\s*자료만\s*제출)"
+    r"|본문에\s*적힌\s*내용이\s*해당\s*발췌의\s*전부"
 )
 _COUNT_DECLARATION_RE = re.compile(
     r"(?:증거목록|입증방법|제출\s*증거|제출목록)[^.\n]{0,30}(?:총|모두)\s*(?P<count>\d+)\s*개"
@@ -699,7 +699,7 @@ def check_evidence_numbering_mismatches(
 ) -> List[Finding]:
     """서증 목록 구역(exhibit_rows)과 본문 호증 인용(parse_exhibits) 사이의 구조적 불일치를 검출한다 (EVI-NUM).
 
-    1. 완결 선언 목록에 없는 호증 번호 인용 (축 1) -> CONTRADICTED·B
+    1. 완결 선언 목록에 없는 자기 호증 번호 인용 (축 1) -> CONTRADICTED·B
     2. 연속 범위 선언 후 중간 호증 누락 (축 2) -> CONTRADICTED·B
     3. 본문과 목록에서 동일 서증명에 서로 다른 호증 번호 부여 (축 3) -> SUSPICIOUS·B
     4. 선언 개수와 실제 목록 수 불일치 (축 4) -> CONTRADICTED·B
@@ -723,11 +723,11 @@ def check_evidence_numbering_mismatches(
                 norm_name = re.sub(r"\s+", "", name)
                 list_name_by_key[key] = (name, norm_name)
 
-    # 인라인/한 줄 증거목록 및 범위 표기 보강
+    # 인라인/한 줄 증거목록 및 범위 표기 보강 (수, 갑, 을 등 임의 한글 부호 지원)
     for line in text.split("\n"):
         if re.search(r"(?:증거목록|입증방법|제출\s*증거|제출목록|별지\s*(?:증거|제출)?목록)", line):
             for rm in re.finditer(
-                r"(?P<p>[갑을병정])\s*제\s*(?P<n1>\d+)\s*호증\s*(?:~|내지|-)\s*(?:[갑을병정]\s*제\s*)?(?P<n2>\d+)\s*호증",
+                r"(?P<p>[가-힣])\s*제\s*(?P<n1>\d+)\s*호증\s*(?:~|내지|-)\s*(?:[가-힣]\s*제\s*)?(?P<n2>\d+)\s*호증",
                 line,
             ):
                 p = rm.group("p")
@@ -740,40 +740,15 @@ def check_evidence_numbering_mismatches(
                 if k[0] and k[1] is not None:
                     list_keys.add(k)
 
+    # 자기 당사자 부호 집합 (상대방 증거 판단 배제용)
+    listed_parties = {k[0] for k in list_keys if k[0]}
+    if not listed_parties:
+        return out
+
     # 1. 완결 선언 목록과 본문 번호 대조 (축 1)
     has_completion = bool(_COMPLETE_DECLARATION_RE.search(text))
-    missing_annex_match = re.search(
-        r"별지\s*(?:증거|제출)?목록에\s*없는\s*(?P<exhibit>[갑을병정]\s*제\s*\d+\s*호증(?:의\s*\d+)?)",
-        text,
-    )
 
-    if missing_annex_match:
-        m_ref = parse_exhibits(missing_annex_match.group("exhibit"))
-        if m_ref:
-            ref = m_ref[0]
-            lbl = ref["label"]
-            ctx_start = max(0, text.rfind(".", 0, missing_annex_match.start()) + 1)
-            ctx_end = text.find(".", missing_annex_match.end())
-            ctx_end = len(text) if ctx_end == -1 else ctx_end + 1
-            excerpt = text[ctx_start:ctx_end].strip()
-            out.append(
-                _finding(
-                    doc,
-                    FindingType.EVIDENCE_LIST_MISMATCH,
-                    EvidenceGrade.B,
-                    Severity.MEDIUM,
-                    f"증거목록에 없는 호증이 서면에 원용되었다: {lbl}",
-                    f"별지 증거목록에 포함되지 않은 호증 {lbl}을 서면에서 원용하였다.",
-                    excerpt or lbl,
-                    features={
-                        "rule_id": "EVI.EVIDENCE_REFERENCE_MISSING",
-                        "defect_code": "EVIDENCE_REFERENCE_MISSING",
-                        "exhibit": lbl,
-                    },
-                )
-            )
-
-    if has_completion and list_keys:
+    if has_completion:
         for sentence in re.split(r"[.\n]+", text):
             # 이전 제출 호증 재인용 제외 (규칙 레벨 제외)
             if _PRIOR_SUBMISSION_RE.search(sentence):
@@ -782,8 +757,13 @@ def check_evidence_numbering_mismatches(
             if any(h in sentence for h in ("증거목록", "입증방법", "제출 증거", "첨부서류")):
                 continue
             for ref in parse_exhibits(sentence):
-                key = (ref.get("party"), ref.get("number"))
-                if key[0] and key[1] is not None and key not in list_keys:
+                party = ref.get("party")
+                num = ref.get("number")
+                # 중요: 자기 당사자 부호의 호증만 판단 (상대방 호증 배제)
+                if not party or party not in listed_parties or num is None:
+                    continue
+                key = (party, num)
+                if key not in list_keys:
                     lbl = ref["label"]
                     if not any(f.confidence_features.get("exhibit") == lbl for f in out):
                         out.append(
@@ -807,7 +787,7 @@ def check_evidence_numbering_mismatches(
     for m in _CONTINUOUS_RANGE_RE.finditer(text):
         p1 = m.group("p1")
         p2 = m.group("p2") or p1
-        if p1 != p2:
+        if p1 != p2 or p1 not in listed_parties:
             continue
         n1 = int(m.group("n1"))
         n2 = int(m.group("n2"))
@@ -844,7 +824,7 @@ def check_evidence_numbering_mismatches(
 
     # 3. 본문·목록 동일 자료명의 호증 번호 불일치 (축 3)
     body_exhibit_pattern = re.compile(
-        r"(?P<label>[갑을병정]\s*제\s*\d+\s*호증(?:의\s*\d+)?)\s*(?P<rest>[^\n.,;:]{2,40})"
+        r"(?P<label>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)\s*(?P<rest>[^\n.,;:]{2,40})"
     )
     for m in body_exhibit_pattern.finditer(text):
         lbl = m.group("label")
@@ -856,11 +836,16 @@ def check_evidence_numbering_mismatches(
         if not body_refs:
             continue
         body_key = (body_refs[0]["party"], body_refs[0]["number"])
-        rest_norm = re.sub(r"\s+", "", rest)
+        if body_key[0] not in listed_parties:
+            continue
 
+        # 목록의 자료명과 본문 인용 자료명의 정확 일치 확인 (사진 vs 사진첩 앞부분 일치 오탐 방지)
+        # 목록 자료명 뒤에 조사([이가은는을를의에로와과도만등], 에서/으로/부터/까지) 또는 문장부호/공백/문장끝이 와야 일치로 인정
         for list_key, (l_name, l_norm) in list_name_by_key.items():
             if body_key != list_key and body_key[0] == list_key[0] and len(l_norm) >= 2:
-                if rest_norm.startswith(l_norm):
+                chars = [re.escape(c) for c in l_norm]
+                name_pat = r"^\s*" + r"\s*".join(chars) + r"(?:에서|으로|부터|까지|[이가은는을를의에로와과도만등])?(?=[\s.,;:~!?]|$)"
+                if re.match(name_pat, rest):
                     list_lbl = f"{list_key[0]} 제{list_key[1]}호증"
                     dup = any(
                         f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"
@@ -888,34 +873,43 @@ def check_evidence_numbering_mismatches(
                         )
 
     # 4. 선언 개수와 실제 목록 수 불일치 (축 4)
-    m_count = _COUNT_DECLARATION_RE.search(text)
-    if m_count and exhibits:
-        declared_str = m_count.group("count") or m_count.group("count2")
-        if declared_str:
-            declared_cnt = int(declared_str)
-            actual_cnt = len(list_keys)
-            if declared_cnt != actual_cnt and declared_cnt > 0 and actual_cnt > 0:
-                ctx_start = max(0, text.rfind(".", 0, m_count.start()) + 1)
-                ctx_end = text.find(".", m_count.end())
-                ctx_end = len(text) if ctx_end == -1 else ctx_end + 1
-                excerpt = text[ctx_start:ctx_end].strip()
-                out.append(
-                    _finding(
-                        doc,
-                        FindingType.EVIDENCE_LIST_MISMATCH,
-                        EvidenceGrade.B,
-                        Severity.MEDIUM,
-                        f"증거 목록 선언 개수({declared_cnt}개)와 실제 서증 수({actual_cnt}개)가 일치하지 않는다",
-                        f"증거 목록에서 총 {declared_cnt}개 제출을 선언하였으나 실제 목록에는 {actual_cnt}개만 기재되었다.",
-                        excerpt or f"선언 {declared_cnt}개 ↔ 실제 {actual_cnt}개",
-                        features={
-                            "rule_id": "EVI.EXHIBIT_COUNT_MISMATCH",
-                            "defect_code": "EXHIBIT_COUNT_MISMATCH",
-                            "declared_count": declared_cnt,
-                            "actual_count": actual_cnt,
-                        },
-                    )
-                )
+    # 목록 구역 헤더 또는 목록 완결 선언 줄에서만 개수 선언 검사 (상대방 진술 배제)
+    for line in text.split("\n"):
+        # 상대방 주어가 있으면 제외
+        if re.search(r"(?:피고|원고|상대방|피고인|고소인)는\s*(?:[^\n]*?)?(?:제출|주장)", line):
+            continue
+        if re.search(r"(?:증거목록|입증방법|제출\s*증거|제출목록)", line):
+            m_count = _COUNT_DECLARATION_RE.search(line)
+            if m_count and exhibits:
+                declared_str = m_count.group("count") or m_count.group("count2")
+                if declared_str:
+                    declared_cnt = int(declared_str)
+                    actual_cnt = len(list_keys)
+                    if declared_cnt != actual_cnt and declared_cnt > 0 and actual_cnt > 0:
+                        ctx_start = max(0, text.rfind(".", 0, m_count.start()) + 1)
+                        ctx_end = text.find(".", m_count.end())
+                        ctx_end = len(text) if ctx_end == -1 else ctx_end + 1
+                        excerpt = text[ctx_start:ctx_end].strip()
+                        out.append(
+                            _finding(
+                                doc,
+                                FindingType.EVIDENCE_LIST_MISMATCH,
+                                EvidenceGrade.B,
+                                Severity.MEDIUM,
+                                f"증거 목록 선언 개수({declared_cnt}개)와 실제 서증 수({actual_cnt}개)가 일치하지 않는다",
+                                f"증거 목록에서 총 {declared_cnt}개 제출을 선언하였으나 실제 목록에는 {actual_cnt}개만 기재되었다.",
+                                excerpt or f"선언 {declared_cnt}개 ↔ 실제 {actual_cnt}개",
+                                features={
+                                    "rule_id": "EVI.EXHIBIT_COUNT_MISMATCH",
+                                    "defect_code": "EXHIBIT_COUNT_MISMATCH",
+                                    "declared_count": declared_cnt,
+                                    "actual_count": actual_cnt,
+                                },
+                            )
+                        )
+                        break
+
+    return out
 
     return out
 

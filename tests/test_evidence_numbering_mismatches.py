@@ -35,7 +35,7 @@ def _make_doc(lines: list[str], doc_id: str = "test-doc") -> NormalizedDocument:
 def test_pipeline_entrypoint_evidence_numbering_mismatches(tmp_path, monkeypatch):
     """실제 파이프라인 진입점(VerificationPipeline.run)을 통한 EVI-NUM 검출 검증."""
     sample_text = (
-        "원고는 피고의 의무 불이행을 입증하기 위하여 별지 증거목록에 없는 갑 제6호증 발주서를 근거로 주장합니다.\n"
+        "원고는 피고의 납품 지연을 입증하기 위하여 갑 제6호증 발주서를 주요 증거로 인용합니다.\n"
         "입증방법: 갑 제1호증 계약서, 갑 제2호증 내역서 (이 서면의 제출 증거 전부)"
     )
     doc_path = tmp_path / "brief_num_mismatch.txt"
@@ -117,18 +117,18 @@ def test_positive_mismatched_exhibit_number_same_name():
     assert "갑 제22호증" in name_mismatches[0].detail and "갑 제23호증" in name_mismatches[0].detail
 
 
-# --- 5. 양성 시험 4 (축 1: 별지 목록 밖 번호 원용) ---
-def test_positive_annex_missing_reference():
-    """축 1: 별지 증거목록에 없는 호증을 원용."""
+# --- 5. 양성 시험 4 (축 1: 수 호증 등 기타 당사자 부호의 완결 목록 누락 포섭) ---
+def test_positive_su_exhibit_missing_in_complete_list():
+    """축 1: '수' 부호 등 일반 한글 부호를 사용한 완결 목록 누락 정상 포섭."""
     doc = _make_doc([
-        "원고는 별지 증거목록에 없는 갑 제6호증 발주서를 근거로 납품이 완료되었다고 주장합니다.",
-        "별지 증거목록 전부: 갑 제1호증, 갑 제2호증",
+        "피신청인은 수 제4호증 감정서를 통하여 신청인의 청구가 부당함을 입증합니다.",
+        "입증방법: 수 제1호증 내지 수 제3호증 (제출 증거 일체)",
     ])
     findings = check_evidence_numbering_mismatches(doc)
     assert len(findings) >= 1
-    annex_missing = [f for f in findings if f.confidence_features.get("defect_code") == "EVIDENCE_REFERENCE_MISSING"]
-    assert len(annex_missing) >= 1
-    assert "갑 제6호증" in annex_missing[0].title
+    f = [f for f in findings if f.confidence_features.get("defect_code") == "EVIDENCE_REFERENCE_MISSING"]
+    assert len(f) >= 1
+    assert "수 제4호증" in f[0].title
 
 
 # --- 6. 양성 시험 5 (축 4: 선언 개수와 실제 목록 수 불일치) ---
@@ -172,9 +172,47 @@ def test_control_prior_submission_reference():
     assert len(findings) == 0, f"앞서 제출한 호증 재인용은 제외되어야 함: {findings}"
 
 
-# --- 9. 대조군 시험 3 (정상적인 가지번호 묶음 제출 정상 보호) ---
+# --- 9. 대조군 시험 3 (상대방 증거 인용 정상 보호) ---
+def test_control_opponent_exhibit_not_flagged():
+    """대조군 3: 원고 서면이 상대방 증거(을 제3호증)를 인용하고 자기 목록은 갑 호증만 있어도 결함 아님."""
+    doc = _make_doc([
+        "원고는 피고가 제출한 을 제3호증 영수증의 진정성립을 부인합니다.",
+        "입증방법: 갑 제1호증 계약서 (이 서면의 제출 증거 전부)",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    assert len(findings) == 0, f"상대방 증거(을호증) 인용은 자기 완결목록 누락으로 잡히지 않아야 함: {findings}"
+
+
+# --- 10. 대조군 시험 4 (상대방 제출 개수 서술 정상 보호) ---
+def test_control_opponent_count_mention_not_flagged():
+    """대조군 4: '피고는 3개의 증거를 제출하였으나...'와 같은 상대방 주어 개수 언급은 목록 개수 불일치 미검출."""
+    doc = _make_doc([
+        "피고는 3개의 증거를 제출하였으나 이는 본건과 무관한 자료에 불과합니다.",
+        "입증방법",
+        "1. 갑 제1호증 확인서",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    count_findings = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_COUNT_MISMATCH"]
+    assert len(count_findings) == 0, f"상대방 서술 개수는 목록 개수 불일치로 오탐되지 않아야 함: {count_findings}"
+
+
+# --- 11. 대조군 시험 5 (동일 접두어를 가진 서로 다른 자료명 구분 정상 보호) ---
+def test_control_distinct_names_with_common_prefix():
+    """대조군 5: 목록에 '갑 제3호증 사진'과 '갑 제5호증 사진첩'이 공존할 때 상이한 번호로 오인하지 않음."""
+    doc = _make_doc([
+        "원고는 갑 제5호증 사진첩을 통하여 현장 전경을 설명합니다.",
+        "입증방법",
+        "1. 갑 제3호증 사진",
+        "2. 갑 제5호증 사진첩",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    name_mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(name_mismatches) == 0, f"'사진'과 '사진첩'은 서로 다른 자료명이므로 번호 불일치로 오탐되지 않아야 함: {name_mismatches}"
+
+
+# --- 12. 대조군 시험 6 (정상적인 가지번호 묶음 제출 정상 보호) ---
 def test_control_normal_sub_numbering():
-    """대조군 3: 정상적인 가지번호(갑 제1호증의 1, 2) 묶음 제출은 결함 아님."""
+    """대조군 6: 정상적인 가지번호(갑 제1호증의 1, 2) 묶음 제출은 결함 아님."""
     doc = _make_doc([
         "원고는 갑 제1호증의 1 및 갑 제1호증의 2를 제출합니다.",
         "입증방법",
@@ -185,9 +223,9 @@ def test_control_normal_sub_numbering():
     assert len(findings) == 0
 
 
-# --- 10. 대조군 시험 4 (통상 정상 소송서면) ---
+# --- 13. 대조군 시험 7 (통상 정상 소송서면) ---
 def test_control_normal_pleading_no_defects():
-    """대조군 4: 번호 불일치가 없는 통상 소송서면."""
+    """대조군 7: 번호 불일치가 없는 통상 소송서면."""
     doc = _make_doc([
         "원고는 갑 제1호증 계약서에 따라 피고에게 이행을 촉구하였습니다.",
         "입증방법",
@@ -196,3 +234,4 @@ def test_control_normal_pleading_no_defects():
     ])
     findings = check_evidence_numbering_mismatches(doc)
     assert len(findings) == 0
+
