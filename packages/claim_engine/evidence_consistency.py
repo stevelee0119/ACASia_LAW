@@ -252,9 +252,9 @@ def _exhibit_lines(doc: NormalizedDocument) -> List[Dict[str, Any]]:
         cand_refs = parse_exhibits(cand_text[:24]) if cand_text else []
         is_leading_exhibit = bool(cand_refs and cand_refs[0]["span"][0] == 0)
 
-        # 입증방법/증거목록 섹션 안에서는 줄 첫머리가 아니더라도 호증이 등장하면 목록 항목으로 수용 (단 서술문 제외)
+        # 입증방법/증거목록 섹션 안에서는 줄 첫머리가 아니더라도 호증이 등장하면 목록 항목으로 수용 (단 문장 종결 구조 제외)
         if in_exhibit_section and not is_leading_exhibit:
-            if not any(v in stripped for v in ("하였다", "적었습니다", "뜻합니다", "아닙니다", "설명용", "바와 같이", "살피건대")):
+            if not re.search(r"[.!?]\s*$", stripped) and not _EXHIBIT_REF_SENTENCE_RE.search(stripped):
                 mid_refs = parse_exhibits(stripped)
                 if mid_refs:
                     cand_text = stripped[mid_refs[0]["span"][0]:].strip()
@@ -263,26 +263,32 @@ def _exhibit_lines(doc: NormalizedDocument) -> List[Dict[str, Any]]:
         raw_items = split_items(cand_text) if is_leading_exhibit else []
         items = []
         for ref, rest in raw_items:
-            # 서술형 참조 표현이나 명백한 본문 서술어(설명, 종결어미 등)가 포함된 경우 목록에서 제외 (섹션 내부 서술문 포함)
+            # 1. 서술형 참조 표현이나 마침표를 포함하는 문장 구조는 목록 정의에서 제외
             if _EXHIBIT_REF_SENTENCE_RE.search(rest) or _EXHIBIT_REF_SENTENCE_RE.search(stripped):
                 continue
-            if any(v in rest for v in ("하였다", "바와 같이", "살피건대", "주장한다", "설명하지만", "확인할 수", "보여 줍니다", "나타납니다", "적었습니다", "뜻합니다", "아닙니다", "설명용")):
+            # 2. 호증 바로 뒤에 조사가 결합된 형태('의', '에', '을', '를' 등)는 본문 서술이므로 목록에서 제외
+            if re.match(r"^[이가은는을를에로의와과도만]\b", rest) or re.match(r"^[이가은는을를에로의와과도만]\s+", rest):
                 continue
-            # 호증 바로 뒤에 조사로 시작하여 서술어가 이어지거나 설명용 문장인 경우 제외
-            if re.match(r"^[이가은는을를에로의]\s*(?:[가-힣A-Za-z0-9_]{1,30}\s+){0,6}(?:설명|주장|확인|보여|나타|제출|인용|바와|살피|따라|원용|뜻|적었|표)", rest):
+            # 3. 마침표가 있거나 문장 종결 구조인 경우 본문 서술로 판정
+            if "." in rest or re.search(r"[다음습]\s*\.?\s*$", rest):
                 continue
-            # 마침표로 끝나는 긴 서술문인 경우 목록 정의에서 제외
-            if len(rest) > 40 and re.search(r"[다음습]\s*\.\s*$", rest):
+            # 4. 서술어 어휘 보조 점검
+            if any(v in rest for v in ("하였다", "바와 같이", "살피건대", "주장한다", "설명하지만", "확인할 수", "보여 줍니다", "나타납니다", "적었습니다", "뜻합니다", "아닙니다")):
                 continue
 
             items.append((ref, rest))
 
         if not items:
-            if (previous_was_item and rows and stripped and len(stripped) <= 40 and not DATE_RE.search(stripped)
-                    and not _NOT_CONTINUATION_RE.match(stripped) and not parse_exhibits(stripped)):
+            # 이어지는 줄(서증명의 다음 줄) 수용: 목록 구역 내부이고 문장 종결/호증이 없는 순수 명사구에 한정 (최대 30자)
+            if (previous_was_item and in_exhibit_section and rows and stripped and len(stripped) <= 30
+                    and not re.search(r"[.!?]\s*$", stripped)
+                    and not DATE_RE.search(stripped)
+                    and not _NOT_CONTINUATION_RE.match(stripped)
+                    and not _COMPLETE_DECLARATION_RE.search(stripped)
+                    and not parse_exhibits(stripped)):
                 group = rows[-1].get("line_group")
                 for row in rows:
-                    if row.get("line_group") == group and not row.get("date"):
+                    if row.get("line_group") == group and not row.get("date") and len(row.get("name", "")) < 30:
                         row["name"] = (row["name"] + join_separator(row["name"], stripped) + stripped).strip()
                 continue
             previous_was_item = False

@@ -260,3 +260,19 @@ def test_control_normal_pleading_no_defects():
     findings = check_evidence_numbering_mismatches(doc)
     assert len(findings) == 0
 
+
+# --- 16. 대조군 시험 9 (목록 구역 내 2단 호증 연속 배치 구조 정상 보호) ---
+def test_control_consecutive_list_rows_not_mismatched():
+    """대조군 9: 입증방법 구역 내 2단으로 호증 목록 행이 연속 배치된 구조에서 앞 행 자료명과 뒷 행 번호가 결합되어 번호 불일치로 오탐되지 않음 (TC-01/HO-01 구조 보호)."""
+    doc = _make_doc([
+        "원고는 피고의 채무불이행 사실에 대하여 다음과 같이 증거를 제출합니다.",
+        "입증방법",
+        "갑 제1호증 발주서 갑 제2호증 납품내역서 및 송달증명",
+        "갑 제3호증 제품사진 갑 제4호증의 1 내지 2 각 정산서",
+        "첨부서류",
+        "1. 위 입증방법 각 1통",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    assert len(findings) == 0, f"연달아 배치된 목록 구역 행은 번호 불일치로 오탐되지 않아야 함: {findings}"
+
+
