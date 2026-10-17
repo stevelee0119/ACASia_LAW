@@ -1,8 +1,8 @@
 """Conservative inline Span replacement-to-original-glyph boundary evidence.
 
 This provider is independent of layout fullness and lexical word segmentation.
-PAGE named properties are resolved locally. Form content and any unproved
-scope/rendering stay unsupported; inspection is separate from certification.
+PAGE named properties are resolved locally. Selected Form properties are
+inspection only; unproved scope/rendering never certifies boundaries.
 """
 from __future__ import annotations
 
@@ -189,6 +189,24 @@ class _Interpreter(PDFPageInterpreter):
     def do_BDC(self, tag, props):
         capture = self.device.named_capture
         witness = None
+        if capture is not None and self.device.form_depth and isinstance(props, PSLiteral):
+            # Keep the literal operand: a Form lookup is never a PAGE boundary
+            # witness, and inspecting one selection cannot prove Form coverage.
+            capture.inspection_complete = False
+            if capture.context():
+                scope = (self.device.pageno, id(self.resources), 'FORM_INSPECTION_ONLY')
+                resources = _resolve_form_inspection(self.resources, capture, scope)
+                properties = _resolve_form_inspection(resources.get('Properties'), capture, scope) if isinstance(resources, dict) else None
+                selected = _resolve_form_inspection(properties.get(literal_name(props)), capture, scope) if isinstance(properties, dict) else None
+                if isinstance(selected, dict):
+                    if 'ActualText' in selected:
+                        capture.inspect(_resolve_form_inspection(selected['ActualText'], capture, scope))
+                    else:
+                        capture.actualtext_absent += 1
+                elif isinstance(properties, dict) and literal_name(props) not in properties:
+                    capture.selected_property_missing += 1
+                else:
+                    capture.selected_property_invalid += 1
         if capture is not None and isinstance(props, PSLiteral) and not self.device.form_depth:
             capture.named_selection_requests += 1
             self.device.resource_queries += 1
@@ -319,6 +337,20 @@ def _occluded(device):
                     'paint_bucket_binary_queries': queries}
 
 
+def _resolve_form_inspection(value, capture, scope):
+    """Bound each selected lookup and share the document's capture budgets."""
+    seen = set()
+    while isinstance(value, PDFObjRef):
+        identity = (id(value.doc), value.objid)
+        if identity in seen or len(seen) == 8:
+            capture.resolution_failures += 1
+            capture.inspection_complete = False
+            return None
+        seen.add(identity)
+        value = capture.reference(value, scope)
+    return value
+
+
 def _named_available(page, capture):
     capture.availability_queries += 1
     seen, hops = set(), 0
@@ -336,7 +368,14 @@ def _named_available(page, capture):
         return value
     resources = resolve(page.page_obj.resources)
     properties = resolve(resources.get('Properties')) if isinstance(resources, dict) else None
-    return isinstance(properties, dict)
+    if isinstance(properties, dict):
+        return True
+    # Only enter interpretation here; the interpreter follows invoked Forms,
+    # rather than scanning every unselected XObject resource.
+    scope = (page.page_number, 'FORM_AVAILABILITY')
+    resources = _resolve_form_inspection(page.page_obj.resources, capture, scope)
+    xobjects = _resolve_form_inspection(resources.get('XObject'), capture, scope) if isinstance(resources, dict) else None
+    return isinstance(xobjects, dict) and bool(xobjects)
 
 
 def inline_actualtext_edges(page, chars: list[dict[str, Any]], lines: list[list[dict[str, Any]]], *, excluded_glyphs=frozenset(), named_capture=None):
