@@ -8,8 +8,8 @@ from packages.common.schemas import BBox, Block, NormalizedDocument, Page
 from packages.claim_engine.evidence_consistency import (
     _statement_start,
     cross_document_copies,
-    HEADING_SPLIT_RE,
     PREAMBLE_HEADING_RE,
+    _BOILERPLATE_RE,
 )
 from packages.document_engine.reading_text import build_reading_text
 from packages.verification_engine.pipeline import (
@@ -104,8 +104,8 @@ def test_copy_positive_case_1_running_head_and_preamble():
     assert findings[0].type == FindingType.CROSS_DOC_COPY.value
 
 
-def test_copy_positive_case_2_multiple_sections_split_findings():
-    """양성 2: 한 진술서 내에 서로 다른 소제목 구역 2개에 각각 복사된 문장이 있는 경우 별도 Finding 분할."""
+def test_copy_positive_case_2_multiple_shared_sentences_aggregated():
+    """양성 2: 한 진술서 내에 복사된 문장이 여러 개 있어도 해당 상대 서면에 대해 단일 Finding으로 집계."""
     copied_s1 = "첫 번째 확인 사항으로 작업 일정표는 현장 감독관의 확인을 거쳐 주간 단위로 작성되었습니다."
     copied_s2 = "두 번째 확인 사항으로 안전 점검 일지는 매일 작업 종료 직후 캐비닛에 보관되었습니다."
 
@@ -123,15 +123,12 @@ def test_copy_positive_case_2_multiple_sections_split_findings():
     other_doc = _make_doc("other_pos2", other_blocks, "other_pos2.pdf")
 
     findings = cross_document_copies([stmt_doc, other_doc])
-    assert len(findings) == 2
-    # 두 Finding 모두 stmt_pos2에 귀속되며 서로 다른 소제목을 식별해야 한다
-    sections = [f.confidence_features.get("section_heading") for f in findings]
-    assert any("1. 일정표" in s for s in sections)
-    assert any("2. 점검 일지" in s for s in sections)
+    assert len(findings) == 1
+    assert "2건 있다" in findings[0].title
 
 
-def test_copy_positive_case_3_body_heading_with_brackets():
-    """양성 3: 대괄호 소제목 [검토 결과] 하위에서 복사된 문장 탐지."""
+def test_copy_positive_case_3_body_statement_heading():
+    """양성 3: 본문 문단에 확인서 제목이 있고 다른 서면과 24자 이상 복사 문장이 일치하는 경우 탐지."""
     shared_sentence = "현장 점검 당시 장비의 이상 유무를 육안으로 직접 확인하고 점검표에 기록을 남겼습니다."
     stmt_blocks = [
         Block("b1", "확인서\n[검토 결과]\n" + shared_sentence, 1, block_type="paragraph"),
@@ -144,10 +141,10 @@ def test_copy_positive_case_3_body_heading_with_brackets():
 
     findings = cross_document_copies([stmt_doc, other_doc])
     assert len(findings) == 1
-    assert "검토 결과" in findings[0].confidence_features.get("section_heading", "")
+    assert findings[0].type == FindingType.CROSS_DOC_COPY.value
 
 
-# --- 3. 교차 서면 문장 복사(cross_document_copies) 대조군(음성) 3건 ---
+# --- 3. 교차 서면 문장 복사(cross_document_copies) 대조군(음성) 6건 ---
 
 def test_copy_control_case_1_distinct_sentences():
     """대조군 1: 머리글에 진술서 제목이 있으나 다른 서면과 본문 문장이 전혀 겹치지 않는 정상 서면."""
@@ -195,6 +192,62 @@ def test_copy_control_case_3_non_statements_overlap():
     assert len(findings) == 0
 
 
+def test_copy_control_case_4_natural_intro_without_preamble_heading():
+    """대조군 4: 송달장소 등 표제부 키워드가 없으나 사건·인적사항 서두만 같고 본문은 다른 진술서 오탐 없음."""
+    common_intro = (
+        "사건 : 2026가단 10001 손해배상\n"
+        "진술인 : 홍길동 (1980. 1. 1.생)\n"
+        "위 사건에 관하여 다음과 같이 진술합니다.\n"
+    )
+    stmt_blocks = [
+        Block("b0", "진술서", 1, block_type="running_head"),
+        Block("b1", f"{common_intro}\n당일 사건 현장에 있었으나 아무런 충돌도 목격하지 못하였습니다.", 1, block_type="paragraph"),
+    ]
+    other_blocks = [
+        Block("ob1", "답변서\n피고 대리인의 답변입니다.", 1, block_type="paragraph"),
+        Block("ob2", f"{common_intro}\n피고는 원고의 청구를 전부 부인하며 청구의 기각을 구합니다.", 1, block_type="paragraph"),
+    ]
+    stmt_doc = _make_doc("stmt_ctl4", stmt_blocks)
+    other_doc = _make_doc("other_ctl4", other_blocks)
+
+    findings = cross_document_copies([stmt_doc, other_doc])
+    assert len(findings) == 0
+
+
+def test_copy_control_case_5_short_common_cliche_signature():
+    """대조군 5 (24~29자 상투구): 서명·날인 확인 상투 문구가 서면 간 중복되어도 실질 본문이 다르면 오탐 없음."""
+    cliche_sentence = "위 진술 내용은 사실과 다름없음을 확인하며 서명 날인합니다."  # 27자
+    stmt_blocks = [
+        Block("b0", "진술서", 1, block_type="running_head"),
+        Block("b1", "1. 진술 요지\n사무실 내 집기 비품의 파손 경위를 직접 보지 못하였습니다.\n" + cliche_sentence, 1, block_type="paragraph"),
+    ]
+    other_blocks = [
+        Block("ob1", "준비서면\n원고 대리인은 피고의 주장을 일체 부인합니다.\n" + cliche_sentence, 1, block_type="paragraph"),
+    ]
+    stmt_doc = _make_doc("stmt_ctl5", stmt_blocks)
+    other_doc = _make_doc("other_ctl5", other_blocks)
+
+    findings = cross_document_copies([stmt_doc, other_doc])
+    assert len(findings) == 0
+
+
+def test_copy_control_case_6_short_common_cliche_submission():
+    """대조군 6 (24~29자 상투구): 제출 목적 증명 상투 문구가 서면 간 중복되어도 실질 본문이 다르면 오탐 없음."""
+    cliche_sentence = "위 사실관계를 증명하기 위하여 본 확인서를 작성하여 제출합니다."  # 28자
+    stmt_blocks = [
+        Block("b0", "사실확인서", 1, block_type="running_head"),
+        Block("b1", "1. 당시 정황\n회의실에서 양측 대표자가 원만히 합의에 도달하였습니다.\n" + cliche_sentence, 1, block_type="paragraph"),
+    ]
+    other_blocks = [
+        Block("ob1", "답변서\n피고는 소장의 청구원인을 모두 다투는 바입니다.\n" + cliche_sentence, 1, block_type="paragraph"),
+    ]
+    stmt_doc = _make_doc("stmt_ctl6", stmt_blocks)
+    other_doc = _make_doc("other_ctl6", other_blocks)
+
+    findings = cross_document_copies([stmt_doc, other_doc])
+    assert len(findings) == 0
+
+
 # --- 4. VerificationPipeline 실제 진입점 실행 시험 1건 (공통 점검표 1항) ---
 
 def test_verification_pipeline_actual_entrypoint_cross_doc_copy(tmp_path, monkeypatch):
@@ -231,8 +284,8 @@ def test_verification_pipeline_actual_entrypoint_cross_doc_copy(tmp_path, monkey
 
     # 파이프라인 결과의 project_findings에서 CROSS_DOC_COPY 발견 사항이 포함되어 있는지 검증
     copy_findings = [f for f in result.project_findings if f.type == FindingType.CROSS_DOC_COPY.value]
-    assert len(copy_findings) >= 1
-    assert any(f.document_id == "doc_stmt" for f in copy_findings)
+    assert len(copy_findings) == 1
+    assert copy_findings[0].document_id == "doc_stmt"
 
 
 # --- 5. 공통 점검표 2항: 정규식 성능 1배/4배 최솟값 비 < 8 및 4배 < 1초 시험 ---
@@ -245,13 +298,12 @@ def test_regex_performance_ratio_under_8():
         "요청 취지 : 사실관계를 확인합니다.\n"
         "제출 경위 : 확인을 위해 제출합니다.\n"
         "1. 당시 상황\n"
-        "현장에서 당시 상황을 정확하게 목격하였습니다.\n"
-        "[검토 결과]\n"
-        "장비의 이상 유무를 육안으로 직접 확인하고 점검표에 기록을 남겼습니다.\n"
+        "위 사실관계를 증명하기 위하여 본 확인서를 작성하여 제출합니다.\n"
+        "본 진술 내용은 본인의 자유로운 의사에 따라 작성되었으며 사실과 다름없음을 확인하고 서명 날인합니다.\n"
     ) * 10
     text_4x = text_1x * 4
 
-    for name, regex in [("PREAMBLE_HEADING_RE", PREAMBLE_HEADING_RE), ("HEADING_SPLIT_RE", HEADING_SPLIT_RE)]:
+    for name, regex in [("PREAMBLE_HEADING_RE", PREAMBLE_HEADING_RE), ("_BOILERPLATE_RE", _BOILERPLATE_RE)]:
         t1 = min(timeit.repeat(lambda: list(regex.finditer(text_1x)), number=100, repeat=3))
         t4 = min(timeit.repeat(lambda: list(regex.finditer(text_4x)), number=100, repeat=3))
         ratio = t4 / t1 if t1 > 0 else 0
