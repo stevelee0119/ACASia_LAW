@@ -10,7 +10,7 @@ import pytest
 
 from packages.common.config import reset_settings
 from packages.common.enums import FindingType, EvidenceGrade
-from packages.common.schemas import Block, NormalizedDocument, Page
+from packages.common.schemas import Block, NormalizedDocument, Page, VerificationStatus
 from packages.claim_engine.evidence_consistency import check_evidence_numbering_mismatches
 from packages.verification_engine.pipeline import (
     DocumentInput,
@@ -223,9 +223,34 @@ def test_control_normal_sub_numbering():
     assert len(findings) == 0
 
 
-# --- 13. 대조군 시험 7 (통상 정상 소송서면) ---
+# --- 13. 대조군 시험 7 (상대방의 별지 증거목록 부존재 주장 비판 정상 보호) ---
+def test_control_opponent_annex_criticism_not_flagged():
+    """대조군 7: '피고는 별지 증거목록에 없는 을 제6호증을 근거로...'와 같은 상대방 증거 비판은 결함 아님."""
+    doc = _make_doc([
+        "원고는, 피고가 별지 증거목록에 없는 을 제6호증을 근거로 주장한 사항에 대하여 이유 없음을 밝힙니다.",
+        "입증방법: 갑 제1호증 계약서 (이 서면의 제출 증거 전부)",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    assert len(findings) == 0, f"상대방 증거에 대한 비판 문장은 자기 목록 결함으로 오탐되지 않아야 함: {findings}"
+
+
+# --- 14. 양성 시험 6 (축 3: 자료명 뒤에 호증 번호가 오는 역방향 배치 불일치 포섭) ---
+def test_positive_reverse_name_exhibit_number_mismatch():
+    """축 3: 본문에서 자료명이 앞에 오고 호증이 뒤에 오는 배치(운반 사진 갑 제22호증)에서도 번호 불일치 검출."""
+    doc = _make_doc([
+        "원고는 운반 사진 갑 제22호증으로 물품 훼손 상태를 증명합니다.",
+        "첨부 목록: 갑 제21호증 접수표, 갑 제23호증 운반 사진. 추가 제출 목록은 없습니다.",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    name_mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(name_mismatches) == 1
+    assert "운반 사진" in name_mismatches[0].title
+    assert name_mismatches[0].status == VerificationStatus.SUSPICIOUS
+
+
+# --- 15. 대조군 시험 8 (통상 정상 소송서면) ---
 def test_control_normal_pleading_no_defects():
-    """대조군 7: 번호 불일치가 없는 통상 소송서면."""
+    """대조군 8: 번호 불일치가 없는 통상 소송서면."""
     doc = _make_doc([
         "원고는 갑 제1호증 계약서에 따라 피고에게 이행을 촉구하였습니다.",
         "입증방법",
