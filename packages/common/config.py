@@ -163,7 +163,9 @@ class Settings:
     llm_cross_check: str = field(
         default_factory=lambda: (os.getenv("LV_LLM_CROSS_CHECK") or "auto").strip().lower())
     llm_efficient_routing: bool = field(default_factory=lambda: _flag("LV_LLM_EFFICIENT_ROUTING", True))
-    llm_prompt_caching: bool = field(default_factory=lambda: _flag("LV_LLM_PROMPT_CACHING", True))
+    # Stateless claim prompts change each time; automatic cache writes can add 25%
+    # without hits. Run-local exact reuse stays on; provider caching is opt-in.
+    llm_prompt_caching: bool = field(default_factory=lambda: _flag("LV_LLM_PROMPT_CACHING", False))
     llm_review_sample_percent: int = field(default_factory=lambda: max(0, min(100,
         int(os.getenv("LV_LLM_REVIEW_SAMPLE_PERCENT", "10")))))
     llm_routing: Dict[str, Any] = field(default_factory=dict)

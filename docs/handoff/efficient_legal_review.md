@@ -28,7 +28,10 @@
 ## 운영 설정
 
 `.env.example`의 `LV_LLM_CROSS_CHECK=auto`, `LV_LLM_EFFICIENT_ROUTING=1`,
-`LV_LLM_PROMPT_CACHING=1`, `LV_LLM_REVIEW_SAMPLE_PERCENT=10`을 사용한다.
+`LV_LLM_PROMPT_CACHING=0`, `LV_LLM_REVIEW_SAMPLE_PERCENT=10`을 사용한다.
+실행 내 동일 요청 재사용은 기본 활성이다. 별도의 Claude API 캐시는 단발 요청마다 쓰기만
+발생하면 입력 비용이 25% 늘 수 있어 기본 꺼짐이다. 반복 prefix의 적중률을 확인한 경우에만
+`LV_LLM_PROMPT_CACHING=1`로 켠다. [공식 캐시 동작](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)을 참고한다.
 운영 환경에 기존 `LV_ANTHROPIC_MODEL=claude-opus-5-5`가 있으면 일반 검토도 그 명시값을
 존중하므로, Sonnet 기본을 쓰려면 이를 Sonnet 값으로 바꾸거나 제거한다.
 `LV_OPENAI_MODEL`도 모든 OpenAI 단계의 명시값이다. 단계별로 따로 지정하려면

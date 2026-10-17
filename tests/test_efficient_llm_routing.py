@@ -246,3 +246,15 @@ def test_old_queue_snapshot_cannot_silently_use_new_routing(transport, monkeypat
     snapshot["execution"]["settings"].pop("llm_routing")
     with pytest.raises(runtime.ExecutionSettingsChanged, match="routing snapshot missing"):
         runtime.snapshot_settings(snapshot)
+
+
+def test_provider_cache_writes_require_explicit_opt_in(transport):
+    router, requests, _ = transport
+    assert not router.settings.llm_prompt_caching
+    request = LLMRequest("system", "synthetic text")
+    assert asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request)).used
+    assert "cache_control" not in requests[-1][1]
+    router.settings.llm_prompt_caching = True
+    router.clear_result_cache()
+    assert asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request)).used
+    assert requests[-1][1]["cache_control"] == {"type": "ephemeral"}
