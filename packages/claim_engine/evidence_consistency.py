@@ -252,33 +252,30 @@ def _exhibit_lines(doc: NormalizedDocument) -> List[Dict[str, Any]]:
         cand_refs = parse_exhibits(cand_text[:24]) if cand_text else []
         is_leading_exhibit = bool(cand_refs and cand_refs[0]["span"][0] == 0)
 
-        # 입증방법/증거목록 섹션 안에서는 줄 첫머리가 아니더라도 호증이 등장하면 목록 항목으로 수용
+        # 입증방법/증거목록 섹션 안에서는 줄 첫머리가 아니더라도 호증이 등장하면 목록 항목으로 수용 (단 서술문 제외)
         if in_exhibit_section and not is_leading_exhibit:
-            mid_refs = parse_exhibits(stripped)
-            if mid_refs:
-                cand_text = stripped[mid_refs[0]["span"][0]:].strip()
-                is_leading_exhibit = True
+            if not any(v in stripped for v in ("하였다", "적었습니다", "뜻합니다", "아닙니다", "설명용", "바와 같이", "살피건대")):
+                mid_refs = parse_exhibits(stripped)
+                if mid_refs:
+                    cand_text = stripped[mid_refs[0]["span"][0]:].strip()
+                    is_leading_exhibit = True
 
         raw_items = split_items(cand_text) if is_leading_exhibit else []
         items = []
         for ref, rest in raw_items:
-            # 입증방법 구역 안이면 제목에 '발췌'가 있어도 정식 목록으로 수용
-            if in_exhibit_section:
-                items.append((ref, rest))
-            else:
-                # 본문 서술 영역에서는 서술형 참조 표현이 있으면 목록 정의에서 제외
-                if _EXHIBIT_REF_SENTENCE_RE.search(rest) or _EXHIBIT_REF_SENTENCE_RE.search(stripped):
-                    continue
-                # 명백한 서술 문장이 이어지는 경우 본문 참조로 간주 (번호 불릿이 있어도 서술어 포함 시 제외)
-                if any(v in rest for v in ("하였다", "바와 같이", "살피건대", "주장한다", "설명하지만", "확인할 수", "보여 줍니다", "나타납니다")):
-                    continue
-                if re.match(r"^[이가은는을를에로의]\s*(?:[가-힣A-Za-z0-9_]+\s*)*(?:설명|주장|확인|보여|나타|제출|인용|바와|살피|따라|원용)", rest):
-                    continue
-                # 날짜가 있거나 번호형 목록 구조(예: '1. 갑 제5호증')이면 본문 영역이라도 수용
-                if DATE_RE.search(rest) or re.match(r"^\d+[\.\)]", stripped):
-                    items.append((ref, rest))
-                else:
-                    items.append((ref, rest))
+            # 서술형 참조 표현이나 명백한 본문 서술어(설명, 종결어미 등)가 포함된 경우 목록에서 제외 (섹션 내부 서술문 포함)
+            if _EXHIBIT_REF_SENTENCE_RE.search(rest) or _EXHIBIT_REF_SENTENCE_RE.search(stripped):
+                continue
+            if any(v in rest for v in ("하였다", "바와 같이", "살피건대", "주장한다", "설명하지만", "확인할 수", "보여 줍니다", "나타납니다", "적었습니다", "뜻합니다", "아닙니다", "설명용")):
+                continue
+            # 호증 바로 뒤에 조사로 시작하여 서술어가 이어지거나 설명용 문장인 경우 제외
+            if re.match(r"^[이가은는을를에로의]\s*(?:[가-힣A-Za-z0-9_]{1,30}\s+){0,6}(?:설명|주장|확인|보여|나타|제출|인용|바와|살피|따라|원용|뜻|적었|표)", rest):
+                continue
+            # 마침표로 끝나는 긴 서술문인 경우 목록 정의에서 제외
+            if len(rest) > 40 and re.search(r"[다음습]\s*\.\s*$", rest):
+                continue
+
+            items.append((ref, rest))
 
         if not items:
             if (previous_was_item and rows and stripped and len(stripped) <= 40 and not DATE_RE.search(stripped)
@@ -779,11 +776,19 @@ def check_evidence_numbering_mismatches(
     if not listed_parties:
         return out
 
+    # 본문 텍스트 분리: 입증방법/첨부서류/증거목록 섹션 헤더 이전의 순수 본문만 분리 (목록 내 기재 오인 방지)
+    m_sec = re.search(
+        r"(?:^|\n|[.!?]\s*)\s*(?:(?:(?:\d{1,2}|[가-하])\s*[.)]|\(\s*(?:\d{1,2}|[가-하])\s*\)|[①-⑳]|\[(?:\s*(?:\d{1,2}|[가-하]))?\s*\]?)\s*){0,3}"
+        r"(?:입\s*증\s*방\s*법|첨\s*부\s*서\s*류|증\s*거\s*목\s*록|소\s*명\s*방\s*법)",
+        text,
+    )
+    body_text = text[:m_sec.start()] if m_sec else text
+
     # 1. 완결 선언 목록과 본문 번호 대조 (축 1)
     has_completion = bool(_COMPLETE_DECLARATION_RE.search(text))
 
     if has_completion:
-        for raw_sentence in re.split(r"[.\n]+", text):
+        for raw_sentence in re.split(r"[.\n]+", body_text):
             sentence = raw_sentence
             # 이전 제출 호증 재인용 제외 (규칙 레벨 제외)
             if _PRIOR_SUBMISSION_RE.search(sentence):
@@ -898,10 +903,10 @@ def check_evidence_numbering_mismatches(
     pat1 = re.compile(
         r"(?P<label>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)\s*(?P<rest>[^\n.,;:]{2,40})"
     )
-    for m in pat1.finditer(text):
+    for m in pat1.finditer(body_text):
         lbl = m.group("label")
         rest = m.group("rest").strip()
-        window = text[max(0, m.start() - 30) : min(len(text), m.end() + 30)]
+        window = body_text[max(0, m.start() - 30) : min(len(body_text), m.end() + 30)]
         if _PRIOR_SUBMISSION_RE.search(window):
             continue
         body_refs = parse_exhibits(lbl)
@@ -943,15 +948,25 @@ def check_evidence_numbering_mismatches(
                             )
                         )
 
-    # 패턴 2: 자료명 뒤 호증 (예: 운반 사진은 갑 제22호증으로, 특히 운반 사진 갑 제22호증이)
+    # 패턴 2: 자료명 뒤 호증 (예: 운반 사진 갑 제22호증, 계약서(갑 제1호증), 「합의서」(갑 제2호증))
+    # 자료명 뒤에 조사(을/를/이/가/에/의 등)가 붙어 있으면 앞 절의 목적어/부사어이므로 제외 (대조군 오탐 방지)
     pat2 = re.compile(
-        r"(?P<name>[가-힣A-Za-z0-9_]{2,20}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)(?:[이가은는을를의에로와과도]|에서|으로)?\s+(?P<label>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)"
+        r"(?:[「‘'\"](?P<qname>[^」’'\"]{2,30})[」’'\"]\s*(?:\(\s*)?(?P<qlabel>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:\s*\))?"
+        r"|(?P<name>[가-힣A-Za-z0-9_]{2,20}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)\s*(?:\(\s*|\s+)(?P<label>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:\s*\))?)"
     )
-    for m in pat2.finditer(text):
-        nm = m.group("name").strip()
-        lbl = m.group("label")
-        # 조사 분리 및 공백 정규화
-        nm_clean = re.sub(r"(?:에서|으로|부터|까지|[이가은는을를의에로와과도만])$", "", nm).strip()
+    for m in pat2.finditer(body_text):
+        qname, qlbl = m.group("qname"), m.group("qlabel")
+        if qname and qlbl:
+            nm_clean = qname.strip()
+            lbl = qlbl
+        else:
+            nm = m.group("name").strip()
+            lbl = m.group("label")
+            # 자료명 뒤에 조사가 붙어 있으면 앞 절의 목적어·부사어이므로 목록 대조에서 제외
+            if re.search(r"(?:에서|으로|부터|까지|[이가은는을를의에로와과도만])$", nm):
+                continue
+            nm_clean = nm
+
         nm_norm = re.sub(r"\s+", "", nm_clean)
         if len(nm_norm) < 4:
             continue
