@@ -349,6 +349,11 @@
    "status": "open",
    "kind": "existing",
    "note": "2026-10-17 평가 측 발견(온라인 첫 측정)·사용자 승인으로 Antigravity 배정. 공식 DB 조회의 실행 단위 집계(출처별 요청·시도·상태·캐시·소요) 부재로 온라인 측정이 DB 기여·실패를 보고하지 못함. run_manifest 집계 추가, 질의어·URL 제외. 근거는 실행 기록·접속 점검 집계뿐(고정 벤치 항목 결과 미사용)."
+  },
+  "TK-79": {
+   "status": "open",
+   "kind": "existing",
+   "note": "2026-10-17 평가 측 발견·사용자 승인('3단계 Dockerfile 수정')으로 Antigravity 배정. Dockerfile appuser(10001)가 GID 1000 그룹에 없어 Render Secret File(/etc/secrets) 읽기 불가 예상 → Drive 서비스 계정 인증 불가 → 운영 참고자료 폴더 링크 공개 해제 불가. appuser를 GID 1000 보조 그룹에 추가, UID·소유권·render.yaml 불변."
   }
  },
  "updated_on": "2026-10-17"
