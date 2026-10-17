@@ -1,8 +1,8 @@
 """Conservative inline Span replacement-to-original-glyph boundary evidence.
 
 This provider is independent of layout fullness and lexical word segmentation.
-PAGE named properties are resolved locally. Form content and any unproved
-scope/rendering stay unsupported; inspection is separate from certification.
+PAGE named properties are resolved locally. Selected Form properties are
+inspection only; unproved scope/rendering never certifies boundaries.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from typing import Any
 
 from pdfminer.converter import PDFPageAggregator
 from pdfminer.pdfinterp import PDFPageInterpreter
-from pdfminer.pdftypes import PDFObjRef
+from pdfminer.pdftypes import PDFObjRef, PDFStream
 from pdfminer.psparser import PSLiteral, literal_name
 from pdfminer.utils import PDFDocEncoding
 from .named_actualtext_capture import NamedActualTextCapture
@@ -169,6 +169,19 @@ class _Device(PDFPageAggregator):
 
 class _Interpreter(PDFPageInterpreter):
     """Unproved alpha/soft masks/clipping are local graphics-state blockers."""
+    def render_contents(self, resources, streams, *args, **kwargs):
+        # pdfminer inherits PAGE resources for absent/empty Form Resources.
+        # Retain the invoked stream's own operand; the interpreter's fallback
+        # dictionary is not proof of a selected native Form property.
+        self._form_inspection_resources = None
+        if self.device.form_depth:
+            capture = self.device.named_capture
+            if capture is not None:
+                capture.inspection_complete = False
+            if len(streams) == 1:
+                self._form_inspection_resources = streams[0].get('Resources')
+        return super().render_contents(resources, streams, *args, **kwargs)
+
     def init_state(self, ctm):
         super().init_state(ctm)
         self._unsafe_stack = []
@@ -189,6 +202,25 @@ class _Interpreter(PDFPageInterpreter):
     def do_BDC(self, tag, props):
         capture = self.device.named_capture
         witness = None
+        if capture is not None and self.device.form_depth and isinstance(props, PSLiteral):
+            # Keep the literal operand: a Form lookup is never a PAGE boundary
+            # witness, and inspecting one selection cannot prove Form coverage.
+            capture.inspection_complete = False
+            if capture.context():
+                own_resources = self._form_inspection_resources
+                scope = (self.device.pageno, id(own_resources), 'FORM_INSPECTION_ONLY')
+                resources = _resolve_form_inspection(own_resources, capture, scope)
+                properties = _resolve_form_inspection(resources.get('Properties'), capture, scope) if isinstance(resources, dict) else None
+                selected = _resolve_form_inspection(properties.get(literal_name(props)), capture, scope) if isinstance(properties, dict) else None
+                if isinstance(selected, dict):
+                    if 'ActualText' in selected:
+                        capture.inspect(_resolve_form_inspection(selected['ActualText'], capture, scope))
+                    else:
+                        capture.actualtext_absent += 1
+                elif isinstance(properties, dict) and literal_name(props) not in properties:
+                    capture.selected_property_missing += 1
+                else:
+                    capture.selected_property_invalid += 1
         if capture is not None and isinstance(props, PSLiteral) and not self.device.form_depth:
             capture.named_selection_requests += 1
             self.device.resource_queries += 1
@@ -319,6 +351,20 @@ def _occluded(device):
                     'paint_bucket_binary_queries': queries}
 
 
+def _resolve_form_inspection(value, capture, scope):
+    """Bound each selected lookup and share the document's capture budgets."""
+    seen = set()
+    while isinstance(value, PDFObjRef):
+        identity = (id(value.doc), value.objid)
+        if identity in seen or len(seen) == 8:
+            capture.resolution_failures += 1
+            capture.inspection_complete = False
+            return None
+        seen.add(identity)
+        value = capture.reference(value, scope)
+    return value
+
+
 def _named_available(page, capture):
     capture.availability_queries += 1
     seen, hops = set(), 0
@@ -336,7 +382,26 @@ def _named_available(page, capture):
         return value
     resources = resolve(page.page_obj.resources)
     properties = resolve(resources.get('Properties')) if isinstance(resources, dict) else None
-    return isinstance(properties, dict)
+    if isinstance(properties, dict):
+        return True
+    # Check stream dictionaries only. The interpreter, rather than preflight,
+    # follows invoked Form content; images alone must not admit a second pass.
+    scope = (page.page_number, 'FORM_AVAILABILITY')
+    resources = _resolve_form_inspection(page.page_obj.resources, capture, scope)
+    xobjects = _resolve_form_inspection(resources.get('XObject'), capture, scope) if isinstance(resources, dict) else None
+    if not isinstance(xobjects, dict):
+        return False
+    for value in xobjects.values():
+        # Share the document context budget even for direct stream objects.
+        if not capture.context():
+            return False
+        stream = _resolve_form_inspection(value, capture, scope)
+        if not isinstance(stream, PDFStream):
+            continue
+        subtype = _resolve_form_inspection(stream.get('Subtype'), capture, scope)
+        if isinstance(subtype, PSLiteral) and literal_name(subtype) == 'Form':
+            return True
+    return False
 
 
 def inline_actualtext_edges(page, chars: list[dict[str, Any]], lines: list[list[dict[str, Any]]], *, excluded_glyphs=frozenset(), named_capture=None):
