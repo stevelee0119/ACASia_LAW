@@ -447,6 +447,38 @@ def _attached_originals(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> 
 
 
 def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Finding]:
+    def first_token_identifier(suffix):
+        match = re.match(r"\s*(\S+)", suffix)
+        if match is None:
+            return False
+        token = match.group(1).rstrip(".,;:")
+        wrappers = {"(": ")", "[": "]", "{": "}", "<": ">"}
+        if token[:1] in wrappers:
+            closing = wrappers[token[0]]
+            token = token[1:-1] if token.endswith(closing) else token[1:]
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", token):
+            return False
+        return bool(re.search(r"[0-9_/-]", token) or re.fullmatch(r"[A-Z]+", token))
+
+    def comparison_keys(same):
+        original = {re.sub(r"\s", "", row.get("name") or "") for row in same}
+        if len(same) != 2 or not all(row.get("from_lines") for row in same):
+            return original
+        pairs = [re.split(r"([,:])", row.get("name") or "", maxsplit=1) for row in same]
+        if any(len(pair) != 3 or not pair[0].strip() for pair in pairs):
+            return original
+        if {pair[1] for pair in pairs} != {",", ":"}:
+            return original
+        prefixes = {re.sub(r"\s", "", pair[0]) for pair in pairs}
+        if len(prefixes) != 1:
+            return original
+        # Keep the approved date-availability residual and native/GLOBAL guards.
+        if len({re.sub(r"\s", "", row.get("date") or "") for row in same}) != 1:
+            return original
+        if any(first_token_identifier(pair[2]) for pair in pairs):
+            return original
+        return prefixes
+
     out: List[Finding] = []
     # 같은 호증 번호(가지번호까지 같음)가 목록에 두 번 이상 나온다(v4 P4)
     # 목록 구역(표 또는 번호 붙은 입증방법 섹션)에 존재하는 호증 번호는 본문 언급을 중복 판단에서 제외 (TK-64)
@@ -469,7 +501,7 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
         if len(same) < 2:
             continue
         # 서증명이 실질적으로 상이한 증거에 부여된 경우만 중복 번호로 확정 (단순 반복 기재 제외, FP-01)
-        distinct_names = {re.sub(r"\s", "", r.get("name") or "") for r in same}
+        distinct_names = comparison_keys(same)
         distinct_names.discard("")
         if len(distinct_names) < 2 and len(same) >= 2 and all(r.get("name") for r in same):
             continue
