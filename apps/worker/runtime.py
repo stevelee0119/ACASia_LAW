@@ -188,9 +188,9 @@ def snapshot_settings(snapshot):
     saved = execution["settings"]
     routing_fields = {"llm_cross_check", "llm_efficient_routing", "llm_prompt_caching",
                       "llm_review_sample_percent", "llm_routing", "llm_model_overrides", "llm_default_models"}
-    if not routing_fields <= saved.keys():
-        # Older queued jobs did not freeze task routing. A manual retry captures today's
-        # configuration while _retry_snapshot preserves the original spending limits.
+    legacy_routing = not routing_fields.intersection(saved)
+    if not legacy_routing and not routing_fields <= saved.keys():
+        # Partial new snapshots remain invalid; a genuinely pre-routing job has none.
         raise ExecutionSettingsChanged("EXECUTION_SETTINGS_CHANGED: routing snapshot missing; retry required")
     # These parsers still read global settings; refuse drift rather than silently retry new inputs.
     for name, value in saved.items():
@@ -198,6 +198,13 @@ def snapshot_settings(snapshot):
             raise ExecutionSettingsChanged("EXECUTION_SETTINGS_CHANGED: " + name)
     providers = {name: ProviderConfig(**value) for name, value in execution["providers"].items()}
     values = {**saved, "allow_network": saved["allow_network"] and current.allow_network}
+    if legacy_routing:
+        # Never inherit a later opt-in from the worker environment. Keep the captured
+        # providers, pricing and budget; the original snapshot/hash is not rewritten.
+        values.update(llm_cross_check="all", llm_efficient_routing=False,
+                      llm_prompt_caching=False, llm_review_sample_percent=10,
+                      llm_routing={}, llm_model_overrides={},
+                      llm_default_models={name: p.model for name, p in providers.items()})
     return replace(current, **values, providers=providers, pricing=copy.deepcopy(execution["pricing"]))
 
 

@@ -1,61 +1,89 @@
-# 효율적 법률문서 검토 적용
+# 효율적 법률문서 검토 — TK-78 기본 OFF
 
-사용자 요청(2026-10-17)에 따라 일반 법리 검토의 기본 모델을 Sonnet 5.5,
-독립 법리 검토를 Sol, 작성 정황의 보조 분석을 Luna로 분리했다.
-공식 출처 확인·로컬 주장 추출·주장별 검토 분모·한국법 프로필 설정은 유지한다.
+Codex 전달문 (4)의 ①~⑤를 적용한다. 평가 담당은 **Claude Code 평가 세션**이며,
+평가 측 수용은 그 세션의 PR 코멘트 링크로만 인용한다. 이 문서는 구현 설명이며 수용 판정이 아니다.
+[기존 평가 코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/128#issuecomment-6241878062)는 보류·보완 요청이며,
+최신 사용자 전달문 (4)가 릴리스 포함·기본 OFF·배포 뒤 OFF/ON 비교 순서를 정했다.
 
-## 기본 동작
+## 기본값과 ON 비교 설정
 
-| 작업 | 모델/호출 |
-|---|---|
-| 문서·주장별 참고자료 대조 | Sonnet. 주장별 공급자 실패에는 다음 공급자 시도 |
-| 공식 전문 의미·적용 검토 | Sonnet + 독립 Sol. 불일치/실패 시 Gemini 추가 |
-| 해결되지 않은 전문 의미 검토 | Opus 추가 참고 의견. 기존 충돌 판정·증거등급 승격에는 사용하지 않음 |
-| 주장 타당성 의견 | 서로 다른 공급자 두 곳. 의견 충돌·항목 누락·실패 시 나머지 공급자 |
-| 작성 정황 | Luna 우선. 긍정 판단·메타데이터 신호·기본 10% 표본은 추가 독립 검토 |
+환경변수 미설정은 0.13.0 운영 커밋 `b68cfeec2c5c168a3b9e6e2e92653ea6892521bf`의
+모델·호출 구성을 사용한다. `config/providers.json`도 해당 커밋의 값으로 복원했다.
 
-`all`은 전체 공급자, `off`는 기존 단일 의견 동작이다. 미설정은 이제 `auto`다.
-법리 검토를 모델의 confidence만으로 생략하지 않는다. LOW_COST_EXTRACTOR는 Luna 설정을
-사용하지만 기존 로컬 추출에 불필요한 외부 호출을 추가하지 않는다.
+| 항목 | 미설정/OFF 기본 | 사용자 승인 뒤 ON 비교 |
+|---|---|---|
+| `LV_LLM_EFFICIENT_ROUTING` | `0` | `1` |
+| `LV_LLM_CROSS_CHECK` | `all` | `auto` |
+| 일반 Anthropic 검토 | Opus 5.5 | Sonnet 5.5 |
+| OpenAI 검토 | Luna | 법리 Sol / 작성 정황 Luna |
+| Gemini | Gemini 3.8 Flash | Gemini 3.8 Flash |
+| 동일 요청 실행 내 재사용 | 꺼짐 | 성공·출력 검사 통과 결과만 재사용 |
+| 주장별 RAG 공급자 실패 대체 | 0.13.0 단일 공급자 경로 | 다음 공급자로 대체 시도 |
+| `LV_LLM_PROMPT_CACHING` | `0` | `0` 유지 권장; 별도 명시 opt-in |
+| `LV_LLM_REVIEW_SAMPLE_PERCENT` | `10` (OFF에서 미사용) | `10` |
 
-같은 실행의 완전히 동일한 요청은 성공·출력 검사 통과 뒤에만 메모리에서 재사용한다.
-입력·모델·역할·정책·schema·출력 한도·metadata가 다르면 재사용하지 않는다.
-적중 때도 입력 개인정보/출처·현재 조직 정책·작업 소유권 검사를 수행한다.
-실행 시작에 비우고 실패/격리 결과는 저장하지 않으며 최대 256건이다.
-조회된 행은 `cost_status=CACHED`, 비용 0으로 기록한다. 실행 요약의 `reused`와
-`external_calls`를 구분하며 실제 HTTP 재시도 수와 공급자 청구액을 뜻하지는 않는다.
+OFF에서도 명시한 공급자 모델과 기존 `all/auto/off` 교차검증 선택은 존중한다.
+작업별 배치·선택적 추가 의견·중복 요청 재사용·추가 장애 대체는 효율 라우팅 ON에서만 적용한다.
+ON만 지정하면 교차검증은 여전히 `all`이다. 호출을 줄이는 비교 구성은 ON과 `auto`를 함께 지정한다.
+`auto`를 명시하되 효율 라우팅이 OFF면 0.13.0의 신뢰도·심도·중대도 조건을 유지한다.
 
-## 운영 설정
+ON + auto 법리 검토는 Sonnet과 독립 Sol, 불일치/실패 때 Gemini를 추가한다.
+미해결 쟁점에 Opus 참고 의견을 추가하되 기존 충돌 판정이나 증거등급을 승격하지 않는다.
+작성 정황은 Luna 우선이며 긍정 판단·메타데이터 신호·표본 대상에 독립 검토를 추가한다.
+주장 타당성은 서로 다른 두 공급자의 항목별 완전한 응답을 요구하고 충돌·누락·실패 때 세 번째를 호출한다.
 
-`.env.example`의 `LV_LLM_CROSS_CHECK=auto`, `LV_LLM_EFFICIENT_ROUTING=1`,
-`LV_LLM_PROMPT_CACHING=0`, `LV_LLM_REVIEW_SAMPLE_PERCENT=10`을 사용한다.
-실행 내 동일 요청 재사용은 기본 활성이다. 별도의 Claude API 캐시는 단발 요청마다 쓰기만
-발생하면 입력 비용이 25% 늘 수 있어 기본 꺼짐이다. 반복 prefix의 적중률을 확인한 경우에만
-`LV_LLM_PROMPT_CACHING=1`로 켠다. [공식 캐시 동작](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)을 참고한다.
-운영 환경에 기존 `LV_ANTHROPIC_MODEL=claude-opus-5-5`가 있으면 일반 검토도 그 명시값을
-존중하므로, Sonnet 기본을 쓰려면 이를 Sonnet 값으로 바꾸거나 제거한다.
-`LV_OPENAI_MODEL`도 모든 OpenAI 단계의 명시값이다. 단계별로 따로 지정하려면
-`LV_OPENAI_REVIEW_MODEL`, `LV_OPENAI_EXTRACTION_MODEL`, `LV_ANTHROPIC_ESCALATION_MODEL`을 쓴다.
-관리자 API에서 변경한 모델도 기본 단계별 값보다 우선한다.
-새 설정은 검증 재사용 식별자와 작업 snapshot에 포함되며 기존 결과와 혼용하지 않는다.
-이전 버전에서 대기/중단된 작업에 라우팅 snapshot이 없으면 새 설정으로 몰래 이어가지 않고
-설정 변경으로 중단한다. 수동 재시도는 새 설정을 캡처하되 원래 예산 상한을 공유한다.
-예산 금액은 변경하지 않는다. 운영 중인 한국법 프로필도 끄지 않는다.
+`LV_ANTHROPIC_MODEL`·`LV_OPENAI_MODEL` 등 전역 모델 지정과 관리자 모델 지정은 우선한다.
+ON으로 바꿔도 기존 전역 지정이 있으면 작업별 기본 모델이 적용되지 않을 수 있다.
+필요하면 `LV_ANTHROPIC_REVIEW_MODEL`, `LV_OPENAI_REVIEW_MODEL`, `LV_OPENAI_EXTRACTION_MODEL`,
+`LV_ANTHROPIC_ESCALATION_MODEL`로 단계를 명시한다. 단계별 지정도 효율 라우팅 OFF에서는 사용하지 않는다.
+API 키·기존 예산·한국법 프로필은 이 변경으로 수정하지 않는다.
 
-모델별 직접 API 단가는 2026-10-17 공식 자료 기준이다:
-[OpenAI](https://developers.openai.com/api/docs/pricing),
-[Anthropic](https://platform.claude.com/docs/en/about-claude/pricing),
-[Gemini](https://ai.google.dev/gemini-api/docs/pricing).
-Gemini 도입가 만료(2026-12-31) 후 단가도 표에 포함했다. 명시 캐시 보관 시간은 5분이다.
-캐시 입력과 사고 토큰을 정산하며 사용량이 불완전하면 추정/미확정 예약을 유지한다.
-단가·토큰·예약 비용은 실제 청구액 보증이 아니다.
+## 기존 대기 작업과 보안 경계
 
-## 검증·적용 조건
+라우팅 필드 7개가 전부 없는 0.13.0 대기 작업은 **실패·수동 재시도 없이 OFF + all**로 실행한다.
+현재 worker가 ON이어도 이를 물려받지 않는다. 저장된 공급자·모델·단가·예산 한도·예산 식별자를
+유지하며 원본 snapshot/hash를 다시 쓰지 않는다. 현재 네트워크 차단과 조직 정책 제한은 계속 적용한다.
+일부 라우팅 필드만 빠진 새 snapshot이나 OCR 등 기존 파서 설정 불일치는 기존처럼 거절한다.
 
-관련 기존 시험은 기대값/보호 경로 수정 없이 실행한다. 신규 합성 시험은 역할·모델 분리,
-정책/예산·캐시 경계·빈/부분 응답·독립 검토·실패 대체·사용량 정산을 검사한다.
-법률문서 품질이나 비용 절감률은 모의 시험으로 주장하지 않는다.
-대표 한국어 문서의 기존 구성 대조는 평가 세션이 수행하며 중요 누락·오탐·인용 원문 일치·
-검토 시간·문서당 비용을 따로 비교한다. 중대한 누락을 가격으로 상쇄하지 않는다.
-사용자/평가 측 승인 없는 봉인 자료 접근·기준선 변경·자동 병합/배포는 하지 않는다.
-API Batch는 비실시간 대량 작업에 한해 후속 선택사항이며 현재 실시간 경로에는 도입하지 않았다.
+ON 재사용은 입력·모델·역할·정책·schema·출력 한도·metadata가 모두 같을 때만 적용한다.
+적중 때도 개인정보/출처·조직 정책·작업 소유권을 검사한다. 실행 시작에 비우고 실패·격리 결과는 저장하지
+않으며 최대 256건이다. 재사용은 `cost_status=CACHED`, 비용 0으로 기록한다.
+요약의 `external_calls`는 논리 실행 수이며 실제 HTTP 재시도 수나 공급자 청구액과 같다는 뜻은 아니다.
+
+## 단가 출처와 확인 범위
+
+확인일: **2026-10-17 UTC (2026-10-18 한국 시각)**. 단위: USD / 1,000,000 tokens.
+직접 Standard API이며 OpenAI는 **Short context** 열이다. Batch/Flex/Fast와 장문 요금은 섞지 않는다.
+
+| 모델/구간 | 입력 | 출력 | 캐시 읽기 | 공시 출처·확인 결과 |
+|---|---:|---:|---:|---|
+| gpt-6.1-sol | 2.00 | 10.00 | 0.10 | [OpenAI Pricing, Standard / Short context](https://developers.openai.com/api/docs/pricing), 위 확인일 조회로 확인 |
+| gpt-6-luna | 0.10 | 0.50 | 0.01 | [OpenAI Pricing, Standard / Short context](https://developers.openai.com/api/docs/pricing), 위 확인일 조회로 확인 |
+| gemini-3.8-flash, 2026-12-31까지 | 0.75 | 3.75 | 0.075 | [Gemini 3.8 Flash Pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.8-flash), 위 확인일 조회로 확인 |
+| gemini-3.8-flash, 2027-01-01부터 | 1.50 | 7.50 | 0.15 | [같은 공시](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.8-flash), 시작일 포함 확인 |
+
+Gemini 공시는 `through December 31, 2026` / `starting January 1, 2027`을 명시한다.
+출력 요금은 thinking tokens를 포함한다. 코드의 `after_2026-12-31` 전환과 일치한다.
+명시 캐시 보관료는 읽기 요금과 별도이며, 이 앱은 Gemini 명시 캐시를 생성하지 않는다.
+
+**Sonnet 캐시 읽기 불일치:** TK-78 ①의 명시 지시에 따라 `claude-sonnet-5-5.cache_read`를 **0.20**으로
+수정했다. 다만 위 확인일의 [Anthropic 공식 가격 페이지](https://platform.claude.com/docs/en/about-claude/pricing)는
+Sonnet 5.5 캐시 읽기를 **0.10**, 입력 2.00, 5분 쓰기 2.50으로 표시했다.
+따라서 **0.20의 공시 근거는 미확인**이다. 지시값 구현과 공식 조회 결과를 구분하며 Claude Code 평가 세션이
+이 차이를 확인해야 한다. 0.20을 공식 조회로 검증했다고 주장하지 않는다.
+
+Claude API prompt cache는 5분 쓰기 방식이며 기본 OFF다. 단발 요청마다 쓰기만 발생하면 비용이 늘 수 있다.
+캐시·사고 토큰 정산 개선은 유지하되 사용량이 불완전하면 추정 상태를 유지한다.
+장문 요금 적용 여부·공급자 실청구액 일치·실제 절감률은 **미확인/미측정**이다.
+
+## 검증과 릴리스
+
+추가 시험은 OFF의 0.13.0 모델·호출 수·payload, ON 선택, 단가 정산/기간 경계,
+기존 대기 작업 완료·예산/설정 보존과 부분 snapshot 거절을 확인한다. 기존 시험은 삭제하지 않는다.
+명시 기본 모델 고정성을 보는 기존 시험은 ON을 명시하고 복원된 기본 Luna에 맞춰 검토 작업을 사용하며,
+서로 다른 모델 선택·환경 변경 뒤 고정성 검사는 유지한다.
+
+CI 완료 뒤 PR 본문에 `검토 요청`과 head SHA를 적는다. Claude Code 평가 세션이 ①~⑤와 후보 SHA의
+`verify_all` 전체 모드 1회를 확인한다. 구현 세션은 평가 측 수용을 기록하거나 Render 벤치마크를 실행하지 않는다.
+배포 뒤 사용자가 같은 문서로 OFF/ON의 법리 판단 일치, AI 작성 판별 재현율, 호출 수·실비용,
+`max_tokens` 잘림률을 비교한다. **ON 전환은 그 결과를 보고 사용자가 결정한다.**

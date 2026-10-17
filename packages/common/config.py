@@ -62,7 +62,7 @@ def _load_json(path: Path) -> Dict[str, Any]:
 
 
 def _model_overrides() -> Dict[str, str]:
-    purposes = ("openai", "anthropic", "gemini", "local", "openai_review",
+    purposes = ("openai", "anthropic", "gemini", "local", "anthropic_review", "openai_review",
                 "openai_extraction", "anthropic_escalation")
     return {purpose: os.environ[f"LV_{purpose.upper()}_MODEL"] for purpose in purposes
             if os.getenv(f"LV_{purpose.upper()}_MODEL")}
@@ -157,14 +157,14 @@ class Settings:
         default_factory=lambda: os.getenv("LV_CELERY_BACKEND") or resolve_broker_url()
     )
     worker_mode: str = field(default_factory=lambda: os.getenv("LV_WORKER_MODE", "auto"))
-    # all=사용 가능한 전체 공급자, auto=법리 독립 검토와 선택적 추가 검토(기본),
-    # off=1차 판단만 사용. 작성 정황은 auto에서 저비용 분석 및 표본 검토.
+    # all=사용 가능한 전체 공급자(0.13.0 기본), off=1차 판단만 사용.
+    # 효율 라우팅 ON + auto에서 법리 독립 검토·작성 정황 표본 검토를 적용한다.
     # 공급자 수만큼 호출 비용이 늘어나므로 예산 설정과 함께 본다.
     llm_cross_check: str = field(
-        default_factory=lambda: (os.getenv("LV_LLM_CROSS_CHECK") or "auto").strip().lower())
-    llm_efficient_routing: bool = field(default_factory=lambda: _flag("LV_LLM_EFFICIENT_ROUTING", True))
+        default_factory=lambda: (os.getenv("LV_LLM_CROSS_CHECK") or "all").strip().lower())
+    llm_efficient_routing: bool = field(default_factory=lambda: _flag("LV_LLM_EFFICIENT_ROUTING", False))
     # Stateless claim prompts change each time; automatic cache writes can add 25%
-    # without hits. Run-local exact reuse stays on; provider caching is opt-in.
+    # without hits. Run-local exact reuse requires efficient routing; API caching is opt-in.
     llm_prompt_caching: bool = field(default_factory=lambda: _flag("LV_LLM_PROMPT_CACHING", False))
     llm_review_sample_percent: int = field(default_factory=lambda: max(0, min(100,
         int(os.getenv("LV_LLM_REVIEW_SAMPLE_PERCENT", "10")))))
