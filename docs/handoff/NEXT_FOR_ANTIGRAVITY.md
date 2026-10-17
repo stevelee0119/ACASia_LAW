@@ -21,18 +21,23 @@
 1. **진단 메모 먼저**(첫 커밋, `docs/handoff/requests/`): train의 6유형 항목을 실제 진입점으로 돌려, 놓친 항목을 원인 범주별로 센 유형별 표. 범주·작성 요령은 TK-76 3절. 평가 측 회신 뒤 2로 간다.
 2. **유형별 PR:** 한 PR에 한 유형. 제안 순서는 EVI-COPY → SRC-UNV → EVI-INCONS → EVI-FORM → EVI-NUM → EVI-DATE(메모에서 바꿀 수 있다).
 
-**현재 상태(2026-10-17):** 진단 메모 [#109](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109)는 **조건부 승인**이다([판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109#issuecomment-6229122189)). 2단계 순서(COPY → SRC-UNV → DATE → INCONS → FORM → NUM)는 승인했다. 다음 일은 아래와 같다.
-- #109에 정정 커밋 1개를 올린다.
-  - EVI-INCONS 한글병기 8건 재진단. 기존 `korean_amount.words_digits_mismatches`가 있으므로 '미지원'은 원인이 아니다.
-  - EVI-COPY 40항목의 '복사 쪽 → 원문 쪽 문서 종류' 건수표(문서 종류 이름만).
-  - EVI-FORM의 (d) 40건을 제품 탐지 공백으로 재분류하고 법적 근거를 정정(민사소송법 제277·355·358조).
-  - EVI-NUM의 가지번호 중복·별지 구역을 TK-73 영역으로 표시.
-- 그 뒤 '검토 요청 + SHA'를 남긴다. SHA는 `git rev-parse HEAD` 출력 그대로 쓴다.
-- 기다리는 동안 EVI-DATE 위치 문맥 PR은 먼저 시작해도 된다. 위치 정보는 모든 날짜 finding에 '가장 가까운 소제목/문단 번호'로 일관되게 붙이고, 말뭉치 토큰에 맞춘 문구는 넣지 않는다.
-- 유형별 금지사항:
-  - 산식·병기 검사를 병렬로 새로 만들지 않고, 기존 `calculation.evaluate_expression`·`korean_amount`를 확장한다.
-  - SRC-UNV에는 `.invalid` 도메인 규칙을 쓰지 않는다. PR에 새 UNVERIFIED finding 수(문서당)를 보고하고, 출처 결함으로 단정하지 않는다.
-  - EVI-COPY의 제목 제한은 통째로 풀지 않는다. 대조군 문서의 B등급 SUSPICIOUS는 채점기가 대조군 오탐으로 센다.
+**현재 상태(2026-10-17):** 진단 메모 [#109](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109)는 **조건부 승인**이다([판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109#issuecomment-6229122189), [평가 측 train 재실행 보완](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109#issuecomment-6229233886)). 2단계 유형 순서는 승인했다.
+
+**평가 측 재현으로 바뀐 원인**
+- EVI-INCONS 한글병기 8건: 기존 `AMOUNT.WORDS_MISMATCH`가 8건 모두 맞게 나온다. 발췌에 '항목명+차수'가 없어 토큰이 맞지 않을 뿐이다((d)). EVI-DATE 하이픈날짜 8건도 같은 양상이다.
+- EVI-COPY 진술서 8건: `reading_text`가 페이지마다 반복되는 '진술서' 제목을 머리글로 보고 지운다. 그래서 진술 구역 탐지가 시작되지 않는다(train 32문서 모두). 원인은 (c)다.
+- EVI-NUM 24건: 관련 finding은 있으나 '항목명' 토큰만 빠진 부분 일치다. 같은 결함을 짚었는지는 구현 측이 train에서 확인한다.
+
+**다음 일**
+- **#109 정정 커밋 1개:** 메모 표를 평가 측 재현 결과에 맞춘다. 법적 근거(민사소송법 제277·355·358조)와 EVI-NUM의 TK-73 영역 표시도 넣는다. 그 뒤 '검토 요청 + SHA'를 남긴다(SHA는 `git rev-parse HEAD` 출력 그대로).
+- **COPY 첫 PR:** 반복 머리글 제거로 진술서 제목이 사라지는 문제만 고친다. 반복 제목은 문서 종류 판별에는 쓰고 본문 비교에서는 뺀다. 구역 제한은 유지한다. 대조군 오탐 0을 보인다.
+  - 제목 제한을 일괄 해제하면 매 묶음 대조군이 다른 7문서 모두와 유사 문장을 공유해(묶음당 15~22쌍) 4묶음 모두 대조군 오탐이 난다(평가 측 모의).
+  - 나머지 32건은 작성명의인 기준 설계 메모를 먼저 낸다.
+- **위치 보강 PR (INCONS 한글병기·DATE 하이픈날짜):** 결함 값이 속한 항목명(같은 행·같은 항목 머리)만 발췌에 붙인다. 줄 전체 확장은 평가 측 모의에서 FP-TRAP 오탐 0→4였다. 이 PR의 수치는 '표시 보강분'으로 탐지 개선과 따로 보고한다.
+- **금지:**
+  - 산식·병기 검사를 병렬로 새로 만들지 않는다. `수 × 금액` 순서는 `calculation.evaluate_expression`을 확장한다.
+  - SRC-UNV에는 `.invalid` 규칙을 쓰지 않는다. 새 UNVERIFIED 수(문서당)를 보고하고 결함으로 단정하지 않는다.
+  - 채점기·match_spec은 바꾸지 않는다.
 
 **알려진 단서:** 문서 간 복사 탐지는 '진술서·사실확인서·확인서' 제목이 있는 문서만 비교한다(TK-76 2절). 넓힐 때는 같은 대리인 서면끼리의 정상 중복을 오탐하지 않도록 설계한다.
 

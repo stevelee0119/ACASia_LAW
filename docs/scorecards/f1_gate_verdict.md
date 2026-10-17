@@ -1808,3 +1808,10 @@ f64 기존 시간실패 .625568/.748032초는 원인미확정으로 보존한다
 | #109 `936edd5`(실제 head `936edd53ba04…`; 보고문 전체 SHA `936edd5d428c…`는 오기) | **조건부 승인** — 정정 커밋 1개 뒤 병합 건의, 2단계 순서 승인 | CI 결과 인용(필수 4개 성공). 유형별 집계 42.0/240=.175는 train 기준 json과 일치. 원인 범주별 건수는 평가 측 미재현(이 환경에 train 원본 없음). 코드 대조·합성 입력으로 확인: 한글·숫자 병기 대조(`korean_amount.words_digits_mismatches`→`ARITHMETIC_MISMATCH` A)는 이미 있고 EVI-INCONS 대응표 안 → '산술 미지원' 진단 오류, 재진단. `수 × 금액` 순서는 `calculation.evaluate_expression` 확장. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109#issuecomment-6229122189) |
 
 조건(요약): EVI-COPY 제목 제한 일괄 해제 금지(대조군 B등급 SUSPICIOUS는 대조군 오탐, 같은 당사자 서면 반복은 정상) — 복사 쪽→원문 쪽 문서 종류 건수표 먼저. SRC-UNV `.invalid` 규칙 금지·새 UNVERIFIED 건수(문서당) 보고·결함 단정 금지. EVI-FORM의 (d) 40건은 제품 탐지 공백으로 재분류(채점기 쪽 (d)는 DATE 8건뿐), 서명 공란은 진정성립 추정(민사소송법 제358조) 불가일 뿐 확정 결함 아님. EVI-NUM 가지번호 중복·별지 구역은 TK-73 영역. EVI-DATE 위치 문맥 보강은 모든 날짜 finding에 일관된 위치 정보로만.
+
+**보완 — 평가 측 train 재실행(같은 날, 사용자 제공 train 원본).** 아카이브 SHA-256 `d17fdb19…`·지문 `d058b04f03579336` 일치. Steve `00fdbea`·오프라인·모델 0·Python 3.11.15·pdfplumber 0.11.10·tesseract 5.3.4에서 .115·중점 .175·오탐 0으로 기준 재현. 채점기 함수로 항목별 분류(본문 비열람, 문서 키·항목 번호·변형 표기·finding 유형만):
+- EVI-INCONS 한글병기 8: 기존 `AMOUNT.WORDS_MISMATCH`(A)가 8/8 정확히 발생, match_spec '항목명+차수+금액병기' 토큰과 발췌(금액병기만) 불일치 → (d). EVI-DATE 하이픈날짜 8도 '항목명+차수' 그룹 누락 (d).
+- EVI-NUM 본문목록·순번누락·별지대조 24: 허용 유형 finding이 같은 문서에 있고 '항목명' 그룹만 빠진 부분 일치(같은 결함인지는 미확인). 가지번호 8은 (a)·TK-73 영역.
+- EVI-COPY 진술서 8: `reading_text` 반복 머리글 제거가 페이지마다 반복되는 '진술서' 제목을 지워 train 32문서 모두 `_statement_start=None` → (c). 나머지 32는 (b).
+- 오탐 모의: COPY 제목 제한 해제 시 매 묶음 대조군이 나머지 7문서 모두와 유사도 ≥0.9 문장 공유(묶음당 15~22쌍) → 4묶음 대조군 오탐. 발췌를 줄 전체로 넓히면 INCONS +4·DATE +4점이나 FP-TRAP 오탐 0→4.
+- 채점기·match_spec 변경 없음(항목명 그룹은 한 문서 안 유사 항목 구분용). 표시 보강분은 탐지 개선과 따로 보고. [보완 판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109#issuecomment-6229233886)
