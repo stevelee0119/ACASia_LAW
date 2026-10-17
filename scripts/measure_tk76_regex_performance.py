@@ -13,17 +13,26 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from packages.claim_engine.date_verifier import DATE_WEEKDAY_RE, HEADING_LINE_RE
+from packages.claim_engine.calculation import LEADING_MULTIPLIER_RE
+from packages.claim_engine.korean_amount import BRACKET_HEADING_RE, _JOSA_PREDICATE_RE
 
 
 def measure_regex(name: str, pattern, base_text: str):
+    import gc
     text_1x = base_text
     text_4x = base_text * 4
 
     runs = 100
     repeats = 3
 
-    t1_raw = min(timeit.repeat(lambda: list(pattern.finditer(text_1x)), number=runs, repeat=repeats)) / runs
-    t4_raw = min(timeit.repeat(lambda: list(pattern.finditer(text_4x)), number=runs, repeat=repeats)) / runs
+    gc_was_enabled = gc.isenabled()
+    try:
+        gc.disable()
+        t1_raw = min(timeit.repeat(lambda: list(pattern.finditer(text_1x)), number=runs, repeat=repeats)) / runs
+        t4_raw = min(timeit.repeat(lambda: list(pattern.finditer(text_4x)), number=runs, repeat=repeats)) / runs
+    finally:
+        if gc_was_enabled:
+            gc.enable()
 
     # 분모 보정 (0.0001초 미만인 경우)
     t1_adj = max(t1_raw, 0.0001)
@@ -55,9 +64,18 @@ def main():
         "제1조 목적 및 적용 범위\n"
     ) * 10
 
-    print("=== TK-76 EVI-DATE 정규식 성능 측정 (공통 점검표 2항) ===")
+    sample_text_incons = (
+        "창고정산 1차 14건 × 17,000원 = 269,000원 수량과 단가를 곱한 금액을 적는다.\n"
+        "검수대장 2차 15건 * 17,000원 = 286,000원 수량과 단가를 곱한 금액을 적는다.\n"
+        "일반적인 사실관계 서술 문장 안에서 3개월 × 1,000,000원의 용역 대금을 청구한다.\n"
+    ) * 10
+
+    print("=== TK-76 정규식 성능 측정 (공통 점검표 2항) ===")
     measure_regex("DATE_WEEKDAY_RE", DATE_WEEKDAY_RE, sample_text_weekday)
     measure_regex("HEADING_LINE_RE", HEADING_LINE_RE, sample_text_heading)
+    measure_regex("LEADING_MULTIPLIER_RE", LEADING_MULTIPLIER_RE, sample_text_incons)
+    measure_regex("BRACKET_HEADING_RE", BRACKET_HEADING_RE, sample_text_heading)
+    measure_regex("_JOSA_PREDICATE_RE", _JOSA_PREDICATE_RE, sample_text_incons)
     print("모든 정규식 성능 기준(비 < 8.0, 4배 < 1.0s) 충족 확인 완료.")
 
 
