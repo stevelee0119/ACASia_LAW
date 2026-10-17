@@ -14,7 +14,7 @@ from typing import Any
 
 from pdfminer.converter import PDFPageAggregator
 from pdfminer.pdfinterp import PDFPageInterpreter
-from pdfminer.pdftypes import PDFObjRef
+from pdfminer.pdftypes import PDFObjRef, PDFStream
 from pdfminer.psparser import PSLiteral, literal_name
 from pdfminer.utils import PDFDocEncoding
 from .named_actualtext_capture import NamedActualTextCapture
@@ -384,12 +384,24 @@ def _named_available(page, capture):
     properties = resolve(resources.get('Properties')) if isinstance(resources, dict) else None
     if isinstance(properties, dict):
         return True
-    # Only enter interpretation here; the interpreter follows invoked Forms,
-    # rather than scanning every unselected XObject resource.
+    # Check stream dictionaries only. The interpreter, rather than preflight,
+    # follows invoked Form content; images alone must not admit a second pass.
     scope = (page.page_number, 'FORM_AVAILABILITY')
     resources = _resolve_form_inspection(page.page_obj.resources, capture, scope)
     xobjects = _resolve_form_inspection(resources.get('XObject'), capture, scope) if isinstance(resources, dict) else None
-    return isinstance(xobjects, dict) and bool(xobjects)
+    if not isinstance(xobjects, dict):
+        return False
+    for value in xobjects.values():
+        # Share the document context budget even for direct stream objects.
+        if not capture.context():
+            return False
+        stream = _resolve_form_inspection(value, capture, scope)
+        if not isinstance(stream, PDFStream):
+            continue
+        subtype = _resolve_form_inspection(stream.get('Subtype'), capture, scope)
+        if isinstance(subtype, PSLiteral) and literal_name(subtype) == 'Form':
+            return True
+    return False
 
 
 def inline_actualtext_edges(page, chars: list[dict[str, Any]], lines: list[list[dict[str, Any]]], *, excluded_glyphs=frozenset(), named_capture=None):
