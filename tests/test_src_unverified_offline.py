@@ -169,6 +169,21 @@ def test_control_exhibit_titles_not_academic(exhibit_text: str):
     assert len(academic_cits) == 0, f"서증 제목은 ACADEMIC 인용으로 분류되지 않아야 함: {exhibit_text}"
 
 
+# --- 5-1. 법령명 오인 방지 대조군 ---
+@pytest.mark.parametrize(
+    "statute_text",
+    [
+        "「근로기준법」 조사 결과에 의하면 원고의 청구는 부당합니다.",
+        "피고는 「산업안전보건법」 통계에 따른 기준을 준수하였습니다.",
+    ],
+)
+def test_control_statute_names_not_academic(statute_text: str):
+    """법령명 오인 방지 대조군: 법령명 따옴표 뒤에 조사나 통계가 오더라도 외부 학술 인용(ACADEMIC)으로 추출되지 않아야 함."""
+    citations = extract_from_text(statute_text)
+    academic_cits = [c for c in citations if c.type == CitationType.ACADEMIC]
+    assert len(academic_cits) == 0, f"법령명은 ACADEMIC 인용으로 분류되지 않아야 함: {statute_text}"
+
+
 # --- 6. 단독 지표(통계 수치) 추출 및 동일 문장 중복 방지 검증 ---
 def test_positive_indicator_statistic_only():
     """따옴표 없는 지표 수치 단독 인용 추출 및 보고서 인용과 동일 문장 시 중복 스킵 검증."""

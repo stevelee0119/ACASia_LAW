@@ -259,10 +259,11 @@ DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+\b")
 
 # 외부 보고서·백서·연보·통계조사 등 미검증 외부 출처 인용 패턴 (SRC-UNV 식별용)
 _REPORT_KEYWORDS = r"연보|백서|보고서|연감|실태조사|조사|지수|공통표|원표|통계|일치율|응답률|환급률|손상률|성공률|편람|총람|요람|통람"
+_OUTER_KEYWORDS = r"보고서|백서|연보|연감|편람"
 _EXTRA_MODIFIERS = r"비공개|미공개|미간행|익명|특별판|특별\s*보고서|중간\s*보고서|제?\s*\d+\s*(?:차|판|호)"
 REPORT_CITATION_RE = re.compile(
     rf"(?P<title>[「『][^」』\n]{{2,60}}(?:{_REPORT_KEYWORDS})[^」』\n]{{0,30}}[」』]"
-    rf"|[「『][^」』\n]{{2,60}}[」』]\s*(?:{_REPORT_KEYWORDS}))"
+    rf"|[「『][^」』\n]{{2,60}}[」』]\s*(?:{_OUTER_KEYWORDS}))"
     rf"(?:\s*(?P<extra>(?:{_EXTRA_MODIFIERS})))?"
     r"(?:\s*(?P<locator>\d+\s*(?:쪽|면)))?"
 )
@@ -842,7 +843,13 @@ def extract_from_text(
             win = prefix[line_break + 1:] if line_break != -1 else prefix
             if parse_exhibits(win) or re.search(r"(?:첨부|별지|제출(?:한|된|하여)?|첨부(?:한|된|하여)?)", win):
                 continue
-            title_text = m.group("title").strip("「」『』 ")
+            raw_title = m.group("title")
+            # 법령명 오인 방지: 따옴표 안 제목이 법·령·규칙·조례·규정으로 끝나면 제외
+            quote_m = re.search(r"[「『]([^」』\n]+)[」』]", raw_title)
+            inner_title = quote_m.group(1).strip() if quote_m else raw_title.strip("「」『』 ")
+            if re.search(r"(?:법|령|규칙|조례|규정)$", inner_title):
+                continue
+            title_text = raw_title.strip("「」『』 ")
             ctx_start = max(0, text.rfind('.', 0, g_start) + 1)
             ctx_end = text.find('.', g_end)
             ctx_end = len(text) if ctx_end == -1 else ctx_end + 1
