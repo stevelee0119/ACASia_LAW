@@ -26,7 +26,7 @@ PROTECTED = (
     "scripts/probe_document.py", "scripts/score_report.py", "scripts/check_case_literals.py",
     "scripts/check_version_policy.py", "scripts/review_feedback_report.py",
     "scripts/regression_gate.py", "scripts/check_hardcoding_diff.py", "scripts/check_test_edits.py",
-    "scripts/check_protected_paths.py", "scripts/ci_failed_tests.py",
+    "scripts/check_protected_paths.py", "scripts/ci_failed_tests.py", "scripts/retired_compare.py",
     "docs/scorecards/**", ".github/workflows/score-gate.yml", ".github/workflows/ci.yml",
     ".github/workflows/codeql-pr.yml", "scripts/codeql_pr_diff.py",
     "docs/AGENT_ROLES.md", "AGENTS.md", "CLAUDE.md", ".github/CODEOWNERS",
