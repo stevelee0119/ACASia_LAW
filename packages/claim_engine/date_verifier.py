@@ -22,10 +22,12 @@ ENGINE_NAME = "claim_engine.date_verifier"
 KOREAN_WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"]
 WEEKDAY_MAP = {name: idx for idx, name in enumerate(KOREAN_WEEKDAYS)}
 
-# 날짜 + 요일 병기 패턴: 예) 2026. 3. 20.(목), 2026년 3월 20일(목요일)
+# 날짜 + 요일 병기 패턴: 예) 2026. 3. 20.(목), 2026년 3월 20일(목요일), 2025. 9. 1. 화요일에
+# 요일 단어 뒤에 조사(에, 은, 는, 이, 가, 을, 를, 의, 로, 으로, 부터, 까지)가 붙는 서식도 허용
 DATE_WEEKDAY_RE = re.compile(
     r"(?P<year>\d{4})[.\s년/-]+(?P<month>\d{1,2})[.\s월/-]+(?P<day>\d{1,2})(?:일)?[\s.]*"
-    r"(?:\((?P<weekday>[월화수목금토일])(?:요일)?\)|(?P<weekday_word>[월화수목금토일])요일(?![가-힣]))"
+    r"(?:\((?P<weekday>[월화수목금토일])(?:요일)?\)|(?P<weekday_word>[월화수목금토일])요일)"
+    r"(?:[에은는이가을를의]|으로|로|부터|까지)?(?![가-힣])"
 )
 
 # 일반 날짜 패턴: 예) 2026. 2. 29., 2026년 2월 29일
@@ -39,6 +41,65 @@ DAYS_ELAPSED_RE = re.compile(
     r"(?P<days>\d{1,4})\s*(?:일|日)\s*(?:이\s*지난|경과한|후의?|째\s*되는)?\s*"
     r"(?P<to_y>\d{4})[.\s년/-]+(?P<to_m>\d{1,2})[.\s월/-]+(?P<to_d>\d{1,2})[일\s.]*"
 )
+
+# 소제목/목차 번호 패턴 (한국 법률 서면의 일반적인 번호·기호 체계)
+# 1. , 가. , (1) , 1) , [소제목] , 【소제목】 , <소제목> , 제1조 등
+HEADING_LINE_RE = re.compile(
+    r"^\s*(?:"
+    r"(?:[0-9]{1,3}|[가-하]|[IVXLCDM]+)\s*[\.\)]\s*|"  # 1. , 가. , 1) , I. 등
+    r"\([0-9]{1,3}|[가-하]\)\s*|"                       # (1) , (가) 등
+    r"\[[^\]\n]{1,60}\]|"                               # [소제목]
+    r"【[^】\n]{1,60}】|"                               # 【소제목】
+    r"<[^>\n]{1,60}>|"                                  # <소제목>
+    r"제\s*[0-9]{1,3}\s*[조항조]\s*"                    # 제1조 등
+    r")\s*(?P<title>[^\n]{1,80})"
+)
+
+
+def _detect_heading(line: str) -> Optional[str]:
+    """한 줄이 소제목/목차인지 검사하여 정리된 소제목 문자열을 반환한다."""
+    line_s = line.strip()
+    if not line_s or len(line_s) > 80:
+        return None
+    m = HEADING_LINE_RE.match(line_s)
+    if m:
+        return line_s
+    return None
+
+
+def _find_effective_heading(text: str, match_start: int, block_heading: Optional[str]) -> Optional[str]:
+    """매칭 위치 이전의 텍스트 또는 블록/문서 흐름상 유효한 소제목을 반환한다."""
+    prefix_text = text[:match_start]
+    lines = prefix_text.splitlines()
+    for line in reversed(lines):
+        h = _detect_heading(line)
+        if h:
+            return h
+    return block_heading
+
+
+def _extract_surrounding_sentence(text: str, start: int, end: int, max_len: int = 150) -> str:
+    """매칭 구간 주변의 문맥 문장을 추출한다."""
+    prev_idx = max(text.rfind("\n", 0, start), text.rfind(".", 0, start))
+    s_idx = 0 if prev_idx == -1 else prev_idx + 1
+
+    candidates = [pos for pos in [text.find("\n", end), text.find(".", end)] if pos != -1]
+    e_idx = (min(candidates) + 1) if candidates else len(text)
+
+    sentence = text[s_idx:e_idx].strip()
+    if not sentence:
+        sentence = text[max(0, start - 30):min(len(text), end + 30)].strip()
+
+    if len(sentence) > max_len:
+        rel_s = max(0, start - s_idx)
+        rel_e = min(len(sentence), end - s_idx)
+        left = max(0, rel_s - 50)
+        right = min(len(sentence), rel_e + 50)
+        prefix = "…" if left > 0 else ""
+        suffix = "…" if right < len(sentence) else ""
+        sentence = prefix + sentence[left:right].strip() + suffix
+
+    return sentence
 
 
 def _parse_valid_date(year: int, month: int, day: int) -> Optional[datetime.date]:
@@ -65,10 +126,19 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                 context_incident_date = d_obj
                 break
 
+    # 문서 흐름상 직전 소제목/목차 추적
+    current_heading: Optional[str] = None
+
     for block in doc.body_blocks():
         text = block.text
         if not text:
             continue
+
+        # 블록의 첫 번째 줄이 소제목인지 검사하여 현재 활성 소제목을 갱신한다
+        first_line = text.splitlines()[0] if text.splitlines() else ""
+        first_heading = _detect_heading(first_line)
+        if first_heading:
+            current_heading = first_heading
 
         # 1. 날짜 + 요일 불일치 검증 (DATE-WEEKDAY)
         for m in DATE_WEEKDAY_RE.finditer(text):
@@ -84,6 +154,9 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
 
                 if weekday_str != actual_weekday_str:
                     matched_str = m.group(0)
+                    eff_h = _find_effective_heading(text, m.start(), current_heading)
+                    ctx_sent = _extract_surrounding_sentence(text, m.start(), m.end())
+
                     features = {
                         "deterministic_rule": True,
                         "stated_date": f"{y}. {month}. {day}.",
@@ -91,6 +164,14 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                         "actual_weekday": actual_weekday_str,
                         "rule_id": "claim_engine.date_verifier:DATE_WEEKDAY_MISMATCH",
                     }
+                    if eff_h:
+                        features["heading"] = eff_h
+                    if ctx_sent:
+                        features["context_sentence"] = ctx_sent
+
+                    h_prefix = f"[{eff_h}] " if eff_h else ""
+                    c_suffix = f" (문맥: '{ctx_sent}')" if ctx_sent else ""
+
                     findings.append(
                         Finding.create(
                             type=FindingType.TIMELINE_CONTRADICTION,
@@ -99,8 +180,9 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             evidence_grade=EvidenceGrade.A,
                             title=f"날짜와 요일 불일치: {y}. {month}. {day}.({weekday_str}) → 실제 {actual_weekday_str}요일",
                             detail=(
-                                f"본문에 기재된 '{matched_str}'의 요일 표기가 달력과 일치하지 않는다. "
+                                f"{h_prefix}본문에 기재된 '{matched_str}'의 요일 표기가 달력과 일치하지 않는다. "
                                 f"{y}년 {month}월 {day}일은 {actual_weekday_str}요일이나 본문에는 {weekday_str}요일로 기재되었다."
+                                f"{c_suffix}"
                             ),
                             confidence=1.0,
                             confidence_features=features,
@@ -111,7 +193,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             tags=["TIMELINE", "DATE-WEEKDAY", "CALENDAR"],
                             evidence=[
                                 Evidence.create(
-                                    description="달력 역법상 요일 불일치",
+                                    description=f"{h_prefix}달력 역법상 요일 불일치".strip(),
                                     grade=EvidenceGrade.A,
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
@@ -131,10 +213,14 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
             month = int(m.group("month"))
             day = int(m.group("day"))
 
-            if 1 <= month <= 12 and 1 <= day <= 31:
+            # 1~12월 범위에서 일이 유효 범위를 초과하는 경우(예: 31일 초과 오타 또는 4월 31일/평년 2월 29일 등)
+            if 1 <= month <= 12 and 1 <= day <= 35:
                 if _parse_valid_date(y, month, day) is None:
                     matched_str = m.group(0)
                     is_leap = calendar.isleap(y)
+                    eff_h = _find_effective_heading(text, m.start(), current_heading)
+                    ctx_sent = _extract_surrounding_sentence(text, m.start(), m.end())
+
                     features = {
                         "deterministic_rule": True,
                         "year": y,
@@ -143,6 +229,14 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                         "is_leap_year": is_leap,
                         "rule_id": "claim_engine.date_verifier:DATE_INVALID",
                     }
+                    if eff_h:
+                        features["heading"] = eff_h
+                    if ctx_sent:
+                        features["context_sentence"] = ctx_sent
+
+                    h_prefix = f"[{eff_h}] " if eff_h else ""
+                    c_suffix = f" (문맥: '{ctx_sent}')" if ctx_sent else ""
+
                     findings.append(
                         Finding.create(
                             type=FindingType.EVIDENCE_DATE_INVALID,
@@ -151,8 +245,9 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             evidence_grade=EvidenceGrade.A,
                             title=f"달력상 존재하지 않는 날짜 기재: {matched_str}",
                             detail=(
-                                f"{y}년 {month}월에는 {day}일이 존재하지 않는다"
+                                f"{h_prefix}{y}년 {month}월에는 {day}일이 존재하지 않는다"
                                 + (f" ({y}년은 평년으로 2월 28일까지 존재)." if month == 2 and not is_leap else ".")
+                                + f"{c_suffix}"
                             ),
                             confidence=1.0,
                             confidence_features=features,
@@ -163,7 +258,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             tags=["TIMELINE", "DATE-INVALID", "CALENDAR"],
                             evidence=[
                                 Evidence.create(
-                                    description="존재하지 않는 날짜 표기",
+                                    description=f"{h_prefix}존재하지 않는 날짜 표기".strip(),
                                     grade=EvidenceGrade.A,
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
@@ -185,6 +280,9 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                 # 이미 1)에서 찾은 것이 아닌 경우
                 if not any(f.type == FindingType.EVIDENCE_DATE_INVALID and "29" in f.title for f in findings if f.block_id == block.block_id):
                     matched_str = m_feb29.group(0)
+                    eff_h = _find_effective_heading(text, m_feb29.start(), current_heading)
+                    ctx_sent = _extract_surrounding_sentence(text, m_feb29.start(), m_feb29.end())
+
                     features = {
                         "deterministic_rule": True,
                         "year": block_year,
@@ -193,6 +291,14 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                         "is_leap_year": False,
                         "rule_id": "claim_engine.date_verifier:DATE_INVALID_FEB29",
                     }
+                    if eff_h:
+                        features["heading"] = eff_h
+                    if ctx_sent:
+                        features["context_sentence"] = ctx_sent
+
+                    h_prefix = f"[{eff_h}] " if eff_h else ""
+                    c_suffix = f" (문맥: '{ctx_sent}')" if ctx_sent else ""
+
                     findings.append(
                         Finding.create(
                             type=FindingType.EVIDENCE_DATE_INVALID,
@@ -201,7 +307,8 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             evidence_grade=EvidenceGrade.A,
                             title=f"달력상 존재하지 않는 날짜 기재: {block_year}년 2월 29일 ({matched_str})",
                             detail=(
-                                f"{block_year}년은 평년으로 2월 28일까지 존재하므로 2월 29일은 달력에 존재하지 않는다."
+                                f"{h_prefix}{block_year}년은 평년으로 2월 28일까지 존재하므로 2월 29일은 달력에 존재하지 않는다."
+                                f"{c_suffix}"
                             ),
                             confidence=1.0,
                             confidence_features=features,
@@ -212,7 +319,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             tags=["TIMELINE", "DATE-INVALID", "CALENDAR"],
                             evidence=[
                                 Evidence.create(
-                                    description="존재하지 않는 평년 2월 29일 표기",
+                                    description=f"{h_prefix}존재하지 않는 평년 2월 29일 표기".strip(),
                                     grade=EvidenceGrade.A,
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
@@ -245,6 +352,9 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                 # 달라질 수 있으므로 계산 오류로 보지 않는다. 2일 이상 차이만 판정한다.
                 if actual_days > 0 and abs(actual_days - stated_days) > 1:
                     matched_str = m.group(0)
+                    eff_h = _find_effective_heading(text, m.start(), current_heading)
+                    ctx_sent = _extract_surrounding_sentence(text, m.start(), m.end())
+
                     features = {
                         "deterministic_rule": True,
                         "from_date": str(from_date),
@@ -254,6 +364,14 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                         "difference": actual_days - stated_days,
                         "rule_id": "claim_engine.date_verifier:DAYS_ELAPSED_MISMATCH",
                     }
+                    if eff_h:
+                        features["heading"] = eff_h
+                    if ctx_sent:
+                        features["context_sentence"] = ctx_sent
+
+                    h_prefix = f"[{eff_h}] " if eff_h else ""
+                    c_suffix = f" (문맥: '{ctx_sent}')" if ctx_sent else ""
+
                     findings.append(
                         Finding.create(
                             type=FindingType.TIMELINE_CONTRADICTION,
@@ -262,8 +380,9 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             evidence_grade=EvidenceGrade.A,
                             title=f"경과 일수 계산 오류: 기재 {stated_days}일 → 실제 {actual_days}일",
                             detail=(
-                                f"{from_date}부터 {to_date}까지의 실제 경과 일수는 {actual_days}일이나, "
+                                f"{h_prefix}{from_date}부터 {to_date}까지의 실제 경과 일수는 {actual_days}일이나, "
                                 f"본문에는 {stated_days}일로 기재되어 차이({abs(actual_days - stated_days)}일)가 발생한다."
+                                f"{c_suffix}"
                             ),
                             confidence=1.0,
                             confidence_features=features,
@@ -274,7 +393,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             tags=["TIMELINE", "DAYS", "CALCULATION"],
                             evidence=[
                                 Evidence.create(
-                                    description="일수 경과 계산 불일치",
+                                    description=f"{h_prefix}일수 경과 계산 불일치".strip(),
                                     grade=EvidenceGrade.A,
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
@@ -316,12 +435,23 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                         if evt_date and evt_date > send_date:
                             matched_send = m_send.group(0)
                             matched_evt = m_evt.group(0)
+                            eff_h = _find_effective_heading(window_text, m_evt.start(), None)
+                            ctx_sent = _extract_surrounding_sentence(window_text, m_evt.start(), m_evt.end())
+
                             features = {
                                 "deterministic_rule": True,
                                 "send_date": str(send_date),
                                 "event_date": str(evt_date),
                                 "rule_id": "claim_engine.date_verifier:DATE_INVERSION_EVENT_AFTER_SEND",
                             }
+                            if eff_h:
+                                features["heading"] = eff_h
+                            if ctx_sent:
+                                features["context_sentence"] = ctx_sent
+
+                            h_prefix = f"[{eff_h}] " if eff_h else ""
+                            c_suffix = f" (문맥: '{ctx_sent}')" if ctx_sent else ""
+
                             # 중복 방지
                             if not any(f.title.startswith("발송/통지일 선후 역전") and f.page == window_blocks[0].page for f in findings):
                                 findings.append(
@@ -332,8 +462,9 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                         evidence_grade=EvidenceGrade.A,
                                         title=f"발송/통지일 선후 역전: 발송일({send_date})보다 미래의 사유·의결({evt_date})을 과거 사실로 인용",
                                         detail=(
-                                            f"발송/통지일시({send_date}) 시점에 아직 발생하지 않은 미래 일자({evt_date})를 "
+                                            f"{h_prefix}발송/통지일시({send_date}) 시점에 아직 발생하지 않은 미래 일자({evt_date})를 "
                                             f"'{matched_evt}'와 같이 과거 완료된 사유로 인용하여 인과적 선후 관계가 모순된다."
+                                            f"{c_suffix}"
                                         ),
                                         confidence=1.0,
                                         confidence_features=features,
@@ -344,7 +475,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                         tags=["TIMELINE", "DATE-INVERSION", "TEMPORAL"],
                                         evidence=[
                                             Evidence.create(
-                                                description="발송일시 및 미래 의결 인용 선후 역전 구간",
+                                                description=f"{h_prefix}발송일시 및 미래 의결 인용 선후 역전 구간".strip(),
                                                 grade=EvidenceGrade.A,
                                                 document_id=doc.document_id,
                                                 block_id=window_blocks[0].block_id,
