@@ -63,8 +63,8 @@
 - `run_manifest`에 출처별 요청·HTTP 시도·캐시 적중·상태별 건수·재시도 가능 실패와 소요 시간 합을 싣는다. 기존 `LookupTrace`·판정별 `source_lookup`을 모아 만들고 새 네트워크 호출은 만들지 않는다.
 - 질의어·URL·인용 원문·키는 넣지 않는다. 탐지·채점은 바꾸지 않는다(점검표는 1·3항만).
 
-### ④ TK-79 — 운영 컨테이너가 Render Secret File을 읽게 하기 (작은 수정, ①과 병행 가능)
-- 사용자 승인(10-17, '3단계 Dockerfile 수정'). 티켓: [TK-79](TK-79_render_secret_file_group.md).
+### ④ TK-80 — 운영 컨테이너가 Render Secret File을 읽게 하기 (작은 수정, ①과 병행 가능)
+- 사용자 승인(10-17, '3단계 Dockerfile 수정'). 티켓: [TK-80](TK-80_render_secret_file_group.md).
 - `docker/Dockerfile`에서 `appuser`를 GID 1000 그룹의 보조 구성원으로 넣는다. 그룹이 없으면 만든다. UID 10001·소유권·`USER appuser`는 유지한다.
 - 이 수정이 운영에 배포돼야 사용자가 Drive 서비스 계정 키를 Secret File로 넣고, 운영 참고자료 폴더의 링크 공개를 해제할 수 있다.
 - 제품 코드·`render.yaml` 값은 바꾸지 않는다. 점검표는 1·3항(이미지의 `id -G`·`id -u` 출력)만 낸다.
