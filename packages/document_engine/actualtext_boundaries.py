@@ -169,6 +169,19 @@ class _Device(PDFPageAggregator):
 
 class _Interpreter(PDFPageInterpreter):
     """Unproved alpha/soft masks/clipping are local graphics-state blockers."""
+    def render_contents(self, resources, streams, *args, **kwargs):
+        # pdfminer inherits PAGE resources for absent/empty Form Resources.
+        # Retain the invoked stream's own operand; the interpreter's fallback
+        # dictionary is not proof of a selected native Form property.
+        self._form_inspection_resources = None
+        if self.device.form_depth:
+            capture = self.device.named_capture
+            if capture is not None:
+                capture.inspection_complete = False
+            if len(streams) == 1:
+                self._form_inspection_resources = streams[0].get('Resources')
+        return super().render_contents(resources, streams, *args, **kwargs)
+
     def init_state(self, ctm):
         super().init_state(ctm)
         self._unsafe_stack = []
@@ -194,8 +207,9 @@ class _Interpreter(PDFPageInterpreter):
             # witness, and inspecting one selection cannot prove Form coverage.
             capture.inspection_complete = False
             if capture.context():
-                scope = (self.device.pageno, id(self.resources), 'FORM_INSPECTION_ONLY')
-                resources = _resolve_form_inspection(self.resources, capture, scope)
+                own_resources = self._form_inspection_resources
+                scope = (self.device.pageno, id(own_resources), 'FORM_INSPECTION_ONLY')
+                resources = _resolve_form_inspection(own_resources, capture, scope)
                 properties = _resolve_form_inspection(resources.get('Properties'), capture, scope) if isinstance(resources, dict) else None
                 selected = _resolve_form_inspection(properties.get(literal_name(props)), capture, scope) if isinstance(properties, dict) else None
                 if isinstance(selected, dict):

@@ -115,3 +115,60 @@ def test_unsupported_form_source_never_becomes_boundary_or_text(tmp_path, source
     assert stats["unsupported_actualtext_values"] == int(source_type != "absent")
     assert stats["actualtext_absent"] == int(source_type == "absent")
     assert_primary_preserved(before, after)
+
+
+@pytest.mark.parametrize("instruction", INSTRUCTIONS)
+@pytest.mark.parametrize("resources", ("absent", "empty"))
+def test_form_without_own_resources_never_borrows_PAGE_properties(tmp_path, instruction, resources):
+    path = tmp_path / "unproved_resources.pdf"
+    repeated(path, 1, 2000, True, form_only=True)
+    writer = PdfWriter(clone_from=PdfReader(str(path)))
+    page = writer.pages[0]
+    form = next(iter(page["/Resources"]["/XObject"].values())).get_object()
+    if resources == "absent":
+        form.pop("/Resources")
+    else:
+        form[NameObject("/Resources")] = DictionaryObject()
+    page["/Resources"][NameObject("/Properties")] = DictionaryObject({
+        NameObject("/P0"): DictionaryObject({NameObject("/ActualText"):
+            writer._add_object(TextStringObject(instruction))})})
+    writer.write(str(path))
+    before, after = baseline_parse(path), _parse(path)
+    assert instruction not in after.structure.get("actual_text_strings", [])
+    assert not any("ACTUAL_TEXT" in finding.tags for finding in scan_document(after).findings)
+    assert_primary_preserved(before, after)
+
+
+@pytest.mark.parametrize("instruction", INSTRUCTIONS)
+def test_uninvoked_form_resources_are_not_walked(tmp_path, instruction):
+    from pypdf.generic import DecodedStreamObject
+    path = tmp_path / "uninvoked.pdf"
+    form_pdf(path, instruction, indirect=True)
+    writer = PdfWriter(clone_from=PdfReader(str(path)))
+    page = writer.pages[0]
+    stream = DecodedStreamObject()
+    stream.set_data(page.get_contents().get_data().replace(b"/FormXob.Body Do", b""))
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    writer.write(str(path))
+    doc = _parse(path)
+    assert instruction not in doc.structure.get("actual_text_strings", [])
+    assert doc.structure["named_actualtext_inspection"]["decode_calls"] == 0
+    assert not any("ACTUAL_TEXT" in finding.tags for finding in scan_document(doc).findings)
+
+
+def test_invoked_form_without_named_selection_keeps_incomplete_coverage(tmp_path):
+    from pypdf.generic import DecodedStreamObject
+    path = tmp_path / "unselected_form.pdf"
+    repeated(path, 1, 2000, True, form_only=True)
+    writer = PdfWriter(clone_from=PdfReader(str(path)))
+    xobjects = writer.pages[0]["/Resources"]["/XObject"]
+    key = next(iter(xobjects))
+    form = xobjects[key].get_object()
+    decoded = DecodedStreamObject()
+    decoded.update({key: value for key, value in form.items() if key not in ("/Filter", "/DecodeParms", "/Length")})
+    decoded.set_data(form.get_data().replace(b"/Span /P0 BDC EMC", b""))
+    xobjects[key] = writer._add_object(decoded)
+    writer.write(str(path))
+    doc = _parse(path)
+    assert not doc.structure["named_actualtext_inspection"]["inspection_complete"]
+    assert doc.structure["named_actualtext_inspection"]["decode_calls"] == 0

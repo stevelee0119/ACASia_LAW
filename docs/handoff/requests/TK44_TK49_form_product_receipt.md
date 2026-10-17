@@ -2,9 +2,11 @@
 
 Public start `aefd55ed4831d6aeda6d5b5ad7a01e8a59a135f7`; design-first `8fd97db`. Final SHA and same-SHA CI run IDs belong to the PR's three-line review request. [Approval](https://github.com/stevelee0119/verify_ACAS_LAW/pull/108#issuecomment-6226443498) permits the exact two residual assertion reversals; the third incompleteness assertion, all other existing expectations, protected paths, versions and workflows remain unchanged.
 
-The actual parser now captures an invoked Form's exact selected named ActualText for the existing scanner under shared capture budgets. No Form boundary is certified. It preserves original reading/raw text, UNKNOWN and incomplete inspection. New33 controls execute the product parser (no candidate adapter); the existing b1e public baseline supplies historical reading/raw comparison. Six indirect malicious cases gain inspection; direct counterparts were already seen by the raw collector. No product imports test code.
+The actual parser now captures an invoked Form's exact selected named ActualText for the existing scanner under shared capture budgets. No Form boundary is certified. It preserves original reading/raw text, UNKNOWN and incomplete inspection. New43 controls execute the product parser (no candidate adapter); the existing b1e public baseline supplies historical reading/raw comparison. Six indirect malicious cases gain inspection; direct counterparts were already seen by the raw collector. No product imports test code.
 
-Related functional checks (Linux, Python3.12.14):
+The initial product `e072aec4d5b7d433940b828d4da51e7a18779fa8` passed362 related tests. An additional source-ownership audit then reproduced six PAGE-property capture counterexamples for absent/empty native Form Resources. The library inherits PAGE resources in those cases, so the correction keeps the actual invoked stream's own Resources operand separately. Ten added controls cover those six, three uninvoked Forms and one invoked Form with no selection. The latter's first fixture write used pypdf's unsupported encoded-stream mutation (one fixture error,371passes); rebuilding a decoded stream corrects the synthetic fixture without changing expectations. All earlier test bodies remain intact. Final verification covers372 related cases and is recorded at the final SHA in the PR; earlier CI/timing is not attributed to it.
+
+Initial e072aec functional checks (Linux, Python3.12.14; historical):
 
 ```sh
 /workspace/tk73-venv/bin/python -m pytest tests/test_tk44_selected_form_inspection.py tests/test_tk44_named_actualtext_provider.py tests/test_tk44_actualtext_provider.py tests/test_tk44_named_inspection_lifecycle_spike.py tests/test_tk44_named_actualtext_capture_budget_spike.py
