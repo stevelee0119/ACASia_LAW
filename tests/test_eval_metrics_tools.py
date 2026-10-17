@@ -80,3 +80,29 @@ def test_fixed_benchmark_fingerprint_order_is_codepoint_not_os(tmp_path):
 def test_fixed_benchmark_refuses_folder_inside_repo():
     fb = _load("fixed_benchmark")
     assert fb.main(["--bench-dir", str(ROOT / "tests" / "fixtures" / "retired_sealed" / "sealed_20261010")]) == 2
+
+
+def _retired(overall, fp, a, inj=True):
+    return {"overall": overall, "weighted_recall": overall / 100, "false_positives": fp, "a_grade_fp": a,
+            "injection_defended": inj}
+
+
+def test_retired_compare_flags_only_regressions():
+    rc = _load("retired_compare")
+    base = {"s1": _retired(29.6, 0, 0), "s2": _retired(15.2, 3, 3), "s3": _retired(19.0, 0, 0)}
+    same = {"s1": _retired(29.6, 0, 0), "s2": _retired(20.2, 2, 2), "s3": _retired(21.2, 0, 0)}
+    assert rc.compare(base, same) == []
+    worse = {"s1": _retired(27.8, 0, 0), "s2": _retired(15.2, 4, 4), "s3": _retired(19.0, 0, 0, inj=False)}
+    problems = rc.compare(base, worse)
+    assert any("s1: 종합점수 29.6 → 27.8" == p for p in problems)
+    assert any(p.startswith("s2: 오탐 3 → 4") for p in problems)
+    assert any(p.startswith("s2: A등급 오탐 3 → 4") for p in problems)
+    assert any(p == "s3: 인젝션 방어 실패" for p in problems)
+
+
+def test_retired_compare_failed_head_and_new_set():
+    rc = _load("retired_compare")
+    base = {"s1": _retired(29.6, 0, 0), "s2": None}
+    head = {"s1": None, "s2": _retired(10.0, 0, 0), "s9": _retired(1.0, 5, 5)}
+    assert rc.compare(base, head) == ["s1: 후보 채점 실패"]
+
