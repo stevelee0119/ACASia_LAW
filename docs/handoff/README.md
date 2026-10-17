@@ -16,7 +16,7 @@
 | TK55 | #97 2f4e798 발췌검사 제한부분 배포,known_open | legacy/unsupported 등 잔여와 내부생성ID PHONE과차단 후속. 키일괄면제금지·필수개인정보보호 유지 |
 | TK73 | #92 545c917 source-tree안전성 제한PASS·기준/제품HOLD | 구체확인필요상태·진짜확정손실·보호계약 검토후 사용자결정. 원래AFP3해소로계산금지 |
 
-최신 구현 지시는 [Antigravity 통합본](NEXT_FOR_ANTIGRAVITY.md)(새 구현, 첫 배정 [TK-76](TK-76_focus_types_generalization_cycle1.md))·[Codex 통합본](NEXT_FOR_CODEX.md)(잔여 티켓, 평가 검토 중지)으로 전달한다. 체제 전환(2026-10-17): [AGENT_ROLES](../AGENT_ROLES.md) 1절. 사용자10/16 승인 잠정목표는 [FIXED_BENCHMARK9절](../scorecards/FIXED_BENCHMARK.md#9-목표와-릴리스-참고-기준-2026-10-16-사용자-승인), 공통제출조건 사전점검은 [전용기록](requests/SUBMISSION_CHECKLIST_PREFLIGHT_20261016.md)을 따른다. 비공개벤치 결과로 구현티켓을 만들지 않는다. 개발말뭉치dev_20261016의train/check양쪽원본지문확인·같은운영본첫측정·gap계산을완료했다. train.115/check.145·격차−.030,중점.175/.225·격차−.050이다. [DEV_CORPUS](../scorecards/DEV_CORPUS.md)의집계/접근분리/노출교체규칙을따른다. train전용ZIP과NEXT만별도구현세션에전달하고check는평가측보관이다.
+최신 구현 지시는 [Antigravity 통합본](NEXT_FOR_ANTIGRAVITY.md)(새 구현, 첫 배정 [TK-76](TK-76_focus_types_generalization_cycle1.md))·[Codex 통합본](NEXT_FOR_CODEX.md)(잔여 티켓, 평가 검토 재개)으로 전달한다. 체제 전환(2026-10-17): [AGENT_ROLES](../AGENT_ROLES.md) 1절. 사용자10/16 승인 잠정목표는 [FIXED_BENCHMARK9절](../scorecards/FIXED_BENCHMARK.md#9-목표와-릴리스-참고-기준-2026-10-16-사용자-승인), 공통제출조건 사전점검은 [전용기록](requests/SUBMISSION_CHECKLIST_PREFLIGHT_20261016.md)을 따른다. 비공개벤치 결과로 구현티켓을 만들지 않는다. 개발말뭉치dev_20261016의train/check양쪽원본지문확인·같은운영본첫측정·gap계산을완료했다. train.115/check.145·격차−.030,중점.175/.225·격차−.050이다. [DEV_CORPUS](../scorecards/DEV_CORPUS.md)의집계/접근분리/노출교체규칙을따른다. train전용ZIP과NEXT만별도구현세션에전달하고check는평가측보관이다.
 
 사용자께 지금 가능한 일: ①구현을하지않는 환경에서0.13.0 고정비공개벤치집계 제출(기록은평가측), ②준비된train전용ZIP·NEXT를별도구현세션에전달(원본추가제출불필요), ③Steve대상PR CodeQL저장소설정, ④독립변호사 시범사용섭외·관찰/채점자료 준비다. 자료수신뒤 평가측이기준측정/기록을진행한다. 새제품병합/배포는수용SHA CI와릴리스선행요건 완료뒤별도다. 원래10시간 전체목표 미달은보존하며 과거실패를성공으로바꾸지 않는다.
 
@@ -269,6 +269,6 @@ TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/
 
 - **개발 체제 전환(2026-10-17, 사용자):** Antigravity 구현·Claude Code 평가. Codex는 열린 TK-44·45·49·55·73만 마무리하고 그 PR(#63·#79·#80·#84·#85·#92·#93·#95·#96·#97) 검토는 사용자 재개 지시 전까지 중지. 출제(봉인·고정 벤치·말뭉치)는 Codex 격리 세션 유지. → [AGENT_ROLES](../AGENT_ROLES.md) 1절, [EVALUATOR_HANDOVER](EVALUATOR_HANDOVER.md) 0절
 
-- **TK-76(2026-10-17, P1·탐지 성능):** [개발 말뭉치 중점 6유형 1주기](TK-76_focus_types_generalization_cycle1.md). 기준 train/check: INCONS .20/.20·SRC-UNV 0/0·NUM .20/.40·FORM .25/.25·DATE .40/.50·COPY 0/0. 진단 메모 → 유형별 PR. Antigravity 배정.
+- **TK-76(2026-10-17, P1·탐지 성능):** [개발 말뭉치 중점 6유형 1주기](TK-76_focus_types_generalization_cycle1.md). 기준 train/check: INCONS .20/.20·SRC-UNV 0/0·NUM .20/.40·FORM .25/.25·DATE .40/.50·COPY 0/0. 진단 메모 → 유형별 PR. Antigravity 배정. 2026-10-17 진단 메모 [#109](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109) 조건부 승인(정정 커밋 1개 뒤 병합 건의).
 
 - **TK-45 known_open(2026-10-17, 사용자 결정):** #96 불승인(비공개 대상 문장에 법조문 인용 0건) 뒤 작업 중지. 재개는 사용자 결정. → [TK-45](TK-45_defense_negation_by_word_match.md) 끝 절
