@@ -172,6 +172,9 @@ jobs:
       - name: 은퇴 세트 비교
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
+          # PR 실행은 병합 시험 커밋을 꺼낸다. 첫 부모가 지금의 기준 브랜치 끝이다.
+          # base.sha는 PR이 마지막으로 갱신될 때의 값이라, 그 뒤 병합된 다른 PR의 효과가 이 PR 몫으로 섞인다(#120에서 확인).
+          if git rev-parse -q --verify "HEAD^2" >/dev/null; then BASE=$(git rev-parse HEAD^1); fi
           if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then BASE=HEAD~1; fi
           python scripts/retired_compare.py --base "$BASE" | tee retired-summary.txt
 
