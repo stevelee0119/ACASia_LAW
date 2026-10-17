@@ -84,3 +84,19 @@ def test_deployment_configs_share_shell_free_entrypoint():
     assert json.loads(command) == ["python", "-m", "scripts.start_server"]
     blueprint = (root / "render.yaml").read_text(encoding="utf-8")
     assert "dockerCommand: python -m scripts.start_server" in blueprint
+
+
+def test_dockerfile_appuser_in_render_secret_group_1000():
+    """운영 컨테이너 appuser가 Render Secret File(GID 1000) 그룹에 속하는지 정적 검사 (TK-79, 한국어 주석)."""
+    root = Path(__file__).resolve().parents[1]
+    dockerfile = (root / "docker/Dockerfile").read_text(encoding="utf-8")
+    lines = dockerfile.splitlines()
+
+    # GID 1000 그룹 생성 및 appuser의 GID 1000 보조 그룹 추가 확인
+    assert any("group 1000" in line for line in lines), "GID 1000 그룹 확인/생성 명령이 Dockerfile에 있어야 합니다."
+    assert any("10001" in line and "1000" in line for line in lines), "appuser(UID 10001)에 GID 1000 그룹이 부여되어야 합니다."
+
+    # USER appuser 전환 이전에 그룹 추가가 완료되어야 함
+    user_line_idx = next(i for i, line in enumerate(lines) if line.strip() == "USER appuser")
+    group_line_idx = next(i for i, line in enumerate(lines) if "1000" in line and "appuser" in line)
+    assert group_line_idx < user_line_idx, "USER appuser 전환 전에 그룹 추가 및 사용자 생성이 완료되어야 합니다."
