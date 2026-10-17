@@ -13,7 +13,7 @@
 
 | # | 요구 | 근거 |
 |---|---|---|
-| ① | `config/pricing.json` `claude-sonnet-5-5`의 `cache_read`를 `0.1`에서 `0.2`로 고친다 | Anthropic 공시 Sonnet 5.5 캐시 읽기 $0.20/MTok. 지금 값이면 캐싱을 켰을 때 비용이 절반으로 집계된다 |
+| ① | ~~`cache_read`를 0.2로~~ **정정(평가 측 오류): 공식 가격 페이지는 Sonnet 5.5 캐시 적중 $0.10/MTok. `0.1`로 되돌린다** | [Anthropic 가격](https://platform.claude.com/docs/en/about-claude/pricing) — "a cache hit costs 5% of the standard input price ($0.20 … Opus 5.5, $0.10 USD on Claude Sonnet 5.5)". #132 [판정](https://github.com/stevelee0119/ACASia_LAW/pull/132#issuecomment-6242393439) |
 | ② | `gpt-6.1-sol`·`gpt-6-luna`의 `cache_read`, `gemini-3.8-flash`의 단가와 프로모션 종료일(`after_2026-12-31`)에 공시 출처 URL과 확인일을 `docs/handoff/efficient_legal_review.md`에 적는다. 확인하지 못한 값은 '미확인'으로 적는다 | OpenAI는 캐시 적중을 자동으로 보고한다. 단가가 틀리면 캐싱 설정과 무관하게 REPORTED 비용과 예산 판정이 틀어진다 |
 | ③ | **기본 OFF 기술 릴리스로 바꾼다**: 환경변수를 설정하지 않으면 0.13.0과 같은 모델·호출 구성이어야 한다(교차검증 `all`, 효율 라우팅 꺼짐, `providers.json` 기본 모델 0.13.0 값). Sonnet·Sol·Luna·Opus 배치는 `LV_LLM_EFFICIENT_ROUTING=1`일 때만 적용한다 | #128은 운영 기본 동작을 바꾸면서 품질·실비용을 재지 않았다(PR 본문 '미측정'). AI 작성 판별이 저비용 단일 의견 + 10% 표본이 된다. TK-75(기본 OFF 뒤 OFF/ON 온라인 대조)와 같은 방식을 쓴다 |
 | ④ | 라우팅 스냅숏이 없는 기존 대기 작업은 `EXECUTION_SETTINGS_CHANGED`로 실패시키지 않는다. ③의 OFF 기본값으로 실행한다 | ③을 하면 기존 작업과 OFF 기본값이 같은 구성이 되므로, 배포 시점 대기열을 실패시킬 이유가 없다 |
