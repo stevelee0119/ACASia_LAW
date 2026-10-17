@@ -257,6 +257,18 @@ ADMIN_APPEAL_RE = re.compile(
 # 학술: 저자, 「제목」, 학술지 권(호), 연도 / DOI
 DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+\b")
 
+# 외부 보고서·백서·연보·통계조사 등 미검증 외부 출처 인용 패턴 (SRC-UNV 식별용)
+_REPORT_KEYWORDS = r"연보|백서|보고서|연감|실태조사|조사|지수|공통표|원표|통계|일치율|응답률|환급률|손상률|성공률|편람|총람|요람|통람"
+REPORT_CITATION_RE = re.compile(
+    rf"(?P<title>[「『][^」』\n]{{2,60}}(?:{_REPORT_KEYWORDS})[^」』\n]{{0,30}}[」』])"
+    r"(?:\s*(?P<extra>(?:비공개|미공개|미간행|익명|특별판|제?\d+차|제?\d+판)?\s*[가-힣]{1,10}))?"
+    r"(?:\s*(?P<locator>\d+\s*(?:쪽|면)))?"
+)
+INDICATOR_STAT_RE = re.compile(
+    r"(?P<indicator>(?:납품|비용|가격|임금|거래|결제|경기)?지수)\s*(?P<val>\d+(?:\.\d+)?)"
+    r"|(?P<accuracy>(?:정확도|일치율|응답률|환급률|손상률|성공률))\s*(?P<rate>\d+(?:\.\d+)?%)"
+)
+
 # 제목을 먼저 찾고 출판정보의 공백은 한 경로에서만 소비한다.
 _ACADEMIC_ORIGINAL_BODY = (
     r'(?:[「『\"“](?P<title>[^」』\"”]{5,120})[」』\"”])\s*,\s*'
@@ -810,6 +822,58 @@ def extract_from_text(
                     journal=m.group("journal").strip(),
                     year=int(m.group("year")),
                     context=text[max(0, g_start - 80) : g_end + 120],
+                )
+            )
+            consumed.append((g_start, g_end))
+        consumed.seal_pattern()
+
+    # 5-1) 외부 보고서·백서·연보·통계조사 인용 (저자 없는 간행물 및 비공개 통계 자료 식별)
+    if any(q in text for q in ("「", "『")):
+        for m in REPORT_CITATION_RE.finditer(text):
+            g_start, g_end = m.span()
+            if overlaps(g_start, g_end):
+                continue
+            title_text = m.group("title").strip("「」『』 ")
+            ctx_start = max(0, text.rfind('.', 0, g_start) + 1)
+            ctx_end = text.find('.', g_end)
+            ctx_end = len(text) if ctx_end == -1 else ctx_end + 1
+            ctx_text = text[max(0, min(ctx_start, g_start - 40)):min(len(text), max(ctx_end, g_end + 80))].strip()
+            citations.append(
+                _create(
+                    CitationType.ACADEMIC,
+                    text[g_start:g_end].strip(),
+                    document_id=document_id,
+                    block_id=block_id,
+                    page=page,
+                    span=(g_start, g_end),
+                    title=title_text,
+                    context=ctx_text or text[max(0, g_start - 80) : min(len(text), g_end + 120)],
+                )
+            )
+            consumed.append((g_start, g_end))
+        consumed.seal_pattern()
+
+    # 5-2) 비따옴표 통계 지표/조사 수치 인용 (납품지수, 정확도 등)
+    if any(k in text for k in ("지수", "정확도", "일치율", "응답률", "환급률", "손상률", "성공률")):
+        for m in INDICATOR_STAT_RE.finditer(text):
+            g_start, g_end = m.span()
+            if overlaps(g_start, g_end):
+                continue
+            matched_text = m.group(0).strip()
+            ctx_start = max(0, text.rfind('.', 0, g_start) + 1)
+            ctx_end = text.find('.', g_end)
+            ctx_end = len(text) if ctx_end == -1 else ctx_end + 1
+            ctx_text = text[max(0, min(ctx_start, g_start - 40)):min(len(text), max(ctx_end, g_end + 80))].strip()
+            citations.append(
+                _create(
+                    CitationType.ACADEMIC,
+                    matched_text,
+                    document_id=document_id,
+                    block_id=block_id,
+                    page=page,
+                    span=(g_start, g_end),
+                    title=matched_text,
+                    context=ctx_text or text[max(0, g_start - 80) : min(len(text), g_end + 120)],
                 )
             )
             consumed.append((g_start, g_end))
