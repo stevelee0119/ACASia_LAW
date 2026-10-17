@@ -270,3 +270,5 @@ TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/
 - **개발 체제 전환(2026-10-17, 사용자):** Antigravity 구현·Claude Code 평가. Codex는 열린 TK-44·45·49·55·73만 마무리하고 그 PR(#63·#79·#80·#84·#85·#92·#93·#95·#96·#97) 검토는 사용자 재개 지시 전까지 중지. 출제(봉인·고정 벤치·말뭉치)는 Codex 격리 세션 유지. → [AGENT_ROLES](../AGENT_ROLES.md) 1절, [EVALUATOR_HANDOVER](EVALUATOR_HANDOVER.md) 0절
 
 - **TK-76(2026-10-17, P1·탐지 성능):** [개발 말뭉치 중점 6유형 1주기](TK-76_focus_types_generalization_cycle1.md). 기준 train/check: INCONS .20/.20·SRC-UNV 0/0·NUM .20/.40·FORM .25/.25·DATE .40/.50·COPY 0/0. 진단 메모 → 유형별 PR. Antigravity 배정.
+
+- **TK-45 known_open(2026-10-17, 사용자 결정):** #96 불승인(비공개 대상 문장에 법조문 인용 0건) 뒤 작업 중지. 재개는 사용자 결정. → [TK-45](TK-45_defense_negation_by_word_match.md) 끝 절
