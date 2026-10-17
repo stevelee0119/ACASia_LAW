@@ -225,16 +225,17 @@ def test_explicit_default_model_has_distinct_identity_and_routing_is_frozen(tran
     from packages.llm_router.routing import task_provider
     router, _, _ = transport
     monkeypatch.delenv("LV_OPENAI_MODEL", raising=False)
-    initial = Settings(storage_root=router.settings.storage_root)
+    initial = Settings(storage_root=router.settings.storage_root, llm_efficient_routing=True)
     monkeypatch.setenv("LV_OPENAI_MODEL", initial.providers["openai"].model)
-    explicit = Settings(storage_root=router.settings.storage_root)
+    explicit = Settings(storage_root=router.settings.storage_root, llm_efficient_routing=True)
     assert initial.model_config_version() != explicit.model_config_version()
-    request = authorship_request()
+    # Exercise a task that differs from the restored 0.13.0 default (Luna).
+    request = LLMRequest("system", "synthetic text")
     provider = router.providers["openai"]
-    assert task_provider(provider, LLMRole.PRIMARY_REASONER, request, initial).config.model == "gpt-6-luna"
-    assert task_provider(provider, LLMRole.PRIMARY_REASONER, request, explicit).config.model == "gpt-6.1-sol"
+    assert task_provider(provider, LLMRole.INDEPENDENT_CRITIC, request, initial).config.model == "gpt-6.1-sol"
+    assert task_provider(provider, LLMRole.INDEPENDENT_CRITIC, request, explicit).config.model == "gpt-6-luna"
     monkeypatch.delenv("LV_OPENAI_MODEL")
-    assert task_provider(provider, LLMRole.PRIMARY_REASONER, request, explicit).config.model == "gpt-6.1-sol"
+    assert task_provider(provider, LLMRole.INDEPENDENT_CRITIC, request, explicit).config.model == "gpt-6-luna"
 
 
 def test_old_queue_snapshot_cannot_silently_use_new_routing(transport, monkeypatch):

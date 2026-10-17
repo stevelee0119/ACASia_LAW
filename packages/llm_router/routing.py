@@ -24,8 +24,8 @@ def task_provider(provider, role, request, settings):
     if type(provider) not in PROVIDER_CLASSES.values():
         return provider
     purpose = ""
-    if provider.name == "anthropic" and request.model_tier == "escalation":
-        purpose = "anthropic_escalation"
+    if provider.name == "anthropic":
+        purpose = "anthropic_escalation" if request.model_tier == "escalation" else "anthropic_review"
     elif provider.name == "openai":
         purpose = ("openai_extraction" if role == LLMRole.LOW_COST_EXTRACTOR
                    or request.input_contract == "ai_document_v1" else "openai_review")

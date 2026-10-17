@@ -1,5 +1,5 @@
 {
-  "_comment": "USD / 1M tokens. Direct Standard API, checked 2026-10-17. Gemini promotional rates expire 2026-12-31. Model-specific rates take precedence; provider entries are legacy fallback only.",
+  "_comment": "USD / 1M tokens. Standard short-context rates; sources and verification date in docs/handoff/efficient_legal_review.md. Sonnet cache_read: 공식 0.10 반영(평가 측 지시 정정). Gemini promotional rates expire 2026-12-31. Model-specific rates take precedence; provider entries are legacy fallback only.",
   "openai": {
     "input": 2.0,
     "output": 8.0
@@ -42,6 +42,10 @@
     "input": 0.75,
     "output": 3.75,
     "cache_read": 0.075,
-    "after_2026-12-31": {"input": 1.5, "output": 7.5, "cache_read": 0.15}
+    "after_2026-12-31": {
+      "input": 1.5,
+      "output": 7.5,
+      "cache_read": 0.15
+    }
   }
 }

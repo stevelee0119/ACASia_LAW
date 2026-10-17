@@ -340,7 +340,7 @@ class LLMRouter:
         preference = ROLE_PREFERENCE.get(role, [])
         names = sorted(self.available_providers(policy=policy),
                        key=lambda n: preference.index(n) if n in preference else len(preference))
-        mode = (self.settings.llm_cross_check or "auto").lower()
+        mode = (self.settings.llm_cross_check or "all").lower()
         efficient = getattr(self.settings, "llm_efficient_routing", False)
         if mode == "off":
             names = names[:1]
@@ -423,7 +423,8 @@ class LLMRouter:
                 if self.on_execution:
                     self.on_execution(execution)
                 return RouterResult(executions=[execution], note=execution.error)
-        cache_key = request_key(request, provider, role, policy, expected_task)
+        cache_key = (request_key(request, provider, role, policy, expected_task)
+                     if getattr(self.settings, "llm_efficient_routing", False) else None)
         if cache_key is not None and cache_key in self._result_cache:
             try:
                 if self.dispatch_guard or self.provider_guard:
@@ -651,11 +652,12 @@ class LLMRouter:
         primary_verdict = primary.parsed or _extract_verdict(primary.text)
         # 교차검증 범위. 한 모델의 의견만으로 법률 판단을 뒷받침하지 않는다는 것이
         # 기본값이다. 공급자 수만큼 비용이 늘어나므로 설정으로 조절할 수 있게 둔다.
-        mode = (self.settings.llm_cross_check or "auto").lower()
+        mode = (self.settings.llm_cross_check or "all").lower()
+        efficient = getattr(self.settings, "llm_efficient_routing", False)
         cross_all = mode == "all"
         need_critic = mode != "off" and (
             cross_all
-            or mode == "auto"  # Legal source interpretation always receives an independent opinion.
+            or (mode == "auto" and efficient)
             or profile == VerificationProfile.DEEP_VERIFY
             or severity_hint.rank >= Severity.HIGH.rank
             or float(primary_verdict.get("confidence", 0)) < 0.7
@@ -692,7 +694,8 @@ class LLMRouter:
         # Stage 4: 제3 모델. all에서는 의견이 갈리지 않아도 거친다.
         # 두 모델이 같은 답을 냈다는 사실만으로는 교차검증이라 하기 어렵다.
         third_verdict: Dict[str, Any] = {}
-        if cross_all or disagreement or not critic.used:
+        if (cross_all or (disagreement and profile == VerificationProfile.DEEP_VERIFY)
+                or (efficient and (disagreement or not critic.used))):
             third = await self.run_any(
                 LLMRole.WEB_GROUNDER,
                 build_cascade_request("grounder", question, evidence),
