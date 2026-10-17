@@ -276,3 +276,24 @@ def test_control_consecutive_list_rows_not_mismatched():
     assert len(findings) == 0, f"연달아 배치된 목록 구역 행은 번호 불일치로 오탐되지 않아야 함: {findings}"
 
 
+# --- 17. 양성 시험 7 (날짜가 포함된 완결 목록에서 본문 인용 호증 누락 검출) ---
+def test_positive_complete_list_with_dates_missing_exhibit():
+    """날짜(2026. 5. 1.)가 기재된 완결 목록에서 본문 인용 호증(갑 제4호증) 누락 검출 검증 (평가 측 탐침 문구 복사 배제)."""
+    doc = _make_doc([
+        "원고는 갑 제4호증 출하내역서에 기재된 일자에 물품이 발송되었음을 입증합니다.",
+        "입증방법",
+        "1. 갑 제1호증 발주계약서 2026. 3. 1.",
+        "2. 갑 제2호증 입금확인증 2026. 3. 15.",
+        "3. 갑 제3호증 인수증 2026. 4. 1.",
+        "위 목록이 제출한 증거의 전부입니다.",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    missing_findings = [
+        f for f in findings
+        if f.confidence_features.get("defect_code") == "EVIDENCE_REFERENCE_MISSING"
+    ]
+    assert len(missing_findings) == 1
+    assert "갑 제4호증" in missing_findings[0].title
+
+
+

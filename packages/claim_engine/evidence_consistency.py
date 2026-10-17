@@ -254,7 +254,11 @@ def _exhibit_lines(doc: NormalizedDocument) -> List[Dict[str, Any]]:
 
         # 입증방법/증거목록 섹션 안에서는 줄 첫머리가 아니더라도 호증이 등장하면 목록 항목으로 수용 (단 문장 종결 구조 제외)
         if in_exhibit_section and not is_leading_exhibit:
-            if not re.search(r"[.!?]\s*$", stripped) and not _EXHIBIT_REF_SENTENCE_RE.search(stripped):
+            stripped_no_date = stripped
+            date_end = DATE_RE.search(stripped)
+            if date_end and date_end.end() == len(stripped):
+                stripped_no_date = stripped[:date_end.start()].strip()
+            if not re.search(r"[.!?]\s*$", stripped_no_date) and not _EXHIBIT_REF_SENTENCE_RE.search(stripped):
                 mid_refs = parse_exhibits(stripped)
                 if mid_refs:
                     cand_text = stripped[mid_refs[0]["span"][0]:].strip()
@@ -269,11 +273,16 @@ def _exhibit_lines(doc: NormalizedDocument) -> List[Dict[str, Any]]:
             # 2. 호증 바로 뒤에 조사가 결합된 형태('의', '에', '을', '를' 등)는 본문 서술이므로 목록에서 제외
             if re.match(r"^[이가은는을를에로의와과도만]\b", rest) or re.match(r"^[이가은는을를에로의와과도만]\s+", rest):
                 continue
-            # 3. 마침표가 있거나 문장 종결 구조인 경우 본문 서술로 판정
-            if "." in rest or re.search(r"[다음습]\s*\.?\s*$", rest):
+            # 3. DATE_RE로 날짜 부분을 분리한 뒤 남은 텍스트(name_cand) 기준으로 문장 종결 여부 판정
+            # "갑 제1호증 사고경위서 2026. 3. 1." 형태의 한국식 날짜가 포함된 목록 행을 정상 수용
+            date_m = DATE_RE.search(rest)
+            name_cand = (rest[:date_m.start()] + " " + rest[date_m.end():]).strip() if date_m else rest
+
+            # 날짜 제외 텍스트가 서술어 종결(예: '…다.', '…습니다.')이거나 문장 중간 종결 뒤 새 문장이 이어지는 경우 본문 서술로 판정
+            if re.search(r"(?:[다습음]\s*\.\s*$|\.\s+[가-힣]{2,})", name_cand) or re.search(r"[다습]\s*\.?\s*$", name_cand):
                 continue
-            # 4. 서술어 어휘 보조 점검
-            if any(v in rest for v in ("하였다", "바와 같이", "살피건대", "주장한다", "설명하지만", "확인할 수", "보여 줍니다", "나타납니다", "적었습니다", "뜻합니다", "아닙니다")):
+            # 4. 서술어 어휘 보조 점검 (은퇴 08b 어휘 '적었습니다', '뜻합니다', '아닙니다', '설명용' 전수 삭제)
+            if any(v in rest for v in ("하였다", "바와 같이", "살피건대", "주장한다", "설명하지만", "확인할 수", "보여 줍니다")):
                 continue
 
             items.append((ref, rest))
