@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """TK-76 정규식 성능 측정 스크립트 (공통 점검표 2항).
 
-DATE_WEEKDAY_RE 및 HEADING_LINE_RE의 1배/4배 최솟값 비 < 8.0 및 4배 수행시간 < 1.0초 검증.
+DATE_WEEKDAY_RE 및 HEADING_LINE_RE, LEADING_MULTIPLIER_RE, BRACKET_HEADING_RE,
+_JOSA_PREDICATE_RE, REPORT_CITATION_RE, INDICATOR_STAT_RE의
+1배/4배 최솟값 비 < 8.0 및 4배 수행시간 < 1.0초 검증.
 """
 from __future__ import annotations
 
@@ -13,6 +15,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from packages.claim_engine.date_verifier import DATE_WEEKDAY_RE, HEADING_LINE_RE
+from packages.claim_engine.calculation import LEADING_MULTIPLIER_RE
+from packages.claim_engine.korean_amount import BRACKET_HEADING_RE, _JOSA_PREDICATE_RE
 from packages.legal_engine.citation_extractor import REPORT_CITATION_RE, INDICATOR_STAT_RE
 
 
@@ -63,6 +67,12 @@ def main():
         "제1조 목적 및 적용 범위\n"
     ) * 10
 
+    sample_text_incons = (
+        "창고정산 1차 14건 × 17,000원 = 269,000원 수량과 단가를 곱한 금액을 적는다.\n"
+        "검수대장 2차 15건 * 17,000원 = 286,000원 수량과 단가를 곱한 금액을 적는다.\n"
+        "일반적인 사실관계 서술 문장 안에서 3개월 × 1,000,000원의 용역 대금을 청구한다.\n"
+    ) * 10
+
     sample_text_src_unv = (
         "원고는 여러 서증을 제출하며 주장을 이어갔습니다.\n"
         "한편 자료조사위원회의 「2025 유통환경 실태백서」 미공개 요약에 따르면 반품률은 68.5%에 이릅니다.\n"
@@ -73,6 +83,9 @@ def main():
     print("=== TK-76 정규식 성능 측정 (공통 점검표 2항) ===")
     measure_regex("DATE_WEEKDAY_RE", DATE_WEEKDAY_RE, sample_text_weekday)
     measure_regex("HEADING_LINE_RE", HEADING_LINE_RE, sample_text_heading)
+    measure_regex("LEADING_MULTIPLIER_RE", LEADING_MULTIPLIER_RE, sample_text_incons)
+    measure_regex("BRACKET_HEADING_RE", BRACKET_HEADING_RE, sample_text_heading)
+    measure_regex("_JOSA_PREDICATE_RE", _JOSA_PREDICATE_RE, sample_text_incons)
     measure_regex("REPORT_CITATION_RE", REPORT_CITATION_RE, sample_text_src_unv)
     measure_regex("INDICATOR_STAT_RE", INDICATOR_STAT_RE, sample_text_src_unv)
     print("모든 정규식 성능 기준(비 < 8.0, 4배 < 1.0s) 충족 확인 완료.")
