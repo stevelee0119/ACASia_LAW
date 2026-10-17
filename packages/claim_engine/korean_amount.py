@@ -124,11 +124,11 @@ def _find_item_heading(text: str, offset: int) -> Optional[str]:
     if m_bracket:
         return m_bracket.group(0).strip()
 
-    # 2. 선행 불릿 및 번호 머리 제거
-    cleaned = _BULLET_NUM_RE.sub("", line_prefix).strip()
+    # 2. 날짜 패턴 제거 (연도 숫자가 불릿 번호로 오인되는 것을 방지하고, 날짜 문자열 유입 차단)
+    cleaned = _DATE_STRIP_RE.sub("", line_prefix).strip()
 
-    # 3. 날짜 패턴 제거 (날짜 뒤에 항목명이 있는 경우 대비, 날짜 문자열 유입 방지)
-    cleaned = _DATE_STRIP_RE.sub("", cleaned).strip()
+    # 3. 선행 불릿 및 번호 머리 제거
+    cleaned = _BULLET_NUM_RE.sub("", cleaned).strip()
 
     # 4. 선행 금액 패턴 제거 (이전 금액이 있을 경우 그 이후부터 결함 금액 직전까지)
     amounts_in_prefix = list(_AMOUNT_STRIP_RE.finditer(cleaned))

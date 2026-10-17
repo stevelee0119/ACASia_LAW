@@ -123,6 +123,19 @@ def test_korean_amount_heading_control_case_3_long_sentence_no_heading():
     assert "heading" not in findings[0].confidence_features
 
 
+def test_korean_amount_heading_control_case_date_prefix_stripped():
+    """대조군 4: 같은 줄 항목명 앞에 날짜가 있는 경우, 날짜 문자열이 항목명에 들어가지 않음을 단언 (#114 회귀 방지)."""
+    text = "2023. 2. 29. 창고정산 1차 320,000원(금 사십이만원)을 같은 지급액의 표기로 기재한다."
+    doc = _make_doc(text)
+    findings = words_digits_mismatches(doc)
+    assert len(findings) == 1
+    heading = findings[0].confidence_features.get("heading")
+    assert heading == "창고정산 1차"
+    assert "2023" not in heading
+    assert "29" not in heading
+    assert "창고정산 1차 320,000원(금 사십이만원)" in (findings[0].evidence[0].excerpt if findings[0].evidence else "")
+
+
 # --- 3. 공통 점검표 2항: 새 정규식 성능비 검증 ---
 
 def test_bracket_heading_regex_performance():
