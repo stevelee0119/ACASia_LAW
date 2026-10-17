@@ -13,6 +13,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from packages.claim_engine.date_verifier import DATE_WEEKDAY_RE, HEADING_LINE_RE
+from packages.claim_engine.evidence_consistency import (
+    ANNEX_LIST_RE,
+    ANNEX_CLAIM_RE,
+    BODY_EVI_RE,
+    LIST_CONFIRM_RE,
+    INTERMEDIATE_OMIT_RE,
+)
 
 
 def measure_regex(name: str, pattern, base_text: str):
@@ -55,9 +62,23 @@ def main():
         "제1조 목적 및 적용 범위\n"
     ) * 10
 
-    print("=== TK-76 EVI-DATE 정규식 성능 측정 (공통 점검표 2항) ===")
+    sample_text_evi_num = (
+        "별지 제출목록을 확정한다: 갑 제148호증 발송표, 갑 제149호증 분류표.\n"
+        "증거요약에서는 별지에 기재된 갑 제150호증 검수대장 1차 도착표를 근거로 도착 사실을 주장한다.\n"
+        "본문의 입증자료는 갑 제124호증 운반확인 1차 송금내역이다.\n"
+        "이 문서의 제출목록에서 갑 제124호증의 자료명은 운반확인 1차 통화내역으로 확정한다.\n"
+        "연속된 세 자료 전부를 아래에 나열한다: 갑 제112호증 신청서, 갑 제114호증 안내서.\n"
+        "중간 자료인 갑 제113호증 창고정산 1차 인수증도 제출목록에 적었다.\n"
+    ) * 10
+
+    print("=== TK-76 정규식 성능 측정 (공통 점검표 2항) ===")
     measure_regex("DATE_WEEKDAY_RE", DATE_WEEKDAY_RE, sample_text_weekday)
     measure_regex("HEADING_LINE_RE", HEADING_LINE_RE, sample_text_heading)
+    measure_regex("ANNEX_LIST_RE", ANNEX_LIST_RE, sample_text_evi_num)
+    measure_regex("ANNEX_CLAIM_RE", ANNEX_CLAIM_RE, sample_text_evi_num)
+    measure_regex("BODY_EVI_RE", BODY_EVI_RE, sample_text_evi_num)
+    measure_regex("LIST_CONFIRM_RE", LIST_CONFIRM_RE, sample_text_evi_num)
+    measure_regex("INTERMEDIATE_OMIT_RE", INTERMEDIATE_OMIT_RE, sample_text_evi_num)
     print("모든 정규식 성능 기준(비 < 8.0, 4배 < 1.0s) 충족 확인 완료.")
 
 
