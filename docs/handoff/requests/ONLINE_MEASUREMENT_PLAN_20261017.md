@@ -65,6 +65,10 @@
 | 학술(선택) | `www.kci.go.kr`·`api.semanticscholar.org`·`api.crossref.org` 모두 프록시 403(허용 목록 밖). 키 변수 3개도 비어 있음 |
 | **Drive** | **막힘.** ① `LV_DRIVE_API_KEY` 값이 `GEMINI_API_KEY`와 같고, Drive API가 401 "API keys are not supported by this API. Expected OAuth2 access token…"으로 거절. ② `LV_RAG_DRIVE_FOLDER_ID`가 폴더 ID가 아니라 폴더 주소 전체여서 제품의 ID 형식 검사(`valid_id`)에 걸린다 |
 
+- **Drive 재확인 (같은 날, 사용자 수정 뒤):** 키 형식 정상(Gemini 키와 다름), 폴더 변수는 ID 형식. 폴더 조회 200.
+  - `ragbench/set01~05` 하위 폴더마다 파일 2개, zip의 `drive_refs/`와 MD5가 모두 일치한다(내용 열람 없음).
+  - 다만 지정 폴더는 측정 전용이 아니다. `ragbench` 말고 일반 참고자료 하위 폴더 5개와 낱개 문서 1개가 함께 있다. 계획 1절('측정 전용 폴더')에 맞추려면 `ragbench` 하위 폴더 ID를 써야 한다(사용자 결정).
+  - API 키로 읽힌다는 것은 지정 폴더 전체가 링크 공개 상태라는 뜻이다.
 - 계획 3절 1항에 따라 Drive가 필요한 ragbench 시험 실행은 하지 않았다. 2판은 계획 2절대로 Drive를 비우고 돌리므로 시험 실행을 했다.
 
 ### 5.3 시험 실행 — 2판 set01 1회
