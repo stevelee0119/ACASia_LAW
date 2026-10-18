@@ -75,36 +75,58 @@ _EVI_FORM_SEPARATE_MEDIA_RE = re.compile(
     r"(?:USB|CD|DVD|외장하드|저장매체|디스크)\s*(?:등)?\s*(?:추후\s*)?(?:별도\s*)?(?:제출|송부|첨부)"
 )
 
-# 정상 실무 보호 3: 결함 해소·추완 진술, 이중 부정 반박, 상대방 주장 인용 반박 제외 (대조군 보호)
+# 정상 실무 보호 3: 결함 해소·추완 진술, 이중 부정 반박, 상대방 주장 인용 반박, 부정의 부정(결손 부존재), 제출 철회 제외 (대조군 보호)
 _EVI_FORM_NON_DEFECT_CONTEXT_RE = re.compile(
     r"(?:보완하여|추후\s*보완|금일\s*다시|기일에\s*지참|다시\s*제출|추완)"
     r"|(?:볼\s*수\s*없|이유\s*없|단정할\s*수\s*없|아니다)"
     r"|(?:주장하나|주장하지만|주장과\s*달리|주장에\s*불과)"
+    r"|(?:빠진|누락(?:된)?|공란(?:인)?|흠결(?:이)?|결여(?:된)?)[^\n.]{0,20}?(?:이|가|은|는|도|사항이)?\s*(?:전혀\s*)?(?:없|아니)"
+    r"|(?:제출\s*철회|신청\s*철회|철회(?:합니다|함|하였음|된|사유)?)"
 )
 
 # 축 1: 서증 자리표시 기호/마크업 또는 내용 없이 파일명 단독 (SUSPICIOUS · B)
 _EVI_FORM_PLACEHOLDER_RE = re.compile(
-    r"\[\s*[^\]]{1,25}?(?:준비|삽입|첨부|입력|누락|공란|미완성|별도)[^\]]*\]"
-    r"|<\s*[^>]{1,25}?(?:준비|삽입|첨부|입력|누락|공란|미완성|별도|사진|이미지|화면|캡처|내용)[^>]*>"
+    r"\[\s*[^\]]{1,30}?(?:준비|삽입|첨부|입력|누락|공란|미완성|별도)[^\]]*\]"
+    r"|<\s*[^>]{1,30}?(?:준비|삽입|첨부|입력|누락|공란|미완성|별도|사진|이미지|화면|캡처|내용)[^>]*>"
+    r"|\(\s*[^)]{1,30}?(?:준비\s*중|준비중|삽입\s*예정|첨부\s*예정|추후\s*삽입|추후\s*첨부|별도\s*삽입)[^)]*?\)"
     r"|(?:화면|이미지|사진|캡처|사본|내용)\s*[:：]\s*(?:준비\s*중|준비중|삽입|첨부|누락|공란)"
     r"|\b[a-zA-Z0-9_\-]+\.(?:wav|mp3|mp4|avi|pdf|hwp|jpg|png|zip)\b[^\n.]{0,30}(?:내용\s*없음|본문\s*생략|사본\s*없음|내용이?\s*비어)"
 )
 
-# 축 2: 실물·원본·파일의 부재·미제출·분실·미확보 자인 (CONTRADICTED · B)
-# 술어 제한: 제출/첨부/보유/확보 동사 부정, 분실 상실 술어, 또는 대상 명사 주어의 존재 부정
+# 축 2: 실물·원본·파일의 부재·미제출·분실·미확보·미보관 자인 (CONTRADICTED · B)
+# 술어 제한: 제출/첨부/보유/확보/보관 동사 부정, 분실 상실 술어, 또는 대상 명사 주어의 존재 부정
 _EVI_FORM_UNSUBMITTED_RE = re.compile(
     r"(?:영문\s*|국문\s*|한글\s*|스캔\s*|위\s*|이\s*|해당\s*|동\s*)?"
     r"(?:원본|실물|파일|음성|영상|녹음|원문|증거물|(?:위\s*|이\s*|해당\s*|동\s*)(?:자료|서류|문서))"
     r"[^\n.]{0,25}?"
     r"(?:"
-    r"(?:제출|첨부|확보|소지)(?:하지|되지)\s*(?:않|못)"
+    r"(?:제출|첨부|확보|소지|보관)(?:하지|되지|하고\s*있지|되어\s*있지)\s*(?:않|못)"
+    r"|내지\s*(?:않|못)"
     r"|가지고\s*있지\s*않"
     r"|찾지\s*못"
-    r"|미제출|미첨부|미확보"
+    r"|미제출|미첨부|미확보|미보관"
     r"|분실|유실|망실|소실"
     r"|(?:이|가|은|는)\s*(?:전혀\s*)?없"
     r")"
-    r"|(?:제출|첨부)(?:하지|되지)\s*(?:않|못)[^\n.]{0,25}(?:요지|메모|내용|녹취|번역문|사본)(?:만|를|을)?"
+    r"|(?:제출|첨부|내)(?:하지|되지|지)\s*(?:않|못)[^\n.]{0,25}(?:요지|메모|내용|녹취|번역문|번역본|사본)(?:만|를|을)?"
+    r"|(?:원문|외국어\s*문서|원본)[^\n.]{0,25}?(?:제출|첨부|확보|내)(?:하지|되지|지)\s*(?:않|못)[^\n.]{0,25}?(?:번역문|번역본|사본)(?:만|를|을)?"
+    r"|(?:원문|외국어\s*문서|원본)\s*(?:미제출|미첨부)[^\n.]{0,25}?(?:번역문|번역본|사본)(?:만)?"
+)
+
+# 축 2 보강: 호증 표지 자체가 주어인 미제출 자인 (CONTRADICTED · B)
+_EVI_FORM_EXHIBIT_UNSUBMITTED_RE = re.compile(
+    r"(?:갑|을|병|정|소갑|소을)\s*제?\s*\d+\s*호증(?:의\s*\d+)?"
+    r"[^\n.]{0,25}?"
+    r"(?:은|는|을|를|의\s*경우|자체는|에\s*대하여는)?"
+    r"[^\n.]{0,15}?"
+    r"(?:"
+    r"(?:제출|첨부|확보|소지|보관)(?:하지|되지|하고\s*있지|되어\s*있지)\s*(?:않|못)"
+    r"|내지\s*(?:않|못)"
+    r"|가지고\s*있지\s*않"
+    r"|찾지\s*못"
+    r"|미제출|미첨부|미확보|미보관"
+    r"|분실|유실|망실|소실"
+    r")"
 )
 
 # 축 3: 필수 기재(작성자·서명·날인·날짜)의 부재 (SUSPICIOUS · B)
@@ -122,12 +144,42 @@ _EVI_FORM_BLANK_RE = re.compile(
 
 # 축 4: 내용 일부의 판독·식별 불가 자인 + 증명 주장 (CONTRADICTED · B)
 _EVI_FORM_UNIDENTIFIABLE_RE = re.compile(
+    # 어순 1: 대상 명사 + 훼손 상태 + 불능 술어
     r"(?:금액|숫자|글자|문구|스캔|사본|화면|(?:위\s*|이\s*|해당\s*|동\s*)(?:내용|항목|부분|칸|하단|상단))"
     r"[^\n.]{0,25}?"
-    r"(?:잘리|잘려|절단|흐리|흐려|어두워|번져|지워|삭제|훼손|얼룩|깨져|불명확)"
+    r"(?:잘리|잘려|절단|흐리|흐려|어두워|번지|번져|번짐|지워|삭제|훼손|얼룩|깨져|불명확)"
     r"[^\n.]{0,25}?"
-    r"(?:판독|식별|확인|읽|알)(?:하기|할|을|기|어보기|아보기)?\s*(?:수\s*없|불가|불가능|어렵|곤란|힘들|못)"
+    r"(?:"
+    r"(?:판독|식별|확인|읽|알)(?:하기|할|을|기|어보기|아보기)?(?:\s*(?:이|가|은|는|도|을|를))?\s*(?:수\s*없|불가|불가능|어렵|곤란|힘들|못)"
+    r"|보이지\s*(?:않|못)|확인되지\s*(?:않|못)|나타나지\s*(?:않|못)|나오지\s*(?:않|못)"
+    r")"
+    # 어순 2: 훼손 상태 + 대상 명사 + 불능 술어 (예: 잉크 번짐으로 인해 금액 판독이 곤란)
+    r"|(?:잘리|잘려|절단|흐리|흐려|어두워|번지|번져|번짐|지워|삭제|훼손|얼룩|깨져|불명확)"
+    r"[^\n.]{0,25}?"
+    r"(?:금액|숫자|글자|문구|스캔|사본|화면|(?:위\s*|이\s*|해당\s*|동\s*)(?:내용|항목|부분|칸|하단|상단))"
+    r"[^\n.]{0,25}?"
+    r"(?:"
+    r"(?:판독|식별|확인|읽|알)(?:하기|할|을|기|어보기|아보기)?(?:\s*(?:이|가|은|는|도|을|를))?\s*(?:수\s*없|불가|불가능|어렵|곤란|힘들|못)"
+    r"|보이지\s*(?:않|못)|확인되지\s*(?:않|못)|나타나지\s*(?:않|못)|나오지\s*(?:않|못)"
+    r")"
+    # 어순 3: 식별 불가 / 판독 불가 직결
     r"|(?:금액|숫자|글자|문구|스캔|사본|화면|(?:위\s*|이\s*|해당\s*|동\s*)(?:내용|항목|부분|칸))[^\n.]{0,15}?(?:식별\s*불가|판독\s*불가)"
+)
+
+# 호증 표지 없는 첨부/증거 자료 형식 결함 (SUSPICIOUS · B)
+_ATTACHMENT_REF_RE = re.compile(
+    r"(?:별\s*첨|첨\s*부|붙\s*임|증\s*거)\s*(?:자\s*료|\s*서\s*류)?(?:\s*목\s*록)?\s*[:：]?\s*"
+    r"(?:\s*(?:음성\s*파일|영상\s*파일|사진|이미지|동영상|기술\s*검토서|검토서|확인서|보고서|문서|자료))?\s*[:：]?\s*"
+    r"(?P<name>[가-힣A-Za-z0-9_\-]+\.[a-zA-Z0-9]{2,5}|[A-Za-z0-9_\-]+-[가-힣A-Za-z0-9_\-]+|[가-힣A-Za-z0-9_]{2,20}?)"
+    r"(?:에서|은|는|이|가|을|를|의|에|\b)"
+)
+_ATTACHMENT_DEFECT_STATEMENT_RE = re.compile(
+    r"파일명만\s*(?:적|기재|있|남아)"
+    r"|(?:본문|사본|데이터|녹취(?:문)?|원문)[^\n.]{0,30}?(?:첨부하지|제출하지|없|누락)"
+    r"|빈\s*양식|미작성\s*양식"
+    r"|(?:작성자|서명|수신처|날인)[^\n.]{0,20}?공란"
+    r"|\[\s*[^\]]{1,25}?(?:준비|삽입|첨부|입력|누락|공란|미완성|별도)[^\]]*\]"
+    r"|\(\s*[^)]{1,25}?(?:준비\s*중|준비중|삽입\s*예정|첨부\s*예정|내용\s*없음|사본\s*없음|빈\s*양식)[^)]*?\)"
 )
 
 # 상대방 증거 탄핵 배제 (결함 제외)
@@ -1210,148 +1262,241 @@ def check_evidence_form_defects(
     1. 축 1: 서증 자리표시 기호/마크업 또는 내용 없이 파일명 단독 (SUSPICIOUS · B)
        - 정상 물리 매체(USB, CD 등) 별도 제출 표기는 보호(제외)
        - 추후 제출/보완 예정 등 입증 계획 서술문은 보호(제외)
-    2. 축 2: 서면 스스로 실물/원본/파일 부재 자인 (CONTRADICTED · B)
+    2. 축 2: 서면 스스로 실물/원본/파일 부재 또는 호증 자체 미제출 자인 (CONTRADICTED · B)
     3. 축 3: 필수 기재사항(작성자, 서명, 날짜) 공란/누락 양식 (SUSPICIOUS · B)
        - 본안 서면 자체의 전자서명 생략은 보호(제외)
-    4. 축 4: 중요 내용(금액, 글자 등) 식별 불가 자인 + 증명 주장 (CONTRADICTED · B)
+       - 결손의 부존재(부정의 부정) 진술은 보호(제외)
+    4. 축 4: 중요 내용(금액, 글자 등) 식별 불가/잘림 자인 + 증명 주장 (CONTRADICTED · B)
 
     * 주체 구분 및 정상 실무 보호:
       - 서면의 증거목록에 실린 자기 호증만 판단.
       - 상대방 증거 탄핵 주장(신빙성, 진정성립 다툼 등)은 결함에서 원천 배제.
-      - 결함 해소·추완 진술, 이중 부정 반박, 상대방 주장 인용 반박은 결함에서 원천 제외.
+      - 결함 해소·추완 진술, 이중 부정 반박, 상대방 주장 인용 반박, 부정의 부정은 결함에서 원천 제외.
+      - 단락 내 선행 호증 인접 문장 결속 및 목록 행 괄호 첨부 예정 검사 지원.
     """
     if exhibits is None:
         exhibits = exhibit_rows(doc)
-    text = build_reading_text(doc).text
     out: List[Finding] = []
+    seen_exhibits = set()
 
     # 1. 서면의 작성 당사자 및 자기 증거 부호 집합 식별
     author_party, my_party_chars = _detect_author_party(doc, exhibits)
 
-    # 2. 문장 또는 목록 행 단위로 서증 형식 결함 구조 검사
-    seen_exhibits = set()
-
-    for raw_sentence in re.split(r"(?<=[다습음죠치시오!?.])\s*\n+|\n+", text):
-        sentence = raw_sentence.strip()
-        if not sentence or len(sentence) < 4:
+    # 2. 증거목록(exhibits) 행 자체의 괄호 속 자리표시 검사 (피드백 5-4)
+    for r in exhibits:
+        party = r.get("party")
+        if party not in my_party_chars:
             continue
-
-        # 정상 실무 보호 1: 추후 제출/보완 예정(입증 계획) 및 기일 지참 서술문은 결함 제외
-        if _NORMAL_FUTURE_SUBMISSION_RE.search(sentence):
-            continue
-
-        # 정상 실무 보호 2: 물리 매체(USB, CD 등) 별도 제출 표기는 정상 실무이므로 제외
-        if _EVI_FORM_SEPARATE_MEDIA_RE.search(sentence):
-            continue
-
-        # 정상 실무 보호 3: 결함 해소·추완 진술, 이중 부정 반박, 상대방 주장 인용 반박 제외
-        if _EVI_FORM_NON_DEFECT_CONTEXT_RE.search(sentence):
-            continue
-
-        # 상대방 주어에 의한 서술/탄핵 배제 (작성 당사자 기준)
-        if author_party == "원고":
-            if re.search(r"(?:피고|상대방|피신청인|채무자|피고인)\b[^\n.]{0,30}(?:제출|주장|인용|원용|작성|서증|호증)", sentence):
-                continue
-        elif author_party == "피고":
-            if re.search(r"(?:원고|상대방|신청인|채권자|고소인)\b[^\n.]{0,30}(?:제출|주장|인용|원용|작성|서증|호증)", sentence):
-                continue
-        else:
-            if re.search(r"(?:상대방)\b[^\n.]{0,30}(?:제출|주장|인용|원용|작성|서증|호증)", sentence):
-                continue
-
-        # 일반 탄핵 키워드 (신빙성 배척, 진정성립 다툼, 입증 부족 등) 배제
-        if re.search(r"신빙성(?:이|은)?\s*(?:없|의심|떨어|배척)|진정성립(?:이|은)?\s*(?:인정될\s*수\s*없|부인|다투)|입증하기에?\s*부족", sentence):
-            continue
-
-        # 본안 서면 자체의 제출/접수/법원 표기 단락(전자서명 생략 등) 제외
-        if re.search(r"(?:귀\s*중|법원\s*귀중|소송대리인|제출인)", sentence):
-            continue
-
-        # 문장에 호증 표기가 있는지 확인
-        refs = parse_exhibits(sentence)
-        if not refs:
-            continue
-
-        # 자기 당사자의 호증만 선별 (상대방 호증은 엄격히 배제)
-        my_refs = [r for r in refs if r.get("party") in my_party_chars]
-        if not my_refs:
-            continue
-
-        ref = my_refs[0]
-        lbl = ref.get("label") or f"{ref.get('party')} 제{ref.get('number')}호증"
+        num = r.get("number")
+        lbl = f"{party} 제{num}호증"
         if lbl in seen_exhibits:
             continue
-
-        defect = None
-
-        # 축 1: 서증 자리표시 기호/마크업 또는 내용 없이 파일명 단독 -> SUSPICIOUS · B
-        if _EVI_FORM_PLACEHOLDER_RE.search(sentence):
-            defect = (
-                VerificationStatus.SUSPICIOUS,
-                EvidenceGrade.B,
-                Severity.MEDIUM,
-                f"서증 형식 결함: 자리표시 또는 미제출 파일명만 기재 — {lbl}",
-                f"{lbl}에 대해 실제 내용이나 사본 없이 자리표시 또는 미제출 파일명만 기재된 형식적 흠결이 있다.",
-                "EXHIBIT_PLACEHOLDER_ONLY",
-                "EVI.EXHIBIT_PLACEHOLDER_ONLY",
-            )
-
-        # 축 2: 서면 자체의 부제출 자인 (문서 내 진술 모순) -> CONTRADICTED · B
-        elif _EVI_FORM_UNSUBMITTED_RE.search(sentence):
-            defect = (
-                VerificationStatus.CONTRADICTED,
-                EvidenceGrade.B,
-                Severity.MEDIUM,
-                f"서증 형식 결함: 서증 미제출 자인 — {lbl}",
-                f"{lbl}을 입증자료로 원용하면서도 서면 스스로 해당 문서나 원본이 제출되지 않았음을 자인하는 모순이 있다.",
-                "UNSUBMITTED_EVIDENCE_ADMISSION",
-                "EVI.UNSUBMITTED_EVIDENCE_ADMISSION",
-            )
-
-        # 축 3: 필수 기재사항(서명·작성자·날짜) 공란 양식 -> SUSPICIOUS · B
-        elif _EVI_FORM_BLANK_RE.search(sentence):
-            defect = (
-                VerificationStatus.SUSPICIOUS,
-                EvidenceGrade.B,
-                Severity.MEDIUM,
-                f"서증 형식 결함: 작성자 성명 또는 서명·날인 공란 — {lbl}",
-                f"{lbl}의 작성자 성명이나 서명·날인란이 공란인 채로 제출되어 진정성립을 인정할 수 없는 형식적 흠결이 있다.",
-                "BLANK_FORM_DEFECT",
-                "EVI.BLANK_FORM_DEFECT",
-            )
-
-        # 축 4: 중요 내용 식별 불가 자인 + 증명력 주장 -> CONTRADICTED · B
-        elif _EVI_FORM_UNIDENTIFIABLE_RE.search(sentence):
-            defect = (
-                VerificationStatus.CONTRADICTED,
-                EvidenceGrade.B,
-                Severity.MEDIUM,
-                f"서증 형식 결함: 중요 기재사항 잘림 또는 식별 불가 자인 — {lbl}",
-                f"{lbl}의 중요 내용(금액, 글자 등)이 잘리거나 식별 불가능함을 자인하면서도 이를 입증자료로 원용한 모순이 있다.",
-                "UNIDENTIFIABLE_CONTENT_TRUNCATED",
-                "EVI.UNIDENTIFIABLE_CONTENT_TRUNCATED",
-            )
-
-        if defect:
+        r_name = r.get("name") or ""
+        if _EVI_FORM_PLACEHOLDER_RE.search(r_name) and not _EVI_FORM_SEPARATE_MEDIA_RE.search(r_name):
             seen_exhibits.add(lbl)
-            status, grade, sev, title, detail, dcode, rule_id = defect
             out.append(
                 _finding(
                     doc,
                     FindingType.EVIDENCE_FORM_DEFECT,
-                    grade,
-                    sev,
-                    title,
-                    detail,
-                    sentence[:250],
-                    status=status,
+                    EvidenceGrade.B,
+                    Severity.MEDIUM,
+                    f"서증 형식 결함: 자리표시 또는 미제출 파일명만 기재 — {lbl}",
+                    f"{lbl}의 증거목록에 실제 내용 없이 자리표시 또는 첨부 예정 표기만 기재된 형식적 흠결이 있다.",
+                    f"{lbl} {r_name}"[:250],
+                    status=VerificationStatus.SUSPICIOUS,
                     features={
-                        "rule_id": rule_id,
-                        "defect_code": dcode,
+                        "rule_id": "EVI.EXHIBIT_PLACEHOLDER_ONLY",
+                        "defect_code": "EXHIBIT_PLACEHOLDER_ONLY",
                         "exhibit": lbl,
                     },
                 )
             )
+
+    # 3. 단락별 순회 및 문장 단위 검사 (인접 문장 결속 및 첨부자료 검사 지원)
+    blocks = [b for b in doc.body_blocks() if b.block_type != "running_head"]
+    if not blocks:
+        rtext = build_reading_text(doc).text
+        paragraphs = [p.strip() for p in re.split(r"\n\s*\n+", rtext) if p.strip()]
+    else:
+        paragraphs = [b.text.strip() for b in blocks if b.text.strip()]
+
+    for para in paragraphs:
+        # (a) 호증 표지 없는 첨부/증거 자료 검사 (피드백 4)
+        if not _EVI_FORM_SEPARATE_MEDIA_RE.search(para):
+            m_att = _ATTACHMENT_REF_RE.search(para)
+            if m_att and _ATTACHMENT_DEFECT_STATEMENT_RE.search(para):
+                att_raw = m_att.group("name").strip()
+                att_clean = re.sub(r"(?:에서|으로|부터|까지|[이가은는을를의에로와과도만])$", "", att_raw).strip()
+                if len(att_clean) >= 3 and att_clean not in ("소송대리인", "원고", "피고", "법원", "준비서면"):
+                    lbl = att_clean
+                    if lbl not in seen_exhibits:
+                        seen_exhibits.add(lbl)
+                        is_blank = bool(re.search(r"빈\s*양식|공란", para))
+                        dcode = "BLANK_FORM_DEFECT" if is_blank else "EXHIBIT_PLACEHOLDER_ONLY"
+                        rule_id = f"EVI.{dcode}"
+                        title = f"서증 형식 결함: 미작성 양식 또는 자리표시 — {lbl}" if is_blank else f"서증 형식 결함: 파일명만 기재 또는 본문 미제출 — {lbl}"
+                        detail = f"{lbl}에 대해 작성자·서명 누락 또는 내용/본문 없이 파일명만 기재된 형식적 흠결이 있다."
+                        def_sent = next((s for s in re.split(r"(?<=[다습음죠치시오!?.])\s+|\n+", para) if _ATTACHMENT_DEFECT_STATEMENT_RE.search(s)), para)
+                        out.append(
+                            _finding(
+                                doc,
+                                FindingType.EVIDENCE_FORM_DEFECT,
+                                EvidenceGrade.B,
+                                Severity.MEDIUM,
+                                title,
+                                detail,
+                                def_sent[:250],
+                                status=VerificationStatus.SUSPICIOUS,
+                                features={
+                                    "rule_id": rule_id,
+                                    "defect_code": dcode,
+                                    "exhibit": lbl,
+                                },
+                            )
+                        )
+
+        # (b) 단락 내 문장 순회 (인접 문장 결속 지원)
+        sentences = [s.strip() for s in re.split(r"(?<=[다습음죠치시오!?.])\s+|\n+", para) if s.strip()]
+        pending_ref = None  # 인접 문장 결속용
+
+        for sentence in sentences:
+            if not sentence or len(sentence) < 4:
+                continue
+
+            # 정상 실무 보호 1: 추후 제출/보완 예정(입증 계획) 및 기일 지참 서술문은 결함 제외
+            if _NORMAL_FUTURE_SUBMISSION_RE.search(sentence):
+                pending_ref = None
+                continue
+
+            # 정상 실무 보호 2: 물리 매체(USB, CD 등) 별도 제출 표기는 정상 실무이므로 제외
+            if _EVI_FORM_SEPARATE_MEDIA_RE.search(sentence):
+                pending_ref = None
+                continue
+
+            # 정상 실무 보호 3: 결함 해소·추완 진술, 이중 부정 반박, 상대방 주장 인용 반박, 부정의 부정 제외 (피드백 1)
+            if _EVI_FORM_NON_DEFECT_CONTEXT_RE.search(sentence):
+                pending_ref = None
+                continue
+
+            # 상대방 주어에 의한 서술/탄핵 배제 (작성 당사자 기준)
+            if author_party == "원고":
+                if re.search(r"(?:피고|상대방|피신청인|채무자|피고인)\b[^\n.]{0,30}(?:제출|주장|인용|원용|작성|서증|호증)", sentence):
+                    pending_ref = None
+                    continue
+            elif author_party == "피고":
+                if re.search(r"(?:원고|상대방|신청인|채권자|고소인)\b[^\n.]{0,30}(?:제출|주장|인용|원용|작성|서증|호증)", sentence):
+                    pending_ref = None
+                    continue
+            else:
+                if re.search(r"(?:상대방)\b[^\n.]{0,30}(?:제출|주장|인용|원용|작성|서증|호증)", sentence):
+                    pending_ref = None
+                    continue
+
+            # 일반 탄핵 키워드 (신빙성 배척, 진정성립 다툼, 입증 부족 등) 배제
+            if re.search(r"신빙성(?:이|은)?\s*(?:없|의심|떨어|배척)|진정성립(?:이|은)?\s*(?:인정될\s*수\s*없|부인|다투)|입증하기에?\s*부족", sentence):
+                pending_ref = None
+                continue
+
+            # 본안 서면 자체의 제출/접수/법원 표기 단락(전자서명 생략 등) 제외
+            if re.search(r"(?:귀\s*중|법원\s*귀중|소송대리인|제출인)", sentence):
+                pending_ref = None
+                continue
+
+            refs = parse_exhibits(sentence)
+            target_ref = None
+
+            if refs:
+                my_refs = [r for r in refs if r.get("party") in my_party_chars]
+                if my_refs:
+                    target_ref = my_refs[0]
+                    pending_ref = target_ref  # 다음 인접 문장을 위해 기억
+                else:
+                    pending_ref = None
+                    continue
+            elif pending_ref is not None:
+                # 피드백 3: 인접 문장 결속 (앞 문장에 자기 호증이 있고 결함 진술이 이어지는 경우)
+                target_ref = pending_ref
+                pending_ref = None
+            else:
+                continue
+
+            if target_ref is None:
+                continue
+
+            lbl = target_ref.get("label") or f"{target_ref.get('party')} 제{target_ref.get('number')}호증"
+            if lbl in seen_exhibits:
+                continue
+
+            defect = None
+
+            # 축 1: 서증 자리표시 기호/마크업 또는 내용 없이 파일명 단독 -> SUSPICIOUS · B
+            if _EVI_FORM_PLACEHOLDER_RE.search(sentence):
+                defect = (
+                    VerificationStatus.SUSPICIOUS,
+                    EvidenceGrade.B,
+                    Severity.MEDIUM,
+                    f"서증 형식 결함: 자리표시 또는 미제출 파일명만 기재 — {lbl}",
+                    f"{lbl}에 대해 실제 내용이나 사본 없이 자리표시 또는 미제출 파일명만 기재된 형식적 흠결이 있다.",
+                    "EXHIBIT_PLACEHOLDER_ONLY",
+                    "EVI.EXHIBIT_PLACEHOLDER_ONLY",
+                )
+
+            # 축 2: 서면 자체의 부제출 자인 (문서 내 진술 모순) -> CONTRADICTED · B
+            elif _EVI_FORM_UNSUBMITTED_RE.search(sentence) or _EVI_FORM_EXHIBIT_UNSUBMITTED_RE.search(sentence):
+                defect = (
+                    VerificationStatus.CONTRADICTED,
+                    EvidenceGrade.B,
+                    Severity.MEDIUM,
+                    f"서증 형식 결함: 서증 미제출 자인 — {lbl}",
+                    f"{lbl}을 입증자료로 원용하면서도 서면 스스로 해당 문서나 원본이 제출되지 않았음을 자인하는 모순이 있다.",
+                    "UNSUBMITTED_EVIDENCE_ADMISSION",
+                    "EVI.UNSUBMITTED_EVIDENCE_ADMISSION",
+                )
+
+            # 축 3: 필수 기재사항(서명·작성자·날짜) 공란 양식 -> SUSPICIOUS · B
+            elif _EVI_FORM_BLANK_RE.search(sentence):
+                defect = (
+                    VerificationStatus.SUSPICIOUS,
+                    EvidenceGrade.B,
+                    Severity.MEDIUM,
+                    f"서증 형식 결함: 작성자 성명 또는 서명·날인 공란 — {lbl}",
+                    f"{lbl}의 작성자 성명이나 서명·날인란이 공란인 채로 제출되어 진정성립을 인정할 수 없는 형식적 흠결이 있다.",
+                    "BLANK_FORM_DEFECT",
+                    "EVI.BLANK_FORM_DEFECT",
+                )
+
+            # 축 4: 중요 내용 식별 불가 자인 + 증명력 주장 -> CONTRADICTED · B
+            elif _EVI_FORM_UNIDENTIFIABLE_RE.search(sentence):
+                defect = (
+                    VerificationStatus.CONTRADICTED,
+                    EvidenceGrade.B,
+                    Severity.MEDIUM,
+                    f"서증 형식 결함: 중요 기재사항 잘림 또는 식별 불가 자인 — {lbl}",
+                    f"{lbl}의 중요 내용(금액, 글자 등)이 잘리거나 식별 불가능함을 자인하면서도 이를 입증자료로 원용한 모순이 있다.",
+                    "UNIDENTIFIABLE_CONTENT_TRUNCATED",
+                    "EVI.UNIDENTIFIABLE_CONTENT_TRUNCATED",
+                )
+
+            if defect:
+                seen_exhibits.add(lbl)
+                status, grade, sev, title, detail, dcode, rule_id = defect
+                out.append(
+                    _finding(
+                        doc,
+                        FindingType.EVIDENCE_FORM_DEFECT,
+                        grade,
+                        sev,
+                        title,
+                        detail,
+                        sentence[:250],
+                        status=status,
+                        features={
+                            "rule_id": rule_id,
+                            "defect_code": dcode,
+                            "exhibit": lbl,
+                        },
+                    )
+                )
 
     return out
 

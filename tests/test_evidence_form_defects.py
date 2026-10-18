@@ -2,7 +2,7 @@
 
 민사소송법 제277조, 제355조, 제358조 및 민사소송규칙 제121·122조에 따른
 서증 형식 요건 흠결(파일명·자리표시만 존재, 부제출 자인, 작성자·서명 공란,
-중요 기재사항 잘림/식별불가)에 대한 파이프라인 진입점, 구조적 양성 6건, 대조군 11건 검증을 수행한다.
+중요 기재사항 잘림/식별불가)에 대한 파이프라인 진입점, 구조적 양성 14건, 대조군 14건 검증을 수행한다.
 """
 from pathlib import Path
 import pytest
@@ -13,8 +13,11 @@ from packages.claim_engine.evidence_consistency import (
     check_evidence_form_defects,
     _EVI_FORM_PLACEHOLDER_RE,
     _EVI_FORM_UNSUBMITTED_RE,
+    _EVI_FORM_EXHIBIT_UNSUBMITTED_RE,
     _EVI_FORM_BLANK_RE,
     _EVI_FORM_UNIDENTIFIABLE_RE,
+    _ATTACHMENT_REF_RE,
+    _ATTACHMENT_DEFECT_STATEMENT_RE,
 )
 from packages.verification_engine.pipeline import (
     DocumentInput,
@@ -95,7 +98,7 @@ def test_pipeline_entrypoint_evidence_form_defects(monkeypatch, tmp_path):
     assert "공란" in f2.title or "서명" in f2.title
 
 
-# === 2. 구조 기반 양성 예시 시험 6건 (메모 91 매트릭스 4대 축 검증) ===
+# === 2. 구조 기반 양성 예시 시험 14건 (전달문 15 확장 검증) ===
 def test_positive_structural_evidence_lost():
     """양성 1 (축 a): 원본 분실로 인한 미제출 자인 결함 검출 (CONTRADICTED · B)."""
     doc = _make_doc([
@@ -161,10 +164,10 @@ def test_positive_structural_date_field_missing():
 
 
 def test_positive_structural_scan_truncated():
-    """양성 5 (축 c): 영수증 스캔 하단 잘림 식별불가 결함 검출 (CONTRADICTED · B)."""
+    """양성 5 (축 c): 영수증 스캔 하단 잘림 보이지 않음 결함 검출 (CONTRADICTED · B)."""
     doc = _make_doc([
         "준비서면",
-        "갑 제5호증 영수증 스캔 하단이 잘려 중요한 결제 내역을 식별할 수 없습니다.",
+        "갑 제5호증 영수증 스캔 하단이 잘려 중요한 결제 일자가 보이지 않습니다.",
         "원고 소송대리인",
     ])
     findings = check_evidence_form_defects(doc)
@@ -192,7 +195,113 @@ def test_positive_structural_bracket_placeholder():
     assert findings[0].confidence_features.get("defect_code") == "EXHIBIT_PLACEHOLDER_ONLY"
 
 
-# === 3. 신규 대조군 시험 11건 (정상 실무 및 보호 문맥 오탐 0건 검증) ===
+def test_positive_structural_exhibit_direct_unsubmitted():
+    """양성 7 (피드백 2): 호증 자체가 주어인 미제출 자인 검출 (CONTRADICTED · B)."""
+    doc = _make_doc([
+        "준비서면",
+        "원고는 갑 제7호증은 아직 제출하지 못하였으나 거래 내역에 부합합니다.",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1
+    assert findings[0].type == FindingType.EVIDENCE_FORM_DEFECT
+    assert findings[0].status == VerificationStatus.CONTRADICTED
+    assert findings[0].confidence_features.get("defect_code") == "UNSUBMITTED_EVIDENCE_ADMISSION"
+
+
+def test_positive_structural_adjacent_sentence_defect():
+    """양성 8 (피드백 3): 앞 문장 호증 제시 + 인접 다음 문장 결함 진술 결속 검출 (SUSPICIOUS · B)."""
+    doc = _make_doc([
+        "원고는 계약 체결 경위에 대하여 설명합니다. 원고는 갑 제8호증 확인서를 제출합니다. "
+        "그러나 위 확인서에는 작성자 서명이 누락되어 있습니다.",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1
+    assert "갑 제8호증" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "BLANK_FORM_DEFECT"
+
+
+def test_positive_structural_attachment_placeholder():
+    """양성 9 (피드백 4): 호증 표지 없는 별첨 자료 행 결함 검출 (SUSPICIOUS · B)."""
+    doc = _make_doc([
+        "준비서면",
+        "별첨: 현장사진.jpg [화면 이미지 준비중]",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1
+    assert "현장사진.jpg" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "EXHIBIT_PLACEHOLDER_ONLY"
+
+
+def test_positive_structural_defendant_statement_unsigned():
+    """양성 10 (피드백 5-1): 피고 서면에서 자기 진술서 서명 결손 검출 (SUSPICIOUS · B)."""
+    doc = _make_doc([
+        "답변서",
+        "피고는 을 제1호증 진술서를 제출하나, 해당 진술서에는 작성자 서명날인이 빠져 있습니다.",
+        "피고 소송대리인 변호사 이을수",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1
+    assert "을 제1호증" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "BLANK_FORM_DEFECT"
+
+
+def test_positive_structural_audio_file_not_kept():
+    """양성 11 (피드백 5-5): 음성 파일 미보관 자인 검출 (CONTRADICTED · B)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제9호증 통화 녹음 파일은 현재 보관하고 있지 않아 요약서만 제출합니다.",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1
+    assert "갑 제9호증" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "UNSUBMITTED_EVIDENCE_ADMISSION"
+
+
+def test_positive_structural_original_missing_translation_only():
+    """양성 12 (피드백 5-3): 외국어 원문 미제출 + 번역문만 제출 자인 검출 (CONTRADICTED · B)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제10호증 해외 계약서 원문은 제출하지 못하여 번역본만 제출합니다.",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1
+    assert "갑 제10호증" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "UNSUBMITTED_EVIDENCE_ADMISSION"
+
+
+def test_positive_structural_list_row_parentheses_placeholder():
+    """양성 13 (피드백 5-4): 증거목록 행 괄호 속 첨부 예정 자리표시 검출 (SUSPICIOUS · B)."""
+    doc = _make_doc([
+        "증거목록",
+        "1. 갑 제11호증 전산화면 (화면 캡처 첨부 예정)",
+        "2. 갑 제12호증 확인서",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1
+    assert "갑 제11호증" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "EXHIBIT_PLACEHOLDER_ONLY"
+
+
+def test_positive_structural_smudge_unidentifiable():
+    """양성 14 (피드백 5-6): 서증 번짐으로 판독 곤란 자인 검출 (CONTRADICTED · B)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제13호증 영수증은 잉크 번짐으로 인해 금액 판독이 곤란합니다.",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1
+    assert "갑 제13호증" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "UNIDENTIFIABLE_CONTENT_TRUNCATED"
+
+
+# === 3. 신규 대조군 시험 14건 (정상 실무 및 보호 문맥 오탐 0건 검증) ===
 def test_control_future_submission_plan():
     """대조군 1: 추후 제출 예정 정상 입증 계획 보호 (오탐 0건)."""
     doc = _make_doc([
@@ -248,8 +357,30 @@ def test_control_double_negation_defense():
     assert len(findings) == 0, f"이중 부정 반박 문맥은 결함으로 잡지 않아야 함: {findings}"
 
 
+def test_control_negation_of_defect_omission_none():
+    """대조군 6 (피드백 1): 결손의 부존재(빠진 기재가 없다) 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제16호증 계약서에는 서명과 날인이 모두 되어 있고 빠진 기재가 없습니다.",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"결손 부존재 서술은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_negation_of_defect_blank_none():
+    """대조군 7 (피드백 1): 결손의 부존재(누락된 항목이나 공란이 없다) 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제17호증 확인서에 누락된 항목이나 공란은 전혀 존재하지 않습니다.",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"공란 부존재 서술은 결함으로 잡지 않아야 함: {findings}"
+
+
 def test_control_opponent_argument_refutation():
-    """대조군 6: 상대방 주장 인용 및 반박 문맥 보호 (오탐 0건)."""
+    """대조군 8: 상대방 주장 인용 및 반박 문맥 보호 (오탐 0건)."""
     doc = _make_doc([
         "준비서면",
         "피고는 갑 제12호증에 서명이 없다고 주장하나 이는 사실과 다릅니다.",
@@ -260,7 +391,7 @@ def test_control_opponent_argument_refutation():
 
 
 def test_control_opponent_evidence_challenge():
-    """대조군 7: 상대방 증거 탄핵 배제 보호 (오탐 0건)."""
+    """대조군 9: 상대방 증거 탄핵 배제 보호 (오탐 0건)."""
     doc = _make_doc([
         "준비서면",
         "피고가 제출한 을 제1호증은 작성자 서명이 누락되어 진정성립이 없습니다.",
@@ -271,7 +402,7 @@ def test_control_opponent_evidence_challenge():
 
 
 def test_control_separate_media_usb():
-    """대조군 8: USB 별도 제출 기재 정상 입증방법 보호 (오탐 0건)."""
+    """대조군 10: USB 별도 제출 기재 정상 입증방법 보호 (오탐 0건)."""
     doc = _make_doc([
         "입증방법",
         "갑 제13호증 통화녹음(USB 별도 제출)",
@@ -282,7 +413,7 @@ def test_control_separate_media_usb():
 
 
 def test_control_separate_media_cd():
-    """대조군 9: CD 추후 별도 제출 기재 정상 입증방법 보호 (오탐 0건)."""
+    """대조군 11: CD 추후 별도 제출 기재 정상 입증방법 보호 (오탐 0건)."""
     doc = _make_doc([
         "입증방법",
         "을 제14호증 현장영상(CD 추후 별도 제출)",
@@ -293,7 +424,7 @@ def test_control_separate_media_cd():
 
 
 def test_control_complete_document():
-    """대조군 10: 작성자 서명 및 작성일자가 완비된 계약서 원본 정상 제출 보호 (오탐 0건)."""
+    """대조군 12: 작성자 서명 및 작성일자가 완비된 계약서 원본 정상 제출 보호 (오탐 0건)."""
     doc = _make_doc([
         "준비서면",
         "갑 제15호증 작성자 서명 및 작성일자가 완비된 계약서 원본을 제출합니다.",
@@ -304,7 +435,7 @@ def test_control_complete_document():
 
 
 def test_control_defendant_answer_claim_dismissal():
-    """대조군 11: 피고 답변서 끝에 '원고의 청구를 기각...' 주문 문맥이 있어도 오탐 0건."""
+    """대조군 13: 피고 답변서 끝에 '원고의 청구를 기각...' 주문 문맥이 있어도 오탐 0건."""
     doc = _make_doc([
         "답변서",
         "원고가 제출한 갑 제1호증은 작성자 서명이 없어 그 진정성립을 인정할 수 없습니다.",
@@ -315,3 +446,15 @@ def test_control_defendant_answer_claim_dismissal():
     ])
     findings = check_evidence_form_defects(doc)
     assert len(findings) == 0, f"피고 답변서에서 원고 증거 탄핵은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_attachment_normal_file():
+    """대조군 14 (피드백 4): 내용 결함 없는 정상적인 첨부자료 행 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "별첨 1. 계약서_사본.pdf",
+        "첨부: 납품확인서_스캔.pdf",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"정상 첨부자료는 결함으로 잡지 않아야 함: {findings}"
