@@ -528,10 +528,10 @@ def test_control_no_other_evidence_variant_1():
 
 
 def test_control_no_other_evidence_variant_2():
-    """대조군 19 (전달문 17 조건 1): '밖에 그 밖의 증거 내지 않음' 변형 정상 진술 보호 (오탐 0건)."""
+    """대조군 19 (전달문 17 조건 1, TK-81): '이 밖에 그 밖의 증거 내지 않음' 변형 정상 진술 보호 (오탐 0건)."""
     doc = _make_doc([
         "준비서면",
-        "본 서증 밖에 그 밖의 증거는 내지 않기로 하였습니다.",
+        "본 서증 이 밖에 그 밖의 증거는 내지 않기로 하였습니다.",
         "원고 소송대리인 변호사 홍길동",
     ])
     findings = check_evidence_form_defects(doc)
@@ -558,4 +558,112 @@ def test_control_opponent_quote_refutation_variant_2():
     ])
     findings = check_evidence_form_defects(doc)
     assert len(findings) == 0, f"상대방 주장 인용 후 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+# ====================================================================================
+# TK-81 신규 검증 시험: EVI-FORM 제외 규칙 과잉 수정 검증
+# ====================================================================================
+
+def test_positive_defect_unquoted_concessive_clause_1():
+    """양성 시험 17 (TK-81): 주어 없이 '~다고 하나/지만' 역접이 결손 기술에 사용된 경우 결함 정상 검출."""
+    doc = _make_doc([
+        "준비서면",
+        "원고는 갑 제1호증을 제출하나, 작성자 서명이 빠져 있다고 보이지만, 이를 입증방법으로 원용합니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1, f"주어 없는 역접 결손 서술은 결함으로 정상 검출되어야 함: {findings}"
+    assert findings[0].confidence_features.get("defect_code") == "BLANK_FORM_DEFECT"
+
+
+def test_positive_defect_unquoted_concessive_clause_2():
+    """양성 시험 18 (TK-81): 주어 없이 판독 불가 서술에 '~다고 보이나' 등이 결합된 경우 결함 정상 검출."""
+    doc = _make_doc([
+        "준비서면",
+        "원고는 갑 제2호증 영수증 하단이 잘려 금액을 판독할 수 없다고 보이나, 실질적인 효력에는 변함이 없습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1, f"주어 없는 역접 판독 불가 서술은 결함으로 정상 검출되어야 함: {findings}"
+    assert findings[0].confidence_features.get("defect_code") == "UNIDENTIFIABLE_CONTENT_TRUNCATED"
+
+
+def test_positive_defect_standalone_bakke_1():
+    """양성 시험 19 (TK-81): 단독 '밖에'가 사용된 미제출 자인 결함 정상 검출."""
+    doc = _make_doc([
+        "준비서면",
+        "원고는 갑 제3호증에 대하여 사본 밖에 소지하지 못하여 원본을 제출하지 못합니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1, f"단독 밖에로 표현된 미제출 자인은 결함으로 정상 검출되어야 함: {findings}"
+    assert findings[0].confidence_features.get("defect_code") == "UNSUBMITTED_EVIDENCE_ADMISSION"
+
+
+def test_positive_defect_standalone_bakke_2():
+    """양성 시험 20 (TK-81): 단독 '밖에'가 사용된 필수 기재 누락 결손 진술 결함 정상 검출."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제4호증은 작성일자 밖에 기재되어 있지 않아 작성자 성명이 공란입니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1, f"단독 밖에와 결합된 필수 기재 누락은 결함으로 정상 검출되어야 함: {findings}"
+    assert findings[0].confidence_features.get("defect_code") == "BLANK_FORM_DEFECT"
+
+
+def test_control_opponent_adnominal_claim_refutation_1():
+    """대조군 22 (TK-81): 상대방 주장 관형형('-다는 주장') + 부정 평가('사실과 다르다') 반박 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "원고는 갑 제5호증 계약서의 서명날인이 위조되었다는 피고의 주장은 사실과 전혀 다릅니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 관형형 주장 인용 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_opponent_adnominal_claim_refutation_2():
+    """대조군 23 (TK-81): 상대방 주장 관형형('-라는 지적') + 부정 평가('이유 없다') 반박 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "을 제6호증 진술서가 작성자의 진정한 의사에 기하지 않았다는 상대방의 지적은 전혀 이유 없습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 관형형 지적 인용 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_opponent_adnominal_claim_refutation_3():
+    """대조군 24 (TK-81 전달문 20): 관형형 반박 합쇼체('사실과 다릅니다') 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제7호증 차용증의 금액 기재가 변조되었다는 상대측 주장은 사실과 명백히 다릅니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 관형형 주장 합쇼체 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_opponent_adnominal_claim_refutation_4():
+    """대조군 25 (TK-81 전달문 20): 관형형 반박 합쇼체('사실과 틀립니다') 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "을 제8호증 확인서의 작성일자가 소급 기재되었다는 원고의 지적은 실제 사실과 전혀 틀립니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 관형형 지적 합쇼체 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_opponent_adnominal_claim_refutation_5():
+    """대조군 26 (TK-81 전달문 20): 관형형 반박 연결형('사실과 달라') 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "피고는 갑 제9호증 영수증의 중요 부분이 훼손되었다는 주장은 실체적 사실과 달라 근거가 없습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 관형형 주장 연결형 반박은 결함으로 잡지 않아야 함: {findings}"
+
 
