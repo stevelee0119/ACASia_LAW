@@ -129,5 +129,36 @@
   "implementation_commit": "a4b0688a36f1c1f1a0e8dc8b13c01dd97ab26964",
   "release_commit": "8280a597db40b0905dbacf10c56fa3e9915cafd5",
   "deployment_receipt": "docs/scorecards/release_completion_2026-10-11.json"
+ },
+ {
+  "version": "0.13.1",
+  "from": "0.13.0",
+  "level": "patch",
+  "measured_commit": "94e7c390bccf485178d6a97f74bc7296e1a545ee",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.11.15",
+   "tesseract": "5.3.4 kor (CI와 같음)",
+   "scoring": "고정 채점기 불변. 직전 릴리스 main b68cfee(0.13.0)와 후보 94e7c39를 같은 환경·같은 날(2026-10-18) 평가 측이 각각 측정"
+  },
+  "evidence": {
+   "M1": {
+    "production": "main b68cfee(0.13.0) dev 81.7 / holdout 79.2 / 오탐 0 / A 0",
+    "candidate": "94e7c39 dev 82.6 / holdout 80.1 / 오탐 0 / A 0",
+    "delta": "dev +0.9, holdout +0.9 → 둘째 자리 기준(+0.1 이상 +1.0 미만)"
+   },
+   "M2": "미측정. 이번 릴리스는 봉인 생략(사용자 결정 2026-10-17). 고정 비공개 벤치 2판은 이 평가 세션 컨테이너에 세트가 없어 후보 미측정(10-17 오프라인 7지점 모두 15.9로 변별력 없음). 참고(공개된 은퇴 세트라 M2 근거 아님): 은퇴 08/08b/09/10 b68cfee 기준 19.0/29.6/36.2/15.2(0.13.0 판정서) → 후보 27.2/40.7/48.3/35.1",
+   "M3": "상향 근거로 세지 않음. 이번에 해소된 인계 티켓 TK-77(시험 측정 견고화, 제품 diff 0)·TK-79(효율 라우팅 기본 OFF, 품질·비용은 배포 뒤 온라인 대조)·TK-80(Dockerfile 그룹, 배포 뒤 확인)은 성능 개선이 아니거나 배포 뒤 확인이 남음. TK-81은 이번 릴리스 안에서 생긴 결함의 수정",
+   "M4": "해당 없음(입력 형식별 변경 없음)",
+   "P1": "94e7c39 verify_all full --base b68cfee: regression_gate 회귀 없음, 종료 0",
+   "P2": "고정 오탐 0 유지, 은퇴 4세트 후퇴 0(각 PR CI·평가 측 재실행), 인젝션 방어 유지",
+   "P3": "verify_all hardcoding_diff·test_edits·protected_paths 통과, 평가 세트 문구 대조 의심 0. #125 정답 어휘 맞춤 분기는 병합 전에 삭제됨",
+   "P4": "verify_all full: acceptance 1220·regression_ledger 2357·full_tests 8693·browser_tests 197 통과, 실제 실패 0·strict XPASS 0. 비공개 세트(contact_rrn 3종·round8_privacy) 0.13.0과 같거나 나음(이름 normal 31→32/35)",
+   "P5": "열린 신규 회귀 티켓 0(TK-81은 #137로 수정·병합)",
+   "P6": "이 판정서와 HISTORY 2026-10-18"
+  },
+  "decided_by": "claude-code (평가 측)",
+  "decided_at": "2026-10-18"
  }
 ]
