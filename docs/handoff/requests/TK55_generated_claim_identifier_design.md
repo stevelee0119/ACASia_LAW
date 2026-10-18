@@ -1,0 +1,11 @@
+# TK55: prevent generated claim identifiers from resembling contacts
+
+Start: public Steve `f84ccbabde2584e96204b74f8b668299220ee912`; product scope B only. This follow-up addresses the publicly documented internally generated claim-ID false block, not the remaining unknown-role/opaque-source policy. Other tickets remain separate work items.
+
+`Claim.create` currently truncates a fresh UUID to twelve hexadecimal characters. A digit run in that random token can independently match PHONE in both the outbound claim envelope and metadata. The router correctly refuses the string under its existing policy; an identifier key, shape, or apparent producer is not grounds to exempt it.
+
+Prevent the conflict at creation: bijectively encode the same twelve random hex nibbles as sixteen letters `a` through `p`, keeping the `CLM_` prefix and total length. Only `Claim.create` uses the new generator; existing/imported/persisted IDs and all other identifier types are untouched. There is no resampling, dictionary, user-data transformation, caller-supplied trust marker, privacy bypass, authentication claim, or new detector path. Entropy remains 48 bits, with exactly one UUID draw per claim. The ID remains an opaque reference and is not a security token.
+
+Validate fabricated UUID seeds through `Claim.create` → real `review_document` → real `LLMRouter.run` with an in-memory provider and budget ledger. Compare phone-overlapping seeds and safe seeds, preserve explicit/legacy contact-containing IDs as blocked before provider/budget, and keep contacts elsewhere in requests blocked. Exercise both review profiles and unchanged stored/imported ID serialization. Existing privacy, source-capability and request-binding tests retain their expectations. Measure cold 1x/4x batches, three samples each, with output preservation; this is generator timing, not whole-pipeline latency. No detector/score/threshold/CI/version/protected-test changes; detector before/after scoring is not replaced by synthetic results and is not needed to certify an identifier alphabet change.
+
+This concrete source-level fix is within the user's instruction to finish TK55; no detection heuristic or policy is changed. Independent acceptance and any broader TK55 closure remain evaluator-owned. No private/check/sealed source or paid model is used.

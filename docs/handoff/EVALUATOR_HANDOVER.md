@@ -1,4 +1,16 @@
-# 평가 에이전트 인계 (claude-code → Codex 평가 세션, 2026-10-10)
+# 평가 에이전트 인계
+
+## 0. 현재(2026-10-17): Claude Code 평가 세션 복귀
+- 사용자 지시(2026-10-17): "이제 프로그램 개발에 codex 미사용, antigravity 구현, claude code 평가 체제로 전환". 평가 업무 전체(측정·판정·회신·게이트·시험 자산·티켓·수용 SHA 통합·평가 PR·릴리스 준비)를 Claude Code 평가 세션이 맡는다. 지침: [CLAUDE.md](../../CLAUDE.md)·[AGENT_ROLES](../AGENT_ROLES.md).
+- 구현: 새 작업은 Antigravity([NEXT_FOR_ANTIGRAVITY](NEXT_FOR_ANTIGRAVITY.md), 첫 배정 [TK-76](TK-76_focus_types_generalization_cycle1.md)). Codex는 열린 TK-44·45·49·55·73만 마무리하며, 그 PR 검토는 사용자 재개 지시 전까지 멈춘다([NEXT_FOR_CODEX](NEXT_FOR_CODEX.md)).
+- 출제: 봉인 세트·고정 비공개 벤치·개발 말뭉치는 저장소를 연결하지 않은 Codex 격리 세션(작성·자체 점검·채점은 서로 다른 세션).
+- 평가 측 보관 자료(저장소 밖, 사용자 보관): 고정 비공개 벤치(지문 9de8ab2dbe9439c2), 개발 말뭉치 check(지문 0c6479fbcad6c753), 비공개 세트 묶음. 평가 측 측정이 필요할 때 사용자에게 요청한다.
+- Codex 평가 세션의 마지막 기록: #103(승인 목표·말뭉치 첫 기준, Steve a24bc35), #105(CodeQL 파일 보호 경로, Steve f84ccba).
+
+아래 1절 이하는 2026-10-10 claude-code → Codex 인계 당시 기록이다(이력 보존).
+
+## (이력) 평가 에이전트 인계 (claude-code → Codex 평가 세션, 2026-10-10)
+
 
 사용자 지시(2026-10-10): "Codex가 TK-71 구현 후에는 평가 에이전트로 전환(claude-code 토큰 소진)". 사용자 재확인: 평가 담당이 Codex로 전환됐으므로 기존 claude-code의 평가 역할 전체를 Codex 평가 세션이 수행한다. 이 문서는 새 평가 세션이 처음 읽는 문서다.
 

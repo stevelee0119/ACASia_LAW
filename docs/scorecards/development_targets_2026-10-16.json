@@ -1,0 +1,464 @@
+{
+  "schema": "user_targets_and_submission_preflight_v1",
+  "recorded_date_kst": "2026-10-16",
+  "user_decision_source": "MSG_TO_CODEX_EVAL_20261016.md",
+  "user_decision_sha256": "4017aa8443095a9d5ecec97600a71267929377d46c765904a1151799cc090780",
+  "operating_sha": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
+  "integration_base_sha": "a47fb6f849618463d54b0107c27bbd85e4921477",
+  "version": "0.13.0",
+  "goals_are_provisional": true,
+  "benchmark": {
+    "fingerprint": "9de8ab2dbe9439c2",
+    "historical_baseline_sha": "9c1b21848110a8df6ba0e6308b49e6947c0d6feb",
+    "historical_baseline": {
+      "overall": 20.5,
+      "weighted_recall": 0.275,
+      "false_positives": 12,
+      "a_grade_fp": 6
+    },
+    "latest_0_13_result": "PENDING_USER_AGGREGATE",
+    "a_grade_fp_goal_max": 2,
+    "weighted_recall_goal_min": 0.33,
+    "reference_release_reject_if": [
+      "candidate a_grade_fp > comparable operating a_grade_fp",
+      "candidate weighted_recall < comparable operating weighted_recall"
+    ],
+    "implementation_acceptance_criterion": false,
+    "create_tickets_from_benchmark_results": false,
+    "details_exported": false,
+    "status": "ENDED_2026-10-17_V1_SERIES_STOPPED_ORIGINAL_NOT_FOUND"
+  },
+  "benchmark_v2": {
+    "decided_date_kst": "2026-10-17",
+    "user_decision": "A안 (reply: 'a안대로 행')",
+    "fingerprint": "c078b250e6e61e9f",
+    "set_id": "fixed_bench_20261017",
+    "documents": 42,
+    "defects": 288,
+    "measurement": "offline, scripts/eval_testset.py, evaluator_rerun",
+    "baseline": {
+      "overall": 15.9,
+      "weighted_recall": 0.159,
+      "false_positives": 0,
+      "a_grade_fp": 0,
+      "injection": "defended",
+      "baseline_points": [
+        "9933548",
+        "22ca134",
+        "a8b2a7e",
+        "9c1b218",
+        "8280a59",
+        "b68cfee",
+        "a60b334"
+      ]
+    },
+    "weighted_recall_goal_min": 0.19,
+    "false_positives_goal_max": 0,
+    "a_grade_fp_goal_max": 0,
+    "injection_goal": "defended",
+    "stretch_not_adopted": {
+      "option_B_weighted_recall": 0.21
+    },
+    "reassessment": "earlier of TK-76 cycle 1 completion or 2026-11-14",
+    "online_scores_separate_series": true,
+    "implementation_acceptance_criterion": false,
+    "create_tickets_from_benchmark_results": false,
+    "details_exported": false
+  },
+  "corpus": {
+    "status": "BOTH_PARTS_VERIFIED_FIRST_BASELINES_COMPLETE",
+    "prompt_draft_status": "referenced draft not supplied; no repository prompt created",
+    "train_access": "implementation",
+    "check_access": "evaluation only; aggregates only",
+    "focus_types": [
+      "EVI-INCONS",
+      "SRC-UNV",
+      "EVI-NUM",
+      "EVI-FORM",
+      "EVI-DATE",
+      "EVI-COPY"
+    ],
+    "per_type_check_recall_absolute_gain_goal_min": 0.2,
+    "train_minus_check_weighted_recall_goal_max": 0.1,
+    "baseline_sha": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
+    "baseline_results": {
+      "check": {
+        "weighted_recall": 0.145,
+        "focus_weighted_recall": 0.225,
+        "focus_types": {
+          "EVI-INCONS": {
+            "items": 40,
+            "credit": 8.0,
+            "recall": 0.2
+          },
+          "SRC-UNV": {
+            "items": 40,
+            "credit": 0.0,
+            "recall": 0.0
+          },
+          "EVI-NUM": {
+            "items": 40,
+            "credit": 16.0,
+            "recall": 0.4
+          },
+          "EVI-FORM": {
+            "items": 40,
+            "credit": 10.0,
+            "recall": 0.25
+          },
+          "EVI-DATE": {
+            "items": 40,
+            "credit": 20.0,
+            "recall": 0.5
+          },
+          "EVI-COPY": {
+            "items": 40,
+            "credit": 0.0,
+            "recall": 0.0
+          }
+        }
+      },
+      "train": {
+        "weighted_recall": 0.115,
+        "focus_weighted_recall": 0.175,
+        "focus_types": {
+          "EVI-INCONS": {
+            "items": 40,
+            "credit": 8.0,
+            "recall": 0.2
+          },
+          "SRC-UNV": {
+            "items": 40,
+            "credit": 0.0,
+            "recall": 0.0
+          },
+          "EVI-NUM": {
+            "items": 40,
+            "credit": 8.0,
+            "recall": 0.2
+          },
+          "EVI-FORM": {
+            "items": 40,
+            "credit": 10.0,
+            "recall": 0.25
+          },
+          "EVI-DATE": {
+            "items": 40,
+            "credit": 16.0,
+            "recall": 0.4
+          },
+          "EVI-COPY": {
+            "items": 40,
+            "credit": 0.0,
+            "recall": 0.0
+          }
+        }
+      },
+      "train_minus_check": -0.03,
+      "focus_train_minus_check": -0.05
+    },
+    "reported_fingerprints": {
+      "train": "d058b04f03579336",
+      "check": "0c6479fbcad6c753"
+    },
+    "provisional_check_targets_after_plus_0_20": {
+      "EVI-INCONS": 0.4,
+      "SRC-UNV": 0.2,
+      "EVI-NUM": 0.6,
+      "EVI-FORM": 0.45,
+      "EVI-DATE": 0.7,
+      "EVI-COPY": 0.2
+    },
+    "train_shared_to_implementation": false,
+    "train_package_ready_for_separate_implementation": true
+  },
+  "process_goals": {
+    "first_submission_acceptance": {
+      "baseline_provisional_user_supplied": 0.25,
+      "baseline_numerator_denominator_not_supplied": true,
+      "goal_min": 0.5,
+      "reassessment": "4 weeks after user decision"
+    },
+    "weekly_regression_share": {
+      "baseline_reported_rounded": 0.19,
+      "baseline_exact": 0.1875,
+      "baseline_week": "2026-W41",
+      "goal_max": 0.15,
+      "reassessment": "4 weeks after user decision",
+      "denominator": "tickets discovered in week, not commits or deployments"
+    }
+  },
+  "reassessment": {
+    "benchmark_A_fp": "after 0.13.0 fixed benchmark measurement",
+    "benchmark_recall": "after one development corpus cycle",
+    "corpus_goals": "after first corpus measurement",
+    "process_goals": "4 weeks after user decision",
+    "benchmark_v2": "earlier of TK-76 cycle 1 completion or 2026-11-14"
+  },
+  "preflight": {
+    "source": "Codex evaluator reexecution; separate from claude-code supplied aggregate",
+    "sha": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
+    "environment": {
+      "network": false,
+      "tesseract": "5.5.0",
+      "ocr_langs": [
+        "eng",
+        "kor",
+        "osd"
+      ],
+      "python": "3.11.17",
+      "pdfplumber": "0.11.10"
+    },
+    "original_scorecard_language_parser_metadata_contaminated": true,
+    "language_metadata_note": "Scoring used TESSDATA_PREFIX with eng/kor/osd. Earlier independent metadata probe used default path and stored eng/osd; corrected2026-10-17 after checking the actual scoring prefix. Original raw receipt with kor preserved; score/scorer unchanged.",
+    "ci_environment_difference": "local tesseract5.5.0 versus CI5.3.4; Python3.11.17 local; no strict-environment CI equivalence claim",
+    "related_pytest": {
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "time": 3.462
+    },
+    "timing": {
+      "python": "3.11.17",
+      "source": "independent public timing probe using same family and cache-clear/min-of-three method as existing TK24 test",
+      "method": {
+        "gc_changed": false,
+        "cold_cache_each_sample": true,
+        "denominator_floor_seconds": 0.0001,
+        "fixed_prefix_chars": 28
+      },
+      "values": {
+        "1x": {
+          "characters": 24778,
+          "repeat_count": 1125,
+          "samples_seconds": [
+            0.03081165300000066,
+            0.028367066000043906,
+            0.030459124999993037
+          ],
+          "minimum_seconds": 0.028367066000043906,
+          "matches": 1
+        },
+        "4x": {
+          "characters": 99028,
+          "repeat_count": 4500,
+          "samples_seconds": [
+            0.10316782399996782,
+            0.0605672280000249,
+            0.056937308999977176
+          ],
+          "minimum_seconds": 0.056937308999977176,
+          "matches": 1
+        }
+      },
+      "ratio": 2.0071624256061256,
+      "pass": true,
+      "bounded_probe_not_global_linearity_proof": true
+    },
+    "scorer_sha256": "29e1aa087f77267bf4cb8f34b4184584638097988218e4b6404a87ec595ef8b1",
+    "sets": {
+      "dev": {
+        "documents": 6,
+        "overall": 81.7,
+        "weighted_recall": 0.817,
+        "defect_items": 56,
+        "false_positives": 0,
+        "fp_trap": 0,
+        "control_fp": 0,
+        "a_grade_fp": 0,
+        "duplicate_citation_verdicts": 0,
+        "findings_without_document_id": 0,
+        "injection_defended": true,
+        "models_called": false,
+        "elapsed_seconds": 18.250500116000012,
+        "dataset_hash": "b80824586897c21d8ef21240efc4cdf9f0e0f7cd6d97a638c43bb8d939ce428f"
+      },
+      "holdout": {
+        "documents": 6,
+        "overall": 79.2,
+        "weighted_recall": 0.792,
+        "defect_items": 54,
+        "false_positives": 0,
+        "fp_trap": 0,
+        "control_fp": 0,
+        "a_grade_fp": 0,
+        "duplicate_citation_verdicts": 0,
+        "findings_without_document_id": 0,
+        "injection_defended": true,
+        "models_called": false,
+        "elapsed_seconds": 4.802627940999997,
+        "dataset_hash": "030bf89f15cb10be5fa3dfedceba76adcd443f0dfac4ce5bb099ab1b6a1c0276"
+      },
+      "sealed_20261008": {
+        "documents": 8,
+        "overall": 19.0,
+        "weighted_recall": 0.19,
+        "defect_items": 46,
+        "false_positives": 0,
+        "fp_trap": 0,
+        "control_fp": 0,
+        "a_grade_fp": 0,
+        "duplicate_citation_verdicts": 0,
+        "findings_without_document_id": 0,
+        "injection_defended": true,
+        "models_called": false,
+        "elapsed_seconds": 4.744564781999998,
+        "dataset_hash": "54bb8845628d688fbe80174a3e5e982222955567e20e994bbad1e125fc8fe823"
+      },
+      "sealed_20261008b": {
+        "documents": 8,
+        "overall": 29.6,
+        "weighted_recall": 0.296,
+        "defect_items": 54,
+        "false_positives": 0,
+        "fp_trap": 0,
+        "control_fp": 0,
+        "a_grade_fp": 0,
+        "duplicate_citation_verdicts": 0,
+        "findings_without_document_id": 0,
+        "injection_defended": true,
+        "models_called": false,
+        "elapsed_seconds": 13.729076340999995,
+        "dataset_hash": "ef8a38403812338c4daf7a71453b7939a0dc422d74815312bcccbbc8b9881329"
+      },
+      "sealed_20261009": {
+        "documents": 8,
+        "overall": 36.2,
+        "weighted_recall": 0.362,
+        "defect_items": 58,
+        "false_positives": 0,
+        "fp_trap": 0,
+        "control_fp": 0,
+        "a_grade_fp": 0,
+        "duplicate_citation_verdicts": 0,
+        "findings_without_document_id": 0,
+        "injection_defended": true,
+        "models_called": false,
+        "elapsed_seconds": 10.516595969999997,
+        "dataset_hash": "23d2f333c26fde115880d77bffe89776627513ee84c7756ad2327e5db54672d1"
+      },
+      "sealed_20261010": {
+        "documents": 8,
+        "overall": 15.2,
+        "weighted_recall": 0.302,
+        "defect_items": 53,
+        "false_positives": 3,
+        "fp_trap": 0,
+        "control_fp": 3,
+        "a_grade_fp": 3,
+        "duplicate_citation_verdicts": 0,
+        "findings_without_document_id": 0,
+        "injection_defended": true,
+        "models_called": false,
+        "elapsed_seconds": 20.108622937999996,
+        "dataset_hash": "1446fad14cd79d67a17bf652f554792c8278fe38f3136b6dd861a1c489450f10"
+      }
+    },
+    "retired_defect_items": 211,
+    "retired_focus_types": {
+      "EVI-INCONS": {
+        "items": 21,
+        "credit": 2.0,
+        "recall": 0.09523809523809523
+      },
+      "SRC-UNV": {
+        "items": 11,
+        "credit": 0.0,
+        "recall": 0.0
+      },
+      "EVI-NUM": {
+        "items": 14,
+        "credit": 4.25,
+        "recall": 0.30357142857142855
+      },
+      "EVI-FORM": {
+        "items": 10,
+        "credit": 0.75,
+        "recall": 0.075
+      },
+      "EVI-DATE": {
+        "items": 14,
+        "credit": 7.0,
+        "recall": 0.5
+      },
+      "EVI-COPY": {
+        "items": 6,
+        "credit": 0.0,
+        "recall": 0.0
+      }
+    },
+    "retired_focus_items": 76,
+    "retired_focus_credit": 14.0,
+    "retired_focus_credit_missing": 62.0,
+    "six_sets_elapsed_seconds": 72.20473113099999,
+    "paid_calls": 0,
+    "fresh_sealed_sets_reexecuted": false,
+    "fixed_private_benchmark_reexecuted": false,
+    "product_or_tests_or_CI_changed": false,
+    "other_zero_recall_types": {
+      "OVR": {
+        "items": 15,
+        "credit": 0
+      },
+      "EVI-OVR": {
+        "items": 12,
+        "credit": 0
+      },
+      "EVI-LOGIC": {
+        "items": 10,
+        "credit": 0
+      }
+    }
+  },
+  "online_v2": {
+    "decided_date_kst": "2026-10-17",
+    "user_decision": "평가 측 제안 2번(9절 목표 2판 기준 재설정) 승인",
+    "measurement": "online(AI 3종 교차검증·law.go.kr·운영 render.yaml 조회 설정), 최소안 2지점 × 2회, evaluator_rerun",
+    "points": {
+      "operating": "b68cfee",
+      "candidate": "aefd55e"
+    },
+    "benchmark_v2": {
+      "fingerprint": "c078b250e6e61e9f",
+      "baseline_runs_operating": {
+        "weighted_recall": [
+          0.233,
+          0.238
+        ],
+        "a_grade_fp": [
+          0,
+          0
+        ]
+      },
+      "weighted_recall_goal_min": 0.28,
+      "a_grade_fp_goal_max": 0,
+      "repeat_variation_first": 0.008
+    },
+    "ragbench": {
+      "fingerprint": "5a2e489099b8a751",
+      "positives": 48,
+      "controls": 40,
+      "baseline_runs_operating": {
+        "positives_passed": [
+          42,
+          40
+        ],
+        "controls_failed": [
+          0,
+          0
+        ]
+      },
+      "positive_rate_goal_min": 0.9,
+      "controls_failed_goal_max": 0,
+      "claim_count_cap": 30,
+      "claim_count_cap_decision": "유지(사용자 결정 10-17)"
+    },
+    "release_reference": "후보 평균이 운영 평균보다 반복 변동폭보다 크게 낮으면 불가; A등급·대조 오탐은 1건이라도 불가",
+    "frequency": "offline every release; online only for releases changing AI/DB/RAG/extraction engines",
+    "reassessment": "earlier of 2 online release measurements or TK-76 cycle 1 completion",
+    "implementation_acceptance_criterion": false,
+    "create_tickets_from_benchmark_results": false,
+    "details_exported": false
+  }
+}

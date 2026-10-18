@@ -257,6 +257,21 @@ ADMIN_APPEAL_RE = re.compile(
 # 학술: 저자, 「제목」, 학술지 권(호), 연도 / DOI
 DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+\b")
 
+# 외부 보고서·백서·연보·통계조사 등 미검증 외부 출처 인용 패턴 (SRC-UNV 식별용)
+_REPORT_KEYWORDS = r"연보|백서|보고서|연감|실태조사|조사|지수|공통표|원표|통계|일치율|응답률|환급률|손상률|성공률|편람|총람|요람|통람"
+_OUTER_KEYWORDS = r"보고서|백서|연보|연감|편람"
+_EXTRA_MODIFIERS = r"비공개|미공개|미간행|익명|특별판|특별\s*보고서|중간\s*보고서|제?\s*\d+\s*(?:차|판|호)"
+REPORT_CITATION_RE = re.compile(
+    rf"(?P<title>[「『][^」』\n]{{2,60}}(?:{_REPORT_KEYWORDS})[^」』\n]{{0,30}}[」』]"
+    rf"|[「『][^」』\n]{{2,60}}[」』]\s*(?:{_OUTER_KEYWORDS}))"
+    rf"(?:\s*(?P<extra>(?:{_EXTRA_MODIFIERS})))?"
+    r"(?:\s*(?P<locator>\d+\s*(?:쪽|면)))?"
+)
+INDICATOR_STAT_RE = re.compile(
+    r"(?P<indicator>(?:납품|비용|가격|임금|거래|결제|경기)?지수)\s*(?P<val>\d+(?:\.\d+)?)"
+    r"|(?P<accuracy>(?:정확도|일치율|응답률|환급률|손상률|성공률))\s*(?P<rate>\d+(?:\.\d+)?%)"
+)
+
 # 제목을 먼저 찾고 출판정보의 공백은 한 경로에서만 소비한다.
 _ACADEMIC_ORIGINAL_BODY = (
     r'(?:[「『\"“](?P<title>[^」』\"”]{5,120})[」』\"”])\s*,\s*'
@@ -810,6 +825,82 @@ def extract_from_text(
                     journal=m.group("journal").strip(),
                     year=int(m.group("year")),
                     context=text[max(0, g_start - 80) : g_end + 120],
+                )
+            )
+            consumed.append((g_start, g_end))
+        consumed.seal_pattern()
+
+    # 5-1) 외부 보고서·백서·연보·통계조사 인용 (저자 없는 간행물 및 비공개 통계 자료 식별)
+    if any(q in text for q in ("「", "『")):
+        from packages.claim_engine.exhibits import parse_exhibits
+        for m in REPORT_CITATION_RE.finditer(text):
+            g_start, g_end = m.span()
+            if overlaps(g_start, g_end):
+                continue
+            # 서증 제목 오인 방지: 같은 문장 안 따옴표 바로 앞 짧은 창에 호증 표지나 제출/첨부 기재가 있으면 제외
+            prefix = text[max(0, g_start - 60):g_start]
+            line_break = max(prefix.rfind('.'), prefix.rfind('\n'))
+            win = prefix[line_break + 1:] if line_break != -1 else prefix
+            if parse_exhibits(win) or re.search(r"(?:첨부|별지|제출(?:한|된|하여)?|첨부(?:한|된|하여)?)", win):
+                continue
+            raw_title = m.group("title")
+            # 법령명 오인 방지: 따옴표 안 제목이 법·령·규칙·조례·규정으로 끝나면 제외
+            quote_m = re.search(r"[「『]([^」』\n]+)[」』]", raw_title)
+            inner_title = quote_m.group(1).strip() if quote_m else raw_title.strip("「」『』 ")
+            if re.search(r"(?:법|령|규칙|조례|규정)$", inner_title):
+                continue
+            title_text = raw_title.strip("「」『』 ")
+            ctx_start = max(0, text.rfind('.', 0, g_start) + 1)
+            ctx_end = text.find('.', g_end)
+            ctx_end = len(text) if ctx_end == -1 else ctx_end + 1
+            ctx_text = text[max(0, min(ctx_start, g_start - 40)):min(len(text), max(ctx_end, g_end + 80))].strip()
+            citations.append(
+                _create(
+                    CitationType.ACADEMIC,
+                    text[g_start:g_end].strip(),
+                    document_id=document_id,
+                    block_id=block_id,
+                    page=page,
+                    span=(g_start, g_end),
+                    title=title_text,
+                    context=ctx_text or text[max(0, g_start - 80) : min(len(text), g_end + 120)],
+                )
+            )
+            consumed.append((g_start, g_end))
+        consumed.seal_pattern()
+
+    # 5-2) 비따옴표 통계 지표/조사 수치 인용 (납품지수, 정확도 등)
+    if any(k in text for k in ("지수", "정확도", "일치율", "응답률", "환급률", "손상률", "성공률")):
+        report_sentence_ranges = []
+        for c in citations:
+            if c.type == CitationType.ACADEMIC and c.span:
+                s_st = max(0, text.rfind('.', 0, c.span[0]) + 1)
+                s_ed = text.find('.', c.span[1])
+                s_ed = len(text) if s_ed == -1 else s_ed + 1
+                report_sentence_ranges.append((s_st, s_ed))
+
+        for m in INDICATOR_STAT_RE.finditer(text):
+            g_start, g_end = m.span()
+            if overlaps(g_start, g_end):
+                continue
+            # 이미 같은 문장에 보고서 인용이 있으면 지표는 별도 인용으로 중복 방출하지 않음
+            if any(st <= g_start <= ed for st, ed in report_sentence_ranges):
+                continue
+            matched_text = m.group(0).strip()
+            ctx_start = max(0, text.rfind('.', 0, g_start) + 1)
+            ctx_end = text.find('.', g_end)
+            ctx_end = len(text) if ctx_end == -1 else ctx_end + 1
+            ctx_text = text[max(0, min(ctx_start, g_start - 40)):min(len(text), max(ctx_end, g_end + 80))].strip()
+            citations.append(
+                _create(
+                    CitationType.ACADEMIC,
+                    matched_text,
+                    document_id=document_id,
+                    block_id=block_id,
+                    page=page,
+                    span=(g_start, g_end),
+                    title=matched_text,
+                    context=ctx_text or text[max(0, g_start - 80) : min(len(text), g_end + 120)],
                 )
             )
             consumed.append((g_start, g_end))

@@ -1,28 +1,24 @@
 # 인계 티켓(평가 → 구현)
 
-평가 에이전트(Codex 평가 세션)가 측정에서 나온 결함을 **원인 유형별**로 적는다. 구현 에이전트(Codex 구현 세션·Antigravity)는 티켓 단위로 고친다.
+평가 에이전트(Claude Code 평가 세션, 2026-10-17부터)가 측정에서 나온 결함을 **원인 유형별**로 적는다. 구현 에이전트(Antigravity, Codex는 열린 TK-44·45·49·55·73만)는 티켓 단위로 고친다.
 서면 한 건에 맞춘 수정은 하지 않는다(AGENTS.md). 수용 기준은 측정 도구의 출력이다. 기준 커밋은 측정한 코드다.
 
 <a id="pr73-current-status"></a>
 
-## 현재 운영과 잔여 구현 (2026-10-11 한국 시각)
+## 현재 운영과 잔여 구현 (2026-10-17 한국 시각)
 
-운영은 **main `8280a597db40b0905dbacf10c56fa3e9915cafd5` / 0.13.0**, Render Live·health SHA/version·DB 확인 완료다. TK24/43/56/57/69/70/72/74/75의 수용된 기술 범위가 배포됐다. TK75 실제 법률 품질 개선·정식 ON 채택은 아직 판정하지 않았다.
+원격 main **b68cfeec2c5c168a3b9e6e2e92653ea6892521bf / 0.13.0**, Steve **a47fb6f849618463d54b0107c27bbd85e4921477**을 확인했다. 실제배포영수증은10/12이며10/17같은세션의health에서main동일SHA/0.13.0/DBok를재확인했다. 이번에재배포·운영설정변경은하지않았다. #95·#97 수용부분은 #100으로 배포 완료했다. 전체 미완료는44·45·49·55·73의5건이다. 사용자 지침ON 유지, 독립 변호사1명 법률채점/정식품질채택은HOLD다.
 
-사용자 최신 지시 **TK-44·45·49·55·73 구현을 먼저**를 적용한다. 구현은 공개 전용 별도 세션, 제품 판정·수용 SHA 통합은 Codex 평가 세션이 담당한다. [통합 전달문](NEXT_FOR_CODEX.md)을 현재 지시의 단일 진입점으로 사용한다. 판정 근거는 [f1 판정서](../scorecards/f1_gate_verdict.md), 측정값은 [HISTORY](../scorecards/HISTORY.md), 상태 집계는 [티켓 지표](../scorecards/TICKET_METRICS.md)에 둔다.
+| 잔여 | 현재 결정 | 다음 조건 |
+|---|---|---|
+| TK44/49 | #95 5e6e859 named PAGE ActualText/capture 제한부분 배포, 전체open | Form/structure/untagged/UNKNOWN primary/floor/consumer 잔여. 기존보호 유지·새설계부터 |
+| TK45 | #93 f8f6e 불수용, #96 8d237496 설계검토대기/제품0 | 원래2/8·8/8·0/4에서정상8/8유지·두탐지strict개선 필수. source availability와법적적용 구별 |
+| TK55 | #97 2f4e798 발췌검사 제한부분 배포,known_open | legacy/unsupported 등 잔여와 내부생성ID PHONE과차단 후속. 키일괄면제금지·필수개인정보보호 유지 |
+| TK73 | #92 545c917 source-tree안전성 제한PASS·기준/제품HOLD | 구체확인필요상태·진짜확정손실·보호계약 검토후 사용자결정. 원래AFP3해소로계산금지 |
 
-| 잔여 항목 | 현재 결정 | 후속 조치·선행요건 |
-| --- | --- | --- |
-| TK44/49 | #90 b1e inline ActualText provider 제한범위 내용 수용; 전체 open | PR95 ad8d capture 상한은 독립확인·미지원PAGE 스트림 검사완료 표시HOLD. 좁은보완 뒤 제한제품 적용 판단. 비태그/Form/structure-tree/UNKNOWN primary/floor/consumer 잔여 유지 |
-| TK45 | #93 f8f6e(제품982e7) 정식 불수용5483280439; #84 e21 불수용 유지 | 원래20/actualTXT20 시작과같은2/8·8/8·0/4·고정18 유지로 strictincrease 미달. 보호계약 유지·새 공개applicability 설계부터 검토. 기존 classifier 장문 미측정 잔여 유지 |
-| TK55 | #91 86e cascade source 제한범위 내용 수용; 전체 known_open. 두 발췌 producer 후속 설계 보완 | 최초 시간실패와 단독보완 구분. 새124259 once-transform 위치추적은 이전과차단/deepJSON을 해소했으나 invalid-present range 경계HOLD. 검증/decoder abstain 분리 보완 후 제한제품승인. legacy 및 필수/정상보호 유지 |
-| TK73 | #92 5c8 기준안 검토 HOLD5483360308; 날짜 초기 확대 보류 권고 | 같은111 독립재집계에서 추가오탐분리0·진짜확인손실+9. Form/sh 원문지원 새설계 후 검토. [구체 기준안 검토](requests/TK-73_confirmation_criteria_evaluator_review.md) 반영·제품/등급/기준 승인0·TK전체해소 아님 |
+최신 구현 지시는 [Antigravity 통합본](NEXT_FOR_ANTIGRAVITY.md)(새 구현, 첫 배정 [TK-76](TK-76_focus_types_generalization_cycle1.md))·[Codex 통합본](NEXT_FOR_CODEX.md)(잔여 티켓, 평가 검토 재개)으로 전달한다. 체제 전환(2026-10-17): [AGENT_ROLES](../AGENT_ROLES.md) 1절. 사용자10/16 승인 잠정목표는 [FIXED_BENCHMARK9절](../scorecards/FIXED_BENCHMARK.md#9-목표와-릴리스-참고-기준-2026-10-16-사용자-승인), 공통제출조건 사전점검은 [전용기록](requests/SUBMISSION_CHECKLIST_PREFLIGHT_20261016.md)을 따른다. 비공개벤치 결과로 구현티켓을 만들지 않는다. 개발말뭉치dev_20261016의train/check양쪽원본지문확인·같은운영본첫측정·gap계산을완료했다. train.115/check.145·격차−.030,중점.175/.225·격차−.050이다. [DEV_CORPUS](../scorecards/DEV_CORPUS.md)의집계/접근분리/노출교체규칙을따른다. train전용ZIP과NEXT만별도구현세션에전달하고check는평가측보관이다.
 
-수용 범위 통합은 전체 티켓 해소와 구분한다. 최종 통합 후보 전체 검증·정확 CI 후 새 봉인 운영/후보 비교, 릴리스·실제 배포 확인을 순서대로 수행한다. 0.13.0 최초 봉인은 이미 소비했으며 재사용하지 않는다. 새 봉인 준비는 현재 구현을 막는 선행조건이 아니다. 새 후보 main 병합/배포는 아직 없다.
-
-온라인6쌍 OFF/ON·독립 변호사1명 조건가림 채점·ON JSON 토큰 변화 분석은 구현·배포 뒤로 이연했다. 유료 호출0, 가격 PR87 폐기, 별도 비용·계정·쿼터 조회 절차를 재개하지 않으며 기존 앱 예산 보호와 USD40 상한은 유지한다. 최초 10시간 목표19:51KST는 경과했으며 잔여5건을 완료로 처리하지 않는다.
-
-사용자의 즉시 조치는 없다. 제품 기준 변경은 구체안 검토 뒤 별도 결정 대상이며, 새 봉인·배포 후 실제 실행/채점은 선행 검증 완료 시점에 안내한다.
+사용자께 지금 가능한 일: ①구현을하지않는 환경에서0.13.0 고정비공개벤치집계 제출(기록은평가측), ②준비된train전용ZIP·NEXT를별도구현세션에전달(원본추가제출불필요), ③Steve대상PR CodeQL저장소설정, ④독립변호사 시범사용섭외·관찰/채점자료 준비다. 자료수신뒤 평가측이기준측정/기록을진행한다. 새제품병합/배포는수용SHA CI와릴리스선행요건 완료뒤별도다. 원래10시간 전체목표 미달은보존하며 과거실패를성공으로바꾸지 않는다.
 
 <a id="tk72-integration-history"></a>
 
@@ -266,3 +262,13 @@ TK24/43/56/57/69/70/72/74/75의 수용 범위만 deployed로 갱신했다. TK44/
 - **2026-10-12 09:55 KST 수용 범위 통합 완료:** #98 후보0702386 full/필수CI/원래게이트PASS로 Steve aa40019에 병합했다. 검증후보와전체tree동일·main배포0. 다음순서는 미사용새봉인 비교→버전판정/릴리스. 기존첫봉인재사용금지·미사용세트입력요청중·사용자요청 운영ON 유지.
 
 - **2026-10-12 20:53 KST 새 봉인/버전 결정:** 사용자신규세트 최초운영/후보비교 회귀PASS·성능상승미확인. 버전0.13.0유지/새태그없음·수용제한범위만릴리스한다. 기존운영ON 유지·미완료5TK/정식법률품질채택HOLD 유지.
+
+- **2026-10-12 22:31 KST #100 실제 배포 완료:** main `b68cfeec2c5c168a3b9e6e2e92653ea6892521bf`, Render Live·health commit 일치/DB ok. 버전0.13.0유지·새태그없음. #95/#97 수용부분만 배포했으며 TK44·45·49·55·73 전체 미완료5건 유지. 새 봉인 최초쌍 회귀PASS/상승미확인·소비완료. 법률지침 기존사용자ON 설정 변경0, 온라인1회/JSON 및 독립법률채점자1명 품질판정 후속. 가격절차 재개0·과거CI 시간실패2건 원인미확정 추적. NEXT_FOR_CODEX가 이전 전달문을 대체한다.
+
+- **2026-10-13 05:13 KST 배포 후 온라인 점검 수신:** b68/ON 사용자JSON의 기존명세23/23, 모델실행27/29 성공·JSON거절1/생성claim_id PHONE과차단1·참고미완료 유지. ID과차단은 이전운영도 공개재현돼 TK55 기존문제 후속이다. 법률품질채택은 동일배포OFF/동일발췌·독립법률채점 없으므로 HOLD, 사용자ON유지·2~3일자체평가/한명채점 후 보완. 최신 NEXT_FOR_CODEX와 통합후속메모 참조. 새배포/유료호출/봉인재시험0.
+
+- **개발 체제 전환(2026-10-17, 사용자):** Antigravity 구현·Claude Code 평가. Codex는 열린 TK-44·45·49·55·73만 마무리하고 그 PR(#63·#79·#80·#84·#85·#92·#93·#95·#96·#97) 검토는 사용자 재개 지시 전까지 중지. 출제(봉인·고정 벤치·말뭉치)는 Codex 격리 세션 유지. → [AGENT_ROLES](../AGENT_ROLES.md) 1절, [EVALUATOR_HANDOVER](EVALUATOR_HANDOVER.md) 0절
+
+- **TK-76(2026-10-17, P1·탐지 성능):** [개발 말뭉치 중점 6유형 1주기](TK-76_focus_types_generalization_cycle1.md). 기준 train/check: INCONS .20/.20·SRC-UNV 0/0·NUM .20/.40·FORM .25/.25·DATE .40/.50·COPY 0/0. 진단 메모 → 유형별 PR. Antigravity 배정. 2026-10-17 진단 메모 [#109](https://github.com/stevelee0119/verify_ACAS_LAW/pull/109) 조건부 승인(정정 커밋 1개 뒤 병합 건의).
+
+- **TK-45 known_open(2026-10-17, 사용자 결정):** #96 불승인(비공개 대상 문장에 법조문 인용 0건) 뒤 작업 중지. 재개는 사용자 결정. → [TK-45](TK-45_defense_negation_by_word_match.md) 끝 절

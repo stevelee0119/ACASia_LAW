@@ -90,6 +90,15 @@ jobs:
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then BASE=HEAD~1; fi
           python scripts/check_hardcoding_diff.py --base "$BASE" | tee -a artifacts-summary.txt
 
+      # 은퇴·고정 세트 정답지 문장을 제품 규칙에 옮겼는지(평가 세트는 일반화를 재는 자료라 문구를 가져오면 안 된다, 2026-10-18 사용자 승인).
+      # 일반 표현은 평가 측이 docs/scorecards/approved_eval_phrases.json에 올린다. train 원문 대조는 저장소 밖이라 평가 측이 돌린다.
+      - name: 평가 세트 문구 대조
+        if: ${{ !cancelled() }}
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then BASE=HEAD~1; fi
+          python scripts/check_train_phrase_overlap.py --base "$BASE" --eval-sets | tee -a artifacts-summary.txt
+
       # 기존 시험을 지우거나 skip·xfail을 붙여 통과시키는 것을 막는다(7차 보완·7C: 원장 기대값 15개 변경, 시험 6개 삭제). 평가 측 커밋만 있는 범위는 건너뛴다.
       - name: 시험 삭제·약화 점검
         if: ${{ !cancelled() }}
@@ -135,3 +144,55 @@ jobs:
           name: scorecard
           path: artifacts/scorecard.json
           if-no-files-found: ignore
+
+  # 은퇴 봉인 4세트(tests/fixtures/retired_sealed/)를 기준 브랜치와 PR head로 각각 채점해 집계를 비교한다(2026-10-17 사용자 승인).
+  # 제품 경로가 바뀐 PR만 잰다. 종합점수 하락·오탐 증가·A등급 오탐 증가·인젝션 방어 실패면 실패한다.
+  # 평가 측이 PR마다 다시 돌리던 비교를 CI 인용으로 바꾸려는 것이다. OCR이 필요한 문서가 있어 점수 하락 게이트와 따로 돈다.
+  retired-sets:
+    name: 은퇴 세트 비교
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      LV_ALLOW_NETWORK: "0"
+      LV_PSEUDONYM_SECRET: ci-only-not-a-real-secret
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # 기준 커밋 작업 폴더를 만든다
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 한국어 OCR 엔진 설치
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-kor tesseract-ocr-eng fonts-nanum
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 은퇴 세트 비교
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          # PR 실행은 병합 시험 커밋을 꺼낸다. 첫 부모가 지금의 기준 브랜치 끝이다.
+          # base.sha는 PR이 마지막으로 갱신될 때의 값이라, 그 뒤 병합된 다른 PR의 효과가 이 PR 몫으로 섞인다(#120에서 확인).
+          if git rev-parse -q --verify "HEAD^2" >/dev/null; then BASE=$(git rev-parse HEAD^1); fi
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then BASE=HEAD~1; fi
+          python scripts/retired_compare.py --base "$BASE" | tee retired-summary.txt
+
+      - name: 요약 게시
+        if: always()
+        run: |
+          {
+            echo '### 은퇴 세트 비교'
+            echo '```'
+            cat retired-summary.txt 2>/dev/null || echo '(없음)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

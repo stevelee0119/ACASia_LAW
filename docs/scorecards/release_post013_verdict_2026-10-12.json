@@ -54,10 +54,7 @@
     "network": false,
     "tesseract": "5.5.0",
     "ocr_langs": [
-      "\"/workspace/scratch/tessdata/\"",
-      "(3):",
       "eng",
-      "in",
       "kor",
       "osd"
     ],
@@ -122,9 +119,47 @@
     "status": "SUCCESS"
   },
   "migration_changes": 0,
-  "deployment_completed": false,
+  "deployment_completed": true,
   "runtime_profile": "ON held per user instruction; program default OFF unchanged",
   "legal_quality_adoption": "HOLD; offline sealed result is not online legal-profile quality evidence",
   "fixed_private_benchmark": "not measured in this environment; original uploaded fixed benchmark data unavailable",
-  "private_documents_answers_cases_in_repo": false
+  "private_documents_answers_cases_in_repo": false,
+  "actual_deployment_sha": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
+  "release_PR": 100,
+  "release_head": "08471091b2982997a1adf906cb59cbba42c05625",
+  "release_CI": {
+    "run": 38253829678,
+    "score": 38253829611,
+    "SQLite_passed": 9732,
+    "SQLite_skipped": 13,
+    "PG_passed": 9736,
+    "PG_skipped": 9,
+    "xfail_both": 24,
+    "all_required": "SUCCESS"
+  },
+  "deployment": {
+    "status": "live",
+    "deploy_id": "dep-db6dvjnavr4c73fvnopg",
+    "finished_at_utc": "2026-10-12T13:26:12.724015Z",
+    "health_commit": "b68cfeec2c5c168a3b9e6e2e92653ea6892521bf",
+    "health_status": "ok",
+    "database_status": "ok"
+  },
+  "historical_CI_timer": {
+    "head": "f64edbe64ed06559894f4fbd0618a9f413c7a5b9",
+    "seconds": [
+      0.625568062999946,
+      0.748031740999977
+    ],
+    "original_threshold": 0.1,
+    "cause": "unresolved",
+    "observer_only_heads_passed": [
+      "525a0b5",
+      "0847109"
+    ],
+    "criterion_or_clock_changes": 0,
+    "node_isolation": 0
+  },
+  "partial_deployment_only": true,
+  "whole_ticket_closures": 0
 }
