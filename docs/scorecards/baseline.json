@@ -1,11 +1,11 @@
 {
  "schema": 1,
- "created": "2026-09-30T06:11:56+00:00",
+ "created": "2026-10-18T23:30:54+00:00",
  "git": {
-  "sha": "430543dc7cf3bedb8eeb74efb33da8a0960f6dc4",
+  "sha": "c512462ddf64c9d2b590a56d276623871dbea067",
   "dirty": false
  },
- "version": "0.9.13",
+ "version": "0.13.1",
  "rule_version": "2026.09.30.1",
  "environment": {
   "network": false,
@@ -23,8 +23,8 @@
  "sets": {
   "dev": {
    "documents": 6,
-   "overall": 79.9,
-   "weighted_recall": 0.799,
+   "overall": 82.6,
+   "weighted_recall": 0.826,
    "defect_items": 56,
    "false_positives": 0,
    "fp_trap": 0,
@@ -39,13 +39,13 @@
     "TC-03": 1.0,
     "TC-04": 0.906,
     "TC-05": 0.932,
-    "TC-06": 0.214
+    "TC-06": 0.429
    }
   },
   "holdout": {
    "documents": 6,
-   "overall": 77.3,
-   "weighted_recall": 0.773,
+   "overall": 80.1,
+   "weighted_recall": 0.801,
    "defect_items": 54,
    "false_positives": 0,
    "fp_trap": 0,
@@ -60,9 +60,8 @@
     "HO-03": 0.909,
     "HO-04": 0.844,
     "HO-05": 0.841,
-    "HO-06": 0.214
+    "HO-06": 0.429
    }
   }
- },
- "note": "기준선. 조건: 오프라인(LV_ALLOW_NETWORK=0), tesseract 5.3.4(kor+eng), 채점기 scripts/eval_testset.py. 낮추지 않는다. 올리는 것은 scripts/score_gate.py --update-baseline(사용자 승인)."
+ }
 }
