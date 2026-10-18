@@ -116,7 +116,7 @@ def day_count(start: date, end: date, *, inclusive: bool = False) -> int:
 
 OPERATOR_RE = re.compile(r"\s*([+\-−×xX*＋])\s*")
 MULTIPLIER_RE = re.compile(r"^\s*[×xX*]\s*(\d[\d,]*(?:\.\d+)?)\s*(?:개월|개|회|일|명|건|배)?")
-# '수 × 금액' 순서 산식 패턴 (예: 3 × 500,000원, 3개월 × 1,000,000원, 검수대장 1차 14건 × 17,000원)
+# '수 × 금액' 순서 산식 패턴 (예: 3 × 500,000원, 3개월 × 1,000,000원, 물품내역 1차 14건 × 17,000원)
 # 항목명이나 라벨 뒤에서도 산식 수량을 식별하도록 경계 정의
 LEADING_MULTIPLIER_RE = re.compile(
     r"(?:^|(?<=[\s:;\]\)\>]))(?P<mult>\d[\d,]*(?:\.\d+)?)\s*(?:개월|개|회|일|명|건|배|호)?\s*[×xX*]\s*"
@@ -125,7 +125,7 @@ AMOUNT_HEADER_RE = re.compile(r"(금액|합계|청구액|손해액|피해액|소
 
 
 def evaluate_expression(text: str) -> Optional[Decimal]:
-    """'3,100,000원 + 1,250,000원', '500,000원 × 3', '3 × 500,000원', '검수대장 1차 14건 × 17,000원' 같은 산식의 값. 산식이 아니면 None."""
+    """'3,100,000원 + 1,250,000원', '500,000원 × 3', '3 × 500,000원', '물품내역 1차 14건 × 17,000원' 같은 산식의 값. 산식이 아니면 None."""
     # 1. '수 × 금액' 선행 배수 산식 처리 (수량/개월수 × 단가)
     lead_match = LEADING_MULTIPLIER_RE.search(text)
     if lead_match:

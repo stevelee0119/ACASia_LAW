@@ -108,7 +108,7 @@ _AMOUNT_STRIP_RE = re.compile(
 
 
 def _find_item_heading(text: str, offset: int) -> Optional[str]:
-    """매칭 위치 이전의 같은 줄에서 결함 값 바로 앞의 짧은 항목명(예: '창고정산 1차')을 추출한다.
+    """매칭 위치 이전의 같은 줄에서 결함 값 바로 앞의 짧은 항목명(예: '물품정산 1차')을 추출한다.
 
     소제목이나 이전 줄로는 대체하지 않으며, 날짜·금액·번호·조사·서술문을 배제한 2~20자 명사구만 반환한다.
     """
@@ -119,7 +119,7 @@ def _find_item_heading(text: str, offset: int) -> Optional[str]:
     if not line_prefix or len(line_prefix) > 40:
         return None
 
-    # 1. 괄호형 항목 표지 우선 검사 ([창고정산 1차], <검수대장> 등)
+    # 1. 괄호형 항목 표지 우선 검사 ([물품정산 1차], <자재목록> 등)
     m_bracket = BRACKET_HEADING_RE.search(line_prefix)
     if m_bracket:
         return m_bracket.group(0).strip()
