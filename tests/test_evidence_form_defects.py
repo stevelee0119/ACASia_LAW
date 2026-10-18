@@ -634,3 +634,36 @@ def test_control_opponent_adnominal_claim_refutation_2():
     assert len(findings) == 0, f"상대방 관형형 지적 인용 반박은 결함으로 잡지 않아야 함: {findings}"
 
 
+def test_control_opponent_adnominal_claim_refutation_3():
+    """대조군 24 (TK-81 전달문 20): 관형형 반박 합쇼체('사실과 다릅니다') 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제7호증 차용증의 금액 기재가 변조되었다는 상대측 주장은 사실과 명백히 다릅니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 관형형 주장 합쇼체 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_opponent_adnominal_claim_refutation_4():
+    """대조군 25 (TK-81 전달문 20): 관형형 반박 합쇼체('사실과 틀립니다') 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "을 제8호증 확인서의 작성일자가 소급 기재되었다는 원고의 지적은 실제 사실과 전혀 틀립니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 관형형 지적 합쇼체 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_opponent_adnominal_claim_refutation_5():
+    """대조군 26 (TK-81 전달문 20): 관형형 반박 연결형('사실과 달라') 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "피고는 갑 제9호증 영수증의 중요 부분이 훼손되었다는 주장은 실체적 사실과 달라 근거가 없습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 관형형 주장 연결형 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
