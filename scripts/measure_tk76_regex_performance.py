@@ -26,6 +26,7 @@ from packages.claim_engine.evidence_consistency import (
     _COMPLETE_DECLARATION_RE,
     _COUNT_DECLARATION_RE,
     _CONTINUOUS_KEYWORD_RE,
+    _NORMAL_FUTURE_SUBMISSION_RE,
     _EVI_FORM_PLACEHOLDER_RE,
     _EVI_FORM_UNSUBMITTED_RE,
     _EVI_FORM_BLANK_RE,
@@ -103,12 +104,13 @@ def main():
     ) * 10
 
     sample_text_evi_form = (
-        "원고는 갑 제1호증 계약서 원본은 제출되지 않았으나 주장을 입증합니다.\n"
-        "갑 제2호증 확인서 작성자의 성명과 날인이 전혀 없다.\n"
-        "갑 제3호증 통화녹음 파일 자체는 제출되지 않았다.\n"
-        "갑 제4호증 영수증 하단이 잘려 합계 금액을 알 수 없다.\n"
-        "갑 제5호증 사진 추후 별도 삽입 예정입니다.\n"
+        "원고는 갑 제1호증 계약서 원본은 아직 찾지 못해 내지 못하였습니다.\n"
+        "갑 제2호증 확인서 작성자 이름과 도장이 들어가 있지 않습니다.\n"
+        "갑 제3호증 통화녹음 원본 음성은 제출하지 않고 요지만 정리하였습니다.\n"
+        "갑 제4호증 영수증 금액 칸이 흐려 숫자를 읽기 어렵습니다.\n"
+        "갑 제5호증 전산화면 [화면 이미지 준비중] 상태입니다.\n"
         "갑 제6호증 동영상(USB 별도 제출) 형태로 제출합니다.\n"
+        "갑 제7호증 감정서는 감정 결과가 나오는 대로 제출 예정입니다.\n"
         "피고가 제출한 을 제1호증은 신빙성이 없어 배척되어야 합니다.\n"
     ) * 10
 
@@ -123,6 +125,7 @@ def main():
     measure_regex("_COMPLETE_DECLARATION_RE", _COMPLETE_DECLARATION_RE, sample_text_evi_num)
     measure_regex("_COUNT_DECLARATION_RE", _COUNT_DECLARATION_RE, sample_text_evi_num)
     measure_regex("_CONTINUOUS_KEYWORD_RE", _CONTINUOUS_KEYWORD_RE, sample_text_evi_num)
+    measure_regex("_NORMAL_FUTURE_SUBMISSION_RE", _NORMAL_FUTURE_SUBMISSION_RE, sample_text_evi_form)
     measure_regex("_EVI_FORM_PLACEHOLDER_RE", _EVI_FORM_PLACEHOLDER_RE, sample_text_evi_form)
     measure_regex("_EVI_FORM_UNSUBMITTED_RE", _EVI_FORM_UNSUBMITTED_RE, sample_text_evi_form)
     measure_regex("_EVI_FORM_BLANK_RE", _EVI_FORM_BLANK_RE, sample_text_evi_form)
