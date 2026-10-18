@@ -514,3 +514,48 @@ def test_control_court_order_request_reason():
     ])
     findings = check_evidence_form_defects(doc)
     assert len(findings) == 0, f"문서제출명령 신청 사유 기재는 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_no_other_evidence_variant_1():
+    """대조군 18 (전달문 17 조건 1): '외에 다른 입증방법 제출 안 함' 변형 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "원고는 갑 제1호증 외에 다른 입증방법을 제출할 계획이 없습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"추가 증거 없음 변형 진술은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_no_other_evidence_variant_2():
+    """대조군 19 (전달문 17 조건 1): '밖에 그 밖의 증거 내지 않음' 변형 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "본 서증 밖에 그 밖의 증거는 내지 않기로 하였습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"추가 증거 없음 변형 진술은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_opponent_quote_refutation_variant_1():
+    """대조군 20 (전달문 17 조건 2): 상대방 주장 인용(-다고 하나) 뒤 반박 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "피고는 갑 제2호증에 서명날인이 빠졌다고 하나, 문서 말미에 작성자 자필서명이 분명히 존재합니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 주장 인용 후 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_opponent_quote_refutation_variant_2():
+    """대조군 21 (전달문 17 조건 2): 상대방 주장 인용(-다고 다투지만) 뒤 반박 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "상대방은 갑 제3호증 계약서의 중요 부분이 잘려 있다고 다투지만, 이는 사실과 명백히 다릅니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 주장 인용 후 반박은 결함으로 잡지 않아야 함: {findings}"
+
