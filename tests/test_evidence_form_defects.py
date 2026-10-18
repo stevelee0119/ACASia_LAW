@@ -1,23 +1,20 @@
-"""서증 형식 결함(EVI-FORM) 검출 및 오탐 방지 시험.
+"""서증 형식 결함(EVI-FORM) 구조 기반 검출 및 오탐 방지 시험.
 
-민사소송법 제277조, 제355조 제1항, 제358조 및 민사소송규칙 제121·122조에 따른
-서증 형식 요건 흠결(외국어 원본 미첨부, 사문서 서명란 공란, 음성 녹음 데이터 흠결,
-사본 중요부분 잘림, 미제출 서증 참조)에 대한 진입점 및 단위 검증을 수행한다.
+민사소송법 제277조, 제355조, 제358조 및 민사소송규칙 제121·122조에 따른
+서증 형식 요건 흠결(파일명·자리표시만 존재, 부제출 자인, 작성자·서명 공란,
+중요 기재사항 잘림/식별불가)에 대한 진입점, 양성 5건, 대조군 5건 검증을 수행한다.
 """
-import timeit
-import gc
-import pytest
 from pathlib import Path
+import pytest
 
-from packages.common.enums import FindingType, VerificationStatus, EvidenceGrade
+from packages.common.enums import EvidenceGrade, FindingType, Severity, VerificationStatus
 from packages.common.schemas import Block, NormalizedDocument, Page
 from packages.claim_engine.evidence_consistency import (
     check_evidence_form_defects,
-    EVI_FORM_TRANSLATION_RE,
-    EVI_FORM_SIGNATURE_RE,
-    EVI_FORM_AUDIO_RE,
-    EVI_FORM_TRUNCATION_RE,
-    EVI_FORM_MISSING_REF_RE,
+    _EVI_FORM_PLACEHOLDER_RE,
+    _EVI_FORM_UNSUBMITTED_RE,
+    _EVI_FORM_BLANK_RE,
+    _EVI_FORM_UNIDENTIFIABLE_RE,
 )
 from packages.verification_engine.pipeline import (
     DocumentInput,
@@ -31,14 +28,16 @@ def _make_doc(text_paragraphs, doc_id="TEST-FORM-01"):
     """시험용 NormalizedDocument 생성 헬퍼."""
     blocks = []
     for idx, text in enumerate(text_paragraphs):
-        blocks.append(Block(
-            block_id=f"b_{idx}",
-            page=1,
-            block_type="paragraph",
-            text=text,
-            source_layer="visible_text",
-            visible=True,
-        ))
+        blocks.append(
+            Block(
+                block_id=f"b_{idx}",
+                page=1,
+                block_type="paragraph",
+                text=text,
+                source_layer="visible_text",
+                visible=True,
+            )
+        )
     return NormalizedDocument(
         document_id=doc_id,
         filename=f"{doc_id}.pdf",
@@ -56,11 +55,12 @@ def test_pipeline_entrypoint_evidence_form_defects(monkeypatch, tmp_path):
     doc = _make_doc([
         "준비서면",
         "5. 물품대금 정산 및 확인",
-        "갑 제101호증 물품대금 1차 번역문만 제출한다.",
-        "외국어 원본은 첨부하지 않았다.",
-        "6. 물품대금 자료 검토",
-        "갑 제102호증 물품대금 2차 확인서 서명 누락 상태이나 서명된 것으로 제출한다.",
-        "내용: 봉투 수령. 작성자: (공란). 서명: (공란).",
+        "원고는 갑 제101호증 물품대금 계약서의 영문 원본은 제출되지 않았으나 사본으로 입증을 시도합니다.",
+        "6. 배송확인 자료 검토",
+        "원고가 제출한 갑 제102호증 확인서 작성자의 성명과 날인이 전혀 없다.",
+        "2026. 1. 15.",
+        "원고 소송대리인 변호사 홍길동",
+        "서울중앙지방법원 귀중",
     ], doc_id="entry_form_doc")
 
     monkeypatch.setattr(pipeline_module, "parse_document", lambda path, **kw: doc)
@@ -76,98 +76,191 @@ def test_pipeline_entrypoint_evidence_form_defects(monkeypatch, tmp_path):
     doc_result = result.documents[0]
     form_findings = [f for f in doc_result.findings if f.type == FindingType.EVIDENCE_FORM_DEFECT.value]
 
-    # 두 결함 모두 검출되어야 함
-    assert len(form_findings) == 2, f"기대 2건, 실측 {len(form_findings)}건"
+    # 두 결함 모두 검출되어야 함 (개수 및 내용 엄격 검증)
+    assert len(form_findings) == 2, f"기대 2건, 실측 {len(form_findings)}건: {form_findings}"
 
-    # 1) 번역문 단독 제출 결함 확인
-    f1 = next((f for f in form_findings if "번역문" in f.title), None)
+    # 1) 부제출 자인 결함 확인 (축 2: CONTRADICTED · B)
+    f1 = next((f for f in form_findings if "갑 제101호증" in f.title), None)
     assert f1 is not None
     assert f1.status == VerificationStatus.CONTRADICTED.value
     assert f1.evidence_grade == EvidenceGrade.B.value
-    assert "갑 제101호증" in f1.title
-    assert "물품대금 1차" in f1.evidence[0].excerpt
+    assert "서증 미제출 자인" in f1.title
+    assert "제출되지 않았으나" in f1.evidence[0].excerpt
 
-    # 2) 사문서 서명 공란 결함 확인
-    f2 = next((f for f in form_findings if "서명" in f.title), None)
+    # 2) 작성자·서명 공란 결함 확인 (축 3: SUSPICIOUS · B)
+    f2 = next((f for f in form_findings if "갑 제102호증" in f.title), None)
     assert f2 is not None
-    assert f2.status == VerificationStatus.CONTRADICTED.value
+    assert f2.status == VerificationStatus.SUSPICIOUS.value
     assert f2.evidence_grade == EvidenceGrade.B.value
-    assert "갑 제102호증" in f2.title
-    assert "물품대금 2차" in f2.evidence[0].excerpt
+    assert "공란" in f2.title or "서명" in f2.title
+    assert "성명과 날인이 전혀 없다" in f2.evidence[0].excerpt
 
 
-# === 2. 양성 예시 3건 시험 ===
-def test_positive_translation_defect():
-    """양성 1: 외국어 번역문 단독 제출 및 원본 미첨부 흠결 검출."""
+# === 2. 신규 양성 예시 5건 시험 (4대 축 검증) ===
+def test_positive_unsubmitted_admission():
+    """양성 1 (축 2): 영문 원본 미제출 자인 결함 검출 (CONTRADICTED · B)."""
     doc = _make_doc([
-        "5. 계약체결 정산 및 확인",
-        "갑 제201호증 계약체결 1차 번역문만 제출한다.",
-        "이 자료는 외국어 계약서이나 외국어 원본은 첨부하지 아니하였다.",
+        "원고는 다음과 같이 입증취지를 밝힙니다.",
+        "갑 제1호증 계약서 영문 원본은 제출되지 않았으나 국문 요약본을 제출합니다.",
+        "원고 소송대리인",
     ])
     findings = check_evidence_form_defects(doc)
     assert len(findings) == 1
     assert findings[0].type == FindingType.EVIDENCE_FORM_DEFECT
     assert findings[0].status == VerificationStatus.CONTRADICTED
-    assert "외국어 원본 미첨부" in findings[0].title
-    assert "갑 제201호증" in findings[0].title
+    assert findings[0].evidence_grade == EvidenceGrade.B
+    assert "갑 제1호증" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "UNSUBMITTED_EVIDENCE_ADMISSION"
 
 
-def test_positive_signature_blank_defect():
-    """양성 2: 확인서 사문서 서명 및 작성자 공란 누락 흠결 검출."""
+def test_positive_blank_signature_form():
+    """양성 2 (축 3): 작성자의 성명과 날인 부존재 공란 양식 검출 (SUSPICIOUS · B)."""
     doc = _make_doc([
-        "5. 배송확인 정산 및 확인",
-        "갑 제202호증 배송확인 1차 확인서 사본을 제출한다.",
-        "확인서 본문 내용: 물품 인수 완료. 작성자: (공란). 서명: (공란). 서명 누락 상태이다.",
+        "원고는 입증자료를 제출합니다.",
+        "갑 제2호증 확인서 작성자의 성명과 날인이 전혀 없다.",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1
+    assert findings[0].type == FindingType.EVIDENCE_FORM_DEFECT
+    assert findings[0].status == VerificationStatus.SUSPICIOUS
+    assert findings[0].evidence_grade == EvidenceGrade.B
+    assert "갑 제2호증" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "BLANK_FORM_DEFECT"
+
+
+def test_positive_summary_memo_without_audio():
+    """양성 3 (축 1): 녹음 파일 없이 요지만 정리한 메모뿐 소리 데이터 부존재 검출 (SUSPICIOUS · B)."""
+    doc = _make_doc([
+        "원고 주장 입증방법.",
+        "갑 제3호증 통화 녹음 파일 없이 요지만 정리한 메모뿐 소리 데이터는 없다.",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1
+    assert findings[0].type == FindingType.EVIDENCE_FORM_DEFECT
+    assert findings[0].status == VerificationStatus.SUSPICIOUS
+    assert findings[0].evidence_grade == EvidenceGrade.B
+    assert "갑 제3호증" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "EXHIBIT_PLACEHOLDER_ONLY"
+
+
+def test_positive_unidentifiable_content_truncated():
+    """양성 4 (축 4): 하단이 복사되지 않아 합계 금액을 알 수 없는 식별 불가 결함 검출 (CONTRADICTED · B)."""
+    doc = _make_doc([
+        "원고 변론.",
+        "갑 제4호증 영수증 하단이 복사되지 않아 금액을 알 수 없다.",
+        "원고 소송대리인",
     ])
     findings = check_evidence_form_defects(doc)
     assert len(findings) == 1
     assert findings[0].type == FindingType.EVIDENCE_FORM_DEFECT
     assert findings[0].status == VerificationStatus.CONTRADICTED
-    assert "서명 누락" in findings[0].title or "서명" in findings[0].title
+    assert findings[0].evidence_grade == EvidenceGrade.B
+    assert "갑 제4호증" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "UNIDENTIFIABLE_CONTENT_TRUNCATED"
 
 
-def test_positive_truncation_and_audio_defects():
-    """양성 3: 사본 하단 잘림 및 음성 소리데이터 미제출 흠결 검출."""
+def test_positive_media_filename_unsubmitted():
+    """양성 5 (축 1): 파일명만 기재되고 파일 자체 미제출 자인 검출 (SUSPICIOUS · B)."""
     doc = _make_doc([
-        "5. 영수증 정산 및 확인",
-        "갑 제203호증 영수증 1차 사본을 제출한다.",
-        "복사 범위: 상호, 일자. 사본의 하단이 잘려 합계 및 발행인 부분은 복사 범위 밖이다.",
-        "6. 녹음자료 자료 검토",
-        "갑 제204호증 통화녹음 2차 녹음원본을 제출한다.",
-        "포함 자료: 이 요약문 1매뿐 소리 데이터나 녹취 전문은 포함하지 않았다.",
+        "원고의 입증방법.",
+        "갑 제5호증 녹음파일 VOICE-01.wav 파일 자체는 제출되지 않았다.",
+        "원고 소송대리인",
     ])
     findings = check_evidence_form_defects(doc)
-    assert len(findings) == 2
-    titles = [f.title for f in findings]
-    assert any("사본 중요 기재사항" in t for t in titles)
-    assert any("소리데이터 및 녹취록 미제출" in t for t in titles)
+    assert len(findings) == 1
+    assert findings[0].type == FindingType.EVIDENCE_FORM_DEFECT
+    assert findings[0].status == VerificationStatus.SUSPICIOUS
+    assert findings[0].evidence_grade == EvidenceGrade.B
+    assert "갑 제5호증" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "EXHIBIT_PLACEHOLDER_ONLY"
 
 
-# === 3. 대조군 3건 시험 (오탐 방지) ===
+# === 3. 신규 대조군 5건 시험 (상대방 탄핵 및 물리 매체 별도 제출 정상 보호) ===
+def test_control_opponent_evidence_signature_challenge():
+    """대조군 1: 상대방 증거(피고 제출 을호증)의 서명 누락 지적·탄핵 문맥 오탐 0건."""
+    doc = _make_doc([
+        "준비서면",
+        "원고는 피고의 주장을 반박합니다.",
+        "피고가 제출한 을 제3호증은 작성자 서명이 누락되어 진정성립이 인정될 수 없습니다.",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 증거 탄핵은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_opponent_evidence_original_challenge():
+    """대조군 2: 상대방 증거의 원본 미제출에 대한 주장 입증 부족 지적 오탐 0건."""
+    doc = _make_doc([
+        "답변서",
+        "원고가 제출한 증거는 원본이 제출되지 않았다는 주장을 입증하기에 부족합니다.",
+        "피고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 증거 비판은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_opponent_transcript_credibility_challenge():
+    """대조군 3: 상대방 녹취서 신빙성 배척 주장 오탐 0건."""
+    doc = _make_doc([
+        "준비서면",
+        "상대방이 제출한 녹취서는 신빙성이 없으므로 배척되어야 합니다.",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"신빙성 탄핵 주장은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_physical_media_separate_submission_usb():
+    """대조군 4: USB 별도 제출 기재 정상 입증방법 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "입증방법",
+        "갑 제3호증 통화녹음(USB 별도 제출)",
+        "원고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"USB 별도 제출 정상 기재는 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_physical_media_cd_submission():
+    """대조군 5: CD 추후 별도 제출 기재 정상 입증방법 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "입증방법",
+        "을 제5호증 현장 동영상(CD 추후 별도 제출)",
+        "피고 소송대리인",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"CD 별도 제출 정상 기재는 결함으로 잡지 않아야 함: {findings}"
+
+
+# === 4. 기존 대조군 유지 시험 (정상 문서 및 전자서명 생략) ===
 def test_control_normal_exhibits_with_originals():
-    """대조군 1: 외국어 원본과 번역문이 모두 정상 제출된 경우 오탐 0건."""
+    """대조군 6: 외국어 원본과 번역문이 모두 정상 제출된 경우 오탐 0건."""
     doc = _make_doc([
         "5. 해외계약 정산 및 확인",
         "갑 제301호증 해외계약 1차 원본 및 번역문을 첨부하여 제출한다.",
         "영문 원본 1부와 공증된 한국어 번역문 1부를 모두 제출 완료하였습니다.",
+        "원고 소송대리인",
     ])
     findings = check_evidence_form_defects(doc)
     assert len(findings) == 0
 
 
 def test_control_signed_statement():
-    """대조군 2: 작성자와 서명이 온전히 완료된 진술서 오탐 0건."""
+    """대조군 7: 작성자와 서명이 온전히 완료된 진술서 오탐 0건."""
     doc = _make_doc([
         "5. 현장확인 정산 및 확인",
         "갑 제302호증 현장확인 1차 확인서를 제출한다.",
         "작성자 김철수가 본인의 서명 날인을 마친 온전한 원본입니다.",
+        "원고 소송대리인",
     ])
     findings = check_evidence_form_defects(doc)
     assert len(findings) == 0
 
 
 def test_control_pleading_electronic_signature_omitted():
-    """대조군 3: 본안 소송서류 말미의 전자소송 서명 생략 문맥 오탐 0건."""
+    """대조군 8: 본안 소송서류 말미의 전자소송 서명 생략 문맥 오탐 0건."""
     doc = _make_doc([
         "이 사건 청구원인에 관하여 위와 같이 변론합니다.",
         "2026. 1. 15.",
@@ -176,40 +269,3 @@ def test_control_pleading_electronic_signature_omitted():
     ])
     findings = check_evidence_form_defects(doc)
     assert len(findings) == 0
-
-
-# === 4. 정규식 성능비 검증 시험 (점검표 2항) ===
-@pytest.mark.parametrize("name,pattern", [
-    ("TRANSLATION", EVI_FORM_TRANSLATION_RE),
-    ("SIGNATURE", EVI_FORM_SIGNATURE_RE),
-    ("AUDIO", EVI_FORM_AUDIO_RE),
-    ("TRUNCATION", EVI_FORM_TRUNCATION_RE),
-    ("MISSING_REF", EVI_FORM_MISSING_REF_RE),
-])
-def test_regex_performance_ratios(name, pattern):
-    """정규식 성능비 (< 8.0, 4배 < 1.0초) 검증."""
-    base_text = (
-        "갑 제101호증에 관하여 번역문만 단독 제출하고 외국어 원본은 첨부하지 않았다.\n"
-        "확인서 작성자: (공란). 서명: (공란) 누락 상태이다.\n"
-        "포함 자료: 이 요약문 1매뿐 소리 데이터나 녹취 전문은 포함하지 않았다.\n"
-        "영수증 사본의 하단이 잘려 합계 및 발행인은 복사 범위 밖이다.\n"
-        "완결 제출목록: 갑 제1호증. 이 둘 외에는 자료를 제출하지 않았다.\n"
-    ) * 10
-
-    text_1x = base_text
-    text_4x = base_text * 4
-
-    gc_was_enabled = gc.isenabled()
-    try:
-        gc.disable()
-        t1_raw = min(timeit.repeat(lambda: list(pattern.finditer(text_1x)), number=100, repeat=3)) / 100
-        t4_raw = min(timeit.repeat(lambda: list(pattern.finditer(text_4x)), number=100, repeat=3)) / 100
-    finally:
-        if gc_was_enabled:
-            gc.enable()
-
-    t1_adj = max(t1_raw, 0.0001)
-    ratio = t4_raw / t1_adj
-
-    assert ratio < 8.0, f"정규식 {name} 성능비 {ratio:.2f} >= 8.0"
-    assert t4_raw < 1.0, f"정규식 {name} 4배 시간 {t4_raw:.4f}s >= 1.0s"

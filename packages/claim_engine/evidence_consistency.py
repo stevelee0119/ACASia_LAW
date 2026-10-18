@@ -67,7 +67,8 @@ COPY_SIMILARITY = 0.9
 # 축 1: 파일명·자리표시만 존재 (내용·사본 부존재)
 _EVI_FORM_PLACEHOLDER_RE = re.compile(
     r"(?:별도\s*)?(?:삽입|첨부|보완|제출)\s*예정"
-    r"|\.[a-zA-Z0-9]{2,4}\b[^\n.]{0,40}(?:파일\s*자체(?:는|가)?\s*(?:제출되지|첨부되지)|요약(?:문|본)?\s*(?:만|뿐)|녹취(?:서|록)?\s*(?:전문|은)?\s*(?:없|누락)|소리\s*데이터(?:는|가)?\s*없)"
+    r"|(?:소리\s*데이터(?:는|가)?\s*없|녹음\s*파일\s*(?:없이|은\s*없)|녹취(?:서|록)?\s*(?:전문|은)?\s*(?:없|누락)|요약(?:문|본)?\s*(?:만|뿐)[^\n.]{0,30}(?:소리|녹음|데이터|전문))"
+    r"|\.[a-zA-Z0-9]{2,4}\b[^\n.]{0,40}(?:파일\s*자체(?:는|가)?\s*(?:제출되지|첨부되지)|미제출)"
 )
 
 # 축 2: 서면 자체의 부제출 자인 (문서 내 진술 모순)
@@ -1149,15 +1150,27 @@ def check_evidence_form_defects(
             my_party_chars = {"갑", "을", "병", "정", "소갑", "소을"}
 
     # 2. 문장 또는 목록 행 단위로 서증 형식 결함 구조 검사
+    # 줄바꿈 또는 종결 어미(.!? 뒤 공백/줄바꿈) 기준으로 분할하여 파일명 내 마침표 오인 분리 방지
     seen_exhibits = set()
 
-    for raw_sentence in re.split(r"[.\n]+", text):
+    for raw_sentence in re.split(r"(?<=[다습음죠치시오!?.])\s*\n+|\n+", text):
         sentence = raw_sentence.strip()
         if not sentence or len(sentence) < 4:
             continue
 
-        # 상대방 증거 탄핵 문맥(신빙성 다툼, 부인 등)인 경우 결함 검사 배제
-        if _EVI_FORM_OPPONENT_CHALLENGE_RE.search(sentence):
+        # 상대방 주어에 의한 서술/탄핵 배제 (작성 당사자 기준)
+        if author_party == "원고":
+            if re.search(r"(?:피고|상대방|피신청인|채무자|피고인)\b[^\n.]{0,30}(?:제출|주장|인용|원용|작성|서증|호증)", sentence):
+                continue
+        elif author_party == "피고":
+            if re.search(r"(?:원고|상대방|신청인|채권자|고소인)\b[^\n.]{0,30}(?:제출|주장|인용|원용|작성|서증|호증)", sentence):
+                continue
+        else:
+            if re.search(r"(?:상대방)\b[^\n.]{0,30}(?:제출|주장|인용|원용|작성|서증|호증)", sentence):
+                continue
+
+        # 일반 탄핵 키워드 (신빙성 배척, 진정성립 다툼, 입증 부족 등) 배제
+        if re.search(r"신빙성(?:이|은)?\s*(?:없|의심|떨어|배척)|진정성립(?:이|은)?\s*(?:인정될\s*수\s*없|부인|다투)|입증하기에?\s*부족", sentence):
             continue
 
         # 본안 서면 자체의 제출/접수/법원 표기 단락(전자서명 생략 등) 제외
