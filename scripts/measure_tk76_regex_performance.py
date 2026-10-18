@@ -32,6 +32,7 @@ from packages.claim_engine.evidence_consistency import (
     _EVI_FORM_BLANK_RE,
     _EVI_FORM_UNIDENTIFIABLE_RE,
     _EVI_FORM_SEPARATE_MEDIA_RE,
+    _EVI_FORM_NON_DEFECT_CONTEXT_RE,
     _EVI_FORM_OPPONENT_CHALLENGE_RE,
 )
 
@@ -131,6 +132,7 @@ def main():
     measure_regex("_EVI_FORM_BLANK_RE", _EVI_FORM_BLANK_RE, sample_text_evi_form)
     measure_regex("_EVI_FORM_UNIDENTIFIABLE_RE", _EVI_FORM_UNIDENTIFIABLE_RE, sample_text_evi_form)
     measure_regex("_EVI_FORM_SEPARATE_MEDIA_RE", _EVI_FORM_SEPARATE_MEDIA_RE, sample_text_evi_form)
+    measure_regex("_EVI_FORM_NON_DEFECT_CONTEXT_RE", _EVI_FORM_NON_DEFECT_CONTEXT_RE, sample_text_evi_form)
     measure_regex("_EVI_FORM_OPPONENT_CHALLENGE_RE", _EVI_FORM_OPPONENT_CHALLENGE_RE, sample_text_evi_form)
     print("모든 정규식 성능 기준(비 < 8.0, 4배 < 1.0s) 충족 확인 완료.")
 
