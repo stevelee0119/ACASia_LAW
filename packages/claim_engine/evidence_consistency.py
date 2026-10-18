@@ -835,7 +835,6 @@ _COMPLETE_DECLARATION_RE = re.compile(
     r"|추가\s*(?:증거|자료|서증|호증)(?:를|은|가)?\s*(?:제출(?:하지\s*않|한\s*사실은\s*없|이\s*없)|없습니다)"
     r"|추가\s*(?:증거|제출|자료)?\s*목록은\s*없"
     r"|위\s*목록이\s*[^.\n]{0,60}(?:증거|자료)의\s*전부"
-    r"|제출\s*증거는\s*모두\s*\d+\s*개"
 )
 _COUNT_DECLARATION_RE = re.compile(
     r"(?:증거목록|입증방법|제출\s*증거|제출목록)[^.\n]{0,30}(?:총|모두)\s*(?P<count>\d+)\s*개"
@@ -1046,7 +1045,7 @@ def check_evidence_numbering_mismatches(
                                 EvidenceGrade.B,
                                 Severity.MEDIUM,
                                 f"연속 제출 선언 내 중간 호증이 목록에서 누락되었다: {m_lbl}",
-                                f"연속 번호 제출을 선언하였으나 목록에서 {m_lbl}이 누락되었다.",
+                                f"연속 번호 제출을 선언하였으나 목록에서 {m_lbl}이 빠져 있다.",
                                 kw_excerpt or m_lbl,
                                 features={
                                     "rule_id": "EVI.CONTINUOUS_RANGE_GAP",
