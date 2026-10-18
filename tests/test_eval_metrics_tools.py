@@ -126,3 +126,30 @@ def test_train_phrase_overlap_flags_only_long_multiword_hits(tmp_path, monkeypat
     assert tp.main(["--base", "B", "--corpus-text", str(tmp_path)]) == 1
     monkeypatch.setattr(tp, "added_lines", lambda base, head: [("packages/x.py", 'B = re.compile(r"서명\\s*누락")')])
     assert tp.main(["--base", "B", "--corpus-text", str(tmp_path)]) == 0
+
+
+def test_eval_sets_phrase_check_flags_rare_ground_truth_phrases(tmp_path, monkeypatch):
+    tp = _load("check_train_phrase_overlap")
+    monkeypatch.setattr(tp, "load_eval_corpus", lambda root: {
+        "s1#0": "가나다라는지워진빈화면사본이다", "s1#1": "증거목록전부", "s2#2": "증거목록전부", "s3#3": "증거목록전부", "s4#4": "증거목록전부"})
+    monkeypatch.setattr(tp, "load_approved", lambda root: set())
+    monkeypatch.setattr(tp, "added_lines", lambda base, head: [("packages/x.py", 'A = re.compile(r"지워진\\s*빈\\s*화면\\s*사본")')])
+    assert tp.main(["--base", "B", "--eval-sets"]) == 1
+    # 정답지 여러 항목에 두루 나오는 일반 표현은 의심이 아니다
+    monkeypatch.setattr(tp, "added_lines", lambda base, head: [("packages/x.py", 'B = re.compile(r"증거\\s*목록\\s*전부")')])
+    assert tp.main(["--base", "B", "--eval-sets"]) == 0
+
+
+def test_eval_sets_phrase_check_honours_evaluator_allowlist(tmp_path, monkeypatch):
+    tp = _load("check_train_phrase_overlap")
+    monkeypatch.setattr(tp, "load_eval_corpus", lambda root: {"s1#0": "가나다라는지워진빈화면사본이다"})
+    monkeypatch.setattr(tp, "load_approved", lambda root: {"지워진빈화면사본"})
+    monkeypatch.setattr(tp, "added_lines", lambda base, head: [("packages/x.py", 'A = re.compile(r"지워진\\s*빈\\s*화면\\s*사본")')])
+    assert tp.main(["--base", "B", "--eval-sets"]) == 0
+
+
+def test_eval_sets_corpus_reads_repository_ground_truth():
+    tp = _load("check_train_phrase_overlap")
+    corpus = tp.load_eval_corpus(Path(__file__).resolve().parents[1])
+    assert len(corpus) > 100 and all(" " not in text for text in corpus.values())
+
