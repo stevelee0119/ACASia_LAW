@@ -50,6 +50,13 @@ def measure_regex(name: str, pattern, base_text: str):
     print("  -> 판정: PASS\n")
 
 
+from packages.claim_engine.evidence_consistency import (
+    _COMPLETE_DECLARATION_RE,
+    _COUNT_DECLARATION_RE,
+    _CONTINUOUS_KEYWORD_RE,
+)
+
+
 def main():
     sample_text_weekday = (
         "업무 일정에 따라 2024. 5. 1. 목요일에 관련 서류를 접수하였습니다.\n"
@@ -80,6 +87,13 @@ def main():
         "물가 및 거래 동향에 따르면 납품지수 94.73 및 정확도 99.8%를 기록하였습니다.\n"
     ) * 10
 
+    sample_text_evi_num = (
+        "원고는 피고의 불법행위에 대하여 다음과 같이 입증합니다.\n"
+        "입증방법: 총 5개 서증을 제출합니다. 제출 증거는 모두 5개입니다.\n"
+        "위 목록이 제출한 증거의 전부이며 추가 제출 목록은 없습니다.\n"
+        "피고는 을 제1호증부터 을 제4호증까지 빠짐없이 연속 제출을 주장합니다.\n"
+    ) * 10
+
     print("=== TK-76 정규식 성능 측정 (공통 점검표 2항) ===")
     measure_regex("DATE_WEEKDAY_RE", DATE_WEEKDAY_RE, sample_text_weekday)
     measure_regex("HEADING_LINE_RE", HEADING_LINE_RE, sample_text_heading)
@@ -88,6 +102,9 @@ def main():
     measure_regex("_JOSA_PREDICATE_RE", _JOSA_PREDICATE_RE, sample_text_incons)
     measure_regex("REPORT_CITATION_RE", REPORT_CITATION_RE, sample_text_src_unv)
     measure_regex("INDICATOR_STAT_RE", INDICATOR_STAT_RE, sample_text_src_unv)
+    measure_regex("_COMPLETE_DECLARATION_RE", _COMPLETE_DECLARATION_RE, sample_text_evi_num)
+    measure_regex("_COUNT_DECLARATION_RE", _COUNT_DECLARATION_RE, sample_text_evi_num)
+    measure_regex("_CONTINUOUS_KEYWORD_RE", _CONTINUOUS_KEYWORD_RE, sample_text_evi_num)
     print("모든 정규식 성능 기준(비 < 8.0, 4배 < 1.0s) 충족 확인 완료.")
 
 
