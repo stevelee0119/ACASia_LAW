@@ -410,5 +410,55 @@
         "credit": 0
       }
     }
+  },
+  "online_v2": {
+    "decided_date_kst": "2026-10-17",
+    "user_decision": "평가 측 제안 2번(9절 목표 2판 기준 재설정) 승인",
+    "measurement": "online(AI 3종 교차검증·law.go.kr·운영 render.yaml 조회 설정), 최소안 2지점 × 2회, evaluator_rerun",
+    "points": {
+      "operating": "b68cfee",
+      "candidate": "aefd55e"
+    },
+    "benchmark_v2": {
+      "fingerprint": "c078b250e6e61e9f",
+      "baseline_runs_operating": {
+        "weighted_recall": [
+          0.233,
+          0.238
+        ],
+        "a_grade_fp": [
+          0,
+          0
+        ]
+      },
+      "weighted_recall_goal_min": 0.28,
+      "a_grade_fp_goal_max": 0,
+      "repeat_variation_first": 0.008
+    },
+    "ragbench": {
+      "fingerprint": "5a2e489099b8a751",
+      "positives": 48,
+      "controls": 40,
+      "baseline_runs_operating": {
+        "positives_passed": [
+          42,
+          40
+        ],
+        "controls_failed": [
+          0,
+          0
+        ]
+      },
+      "positive_rate_goal_min": 0.9,
+      "controls_failed_goal_max": 0,
+      "claim_count_cap": 30,
+      "claim_count_cap_decision": "유지(사용자 결정 10-17)"
+    },
+    "release_reference": "후보 평균이 운영 평균보다 반복 변동폭보다 크게 낮으면 불가; A등급·대조 오탐은 1건이라도 불가",
+    "frequency": "offline every release; online only for releases changing AI/DB/RAG/extraction engines",
+    "reassessment": "earlier of 2 online release measurements or TK-76 cycle 1 completion",
+    "implementation_acceptance_criterion": false,
+    "create_tickets_from_benchmark_results": false,
+    "details_exported": false
   }
 }

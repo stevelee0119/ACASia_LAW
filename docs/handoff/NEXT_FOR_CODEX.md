@@ -1,61 +1,36 @@
-# Codex 구현 전달문 — 2026-10-17 잔여 티켓 전용 (2)
+# Codex 구현 전달문 — 2026-10-17 #128 후속 (4)
 
 이 문서 하나가 Codex 구현 세션에 대한 현행 지시다. 이전 전달문 전체를 대체한다. 작성: 평가 에이전트(Claude Code).
 
 ## 1. 체제
-- 새 구현은 Antigravity, 평가는 Claude Code 평가 세션이 맡는다. **Codex는 열린 TK-44·49·73만 마무리한다.** TK-45는 known_open(사용자 결정 10-17), TK-55는 #106 수용으로 이번 회차가 끝났다. 새 티켓·새 기능은 배정하지 않는다.
+- 새 구현은 Antigravity, 평가는 Claude Code 평가 세션이 맡는다. 전환 시점의 잔여 티켓(TK-44·45·49·55·73)은 (3)으로 마무리됐다(아래 4절).
+- 사용자 결정(10-17): **#128(작업별 모델 배치·비용 집계)을 이번 릴리스에 포함한다.** #128은 Steve에 병합됐다(`933933a`). 후속 보완(TK-79)은 작성자인 이 세션이 맡는다.
+- #128 본문의 '별도 평가 세션'은 Claude Code 평가 세션을 뜻한다(사용자 확인). 평가 측 판정은 [PR 코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/128#issuecomment-6241878062)에 있다. 병합 커밋 메시지의 '평가 측 기술 수용'은 이 판정과 다르다. 앞으로 커밋·PR에 평가 측 수용을 적을 때는 평가 측 코멘트 링크만 인용한다.
 - 봉인 세트·고정 비공개 벤치마크·개발 말뭉치 출제는 저장소를 연결하지 않은 Codex **격리 세션**이 맡는다. 이 구현 세션은 출제·채점에 쓰지 않는다.
-- **이번 릴리스 범위(사용자 결정 10-17):** 지금 열린 #116(TK-44·49)과 TK-73(#117 설계 → 구현 PR)을 이번 릴리스에 넣는다. 각 PR이 판정 수용을 받아 Steve에 병합된 뒤 릴리스한다.
 
-## 2. 현재 판정과 다음 일
+## 2. 할 일 — TK-79 (#128 후속, 릴리스 전 필수)
+새 브랜치에서 PR 하나로 낸다(base `Steve_ACASiaLAW`). CI가 끝난 뒤 본문에 '검토 요청'과 head SHA를 적는다.
 
-| 티켓 | PR·SHA | 판정 | 다음 일 |
+| # | 요구 | 근거 |
+|---|---|---|
+| ① | ~~`cache_read`를 0.2로~~ **정정(평가 측 오류): 공식 가격 페이지는 Sonnet 5.5 캐시 적중 $0.10/MTok. `0.1`로 되돌린다** | [Anthropic 가격](https://platform.claude.com/docs/en/about-claude/pricing) — "a cache hit costs 5% of the standard input price ($0.20 … Opus 5.5, $0.10 USD on Claude Sonnet 5.5)". #132 [판정](https://github.com/stevelee0119/ACASia_LAW/pull/132#issuecomment-6242393439) |
+| ② | `gpt-6.1-sol`·`gpt-6-luna`의 `cache_read`, `gemini-3.8-flash`의 단가와 프로모션 종료일(`after_2026-12-31`)에 공시 출처 URL과 확인일을 `docs/handoff/efficient_legal_review.md`에 적는다. 확인하지 못한 값은 '미확인'으로 적는다 | OpenAI는 캐시 적중을 자동으로 보고한다. 단가가 틀리면 캐싱 설정과 무관하게 REPORTED 비용과 예산 판정이 틀어진다 |
+| ③ | **기본 OFF 기술 릴리스로 바꾼다**: 환경변수를 설정하지 않으면 0.13.0과 같은 모델·호출 구성이어야 한다(교차검증 `all`, 효율 라우팅 꺼짐, `providers.json` 기본 모델 0.13.0 값). Sonnet·Sol·Luna·Opus 배치는 `LV_LLM_EFFICIENT_ROUTING=1`일 때만 적용한다 | #128은 운영 기본 동작을 바꾸면서 품질·실비용을 재지 않았다(PR 본문 '미측정'). AI 작성 판별이 저비용 단일 의견 + 10% 표본이 된다. TK-75(기본 OFF 뒤 OFF/ON 온라인 대조)와 같은 방식을 쓴다 |
+| ④ | 라우팅 스냅숏이 없는 기존 대기 작업은 `EXECUTION_SETTINGS_CHANGED`로 실패시키지 않는다. ③의 OFF 기본값으로 실행한다 | ③을 하면 기존 작업과 OFF 기본값이 같은 구성이 되므로, 배포 시점 대기열을 실패시킬 이유가 없다 |
+| ⑤ | 시험: OFF 기본값이 0.13.0 호출 구성(공급자·모델·단계 수)과 같음을 보이는 시험, ①의 단가 시험, ④의 기존 작업 시험을 추가한다. 기존 시험은 지우거나 약화하지 않는다 | 점검표 |
+
+- 제품 경로 밖(평가 도구·시험 자료·워크플로)은 바꾸지 않는다.
+- 하지 말 것: 평가 측 수용을 스스로 적기, 운영(Render)에서 벤치마크 실행, 키 값 출력.
+
+## 3. 평가 측이 할 일과 릴리스 조건
+- 평가 측: ①~⑤ 확인(CI 인용과 평가 측 재실행 구분), 릴리스 후보 SHA에서 `verify_all` 전체 모드 1회.
+- 배포 뒤 사용자: OFF로 정상 동작을 점검한 뒤, 같은 문서로 OFF/ON 쌍을 비교한다. 비교 항목은 법리 판단 일치, AI 작성 판별 재현율, 외부 호출 수와 실비용, `max_tokens` 잘림률이다. Sonnet 5.5는 adaptive thinking이 기본으로 켜져 있어(effort high) 4000~4096 상한에서 잘림 위험이 있다. ON 전환은 그 결과를 보고 사용자가 정한다.
+
+## 4. 이전 잔여 티켓 결과 (3에서 이어짐)
+
+| 티켓 | PR·SHA | 결과 | 상태 |
 |---|---|---|---|
-| TK-44·49 | #116 `ad848b1` | **조건부 승인** | 보완 1개 뒤 수용(아래 2-1). |
-| TK-73 | #117 `a9f90c2` | **보완 요청(설계 승인 보류)** | 보호 조건의 숫자·식별자 규칙 범위를 좁혀 다시 보고한다(아래 2-2). |
-| TK-44·49 설계 | #108 `86b7fa5` | 조건부 승인 | #116 판정 뒤 평가 측이 정리한다. 할 일 없음. |
-| TK-73 검토 | #92 `401d098` | 보류 | #117로 이어졌다. 할 일 없음. |
-
-### 2-1. #116 (TK-44·49 선택된 Form ActualText 보안 검사) — 보완 1개
-판정: [조건부 승인](https://github.com/stevelee0119/verify_ACAS_LAW/pull/116#issuecomment-6232639223).
-- 평가 측 재실행(오프라인): 고정 81.7/79.2·오탐 0, 은퇴 4세트 불변, 인젝션 4세트 방어. CI 필수 4개 성공(관련 시험 포함, 결과 인용).
-- 보완: `_named_available`이 XObject가 하나라도 있는 페이지(이미지만 있는 페이지 포함)를 해석 경로로 보낸다. 평가 측 합성 PDF(글자 30줄 + 이미지 1개/쪽, 새 프로세스 3회 최솟값)로 5쪽 0.511→0.527초, **20쪽 1.628→2.042초(+25%)**.
-  - `XObject` 값 중 `/Subtype /Form`이 하나 이상일 때만 `True`를 반환한다. 사용하지 않는 XObject 내용은 읽지 않고 사전의 Subtype만 공유 예산 안에서 확인한다.
-  - 시험: 이미지 전용 페이지는 해석 경로에 들어가지 않는 대조 1개, Form 페이지 동작 유지 1개, 이미지 전용 PDF 처리 시간 기준 대비.
-- 잔여 known_open 제안은 받아들인다(수용 시 평가 측이 등록부에 기록). `verify_all` 전체는 릴리스 후보 SHA 1회로 갈음한다.
-- 같은 브랜치에 보완 커밋을 올리고 '검토 요청 + SHA'를 남긴다. '372 passed in 11.38s'가 OCR 없는 환경이었는지도 적는다.
-
-### 2-2. #117 (TK-73 보호 조건 설계) — 보완
-판정: [보완 요청](https://github.com/stevelee0119/verify_ACAS_LAW/pull/117#issuecomment-6232562505).
-- 평가 측이 PR의 `minimal_numbering`을 임시로 끼워 은퇴 4세트를 쟀다(제품 미변경):
-
-| 은퇴 세트 | 기준 | 보호 조건 | 최소 수정(보호 없음) |
-|---|---|---|---|
-| `sealed_20261008` / `08b` / `09` | 19.0 / 29.6 / 36.2, 오탐 0 | 같음 | 같음 |
-| `sealed_20261010` | 15.2, A등급 오탐 3 | **20.2, A 2** | 30.2, A 0 |
-
-- 남은 2건(대조군 SD-01의 `기호 설명표`·`열람 안내표`)은 같은 증거명이 쉼표형·콜론형으로 한 번씩 쓰였다. 그런데 구분자 뒤 긴 설명에 '본번호 1은', '제2호증' 같은 숫자가 있어서 숫자 규칙이 제외를 막는다.
-- 할 일:
-  1. 숫자·식별자 규칙은 증거명에 붙은 **식별 접미만** 본다(예: 구분자 바로 뒤 첫 토큰이나 짧은 고정 창). 긴 서술형 설명 안의 숫자는 보지 않는다. 기준은 토큰 위치·길이 같은 문법으로 적고, 낱말 사전은 쓰지 않는다.
-  2. 같은 자료로 다시 보고한다.
-     - 공개 330: 진짜 중복 손실 0 유지와 제거되는 거짓 후보 수.
-     - 은퇴 c세트: A등급 오탐 3→0. 남는 것이 있으면 이유.
-     - 나머지 은퇴 3세트: 점수·오탐 불변.
-     - 은퇴 세트는 공개 자료(`tests/fixtures/retired_sealed/`)이므로 구현 측도 잴 수 있다.
-  3. 새 범위 규칙의 양성·대조 각 3건 이상(설명에 숫자가 있는 같은 증거명 쌍 / 접미 식별자가 다른 진짜 중복 쌍), 그리고 1배·4배 시간 측정.
-  4. 다른 보호(줄에서 나온 행 정확히 2개, 쉼표 1·콜론 1, 같은 접두, 날짜가 다르면 A 유지, native·세 번째 출현 보존)는 그대로 둔다.
-- 같은 브랜치에 보완 커밋을 올리고 '검토 요청 + SHA'를 남긴다. 설계가 승인되면 `_numbering`에만 구현하는 PR을 새로 낸다. 그 PR에는 제출 점검표 1~4항을 붙인다.
-
-## 3. 공통 규칙
-- [AGENTS.md](../../AGENTS.md)·[AGENT_ROLES](../AGENT_ROLES.md)의 구현 규칙과 [공통 제출 점검표](NEXT_FOR_ANTIGRAVITY.md#5-공통-제출-점검표)를 따른다. 실제 진입점 시험은 결과 개수·내용까지 확인한다.
-- Steve 대상 PR의 필수 검사 4개: 점수 하락 게이트, 테스트, Docker OCR readiness, CodeQL 새 경고 게이트.
-- **충돌 조정:** Antigravity가 TK-76으로 `packages/claim_engine/evidence_consistency.py`를 고친다(#118 진술서 제목 인식·상투구 필터). TK-73 구현이 같은 파일을 바꾸면 푸시 전에 최신 `origin/Steve_ACASiaLAW`를 병합 커밋으로 받아 충돌을 해소한다. `_exhibit_lines`·`_numbering`은 TK-73 영역이다.
-- 기존 브랜치에 푸시하기 전 원격을 먼저 받는다. 강제 푸시·리베이스·빈 커밋은 하지 않는다.
-- 비공개 세트·봉인·고정 비공개 벤치·개발 말뭉치는 요청·열람하지 않는다.
-- 제출 SHA와 PR 최신 HEAD가 다르면 판정·CI 인용에 대상 SHA·run ID를 함께 적는다. 다른 SHA의 성공으로 과거 실패를 덮지 않는다.
-
-## 4. 티켓별 유지 조건
-- **TK-44·49**([TK-44](TK-44_line_join_word_lists_and_ledger_regression.md)·[TK-49](TK-49_ledger_expectations_rewritten_and_join_default.md)): #90·#95 제한 수용 범위(inline provider, named PAGE ActualText·capture 상한)를 유지한다. indirect는 inspection-only UNKNOWN, partial·unsupported·lifecycle 불완전 상태를 유지한다. 낱말 사전·항상 JOIN/SPACE·기대값 교체는 금지한다. 원래 61·7ad·TC06 .357, PDF 47·19·1, DOCX 40·19·1, 폭 9, 고정 81.7/79.2/0을 보호한다. 전체 파서 처리시간 보장은 주장하지 않는다. #116 뒤 잔여(structure-tree·비태그 UNKNOWN primary·0.75 floor·대체 consumer)는 [종결 계획](requests/TK44_TK49_residual_closure_plan.md)대로 known_open 제안이다. 결정은 #116 판정에서 한다.
-- **TK-73**([티켓](TK-73_exhibit_duplicate_full_tail_as_title.md)): 원래 A등급·finding·GLOBAL·UNKNOWN 보호를 유지한다. 은퇴 앞 3세트 점수를 유지하고, 마지막 세트는 A등급 오탐 0·재현율 ≥.302를 목표로 한다. injection·936·고정 대조군과 party·number·branch·parent·interval·date·amount·list·time 보호를 유지한다. 날짜 쪽 초기 확대는 보류한다.
-- **TK-55**: #91·#97·#106 수용 범위 유지. 외부·legacy unknown-role, opaque·unsupported·capture-budget, 기존 저장 16진수 ID는 known_open 잔여다. 이번 회차에서 작업하지 않는다.
-- **TK-45**: known_open. 작업하지 않는다. #93·#96의 미수용 제품 코드를 다른 PR로 옮기지 않는다.
+| TK-44·49 | #116 `3f9aef2` | [수용](https://github.com/stevelee0119/verify_ACAS_LAW/pull/116#issuecomment-6233278233), Steve 병합 `e331234` | known_open(structure-tree 연결·비태그 UNKNOWN primary·0.75 floor·대체 consumer) |
+| TK-73 | #122 `9a56188` | [수용](https://github.com/stevelee0119/verify_ACAS_LAW/pull/122#issuecomment-6233372558), Steve 병합 `46acf51` | known_open(한쪽 행에만 날짜가 있는 1건) |
+| TK-55 | #106 `2936764` | 수용·평가 측 통합 | known_open(기존 저장 ID 등) |
+| TK-45 | #96 | 불승인, 사용자 결정으로 중지 | known_open |

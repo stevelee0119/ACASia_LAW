@@ -1836,3 +1836,27 @@ f64 기존 시간실패 .625568/.748032초는 원인미확정으로 보존한다
 | #116 `ad848b1` | **조건부 승인** | CI 인용(필수 4개 성공, 관련 시험 포함). 평가 측 재실행: 고정·은퇴 4세트 불변, 인젝션 방어. 보완 1개: `_named_available`이 이미지만 있는 페이지도 해석 경로로 보내 합성 20쪽 1.628→2.042초(+25%). Form XObject로 한정. 잔여 known_open 제안 수용. `verify_all` 전체는 릴리스 후보 SHA 1회로 갈음. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/116#issuecomment-6232639223) |
 | #117 `a9f90c2` | **보완 요청(설계 승인 보류)** | CI 인용(push 성공, PR attempt2 성공). 평가 측 모의(PR의 `minimal_numbering` 임시 적용): 은퇴 c 15.2/A3 → 보호 조건 20.2/A2, 최소 수정 30.2/A0. 숫자 규칙이 긴 설명 속 숫자에 걸린다. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/117#issuecomment-6232562505) |
 
+
+## 2026-10-17 #114·#116·#117·#120·#121·#122 판정 (릴리스 범위 마무리)
+
+| PR·SHA | 판정 | 근거(재실행/인용 구분) |
+|---|---|---|
+| #114 `78fc3df` (재제출) | **수용**, 병합 `c3595a7` | CI 인용(필수 4개). 평가 측 재실행(Steve `d2080a1`+PR): 은퇴 4세트 불변(`08b` 회귀 해소), train .115·DATE 16/40(요일병기 탐지 +8 A등급, 항목명 토큰 미일치로 채점 0). 보고 28/40 재현 안 됨 → 정정 요청. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/114#issuecomment-6232748040) |
+| #114+#118 합산 | 간섭 없음 | 평가 측 재실행(Steve `c3595a7`): 은퇴 `08` 19.0→21.2(#118), 나머지 불변, train .115→.125, 오탐 0. |
+| #116 `3f9aef2` (보완) | **수용**, 병합 `e331234` | CI 인용(필수 4개, 관련 시험 387개). diff: `/Subtype /Form` 스트림이 있을 때만 해석 경로. 평가 측 재실행: 은퇴 불변, 합성 이미지 20쪽 +25%→+5.6%. 잔여 known_open. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/116#issuecomment-6233278233) |
+| #117 `59b62fc` (설계 보완) | **설계 승인** | CI 인용. 평가 측 모의: 은퇴 c 15.2/A3 → 25.2/A1, 나머지 불변. 남은 1건(한쪽 날짜) known_open. 구현은 새 PR로. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/117#issuecomment-6233150342) |
+| #121 `01593e3` (TK-77) | **수용**, 병합 `d62bb57` | CI 인용. 시험 파일 3개만(제품 diff 0), GC 끄기+3회 최솟값, 상한·입력·단언 불변. 평가 측 재실행: 바뀐 시간 시험 4개 통과. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/121#issuecomment-6233194792) |
+| #122 `9a56188` (TK-73 제품) | **수용**, 병합 `46acf51` | CI 인용: dev 81.7/holdout 79.2/FP0/A0, 은퇴 c 15.2/A3→25.2/A1·나머지 불변. 평가 측 재실행(Steve `e331234`=#116 포함 + PR): 은퇴 동일, 관련 시험 300 passed. 변경은 `_numbering` 비교 키 결정만. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/122#issuecomment-6233372558) |
+| #120 `5aef198` | 보완 요청 | 평가 측 재실행: 회귀 없음, train INCONS 8/40 그대로(소제목이 붙어 같은 줄 항목명 토큰 불일치, 수×금액 산식 finding 미발생). [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/120#issuecomment-6233280415) |
+| #120 `c49df80` | **수용**(병합 전 푸시 1회) | CI 인용(PR 실행 필수 성공, dev/holdout 81.7/79.2/FP0/A0). 평가 측 재실행(Steve `46acf51`+PR): train .125→**.165**, INCONS 8→**24/40**, 오탐 0, 은퇴 `08b` 29.6→**31.5**, 나머지 불변. 보고 수치와 일치. 조건: 최신 Steve 병합 푸시(push 게이트의 1차 시험 6개 삭제는 평가 측 승인), 날짜 앞붙음 대조 시험 1개. [판정](https://github.com/stevelee0119/verify_ACAS_LAW/pull/120#issuecomment-6233735661) |
+
+- 설계·검토 PR #117·#92·#108은 제품 PR 병합 뒤 평가 측이 닫았다.
+- 평가 측 도구 정정: CI '은퇴 세트 비교'가 `pull_request.base.sha`를 기준으로 써서, PR이 갱신된 뒤 병합된 다른 PR(#122)의 효과가 #120 몫으로 표시됐다. 병합 시험 커밋의 첫 부모(현재 기준 브랜치 끝)를 기준으로 쓰도록 고쳤다.
+- 필수 검사: 사용자가 `main`·`Steve_ACASiaLAW` 규칙 세트에 '은퇴 세트 비교'를 더했다(읽기 API 확인).
+- `verify_all` 전체 모드는 릴리스 후보 SHA에서 1회 돈다(#116·#118·#120·#122 탐지·파서 변경 포함).
+
+## 2026-10-17 #128 판정 (작업별 모델 배치·비용 집계)
+- 대상: #128 head `c35bb2a`(Codex), base Steve `561d3fd`. 근거: CI 결과 인용(테스트·점수 하락 게이트·은퇴 세트 비교·CodeQL 성공) + 평가 측 재실행(병합 작업트리, 새 시험 26 passed·관련 시험 통과).
+- 판정: **보류·보완 요청**. 오프라인 점수 불변(LLM 미호출), 품질·실비용 측정 못 함. 수정: ~~Sonnet 5.5 캐시 읽기 0.2~~(평가 측 오류 — 공식 $0.10, 원래 값 0.1이 맞음), 단가 출처, 기본 OFF 기술 릴리스, 대기 작업 실패 제거(TK-79).
+- 사용자 결정: 이번 릴리스 포함. 사용자 병합 `933933a`(병합 메시지의 수용 문구는 이 판정과 다름). 릴리스 조건: TK-79 후속 PR 수용, 후보 SHA `verify_all` 전체 모드, 배포 뒤 OFF/ON 온라인 대조.
+- #132(TK-79 후속, Codex 제목 TK-78) `2bf0c88` **조건부 수용**([판정](https://github.com/stevelee0119/ACASia_LAW/pull/132#issuecomment-6242393439)): CI 인용 전부 성공 + 평가 측 재실행(관련 시험 통과, 미설정 기본값 all·OFF·0.13.0 모델 확인). 조건: Sonnet `cache_read` 0.1로 되돌림(평가 측 지시 오류 정정, 같은 PR 새 head CI 인용으로 수용).

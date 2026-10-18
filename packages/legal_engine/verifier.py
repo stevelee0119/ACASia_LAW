@@ -1098,8 +1098,24 @@ class LegalVerifier:
                     "retryable": reason in ("RATE_LIMITED", "SOURCE_TIMEOUT")}
         explanation = ("공식 목록의 법령 식별자가 없거나 모호하여 정확한 법령을 선택하지 못했다. "
                        if reason == "IDENTITY_AMBIGUOUS" else "공식 Source 조회를 완료하지 못했다. ")
+        # 학술/간행물 인용은 ACADEMIC_CITATION_ERROR, 판례는 CASE_NOT_FOUND, 그 외는 LAW_CITATION_ERROR
+        finding_type = (
+            FindingType.CASE_NOT_FOUND if citation.type == CitationType.CASE
+            else FindingType.ACADEMIC_CITATION_ERROR if citation.type == CitationType.ACADEMIC
+            else FindingType.LAW_CITATION_ERROR
+        )
+        evidence_list = []
+        if citation.context or citation.raw_text:
+            evidence_list.append(
+                Evidence.create(
+                    description="원문 인용 문맥",
+                    grade=EvidenceGrade.C,
+                    excerpt=citation.context or citation.raw_text,
+                    source_record_ids=[record.source_record_id] if record else []
+                )
+            )
         return Finding.create(
-            type=FindingType.CASE_NOT_FOUND if citation.type == CitationType.CASE else FindingType.LAW_CITATION_ERROR,
+            type=finding_type,
             status=VerificationStatus.UNVERIFIED,
             severity=Severity.INFO,
             evidence_grade=EvidenceGrade.U,
@@ -1116,5 +1132,6 @@ class LegalVerifier:
             span=citation.span,
             engine=ENGINE_NAME,
             source_record_ids=[record.source_record_id] if record else [],
-            tags=["UNVERIFIED"],
+            evidence=evidence_list,
+            tags=["UNVERIFIED", "ACADEMIC" if citation.type == CitationType.ACADEMIC else "LEGAL"],
         )

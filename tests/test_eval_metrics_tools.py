@@ -106,3 +106,23 @@ def test_retired_compare_failed_head_and_new_set():
     head = {"s1": None, "s2": _retired(10.0, 0, 0), "s9": _retired(1.0, 5, 5)}
     assert rc.compare(base, head) == ["s1: 후보 채점 실패"]
 
+
+
+def test_train_phrase_overlap_expands_regex_alternatives_into_word_windows():
+    tp = _load("check_train_phrase_overlap")
+    line = 'X_RE = re.compile(r"(?:완결\\s*(?:제출)?목록)\\s*[:：].*?외에는\\s*자료를\\s*제출하지\\s*않")  # 주석 낱말 무시'
+    found = {p.replace(" ", "") for p in tp.phrases(line)}
+    assert "외에는자료를제출하지" in found
+    assert "주석낱말무시" not in found
+
+
+def test_train_phrase_overlap_flags_only_long_multiword_hits(tmp_path, monkeypatch):
+    tp = _load("check_train_phrase_overlap")
+    (tmp_path / "a.txt").write_text("본문의 입증자료는 갑 제1호증 계약서이다. 서명 누락", encoding="utf-8")
+    monkeypatch.setattr(tp, "added_lines", lambda base, head: [
+        ("packages/x.py", 'A = re.compile(r"본문의\\s*입증자료는")'),
+        ("packages/x.py", 'B = re.compile(r"서명\\s*누락")'),
+    ])
+    assert tp.main(["--base", "B", "--corpus-text", str(tmp_path)]) == 1
+    monkeypatch.setattr(tp, "added_lines", lambda base, head: [("packages/x.py", 'B = re.compile(r"서명\\s*누락")')])
+    assert tp.main(["--base", "B", "--corpus-text", str(tmp_path)]) == 0

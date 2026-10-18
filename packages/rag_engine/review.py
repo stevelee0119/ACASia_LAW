@@ -662,7 +662,10 @@ def review_document(result, library, router, context, pii):
         from packages.llm_router.excerpt_source import bind_claim_excerpts
         claim_req = bind_claim_excerpts(claim_req, excerpt_pieces)
 
-        c_outcome = asyncio.run(router.run(
+        claim_runner = router.run
+        if getattr(getattr(router, "settings", None), "llm_efficient_routing", False):
+            claim_runner = getattr(router, "run_any", router.run)
+        c_outcome = asyncio.run(claim_runner(
             LLMRole.PRIMARY_REASONER, claim_req,
             policy=context.external_ai_policy, expected_task="참고자료 검토"
         ))

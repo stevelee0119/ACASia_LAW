@@ -17,7 +17,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN useradd -m -u 10001 appuser && mkdir -p /data && chown -R appuser:appuser /app /data
+# Render Secret File(/etc/secrets/...)을 읽기 위해 appuser를 GID 1000 그룹의 보조 구성원으로 등록한다 (TK-79)
+RUN (getent group 1000 || groupadd -g 1000 rendersecrets) \
+    && useradd -m -u 10001 -G 1000 appuser \
+    && mkdir -p /data && chown -R appuser:appuser /app /data
 USER appuser
 
 ENV LV_DATA_DIR=/data \
