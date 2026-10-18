@@ -252,48 +252,31 @@ def _exhibit_lines(doc: NormalizedDocument) -> List[Dict[str, Any]]:
         cand_refs = parse_exhibits(cand_text[:24]) if cand_text else []
         is_leading_exhibit = bool(cand_refs and cand_refs[0]["span"][0] == 0)
 
-        # 입증방법/증거목록 섹션 안에서는 줄 첫머리가 아니더라도 호증이 등장하면 목록 항목으로 수용 (단 문장 종결 서술문 제외)
-        if in_exhibit_section and not is_leading_exhibit:
-            stripped_clean = re.sub(r"\([^)]*\)", " ", stripped)
-            stripped_clean = DATE_RE.sub(" ", stripped_clean).strip()
-            if not re.search(r"[다습]\s*\.\s*$", stripped_clean) and not _EXHIBIT_REF_SENTENCE_RE.search(stripped):
-                mid_refs = parse_exhibits(stripped)
-                if mid_refs:
-                    cand_text = stripped[mid_refs[0]["span"][0]:].strip()
-                    is_leading_exhibit = True
-
         raw_items = split_items(cand_text) if is_leading_exhibit else []
         items = []
         for ref, rest in raw_items:
-            # 1. 서술형 참조 표현이나 마침표를 포함하는 문장 구조는 목록 정의에서 제외
-            if _EXHIBIT_REF_SENTENCE_RE.search(rest) or _EXHIBIT_REF_SENTENCE_RE.search(stripped):
-                continue
-            # 2. 호증 바로 뒤에 조사로 시작하여 본문 서술어가 이어지는 서술문은 제외 (CodeQL ReDoS 방지 한정 반복)
-            if re.match(r"^[이가은는을를에로의]\s*(?:[가-힣A-Za-z0-9_]{1,30}\s+){0,6}(?:설명|주장|확인|보여|나타|제출|인용|바와|살피|따라|원용)", rest):
-                continue
-            # 3. 괄호 안 내용('(…)')과 날짜(DATE_RE)를 먼저 제거한 뒤, 마침표로 끝나는 긴 서술문(40자 초과)인 경우 목록 정의에서 제외
-            # 자료명 내 '(1. 9.)'나 '제1. 2.항' 등 괄호/약식 마침표 및 짧은 부연 메모는 목록 행으로 정상 수용 (HO-05, 은퇴 08 및 10 보호)
-            rest_clean = re.sub(r"\([^)]*\)", " ", rest)
-            rest_clean = DATE_RE.sub(" ", rest_clean).strip()
-            if len(rest_clean) > 40 and re.search(r"[다음습]\s*\.\s*$", rest_clean):
-                continue
-            # 4. 서술어 어휘 보조 점검 (표준 법률 서술어에 한정)
-            if any(v in rest for v in ("하였다", "바와 같이", "살피건대", "주장한다", "설명하지만", "확인할 수", "보여 줍니다")):
-                continue
-
-            items.append((ref, rest))
+            # 입증방법 구역 안이면 제목에 '발췌'가 있어도 정식 목록으로 수용
+            if in_exhibit_section:
+                items.append((ref, rest))
+            else:
+                # 본문 서술 영역에서는 서술형 참조 표현이 있으면 목록 정의에서 제외
+                if _EXHIBIT_REF_SENTENCE_RE.search(rest) or _EXHIBIT_REF_SENTENCE_RE.search(stripped):
+                    continue
+                # 날짜가 있거나 번호형 목록 구조(예: '1. 갑 제5호증')이면 본문 영역이라도 수용
+                if DATE_RE.search(rest) or re.match(r"^\d+[\.\)]", stripped):
+                    items.append((ref, rest))
+                else:
+                    # 명백한 서술 문장이 이어지는 경우 본문 참조로 간주
+                    if len(rest) > 20 and any(v in rest for v in ("하였다", "바와 같이", "살피건대", "주장한다")):
+                        continue
+                    items.append((ref, rest))
 
         if not items:
-            # 이어지는 줄(서증명의 다음 줄) 수용: 목록 구역 내부이고 문장 종결/호증이 없는 순수 명사구에 한정 (최대 30자)
-            if (previous_was_item and in_exhibit_section and rows and stripped and len(stripped) <= 30
-                    and not re.search(r"[.!?]\s*$", stripped)
-                    and not DATE_RE.search(stripped)
-                    and not _NOT_CONTINUATION_RE.match(stripped)
-                    and not _COMPLETE_DECLARATION_RE.search(stripped)
-                    and not parse_exhibits(stripped)):
+            if (previous_was_item and rows and stripped and len(stripped) <= 40 and not DATE_RE.search(stripped)
+                    and not _NOT_CONTINUATION_RE.match(stripped) and not parse_exhibits(stripped)):
                 group = rows[-1].get("line_group")
                 for row in rows:
-                    if row.get("line_group") == group and not row.get("date") and len(row.get("name", "")) < 30:
+                    if row.get("line_group") == group and not row.get("date"):
                         row["name"] = (row["name"] + join_separator(row["name"], stripped) + stripped).strip()
                 continue
             previous_was_item = False
@@ -734,13 +717,27 @@ def check_evidence_numbering_mismatches(
     # 정식 증거목록 구역(in_section=True 또는 table) 존재 여부 확인
     has_formal_section = any(r.get("in_section") or not r.get("from_lines") for r in exhibits)
 
+    # EVI-NUM 전용 필터링: 긴 본문 서술 행(40자 초과 + 마침표)이나 조사 뒤 서술어가 이어지는 행은 목록 대조에서 제외
+    filtered_exhibits = []
+    for r in exhibits:
+        # 정식 구역/표가 존재할 때 본문 문맥(in_section=False)에서 유출된 행은 목록에서 제외
+        if has_formal_section and (not r.get("in_section") and r.get("from_lines")):
+            continue
+        name = (r.get("name") or "").strip()
+        purpose = (r.get("purpose") or "").strip()
+        full_desc = f"{name} {purpose}".strip()
+        clean_desc = re.sub(r"\([^)]*\)", " ", full_desc)
+        clean_desc = DATE_RE.sub(" ", clean_desc).strip()
+        if len(clean_desc) > 40 and re.search(r"[다음습]\s*\.\s*$", clean_desc):
+            continue
+        if re.match(r"^[이가은는을를에로의]\s*(?:[가-힣A-Za-z0-9_]{1,30}\s+){0,6}(?:설명|주장|확인|보여|나타|제출|인용|바와|살피|따라|원용)", name):
+            continue
+        filtered_exhibits.append(r)
+
     # 목록의 호증 정보 집합 구성
     list_keys = set()
     list_name_by_key = {}
-    for row in exhibits:
-        # 정식 구역/표가 존재할 때 본문 문맥(in_section=False)에서 유출된 행은 목록에서 제외
-        if has_formal_section and (not row.get("in_section") and row.get("from_lines")):
-            continue
+    for row in filtered_exhibits:
         party = row.get("party")
         num = row.get("number")
         if party and num is not None:

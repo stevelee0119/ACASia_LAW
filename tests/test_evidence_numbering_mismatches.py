@@ -310,5 +310,25 @@ def test_control_exhibit_name_with_parenthesized_dotted_date():
     assert len(findings) == 0, f"자료명에 '(1. 9.)' 표기가 있더라도 정상 목록 행으로 수용되어 결함이 오탐되지 않아야 함: {findings}"
 
 
+# --- 19. 양성 시험 8 ('수' 부호 및 '이 서면의 제출 증거 전부' 완결 선언 누락 검출) ---
+def test_positive_su_exhibit_missing_with_full_submission_declaration():
+    """'수 제N호증' 및 '이 서면의 제출 증거 전부' 선언형 목록에서 본문 인용 호증(수 제3호증) 누락 정상 검출."""
+    doc = _make_doc([
+        "신청인은 수 제3호증 지급명령신청서를 통하여 채권의 존재를 입증합니다.",
+        "입증방법",
+        "1. 수 제1호증 대여금계약서",
+        "2. 수 제2호증 송금내역서",
+        "이 서면의 제출 증거 전부입니다.",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    missing = [
+        f for f in findings
+        if f.confidence_features.get("defect_code") == "EVIDENCE_REFERENCE_MISSING"
+    ]
+    assert len(missing) == 1
+    assert "수 제3호증" in missing[0].title
+
+
+
 
 
