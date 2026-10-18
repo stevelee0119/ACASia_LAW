@@ -296,4 +296,19 @@ def test_positive_complete_list_with_dates_missing_exhibit():
     assert "갑 제4호증" in missing_findings[0].title
 
 
+# --- 18. 대조군 시험 10 (자료명 내 괄호 약식 마침표 표기 정상 수용) ---
+def test_control_exhibit_name_with_parenthesized_dotted_date():
+    """자료명에 '(1. 9.)'처럼 괄호 안 마침표 표기가 포함된 정상 목록 행 수용 검증 (HO-05 및 은퇴 08 보호)."""
+    doc = _make_doc([
+        "원고는 갑 제1호증 사건(1. 9.) 분석서에 기재된 내용으로 사실관계를 입증합니다.",
+        "입증방법",
+        "1. 갑 제1호증 사건(1. 9.) 분석서 2026. 1. 2.",
+        "2. 갑 제2호증 영수증(2. 15.) 2026. 2. 20.",
+        "위 목록이 제출한 증거의 전부입니다.",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    assert len(findings) == 0, f"자료명에 '(1. 9.)' 표기가 있더라도 정상 목록 행으로 수용되어 결함이 오탐되지 않아야 함: {findings}"
+
+
+
 

@@ -252,13 +252,11 @@ def _exhibit_lines(doc: NormalizedDocument) -> List[Dict[str, Any]]:
         cand_refs = parse_exhibits(cand_text[:24]) if cand_text else []
         is_leading_exhibit = bool(cand_refs and cand_refs[0]["span"][0] == 0)
 
-        # 입증방법/증거목록 섹션 안에서는 줄 첫머리가 아니더라도 호증이 등장하면 목록 항목으로 수용 (단 문장 종결 구조 제외)
+        # 입증방법/증거목록 섹션 안에서는 줄 첫머리가 아니더라도 호증이 등장하면 목록 항목으로 수용 (단 문장 종결 서술문 제외)
         if in_exhibit_section and not is_leading_exhibit:
-            stripped_no_date = stripped
-            date_end = DATE_RE.search(stripped)
-            if date_end and date_end.end() == len(stripped):
-                stripped_no_date = stripped[:date_end.start()].strip()
-            if not re.search(r"[.!?]\s*$", stripped_no_date) and not _EXHIBIT_REF_SENTENCE_RE.search(stripped):
+            stripped_clean = re.sub(r"\([^)]*\)", " ", stripped)
+            stripped_clean = DATE_RE.sub(" ", stripped_clean).strip()
+            if not re.search(r"[다습]\s*\.\s*$", stripped_clean) and not _EXHIBIT_REF_SENTENCE_RE.search(stripped):
                 mid_refs = parse_exhibits(stripped)
                 if mid_refs:
                     cand_text = stripped[mid_refs[0]["span"][0]:].strip()
@@ -270,18 +268,16 @@ def _exhibit_lines(doc: NormalizedDocument) -> List[Dict[str, Any]]:
             # 1. 서술형 참조 표현이나 마침표를 포함하는 문장 구조는 목록 정의에서 제외
             if _EXHIBIT_REF_SENTENCE_RE.search(rest) or _EXHIBIT_REF_SENTENCE_RE.search(stripped):
                 continue
-            # 2. 호증 바로 뒤에 조사가 결합된 형태('의', '에', '을', '를' 등)는 본문 서술이므로 목록에서 제외
-            if re.match(r"^[이가은는을를에로의와과도만]\b", rest) or re.match(r"^[이가은는을를에로의와과도만]\s+", rest):
+            # 2. 호증 바로 뒤에 조사로 시작하여 본문 서술어가 이어지는 서술문은 제외 (CodeQL ReDoS 방지 한정 반복)
+            if re.match(r"^[이가은는을를에로의]\s*(?:[가-힣A-Za-z0-9_]{1,30}\s+){0,6}(?:설명|주장|확인|보여|나타|제출|인용|바와|살피|따라|원용)", rest):
                 continue
-            # 3. DATE_RE로 날짜 부분을 분리한 뒤 남은 텍스트(name_cand) 기준으로 문장 종결 여부 판정
-            # "갑 제1호증 사고경위서 2026. 3. 1." 형태의 한국식 날짜가 포함된 목록 행을 정상 수용
-            date_m = DATE_RE.search(rest)
-            name_cand = (rest[:date_m.start()] + " " + rest[date_m.end():]).strip() if date_m else rest
-
-            # 날짜 제외 텍스트가 서술어 종결(예: '…다.', '…습니다.')이거나 문장 중간 종결 뒤 새 문장이 이어지는 경우 본문 서술로 판정
-            if re.search(r"(?:[다습음]\s*\.\s*$|\.\s+[가-힣]{2,})", name_cand) or re.search(r"[다습]\s*\.?\s*$", name_cand):
+            # 3. 괄호 안 내용('(…)')과 날짜(DATE_RE)를 먼저 제거한 뒤, 마침표로 끝나는 긴 서술문(40자 초과)인 경우 목록 정의에서 제외
+            # 자료명 내 '(1. 9.)'나 '제1. 2.항' 등 괄호/약식 마침표 및 짧은 부연 메모는 목록 행으로 정상 수용 (HO-05, 은퇴 08 및 10 보호)
+            rest_clean = re.sub(r"\([^)]*\)", " ", rest)
+            rest_clean = DATE_RE.sub(" ", rest_clean).strip()
+            if len(rest_clean) > 40 and re.search(r"[다음습]\s*\.\s*$", rest_clean):
                 continue
-            # 4. 서술어 어휘 보조 점검 (은퇴 08b 어휘 '적었습니다', '뜻합니다', '아닙니다', '설명용' 전수 삭제)
+            # 4. 서술어 어휘 보조 점검 (표준 법률 서술어에 한정)
             if any(v in rest for v in ("하였다", "바와 같이", "살피건대", "주장한다", "설명하지만", "확인할 수", "보여 줍니다")):
                 continue
 
@@ -885,6 +881,12 @@ def check_evidence_numbering_mismatches(
 
     # 범위 선언이 없더라도 연속 키워드 선언이 명시된 경우 목록 순번 간격 확인
     if not has_range_finding and _CONTINUOUS_KEYWORD_RE.search(text):
+        m_kw = _CONTINUOUS_KEYWORD_RE.search(text)
+        ctx_start = max(0, text.rfind(".", 0, m_kw.start()) + 1)
+        ctx_end = text.find(".", m_kw.end())
+        ctx_end = len(text) if ctx_end == -1 else ctx_end + 1
+        kw_excerpt = text[ctx_start:ctx_end].strip()
+
         for p in listed_parties:
             p_nums = sorted([k[1] for k in list_keys if k[0] == p])
             if len(p_nums) >= 2:
@@ -904,7 +906,7 @@ def check_evidence_numbering_mismatches(
                                 Severity.MEDIUM,
                                 f"연속 제출 선언 내 중간 호증이 목록에서 누락되었다: {m_lbl}",
                                 f"연속 번호 제출을 선언하였으나 목록에서 {m_lbl}이 누락되었다.",
-                                m_lbl,
+                                kw_excerpt or m_lbl,
                                 features={
                                     "rule_id": "EVI.CONTINUOUS_RANGE_GAP",
                                     "defect_code": "CONTINUOUS_RANGE_GAP",
