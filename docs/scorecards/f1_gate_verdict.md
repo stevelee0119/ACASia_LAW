@@ -1874,4 +1874,6 @@ f64 기존 시간실패 .625568/.748032초는 원인미확정으로 보존한다
 | #125 (TK-76 EVI-FORM) | `4391de4` | 불승인 | 은퇴 10 +5.7이 정답 3항목 어휘 맞춤(같은 구조 다른 어휘 0/6), 새 비공개 양성 2/10·오탐 4/12, train 불변. [코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/125#issuecomment-6246910582) |
 | #125 (TK-76 EVI-FORM) | `d52a445` | 조건부 수용 | train 10→16/40·은퇴 09 +1.3(구조 규칙), 하드코딩 0, 조건: 비공개 오탐 2종 구조 제외. [코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/125#issuecomment-6248264187) |
 | #125 (TK-76 EVI-FORM) | `ab3b168` | **수용** | 조건 충족, 고정·은퇴·train 불변, 회귀 0(Steve 기준), 후속 TK-81(제외 규칙 과잉). [코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/125#issuecomment-6248670008) |
+| #138 (② 문서 문자열·⑤ 문구 삭제) | `b2febaf` | 수용 | 동작·점수 불변, 시험 강도 유지. [코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/138#issuecomment-6249333589) |
+| #137 (TK-81) | `db5e595` | 조건부 수용 | 요구 1·2 충족, 요구 3 합쇼체 활용형 누락. [코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/137#issuecomment-6249335499) |
 
