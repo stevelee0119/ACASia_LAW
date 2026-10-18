@@ -1874,4 +1874,18 @@ f64 기존 시간실패 .625568/.748032초는 원인미확정으로 보존한다
 | #125 (TK-76 EVI-FORM) | `4391de4` | 불승인 | 은퇴 10 +5.7이 정답 3항목 어휘 맞춤(같은 구조 다른 어휘 0/6), 새 비공개 양성 2/10·오탐 4/12, train 불변. [코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/125#issuecomment-6246910582) |
 | #125 (TK-76 EVI-FORM) | `d52a445` | 조건부 수용 | train 10→16/40·은퇴 09 +1.3(구조 규칙), 하드코딩 0, 조건: 비공개 오탐 2종 구조 제외. [코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/125#issuecomment-6248264187) |
 | #125 (TK-76 EVI-FORM) | `ab3b168` | **수용** | 조건 충족, 고정·은퇴·train 불변, 회귀 0(Steve 기준), 후속 TK-81(제외 규칙 과잉). [코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/125#issuecomment-6248670008) |
+| #138 (② 문서 문자열·⑤ 문구 삭제) | `b2febaf` | 수용 | 동작·점수 불변, 시험 강도 유지. [코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/138#issuecomment-6249333589) |
+| #137 (TK-81) | `db5e595` | 조건부 수용 | 요구 1·2 충족, 요구 3 합쇼체 활용형 누락. [코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/137#issuecomment-6249335499) |
+| #137 (TK-81) | `8824008` | **수용** | 조건 충족, 점수 불변, 잔여 단독 '틀립니다' 1종(다음 주기). [코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/137#issuecomment-6249545597) |
+
+## 2026-10-18 릴리스 후보 `94e7c39` 라운드 판정 — 통과
+| 조건 | 결과 |
+|---|---|
+| `verify_all` 전체(기준 `b68cfee`) | 종료 0, 13단계 통과(acceptance 1220·회귀 원장 2357·전체 8693·브라우저 197, 실제 실패 0) |
+| 비공개 세트 | contact_rrn 3종·round8_privacy 0.13.0과 같거나 나음(실명·공급자 도달 0) |
+| 같은 SHA CI 필수 | #137 head `8824008` CI 성공 인용(병합 커밋 `94e7c39`는 문서 아닌 PR 병합 — Steve 푸시 CI는 릴리스 PR에서 다시 확인) |
+| 고정 / 은퇴 | 82.6/80.1·오탐 0 / 27.2/40.7/48.3/35.1 |
+| 봉인 시험 | 생략(사용자 결정 2026-10-17) |
+| 열린 P1 회귀 | 0 |
+| 버전 | 0.13.1(patch) 판정서 작성 — 구현 측 버전 커밋 대기 |
 
