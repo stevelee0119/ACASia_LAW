@@ -63,6 +63,148 @@ STATEMENT_HEADING_RE = re.compile(r"(?:^|\n)\s*(?:진\s*술\s*서|사\s*실\s*�
 COPY_MIN_CHARS = 24
 COPY_SIMILARITY = 0.9
 
+# 서증 형식 결함(EVI-FORM) 구조 기반 검출 정규식 (4대 축 및 정상 실무 보호)
+# 서증 형식 결함(EVI-FORM) 구조 기반 검출 정규식 (4대 축 및 정상 실무 보호)
+# 정상 실무 보호 1: 추후 제출/보완 예정(입증 계획) 및 기일 지참 서술문은 결함 제외
+_NORMAL_FUTURE_SUBMISSION_RE = re.compile(
+    r"(?:제출|보완|신청|제시|지참)\s*(?:할\s*)?예정(?:입니다|임|이며|이고|할\s*계획|에\s*있)"
+)
+
+# 정상 실무 보호 2: 물리 매체(USB, CD 등) 별도 제출 표기는 정상 실무이므로 제외
+_EVI_FORM_SEPARATE_MEDIA_RE = re.compile(
+    r"(?:USB|CD|DVD|외장하드|저장매체|디스크)\s*(?:등)?\s*(?:추후\s*)?(?:별도\s*)?(?:제출|송부|첨부)"
+)
+
+# 정상 실무 보호 3: 결함 해소·추완 진술, 이중 부정 반박, 상대방 주장/인용 반박, 부정의 부정(결손 부존재), 제출 철회 제외 (대조군 보호)
+_EVI_FORM_NON_DEFECT_CONTEXT_RE = re.compile(
+    r"(?:보완하여|추후\s*보완|금일\s*다시|기일에\s*지참|다시\s*제출|추완)"
+    r"|(?:볼\s*수\s*없|이유\s*없|단정할\s*수\s*없|아니다)"
+    r"|(?:주장하나|주장하지만|주장과\s*달리|주장에\s*불과|주장도\s*이유|주장은\s*이유)"
+    r"|(?:다고|라고)\s*(?:주장하|다투|말하|강변하|지적하|언급하|하)?(?:지만|나\b|였으나|었으나|나마|되\b)"
+    r"|(?:빠진|누락(?:된)?|공란(?:인)?|흠결(?:이)?|결여(?:된)?)[^\n.]{0,20}?(?:이|가|은|는|도|사항이)?\s*(?:전혀\s*)?(?:없|아니|아닙|아님)"
+    r"|(?:제출\s*철회|신청\s*철회|철회(?:합니다|함|하였음|된|사유)?)"
+)
+
+# 정상 실무 보호 4: 절차 사유 (추가 제출 부존재, 중복 첨부 생략, 공적 전산 확인, 촉탁·제출명령 사유) 결함 제외 (전달문 17 조건 1)
+_EVI_FORM_PROCEDURAL_JUSTIFICATION_RE = re.compile(
+    # (가) 이 증거 외에 다른·그 밖의·추가 증거를 내지 않겠다는 진술 (전달문 17 조건 1)
+    r"(?:이|본|위|해당)?\s*(?:증거|서증|자료|호증)?[^\n.]{0,10}?(?:외에|밖에|이외에)(?:는)?\s*[^\n.]{0,25}?"
+    r"(?:다른|그\s*밖의|별도의|추가의|추가적인|추가로?|더\s*이상의)?\s*(?:증거|서증|자료|서류|입증방법)?(?:를|을|는|은|가|이)?\s*"
+    r"(?:"
+    r"(?:제출|신청|제시|입증|첨부)(?:하지|되지)\s*(?:않|못|아니|아닙|아님)"
+    r"|내지\s*(?:않|못|아니|아닙|아님)"
+    r"|(?:제출|신청|제시|입증|첨부|내)(?:할|하지|되지|하고\s*있지)?\s*(?:계획|생각|예정|의사|것)(?:이|은)?\s*(?:전혀\s*)?(?:없|아니|아닙|아님)"
+    r"|(?:제출|신청|제시|입증|첨부|낼)\s*수가?\s*(?:전혀\s*)?없"
+    r"|(?:다른|그\s*밖의|별도의|추가의|추가적인|더\s*이상의)\s*(?:증거|서증|자료|서류|입증방법)?(?:가|는|이|은)?\s*(?:전혀\s*)?(?:없|아니|아닙|아님)"
+    r")"
+    r"|더\s*이상(?:의)?\s*(?:증거|자료|서류|입증방법)?(?:를|는|가)?\s*(?:제출하지|내지)\s*(?:않|못|아니|아닙|아님)"
+    r"|추가(?:로)?\s*(?:제출|제시|신청)(?:하지|할)\s*(?:않|계획이\s*없|것은\s*(?:아니|아닙))"
+    # (나) 앞 서면에 이미 낸 증거를 중복 첨부하지 않는다는 진술
+    r"|(?:기왕에|종전에|이미|앞선\s*서면에|종전\s*서면에|전의\s*서면에|기존에|앞서)\s*(?:이미\s*)?(?:제출|첨부)(?:하였|했|한\s*바\s*있|되었|된)"
+    r"|중복\s*(?:제출|첨부)\s*(?:방지|생략|을\s*피하기)|별도로\s*중복\s*제출하지"
+    # (다) 공적 전산으로 확인할 수 있어 첨부하지 않는다는 진술
+    r"|(?:전자소송|전산망|대법원|등기부|가족관계|공적\s*장부|공적\s*전산|시스템)\s*(?:등?을\s*통해|에서)?\s*(?:확인\s*(?:가능|할\s*수\s*있)|조회\s*(?:가능|할\s*수\s*있)|열람\s*(?:가능|할\s*수\s*있))"
+    r"|(?:전자적으로|전산으로)\s*(?:확인|조회|열람)"
+    # (라) 문서송부촉탁·제출명령 신청 사유로 원본을 갖고 있지 않다고 적은 진술
+    r"|(?:문서송부촉탁|문서제출명령|사실조회|법원촉탁|검찰청촉탁|과세정보제출명령)\s*(?:등?을\s*)?(?:통해|신청|구하|신청하였|신청할|결과를\s*기다려)"
+    r"|(?:촉탁|사실조회|제출명령)\s*(?:신청\s*사유|신청에\s*따라)"
+)
+
+# 축 1: 서증 자리표시 기호/마크업 또는 내용 없이 파일명 단독 (SUSPICIOUS · B)
+_EVI_FORM_PLACEHOLDER_RE = re.compile(
+    r"\[\s*[^\]]{1,30}?(?:준비|삽입|첨부|입력|누락|공란|미완성|별도)[^\]]*\]"
+    r"|<\s*[^>]{1,30}?(?:준비|삽입|첨부|입력|누락|공란|미완성|별도|사진|이미지|화면|캡처|내용)[^>]*>"
+    r"|\(\s*[^)]{1,30}?(?:준비\s*중|준비중|삽입\s*예정|첨부\s*예정|추후\s*삽입|추후\s*첨부|별도\s*삽입)[^)]*?\)"
+    r"|(?:화면|이미지|사진|캡처|사본|내용)\s*[:：]\s*(?:준비\s*중|준비중|삽입|첨부|누락|공란)"
+    r"|\b[a-zA-Z0-9_\-]+\.(?:wav|mp3|mp4|avi|pdf|hwp|jpg|png|zip)\b[^\n.]{0,30}(?:내용\s*없음|본문\s*생략|사본\s*없음|내용이?\s*비어)"
+)
+
+# 축 2: 실물·원본·파일의 부재·미제출·분실·미확보·미보관 자인 (CONTRADICTED · B)
+# 문법적 술어 형태 확장: 행위 부정(~하지 않/못), 행위 불능(할 수 없/하기 곤란), 상실(분실/망실), 존재 부정(없/아니)
+_EVI_FORM_UNSUBMITTED_RE = re.compile(
+    r"(?:영문\s*|국문\s*|한글\s*|스캔\s*|전자\s*|위\s*|이\s*|해당\s*|동\s*)?"
+    r"(?:원본|실물|파일|음성|영상|녹음|원문|증거물|(?:위\s*|이\s*|해당\s*|동\s*)(?:자료|서류|문서))"
+    r"[^\n.]{0,25}?"
+    r"(?:"
+    r"(?:회수|복구|발급|확보|수집|입수|취득|교부|출력|제출|첨부|보관|소지)(?:하지|받지|되지|하고\s*있지|되어\s*있지)\s*(?:않|못|아니)"
+    r"|(?:회수|복구|발급|확보|수집|입수|취득|교부|출력|제출|첨부|보관|소지)(?:할\s*수\s*없|하기\s*어렵|하기\s*곤란|에\s*실패)"
+    r"|내지\s*(?:않|못|아니)"
+    r"|가지고\s*있지\s*(?:않|못|아니)"
+    r"|찾지\s*(?:않|못|아니)"
+    r"|미제출|미첨부|미확보|미보관|미소지"
+    r"|분실|유실|망실|소실"
+    r"|(?:이|가|은|는)\s*(?:전혀\s*)?(?:없|아니)"
+    r")"
+    r"|(?:제출|첨부|내)(?:하지|되지|지)\s*(?:않|못|아니)[^\n.]{0,25}(?:요지|메모|내용|녹취|번역문|번역본|사본)(?:만|를|을)?"
+    r"|(?:원문|외국어\s*문서|원본)[^\n.]{0,25}?(?:제출|첨부|확보|내)(?:하지|되지|지)\s*(?:않|못|아니)[^\n.]{0,25}?(?:번역문|번역본|사본)(?:만|를|을)?"
+    r"|(?:원문|외국어\s*문서|원본)\s*(?:미제출|미첨부)[^\n.]{0,25}?(?:번역문|번역본|사본)(?:만)?"
+)
+
+# 축 2 보강: 호증 표지 자체가 주어인 미제출 자인 (CONTRADICTED · B)
+_EVI_FORM_EXHIBIT_UNSUBMITTED_RE = re.compile(
+    r"(?:갑|을|병|정|소갑|소을)\s*제?\s*\d+\s*호증(?:의\s*\d+)?"
+    r"[^\n.]{0,25}?"
+    r"(?:은|는|을|를|의\s*경우|자체는|에\s*대하여는)?"
+    r"[^\n.]{0,15}?"
+    r"(?:"
+    r"(?:회수|복구|발급|확보|수집|입수|취득|교부|출력|제출|첨부|보관|소지)(?:하지|받지|되지|하고\s*있지|되어\s*있지)\s*(?:않|못|아니)"
+    r"|(?:회수|복구|발급|확보|수집|입수|취득|교부|출력|제출|첨부|보관|소지)(?:할\s*수\s*없|하기\s*어렵|하기\s*곤란|에\s*실패)"
+    r"|내지\s*(?:않|못|아니)"
+    r"|가지고\s*있지\s*(?:않|못|아니)"
+    r"|찾지\s*(?:않|못|아니)"
+    r"|미제출|미첨부|미확보|미보관|미소지"
+    r"|분실|유실|망실|소실"
+    r")"
+)
+
+# 축 3: 필수 기재(작성자·서명·날인·날짜)의 부재 (SUSPICIOUS · B)
+# 문법적 술어 형태 확장: 상태 부정 일반형(~되어 있지 않/못), 결손 술어(공란/누락/빠져), 주어 존재 부정(없/아니)
+_EVI_FORM_BLANK_RE = re.compile(
+    r"(?:작성자|명의인|작성명의인|진술인|작성인|본인|서명자|서명|날인|기명날인|서명날인|도장|인영|자필서명|작성일자|작성일|날짜|일자)(?:란)?"
+    r"(?:\s*(?:성명|서명|날인|도장))?"
+    r"[^\n.]{0,25}?"
+    r"(?:"
+    r"(?:되어|찍혀|들어가|남아|붙어|이루어져)\s*있지\s*(?:않|못|아니)"
+    r"|공란|빈칸|비어(?:\s*있)?|누락|미기재|미날인|미서명|미작성|빠져(?:\s*있)?|결여|흠결"
+    r"|(?:이|가|은|는|도)\s*(?:전혀\s*)?(?:없|아니)"
+    r")"
+    r"|(?:작성자|명의인|진술인|성명|서명|날인|기명날인|작성일자|일자)\s*[:：]\s*(?:\(\s*(?:공란|미기재|빈칸|없음)\s*\)|공란|미기재|누락|빈칸)"
+)
+
+# 축 4: 내용 일부의 판독·식별 불가 자인 또는 일부 장·면 누락 + 증명 주장 (CONTRADICTED · B)
+_EVI_FORM_UNIDENTIFIABLE_RE = re.compile(
+    # 어순 1: 대상 명사 + 훼손 상태 + 불능 술어
+    r"(?:금액|숫자|글자|문구|스캔|사본|화면|(?:위\s*|이\s*|해당\s*|동\s*)(?:내용|항목|부분|칸|하단|상단))"
+    r"[^\n.]{0,25}?"
+    r"(?:잘리|잘려|절단|흐리|흐려|어두워|번지|번져|번짐|지워|삭제|훼손|얼룩|깨져|불명확)"
+    r"[^\n.]{0,25}?"
+    r"(?:"
+    r"(?:판독|식별|확인|읽|알)(?:하기|할|을|기|어보기|아보기)?(?:\s*(?:이|가|은|는|도|을|를))?\s*(?:수\s*없|불가|불가능|어렵|곤란|힘들|못)"
+    r"|보이지\s*(?:않|못|아니)|확인되지\s*(?:않|못|아니)|나타나지\s*(?:않|못|아니)|나오지\s*(?:않|못|아니)"
+    r")"
+    # 어순 2: 훼손 상태 + 대상 명사 + 불능 술어 (예: 잉크 번짐으로 인해 금액 판독이 곤란)
+    r"|(?:잘리|잘려|절단|흐리|흐려|어두워|번지|번져|번짐|지워|삭제|훼손|얼룩|깨져|불명확)"
+    r"[^\n.]{0,25}?"
+    r"(?:금액|숫자|글자|문구|스캔|사본|화면|(?:위\s*|이\s*|해당\s*|동\s*)(?:내용|항목|부분|칸|하단|상단))"
+    r"[^\n.]{0,25}?"
+    r"(?:"
+    r"(?:판독|식별|확인|읽|알)(?:하기|할|을|기|어보기|아보기)?(?:\s*(?:이|가|은|는|도|을|를))?\s*(?:수\s*없|불가|불가능|어렵|곤란|힘들|못)"
+    r"|보이지\s*(?:않|못|아니)|확인되지\s*(?:않|못|아니)|나타나지\s*(?:않|못|아니)|나오지\s*(?:않|못|아니)"
+    r")"
+    # 어순 3: 식별 불가 / 판독 불가 직결
+    r"|(?:금액|숫자|글자|문구|스캔|사본|화면|(?:위\s*|이\s*|해당\s*|동\s*)(?:내용|항목|부분|칸))[^\n.]{0,15}?(?:식별\s*불가|판독\s*불가)"
+    # 어순 4: 일부 장·면·쪽 누락
+    r"|(?:일부|앞\s*면|뒷\s*면|마지막\s*(?:쪽|면|장|페이지)|특정\s*(?:쪽|면|장|페이지)|하단|상단|중간)\s*(?:쪽|면|장|페이지|내용)?\s*(?:이|가|은|는)?\s*(?:누락|빠져|잘려|결손)"
+    r"|(?:쪽|면|장|페이지|매수)\s*(?:중\s*일부가?|가)?\s*(?:누락|빠져|잘려|부족)"
+)
+
+# 상대방 증거 탄핵 배제 (결함 제외)
+_EVI_FORM_OPPONENT_CHALLENGE_RE = re.compile(
+    r"(?:피고|원고|상대방|피고인|고소인)(?:가|는|이|의|를|을)?\s*(?:제출|주장|인용|원용|작성)"
+    r"|신빙성(?:이|은)?\s*(?:없|의심|떨어|배척)|진정성립(?:이|은)?\s*(?:인정될\s*수\s*없|부인|다투)|입증하기에?\s*부족"
+)
+EXHIBIT_LABEL_RE = re.compile(r"(?:갑|을|병|정|소갑|소을)\s*제?\s*\d+\s*호증(?:의\s*\d+)?")
+
 
 # --- 날짜 --------------------------------------------------------------------------
 def _k(value: date) -> str:
@@ -685,12 +827,12 @@ _CONTINUOUS_RANGE_RE = re.compile(
 )
 _CONTINUOUS_KEYWORD_RE = re.compile(r"(?:연속\s*(?:번호|제출|서증)|누락이\s*(?:전혀\s*)?없|결번\s*없이\s*연속)")
 _COMPLETE_DECLARATION_RE = re.compile(
-    r"(?:(?:최종\s*)?증거목록|입증방법|제출\s*증거|제출목록|별지\s*증거목록|별지\s*제출목록|첨부\s*목록)[^.]{0,60}(?:전부|모두|일체|빠짐없이|추가\s*제출\s*없음|확정|전체|최종|이것이\s*전부|만\s*있다|만\s*포함)"
+    r"(?:(?:최종\s*)?증거목록|입증방법|제출\s*증거|제출목록|별지\s*증거목록|별지\s*제출목록|첨부\s*목록)[^.\n]{0,60}(?:전부|모두|일체|빠짐없이|추가\s*제출\s*없음|확정|전체|최종|이것이\s*전부|만\s*있다|만\s*포함)"
     r"|(?:이\s*서면의\s*제출\s*증거\s*전부|별지\s*증거목록\s*전부|별지\s*제출목록\s*전부|이\s*(?:세|두|\d+)\s*자료만\s*제출)"
     r"|본문에\s*적힌\s*내용이\s*해당\s*발췌의\s*전부"
     r"|추가\s*(?:증거|자료|서증|호증)(?:를|은|가)?\s*(?:제출(?:하지\s*않|한\s*사실은\s*없|이\s*없)|없습니다)"
     r"|추가\s*(?:증거|제출|자료)?\s*목록은\s*없"
-    r"|위\s*목록이\s*[^.]{0,60}(?:증거|자료)의\s*전부"
+    r"|위\s*목록이\s*[^.\n]{0,60}(?:증거|자료)의\s*전부"
     r"|제출\s*증거는\s*모두\s*\d+\s*개"
 )
 _COUNT_DECLARATION_RE = re.compile(
@@ -1060,9 +1202,310 @@ def check_evidence_numbering_mismatches(
     return out
 
 
+# --- 서증 형식 결함(EVI-FORM) 구조 기반 검출 ----------------------------------
+
+def _detect_author_party(
+    doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
+) -> Tuple[Optional[str], set]:
+    """서면의 작성 당사자(원고/피고)와 자기 당사자 호증 부호 집합을 결정한다.
+
+    1순위: 문서 후반부 서명·제출인 줄 (... 소송대리인, ... 원고, ... 피고)
+           - 피고 답변서 끝에 흔히 오는 '원고의 청구를 기각하여...'와 같은
+             신청취지/주문 문구를 오인하지 않도록 서명·제출 줄 형식을 엄격히 확인한다.
+    2순위: 문서 표제부/서두 (소장, 답변서, 준비서면(원고/피고) 등)
+    3순위: 증거목록(exhibits)에 기재된 부호
+    """
+    author_party = None
+    blocks = [b for b in doc.body_blocks() if b.block_type != "running_head"]
+
+    # 1순위: 문서 후반부 서명/제출인 줄 검사 (뒤에서부터 탐색, 블록 내 줄 단위 분할)
+    tail_blocks = blocks[-15:] if blocks else []
+    for b in reversed(tail_blocks):
+        b_text = (b.text or "").strip()
+        lines = [ln.strip() for ln in b_text.splitlines() if ln.strip()]
+        for line in reversed(lines):
+            # 피고 답변서 끝에 흔히 오는 주문/신청취지 문맥("원고의 청구를 기각...") 제외
+            if any(k in line for k in ("청구를 기각", "소송비용은", "판결을 구합니다", "결정을 구합니다")):
+                continue
+            # 피고 제출인/서명 줄
+            if re.search(
+                r"(?:^|\s)(?:피\s*고|피\s*신\s*청\s*인|채\s*무\s*자|피\s*고\s*인)"
+                r"(?:\s*(?:들\s*)?(?:소\s*송\s*)?대\s*리\s*인|\s+[가-힣]{2,4})?"
+                r"(?:\s*\(?\s*인\s*\)?|\s*印|\s*법무법인|\s*변호사|\s*$)",
+                line,
+            ):
+                author_party = "피고"
+                break
+            # 원고 제출인/서명 줄
+            if re.search(
+                r"(?:^|\s)(?:원\s*고|신\s*청\s*인|채\s*권\s*자|고\s*소\s*인|청\s*구\s*인)"
+                r"(?:\s*(?:들\s*)?(?:소\s*송\s*)?대\s*리\s*인|\s+[가-힣]{2,4})?"
+                r"(?:\s*\(?\s*인\s*\)?|\s*印|\s*법무법인|\s*변호사|\s*$)",
+                line,
+            ):
+                author_party = "원고"
+                break
+        if author_party:
+            break
+
+    # 2순위: 문서 표제부/서두 검사
+    if not author_party and blocks:
+        head_text = "\n".join((b.text or "").strip() for b in blocks[:8])
+        if re.search(r"(?:^|\n)\s*(?:답\s*변\s*서|준비서면\s*\(피고\)|피고\s+준비서면)", head_text):
+            author_party = "피고"
+        elif re.search(r"(?:^|\n)\s*(?:소\s*장|신\s*청\s*서|고\s*소\s*장|준비서면\s*\(원고\)|원고\s+준비서면)", head_text):
+            author_party = "원고"
+
+    # 목록에 실제 등장하는 부호 수집 (#126 호환)
+    listed_parties = {r.get("party") for r in exhibits if r.get("party")}
+
+    if author_party == "원고":
+        my_party_chars = {"갑", "소갑"}
+    elif author_party == "피고":
+        my_party_chars = {"을", "소을"}
+    elif listed_parties:
+        my_party_chars = set(listed_parties)
+    else:
+        my_party_chars = {"갑", "을"}
+
+    return author_party, my_party_chars
+
+
+def check_evidence_form_defects(
+    doc: NormalizedDocument, exhibits: Optional[Sequence[Dict[str, Any]]] = None
+) -> List[Finding]:
+    """서면이 자기 증거로 원용하는 서증의 소송법상 형식적 결함을 구조적으로 판별한다 (EVI-FORM).
+
+    1. 축 1: 서증 자리표시 기호/마크업 또는 내용 없이 파일명 단독 (SUSPICIOUS · B)
+       - 정상 물리 매체(USB, CD 등) 별도 제출 표기는 보호(제외)
+       - 추후 제출/보완 예정 등 입증 계획 서술문은 보호(제외)
+    2. 축 2: 서면 스스로 실물/원본/파일 부재 또는 호증 자체 미제출 자인 (CONTRADICTED · B)
+    3. 축 3: 필수 기재사항(작성자, 서명, 날짜) 공란/누락 양식 (SUSPICIOUS · B)
+       - 본안 서면 자체의 전자서명 생략은 보호(제외)
+       - 결손의 부존재(부정의 부정) 진술은 보호(제외)
+    4. 축 4: 중요 내용(금액, 글자 등) 식별 불가/잘림 자인 + 증명 주장 (CONTRADICTED · B)
+
+    * 주체 구분 및 정상 실무 보호:
+      - 서면의 증거목록에 실린 자기 호증만 판단.
+      - 상대방 증거 탄핵 주장(신빙성, 진정성립 다툼 등)은 결함에서 원천 배제.
+      - 결함 해소·추완 진술, 이중 부정 반박, 상대방 주장 인용 반박, 부정의 부정은 결함에서 원천 제외.
+      - 단락 내 선행 호증 인접 문장 결속 및 목록 행 괄호 첨부 예정 검사 지원.
+    """
+    if exhibits is None:
+        exhibits = exhibit_rows(doc)
+    out: List[Finding] = []
+    seen_exhibits = set()
+
+    # 1. 서면의 작성 당사자 및 자기 증거 부호 집합 식별
+    author_party, my_party_chars = _detect_author_party(doc, exhibits)
+
+    # 2. 증거목록(exhibits) 행 자체의 괄호 속 자리표시 검사 (피드백 5-4)
+    for r in exhibits:
+        party = r.get("party")
+        if party not in my_party_chars:
+            continue
+        num = r.get("number")
+        lbl = f"{party} 제{num}호증"
+        if lbl in seen_exhibits:
+            continue
+        r_name = r.get("name") or ""
+        if _EVI_FORM_PLACEHOLDER_RE.search(r_name) and not _EVI_FORM_SEPARATE_MEDIA_RE.search(r_name):
+            seen_exhibits.add(lbl)
+            out.append(
+                _finding(
+                    doc,
+                    FindingType.EVIDENCE_FORM_DEFECT,
+                    EvidenceGrade.B,
+                    Severity.MEDIUM,
+                    f"서증 형식 결함: 자리표시 또는 미제출 파일명만 기재 — {lbl}",
+                    f"{lbl}의 증거목록에 실제 내용 없이 자리표시 또는 첨부 예정 표기만 기재된 형식적 흠결이 있다.",
+                    f"{lbl} {r_name}"[:250],
+                    status=VerificationStatus.SUSPICIOUS,
+                    features={
+                        "rule_id": "EVI.EXHIBIT_PLACEHOLDER_ONLY",
+                        "defect_code": "EXHIBIT_PLACEHOLDER_ONLY",
+                        "exhibit": lbl,
+                    },
+                )
+            )
+
+    # 3. 단락별 순회 및 문장 단위 검사 (인접 문장 결속 및 첨부자료 검사 지원)
+    blocks = [b for b in doc.body_blocks() if b.block_type != "running_head"]
+    if not blocks:
+        rtext = build_reading_text(doc).text
+        paragraphs = [p.strip() for p in re.split(r"\n\s*\n+", rtext) if p.strip()]
+    else:
+        paragraphs = [b.text.strip() for b in blocks if b.text.strip()]
+
+    for para in paragraphs:
+        # 단락 전체가 절차 사유(추가 제출 없음, 중복 생략, 공적 전산 확인, 촉탁·제출명령 사유)인 경우 정상 실무이므로 제외 (전달문 16)
+        if _EVI_FORM_PROCEDURAL_JUSTIFICATION_RE.search(para):
+            continue
+
+        # 단락 내 문장 순회 (인접 문장 결속 지원)
+        sentences = [s.strip() for s in re.split(r"(?<=[다습음죠치시오!?.])\s+|\n+", para) if s.strip()]
+        pending_ref = None  # 인접 문장 결속용
+
+        for sentence in sentences:
+            if not sentence or len(sentence) < 4:
+                continue
+
+            # 정상 실무 보호 1: 추후 제출/보완 예정(입증 계획) 및 기일 지참 서술문은 결함 제외
+            if _NORMAL_FUTURE_SUBMISSION_RE.search(sentence):
+                pending_ref = None
+                continue
+
+            # 정상 실무 보호 2: 물리 매체(USB, CD 등) 별도 제출 표기는 정상 실무이므로 제외
+            if _EVI_FORM_SEPARATE_MEDIA_RE.search(sentence):
+                pending_ref = None
+                continue
+
+            # 정상 실무 보호 3: 결함 해소·추완 진술, 이중 부정 반박, 상대방 주장 인용 반박, 부정의 부정 제외 (피드백 1)
+            if _EVI_FORM_NON_DEFECT_CONTEXT_RE.search(sentence):
+                pending_ref = None
+                continue
+
+            # 정상 실무 보호 4: 절차 사유 (추가 제출 부존재, 중복 첨부 생략, 공적 전산 확인, 촉탁·제출명령 사유) 결함 제외 (전달문 16)
+            if _EVI_FORM_PROCEDURAL_JUSTIFICATION_RE.search(sentence):
+                pending_ref = None
+                continue
+
+            # 상대방 주어에 의한 서술/탄핵 배제 및 상대방 주장 인용 반박 배제 (전달문 17 조건 2)
+            opp_words = None
+            if author_party == "원고":
+                opp_words = r"(?:피고|상대방|피신청인|채무자|피고인)"
+            elif author_party == "피고":
+                opp_words = r"(?:원고|상대방|신청인|채권자|고소인)"
+            else:
+                opp_words = r"(?:상대방|상대측)"
+
+            if opp_words:
+                # 1) 상대방 주어 + 제출/주장/인용/원용/작성/서증/호증
+                if re.search(opp_words + r"\b[^\n.]{0,30}(?:제출|주장|인용|원용|작성|서증|호증)", sentence):
+                    pending_ref = None
+                    continue
+                # 2) 전달문 17 조건 2: 상대방 주어 + 인용 어미(-다고/-라고) + 역접(-지만/-나/-였으나)
+                if re.search(opp_words + r"(?:는|가|은|이|의|측은|측이)?\s*[^\n.]{0,60}?(?:다고|라고)\s*(?:주장하|다투|말하|강변하|지적하|언급하|하)?(?:지만|나\b|였으나|었으나|나마|되\b)", sentence):
+                    pending_ref = None
+                    continue
+
+            # 일반 탄핵 키워드 (신빙성 배척, 진정성립 다툼, 입증 부족 등) 배제
+            if re.search(r"신빙성(?:이|은)?\s*(?:없|의심|떨어|배척)|진정성립(?:이|은)?\s*(?:인정될\s*수\s*없|부인|다투)|입증하기에?\s*부족", sentence):
+                pending_ref = None
+                continue
+
+            # 본안 서면 자체의 제출/접수/법원 표기 단락(전자서명 생략 등) 제외
+            if re.search(r"(?:귀\s*중|법원\s*귀중|소송대리인|제출인)", sentence):
+                pending_ref = None
+                continue
+
+            refs = parse_exhibits(sentence)
+            target_ref = None
+
+            if refs:
+                my_refs = [r for r in refs if r.get("party") in my_party_chars]
+                if my_refs:
+                    target_ref = my_refs[0]
+                    pending_ref = target_ref  # 다음 인접 문장을 위해 기억
+                else:
+                    pending_ref = None
+                    continue
+            elif pending_ref is not None:
+                # 피드백 3: 인접 문장 결속 (앞 문장에 자기 호증이 있고 결함 진술이 이어지는 경우)
+                target_ref = pending_ref
+                pending_ref = None
+            else:
+                continue
+
+            if target_ref is None:
+                continue
+
+            lbl = target_ref.get("label") or f"{target_ref.get('party')} 제{target_ref.get('number')}호증"
+            if lbl in seen_exhibits:
+                continue
+
+            defect = None
+
+            # 축 1: 서증 자리표시 기호/마크업 또는 내용 없이 파일명 단독 -> SUSPICIOUS · B
+            if _EVI_FORM_PLACEHOLDER_RE.search(sentence):
+                defect = (
+                    VerificationStatus.SUSPICIOUS,
+                    EvidenceGrade.B,
+                    Severity.MEDIUM,
+                    f"서증 형식 결함: 자리표시 또는 미제출 파일명만 기재 — {lbl}",
+                    f"{lbl}에 대해 실제 내용이나 사본 없이 자리표시 또는 미제출 파일명만 기재된 형식적 흠결이 있다.",
+                    "EXHIBIT_PLACEHOLDER_ONLY",
+                    "EVI.EXHIBIT_PLACEHOLDER_ONLY",
+                )
+
+            # 축 2: 서면 자체의 부제출 자인 (문서 내 진술 모순) -> CONTRADICTED · B
+            elif _EVI_FORM_UNSUBMITTED_RE.search(sentence) or _EVI_FORM_EXHIBIT_UNSUBMITTED_RE.search(sentence):
+                defect = (
+                    VerificationStatus.CONTRADICTED,
+                    EvidenceGrade.B,
+                    Severity.MEDIUM,
+                    f"서증 형식 결함: 서증 미제출 자인 — {lbl}",
+                    f"{lbl}을 입증자료로 원용하면서도 서면 스스로 해당 문서나 원본이 제출되지 않았음을 자인하는 모순이 있다.",
+                    "UNSUBMITTED_EVIDENCE_ADMISSION",
+                    "EVI.UNSUBMITTED_EVIDENCE_ADMISSION",
+                )
+
+            # 축 3: 필수 기재사항(서명·작성자·날짜) 공란 양식 -> SUSPICIOUS · B
+            elif _EVI_FORM_BLANK_RE.search(sentence):
+                defect = (
+                    VerificationStatus.SUSPICIOUS,
+                    EvidenceGrade.B,
+                    Severity.MEDIUM,
+                    f"서증 형식 결함: 작성자 성명 또는 서명·날인 공란 — {lbl}",
+                    f"{lbl}의 작성자 성명이나 서명·날인란이 공란인 채로 제출되어 진정성립을 인정할 수 없는 형식적 흠결이 있다.",
+                    "BLANK_FORM_DEFECT",
+                    "EVI.BLANK_FORM_DEFECT",
+                )
+
+            # 축 4: 중요 내용 식별 불가 자인 + 증명력 주장 -> CONTRADICTED · B
+            elif _EVI_FORM_UNIDENTIFIABLE_RE.search(sentence):
+                defect = (
+                    VerificationStatus.CONTRADICTED,
+                    EvidenceGrade.B,
+                    Severity.MEDIUM,
+                    f"서증 형식 결함: 중요 기재사항 잘림 또는 식별 불가 자인 — {lbl}",
+                    f"{lbl}의 중요 내용(금액, 글자 등)이 잘리거나 식별 불가능함을 자인하면서도 이를 입증자료로 원용한 모순이 있다.",
+                    "UNIDENTIFIABLE_CONTENT_TRUNCATED",
+                    "EVI.UNIDENTIFIABLE_CONTENT_TRUNCATED",
+                )
+
+            if defect:
+                seen_exhibits.add(lbl)
+                status, grade, sev, title, detail, dcode, rule_id = defect
+                out.append(
+                    _finding(
+                        doc,
+                        FindingType.EVIDENCE_FORM_DEFECT,
+                        grade,
+                        sev,
+                        title,
+                        detail,
+                        sentence[:250],
+                        status=status,
+                        features={
+                            "rule_id": rule_id,
+                            "defect_code": dcode,
+                            "exhibit": lbl,
+                        },
+                    )
+                )
+
+    return out
+
+
 def check_document(doc: NormalizedDocument) -> List[Finding]:
     exhibits = exhibit_rows(doc)
-    return check_exhibits(doc) + check_statements(doc, exhibits) + check_evidence_numbering_mismatches(doc, exhibits)
+    return (
+        check_exhibits(doc)
+        + check_statements(doc, exhibits)
+        + check_evidence_numbering_mismatches(doc, exhibits)
+        + check_evidence_form_defects(doc, exhibits)
+    )
 
 
 # --- 서면 간 문장 복사 -------------------------------------------------------------

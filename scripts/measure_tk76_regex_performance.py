@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """TK-76 정규식 성능 측정 스크립트 (공통 점검표 2항).
 
-DATE_WEEKDAY_RE 및 HEADING_LINE_RE, LEADING_MULTIPLIER_RE, BRACKET_HEADING_RE,
-_JOSA_PREDICATE_RE, REPORT_CITATION_RE, INDICATOR_STAT_RE의
+DATE_WEEKDAY_RE, HEADING_LINE_RE, LEADING_MULTIPLIER_RE, BRACKET_HEADING_RE,
+_JOSA_PREDICATE_RE, REPORT_CITATION_RE, INDICATOR_STAT_RE,
+_COMPLETE_DECLARATION_RE, _COUNT_DECLARATION_RE, _CONTINUOUS_KEYWORD_RE 및
+EVI-FORM 4대 축 정규식(_EVI_FORM_PLACEHOLDER_RE, _EVI_FORM_UNSUBMITTED_RE,
+_EVI_FORM_BLANK_RE, _EVI_FORM_UNIDENTIFIABLE_RE, _EVI_FORM_SEPARATE_MEDIA_RE,
+_EVI_FORM_OPPONENT_CHALLENGE_RE)의
 1배/4배 최솟값 비 < 8.0 및 4배 수행시간 < 1.0초 검증.
 """
 from __future__ import annotations
@@ -18,6 +22,21 @@ from packages.claim_engine.date_verifier import DATE_WEEKDAY_RE, HEADING_LINE_RE
 from packages.claim_engine.calculation import LEADING_MULTIPLIER_RE
 from packages.claim_engine.korean_amount import BRACKET_HEADING_RE, _JOSA_PREDICATE_RE
 from packages.legal_engine.citation_extractor import REPORT_CITATION_RE, INDICATOR_STAT_RE
+from packages.claim_engine.evidence_consistency import (
+    _COMPLETE_DECLARATION_RE,
+    _COUNT_DECLARATION_RE,
+    _CONTINUOUS_KEYWORD_RE,
+    _NORMAL_FUTURE_SUBMISSION_RE,
+    _EVI_FORM_PLACEHOLDER_RE,
+    _EVI_FORM_UNSUBMITTED_RE,
+    _EVI_FORM_EXHIBIT_UNSUBMITTED_RE,
+    _EVI_FORM_BLANK_RE,
+    _EVI_FORM_UNIDENTIFIABLE_RE,
+    _EVI_FORM_SEPARATE_MEDIA_RE,
+    _EVI_FORM_NON_DEFECT_CONTEXT_RE,
+    _EVI_FORM_PROCEDURAL_JUSTIFICATION_RE,
+    _EVI_FORM_OPPONENT_CHALLENGE_RE,
+)
 
 
 def measure_regex(name: str, pattern, base_text: str):
@@ -48,13 +67,6 @@ def measure_regex(name: str, pattern, base_text: str):
     assert ratio < 8.0, f"{name} 비정상 성능 비: {ratio}"
     assert t4_raw < 1.0, f"{name} 4배 최솟값 1.0초 초과: {t4_raw}s"
     print("  -> 판정: PASS\n")
-
-
-from packages.claim_engine.evidence_consistency import (
-    _COMPLETE_DECLARATION_RE,
-    _COUNT_DECLARATION_RE,
-    _CONTINUOUS_KEYWORD_RE,
-)
 
 
 def main():
@@ -94,6 +106,17 @@ def main():
         "피고는 을 제1호증부터 을 제4호증까지 빠짐없이 연속 제출을 주장합니다.\n"
     ) * 10
 
+    sample_text_evi_form = (
+        "원고는 갑 제1호증 계약서 원본은 아직 찾지 못해 내지 못하였습니다.\n"
+        "갑 제2호증 확인서 작성자 이름과 도장이 들어가 있지 않습니다.\n"
+        "갑 제3호증 통화녹음 원본 음성은 제출하지 않고 요지만 정리하였습니다.\n"
+        "갑 제4호증 영수증 금액 칸이 흐려 숫자를 읽기 어렵습니다.\n"
+        "갑 제5호증 전산화면 [화면 이미지 준비중] 상태입니다.\n"
+        "갑 제6호증 동영상(USB 별도 제출) 형태로 제출합니다.\n"
+        "갑 제7호증 감정서는 감정 결과가 나오는 대로 제출 예정입니다.\n"
+        "피고가 제출한 을 제1호증은 신빙성이 없어 배척되어야 합니다.\n"
+    ) * 10
+
     print("=== TK-76 정규식 성능 측정 (공통 점검표 2항) ===")
     measure_regex("DATE_WEEKDAY_RE", DATE_WEEKDAY_RE, sample_text_weekday)
     measure_regex("HEADING_LINE_RE", HEADING_LINE_RE, sample_text_heading)
@@ -105,6 +128,16 @@ def main():
     measure_regex("_COMPLETE_DECLARATION_RE", _COMPLETE_DECLARATION_RE, sample_text_evi_num)
     measure_regex("_COUNT_DECLARATION_RE", _COUNT_DECLARATION_RE, sample_text_evi_num)
     measure_regex("_CONTINUOUS_KEYWORD_RE", _CONTINUOUS_KEYWORD_RE, sample_text_evi_num)
+    measure_regex("_NORMAL_FUTURE_SUBMISSION_RE", _NORMAL_FUTURE_SUBMISSION_RE, sample_text_evi_form)
+    measure_regex("_EVI_FORM_PLACEHOLDER_RE", _EVI_FORM_PLACEHOLDER_RE, sample_text_evi_form)
+    measure_regex("_EVI_FORM_UNSUBMITTED_RE", _EVI_FORM_UNSUBMITTED_RE, sample_text_evi_form)
+    measure_regex("_EVI_FORM_EXHIBIT_UNSUBMITTED_RE", _EVI_FORM_EXHIBIT_UNSUBMITTED_RE, sample_text_evi_form)
+    measure_regex("_EVI_FORM_BLANK_RE", _EVI_FORM_BLANK_RE, sample_text_evi_form)
+    measure_regex("_EVI_FORM_UNIDENTIFIABLE_RE", _EVI_FORM_UNIDENTIFIABLE_RE, sample_text_evi_form)
+    measure_regex("_EVI_FORM_SEPARATE_MEDIA_RE", _EVI_FORM_SEPARATE_MEDIA_RE, sample_text_evi_form)
+    measure_regex("_EVI_FORM_NON_DEFECT_CONTEXT_RE", _EVI_FORM_NON_DEFECT_CONTEXT_RE, sample_text_evi_form)
+    measure_regex("_EVI_FORM_PROCEDURAL_JUSTIFICATION_RE", _EVI_FORM_PROCEDURAL_JUSTIFICATION_RE, sample_text_evi_form)
+    measure_regex("_EVI_FORM_OPPONENT_CHALLENGE_RE", _EVI_FORM_OPPONENT_CHALLENGE_RE, sample_text_evi_form)
     print("모든 정규식 성능 기준(비 < 8.0, 4배 < 1.0s) 충족 확인 완료.")
 
 
