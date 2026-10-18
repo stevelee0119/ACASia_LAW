@@ -16,8 +16,7 @@ from packages.claim_engine.evidence_consistency import (
     _EVI_FORM_EXHIBIT_UNSUBMITTED_RE,
     _EVI_FORM_BLANK_RE,
     _EVI_FORM_UNIDENTIFIABLE_RE,
-    _ATTACHMENT_REF_RE,
-    _ATTACHMENT_DEFECT_STATEMENT_RE,
+    _EVI_FORM_PROCEDURAL_JUSTIFICATION_RE,
 )
 from packages.verification_engine.pipeline import (
     DocumentInput,
@@ -222,17 +221,42 @@ def test_positive_structural_adjacent_sentence_defect():
     assert findings[0].confidence_features.get("defect_code") == "BLANK_FORM_DEFECT"
 
 
-def test_positive_structural_attachment_placeholder():
-    """양성 9 (피드백 4): 호증 표지 없는 별첨 자료 행 결함 검출 (SUSPICIOUS · B)."""
+def test_positive_structural_blank_state_negation():
+    """양성 9 (전달문 16): 대상 명사 + 상태 부정 일반형(~되어 있지 않/못) 검출 (SUSPICIOUS · B)."""
     doc = _make_doc([
         "준비서면",
-        "별첨: 현장사진.jpg [화면 이미지 준비중]",
-        "원고 소송대리인",
+        "갑 제8호증 확인서에 대해 당사자 서명날인이 되어 있지 않은 채로 제출되었습니다.",
+        "원고 소송대리인 변호사 홍길동",
     ])
     findings = check_evidence_form_defects(doc)
     assert len(findings) == 1
-    assert "현장사진.jpg" in findings[0].title
-    assert findings[0].confidence_features.get("defect_code") == "EXHIBIT_PLACEHOLDER_ONLY"
+    assert "갑 제8호증" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "BLANK_FORM_DEFECT"
+
+
+def test_positive_structural_recovery_failure():
+    """양성 9-2 (전달문 16): 회수·복구·발급 실패 일반형 검출 (CONTRADICTED · B)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제14호증 데이터 파일은 시스템 오류로 복구하지 못하여 출력하지 못했습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1
+    assert "갑 제14호증" in findings[0].title
+    assert findings[0].confidence_features.get("defect_code") == "UNSUBMITTED_EVIDENCE_ADMISSION"
+
+
+def test_positive_structural_partial_pages_omitted():
+    """양성 9-3 (전달문 16): 일부 장·면 누락 검출 (CONTRADICTED · B)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제15호증 정산서 중 뒷면 일부 페이지가 누락되어 식별하기 어렵습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1
+    assert "갑 제15호증" in findings[0].title
 
 
 def test_positive_structural_defendant_statement_unsigned():
@@ -448,13 +472,45 @@ def test_control_defendant_answer_claim_dismissal():
     assert len(findings) == 0, f"피고 답변서에서 원고 증거 탄핵은 결함으로 잡지 않아야 함: {findings}"
 
 
-def test_control_attachment_normal_file():
-    """대조군 14 (피드백 4): 내용 결함 없는 정상적인 첨부자료 행 보호 (오탐 0건)."""
+def test_control_no_additional_evidence():
+    """대조군 14 (전달문 16 가): 이 증거 외에 추가 증거를 내지 않겠다는 정상 진술 보호 (오탐 0건)."""
     doc = _make_doc([
         "준비서면",
-        "별첨 1. 계약서_사본.pdf",
-        "첨부: 납품확인서_스캔.pdf",
-        "원고 소송대리인",
+        "원고는 갑 제1호증 외에 추가로 제출할 증거 자료는 전혀 없습니다.",
+        "원고 소송대리인 변호사 홍길동",
     ])
     findings = check_evidence_form_defects(doc)
-    assert len(findings) == 0, f"정상 첨부자료는 결함으로 잡지 않아야 함: {findings}"
+    assert len(findings) == 0, f"추가 증거 없음 정상 진술은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_prior_submission_no_duplicate():
+    """대조군 15 (전달문 16 나): 앞 서면에 이미 제출하여 중복 첨부하지 않는다는 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제2호증 영수증은 종전 소장에 이미 첨부하여 제출하였으므로 중복 제출을 피하기 위해 이번 서면에서는 별도로 첨부하지 않습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"기제출 중복 생략 진술은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_public_system_accessible():
+    """대조군 16 (전달문 16 다): 공적 전산망으로 확인 가능하여 첨부 생략하는 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제3호증 등기사항전부증명서는 대법원 전산망을 통해 즉시 확인 가능하므로 서면에 별도 첨부하지 아니합니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"공적 전산 확인 가능 진술은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_court_order_request_reason():
+    """대조군 17 (전달문 16 라): 문서제출명령/촉탁 신청 사유로 원본 미소지 기재한 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제4호증 금융거래내역은 해당 은행에 대한 문서제출명령을 신청할 예정이므로 원고가 원본을 직접 소지하고 있지 않습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"문서제출명령 신청 사유 기재는 결함으로 잡지 않아야 함: {findings}"
