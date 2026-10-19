@@ -667,3 +667,77 @@ def test_control_opponent_adnominal_claim_refutation_5():
     assert len(findings) == 0, f"상대방 관형형 주장 연결형 반박은 결함으로 잡지 않아야 함: {findings}"
 
 
+# ====================================================================================
+# TK-81 잔여: 단독 '틀립니다' 반박 오탐 방지 검증 (전달문 26 A-2)
+# ====================================================================================
+
+def test_positive_tk81_standalone_bakke_unsubmitted():
+    """양성 1 (TK-81 잔여): 단독 밖에로 표현된 원본 미제출 자인 결함 정상 검출."""
+    doc = _make_doc([
+        "준비서면",
+        "원고는 갑 제21호증 원본을 분실하여 사본 밖에 제출하지 못합니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1, f"단독 밖에 미제출 자인은 결함으로 검출되어야 함: {findings}"
+    assert findings[0].confidence_features.get("defect_code") == "UNSUBMITTED_EVIDENCE_ADMISSION"
+
+
+def test_positive_tk81_concessive_clause_defect():
+    """양성 2 (TK-81 잔여): 결손 진술에 역접 결합된 진짜 결함 정상 검출."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제22호증 확인서에 작성자 서명이 빠져 있다고 보이지만, 이를 증거로 원용합니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1, f"역접 결손 서술은 결함으로 검출되어야 함: {findings}"
+    assert findings[0].confidence_features.get("defect_code") == "BLANK_FORM_DEFECT"
+
+
+def test_positive_tk81_blank_defect_unsubmitted():
+    """양성 3 (TK-81 잔여): 영수증 결제일자 공란 결함 정상 검출."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제23호증 영수증은 결제일자란이 공란으로 비어 있습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1, f"공란 결손은 결함으로 검출되어야 함: {findings}"
+    assert findings[0].confidence_features.get("defect_code") == "BLANK_FORM_DEFECT"
+
+
+def test_control_tk81_standalone_tlipnida_no_subject():
+    """대조군 1 (TK-81 잔여): 주어 없이 단독 '-다는 지적은 틀립니다' 반박 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제31호증 계약서에 날인이 누락되었다는 지적은 틀립니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"단독 지적은 틀립니다 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_tk81_standalone_tlipnida_with_subject():
+    """대조군 2 (TK-81 잔여): 상대방 주어 + 단독 '-다는 피고 지적은 완전히 틀렸습니다' 반박 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "을 제32호증 확인서가 위조되었다는 피고의 지적은 완전히 틀렸습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"단독 피고 지적은 틀렸습니다 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_tk81_standalone_tlipnida_variant():
+    """대조군 3 (TK-81 잔여): 관형형 + 단독 '-라는 주장은 전혀 틀린 것입니다' 반박 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제33호증 영수증의 금액이 변조되었다는 원고의 주장은 전혀 틀린 것입니다.",
+        "피고 소송대리인 변호사 이몽룡",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"단독 주장은 틀린 것입니다 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+
