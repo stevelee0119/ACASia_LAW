@@ -67,6 +67,24 @@ def access_problem(listed, fresh=None):
     return None
 
 
+def classify_network_error(exc: Exception, bytes_read: int) -> tuple[str, str]:
+    """네트워크 예외의 원인 분류 및 세부 사유 문자열을 반환합니다. (TK-82 한국어 주석)
+
+    원인 구분: 연결 실패, 읽기 시간 초과, 전송 중 끊김(RemoteProtocolError, ReadError 등), 그 밖의 오류.
+    받은 바이트 수를 함께 포함하여 중간 단절 여부를 명확히 판별할 수 있게 합니다.
+    """
+    if isinstance(exc, (httpx.ConnectTimeout, httpx.ConnectError)):
+        kind = "CONNECT_FAILED"
+    elif isinstance(exc, httpx.ReadTimeout):
+        kind = "READ_TIMEOUT"
+    elif isinstance(exc, (httpx.RemoteProtocolError, httpx.ReadError)):
+        kind = "STREAM_INTERRUPTED"
+    else:
+        kind = type(exc).__name__
+    detail = f"{kind} ({bytes_read} bytes, {type(exc).__name__})"
+    return kind, detail
+
+
 class DriveClient:
     def __init__(self, *, deadline, check=lambda: None, transport=None, headers=None):
         self.deadline, self.check = deadline, check
@@ -83,7 +101,7 @@ class DriveClient:
         self.last_error_reason = ""
         self.fulltext_batch = 40
 
-    def _record(self, path, params, status, started, size, error=None):
+    def _record(self, path, params, status, started, size, error=None, *, reason=None, retried=False):
         operation = ("list" if path == "files" else "export" if path.endswith("/export")
                      else "download" if (params or {}).get("alt") == "media" else "metadata")
         entry = {"operation": operation, "status": status, "ms": round((time.monotonic() - started) * 1000),
@@ -92,6 +110,10 @@ class DriveClient:
             entry["file_id"] = path.split("/")[1]
         if error:
             entry["error"] = error
+        if reason:
+            entry["reason"] = reason
+        if retried:
+            entry["retried"] = True
         totals = self.call_totals
         totals["count"] += 1
         totals["bytes"] += size
@@ -138,31 +160,60 @@ class DriveClient:
         return self.headers
 
     def read(self, path, params=None, *, max_bytes=4_000_000):
+        """Drive API 경로에서 데이터를 읽어옵니다. (TK-82 1회 재시도 및 오류 원인 구분)
+
+        동기화 예산이 남아 있을 때만 네트워크 오류(연결 실패, 읽기 타임아웃, 전송 중단)에 대해
+        정확히 1회 재시도합니다. HTTP 4xx, 크기 초과, 예산 소진은 재시도하지 않습니다.
+        """
         self.last_error_reason = ""
         headers = self._auth()
-        started, status, content = time.monotonic(), None, bytearray()
-        try:
-            with self.http.stream("GET", path, params=params, headers=headers,
-                                  timeout=min(15, self.remaining())) as response:
-                status = response.status_code
-                if response.status_code != 200:
-                    self.last_error_reason = error_reason(response)
-                    raise ReferenceError("DRIVE_HTTP_" + str(response.status_code))
-                for block in response.iter_bytes(65536):
-                    self.remaining()
-                    if len(content) + len(block) > max_bytes:
-                        raise ReferenceError("FILE_SIZE_LIMIT")
-                    content.extend(block)
-        except ReferenceError as exc:
-            self._record(path, params, status, started, len(content), str(exc))
-            if status not in (None, 200) and self.calls and self.last_error_reason:
-                self.calls[-1]["reason"] = self.last_error_reason
-            raise
-        except httpx.HTTPError:
-            self._record(path, params, status, started, len(content), "DRIVE_NETWORK_ERROR")
-            raise ReferenceError("DRIVE_NETWORK_ERROR") from None
-        self._record(path, params, status, started, len(content))
-        return bytes(content)
+        max_attempts = 2
+
+        for attempt in range(max_attempts):
+            started, status, content = time.monotonic(), None, bytearray()
+            is_retry = (attempt > 0)
+            try:
+                timeout = min(15, self.remaining())
+                with self.http.stream("GET", path, params=params, headers=headers,
+                                      timeout=timeout) as response:
+                    status = response.status_code
+                    if response.status_code != 200:
+                        self.last_error_reason = error_reason(response)
+                        raise ReferenceError("DRIVE_HTTP_" + str(response.status_code))
+                    for block in response.iter_bytes(65536):
+                        self.remaining()
+                        if len(content) + len(block) > max_bytes:
+                            raise ReferenceError("FILE_SIZE_LIMIT")
+                        content.extend(block)
+                self._record(path, params, status, started, len(content), retried=is_retry)
+                return bytes(content)
+
+            except ReferenceError as exc:
+                self._record(path, params, status, started, len(content), str(exc), retried=is_retry)
+                if status not in (None, 200) and self.calls and self.last_error_reason:
+                    self.calls[-1]["reason"] = self.last_error_reason
+                raise
+
+            except httpx.HTTPError as exc:
+                _, detail_reason = classify_network_error(exc, len(content))
+                self.last_error_reason = detail_reason
+
+                can_retry = False
+                if attempt == 0:
+                    try:
+                        if self.remaining() > 0:
+                            can_retry = True
+                    except ReferenceError:
+                        can_retry = False
+
+                if can_retry:
+                    self._record(path, params, status, started, len(content), "DRIVE_NETWORK_ERROR",
+                                 reason=detail_reason, retried=False)
+                    continue
+
+                self._record(path, params, status, started, len(content), "DRIVE_NETWORK_ERROR",
+                             reason=detail_reason, retried=is_retry)
+                raise ReferenceError("DRIVE_NETWORK_ERROR") from None
 
     def metadata(self, file_id):
         return json.loads(self.read("files/" + valid_id(file_id),
