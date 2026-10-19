@@ -102,7 +102,6 @@ const reportWorkbench = (() => {
   async function finalize(report) {
     const checks=await api(`/reports/${report.report_id}/preflight`), content=node("div",null,"full");
     content.append(workflowUI.table(["확인 사항","상태"],[
-      ["변호사 검토 미완료",`${checks.incomplete_reviews.length}건`],
       ["주장·증거 검토 미완료",`${checks.incomplete_claim_reviews.length}건`],
       ["시스템 미확인·주의 항목",`${checks.unresolved_findings.length}건`],
       ["조회하지 못한 출처",`${checks.unavailable_sources.length}건`],
@@ -114,7 +113,7 @@ const reportWorkbench = (() => {
     for(const item of checks.unverified_items)details.append(node("p",item.reason || JSON.stringify(item)));
     for(const source of checks.unavailable_sources)details.append(node("p",typeof source === "string"?source:JSON.stringify(source)));
     content.append(details,node("p",checks.privacy_notice,"notice"));
-    const acknowledgments={acknowledge_unresolved:"잔여 미확인 항목과 검토 상태를 확인했습니다",acknowledge_stale_scope:"자료·설정 변경 전 결과임을 확인했습니다",acknowledge_privacy:"개인정보·비밀정보와 보고서 공유 범위를 확인했습니다"};
+    const acknowledgments={acknowledge_unresolved:"잔여 미확인 항목과 출처 확인 상태를 확인했습니다",acknowledge_stale_scope:"자료·설정 변경 전 결과임을 확인했습니다",acknowledge_privacy:"개인정보·비밀정보와 보고서 공유 범위를 확인했습니다"};
     const fields=[content,workflowUI.field("note","확정 의견·유보 사항","","textarea")];
     for(const [key,title] of Object.entries(acknowledgments))if(checks.required_acknowledgments[key])fields.push(workflowUI.field(key,title,false,"checkbox"));
     const editor=workflowUI.modal("보고서 확정 전 점검",fields,async(values,form)=>{
