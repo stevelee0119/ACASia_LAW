@@ -46,7 +46,7 @@ INSTRUCTION_PATTERNS: List[PatternSpec] = [
     (_c(r"(이전|앞의|앞선|위의|기존|종전|지금까지)\s*(의\s*)?(모든\s*)?(지시|명령|지침|규칙|프롬프트)[을를]?\s*"
         r"(?:(?:모두|전부|다|일체|완전히|전혀)\s*)?(무시|무효|취소|잊|폐기|따르지)"),
      InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "이전 지시 무시 요구(한국어)"),
-    (_c(r"ignore\s+(?:all\s+|any\s+|the\s+)?(?:previous|prior|above|earlier|preceding|legal\s+)?(?:instructions?|prompts?|rules?|directions?|brief|review|task|context)\b"),
+    (_c(r"ignore\s+(?:all\s+|any\s+|the\s+)?(?:(?:previous|prior|above|earlier|preceding|system|legal)\s+)?(?:instructions?|prompts?|rules?|directions?|brief|review|task|context|previous|prior|above|earlier|system)\b"),
      InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "이전 지시·서면·검토 무시 요구(영어)"),
     # "ignore conflicting internal guidelines": 검증 기준이 되는 내부 규정·지침과의 충돌을 무시하라는 요구
     (_c(r"ignore\s+(?:all\s+|any\s+|the\s+)?(?:conflicting|contradicting|internal|existing|other|applicable)\s+"
