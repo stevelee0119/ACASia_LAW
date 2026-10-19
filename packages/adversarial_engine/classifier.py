@@ -17,6 +17,7 @@ from .patterns import (
     BENIGN_CONTEXT_RE,
     DESCRIPTIVE_LABEL_RE,
     DISCLAIMER_RE,
+    ENGLISH_IMPERATIVE_RE,
     IMPERATIVE_RE,
     INSTRUCTION_PATTERNS,
     INTENT_TO_FINDING,
@@ -217,8 +218,60 @@ def classify(
             "구조적 인젝션 표지 및 상태 조작 지시",
             2.5,
             wrap_m.start() if wrap_m else 0,
-            wrap_m.end() if wrap_m else len(text)
+            wrap_m.end() if wrap_m else len(text),
         ))
+    # feature 사전 계산
+    is_hidden = (not visible) or source_layer in (
+        "hidden_text", "metadata", "xml", "annotation", "attachment",
+        "outline", "form_field", "actual_text", "page_label",
+    ) or bool(hidden_reason)
+    addresses_ai = bool(AI_ADDRESSING_RE.search(text))
+    has_imperative = bool(IMPERATIVE_RE.search(text) or ENGLISH_IMPERATIVE_RE.search(text))
+    benign_context = bool(BENIGN_CONTEXT_RE.search(text))
+    citation_context = bool(CITATION_CONTEXT_RE.search(text))
+
+    is_output = bool(re.search(
+        r"(?:출력|결과|답변|보고서|기재|표시|반환|작성|결론|평가|pass|output|return|report|conclude|emit|display|print|write)",
+        text,
+        re.IGNORECASE,
+    ))
+    is_suppress = bool(re.search(
+        r"(?:무시|생략|중단|건너뛰|제외|배제|우회|해제|비활성|ignore|disregard|skip|bypass|override|stop|halt|disable|suppress)",
+        text,
+        re.IGNORECASE,
+    ))
+
+    # 사람이 남기는 메모 채널(주석·메타데이터)은 AI 수신자를 부르거나 결론/검증 제어 의도가 있어야 구조적 의심 판정 (TK-89 보완).
+    # 명령형 어미만 있는 메모(문구 다듬기, 일자 확인 등 검토자 메모)는 참고(advisory) 이하로 둔다.
+    is_memo_channel = source_layer in ("annotation", "metadata") and not hidden_reason
+    channel_actionable = not is_memo_channel or (addresses_ai or is_output or is_suppress)
+
+    if is_hidden and (addresses_ai or has_imperative) and channel_actionable and not hits:
+        # 정상 법률 서면 표현(피고는 원고에게 금원을 지급하라 등)이고 AI 호명이 없으면 제외
+        if not (benign_context and not addresses_ai):
+            if is_output:
+                intent = InjectionIntent.OUTPUT_MANIPULATION
+            elif is_suppress:
+                intent = InjectionIntent.INSTRUCTION_OVERRIDE
+            elif addresses_ai:
+                intent = InjectionIntent.ROLE_OVERRIDE
+            else:
+                intent = InjectionIntent.INSTRUCTION_OVERRIDE
+
+            m = (AI_ADDRESSING_RE.search(text) if addresses_ai
+                 else IMPERATIVE_RE.search(text) or ENGLISH_IMPERATIVE_RE.search(text))
+            start = m.start() if m else 0
+            end = m.end() if m else len(text)
+            matched_str = text[start:end] if m else text.strip()
+
+            hits.append(PatternHit(
+                intent,
+                matched_str,
+                "숨김 채널 내 명령형·AI 수신자 문장(구조적 판정)",
+                2.5,
+                start,
+                end,
+            ))
 
     if not hits:
         return Classification(
@@ -229,10 +282,6 @@ def classify(
         )
 
     # feature 수집
-    is_hidden = (not visible) or source_layer in ("hidden_text", "metadata", "xml", "annotation") or bool(hidden_reason)
-    addresses_ai = bool(AI_ADDRESSING_RE.search(text))
-    benign_context = bool(BENIGN_CONTEXT_RE.search(text))
-    citation_context = bool(CITATION_CONTEXT_RE.search(text))
     quoted = all(_is_quoted(text, h.start, h.end) for h in hits)
     distinct_intents = list(dict.fromkeys(h.intent for h in hits))
     encoded = bool(extra_signals.get("encoded"))
@@ -320,6 +369,7 @@ def classify(
                               "span": [h.start, h.end]} for h in hits],
         "guideline_impersonation": bool(hits and OFFICIAL_GUIDELINE_RE.search(text)),
         "adversarial_subtype": "GUIDELINE_IMPERSONATION" if bool(hits and OFFICIAL_GUIDELINE_RE.search(text)) else None,
+        "hidden_channel_imperative": is_hidden and (addresses_ai or has_imperative),
     }
 
     # 단일 신호만으로 SUSPICIOUS 이상 금지: 보조 신호 수를 센다 (특정 사건 하드코딩 제거 및 범용화)
@@ -339,6 +389,9 @@ def classify(
     elif (score >= 3.0 and corroboration >= 2) or (is_bracket_directive and addresses_ai and score >= 2.0):
         label = AdversarialClass.PROMPT_INJECTION_LIKELY
     elif score >= 2.0 and corroboration >= 1:
+        label = AdversarialClass.SUSPICIOUS_META_INSTRUCTION
+    elif is_hidden and (addresses_ai or (channel_actionable and (has_imperative or imperative) and not (benign_context and not addresses_ai))):
+        # 숨김 채널에서 나온 명령형·AI 수신자 문장은 동사 목록과 무관하게 채널 의심으로 판정 (TK-89 3항, 보완)
         label = AdversarialClass.SUSPICIOUS_META_INSTRUCTION
     elif score >= 0.8:
         label = AdversarialClass.INSTRUCTION_LIKE

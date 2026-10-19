@@ -51,7 +51,7 @@ INSTRUCTION_PATTERNS: List[PatternSpec] = [
     # "ignore conflicting internal guidelines": 검증 기준이 되는 내부 규정·지침과의 충돌을 무시하라는 요구
     (_c(r"ignore\s+(?:all\s+|any\s+|the\s+)?(?:conflicting|contradicting|internal|existing|other|applicable)\s+"
         r"(?:internal\s+)?(?:guidelines?|policies|policy|rules?|regulations?|protocols?|instructions?)"),
-     InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "내부 지침·규정 충돌 무시 요구(영어)"),
+      InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "내부 지침·규정 충돌 무시 요구(영어)"),
     (_c(r"disregard\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier|system)"),
      InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "disregard previous"),
     (_c(r"forget\s+(everything|all\s+previous|your\s+instructions)"),
@@ -137,7 +137,7 @@ INSTRUCTION_PATTERNS: List[PatternSpec] = [
      InjectionIntent.ROLE_OVERRIDE, 0.8, "사전심사 완료 주장으로 검증 면제 유도"),
 
     # --- 검증 중단 요구 -----------------------------------------------------
-    (_c(r"(검증|탐지|분석|점검|심사)\s*(루틴|절차|과정|기능)?[를을]?\s*(즉시\s*)?(중단|생략|건너뛰|해제|비활성)"),
+    (_c(r"(?:검증|탐지|분석|점검|심사|검토)\s*(?:루틴|절차|과정|기능)?[를을]?\s*(?:즉시\s*)?(?:중단|생략|건너뛰|해제|비활성)"),
      InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "검증 중단 요구(한국어)"),
     # 동사와 대상 사이의 수식어("suspend all standard legal hallucination detectors",
     # "bypass statute date verification protocols")를 네 단어까지 허용한다.
@@ -365,6 +365,13 @@ IMPERATIVE_RE = _c(
     r"(하라|해라|하시오|하십시오|하세요|할\s*것|말\s*것|마십시오|마세요|마라|바랍니다|주십시오|주세요|"
     r"해야\s*한다|하여야\s*한다|하도록|반환하|출력하라|처리하라|\bplease\b|\bmust\b|\bshall\b)"
     r"|하지\s*않아도\s*됩니다|넣지\s*않는\s*편이\s*좋|말아\s*주십시오"
+)
+
+# 영문 명령·요청 표현 (조동사 및 문장/절 시작 명령 동사, 중첩 반복 없는 선형 정규식)
+ENGLISH_IMPERATIVE_RE = _c(
+    r"\b(?:please|must|shall|should|do\s+not|don't|never|always)\b"
+    r"|^[ \t>*#\d.-]*\b(?:output|return|report|conclude|emit|display|print|write|ignore|disregard|skip|bypass|drop|override|set|use|follow|stop|halt|disable|suppress|ensure|consider|treat|mark)\b"
+    r"|(?:[.!?;\n]|\b(?:and|then)\b)[ \t]*\b(?:output|return|report|conclude|emit|display|print|write|ignore|disregard|skip|bypass|drop|override|set|use|follow|stop|halt|disable|suppress|ensure|consider|treat|mark)\b"
 )
 # 문서 스스로 그런 지시를 따르지 않는다고 밝히는 설명
 DISCLAIMER_RE = _c(
