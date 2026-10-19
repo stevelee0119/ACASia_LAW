@@ -435,6 +435,8 @@ async function loadPrivacyNotice() {
   renderPrivacyNoticeElements();
 }
 
+let pendingUploadFiles = [];
+
 function getPrivacyAck(projectId) {
   if (!projectId) return false;
   return sessionStorage.getItem(`privacy_ack_${projectId}`) === "true";
@@ -456,6 +458,67 @@ function syncPrivacyAck() {
   if (errEl) {
     errEl.hidden = true;
     errEl.textContent = "";
+  }
+}
+
+function openPrivacyDialog(forUpload = true) {
+  if (!isPrivacyNoticeLoaded()) {
+    const msg = privacyNoticeConfig?.error || "개인정보 처리 안내를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.";
+    toast(msg);
+    return false;
+  }
+  const dialog = $("privacyDialog");
+  if (!dialog) return false;
+  const p = state.project;
+  const ack = getPrivacyAck(p?.id);
+  const cb = $("privacyAck");
+  if (cb) cb.checked = ack;
+  const errEl = $("privacyAckError");
+  if (errEl) {
+    errEl.hidden = true;
+    errEl.textContent = "";
+  }
+  const confirmBtn = $("privacyConfirmBtn");
+  if (confirmBtn) {
+    confirmBtn.textContent = forUpload ? "확인 후 업로드" : "확인";
+  }
+  dialog.showModal();
+  if (cb && !ack) {
+    cb.focus();
+  }
+  return true;
+}
+
+function handlePrivacyConfirm() {
+  if (!isPrivacyNoticeLoaded()) {
+    const msg = privacyNoticeConfig?.error || "개인정보 처리 안내를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.";
+    toast(msg);
+    return;
+  }
+  const cb = $("privacyAck");
+  if (!cb?.checked) {
+    const msg = privacyNoticeConfig.ack_error_message || "연락처, 주민등록번호 이외의 개인정보가 미포함되었거나 직접 가림 처리하였음을 확인해야 업로드할 수 있습니다.";
+    const errEl = $("privacyAckError");
+    if (errEl) {
+      errEl.textContent = msg;
+      errEl.hidden = false;
+    }
+    cb?.focus();
+    toast(msg);
+    return;
+  }
+  const p = state.project;
+  setPrivacyAck(p?.id, true);
+  const errEl = $("privacyAckError");
+  if (errEl) {
+    errEl.hidden = true;
+    errEl.textContent = "";
+  }
+  const filesToUpload = pendingUploadFiles;
+  pendingUploadFiles = [];
+  $("privacyDialog")?.close();
+  if (filesToUpload && filesToUpload.length > 0) {
+    upload(filesToUpload);
   }
 }
 
@@ -1183,8 +1246,9 @@ async function reconcileUploads(batch) {
 async function upload(files) {
   const id = state.project?.id;
   if (!id || !files.length) return;
-  if (!checkPrivacyAck(id)) {
-    $("fileInput").value = "";
+  if (!getPrivacyAck(id)) {
+    pendingUploadFiles = files;
+    openPrivacyDialog(true);
     return;
   }
   if (state.uploadBatch?.busy) return toast("다른 파일의 등록이 진행 중입니다.");
@@ -2389,12 +2453,36 @@ $("bulkExclude").onclick = action(() => setScope([...state.selected], false));
 $("bulkInclude").onclick = action(() => setScope([...state.selected], true));
 if ($("privacyAck")) {
   $("privacyAck").onchange = e => {
-    setPrivacyAck(state.project?.id, e.target.checked);
     if (e.target.checked && $("privacyAckError")) {
       $("privacyAckError").hidden = true;
       $("privacyAckError").textContent = "";
     }
   };
+}
+if ($("privacyConfirmBtn")) {
+  $("privacyConfirmBtn").onclick = handlePrivacyConfirm;
+}
+if ($("privacyCancelBtn")) {
+  $("privacyCancelBtn").onclick = () => {
+    pendingUploadFiles = [];
+    if ($("fileInput")) $("fileInput").value = "";
+    $("privacyDialog")?.close();
+  };
+}
+if ($("privacyNoticeRevisit")) {
+  $("privacyNoticeRevisit").onclick = e => {
+    e.preventDefault();
+    pendingUploadFiles = [];
+    openPrivacyDialog(false);
+  };
+}
+if ($("privacyDialog")) {
+  $("privacyDialog").addEventListener("close", () => {
+    if (pendingUploadFiles.length > 0) {
+      pendingUploadFiles = [];
+      if ($("fileInput")) $("fileInput").value = "";
+    }
+  });
 }
 const fileBtnEl = $("fileInputButton") || document.querySelector('label[for="fileInput"]');
 if (fileBtnEl) {
@@ -2412,7 +2500,15 @@ $("fileInput").onchange = action(e => {
     const msg = privacyNoticeConfig?.error || "개인정보 처리 안내를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.";
     return toast(msg);
   }
-  return upload([...e.target.files]);
+  const files = [...e.target.files];
+  if (!files.length) return;
+  const id = state.project?.id;
+  if (!id) return;
+  if (getPrivacyAck(id)) {
+    return upload(files);
+  }
+  pendingUploadFiles = files;
+  openPrivacyDialog(true);
 });
 $("dropArea").ondragover = e => {
   e.preventDefault();
@@ -2426,7 +2522,15 @@ $("dropArea").ondrop = action(async e => {
     const msg = privacyNoticeConfig?.error || "개인정보 처리 안내를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.";
     return toast(msg);
   }
-  await upload([...e.dataTransfer.files]);
+  const files = [...e.dataTransfer.files];
+  if (!files.length) return;
+  const id = state.project?.id;
+  if (!id) return;
+  if (getPrivacyAck(id)) {
+    return upload(files);
+  }
+  pendingUploadFiles = files;
+  openPrivacyDialog(true);
 });
 $("documentForm").onsubmit = action(async e => {
   e.preventDefault();
