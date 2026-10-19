@@ -360,7 +360,7 @@
   "TK-80": {
    "status": "deployed",
    "kind": "existing",
-   "note": "2026-10-17 평가 측 발견·사용자 승인('3단계 Dockerfile 수정')으로 Antigravity 배정. Dockerfile appuser(10001)가 GID 1000 그룹에 없어 Render Secret File(/etc/secrets) 읽기 불가 예상 → Drive 서비스 계정 인증 불가 → 운영 참고자료 폴더 링크 공개 해제 불가. appuser를 GID 1000 보조 그룹에 추가, UID·소유권·render.yaml 불변. #133 c6c9480(PR 제목 TK-79) 수용·Steve 병합(46a21eb). 실행 중 id -G 미확인(평가 측 Docker 데몬 없음), CI 이미지 빌드 성공. 배포 뒤 Secret File·운영 점검. 0.13.1 main c512462/Render dep-dbal74avcj2c73acbr70 Live 08:18 KST(10-19)·health version 0.13.1·commit c512462·DB ok 확인. 배포 뒤 Render Secret File 설정·Drive 인증 점검 미실시(사용자).",
+   "note": "2026-10-17 평가 측 발견·사용자 승인('3단계 Dockerfile 수정')으로 Antigravity 배정. Dockerfile appuser(10001)가 GID 1000 그룹에 없어 Render Secret File(/etc/secrets) 읽기 불가 예상 → Drive 서비스 계정 인증 불가 → 운영 참고자료 폴더 링크 공개 해제 불가. appuser를 GID 1000 보조 그룹에 추가, UID·소유권·render.yaml 불변. #133 c6c9480(PR 제목 TK-79) 수용·Steve 병합(46a21eb). 실행 중 id -G 미확인(평가 측 Docker 데몬 없음), CI 이미지 빌드 성공. 배포 뒤 Secret File·운영 점검. 0.13.1 main c512462/Render dep-dbal74avcj2c73acbr70 Live 08:18 KST(10-19)·health version 0.13.1·commit c512462·DB ok 확인. 배포 뒤 Render Secret File 설정·Drive 인증 점검 미실시(사용자). 2026-10-19 운영 전환 완료: Secret File drive-sa.json READABLE(id -G 1000), 서비스 계정 AUTH OK·LIST 200 6, 운영 분석 인증 service_account·목록 31(오류 1건 DRIVE_NETWORK_ERROR, 권한 무관), 폴더 일반 액세스 제한됨(권한 소유자+서비스 계정만, 평가 측 조회) 뒤 Shell 재시험 AUTH OK·LIST 200 6. 미확인: 비공개 뒤 분석 실행에서 하위 파일 내려받기, 하위 파일 단위 공유.",
    "deployed_on": "2026-10-19"
   },
   "TK-81": {
