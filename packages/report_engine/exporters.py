@@ -55,7 +55,7 @@ def to_payload(run_result: Any, *, reveal_sealed: bool = False) -> dict:
         "started_at": run_result.started_at.isoformat(),
         "finished_at": run_result.finished_at.isoformat() if run_result.finished_at else None,
         "scores": run_result.scores,
-        "timeline": run_result.timeline,
+        "timeline": getattr(run_result, "timeline", None),
         "unavailable_sources": run_result.unavailable_sources,
         "unverified_items": run_result.unverified_items,
         "errors": run_result.errors,
@@ -103,6 +103,7 @@ def to_payload(run_result: Any, *, reveal_sealed: bool = False) -> dict:
         payload["report"] = run_result.report_metadata
         payload["review_snapshot"] = {key: value for key, value in run_result.review_snapshot.items()
                                       if key != "engine_result"}
+        payload.pop("timeline", None)
     from .source_objects import compact_sources
 
     if getattr(run_result, "source_objects", None):
@@ -256,6 +257,8 @@ def to_xlsx(run_result: Any, *, reveal_sealed: bool = False) -> bytes:
         technical = workbook.create_sheet("기술부록")
         append(technical, ["JSON path", "part", "value"])
         appendix = jsonable_payload(to_payload(run_result, reveal_sealed=reveal_sealed))
+        appendix.pop("timeline", None)
+        appendix.get("review_snapshot", {}).pop("timeline", None)
         for path, value in json_lines(compact_claim_rows(appendix)):
             for part, offset in enumerate(range(0, max(1, len(value)), 29000), start=1):
                 append(technical, [path, part, value[offset:offset + 29000]])

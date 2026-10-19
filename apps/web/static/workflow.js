@@ -4,8 +4,8 @@ const workflowUI = (() => {
   let projectId = null, matrix = null, issues = [], workflows = new Map(), generation = 0;
   const selected = new Set();
   const groups = {
-    documents:{title:"자료", icon:"files", tabs:["documents", "compare"]},
-    review:{title:"검증·검토", icon:"scan-search", tabs:["ai-verification", "review", "issues", "timeline", "calculations", "search"]},
+    documents:{title:"자료", icon:"files", tabs:["documents"]},
+    review:{title:"검증·검토", icon:"scan-search", tabs:["ai-verification", "review", "issues"]},
     reports:{title:"보고서", icon:"file-chart-column", tabs:["reports", "audit"]},
   };
   const lastTabs = Object.fromEntries(Object.entries(groups).map(([key, group]) => [key, group.tabs[0]]));
@@ -302,8 +302,6 @@ const workflowUI = (() => {
   }
   async function activate(tab) {
     if (tab === "issues" || tab === "review") {await refresh(); if(tab === "review") renderFindings();}
-    if (tab === "compare") renderCompare();
-    if (tab === "search") renderSearch();
   }
   function renderCompare() {
     const root=$("comparePanel"), pid=state.project.id;
@@ -390,7 +388,6 @@ const workflowUI = (() => {
     filter.onchange=renderFindings;assignee.oninput=renderFindings;
     const bulk=button("선택 항목 검토 (0)",bulkEditor);bulk.id="batchReview";
     const controls=node("div",null,"toolbar workflow-filters");controls.append(filter,assignee,bulk,iconButton("history","검토 이력",()=>showHistory()));reviewToolbar.after(controls);
-    addTab("compare","버전 비교").id="comparePanel";addTab("search","근거 찾기").id="searchPanel";
     initNavigation();
     const submitted=field("submitted_on","제출일","","date");$("documentForm").querySelector(".form-grid").append(submitted);
   }
