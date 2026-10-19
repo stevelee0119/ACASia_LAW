@@ -354,13 +354,13 @@
   "TK-79": {
    "status": "deployed",
    "kind": "existing",
-   "note": "2026-10-17 평가 측 발견. #128(Codex, 작업별 모델 배치·비용 집계) 후속. 사용자 결정(10-17)으로 #128 이번 릴리스 포함, Steve 병합 933933a(사용자 병합; 병합 메시지의 '평가 측 기술 수용'은 이 평가 세션 판정과 다름 — 평가 측 판정은 보류·보완 요청, PR 코멘트 6241878062). 릴리스 전 보완: ① (정정: 평가 측 0.2 지시는 오류, 공식 $0.10 — 0.1 유지) ② gpt-6.1-sol·gpt-6-luna cache_read·gemini-3.8-flash 단가·프로모션 종료일 공시 출처 기재 ③ 기본값이 0.13.0 운영 동작을 바꿈(교차검증 all→auto·효율 라우팅 ON·기본 모델 Opus→Sonnet·Luna→Sol, AI 작성 판별 단일 저비용 의견+10% 표본) → TK-75처럼 기본 OFF 기술 릴리스로 전환(OFF면 0.13.0과 같은 모델·호출 구성) ④ 라우팅 스냅숏 없는 기존 대기 작업은 실패 대신 OFF 기본값으로 처리. 배포 뒤: 사용자 OFF/ON 온라인 대조(법리 판단 일치·AI 작성 판별 재현율·호출 수·실비용·max_tokens 잘림률; Sonnet 5.5 adaptive thinking 기본 effort high). 오프라인 품질·비용 영향 측정 불가(LLM 호출 없음); 고정·은퇴 CI 점수 불변(인용). 번호: 다른 평가 세션이 TK-78을 공식 DB 조회 집계(Antigravity)로 먼저 배정해 TK-79로 정함. #132(2bf0c88, Codex 제목 TK-78) 조건부 수용: 기본 OFF·all·0.13.0 모델 복원·기존 작업 OFF 실행·출처 기재; 조건 Sonnet 0.1 복귀. #132 58ca272 수용·Steve 병합(99567a0, 10-17 사용자 지시). 0.13.1 main c512462/Render dep-dbal74avcj2c73acbr70 Live 08:18 KST(10-19)·health version 0.13.1·commit c512462·DB ok 확인. 효율 라우팅 기본 OFF로 배포(Render 환경변수 미설정 사용자 확인 10-18); 배포 뒤 OFF 동작 점검·OFF/ON 대조 미측정.",
+   "note": "2026-10-17 평가 측 발견. #128(Codex, 작업별 모델 배치·비용 집계) 후속. 사용자 결정(10-17)으로 #128 이번 릴리스 포함, Steve 병합 933933a(사용자 병합; 병합 메시지의 '평가 측 기술 수용'은 이 평가 세션 판정과 다름 — 평가 측 판정은 보류·보완 요청, PR 코멘트 6241878062). 릴리스 전 보완: ① (정정: 평가 측 0.2 지시는 오류, 공식 $0.10 — 0.1 유지) ② gpt-6.1-sol·gpt-6-luna cache_read·gemini-3.8-flash 단가·프로모션 종료일 공시 출처 기재 ③ 기본값이 0.13.0 운영 동작을 바꿈(교차검증 all→auto·효율 라우팅 ON·기본 모델 Opus→Sonnet·Luna→Sol, AI 작성 판별 단일 저비용 의견+10% 표본) → TK-75처럼 기본 OFF 기술 릴리스로 전환(OFF면 0.13.0과 같은 모델·호출 구성) ④ 라우팅 스냅숏 없는 기존 대기 작업은 실패 대신 OFF 기본값으로 처리. 배포 뒤: 사용자 OFF/ON 온라인 대조(법리 판단 일치·AI 작성 판별 재현율·호출 수·실비용·max_tokens 잘림률; Sonnet 5.5 adaptive thinking 기본 effort high). 오프라인 품질·비용 영향 측정 불가(LLM 호출 없음); 고정·은퇴 CI 점수 불변(인용). 번호: 다른 평가 세션이 TK-78을 공식 DB 조회 집계(Antigravity)로 먼저 배정해 TK-79로 정함. #132(2bf0c88, Codex 제목 TK-78) 조건부 수용: 기본 OFF·all·0.13.0 모델 복원·기존 작업 OFF 실행·출처 기재; 조건 Sonnet 0.1 복귀. #132 58ca272 수용·Steve 병합(99567a0, 10-17 사용자 지시). 0.13.1 main c512462/Render dep-dbal74avcj2c73acbr70 Live 08:18 KST(10-19)·health version 0.13.1·commit c512462·DB ok 확인. 효율 라우팅 기본 OFF로 배포(Render 환경변수 미설정 사용자 확인 10-18); 배포 뒤 OFF 동작 점검·OFF/ON 대조 미측정. 2026-10-19 OFF/ON 온라인 대조 1쌍(같은 입력·c512462): 호출 29→28, 실비용 $1.17→$0.54(−54%), 실패·잘림 0, finding 17/17 상태·심각도·등급 동일, AI 판별 라벨 동일. 반복 변동·advisory 법률 품질·AI 판별 재현율 미측정. ON 채택은 사용자 결정, 대조 뒤 OFF 복귀. 2026-10-19 사용자 결정: 운영 ON 채택(환경변수 LV_LLM_EFFICIENT_ROUTING=1·LV_LLM_CROSS_CHECK=auto, 코드 기본 OFF 유지). 평가 측 권고(추가 문서 2~3건 대조·advisory 변호사 블라인드 비교)는 채택 뒤 운영 관찰로 대체.",
    "deployed_on": "2026-10-19"
   },
   "TK-80": {
    "status": "deployed",
    "kind": "existing",
-   "note": "2026-10-17 평가 측 발견·사용자 승인('3단계 Dockerfile 수정')으로 Antigravity 배정. Dockerfile appuser(10001)가 GID 1000 그룹에 없어 Render Secret File(/etc/secrets) 읽기 불가 예상 → Drive 서비스 계정 인증 불가 → 운영 참고자료 폴더 링크 공개 해제 불가. appuser를 GID 1000 보조 그룹에 추가, UID·소유권·render.yaml 불변. #133 c6c9480(PR 제목 TK-79) 수용·Steve 병합(46a21eb). 실행 중 id -G 미확인(평가 측 Docker 데몬 없음), CI 이미지 빌드 성공. 배포 뒤 Secret File·운영 점검. 0.13.1 main c512462/Render dep-dbal74avcj2c73acbr70 Live 08:18 KST(10-19)·health version 0.13.1·commit c512462·DB ok 확인. 배포 뒤 Render Secret File 설정·Drive 인증 점검 미실시(사용자).",
+   "note": "2026-10-17 평가 측 발견·사용자 승인('3단계 Dockerfile 수정')으로 Antigravity 배정. Dockerfile appuser(10001)가 GID 1000 그룹에 없어 Render Secret File(/etc/secrets) 읽기 불가 예상 → Drive 서비스 계정 인증 불가 → 운영 참고자료 폴더 링크 공개 해제 불가. appuser를 GID 1000 보조 그룹에 추가, UID·소유권·render.yaml 불변. #133 c6c9480(PR 제목 TK-79) 수용·Steve 병합(46a21eb). 실행 중 id -G 미확인(평가 측 Docker 데몬 없음), CI 이미지 빌드 성공. 배포 뒤 Secret File·운영 점검. 0.13.1 main c512462/Render dep-dbal74avcj2c73acbr70 Live 08:18 KST(10-19)·health version 0.13.1·commit c512462·DB ok 확인. 배포 뒤 Render Secret File 설정·Drive 인증 점검 미실시(사용자). 2026-10-19 운영 전환 완료: Secret File drive-sa.json READABLE(id -G 1000), 서비스 계정 AUTH OK·LIST 200 6, 운영 분석 인증 service_account·목록 31(오류 1건 DRIVE_NETWORK_ERROR, 권한 무관), 폴더 일반 액세스 제한됨(권한 소유자+서비스 계정만, 평가 측 조회) 뒤 Shell 재시험 AUTH OK·LIST 200 6. 미확인: 비공개 뒤 분석 실행에서 하위 파일 내려받기, 하위 파일 단위 공유.",
    "deployed_on": "2026-10-19"
   },
   "TK-81": {
@@ -368,6 +368,16 @@
    "kind": "regression",
    "note": "2026-10-18 평가 측 발견(#125 ab3b168 비공개 탐침). EVI-FORM 제외 규칙 과잉: 주어 없는 '-다고…-나' 제외와 단독 '밖에' 제외가 자기 측 원본 분실·'X밖에 제출 부정' 결함을 지움(양성 3/4→1/4), 관형형 상대방 주장 반박 오탐 1. 고정·은퇴·train 영향 없음. 범위 마감 뒤 버그 수정으로 Antigravity 배정. #137 db5e595 조건부 수용(10-18): 요구 1·2 충족, 요구 3 합쇼체 활용형('다릅니다') 누락 조건. #137 8824008 수용(10-18): 활용형 반영, 점수 불변. 잔여 단독 '틀립니다' 반박(다음 주기). 2026-10-18 #137 병합 94e7c39(릴리스 후보). 0.13.1 main c512462/Render dep-dbal74avcj2c73acbr70 Live 08:18 KST(10-19)·health version 0.13.1·commit c512462·DB ok 확인.",
    "deployed_on": "2026-10-19"
+  },
+  "TK-82": {
+   "status": "open",
+   "kind": "existing",
+   "note": "2026-10-19 평가 측 발견(TK-80 4단계 운영 분석 처리 기록). Drive 내려받기 httpx 오류를 DRIVE_NETWORK_ERROR 하나로 묶고 재시도 없이 자료를 뺌. 원인 구분 기록·1회 재시도. 사용자 지시(10-19 '개선소요 통합 진행')로 다음 주기 Antigravity 배정."
+  },
+  "TK-83": {
+   "status": "open",
+   "kind": "existing",
+   "note": "2026-10-19 평가 측 발견(TK-79 OFF/ON 대조). auto에서 법리 검토 conflicting()이 응답 전체를 비교해 1항목 불일치에도 세 번째 공급자에 전체 재호출. 엇갈린 항목만 보내는 설계 메모 먼저. 다음 주기 Antigravity 배정."
   }
  },
  "updated_on": "2026-10-19"
