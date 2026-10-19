@@ -5,6 +5,8 @@
 
 복구: `git push origin <SHA>:refs/heads/<브랜치>`
 
+결과(2026-10-19, 평가 측 확인): 사용자가 삭제 명령을 실행했다. `git ls-remote --heads origin`으로 확인한 결과 원격 브랜치는 main·Steve_ACASiaLAW·evaluator/round8-promotion 3개만 남았고, 아래 목록 113개 중 남은 것은 0개다.
+
 ## (1) 병합됨
 
 | 브랜치 | SHA |

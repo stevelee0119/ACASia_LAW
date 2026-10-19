@@ -1,0 +1,752 @@
+{
+ "schema": "release_comparison_reference_v1",
+ "recorded_date_kst": "2026-10-19",
+ "user_decision": "2026-10-19: 화면 개편은 릴리스 예외 아님. 기준 시험(평가 기준)을 고치면 현재 릴리스와 다음 릴리스를 같은 기준으로 함께 재고, 현재 릴리스보다 성능 점수가 올라야 배포",
+ "reference_release": {
+  "version": "0.13.1",
+  "main_sha": "c512462",
+  "measured_tree": "Steve_ACASiaLAW f5bc6c0 (제품 경로 c512462와 diff 0)"
+ },
+ "measurement": "offline, scripts/eval_testset.py, evaluator_rerun",
+ "sets": {
+  "dev": {
+   "overall": 82.6,
+   "weighted_recall": 0.826,
+   "defect_items": 56,
+   "false_positives": 0,
+   "a_grade_fp": 0,
+   "injection_defended": true,
+   "per_type_credit": {
+    "AIGEN": {
+     "items": 7,
+     "credit": 5.5
+    },
+    "CIT-FAB-Q": {
+     "items": 2,
+     "credit": 0.0
+    },
+    "CIT-META": {
+     "items": 3,
+     "credit": 1.5
+    },
+    "CIT-MIS": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "CIT-NX": {
+     "items": 5,
+     "credit": 5.0
+    },
+    "CIT-NX-DB": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-COPY": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-DATE": {
+     "items": 3,
+     "credit": 3.0
+    },
+    "EVI-FAKECIT": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-FORM": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-INCONS": {
+     "items": 2,
+     "credit": 2.0
+    },
+    "EVI-LOGIC": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-NUM": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-OVR": {
+     "items": 1,
+     "credit": 0.25
+    },
+    "INJ-ANNOT": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-ATTACH": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-COVERED": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-INVISIBLE-TR3": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-META": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-OFFPAGE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-TINY": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-VISIBLE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-WHITE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-ZWSP": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "LAW-MIS": {
+     "items": 3,
+     "credit": 1.5
+    },
+    "LAW-NX": {
+     "items": 2,
+     "credit": 0.5
+    },
+    "OVR": {
+     "items": 8,
+     "credit": 8.0
+    },
+    "OVR / LAW-NX": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "SRC-UNV": {
+     "items": 2,
+     "credit": 2.0
+    }
+   }
+  },
+  "holdout": {
+   "overall": 80.1,
+   "weighted_recall": 0.801,
+   "defect_items": 54,
+   "false_positives": 0,
+   "a_grade_fp": 0,
+   "injection_defended": true,
+   "per_type_credit": {
+    "AIGEN": {
+     "items": 7,
+     "credit": 5.25
+    },
+    "CIT-FAB-Q": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "CIT-META": {
+     "items": 3,
+     "credit": 1.5
+    },
+    "CIT-NX": {
+     "items": 5,
+     "credit": 5.0
+    },
+    "CIT-NX-DB": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-COPY": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "EVI-DATE": {
+     "items": 3,
+     "credit": 3.0
+    },
+    "EVI-FAKECIT": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-FORM": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-INCONS": {
+     "items": 2,
+     "credit": 2.0
+    },
+    "EVI-LOGIC": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-NUM": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-OVR": {
+     "items": 1,
+     "credit": 0.25
+    },
+    "INJ-ANNOT": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-ATTACH": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-COVERED": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-INVISIBLE-TR3": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-META": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-OFFPAGE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-TINY": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-VISIBLE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-WHITE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-ZWSP": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "LAW-MIS": {
+     "items": 3,
+     "credit": 1.5
+    },
+    "LAW-NX": {
+     "items": 2,
+     "credit": 0.5
+    },
+    "OVR": {
+     "items": 8,
+     "credit": 8.0
+    },
+    "OVR / LAW-NX": {
+     "items": 1,
+     "credit": 0.25
+    },
+    "SRC-UNV": {
+     "items": 2,
+     "credit": 2.0
+    }
+   }
+  },
+  "retired_08": {
+   "overall": 27.2,
+   "weighted_recall": 0.272,
+   "defect_items": 46,
+   "false_positives": 0,
+   "a_grade_fp": 0,
+   "injection_defended": true,
+   "per_type_credit": {
+    "AIGEN": {
+     "items": 2,
+     "credit": 1.0
+    },
+    "CIT-FAB-Q": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "CIT-META": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "CIT-NX-DB": {
+     "items": 2,
+     "credit": 2.0
+    },
+    "EVI-COPY": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-DATE": {
+     "items": 3,
+     "credit": 1.0
+    },
+    "EVI-FAKECIT": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-FORM": {
+     "items": 2,
+     "credit": 0.25
+    },
+    "EVI-INCONS": {
+     "items": 5,
+     "credit": 0.0
+    },
+    "EVI-LOGIC": {
+     "items": 2,
+     "credit": 0.0
+    },
+    "EVI-NUM": {
+     "items": 3,
+     "credit": 2.0
+    },
+    "EVI-OVR": {
+     "items": 3,
+     "credit": 0.0
+    },
+    "INJ-ANNOT": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "INJ-ATTACH": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "INJ-COVERED": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "INJ-INVISIBLE-TR3": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "INJ-META": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "INJ-OFFPAGE": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "INJ-TINY": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "INJ-VISIBLE": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "INJ-WHITE": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "INJ-ZWSP": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "LAW-MIS": {
+     "items": 3,
+     "credit": 0.75
+    },
+    "LAW-NX": {
+     "items": 2,
+     "credit": 0.5
+    },
+    "OVR": {
+     "items": 3,
+     "credit": 0.0
+    },
+    "SRC-UNV": {
+     "items": 2,
+     "credit": 2.0
+    }
+   }
+  },
+  "retired_08b": {
+   "overall": 40.7,
+   "weighted_recall": 0.407,
+   "defect_items": 54,
+   "false_positives": 0,
+   "a_grade_fp": 0,
+   "injection_defended": true,
+   "per_type_credit": {
+    "AIGEN": {
+     "items": 3,
+     "credit": 0.0
+    },
+    "CIT-FAB-Q": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "CIT-META": {
+     "items": 1,
+     "credit": 0.25
+    },
+    "CIT-MIS": {
+     "items": 2,
+     "credit": 0.0
+    },
+    "CIT-NX": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "CIT-NX-DB": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-COPY": {
+     "items": 2,
+     "credit": 0.0
+    },
+    "EVI-DATE": {
+     "items": 3,
+     "credit": 2.0
+    },
+    "EVI-FAKECIT": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-FORM": {
+     "items": 2,
+     "credit": 0.25
+    },
+    "EVI-INCONS": {
+     "items": 5,
+     "credit": 1.0
+    },
+    "EVI-LOGIC": {
+     "items": 3,
+     "credit": 0.0
+    },
+    "EVI-NUM": {
+     "items": 3,
+     "credit": 1.0
+    },
+    "EVI-OVR": {
+     "items": 3,
+     "credit": 0.0
+    },
+    "INJ-ANNOT": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-ATTACH": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-COVERED": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-INVISIBLE-TR3": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-META": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-OFFPAGE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-TINY": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-VISIBLE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-WHITE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-ZWSP": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "LAW-MIS": {
+     "items": 4,
+     "credit": 1.0
+    },
+    "LAW-NX": {
+     "items": 2,
+     "credit": 0.5
+    },
+    "OVR": {
+     "items": 4,
+     "credit": 0.0
+    },
+    "SRC-UNV": {
+     "items": 3,
+     "credit": 3.0
+    }
+   }
+  },
+  "retired_09": {
+   "overall": 48.3,
+   "weighted_recall": 0.483,
+   "defect_items": 58,
+   "false_positives": 0,
+   "a_grade_fp": 0,
+   "injection_defended": true,
+   "per_type_credit": {
+    "AIGEN": {
+     "items": 3,
+     "credit": 1.0
+    },
+    "CIT-FAB-Q": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "CIT-META": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "CIT-MIS": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "CIT-NX": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "CIT-NX-DB": {
+     "items": 2,
+     "credit": 2.0
+    },
+    "EVI-COPY": {
+     "items": 2,
+     "credit": 0.0
+    },
+    "EVI-DATE": {
+     "items": 4,
+     "credit": 2.0
+    },
+    "EVI-FAKECIT": {
+     "items": 2,
+     "credit": 0.0
+    },
+    "EVI-FORM": {
+     "items": 3,
+     "credit": 1.0
+    },
+    "EVI-INCONS": {
+     "items": 5,
+     "credit": 1.0
+    },
+    "EVI-LOGIC": {
+     "items": 3,
+     "credit": 0.0
+    },
+    "EVI-NUM": {
+     "items": 5,
+     "credit": 4.0
+    },
+    "EVI-OVR": {
+     "items": 3,
+     "credit": 0.0
+    },
+    "INJ-ANNOT": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-ATTACH": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-COVERED": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-INVISIBLE-TR3": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-META": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-OFFPAGE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-TINY": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-VISIBLE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-WHITE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-ZWSP": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "LAW-MIS": {
+     "items": 3,
+     "credit": 1.5
+    },
+    "LAW-NX": {
+     "items": 2,
+     "credit": 0.5
+    },
+    "OVR": {
+     "items": 4,
+     "credit": 0.0
+    },
+    "SRC-UNV": {
+     "items": 3,
+     "credit": 3.0
+    }
+   }
+  },
+  "retired_10": {
+   "overall": 35.1,
+   "weighted_recall": 0.401,
+   "defect_items": 53,
+   "false_positives": 1,
+   "a_grade_fp": 1,
+   "injection_defended": true,
+   "per_type_credit": {
+    "AIGEN": {
+     "items": 2,
+     "credit": 0.0
+    },
+    "CIT-FAB-Q": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "CIT-META": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "CIT-MIS": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "CIT-NX-DB": {
+     "items": 2,
+     "credit": 2.0
+    },
+    "EVI-COPY": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "EVI-DATE": {
+     "items": 4,
+     "credit": 2.0
+    },
+    "EVI-FAKECIT": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "EVI-FORM": {
+     "items": 3,
+     "credit": 0.0
+    },
+    "EVI-INCONS": {
+     "items": 6,
+     "credit": 1.0
+    },
+    "EVI-LOGIC": {
+     "items": 2,
+     "credit": 0.0
+    },
+    "EVI-NUM": {
+     "items": 3,
+     "credit": 3.0
+    },
+    "EVI-OVR": {
+     "items": 3,
+     "credit": 0.0
+    },
+    "INJ-ANNOT": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-ATTACH": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "INJ-COVERED": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-INVISIBLE-TR3": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-META": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "INJ-OFFPAGE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-TINY": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "INJ-VISIBLE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-WHITE": {
+     "items": 1,
+     "credit": 1.0
+    },
+    "INJ-ZWSP": {
+     "items": 1,
+     "credit": 0.0
+    },
+    "LAW-MIS": {
+     "items": 3,
+     "credit": 1.5
+    },
+    "LAW-NX": {
+     "items": 3,
+     "credit": 0.75
+    },
+    "OVR": {
+     "items": 4,
+     "credit": 0.0
+    },
+    "SRC-UNV": {
+     "items": 3,
+     "credit": 3.0
+    }
+   }
+  }
+ },
+ "environment": {
+  "fingerprint": "bc929848fb49d135",
+  "law_db": false,
+  "ai_models": false,
+  "korean_ocr": true,
+  "incomparable_areas": [
+   "판례·법령 공식 DB 대조(존재·서지·인용문·취지)",
+   "조문 수치·부존재 조문",
+   "행위시법 공식 연혁 대조",
+   "판례 의미·적용 검토(semantic_review)",
+   "모델 지적 모순 재검증(model_fact_reconcile)",
+   "AI 작성 판별의 모델 의견"
+  ]
+ },
+ "details_exported": false
+}
