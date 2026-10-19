@@ -409,8 +409,12 @@ class AdversarialScanner:
                 confidence=0.85, confidence_features=features, document_id=doc.document_id, engine=ENGINE_NAME,
                 meta_message_type=MetaMessageType.MM1_MACHINE_INSTRUCTION, forensic_level=ForensicLevel.NOTABLE,
                 tags=["ZERO_WIDTH"]))
+        has_page_layers = any(k.startswith("pypdf_page_") for k in doc.raw_layers)
         for layer_name, text in doc.raw_layers.items():
             if not text:
+                continue
+            # 페이지별 레이어가 있으면 합쳐진 pypdf_stream_text는 중복 스캔하지 않는다
+            if layer_name == "pypdf_stream_text" and has_page_layers:
                 continue
             for signal in scan_unicode(text):
                 recovered = signal.recovered_text
@@ -426,14 +430,23 @@ class AdversarialScanner:
                     "forensic_signal": 1,
                     "unicode_kind": signal.kind,
                     "layer": layer_name,
+                    "sample": signal.sample,
+                    "recovered_text": recovered if recovered else None,
                     "recovered_instruction": hidden_instruction,
                 }
+                # 레이어 이름에 페이지 번호가 포함되어 있다면 추출
+                page_no = None
+                p_match = re.search(r"_p(?:age_)?(\d+)\b", layer_name)
+                if p_match:
+                    page_no = int(p_match.group(1))
+
                 out.append(
                     Finding.create(
                         type=FindingType.UNICODE_SMUGGLING,
                         status=VerificationStatus.SUSPICIOUS,
                         severity=severity,
                         evidence_grade=EvidenceGrade.A,
+                        page=page_no,
                         title=f"Unicode 은닉 신호: {signal.kind}" + (f" — {signal.detail}" if signal.kind == "ZERO_WIDTH" else ""),
                         detail=f"{layer_name} 레이어. {signal.detail}"
                         + (" 복원된 문자열에 지시형 표현이 있다." if hidden_instruction else ""),
@@ -449,8 +462,8 @@ class AdversarialScanner:
                                 description=f"{layer_name} 레이어 Unicode 신호",
                                 grade=EvidenceGrade.A,
                                 document_id=doc.document_id,
+                                page=page_no,
                                 excerpt=_excerpt(signal.sample),
-                                sealed=True,
                             )
                         ],
                     )

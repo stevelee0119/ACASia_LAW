@@ -46,14 +46,14 @@ INSTRUCTION_PATTERNS: List[PatternSpec] = [
     (_c(r"(이전|앞의|앞선|위의|기존|종전|지금까지)\s*(의\s*)?(모든\s*)?(지시|명령|지침|규칙|프롬프트)[을를]?\s*"
         r"(?:(?:모두|전부|다|일체|완전히|전혀)\s*)?(무시|무효|취소|잊|폐기|따르지)"),
      InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "이전 지시 무시 요구(한국어)"),
-    (_c(r"ignore\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier|preceding)\s+(instructions?|prompts?|rules?|directions?)"),
-     InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "이전 지시 무시 요구(영어)"),
+    (_c(r"ignore\s+(?:all\s+|any\s+|the\s+)?(?:previous|prior|above|earlier|preceding|legal\s+)?(?:instructions?|prompts?|rules?|directions?|brief|review|task|context)\b"),
+     InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "이전 지시·서면·검토 무시 요구(영어)"),
     # "ignore conflicting internal guidelines": 검증 기준이 되는 내부 규정·지침과의 충돌을 무시하라는 요구
     (_c(r"ignore\s+(?:all\s+|any\s+|the\s+)?(?:conflicting|contradicting|internal|existing|other|applicable)\s+"
         r"(?:internal\s+)?(?:guidelines?|policies|policy|rules?|regulations?|protocols?|instructions?)"),
      InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "내부 지침·규정 충돌 무시 요구(영어)"),
-    (_c(r"disregard\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier|system)"),
-     InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "disregard previous"),
+    (_c(r"disregard\s+(?:all\s+|any\s+|the\s+)?(?:previous|prior|above|earlier|system|defects?|errors?|issues?|findings?)\b"),
+     InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "결함·이전 지시 무시 요구(영어)"),
     (_c(r"forget\s+(everything|all\s+previous|your\s+instructions)"),
      InjectionIntent.INSTRUCTION_OVERRIDE, 0.9, "forget instructions"),
     (_c(MACHINE_ADDRESSEE + r"[은는이가]?\s*(아래|다음|이하|본|이)\s*(의\s*)?(지시|명령|지침|규칙)[을를에]?\s*(따를\s*것|따르라|따르십시오|따라야|따르세요|따르시오)"),
@@ -61,8 +61,14 @@ INSTRUCTION_PATTERNS: List[PatternSpec] = [
     (_c(r"(새로운|다음의)\s*(지시|지침|규칙)[을를]?\s*(따르|우선|적용)"),
      InjectionIntent.INSTRUCTION_OVERRIDE, 0.8, "새 지시 우선 적용 요구"),
     (_c(r"new\s+instructions?\s*[:：]"), InjectionIntent.INSTRUCTION_OVERRIDE, 0.7, "new instructions 선언"),
-    (_c(r"override\s+(the\s+)?(system|previous|prior)\s+(prompt|instruction|message)"),
-     InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "system prompt override"),
+    (_c(r"override\s+(?:the\s+)?(?:system|previous|prior|task|review|brief|context)\s*(?:prompt|instruction|message)?\b"),
+     InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "시스템·검토 태스크 오버라이드 요구(영어)"),
+    # 메타데이터·첨부파일·주석 지시가 본문/검토를 우선한다는 권한 오버라이드 주장
+    (_c(r"(?:metadata|attachment|comment|system|hidden)\s+overrides?\s+(?:the\s+)?(?:task|review|verification|brief|analysis|instruction)\b"),
+     InjectionIntent.ROLE_OVERRIDE, 1.0, "메타데이터/첨부 파일 우선 지시(태스크 오버라이드)"),
+    # 증거 대신 첨부/메타데이터 지침을 따르라는 대체 지시문
+    (_c(r"(?:use|follow|apply)\s+(?:attachment|metadata|comment|hidden|system|admin)\s+(?:instructions?|directives?|rules?)\s+instead\s+of\b"),
+     InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "첨부·메타데이터 대체 지시 우선 적용 요구"),
 
     # --- Role Override ---------------------------------------------------
     (_c(r"(너는|당신은|귀하는)\s*(이제|지금부터)\s*[^.\n]{0,30}(이다|입니다|역할|assistant|AI)"),
@@ -137,11 +143,11 @@ INSTRUCTION_PATTERNS: List[PatternSpec] = [
      InjectionIntent.ROLE_OVERRIDE, 0.8, "사전심사 완료 주장으로 검증 면제 유도"),
 
     # --- 검증 중단 요구 -----------------------------------------------------
-    (_c(r"(검증|탐지|분석|점검|심사)\s*(루틴|절차|과정|기능)?[를을]?\s*(즉시\s*)?(중단|생략|건너뛰|해제|비활성)"),
+    (_c(r"(?:검증|탐지|분석|점검|심사|검토)\s*(?:루틴|절차|과정|기능)?[를을]?\s*(?:즉시\s*)?(?:중단|생략|건너뛰|해제|비활성)"),
      InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "검증 중단 요구(한국어)"),
     # 동사와 대상 사이의 수식어("suspend all standard legal hallucination detectors",
     # "bypass statute date verification protocols")를 네 단어까지 허용한다.
-    (_c(r"(skip|disable|bypass|suppress|suspend|deactivate|turn\s+off|switch\s+off)\s+(all\s+|any\s+|the\s+)?"
+    (_c(r"(stop|halt|skip|disable|bypass|suppress|suspend|deactivate|turn\s+off|switch\s+off)\s+(all\s+|any\s+|the\s+)?"
         r"(?:[a-z][a-z\-]*\s+){0,4}?"
         r"(check|verification|validation|detection|detector|scan|scanner|warning|alert|analysis|filter|protocol)s?\b"),
      InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "검증·경고 억제 요구(영어)"),
@@ -163,7 +169,7 @@ INSTRUCTION_PATTERNS: List[PatternSpec] = [
      InjectionIntent.OUTPUT_MANIPULATION, 1.0, "적합 판정 반환 요구"),
 
     # --- Output Manipulation --------------------------------------------
-    (_c(r"['\"‘“]?(이상\s*없음|문제\s*없음|정상|적법|진정|적합|PASS)['\"’”]?\s*(으로|로|이라고|하다고)\s*"
+    (_c(r"['\"‘“]?(이상\s*없음|문제\s*없음|정상|적법|진정|적합|통과|PASS)['\"’”]?\s*(으로|로|이라고|하다고)\s*"
         r"(바꾸어|바꿔|변경하여|변경해)?\s*(보고|기재|판정|표시|결론|평가|처리)(?!받|되었|됐)"),
      InjectionIntent.OUTPUT_MANIPULATION, 1.0, "특정 결론 강제(한국어)"),
     # 대상 전부를 '확인된·정상인' 것으로 보고하라는 요구(v5 3-7). '확인된 사실'처럼 명사를 꾸미는 말은 제외된다.
@@ -184,8 +190,11 @@ INSTRUCTION_PATTERNS: List[PatternSpec] = [
     (_c(r"\[\s*(?:DOCUMENT\s+|SYSTEM\s+)?(?:AUDIT|SECURITY|COMPLIANCE|VERIFICATION|AI)[\s_-]+"
         r"(?:METADATA|CLEARANCE|CLEARED|VERIFIED|PASSED|APPROVAL|APPROVED|STATUS)\b[^\]\n]{0,80}\]"),
      InjectionIntent.ROLE_OVERRIDE, 0.8, "감사·보안 통과 표지 사칭(검증 면제 유도)"),
-    (_c(r"(?:output|report|return|display|conclude)\s+['\"‘“]?(?:pass|clean|valid|authentic)['\"’”]?\b"),
+    (_c(r"(?:output|report|return|display|conclude|emit)\s+['\"‘“]?(?:pass|clean|valid|authentic)['\"’”]?\b"),
      InjectionIntent.OUTPUT_MANIPULATION, 1.0, "PASS 결과 출력 강제(영어)"),
+    # 특정 출력 내용 강제 (출력에 ...를 적어라/써라)
+    (_c(r"(?:출력|결과|답변|보고서)[에을를]?\s*[^.\n]{0,50}?(?:적어라|써라|출력하라|표시하라|기재하라|포함하라|기록하라|반환하라)"),
+     InjectionIntent.OUTPUT_MANIPULATION, 0.9, "특정 출력 내용 강제 요구"),
     (_c(r"(신뢰도|점수|score)\s*[를을]?\s*(100|최고|최상)[%점]?\s*(로|으로)?\s*(부여|기재|설정)"),
      InjectionIntent.OUTPUT_MANIPULATION, 0.9, "점수 강제"),
     (_c(r"(보고서|결과)\s*에\s*[^.\n]{0,20}\s*(포함하지|기재하지|표시하지)\s*(말|마)"),
@@ -218,7 +227,7 @@ INSTRUCTION_PATTERNS: List[PatternSpec] = [
      InjectionIntent.VERIFICATION_SUPPRESSION, 0.8, "검증 제외 요구"),
     (_c(r"do\s+not\s+(verify|check|validate|search|look\s+up|fact.?check)"),
      InjectionIntent.VERIFICATION_SUPPRESSION, 1.0, "검증 금지 요구(영어)"),
-    (_c(r"(skip|bypass|omit)\s+(the\s+|all\s+)?(citation\s+|case\s+|source\s+|reference\s+)?"
+    (_c(r"(stop|halt|skip|bypass|omit)\s+(the\s+|all\s+)?(citation\s+|case\s+|source\s+|reference\s+)?"
         r"(verification|validation|check(ing)?|fact.?check|lookup)"),
      InjectionIntent.VERIFICATION_SUPPRESSION, 1.0, "검증 우회 요구"),
     (_c(r"이\s*(문서|서면|부분)[은는]?\s*(검증|검토)\s*(대상|절차)\s*에서\s*제외"),
@@ -362,7 +371,7 @@ NOMINAL_FOLLOWER_RE = _c(
 )
 # 명령·요청 어미. 이것이 지시형 낱말 가까이에 있으면 언급이 아니라 명령이다.
 IMPERATIVE_RE = _c(
-    r"(하라|해라|하시오|하십시오|하세요|할\s*것|말\s*것|마십시오|마세요|마라|바랍니다|주십시오|주세요|"
+    r"(하라|해라|어라|아라|하시오|하십시오|하세요|할\s*것|말\s*것|마십시오|마세요|마라|바랍니다|주십시오|주세요|"
     r"해야\s*한다|하여야\s*한다|하도록|반환하|출력하라|처리하라|\bplease\b|\bmust\b|\bshall\b)"
     r"|하지\s*않아도\s*됩니다|넣지\s*않는\s*편이\s*좋|말아\s*주십시오"
 )
