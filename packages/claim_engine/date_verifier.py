@@ -68,14 +68,36 @@ def _detect_heading(line: str) -> Optional[str]:
 
 
 def _find_effective_heading(text: str, match_start: int, block_heading: Optional[str]) -> Optional[str]:
-    """매칭 위치 이전의 텍스트 또는 블록/문서 흐름상 유효한 소제목을 반환한다."""
+    """매칭 위치 이전의 같은 줄 항목명 또는 블록/문서 흐름상 유효한 소제목을 반환한다 (TK-76 A-4)."""
+    # 1. 같은 줄에서 괄호형 항목명([항목명], 【항목명】, <항목명>)이 있으면 최우선 적용 (#120 공용 재사용)
+    from .korean_amount import _find_item_heading, BRACKET_HEADING_RE
+    line_start = text.rfind("\n", 0, match_start)
+    s_idx = 0 if line_start == -1 else line_start + 1
+    line_prefix = text[s_idx:match_start].strip()
+
+    if BRACKET_HEADING_RE.search(line_prefix):
+        item_h = _find_item_heading(text, match_start)
+        if item_h:
+            return item_h
+
+    # 2. 매칭 위치 이전 줄에서 소제목 탐색
     prefix_text = text[:match_start]
     lines = prefix_text.splitlines()
     for line in reversed(lines):
         h = _detect_heading(line)
         if h:
             return h
-    return block_heading
+
+    # 3. 블록 소제목이 있으면 블록 소제목 반환
+    if block_heading:
+        return block_heading
+
+    # 4. 소제목이 없는 경우 같은 줄 항목명 반환
+    item_h = _find_item_heading(text, match_start)
+    if item_h:
+        return item_h
+
+    return None
 
 
 def _parse_valid_date(year: int, month: int, day: int) -> Optional[datetime.date]:
