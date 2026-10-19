@@ -21,8 +21,12 @@ from .patterns import (
     IMPERATIVE_RE,
     INSTRUCTION_PATTERNS,
     INTENT_TO_FINDING,
+    LEGAL_JUDGMENT_RE,
+    NARRATED_ACTION_RE,
+    NARRATED_CLAIM_RE,
     NOMINAL_FOLLOWER_RE,
     QUOTE_WRAPPERS,
+    TERMINAL_IMPERATIVE_RE,
 )
 
 
@@ -138,6 +142,38 @@ def _narrative_sentence(text: str, hit: PatternHit) -> bool:
     return bool(NARRATIVE_PAST_RE.search(sentence)) and not IMPERATIVE_RE.search(sentence)
 
 
+def _is_narrated_legal_context(text: str, hit: PatternHit) -> bool:
+    """지시형 낱말이 든 문장이 타인의 주장 인용, 과거 행위 서술, 법률 판단 등 정상 서술 문맥인지 본다 (TK-92).
+
+    보이는 본문에서 발생한 지시형 낱말이라도 타인의 요청 인용("-라고 요구하였다", "-라는 요청"),
+    과거 행위 서술과 관형형("-한 처분", "-하였다"), 법률 판단("-은 위법하다") 문장이고
+    AI 호명이나 명령형 종결이 없으면 정상 변론 서술로 본다.
+    """
+    start = max((text.rfind(mark, 0, hit.start) for mark in ".!?。\n"), default=-1) + 1
+    ends = [i for i in (text.find(mark, hit.end) for mark in ".!?。\n") if i >= 0]
+    sentence = text[start:min(ends) if ends else len(text)]
+
+    # 1. AI 호명이 있으면 진짜 지시문이므로 정상 서술로 보지 않는다 (TK-92 요구 3).
+    if AI_ADDRESSING_RE.search(sentence):
+        return False
+
+    # 2. 문장 끝이 진짜 명령형 어미로 끝나면 정상 서술로 보지 않는다.
+    if TERMINAL_IMPERATIVE_RE.search(sentence.strip()):
+        return False
+
+    # 3. hit 직후가 단독 명령형 종결인 경우 (예: "...검증 절차를 즉시 중단하라.") 정상 서술로 보지 않는다.
+    tail_after_hit = text[hit.end:min(ends) if ends else len(text)].strip()
+    if re.match(r"^(?:하라|해라|하시오|하십시오|하세요|할\s*것|말\s*것|마십시오|마라)[.!?]*$", tail_after_hit):
+        return False
+
+    # 4. 타인의 주장 인용, 과거 행위 서술, 법률 판단 문맥인지 확인
+    return bool(
+        NARRATED_CLAIM_RE.search(sentence)
+        or NARRATED_ACTION_RE.search(sentence)
+        or LEGAL_JUDGMENT_RE.search(sentence)
+    )
+
+
 def _mentions_only(text: str, hits: List[PatternHit]) -> bool:
     """모든 지시형 낱말이 명령이 아니라 주제로 언급된 것인지 판정한다.
 
@@ -245,6 +281,11 @@ def classify(
     # 명령형 어미만 있는 메모(문구 다듬기, 일자 확인 등 검토자 메모)는 참고(advisory) 이하로 둔다.
     is_memo_channel = source_layer in ("annotation", "metadata") and not hidden_reason
     channel_actionable = not is_memo_channel or (addresses_ai or is_output or is_suppress)
+
+    # 보이는 본문(not is_hidden)에서 정상 법률 서술(타인 주장 인용, 과거 행위 서술, 법률 판단 등)은 지시문 hit에서 제외 (TK-92).
+    # 숨김 채널(is_hidden)이거나 AI 호명(addresses_ai)이 있는 경우에는 제외하지 않는다.
+    if not is_hidden and not addresses_ai and hits:
+        hits = [h for h in hits if not _is_narrated_legal_context(text, h)]
 
     if is_hidden and (addresses_ai or has_imperative) and channel_actionable and not hits:
         # 정상 법률 서면 표현(피고는 원고에게 금원을 지급하라 등)이고 AI 호명이 없으면 제외
