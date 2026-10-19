@@ -309,7 +309,7 @@ class AdversarialScanner:
         out: List[Finding] = []
         for key, value in doc.metadata.items():
             text = str(value)
-            if not text.strip() or len(text) < 8:
+            if not text.strip() or len(text.strip()) < 4:
                 continue
             normalized, kinds = normalize_for_classification(text)
             classification = classify(normalized, source_layer="metadata", visible=False, block_type="metadata")
@@ -362,7 +362,7 @@ class AdversarialScanner:
         entries += [("ACTUAL_TEXT", "actual_text", str(t), None) for t in doc.structure.get("actual_text_strings") or []]
         flagged_paths: set = set()
         for path, layer, text, name in entries:
-            if len(text.strip()) < 6:
+            if len(text.strip()) < 4:
                 continue
             if name == "북마크 제목 이어 읽기" and "OUTLINE" in flagged_paths:
                 continue  # 제목 하나로 이미 보고했다
@@ -430,8 +430,6 @@ class AdversarialScanner:
                     "forensic_signal": 1,
                     "unicode_kind": signal.kind,
                     "layer": layer_name,
-                    "sample": signal.sample,
-                    "recovered_text": recovered if recovered else None,
                     "recovered_instruction": hidden_instruction,
                 }
                 # 레이어 이름에 페이지 번호가 포함되어 있다면 추출
@@ -457,6 +455,7 @@ class AdversarialScanner:
                         meta_message_type=MetaMessageType.MM1_MACHINE_INSTRUCTION,
                         forensic_level=ForensicLevel.SUSPICIOUS if hidden_instruction else ForensicLevel.NOTABLE,
                         sealed_excerpt=recovered or signal.sample,
+                        tags=[signal.kind] + (["ZERO_WIDTH"] if signal.kind == "ZERO_WIDTH" else []),
                         evidence=[
                             Evidence.create(
                                 description=f"{layer_name} 레이어 Unicode 신호",
@@ -464,6 +463,7 @@ class AdversarialScanner:
                                 document_id=doc.document_id,
                                 page=page_no,
                                 excerpt=_excerpt(signal.sample),
+                                sealed=True,
                             )
                         ],
                     )
