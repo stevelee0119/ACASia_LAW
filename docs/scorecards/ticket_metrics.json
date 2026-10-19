@@ -1,9 +1,9 @@
 {
- "total": 80,
+ "total": 82,
  "status": {
   "deployed": 73,
   "known_open": 5,
-  "open": 2
+  "open": 4
  },
  "open": [
   {
@@ -54,6 +54,20 @@
    "kind": "existing",
    "found_on": "2026-10-17",
    "note": "2026-10-17 평가 측 발견(온라인 첫 측정)·사용자 승인으로 Antigravity 배정. 공식 DB 조회의 실행 단위 집계(출처별 요청·시도·상태·캐시·소요) 부재로 온라인 측정이 DB 기여·실패를 보고하지 못함. run_manifest 집계 추가, 질의어·URL 제외. 근거는 실행 기록·접속 점검 집계뿐(고정 벤치 항목 결과 미사용). 2026-10-18 사용자 결정(가안): 이번 릴리스에서 제외, 다음 주기."
+  },
+  {
+   "id": "TK-82",
+   "status": "open",
+   "kind": "existing",
+   "found_on": "2026-10-19",
+   "note": "2026-10-19 평가 측 발견(TK-80 4단계 운영 분석 처리 기록). Drive 내려받기 httpx 오류를 DRIVE_NETWORK_ERROR 하나로 묶고 재시도 없이 자료를 뺌. 원인 구분 기록·1회 재시도. 사용자 지시(10-19 '개선소요 통합 진행')로 다음 주기 Antigravity 배정."
+  },
+  {
+   "id": "TK-83",
+   "status": "open",
+   "kind": "existing",
+   "found_on": "2026-10-19",
+   "note": "2026-10-19 평가 측 발견(TK-79 OFF/ON 대조). auto에서 법리 검토 conflicting()이 응답 전체를 비교해 1항목 불일치에도 세 번째 공급자에 전체 재호출. 엇갈린 항목만 보내는 설계 메모 먼저. 다음 주기 Antigravity 배정."
   }
  ],
  "weekly": {
@@ -74,7 +88,10 @@
    "recurrence": 0
   },
   "2026-W43": {
-   "deployed": 3
+   "deployed": 3,
+   "found": 2,
+   "regression": 0,
+   "recurrence": 0
   }
  },
  "daily_found": {
@@ -129,6 +146,10 @@
   "2026-10-18": {
    "found": 1,
    "regression": 1
+  },
+  "2026-10-19": {
+   "found": 2,
+   "regression": 0
   }
  },
  "regression_total": 25,
