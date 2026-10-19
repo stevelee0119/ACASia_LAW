@@ -266,6 +266,59 @@ def test_benign_control_argument_narrative(tmp_path: Path):
     assert len(critical_findings) == 0, f"정상 변론 서술에서 오탐 발생: {critical_findings}"
 
 
+def test_benign_control_reviewer_annotation_memo(tmp_path: Path):
+    """대조군 5: PDF 주석(Annotation)에 검토자가 남긴 정상 메모(한국어 문구 다듬기, 영어 일정 확인 등).
+
+    TK-89 2차 판정 보완 요구: 사람이 남기는 주석·메타데이터 채널은 AI 수신자를 부르거나 결론/검증 제어 의도가
+    없는 단순 검토 메모인 경우 SUSPICIOUS 0건이어야 한다.
+    """
+    font = _register_font()
+    pdf_path = tmp_path / "control_annot_memo.pdf"
+
+    c = canvas.Canvas(str(pdf_path), pagesize=A4)
+    c.setFont(font, 11)
+    c.drawString(70, 750, "용역계약서 초안: 제3조 업무 범위 및 대금 지급 조건.")
+    c.save()
+
+    # pypdf를 통해 정상 검토자 주석(Text Annotation) 2건 추가
+    reader = pypdf.PdfReader(str(pdf_path))
+    writer = PdfWriter()
+    writer.append(reader)
+
+    from pypdf.generic import ArrayObject, DictionaryObject, FloatObject, NameObject, TextStringObject
+
+    # 주석 1 (한국어 검토자 메모): 문구 다듬기 요청
+    annot_ko = DictionaryObject({
+        NameObject("/Type"): NameObject("/Annot"),
+        NameObject("/Subtype"): NameObject("/Text"),
+        NameObject("/Rect"): ArrayObject([FloatObject(100), FloatObject(100), FloatObject(120), FloatObject(120)]),
+        NameObject("/Contents"): TextStringObject("제3조 제2항의 문맥이 다소 모호하니 문장을 보다 명확하게 가다듬어 주십시오."),
+    })
+    writer.add_annotation(page_number=0, annotation=annot_ko)
+
+    # 주석 2 (영어 검토자 메모): 일정 재확인 요청
+    annot_en = DictionaryObject({
+        NameObject("/Type"): NameObject("/Annot"),
+        NameObject("/Subtype"): NameObject("/Text"),
+        NameObject("/Rect"): ArrayObject([FloatObject(200), FloatObject(100), FloatObject(220), FloatObject(120)]),
+        NameObject("/Contents"): TextStringObject("Please verify the delivery deadline stated in clause 5 with the logistics team."),
+    })
+    writer.add_annotation(page_number=0, annotation=annot_en)
+
+    annot_pdf_path = tmp_path / "control_annot_memo_with_comments.pdf"
+    with open(annot_pdf_path, "wb") as f:
+        writer.write(f)
+
+    doc = _parse(annot_pdf_path, doc_id="CTRL-05")
+    scanner = AdversarialScanner()
+    res = scanner.scan(doc)
+
+    # 주석 속 정상 검토자 메모에 대해 SUSPICIOUS finding이 없어야 함
+    suspicious_findings = [f for f in res.findings if f.status == VerificationStatus.SUSPICIOUS]
+    assert len(suspicious_findings) == 0, f"주석 속 검토자 메모에서 SUSPICIOUS 오탐 발생: {suspicious_findings}"
+
+
+
 # ===========================================================================
 # 3. 실제 진입점(parse_document → VerificationPipeline.run) 통합 시험
 # ===========================================================================

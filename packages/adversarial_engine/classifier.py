@@ -230,19 +230,25 @@ def classify(
     benign_context = bool(BENIGN_CONTEXT_RE.search(text))
     citation_context = bool(CITATION_CONTEXT_RE.search(text))
 
-    if is_hidden and (addresses_ai or has_imperative) and not hits:
+    is_output = bool(re.search(
+        r"(?:출력|결과|답변|보고서|기재|표시|반환|작성|결론|평가|pass|output|return|report|conclude|emit|display|print|write)",
+        text,
+        re.IGNORECASE,
+    ))
+    is_suppress = bool(re.search(
+        r"(?:무시|생략|중단|건너뛰|제외|배제|우회|해제|비활성|ignore|disregard|skip|bypass|override|stop|halt|disable|suppress)",
+        text,
+        re.IGNORECASE,
+    ))
+
+    # 사람이 남기는 메모 채널(주석·메타데이터)은 AI 수신자를 부르거나 결론/검증 제어 의도가 있어야 구조적 의심 판정 (TK-89 보완).
+    # 명령형 어미만 있는 메모(문구 다듬기, 일자 확인 등 검토자 메모)는 참고(advisory) 이하로 둔다.
+    is_memo_channel = source_layer in ("annotation", "metadata") and not hidden_reason
+    channel_actionable = not is_memo_channel or (addresses_ai or is_output or is_suppress)
+
+    if is_hidden and (addresses_ai or has_imperative) and channel_actionable and not hits:
         # 정상 법률 서면 표현(피고는 원고에게 금원을 지급하라 등)이고 AI 호명이 없으면 제외
         if not (benign_context and not addresses_ai):
-            is_output = bool(re.search(
-                r"(?:출력|결과|답변|보고서|기재|표시|반환|작성|결론|평가|pass|output|return|report|conclude|emit|display|print|write)",
-                text,
-                re.IGNORECASE,
-            ))
-            is_suppress = bool(re.search(
-                r"(?:무시|생략|중단|건너뛰|제외|배제|우회|해제|비활성|ignore|disregard|skip|bypass|override|stop|halt|disable|suppress)",
-                text,
-                re.IGNORECASE,
-            ))
             if is_output:
                 intent = InjectionIntent.OUTPUT_MANIPULATION
             elif is_suppress:
@@ -384,8 +390,8 @@ def classify(
         label = AdversarialClass.PROMPT_INJECTION_LIKELY
     elif score >= 2.0 and corroboration >= 1:
         label = AdversarialClass.SUSPICIOUS_META_INSTRUCTION
-    elif is_hidden and (addresses_ai or ((has_imperative or imperative) and not (benign_context and not addresses_ai))):
-        # 숨김 채널에서 나온 명령형·AI 수신자 문장은 동사 목록과 무관하게 채널 의심으로 판정 (TK-89 3항)
+    elif is_hidden and (addresses_ai or (channel_actionable and (has_imperative or imperative) and not (benign_context and not addresses_ai))):
+        # 숨김 채널에서 나온 명령형·AI 수신자 문장은 동사 목록과 무관하게 채널 의심으로 판정 (TK-89 3항, 보완)
         label = AdversarialClass.SUSPICIOUS_META_INSTRUCTION
     elif score >= 0.8:
         label = AdversarialClass.INSTRUCTION_LIKE

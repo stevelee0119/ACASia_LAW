@@ -538,25 +538,27 @@ class AdversarialScanner:
 
         for delta in compare_layers(layers):
             instruction_segments = []
+            layer_name = "annotation" if delta.right_layer == "annotation_text" else "hidden_text"
             for segment in delta.only_in_right:
-                classification = classify(segment, source_layer="hidden_text", visible=False)
-                if classification.label != AdversarialClass.BENIGN_CONTENT:
+                classification = classify(segment, source_layer=layer_name, visible=False)
+                if classification.label not in (AdversarialClass.BENIGN_CONTENT, AdversarialClass.INSTRUCTION_LIKE):
                     instruction_segments.append((segment, classification))
             if not instruction_segments and delta.difference <= 0:
                 continue
 
             ocr_layers = {"ocr_layer", "independent_ocr"}
             is_ocr = bool({delta.left_layer, delta.right_layer} & ocr_layers)
+            is_annotation = bool({delta.left_layer, delta.right_layer} & {"annotation_text"})
             finding_type = FindingType.OCR_LAYER_INJECTION if is_ocr and instruction_segments else (
                 FindingType.OCR_LAYER_MISMATCH if is_ocr else FindingType.HIDDEN_TEXT_MISMATCH
             )
             severity = Severity.INFO
             if instruction_segments:
                 severity = Severity.CRITICAL if is_ocr else Severity.HIGH
-            elif not is_ocr and delta.difference > 40:
+            elif not is_ocr and not is_annotation and delta.difference > 40:
                 severity = Severity.MEDIUM
-            # OCR은 인식 오차가 있으므로 단순 분량 차이로는 Finding을 만들지 않는다.
-            # 지시형 문자열이 한쪽 레이어에만 존재할 때만 보고한다.
+            # OCR과 주석은 본문 표시 텍스트와 본질적으로 분량이 다르므로 단순 분량 차이로는 Finding을 만들지 않는다.
+            # 지시형 문자열이 존재할 때만 보고한다.
 
             if severity == Severity.INFO:
                 continue
