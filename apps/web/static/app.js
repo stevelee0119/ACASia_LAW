@@ -88,6 +88,98 @@ function toast(message) {
     try { if (el.matches(":popover-open")) el.hidePopover(); } catch (error) { /* 무시 */ }
   }, 6500);
 }
+
+// 텍스트 클립보드 복사 헬퍼 (TK-94)
+async function copyToClipboard(text, successMessage = "클립보드에 복사되었습니다.") {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    toast(successMessage);
+  } catch (err) {
+    toast("클립보드 복사에 실패했습니다. 직접 복사해 주세요.");
+  }
+}
+
+// 출처 미확인/검토 대상 판례·법령에 대한 엘박스/법률 AI 검증 프롬프트 생성 (TK-94)
+function buildExternalAiPromptForCitation(item, projectIncidentDate = "") {
+  const authority = item.cited_authority || item.raw_text || "인용 판례/법령 미상";
+  const claim = friendlyText(item.claim_text || "서면 주장 내용 없음");
+  const verdict = item.verdict_label || item.ai_generation_basis || (item.official_status ? label(item.official_status) : "공식 DB 출처 미확인");
+  const dateStr = projectIncidentDate || "미지정 (소송 진행 시점 기준)";
+  const docInfo = item.doc?.filename ? `${item.doc.filename}${item.location?.page ? ` (${item.location.page}쪽)` : ""}` : "";
+
+  return `[역할]
+당신은 대한민국 법률 및 판례 검증 전문 법률 비서 AI입니다.
+아래 소송 서면에서 인용된 [판례/법령]의 실재 여부와 주장의 타당성을 정밀 검증해 주세요.
+
+[검증 대상 정보]
+- 인용 표기: ${authority}
+- 서면 내 주장 요지: "${claim}"
+- 1차 검증 시스템 진단: ${verdict}${docInfo ? `\n- 인용 위치: ${docInfo}` : ""}
+- 적용/기준 시점: ${dateStr}
+
+[검증 요청 사항]
+1. 판례/법령 실재 여부:
+   - 해당 사건번호/법령 조항이 실제로 존재하는가? (대법원 또는 하급심 판결 여부, 사건명, 실제 선고일자)
+   - 만약 존재하지 않는다면, 유사한 사건번호나 당사자 주장을 다룬 유사 대법원 판례가 있는가?
+2. 판시사항 부합 여부:
+   - 해당 판결이 실재한다면, 서면의 주장 내용과 실제 판시사항/판결요지가 일치하는가? 아니면 판례 취지를 왜곡·과장한 것인가?
+3. 대체/반박 리딩 판례:
+   - 위 쟁점에 대해 확립된 대법원 리딩 판례(정확한 사건번호 및 판결요지)를 제시해 주세요.
+
+[답변 형식]
+- 1) 검증 결과 요약 (실재 여부 / 왜곡 여부 / 신뢰도 등급)
+- 2) 실제 판결 정보 및 핵심 판결요지
+- 3) 서면 주장과의 비교 분석
+- 4) 권장 대응 방안 및 대체 판례
+
+※ 주의: 외부 AI 도구 입력 전 당사자 개인정보(실명, 고유식별정보 등)가 포함되어 있는지 다시 한번 확인하시기 바랍니다.`;
+}
+
+// 복수의 미확인 판례/법령 일괄 검증 프롬프트 생성 (TK-94)
+function buildBatchExternalAiPrompt(unverifiedList, projectIncidentDate = "") {
+  const dateStr = projectIncidentDate || "미지정 (소송 진행 시점 기준)";
+  let itemsBlock = "";
+  unverifiedList.forEach((it, idx) => {
+    const auth = it.cited_authority || it.raw_text || it.document_id || `항목 ${idx + 1}`;
+    const claim = friendlyText(it.claim_text || it.reason || "상세 주장 없음");
+    const diag = it.verdict_label || it.ai_generation_basis || (it.official_status ? label(it.official_status) : it.reason || "출처 미확인");
+    itemsBlock += `\n[항목 ${idx + 1}]\n- 인용 표기: ${auth}\n- 서면 주장 요지: "${claim}"\n- 1차 시스템 진단: ${diag}\n`;
+  });
+
+  return `[역할]
+당신은 대한민국 법률 및 판례 검증 전문 법률 비서 AI입니다.
+아래 소송 서면에서 인용되었으나 1차 공식 DB에서 출처가 확인되지 않은 [판례·법령 목록 ${unverifiedList.length}건]을 정밀 검증해 주세요.
+
+[적용/기준 시점]
+- ${dateStr}
+
+[검증 대상 목록]
+${itemsBlock}
+
+[검증 요청 사항]
+각 항목별로 다음 내용을 일목요연하게 표 및 목록으로 답변해 주세요:
+1. 실재 여부: 실제 존재하는 판례/법령인가? (대법원/하급심 여부, 정확한 사건번호, 선고일자)
+2. 판시사항 부합 여부: 서면 주장이 실제 판시사항과 일치하는가, 아니면 왜곡·과장·환각인가?
+3. 대체/반박 리딩 판례: 해당 주장을 검증·반박할 수 있는 실제 대법원 판례 제시.
+
+[답변 형식]
+- 각 항목별 검증 결과 요약 표 (사건번호 | 실재여부 | 부합여부 | 대체 판례)
+- 항목별 상세 분석 및 권장 대응 방안
+
+※ 주의: 외부 AI 도구 입력 전 당사자 개인정보(실명, 고유식별정보 등)가 포함되어 있는지 다시 한번 확인하시기 바랍니다.`;
+}
+
 async function api(path, options = {}) {
   const authVersion = operationsUI.authVersion?.() || 0;
   const {interactiveAuth = true, ...request} = options;
@@ -719,6 +811,17 @@ function renderHallucinationSummary(rows) {
     summary.textContent = `판례 인용 및 법률 주장 검토 항목이 총 ${rows.length}건입니다(${parts.join(", ")}). ` +
       "공식 DB 미확인은 부존재를 뜻하지 않으며, 원문 일치 판례는 구체적 사건 적용성을 직접 검토하시기 바랍니다.";
     summary.className = "warning-text";
+    const unconfirmed = rows.filter(r => r.basis !== "OFFICIAL_CONFIRMED");
+    if (unconfirmed.length > 0) {
+      const batchBtn = button("📋 미확인 판례 일괄 검증 프롬프트 복사", () => {
+        copyToClipboard(
+          buildBatchExternalAiPrompt(unconfirmed, state.project?.incident_date),
+          `미확인 판례 ${unconfirmed.length}건에 대한 엘박스/AI 일괄 검증 프롬프트가 복사되었습니다.`
+        );
+      }, "external-ai-batch-btn");
+      batchBtn.title = "엘박스 등 법률 AI에 한 번에 입력하여 미확인 판례 전체의 실재 여부와 판결요지를 일목요연하게 표로 회신받을 수 있는 프롬프트를 복사합니다.";
+      summary.append(batchBtn);
+    }
   } else {
     summary.textContent = `소장 인용 판례가 공식 DB와 일치 확인되었습니다(${parts.join(", ")}). 판례의 구체적 사건 적용성은 직접 검토하시기 바랍니다.`;
     summary.className = "safe-text";
@@ -1889,6 +1992,14 @@ function renderFindings() {
         const tdClaim = node("td");
         if (item.cited_authority) {
           tdClaim.append(node("strong", item.cited_authority));
+          const promptBtn = button("📋 엘박스/AI 검증 프롬프트", () => {
+            copyToClipboard(
+              buildExternalAiPromptForCitation(item, state.project?.incident_date),
+              "엘박스/법률 AI 검증 프롬프트가 복사되었습니다."
+            );
+          }, "external-ai-prompt-btn");
+          promptBtn.title = "엘박스 등 법률 AI에 바로 입력하여 판례 실재 여부와 판시사항을 검증할 수 있는 프롬프트를 복사합니다.";
+          tdClaim.append(promptBtn);
         }
         if (item.claim_text) {
           tdClaim.append(node("p", friendlyText(item.claim_text), "claim-text"));
@@ -2033,7 +2144,18 @@ function renderFindings() {
     unverifiedContainer.replaceChildren();
     if (state.run?.unverified_items?.length) {
       const details = node("details", null, "detail-section");
-      details.append(node("summary", `미확인 범위 ${state.run.unverified_items.length}건`));
+      const summaryNode = node("summary", `미확인 범위 ${state.run.unverified_items.length}건 `);
+      const batchBtn = button("📋 미확인 항목 전체 검증 프롬프트 복사", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        copyToClipboard(
+          buildBatchExternalAiPrompt(state.run.unverified_items, state.project?.incident_date),
+          `미확인 범위 ${state.run.unverified_items.length}건에 대한 엘박스/AI 일괄 검증 프롬프트가 복사되었습니다.`
+        );
+      }, "external-ai-batch-btn");
+      batchBtn.title = "미확인 범위 항목 전체를 법률 AI에 일괄 질의할 수 있는 프롬프트를 복사합니다.";
+      summaryNode.append(batchBtn);
+      details.append(summaryNode);
       for (const item of state.run.unverified_items) {
         details.append(node("p", friendlyText(`${item.raw_text || item.document_id || ""} ${item.page ? `· ${item.page}쪽` : ""}: ${item.reason || "확인하지 못함"}`)));
       }

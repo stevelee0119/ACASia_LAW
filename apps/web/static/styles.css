@@ -1744,3 +1744,43 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
   cursor: pointer;
 }
 
+
+/* TK-94: 외부 법률 AI/엘박스 검증 프롬프트 복사 버튼 */
+.external-ai-prompt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #1a56db;
+  background-color: #ebf5ff;
+  border: 1px solid #c3ddfd;
+  border-radius: 4px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+.external-ai-prompt-btn:hover {
+  background-color: #dbeafe;
+  border-color: #93c5fd;
+}
+.external-ai-batch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e429f;
+  background-color: #e1effe;
+  border: 1px solid #b4c6fc;
+  border-radius: 6px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.external-ai-batch-btn:hover {
+  background-color: #c3ddfd;
+}
