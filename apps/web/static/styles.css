@@ -1745,42 +1745,38 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
 }
 
 
-/* TK-94: 외부 법률 AI/엘박스 검증 프롬프트 복사 버튼 */
+/* TK-94: 미확인 판례/법령 표 하단부 엘박스/AI 검증 프롬프트 버튼 */
+.review-table-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 12px;
+  padding: 6px 12px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+.review-prompt-count {
+  font-size: 12px;
+  color: #64748b;
+}
 .external-ai-prompt-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-top: 6px;
-  padding: 3px 8px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #1a56db;
-  background-color: #ebf5ff;
-  border: 1px solid #c3ddfd;
-  border-radius: 4px;
-  cursor: pointer;
-  text-decoration: none;
-  transition: background-color 0.15s ease;
-}
-.external-ai-prompt-btn:hover {
-  background-color: #dbeafe;
-  border-color: #93c5fd;
-}
-.external-ai-batch-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 10px;
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 600;
   color: #1e429f;
-  background-color: #e1effe;
+  background-color: #ebf5ff;
   border: 1px solid #b4c6fc;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
-  vertical-align: middle;
+  text-decoration: none;
+  transition: all 0.15s ease;
 }
-.external-ai-batch-btn:hover {
-  background-color: #c3ddfd;
+.external-ai-prompt-btn:hover {
+  background-color: #dbeafe;
+  border-color: #93c5fd;
 }
