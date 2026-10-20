@@ -634,10 +634,25 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
 
     seen: Dict[tuple, List[Dict[str, Any]]] = {}
     for row in rows:
-        is_in_section = row.get("in_section", not row.get("from_lines", False))
+        is_in_section = bool(row.get("in_section", not row.get("from_lines", False)))
         # 목록 구역이 존재하는 서면에서, 해당 목록 구역에 이미 등록된 번호의 본문 행은 중복 집계에서 제외
         if section_keys and not is_in_section and (row["party"], row["number"]) in section_keys:
             continue
+        # 본문 서술 영역에서 추출된 행 중 명백한 본문 서술문(40자 초과 + 마침표)이나 서술어 결합 행은 중복 목록 항목에서 제외 (은퇴 10 A등급 오탐 방지)
+        if not is_in_section and row.get("from_lines"):
+            name = (row.get("name") or "").strip()
+            purpose = (row.get("purpose") or "").strip()
+            full_desc = f"{name} {purpose}".strip()
+            clean_desc = re.sub(r"\([^)]*\)", " ", full_desc)
+            clean_desc = DATE_RE.sub(" ", clean_desc).strip()
+            if len(clean_desc) > 40 and re.search(r"[다음습]\s*\.\s*$", clean_desc):
+                continue
+            if re.match(r"^[이가은는을를에로의]\s*(?:[가-힣A-Za-z0-9_]{1,30}\s+){0,6}(?:설명|주장|확인|보여|나타|제출|인용|바와|살피|따라|원용)", name):
+                continue
+            if _EXHIBIT_REF_SENTENCE_RE.search(name) or _EXHIBIT_REF_SENTENCE_RE.search(full_desc):
+                continue
+            if any(v in name for v in ("하였다", "바와 같이", "살피건대", "주장한다")):
+                continue
         keys = [(row["party"], row["number"], b) for b in row.get("branches") or []] or [(row["party"], row["number"], None)]
         for key in keys:
             seen.setdefault(key, []).append(row)
@@ -829,7 +844,9 @@ _CONTINUOUS_RANGE_RE = re.compile(
 )
 _CONTINUOUS_KEYWORD_RE = re.compile(r"(?:연속\s*(?:번호|제출|서증)|누락이\s*(?:전혀\s*)?없)")
 _COMPLETE_DECLARATION_RE = re.compile(
-    r"(?:(?:최종\s*)?증거목록|입증방법|제출\s*증거|제출목록|별지\s*증거목록|별지\s*제출목록|첨부\s*목록)[^.\n]{0,60}(?:전부|모두|일체|빠짐없이|추가\s*제출\s*없음|확정|전체|최종|이것이\s*전부|만\s*있다|만\s*포함)"
+    r"(?:(?:최종\s*)?(?:제출\s*)?증거목록|입증방법|제출\s*증거(?:\s*목록)?|제출목록|별지\s*(?:증거|제출)?목록|첨부\s*목록)"
+    r"[^.\n]{0,60}?(?:전부|모두|일체|빠짐없이|추가\s*제출\s*없음|확정|전체|최종|이것이\s*전부|만\s*있다|만\s*포함)"
+    r"|(?:(?:최종\s*)?(?:제출\s*)?증거목록|입증방법|제출\s*증거(?:\s*목록)?|제출목록|별지\s*(?:증거|제출)?목록|첨부\s*목록)\s*\([^)\n]{0,60}?(?:전부|모두|일체|빠짐없이|추가\s*제출\s*없음|확정|전체|최종|이것이\s*전부|만\s*있다|만\s*포함)\)"
     r"|(?:별지\s*증거목록\s*전부|별지\s*제출목록\s*전부|이\s*(?:세|두|\d+)\s*자료만\s*제출)"
     r"|본문에\s*적힌\s*내용이\s*해당\s*발췌의\s*전부"
     r"|추가\s*(?:증거|자료|서증|호증)(?:를|은|가)?\s*(?:제출(?:하지\s*않|한\s*사실은\s*없|이\s*없)|없습니다)"
@@ -936,7 +953,14 @@ def check_evidence_numbering_mismatches(
     body_text = text[:m_sec.start()] if m_sec else text
 
     # 1. 완결 선언 목록과 본문 번호 대조 (축 1)
+    # 목록 머리글 괄호 안의 완결 선언이 괄호 제거 등으로 유실되지 않도록 원문 text 전체에서 최우선 판정
     has_completion = bool(_COMPLETE_DECLARATION_RE.search(text))
+    if not has_completion:
+        for line in text.split("\n"):
+            line_str = line.strip()
+            if _COMPLETE_DECLARATION_RE.search(line_str):
+                has_completion = True
+                break
 
     if has_completion:
         for raw_sentence in re.split(r"[.\n]+", body_text):
@@ -1119,10 +1143,9 @@ def check_evidence_numbering_mismatches(
         else:
             nm = m.group("name").strip()
             lbl = m.group("label")
-            # 자료명 뒤에 조사가 붙어 있으면 앞 절의 목적어·부사어이므로 목록 대조에서 제외
-            if re.search(r"(?:에서|으로|부터|까지|[이가은는을를의에로와과도만])$", nm):
-                continue
-            nm_clean = nm
+            # 자료명 뒤에 결합된 조사를 분리·정제하여 대조 (83ddb07 양방향 자료명 매칭 복원)
+            # 단, 조사 분리 후에도 유효 자료명(4자 이상)이 유지되고 목록의 정식 서증명과 정확 일치할 때만 수용
+            nm_clean = re.sub(r"(?:에서|으로|부터|까지|[이가은는을를의에로와과도만])$", "", nm).strip()
 
         nm_norm = re.sub(r"\s+", "", nm_clean)
         if len(nm_norm) < 4:
