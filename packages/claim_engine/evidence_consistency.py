@@ -638,20 +638,24 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
         # 목록 구역이 존재하는 서면에서, 해당 목록 구역에 이미 등록된 번호의 본문 행은 중복 집계에서 제외
         if section_keys and not is_in_section and (row["party"], row["number"]) in section_keys:
             continue
-        # 본문 서술 영역에서 추출된 행 중 명백한 본문 서술문(40자 초과 + 마침표)이나 서술어 결합 행은 중복 목록 항목에서 제외 (은퇴 10 A등급 오탐 방지)
-        if not is_in_section and row.get("from_lines"):
+        # 호증 중복 검사는 정식 증거 목록 행끼리만 비교한다.
+        # 본문 서술 영역(not is_in_section)에서 추출된 행 중:
+        # 1) 줄 머리가 아닌 줄 중간에 등장한 호증(span[0] > 0)
+        # 2) 호증 번호 바로 뒤에 조사가 결합되어 주어·목적어로 쓰인 본문 문장(예: '갑 제3호증을', '갑 제1호증은')
+        # 3) 서증명 없이 단순 본문 인용·참조 표기만 있는 행
+        # 은 목록 행이 아닌 본문 서술문이므로 중복 호증 집계에서 제외한다 (은퇴 10 A등급 오탐 방지 및 입증취지 포함 진짜 목록 보존).
+        if not is_in_section:
             name = (row.get("name") or "").strip()
-            purpose = (row.get("purpose") or "").strip()
-            full_desc = f"{name} {purpose}".strip()
-            clean_desc = re.sub(r"\([^)]*\)", " ", full_desc)
-            clean_desc = DATE_RE.sub(" ", clean_desc).strip()
-            if len(clean_desc) > 40 and re.search(r"[다음습]\s*\.\s*$", clean_desc):
+            # 1) 줄 중간에 등장한 호증 언급 (span[0] > 0)
+            line_group = row.get("line_group")
+            if line_group and len(line_group) >= 2 and isinstance(line_group[1], (tuple, list)):
+                if line_group[1][0] > 0:
+                    continue
+            # 2) 호증 번호 직후 조사가 결합된 문장 (주어·목적어·부사어)
+            if re.match(r"^(?:[이가은는을를에의와과]|에서|으로|부터|까지|보다)(?:\s|$)", name):
                 continue
-            if re.match(r"^[이가은는을를에로의]\s*(?:[가-힣A-Za-z0-9_]{1,30}\s+){0,6}(?:설명|주장|확인|보여|나타|제출|인용|바와|살피|따라|원용)", name):
-                continue
-            if _EXHIBIT_REF_SENTENCE_RE.search(name) or _EXHIBIT_REF_SENTENCE_RE.search(full_desc):
-                continue
-            if any(v in name for v in ("하였다", "바와 같이", "살피건대", "주장한다")):
+            # 3) 단순 인용·참조 표기
+            if _EXHIBIT_REF_SENTENCE_RE.search(name):
                 continue
         keys = [(row["party"], row["number"], b) for b in row.get("branches") or []] or [(row["party"], row["number"], None)]
         for key in keys:
@@ -955,12 +959,6 @@ def check_evidence_numbering_mismatches(
     # 1. 완결 선언 목록과 본문 번호 대조 (축 1)
     # 목록 머리글 괄호 안의 완결 선언이 괄호 제거 등으로 유실되지 않도록 원문 text 전체에서 최우선 판정
     has_completion = bool(_COMPLETE_DECLARATION_RE.search(text))
-    if not has_completion:
-        for line in text.split("\n"):
-            line_str = line.strip()
-            if _COMPLETE_DECLARATION_RE.search(line_str):
-                has_completion = True
-                break
 
     if has_completion:
         for raw_sentence in re.split(r"[.\n]+", body_text):
@@ -1158,7 +1156,8 @@ def check_evidence_numbering_mismatches(
             continue
 
         for list_key, (l_name, l_norm) in list_name_by_key.items():
-            if body_key != list_key and body_key[0] == list_key[0] and nm_norm == l_norm:
+            is_match = (nm_norm == l_norm) or (len(l_norm) >= 4 and nm_norm.endswith(l_norm))
+            if body_key != list_key and body_key[0] == list_key[0] and is_match:
                 list_lbl = f"{list_key[0]} 제{list_key[1]}호증"
                 dup = any(
                     f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"

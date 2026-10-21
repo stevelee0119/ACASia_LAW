@@ -459,7 +459,46 @@ def test_control_section_head_non_completion_parenthesis():
     assert len(findings) == 0, f"단순 부연 괄호는 완결 선언으로 오인되지 않아야 함: {findings}"
 
 
+# --- 27. 양성 시험 (머리글 없이 줄마다 적은 목록에서 긴 입증취지가 붙은 호증 중복 탐지) ---
+def test_positive_unheaded_lines_duplicate_number_with_long_purpose():
+    """머리글 없이 줄 단위로 적힌 증거 목록에서 자료명 뒤에 40자 초과 입증취지 서술문이 붙어 있더라도 호증 번호 중복을 정확히 검출 (A-3)."""
+    doc = _make_doc([
+        "1. 갑 제1호증 부동산매매계약서 피고가 계약금을 정히 수령하고도 소유권이전등기 의무를 불이행한 사실을 입증하고자 합니다.",
+        "2. 갑 제1호증 금융거래내역확인서 원고가 피고 명의 계좌로 계약금 전액을 정상 송금하였음을 증명하기 위하여 제출합니다.",
+        "3. 갑 제2호증 내용증명우편 통고서 피고에게 의무 이행을 최고한 사실을 입증합니다.",
+    ])
+    from packages.claim_engine.evidence_consistency import check_exhibits
+    findings = check_exhibits(doc)
+    dup_findings = [f for f in findings if f.confidence_features.get("rule_id") == "EVI.EVIDENCE_NUMBER_DUPLICATE"]
+    assert len(dup_findings) == 1, f"긴 입증취지가 붙은 목록형 행의 호증 중복이 탐지되어야 함: {dup_findings}"
+    assert "갑 제1호증" in dup_findings[0].title
 
 
+# --- 28. 양성 시험 (머리글 없이 하이픈 불릿으로 줄마다 적힌 목록의 호증 중복 탐지) ---
+def test_positive_unheaded_lines_duplicate_number_hyphen_bullets():
+    """머리글 없이 하이픈 불릿으로 줄마다 적힌 목록에서 같은 번호에 긴 입증취지가 붙은 경우 호증 번호 중복 탐지 (A-3)."""
+    doc = _make_doc([
+        "- 을 제3호증 정밀안전진단결과표 대상 구조물에 균열이 심각하여 보수공사가 시급하다는 기술적 소견을 입증합니다.",
+        "- 을 제3호증 공사비산정내역서 피고가 주장하는 보수비용이 객관적 산출 근거에 기초하였음을 증명하고자 합니다.",
+        "- 을 제4호증 현장실사사진 실제 균열 부위의 촬영 사진입니다.",
+    ])
+    from packages.claim_engine.evidence_consistency import check_exhibits
+    findings = check_exhibits(doc)
+    dup_findings = [f for f in findings if f.confidence_features.get("rule_id") == "EVI.EVIDENCE_NUMBER_DUPLICATE"]
+    assert len(dup_findings) == 1, f"하이픈 불릿형 긴 입증취지 행의 호증 중복이 탐지되어야 함: {dup_findings}"
+    assert "을 제3호증" in dup_findings[0].title
 
+
+# --- 29. 양성 시험 (수식어 결합 자료명의 본문-목록 번호 불일치 탐지) ---
+def test_positive_mismatch_with_modifier_prefix():
+    """본문에서 수식어가 붙은 자료명('현장 실사 운반 사진 (갑 제22호증)')과 목록('갑 제22호증 계약서', '갑 제23호증 운반 사진')의 번호 불일치 탐지 (A-3)."""
+    doc = _make_doc([
+        "원고는 현장 실사 운반 사진 (갑 제22호증)을 근거로 물품이 정상 인도되었음을 주장합니다.",
+        "입증방법",
+        "1. 갑 제22호증 물품공급계약서",
+        "2. 갑 제23호증 운반 사진",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(mismatches) == 1, f"수식어 결합 자료명의 번호 불일치가 탐지되어야 함: {mismatches}"
 
