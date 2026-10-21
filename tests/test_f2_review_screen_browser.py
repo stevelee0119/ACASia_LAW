@@ -369,7 +369,7 @@ def test_f2_review_table_renders_four_columns(f2_browser_page):
     panel = page.locator('section[data-panel="review"]')
     expect(panel).to_be_visible()
 
-    # 4열 헤더 검증
+    # 4열 헤더 검증 (2단 인용 표)
     headers = panel.locator(".review-items-table thead th")
     expect(headers).to_have_count(4)
     expect(headers.nth(0)).to_have_text("위치")
@@ -377,9 +377,20 @@ def test_f2_review_table_renders_four_columns(f2_browser_page):
     expect(headers.nth(2)).to_have_text("인용 오류·미확인 근거 및 주장 평가 (작성 주체 판단에 쓰지 않음)")
     expect(headers.nth(3)).to_have_text("확인이 필요한 내용")
 
-    # 3개 행 노출 확인
+    # 3단 법률적으로 무리한 주장 표(tier3Table) 4열 헤더 별도 검증 (TK-88)
+    tier3_headers = panel.locator(".tier3-table thead th")
+    expect(tier3_headers).to_have_count(4)
+    expect(tier3_headers.nth(0)).to_have_text("위치")
+    expect(tier3_headers.nth(1)).to_have_text("문서 주장 및 인용 내용")
+    expect(tier3_headers.nth(2)).to_have_text("법리 검토 결과 및 근거")
+    expect(tier3_headers.nth(3)).to_have_text("확인이 필요한 내용")
+
+    # 2단 인용 표(2개 행) 및 3단 무리한 주장 표(1개 행) 분리 노출 검증 (TK-88)
     rows = panel.locator("#aiVerificationRows tr")
-    expect(rows).to_have_count(3)
+    expect(rows).to_have_count(2)
+
+    tier3_rows = panel.locator("#tier3Rows tr")
+    expect(tier3_rows).to_have_count(1)
 
     # 4열 확인이 필요한 내용 요약 박스 검증
     summary_box = rows.first.locator(".review-summary-box")
@@ -407,9 +418,12 @@ def test_f2_review_summary_box_renders_instead_of_inline_workflow(f2_browser_pag
     expect(panel.locator(".inline-assignee-input")).to_have_count(0)
     expect(panel.locator(".inline-workflow-note")).to_have_count(0)
 
-    # 모든 행의 4열에 확인 요약 박스가 렌더링되어 있음을 확인
-    for i in range(3):
+    # 2단 표 2개 행 및 3단 표 1개 행 전수에서 4열에 확인 요약 박스가 렌더링되어 있음을 확인
+    for i in range(2):
         expect(rows.nth(i).locator(".review-summary-box")).to_be_visible()
+
+    tier3_rows = panel.locator("#tier3Rows tr")
+    expect(tier3_rows.first.locator(".review-summary-box")).to_be_visible()
 
 
 def test_f2_review_summary_content_elements(f2_browser_page):
@@ -459,8 +473,8 @@ def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_pag
     reason_text = reason_elem.inner_text()
     assert len(reason_text) <= 120, f"의심 사유 텍스트가 과도하게 길지 않아야 함: {len(reason_text)}자"
 
-    # 3. 3번째 행(counteraction 없는 위치 행: 헌법 제10조, 1쪽)의 확인 방법 텍스트 검증: '권위명 원문 대조 (N쪽)' 분기
-    box3 = rows.nth(2).locator(".review-summary-box")
+    # 3. 2단 표의 2번째 행(counteraction 없는 위치 행: 헌법 제10조, 1쪽)의 확인 방법 텍스트 검증: '권위명 원문 대조 (N쪽)' 분기
+    box3 = rows.nth(1).locator(".review-summary-box")
     expect(box3.locator(".summary-action")).to_be_visible()
     expect(box3.locator(".summary-action")).to_contain_text("헌법 제10조 원문 대조 (1쪽)")
 
@@ -476,7 +490,7 @@ def test_f2_filters_search_severity_review_status(f2_browser_page):
 
     panel = page.locator('section[data-panel="review"]')
     rows = panel.locator("#aiVerificationRows tr")
-    expect(rows).to_have_count(3)
+    expect(rows).to_have_count(2)
 
     # 1. 중요도 필터: CRITICAL 선택 -> 1개 행 노출
     sev_select = panel.locator("#severityFilter")
@@ -484,15 +498,20 @@ def test_f2_filters_search_severity_review_status(f2_browser_page):
     expect(rows).to_have_count(1)
     expect(rows.first).to_contain_text("대법원 2022다99999 판결")
     sev_select.select_option("")
-    expect(rows).to_have_count(3)
+    expect(rows).to_have_count(2)
 
-    # 2. 검색어 필터: '선후 모순' 검색 -> 1개 행 노출
+    # 2. 2단 표 검색어 필터: '2022다99999' 검색 -> 1개 행 노출
     search_input = panel.locator("#findingSearch")
-    search_input.fill("선후 모순")
+    search_input.fill("2022다99999")
     expect(rows).to_have_count(1)
-    expect(rows.first).to_contain_text("일자 선후 모순")
+    expect(rows.first).to_contain_text("대법원 2022다99999 판결")
     search_input.fill("")
-    expect(rows).to_have_count(3)
+    expect(rows).to_have_count(2)
+
+    # 3단 표의 사실관계 항목('일자 선후 모순') 확인
+    tier3_rows = panel.locator("#tier3Rows tr")
+    expect(tier3_rows).to_have_count(1)
+    expect(tier3_rows.first).to_contain_text("일자 선후 모순")
 
     # 3. 제거된 필터(진행 상태, 담당자, 검토 상태)는 DOM에 없어야 함 (TK-87 요구 1)
     expect(panel.locator("#workflowFilter")).to_have_count(0)

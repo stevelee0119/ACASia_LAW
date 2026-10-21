@@ -1603,6 +1603,273 @@ async function saveRowWorkflow(item, patch) {
 }
 
 
+// TK-88: 3단 체계(AI 작성·보안 / 인용 오류·미확인 / 법률적 무리 주장) 분류
+// 1순위: 결과 유형 (FindingType / rule_id)
+// 2순위: 공식 조회 및 출처 상태 (basis / error_category / official_status)
+// 3순위: 법리 검토 판정 문장 (validity_verdict)
+// 표준 판정 문장 상수 (review_tiers.py 일치)
+const VERDICT_INVALID_CASE_NUMBER = "근거 결여 (성립 불가한 사건번호)";
+const VERDICT_OFFICIAL_NOT_FOUND = "공식 DB 미확인 (원문 확인 필요)";
+const VERDICT_QUOTE_MODIFIED = "인용문 변형 (원문과 어절 차이)";
+const VERDICT_CONTENT_MISMATCH = "인용 내용 불일치 (원문 대조 필요)";
+const VERDICT_HOLDING_DISTORTION = "판례 취지 왜곡 (판시사항과 상반 / 부당)";
+const VERDICT_FACT_DISTINGUISHABLE = "적용 차이 (사실관계 상이 / 전문가 검토 필요)";
+const VERDICT_OFFICIAL_CONFIRMED = "공식 원문 일치 (사건 적용성 직접 검토 필요)";
+
+function classifyReviewItemTier(item, findingsMap) {
+  // item에 서버가 계산한 tier 속성이 있으면 최우선 반영
+  if (item.tier === 2 || item.tier === 3) return item.tier;
+
+  const leadF = (item.finding_ids && item.finding_ids.length && findingsMap) ? findingsMap.get(item.finding_ids[0]) : null;
+  const ruleId = String(item.rule_id || (leadF?.confidence_features || {}).rule_id || "");
+  const findingType = String(item.finding_type || leadF?.type || "");
+  const basis = String(item.basis || (leadF?.confidence_features || {}).basis || "");
+  const errorCategory = String(item.error_category || (leadF?.confidence_features || {}).error_category || "");
+  const officialStatus = String(item.official_status || "");
+  const verdict = String(item.verdict_label || item.validity_verdict || "");
+  const citedAuthority = String(item.cited_authority || "");
+  const isCitation = Boolean(
+    citedAuthority
+    || item.citation_id
+    || item.kind === "CITATION"
+    || String(item.item_id || "").includes("CITATION")
+  );
+
+  // 1. 고유 3단 전용 규칙 (출처 여부 불문 3단)
+  // 8번 행: 참고자료 모순 (TK-70)
+  if (ruleId.includes("REFERENCE_CONTRADICTION") || verdict.includes("참고자료 모순")) return 3;
+  // 9번 행: 가짜 판례·조문 기반 법률 주장 (AI_HALLUCINATED_CONTENT)
+  if (findingType.includes("HALLUCINATED") || ruleId.includes("HALLUCINATED")) return 3;
+
+  // 2. 인용 행(CITATION) 처리: basis와 판정 문장을 결과 유형보다 먼저 본다 (요구 2)
+  if (isCitation) {
+    // [표 1 3단 예외 항목 선제 판정]
+    // 6번 행: 판례 취지 왜곡 (부당 원용) - 상수 완전 일치 우선
+    if (verdict === VERDICT_HOLDING_DISTORTION || (verdict.includes("취지 왜곡") && verdict.includes("상반"))) return 3;
+    // 7번 행: 적용 차이 (사실관계 상이)
+    if (verdict === VERDICT_FACT_DISTINGUISHABLE || errorCategory === "APPLICATION_DIFFERENCE" || basis === "DISTINGUISHABLE" || verdict.includes("사실관계 상이")) return 3;
+
+    // [표 1 2단 출처 오류/미확인 항목]
+    // 1번 행: 성립 불가한 사건번호 (2단 고정)
+    if (verdict === VERDICT_INVALID_CASE_NUMBER || basis === "FABRICATION_SUSPECTED" || verdict.includes("성립 불가")) return 2;
+    // 2번 행: 공식 DB 미확인
+    if (verdict === VERDICT_OFFICIAL_NOT_FOUND || basis === "UNCONFIRMED" || officialStatus === "OFFICIAL_NOT_FOUND" || officialStatus === "UNCONFIRMED" || verdict.includes("공식 DB 미확인") || verdict.includes("원문 확인 필요")) return 2;
+    // 3번 행: 인용문 변형 / 내용 불일치
+    if (verdict === VERDICT_QUOTE_MODIFIED || verdict === VERDICT_CONTENT_MISMATCH || errorCategory === "LEGAL_CITATION_ERROR" || verdict.includes("인용문 변형") || verdict.includes("인용 내용 불일치")) return 2;
+    // 4번 행: 객관적 판시사항 왜곡 인용문
+    if (findingType.includes("DISTORTION") || ruleId.includes("DISTORTION")) return 2;
+    // 5번 행: 시적 적용 오류
+    if (findingType.includes("TEMPORAL") || ruleId.includes("TEMPORAL")) return 2;
+    // 10번 행: 공식 원문 일치
+    if (verdict === VERDICT_OFFICIAL_CONFIRMED || basis === "OFFICIAL_CONFIRMED" || officialStatus === "OFFICIAL_CONFIRMED" || verdict.includes("공식 원문 일치")) return 2;
+    // 기타 인용 검색 불일치
+    if (["NOT_FOUND", "METADATA_MISMATCH", "CITATION_TEXT"].some(k => findingType.includes(k))) return 2;
+
+    // 인용 행의 기본값은 2단 (출처 검증)
+    return 2;
+  }
+
+  // 3. 비인용 행(사실관계 불일치, 일자 모순 등) 처리
+  if (item.kind === "FACT" || findingType.includes("FACT") || findingType.includes("TIMELINE")) return 3;
+
+  // 기본값: 3단
+  return 3;
+}
+
+function renderReviewRow(item, tier, findingsMap) {
+  const tr = node("tr");
+  if (item.item_id) tr.id = `row_${item.item_id}`;
+
+  // 1열: 위치
+  const tdLoc = node("td");
+  tdLoc.append(node("strong", item.doc?.filename || "문서"));
+  const locText = item.location?.display || (item.location?.page ? `${item.location.page}쪽` : "");
+  if (locText) {
+    tdLoc.append(node("p", locText, "muted small"));
+  }
+  if (item.location?.page) {
+    tdLoc.append(button(`${item.location.page}쪽 보기`, () => viewDocument(item.document_id, item.location.page), "link-button small"));
+  }
+  if (item.kind) {
+    tdLoc.append(node("span", label(item.kind), "badge info small"));
+  }
+  // RAG / 참고문헌 표시 조건 (구속력 없음 / 대조 안 함 분별)
+  const isRef = item.reference_library || (item.rule_id || "").includes("REFERENCE") || (item.finding_ids || []).some(fid => {
+    const f = findingsMap?.get(fid);
+    return f && ((f.confidence_features || {}).rule_id || "").includes("REFERENCE");
+  });
+  if (isRef) {
+    tdLoc.append(node("span", "참고문헌(구속력 없음)", "badge warning small"));
+  }
+  if (item.reference_status === "NOT_CHECKED" || item.reference_status === "UNVERIFIED" || item.reference_status === "SKIPPED") {
+    tdLoc.append(node("span", "대조 안 함", "badge muted small"));
+  }
+
+  // 2열: 문서 주장 및 인용 내용
+  const tdClaim = node("td");
+  if (item.cited_authority) {
+    tdClaim.append(node("strong", item.cited_authority));
+  }
+  if (item.claim_text) {
+    tdClaim.append(node("p", friendlyText(item.claim_text), "claim-text"));
+  }
+  if (item.finding_ids && item.finding_ids.length > 0 && findingsMap) {
+    const firstFinding = findingsMap.get(item.finding_ids[0]);
+    if (firstFinding) {
+      tdClaim.append(button(`상세 보기: ${friendlyText(firstFinding.title)}`, () => openFinding(firstFinding), "link-button small"));
+      const ruleId = (firstFinding.confidence_features || {}).rule_id;
+      if (ruleId === "RAG.REFERENCE_CONTRADICTION") {
+        const refDetails = node("details", null, "reference-contradiction-details");
+        refDetails.append(node("summary", "참고자료 대조 전문 및 모델 의견 펼치기"));
+        const feat = firstFinding.confidence_features || {};
+        if (feat.claim_quote) {
+          refDetails.append(node("p", `서면 주장 인용: ${feat.claim_quote}`, "small"));
+        }
+        if (feat.basis_quote) {
+          refDetails.append(node("p", `참고자료 규정 원문: ${feat.basis_quote}`, "small"));
+        }
+        const modelOpinion = feat.model_opinion || firstFinding.detail;
+        if (modelOpinion) {
+          refDetails.append(node("p", `모델 의견: ${modelOpinion}`, "small"));
+        }
+        tdClaim.append(refDetails);
+      }
+    }
+    if (item.finding_ids.length > 1) {
+      const derived = node("details", null, "derived-findings");
+      derived.append(node("summary", `같은 인용에서 파생된 항목 ${item.finding_ids.length - 1}건`));
+      for (const fid of item.finding_ids.slice(1)) {
+        const m = findingsMap.get(fid);
+        if (m) {
+          derived.append(button(`${label(m.severity)} · ${friendlyText(m.title)}`, () => openFinding(m), "link-button"));
+        }
+      }
+      tdClaim.append(derived);
+    }
+  }
+
+  // 상호 참조 앵커 (2단 <-> 3단)
+  const verdictStr = String(item.verdict_label || item.validity_verdict || "");
+  const hasDistortion = verdictStr.includes("왜곡") || (item.finding_ids || []).some(fid => {
+    const f = findingsMap?.get(fid);
+    const ft = String(f?.type || ""); return f && (ft.includes("DISTORTION") || ((f.confidence_features || {}).rule_id || "").includes("DISTORTION"));
+  });
+  const isHallucinatedOrInvalid = (item.finding_ids || []).some(fid => {
+    const f = findingsMap?.get(fid);
+    const ft = String(f?.type || ""); return f && (ft.includes("HALLUCINATED") || ft.includes("ARGUMENT_INVALID"));
+  }) || verdictStr.includes("부당") || (item.basis || "").includes("FABRICATION");
+
+  if (tier === 2 && hasDistortion) {
+    tdClaim.append(button("3단 무리한 주장 확인 →", () => {
+      switchTab("review");
+      const target = $("tier3Table") || $(`row_${item.item_id}`);
+      if (target) target.scrollIntoView({ behavior: "smooth" });
+    }, "link-button small cross-ref-anchor"));
+  } else if (tier === 3 && (isHallucinatedOrInvalid || hasDistortion)) {
+    tdClaim.append(button("2단 출처 부존재 확인 →", () => {
+      switchTab("review");
+      const target = $("reviewTable") || $(`row_${item.item_id}`);
+      if (target) target.scrollIntoView({ behavior: "smooth" });
+    }, "link-button small cross-ref-anchor"));
+  }
+
+  // 3열: 근거 확인 결과 / 법리 검토 결과 및 근거
+  const tdBasis = node("td");
+  let verdictCls = "badge HIGH";
+  if (item.official_status === "OFFICIAL_CONFIRMED" || item.verdict_label?.includes("일치")) {
+    verdictCls = "badge SUCCESS";
+  } else if (String(item.verdict_label).includes("부당") || String(item.verdict_label).includes("결여")) {
+    verdictCls = "badge CRITICAL";
+  }
+  tdBasis.append(
+    node("span", label(item.severity), `badge ${item.severity}`),
+    node("span", item.verdict_label || "확인 필요", `${verdictCls} validity-verdict`)
+  );
+  const basisText = item.ai_generation_basis || (item.official_status ? label(item.official_status) : "");
+  if (basisText) {
+    tdBasis.append(node("p", basisText, "basis-text"));
+  }
+  if (item.reference_case_match) {
+    tdBasis.append(node("p", `표준판례 사건정보 대조: ${item.reference_case_match}`, "basis-text"));
+  }
+  if (item.context_review?.reason) {
+    const review = item.context_review;
+    const context = node("div", null, "citation-context-review");
+    context.append(node("strong", "인용 취지·맥락 검토 (AI 참고 의견)"), node("p", review.reason || "판단 유보"));
+    for (const opinion of review.opinions || []) {
+      const stage = {primary: "1차 검토", critic: "독립 교차검토", grounder: "근거 대조"}[opinion.stage] || opinion.stage;
+      context.append(node("p", `${stage}: ${opinion.rationale}`));
+      const evidence = node("details");
+      evidence.append(node("summary", "공식 원문 근거"));
+      for (const quote of opinion.evidence_quotes || []) evidence.append(node("blockquote", quote));
+      context.append(evidence);
+    }
+    if (review.source_truncated) context.append(node("p", "공식 원문 일부 범위에 대한 의견입니다.", "muted"));
+    context.append(node("small", "문구 일치, 법리 취지, 구체적 사안 적용은 별개이며 작성 주체 판정에는 사용하지 않습니다.", "muted"));
+    tdBasis.append(context);
+  }
+
+  // 4열: 확인이 필요한 내용 요약 (TK-87)
+  const tdSummary = node("td", null, "review-summary-cell");
+  const summaryBox = node("div", null, "review-summary-box");
+  const leadF = (item.finding_ids && item.finding_ids.length && findingsMap) ? findingsMap.get(item.finding_ids[0]) : null;
+
+  // 1) 대상
+  const targetText = item.cited_authority || (item.claim_text ? friendlyText(item.claim_text) : "") || (leadF ? friendlyText(leadF.title) : "");
+  if (targetText) {
+    const targetLine = node("p", null, "summary-line summary-target");
+    targetLine.append(node("strong", "확인 대상: "), document.createTextNode(targetText));
+    summaryBox.append(targetLine);
+  }
+
+  // 2) 사유 축약
+  const rawReason = (item.reasoning_sections?.review || item.legal_reasoning || item.ai_generation_basis || (leadF ? leadF.detail : "") || item.verdict_label || "").trim();
+  if (rawReason) {
+    let shortReason = rawReason;
+    const firstDot = rawReason.indexOf(". ");
+    if (firstDot > 20 && firstDot < 120) {
+      shortReason = rawReason.slice(0, firstDot + 1);
+    } else if (rawReason.length > 100) {
+      shortReason = rawReason.slice(0, 97) + " …";
+    }
+    const reasonLine = node("p", null, "summary-line summary-reason");
+    reasonLine.append(node("strong", "의심 사유: "), document.createTextNode(shortReason));
+    summaryBox.append(reasonLine);
+  }
+
+  // 3) 확인 방법
+  let verifyText = (item.counteraction || "").trim();
+  if (!verifyText) {
+    const locStr = item.location?.display || (item.location?.page ? `${item.location.page}쪽` : (typeof item.location === "string" ? item.location : ""));
+    if (item.cited_authority && locStr) {
+      verifyText = `${item.cited_authority} 원문 대조 (${locStr})`;
+    } else if (item.reference_case_match) {
+      verifyText = `표준판례 대조: ${item.reference_case_match}`;
+    } else if (item.doc?.filename && locStr) {
+      verifyText = `${item.doc.filename} ${locStr} 대조`;
+    } else if (item.doc?.filename) {
+      verifyText = `${item.doc.filename} 원문 대조`;
+    }
+  }
+  if (verifyText) {
+    const verifyLine = node("p", null, "summary-line summary-action");
+    verifyLine.append(node("strong", "확인 방법: "), document.createTextNode(verifyText));
+    summaryBox.append(verifyLine);
+  }
+
+  // 4) 상세 법리 의견
+  if (item.reasoning_sections || item.legal_reasoning) {
+    const extra = node("details", null, "summary-details");
+    extra.append(node("summary", "상세 법리 의견"));
+    extra.append(reasoningBlock(item));
+    summaryBox.append(extra);
+  }
+
+  tdSummary.append(summaryBox);
+  tr.append(tdLoc, tdClaim, tdBasis, tdSummary);
+  return tr;
+}
+
 function renderFindings() {
   const query = ($("findingSearch")?.value || "").toLowerCase();
   const sevFilter = $("severityFilter")?.value || "";
@@ -1792,174 +2059,47 @@ function renderFindings() {
   const rankMap = { CRITICAL: 5, HIGH: 4, MEDIUM: 3, LOW: 2, INFO: 1 };
   filteredItems.sort((a, b) => (rankMap[b.severity] || 0) - (rankMap[a.severity] || 0));
 
-  // 3. 4열 통합 검토 표 렌더링
+  // 3. 2단(인용 오류·미확인) 및 3단(무리한 주장) 분리 렌더링 (TK-88)
+  const tier2Items = [];
+  const tier3Items = [];
+  for (const item of filteredItems) {
+    const tier = classifyReviewItemTier(item, findingsMap);
+    if (tier === 2) tier2Items.push(item);
+    else tier3Items.push(item);
+  }
+
+  // [2단] 판례·법령·주요참고문헌 인용 오류·미확인 검토 표
   const rowsContainer = $("aiVerificationRows");
   const emptyMsg = $("aiVerificationEmpty");
   if (rowsContainer) {
     rowsContainer.replaceChildren();
-    if (!filteredItems.length) {
+    if (!tier2Items.length) {
       if (emptyMsg) {
         emptyMsg.hidden = false;
-        emptyMsg.textContent = state.run ? "표시할 확인 항목이 없습니다." : "검증 결과가 없습니다.";
+        emptyMsg.textContent = state.run ? "표시할 인용 오류·미확인 항목이 없습니다." : "검증 결과가 없습니다.";
       }
     } else {
       if (emptyMsg) emptyMsg.hidden = true;
-      for (const item of filteredItems) {
-        const tr = node("tr");
+      for (const item of tier2Items) {
+        rowsContainer.append(renderReviewRow(item, 2, findingsMap));
+      }
+    }
+  }
 
-        // 1열: 위치
-        const tdLoc = node("td");
-        tdLoc.append(node("strong", item.doc?.filename || "문서"));
-        const locText = item.location?.display || (item.location?.page ? `${item.location.page}쪽` : "");
-        if (locText) {
-          tdLoc.append(node("p", locText, "muted small"));
-        }
-        if (item.location?.page) {
-          tdLoc.append(button(`${item.location.page}쪽 보기`, () => viewDocument(item.document_id, item.location.page), "link-button small"));
-        }
-        if (item.kind) {
-          tdLoc.append(node("span", label(item.kind), "badge info small"));
-        }
-
-        // 2열: 문서 주장 및 인용 내용
-        const tdClaim = node("td");
-        if (item.cited_authority) {
-          tdClaim.append(node("strong", item.cited_authority));
-        }
-        if (item.claim_text) {
-          tdClaim.append(node("p", friendlyText(item.claim_text), "claim-text"));
-        }
-        if (item.finding_ids && item.finding_ids.length > 0) {
-          const firstFinding = findingsMap.get(item.finding_ids[0]);
-          if (firstFinding) {
-            tdClaim.append(button(`상세 보기: ${friendlyText(firstFinding.title)}`, () => openFinding(firstFinding), "link-button small"));
-            const ruleId = (firstFinding.confidence_features || {}).rule_id;
-            if (ruleId === "RAG.REFERENCE_CONTRADICTION") {
-              const refDetails = node("details", null, "reference-contradiction-details");
-              refDetails.append(node("summary", "참고자료 대조 전문 및 모델 의견 펼치기"));
-              const feat = firstFinding.confidence_features || {};
-              if (feat.claim_quote) {
-                refDetails.append(node("p", `서면 주장 인용: ${feat.claim_quote}`, "small"));
-              }
-              if (feat.basis_quote) {
-                refDetails.append(node("p", `참고자료 규정 원문: ${feat.basis_quote}`, "small"));
-              }
-              const modelOpinion = feat.model_opinion || firstFinding.detail;
-              if (modelOpinion) {
-                refDetails.append(node("p", `모델 의견: ${modelOpinion}`, "small"));
-              }
-              tdClaim.append(refDetails);
-            }
-          }
-          if (item.finding_ids.length > 1) {
-            const derived = node("details", null, "derived-findings");
-            derived.append(node("summary", `같은 인용에서 파생된 항목 ${item.finding_ids.length - 1}건`));
-            for (const fid of item.finding_ids.slice(1)) {
-              const m = findingsMap.get(fid);
-              if (m) {
-                derived.append(button(`${label(m.severity)} · ${friendlyText(m.title)}`, () => openFinding(m), "link-button"));
-              }
-            }
-            tdClaim.append(derived);
-          }
-        }
-
-        // 3열: 근거 확인 결과
-        const tdBasis = node("td");
-        let verdictCls = "badge HIGH";
-        if (item.official_status === "OFFICIAL_CONFIRMED" || item.verdict_label?.includes("일치")) {
-          verdictCls = "badge SUCCESS";
-        } else if (String(item.verdict_label).includes("부당") || String(item.verdict_label).includes("결여")) {
-          verdictCls = "badge CRITICAL";
-        }
-        tdBasis.append(
-          node("span", label(item.severity), `badge ${item.severity}`),
-          node("span", item.verdict_label || "확인 필요", `${verdictCls} validity-verdict`)
-        );
-        const basisText = item.ai_generation_basis || (item.official_status ? label(item.official_status) : "");
-        if (basisText) {
-          tdBasis.append(node("p", basisText, "basis-text"));
-        }
-        if (item.reference_case_match) {
-          tdBasis.append(node("p", `표준판례 사건정보 대조: ${item.reference_case_match}`, "basis-text"));
-        }
-        if (item.context_review?.reason) {
-          const review = item.context_review;
-          const context = node("div", null, "citation-context-review");
-          context.append(node("strong", "인용 취지·맥락 검토 (AI 참고 의견)"), node("p", review.reason || "판단 유보"));
-          for (const opinion of review.opinions || []) {
-            const stage = {primary: "1차 검토", critic: "독립 교차검토", grounder: "근거 대조"}[opinion.stage] || opinion.stage;
-            context.append(node("p", `${stage}: ${opinion.rationale}`));
-            const evidence = node("details");
-            evidence.append(node("summary", "공식 원문 근거"));
-            for (const quote of opinion.evidence_quotes || []) evidence.append(node("blockquote", quote));
-            context.append(evidence);
-          }
-          if (review.source_truncated) context.append(node("p", "공식 원문 일부 범위에 대한 의견입니다.", "muted"));
-          context.append(node("small", "문구 일치, 법리 취지, 구체적 사안 적용은 별개이며 작성 주체 판정에는 사용하지 않습니다.", "muted"));
-          tdBasis.append(context);
-        }
-
-        // 4열: 확인이 필요한 내용 요약 (2~3줄 요약: 무엇을, 왜, 어떻게) (TK-87)
-        const tdSummary = node("td", null, "review-summary-cell");
-        const summaryBox = node("div", null, "review-summary-box");
-        const leadF = (item.finding_ids && item.finding_ids.length) ? findingsMap.get(item.finding_ids[0]) : null;
-
-        // 1) 대상 (무엇을: 인용·주장)
-        const targetText = item.cited_authority || (item.claim_text ? friendlyText(item.claim_text) : "") || (leadF ? friendlyText(leadF.title) : "");
-        if (targetText) {
-          const targetLine = node("p", null, "summary-line summary-target");
-          targetLine.append(node("strong", "확인 대상: "), document.createTextNode(targetText));
-          summaryBox.append(targetLine);
-        }
-
-        // 2) 사유 (왜: 판정 사유 축약 - TK-87 피드백 3: 2~3줄로 줄이고 전문은 상세보기에 배치)
-        const rawReason = (item.reasoning_sections?.review || item.legal_reasoning || item.ai_generation_basis || (leadF ? leadF.detail : "") || item.verdict_label || "").trim();
-        if (rawReason) {
-          let shortReason = rawReason;
-          const firstDot = rawReason.indexOf(". ");
-          if (firstDot > 20 && firstDot < 120) {
-            shortReason = rawReason.slice(0, firstDot + 1);
-          } else if (rawReason.length > 100) {
-            shortReason = rawReason.slice(0, 97) + " …";
-          }
-          const reasonLine = node("p", null, "summary-line summary-reason");
-          reasonLine.append(node("strong", "의심 사유: "), document.createTextNode(shortReason));
-          summaryBox.append(reasonLine);
-        }
-
-        // 3) 확인 방법 (어떻게 - TK-87 피드백 4: 판정의 공식 원문 링크나 쪽/위치 활용)
-        let verifyText = (item.counteraction || "").trim();
-        if (!verifyText) {
-          const locStr = item.location?.display || (item.location?.page ? `${item.location.page}쪽` : (typeof item.location === "string" ? item.location : ""));
-          if (item.cited_authority && locStr) {
-            verifyText = `${item.cited_authority} 원문 대조 (${locStr})`;
-          } else if (item.reference_case_match) {
-            verifyText = `표준판례 대조: ${item.reference_case_match}`;
-          } else if (item.doc?.filename && locStr) {
-            verifyText = `${item.doc.filename} ${locStr} 대조`;
-          } else if (item.doc?.filename) {
-            verifyText = `${item.doc.filename} 원문 대조`;
-          }
-        }
-        if (verifyText) {
-          const verifyLine = node("p", null, "summary-line summary-action");
-          verifyLine.append(node("strong", "확인 방법: "), document.createTextNode(verifyText));
-          summaryBox.append(verifyLine);
-        }
-
-        // 4) 상세 법리 의견 및 판정 전문 (TK-87 피드백 2: reasoningBlock 및 legal-reasoning 보존)
-        if (item.reasoning_sections || item.legal_reasoning) {
-          const extra = node("details", null, "summary-details");
-          extra.append(node("summary", "상세 법리 의견"));
-          extra.append(reasoningBlock(item));
-          summaryBox.append(extra);
-        }
-
-        tdSummary.append(summaryBox);
-
-        tr.append(tdLoc, tdClaim, tdBasis, tdSummary);
-        rowsContainer.append(tr);
+  // [3단] 법률적으로 무리한 주장 표
+  const tier3Container = $("tier3Rows");
+  const tier3EmptyMsg = $("tier3Empty");
+  if (tier3Container) {
+    tier3Container.replaceChildren();
+    if (!tier3Items.length) {
+      if (tier3EmptyMsg) {
+        tier3EmptyMsg.hidden = false;
+        tier3EmptyMsg.textContent = state.run ? "무리한 주장 또는 참고자료 모순 항목이 없습니다." : "검증 결과가 없습니다.";
+      }
+    } else {
+      if (tier3EmptyMsg) tier3EmptyMsg.hidden = true;
+      for (const item of tier3Items) {
+        tier3Container.append(renderReviewRow(item, 3, findingsMap));
       }
     }
   }
