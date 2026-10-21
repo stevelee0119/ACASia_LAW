@@ -1725,17 +1725,84 @@ def _statement_start(doc_or_text: NormalizedDocument | str, reading_text: Option
     return None
 
 
-def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Finding]:
-    """진술서·확인서에 다른 서면의 문장이 그대로 있으면 알린다(대필·작출 의심 단서, 사람 확인).
+# 문서 종류 상수 (B-2 비진술서 복제 탐지용)
+DOC_KIND_FACT_CONFIRMATION = "FACT_CONFIRMATION"      # 사실경위서 등 원본 서증
+DOC_KIND_STATEMENT = "STATEMENT"                      # 진술서, 사실확인서 등 진술 서증
+DOC_KIND_EVIDENCE_EXPLANATION = "EVIDENCE_EXPLANATION"  # 증거설명서, 증거목록 (민사소송규칙 제106조 예외)
+DOC_KIND_PLEADING = "PLEADING"                        # 소장, 준비서면, 답변서, 의견서 등 소송서면
+DOC_KIND_OTHER = "OTHER"
 
-    같은 대리인의 서면끼리 문장이 겹치는 것은 정상이므로 진술 부분(진술서 제목 줄 뒤)의 문장만 비교한다.
-    비교 비용을 줄이려고 다른 서면 문장의 글자 조각 색인에서 후보를 먼저 고른다.
+FACT_CONFIRMATION_HEADING_RE = re.compile(
+    r"(?:^|\n)\s*(?:사\s*실\s*경\s*위\s*서|사\s*건\s*경\s*위\s*서|경\s*위\s*서)\s*(?:\n|$)"
+)
+
+EVIDENCE_EXPLANATION_HEADING_RE = re.compile(
+    r"(?:^|\n)\s*(?:증\s*거\s*설\s*명\s*서|증\s*거\s*목\s*록)\s*(?:\n|$)"
+)
+
+PLEADING_HEADING_RE = re.compile(
+    r"(?:^|\n)\s*(?:소\s*장|준\s*비\s*서\s*면|답\s*변\s*서|의\s*견\s*서|항\s*소\s*장|상\s*고\s*장)\s*(?:\n|$)"
+)
+
+_EXHIBIT_REFERENCE_RE = re.compile(
+    r"(?:(?:갑|을)\s*제?\s*\d+\s*호증|사실경위서(?:의\s*기재|에\s*의하면|를\s*살펴보면))"
+)
+
+
+def _document_title_kind(doc: NormalizedDocument, reading_text: Optional[str] = None) -> Tuple[str, Optional[int]]:
+    """문서의 표제를 분석하여 (문서 종류, 본문 시작 오프셋)을 반환한다 (조건 3 검증)."""
+    text = reading_text if reading_text is not None else build_reading_text(doc).text
+    top_text = text[:1500]
+
+    # 블록 머리글/단락 텍스트도 보조 확인
+    head_blocks_text = "\n".join(b.text or "" for b in doc.blocks[:5])
+
+    # 1. 증거설명서 / 증거목록 (민사소송규칙 제106조 예외 대상)
+    if (EVIDENCE_EXPLANATION_HEADING_RE.search(top_text)
+            or EVIDENCE_EXPLANATION_HEADING_RE.search(head_blocks_text)):
+        return DOC_KIND_EVIDENCE_EXPLANATION, 0
+
+    # 2. 사실경위서 (원본 서증)
+    m_fact = FACT_CONFIRMATION_HEADING_RE.search(top_text)
+    if m_fact:
+        return DOC_KIND_FACT_CONFIRMATION, m_fact.end()
+    if any(FACT_CONFIRMATION_HEADING_RE.search(b.text or "")
+           for b in doc.blocks if b.block_type in ("running_head", "paragraph")):
+        return DOC_KIND_FACT_CONFIRMATION, 0
+
+    # 3. 진술서 / 사실확인서
+    stmt_start = _statement_start(doc, text)
+    if stmt_start is not None:
+        return DOC_KIND_STATEMENT, stmt_start
+
+    # 4. 소송 대리 서면 (소장, 준비서면, 답변서, 의견서)
+    if (PLEADING_HEADING_RE.search(top_text)
+            or any(PLEADING_HEADING_RE.search(b.text or "")
+                   for b in doc.blocks if b.block_type in ("running_head", "paragraph"))):
+        return DOC_KIND_PLEADING, 0
+
+    return DOC_KIND_OTHER, None
+
+
+def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Finding]:
+    """진술서 대필 의심 및 서증 원본(사실경위서) 통복제 결함을 탐지한다.
+
+    1. 진술서·확인서 계열 문서(4순위): 다른 서면 문장과 일치 시 B등급(SUSPICIOUS)
+    2. 소송서면이 사실경위서 원본 문단을 통복제한 경우(5순위): C등급(SUSPICIOUS)
+       - 민사소송규칙 제106조 예외: 증거설명서는 통복제 결함에서 제외(SKIP)
+       - 서증 정식 원용 표기가 포함된 문장 제외(SKIP)
+    3. 소송서면 간 정상적인 변론 요지 재진술(7순위): 정상 보호(SKIP)
     """
     docs = list(documents)
     texts = {d.document_id: build_reading_text(d).text for d in docs}
-    statements = {d.document_id: _statement_start(d, texts[d.document_id]) for d in docs}
-    if not any(start is not None for start in statements.values()):
+    doc_kinds = {d.document_id: _document_title_kind(d, texts[d.document_id]) for d in docs}
+
+    # 진술서나 사실경위서가 포함되어 있지 않고 소송서면 간에도 복사 검사 대상이 없으면 종료
+    has_statements = any(k[0] == DOC_KIND_STATEMENT for k in doc_kinds.values())
+    has_facts = any(k[0] == DOC_KIND_FACT_CONFIRMATION for k in doc_kinds.values())
+    if not has_statements and not has_facts:
         return []
+
     prepared = {d.document_id: _sentences_for_copy(d) for d in docs}
     index: Dict[str, set] = {}
     for d in docs:
@@ -1744,14 +1811,24 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                 index.setdefault(gram, set()).add((d.document_id, position))
     by_id = {d.document_id: d for d in docs}
     out: List[Finding] = []
+
     for owner in docs:
-        start = statements[owner.document_id]
-        if start is None:
+        owner_kind, start = doc_kinds[owner.document_id]
+        # 진술서(DOC_KIND_STATEMENT)이거나 사실경위서 복사 대상인 소송서면(DOC_KIND_PLEADING)만 owner 대상
+        if owner_kind not in (DOC_KIND_STATEMENT, DOC_KIND_PLEADING):
             continue
+
         pairs: Dict[str, List[Tuple[str, str, float]]] = {}
         for sentence, key in prepared[owner.document_id]:
-            if texts[owner.document_id].find(sentence, start) == -1:
+            # 진술서인 경우 진술 본문 시작 오프셋 이후 문장만 비교
+            if owner_kind == DOC_KIND_STATEMENT and start is not None:
+                if texts[owner.document_id].find(sentence, start) == -1:
+                    continue
+
+            # 소송서면인 경우 정식 서증 원용 문맥("갑 제1호증 사실경위서에 의하면...")은 제외
+            if owner_kind == DOC_KIND_PLEADING and _EXHIBIT_REFERENCE_RE.search(sentence):
                 continue
+
             hits: Dict[Tuple[str, int], int] = {}
             for gram in _shingles(key, 8):
                 for hit in index.get(gram, ()):
@@ -1765,16 +1842,49 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                 other_grams = _shingles(other_key)
                 overlap = len(grams & other_grams) / max(1, min(len(grams), len(other_grams)))
                 if overlap >= COPY_SIMILARITY:
+                    other_kind = doc_kinds[other_id][0]
+                    # 7순위: 소송서면 간 정상 재진술(소장 ↔ 준비서면)은 제외
+                    if owner_kind == DOC_KIND_PLEADING and other_kind == DOC_KIND_PLEADING:
+                        continue
+                    # 민사소송규칙 제106조 예외: 증거설명서 대상 제외
+                    if owner_kind == DOC_KIND_EVIDENCE_EXPLANATION:
+                        continue
+                    # 5순위: 소송서면(PLEADING)의 경우 other가 사실경위서(FACT_CONFIRMATION)일 때만 통복제로 판정
+                    if owner_kind == DOC_KIND_PLEADING and other_kind != DOC_KIND_FACT_CONFIRMATION:
+                        continue
+
                     pairs.setdefault(other_id, []).append((sentence, other_sentence, round(overlap, 2)))
+
         for other_id, matched in pairs.items():
             other = by_id[other_id]
-            out.append(_finding(owner, FindingType.CROSS_DOC_COPY, EvidenceGrade.B, Severity.MEDIUM,
-                                f"진술 문서에 다른 서면({other.filename})과 같은 문장이 {len(matched)}건 있다",
-                                "진술인 명의의 문서에 대리인 서면 등 다른 문서의 문장이 그대로 있으면 대필·작출을 "
-                                "의심할 단서가 된다. 작성 경위는 사람이 확인한다.",
-                                matched[0][0], status=VerificationStatus.SUSPICIOUS,
-                                features={"other_document_id": other_id, "similarity": matched[0][2],
-                                          "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
-                                                    for a, b, s in matched[:5]]}))
+            other_kind = doc_kinds[other_id][0]
+
+            if owner_kind == DOC_KIND_STATEMENT:
+                # 4순위: 진술서 문서 대필·작출 의심 (EvidenceGrade.B 고정)
+                out.append(_finding(
+                    owner, FindingType.CROSS_DOC_COPY, EvidenceGrade.B, Severity.MEDIUM,
+                    f"진술 문서에 다른 서면({other.filename})과 같은 문장이 {len(matched)}건 있다",
+                    "진술인 명의의 문서에 대리인 서면 등 다른 문서의 문장이 그대로 있으면 대필·작출을 "
+                    "의심할 단서가 된다. 작성 경위는 사람이 확인한다.",
+                    matched[0][0], status=VerificationStatus.SUSPICIOUS,
+                    features={"other_document_id": other_id, "similarity": matched[0][2],
+                              "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
+                                        for a, b, s in matched[:5]]}
+                ))
+            elif owner_kind == DOC_KIND_PLEADING and other_kind == DOC_KIND_FACT_CONFIRMATION:
+                # 5순위: 서증 원본(사실경위서) 통문단 복제 검출 (조건 2: EvidenceGrade.C 고정)
+                out.append(_finding(
+                    owner, FindingType.CROSS_DOC_COPY, EvidenceGrade.C, Severity.MEDIUM,
+                    f"소송 서면에 증거자료({other.filename})의 본문과 같은 문장이 {len(matched)}건 있다",
+                    "소장·준비서면 등 소송 대리 서면에 사실경위서 등 원본 서증의 본문 문단이 인용 표시 없이 "
+                    "그대로 복제되어 기재되었습니다. 서증 기재와 일치하는 변론인지 또는 단순 통복제인지 사람이 확인해야 합니다.",
+                    matched[0][0], status=VerificationStatus.SUSPICIOUS,
+                    features={"other_document_id": other_id, "similarity": matched[0][2],
+                              "copy_category": "FACT_CONFIRMATION_REPLICATION",
+                              "rule_id": "EVI.COPY_FACT_CONFIRMATION", "human_review": True,
+                              "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
+                                        for a, b, s in matched[:5]]}
+                ))
+
     return out
 
