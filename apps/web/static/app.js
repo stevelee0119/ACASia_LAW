@@ -1569,46 +1569,72 @@ async function saveRowWorkflow(item, patch) {
 // 1순위: 결과 유형 (FindingType / rule_id)
 // 2순위: 공식 조회 및 출처 상태 (basis / error_category / official_status)
 // 3순위: 법리 검토 판정 문장 (validity_verdict)
-function classifyReviewItemTier(item, findingsMap) {
-  const leadF = (item.finding_ids && item.finding_ids.length && findingsMap) ? findingsMap.get(item.finding_ids[0]) : null;
-  const ruleId = String(item.rule_id || (leadF?.confidence_features || {}).rule_id || "");
-  const findingType = String(item.finding_type || leadF?.type || "");
-  const basis = String(item.basis || "");
-  const errorCategory = String(item.error_category || "");
-  const officialStatus = String(item.official_status || "");
-  const verdict = String(item.verdict_label || item.validity_verdict || "");
-  const citedAuthority = String(item.cited_authority || "");
+// 표준 판정 문장 상수 (review_tiers.py 일치)
+const VERDICT_INVALID_CASE_NUMBER = "근거 결여 (성립 불가한 사건번호)";
+const VERDICT_OFFICIAL_NOT_FOUND = "공식 DB 미확인 (원문 확인 필요)";
+const VERDICT_QUOTE_MODIFIED = "인용문 변형 (원문과 어절 차이)";
+const VERDICT_CONTENT_MISMATCH = "인용 내용 불일치 (원문 대조 필요)";
+const VERDICT_HOLDING_DISTORTION = "판례 취지 왜곡 (판시사항과 상반 / 부당)";
+const VERDICT_FACT_DISTINGUISHABLE = "적용 차이 (사실관계 상이 / 전문가 검토 필요)";
+const VERDICT_OFFICIAL_CONFIRMED = "공식 원문 일치 (사건 적용성 직접 검토 필요)";
 
-  // 1순위: 결과 유형 (FindingType / rule_id)
-  if (ruleId.includes("REFERENCE_CONTRADICTION") || verdict.includes("참고자료 모순")) return 3;
+function classifyReviewItemTier(item, findingsMap) {
   // item에 서버가 계산한 tier 속성이 있으면 최우선 반영
   if (item.tier === 2 || item.tier === 3) return item.tier;
 
+  const leadF = (item.finding_ids && item.finding_ids.length && findingsMap) ? findingsMap.get(item.finding_ids[0]) : null;
+  const ruleId = String(item.rule_id || (leadF?.confidence_features || {}).rule_id || "");
+  const findingType = String(item.finding_type || leadF?.type || "");
+  const basis = String(item.basis || (leadF?.confidence_features || {}).basis || "");
+  const errorCategory = String(item.error_category || (leadF?.confidence_features || {}).error_category || "");
+  const officialStatus = String(item.official_status || "");
+  const verdict = String(item.verdict_label || item.validity_verdict || "");
+  const citedAuthority = String(item.cited_authority || "");
+  const isCitation = Boolean(
+    citedAuthority
+    || item.citation_id
+    || item.kind === "CITATION"
+    || String(item.item_id || "").includes("CITATION")
+  );
+
+  // 1. 고유 3단 전용 규칙 (출처 여부 불문 3단)
+  // 8번 행: 참고자료 모순 (TK-70)
+  if (ruleId.includes("REFERENCE_CONTRADICTION") || verdict.includes("참고자료 모순")) return 3;
+  // 9번 행: 가짜 판례·조문 기반 법률 주장 (AI_HALLUCINATED_CONTENT)
   if (findingType.includes("HALLUCINATED") || ruleId.includes("HALLUCINATED")) return 3;
-  if (findingType.includes("ARGUMENT_INVALID") || ruleId.includes("ARGUMENT_INVALID")) return 3;
-  if (findingType.includes("FACT_MISMATCH") || ruleId.includes("FACT_MISMATCH")) return 3;
-  if (findingType.includes("DISTORTION") || ruleId.includes("DISTORTION")) return 2; // 객관적 인용 왜곡 -> 2단 (3단과 상호 참조)
-  if (findingType.includes("TEMPORAL") || ruleId.includes("TEMPORAL")) return 2;
-  if (["NOT_FOUND", "METADATA_MISMATCH", "CITATION_TEXT"].some(k => findingType.includes(k))) return 2;
 
-  // 2순위: 공식 조회 및 출처 상태 (basis / error_category)
-  if (basis.includes("FABRICATION_SUSPECTED") || errorCategory === "LEGAL_CITATION_ERROR") return 2;
-  if (basis.includes("UNCONFIRMED") || officialStatus === "OFFICIAL_NOT_FOUND") return 2;
+  // 2. 인용 행(CITATION) 처리: basis와 판정 문장을 결과 유형보다 먼저 본다 (요구 2)
+  if (isCitation) {
+    // [표 1 3단 예외 항목 선제 판정]
+    // 6번 행: 판례 취지 왜곡 (부당 원용) - 상수 완전 일치 우선
+    if (verdict === VERDICT_HOLDING_DISTORTION || (verdict.includes("취지 왜곡") && verdict.includes("상반"))) return 3;
+    // 7번 행: 적용 차이 (사실관계 상이)
+    if (verdict === VERDICT_FACT_DISTINGUISHABLE || errorCategory === "APPLICATION_DIFFERENCE" || basis === "DISTINGUISHABLE" || verdict.includes("사실관계 상이")) return 3;
 
-  // 3순위: 법리 검토 판정 문장 (validity_verdict)
-  // 표 1 명시 항목:
-  // 1번 행: "근거 결여 (성립 불가한 사건번호)" -> 2단
-  if (verdict.includes("성립 불가한 사건번호") || verdict.includes("성립 불가")) return 2;
-  // 2번 행: "공식 DB 미확인 (원문 확인 필요)" -> 2단
-  if (verdict.includes("공식 DB 미확인") || verdict.includes("원문 확인 필요")) return 2;
-  // 3번 행: "인용문 변형 (원문과 어절 차이)" 또는 "인용 내용 불일치 (원문 대조 필요)" -> 2단
-  if (verdict.includes("인용문 변형") || verdict.includes("인용 내용 불일치")) return 2;
-  // 6번 행: "판례 취지 왜곡 (판시사항과 상반 / 부당)" -> 3단
-  if (verdict.includes("취지 왜곡") || verdict.includes("부당")) return 3;
-  // 9번 행: "사실관계 상이" -> 3단
-  if (verdict.includes("사실관계 상이")) return 3;
+    // [표 1 2단 출처 오류/미확인 항목]
+    // 1번 행: 성립 불가한 사건번호 (2단 고정)
+    if (verdict === VERDICT_INVALID_CASE_NUMBER || basis === "FABRICATION_SUSPECTED" || verdict.includes("성립 불가")) return 2;
+    // 2번 행: 공식 DB 미확인
+    if (verdict === VERDICT_OFFICIAL_NOT_FOUND || basis === "UNCONFIRMED" || officialStatus === "OFFICIAL_NOT_FOUND" || officialStatus === "UNCONFIRMED" || verdict.includes("공식 DB 미확인") || verdict.includes("원문 확인 필요")) return 2;
+    // 3번 행: 인용문 변형 / 내용 불일치
+    if (verdict === VERDICT_QUOTE_MODIFIED || verdict === VERDICT_CONTENT_MISMATCH || errorCategory === "LEGAL_CITATION_ERROR" || verdict.includes("인용문 변형") || verdict.includes("인용 내용 불일치")) return 2;
+    // 4번 행: 객관적 판시사항 왜곡 인용문
+    if (findingType.includes("DISTORTION") || ruleId.includes("DISTORTION")) return 2;
+    // 5번 행: 시적 적용 오류
+    if (findingType.includes("TEMPORAL") || ruleId.includes("TEMPORAL")) return 2;
+    // 10번 행: 공식 원문 일치
+    if (verdict === VERDICT_OFFICIAL_CONFIRMED || basis === "OFFICIAL_CONFIRMED" || officialStatus === "OFFICIAL_CONFIRMED" || verdict.includes("공식 원문 일치")) return 2;
+    // 기타 인용 검색 불일치
+    if (["NOT_FOUND", "METADATA_MISMATCH", "CITATION_TEXT"].some(k => findingType.includes(k))) return 2;
 
-  if (citedAuthority || item.citation_id || item.kind === "CITATION") return 2;
+    // 인용 행의 기본값은 2단 (출처 검증)
+    return 2;
+  }
+
+  // 3. 비인용 행(사실관계 불일치, 일자 모순 등) 처리
+  if (item.kind === "FACT" || findingType.includes("FACT") || findingType.includes("TIMELINE")) return 3;
+
+  // 기본값: 3단
   return 3;
 }
 
