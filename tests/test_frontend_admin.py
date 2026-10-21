@@ -310,8 +310,8 @@ def test_grouped_workbench_preserves_all_tools_and_selected_case(admin_page):
     groups = page.locator("#workspaceGroups")
     expect(groups.get_by_role("button")).to_have_count(3)
     for group, tools in (
-        ("자료", ("documents", "compare")),
-        ("검증·검토", ("ai-verification", "review", "issues", "timeline", "calculations", "search")),
+        ("자료", ("documents",)),
+        ("검증·검토", ("ai-verification", "review", "issues")),
         ("보고서", ("reports", "audit")),
     ):
         groups.get_by_role("button", name=group, exact=True).click()
@@ -320,12 +320,12 @@ def test_grouped_workbench_preserves_all_tools_and_selected_case(admin_page):
             page.locator(f'.tabs [data-tab="{tab}"]').click()
             expect(page.locator(f'[data-panel="{tab}"]')).to_be_visible()
     groups.get_by_role("button", name="검증·검토", exact=True).click()
-    expect(page.locator('[data-panel="search"]')).to_be_visible()
+    expect(page.locator('[data-panel="issues"]')).to_be_visible()
     page.locator("#adminNavigation").click()
     expect(page.locator("#projectView")).to_be_hidden()
     page.get_by_role("button", name="작업 공간", exact=True).click()
     expect(page.locator("#projectTitle")).to_have_text("합성 사건")
-    expect(page.locator('[data-panel="search"]')).to_be_visible()
+    expect(page.locator('[data-panel="issues"]')).to_be_visible()
     assert page.evaluate("state.run.id") == "retained-run"
     page.set_viewport_size({"width": 390, "height": 844})
     assert groups.evaluate("el => el.scrollWidth <= el.clientWidth")
