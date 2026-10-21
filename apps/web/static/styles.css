@@ -1780,3 +1780,30 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
   background-color: #dbeafe;
   border-color: #93c5fd;
 }
+
+.review-prompt-notice {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-left: 6px;
+}
+.copy-fallback-dialog {
+  max-width: 600px;
+  width: 90%;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  padding: 16px;
+  background-color: #ffffff;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+}
+.copy-fallback-textarea {
+  width: 100%;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  background-color: #f8fafc;
+  resize: vertical;
+  margin: 10px 0;
+}

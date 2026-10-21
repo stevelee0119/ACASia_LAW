@@ -89,64 +89,112 @@ function toast(message) {
   }, 6500);
 }
 
+// 클립보드 복사 실패 시 직접 텍스트를 선택하여 복사할 수 있는 대화상자 표시 (TK-94)
+function showCopyFallbackDialog(text) {
+  let dlg = $("copyFallbackDialog");
+  if (!dlg) {
+    dlg = node("dialog", null, "copy-fallback-dialog");
+    dlg.id = "copyFallbackDialog";
+    const header = node("div", null, "dialog-heading");
+    header.append(node("h3", "프롬프트 직접 복사"));
+    const closeBtn = node("button", "닫기", "icon");
+    closeBtn.type = "button";
+    closeBtn.addEventListener("click", () => dlg.close());
+    header.append(closeBtn);
+
+    const desc = node("p", "클립보드 자동 복사에 실패했습니다. 아래 텍스트를 전체 선택(Ctrl+A) 후 복사(Ctrl+C)하여 사용해 주세요.", "muted small");
+    const ta = node("textarea", null, "copy-fallback-textarea");
+    ta.id = "copyFallbackTextarea";
+    ta.rows = 12;
+    ta.readOnly = true;
+
+    const footer = node("div", null, "dialog-footer");
+    const selBtn = button("전체 선택", () => {
+      ta.select();
+      ta.focus();
+    }, "secondary");
+    const okBtn = button("닫기", () => dlg.close(), "primary");
+    footer.append(selBtn, okBtn);
+
+    dlg.append(header, desc, ta, footer);
+    document.body.appendChild(dlg);
+  }
+  const textarea = $("copyFallbackTextarea");
+  if (textarea) textarea.value = text;
+  dlg.showModal();
+  if (textarea) {
+    textarea.select();
+    textarea.focus();
+  }
+}
+
 // 텍스트 클립보드 복사 헬퍼 (TK-94)
 async function copyToClipboard(text, successMessage = "클립보드에 복사되었습니다.") {
+  let copied = false;
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text);
-    } else {
+      copied = true;
+    }
+  } catch (e) {
+    copied = false;
+  }
+  if (!copied) {
+    try {
       const ta = document.createElement("textarea");
       ta.value = text;
       ta.style.position = "fixed";
       ta.style.opacity = "0";
       document.body.appendChild(ta);
       ta.select();
-      document.execCommand("copy");
+      copied = Boolean(document.execCommand("copy"));
       document.body.removeChild(ta);
+    } catch (err) {
+      copied = false;
     }
+  }
+  if (copied) {
     toast(successMessage);
-  } catch (err) {
-    toast("클립보드 복사에 실패했습니다. 직접 복사해 주세요.");
+  } else {
+    showCopyFallbackDialog(text);
   }
 }
 
 // 서면 내 출처 미확인 판례·법령 전체에 대한 엘박스/법률 AI 일괄 검증 프롬프트 생성 (TK-94)
-// 법령·판례의 실재 여부 및 판시사항 일치 여부 검증용이므로 당사자 개인정보는 일체 배제
+// 법령·판례의 실재 여부 검증용이므로 본문 문맥(claim_text) 및 당사자 개인정보는 일체 배제하고 인용 식별자만 포함
 function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "") {
   const dateStr = incidentDate || "미지정 (소송 진행 시점 기준)";
   let itemsListText = "";
 
   items.forEach((it, idx) => {
-    const auth = it.cited_authority || it.raw_text || `인용 항목 ${idx + 1}`;
-    const claim = friendlyText(it.claim_text || it.reason || "서면 주장 요지 미기재");
-    const diag = it.verdict_label || it.ai_generation_basis || (it.official_status ? label(it.official_status) : "공식 DB 출처 미확인");
-    itemsListText += `
-${idx + 1}. 인용 표기: ${auth}
-   - 서면 주장 요지: "${claim}"
-   - 1차 검증 진단: ${diag}
-`;
+    // 본문 문맥이나 당사자 개인정보는 일체 배제하고 인용 표기(사건번호, 법령명/조문)만 포함
+    const auth = String(it.cited_authority || "").trim();
+    if (auth) {
+      itemsListText += `${idx + 1}. ${auth}\n`;
+    }
   });
 
   return `[역할]
 당신은 대한민국 법률 및 판례 검증 전문 AI입니다.
-아래 소송 서면에서 인용되었으나 1차 공식 DB에서 출처가 확인되지 않은 [판례·법령 목록 ${items.length}건]에 대해 실재 여부와 주장의 타당성을 정밀 검증해 주세요.
+아래 소송 서면에서 인용되었으나 공식 DB에서 출처가 확인되지 않은 [판례·법령 목록 ${items.length}건]에 대해 실재 여부와 판결요지/조문 내용을 정밀 검증해 주세요.
+
+※ 고지: 외부 AI 답변은 법적 효력이 있는 공식 확인이 아니며, 실제 변론 및 증거 제출 시에는 법원 판결서 사본 또는 국가법령정보센터 공식 원문으로 반드시 확인해야 합니다.
 
 [기준 시점]
 - ${dateStr}
 
-[검증 대상 판례·법령 목록 (${items.length}건)]
+[검증 대상 판례·법령 목록 (${items.length}건 - 인용 식별자)]
 ${itemsListText}
 [검증 요청 사항]
-위 각 항목에 대해 다음 내용을 일목요연하게 표 및 요약으로 답변해 주세요:
+위 각 판례/법령 항목에 대해 다음 내용을 일목요연하게 표 및 요약으로 답변해 주세요:
 1. 실재 여부: 실제 존재하는 판례/법령인가? (대법원/하급심 여부, 정확한 사건번호, 선고일자)
-2. 판시사항 부합 여부: 서면에서 주장하는 법리가 실제 판례의 판시사항/판결요지와 일치하는가, 아니면 왜곡·과장·환각(가짜 판례)인가?
-3. 대체/반박 판례: 해당 주장을 뒷받침하거나 반박할 수 있는 실제 대법원 판례가 있다면 정확한 사건번호와 핵심 요지를 제시해 주세요.
+2. 판시사항/조문 내용: 해당 판례의 공식 판결요지(판시사항) 또는 해당 법령 조항의 핵심 규정 내용
+3. 판례 대체/보강: 만약 위 사건번호가 존재하지 않는 가공(환각) 판례라면, 동일한 쟁점을 다룬 실제 대법원 판례 제시
 
 [답변 형식]
-- 종합 검증 결과 요약 표 (번호 | 인용 표기 | 실재 여부 | 판시사항 일치 여부 | 대체/반박 판례)
-- 항목별 상세 분석 및 권장 대응 방안`;
+- 종합 검증 결과 요약 표 (번호 | 인용 식별자 | 실재 여부 | 공식 판결요지/조문 핵심 | 비고)
+- 각 항목별 상세 확인 내용`;
 }
-
 
 async function api(path, options = {}) {
   const authVersion = operationsUI.authVersion?.() || 0;
@@ -2110,33 +2158,36 @@ function renderFindings() {
   const tableActions = $("reviewTableActions");
   if (tableActions) {
     tableActions.replaceChildren();
-    // 출처 미확인 또는 인용 오류가 있는 판례/법령 항목 수집
-    const unverifiedAuthorities = filteredItems.filter(it => 
-      it.cited_authority && (
-        it.official_status === "OFFICIAL_NOT_FOUND" ||
-        String(it.verdict_label).includes("미확인") ||
-        String(it.verdict_label).includes("오류") ||
-        String(it.verdict_label).includes("불일치") ||
-        String(it.verdict_label).includes("왜곡") ||
-        String(it.verdict_label).includes("부당") ||
-        String(it.verdict_label).includes("결여")
-      )
-    );
 
-    if (unverifiedAuthorities.length > 0) {
-      const promptBtn = button("📋 엘박스/AI 검증 프롬프트", () => {
-        copyToClipboard(
-          buildExternalAiPromptForUnverifiedAuthorities(unverifiedAuthorities, state.project?.incident_date),
-          "엘박스/법률 AI 검증 프롬프트가 복사되었습니다."
-        );
-      }, "external-ai-prompt-btn");
-      promptBtn.title = `미확인 판례·법령 ${unverifiedAuthorities.length}건을 엘박스 등 법률 AI에 한 번에 질의할 수 있는 일괄 프롬프트를 복사합니다.`;
-
-      const badge = node("span", `(미확인 판례·법령 ${unverifiedAuthorities.length}건)`, "muted small review-prompt-count");
-      tableActions.append(promptBtn, badge);
-      tableActions.hidden = false;
-    } else {
+    // 외부 AI 전송 정책 확인: LOCAL_ONLY인 경우 외부 전송 버튼 숨김
+    const policy = state.project?.external_ai_policy || "LOCAL_ONLY";
+    if (policy === "LOCAL_ONLY") {
       tableActions.hidden = true;
+    } else {
+      // 대상 필터: official_status가 OFFICIAL_NOT_FOUND 또는 UNVERIFIED_SCOPE인 항목만 엄격히 수집
+      const unverifiedAuthorities = filteredItems.filter(it => 
+        Boolean(it.cited_authority) && (
+          it.official_status === "OFFICIAL_NOT_FOUND" ||
+          it.official_status === "UNVERIFIED_SCOPE"
+        )
+      );
+
+      if (unverifiedAuthorities.length > 0) {
+        const promptBtn = button("📋 엘박스/AI 검증 프롬프트", () => {
+          copyToClipboard(
+            buildExternalAiPromptForUnverifiedAuthorities(unverifiedAuthorities, state.project?.incident_date),
+            "엘박스/법률 AI 검증 프롬프트가 복사되었습니다."
+          );
+        }, "external-ai-prompt-btn");
+        promptBtn.title = `미확인 판례·법령 ${unverifiedAuthorities.length}건을 엘박스 등 법률 AI에 한 번에 질의할 수 있는 일괄 프롬프트를 복사합니다. (외부 AI 답변은 공식 확인이 아닙니다)`;
+
+        const badge = node("span", `(미확인 판례·법령 ${unverifiedAuthorities.length}건)`, "muted small review-prompt-count");
+        const notice = node("span", "※ 외부 AI 답변은 공식 확인이 아니므로 원문 확인이 필요합니다.", "muted small review-prompt-notice");
+        tableActions.append(promptBtn, badge, notice);
+        tableActions.hidden = false;
+      } else {
+        tableActions.hidden = true;
+      }
     }
   }
 
