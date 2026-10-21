@@ -257,3 +257,30 @@ def test_tk82_library_sync_records_reason_detail(tmp_path, monkeypatch):
     assert issue_item is not None
     assert "DRIVE_NETWORK_ERROR" in issue_item["reason"]
     assert "CONNECT_FAILED" in issue_item["reason"]
+
+
+def test_tk82_non_retryable_network_error_not_retried():
+    """연결실패·읽기타임아웃·전송중단 외의 네트워크 오류(예: UnsupportedProtocol, DecodingError)는 재시도하지 않고 1회만에 종료되는지 검증 (TK-82)."""
+    calls_made = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls_made.append(request)
+        raise httpx.UnsupportedProtocol("Unsupported protocol scheme: custom://")
+
+    client = DriveClient(
+        deadline=time.monotonic() + 30.0,
+        transport=httpx.MockTransport(handler),
+        headers={"Authorization": "Bearer mock-token"},
+    )
+
+    with pytest.raises(ReferenceError, match="DRIVE_NETWORK_ERROR"):
+        client.read("files/test_unsupported_id")
+
+    # 재시도 없이 정확히 1회만 호출됨
+    assert len(calls_made) == 1
+    assert len(client.calls) == 1
+    call = client.calls[0]
+    assert call["error"] == "DRIVE_NETWORK_ERROR"
+    assert call.get("retried") is not True
+    assert "UnsupportedProtocol" in call.get("reason", "")
+    assert "UnsupportedProtocol" in client.last_error_reason

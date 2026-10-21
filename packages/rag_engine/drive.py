@@ -195,11 +195,12 @@ class DriveClient:
                 raise
 
             except httpx.HTTPError as exc:
-                _, detail_reason = classify_network_error(exc, len(content))
+                kind, detail_reason = classify_network_error(exc, len(content))
                 self.last_error_reason = detail_reason
 
                 can_retry = False
-                if attempt == 0:
+                # TK-82 요구 2: 재시도는 연결 실패, 읽기 시간 초과, 전송 중단 3종 한정
+                if attempt == 0 and kind in {"CONNECT_FAILED", "READ_TIMEOUT", "STREAM_INTERRUPTED"}:
                     try:
                         if self.remaining() > 0:
                             can_retry = True
