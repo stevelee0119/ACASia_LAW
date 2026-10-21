@@ -70,3 +70,39 @@ def test_timeline_retained_in_execution_payload_but_excluded_from_reports():
     tech_sheet = wb["기술부록"]
     cell_values = [str(cell.value) for row in tech_sheet.iter_rows() for cell in row if cell.value is not None]
     assert not any("timeline" in val for val in cell_values), "Excel 기술부록 시트에 timeline 경로가 나타나지 않아야 한다"
+
+
+def test_reports_api_snapshot_excludes_timeline():
+    """reports API 내부 _snapshot 생성 시 engine_result에서 timeline이 제외되고 원본은 보존된다."""
+    from apps.api.routers.reports import _snapshot
+
+    mock_project = SimpleNamespace(scope_revision=1)
+    mock_run = SimpleNamespace(id="run_1", scope_revision=1)
+    mock_engine = {
+        "timeline": [{"date": "2023-01-01", "event": "이벤트", "source_doc": "계약서.pdf"}],
+        "scores": {"overall": 90},
+        "errors": [],
+        "findings": [],
+        "documents": [],
+    }
+    mock_metadata = {
+        "audience": "INTERNAL",
+        "state": "DRAFT",
+        "created_by": "tester",
+        "created_at": "2026-10-21T10:00:00",
+    }
+    mock_human = {
+        "workflow": [],
+        "matrix": {"claims": []},
+        "case_profile": {},
+        "review_history": [],
+    }
+    mock_manifest = {}
+
+    snapshot = _snapshot(None, mock_project, mock_run, mock_engine, mock_metadata, mock_manifest, human=mock_human)
+
+    # 1. snapshot 내부 engine_result에서 timeline이 제거되었는지 확인
+    assert "timeline" not in snapshot["engine_result"], "스냅숏의 engine_result에는 timeline이 없어야 한다"
+    # 2. 원본 engine 객체의 timeline은 유지되는지 확인 (부수효과 방지)
+    assert "timeline" in mock_engine, "원본 engine 딕셔너리의 timeline은 보존되어야 한다"
+
