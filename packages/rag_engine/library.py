@@ -578,11 +578,14 @@ class ReferenceLibrary:
                         "case_table_only": bool(is_case_table and not chosen(file_id))}
             except ReferenceError as exc:
                 code = str(exc)
+                reason_detail = code
+                if code == "DRIVE_NETWORK_ERROR" and getattr(client, "last_error_reason", ""):
+                    reason_detail = f"DRIVE_NETWORK_ERROR ({client.last_error_reason})"
                 entry.update(status="UNSUPPORTED_TYPE" if code == "UNSUPPORTED_REFERENCE_FORMAT" else
-                             "SELECTED_PENDING" if "BUDGET" in code else "UNAVAILABLE", reason=code)
+                             "SELECTED_PENDING" if "BUDGET" in code else "UNAVAILABLE", reason=reason_detail)
                 if str(exc) in ("DRIVE_HTTP_401", "DRIVE_HTTP_429"):
                     raise
-                self.summary["issues"].append({"file_id": file_id, "name": item.get("name"), "reason": str(exc)})
+                self.summary["issues"].append({"file_id": file_id, "name": item.get("name"), "reason": reason_detail})
                 if str(exc) == "SYNC_BUDGET_EXHAUSTED":
                     # 미룬 파일 수는 열기로 한 후보 중 남은 것만 센다(선정되지 않은 파일은 미룬 것이 아니다).
                     diagnostics["deferred"] = sum(1 for later in ordered[index:] if chosen(later["id"]))
