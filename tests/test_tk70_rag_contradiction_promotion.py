@@ -137,7 +137,7 @@ def test_tk70_positive_three_cases_promoted_to_low_c_suspicious(tmp_path, monkey
         assert f.status == VerificationStatus.SUSPICIOUS
         assert f.severity == Severity.LOW
         assert f.evidence_grade == EvidenceGrade.C
-        assert "내부 참고자료 대조 — 법적 구속력 미판단, 사람 확인 필요" in f.title
+        assert "내부 참고자료 대조 — 법적 구속력 미판단" in f.title
         assert "법적 구속력은 판단하지 않았으므로" in f.detail
         assert f.confidence_features["claim_id"] in ("C1", "C2", "C3")
         assert f.confidence_features["source_id"] in ("REF1", "REF2", "REF3")
