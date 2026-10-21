@@ -424,11 +424,14 @@ def test_f2_review_summary_content_elements(f2_browser_page):
     panel = page.locator('section[data-panel="review"]')
     rows = panel.locator("#aiVerificationRows tr")
 
-    # 1번째 행 확인 요약 검증
+    # 1번째 행 확인 요약 검증 (라벨뿐만 아니라 기존 필드값으로부터 조합되었는지 실제 내용 검증 - TK-87)
     box = rows.nth(0).locator(".review-summary-box")
     expect(box.locator(".summary-target")).to_be_visible()
+    expect(box.locator(".summary-target")).to_contain_text("대법원 2022다99999 판결")
     expect(box.locator(".summary-reason")).to_be_visible()
+    expect(box.locator(".summary-reason")).to_contain_text("타당성 검토 결과: 해당 판례 미존재")
     expect(box.locator(".summary-action")).to_be_visible()
+    expect(box.locator(".summary-action")).to_contain_text("원문 확인 요청")
 
 
 def test_f2_filters_search_severity_review_status(f2_browser_page):

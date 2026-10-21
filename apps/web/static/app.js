@@ -1652,6 +1652,7 @@ function renderFindings() {
             counteraction: row.recommended_counteraction,
             ai_generation_basis: row.ai_generation_basis,
             context_review: row.context_review,
+            legal_reasoning: row.legal_reasoning,
             basis: row.basis,
           });
         }
@@ -1844,7 +1845,7 @@ function renderFindings() {
           tdBasis.append(context);
         }
 
-        // 4열: 확인이 필요한 내용 요약 (2~3줄 요약: 무엇을, 왜, 어떻게)
+        // 4열: 확인이 필요한 내용 요약 (2~3줄 요약: 무엇을, 왜, 어떻게) (TK-87)
         const tdSummary = node("td", null, "review-summary-cell");
         const summaryBox = node("div", null, "review-summary-box");
         const leadF = (item.finding_ids && item.finding_ids.length) ? findingsMap.get(item.finding_ids[0]) : null;
@@ -1857,24 +1858,47 @@ function renderFindings() {
           summaryBox.append(targetLine);
         }
 
-        // 2) 사유 (왜: 판정 사유)
-        const reasonText = (item.reasoning_sections?.review || item.legal_reasoning || item.ai_generation_basis || (leadF ? leadF.detail : "") || item.verdict_label || "").trim();
-        if (reasonText) {
+        // 2) 사유 (왜: 판정 사유 축약 - TK-87 피드백 3: 2~3줄로 줄이고 전문은 상세보기에 배치)
+        const rawReason = (item.reasoning_sections?.review || item.legal_reasoning || item.ai_generation_basis || (leadF ? leadF.detail : "") || item.verdict_label || "").trim();
+        if (rawReason) {
+          let shortReason = rawReason;
+          const firstDot = rawReason.indexOf(". ");
+          if (firstDot > 20 && firstDot < 120) {
+            shortReason = rawReason.slice(0, firstDot + 1);
+          } else if (rawReason.length > 100) {
+            shortReason = rawReason.slice(0, 97) + " …";
+          }
           const reasonLine = node("p", null, "summary-line summary-reason");
-          reasonLine.append(node("strong", "의심 사유: "), document.createTextNode(reasonText));
+          reasonLine.append(node("strong", "의심 사유: "), document.createTextNode(shortReason));
           summaryBox.append(reasonLine);
         }
 
-        // 3) 확인 방법 (어떻게: 공식 원문·증거 대조 위치 / 대응 방안)
-        const verifyText = (item.counteraction || (item.reference_case_match ? `표준판례 대조: ${item.reference_case_match}` : "") || (item.doc?.filename ? `${item.doc.filename} 원문 대조` : "")).trim();
+        // 3) 확인 방법 (어떻게 - TK-87 피드백 4: 판정의 공식 원문 링크나 쪽/위치 활용)
+        let verifyText = (item.counteraction || "").trim();
+        if (!verifyText) {
+          const locStr = item.location?.display || (item.location?.page ? `${item.location.page}쪽` : (typeof item.location === "string" ? item.location : ""));
+          if (item.official_url) {
+            verifyText = `공식 원문 링크 대조 (${item.official_url})`;
+          } else if (item.cited_authority && locStr) {
+            verifyText = `${item.cited_authority} 원문 대조 (${locStr})`;
+          } else if (item.reference_case_match) {
+            verifyText = `표준판례 대조: ${item.reference_case_match}`;
+          } else if (item.doc?.filename && locStr) {
+            verifyText = `${item.doc.filename} ${locStr} 대조`;
+          } else if (item.doc?.filename) {
+            verifyText = `${item.doc.filename} 원문 대조`;
+          }
+        }
         if (verifyText) {
           const verifyLine = node("p", null, "summary-line summary-action");
           verifyLine.append(node("strong", "확인 방법: "), document.createTextNode(verifyText));
           summaryBox.append(verifyLine);
         }
 
-        if (item.reasoning_sections?.ai_label) {
+        // 4) 상세 법리 의견 및 판정 전문 (TK-87 피드백 2: reasoningBlock 및 legal-reasoning 보존)
+        if (item.reasoning_sections || item.legal_reasoning) {
           const extra = node("details", null, "summary-details");
+          extra.open = true;
           extra.append(node("summary", "상세 법리 의견"));
           extra.append(reasoningBlock(item));
           summaryBox.append(extra);
