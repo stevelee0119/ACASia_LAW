@@ -309,3 +309,76 @@ def test_negative_6_evidence_explanation_inside_exhibit_entry_skip():
     # 정규 입증취지 항목 내 기재는 정상 실무이므로 제외(오탐 0)
     assert len(findings) == 0
 
+
+def test_negative_7_list_item_and_police_rank_not_misclassified():
+    """대조 7 (요구 ② 검증): 목록 줄, 경찰관 직위('경위'), 일반 명사 '경위'가 표제로 오인되지 않음."""
+    # 1. 준비서면 첫머리 첨부목록에 '1. 사실경위서 1부'가 있는 경우 -> 준비서면(PLEADING)으로 정상 분류되어야 함
+    doc_with_list = _make_doc(
+        "d_list",
+        "준 비 서 면\n사건 2023가합12345\n원고 홍길동\n첨부서류:\n1. 사실경위서 1부\n2. 영수증 1부\n\n본문...",
+        "준비서면.pdf",
+    )
+    kind, _ = _document_title_kind(doc_with_list)
+    assert kind == DOC_KIND_PLEADING
+
+    # 2. 직위 낱말(경찰 계급 '경위')이 포함된 경우 -> 사실경위서(FACT_CONFIRMATION)로 오인되지 않아야 함
+    doc_with_rank = _make_doc(
+        "d_rank",
+        "수 사 보 고\n담당: 사법경찰관 경위 김철수\n피의자 신문 결과 보고\n\n본문 내용...",
+        "수사보고.pdf",
+    )
+    kind, _ = _document_title_kind(doc_with_rank)
+    assert kind != DOC_KIND_FACT_CONFIRMATION
+
+    # 3. 본문 중 일반 명사 '경위' 서술이 첫머리에 나타난 경우 -> 경위서로 오인되지 않아야 함
+    doc_with_narrative = _make_doc(
+        "d_narr",
+        "의 견 서\n사건 발생 경위에 대하여 다음과 같이 설명드립니다.\n본문 내용...",
+        "의견서.pdf",
+    )
+    kind, _ = _document_title_kind(doc_with_narrative)
+    assert kind == DOC_KIND_PLEADING
+
+
+def test_negative_8_evidence_explanation_vs_pleading_no_cross_copy():
+    """대조 8 (요구 ③ 검증): 증거설명서와 준비서면 간 문장 일치는 원본이 서증이 아니므로 결함 미발생 (오탐 0)."""
+    shared_text = (
+        "원고는 피고 회사의 안전관리 소홀로 인하여 발생한 재해 사고에 대하여 "
+        "사용자 책임에 따른 손해배상을 구하고자 이 사건 소송을 제기하였습니다."
+    )
+
+    doc_prep = _make_doc(
+        "d_prep_common",
+        f"준 비 서 면\n사건 2023가단12345\n\n1. 청구의 요지\n{shared_text}",
+        "준비서면.pdf",
+    )
+    doc_expl = _make_doc(
+        "d_expl_common",
+        f"증 거 설 명 서\n사건 2023가단12345\n\n{shared_text}",
+        "증거설명서.pdf",
+    )
+
+    findings = cross_document_copies([doc_prep, doc_expl])
+    # 증거설명서와 소송서면 간 일치는 원본이 사실경위서(서증 원본)가 아니므로 결함 판정 0건
+    assert len(findings) == 0
+
+
+def test_statement_path_invariance_with_steve():
+    """요구 ①·⑥ 검증: 진술서 경로(STATEMENT_HEADING_RE, _statement_start)가 Steve 원본과 동일하게 동작."""
+    # 1. 단독 줄 진술서 제목 -> 정상 진술서 판정
+    doc_stmt = _make_doc("d_st", "진 술 서\n성명: 홍길동\n본문 텍스트...")
+    kind, offset = _document_title_kind(doc_stmt)
+    assert kind == DOC_KIND_STATEMENT
+    assert offset is not None
+
+    # 2. 단독 줄 사실확인서 제목 -> 정상 진술서 판정
+    doc_fact_stmt = _make_doc("d_fst", "사 실 확 인 서\n성명: 김철수\n본문 텍스트...")
+    kind, offset = _document_title_kind(doc_fact_stmt)
+    assert kind == DOC_KIND_STATEMENT
+    assert offset is not None
+
+    # 3. 본문 중 단어 '각 진술서'나 목록 속 문구는 진술서로 잡히지 않음 (Steve 원래 정규식 특성)
+    doc_non_stmt = _make_doc("d_nst", "소  장\n증거목록 속 각 진술서의 기재를 참조하시기 바랍니다.")
+    kind, _ = _document_title_kind(doc_non_stmt)
+    assert kind == DOC_KIND_PLEADING
+
