@@ -329,6 +329,233 @@ def test_positive_su_exhibit_missing_with_full_submission_declaration():
     assert "수 제3호증" in missing[0].title
 
 
+# --- 20. 실제 파이프라인 진입점 시험 (목록 머리글 괄호 완결 선언 누락) ---
+def test_pipeline_entrypoint_parenthesized_completion_declaration(tmp_path, monkeypatch):
+    """실제 파이프라인 진입점: 목록 머리글 괄호 완결 선언('제출 증거 목록(이 서면의 제출 증거 전부)') 누락 검출."""
+    sample_text = (
+        "원고는 피고의 의무 불이행 사실을 입증하기 위해 갑 제7호증 통고서를 원용합니다.\n"
+        "제출 증거 목록(이 서면의 제출 증거 전부)\n"
+        "1. 갑 제1호증 합의서\n"
+        "2. 갑 제2호증 거래명세표"
+    )
+    doc_path = tmp_path / "brief_parenthesized_completion.txt"
+    doc_path.write_text(sample_text, encoding="utf-8")
 
+    with monkeypatch.context() as patch:
+        patch.setenv("LV_ALLOW_NETWORK", "0")
+        patch.setenv("LV_DATA_DIR", str(tmp_path / "data"))
+        reset_settings()
+        try:
+            pipeline = VerificationPipeline()
+            result = pipeline.run(
+                "pipeline-paren-completion-run",
+                ProjectContext("pipeline-paren-project"),
+                [DocumentInput("brief-paren-1", str(doc_path), doc_path.name)],
+            )
+        finally:
+            reset_settings()
+
+    assert not result.errors
+    assert len(result.documents) == 1
+    doc_result = result.documents[0]
+
+    num_findings = [
+        f for f in doc_result.findings
+        if f.type == FindingType.EVIDENCE_LIST_MISMATCH
+        and f.confidence_features.get("defect_code") == "EVIDENCE_REFERENCE_MISSING"
+    ]
+    assert len(num_findings) >= 1
+    assert "갑 제7호증" in num_findings[0].title
+
+
+# --- 21. 양성 시험 9 (목록 머리글 괄호 안 완결 선언 누락 검출) ---
+def test_positive_section_head_parenthesized_completion_missing_exhibit():
+    """목록 머리글에 괄호로 완결 선언('제출 증거 목록 (이 서면의 제출 증거 전부)')이 들어간 경우 본문 누락 호증(갑 제8호증) 검출."""
+    doc = _make_doc([
+        "원고는 피고의 추가 채무를 입증하기 위하여 갑 제8호증 차용증을 원용합니다.",
+        "제출 증거 목록 (이 서면의 제출 증거 전부)",
+        "1. 갑 제1호증 물품공급계약서",
+        "2. 갑 제2호증 세금계산서",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    missing = [f for f in findings if f.confidence_features.get("defect_code") == "EVIDENCE_REFERENCE_MISSING"]
+    assert len(missing) == 1
+    assert "갑 제8호증" in missing[0].title
+
+
+# --- 22. 양성 시험 10 (자료명 뒤 조사 결합 형태의 양방향 자료명 불일치 검출) ---
+def test_positive_reverse_name_with_particle_number_mismatch():
+    """본문에서 자료명 뒤에 조사가 결합된 배치('현장 실측도면을 갑 제15호증으로 제출하며')에서 목록 번호(갑 제16호증)와의 불일치 검출."""
+    doc = _make_doc([
+        "원고는 공사 하자를 입증하기 위하여 현장 실측도면을 갑 제15호증으로 제출하며 손해액을 주장합니다.",
+        "입증방법",
+        "1. 갑 제14호증 공사계약서",
+        "2. 갑 제16호증 현장 실측도면",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    name_mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(name_mismatches) == 1
+    assert "현장 실측도면" in name_mismatches[0].title
+    assert "갑 제15호증" in name_mismatches[0].detail and "갑 제16호증" in name_mismatches[0].detail
+
+
+# --- 23. 양성 시험 11 (증거목록 헤더 괄호 완결 선언에서 본문 호증 누락 검출) ---
+def test_positive_exhibit_list_header_parenthesized_full_scope():
+    """'증거목록(추가 제출 없음)' 헤더에서 완결 선언이 정상 인식되어 본문 호증(을 제5호증) 누락 검출."""
+    doc = _make_doc([
+        "피고는 을 제5호증 송달보고서로 원고의 주장을 탄핵합니다.",
+        "증거목록(추가 제출 없음)",
+        "1. 을 제1호증 견적서",
+        "2. 을 제2호증 영수증",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    missing = [f for f in findings if f.confidence_features.get("defect_code") == "EVIDENCE_REFERENCE_MISSING"]
+    assert len(missing) == 1
+    assert "을 제5호증" in missing[0].title
+
+
+# --- 24. 대조군 시험 11 (본문 서술문 행의 A등급 호증 중복 오탐 방지) ---
+def test_control_prose_sentence_not_duplicate_number_grade_a():
+    """본문 서술문 행(40자 초과 + 서술어 종결)이 호증 번호를 포함하더라도 _numbering에서 A등급 호증 중복으로 오탐되지 않음 (은퇴 10 A등급 오탐 보호)."""
+    doc = _make_doc([
+        "원고는 피고가 갑 제1호증 발주서를 작성하여 송부한 사실이 명백하므로 이행을 촉구하였습니다.",
+        "또한 피고는 갑 제1호증과 관련하여 물품 납품 기한을 준수하지 못하였다고 스스로 인정하였습니다.",
+        "입증방법",
+        "1. 갑 제1호증 발주서",
+        "2. 갑 제2호증 납품확인서",
+    ])
+    from packages.claim_engine.evidence_consistency import check_exhibits
+    findings = check_exhibits(doc)
+    dup_findings = [
+        f for f in findings
+        if f.confidence_features.get("rule_id") == "EVI.EVIDENCE_NUMBER_DUPLICATE"
+    ]
+    assert len(dup_findings) == 0, f"본문 서술문 행의 호증 언급은 A등급 호증 중복으로 오탐되지 않아야 함: {dup_findings}"
+
+
+# --- 25. 대조군 시험 12 (서증명 뒤 조사가 붙은 단순 서술절 오탐 방지) ---
+def test_control_particle_verb_phrase_not_mismatched():
+    """서증명 뒤 조사가 붙은 일반 서술절은 엉뚱한 자료명 불일치로 오탐되지 않음."""
+    doc = _make_doc([
+        "원고는 공사계약서를 체결한 이후 갑 제1호증으로 영수증을 제출하였습니다.",
+        "입증방법",
+        "1. 갑 제1호증 영수증",
+        "2. 갑 제2호증 공사계약서",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    name_mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(name_mismatches) == 0
+
+
+# --- 26. 대조군 시험 13 (목록 머리글 단순 부연 괄호는 완결 선언으로 오인하지 않음) ---
+def test_control_section_head_non_completion_parenthesis():
+    """목록 머리글에 단순 부연 설명 괄호('입증방법 (사본 1부 첨부)')가 있는 경우 완결 선언으로 오인하지 않아 본문 호증 인용이 정상 보호됨."""
+    doc = _make_doc([
+        "원고는 갑 제3호증 품의서를 근거로 사실관계를 주장합니다.",
+        "입증방법 (사본 1부 첨부)",
+        "1. 갑 제1호증 계약서",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    assert len(findings) == 0, f"단순 부연 괄호는 완결 선언으로 오인되지 않아야 함: {findings}"
+
+
+# --- 27. 양성 시험 (머리글 없이 줄마다 적은 목록에서 긴 입증취지가 붙은 호증 중복 탐지) ---
+def test_positive_unheaded_lines_duplicate_number_with_long_purpose():
+    """머리글 없이 줄 단위로 적힌 증거 목록에서 자료명 뒤에 40자 초과 입증취지 서술문이 붙어 있더라도 호증 번호 중복을 정확히 검출 (A-3)."""
+    doc = _make_doc([
+        "1. 갑 제1호증 부동산매매계약서 피고가 계약금을 정히 수령하고도 소유권이전등기 의무를 불이행한 사실을 입증하고자 합니다.",
+        "2. 갑 제1호증 금융거래내역확인서 원고가 피고 명의 계좌로 계약금 전액을 정상 송금하였음을 증명하기 위하여 제출합니다.",
+        "3. 갑 제2호증 내용증명우편 통고서 피고에게 의무 이행을 최고한 사실을 입증합니다.",
+    ])
+    from packages.claim_engine.evidence_consistency import check_exhibits
+    findings = check_exhibits(doc)
+    dup_findings = [f for f in findings if f.confidence_features.get("rule_id") == "EVI.EVIDENCE_NUMBER_DUPLICATE"]
+    assert len(dup_findings) == 1, f"긴 입증취지가 붙은 목록형 행의 호증 중복이 탐지되어야 함: {dup_findings}"
+    assert "갑 제1호증" in dup_findings[0].title
+
+
+# --- 28. 양성 시험 (머리글 없이 하이픈 불릿으로 줄마다 적힌 목록의 호증 중복 탐지) ---
+def test_positive_unheaded_lines_duplicate_number_hyphen_bullets():
+    """머리글 없이 하이픈 불릿으로 줄마다 적힌 목록에서 같은 번호에 긴 입증취지가 붙은 경우 호증 번호 중복 탐지 (A-3)."""
+    doc = _make_doc([
+        "- 을 제3호증 정밀안전진단결과표 대상 구조물에 균열이 심각하여 보수공사가 시급하다는 기술적 소견을 입증합니다.",
+        "- 을 제3호증 공사비산정내역서 피고가 주장하는 보수비용이 객관적 산출 근거에 기초하였음을 증명하고자 합니다.",
+        "- 을 제4호증 현장실사사진 실제 균열 부위의 촬영 사진입니다.",
+    ])
+    from packages.claim_engine.evidence_consistency import check_exhibits
+    findings = check_exhibits(doc)
+    dup_findings = [f for f in findings if f.confidence_features.get("rule_id") == "EVI.EVIDENCE_NUMBER_DUPLICATE"]
+    assert len(dup_findings) == 1, f"하이픈 불릿형 긴 입증취지 행의 호증 중복이 탐지되어야 함: {dup_findings}"
+    assert "을 제3호증" in dup_findings[0].title
+
+
+# --- 29. 양성 시험 (수식어 결합 자료명의 본문-목록 번호 불일치 탐지) ---
+def test_positive_mismatch_with_modifier_prefix():
+    """본문에서 수식어가 붙은 자료명('현장 실사 운반 사진 (갑 제22호증)')과 목록('갑 제22호증 계약서', '갑 제23호증 운반 사진')의 번호 불일치 탐지 (A-3)."""
+    doc = _make_doc([
+        "원고는 현장 실사 운반 사진 (갑 제22호증)을 근거로 물품이 정상 인도되었음을 주장합니다.",
+        "입증방법",
+        "1. 갑 제22호증 물품공급계약서",
+        "2. 갑 제23호증 운반 사진",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(mismatches) == 1, f"수식어 결합 자료명의 번호 불일치가 탐지되어야 함: {mismatches}"
+
+
+# --- 30. 대조군 시험 12 (조사 '와·과'로 이어진 병렬 나열 정상 서술 불일치 오탐 배제) ---
+def test_control_parallel_particle_wa_gwa_not_mismatched():
+    """자료명 뒤 조사 '와·과'로 다른 서증과 나열된 정상 서술에서 자료명 불일치 오탐 배제 (TK-126 A-3 요구 1·4)."""
+    doc = _make_doc([
+        "원고는 부동산매매계약서와 갑 제2호증 영수증을 종합하여 볼 때 매매대금이 완납되었음을 밝힙니다.",
+        "입증방법",
+        "1. 갑 제1호증 부동산매매계약서",
+        "2. 갑 제2호증 영수증",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(mismatches) == 0, f"병렬 조사 '와'로 나열된 정상 서술이 불일치로 오탐되어서는 안 됨: {mismatches}"
+
+
+# --- 31. 대조군 시험 13 (접속사 '및'으로 이어진 병렬 나열 정상 서술 불일치 오탐 배제) ---
+def test_control_parallel_conjunction_and_particles_not_mismatched():
+    """자료명 뒤 '및'으로 다른 서증과 나열된 정상 서술에서 자료명 불일치 오탐 배제 (TK-126 A-3 요구 1·4)."""
+    doc = _make_doc([
+        "피고는 법인사업자등록증 및 갑 제3호증 위임장을 근거로 적법한 대표권이 존재한다고 다투고 있습니다.",
+        "입증방법",
+        "1. 갑 제1호증 법인사업자등록증",
+        "2. 갑 제3호증 소송대리인위임장",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(mismatches) == 0, f"병렬 접속사 '및'으로 나열된 정상 서술이 불일치로 오탐되어서는 안 됨: {mismatches}"
+
+
+# --- 32. 대조군 시험 14 (자기 번호 우선: '변경' 수식어가 붙은 정상 서술 불일치 오탐 배제) ---
+def test_control_self_number_priority_modifier_variation():
+    """목록에 '공사계약서'와 '변경 공사계약서'가 있고 본문 '변경 공사계약서(갑 제2호증)' 인용 시 자기 번호 우선으로 오탐 배제 (TK-126 A-3 요구 2·4)."""
+    doc = _make_doc([
+        "원고는 변경 공사계약서(갑 제2호증)에 따라 추가 공사대금의 지급을 구합니다.",
+        "입증방법",
+        "1. 갑 제1호증 공사계약서",
+        "2. 갑 제2호증 변경 공사계약서",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(mismatches) == 0, f"자기 번호 목록명과 일치하는 수식어 결합 행은 다른 번호와 접미 일치해도 오탐 배제되어야 함: {mismatches}"
+
+
+# --- 33. 대조군 시험 15 (자기 번호 우선: '2차 추가' 수식어가 붙은 정상 서술 불일치 오탐 배제) ---
+def test_control_self_number_priority_numeric_stage_variation():
+    """목록에 '합의서'와 '2차 추가 합의서'가 있고 본문 '2차 추가 합의서(갑 제6호증)' 인용 시 자기 번호 우선으로 오탐 배제 (TK-126 A-3 요구 2·4)."""
+    doc = _make_doc([
+        "당사자들은 2차 추가 합의서(갑 제6호증)를 체결하여 종전의 잔여 채무액을 최종 확정하였습니다.",
+        "입증방법",
+        "1. 갑 제5호증 기본합의서",
+        "2. 갑 제6호증 2차 추가 합의서",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(mismatches) == 0, f"자기 번호 목록명과 일치하는 차수 수식어 결합 행은 다른 번호와 접미 일치해도 오탐 배제되어야 함: {mismatches}"
 
 

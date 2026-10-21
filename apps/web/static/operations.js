@@ -268,7 +268,17 @@ const operationsUI = (() => {
       String(attempt.fence),label(attempt.state),dateText(attempt.started_at),dateText(attempt.finished_at),
       `${attempt.error || ""} · 보존 자료 ${(attempt.partial_result?.documents || []).length}개`
     ])));
-    const view=workflowUI.modal("검증 작업 기록",[content],async()=>{},true);view.readOnly();
+    let view;
+    if(["FAILED","CANCELLED","PARTIAL_COMPLETED"].includes(run.state)){
+      const actions=node("div",null,"dialog-actions");
+      actions.append(button("같은 입력으로 재시도",async()=>{
+        if(view)view.dialog.close();
+        if(await ask("검증 재시도","당시 자료와 사건 조건을 현재 분석 엔진으로 다시 검증합니다. 기존 보안 정책과 누적 비용 한도는 유지하며, 외부 AI 요청이 다시 발생할 수 있습니다.")===null)return;
+        const retry=await api(`/verification-runs/${run.id}/retry`,{method:"POST"});await selectRun(retry);
+      },"primary"));
+      content.append(actions);
+    }
+    view=workflowUI.modal("검증 작업 기록",[content],async()=>{},true);view.readOnly();
   }
   async function runHistory() {
     const pid=state.project.id, runs=await api(`/projects/${pid}/runs?limit=100`),content=node("div",null,"full");
@@ -287,10 +297,6 @@ const operationsUI = (() => {
     if(!terminal(run))root.append(button("검증 취소",async()=>{
       if(await ask("검증 취소","진행 중인 검증을 취소합니다. 이미 전송된 외부 요청은 요금이 발생할 수 있습니다.")===null)return;
       const cancelled=await api(`/verification-runs/${run.id}/cancel`,{method:"POST"});await selectRun(cancelled);
-    }));
-    if(["FAILED","CANCELLED","PARTIAL_COMPLETED"].includes(run.state))root.append(button("같은 입력으로 재시도",async()=>{
-      if(await ask("검증 재시도","당시 자료와 사건 조건을 현재 분석 엔진으로 다시 검증합니다. 기존 보안 정책과 누적 비용 한도는 유지하며, 외부 AI 요청이 다시 발생할 수 있습니다.")===null)return;
-      const retry=await api(`/verification-runs/${run.id}/retry`,{method:"POST"});await selectRun(retry);
     }));
   }
   function init() {

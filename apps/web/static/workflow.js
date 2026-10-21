@@ -4,8 +4,8 @@ const workflowUI = (() => {
   let projectId = null, matrix = null, issues = [], workflows = new Map(), generation = 0;
   const selected = new Set();
   const groups = {
-    documents:{title:"자료", icon:"files", tabs:["documents", "compare"]},
-    review:{title:"검증·검토", icon:"scan-search", tabs:["ai-verification", "review", "issues", "timeline", "calculations", "search"]},
+    documents:{title:"자료", icon:"files", tabs:["documents"]},
+    review:{title:"검증·검토", icon:"scan-search", tabs:["ai-verification", "review", "issues"]},
     reports:{title:"보고서", icon:"file-chart-column", tabs:["reports", "audit"]},
   };
   const lastTabs = Object.fromEntries(Object.entries(groups).map(([key, group]) => [key, group.tabs[0]]));
@@ -302,80 +302,6 @@ const workflowUI = (() => {
   }
   async function activate(tab) {
     if (tab === "issues" || tab === "review") {await refresh(); if(tab === "review") renderFindings();}
-    if (tab === "compare") renderCompare();
-    if (tab === "search") renderSearch();
-  }
-  function renderCompare() {
-    const root=$("comparePanel"), pid=state.project.id;
-    root.replaceChildren(node("h2","문서 버전 비교"));
-    const options={"":"자료 선택",...Object.fromEntries(state.documents.map(d=>[d.id,`${d.evidence_number || ""} ${d.filename}`]))};
-    const form=node("form",null,"toolbar comparison-controls");
-    form.append(field("left_id","이전 문서","","text",options),field("right_id","수정·제출 문서","","text",options));
-    const compare=node("button","비교","primary");compare.type="submit";form.append(compare);
-    const output=node("div"), lineage=node("div",null,"detail-section");
-    async function drawRelations() {
-      const result=await api(`/projects/${pid}/document-relations`);
-      if(pid!==state.project?.id)return;
-      lineage.replaceChildren(node("h3","연결된 버전"));
-      for(const rel of result) {
-        const parent=state.documents.find(d=>d.id===rel.parent_id),child=state.documents.find(d=>d.id===rel.child_id);
-        lineage.append(node("p",`${parent?.filename || rel.parent_id} → ${child?.filename || rel.child_id} · ${rel.note || "버전 연결"}`));
-      }
-      if(!result.length)lineage.append(node("p","연결된 버전이 없습니다.","muted"));
-    }
-    form.append(button("이전 버전으로 연결",()=>{
-      const values=Object.fromEntries(new FormData(form));
-      if(!values.left_id || !values.right_id)return toast("연결할 두 문서를 선택하세요.");
-      modal("문서 버전 연결",[field("kind","수정본 구분","REVISION","text",{DRAFT:"초안",REVISION:"수정본",FILED:"제출본",DERIVATIVE:"파생본"}),field("note","변경 메모","","textarea")],async data=>{
-        await api(`/projects/${pid}/document-relations`,{method:"POST",body:{parent_id:values.left_id,child_id:values.right_id,...data}});
-        toast("문서 버전 관계를 기록했습니다.");await drawRelations();
-      });
-    }));
-    form.onsubmit=action(async e=>{
-      e.preventDefault();const values=Object.fromEntries(new FormData(form));
-      if(!values.left_id || !values.right_id)return toast("비교할 두 문서를 선택하세요.");
-      compare.disabled=true;
-      try {
-        const result=await api(`/projects/${pid}/compare?${new URLSearchParams(values)}`);
-        if(pid!==state.project?.id)return;
-        output.replaceChildren(node("p",result.notice,"notice"));
-        if(result.unchanged)output.append(node("p","추출된 본문의 변경이 없습니다."));
-        for(const change of result.changes) {
-          const row=node("section",null,"comparison-change");
-          row.append(node("h3",`${{insert:"추가",delete:"삭제",replace:"변경"}[change.kind] || change.kind}${change.numeric_change?" · 숫자 포함":""}${change.citation_change?" · 인용 포함":""}`));
-          const cols=node("div",null,"comparison-columns");
-          for(const [key,title,id,run] of [["before","이전 문서",values.left_id,result.left_run_id],["after","수정·제출 문서",values.right_id,result.right_run_id]]) {
-            const side=node("div",null,key);side.append(node("strong",title));
-            if(!change[key].length)side.append(node("p","해당 본문 없음","muted"));
-            for(const block of change[key])side.append(button(`${block.page}쪽 원문`,()=>located(id,block.page,run)),node("pre",block.text,"source-text"));
-            cols.append(side);
-          }
-          row.append(cols);output.append(row);
-        }
-      }finally{compare.disabled=false;}
-    });
-    root.append(form,output,lineage);drawRelations().catch(e=>toast(e.message));
-  }
-  function renderSearch() {
-    const root=$("searchPanel"),pid=state.project.id,runId=state.run?.id;
-    root.replaceChildren(node("h2","사건 내 근거 찾기"));
-    const form=node("form",null,"toolbar search-controls"),query=field("q","사실관계·증거 검색","","search");
-    const input=query.querySelector("input");input.required=true;input.minLength=2;input.maxLength=200;
-    const search=node("button","검색","primary");search.type="submit";
-    form.append(query,search);const results=node("div");root.append(form,results);
-    form.onsubmit=action(async e=>{
-      e.preventDefault();if(!runId)return toast("자료를 검증한 뒤 검색하세요.");search.disabled=true;
-      try{
-        const result=await api(`/projects/${pid}/search?${new URLSearchParams({q:input.value,run_id:runId})}`);
-        if(pid!==state.project?.id)return;
-        results.replaceChildren(node("p",result.notice,"muted"));
-        for(const item of result.results){
-          const doc=state.documents.find(d=>d.id===item.document_id),row=node("article",null,"row-item");
-          row.append(button(`${doc?.evidence_number || doc?.filename} · ${item.page}쪽`,()=>located(item.document_id,item.page,runId),"row-title"),node("p",item.text));results.append(row);
-        }
-        if(!result.results.length)results.append(node("p","일치하는 가시 본문이 없습니다.","empty-small"));
-      }finally{search.disabled=false;}
-    });
   }
   function init() {
     const toolbar=document.querySelector('[data-panel="issues"] .toolbar');
@@ -384,7 +310,6 @@ const workflowUI = (() => {
     issueActions.append($("editIssues"),button("쟁점 추가",()=>issueEditor()),iconButton("contact","담당자·대리 당사자",profileEditor));
     toolbar.append(issueActions);
     const workbench=node("div");workbench.id="issueWorkbench";$("claims").before(workbench);
-    addTab("compare","버전 비교").id="comparePanel";addTab("search","근거 찾기").id="searchPanel";
     initNavigation();
     const submitted=field("submitted_on","제출일","","date");$("documentForm").querySelector(".form-grid").append(submitted);
   }
