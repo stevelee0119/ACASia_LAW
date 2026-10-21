@@ -81,8 +81,22 @@ _EVI_FORM_NON_DEFECT_CONTEXT_RE = re.compile(
     r"|(?:볼\s*수\s*없|이유\s*없|단정할\s*수\s*없|아니다)"
     r"|(?:주장하나|주장하지만|주장과\s*달리|주장에\s*불과|주장도\s*이유|주장은\s*이유)"
     # TK-81: 주어 없는 (다고|라고)...(지만|나...) 제거(상대방 배제 블록의 주어 조건 규칙만 남김)
-    # TK-81: 상대방 주장 관형형('-다는/-라는 + 주장/지적') + 부정 평가('사실과 다르/이유 없') 반박 결함 제외 (활용형 보강)
-    r"|(?:다는|라는)\s*(?:피고|원고|상대방|상대측)?\s*(?:의\s*)?(?:주장|지적|항변|진술|의견|말|의혹)(?:은|는|이|가|도)?[^\n.]{0,25}?(?:사실과\s*(?:다르|다릅|달라|달랐|틀리|틀립|틀려|틀렸|아니|아닙)|이유\s*(?:없|아닙|아니)|근거\s*(?:없|부족)|부당|터무니\s*없|어불성설|받아들일\s*수\s*없)"
+    # TK-81 잔여 보완: 상대방 주장 관형형('-다는/-라는 + 주장/지적') + 부정 평가 반박 결함 제외 (부정어 결합 수긍 문장 차단 룩어헤드 및 단독 틀립니다·잘못입니다 보강)
+    r"|(?:다는|라는)\s*(?:피고|원고|상대방|상대측)?\s*(?:의\s*)?(?:주장|지적|항변|진술|의견|말|의혹)(?:은|는|이|가|도)?[^\n.]{0,25}?"
+    r"(?:"
+    r"사실과\s*(?:다르|다릅|달라|달랐)(?!\s*(?:지\s*(?:않|아니)|않|아니|아닙))"
+    r"|사실이\s*(?:아닙|아니|아님)(?!\s*(?:지\s*(?:않|아니)|않|아니))"
+    r"|(?:사실과\s*)?(?:틀립[니시]|틀렸[다습음으]|틀려[서야도]|틀리다|틀린\s*(?:것|주장|지적)(?:이|입|으))(?!\s*(?:지\s*(?:않|아니)|않|아니|아닙|없))"
+    r"|(?:명백한\s*)?잘못(?:입니다|이다|임|되었[다습음으]|되어\b|된\s*(?:것|주장|지적|판단)(?:이|입|으)|(?:\s*(?:알|파악|이해|해석|판단)(?:하고|한|하였)))(?!\s*(?:지\s*(?:않|아니)|않|아니|아닙|없))"
+    r"|그릇된"
+    r"|착오에\s*기인"
+    r"|이유\s*(?:없|아닙|아니)(?!\s*(?:지\s*않|지\s*아니))"
+    r"|근거\s*(?:없|부족)(?!\s*(?:지\s*않|지\s*아니))"
+    r"|부당"
+    r"|터무니\s*없"
+    r"|어불성설"
+    r"|받아들일\s*수\s*없"
+    r")"
     r"|(?:빠진|누락(?:된)?|공란(?:인)?|흠결(?:이)?|결여(?:된)?)[^\n.]{0,20}?(?:이|가|은|는|도|사항이)?\s*(?:전혀\s*)?(?:없|아니|아닙|아님)"
     r"|(?:제출\s*철회|신청\s*철회|철회(?:합니다|함|하였음|된|사유)?)"
 )
@@ -1294,6 +1308,24 @@ def _detect_author_party(
     return author_party, my_party_chars
 
 
+def _has_defect_suffix_from_refutation(
+    sentence: str, match: re.Match, my_party_chars: Sequence[str]
+) -> bool:
+    """반박 절 매칭 뒤(연결어미 -며·-고·-나·-지만 등 뒤)에 자기 측 원본 분실·미제출 자인 등 진짜 결함이 있는지 확인."""
+    suffix = sentence[match.end():].strip()
+    if suffix and len(suffix) >= 4:
+        if (
+            _EVI_FORM_UNSUBMITTED_RE.search(suffix)
+            or _EVI_FORM_EXHIBIT_UNSUBMITTED_RE.search(suffix)
+            or _EVI_FORM_BLANK_RE.search(suffix)
+            or _EVI_FORM_UNIDENTIFIABLE_RE.search(suffix)
+        ):
+            refs = parse_exhibits(suffix) or parse_exhibits(sentence)
+            if refs and any(r.get("party") in my_party_chars for r in refs):
+                return True
+    return False
+
+
 def check_evidence_form_defects(
     doc: NormalizedDocument, exhibits: Optional[Sequence[Dict[str, Any]]] = None
 ) -> List[Finding]:
@@ -1384,9 +1416,13 @@ def check_evidence_form_defects(
                 continue
 
             # 정상 실무 보호 3: 결함 해소·추완 진술, 이중 부정 반박, 상대방 주장 인용 반박, 부정의 부정 제외 (피드백 1)
-            if _EVI_FORM_NON_DEFECT_CONTEXT_RE.search(sentence):
-                pending_ref = None
-                continue
+            ref_match = _EVI_FORM_NON_DEFECT_CONTEXT_RE.search(sentence)
+            if ref_match:
+                # TK-81 잔여 보완: 제외 범위를 반박 절로 한정.
+                # 복문에서 반박 절 뒤(연결어미 -며·-고·-나·-지만 등 뒤)에 진짜 서증 결함(미제출 자인 등)이 있으면 제외하지 않고 결함 검사를 계속한다.
+                if not _has_defect_suffix_from_refutation(sentence, ref_match, my_party_chars):
+                    pending_ref = None
+                    continue
 
             # 정상 실무 보호 4: 절차 사유 (추가 제출 부존재, 중복 첨부 생략, 공적 전산 확인, 촉탁·제출명령 사유) 결함 제외 (전달문 16)
             if _EVI_FORM_PROCEDURAL_JUSTIFICATION_RE.search(sentence):
@@ -1411,10 +1447,28 @@ def check_evidence_form_defects(
                 if re.search(opp_words + r"(?:는|가|은|이|의|측은|측이)?\s*[^\n.]{0,60}?(?:다고|라고)\s*(?:주장하|다투|말하|강변하|지적하|언급하|하)?(?:지만|나\b|였으나|었으나|나마|되\b)", sentence):
                     pending_ref = None
                     continue
-                # 3) 전달문 19·20 TK-81: 상대방 주어 + 관형형(-다는/-라는) + 주장/지적 + 부정 평가('사실과 다르/이유 없') 반박 (활용형 보강)
-                if re.search(opp_words + r"(?:는|가|은|이|의|측은|측이)?\s*[^\n.]{0,60}?(?:다는|라는)\s*(?:주장|지적|항변|진술|의견|의혹)[^\n.]{0,30}?(?:사실과\s*(?:다르|다릅|달라|달랐|틀리|틀립|틀려|틀렸|아니|아닙)|이유\s*(?:없|아닙|아니)|근거\s*(?:없|부족)|부당|터무니\s*없|어불성설)", sentence):
-                    pending_ref = None
-                    continue
+                # 3) 전달문 19·20·26 TK-81: 상대방 주어 + 관형형(-다는/-라는) + 주장/지적 + 부정 평가 반박
+                opp_match = re.search(
+                    opp_words + r"(?:는|가|은|이|의|측은|측이)?\s*[^\n.]{0,60}?(?:다는|라는)\s*(?:주장|지적|항변|진술|의견|의혹)[^\n.]{0,30}?"
+                    r"(?:"
+                    r"사실과\s*(?:다르|다릅|달라|달랐)(?!\s*(?:지\s*(?:않|아니)|않|아니|아닙))"
+                    r"|사실이\s*(?:아닙|아니|아님)(?!\s*(?:지\s*(?:않|아니)|않|아니))"
+                    r"|(?:사실과\s*)?(?:틀립[니시]|틀렸[다습음으]|틀려[서야도]|틀리다|틀린\s*(?:것|주장|지적)(?:이|입|으))(?!\s*(?:지\s*(?:않|아니)|않|아니|아닙|없))"
+                    r"|(?:명백한\s*)?잘못(?:입니다|이다|임|되었[다습음으]|되어\b|된\s*(?:것|주장|지적|판단)(?:이|입|으)|(?:\s*(?:알|파악|이해|해석|판단)(?:하고|한|하였)))(?!\s*(?:지\s*(?:않|아니)|않|아니|아닙|없))"
+                    r"|그릇된"
+                    r"|착오에\s*기인"
+                    r"|이유\s*(?:없|아닙|아니)(?!\s*(?:지\s*않|지\s*아니))"
+                    r"|근거\s*(?:없|부족)(?!\s*(?:지\s*않|지\s*아니))"
+                    r"|부당"
+                    r"|터무니\s*없"
+                    r"|어불성설"
+                    r")",
+                    sentence,
+                )
+                if opp_match:
+                    if not _has_defect_suffix_from_refutation(sentence, opp_match, my_party_chars):
+                        pending_ref = None
+                        continue
 
             # 일반 탄핵 키워드 (신빙성 배척, 진정성립 다툼, 입증 부족 등) 배제
             if re.search(r"신빙성(?:이|은)?\s*(?:없|의심|떨어|배척)|진정성립(?:이|은)?\s*(?:인정될\s*수\s*없|부인|다투)|입증하기에?\s*부족", sentence):
