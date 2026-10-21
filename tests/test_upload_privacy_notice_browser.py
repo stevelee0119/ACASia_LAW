@@ -113,11 +113,19 @@ def browser_test_page():
 
 
 def test_privacy_notice_and_checkbox_visible_on_documents_panel(browser_test_page):
-    """자료 패널에 제목(새 상수), 판 번호(1.1), 상시 안내문 3대 문구와 확인 체크박스(라벨 연결)가 상시 표시된다."""
+    """자료 패널에는 '개인정보 안내 다시 보기' 링크가 표시되고, 클릭 시 확인 창에 제목, 판 번호(1.1), 안내문 3대 문구와 확인 체크박스(라벨 연결)가 표시된다."""
     page, _ = browser_test_page
 
-    notice = page.locator(".privacy-notice")
-    expect(notice).to_be_visible()
+    # 자료 패널에는 '개인정보 안내 다시 보기' 링크 한 줄만 상시 노출 (TK-85)
+    revisit_btn = page.locator("#privacyNoticeRevisit")
+    expect(revisit_btn).to_be_visible()
+    expect(revisit_btn).to_contain_text("개인정보 안내 다시 보기")
+
+    # 링크 클릭 시 확인 대화상자 오픈
+    revisit_btn.click()
+
+    dialog = page.locator("#privacyDialog")
+    expect(dialog).to_be_visible()
 
     # 제목 및 판 번호(1.1) 검증 (4절 추가 시험: 제목이 화면에 보인다)
     title = page.locator("#privacyNoticeTitle")
@@ -128,9 +136,10 @@ def test_privacy_notice_and_checkbox_visible_on_documents_panel(browser_test_pag
     expect(version).to_have_text("(v1.1)")
 
     # 상시 안내 3대 확정 문구 검증
-    expect(notice).to_contain_text("본 프로그램의 개인정보 가림기능은 제한적으로 적용됩니다.")
-    expect(notice).to_contain_text("개인정보 중 연락처, 주민등록번호는 필수기능으로 제공되지만")
-    expect(notice).to_contain_text("그러므로 민감하다고 생각되는 개인정보는 업로드 전에 직접 가림 처리 하시고")
+    bullets = page.locator("#privacyNoticeBullets")
+    expect(bullets).to_contain_text("본 프로그램의 개인정보 가림기능은 제한적으로 적용됩니다.")
+    expect(bullets).to_contain_text("개인정보 중 연락처, 주민등록번호는 필수기능으로 제공되지만")
+    expect(bullets).to_contain_text("그러므로 민감하다고 생각되는 개인정보는 업로드 전에 직접 가림 처리 하시고")
 
     # 체크박스 및 라벨 검증
     checkbox = page.locator("#privacyAck")
@@ -140,52 +149,69 @@ def test_privacy_notice_and_checkbox_visible_on_documents_panel(browser_test_pag
     label = page.locator("label.privacy-ack-label")
     expect(label).to_contain_text("연락처, 주민등록번호 이외의 개인정보는 미포함되었거나 직접 가림 처리 하였음을 확인합니다.")
 
+    # 닫기 검증
+    page.locator("#privacyCancelBtn").click()
+    expect(dialog).not_to_be_visible()
+
 
 def test_upload_blocked_without_check_and_shows_accessible_error(browser_test_page):
-    """체크박스 미체크 상태에서는 파일 업로드가 차단되고 aria-live 에러 메시지가 표시된다."""
+    """파일 선택 시 확인 창이 뜨며, 체크하지 않고 진행 시 업로드가 차단되고 aria-live 에러 메시지가 표시된다. 취소 시 업로드되지 않는다."""
     page, control = browser_test_page
 
-    # 체크하지 않은 상태에서 파일 선택 시도
+    # 체크하지 않은 상태에서 파일 선택 시도 -> 확인 대화상자가 뜸 (TK-85)
     page.locator("#fileInput").set_input_files({
         "name": "합성소장.pdf",
         "mimeType": "application/pdf",
         "buffer": PAYLOAD,
     })
 
+    dialog = page.locator("#privacyDialog")
+    expect(dialog).to_be_visible()
+
+    # 체크하지 않고 '확인 후 업로드' 클릭 시도
+    page.locator("#privacyConfirmBtn").click()
+
     # 서버로 POST가 전송되지 않았음 검증
     assert control["posts"] == 0
 
-    # 에러 메시지 표시 및 접근성 속성 검증
+    # 대화상자는 닫히지 않고 에러 메시지 표시 및 접근성 속성 검증
+    expect(dialog).to_be_visible()
     error_el = page.locator("#privacyAckError")
     expect(error_el).to_be_visible()
     expect(error_el).to_contain_text("연락처, 주민등록번호 이외의 개인정보가 미포함되었거나 직접 가림 처리하였음을 확인해야 업로드할 수 있습니다.")
     assert error_el.get_attribute("role") == "status"
     assert error_el.get_attribute("aria-live") == "polite"
 
+    # 취소 버튼 클릭 시 업로드가 취소되고 대화상자가 닫힘
+    page.locator("#privacyCancelBtn").click()
+    expect(dialog).not_to_be_visible()
+    assert control["posts"] == 0
+
 
 def test_upload_proceeds_after_check_and_remembers_state(browser_test_page):
-    """체크박스 체크 후 업로드가 정상 진행되며, privacy_ack가 전송되고 상태가 유지된다."""
+    """파일 선택 시 뜬 확인 창에서 체크박스 체크 후 업로드가 정상 진행되며, privacy_ack가 전송되고 같은 프로젝트 세션에서는 다시 묻지 않는다."""
     page, control = browser_test_page
 
     # 열려있는 모달이 있으면 닫기
     page.evaluate("document.querySelectorAll('dialog[open]').forEach(d => d.close())")
 
-    # 체크박스 체크 (JS evaluate 또는 direct click)
-    page.evaluate("""() => {
-        const cb = document.getElementById('privacyAck');
-        cb.checked = true;
-        cb.dispatchEvent(new Event('change'));
-    }""")
-    expect(page.locator("#privacyAck")).to_be_checked()
-
-    # 파일 선택 시도
+    # 1. 파일 선택 시도 -> 확인 창 오픈
     page.locator("#fileInput").set_input_files({
         "name": "합성소장.pdf",
         "mimeType": "application/pdf",
         "buffer": PAYLOAD,
     })
 
-    # 업로드 성공 및 결과 영역 표시 확인
+    dialog = page.locator("#privacyDialog")
+    expect(dialog).to_be_visible()
+
+    # 체크박스 체크 후 확인 클릭
+    page.locator("#privacyAck").check()
+    expect(page.locator("#privacyAck")).to_be_checked()
+    page.locator("#privacyConfirmBtn").click()
+
+    # 확인 창 닫힘 및 업로드 성공 확인
+    expect(dialog).not_to_be_visible()
     expect(page.locator("#uploadStatus")).to_contain_text("파일 등록 결과")
     assert control["posts"] == 1
     # 폼 데이터에 privacy_ack 필드가 포함되어 전송되었는지 검증
@@ -194,9 +220,27 @@ def test_upload_proceeds_after_check_and_remembers_state(browser_test_page):
     # 에러 메시지는 숨겨져야 함
     expect(page.locator("#privacyAckError")).to_be_hidden()
 
-    # 프로젝트 재랜더링 시에도 체크 상태가 유지되는지 검증 (프로젝트·세션 단위 기억)
+    # 2. 같은 프로젝트·세션에서 이미 확인했으므로 두 번째 파일 업로드 시에는 다시 묻지 않고 바로 업로드 (TK-85 9·10행)
+    page.locator("#fileInput").set_input_files({
+        "name": "두번째문서.pdf",
+        "mimeType": "application/pdf",
+        "buffer": PAYLOAD,
+    })
+    expect(dialog).not_to_be_visible()
+    # 해당 파일의 비동기 업로드가 완료("등록 완료")될 때까지 대기하여 경합 완전 해소
+    expect(page.locator("#uploadStatus")).to_contain_text("등록 완료")
+    for _ in range(50):
+        if control["posts"] == 2:
+            break
+        page.wait_for_timeout(100)
+    assert control["posts"] == 2
+
+    # 3. 프로젝트 재랜더링 후 '개인정보 안내 다시 보기'로 열었을 때도 체크 상태가 유지되는지 검증
     page.evaluate("renderProject()")
+    page.locator("#privacyNoticeRevisit").click()
+    expect(dialog).to_be_visible()
     expect(page.locator("#privacyAck")).to_be_checked()
+    page.locator("#privacyCancelBtn").click()
 
 
 def test_report_header_shows_privacy_guarantee_scope(browser_test_page):
@@ -371,19 +415,18 @@ def test_upload_blocked_when_privacy_notice_returns_401_and_recovers_after_login
             expect(bullets_el).to_contain_text("본 프로그램의 개인정보 가림기능은 제한적으로 적용됩니다.")
             expect(page.locator("#privacyNoticeVersion")).to_have_text("(v1.1)")
 
-            # 4. 안내문 로드 성공 후 input 활성화 및 체크 후 업로드 진행 검증
+            # 4. 안내문 로드 성공 후 input 활성화 및 확인 창에서 체크 후 업로드 진행 검증
             expect(page.locator("#fileInput")).to_be_enabled()
-            page.evaluate("document.querySelectorAll('dialog[open]').forEach(d => d.close())")
-            page.evaluate("""() => {
-                const cb = document.getElementById('privacyAck');
-                cb.checked = true;
-                cb.dispatchEvent(new Event('change'));
-            }""")
             page.locator("#fileInput").set_input_files({
                 "name": "정상업로드문서.pdf",
                 "mimeType": "application/pdf",
                 "buffer": PAYLOAD,
             })
+            dialog = page.locator("#privacyDialog")
+            expect(dialog).to_be_visible()
+            page.locator("#privacyAck").check()
+            page.locator("#privacyConfirmBtn").click()
+            expect(dialog).not_to_be_visible()
             expect(page.locator("#uploadStatus")).to_contain_text("등록 완료")
             assert control["posts"] == 1, "로그인 후 안내문이 로드되고 체크하면 업로드가 성공해야 한다"
         finally:
