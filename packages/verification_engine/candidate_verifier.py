@@ -104,11 +104,11 @@ def verify_rag_candidate(
     source_title = candidate.source_title or source.get("title") or candidate.source_id or "참고자료"
 
     if is_reference_contradiction:
-        # TK-70: Drive 참고자료 '모순' 의견 조건부 승격 (D4 개정: LOW, C등급, SUSPICIOUS)
-        finding_title = f"내부 참고자료 대조 — 법적 구속력 미판단, 사람 확인 필요: {source_title} — {candidate.explanation[:80]}"
+        # TK-70 / TK-84: Drive 참고자료 '모순' 의견 조건부 승격 (LOW, C등급, SUSPICIOUS, 제목 고정 문구 및 전문 보존)
+        finding_title = f"{source_title} 내부 참고자료 대조 — 법적 구속력 미판단"
         detail = (
-            f"서면 주장 '{candidate.claim_quote.strip()[:120]}' 및 참고자료({source_title})의 "
-            f"규정 '{candidate.basis_quote.strip()[:120]}'의 원문 일치가 확인되었습니다. "
+            f"서면 주장 '{candidate.claim_quote.strip()}' 및 참고자료({source_title})의 "
+            f"규정 '{candidate.basis_quote.strip()}'의 원문 일치가 확인되었습니다. "
             f"모델 의견: {candidate.explanation.strip()} "
             f"(참고: 내부 참고자료 대조 결과이며, 공식 법령·판례와 같은 법적 구속력은 판단하지 않았으므로 사람이 최종 확인해야 합니다)"
         )
@@ -143,8 +143,9 @@ def verify_rag_candidate(
                 "source_title": source_title,
                 "claim_id": claim_id or "",
                 "claim_text": claim_text or candidate.claim_quote,
-                "claim_quote": candidate.claim_quote,
-                "basis_quote": candidate.basis_quote,
+                "claim_quote": candidate.claim_quote.strip(),
+                "basis_quote": candidate.basis_quote.strip(),
+                "model_opinion": candidate.explanation.strip(),
                 "model_name": candidate.model_name,
                 "human_review": True,
             },
