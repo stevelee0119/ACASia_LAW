@@ -315,6 +315,47 @@ def test_excerpt_binding_preservation_in_partial_escalation(mock_llm_env):
     assert reduced_items[0]["surrounding_context_and_claim"] == rendered_2
 
 
+def test_excerpt_binding_failure_falls_back_to_original_request(mock_llm_env):
+    """발췌 바인딩 실패 시 축소 없이 원본 요청(발췌 연결 유지)으로 폴백함을 검증.
+
+    발췌가 연결된 요청에서 __entries 내부 경로와 reduced_items 매핑이 실패하면,
+    발췌 없는 bare LLMRequest가 아니라 원본 excerpt 요청 그대로 반환되어야 한다.
+    """
+    _, _, _ = mock_llm_env
+
+    rendered_1, piece_1 = render_argument_context(lambda x: x, "문맥A 출처 원문")
+    rendered_2, piece_2 = render_argument_context(lambda x: x, "문맥B 출처 원문")
+
+    items = [
+        {"item_id": 10, "page": 1, "cited_case": "판례A", "확인 상태": "확인", "surrounding_context_and_claim": rendered_1},
+        {"item_id": 20, "page": 2, "cited_case": "판례B", "확인 상태": "확인", "surrounding_context_and_claim": rendered_2},
+    ]
+    base_req = _make_test_request(items)
+    excerpt_req = bind_argument_excerpts(base_req, (piece_1, piece_2))
+
+    assert valid_excerpt_source(excerpt_req)
+
+    # __entries를 조작하여 발췌 바인딩 매핑이 실패하도록 만듦 (경로 키 불일치)
+    source = excerpt_req.inspection_source
+    original_entries = source._ExcerptSource__entries
+    # 경로를 잘못된 키로 교체하여 pieces_by_orig_index 수집을 실패시킴
+    broken_entries = tuple(
+        (("wrong_key", idx, "surrounding_context_and_claim"), piece)
+        for idx, (_, piece) in enumerate(original_entries)
+    )
+    object.__setattr__(source, '_ExcerptSource__entries', broken_entries)
+
+    # 에스컬레이션 대상: item 20만 축소 요청
+    result = build_partial_argument_request(excerpt_req, {"20"})
+
+    # 발췌 바인딩 실패 → 원본 excerpt 요청이 그대로 반환되어야 함
+    assert result is excerpt_req, "발췌 바인딩 실패 시 원본 요청으로 폴백해야 함"
+    # 원본 요청의 items 2건 모두 유지
+    result_items = json.loads(result.user)["items"]
+    assert len(result_items) == 2
+    assert [it["item_id"] for it in result_items] == [10, 20]
+
+
 def test_attach_ai_opinions_end_to_end_synthesis(mock_llm_env):
     """_attach_ai_opinions 전체 파이프라인에서 부분 에스컬레이션 결과가 정상 합성됨을 검증."""
     from types import SimpleNamespace

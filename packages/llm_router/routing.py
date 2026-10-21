@@ -178,7 +178,8 @@ def build_partial_argument_request(request, escalation_item_ids):
         )
         if len(reduced_pieces) == len(reduced_items):
             return bind_argument_excerpts(base_request, tuple(reduced_pieces))
-        return base_request
+        # 발췌 바인딩 실패 시 원본 요청(발췌 연결 유지)으로 폴백 — 축소 없이 전체 항목 전송
+        return request
 
     return LLMRequest(
         system=request.system,
