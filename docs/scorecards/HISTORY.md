@@ -1342,3 +1342,4 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
   - 해소: 보호 수용 시험 `test_t2r_…`·`test_frontend_model_opinions` 2건 통과(3단 표를 검증·검토 탭 안으로). 분류 표 1 일치, 화면·보고서 1,764 조합 불일치 0. 최신 Steve 반영, `check_test_edits` exit 0.
   - 남은 것(평가 측·CI 동일, CI 2 failed/10,186 passed): `test_f2_review_table_renders_four_columns`(같은 탭 `.review-items-table` 2개로 머리글 8개), `test_table1_ten_rows_rendered_in_browser`(정적 파일·버튼은 뜨나 프로젝트가 열리지 않은 홈 화면에 머물러 클릭 시간 초과, 평가 측 콘솔 진단). 요구: 별도 클래스 또는 선택자 한정, F2 고정물 재사용.
 - **판정 행 전달·평가 PR(10-22 한국, 사용자 지시 '평가 pr 생성, 판정 행 전달완료'):** D-4(#171) 3차 판정 행을 Antigravity에 전달 완료(`8860fa4` 판). 평가 브랜치 기록(10-21~22 판정·병합 기록, README 재구성, 버전별 변경표 요약)을 평가 PR로 Steve에 올림.
+- **#172 병합(10-22 한국, 사용자 지시 '#172 병합'):** 평가 PR head `079d892` → Steve `8540cff`(병합 커밋, `expectedHeadSha` 고정, 필수 CI 성공). README 재구성·버전별 변경표 요약·운영/시스템 안내 문서가 Steve에 반영됨(GitHub 첫 화면 `main`에는 다음 릴리스 때 반영).
