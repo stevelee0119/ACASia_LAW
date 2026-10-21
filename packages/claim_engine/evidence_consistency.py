@@ -81,8 +81,22 @@ _EVI_FORM_NON_DEFECT_CONTEXT_RE = re.compile(
     r"|(?:볼\s*수\s*없|이유\s*없|단정할\s*수\s*없|아니다)"
     r"|(?:주장하나|주장하지만|주장과\s*달리|주장에\s*불과|주장도\s*이유|주장은\s*이유)"
     # TK-81: 주어 없는 (다고|라고)...(지만|나...) 제거(상대방 배제 블록의 주어 조건 규칙만 남김)
-    # TK-81: 상대방 주장 관형형('-다는/-라는 + 주장/지적') + 부정 평가('사실과 다르/이유 없') 반박 결함 제외 (활용형 보강)
-    r"|(?:다는|라는)\s*(?:피고|원고|상대방|상대측)?\s*(?:의\s*)?(?:주장|지적|항변|진술|의견|말|의혹)(?:은|는|이|가|도)?[^\n.]{0,25}?(?:사실과\s*(?:다르|다릅|달라|달랐|틀리|틀립|틀려|틀렸|아니|아닙)|이유\s*(?:없|아닙|아니)|근거\s*(?:없|부족)|부당|터무니\s*없|어불성설|받아들일\s*수\s*없)"
+    # TK-81 잔여 보완: 상대방 주장 관형형('-다는/-라는 + 주장/지적') + 부정 평가 반박 결함 제외 (부정어 결합 수긍 문장 차단 룩어헤드 및 단독 틀립니다·잘못입니다 보강)
+    r"|(?:다는|라는)\s*(?:피고|원고|상대방|상대측)?\s*(?:의\s*)?(?:주장|지적|항변|진술|의견|말|의혹)(?:은|는|이|가|도)?[^\n.]{0,25}?"
+    r"(?:"
+    r"사실과\s*(?:다르|다릅|달라|달랐)(?!\s*(?:지\s*(?:않|아니)|않|아니|아닙))"
+    r"|사실이\s*(?:아닙|아니|아님)(?!\s*(?:지\s*(?:않|아니)|않|아니))"
+    r"|(?:사실과\s*)?(?:틀립[니시]|틀렸[다습음으]|틀려[서야도]|틀리다|틀린\s*(?:것|주장|지적)(?:이|입|으))(?!\s*(?:지\s*(?:않|아니)|않|아니|아닙|없))"
+    r"|(?:명백한\s*)?잘못(?:입니다|이다|임|되었[다습음으]|되어\b|된\s*(?:것|주장|지적|판단)(?:이|입|으)|(?:\s*(?:알|파악|이해|해석|판단)(?:하고|한|하였)))(?!\s*(?:지\s*(?:않|아니)|않|아니|아닙|없))"
+    r"|그릇된"
+    r"|착오에\s*기인"
+    r"|이유\s*(?:없|아닙|아니)(?!\s*(?:지\s*않|지\s*아니))"
+    r"|근거\s*(?:없|부족)(?!\s*(?:지\s*않|지\s*아니))"
+    r"|부당"
+    r"|터무니\s*없"
+    r"|어불성설"
+    r"|받아들일\s*수\s*없"
+    r")"
     r"|(?:빠진|누락(?:된)?|공란(?:인)?|흠결(?:이)?|결여(?:된)?)[^\n.]{0,20}?(?:이|가|은|는|도|사항이)?\s*(?:전혀\s*)?(?:없|아니|아닙|아님)"
     r"|(?:제출\s*철회|신청\s*철회|철회(?:합니다|함|하였음|된|사유)?)"
 )
@@ -634,10 +648,25 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
 
     seen: Dict[tuple, List[Dict[str, Any]]] = {}
     for row in rows:
-        is_in_section = row.get("in_section", not row.get("from_lines", False))
+        is_in_section = bool(row.get("in_section", not row.get("from_lines", False)))
         # 목록 구역이 존재하는 서면에서, 해당 목록 구역에 이미 등록된 번호의 본문 행은 중복 집계에서 제외
         if section_keys and not is_in_section and (row["party"], row["number"]) in section_keys:
             continue
+        # 호증 중복 검사는 정식 증거 목록 행끼리만 비교한다.
+        # 본문 서술 영역(not is_in_section)에서 추출된 행 중:
+        # 1) 호증 번호 직후 조사가 결합되어 주어·목적어로 쓰인 본문 문장(예: '갑 제3호증을', '갑 제1호증은')
+        #    (단, '갑 제1호증의 1' 등 가지번호는 조사가 아니므로 보존)
+        # 2) 서증명 없이 단순 본문 인용·참조 표기만 있는 행
+        # 은 목록 행이 아닌 본문 서술문이므로 중복 호증 집계에서 제외한다 (은퇴 10 A등급 오탐 방지 및 입증취지 포함 진짜 목록 보존).
+        if not is_in_section:
+            name = (row.get("name") or "").strip()
+            # 가지번호(예: '의 1', '의 2')는 조사가 아니므로 보존
+            if not re.match(r"^의\s*\d+", name):
+                if re.match(r"^(?:[이가은는을를에와과]|에서|으로|부터|까지|보다)(?:\s|$)", name):
+                    continue
+            # 단순 인용·참조 표기
+            if _EXHIBIT_REF_SENTENCE_RE.search(name):
+                continue
         keys = [(row["party"], row["number"], b) for b in row.get("branches") or []] or [(row["party"], row["number"], None)]
         for key in keys:
             seen.setdefault(key, []).append(row)
@@ -829,7 +858,9 @@ _CONTINUOUS_RANGE_RE = re.compile(
 )
 _CONTINUOUS_KEYWORD_RE = re.compile(r"(?:연속\s*(?:번호|제출|서증)|누락이\s*(?:전혀\s*)?없)")
 _COMPLETE_DECLARATION_RE = re.compile(
-    r"(?:(?:최종\s*)?증거목록|입증방법|제출\s*증거|제출목록|별지\s*증거목록|별지\s*제출목록|첨부\s*목록)[^.\n]{0,60}(?:전부|모두|일체|빠짐없이|추가\s*제출\s*없음|확정|전체|최종|이것이\s*전부|만\s*있다|만\s*포함)"
+    r"(?:(?:최종\s*)?(?:제출\s*)?증거목록|입증방법|제출\s*증거(?:\s*목록)?|제출목록|별지\s*(?:증거|제출)?목록|첨부\s*목록)"
+    r"[^.\n]{0,60}?(?:전부|모두|일체|빠짐없이|추가\s*제출\s*없음|확정|전체|최종|이것이\s*전부|만\s*있다|만\s*포함)"
+    r"|(?:(?:최종\s*)?(?:제출\s*)?증거목록|입증방법|제출\s*증거(?:\s*목록)?|제출목록|별지\s*(?:증거|제출)?목록|첨부\s*목록)\s*\([^)\n]{0,60}?(?:전부|모두|일체|빠짐없이|추가\s*제출\s*없음|확정|전체|최종|이것이\s*전부|만\s*있다|만\s*포함)\)"
     r"|(?:별지\s*증거목록\s*전부|별지\s*제출목록\s*전부|이\s*(?:세|두|\d+)\s*자료만\s*제출)"
     r"|본문에\s*적힌\s*내용이\s*해당\s*발췌의\s*전부"
     r"|추가\s*(?:증거|자료|서증|호증)(?:를|은|가)?\s*(?:제출(?:하지\s*않|한\s*사실은\s*없|이\s*없)|없습니다)"
@@ -936,6 +967,7 @@ def check_evidence_numbering_mismatches(
     body_text = text[:m_sec.start()] if m_sec else text
 
     # 1. 완결 선언 목록과 본문 번호 대조 (축 1)
+    # 목록 머리글 괄호 안의 완결 선언이 괄호 제거 등으로 유실되지 않도록 원문 text 전체에서 최우선 판정
     has_completion = bool(_COMPLETE_DECLARATION_RE.search(text))
 
     if has_completion:
@@ -1056,6 +1088,28 @@ def check_evidence_numbering_mismatches(
                         )
 
     # 3. 본문·목록 동일 자료명의 호증 번호 불일치 (축 3, SUSPICIOUS·B, 4자 이상)
+    # 평가 측 지침 준수:
+    # 1) '지정' 구조에서만 판정 (따옴표 서증명, 괄호 호증, 서술형 지정, 직결 호증)
+    #    - 조사 '와·과·및·이나' 등 병렬 나열 구조 및 일반 서술절 조사 결합은 철저히 제외.
+    # 2) 자기 번호 우선: 본문 번호가 목록에 있고 그 목록 자료명이 본문 자료명과 부합하면
+    #    다른 번호와의 불일치를 판정하지 않는다.
+
+    def _is_self_match(body_k: tuple, test_norm: str) -> bool:
+        """본문 번호의 목록 자료명이 본문 자료명과 같거나 부합하는지 확인 (자기 번호 우선)."""
+        if body_k not in list_name_by_key:
+            return False
+        _, my_norm = list_name_by_key[body_k]
+        if not my_norm or not test_norm:
+            return False
+        # 완전 일치, 또는 수식어 결합('변경/추가/2차 + 자료명') 접미/포함 일치
+        if test_norm == my_norm:
+            return True
+        if len(my_norm) >= 3 and (test_norm.endswith(my_norm) or my_norm.endswith(test_norm)):
+            return True
+        if len(test_norm) >= 4 and len(my_norm) >= 4 and (test_norm in my_norm or my_norm in test_norm):
+            return True
+        return False
+
     # 패턴 1: 호증 뒤 자료명 (예: 갑 제22호증 운반 사진)
     pat1 = re.compile(
         r"(?P<label>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)\s*(?P<rest>[^\n.,;:]{2,40})"
@@ -1071,6 +1125,11 @@ def check_evidence_numbering_mismatches(
             continue
         body_key = (body_refs[0]["party"], body_refs[0]["number"])
         if body_key[0] not in listed_parties:
+            continue
+
+        rest_norm = re.sub(r"\s+", "", rest)
+        # 자기 번호 우선: 본문 번호의 목록 자료명과 이미 부합하면 건너뜀
+        if _is_self_match(body_key, rest_norm):
             continue
 
         for list_key, (l_name, l_norm) in list_name_by_key.items():
@@ -1105,28 +1164,63 @@ def check_evidence_numbering_mismatches(
                             )
                         )
 
-    # 패턴 2: 자료명 뒤 호증 (예: 운반 사진 갑 제22호증, 계약서(갑 제1호증), 「합의서」(갑 제2호증))
-    # 자료명 뒤에 조사(을/를/이/가/에/의 등)가 붙어 있으면 앞 절의 목적어/부사어이므로 제외 (대조군 오탐 방지)
-    pat2 = re.compile(
-        r"(?:[「‘'\"](?P<qname>[^」’'\"]{2,30})[」’'\"]\s*(?:\(\s*)?(?P<qlabel>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:\s*\))?"
-        r"|(?P<name>[가-힣A-Za-z0-9_]{2,20}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)\s*(?:\(\s*|\s+)(?P<label>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:\s*\))?)"
-    )
-    for m in pat2.finditer(body_text):
-        qname, qlbl = m.group("qname"), m.group("qlabel")
-        if qname and qlbl:
-            nm_clean = qname.strip()
-            lbl = qlbl
-        else:
-            nm = m.group("name").strip()
-            lbl = m.group("label")
-            # 자료명 뒤에 조사가 붙어 있으면 앞 절의 목적어·부사어이므로 목록 대조에서 제외
-            if re.search(r"(?:에서|으로|부터|까지|[이가은는을를의에로와과도만])$", nm):
-                continue
-            nm_clean = nm
+    # 패턴 2: 자료명 뒤 호증 - 지정 구조 한정 수집
+    pat2_candidates = []
 
+    # (1) 따옴표 서증명: 「계약서」(갑 제1호증), '합의서' 갑 제2호증
+    for m in re.finditer(
+        r"[「‘'\"](?P<qname>[^」’'\"]{2,30})[」’'\"]\s*(?:\(\s*)?(?P<lbl>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:\s*\))?",
+        body_text,
+    ):
+        pat2_candidates.append((m.group("qname").strip(), m.group("lbl"), m.start(), m.end(), False))
+
+    # (2) 괄호 묶임: 서증명(갑 제N호증), 변경계약서 (갑 제2호증)
+    for m in re.finditer(
+        r"(?P<name>[가-힣A-Za-z0-9_]{2,25}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)\s*\(\s*(?P<lbl>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)\s*\)",
+        body_text,
+    ):
+        pat2_candidates.append((m.group("name").strip(), m.group("lbl"), m.start(), m.end(), True))
+
+    # (3) 서술형 지정: 서증명(을/를) 갑 제N호증으로 제출/원용/지정
+    for m in re.finditer(
+        r"(?P<name>[가-힣A-Za-z0-9_]{2,25}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)\s*(?P<lbl>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:으로|로)\s*(?:제출|원용|지정|신청|제시|증명)",
+        body_text,
+    ):
+        raw = m.group("name").strip()
+        cleaned = re.sub(r"[을를]$", "", raw).strip()
+        pat2_candidates.append((cleaned, m.group("lbl"), m.start(), m.end(), False))
+
+    # (4) 직결 호증: 서증명 갑 제N호증 (공백 1개 이상 연결)
+    for m in re.finditer(
+        r"(?P<name>[가-힣A-Za-z0-9_]{2,20}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)\s+(?P<lbl>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)",
+        body_text,
+    ):
+        pat2_candidates.append((m.group("name").strip(), m.group("lbl"), m.start(), m.end(), True))
+
+    for nm_raw, lbl, start_pos, end_pos, check_particle in pat2_candidates:
+        window = body_text[max(0, start_pos - 30) : min(len(body_text), end_pos + 30)]
+        if _PRIOR_SUBMISSION_RE.search(window):
+            continue
+
+        # 조사 '와·과·및·이나' 등 병렬 나열 구조 및 일반 서술절 조사 결합 제외
+        if check_particle:
+            # 자료명 끝에 병렬 조사(와/과/및/이나 등)나 서술격 조사가 붙은 경우 제외
+            if re.search(r"(?:와|과|및|이나|도|은|는|이|가|에|의|로|에서|부터|까지)$", nm_raw):
+                continue
+            # 자료명 직전 문맥에 '및', '또는', '와', '과' 병렬 접속사가 위치한 경우 제외
+            pre_window = body_text[max(0, start_pos - 5) : start_pos]
+            if re.search(r"(?:및|또는|와|과)\s*$", pre_window):
+                continue
+
+        nm_clean = nm_raw
         nm_norm = re.sub(r"\s+", "", nm_clean)
         if len(nm_norm) < 4:
             continue
+
+        # 일반 서술 어휘 배제
+        if re.search(r"(?:주장|지적|사실|내용|기재|경우|사항|이유|취지|부분|서면|준비서면|답변서|소장|신청서)$", nm_norm):
+            continue
+
         body_refs = parse_exhibits(lbl)
         if not body_refs:
             continue
@@ -1134,8 +1228,13 @@ def check_evidence_numbering_mismatches(
         if body_key[0] not in listed_parties:
             continue
 
+        # 자기 번호 우선: 본문 번호의 목록 자료명이 본문 자료명과 부합하면 판정 제외
+        if _is_self_match(body_key, nm_norm):
+            continue
+
         for list_key, (l_name, l_norm) in list_name_by_key.items():
-            if body_key != list_key and body_key[0] == list_key[0] and nm_norm == l_norm:
+            is_match = (nm_norm == l_norm) or (len(l_norm) >= 4 and nm_norm.endswith(l_norm) and not any(nm_norm.endswith(c + l_norm) for c in ("와", "과", "및")))
+            if body_key != list_key and body_key[0] == list_key[0] and is_match:
                 list_lbl = f"{list_key[0]} 제{list_key[1]}호증"
                 dup = any(
                     f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"
@@ -1272,6 +1371,24 @@ def _detect_author_party(
     return author_party, my_party_chars
 
 
+def _has_defect_suffix_from_refutation(
+    sentence: str, match: re.Match, my_party_chars: Sequence[str]
+) -> bool:
+    """반박 절 매칭 뒤(연결어미 -며·-고·-나·-지만 등 뒤)에 자기 측 원본 분실·미제출 자인 등 진짜 결함이 있는지 확인."""
+    suffix = sentence[match.end():].strip()
+    if suffix and len(suffix) >= 4:
+        if (
+            _EVI_FORM_UNSUBMITTED_RE.search(suffix)
+            or _EVI_FORM_EXHIBIT_UNSUBMITTED_RE.search(suffix)
+            or _EVI_FORM_BLANK_RE.search(suffix)
+            or _EVI_FORM_UNIDENTIFIABLE_RE.search(suffix)
+        ):
+            refs = parse_exhibits(suffix) or parse_exhibits(sentence)
+            if refs and any(r.get("party") in my_party_chars for r in refs):
+                return True
+    return False
+
+
 def check_evidence_form_defects(
     doc: NormalizedDocument, exhibits: Optional[Sequence[Dict[str, Any]]] = None
 ) -> List[Finding]:
@@ -1362,9 +1479,13 @@ def check_evidence_form_defects(
                 continue
 
             # 정상 실무 보호 3: 결함 해소·추완 진술, 이중 부정 반박, 상대방 주장 인용 반박, 부정의 부정 제외 (피드백 1)
-            if _EVI_FORM_NON_DEFECT_CONTEXT_RE.search(sentence):
-                pending_ref = None
-                continue
+            ref_match = _EVI_FORM_NON_DEFECT_CONTEXT_RE.search(sentence)
+            if ref_match:
+                # TK-81 잔여 보완: 제외 범위를 반박 절로 한정.
+                # 복문에서 반박 절 뒤(연결어미 -며·-고·-나·-지만 등 뒤)에 진짜 서증 결함(미제출 자인 등)이 있으면 제외하지 않고 결함 검사를 계속한다.
+                if not _has_defect_suffix_from_refutation(sentence, ref_match, my_party_chars):
+                    pending_ref = None
+                    continue
 
             # 정상 실무 보호 4: 절차 사유 (추가 제출 부존재, 중복 첨부 생략, 공적 전산 확인, 촉탁·제출명령 사유) 결함 제외 (전달문 16)
             if _EVI_FORM_PROCEDURAL_JUSTIFICATION_RE.search(sentence):
@@ -1389,10 +1510,28 @@ def check_evidence_form_defects(
                 if re.search(opp_words + r"(?:는|가|은|이|의|측은|측이)?\s*[^\n.]{0,60}?(?:다고|라고)\s*(?:주장하|다투|말하|강변하|지적하|언급하|하)?(?:지만|나\b|였으나|었으나|나마|되\b)", sentence):
                     pending_ref = None
                     continue
-                # 3) 전달문 19·20 TK-81: 상대방 주어 + 관형형(-다는/-라는) + 주장/지적 + 부정 평가('사실과 다르/이유 없') 반박 (활용형 보강)
-                if re.search(opp_words + r"(?:는|가|은|이|의|측은|측이)?\s*[^\n.]{0,60}?(?:다는|라는)\s*(?:주장|지적|항변|진술|의견|의혹)[^\n.]{0,30}?(?:사실과\s*(?:다르|다릅|달라|달랐|틀리|틀립|틀려|틀렸|아니|아닙)|이유\s*(?:없|아닙|아니)|근거\s*(?:없|부족)|부당|터무니\s*없|어불성설)", sentence):
-                    pending_ref = None
-                    continue
+                # 3) 전달문 19·20·26 TK-81: 상대방 주어 + 관형형(-다는/-라는) + 주장/지적 + 부정 평가 반박
+                opp_match = re.search(
+                    opp_words + r"(?:는|가|은|이|의|측은|측이)?\s*[^\n.]{0,60}?(?:다는|라는)\s*(?:주장|지적|항변|진술|의견|의혹)[^\n.]{0,30}?"
+                    r"(?:"
+                    r"사실과\s*(?:다르|다릅|달라|달랐)(?!\s*(?:지\s*(?:않|아니)|않|아니|아닙))"
+                    r"|사실이\s*(?:아닙|아니|아님)(?!\s*(?:지\s*(?:않|아니)|않|아니))"
+                    r"|(?:사실과\s*)?(?:틀립[니시]|틀렸[다습음으]|틀려[서야도]|틀리다|틀린\s*(?:것|주장|지적)(?:이|입|으))(?!\s*(?:지\s*(?:않|아니)|않|아니|아닙|없))"
+                    r"|(?:명백한\s*)?잘못(?:입니다|이다|임|되었[다습음으]|되어\b|된\s*(?:것|주장|지적|판단)(?:이|입|으)|(?:\s*(?:알|파악|이해|해석|판단)(?:하고|한|하였)))(?!\s*(?:지\s*(?:않|아니)|않|아니|아닙|없))"
+                    r"|그릇된"
+                    r"|착오에\s*기인"
+                    r"|이유\s*(?:없|아닙|아니)(?!\s*(?:지\s*않|지\s*아니))"
+                    r"|근거\s*(?:없|부족)(?!\s*(?:지\s*않|지\s*아니))"
+                    r"|부당"
+                    r"|터무니\s*없"
+                    r"|어불성설"
+                    r")",
+                    sentence,
+                )
+                if opp_match:
+                    if not _has_defect_suffix_from_refutation(sentence, opp_match, my_party_chars):
+                        pending_ref = None
+                        continue
 
             # 일반 탄핵 키워드 (신빙성 배척, 진정성립 다툼, 입증 부족 등) 배제
             if re.search(r"신빙성(?:이|은)?\s*(?:없|의심|떨어|배척)|진정성립(?:이|은)?\s*(?:인정될\s*수\s*없|부인|다투)|입증하기에?\s*부족", sentence):

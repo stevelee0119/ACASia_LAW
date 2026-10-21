@@ -667,3 +667,227 @@ def test_control_opponent_adnominal_claim_refutation_5():
     assert len(findings) == 0, f"상대방 관형형 주장 연결형 반박은 결함으로 잡지 않아야 함: {findings}"
 
 
+# ====================================================================================
+# TK-81 잔여 (전달문 26): 단독 '틀립니다·잘못입니다' 반박 오탐 방지 및 결함 보존 시험
+# ====================================================================================
+
+def test_control_standalone_wrong_refutation_1():
+    """대조군 27 (TK-81 잔여): 상대방 지적 관형형 + 단독 '틀립니다' 반박 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "원고는 갑 제10호증에 원본이 첨부되지 않았다는 피고의 지적은 명백히 틀립니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 지적 인용 후 단독 '틀립니다' 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_standalone_wrong_refutation_2():
+    """대조군 28 (TK-81 잔여): 상대방 주장 관형형 + 단독 '틀렸습니다' 반박 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "을 제11호증 확인서에 작성자 서명이 누락되었다는 원고의 주장은 전적으로 틀렸습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 주장 인용 후 단독 '틀렸습니다' 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_standalone_wrong_refutation_3():
+    """대조군 29 (TK-81 잔여): 상대방 지적 관형형 + 단독 '잘못입니다' 반박 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제12호증 계약서 작성일자가 공란이라는 상대방의 지적은 명백한 잘못입니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 지적 인용 후 단독 '잘못입니다' 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_standalone_wrong_refutation_4():
+    """대조군 30 (TK-81 잔여): 상대방 주장 관형형 + 단독 '잘못된 판단' 반박 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제13호증의 중요 내용이 식별 불가라는 상대측의 주장은 사실을 오인한 잘못된 판단입니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"상대방 주장 인용 후 단독 '잘못된' 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_positive_defect_retention_loss_admission():
+    """양성 시험 21 (TK-81 잔여 요구 1 보존): 자기 측 원본 분실 자인은 결함으로 정상 검출 유지."""
+    doc = _make_doc([
+        "준비서면",
+        "원고는 갑 제14호증 약정서의 원본을 분실하여 제출하지 못하므로 사본으로 갈음합니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1, f"자기 측 원본 분실 자인은 결함으로 정상 검출되어야 함: {findings}"
+    assert findings[0].confidence_features.get("defect_code") == "UNSUBMITTED_EVIDENCE_ADMISSION"
+
+
+def test_positive_defect_retention_bakke_only_copy():
+    """양성 시험 22 (TK-81 잔여 요구 2 보존): '사본 밖에 + 제출 불가' 자인은 결함으로 정상 검출 유지."""
+    doc = _make_doc([
+        "준비서면",
+        "원고는 갑 제15호증 영수증에 대하여 사본 밖에 소지하지 못하여 원본을 제출할 수 없습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1, f"사본 밖에 없어 원본 미제출 자인은 결함으로 정상 검출되어야 함: {findings}"
+    assert findings[0].confidence_features.get("defect_code") == "UNSUBMITTED_EVIDENCE_ADMISSION"
+
+
+def test_pipeline_entrypoint_tk81_standalone_wrong_refutation(monkeypatch, tmp_path):
+    """실제 VerificationPipeline 진입점 시험 (TK-81 잔여 점검표 1항): 단독 틀립니다 반박 제외 및 실제 결함 검출 검증."""
+    from packages.verification_engine import pipeline as pipeline_module
+
+    doc = _make_doc([
+        "준비서면",
+        "2. 상대방 주장에 대한 반박",
+        "원고는 갑 제20호증에 원본이 첨부되지 않았다는 피고의 지적은 명백히 틀립니다.",
+        "또한 갑 제21호증 계약서 작성일자가 공란이라는 상대방의 주장은 명백한 잘못입니다.",
+        "3. 원본 제출에 관한 진술",
+        "다만 원고는 갑 제22호증 약정서의 원본을 분실하여 법원에 제출하지 못하므로 사본으로 원용합니다.",
+        "2026. 1. 20.",
+        "원고 소송대리인 변호사 홍길동",
+        "서울중앙지방법원 귀중",
+    ], doc_id="entry_tk81_doc")
+
+    monkeypatch.setattr(pipeline_module, "parse_document", lambda path, **kw: doc)
+    monkeypatch.setattr(pipeline_module, "PseudonymStore", lambda project_id, **kw: PseudonymStore(project_id, root=tmp_path))
+
+    pipeline = VerificationPipeline()
+    result = pipeline.run(
+        "run-entry-tk81-test",
+        ProjectContext("proj-tk81-test"),
+        [DocumentInput("entry_tk81_doc", "dummy.pdf", "dummy.pdf")],
+    )
+
+    doc_result = result.documents[0]
+    form_findings = [f for f in doc_result.findings if f.type == FindingType.EVIDENCE_FORM_DEFECT.value]
+
+    # 반박 문장(갑 20호증, 갑 21호증)은 제외되고 오직 실제 분실 자인(갑 22호증) 1건만 검출되어야 함
+    assert len(form_findings) == 1, f"기대 1건(갑 제22호증 분실 자인), 실측 {len(form_findings)}건: {form_findings}"
+    finding = form_findings[0]
+    assert "갑 제22호증" in finding.title
+    assert finding.status == VerificationStatus.CONTRADICTED.value
+    assert finding.evidence_grade == EvidenceGrade.B.value
+    assert finding.confidence_features.get("defect_code") == "UNSUBMITTED_EVIDENCE_ADMISSION"
+
+
+# ====================================================================================
+# TK-81 잔여 보완 (판정 보완 요구 1·2·3·4):
+# 1) 부정어 결합 수긍(자인) 양성 보존 시험
+# 2) 복문 반박 절 뒤 자인 양성 보존 시험
+# 3) '사실이 아닙니다' 및 '착오에 기인' 반박 정상 진술 보호 시험
+# 4) 복문 및 수긍 자인 파이프라인 진입점 시험
+# ====================================================================================
+
+def test_positive_defect_admission_with_negated_wrong_1():
+    """양성 시험 23 (판정 보완 1): '잘못이 아니며' 등 수긍 문장의 미소지/결손 자인은 결함 정상 검출."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제30호증 계약서의 원본이 제출되지 않았다는 피고의 지적은 잘못이 아니며, 원고는 현재 원본을 확보하지 못하여 제출하지 못합니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1, f"수긍 후 원본 미확보 자인은 결함으로 검출되어야 함: {findings}"
+    assert findings[0].confidence_features.get("defect_code") == "UNSUBMITTED_EVIDENCE_ADMISSION"
+
+
+def test_positive_defect_admission_with_negated_wrong_2():
+    """양성 시험 24 (판정 보완 1): '틀리지 않고' 등 수긍 문장의 공란 결손 자인은 결함 정상 검출."""
+    doc = _make_doc([
+        "준비서면",
+        "원고가 제출한 갑 제31호증 영수증의 작성일자가 공란이라는 상대방의 주장은 틀리지 않고 사실에 부합하여, 작성일자란이 공란인 채로 제출되었습니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1, f"수긍 후 필수 기재 공란 자인은 결함으로 검출되어야 함: {findings}"
+    assert findings[0].confidence_features.get("defect_code") == "BLANK_FORM_DEFECT"
+
+
+def test_positive_defect_compound_sentence_refutation_then_admission_1():
+    """양성 시험 25 (판정 보완 2): 복문에서 앞 절 반박 후 뒤 절(-나)에서 원본 분실 자인 시 결함 정상 검출."""
+    doc = _make_doc([
+        "준비서면",
+        "원고는 갑 제32호증 확인서가 위조되었다는 피고의 지적은 명백히 틀렸으나, 원고 스스로 해당 확인서의 원본을 분실하여 법원에 제출하지 못합니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1, f"복문 뒤 절의 원본 분실 자인은 결함으로 검출되어야 함: {findings}"
+    assert findings[0].confidence_features.get("defect_code") == "UNSUBMITTED_EVIDENCE_ADMISSION"
+
+
+def test_positive_defect_compound_sentence_refutation_then_admission_2():
+    """양성 시험 26 (판정 보완 2): 복문에서 앞 절 반박 후 뒤 절(-지만)에서 원본 미확보 자인 시 결함 정상 검출."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제33호증 약정서의 금액이 변조되었다는 상대방의 주장은 완전히 잘못된 판단이지만, 원고는 동 약정서 원본을 확보하지 못하여 제출하지 못합니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 1, f"복문 뒤 절의 원본 미확보 자인은 결함으로 검출되어야 함: {findings}"
+    assert findings[0].confidence_features.get("defect_code") == "UNSUBMITTED_EVIDENCE_ADMISSION"
+
+
+def test_control_opponent_adnominal_claim_not_fact_or_mistake_1():
+    """대조군 31 (판정 보완 4 참고): 상대방 주장 관형형 + 단독 '사실이 아닙니다' 반박 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "갑 제34호증의 중요 내용이 잘렸다는 피고의 주장은 전혀 사실이 아닙니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"'사실이 아닙니다' 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_control_opponent_adnominal_claim_not_fact_or_mistake_2():
+    """대조군 32 (판정 보완 4 참고): 상대방 지적 관형형 + 단독 '착오에 기인' 반박 정상 진술 보호 (오탐 0건)."""
+    doc = _make_doc([
+        "준비서면",
+        "을 제35호증에 서명이 누락되었다는 상대방의 지적은 명백한 착오에 기인한 것입니다.",
+        "원고 소송대리인 변호사 홍길동",
+    ])
+    findings = check_evidence_form_defects(doc)
+    assert len(findings) == 0, f"'착오에 기인' 반박은 결함으로 잡지 않아야 함: {findings}"
+
+
+def test_pipeline_entrypoint_tk81_compound_and_negated_admission(monkeypatch, tmp_path):
+    """실제 VerificationPipeline 진입점 시험 (판정 보완 점검표 1항): 복문 뒤 절 자인 및 수긍 자인 검출 검증."""
+    from packages.verification_engine import pipeline as pipeline_module
+
+    doc = _make_doc([
+        "준비서면",
+        "2. 상대방 주장에 대한 반박 및 진술",
+        "원고는 갑 제40호증에 원본이 첨부되지 않았다는 피고의 지적은 명백히 틀립니다.",
+        "반면 갑 제41호증 계약서 작성일자가 공란이라는 상대방의 주장은 틀리지 않고 사실에 부합하여 공란으로 제출되었습니다.",
+        "또한 갑 제42호증 확인서가 위조되었다는 피고의 주장은 완전히 잘못된 것이지만, 원고는 갑 제42호증 원본을 분실하여 제출하지 못합니다.",
+        "2026. 1. 20.",
+        "원고 소송대리인 변호사 홍길동",
+        "서울중앙지방법원 귀중",
+    ], doc_id="entry_tk81_compound_doc")
+
+    monkeypatch.setattr(pipeline_module, "parse_document", lambda path, **kw: doc)
+    monkeypatch.setattr(pipeline_module, "PseudonymStore", lambda project_id, **kw: PseudonymStore(project_id, root=tmp_path))
+
+    pipeline = VerificationPipeline()
+    result = pipeline.run(
+        "run-entry-tk81-compound-test",
+        ProjectContext("proj-tk81-compound-test"),
+        [DocumentInput("entry_tk81_compound_doc", "dummy.pdf", "dummy.pdf")],
+    )
+
+    doc_result = result.documents[0]
+    form_findings = [f for f in doc_result.findings if f.type == FindingType.EVIDENCE_FORM_DEFECT.value]
+
+    # 순수 반박(갑 40호증)은 제외되고, 수긍 자인(갑 41호증) 및 복문 뒤 절 분실 자인(갑 42호증) 2건이 정확히 검출되어야 함
+    assert len(form_findings) == 2, f"기대 2건, 실측 {len(form_findings)}건: {form_findings}"
+    f_titles = [f.title for f in form_findings]
+    assert any("갑 제41호증" in t for t in f_titles)
+    assert any("갑 제42호증" in t for t in f_titles)
+    assert not any("갑 제40호증" in t for t in f_titles)
+
+
