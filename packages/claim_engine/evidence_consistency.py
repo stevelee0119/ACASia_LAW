@@ -58,7 +58,9 @@ CERTAINTY_RE = re.compile(r"확실|분명|틀림없|단언|명백")
 PROXIMITY_RE = re.compile(r"같은\s*테이블|바로\s*옆|옆\s*자리|함께\s*앉|맞은\s*편|곁에")
 DISTANCE_RE = re.compile(r"\d+\s*(?:미터|m|M)\s*(?:가량|정도|쯤)?\s*떨어진|다른\s*테이블|멀리\s*떨어")
 # 진술인 명의 문서의 제목 줄(문단 전체가 제목). 증거 목록 속 "각 진술서"는 제목이 아니다.
-STATEMENT_HEADING_RE = re.compile(r"(?:^|\n)\s*(?:진\s*술\s*서|사\s*실\s*확\s*인\s*서|확\s*인\s*서)\s*(?:\n|$)")
+STATEMENT_HEADING_RE = re.compile(
+    r"(?:^|\n|[|―\-])\s*(?:[^\n|―\-]{0,10}?(?:진\s*술\s*서|사\s*실\s*확\s*인\s*서|확\s*인\s*서))(?:\s*(?:\n|$)|[―\-:·|\s])"
+)
 # 복사 문장 탐지 최소 길이 (24자 이상 문장 대상, 짧은 확인 문장 누락 방지)
 COPY_MIN_CHARS = 24
 COPY_SIMILARITY = 0.9
@@ -1733,15 +1735,15 @@ DOC_KIND_PLEADING = "PLEADING"                        # 소장, 준비서면, �
 DOC_KIND_OTHER = "OTHER"
 
 FACT_CONFIRMATION_HEADING_RE = re.compile(
-    r"(?:^|\n)\s*(?:사\s*실\s*경\s*위\s*서|사\s*건\s*경\s*위\s*서|경\s*위\s*서)\s*(?:\n|$)"
+    r"(?:^|\n|[|―\-])\s*(?:[^\n|―\-]{0,10}?(?:사\s*실\s*경\s*위\s*서|사\s*건\s*경\s*위\s*서|경\s*위\s*서))(?:\s*(?:\n|$)|[―\-:·|\s])"
 )
 
 EVIDENCE_EXPLANATION_HEADING_RE = re.compile(
-    r"(?:^|\n)\s*(?:증\s*거\s*설\s*명\s*서|증\s*거\s*목\s*록)\s*(?:\n|$)"
+    r"(?:^|\n|[|―\-])\s*(?:[^\n|―\-]{0,10}?(?:증\s*거\s*설\s*명\s*서))(?:\s*(?:\n|$)|[―\-:·|\s])"
 )
 
 PLEADING_HEADING_RE = re.compile(
-    r"(?:^|\n)\s*(?:소\s*장|준\s*비\s*서\s*면|답\s*변\s*서|의\s*견\s*서|항\s*소\s*장|상\s*고\s*장)\s*(?:\n|$)"
+    r"(?:^|\n|[|―\-])\s*(?:[^\n|―\-]{0,10}?(?:소\s*장|준\s*비\s*서\s*면|답\s*변\s*서|의\s*견\s*서|항\s*소\s*장|상\s*고\s*장|고\s*소\s*장))(?:\s*(?:\n|$)|[―\-:·|\s])"
 )
 
 _EXHIBIT_REFERENCE_RE = re.compile(
@@ -1749,36 +1751,57 @@ _EXHIBIT_REFERENCE_RE = re.compile(
 )
 
 
+def _is_in_corresponding_exhibit_entry(sentence: str, doc: NormalizedDocument, text: str) -> bool:
+    """증거설명서 내에서 해당 문장이 정규 서증 설명 항목(표 셀 또는 입증취지 설명란) 안에 있는지 검사한다 (승인 조건 1).
+
+    민사소송규칙 제106조에 따른 증거설명서의 호증 설명(입증취지 등) 란에 서증 요지가 기재된 것은 정상이므로 제외(True),
+    호증 설명 표 밖의 별도 본문 항목(예: '기술자의 원문' 등)에 서증 본문이 통복제된 것은 결함 대상(False)으로 판정한다.
+    """
+    pos = text.find(sentence)
+    if pos == -1:
+        return True  # 찾지 못하면 보수적으로 제외
+
+    # 1. 문서 블록 구조 확인: 테이블 셀 안에 들어있는지 확인
+    for block in doc.blocks:
+        if block.block_type == "table":
+            if sentence in (block.text or ""):
+                return True
+
+    # 2. 텍스트 문맥 확인: sentence 자체 앞부분 또는 앞쪽 250자 내에 호증 기재 항목 표지가 있는 경우
+    # (예: '입증취지', '서증의 표시', '증명하고자 하는 사실', '갑/을 제X호증' 등 민사소송규칙 제106조 서식 항목)
+    context_window = text[max(0, pos - 250):pos] + "\n" + sentence[:50]
+    if re.search(r"(?:입\s*증\s*취\s*지|서\s*증\s*의\s*표\s*시|증\s*명\s*하\s*고\s*자\s*하\s*는\s*사\s*실|(?:갑|을)\s*제?\s*\d+\s*호증)", context_window):
+        return True
+
+    # 그 외 표 밖의 별도 서술 항목에 기재된 문장은 해당 호증 항목 밖으로 판정
+    return False
+
+
 def _document_title_kind(doc: NormalizedDocument, reading_text: Optional[str] = None) -> Tuple[str, Optional[int]]:
     """문서의 표제를 분석하여 (문서 종류, 본문 시작 오프셋)을 반환한다 (조건 3 검증)."""
     text = reading_text if reading_text is not None else build_reading_text(doc).text
-    top_text = text[:1500]
 
-    # 블록 머리글/단락 텍스트도 보조 확인
-    head_blocks_text = "\n".join(b.text or "" for b in doc.blocks[:5])
-
-    # 1. 증거설명서 / 증거목록 (민사소송규칙 제106조 예외 대상)
-    if (EVIDENCE_EXPLANATION_HEADING_RE.search(top_text)
-            or EVIDENCE_EXPLANATION_HEADING_RE.search(head_blocks_text)):
-        return DOC_KIND_EVIDENCE_EXPLANATION, 0
-
-    # 2. 사실경위서 (원본 서증)
-    m_fact = FACT_CONFIRMATION_HEADING_RE.search(top_text)
-    if m_fact:
-        return DOC_KIND_FACT_CONFIRMATION, m_fact.end()
-    if any(FACT_CONFIRMATION_HEADING_RE.search(b.text or "")
-           for b in doc.blocks if b.block_type in ("running_head", "paragraph")):
-        return DOC_KIND_FACT_CONFIRMATION, 0
-
-    # 3. 진술서 / 사실확인서
+    # 1. 진술서 / 사실확인서 (진술인 명의 진술 서증 최우선 판별: TC-05 등 복합 서면 보호)
     stmt_start = _statement_start(doc, text)
     if stmt_start is not None:
         return DOC_KIND_STATEMENT, stmt_start
 
-    # 4. 소송 대리 서면 (소장, 준비서면, 답변서, 의견서)
-    if (PLEADING_HEADING_RE.search(top_text)
-            or any(PLEADING_HEADING_RE.search(b.text or "")
-                   for b in doc.blocks if b.block_type in ("running_head", "paragraph"))):
+    # 블록 머리글(running_head) 우선 확인 (running_head가 있으면 문서의 가장 신뢰할 만한 표제임)
+    running_heads = "\n".join(b.text or "" for b in doc.blocks if b.block_type == "running_head")
+    top_text = text[:300]
+    head_text = running_heads if running_heads else top_text
+
+    # 2. 증거설명서 (민사소송규칙 제106조 예외 대상: 본문 중간의 '증거목록' 부속 목록과 구분)
+    if EVIDENCE_EXPLANATION_HEADING_RE.search(head_text):
+        return DOC_KIND_EVIDENCE_EXPLANATION, 0
+
+    # 3. 사실경위서 (원본 서증)
+    m_fact = FACT_CONFIRMATION_HEADING_RE.search(head_text)
+    if m_fact:
+        return DOC_KIND_FACT_CONFIRMATION, m_fact.end()
+
+    # 4. 소송 대리 서면 (소장, 준비서면, 답변서, 의견서, 고소장 등)
+    if PLEADING_HEADING_RE.search(head_text):
         return DOC_KIND_PLEADING, 0
 
     return DOC_KIND_OTHER, None
@@ -1788,8 +1811,8 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
     """진술서 대필 의심 및 서증 원본(사실경위서) 통복제 결함을 탐지한다.
 
     1. 진술서·확인서 계열 문서(4순위): 다른 서면 문장과 일치 시 B등급(SUSPICIOUS)
-    2. 소송서면이 사실경위서 원본 문단을 통복제한 경우(5순위): C등급(SUSPICIOUS)
-       - 민사소송규칙 제106조 예외: 증거설명서는 통복제 결함에서 제외(SKIP)
+    2. 소송서면·증거설명서가 사실경위서 원본 문단을 통복제한 경우(5순위): C등급(SUSPICIOUS)
+       - 민사소송규칙 제106조 예외: 증거설명서 내 정규 호증 설명(입증취지) 항목은 제외(SKIP)
        - 서증 정식 원용 표기가 포함된 문장 제외(SKIP)
     3. 소송서면 간 정상적인 변론 요지 재진술(7순위): 정상 보호(SKIP)
     """
@@ -1814,8 +1837,8 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
 
     for owner in docs:
         owner_kind, start = doc_kinds[owner.document_id]
-        # 진술서(DOC_KIND_STATEMENT)이거나 사실경위서 복사 대상인 소송서면(DOC_KIND_PLEADING)만 owner 대상
-        if owner_kind not in (DOC_KIND_STATEMENT, DOC_KIND_PLEADING):
+        # 진술서(DOC_KIND_STATEMENT), 소송서면(DOC_KIND_PLEADING), 증거설명서(DOC_KIND_EVIDENCE_EXPLANATION) 대상
+        if owner_kind not in (DOC_KIND_STATEMENT, DOC_KIND_PLEADING, DOC_KIND_EVIDENCE_EXPLANATION):
             continue
 
         pairs: Dict[str, List[Tuple[str, str, float]]] = {}
@@ -1827,6 +1850,10 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
 
             # 소송서면인 경우 정식 서증 원용 문맥("갑 제1호증 사실경위서에 의하면...")은 제외
             if owner_kind == DOC_KIND_PLEADING and _EXHIBIT_REFERENCE_RE.search(sentence):
+                continue
+
+            # 증거설명서인 경우 정규 호증 설명란(입증취지 등) 내부 문장은 제외 (승인 조건 1)
+            if owner_kind == DOC_KIND_EVIDENCE_EXPLANATION and _is_in_corresponding_exhibit_entry(sentence, owner, texts[owner.document_id]):
                 continue
 
             hits: Dict[Tuple[str, int], int] = {}
@@ -1845,9 +1872,6 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                     other_kind = doc_kinds[other_id][0]
                     # 7순위: 소송서면 간 정상 재진술(소장 ↔ 준비서면)은 제외
                     if owner_kind == DOC_KIND_PLEADING and other_kind == DOC_KIND_PLEADING:
-                        continue
-                    # 민사소송규칙 제106조 예외: 증거설명서 대상 제외
-                    if owner_kind == DOC_KIND_EVIDENCE_EXPLANATION:
                         continue
                     # 5순위: 소송서면(PLEADING)의 경우 other가 사실경위서(FACT_CONFIRMATION)일 때만 통복제로 판정
                     if owner_kind == DOC_KIND_PLEADING and other_kind != DOC_KIND_FACT_CONFIRMATION:
@@ -1868,18 +1892,23 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                     "의심할 단서가 된다. 작성 경위는 사람이 확인한다.",
                     matched[0][0], status=VerificationStatus.SUSPICIOUS,
                     features={"other_document_id": other_id, "similarity": matched[0][2],
+                              "sources": [{"document_id": owner.document_id}],
+                              "differences": f"{owner.document_id}_{other_id}_{matched[0][0][:40]}",
                               "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
                                         for a, b, s in matched[:5]]}
                 ))
-            elif owner_kind == DOC_KIND_PLEADING and other_kind == DOC_KIND_FACT_CONFIRMATION:
+            elif (owner_kind == DOC_KIND_PLEADING and other_kind == DOC_KIND_FACT_CONFIRMATION) or (owner_kind == DOC_KIND_EVIDENCE_EXPLANATION):
                 # 5순위: 서증 원본(사실경위서) 통문단 복제 검출 (조건 2: EvidenceGrade.C 고정)
+                doc_title = "소송 서면" if owner_kind == DOC_KIND_PLEADING else "증거설명서"
                 out.append(_finding(
                     owner, FindingType.CROSS_DOC_COPY, EvidenceGrade.C, Severity.MEDIUM,
-                    f"소송 서면에 증거자료({other.filename})의 본문과 같은 문장이 {len(matched)}건 있다",
-                    "소장·준비서면 등 소송 대리 서면에 사실경위서 등 원본 서증의 본문 문단이 인용 표시 없이 "
+                    f"{doc_title}에 증거자료({other.filename})의 본문과 같은 문장이 {len(matched)}건 있다",
+                    "소장·준비서면 등 소송 대리 서면 또는 증거설명서에 사실경위서 등 원본 서증의 본문 문단이 인용 표시 없이 "
                     "그대로 복제되어 기재되었습니다. 서증 기재와 일치하는 변론인지 또는 단순 통복제인지 사람이 확인해야 합니다.",
                     matched[0][0], status=VerificationStatus.SUSPICIOUS,
                     features={"other_document_id": other_id, "similarity": matched[0][2],
+                              "sources": [{"document_id": owner.document_id}],
+                              "differences": f"{owner.document_id}_{other_id}_{matched[0][0][:40]}",
                               "copy_category": "FACT_CONFIRMATION_REPLICATION",
                               "rule_id": "EVI.COPY_FACT_CONFIRMATION", "human_review": True,
                               "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}

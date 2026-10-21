@@ -3,9 +3,10 @@
 승인된 설계 메모 docs/handoff/requests/84_evi_copy_non_statement_author_design.md 기준:
 1. 조건 3: 표제 판별 단위 시험 (_document_title_kind)
    - 사실경위서(FACT_CONFIRMATION), 진술서(STATEMENT), 증거설명서(EVIDENCE_EXPLANATION), 소송서면(PLEADING)
-2. 조건 1: 민사소송규칙 제106조에 따른 증거설명서 통복제 예외 처리 (서증 요약/설명 정상, 결함 제외)
-3. 조건 2: 5순위 비진술서(소송서면)의 사실경위서 통복제 C등급(SUSPICIOUS) 고정 검증
-4. 합성 양성 3건 및 대조군 5건 완비.
+2. 조건 1: 민사소송규칙 제106조에 따른 증거설명서 통복제 예외 처리
+   - 해당 호증 설명(입증취지) 항목 밖 통복제는 C등급 결함 검출, 항목 내 정상 기재는 제외
+3. 조건 2: 5순위 비진술서(소송서면/증거설명서)의 사실경위서 통복제 C등급(SUSPICIOUS) 고정 검증
+4. 합성 양성 4건 및 대조군 6건 완비.
 """
 import pytest
 
@@ -168,6 +169,34 @@ def test_positive_3_fact_confirmation_copied_into_complaint_grade_c():
     assert f.status == VerificationStatus.SUSPICIOUS
 
 
+def test_positive_4_evidence_explanation_outside_exhibit_entry_grade_c():
+    """양성 4 (조건 1 준수): 증거설명서 내 해당 호증 설명 항목 밖(별도 항목)에 사실경위서가 통복제된 경우 (C등급 검출)."""
+    copied_paragraph = (
+        "2023년 5월 10일 피고 회사 공장에서 기계 정비 작업을 수행하던 도중 안전장치가 제대로 작동하지 않아 "
+        "작업자의 오른손이 롤러에 끼이는 중대한 사고가 발생하였습니다."
+    )
+
+    doc_fact = _make_doc(
+        "d_fact_out",
+        f"사 실 경 위 서\n작성인: 박○○\n\n{copied_paragraph}",
+        "사실경위서.pdf",
+    )
+    # 증거설명서 표제가 있으나 입증취지 항목 밖(별도 항목)에 복제된 형태
+    doc_expl = _make_doc(
+        "d_expl_out",
+        f"증 거 설 명 서\n사건 2023가단12345\n\n[별도 참고사항]\n3. 현장 설명\n{copied_paragraph}",
+        "증거설명서.pdf",
+    )
+
+    findings = cross_document_copies([doc_fact, doc_expl])
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.document_id == "d_expl_out"
+    assert f.evidence_grade == EvidenceGrade.C  # 5순위 비진술서 통복제 C등급
+    assert f.status == VerificationStatus.SUSPICIOUS
+    assert f.confidence_features.get("copy_category") == "FACT_CONFIRMATION_REPLICATION"
+
+
 # --- 3. 합성 대조군 5건 시험 ---
 
 def test_negative_1_pleading_restatement_skip():
@@ -255,3 +284,28 @@ def test_negative_5_direct_quotation_of_opponent():
 
     findings = cross_document_copies([doc_prep1, doc_prep2])
     assert len(findings) == 0
+
+
+def test_negative_6_evidence_explanation_inside_exhibit_entry_skip():
+    """대조 6 (조건 1 준수): 증거설명서 내 정규 입증취지 항목(또는 표) 내부의 정상 서증 기재 (오탐 0)."""
+    copied_paragraph = (
+        "2023년 5월 10일 피고 회사 공장에서 기계 정비 작업을 수행하던 도중 안전장치가 제대로 작동하지 않아 "
+        "작업자의 오른손이 롤러에 끼이는 중대한 사고가 발생하였습니다."
+    )
+
+    doc_fact = _make_doc(
+        "d_fact_in",
+        f"사 실 경 위 서\n작성인: 박○○\n\n{copied_paragraph}",
+        "사실경위서.pdf",
+    )
+    # 증거설명서 내 '입증취지' 정규 설명 항목 내에 기재된 형태 (민사소송규칙 제106조 목적)
+    doc_expl = _make_doc(
+        "d_expl_in",
+        f"증 거 설 명 서\n사건 2023가단12345\n\n1. 갑 제1호증\n입증취지: {copied_paragraph}",
+        "증거설명서.pdf",
+    )
+
+    findings = cross_document_copies([doc_fact, doc_expl])
+    # 정규 입증취지 항목 내 기재는 정상 실무이므로 제외(오탐 0)
+    assert len(findings) == 0
+
