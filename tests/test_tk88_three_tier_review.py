@@ -220,8 +220,8 @@ def test_frontend_app_js_classification_matches_specification():
     # 핵심 키워드 및 우선순위 분기 포함 여부 검증
     assert "function classifyReviewItemTier" in app_js
     assert "REFERENCE_CONTRADICTION" in app_js
-    assert "AI_HALLUCINATED_CONTENT" in app_js
-    assert "CASE_HOLDING_DISTORTION" in app_js
+    assert "HALLUCINATED" in app_js
+    assert "DISTORTION" in app_js
     assert "성립 불가한 사건번호" in app_js  # 1번 행 2단 분기
     assert "취지 왜곡" in app_js or "부당" in app_js  # 6번 행 3단 분기
     assert "참고문헌(구속력 없음)" in app_js  # 참고문헌 구속력 배제 배지

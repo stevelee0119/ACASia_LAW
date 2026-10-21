@@ -1581,12 +1581,15 @@ function classifyReviewItemTier(item, findingsMap) {
 
   // 1순위: 결과 유형 (FindingType / rule_id)
   if (ruleId.includes("REFERENCE_CONTRADICTION") || verdict.includes("참고자료 모순")) return 3;
-  if (findingType.includes("AI_HALLUCINATED_CONTENT") || ruleId.includes("AI_HALLUCINATED_CONTENT")) return 3;
-  if (findingType.includes("LEGAL_ARGUMENT_INVALID") || ruleId.includes("LEGAL_ARGUMENT_INVALID")) return 3;
+  // item에 서버가 계산한 tier 속성이 있으면 최우선 반영
+  if (item.tier === 2 || item.tier === 3) return item.tier;
+
+  if (findingType.includes("HALLUCINATED") || ruleId.includes("HALLUCINATED")) return 3;
+  if (findingType.includes("ARGUMENT_INVALID") || ruleId.includes("ARGUMENT_INVALID")) return 3;
   if (findingType.includes("FACT_MISMATCH") || ruleId.includes("FACT_MISMATCH")) return 3;
-  if (findingType.includes("CASE_HOLDING_DISTORTION") || ruleId.includes("CASE_HOLDING_DISTORTION")) return 2; // 객관적 인용 왜곡 -> 2단 (3단과 상호 참조)
-  if (findingType.includes("TEMPORAL_LAW_MISMATCH") || ruleId.includes("TEMPORAL_LAW_MISMATCH")) return 2;
-  if (["CASE_NOT_FOUND", "LAW_NOT_FOUND", "CASE_METADATA_MISMATCH", "CITATION_TEXT_MISMATCH"].some(k => findingType.includes(k))) return 2;
+  if (findingType.includes("DISTORTION") || ruleId.includes("DISTORTION")) return 2; // 객관적 인용 왜곡 -> 2단 (3단과 상호 참조)
+  if (findingType.includes("TEMPORAL") || ruleId.includes("TEMPORAL")) return 2;
+  if (["NOT_FOUND", "METADATA_MISMATCH", "CITATION_TEXT"].some(k => findingType.includes(k))) return 2;
 
   // 2순위: 공식 조회 및 출처 상태 (basis / error_category)
   if (basis.includes("FABRICATION_SUSPECTED") || errorCategory === "LEGAL_CITATION_ERROR") return 2;
@@ -1685,11 +1688,11 @@ function renderReviewRow(item, tier, findingsMap) {
   const verdictStr = String(item.verdict_label || item.validity_verdict || "");
   const hasDistortion = verdictStr.includes("왜곡") || (item.finding_ids || []).some(fid => {
     const f = findingsMap?.get(fid);
-    return f && (f.type === "CASE_HOLDING_DISTORTION" || ((f.confidence_features || {}).rule_id || "").includes("DISTORTION"));
+    const ft = String(f?.type || ""); return f && (ft.includes("DISTORTION") || ((f.confidence_features || {}).rule_id || "").includes("DISTORTION"));
   });
   const isHallucinatedOrInvalid = (item.finding_ids || []).some(fid => {
     const f = findingsMap?.get(fid);
-    return f && (f.type === "AI_HALLUCINATED_CONTENT" || f.type === "LEGAL_ARGUMENT_INVALID");
+    const ft = String(f?.type || ""); return f && (ft.includes("HALLUCINATED") || ft.includes("ARGUMENT_INVALID"));
   }) || verdictStr.includes("부당") || (item.basis || "").includes("FABRICATION");
 
   if (tier === 2 && hasDistortion) {
