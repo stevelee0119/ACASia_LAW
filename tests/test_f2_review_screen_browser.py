@@ -369,13 +369,21 @@ def test_f2_review_table_renders_four_columns(f2_browser_page):
     panel = page.locator('section[data-panel="review"]')
     expect(panel).to_be_visible()
 
-    # 4열 헤더 검증
+    # 4열 헤더 검증 (2단 인용 표)
     headers = panel.locator(".review-items-table thead th")
     expect(headers).to_have_count(4)
     expect(headers.nth(0)).to_have_text("위치")
     expect(headers.nth(1)).to_have_text("문서 주장 및 인용 내용")
     expect(headers.nth(2)).to_have_text("인용 오류·미확인 근거 및 주장 평가 (작성 주체 판단에 쓰지 않음)")
     expect(headers.nth(3)).to_have_text("확인이 필요한 내용")
+
+    # 3단 법률적으로 무리한 주장 표(tier3Table) 4열 헤더 별도 검증 (TK-88)
+    tier3_headers = panel.locator(".tier3-table thead th")
+    expect(tier3_headers).to_have_count(4)
+    expect(tier3_headers.nth(0)).to_have_text("위치")
+    expect(tier3_headers.nth(1)).to_have_text("문서 주장 및 인용 내용")
+    expect(tier3_headers.nth(2)).to_have_text("법리 검토 결과 및 근거")
+    expect(tier3_headers.nth(3)).to_have_text("확인이 필요한 내용")
 
     # 2단 인용 표(2개 행) 및 3단 무리한 주장 표(1개 행) 분리 노출 검증 (TK-88)
     rows = panel.locator("#aiVerificationRows tr")

@@ -319,6 +319,7 @@ def test_table1_ten_rows_rendered_in_browser():
 
     pytest.importorskip("playwright")
     from playwright.sync_api import expect, sync_playwright
+    from frontend_helpers import select_first_project
 
     ROOT = Path(__file__).resolve().parents[1]
     static_dir = ROOT / "apps/web/static"
@@ -379,6 +380,53 @@ def test_table1_ten_rows_rendered_in_browser():
         {"item_id": "item_10", "kind": "CITATION", "cited_authority": "대법원 2016다6000", "verdict_label": VERDICT_OFFICIAL_CONFIRMED, "official_status": "OFFICIAL_CONFIRMED", "basis": "OFFICIAL_CONFIRMED", "location": {"page": 10}},
     ]
 
+    project_data = {
+        "id": "p1",
+        "name": "TK88 3단 체계 검증 프로젝트",
+        "can_delete": True,
+        "document_count": 1,
+        "external_ai_policy": "MASKED",
+        "scope_revision": 0,
+        "requested_issues": ["손해배상"],
+    }
+
+    run_data = {
+        "id": "r1",
+        "project_id": "p1",
+        "state": "COMPLETED",
+        "progress": 1,
+        "stage_message": "",
+        "document_ids": ["d1"],
+        "scores": {},
+        "unverified_items": [],
+        "errors": [],
+        "unavailable_sources": [],
+        "input_snapshot": {"scope_revision": 0},
+        "started_at": "2026-10-21T00:00:00",
+    }
+
+    result_data = {
+        "status": "COMPLETED",
+        "run_manifest": {
+            "reference_library": {
+                "status": "READY",
+                "files_indexed": 1,
+                "files_seen": 1,
+                "checked_at": "2026-10-21T12:00:00",
+            }
+        },
+        "documents": [
+            {
+                "id": "d1",
+                "filename": "서면.pdf",
+                "quarantined": False,
+                "findings": synthetic_findings,
+                "review_items": ten_items,
+                "ai_hallucination_table": [],
+            }
+        ],
+    }
+
     channel = os.environ.get("LV_TEST_BROWSER_CHANNEL")
     launch_kwargs = {"headless": True}
     if channel:
@@ -387,42 +435,52 @@ def test_table1_ten_rows_rendered_in_browser():
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(**launch_kwargs)
-            page = browser.new_page()
+            page = browser.new_page(viewport={"width": 1280, "height": 900})
 
             def handle_route(route):
                 req = route.request
                 path = urlsplit(req.url).path
                 if path in files:
                     return route.fulfill(path=str(files[path]))
-                replies = {
-                    "/api/health": {"status": "ok", "version": "0.5.0"},
-                    "/api/identity/me": {"user_id": "u", "role": "ADMIN", "authentication": "password"},
-                    "/api/verification-runs": {"active_count": 0, "runs": []},
-                    "/api/projects": [{"id": "p1", "name": "TK88 프로젝트", "can_delete": True, "document_count": 1, "external_ai_policy": "MASKED", "scope_revision": 0}],
-                    "/api/projects/p1": {"id": "p1", "name": "TK88 프로젝트", "can_delete": True, "document_count": 1, "external_ai_policy": "MASKED", "scope_revision": 0},
-                    "/api/projects/p1/documents": [{"id": "d1", "filename": "서면.pdf", "included_in_verification": True}],
-                    "/api/projects/p1/runs": [{"id": "r1", "project_id": "p1", "state": "COMPLETED", "document_ids": ["d1"], "started_at": "2026-10-21T00:00:00"}],
-                    "/api/projects/p1/findings": synthetic_findings,
-                    "/api/finding-categories": {"categories": {}, "tabs": {}, "counts": {}},
-                }
-                if path in replies:
-                    return route.fulfill(json=replies[path])
+                if path == "/api/health":
+                    return route.fulfill(json={"status": "ok", "version": "0.10.0"})
+                if path in ("/api/auth/me", "/api/identity/me"):
+                    return route.fulfill(json={"user_id": "u", "email": "t@example.com", "display_name": "검토자", "role": "ADMIN", "authentication": "local"})
+                if path == "/api/verification-runs":
+                    return route.fulfill(json={"active_count": 0, "runs": []})
+                if path in ("/api/projects", "/api/projects/p1"):
+                    return route.fulfill(json=[project_data] if path == "/api/projects" else project_data)
+                if path == "/api/projects/p1/documents":
+                    return route.fulfill(json=[{"id": "d1", "filename": "서면.pdf", "included_in_verification": True}])
+                if path == "/api/projects/p1/runs":
+                    return route.fulfill(json=[run_data])
+                if path == "/api/projects/p1/findings":
+                    return route.fulfill(json=synthetic_findings)
                 if path.endswith(("/result", "/results")):
+                    return route.fulfill(json=result_data)
+                if path == "/api/privacy-notice":
+                    return route.fulfill(json={"version": "v1.0", "bullets": [], "ack_label": "", "report_header": ""})
+                if path == "/api/finding-categories":
+                    from packages.common.finding_category_map import CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, get_category_counts
                     return route.fulfill(json={
-                        "status": "COMPLETED",
-                        "documents": [{"id": "d1", "filename": "서면.pdf", "quarantined": False, "findings": synthetic_findings, "review_items": ten_items, "ai_hallucination_table": []}]
+                        "categories": {ft.value: cat.value for ft, cat in FINDING_CATEGORY_MAP.items()},
+                        "tabs": {ft.value: CATEGORY_TO_TAB[cat].value for ft, cat in FINDING_CATEGORY_MAP.items()},
+                        "counts": get_category_counts(),
                     })
+                if path == "/api/projects/p1/review-workflows":
+                    return route.fulfill(json=[])
                 if path.endswith("/case-matrix"):
                     return route.fulfill(body="null", content_type="application/json")
-                return route.fulfill(json=[])
+                return route.fulfill(status=200, json=[])
 
             page.route("**/*", handle_route)
             page.goto("http://localhost/")
 
-            # 검토 화면 진입
+            # 홈 화면에서 프로젝트 선택 후 검증·검토 화면 진입 (시간 초과 방지)
+            select_first_project(page)
             page.get_by_role("button", name="검증·검토", exact=True).click()
 
-            # 2단 표 (#aiVerificationRows) 및 3단 표 (#tier3Rows) 검증: 확인할 항목(review) 탭 내 배치
+            # 확인할 항목(review) 탭 진입
             page.locator('.tabs button[data-tab="review"]').click()
 
             # 2단 표 (#aiVerificationRows) 확인: 1, 2, 3, 4, 5, 10번 (총 6행)

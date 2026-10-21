@@ -25,6 +25,7 @@ TK-88 개편에 따라 인용 2건은 2단 표로, 사실관계 모순 1건은 3
 
 | 기존 시험 및 행 번호 | 전에 확인하던 요구 | 새 확인 위치 및 단언 방식 | 변경 사유 및 검증 동일성 보장 |
 |---|---|---|---|
+| `test_f2_review_table_renders_four_columns`<br>(371~380행) | `.review-items-table thead th` 4열 머리글 노출 확인 (`to_have_count(4)`) | 2단 표 `.review-items-table thead th` 4열 검증 및 3단 표 `.tier3-table thead th` 4열 별도 검증 | 동일 탭('검증·검토') 내에 2단 표와 3단 표가 함께 배치됨에 따라, 3단 표 클래스를 `.tier3-table`로 한정 분리하고 2단 표(4열) 및 3단 표(4열: 위치/주장/법리검토/확인필요) 각각의 머리글 구조를 독립 검증. |
 | `test_f2_review_table_renders_four_columns`<br>(380~382행) | `#aiVerificationRows tr`에서 3개 행 전수 노출 확인 (`to_have_count(3)`) | 2단 `#aiVerificationRows tr`에서 2개 행(인용 행) 확인 + 3단 `#tier3Rows tr`에서 1개 행(사실관계 행) 확인, 총합 3개 행 누락 없음 검증 | 2단 표와 3단 표로 분리 배치됨에 따라 각 단의 행 수(2단 2행, 3단 1행) 및 전체 합계(3행)를 교차 검증하여 항목 유실 0 보장. |
 | `test_f2_review_summary_box_renders_instead_of_inline_workflow`<br>(410~413행) | `#aiVerificationRows`의 3개 행 각각에 4열 확인 요약 박스(`.review-summary-box`) 노출 검증 | 2단 표의 2개 행 및 3단 표의 1개 행 각각에서 4열 확인 요약 박스(`.review-summary-box`)가 노출됨을 검증 | 2단뿐만 아니라 3단으로 분리된 사실관계 행에서도 동일한 4열 확인 요약 박스가 정상 렌더링됨을 전수 확인. |
 | `test_f2_review_summary_reason_truncation_and_location_display`<br>(462~465행) | 3번째 행(`rows.nth(2)`)에서 '헌법 제10조' 확인 방법 텍스트("헌법 제10조 원문 대조 (1쪽)") 검증 | 2단 표 2번째 행(`rows.nth(1)`)에서 '헌법 제10조' 확인 방법 텍스트 검증 | 사실관계 행이 3단 표로 이동함에 따라 2단 표에는 인용 2건만 남게 되어 '헌법 제10조' 행의 인덱스가 2에서 1로 이동함. 동일한 텍스트 및 분기 검증 유지. |
