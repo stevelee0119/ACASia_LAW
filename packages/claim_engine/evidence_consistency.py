@@ -517,7 +517,226 @@ def check_exhibits(doc: NormalizedDocument) -> List[Finding]:
     out.extend(_numbering(doc, rows))
     out.extend(_attached_originals(doc, rows))
     out.extend(_attached_amounts(doc, rows))
+    out.extend(check_evidence_overreach(doc, rows))
     return out
+
+
+# --- TK-91 증거 과장 (EVI-OVR) 구조적 탐지 --------------------------------------------
+
+# 1. 서증 범주별 정규식 (일반 범주 대응표 준수)
+_NOTICE_KINDS_RE = re.compile(
+    r"(?:내용증명(?:우편)?|최고서|독촉장|청구서|통고서|통지서|이메일\s*발송|문자\s*발송|발송\s*내역|발신\s*확인)"
+)
+_ESTIMATE_KINDS_RE = re.compile(
+    r"(?:견적서|산출내역서|발주서|견적\s*비교표|공사비\s*(?:산출)?내역서|추정서|사업계획서|제안서)"
+)
+_IDENTIFIER_KINDS_RE = re.compile(
+    r"(?:통장\s*(?:사본\s*)?표지|통장\s*표지|사업자등록증|법인등기부|신분증|주민등록\s*(?:등|초)?본|계좌개설\s*확인)"
+)
+_MEDICAL_DIAGNOSTIC_RE = re.compile(
+    r"(?:상해진단서|진단서|소견서|의무기록(?:지)?|진료기록부|처방전)"
+)
+
+# 2. 주장 사실(Claimed Fact) 정규식
+# (1) 상대방의 승낙·동의·합의·승인
+_CLAIM_CONSENT_APPROVAL_RE = re.compile(
+    r"(?:상대방|피고|원고|채무자|상대측)?\s*(?:의\s*)?[^\n.]{0,25}?(?:승낙|동의|수락|합의|승인|자인|시인|확약|약정|인정)(?:하였|했|한\s*사실|되었|된\s*사실|을\s*(?:입증|증명)|했음|하였음)"
+)
+# (2) 대금 완납·변제 완료·시공 완료
+_CLAIM_FULL_PAYMENT_RE = re.compile(
+    r"(?:대금|공사대금|물품대금|용역비|잔금|원리금|채무|금원|차용금)[^\n.]{0,35}?(?:전액|전부|모두)?[^\n.]{0,20}?(?:완납|변제|정산|결제|지급|입금)(?:하였|했|한\s*사실|되었|된\s*사실|\s*완료|했음|하였음)"
+)
+_CLAIM_WORK_COMPLETION_RE = re.compile(
+    r"(?:공사|시공|납품|공급|과업|인도)[^\n.]{0,25}?(?:전부|전량|모두)?[^\n.]{0,15}?(?:완료|준공|인도|완성)(?:하였|했|한\s*사실|되었|된\s*사실|을\s*(?:입증|증명)|했음|하였음)"
+)
+# (3) 가해 사실 직접 증명 단정 (진단서 단독 대상, 평가 측 조건 2)
+_CLAIM_DIRECT_ASSAULT_ASSERTION_RE = re.compile(
+    r"(?:가해|폭행|상해|불법행위)(?:를\s*가한|\s*행위|\s*사실)[^\n.]{0,30}?(?:직접\s*(?:확인|입증|증명)|명백히\s*(?:확인|증명)|직접증거)"
+)
+
+# 3. 객관적 입증 가능 서증 (복수 서증 공동 원용 결합 시 과장 배제용, 평가 측 조건 3)
+_PROVABLE_PAYMENT_KINDS_RE = re.compile(
+    r"(?:영수증|입금확인증|송금확인증|계좌거래내역|이체확인증|세금계산서|통장거래내역|지급증명서)"
+)
+_PROVABLE_AGREEMENT_KINDS_RE = re.compile(
+    r"(?:합의서|각서|이행각서|계약서|약정서|조율서|협약서|판결문|조서)"
+)
+
+# 4. 내용 자리에 결제·확인 정보가 부기된 예외 (견적서·청구서라도 영수/입금확인 부기 시 제외)
+_PAYMENT_RECEIPT_NOTE_RE = re.compile(r"(?:영수|완납|입금\s*확인|수납|결제\s*완료)")
+
+
+def check_evidence_overreach(
+    doc: NormalizedDocument, exhibits: Optional[Sequence[Dict[str, Any]]] = None
+) -> List[Finding]:
+    """증거 과장(EVI-OVR) 구조적 탐지: 본문 원용 주장 사실과 서증 속성의 객관적 범위 대조 (TK-91)."""
+    rows = list(exhibits) if exhibits is not None else exhibit_rows(doc)
+    if not rows:
+        return []
+
+    # 호증별 행 인덱싱 (party, number) -> row
+    row_by_key = {}
+    for r in rows:
+        row_by_key[(r["party"], r["number"])] = r
+
+    out: List[Finding] = []
+    text = build_reading_text(doc).text
+
+    # 문장 단위 분할하여 본문 인용 서증 및 주장 사실 대조
+    sentences = re.split(r"(?<=[.!?\n])\s+", text)
+    for sent in sentences:
+        sent_clean = sent.strip()
+        if not sent_clean or len(sent_clean) < 10:
+            continue
+
+        refs = parse_exhibits(sent_clean)
+        if not refs:
+            continue
+
+        # 해당 문장에서 인용된 호증들의 유효 row 목록 추출
+        cited_rows = []
+        for ref in refs:
+            k = (ref["party"], ref["number"])
+            if k in row_by_key:
+                cited_rows.append(row_by_key[k])
+
+        if not cited_rows:
+            continue
+
+        # 복수 서증 공동 원용 결합 판정 (평가 측 조건 3):
+        # 결합된 서증 중 어느 하나라도 해당 사실을 객관적으로 입증할 수 있는 서증이 포함되어 있으면 과장 배제
+        has_payment_proof = any(_PROVABLE_PAYMENT_KINDS_RE.search(r.get("name", "")) for r in cited_rows)
+        has_agreement_proof = any(_PROVABLE_AGREEMENT_KINDS_RE.search(r.get("name", "")) for r in cited_rows)
+
+        for row in cited_rows:
+            name = (row.get("name") or "").strip()
+            author = (row.get("author") or "").strip()
+            purpose = (row.get("purpose") or "").strip()
+            label = row["label"]
+            combined_desc = f"{name} {purpose}".strip()
+
+            # (1) 일방 통지·청구 범주 (내용증명, 최고서 등)
+            if _NOTICE_KINDS_RE.search(name):
+                # 상대방의 승낙·합의·승인 또는 완납 사실 주장
+                if not has_agreement_proof and not has_payment_proof:
+                    if _CLAIM_CONSENT_APPROVAL_RE.search(sent_clean) or _CLAIM_FULL_PAYMENT_RE.search(sent_clean):
+                        # 발신인 확인 여부 판별 (평가 측 조건 1 및 2차 지침):
+                        # 본문이나 목록에서 발신인이 자기 측으로 확인되면 B등급 확정,
+                        # 발신인을 알 수 없으면 상대방 발신 가능성을 배제할 수 없으므로 C등급 미확인 (대조 5는 C 고정)
+                        sender_identified = False
+                        if author and re.search(r"(?:원고|피고|신청인|피신청인|고소인|피고소인|대리인)", author):
+                            sender_identified = True
+                        elif re.search(r"(?:발신인|작성자|보낸\s*이|발송자)\s*[:：]?\s*(?:원고|피고|당사자|신청인|고소인|대리인)", combined_desc):
+                            sender_identified = True
+                        elif re.search(r"(?:원고|피고|신청인|피신청인|당사자|본인|대리인)(?:가|이|는|은|측이)?[^\n.]{0,20}?(?:발송|보낸|전송|송달한|작성한|통지한)", sent_clean):
+                            sender_identified = True
+
+                        grade = EvidenceGrade.B if sender_identified else EvidenceGrade.C
+                        severity = Severity.HIGH if sender_identified else Severity.MEDIUM
+                        status = VerificationStatus.CONTRADICTED if sender_identified else VerificationStatus.UNVERIFIED
+
+                        out.append(
+                            _finding(
+                                doc,
+                                FindingType.EVIDENCE_PURPOSE_MISMATCH,
+                                grade,
+                                severity,
+                                f"서증 성격과 맞지 않는 과장된 주장: {label} {name} → 상대방 승낙·완납 주장",
+                                f"일방적 통지·최고 문서는 통지 사실 자체를 증명할 뿐, 상대방의 승낙·동의나 완납 사실을 직접 입증할 수 없다."
+                                + (" (발신인 미기재로 원본 확인 필요)" if not sender_identified else ""),
+                                f"{label} {name} | {sent_clean[:120]}",
+                                page=row.get("page"),
+                                status=status,
+                                features={
+                                    "exhibit": label,
+                                    "category": "NOTICE_OVERREACH",
+                                    "sender_identified": sender_identified,
+                                    "rule_id": "claim_engine.evidence_consistency:NOTICE_OVERREACH",
+                                },
+                            )
+                        )
+
+            # (2) 사전 견적·계획 범주 (견적서, 산출내역서 등)
+            elif _ESTIMATE_KINDS_RE.search(name):
+                # 예외: 목록 설명에 '영수', '입금 확인' 등 결제 정보가 있으면 견적서라도 제외 (2차 지침 1항)
+                if not _PAYMENT_RECEIPT_NOTE_RE.search(combined_desc):
+                    if not has_payment_proof and (_CLAIM_FULL_PAYMENT_RE.search(sent_clean) or _CLAIM_WORK_COMPLETION_RE.search(sent_clean)):
+                        # 견적서·산출내역서는 작성자와 무관하게 완납/공사완료를 담을 수 없으므로 확정 B
+                        out.append(
+                            _finding(
+                                doc,
+                                FindingType.EVIDENCE_PURPOSE_MISMATCH,
+                                EvidenceGrade.B,
+                                Severity.HIGH,
+                                f"서증 성격과 맞지 않는 과장된 주장: {label} {name} → 대금 완납·시공 완료 주장",
+                                f"견적서·산출내역서는 사전 비용 계획을 나타낼 뿐, 대금 전액 완납이나 공사 완료 사실을 직접 입증할 수 없다.",
+                                f"{label} {name} | {sent_clean[:120]}",
+                                page=row.get("page"),
+                                features={
+                                    "exhibit": label,
+                                    "category": "ESTIMATE_OVERREACH",
+                                    "rule_id": "claim_engine.evidence_consistency:ESTIMATE_OVERREACH",
+                                },
+                            )
+                        )
+
+            # (3) 신원·계좌 표지 범주 (통장 표지 사본, 사업자등록증 등)
+            elif _IDENTIFIER_KINDS_RE.search(name):
+                if not has_payment_proof and (_CLAIM_FULL_PAYMENT_RE.search(sent_clean) or _CLAIM_WORK_COMPLETION_RE.search(sent_clean)):
+                    # 통장 표지·사업자등록증은 신원 정보일 뿐 거래 완납이나 납품 완료를 담을 수 없으므로 확정 B
+                    out.append(
+                        _finding(
+                            doc,
+                            FindingType.EVIDENCE_PURPOSE_MISMATCH,
+                            EvidenceGrade.B,
+                            Severity.HIGH,
+                            f"서증 성격과 맞지 않는 과장된 주장: {label} {name} → 대금 완납·납품 완료 주장",
+                            f"통장 표지 사본이나 등록증은 명의·계좌 정보일 뿐, 실제 대금 완납이나 납품 완료 사실을 직접 입증할 수 없다.",
+                            f"{label} {name} | {sent_clean[:120]}",
+                            page=row.get("page"),
+                            features={
+                                "exhibit": label,
+                                "category": "IDENTIFIER_OVERREACH",
+                                "rule_id": "claim_engine.evidence_consistency:IDENTIFIER_OVERREACH",
+                            },
+                        )
+                    )
+
+            # (4) 결과 상태 진단 범주 (상해진단서, 소견서 등 - 평가 측 조건 2)
+            elif _MEDICAL_DIAGNOSTIC_RE.search(name):
+                # 진단서는 가해 사실 간접증거 원용 통상 실무 보호:
+                # 직접 증거로 확인된다는 단정 서술이 있는 경우에만 C등급 미확인 판정
+                if _CLAIM_DIRECT_ASSAULT_ASSERTION_RE.search(sent_clean):
+                    out.append(
+                        _finding(
+                            doc,
+                            FindingType.EVIDENCE_PURPOSE_MISMATCH,
+                            EvidenceGrade.C,
+                            Severity.MEDIUM,
+                            f"진단서의 직접 증명력 단정 검토 필요: {label} {name} → 가해 사실 직접 증명 단정",
+                            "진단서는 상해 발생 결과를 증명하는 문서로서 가해 행위 자체의 직접 증거는 아니므로 증명력에 대한 확인이 필요하다.",
+                            f"{label} {name} | {sent_clean[:120]}",
+                            page=row.get("page"),
+                            status=VerificationStatus.UNVERIFIED,
+                            features={
+                                "exhibit": label,
+                                "category": "DIAGNOSTIC_ASSERTION",
+                                "rule_id": "claim_engine.evidence_consistency:DIAGNOSTIC_ASSERTION",
+                            },
+                        )
+                    )
+
+    # 중복 제거 (동일 호증에 대한 동일 카테고리 결함 1건 유지)
+    dedup: List[Finding] = []
+    seen_keys = set()
+    for f in out:
+        k = (f.confidence_features.get("exhibit"), f.confidence_features.get("category"))
+        if k not in seen_keys:
+            seen_keys.add(k)
+            dedup.append(f)
+
+    return dedup
+
 
 
 def _attached_amounts(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Finding]:
