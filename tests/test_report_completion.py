@@ -166,7 +166,8 @@ def test_finalize_requires_acknowledgments_and_preserves_draft(report_case):
     case.project.scope_revision += 1
     case.session.commit()
     preflight = case.client.get(f"/api/reports/{draft['report_id']}/preflight").json()
-    assert preflight["incomplete_reviews"] and preflight["stale_scope"] and preflight["sensitive_concerns"]
+    assert preflight["incomplete_reviews"] == []
+    assert preflight["unresolved_findings"] and preflight["stale_scope"] and preflight["sensitive_concerns"]
     assert any(item["type"] == "PERSONAL_DATA" for item in preflight["sensitive_concerns"])
     for name in ("acknowledge_unresolved", "acknowledge_stale_scope", "acknowledge_privacy"):
         rejected = finalize(case, draft, **{name: False})

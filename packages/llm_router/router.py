@@ -345,9 +345,10 @@ class LLMRouter:
         if mode == "off":
             names = names[:1]
 
-        async def ask(name: str) -> RouterResult:
+        async def ask(name: str, target_request: Optional[LLMRequest] = None) -> RouterResult:
+            req = target_request if target_request is not None else request
             others = [n for n in names if n != name]
-            return await self.run(role, request, policy=policy, exclude=others,
+            return await self.run(role, req, policy=policy, exclude=others,
                                   expected_task=expected_task)
 
         # DB를 쓰는 예약·정산은 await 사이에 동기적으로 끝나므로 한 스레드
@@ -356,14 +357,32 @@ class LLMRouter:
                 or request.input_contract not in {"ai_document_v1", "argument_review_v1"}):
             return list(await asyncio.gather(*(ask(name) for name in names)))
 
-        from .routing import sampled, needs_additional_review, conflicting, complete_argument_reviews
+        from .routing import (
+            sampled,
+            needs_additional_review,
+            conflicting,
+            complete_argument_reviews,
+            argument_escalation_item_ids,
+            build_partial_argument_request,
+        )
         advisory = request.input_contract == "ai_document_v1"
+        is_argument_review = request.input_contract == "argument_review_v1"
         if advisory and "openai" in names:
             names = ["openai", *[n for n in names if n != "openai"]]
         answers = []
         wanted = 1 if advisory else 2
         for name in names:
-            answers.append(await ask(name))
+            current_request = request
+            successes = [a for a in answers if a.used]
+            # 법리 검토(argument_review_v1): 2개 공급자 의견 확보 후 엇갈림/미비 항목만 축소 에스컬레이션
+            if is_argument_review and len(successes) >= wanted:
+                escalation_ids = argument_escalation_item_ids(request, successes)
+                if not escalation_ids:
+                    # 전 항목 합의 완결 시 3차 공급자 호출 생략
+                    break
+                current_request = build_partial_argument_request(request, escalation_ids)
+
+            answers.append(await ask(name, current_request))
             successes = [a for a in answers if a.used]
             if advisory and len(successes) == 1:
                 import json
@@ -372,9 +391,14 @@ class LLMRouter:
                         or sampled(request, self.settings.llm_review_sample_percent)):
                     wanted = 2
             if len(successes) >= wanted:
-                complete = advisory or complete_argument_reviews(request, successes)
-                if complete and not conflicting(successes):
-                    break
+                if is_argument_review:
+                    # 법리 검토: 합의 완결되었거나 추가 에스컬레이션을 1회 마쳤으면 종료
+                    if not argument_escalation_item_ids(request, successes) or len(successes) > wanted:
+                        break
+                else:
+                    complete = advisory or complete_argument_reviews(request, successes)
+                    if complete and not conflicting(successes):
+                        break
         return answers
 
     # -- 단일 호출 ----------------------------------------------------------
