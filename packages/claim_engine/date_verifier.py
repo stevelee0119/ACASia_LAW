@@ -67,27 +67,6 @@ def _detect_heading(line: str) -> Optional[str]:
     return None
 
 
-def _extract_line_excerpt(text: str, start: int, end: int, max_len: int = 140) -> str:
-    """매칭 위치를 포함하는 줄의 텍스트를 정규화하여 발췌문으로 추출한다."""
-    line_start = text.rfind("\n", 0, start)
-    line_end = text.find("\n", end)
-    s_idx = 0 if line_start == -1 else line_start + 1
-    e_idx = len(text) if line_end == -1 else line_end
-    line_text = " ".join(text[s_idx:e_idx].split())
-    if not line_text:
-        return text[start:end]
-    if len(line_text) <= max_len:
-        return line_text
-    # 매칭 주변을 중심으로 자르기
-    rel_start = max(0, start - s_idx)
-    rel_end = min(len(line_text), end - s_idx)
-    match_width = rel_end - rel_start
-    half = max(0, (max_len - match_width) // 2)
-    w_start = max(0, rel_start - half)
-    w_end = min(len(line_text), w_start + max_len)
-    return line_text[w_start:w_end].strip()
-
-
 def _format_heading_prefix(eff_h: Optional[str]) -> str:
     """소제목/항목명을 인용 설명의 접두사([소제목] ) 형태로 포맷한다."""
     if not eff_h:
@@ -196,7 +175,6 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
 
                 if weekday_str != actual_weekday_str:
                     matched_str = m.group(0)
-                    line_excerpt = _extract_line_excerpt(text, m.start(), m.end())
                     eff_h = _find_effective_heading(text, m.start(), current_heading)
 
                     features = {
@@ -236,7 +214,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
                                     page=block.page,
-                                    excerpt=line_excerpt,
+                                    excerpt=matched_str,
                                     supports=True,
                                 )
                             ],
@@ -255,7 +233,6 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
             if 1 <= month <= 12 and 1 <= day <= 31:
                 if _parse_valid_date(y, month, day) is None:
                     matched_str = m.group(0)
-                    line_excerpt = _extract_line_excerpt(text, m.start(), m.end())
                     is_leap = calendar.isleap(y)
                     eff_h = _find_effective_heading(text, m.start(), current_heading)
 
@@ -297,7 +274,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
                                     page=block.page,
-                                    excerpt=line_excerpt,
+                                    excerpt=matched_str,
                                     supports=True,
                                 )
                             ],
@@ -314,7 +291,6 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                 # 이미 1)에서 찾은 것이 아닌 경우
                 if not any(f.type == FindingType.EVIDENCE_DATE_INVALID and "29" in f.title for f in findings if f.block_id == block.block_id):
                     matched_str = m_feb29.group(0)
-                    line_excerpt = _extract_line_excerpt(text, m_feb29.start(), m_feb29.end())
                     eff_h = _find_effective_heading(text, m_feb29.start(), current_heading)
 
                     features = {
@@ -354,7 +330,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
                                     page=block.page,
-                                    excerpt=line_excerpt,
+                                    excerpt=matched_str,
                                     supports=True,
                                 )
                             ],
@@ -382,7 +358,6 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                 # 달라질 수 있으므로 계산 오류로 보지 않는다. 2일 이상 차이만 판정한다.
                 if actual_days > 0 and abs(actual_days - stated_days) > 1:
                     matched_str = m.group(0)
-                    line_excerpt = _extract_line_excerpt(text, m.start(), m.end())
                     eff_h = _find_effective_heading(text, m.start(), current_heading)
 
                     features = {
@@ -424,7 +399,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
                                     page=block.page,
-                                    excerpt=line_excerpt,
+                                    excerpt=matched_str,
                                     supports=True,
                                 )
                             ],

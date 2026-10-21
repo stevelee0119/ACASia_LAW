@@ -36,7 +36,34 @@ def test_positive_date_weekday_with_bracket_heading():
     assert f.confidence_features.get("heading") == "[점검일정]"
     assert "[점검일정]" in f.detail
     assert "날짜와 요일 불일치" in f.title
-    assert "현장 확인을 실시하기로 하였습니다" in f.evidence[0].excerpt
+    assert "2026. 3. 20.(목)" in f.evidence[0].excerpt
+
+
+def test_positive_date_with_colon_item_heading():
+    """양성 4 (새 위치 경로): 콜론형 항목명('반환완료일:') 뒤 날짜 결함에서 항목명 채택 검증."""
+    doc = _make_doc(
+        "준비서면\n반환완료일: 2026. 3. 20.(목) 임대차 목적물을 인도하였습니다."
+    )
+    findings = verify_dates_in_document(doc)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.confidence_features.get("heading") == "반환완료일"
+    assert "[반환완료일]" in f.detail
+    assert "날짜와 요일 불일치" in f.title
+
+
+def test_positive_date_with_section_number_line_heading():
+    """양성 5 (새 위치 경로): 같은 줄의 목차형 선행 텍스트('가. 계약체결일자')에서 항목명 채택 검증."""
+    doc = _make_doc(
+        "준비서면\n가. 계약체결일자 2026-02-29 매매계약을 체결하였습니다."
+    )
+    findings = verify_dates_in_document(doc)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.confidence_features.get("heading") == "가. 계약체결일자"
+    assert "[가. 계약체결일자]" in f.detail
+    assert "달력상 존재하지 않는 날짜" in f.title
+
 
 
 def test_positive_date_invalid_hyphen_with_bracket_heading():
