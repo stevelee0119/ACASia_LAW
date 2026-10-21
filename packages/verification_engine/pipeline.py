@@ -258,6 +258,83 @@ def execution_summary(log):
     return summary
 
 
+def source_lookup_summary(documents: List[DocumentResult]) -> Dict[str, Any]:
+    """공식 DB(출처)별 조회 수·HTTP 시도·캐시 적중·상태별 건수·소요 시간 실행 단위 집계 (TK-78).
+
+    기존 조회 기록(판정별 source_lookup, 문서별 lookup)을 모아 집계하며 새 네트워크 호출을 만들지 않는다.
+    질의어·URL·인용 원문·API 키는 일절 포함하지 않고 건수와 상태 이름, 소요 시간 합계만 집계한다.
+    """
+    total_requests = 0
+    total_http_attempts = 0
+    total_cache_hits = 0
+    total_retryable_failures = 0
+    total_by_status: Dict[str, int] = {}
+
+    adapters: Dict[str, Dict[str, Any]] = {}
+    total_spent_seconds = 0.0
+    recovery_used_documents = 0
+
+    for doc in documents or []:
+        doc_lookup = doc.engine_data.get("source_lookup") or {}
+        spent = float(doc_lookup.get("spent_seconds") or 0.0)
+        total_spent_seconds += spent
+        if doc_lookup.get("recovery_used"):
+            recovery_used_documents += 1
+
+        verdicts = doc.engine_data.get("legal_verdicts") or []
+        for v in verdicts:
+            v_lookup = v.get("source_lookup") or {}
+            requests = v_lookup.get("requests") or []
+            for req in requests:
+                raw_adapter = str(req.get("adapter") or "unknown")
+                adapter_name = raw_adapter.split("/")[-1].split("?")[0].strip() or "unknown"
+
+                attempts = int(req.get("attempts") or 0)
+                cache_hit = int(req.get("cache_hit") or 0)
+
+                raw_status = str(req.get("status") or "UNKNOWN")
+                status = raw_status.split(".")[-1]
+
+                retryable = bool(req.get("retryable"))
+                is_failure = (status != "READY")
+
+                ad = adapters.setdefault(adapter_name, {
+                    "requests": 0,
+                    "http_attempts": 0,
+                    "cache_hits": 0,
+                    "by_status": {},
+                    "retryable_failures": 0,
+                })
+                ad["requests"] += 1
+                ad["http_attempts"] += attempts
+                ad["cache_hits"] += cache_hit
+                ad["by_status"][status] = ad["by_status"].get(status, 0) + 1
+                if retryable and is_failure:
+                    ad["retryable_failures"] += 1
+
+                total_requests += 1
+                total_http_attempts += attempts
+                total_cache_hits += cache_hit
+                total_by_status[status] = total_by_status.get(status, 0) + 1
+                if retryable and is_failure:
+                    total_retryable_failures += 1
+
+    return {
+        "requests": total_requests,
+        "total_requests": total_requests,
+        "http_attempts": total_http_attempts,
+        "total_http_attempts": total_http_attempts,
+        "cache_hits": total_cache_hits,
+        "total_cache_hits": total_cache_hits,
+        "retryable_failures": total_retryable_failures,
+        "total_retryable_failures": total_retryable_failures,
+        "by_status": total_by_status,
+        "spent_seconds": round(total_spent_seconds, 3),
+        "recovery_used_documents": recovery_used_documents,
+        "adapters": adapters,
+    }
+
+
 class VerificationPipeline:
     def __init__(
         self,
@@ -308,6 +385,7 @@ class VerificationPipeline:
         if hooked:
             result.model_executions = log
             result.run_manifest["model_execution_summary"] = execution_summary(log)
+        result.run_manifest["source_lookup_summary"] = source_lookup_summary(result.documents)
         return result
 
     def _run_with_session(
@@ -546,6 +624,7 @@ class VerificationPipeline:
         result.run_manifest["reference_library"] = references.summary
         result.run_manifest["reference_library"]["health"] = reference_health(
             references.summary, result.documents, self.settings)
+        result.run_manifest["source_lookup_summary"] = source_lookup_summary(result.documents)
         result.timeline = build_timeline(
             [e for d in result.documents for e in _events_from(d)]
         )
