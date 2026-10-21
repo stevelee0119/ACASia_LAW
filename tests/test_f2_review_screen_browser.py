@@ -381,8 +381,7 @@ def test_f2_review_table_renders_four_columns(f2_browser_page):
     rows = panel.locator("#aiVerificationRows tr")
     expect(rows).to_have_count(2)
 
-    tier3_panel = page.locator('section[data-panel="issues"]')
-    tier3_rows = tier3_panel.locator("#tier3Rows tr")
+    tier3_rows = panel.locator("#tier3Rows tr")
     expect(tier3_rows).to_have_count(1)
 
     # 4열 확인이 필요한 내용 요약 박스 검증
@@ -415,7 +414,7 @@ def test_f2_review_summary_box_renders_instead_of_inline_workflow(f2_browser_pag
     for i in range(2):
         expect(rows.nth(i).locator(".review-summary-box")).to_be_visible()
 
-    tier3_rows = page.locator('section[data-panel="issues"] #tier3Rows tr')
+    tier3_rows = panel.locator("#tier3Rows tr")
     expect(tier3_rows.first.locator(".review-summary-box")).to_be_visible()
 
 
@@ -502,7 +501,7 @@ def test_f2_filters_search_severity_review_status(f2_browser_page):
     expect(rows).to_have_count(2)
 
     # 3단 표의 사실관계 항목('일자 선후 모순') 확인
-    tier3_rows = page.locator('section[data-panel="issues"] #tier3Rows tr')
+    tier3_rows = panel.locator("#tier3Rows tr")
     expect(tier3_rows).to_have_count(1)
     expect(tier3_rows.first).to_contain_text("일자 선후 모순")
 

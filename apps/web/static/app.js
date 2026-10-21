@@ -1761,14 +1761,14 @@ function renderReviewRow(item, tier, findingsMap) {
 
   if (tier === 2 && hasDistortion) {
     tdClaim.append(button("3단 무리한 주장 확인 →", () => {
-      switchTab("issues");
-      const target = $(`row_${item.item_id}`);
+      switchTab("review");
+      const target = $("tier3Table") || $(`row_${item.item_id}`);
       if (target) target.scrollIntoView({ behavior: "smooth" });
     }, "link-button small cross-ref-anchor"));
   } else if (tier === 3 && (isHallucinatedOrInvalid || hasDistortion)) {
     tdClaim.append(button("2단 출처 부존재 확인 →", () => {
       switchTab("review");
-      const target = $(`row_${item.item_id}`);
+      const target = $("reviewTable") || $(`row_${item.item_id}`);
       if (target) target.scrollIntoView({ behavior: "smooth" });
     }, "link-button small cross-ref-anchor"));
   }

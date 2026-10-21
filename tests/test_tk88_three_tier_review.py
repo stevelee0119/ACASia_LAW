@@ -315,21 +315,68 @@ def test_table1_ten_rows_rendered_in_correct_tier_with_mandatory_assertions():
 
 def test_table1_ten_rows_rendered_in_browser():
     """설계 메모 [표 1]의 10개 행이 브라우저 DOM 상에서 2단(6건)과 3단(4건)으로 정확히 렌더링되는지 검증."""
+    from urllib.parse import urlsplit
+
     pytest.importorskip("playwright")
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import expect, sync_playwright
+
+    ROOT = Path(__file__).resolve().parents[1]
+    static_dir = ROOT / "apps/web/static"
+    files = {f"/static/{p.relative_to(static_dir).as_posix()}": p for p in static_dir.rglob("*") if p.is_file()}
+    files["/"] = ROOT / "apps/web/index.html"
+
+    # 표 1의 1·2·3번 행의 실제 연결 finding (LEGAL_ARGUMENT_INVALID 결과)
+    synthetic_findings = [
+        {
+            "id": "f_arg_1",
+            "finding_id": "f_arg_1",
+            "type": "LEGAL_ARGUMENT_INVALID",
+            "finding_type": "LEGAL_ARGUMENT_INVALID",
+            "title": "성립 불가한 사건번호",
+            "detail": "성립 불가한 사건번호 판례 원용",
+            "severity": "CRITICAL",
+            "status": "UNCONFIRMED",
+            "confidence_features": {"rule_id": "LEGAL.CASE_NOT_FOUND", "basis": "FABRICATION_SUSPECTED"},
+            "document_id": "d1",
+        },
+        {
+            "id": "f_arg_2",
+            "finding_id": "f_arg_2",
+            "type": "LEGAL_ARGUMENT_INVALID",
+            "finding_type": "LEGAL_ARGUMENT_INVALID",
+            "title": "공식 DB 미확인",
+            "detail": "공식 소스 미존재",
+            "severity": "HIGH",
+            "status": "UNCONFIRMED",
+            "confidence_features": {"rule_id": "LEGAL.CASE_NOT_FOUND", "basis": "UNCONFIRMED"},
+            "document_id": "d1",
+        },
+        {
+            "id": "f_arg_3",
+            "finding_id": "f_arg_3",
+            "type": "LEGAL_ARGUMENT_INVALID",
+            "finding_type": "LEGAL_ARGUMENT_INVALID",
+            "title": "인용문 변형",
+            "detail": "원문과 어절 차이",
+            "severity": "HIGH",
+            "status": "UNCONFIRMED",
+            "confidence_features": {"rule_id": "LEGAL.CITATION_ERROR", "error_category": "LEGAL_CITATION_ERROR"},
+            "document_id": "d1",
+        },
+    ]
 
     # 메모 표 1의 10개 행 합성 review_items
     ten_items = [
-        {"item_id": "item_1", "kind": "CITATION", "cited_authority": "대법원 2099다12345", "verdict_label": VERDICT_INVALID_CASE_NUMBER, "basis": "FABRICATION_SUSPECTED"},
-        {"item_id": "item_2", "kind": "CITATION", "cited_authority": "대법원 2020다9999", "verdict_label": VERDICT_OFFICIAL_NOT_FOUND, "basis": "UNCONFIRMED", "official_status": "OFFICIAL_NOT_FOUND"},
-        {"item_id": "item_3", "kind": "CITATION", "cited_authority": "대법원 2018다2000", "verdict_label": VERDICT_QUOTE_MODIFIED, "error_category": "LEGAL_CITATION_ERROR"},
-        {"item_id": "item_4", "kind": "CITATION", "cited_authority": "대법원 2015다3000", "finding_type": "CASE_HOLDING_DISTORTION", "verdict_label": "판시 취지 왜곡"},
-        {"item_id": "item_5", "kind": "CITATION", "cited_authority": "구 민법 제100조", "finding_type": "TEMPORAL_LAW_MISMATCH"},
-        {"item_id": "item_6", "kind": "CITATION", "cited_authority": "대법원 2012다4000", "verdict_label": VERDICT_HOLDING_DISTORTION},
-        {"item_id": "item_7", "kind": "CITATION", "cited_authority": "대법원 2014다5000", "verdict_label": VERDICT_FACT_DISTINGUISHABLE, "error_category": "APPLICATION_DIFFERENCE"},
-        {"item_id": "item_8", "kind": "FACT", "rule_id": "RAG.REFERENCE_CONTRADICTION", "verdict_label": "참고자료 모순"},
-        {"item_id": "item_9", "kind": "FACT", "finding_type": "AI_HALLUCINATED_CONTENT", "claim_text": "허위 조항 주장"},
-        {"item_id": "item_10", "kind": "CITATION", "cited_authority": "대법원 2016다6000", "verdict_label": VERDICT_OFFICIAL_CONFIRMED, "official_status": "OFFICIAL_CONFIRMED", "basis": "OFFICIAL_CONFIRMED"},
+        {"item_id": "item_1", "kind": "CITATION", "finding_ids": ["f_arg_1"], "cited_authority": "대법원 2099다12345", "verdict_label": VERDICT_INVALID_CASE_NUMBER, "basis": "FABRICATION_SUSPECTED", "location": {"page": 1}},
+        {"item_id": "item_2", "kind": "CITATION", "finding_ids": ["f_arg_2"], "cited_authority": "대법원 2020다9999", "verdict_label": VERDICT_OFFICIAL_NOT_FOUND, "basis": "UNCONFIRMED", "official_status": "OFFICIAL_NOT_FOUND", "location": {"page": 2}},
+        {"item_id": "item_3", "kind": "CITATION", "finding_ids": ["f_arg_3"], "cited_authority": "대법원 2018다2000", "verdict_label": VERDICT_QUOTE_MODIFIED, "error_category": "LEGAL_CITATION_ERROR", "location": {"page": 3}},
+        {"item_id": "item_4", "kind": "CITATION", "cited_authority": "대법원 2015다3000", "finding_type": "CASE_HOLDING_DISTORTION", "verdict_label": "판시 취지 왜곡", "location": {"page": 4}},
+        {"item_id": "item_5", "kind": "CITATION", "cited_authority": "구 민법 제100조", "finding_type": "TEMPORAL_LAW_MISMATCH", "location": {"page": 5}},
+        {"item_id": "item_6", "kind": "CITATION", "cited_authority": "대법원 2012다4000", "verdict_label": VERDICT_HOLDING_DISTORTION, "location": {"page": 6}},
+        {"item_id": "item_7", "kind": "CITATION", "cited_authority": "대법원 2014다5000", "verdict_label": VERDICT_FACT_DISTINGUISHABLE, "error_category": "APPLICATION_DIFFERENCE", "location": {"page": 7}},
+        {"item_id": "item_8", "kind": "FACT", "rule_id": "RAG.REFERENCE_CONTRADICTION", "verdict_label": "참고자료 모순", "location": {"page": 8}},
+        {"item_id": "item_9", "kind": "FACT", "finding_type": "AI_HALLUCINATED_CONTENT", "claim_text": "허위 조항 주장", "location": {"page": 9}},
+        {"item_id": "item_10", "kind": "CITATION", "cited_authority": "대법원 2016다6000", "verdict_label": VERDICT_OFFICIAL_CONFIRMED, "official_status": "OFFICIAL_CONFIRMED", "basis": "OFFICIAL_CONFIRMED", "location": {"page": 10}},
     ]
 
     channel = os.environ.get("LV_TEST_BROWSER_CHANNEL")
@@ -343,20 +390,31 @@ def test_table1_ten_rows_rendered_in_browser():
             page = browser.new_page()
 
             def handle_route(route):
-                url = route.request.url
-                if "/api/projects" in url:
-                    route.fulfill(json=[{"id": "p1", "name": "TK88 프로젝트", "document_count": 1}])
-                elif "/result" in url:
-                    route.fulfill(json={
+                req = route.request
+                path = urlsplit(req.url).path
+                if path in files:
+                    return route.fulfill(path=str(files[path]))
+                replies = {
+                    "/api/health": {"status": "ok", "version": "0.5.0"},
+                    "/api/identity/me": {"user_id": "u", "role": "ADMIN", "authentication": "password"},
+                    "/api/verification-runs": {"active_count": 0, "runs": []},
+                    "/api/projects": [{"id": "p1", "name": "TK88 프로젝트", "can_delete": True, "document_count": 1, "external_ai_policy": "MASKED", "scope_revision": 0}],
+                    "/api/projects/p1": {"id": "p1", "name": "TK88 프로젝트", "can_delete": True, "document_count": 1, "external_ai_policy": "MASKED", "scope_revision": 0},
+                    "/api/projects/p1/documents": [{"id": "d1", "filename": "서면.pdf", "included_in_verification": True}],
+                    "/api/projects/p1/runs": [{"id": "r1", "project_id": "p1", "state": "COMPLETED", "document_ids": ["d1"], "started_at": "2026-10-21T00:00:00"}],
+                    "/api/projects/p1/findings": synthetic_findings,
+                    "/api/finding-categories": {"categories": {}, "tabs": {}, "counts": {}},
+                }
+                if path in replies:
+                    return route.fulfill(json=replies[path])
+                if path.endswith(("/result", "/results")):
+                    return route.fulfill(json={
                         "status": "COMPLETED",
-                        "documents": [{"id": "d1", "findings": [], "review_items": ten_items, "ai_hallucination_table": []}]
+                        "documents": [{"id": "d1", "filename": "서면.pdf", "quarantined": False, "findings": synthetic_findings, "review_items": ten_items, "ai_hallucination_table": []}]
                     })
-                elif "/runs" in url:
-                    route.fulfill(json=[{"id": "r1", "project_id": "p1", "state": "COMPLETED", "document_ids": ["d1"], "started_at": "2026-10-21T00:00:00"}])
-                elif "/finding-categories" in url:
-                    route.fulfill(json={"categories": {}, "tabs": {}, "counts": {}})
-                else:
-                    route.fulfill(status=200, json=[])
+                if path.endswith("/case-matrix"):
+                    return route.fulfill(body="null", content_type="application/json")
+                return route.fulfill(json=[])
 
             page.route("**/*", handle_route)
             page.goto("http://localhost/")
@@ -364,25 +422,26 @@ def test_table1_ten_rows_rendered_in_browser():
             # 검토 화면 진입
             page.get_by_role("button", name="검증·검토", exact=True).click()
 
-            # 2단 표 (#aiVerificationRows) 확인: 1, 2, 3, 4, 5, 10번 (총 6행)
+            # 2단 표 (#aiVerificationRows) 및 3단 표 (#tier3Rows) 검증: 확인할 항목(review) 탭 내 배치
             page.locator('.tabs button[data-tab="review"]').click()
+
+            # 2단 표 (#aiVerificationRows) 확인: 1, 2, 3, 4, 5, 10번 (총 6행)
             tier2_rows = page.locator("#aiVerificationRows tr")
-            assert tier2_rows.count() == 6, f"2단 표에는 6개 행이 렌더링되어야 합니다 (실제: {tier2_rows.count()}행)."
-            assert page.locator("#row_item_1").count() == 1, "1번 행은 2단 표에 있어야 합니다."
-            assert page.locator("#row_item_2").count() == 1, "2번 행은 2단 표에 있어야 합니다."
-            assert page.locator("#row_item_3").count() == 1, "3번 행은 2단 표에 있어야 합니다."
-            assert page.locator("#row_item_4").count() == 1, "4번 행은 2단 표에 있어야 합니다."
-            assert page.locator("#row_item_5").count() == 1, "5번 행은 2단 표에 있어야 합니다."
-            assert page.locator("#row_item_10").count() == 1, "10번 행은 2단 표에 있어야 합니다."
+            expect(tier2_rows).to_have_count(6)
+            expect(page.locator("#row_item_1")).to_be_visible()
+            expect(page.locator("#row_item_2")).to_be_visible()
+            expect(page.locator("#row_item_3")).to_be_visible()
+            expect(page.locator("#row_item_4")).to_be_visible()
+            expect(page.locator("#row_item_5")).to_be_visible()
+            expect(page.locator("#row_item_10")).to_be_visible()
 
             # 3단 표 (#tier3Rows) 확인: 6, 7, 8, 9번 (총 4행)
-            page.locator('.tabs button[data-tab="issues"]').click()
             tier3_rows = page.locator("#tier3Rows tr")
-            assert tier3_rows.count() == 4, f"3단 표에는 4개 행이 렌더링되어야 합니다 (실제: {tier3_rows.count()}행)."
-            assert page.locator("#tier3Rows #row_item_6").count() == 1, "6번 행은 3단 표에 있어야 합니다."
-            assert page.locator("#tier3Rows #row_item_7").count() == 1, "7번 행은 3단 표에 있어야 합니다."
-            assert page.locator("#tier3Rows #row_item_8").count() == 1, "8번 행은 3단 표에 있어야 합니다."
-            assert page.locator("#tier3Rows #row_item_9").count() == 1, "9번 행은 3단 표에 있어야 합니다."
+            expect(tier3_rows).to_have_count(4)
+            expect(page.locator("#tier3Rows #row_item_6")).to_be_visible()
+            expect(page.locator("#tier3Rows #row_item_7")).to_be_visible()
+            expect(page.locator("#tier3Rows #row_item_8")).to_be_visible()
+            expect(page.locator("#tier3Rows #row_item_9")).to_be_visible()
 
             browser.close()
     except Exception as exc:
