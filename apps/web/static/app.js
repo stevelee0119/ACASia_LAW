@@ -1795,6 +1795,23 @@ function renderFindings() {
           const firstFinding = findingsMap.get(item.finding_ids[0]);
           if (firstFinding) {
             tdClaim.append(button(`상세 보기: ${friendlyText(firstFinding.title)}`, () => openFinding(firstFinding), "link-button small"));
+            const ruleId = (firstFinding.confidence_features || {}).rule_id;
+            if (ruleId === "RAG.REFERENCE_CONTRADICTION") {
+              const refDetails = node("details", null, "reference-contradiction-details");
+              refDetails.append(node("summary", "참고자료 대조 전문 및 모델 의견 펼치기"));
+              const feat = firstFinding.confidence_features || {};
+              if (feat.claim_quote) {
+                refDetails.append(node("p", `서면 주장 인용: ${feat.claim_quote}`, "small"));
+              }
+              if (feat.basis_quote) {
+                refDetails.append(node("p", `참고자료 규정 원문: ${feat.basis_quote}`, "small"));
+              }
+              const modelOpinion = feat.model_opinion || firstFinding.detail;
+              if (modelOpinion) {
+                refDetails.append(node("p", `모델 의견: ${modelOpinion}`, "small"));
+              }
+              tdClaim.append(refDetails);
+            }
           }
           if (item.finding_ids.length > 1) {
             const derived = node("details", null, "derived-findings");
