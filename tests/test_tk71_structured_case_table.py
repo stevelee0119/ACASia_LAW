@@ -2,6 +2,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import time
+import gc
 import csv
 
 from openpyxl import Workbook
@@ -64,27 +65,90 @@ def test_exact_case_lookup_separates_match_and_metadata_controls():
 
 
 def test_case_number_normalization_repeated_input_is_bounded():
-    values = ["2099 다 12345; 2099나7", "2098헌마4"] * 2500
-    started = time.perf_counter()
-    found = [_case_numbers(value) for value in values]
-    elapsed = time.perf_counter() - started
-    assert found[0] == ["2099다12345", "2099나7"]
-    assert elapsed < 0.1
+    """사건번호 정규화 입력 길이(사건번호 개수) 증가에 대한 선형 복잡도 검증 (1배 대비 4배 처리시간 비 < 8.0, TK-95)."""
+    # 값 하나의 사건번호 개수 및 문자열 길이를 1배(약 750개 사건번호, 약 9,000자) vs 4배(약 3,000개 사건번호, 약 36,000자)로 키움
+    base_token = "2099 다 12345; 2099나789, 2098헌마4 "
+    val_1x = base_token * 250
+    val_4x = base_token * 1000
+
+    # 웜업
+    _case_numbers(base_token * 50)
+
+    times_1x = []
+    times_4x = []
+    gc_was_enabled = gc.isenabled()
+    try:
+        gc.disable()
+        for _ in range(7):
+            t0 = time.perf_counter()
+            found_1x = _case_numbers(val_1x)
+            times_1x.append(time.perf_counter() - t0)
+
+            t0 = time.perf_counter()
+            found_4x = _case_numbers(val_4x)
+            times_4x.append(time.perf_counter() - t0)
+    finally:
+        if gc_was_enabled:
+            gc.enable()
+
+    assert "2099다12345" in found_4x and "2099나789" in found_4x and "2098헌마4" in found_4x
+    min_1x = max(min(times_1x), 0.0001)
+    min_4x = min(times_4x)
+    ratio = min_4x / min_1x
+    # 실측: 1x 0.007~0.015s, 4x 0.028~0.060s, ratio 3.7~4.5배
+    assert ratio < 8.0, f"입력 길이 4배 처리시간 비는 8배 미만이어야 함: {ratio:.2f}배 (1x: {min_1x:.4f}s, 4x: {min_4x:.4f}s)"
+    assert min_4x < 1.0, f"4배 길이 최솟값 처리시간은 1초 미만이어야 함: {min_4x:.4f}s"
 
 
 def test_row_security_prefilter_repeated_input_is_bounded():
-    # The discarded prefilter is gone. Exercise semantic headers and row splits cold.
+    """헤더 매핑 및 행 청크 분할의 본문 길이 증가에 대한 선형 복잡도 검증 (1배 대비 4배 처리시간 비 < 8.0, TK-95)."""
     headers = ["번호", "제목", "판례 정보", "쟁점", "선정이유", "판결요지"]
-    record = {"indexed_text": "[합성] 2099다7 | " + "법정 요건과 예외를 검토한다. " * 100,
-              "case_head": "[합성] 2099다7", "record_id": "synthetic", "row": 2,
-              "sheet": "합성", "source_cell_range": "A2:F2"}
-    started = time.perf_counter()
-    found = [(_header_map(headers), _chunks(record)) for _ in range(2000)]
-    elapsed = time.perf_counter() - started
-    assert all(header["case_info"] == 2 for header, _parts in found)
-    assert all(part["text"].startswith(record["case_head"]) and len(part["text"]) <= 1200
-               for _header, parts in found for part in parts)
-    assert elapsed < 0.1
+    head = "[합성] 2099다7"
+    base_sentence = "법정 요건과 예외를 검토한다. 부정된 항변만으로 권리가 소멸하지 않는다. "
+    # 본문 길이를 1배(약 50,000자, ~50청크) vs 4배(약 200,000자, ~200청크)로 키움
+    rec_1x = {
+        "indexed_text": head + " | " + (base_sentence * 700),
+        "case_head": head, "record_id": "syn-1", "row": 2, "sheet": "합성", "source_cell_range": "A2:F2"
+    }
+    rec_4x = {
+        "indexed_text": head + " | " + (base_sentence * 2800),
+        "case_head": head, "record_id": "syn-4", "row": 2, "sheet": "합성", "source_cell_range": "A2:F2"
+    }
+
+    # 웜업
+    _header_map(headers)
+    _chunks(rec_1x)
+
+    times_1x = []
+    times_4x = []
+    gc_was_enabled = gc.isenabled()
+    try:
+        gc.disable()
+        for _ in range(7):
+            t0 = time.perf_counter()
+            for _ in range(30):
+                hdr_1x = _header_map(headers)
+                chk_1x = _chunks(rec_1x)
+            times_1x.append(time.perf_counter() - t0)
+
+            t0 = time.perf_counter()
+            for _ in range(30):
+                hdr_4x = _header_map(headers)
+                chk_4x = _chunks(rec_4x)
+            times_4x.append(time.perf_counter() - t0)
+    finally:
+        if gc_was_enabled:
+            gc.enable()
+
+    assert hdr_4x["case_info"] == 2
+    assert len(chk_4x) >= len(chk_1x) * 3
+    assert all(part["text"].startswith(rec_4x["case_head"]) and len(part["text"]) <= 1200 for part in chk_4x)
+    min_1x = max(min(times_1x), 0.0001)
+    min_4x = min(times_4x)
+    ratio = min_4x / min_1x
+    # 실측: 1x 0.005~0.012s, 4x 0.018~0.045s, ratio 3.5~4.2배
+    assert ratio < 8.0, f"본문 길이 4배 처리시간 비는 8배 미만이어야 함: {ratio:.2f}배 (1x: {min_1x:.4f}s, 4x: {min_4x:.4f}s)"
+    assert min_4x < 1.0, f"4배 본문 최솟값 처리시간은 1초 미만이어야 함: {min_4x:.4f}s"
 
 
 def test_row_injection_is_quarantined_without_dropping_other_rows():
@@ -224,11 +288,36 @@ def test_case_row_cache_and_claim_routing_keep_exact_priority_separate():
             db.commit()
         library.has_case_tables = lambda: True
         first = library._case_rows()
-        started = time.perf_counter()
-        for _ in range(2000):
-            assert first is library._case_rows()
-            assert library.match_case({"case_number": "2099다123"})["status"] == "MATCH"
-        assert time.perf_counter() - started < .1
+
+        # 웜업
+        for _ in range(50):
+            library.match_case({"case_number": "2099다123"})
+
+        times_1x = []
+        times_4x = []
+        gc_was_enabled = gc.isenabled()
+        try:
+            gc.disable()
+            for _ in range(7):
+                t0 = time.perf_counter()
+                for _ in range(2000):
+                    assert first is library._case_rows()
+                    assert library.match_case({"case_number": "2099다123"})["status"] == "MATCH"
+                times_1x.append(time.perf_counter() - t0)
+
+                t0 = time.perf_counter()
+                for _ in range(8000):
+                    assert first is library._case_rows()
+                    assert library.match_case({"case_number": "2099다123"})["status"] == "MATCH"
+                times_4x.append(time.perf_counter() - t0)
+        finally:
+            if gc_was_enabled:
+                gc.enable()
+        min_1x = max(min(times_1x), 0.0001)
+        min_4x = min(times_4x)
+        ratio = min_4x / min_1x
+        assert ratio < 8.0, f"캐시 조회 4배 시간 비는 8배 미만이어야 함: {ratio:.2f}배 (1x: {min_1x:.4f}s, 4x: {min_4x:.4f}s)"
+        assert min_4x < 2.0, f"캐시 조회 8,000회 최솟값은 2초 미만이어야 함: {min_4x:.4f}s"
         sources = library.search_case_table("계약 해석", citations=[{"case_number": "2099다123"}], limit=2)
     assert sources[0]["case_record_id"] == "exact"
     assert sources[0]["structured_case_table"] is True
@@ -415,3 +504,50 @@ def test_metadata_instruction_quarantines_entire_synthetic_workbook(tmp_path):
     assert parsed['reason'] == 'REFERENCE_QUARANTINED'
     assert parsed['chunks'] == []
     assert parsed['scan_findings']
+
+
+def test_timing_ratio_detects_synthetic_quadratic_blowup(monkeypatch):
+    """대상 함수(_case_numbers)에 입력 문자열 길이 제곱 비용 O(L^2) 주입 시 ratio < 8.0 기준이 실패함을 검증 (감시 능력 입증, TK-95)."""
+    import packages.rag_engine.case_table as table_mod
+    orig_case_numbers = table_mod._case_numbers
+
+    def quadratic_case_numbers(value: str):
+        # 대상 함수에 입력 문자열 길이에 비례한 제곱 비용 O(L^2) 주입
+        n = len(value) // 10
+        dummy = 0
+        for i in range(n):
+            for j in range(n):
+                dummy += (i ^ j) & 1
+        res = orig_case_numbers(value)
+        if dummy < 0:
+            res.append(str(dummy))
+        return res
+
+    monkeypatch.setattr(table_mod, "_case_numbers", quadratic_case_numbers)
+
+    base_token = "2099 다 12345; 2099나789, 2098헌마4 "
+    val_1x = base_token * 100   # 약 3,600자
+    val_4x = base_token * 400   # 약 14,400자 (4배)
+
+    times_1x = []
+    times_4x = []
+    gc_was_enabled = gc.isenabled()
+    try:
+        gc.disable()
+        for _ in range(5):
+            t0 = time.perf_counter()
+            table_mod._case_numbers(val_1x)
+            times_1x.append(time.perf_counter() - t0)
+
+            t0 = time.perf_counter()
+            table_mod._case_numbers(val_4x)
+            times_4x.append(time.perf_counter() - t0)
+    finally:
+        if gc_was_enabled:
+            gc.enable()
+
+    min_1x = max(min(times_1x), 0.0001)
+    min_4x = min(times_4x)
+    ratio = min_4x / min_1x
+    # O(L^2) 제곱 알고리즘이 주입되었으므로 비는 8.0 이상(이론치 16.0배, 실측 ~16.7배)이어야 함
+    assert ratio >= 8.0, f"대상 함수에 제곱 증가 주입 시 ratio 8.0 이상이어야 함: 실측 {ratio:.2f}배 (1x: {min_1x:.4f}s, 4x: {min_4x:.4f}s)"
