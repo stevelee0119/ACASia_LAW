@@ -1894,9 +1894,7 @@ function renderFindings() {
         let verifyText = (item.counteraction || "").trim();
         if (!verifyText) {
           const locStr = item.location?.display || (item.location?.page ? `${item.location.page}쪽` : (typeof item.location === "string" ? item.location : ""));
-          if (item.official_url) {
-            verifyText = `공식 원문 링크 대조 (${item.official_url})`;
-          } else if (item.cited_authority && locStr) {
+          if (item.cited_authority && locStr) {
             verifyText = `${item.cited_authority} 원문 대조 (${locStr})`;
           } else if (item.reference_case_match) {
             verifyText = `표준판례 대조: ${item.reference_case_match}`;
@@ -1915,7 +1913,6 @@ function renderFindings() {
         // 4) 상세 법리 의견 및 판정 전문 (TK-87 피드백 2: reasoningBlock 및 legal-reasoning 보존)
         if (item.reasoning_sections || item.legal_reasoning) {
           const extra = node("details", null, "summary-details");
-          extra.open = true;
           extra.append(node("summary", "상세 법리 의견"));
           extra.append(reasoningBlock(item));
           summaryBox.append(extra);

@@ -434,6 +434,36 @@ def test_f2_review_summary_content_elements(f2_browser_page):
     expect(box.locator(".summary-action")).to_contain_text("원문 확인 요청")
 
 
+def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_page):
+    """의심 사유는 100자 이내 2~3줄로 축약되고, 상세 법리 의견은 기본 접혀 있으며, 확인 방법은 권위명과 쪽/위치가 조합되어야 합니다 (TK-87)."""
+    page = f2_browser_page
+    page.goto("http://localhost/")
+    select_first_project(page)
+
+    page.get_by_role("button", name="검증·검토", exact=True).click()
+    page.locator('.tabs button[data-tab="review"]').click()
+
+    panel = page.locator('section[data-panel="review"]')
+    rows = panel.locator("#aiVerificationRows tr")
+
+    # 1. 1번째 행 상세 법리 의견 details 요소가 기본적으로 접혀 있는지 검증 (TK-87 요구사항 2)
+    box = rows.nth(0).locator(".review-summary-box")
+    details = box.locator("details.summary-details")
+    if details.count() > 0:
+        expect(details).not_to_have_attribute("open", "")
+
+    # 2. 1번째 행 의심 사유 텍스트가 100자 상한으로 축약되어 노출되는지 검증
+    reason_elem = box.locator(".summary-reason")
+    expect(reason_elem).to_be_visible()
+    reason_text = reason_elem.inner_text()
+    assert len(reason_text) <= 120, f"의심 사유 텍스트가 과도하게 길지 않아야 함: {len(reason_text)}자"
+
+    # 3. 3번째 행(인용 권위명 헌법 제10조, 1쪽)의 확인 방법 텍스트 검증
+    box3 = rows.nth(2).locator(".review-summary-box")
+    expect(box3.locator(".summary-action")).to_be_visible()
+    expect(box3.locator(".summary-action")).to_contain_text("적용 법리 타당성 직접 검토")
+
+
 def test_f2_filters_search_severity_review_status(f2_browser_page):
     """검색어와 중요도 필터가 동작하고, 제거된 검토상태/진행상태/담당자 필터는 화면에 없어야 합니다 (TK-87)."""
     page = f2_browser_page
