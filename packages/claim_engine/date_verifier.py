@@ -67,20 +67,64 @@ def _detect_heading(line: str) -> Optional[str]:
     return None
 
 
+def _extract_line_excerpt(text: str, start: int, end: int, max_len: int = 140) -> str:
+    """매칭 위치를 포함하는 줄의 텍스트를 정규화하여 발췌문으로 추출한다."""
+    line_start = text.rfind("\n", 0, start)
+    line_end = text.find("\n", end)
+    s_idx = 0 if line_start == -1 else line_start + 1
+    e_idx = len(text) if line_end == -1 else line_end
+    line_text = " ".join(text[s_idx:e_idx].split())
+    if not line_text:
+        return text[start:end]
+    if len(line_text) <= max_len:
+        return line_text
+    # 매칭 주변을 중심으로 자르기
+    rel_start = max(0, start - s_idx)
+    rel_end = min(len(line_text), end - s_idx)
+    match_width = rel_end - rel_start
+    half = max(0, (max_len - match_width) // 2)
+    w_start = max(0, rel_start - half)
+    w_end = min(len(line_text), w_start + max_len)
+    return line_text[w_start:w_end].strip()
+
+
+def _format_heading_prefix(eff_h: Optional[str]) -> str:
+    """소제목/항목명을 인용 설명의 접두사([소제목] ) 형태로 포맷한다."""
+    if not eff_h:
+        return ""
+    if eff_h.startswith("[") and eff_h.endswith("]"):
+        return f"{eff_h} "
+    return f"[{eff_h}] "
+
+
+COLON_ITEM_RE = re.compile(r"^[-*•\s]*(?:\d+[.)]\s*)?([가-힣a-zA-Z0-9_\s]{2,20})\s*[:\-]\s*$")
+
+
 def _find_effective_heading(text: str, match_start: int, block_heading: Optional[str]) -> Optional[str]:
     """매칭 위치 이전의 같은 줄 항목명 또는 블록/문서 흐름상 유효한 소제목을 반환한다 (TK-76 A-4)."""
-    # 1. 같은 줄에서 괄호형 항목명([항목명], 【항목명】, <항목명>)이 있으면 최우선 적용 (#120 공용 재사용)
     from .korean_amount import _find_item_heading, BRACKET_HEADING_RE
     line_start = text.rfind("\n", 0, match_start)
     s_idx = 0 if line_start == -1 else line_start + 1
     line_prefix = text[s_idx:match_start].strip()
 
+    # 1. 같은 줄에서 괄호형 항목명([항목명], 【항목명】, <항목명>)이 있으면 최우선 적용
     if BRACKET_HEADING_RE.search(line_prefix):
         item_h = _find_item_heading(text, match_start)
         if item_h:
             return item_h
 
-    # 2. 매칭 위치 이전 줄에서 소제목 탐색
+    # 1-2. 같은 줄의 선행 텍스트가 콜론형 항목명(예: '반환완료일: ', '입사일자 - ')인 경우 최우선 적용
+    m_colon = COLON_ITEM_RE.match(line_prefix)
+    if m_colon:
+        return m_colon.group(1).strip()
+
+    # 1-3. 같은 줄의 선행 텍스트 자체가 소제목/목차 형태(예: '1. 점검일자', '가. 계약일')인 경우 채택
+    if line_prefix:
+        line_h = _detect_heading(line_prefix)
+        if line_h:
+            return line_h
+
+    # 2. 매칭 위치 이전 줄에서 가장 가까운 소제목 탐색
     prefix_text = text[:match_start]
     lines = prefix_text.splitlines()
     for line in reversed(lines):
@@ -92,7 +136,7 @@ def _find_effective_heading(text: str, match_start: int, block_heading: Optional
     if block_heading:
         return block_heading
 
-    # 4. 소제목이 없는 경우 같은 줄 항목명 반환
+    # 4. 상위 소제목이 전혀 없는 경우 같은 줄의 짧은 명사구 항목명 fallback
     item_h = _find_item_heading(text, match_start)
     if item_h:
         return item_h
@@ -152,6 +196,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
 
                 if weekday_str != actual_weekday_str:
                     matched_str = m.group(0)
+                    line_excerpt = _extract_line_excerpt(text, m.start(), m.end())
                     eff_h = _find_effective_heading(text, m.start(), current_heading)
 
                     features = {
@@ -164,7 +209,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                     if eff_h:
                         features["heading"] = eff_h
 
-                    h_prefix = f"[{eff_h}] " if eff_h else ""
+                    h_prefix = _format_heading_prefix(eff_h)
 
                     findings.append(
                         Finding.create(
@@ -191,7 +236,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
                                     page=block.page,
-                                    excerpt=matched_str,
+                                    excerpt=line_excerpt,
                                     supports=True,
                                 )
                             ],
@@ -210,6 +255,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
             if 1 <= month <= 12 and 1 <= day <= 31:
                 if _parse_valid_date(y, month, day) is None:
                     matched_str = m.group(0)
+                    line_excerpt = _extract_line_excerpt(text, m.start(), m.end())
                     is_leap = calendar.isleap(y)
                     eff_h = _find_effective_heading(text, m.start(), current_heading)
 
@@ -224,7 +270,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                     if eff_h:
                         features["heading"] = eff_h
 
-                    h_prefix = f"[{eff_h}] " if eff_h else ""
+                    h_prefix = _format_heading_prefix(eff_h)
 
                     findings.append(
                         Finding.create(
@@ -251,7 +297,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
                                     page=block.page,
-                                    excerpt=matched_str,
+                                    excerpt=line_excerpt,
                                     supports=True,
                                 )
                             ],
@@ -268,6 +314,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                 # 이미 1)에서 찾은 것이 아닌 경우
                 if not any(f.type == FindingType.EVIDENCE_DATE_INVALID and "29" in f.title for f in findings if f.block_id == block.block_id):
                     matched_str = m_feb29.group(0)
+                    line_excerpt = _extract_line_excerpt(text, m_feb29.start(), m_feb29.end())
                     eff_h = _find_effective_heading(text, m_feb29.start(), current_heading)
 
                     features = {
@@ -281,7 +328,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                     if eff_h:
                         features["heading"] = eff_h
 
-                    h_prefix = f"[{eff_h}] " if eff_h else ""
+                    h_prefix = _format_heading_prefix(eff_h)
 
                     findings.append(
                         Finding.create(
@@ -307,7 +354,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
                                     page=block.page,
-                                    excerpt=matched_str,
+                                    excerpt=line_excerpt,
                                     supports=True,
                                 )
                             ],
@@ -335,6 +382,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                 # 달라질 수 있으므로 계산 오류로 보지 않는다. 2일 이상 차이만 판정한다.
                 if actual_days > 0 and abs(actual_days - stated_days) > 1:
                     matched_str = m.group(0)
+                    line_excerpt = _extract_line_excerpt(text, m.start(), m.end())
                     eff_h = _find_effective_heading(text, m.start(), current_heading)
 
                     features = {
@@ -349,7 +397,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                     if eff_h:
                         features["heading"] = eff_h
 
-                    h_prefix = f"[{eff_h}] " if eff_h else ""
+                    h_prefix = _format_heading_prefix(eff_h)
 
                     findings.append(
                         Finding.create(
@@ -376,7 +424,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
                                     page=block.page,
-                                    excerpt=matched_str,
+                                    excerpt=line_excerpt,
                                     supports=True,
                                 )
                             ],
@@ -424,7 +472,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             if eff_h:
                                 features["heading"] = eff_h
 
-                            h_prefix = f"[{eff_h}] " if eff_h else ""
+                            h_prefix = _format_heading_prefix(eff_h)
 
                             # 중복 방지
                             if not any(f.title.startswith("발송/통지일 선후 역전") and f.page == window_blocks[0].page for f in findings):

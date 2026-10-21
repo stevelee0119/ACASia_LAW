@@ -25,7 +25,7 @@ def _make_doc(*texts: str, doc_id: str = "doc_date_test_1") -> NormalizedDocumen
 
 
 def test_positive_date_weekday_with_bracket_heading():
-    """양성 1: 괄호형 항목명([점검일정]) 뒤 요일 불일치에서 항목명 접두 반영 검증."""
+    """양성 1: 괄호형 항목명([점검일정]) 뒤 요일 불일치에서 항목명 접두 및 줄 문맥 발췌 반영 검증."""
     # 2026. 3. 20.은 금요일인데 (목)으로 기재
     doc = _make_doc(
         "준비서면\n[점검일정] 2026. 3. 20.(목) 현장 확인을 실시하기로 하였습니다."
@@ -36,6 +36,7 @@ def test_positive_date_weekday_with_bracket_heading():
     assert f.confidence_features.get("heading") == "[점검일정]"
     assert "[점검일정]" in f.detail
     assert "날짜와 요일 불일치" in f.title
+    assert "현장 확인을 실시하기로 하였습니다" in f.evidence[0].excerpt
 
 
 def test_positive_date_invalid_hyphen_with_bracket_heading():
