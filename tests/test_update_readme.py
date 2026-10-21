@@ -44,3 +44,30 @@ def test_versions_sort_numerically_and_cells_are_escaped():
     ordered = sorted(rows, key=lambda r: module._version_key(r["version"]))
     assert [r["version"] for r in ordered] == ["0.6.9", "0.6.10", "0.7.0"]
     assert "a\\|b" in module.render_table(ordered)
+
+
+def test_summary_groups_patch_versions_by_release_line_newest_first():
+    """README 표는 릴리스 계열(주.부)마다 한 줄로 묶고 최신 계열이 위에 온다. 요약이 있으면 그것을 개조식으로 싣는다."""
+    module = _module()
+    rows = [{"version": v, "date": d, "changes": [f"{v} 상세"]}
+            for v, d in (("0.9.0", "2026-09-26"), ("0.9.13", "2026-09-30"), ("0.10.0", "2026-10-04"))]
+    table = module.render_summary(rows, {"0.9": ["요약 하나", "요약 둘"]})
+    assert table.index("| **0.10** (0.10.0) |") < table.index("| **0.9** (0.9.0–0.9.13) |")
+    assert "| 2026-09-26 ~ 2026-09-30 | • 요약 하나<br>• 요약 둘 |" in table
+    assert "0.9.13 상세" not in table                                 # 요약이 있으면 상세는 싣지 않는다
+
+
+def test_summary_falls_back_to_short_details_when_no_highlight():
+    """요약이 없는 계열(새 버전 자동 추가 등)은 최신 버전 상세 앞 두 항목을 줄여 쓴다."""
+    module = _module()
+    rows = [{"version": "0.14.0", "date": "2026-11-01",
+             "changes": ["새 탐지: 긴 설명(괄호 속 세부)", "둘째 항목", "셋째 항목"]}]
+    table = module.render_summary(rows, {})
+    assert "• 새 탐지<br>• 둘째 항목 |" in table and "셋째 항목" not in table
+
+
+def test_release_history_file_is_in_sync():
+    """버전별 상세 이력(docs/RELEASE_HISTORY.md)도 releases.json과 일치해야 한다."""
+    module = _module()
+    releases = module.load_releases(add_missing=False)
+    assert module.history_text(releases) == (ROOT / "docs" / "RELEASE_HISTORY.md").read_text(encoding="utf-8")
