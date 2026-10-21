@@ -654,21 +654,17 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
             continue
         # 호증 중복 검사는 정식 증거 목록 행끼리만 비교한다.
         # 본문 서술 영역(not is_in_section)에서 추출된 행 중:
-        # 1) 줄 머리가 아닌 줄 중간에 등장한 호증(span[0] > 0)
-        # 2) 호증 번호 바로 뒤에 조사가 결합되어 주어·목적어로 쓰인 본문 문장(예: '갑 제3호증을', '갑 제1호증은')
-        # 3) 서증명 없이 단순 본문 인용·참조 표기만 있는 행
+        # 1) 호증 번호 직후 조사가 결합되어 주어·목적어로 쓰인 본문 문장(예: '갑 제3호증을', '갑 제1호증은')
+        #    (단, '갑 제1호증의 1' 등 가지번호는 조사가 아니므로 보존)
+        # 2) 서증명 없이 단순 본문 인용·참조 표기만 있는 행
         # 은 목록 행이 아닌 본문 서술문이므로 중복 호증 집계에서 제외한다 (은퇴 10 A등급 오탐 방지 및 입증취지 포함 진짜 목록 보존).
         if not is_in_section:
             name = (row.get("name") or "").strip()
-            # 1) 줄 중간에 등장한 호증 언급 (span[0] > 0)
-            line_group = row.get("line_group")
-            if line_group and len(line_group) >= 2 and isinstance(line_group[1], (tuple, list)):
-                if line_group[1][0] > 0:
+            # 가지번호(예: '의 1', '의 2')는 조사가 아니므로 보존
+            if not re.match(r"^의\s*\d+", name):
+                if re.match(r"^(?:[이가은는을를에와과]|에서|으로|부터|까지|보다)(?:\s|$)", name):
                     continue
-            # 2) 호증 번호 직후 조사가 결합된 문장 (주어·목적어·부사어)
-            if re.match(r"^(?:[이가은는을를에의와과]|에서|으로|부터|까지|보다)(?:\s|$)", name):
-                continue
-            # 3) 단순 인용·참조 표기
+            # 단순 인용·참조 표기
             if _EXHIBIT_REF_SENTENCE_RE.search(name):
                 continue
         keys = [(row["party"], row["number"], b) for b in row.get("branches") or []] or [(row["party"], row["number"], None)]
@@ -1092,6 +1088,28 @@ def check_evidence_numbering_mismatches(
                         )
 
     # 3. 본문·목록 동일 자료명의 호증 번호 불일치 (축 3, SUSPICIOUS·B, 4자 이상)
+    # 평가 측 지침 준수:
+    # 1) '지정' 구조에서만 판정 (따옴표 서증명, 괄호 호증, 서술형 지정, 직결 호증)
+    #    - 조사 '와·과·및·이나' 등 병렬 나열 구조 및 일반 서술절 조사 결합은 철저히 제외.
+    # 2) 자기 번호 우선: 본문 번호가 목록에 있고 그 목록 자료명이 본문 자료명과 부합하면
+    #    다른 번호와의 불일치를 판정하지 않는다.
+
+    def _is_self_match(body_k: tuple, test_norm: str) -> bool:
+        """본문 번호의 목록 자료명이 본문 자료명과 같거나 부합하는지 확인 (자기 번호 우선)."""
+        if body_k not in list_name_by_key:
+            return False
+        _, my_norm = list_name_by_key[body_k]
+        if not my_norm or not test_norm:
+            return False
+        # 완전 일치, 또는 수식어 결합('변경/추가/2차 + 자료명') 접미/포함 일치
+        if test_norm == my_norm:
+            return True
+        if len(my_norm) >= 3 and (test_norm.endswith(my_norm) or my_norm.endswith(test_norm)):
+            return True
+        if len(test_norm) >= 4 and len(my_norm) >= 4 and (test_norm in my_norm or my_norm in test_norm):
+            return True
+        return False
+
     # 패턴 1: 호증 뒤 자료명 (예: 갑 제22호증 운반 사진)
     pat1 = re.compile(
         r"(?P<label>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)\s*(?P<rest>[^\n.,;:]{2,40})"
@@ -1107,6 +1125,11 @@ def check_evidence_numbering_mismatches(
             continue
         body_key = (body_refs[0]["party"], body_refs[0]["number"])
         if body_key[0] not in listed_parties:
+            continue
+
+        rest_norm = re.sub(r"\s+", "", rest)
+        # 자기 번호 우선: 본문 번호의 목록 자료명과 이미 부합하면 건너뜀
+        if _is_self_match(body_key, rest_norm):
             continue
 
         for list_key, (l_name, l_norm) in list_name_by_key.items():
@@ -1141,27 +1164,63 @@ def check_evidence_numbering_mismatches(
                             )
                         )
 
-    # 패턴 2: 자료명 뒤 호증 (예: 운반 사진 갑 제22호증, 계약서(갑 제1호증), 「합의서」(갑 제2호증))
-    # 자료명 뒤에 조사(을/를/이/가/에/의 등)가 붙어 있으면 앞 절의 목적어/부사어이므로 제외 (대조군 오탐 방지)
-    pat2 = re.compile(
-        r"(?:[「‘'\"](?P<qname>[^」’'\"]{2,30})[」’'\"]\s*(?:\(\s*)?(?P<qlabel>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:\s*\))?"
-        r"|(?P<name>[가-힣A-Za-z0-9_]{2,20}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)\s*(?:\(\s*|\s+)(?P<label>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:\s*\))?)"
-    )
-    for m in pat2.finditer(body_text):
-        qname, qlbl = m.group("qname"), m.group("qlabel")
-        if qname and qlbl:
-            nm_clean = qname.strip()
-            lbl = qlbl
-        else:
-            nm = m.group("name").strip()
-            lbl = m.group("label")
-            # 자료명 뒤에 결합된 조사를 분리·정제하여 대조 (83ddb07 양방향 자료명 매칭 복원)
-            # 단, 조사 분리 후에도 유효 자료명(4자 이상)이 유지되고 목록의 정식 서증명과 정확 일치할 때만 수용
-            nm_clean = re.sub(r"(?:에서|으로|부터|까지|[이가은는을를의에로와과도만])$", "", nm).strip()
+    # 패턴 2: 자료명 뒤 호증 - 지정 구조 한정 수집
+    pat2_candidates = []
 
+    # (1) 따옴표 서증명: 「계약서」(갑 제1호증), '합의서' 갑 제2호증
+    for m in re.finditer(
+        r"[「‘'\"](?P<qname>[^」’'\"]{2,30})[」’'\"]\s*(?:\(\s*)?(?P<lbl>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:\s*\))?",
+        body_text,
+    ):
+        pat2_candidates.append((m.group("qname").strip(), m.group("lbl"), m.start(), m.end(), False))
+
+    # (2) 괄호 묶임: 서증명(갑 제N호증), 변경계약서 (갑 제2호증)
+    for m in re.finditer(
+        r"(?P<name>[가-힣A-Za-z0-9_]{2,25}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)\s*\(\s*(?P<lbl>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)\s*\)",
+        body_text,
+    ):
+        pat2_candidates.append((m.group("name").strip(), m.group("lbl"), m.start(), m.end(), True))
+
+    # (3) 서술형 지정: 서증명(을/를) 갑 제N호증으로 제출/원용/지정
+    for m in re.finditer(
+        r"(?P<name>[가-힣A-Za-z0-9_]{2,25}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)\s*(?P<lbl>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:으로|로)\s*(?:제출|원용|지정|신청|제시|증명)",
+        body_text,
+    ):
+        raw = m.group("name").strip()
+        cleaned = re.sub(r"[을를]$", "", raw).strip()
+        pat2_candidates.append((cleaned, m.group("lbl"), m.start(), m.end(), False))
+
+    # (4) 직결 호증: 서증명 갑 제N호증 (공백 1개 이상 연결)
+    for m in re.finditer(
+        r"(?P<name>[가-힣A-Za-z0-9_]{2,20}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)\s+(?P<lbl>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)",
+        body_text,
+    ):
+        pat2_candidates.append((m.group("name").strip(), m.group("lbl"), m.start(), m.end(), True))
+
+    for nm_raw, lbl, start_pos, end_pos, check_particle in pat2_candidates:
+        window = body_text[max(0, start_pos - 30) : min(len(body_text), end_pos + 30)]
+        if _PRIOR_SUBMISSION_RE.search(window):
+            continue
+
+        # 조사 '와·과·및·이나' 등 병렬 나열 구조 및 일반 서술절 조사 결합 제외
+        if check_particle:
+            # 자료명 끝에 병렬 조사(와/과/및/이나 등)나 서술격 조사가 붙은 경우 제외
+            if re.search(r"(?:와|과|및|이나|도|은|는|이|가|에|의|로|에서|부터|까지)$", nm_raw):
+                continue
+            # 자료명 직전 문맥에 '및', '또는', '와', '과' 병렬 접속사가 위치한 경우 제외
+            pre_window = body_text[max(0, start_pos - 5) : start_pos]
+            if re.search(r"(?:및|또는|와|과)\s*$", pre_window):
+                continue
+
+        nm_clean = nm_raw
         nm_norm = re.sub(r"\s+", "", nm_clean)
         if len(nm_norm) < 4:
             continue
+
+        # 일반 서술 어휘 배제
+        if re.search(r"(?:주장|지적|사실|내용|기재|경우|사항|이유|취지|부분|서면|준비서면|답변서|소장|신청서)$", nm_norm):
+            continue
+
         body_refs = parse_exhibits(lbl)
         if not body_refs:
             continue
@@ -1169,8 +1228,12 @@ def check_evidence_numbering_mismatches(
         if body_key[0] not in listed_parties:
             continue
 
+        # 자기 번호 우선: 본문 번호의 목록 자료명이 본문 자료명과 부합하면 판정 제외
+        if _is_self_match(body_key, nm_norm):
+            continue
+
         for list_key, (l_name, l_norm) in list_name_by_key.items():
-            is_match = (nm_norm == l_norm) or (len(l_norm) >= 4 and nm_norm.endswith(l_norm))
+            is_match = (nm_norm == l_norm) or (len(l_norm) >= 4 and nm_norm.endswith(l_norm) and not any(nm_norm.endswith(c + l_norm) for c in ("와", "과", "및")))
             if body_key != list_key and body_key[0] == list_key[0] and is_match:
                 list_lbl = f"{list_key[0]} 제{list_key[1]}호증"
                 dup = any(

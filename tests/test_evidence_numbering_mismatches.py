@@ -502,3 +502,60 @@ def test_positive_mismatch_with_modifier_prefix():
     mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
     assert len(mismatches) == 1, f"수식어 결합 자료명의 번호 불일치가 탐지되어야 함: {mismatches}"
 
+
+# --- 30. 대조군 시험 12 (조사 '와·과'로 이어진 병렬 나열 정상 서술 불일치 오탐 배제) ---
+def test_control_parallel_particle_wa_gwa_not_mismatched():
+    """자료명 뒤 조사 '와·과'로 다른 서증과 나열된 정상 서술에서 자료명 불일치 오탐 배제 (TK-126 A-3 요구 1·4)."""
+    doc = _make_doc([
+        "원고는 부동산매매계약서와 갑 제2호증 영수증을 종합하여 볼 때 매매대금이 완납되었음을 밝힙니다.",
+        "입증방법",
+        "1. 갑 제1호증 부동산매매계약서",
+        "2. 갑 제2호증 영수증",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(mismatches) == 0, f"병렬 조사 '와'로 나열된 정상 서술이 불일치로 오탐되어서는 안 됨: {mismatches}"
+
+
+# --- 31. 대조군 시험 13 (접속사 '및'으로 이어진 병렬 나열 정상 서술 불일치 오탐 배제) ---
+def test_control_parallel_conjunction_and_particles_not_mismatched():
+    """자료명 뒤 '및'으로 다른 서증과 나열된 정상 서술에서 자료명 불일치 오탐 배제 (TK-126 A-3 요구 1·4)."""
+    doc = _make_doc([
+        "피고는 법인사업자등록증 및 갑 제3호증 위임장을 근거로 적법한 대표권이 존재한다고 다투고 있습니다.",
+        "입증방법",
+        "1. 갑 제1호증 법인사업자등록증",
+        "2. 갑 제3호증 소송대리인위임장",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(mismatches) == 0, f"병렬 접속사 '및'으로 나열된 정상 서술이 불일치로 오탐되어서는 안 됨: {mismatches}"
+
+
+# --- 32. 대조군 시험 14 (자기 번호 우선: '변경' 수식어가 붙은 정상 서술 불일치 오탐 배제) ---
+def test_control_self_number_priority_modifier_variation():
+    """목록에 '공사계약서'와 '변경 공사계약서'가 있고 본문 '변경 공사계약서(갑 제2호증)' 인용 시 자기 번호 우선으로 오탐 배제 (TK-126 A-3 요구 2·4)."""
+    doc = _make_doc([
+        "원고는 변경 공사계약서(갑 제2호증)에 따라 추가 공사대금의 지급을 구합니다.",
+        "입증방법",
+        "1. 갑 제1호증 공사계약서",
+        "2. 갑 제2호증 변경 공사계약서",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(mismatches) == 0, f"자기 번호 목록명과 일치하는 수식어 결합 행은 다른 번호와 접미 일치해도 오탐 배제되어야 함: {mismatches}"
+
+
+# --- 33. 대조군 시험 15 (자기 번호 우선: '2차 추가' 수식어가 붙은 정상 서술 불일치 오탐 배제) ---
+def test_control_self_number_priority_numeric_stage_variation():
+    """목록에 '합의서'와 '2차 추가 합의서'가 있고 본문 '2차 추가 합의서(갑 제6호증)' 인용 시 자기 번호 우선으로 오탐 배제 (TK-126 A-3 요구 2·4)."""
+    doc = _make_doc([
+        "당사자들은 2차 추가 합의서(갑 제6호증)를 체결하여 종전의 잔여 채무액을 최종 확정하였습니다.",
+        "입증방법",
+        "1. 갑 제5호증 기본합의서",
+        "2. 갑 제6호증 2차 추가 합의서",
+    ])
+    findings = check_evidence_numbering_mismatches(doc)
+    mismatches = [f for f in findings if f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"]
+    assert len(mismatches) == 0, f"자기 번호 목록명과 일치하는 차수 수식어 결합 행은 다른 번호와 접미 일치해도 오탐 배제되어야 함: {mismatches}"
+
+
