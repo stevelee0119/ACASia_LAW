@@ -121,6 +121,9 @@ def test_web_table_renders_each_part_on_its_own_line():
             page.wait_for_function("state.result && state.result.documents && state.result.documents.length === 1")
             page.evaluate("switchTab('review')")
             cell = page.locator("#aiVerificationRows tr").nth(0).locator("td").nth(3)
+            # TK-87: 4열 상세 법리 의견은 기본 접힘 상태이므로 레이아웃 측정을 위해 details 펼침
+            cell.locator("details.summary-details").evaluate("d => d.open = true")
+            page.locator("#aiVerificationRows tr").nth(1).locator("td").nth(3).locator("details.summary-details").evaluate("d => d.open = true")
             lines = cell.locator(".reasoning-line")
             expect(lines).to_have_count(2)
             expect(lines.nth(0)).to_have_text("타당성 검토 결과 : 근거가 확장되지 않습니다.")

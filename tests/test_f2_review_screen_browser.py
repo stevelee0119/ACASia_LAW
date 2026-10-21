@@ -129,7 +129,7 @@ def f2_browser_page():
             "finding_ids": ["f_cit_1", "f_cit_2"],
             "citation_id": "cit_1",
             "reasoning_sections": {
-                "review": "타당성 검토 결과: 해당 판례 미존재",
+                "review": "타당성 검토 결과: 해당 판례 미존재에 따른 심각한 법리 왜곡 가능성이 있으며 원고의 주장은 선행 판결의 판시 내용과 상치되는 것으로 분석되어 추가적인 사실관계 및 원문 전수 조사가 반드시 필요하다고 판단됩니다",
                 "ai_label": "3개 모델 일치",
                 "opinions": [],
             },
@@ -167,7 +167,7 @@ def f2_browser_page():
             "finding_ids": [],
             "citation_id": "cit_pure",
             "reasoning_sections": None,
-            "counteraction": "적용 법리 타당성 직접 검토",
+            "counteraction": "",
         },
     ]
 
@@ -358,7 +358,7 @@ def f2_browser_page():
 
 
 def test_f2_review_table_renders_four_columns(f2_browser_page):
-    """F2 확인할 항목 탭은 위치/문서 주장·인용 내용/근거 확인 결과/법리 타당성·반박·대응 4열 통합 표를 렌더링해야 합니다."""
+    """F2 확인할 항목 탭은 위치/문서 주장·인용 내용/근거 확인 결과/확인이 필요한 내용 4열 통합 표를 렌더링해야 합니다."""
     page = f2_browser_page
     page.goto("http://localhost/")
     select_first_project(page)
@@ -375,15 +375,22 @@ def test_f2_review_table_renders_four_columns(f2_browser_page):
     expect(headers.nth(0)).to_have_text("위치")
     expect(headers.nth(1)).to_have_text("문서 주장 및 인용 내용")
     expect(headers.nth(2)).to_have_text("인용 오류·미확인 근거 및 주장 평가 (작성 주체 판단에 쓰지 않음)")
-    expect(headers.nth(3)).to_have_text("법리적 타당성 검토 및 반박 근거")
+    expect(headers.nth(3)).to_have_text("확인이 필요한 내용")
 
     # 3개 행 노출 확인
     rows = panel.locator("#aiVerificationRows tr")
     expect(rows).to_have_count(3)
 
+    # 4열 확인이 필요한 내용 요약 박스 검증
+    summary_box = rows.first.locator(".review-summary-box")
+    expect(summary_box).to_be_visible()
+    expect(summary_box.locator(".summary-target")).to_contain_text("확인 대상")
+    expect(summary_box.locator(".summary-reason")).to_contain_text("의심 사유")
+    expect(summary_box.locator(".summary-action")).to_contain_text("확인 방법")
 
-def test_f2_inline_workflow_manipulation(f2_browser_page):
-    """단일 finding 연결 행은 인라인 select 조작 시 실제 계약(workflow_state, decision, revision 등)으로 PUT 저장되어야 합니다."""
+
+def test_f2_review_summary_box_renders_instead_of_inline_workflow(f2_browser_page):
+    """행 안의 검토 상태·우선순위·담당자 입력 컨트롤이 제거되고 확인이 필요한 내용 요약 박스가 렌더링되어야 합니다."""
     page = f2_browser_page
     page.goto("http://localhost/")
     select_first_project(page)
@@ -394,37 +401,19 @@ def test_f2_inline_workflow_manipulation(f2_browser_page):
     panel = page.locator('section[data-panel="review"]')
     rows = panel.locator("#aiVerificationRows tr")
 
-    # 1번째 행 (단일 finding 연결 행: f_fact_1, 우선순위 1로 상단 정렬, 초기상태 ACCEPTED)
-    row_single = rows.nth(0)
-    select_single = row_single.locator(".inline-workflow-select")
-    expect(select_single).to_be_visible()
-    expect(select_single).to_have_value("ACCEPTED")
+    # 행 안의 워크플로우 컨트롤(select, input)이 존재하지 않음을 확인
+    expect(panel.locator(".inline-workflow-select")).to_have_count(0)
+    expect(panel.locator(".inline-priority-select")).to_have_count(0)
+    expect(panel.locator(".inline-assignee-input")).to_have_count(0)
+    expect(panel.locator(".inline-workflow-note")).to_have_count(0)
 
-    # 오탐(FALSE_POSITIVE)으로 상태 변경
-    select_single.select_option("FALSE_POSITIVE")
-
-    # 저장이 완료되어 토스트가 뜰 때까지 대기
-    expect(page.locator("#toast")).to_contain_text("검토 상태가 저장되었습니다.")
-
-    # 실제 계약 필드 단언 (workflow_state: COMPLETED, decision: FALSE_POSITIVE, revision: 1, 담당자·우선순위·메모 보존)
-    assert len(page._workflow_put_calls) == 1
-    call = page._workflow_put_calls[0]
-    assert "f_fact_1" in call["path"]
-    assert call["payload"]["workflow_state"] == "COMPLETED"
-    assert call["payload"]["decision"] == "FALSE_POSITIVE"
-    assert call["payload"]["revision"] == 1
-    assert call["payload"]["priority"] == 1
-    assert call["payload"]["assignee"] == "홍길동"
-    assert call["payload"]["note"] == "초기메모"
-
-    # 3번째 행 (순수 인용 행): 저장 불가 안내 확인
-    row_pure = rows.nth(2)
-    expect(row_pure.locator(".inline-workflow-note")).to_contain_text("검토 상태: 저장 불가 (정보 전용)")
-    expect(row_pure.locator(".inline-workflow-select")).to_have_count(0)
+    # 모든 행의 4열에 확인 요약 박스가 렌더링되어 있음을 확인
+    for i in range(3):
+        expect(rows.nth(i).locator(".review-summary-box")).to_be_visible()
 
 
-def test_f2_inline_workflow_agreed_manipulation(f2_browser_page):
-    """행 안에서 확인 전(NEEDS_REVIEW) 선택 시 workflow_state=NOT_STARTED, decision=UNDECIDED로 저장되어야 합니다."""
+def test_f2_review_summary_content_elements(f2_browser_page):
+    """확인이 필요한 내용 요약은 무엇을(인용·주장), 왜(판정 사유), 어떻게(원문 대조 위치)를 포함해야 합니다."""
     page = f2_browser_page
     page.goto("http://localhost/")
     select_first_project(page)
@@ -435,20 +424,49 @@ def test_f2_inline_workflow_agreed_manipulation(f2_browser_page):
     panel = page.locator('section[data-panel="review"]')
     rows = panel.locator("#aiVerificationRows tr")
 
-    # 1번째 행 (단일 finding: f_fact_1, 초기상태 ACCEPTED)에서 확인 전으로 변경
-    row_single = rows.nth(0)
-    select_single = row_single.locator(".inline-workflow-select")
-    select_single.select_option("NEEDS_REVIEW")
+    # 1번째 행 확인 요약 검증 (라벨뿐만 아니라 기존 필드값으로부터 조합되었는지 실제 내용 검증 - TK-87)
+    box = rows.nth(0).locator(".review-summary-box")
+    expect(box.locator(".summary-target")).to_be_visible()
+    expect(box.locator(".summary-target")).to_contain_text("대법원 2022다99999 판결")
+    expect(box.locator(".summary-reason")).to_be_visible()
+    expect(box.locator(".summary-reason")).to_contain_text("타당성 검토 결과: 해당 판례 미존재")
+    expect(box.locator(".summary-action")).to_be_visible()
+    expect(box.locator(".summary-action")).to_contain_text("원문 확인 요청")
 
-    expect(page.locator("#toast")).to_contain_text("검토 상태가 저장되었습니다.")
-    assert len(page._workflow_put_calls) == 1
-    call = page._workflow_put_calls[0]
-    assert call["payload"]["workflow_state"] == "NOT_STARTED"
-    assert call["payload"]["decision"] == "UNDECIDED"
+
+def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_page):
+    """의심 사유는 100자 이내 2~3줄로 축약되고, 상세 법리 의견은 기본 접혀 있으며, 확인 방법은 권위명과 쪽/위치가 조합되어야 합니다 (TK-87)."""
+    page = f2_browser_page
+    page.goto("http://localhost/")
+    select_first_project(page)
+
+    page.get_by_role("button", name="검증·검토", exact=True).click()
+    page.locator('.tabs button[data-tab="review"]').click()
+
+    panel = page.locator('section[data-panel="review"]')
+    rows = panel.locator("#aiVerificationRows tr")
+
+    # 1. 1번째 행 상세 법리 의견 details 요소가 무조건 존재하고 기본적으로 접혀 있는지 검증 (TK-87 요구사항 2)
+    box = rows.nth(0).locator(".review-summary-box")
+    details = box.locator("details.summary-details")
+    expect(details).to_be_visible()
+    expect(details).not_to_have_attribute("open", "")
+
+    # 2. 1번째 행 의심 사유 텍스트가 100자 상한으로 '…' 축약되어 노출되는지 검증
+    reason_elem = box.locator(".summary-reason")
+    expect(reason_elem).to_be_visible()
+    expect(reason_elem).to_contain_text("…")
+    reason_text = reason_elem.inner_text()
+    assert len(reason_text) <= 120, f"의심 사유 텍스트가 과도하게 길지 않아야 함: {len(reason_text)}자"
+
+    # 3. 3번째 행(counteraction 없는 위치 행: 헌법 제10조, 1쪽)의 확인 방법 텍스트 검증: '권위명 원문 대조 (N쪽)' 분기
+    box3 = rows.nth(2).locator(".review-summary-box")
+    expect(box3.locator(".summary-action")).to_be_visible()
+    expect(box3.locator(".summary-action")).to_contain_text("헌법 제10조 원문 대조 (1쪽)")
 
 
 def test_f2_filters_search_severity_review_status(f2_browser_page):
-    """검색어, 중요도, 검토 상태, 진행 상태, 담당자 필터 동작 시 표시 행 수가 올바르게 갱신되어야 합니다."""
+    """검색어와 중요도 필터가 동작하고, 제거된 검토상태/진행상태/담당자 필터는 화면에 없어야 합니다 (TK-87)."""
     page = f2_browser_page
     page.goto("http://localhost/")
     select_first_project(page)
@@ -468,39 +486,7 @@ def test_f2_filters_search_severity_review_status(f2_browser_page):
     sev_select.select_option("")
     expect(rows).to_have_count(3)
 
-    # 2. 진행 상태 필터: NOT_STARTED 선택 -> 행 1, 행 3(순수 인용) 총 2개 행 노출
-    wf_select = panel.locator("#workflowFilter")
-    wf_select.select_option("NOT_STARTED")
-    expect(rows).to_have_count(2)
-
-    # 진행 상태 필터: COMPLETED 선택 -> 행 2(1개 행) 노출
-    wf_select.select_option("COMPLETED")
-    expect(rows).to_have_count(1)
-    expect(rows.first).to_contain_text("일자 선후 모순")
-    wf_select.select_option("")
-    expect(rows).to_have_count(3)
-
-    # 3. 담당자 필터: '홍길동' 입력 -> 1개 행 노출
-    ass_input = panel.locator("#assigneeFilter")
-    ass_input.fill("홍길동")
-    expect(rows).to_have_count(1)
-    expect(rows.first).to_contain_text("일자 선후 모순")
-
-    ass_input.fill("변호사A")
-    expect(rows).to_have_count(1)
-    expect(rows.first).to_contain_text("대법원 2022다99999 판결")
-    ass_input.fill("")
-    expect(rows).to_have_count(3)
-
-    # 4. 검토 상태 필터: 'ACCEPTED' 선택 -> 1개 행 노출
-    rev_select = panel.locator("#reviewFilter")
-    rev_select.select_option("ACCEPTED")
-    expect(rows).to_have_count(1)
-    expect(rows.first).to_contain_text("일자 선후 모순")
-    rev_select.select_option("")
-    expect(rows).to_have_count(3)
-
-    # 5. 검색어 필터: '선후 모순' 검색 -> 1개 행 노출
+    # 2. 검색어 필터: '선후 모순' 검색 -> 1개 행 노출
     search_input = panel.locator("#findingSearch")
     search_input.fill("선후 모순")
     expect(rows).to_have_count(1)
@@ -508,9 +494,14 @@ def test_f2_filters_search_severity_review_status(f2_browser_page):
     search_input.fill("")
     expect(rows).to_have_count(3)
 
+    # 3. 제거된 필터(진행 상태, 담당자, 검토 상태)는 DOM에 없어야 함 (TK-87 요구 1)
+    expect(panel.locator("#workflowFilter")).to_have_count(0)
+    expect(panel.locator("#assigneeFilter")).to_have_count(0)
+    expect(panel.locator("#reviewFilter")).to_have_count(0)
+
 
 def test_f2_checkboxes_and_batch_review(f2_browser_page):
-    """행 체크박스 및 전체 선택 체크박스 조작 시 선택 수가 동기화되고 일괄 검토가 동작해야 합니다."""
+    """행 체크박스 및 일괄 검토/전체 선택 컨트롤이 화면에서 제거되었음을 검증합니다 (TK-87)."""
     page = f2_browser_page
     page.goto("http://localhost/")
     select_first_project(page)
@@ -519,37 +510,15 @@ def test_f2_checkboxes_and_batch_review(f2_browser_page):
     page.locator('.tabs button[data-tab="review"]').click()
 
     panel = page.locator('section[data-panel="review"]')
-    batch_btn = panel.locator("#batchReview")
-    expect(batch_btn).to_have_text("선택 항목 검토 (0)")
 
-    # 1. 1번째 행(f_fact_1, 1건) 체크박스 클릭 -> 1개 선택
-    row_checks = panel.locator(".row-checkbox")
-    expect(row_checks).to_have_count(2)  # finding_ids가 있는 2개 행에만 체크박스 존재
-    row_checks.nth(0).check()
-    expect(batch_btn).to_have_text("선택 항목 검토 (1)")
-
-    # 2. 전체 선택 체크박스 클릭 -> 3개 finding 전체 선택 (f_cit_1, f_cit_2, f_fact_1)
-    select_all = panel.locator("#selectAllFindings")
-    select_all.check()
-    expect(batch_btn).to_have_text("선택 항목 검토 (3)")
-
-    # 3. 일괄 검토 버튼 클릭 -> 모달 오픈
-    batch_btn.click()
-    dialog = page.locator("dialog.workflow-dialog")
-    expect(dialog).to_be_visible()
-
-    # 모달 내 검토 저장 클릭
-    dialog.locator("button[type='submit']").click()
-    expect(page.locator("#toast")).to_contain_text("선택 항목을 저장했습니다.")
-
-    # POST /api/projects/p1/reviews 벌크 호출 검증
-    assert len(page._bulk_review_calls) == 1
-    call = page._bulk_review_calls[0]
-    assert set(call["payload"]["finding_ids"]) == {"f_cit_1", "f_cit_2", "f_fact_1"}
+    # 행 체크박스, 전체 선택 체크박스, 일괄 검토 버튼이 존재하지 않아야 함
+    expect(panel.locator("#batchReview")).to_have_count(0)
+    expect(panel.locator(".row-checkbox")).to_have_count(0)
+    expect(panel.locator("#selectAllFindings")).to_have_count(0)
 
 
 def test_f2_derived_findings_bundle_and_multi_save(f2_browser_page):
-    """복수 finding이 연결된 행은 파생 항목 묶음(.derived-findings)이 노출되고, 행 안 검토 상태 조작 시 각 finding별 개별 PUT으로 전부에 적용되어야 합니다."""
+    """복수 finding이 연결된 행은 파생 항목 묶음(.derived-findings)이 노출되고, 행 안 입력 대신 요약 블록이 노출되어야 합니다 (TK-87)."""
     page = f2_browser_page
     page.goto("http://localhost/")
     select_first_project(page)
@@ -560,28 +529,23 @@ def test_f2_derived_findings_bundle_and_multi_save(f2_browser_page):
     panel = page.locator('section[data-panel="review"]')
     rows = panel.locator("#aiVerificationRows tr")
 
-    # 2번째 행: 복수 finding (f_cit_1, f_cit_2) 연결 행
-    row_multi = rows.nth(1)
+    # 복수 finding (f_cit_1, f_cit_2) 연결 행: .derived-findings를 가진 행
+    row_multi = rows.filter(has=page.locator(".derived-findings")).first
 
     # 2열 파생 항목 묶음 details 확인
     derived = row_multi.locator(".derived-findings")
     expect(derived).to_be_visible()
     expect(derived.locator("summary")).to_contain_text("같은 인용에서 파생된 항목 1건")
 
-    # 행 안 워크플로우 조작: 지적 수용(ACCEPTED) 선택
-    select_multi = row_multi.locator(".inline-workflow-select")
-    select_multi.select_option("ACCEPTED")
+    # 행 안 입력(검토 상태·우선순위·담당자)이 없음을 확인 (TK-87 요구 1)
+    expect(row_multi.locator(".inline-workflow-select")).to_have_count(0)
+    expect(row_multi.locator(".inline-priority-select")).to_have_count(0)
+    expect(row_multi.locator(".inline-assignee-input")).to_have_count(0)
 
-    expect(page.locator("#toast")).to_contain_text("검토 상태가 저장되었습니다.")
-
-    # 복수 finding 행이므로 각 finding별 개별 PUT /findings/{id}/workflow가 호출되어 메타데이터가 각자 보존되어야 함 (TK-60 7절)
-    put_fids = [call["path"].split("/")[3] for call in page._workflow_put_calls]
-    assert "f_cit_1" in put_fids
-    assert "f_cit_2" in put_fids
-    for call in page._workflow_put_calls:
-        if "f_cit_1" in call["path"] or "f_cit_2" in call["path"]:
-            assert call["payload"]["workflow_state"] == "COMPLETED"
-            assert call["payload"]["decision"] == "AGREED"
+    # 대신 4열에 확인이 필요한 내용 요약 블록(.review-summary-box)이 렌더링되어 있어야 함 (TK-87 요구 2)
+    summary_box = row_multi.locator(".review-summary-box")
+    expect(summary_box).to_be_visible()
+    expect(summary_box.locator(".summary-target")).to_be_visible()
 
 
 def test_f2_references_and_unverified_scope_rendered(f2_browser_page):

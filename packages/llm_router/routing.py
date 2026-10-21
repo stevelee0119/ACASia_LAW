@@ -94,3 +94,101 @@ def complete_argument_reviews(request, answers):
         if len(families) < 2:
             return False
     return True
+
+
+def argument_escalation_item_ids(request, answers):
+    """법리 검토(argument_review_v1)에서 엇갈리거나(conflicting) 완결성이 미비한(incomplete) item_id 집합을 반환한다."""
+    try:
+        payload = json.loads(request.user)
+        expected_items = payload.get("items", [])
+        expected_ids = [str(item["item_id"]) for item in expected_items if "item_id" in item]
+    except (KeyError, ValueError, TypeError):
+        return set()
+
+    if not expected_ids:
+        return set()
+
+    successes = [a for a in answers if a.used and a.executions and isinstance(a.parsed, dict)]
+    if len(successes) < 2:
+        return set(expected_ids)
+
+    conflicting_ids = set()
+    incomplete_ids = set()
+
+    for item_id in expected_ids:
+        verdicts_by_provider = {}
+        for a in successes:
+            provider = a.executions[-1].provider
+            for row in a.parsed.get("rows", []):
+                if str(row.get("item_id")) == item_id:
+                    verdicts_by_provider[provider] = row.get("validity_verdict")
+
+        # 1) 완결성 검사: 독립된 공급자 2곳 이상의 의견이 있는지 확인
+        if len(verdicts_by_provider) < 2:
+            incomplete_ids.add(item_id)
+        # 2) 판정 일치 검사: 2곳 이상의 공급자 의견 간 판정이 서로 다른지 확인
+        elif len(set(verdicts_by_provider.values())) > 1:
+            conflicting_ids.add(item_id)
+
+    return conflicting_ids | incomplete_ids
+
+
+def build_partial_argument_request(request, escalation_item_ids):
+    """에스컬레이션 대상 항목만으로 축소된 LLMRequest를 생성하고 원본 발췌 증거를 바인딩한다."""
+    try:
+        payload = json.loads(request.user)
+        original_items = payload.get("items", [])
+    except (KeyError, ValueError, TypeError):
+        return request
+
+    escalation_set = {str(i) for i in escalation_item_ids}
+    reduced_items = [item for item in original_items if str(item.get("item_id")) in escalation_set]
+    if not reduced_items or len(reduced_items) == len(original_items):
+        return request
+
+    reduced_payload = {**payload, "items": reduced_items}
+    reduced_user = json.dumps(reduced_payload, ensure_ascii=False)
+
+    from .providers import LLMRequest
+    from .excerpt_source import is_excerpt_request, bind_argument_excerpts
+
+    if is_excerpt_request(request):
+        source = getattr(request, "inspection_source", None)
+        entries = getattr(source, "_ExcerptSource__entries", ()) if source else ()
+        pieces_by_orig_index = {
+            path[1]: piece for path, piece in entries
+            if isinstance(path, tuple) and len(path) > 1 and path[0] == "items"
+        }
+        reduced_pieces = []
+        for orig_idx, item in enumerate(original_items):
+            if str(item.get("item_id")) in escalation_set:
+                piece = pieces_by_orig_index.get(orig_idx)
+                if piece is not None:
+                    reduced_pieces.append(piece)
+
+        base_request = LLMRequest(
+            system=request.system,
+            user=reduced_user,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            schema=copy(request.schema),
+            input_contract=request.input_contract,
+            model_tier=request.model_tier,
+            metadata=copy(request.metadata),
+        )
+        if len(reduced_pieces) == len(reduced_items):
+            return bind_argument_excerpts(base_request, tuple(reduced_pieces))
+        # 발췌 바인딩 실패 시 원본 요청(발췌 연결 유지)으로 폴백 — 축소 없이 전체 항목 전송
+        return request
+
+    return LLMRequest(
+        system=request.system,
+        user=reduced_user,
+        temperature=request.temperature,
+        max_tokens=request.max_tokens,
+        schema=copy(request.schema),
+        input_contract=request.input_contract,
+        model_tier=request.model_tier,
+        metadata=copy(request.metadata),
+    )
+
