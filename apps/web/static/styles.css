@@ -1631,14 +1631,6 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
   border-radius: 6px;
   color: #3b3528;
 }
-.privacy-notice {
-  margin: 12px 0 16px;
-  padding: 14px 16px;
-  background: #fdfaf2;
-  border: 1px solid #e8dbb8;
-  border-radius: 6px;
-  color: #3b3528;
-}
 .privacy-notice-text strong {
   display: block;
   font-size: 13px;

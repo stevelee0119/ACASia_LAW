@@ -227,6 +227,8 @@ def test_upload_proceeds_after_check_and_remembers_state(browser_test_page):
         "buffer": PAYLOAD,
     })
     expect(dialog).not_to_be_visible()
+    # 비동기 업로드 완료를 uploadStatus 텍스트 갱신으로 대기하여 테스트 경합 방지
+    expect(page.locator("#uploadStatus")).to_contain_text("두번째문서.pdf")
     assert control["posts"] == 2
 
     # 3. 프로젝트 재랜더링 후 '개인정보 안내 다시 보기'로 열었을 때도 체크 상태가 유지되는지 검증

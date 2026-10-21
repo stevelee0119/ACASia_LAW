@@ -522,32 +522,6 @@ function handlePrivacyConfirm() {
   }
 }
 
-function checkPrivacyAck(projectId) {
-  if (!isPrivacyNoticeLoaded()) {
-    const msg = privacyNoticeConfig?.error || "개인정보 처리 안내를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.";
-    toast(msg);
-    return false;
-  }
-  const ack = $("privacyAck")?.checked || getPrivacyAck(projectId);
-  if (!ack) {
-    const msg = privacyNoticeConfig.ack_error_message || "연락처, 주민등록번호 이외의 개인정보가 미포함되었거나 직접 가림 처리하였음을 확인해야 업로드할 수 있습니다.";
-    const errEl = $("privacyAckError");
-    if (errEl) {
-      errEl.textContent = msg;
-      errEl.hidden = false;
-    }
-    toast(msg);
-    $("privacyAck")?.focus();
-    return false;
-  }
-  setPrivacyAck(projectId, true);
-  const errEl = $("privacyAckError");
-  if (errEl) {
-    errEl.hidden = true;
-    errEl.textContent = "";
-  }
-  return true;
-}
 
 function renderSummary() {
   $("summary").replaceChildren();
