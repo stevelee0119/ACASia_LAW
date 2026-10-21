@@ -1,20 +1,24 @@
 # ACASia_LAW
 
-변호사의 법률문서 검토를 보조하는 작업 공간입니다. v0.4 개선 내용과
-현재 제한 사항은 [구현 현황](docs/IMPLEMENTATION_STATUS.md), 상세 계획은
-[개선 계획](docs/ASSESSMENT_AND_IMPROVEMENT_PLAN.md)을 참조하세요.
+변호사의 법률문서 검토를 보조하는 검증 작업 공간입니다. 준비서면·소장·진술서 같은 서면을 올리면
+인용한 판례·법령을 공식 출처와 대조하고, 사실관계·날짜·계산·증거 목록의 어긋남과 문서에 숨은 지시문을 찾아
+**무엇을 다시 확인해야 하는지**를 보고서로 정리합니다.
 
-Windows 실행: `.\scripts\start-local.ps1` (http://127.0.0.1:8765).
-포트가 사용 중이면 `.\scripts\start-local.ps1 -Port 8766`으로 실행하세요.
-기존 데이터가 있으면 실행 전에 백업하고 `python -m alembic upgrade head`를 적용하세요.
-기본은 로컬 단일 소유자 모드입니다. 다중 사용자 운영은 `LV_AUTH_MODE=multi-user`와
-HTTPS, 계정 초기 설정, 사건별 권한 및 키 보관 설정이 필요합니다.
-[인증·권한·키 관리](docs/IDENTITY_SECURITY_INTEGRATION.md)와
-[작업 복구·비용 원장](docs/OPERATIONS_DURABILITY.md)을 먼저 확인하세요.
+- **확인한 것과 확인하지 못한 것을 나눕니다.** 공식 DB에서 찾지 못한 판례는 '미확인'이지 '부존재'가 아닙니다.
+- **법률 판단을 대신하지 않습니다.** 진정성립·위조·고의와 주장의 당부는 사용자가 판단합니다.
+- **AI 모델의 의견은 참고입니다.** 판정은 공식 출처와 결정론적 검사가 먼저 정합니다.
 
-기술설계서 v0.2 기반에 변호사 작업 공간과 오판 방지 개선을 반영한 v0.4 구현체이다.
-문서 위·변조 의심징후, 인용·사실관계·계산의 검토를 지원한다. 확인한 범위와
-미확인·미지원 범위를 구별하며, 법률적 판단이나 진정성립을 자동 확정하지 않는다.
+**현재 운영 버전:** 0.13.1 (2026-10-19 배포). 버전별 변경은 아래 표, 개발 중인 변경과 평가 결과는
+[일자별 추이표](docs/scorecards/DAILY_TREND.md)를 보세요.
+
+## 목차
+- [버전별 변경 내역](#버전별-변경-내역)
+- [핵심 원칙](#핵심-원칙)
+- [무엇을 검사하나](#무엇을-검사하나)
+- [빠른 시작](#빠른-시작)
+- [배포와 배포 후 확인](#배포와-배포-후-확인)
+- [한계](#한계)
+- [문서 안내](#문서-안내)
 
 ## 버전별 변경 내역
 
@@ -71,13 +75,6 @@ HTTPS, 계정 초기 설정, 사건별 권한 및 키 보관 설정이 필요합
 
 <!-- RELEASES:END -->
 
-## 0.13.0 수용 부분 배포 및 잔여
-
-2026-10-12: PR #95(5e6e859)의 named PAGE ActualText/capture와 PR #97(2f4e798)의 발췌 개인정보 추가검사를 제한 범위로 수용했다. 각 제출의 CI·전체 검증·기존 보호 기준을 충족하고 고정81.7/79.2/오탐0을 유지했다. Steve 통합·전체 검증·새 봉인 최초 운영/후보 비교를 통과했고, PR #100 main `b68cfeec2c5c168a3b9e6e2e92653ea6892521bf`를 실제 배포했다. Render Live·health commit 일치·DB 정상 상태를 확인했다. 버전은 0.13.0 유지, 새 태그는 없다. 새 봉인 점수는 양쪽15.7/오탐0으로 상승은 확인되지 않았다. TK44·45·49·55·73의 잔여는 유지한다. [최신 판정](docs/scorecards/f1_gate_verdict.md)·[구현 전달문](docs/handoff/NEXT_FOR_CODEX.md)을 참조한다.
-
-기존 운영0.13.0의 법률지침은 사용자 요청으로 ON이다. 사용자 단일 OFF/ON 결과는 대조했지만 정식 법률품질 채택은 독립 채점 후 판단한다. 제품 기본OFF와 버전별 변경표의 과거배포 기록은 유지한다.
-
-
 ## 핵심 원칙
 
 | 원칙 | 구현 |
@@ -91,21 +88,32 @@ HTTPS, 계정 초기 설정, 사건별 권한 및 키 보관 설정이 필요합
 | Secure by Design | 문서는 자료이지 명령이 아니다. Tool 권한은 최소화한다. |
 | Reproducibility | 파일·Source·모델·프롬프트 버전·결과를 추적한다. |
 
+## 무엇을 검사하나
+
+| 영역 | 검사 내용 | 판정의 근거 |
+|---|---|---|
+| 판례·법령 인용 | 사건번호 형식, 존재(조회 범위 내), 선고일·법원, 인용문, 시행 버전·조문 | 국가법령정보 공식 API. 형식상 성립할 수 없는 번호만 확정 판정 |
+| 법률 주장 | 인용 판례 취지와의 상반, 사실관계 차이, 공식 DB 미확인 근거 | 규칙과 공식 원문. 모델 의견은 참고로만 표시 |
+| 사실관계·날짜·계산 | 문서 안 진술 불일치, 달력에 없는 날짜·요일, 금액·이자 계산 | 결정론적 엔진 |
+| 증거 정합성 | 호증 목록의 결번·날짜·자료명, 첨부 여부, 진술서 형식 | 문서 안 대조. 증명력은 판단하지 않음 |
+| 문서 속 숨은 지시문 | 흰 글자·작은 글자·가림·주석·메타데이터·폭 0 문자 등에 숨긴 AI 대상 지시 | 결정론적 포렌식, 모든 AI 호출보다 먼저 실행 |
+| AI 작성 가능성 | 대화형 서두·면책 문구 같은 객관적 흔적과 모델별 판단 | 참고 신호. 모델 의견이 갈리면 판단 유보 |
+| 개인정보 | 외부 모델에 보내기 전 성명·연락처·주민등록번호 등 가림 | 한국형 개인정보 탐지 |
+
+판정 기준과 단계별 처리는 [시스템 구조와 검증 방식](docs/SYSTEM_GUIDE.md)에 있습니다.
+
 ## 빠른 시작
+
+**Windows(로컬 단일 사용자):** `.\scripts\start-local.ps1` → http://127.0.0.1:8765
+(포트가 사용 중이면 `.\scripts\start-local.ps1 -Port 8766`). 기존 데이터가 있으면 실행 전에 백업하고
+`python -m alembic upgrade head`를 적용하세요.
+
+**Linux·macOS:**
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn apps.api.main:app --reload      # http://localhost:8000
-```
-
-테스트는 별도 의존성과 Chromium을 설치한 뒤 실행한다. Linux에서는
-`--with-deps`가 브라우저 실행에 필요한 시스템 패키지도 설치한다.
-
-```bash
-pip install -r requirements-test.txt
-python -m playwright install --with-deps chromium
-pytest                                   # 외부 환경별 테스트는 설정에 따라 일부 건너뜀
 ```
 
 한국어 OCR을 쓰려면 시스템 패키지가 필요하다.
@@ -121,15 +129,12 @@ cp .env.example .env      # LV_PSEUDONYM_SECRET, POSTGRES_PASSWORD 등을 채운
 docker compose up --build
 ```
 
-PostgreSQL·Celery까지 포함해 테스트하려면:
-
-```bash
-LV_TEST_DATABASE_URL=postgresql+psycopg://legal:비밀번호@localhost:5432/legal_verifier \
-LV_TEST_CELERY_BROKER=redis://localhost:6379/0 pytest
-```
-
 API Key가 하나도 없어도 동작한다. 이 경우 외부 Source 검증 항목은 `UNVERIFIED`로 표시되고,
 결정론적 검사(은닉 텍스트·인젝션·포렌식·계산·타임라인)는 모두 정상 수행된다.
+
+기본은 로컬 단일 소유자 모드다. 다중 사용자 운영은 `LV_AUTH_MODE=multi-user`와 HTTPS, 계정 초기 설정,
+사건별 권한과 키 보관 설정이 필요하다([인증·권한·키 관리](docs/IDENTITY_SECURITY_INTEGRATION.md)).
+시험 실행 방법은 [시스템 구조와 검증 방식](docs/SYSTEM_GUIDE.md#개발-환경에서-시험-실행)에 있다.
 
 ### 환경변수
 
@@ -140,6 +145,7 @@ API Key가 하나도 없어도 동작한다. 이 경우 외부 Source 검증 항
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | LLM Provider. 기본 모델은 `config/providers.json`(gpt-6-luna · claude-opus-5-5 · gemini-3.8-flash). 보고서의 모델별 판정에는 "OpenAI · GPT-6 Luna"처럼 공급자와 모델명이 함께 표시된다 |
 | `LV_OPENAI_MODEL` / `LV_ANTHROPIC_MODEL` / `LV_GEMINI_MODEL` | 모델 ID 덮어쓰기(공급자가 모델을 바꿨을 때) |
 | `LV_LLM_CROSS_CHECK` | AI 교차검증 범위. `all`(기본, 사용 가능한 모델 모두) · `auto`(판례 의미·적용 검토에서만 신뢰도가 낮거나 중요도가 높을 때 반증 모델 사용, 다른 검토는 `all`과 같음) · `off`(1순위 모델 하나) |
+| `LV_LLM_EFFICIENT_ROUTING` | 효율 라우팅(기본 OFF). `1`이면 작업별로 모델을 나눠 쓰고, `LV_LLM_CROSS_CHECK=auto`와 함께 법리 검토에서 의견이 엇갈린 항목만 세 번째 모델에 보낸다 |
 | `LV_HTTP_TIMEOUT` | 외부 출처 요청 제한시간(초, 기본 12). law.go.kr 응답이 느리면 30 권장 |
 | `LV_SOURCE_MIN_INTERVAL_SECONDS` | 같은 출처에 연달아 보내는 요청 간격(초, 기본 0.3) |
 | `LV_PSEUDONYM_SECRET` | 실명-가명 매핑 암호화 키. **운영에서는 반드시 교체한다.** |
@@ -148,226 +154,15 @@ API Key가 하나도 없어도 동작한다. 이 경우 외부 Source 검증 항
 | `LV_OCR_LANG` / `LV_INDEPENDENT_OCR` | OCR 언어(기본 `kor+eng`), 독립 OCR 교차검증 모드 |
 | `LV_ALLOW_NETWORK=0` | 폐쇄망 모드. 외부 Adapter를 모두 비활성화한다. |
 
-기본 설정은 `.env.example`, 추가 인증·작업·예산 설정은 위 운영 문서에 있다.
+기본 설정은 `.env.example`, 추가 인증·작업·예산 설정은 [인증·권한·키 관리](docs/IDENTITY_SECURITY_INTEGRATION.md)와 [작업 복구·비용 원장](docs/OPERATIONS_DURABILITY.md)에 있다.
 
 API Key는 Frontend LocalStorage나 평문 DB에 저장하지 않는다. 응답에도 키 값은 포함되지 않으며 보유 여부만 노출한다.
 
-## 구조
+## 배포와 배포 후 확인
 
-```
-apps/api/          FastAPI (라우터·DB·서비스·업로드 보안)
-apps/web/          검증 콘솔 (대시보드·뷰어·필터·리뷰·감사추적)
-packages/
-  document_engine/     PDF·DOCX·HWPX·HWP·XLSX·이미지 파서, OCR Adapter·래스터화, bbox 보존
-  adversarial_engine/  MM-1 인젝션 탐지, Unicode·인코딩·레이어 비교, Tool Firewall, 출력 검사
-  forensic_engine/     MM-2 잔류, MM-3 은닉채널, MM-4 참고신호, 마스킹 실패, 특권 게이트, Outbound Guard
-  legal_engine/        인용 추출·정규화, 판례 검증 5단계, 시행법 기준시점 검증
-  source_adapters/     국가법령정보·KCI·OpenAlex·Semantic Scholar·Crossref, 내부 Mirror
-  claim_engine/        Claim·Entity·Timeline, 계산 검증, 문서간 모순
-  pii_engine/          한국형 PII 탐지, 법률 식별자 보호, 프로젝트 고정 가명
-  llm_router/          Provider 추상화, Cascade, Judge Source Priority, 예산 라우팅
-  verification_engine/ 파이프라인 오케스트레이션, AI 작성 분석, 축별 점수
-  audit_engine/        SHA-256 해시 체인, Chain of Custody Manifest
-  report_engine/       초안·확정본 snapshot, PDF·DOCX·Highlight PDF·XLSX·CSV·JSON·Manifest
-  evaluation/          사건 단위 분할, 라벨·예측 비교, 오류 유형별 오프라인 품질 평가
-apps/worker/       DB 임대·펜싱·재시도·취소·복구, Celery 수명주기 연동
-workers/           기존 Celery Task 호환 진입점
-migrations/        Alembic. pgvector 인덱스와 audit_events append-only 트리거 포함
-```
-
-## 인프라 구성
-
-| 구성요소 | 기본값 | 확장 |
-|---|---|---|
-| DB | SQLite | `LV_DATABASE_URL`로 PostgreSQL 전환. JSON 컬럼은 JSONB, `embedding`은 pgvector `vector(1536)`로 자동 매핑되고 HNSW 인덱스가 생성된다. |
-| Worker | 인프로세스 스레드 + 영속 DB 작업 | Celery도 동일한 DB 임대·펜싱을 적용한다. auto 모드만 브로커 장애 시 로컬로 전환하며, 명시적 celery 모드는 큐를 보존한다. |
-| OCR | 없으면 해당 항목 UNVERIFIED | tesseract 설치 시 자동 사용. 스캔 PDF는 페이지를 래스터화해 본문을 OCR하고 bbox를 보존하므로 인용 추출·Highlight가 그대로 이어진다. |
-
-마이그레이션은 `audit_events`에 UPDATE·DELETE를 거부하는 트리거를 만든다.
-감사추적 불변성(부록 C 제7항)을 애플리케이션이 아니라 DB가 강제한다.
-
-```bash
-alembic upgrade head
-```
-
-## 검증 파이프라인
-
-```
-QUEUED → PARSING → ADVERSARIAL_SCANNING → EXTRACTING → PII_PROCESSING
-       → VERIFYING → CROSS_CHECKING → AGGREGATING → COMPLETED
-```
-
-Adversarial Scan은 **모든 LLM 호출보다 먼저** 실행된다. MM-2·MM-3에서 추출된 원문은
-LLM Context에 투입되지 않고 유형 태그·위치·길이·해시만 전달된다.
-
-### AI 교차검증
-
-LLM을 쓰는 세 곳 모두 사용 가능한 모델(OpenAI·Anthropic·Gemini)을 함께 거친다.
-한 공급자가 실패하면 다음 공급자로 넘어가고, 호출마다 정책 확인·예산 원장·출력 검사가 적용된다.
-외부 모델에 보내는 본문은 `MASKED` 정책에서 개인정보를 가린다.
-
-| 검토 | 모델 사용 방식 | 판정을 정하는 것 |
-|---|---|---|
-| 판례 의미·적용(Level 4·5) | 주 분석 → 반증 → 제3 모델 순서의 캐스케이드. 근거 인용이 공식 전문에 실제로 있어야 채택 | 공식 출처 우선. 모델 의견이 엇갈리면 `UNVERIFIED` |
-| 법률 주장 타당성 | 모든 모델에 같은 질문. 항목별 의견과 일치·불일치를 **참고 의견**으로 표시 | 규칙(성립 불가 사건번호 / 인용 내용 불일치 / 공식 DB 미확인). 모델 답으로 '허위'가 되지 않는다 |
-| AI 작성 여부 | 모든 모델에 같은 질문. 본문에 없는 의심 문단은 버린다 | 과반이 지지하는 판정(모델 둘이면 둘 다 동의해야 상향). 모델이 일치할 때만 증거등급 B |
-
-화면의 요약 아래에는 **배포가능 판정 사유**가 펼쳐진 채로 표시된다. '배포 차단 사유'와
-'사람 검토 사유'를 나누어 번호 목록으로 보인다.
-
-**공식 DB에서 확인하지 못한 판례는 '미확인'이지 '부존재'가 아니다.** 국가법령정보 판례 DB는
-모든 재판을 수록하지 않는다. 사건번호의 연도·사건부호가 성립할 수 없을 때만 임의 생성을 의심한다.
-
-#### 모델이 응답하지 못할 때
-
-교차검증에서 빠진 모델이 있으면 보고서에 **빠진 모델과 사유**를 함께 적는다.
-예: `1개 모델(openai)의 의견만 있어 교차검증되지 않음 — 응답하지 못한 모델: gemini(사용 한도(쿼터) 초과(HTTP 429) — 공급자 요금제·결제 확인 필요)`
-
-| 보고서의 사유 | 뜻 | 처리 | 해야 할 일 |
-|---|---|---|---|
-| 공급자 일시 과부하(HTTP 429·5xx·529) | 공급자 쪽 순간 과부하(예: Gemini `high demand`) | 2초·6초 간격으로 두 번 더 시도 | 반복되면 잠시 뒤 다시 분석 |
-| 사용 한도(쿼터) 초과 | API 키의 요금제·결제·한도 소진(`exceeded your current quota`) | 재시도하지 않음(기다려도 풀리지 않음) | 공급자 콘솔에서 요금제·결제 확인 |
-| API 키 또는 권한 오류(HTTP 401·403) | 키가 틀렸거나 권한 없음 | 재시도하지 않음 | Render 환경변수의 키 확인 |
-| 응답이 출력 한도에서 잘림 | 답이 길어 JSON이 끝나지 않음 | 실패로 기록 | 반복되면 문서 분량과 함께 개선 요청. `LV_LLM_MAX_OUTPUT_TOKENS`(기본 4096)를 그보다 낮추면 호출 자체가 예산 단계에서 거절된다 |
-| 응답 형식 오류(항목) | 정해진 JSON 형식과 다름. 어긋난 항목을 함께 적는다 | 그 모델 의견을 채택하지 않음 | 반복되면 모델 ID 확인 |
-
-한국어 JSON은 공급자마다 토큰 사용량이 크게 다르다(같은 요청에 Anthropic이 OpenAI의 수 배).
-그래서 판별·타당성 검토는 출력 한도 4,096, 판례 판단은 2,500으로 두고 항목별 분량 상한을
-프롬프트에 둔다. 주장 타당성은 인용 4건씩 나누어 묻는다. 과금은 실제 생성량 기준이다.
-
-판례 의미·적용 검토는 **공식 판결 전문을 받아야** 수행된다. 전문 조회가 실패하면 이 단계는
-건너뛰어지고 사유가 기록된다. 배포 서버에서 전문 조회가 되는지는 아래
-[배포 후 확인](#배포-후-확인)의 `/api/diagnostics/sources`로 확인한다.
-
-### 판정을 나누는 기준
-
-한 값으로 뭉뚱그리면 "확인된 것"과 "확인하지 못한 것"이 섞이므로 아래처럼 나눠 판정·표시한다.
-회귀시험은 `tests/test_verification_regressions.py`에 있다(공식 DB 응답은 모두 모의 응답).
-
-| 대상 | 따로 판정하는 항목 | 주의 |
-|---|---|---|
-| 법령 인용 | 법령 존재 · 조문 존재 · 시행 버전 · 조문 본문 대조 · 시간적 적용(기준일) · 사건 적용 | 기준일이 없으면 시간적 적용만 미확인이다. 문서의 날짜는 **기준일 후보**로만 보이고 자동 적용하지 않는다 |
-| 조문 부존재 | 조회한 시행 버전의 **전체 조문**을 대조한 경우에만 "해당 버전에 없음"(범위·조문 수 기재) | 조회 실패·전문 미확보는 미확인. 다른 시행 버전·부칙 가능성은 열어 둔다 |
-| 판례 인용 | 사건번호 형식 · 존재(조회 범위 내) · 법원·선고일 · 인용문 · 취지 · 사건 적용 | "조회 범위 내 미발견"과 "성립할 수 없는 번호 형식"을 구분한다. 다른 번호의 검색 결과를 붙이지 않는다 |
-| 행정규칙(훈령·예규·고시·지침) | 존재 · 발령기관·종류·번호·시행일 · 조항 · 본문 · 위임 근거 · 법적 효력 | "법률과 같은 효력" 같은 문서의 주장은 확인 처리하지 않고 사람 검토로 둔다 |
-| 사용하지 못한 출처 | 이번 실행에서 영향을 받은 인용 | 학술 인용이 없는 문서에서 KCI 키 없음은 `NOT_NEEDED`로 표시하고 잔여 미확인으로 세지 않는다 |
-| 문서 속 지시문 | 명령형 어미·AI 호명·숨김 여부로 **명령**과 **언급**(표제·명사구·설명)을 구분 | 언급은 INFO 참고 표시, 실제 명령은 기존대로 HIGH 이상. 원문·위치·일치 패턴을 보존한다 |
-| 첨부·증거 | 첨부 목록 표의 행(자료명↔첨부 여부), 본문 진술, 입력 파일을 대조해 `ATTACHED`·`NOT_PROVIDED`·`REFERENCE_MISSING`·`UNVERIFIED` | 자료가 없다는 것은 "검증되지 않은 사실"이지 허위·위조가 아니다 |
-| 해시 | 형식(SHA-256은 16진수 64자) · 파일 대조(파일이 있을 때만) · 원본성 | 형식 이상은 불일치가 아니다. 해시가 일치해도 진정성립·내용의 진실성은 보증하지 않는다 |
-| 주장 유형 | 사실 · 법령 문언 · 판례 취지 · 당사자 법률 주장 · 의견 · 문서 안내(제목·시험 안내) · 문서 속 지시문 | 사실 축은 "검사 범위 내 이상 없음"과 "검사 불충분"을 구분한다 |
-| AI 작성 가능성 | 모델별 판단·분포, 추정치(모델 점수 중앙값), 근거 신뢰도, 범주별 AI 응답 잔재(대화형 서두·면책 안내·지식 기준일·마크다운 = 객관적 흔적 / 상투 표현·영문 병기 = 문체 신호) | 모델 의견이 갈리거나 객관적 작성 흔적이 없으면 판단 유보. '사람 작성 유력'은 단정하지 않는다. 인용 오류·문서 속 지시문·서식·문체는 작성 주체 근거로 쓰지 않는다 |
-| 형식상 성립 불가(INVALID_FORMAT) | 달력에 없는 날짜, 미래 날짜·접수연도, 선고연도<접수연도 | DB 수록 여부와 무관한 확정 판정(A). 조회되지 않을 뿐 형식상 가능한 번호는 조회 범위 내 미발견(B)으로 남긴다. 법원–사건부호 호환은 공식 재판예규 원문 근거가 있을 때만 판단 |
-| 인용문 의미 변형(MODIFIED_QUOTE) | 원문과 거의 같아도 정도 부사·부정·양태·수량이 바뀐 직접 인용 | 판례 전문을 확보했을 때만 판단 |
-| 법령 목록 미발견(NOT_FOUND_LAW) | 법령 목록에 같은 이름이 없음(비슷한 이름 후보 제시) | 부존재 확정이 아니다(명칭 오기·약칭·폐지 가능성) |
-| 조문 내용 대조 | 문서가 조문에 대해 주장한 기한·비율·핵심어를 조문 본문과 대조(주어별 구절) | 기준일이 없으면 현행 버전과 비교했음을 적고 B등급으로 둔다 |
-| 법리 규칙 | `config/legal_rules/rules.json`: 형사처벌·의무이행 청구, 개인 피고, 경과실 개인 배상, 군인 전심절차, 제소기간 예외, '언제나' 당연무효 등 | 근거는 국가법령정보 API로 받은 조문·판결요지(URL·시행 버전 포함). 사람 판단이 필요한 규칙은 그렇게 표시한다 |
-| 증거 정합성 | 호증 목록(표·목록형)의 날짜·결번·목록 누락·진술인 인적사항·서명·진술 내부 모순·진술 부분의 타 서면 문장 복사 | 증명력 판단은 하지 않는다. 입증취지 적합성·지각 범위는 사람 검토 단서(C) |
-| 문서 속 지시문 경로 | 보이는 본문·흰 글자·작은 글자·페이지 밖·Tr 3·도형 가림·이미지 가림·투명 글자(채움 투명도)·배경 대비 1.5:1 미만 글자(쪽을 렌더링해 배경색과 대비비 계산)·주석·메타데이터·첨부파일·폭 0 문자를 경로별로 보고 | 숨은 레이어는 본문·인용 문맥·AI 판별 입력에서 뺀다 |
-
-같은 인용에서 나온 finding(예: 조회 범위 내 미발견 + 그 판례에 기댄 주장)은 인용마다 최종 판정 하나로
-합치고(형식상 성립 불가 > 원문 불일치 > 조회 범위 내 미발견 > 미확인) 나머지는 하위 근거로 보인다. 차단(BLOCK) 자체는 유지하고, 검증위험 지수에서는 같은 인용의
-같은 유형을 한 번만 센다. 검증위험 지수는 AI 작성 확률이 아니다.
-
-## 은닉 메타메시지 4유형
-
-| 유형 | 수신자 | 처리 |
-|---|---|---|
-| MM-1 기계 지시형 | LLM·자동검증 절차 | 결정론 + 의미분류 → Finding |
-| MM-2 잔류형 | 없음(비의도 유출) | 결정론적 포렌식 → Finding 확정, 원문 봉인 |
-| MM-3 은닉 채널형 | 특정 인간·추적 주체 | 결정론적 포렌식 → Finding, URL·QR 접속 금지 |
-| MM-4 함축형 | 재판부·상대방 | 참고 신호만. Severity ≤ MEDIUM, Grade D, UNVERIFIED 고정 |
-
-### 독립 OCR 교차검증 (제7.3장)
-
-OCR이 가능한 환경에서는 위험 신호가 있는 PDF의 페이지를 다시 렌더링해 직접 읽고,
-그 결과를 내장 텍스트 레이어와 대조한다. 사람이 보는 화면에는 없는데 모델이 읽는
-텍스트 레이어에만 존재하는 지시문이 발견되면 `OCR_LAYER_INJECTION`(CRITICAL)으로 보고한다.
-OCR 인식 오차로 인한 오탐을 막기 위해, 단순 분량 차이로는 Finding을 만들지 않고
-지시형 문자열이 한쪽에만 존재할 때만 보고한다.
-
-MM-2·MM-3 원문은 봉인 상태로 저장된다. 열람은 사용자의 명시적 확인이 있을 때만 가능하고
-그 사실이 감사추적에 기록되며, 기관 관리자는 열람 기능 자체를 차단할 수 있다.
-관할별 입장 차이(ABA Formal Opinion 06-442, NYSBA Opinion 749)를 경고문으로 안내하되
-시스템은 법적·윤리적 결론을 내리지 않는다.
-
-## GitHub에서 실행하기
-
-| 워크플로 | 트리거 | 하는 일 |
-|---|---|---|
-| `CI` | push·PR | SQLite와 PostgreSQL/pgvector+Redis 양쪽에서 전체 테스트, 감사추적 append-only 트리거 확인. Secret을 쓰지 않는다. |
-| `외부 Source 실연동 점검` | 수동 또는 `[live-check]` 커밋 | Secret 주입 상태 → Adapter 상태 → **실제 API 호출** → LLM Provider → **판례 의미·적용 캐스케이드**(law.go.kr 전문으로 1회) → **주장 타당성·AI 작성 판별**(실제 코드로 1회) 순으로 점검하고, 모델별 참여 여부와 실패 사유·토큰 수를 표로 남긴다. LLM 호출은 `with_llm` 입력을 켤 때만. |
-| `문서 검증 실행` | 수동 또는 `[run-verify]` 커밋 | **검증 파이프라인을 끝까지 돌리고** 보고서 6종을 아티팩트로 남긴다. |
-
-`workflow_dispatch` 버튼은 워크플로 파일이 **기본 브랜치에 있어야** Actions 탭에 나타난다.
-병합 전이라면 커밋 메시지 트리거를 쓴다.
-
-```bash
-git commit --allow-empty -m "연동 확인 [live-check]"
-git commit --allow-empty -m "검증 실행 [run-verify]"
-```
-
-Actions는 잡이 끝나면 사라지는 실행기이므로 **웹 콘솔을 상시 띄우는 용도로는 쓸 수 없다.**
-UI를 직접 다루려면 Codespaces를 쓴다. `.devcontainer/`가 OCR·의존성·포트 8000을
-자동 구성하므로, 컨테이너가 뜬 뒤 `uvicorn apps.api.main:app --host 0.0.0.0 --port 8000`만 실행하면 된다.
-API Key는 **Settings → Codespaces → Repository secrets**에 등록하면 자동 주입된다.
-
-실연동 점검이 기대하는 Secret 이름이다. 다르게 등록했다면 워크플로의 `env:` 우변만 바꾸면 된다.
-
-```
-LV_LAW_GO_KR_OC   LV_KCI_KEY   LV_CROSSREF_MAILTO   LV_SEMANTIC_SCHOLAR_KEY
-OPENAI_API_KEY    ANTHROPIC_API_KEY   GEMINI_API_KEY
-```
-
-모델 ID는 공급자 사정으로 바뀌므로 Repository **Variables**(`LV_ANTHROPIC_MODEL` 등)로 덮어쓸 수 있다.
-
-호출이 성공했는데 정규화가 0건이면 응답 구조를 함께 보고하므로, 한 번의 실행으로
-매핑 불일치 지점을 알 수 있다. **비밀값은 어떤 경로로도 출력하지 않는다.**
-존재 여부와 길이만 기록한다.
-
-```bash
-# 로컬에서도 같은 점검을 할 수 있다
-python scripts/live_source_check.py --with-llm --strict
-```
-
-GitHub 러너는 국외 IP라 **law.go.kr 응답이 자주 끊기거나 시간 초과된다.** 이 워크플로에서
-law.go.kr 항목이 실패해도 배포 서버의 상태를 뜻하지 않는다. 운영 서버의 판단은
-`/api/diagnostics/sources`로 한다.
-
-### CLI 일괄 검증
-
-서버 없이 파이프라인을 돌린다. CI 실행과 폐쇄망 일괄 처리에 쓴다.
-
-```bash
-python scripts/make_sample_documents.py --out samples   # 예시 문서 생성(선택)
-python scripts/verify_cli.py --input samples --out out \
-    --project-name "손해배상 사건" --case-number 2026가합1234 --incident-date 2015-06-01
-```
-
-`out/`에 PDF 검증보고서·Highlight PDF·XLSX·CSV·JSON·Chain of Custody Manifest와
-요약 텍스트가 생성된다. `--fail-on CRITICAL`을 주면 해당 등급 이상 Finding이 있을 때
-종료코드 1을 반환하므로 파이프라인 게이트로 쓸 수 있다.
-
-**실제 사건 문서를 공개 저장소에 커밋하지 말 것.** `samples/`는 `.gitignore` 대상이다.
-
-## Render 배포
-
-```
-# Docker 런타임 (OCR 포함, 권장)
-python -m scripts.start_server
-
-# Native Python 런타임 (OCR 없음)
-python -m scripts.start_server
-
-# Background Worker (선택)
-celery -A apps.worker.celery_app worker -l info -Q verification,report --concurrency 2
-```
-
-`render.yaml` 블루프린트로 웹 서비스·PostgreSQL·디스크·환경변수를 한 번에 만들 수 있다.
-Render가 주는 `postgres://` 형식 URL은 코드가 `postgresql+psycopg://`로 정규화하므로
-Internal Database URL을 그대로 붙여넣어도 된다.
-
-**영구 디스크 없이 배포하면 업로드 원본이 재배포 때 사라져 Chain of Custody가
-성립하지 않는다.** 자세한 내용은 [docs/DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md).
+운영은 Render에서 Docker 런타임(OCR 포함)으로 돌린다. `render.yaml` 블루프린트로 웹 서비스·PostgreSQL·디스크·
+환경변수를 한 번에 만들 수 있다. **영구 디스크 없이 배포하면 업로드 원본이 재배포 때 사라진다.**
+절차는 [Render 배포](docs/DEPLOY_RENDER.md), 보고서·휴지통·저장 공간·오류 추적은 [운영 안내](docs/OPERATIONS_GUIDE.md)를 보세요.
 
 ### 배포 후 확인
 
@@ -379,138 +174,26 @@ Internal Database URL을 그대로 붙여넣어도 된다.
 | `/api/diagnostics` | OCR·디스크 내구성·저장소 암호화, AI 공급자별 키 보유와 `cross_check` 설정 (키가 있어도 쿼터 초과는 여기서 보이지 않는다. 실연동 점검이나 보고서의 불참 사유로 확인한다) |
 | `/api/diagnostics/sources` | 이 서버에서 law.go.kr 사건번호 조회와 **판례 전문 조회**가 되는지. `verdict`가 `FULL_TEXT_UNAVAILABLE`이면 `steps[].message`가 원인이다(HTTP 상태, JSON이 아닌 응답, 형식 차이 등) |
 
-### 보고서 생성과 진행률
+## 한계
 
-보고서는 서버 뒤편에서 만들고, 화면은 1초마다 단계·진행률만 받아 온다
-(`POST /api/projects/{id}/report-jobs` → `GET /api/projects/{id}/report-jobs/{job_id}`).
-요청 하나가 생성이 끝날 때까지 붙잡혀 있다가 끊기던 문제("서버와 연결되지 않았거나 응답이 끊겼습니다")를 없앴다.
+- 공식 DB는 모든 재판을 수록하지 않는다. 찾지 못한 판례는 '미확인'으로 남기고 부존재로 단정하지 않는다.
+- 판례 취지·문맥 왜곡(Level 4·5)은 AI 모델 구간이다. 모델이 없으면 확인 완료로 올리지 않는다.
+- 주장 유형·첨부 목록·기준일 후보는 어휘 규칙으로 찾으므로 표현이 다르면 놓칠 수 있다. 확정 판정이 아닌 검토 단서로 쓴다.
+- OCR 정확도는 원본 품질에 좌우된다. 비용 한도는 사전 승인 원장이며 공급자 청구액 보증이 아니다.
+- 상세: [시스템 구조와 검증 방식 — 구현 범위와 한계](docs/SYSTEM_GUIDE.md#구현-범위와-한계), [구현 현황](docs/IMPLEMENTATION_STATUS.md)
 
-- 초안 창에 단계(검증 결과 불러오기 → 개인정보·미확인 항목 점검 → 형식별 작성 → 저장), 진행률, 경과 시간이 보인다.
-- 창을 닫아도 생성은 계속되고, 보고서 목록 위에 진행 중인 작업이 표시된다.
-- 조회가 잠시 끊기면 자동으로 다시 확인한다(최대 30회). 서버 재시작 등으로 2분 넘게 진행 기록이 멈춘 작업은 실패로 알린다.
-- 한 번에 하나씩 만든다. 검증 작업·헬스체크와 CPU를 나누기 위해서다.
-- 기존 `POST /api/projects/{id}/reports`(즉시 생성)는 API 호환을 위해 남겨 둔다.
+## 문서 안내
 
-**보고서 분량.** 기본은 **요약본**이다. 전체 기술 기록(실행 당시의 모든 필드)을 PDF에 그대로 실으면
-인용이 많은 사건에서 2천 쪽을 넘었다(측정: finding 241건 사건의 PDF 2,234쪽 중 2,195쪽이 기술 기록).
-
-| 구분 | 요약본(기본) | 전체 기술 기록 포함 |
-|---|---|---|
-| 판정·핵심 사항·미확인 항목·인용별 단계 | 모두 싣는다. 같은 인용·같은 사유는 한 줄로 묶고 면·횟수를 적는다 | 인용·항목마다 한 줄 |
-| 출처 조회 기록 | 출처·상태별 건수와 **성공하지 못한 조회 전부**(최대 50건, 나머지는 JSON) | 조회마다 한 줄 |
-| 수행하지 못한 검사 단계 | 모두 싣는다 | 모두 싣는다 |
-| 사람 검토 기록·주장 검토표 | 진행·의견이 있는 항목만(나머지는 건수) | 전부 |
-| 전체 기술 기록 | 싣지 않고 **검증 상세(JSON)를 자동으로 함께 생성**해 보존 | PDF·Word·Excel에 수록 |
-
-같은 사건(finding 241건)의 PDF는 2,234쪽 → 6쪽, Word 문단은 약 16만 개 → 286개가 됐다. 확정본은 초안과
-같은 분량으로 만든다. 분량 기록이 없는 예전 초안은 발행 당시처럼 전체본으로 확정한다.
-
-생성 시간 단축(주장·인용 각 1,800건, 결과 3.2MB인 합성 표본에 6개 형식을 모두 선택한 경우. 5분 이상 → 65초, 개발 환경 측정):
-
-| 원인 | 조치 | 측정 |
-|---|---|---|
-| 주소 탐지 정규식이 긴 한글 구간에서 되짚기(길이의 제곱) | 지명 길이 제한 | 사전 점검 27초 → 2.7초 |
-| Word 문단을 넣을 때마다 본문 전체 탐색 | 구역 설정 위치를 한 번만 찾아 직접 삽입(결과 XML 동일) | Word 247초 → 22초 |
-| PDF 기술 부록을 항목마다 낱말 단위로 줄바꿈 | 글자 폭을 한 번씩만 재어 미리 줄바꿈한 블록으로 수록 | PDF 44초 → 21초 |
-| 부록에 같은 주장 전문이 4번 반복 | 전문은 `documents[].claims`에 한 번, 나머지는 주장 ID로 참조(고정본·JSON은 그대로) | 부록 6.4MB → 3.3MB |
-| 확정 전 점검 때마다 개인정보 재탐지 | 내용 해시로 결과 기억 | 두 번째부터 즉시 |
-
-### 프로젝트 휴지통과 영구 삭제
-
-- **삭제**(`DELETE /api/projects/{id}`)는 휴지통으로 옮긴다. 자료·검증 결과·활동 기록은 그대로 두며 복원할 수 있다.
-- **영구 삭제**(`DELETE /api/projects/{id}/purge`, 프로젝트 관리자만)는 휴지통에 있는 프로젝트만 지운다. 휴지통 창의
-  '영구 삭제' 단추로 실행하며 한 번 더 확인한다. 되돌릴 수 없다.
-  - 지우는 것: 프로젝트에서 외래키로 이어지는 모든 행(자료·쪽·블록·인용·주장·검증 실행·판정·근거·보고서·검토 기록 등,
-    스키마를 따라 자동으로 찾는다), 업로드 원본·파생물(`originals/{id}`, `derivatives/{id}`, 암호화 시 평문 사본 포함),
-    가명 처리 보관소(`pii_vault/{id}.vault`).
-  - 남기는 것: 감사기록(수정·삭제하지 않는 해시 체인). 영구 삭제 사실도 지운 건수와 함께 감사기록에 남는다(사건 내용은 싣지 않는다).
-  - DB 삭제를 먼저 확정한 뒤 파일을 지운다. 파일 삭제가 실패하면 응답·알림에 남은 항목을 적는다.
-  - 보고서를 만드는 중이면 끝난 뒤 다시 하도록 거부한다(409). 서버 재시작 등으로 멈춘 보고서 작업(진행 기록이 2분간 없음)은
-    중단으로 정리하고 삭제한다. 삭제하지 못한 사유는 휴지통 창의 해당 항목 아래와 알림에 표시된다.
-  - 다른 작업과 DB 잠금이 겹치면(교착·잠금 대기 5초 초과) 최대 3회 다시 하고, 그래도 안 되면 '사용 중'(409)으로 알린다.
-    삭제는 한 트랜잭션이라 실패하면 아무것도 지워지지 않는다.
-
-### 저장 공간 관리
-
-- **왜 삭제해도 사용량이 줄지 않나:** PostgreSQL은 행을 지워도 파일을 바로 줄이지 않습니다(MVCC). 지운 행은
-  '죽은 행'으로 남았다가 VACUUM이 그 자리를 새 자료에 다시 쓰게 합니다. 운영체제에 공간을 돌려주는 것은
-  테이블을 새로 쓰는 VACUUM FULL(또는 pg_repack)뿐입니다. Render Postgres는 한 번 늘린 저장 용량을 줄일 수
-  없으므로, 용량 지표의 '할당량'은 삭제 후에도 그대로입니다
-  ([Render Postgres](https://render.com/docs/postgresql-refresh), [pg_repack](https://render.com/docs/postgresql-pg-repack)).
-- **관리자 화면(설정 → 저장 공간):** DB·파일 저장소 사용량, 큰 테이블과 정리 대기 행 수를 보입니다.
-  - 빈 공간 정리(VACUUM): 지운 자리를 다시 쓰게 합니다. 서비스를 멈추지 않습니다.
-  - 디스크 반환(VACUUM FULL): 빈 공간을 돌려줍니다. 실행 중 해당 테이블이 잠기고, 가장 큰 테이블만큼의
-    여유 공간이 필요합니다. 사용자가 적을 때 실행합니다. 실행 사실은 감사기록에 남습니다.
-  - API: `GET /api/admin/storage`, `POST /api/admin/storage/reclaim {"full": false|true}` (관리자 전용)
-- **자동 정리:** 영구 삭제 뒤 지운 테이블에 VACUUM을 자동 실행합니다.
-- **저장량 절감:** 보고서 고정본의 큰 부분(검증 결과·사전 점검)은 DB가 아니라 영구 디스크에
-  `derivatives/{project}/snapshots/{sha256}.json.gz`로 압축 저장합니다. 이름이 내용 해시라 같은 내용은 한 번만
-  저장되고, 읽을 때 해시를 다시 확인합니다(보고서 1건 DB 사용량 약 477KB → 66KB, 6개 문서 사건 실측).
-- **권장 운영:** Render DB의 저장 공간 자동 확장(90% 도달 시 증설)을 켜고, `/api/health`의 `database` 값과
-  관리자 화면의 사용량을 주기적으로 확인합니다. DB에 연결할 수 없거나 저장 공간이 차면 모든 기능이
-  '데이터베이스 사용 불가'(503)로 안내됩니다.
-
-### 서버 오류(HTTP 500) 추적
-
-처리하지 못한 오류는 `{"detail": {"code": "INTERNAL_ERROR", "request_id": …, "error_type": …}}`로 돌려주고(DB 오류는 `error_type`에 드라이버 예외 종류와 SQLSTATE를 함께 적는다), 화면에
-'문의 번호'를 보인다. 서버 로그의 `unhandled_error request_id=…` 줄에 요청 경로, 예외 종류, 호출 위치(파일:줄 함수)가
-남는다. 예외 메시지에는 SQL 인자·파일 경로 같은 사건 정보가 섞일 수 있어 기록하지 않는다.
-
-## Release Gate
-
-`tests/test_release_gates.py`가 제24.3장과 부록 C를 코드로 강제한다.
-
-- 공식 Source가 있는 확정판정에는 Source가 연결된다
-- HIGH/CRITICAL은 Evidence 또는 명시적 UNVERIFIED를 가진다
-- 원본은 SHA-256을 생성하고 분석 중 수정되지 않는다(재기록 차단)
-- 문서는 UNTRUSTED로 처리되고 raw text가 system prompt와 결합되지 않는다
-- 문서 내 instruction은 Tool Call로 승격되지 않는다
-- 의심 문서는 자동 Indexing되지 않는다(QUARANTINED)
-- LLM 실행 전 Adversarial Scan, 실행 후 Output Scan을 수행한다
-- 문체만으로 특정 AI 모델 Attribution을 확정하지 않는다
-- 공식 Source와 AI 의견이 충돌하면 다수결이 아니라 공식 Source를 따른다
-- 모델 의견이 엇갈리면 다수결 대신 UNVERIFIED로 남긴다
-
-### 테스트셋 평가(v2)
-
-- `scripts/eval_testset.py`: 정답지(`tests/fixtures/legal_verifier_testset/ground_truth.json`)로 문서·유형별 재현율,
-  FP-TRAP 오탐, 인용별 중복 판정, 인젝션 방어를 계산한다. 홀드아웃(`tests/fixtures/holdout/`, `scripts/build_holdout.py`로 생성)은
-  규칙 개발에 쓰지 않고 과적합 점검에만 쓴다.
-- Actions "테스트셋 평가"(커밋 메시지 `[run-eval]`): 저장된 키로 공식 DB·외부 모델을 함께 써서 본 테스트셋과 홀드아웃을 평가한다.
-- Actions "공식 원문 수집"(`[fetch-sources]`): 규칙표의 근거 원문(재판예규·조문·판결요지)을 국가법령정보 API에서 받아 남긴다.
-- 기록: `docs/CHANGELOG_v2.md`, 최종 보고(점수·남은 미탐·unknown·사람 판단 항목): `docs/V2_FINAL_REPORT.md`, 구조: `docs/ARCHITECTURE_MAP.md`.
-
-## 구현 범위와 한계
-
-**구현 범위**: 기본 생성·자료 제외/복구, 공식 출처 대조, 쟁점별 기준일, 주장·증거 검토표,
-사람 검토·이력·임시 저장, 문서 버전 비교, 기간별 이자·변제 계산, 초안/확정 보고서,
-사건별 권한, 영속 작업 복구와 중앙 비용 원장. 상세 완료 범위와 검증 근거는
-[구현 현황](docs/IMPLEMENTATION_STATUS.md)에 기록한다. 모든 법률 판단을 자동화한 것은 아니다.
-
-**설계서와 다른 점**
-- Frontend는 Next.js 대신 FastAPI가 서빙하는 무의존 SPA로 구현했다. 화면 구성(대시보드·뷰어·
-  Finding 패널·필터·리뷰 상태)은 제19장을 그대로 따르며, API 계약이 동일하므로 Next.js로 교체 가능하다.
-- 인증·조직/사건별 RBAC, 명시적 OIDC 신원 연결, 서버 세션과 CSRF 검사가 구현되어 있다.
-  실제 기관 IdP·KMS·프록시의 설정과 연동 검증은 별도 수행해야 한다.
-- 화면은 쉬운 용어를 쓰고 보고서는 검사 코드·단계·범위·근거·버전을 보존한다.
-  변호사의 검토 완료와 자동 검사의 확인 완료는 별도 상태다.
-
-**의도적으로 남긴 한계**
-- 행정규칙 공식 조회(`target=admrul`)는 응답 형식을 모의 응답으로만 시험했다. 운영 응답 필드가
-  다르면 오류(미확인)로 남기므로 잘못 확인되지는 않지만, 실연동 점검으로 확인해야 한다.
-- 주장 유형·첨부 목록·기준일 후보는 어휘 규칙으로 찾는다. 표현이 다르면 놓치거나 유형을 잘못 붙일 수
-  있으므로 확정 판정에 쓰지 않고 검토 단서로만 쓴다.
-- OCR 정확도는 원본 품질에 좌우된다. OCR 결과로 추출한 인용문의 문자열 대조(Level 3)는
-  원본 확인이 필요하다는 경고를 함께 남긴다.
-- `config/legal_mirror/`에는 판례·법령 데이터를 기본 포함하지 않는다. 검증 신뢰성이 데이터 출처에
-  직접 좌우되므로, 국가법령정보에서 정식 절차로 받은 데이터만 배치해야 한다. 테스트는 가상 데이터임을
-  명시한 `tests/fixtures/legal_mirror/`만 사용한다.
-- Level 4(판례 취지)·Level 5(문맥 왜곡) 검증은 LLM 담당 구간이다. Provider가 없으면 `PENDING_LLM`
-  상태로 남고 결코 VERIFIED로 승격되지 않는다.
-- 서명 값의 암호학적 검증은 존재·구조 확인까지만 수행한다.
-- 경과조치·부분 시행·판례 적용 가능성은 근거를 제시하는 검토 보조이며 법적 결론을 확정하지 않는다.
-- 합성 평가 예제는 평가 도구의 동작을 검증할 뿐 실제 법률문서 정확도나 시간 절감률을 입증하지 않는다.
-- 비용 한도는 같은 DB와 설정 가격을 사용하는 호출에 대한 사전 승인 원장이다. 공급자 청구액 보증은 아니다.
+| 문서 | 내용 |
+|---|---|
+| [운영 안내](docs/OPERATIONS_GUIDE.md) | AI 모델 응답 실패 사유, GitHub Actions 실행, CLI 일괄 검증, 보고서 생성, 휴지통·영구 삭제, 저장 공간, HTTP 500 추적 |
+| [시스템 구조와 검증 방식](docs/SYSTEM_GUIDE.md) | 코드 구조, 인프라, 검증 파이프라인, AI 교차검증, 판정 기준, Release Gate, 시험 실행, 구현 범위와 한계 |
+| [Render 배포](docs/DEPLOY_RENDER.md) | 배포 설정 절차 |
+| [인증·권한·키 관리](docs/IDENTITY_SECURITY_INTEGRATION.md) · [작업 복구·비용 원장](docs/OPERATIONS_DURABILITY.md) | 다중 사용자 운영, 작업 복구, 예산 |
+| [구현 현황](docs/IMPLEMENTATION_STATUS.md) | 완료 범위와 검증 근거 |
+| [개선 계획](docs/ASSESSMENT_AND_IMPROVEMENT_PLAN.md) | 초기 진단과 개선 계획(기록) |
+| [일자별 추이표](docs/scorecards/DAILY_TREND.md) · [판정서](docs/scorecards/f1_gate_verdict.md) | 개발 중 성능 점수와 평가 판정 |
+| [에이전트 역할](docs/AGENT_ROLES.md) | 구현·평가 분리, PR 규칙, 필수 검사 |
 
 ## 참고 Source
 
