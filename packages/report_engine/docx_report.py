@@ -174,7 +174,8 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
     if verified_rows:
         doc.add_heading(f"확인 완료 인용 ({len(verified_rows)}건)", 1)
         table(["문서", "인용", "판정", "비고"], verified_rows, [1.3, 2.7, 1.4, 1.6])
-    doc.add_heading("AI 작성 분석 및 법률 주장 타당성 검토", 1)
+    doc.add_heading("AI 작성 분석 및 법률 주장 타당성 검토 (3단 체계)", 1)
+    doc.add_heading("1. AI 작성·보안 진단", 2)
     ai_rows = []
     for d in run_result.documents:
         det = getattr(d, "ai_detector_result", {}) or {}
@@ -192,20 +193,37 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
         doc.add_heading("모델별 AI 작성 판정", 2)
         table(["문서", "모델", "판정", "점수", "근거"], opinion_rows, [1.3, 1.2, 1.1, 0.5, 2.9])
 
-    all_hallucination_rows = []
+    from .review_tiers import classify_row_tier
+    tier2_rows = []
+    tier3_rows = []
     for d in run_result.documents:
         for row in getattr(d, "ai_hallucination_table", []) or []:
-            all_hallucination_rows.append([
-                d.filename + " " + str(row.get("location", "")),
-                str(row.get("claim_text", "")) + f"\n({row.get('cited_authority', '')})",
-                f"[평가] {row.get('validity_verdict', '') or '확인 필요'}\n{row.get('ai_generation_basis', '')}\n"
-                + format_context_review(row.get("context_review")),
-                row_cell_text(row),  # 검토 결과·AI 교차검증·모델별 의견·대응 방안을 줄마다 나눈다
-            ])
-    if all_hallucination_rows:
-        doc.add_heading("법률 인용 오류·근거 미확인 주장 대조표 (AI 작성 여부 판단과 별개)", 2)
+            cell_loc = d.filename + " " + str(row.get("location", ""))
+            cell_claim = str(row.get("claim_text", "")) + f"\n({row.get('cited_authority', '')})"
+            cell_basis = (f"[평가] {row.get('validity_verdict', '') or '확인 필요'}\n{row.get('ai_generation_basis', '')}\n"
+                          + format_context_review(row.get("context_review")))
+            cell_review = row_cell_text(row)
+            formatted_entry = [cell_loc, cell_claim, cell_basis, cell_review]
+
+            tier = classify_row_tier(row)
+            if tier == 2:
+                tier2_rows.append(formatted_entry)
+            else:
+                tier3_rows.append(formatted_entry)
+
+    doc.add_heading("2. 판례·법령·주요참고문헌 인용 오류·미확인 검토 (AI 작성 여부 판단과 별개)", 2)
+    if tier2_rows:
         table(["위치", "문서 주장 / 인용", "인용 오류·미확인 근거 및 주장 평가", "법리적 타당성 검토 및 반박 근거"],
-              all_hallucination_rows, [1.0, 1.7, 1.6, 2.7])
+              tier2_rows, [1.0, 1.7, 1.6, 2.7])
+    else:
+        paragraph("해당 인용 오류·미확인 항목이 없습니다.")
+
+    doc.add_heading("3. 법률적으로 무리한 주장", 2)
+    if tier3_rows:
+        table(["위치", "문서 주장 / 인용", "법리 검토 결과 및 근거", "반박 근거 및 확인 필요 내용"],
+              tier3_rows, [1.0, 1.7, 1.6, 2.7])
+    else:
+        paragraph("해당 무리한 주장 또는 참고자료 모순 항목이 없습니다.")
 
     from packages.legal_engine.related_authorities import report_lines as related_lines
     for line in related_lines(run_result.documents):
