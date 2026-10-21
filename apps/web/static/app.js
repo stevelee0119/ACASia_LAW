@@ -1897,6 +1897,23 @@ function renderFindings() {
           const firstFinding = findingsMap.get(item.finding_ids[0]);
           if (firstFinding) {
             tdClaim.append(button(`상세 보기: ${friendlyText(firstFinding.title)}`, () => openFinding(firstFinding), "link-button small"));
+            const ruleId = (firstFinding.confidence_features || {}).rule_id;
+            if (ruleId === "RAG.REFERENCE_CONTRADICTION") {
+              const refDetails = node("details", null, "reference-contradiction-details");
+              refDetails.append(node("summary", "참고자료 대조 전문 및 모델 의견 펼치기"));
+              const feat = firstFinding.confidence_features || {};
+              if (feat.claim_quote) {
+                refDetails.append(node("p", `서면 주장 인용: ${feat.claim_quote}`, "small"));
+              }
+              if (feat.basis_quote) {
+                refDetails.append(node("p", `참고자료 규정 원문: ${feat.basis_quote}`, "small"));
+              }
+              const modelOpinion = feat.model_opinion || firstFinding.detail;
+              if (modelOpinion) {
+                refDetails.append(node("p", `모델 의견: ${modelOpinion}`, "small"));
+              }
+              tdClaim.append(refDetails);
+            }
           }
           if (item.finding_ids.length > 1) {
             const derived = node("details", null, "derived-findings");
@@ -2186,13 +2203,15 @@ function renderIssues() {
 }
 
 function renderTimeline() {
-  $("timeline").replaceChildren();
+  const root = $("timeline");
+  if (!root) return;
+  root.replaceChildren();
   const events = state.run?.timeline || [];
-  if (!events.length) empty($("timeline"), "추출된 사건 일지가 없습니다.");
+  if (!events.length) empty(root, "추출된 사건 일지가 없습니다.");
   for (const e of events) {
     const row = node("article", null, "row-item");
     row.append(node("strong", e.date || e.event_date || "날짜 미확인"), node("p", e.description || e.text || JSON.stringify(e)), node("div", `${state.documents.find(d=>d.id===e.document_id)?.filename||""} · 문서 기재 내용 기준`, "row-meta"));
-    $("timeline").append(row);
+    root.append(row);
   }
 }
 async function openDocument(d, finding = null, runId = state.run?.id) {
@@ -2572,16 +2591,18 @@ $("settingsButton").onclick = action(async () => {
   $("settingsDialog").showModal();
   await renderStorage();
 });
-$("calculationForm").onsubmit = action(async e => {
-  e.preventDefault();
-  const data = Object.fromEntries(new FormData(e.currentTarget));
-  data.inclusive = e.currentTarget.elements.inclusive.checked;
-  const result = await api("/calculations/interest", {
-    method: "POST",
-    body: data
+if ($("calculationForm")) {
+  $("calculationForm").onsubmit = action(async e => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.currentTarget));
+    data.inclusive = e.currentTarget.elements.inclusive.checked;
+    const result = await api("/calculations/interest", {
+      method: "POST",
+      body: data
+    });
+    $("calculationResult").replaceChildren(node("h3", `이자 ${Number(result.interest).toLocaleString("ko-KR")}원`), node("p", `${result.days}일 · 합계 ${Number(result.total).toLocaleString("ko-KR")}원`), node("p", result.formula, "technical"), node("p", "연 365일 기준 단리 계산. 적용 이율·기간 및 초일 산입 여부는 담당 변호사가 확정합니다.", "muted"));
   });
-  $("calculationResult").replaceChildren(node("h3", `이자 ${Number(result.interest).toLocaleString("ko-KR")}원`), node("p", `${result.days}일 · 합계 ${Number(result.total).toLocaleString("ko-KR")}원`), node("p", result.formula, "technical"), node("p", "연 365일 기준 단리 계산. 적용 이율·기간 및 초일 산입 여부는 담당 변호사가 확정합니다.", "muted"));
-});
+}
 // 화면 구성요소는 각각 별도 파일이다. 배포 중이거나 캐시가 어긋나면 그중
 // 하나가 로드되지 않을 수 있고, 그때 남는 것은 "operationsUI is not defined"
 // 같은 문구와 빈 프로젝트 목록이다. 자료가 사라진 것처럼 보이지만 실제로는
@@ -2595,7 +2616,6 @@ function missingModules() {
     [typeof adminUI, "사용자 관리"],
     [typeof workflowUI, "검토 작업"],
     [typeof projectTools, "프로젝트 관리"],
-    [typeof calculationWorkbench, "금액 계산"],
   ].filter(([kind]) => kind === "undefined").map(([, label]) => label);
 }
 
@@ -2640,6 +2660,5 @@ if (!missingModules().length) {
   workflowUI.init();
   operationsUI.init();
   projectTools.init();
-  calculationWorkbench.init();
 }
 init();

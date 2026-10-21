@@ -203,7 +203,8 @@ test("admin navigation closes the account dialog before opening the management w
 test("merged page retains every workbench and no script persists authentication secrets", () => {
   const html = readFileSync(path.join(root, "apps/web/index.html"), "utf8");
   const app = readFileSync(path.join(root, "apps/web/static/app.js"), "utf8");
-  for (const file of ["workflow.js", "admin.js", "operations.js", "report-workbench.js", "calculation-workbench.js"]) assert.ok(html.includes(file));
+  // TK-86: 저사용 계산 워크벤치 제거 후 유지되는 필수 워크벤치 스크립트 검증
+  for (const file of ["workflow.js", "admin.js", "operations.js", "report-workbench.js"]) assert.ok(html.includes(file));
   assert.ok(html.includes("ACASia_LAW"));
   assert.ok(html.includes("법률문서 검증시스템"));
   // 엠블럼은 상단바와 빈 상태 화면 양쪽에 있어야 한다.
