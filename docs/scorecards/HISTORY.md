@@ -1301,3 +1301,7 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
     - `check_test_edits`: 평가 브랜치가 Steve `ea97fce`를 병합하지 않아 Steve의 새 시험(tk78·tk82·tk84 등)이 '삭제'로 보였다. → Steve `ea97fce` 병합 커밋으로 해소(exit 0).
     - `check_protected_paths`: DAILY_TREND(`704b93d`)·HISTORY·ticket_registry(`a491318`)의 마지막 변경 커밋에 `Agent: evaluator` 표기가 없었다. → 이 기록 커밋부터 표기를 붙여 해소. 이후 평가 측 커밋은 모두 표기한다.
   - 남는 위험: #148의 필수 '테스트' 검사도 TK-95 시간 시험에 걸릴 수 있다(재실행은 1회 규칙).
+- **#148 병합(10-21, 사용자 지시 '#148병합'):** head `60c3660` → Steve `a6d6c63`(병합 커밋, `expectedHeadSha` 고정).
+  - 필수 CI 성공(CI 결과 인용): 점수 하락 게이트는 두 실행 모두 성공.
+  - PR 실행 39578505767의 PostgreSQL 잡이 TK-95 시간 시험(`test_row_security_prefilter_repeated_input_is_bounded`, 0.59초 > 0.1초)으로 1회 실패했다. 같은 커밋의 push 실행에서는 성공했고, 1회 재실행에서 통과했다.
+  - TK-95 미해결 상태는 그대로다. 같은 시험이 다른 PR에서도 계속 실패할 수 있다.
