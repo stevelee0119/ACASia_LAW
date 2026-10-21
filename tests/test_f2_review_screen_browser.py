@@ -129,7 +129,7 @@ def f2_browser_page():
             "finding_ids": ["f_cit_1", "f_cit_2"],
             "citation_id": "cit_1",
             "reasoning_sections": {
-                "review": "타당성 검토 결과: 해당 판례 미존재",
+                "review": "타당성 검토 결과: 해당 판례 미존재에 따른 심각한 법리 왜곡 가능성이 있으며 원고의 주장은 선행 판결의 판시 내용과 상치되는 것으로 분석되어 추가적인 사실관계 및 원문 전수 조사가 반드시 필요하다고 판단됩니다",
                 "ai_label": "3개 모델 일치",
                 "opinions": [],
             },
@@ -167,7 +167,7 @@ def f2_browser_page():
             "finding_ids": [],
             "citation_id": "cit_pure",
             "reasoning_sections": None,
-            "counteraction": "적용 법리 타당성 직접 검토",
+            "counteraction": "",
         },
     ]
 
@@ -446,22 +446,23 @@ def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_pag
     panel = page.locator('section[data-panel="review"]')
     rows = panel.locator("#aiVerificationRows tr")
 
-    # 1. 1번째 행 상세 법리 의견 details 요소가 기본적으로 접혀 있는지 검증 (TK-87 요구사항 2)
+    # 1. 1번째 행 상세 법리 의견 details 요소가 무조건 존재하고 기본적으로 접혀 있는지 검증 (TK-87 요구사항 2)
     box = rows.nth(0).locator(".review-summary-box")
     details = box.locator("details.summary-details")
-    if details.count() > 0:
-        expect(details).not_to_have_attribute("open", "")
+    expect(details).to_be_visible()
+    expect(details).not_to_have_attribute("open", "")
 
-    # 2. 1번째 행 의심 사유 텍스트가 100자 상한으로 축약되어 노출되는지 검증
+    # 2. 1번째 행 의심 사유 텍스트가 100자 상한으로 '…' 축약되어 노출되는지 검증
     reason_elem = box.locator(".summary-reason")
     expect(reason_elem).to_be_visible()
+    expect(reason_elem).to_contain_text("…")
     reason_text = reason_elem.inner_text()
     assert len(reason_text) <= 120, f"의심 사유 텍스트가 과도하게 길지 않아야 함: {len(reason_text)}자"
 
-    # 3. 3번째 행(인용 권위명 헌법 제10조, 1쪽)의 확인 방법 텍스트 검증
+    # 3. 3번째 행(counteraction 없는 위치 행: 헌법 제10조, 1쪽)의 확인 방법 텍스트 검증: '권위명 원문 대조 (N쪽)' 분기
     box3 = rows.nth(2).locator(".review-summary-box")
     expect(box3.locator(".summary-action")).to_be_visible()
-    expect(box3.locator(".summary-action")).to_contain_text("적용 법리 타당성 직접 검토")
+    expect(box3.locator(".summary-action")).to_contain_text("헌법 제10조 원문 대조 (1쪽)")
 
 
 def test_f2_filters_search_severity_review_status(f2_browser_page):
