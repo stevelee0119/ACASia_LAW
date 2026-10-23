@@ -1750,20 +1750,29 @@ _HEADING_JOB_TITLE_RE = re.compile(
     r"(?:사법경찰관\s*)?경위\s+[가-힣]{1,4}|(?:순경|경장|경사|경위|경감|경정|총경)\b"
 )
 
-# 비진술서 전용 첫머리 단독 표제 정규식 (독립된 행 단위 매칭)
+# 비진술서 전용 첫머리 표제 정규식 (1쪽 상단 running_head 또는 첫머리 단독 표제 행 매칭)
+# - 앞쪽에는 문서 관리기호(예: SD-06 | ...)만 선택적으로 허용하고, 목록 줄·직위·복합 편철문서는 제외한다.
+# - 뒤쪽에는 줄 끝($) 또는 구분 기호(―, —, -, |, /, :)가 올 수 있다.
 # 증거설명서 전용 표제
 _EVIDENCE_EXPLANATION_TITLE_RE = re.compile(
-    r"^\s*(?:[^\n|―\-]{1,15}\s*[|―\-]\s*)?[\[【<「『―\-]*\s*증\s*거\s*설\s*명\s*서\s*[\]】>」』―\-]*\s*$"
+    r"^\s*(?:[A-Za-z0-9\-_]{1,15}\s*[|―—\-]\s*)?"
+    r"[\[【<「『―—\-]*\s*(?:[가-힣]{1,6}\s+)?증\s*거\s*설\s*명\s*서\s*[\]】>」』]*"
+    r"(?:\s*$|\s*[|―—\-/:]|\s+[^\s.]+)"
 )
 
 # 사실경위서 전용 표제 (FACT_CONFIRMATION 어휘 범위: 사실경위서, 사건경위서, 사고경위서, 경위서)
 _FACT_CONFIRMATION_TITLE_RE = re.compile(
-    r"^\s*(?:[^\n|―\-]{1,15}\s*[|―\-]\s*)?[\[【<「『―\-]*\s*(?:사\s*실\s*경\s*위\s*서|사\s*건\s*경\s*위\s*서|사\s*고\s*경\s*위\s*서|경\s*위\s*서)\s*[\]】>」』―\-]*\s*$"
+    r"^\s*(?:[A-Za-z0-9\-_]{1,15}\s*[|―—\-]\s*)?"
+    r"[\[【<「『―—\-]*\s*(?:[가-힣]{1,6}\s+)?(?:사\s*실\s*경\s*위\s*서|사\s*건\s*경\s*위\s*서|사\s*고\s*경\s*위\s*서|경\s*위\s*서)\s*[\]】>」』]*"
+    r"(?:\s*$|\s*[|―—\-/:]|\s+[^\s.]+)"
 )
 
-# 소송 대리 서면 전용 표제 (소장, 준비서면, 답변서, 의견서, 항소장, 상고장, 고소장)
+# 소송 대리 서면 전용 표제 (소장, 준비서면, 답변서, 의견서, 항소장, 상고장, 고소장, 청구의 소)
 _PLEADING_TITLE_RE = re.compile(
-    r"^\s*(?:[^\n|―\-]{1,15}\s*[|―\-]\s*)?[\[【<「『―\-]*\s*(?:소\s*장|준\s*비\s*서\s*면|답\s*변\s*서|의\s*견\s*서|항\s*소\s*장|상\s*고\s*장|고\s*소\s*장)\s*[\]】>」』―\-]*\s*$"
+    r"^\s*(?:[A-Za-z0-9\-_]{1,15}\s*[|―—\-]\s*)?"
+    r"[\[【<「『―—\-]*\s*(?:[가-힣]{1,8}(?:의|\s+[가-힣]{1,8}){0,3}\s+)?"
+    r"(?:소\s*장|준\s*비\s*서\s*면|답\s*변\s*서|의\s*견\s*서|항\s*소\s*장|상\s*고\s*장|고\s*소\s*장|청\s*구\s*의\s*소)\s*[\]】>」』]*"
+    r"(?:\s*$|\s*[|―—\-/:]|\s+[^\s.]+)"
 )
 
 _EXHIBIT_REFERENCE_RE = re.compile(
@@ -1801,7 +1810,7 @@ def _document_title_kind(doc: NormalizedDocument, reading_text: Optional[str] = 
     """문서의 첫머리 제목을 분석하여 (문서 종류, 본문 시작 오프셋)을 반환한다.
 
     1순위: 진술서·사실확인서 (Steve 원본 _statement_start 100% 동일, TC-05 등 복합 서면 보호)
-    2순위: 문서 첫머리(상단 15줄 및 600자 이내) 단독 제목 행 분석
+    2순위: 문서 첫머리(1쪽 상단 머리글·블록 및 상단 15줄/600자 이내) 단독 제목 행 분석
            - 목록 줄(번호/호증/첨부서류 목록) 및 직위 낱말('경위') 철저 배제
            - 증거설명서 (EVIDENCE_EXPLANATION)
            - 사실경위서 (FACT_CONFIRMATION: 사실경위서, 사건경위서, 사고경위서, 경위서 등 원본 서증)
@@ -1815,11 +1824,25 @@ def _document_title_kind(doc: NormalizedDocument, reading_text: Optional[str] = 
     if stmt_start is not None:
         return DOC_KIND_STATEMENT, stmt_start
 
-    # 2. 문서 첫머리(첫 15줄 및 600자 이내)의 단독 표제 행 검사
-    top_chunk = text[:600]
-    lines = top_chunk.splitlines()[:15]
+    # 2. 문서 첫머리(1쪽 상단 블록 5개 및 본문 상단 15줄/600자 이내)의 표제 행 검사
+    # build_reading_text(doc)는 running_head 블록을 본문에서 제외하므로,
+    # 1쪽 상단 블록(running_head 포함)의 첫 줄들을 함께 수집하여 첫머리 표제를 판별한다.
+    candidate_lines: List[str] = []
+    if doc.pages:
+        for b in doc.pages[0].blocks[:5]:
+            for bline in (b.text or "").splitlines()[:3]:
+                if bline.strip():
+                    candidate_lines.append(bline)
+    else:
+        for b in doc.blocks[:5]:
+            for bline in (b.text or "").splitlines()[:3]:
+                if bline.strip():
+                    candidate_lines.append(bline)
 
-    for line in lines:
+    top_chunk = text[:600]
+    candidate_lines.extend(top_chunk.splitlines()[:15])
+
+    for line in candidate_lines:
         stripped = line.strip()
         if not stripped:
             continue
@@ -1829,8 +1852,8 @@ def _document_title_kind(doc: NormalizedDocument, reading_text: Optional[str] = 
         # 직위 낱말 제외 (예: 사법경찰관 경위, 경위 홍길동 등)
         if _HEADING_JOB_TITLE_RE.search(stripped):
             continue
-        # 일반 서술 문장 제외 (길이 30자 초과 또는 문장 종결 구두점/어미)
-        if len(stripped) > 30 or stripped.endswith((".", ",", ";", "!", "?", "다", "함", "음", "요")):
+        # 일반 서술 문장 제외 (길이 80자 초과 또는 문장 종결 구두점/어미)
+        if len(stripped) > 80 or stripped.endswith((".", ",", ";", "!", "?", "다", "함", "음", "요")):
             continue
 
         # 증거설명서 단독 표제
@@ -1929,7 +1952,7 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
             other_kind = doc_kinds[other_id][0]
 
             if owner_kind == DOC_KIND_STATEMENT:
-                # 4순위: 진술서 문서 대필·작출 의심 (EvidenceGrade.B 고정)
+                # 4순위: 진술서 문서 대필·작출 의심 (EvidenceGrade.B 고정, Steve 원본 출력과 100% 동일하게 유지)
                 out.append(_finding(
                     owner, FindingType.CROSS_DOC_COPY, EvidenceGrade.B, Severity.MEDIUM,
                     f"진술 문서에 다른 서면({other.filename})과 같은 문장이 {len(matched)}건 있다",
@@ -1937,13 +1960,13 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                     "의심할 단서가 된다. 작성 경위는 사람이 확인한다.",
                     matched[0][0], status=VerificationStatus.SUSPICIOUS,
                     features={"other_document_id": other_id, "similarity": matched[0][2],
-                              "sources": [{"document_id": owner.document_id}],
-                              "differences": f"{owner.document_id}_{other_id}_{matched[0][0][:40]}",
                               "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
                                         for a, b, s in matched[:5]]}
                 ))
             elif owner_kind in (DOC_KIND_PLEADING, DOC_KIND_EVIDENCE_EXPLANATION) and other_kind == DOC_KIND_FACT_CONFIRMATION:
                 # 5순위: 서증 원본(사실경위서) 통문단 복제 검출 (조건 2: EvidenceGrade.C 고정, 증거설명서는 호증 항목 밖만)
+                # VerificationPipeline._cross_check에서 서로 다른 owner 문서의 C등급 결과가 첫 1건으로 합쳐져
+                # 소실되지 않도록 C등급 결과에만 문서별 sources(owner.document_id)를 부여한다.
                 doc_title = "소송 서면" if owner_kind == DOC_KIND_PLEADING else "증거설명서"
                 out.append(_finding(
                     owner, FindingType.CROSS_DOC_COPY, EvidenceGrade.C, Severity.MEDIUM,
@@ -1953,7 +1976,6 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                     matched[0][0], status=VerificationStatus.SUSPICIOUS,
                     features={"other_document_id": other_id, "similarity": matched[0][2],
                               "sources": [{"document_id": owner.document_id}],
-                              "differences": f"{owner.document_id}_{other_id}_{matched[0][0][:40]}",
                               "copy_category": "FACT_CONFIRMATION_REPLICATION",
                               "rule_id": "EVI.COPY_FACT_CONFIRMATION", "human_review": True,
                               "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}

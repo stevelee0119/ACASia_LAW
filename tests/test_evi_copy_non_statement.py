@@ -382,3 +382,121 @@ def test_statement_path_invariance_with_steve():
     kind, _ = _document_title_kind(doc_non_stmt)
     assert kind == DOC_KIND_PLEADING
 
+    # 4. 진술서(B등급) finding의 confidence_features에는 sources·differences가 없어야 함 (Steve와 100% 동일)
+    shared = (
+        "당시 저는 현장에서 약 3미터 떨어진 곳에서 자재를 운반하고 있었는데 굉음과 함께 비명 소리가 들려 "
+        "즉시 현장으로 달려가 상황을 목격하게 되었습니다."
+    )
+    d_st = _make_doc("d_st2", f"진 술 서\n성명: 최○○\n\n{shared}", "진술서.pdf")
+    d_cp = _make_doc("d_cp2", f"소  장\n원고 홍길동\n\n{shared}", "소장.pdf")
+    stmt_findings = cross_document_copies([d_st, d_cp])
+    assert len(stmt_findings) == 1
+    assert stmt_findings[0].evidence_grade == EvidenceGrade.B
+    assert "sources" not in stmt_findings[0].confidence_features
+    assert "differences" not in stmt_findings[0].confidence_features
+
+
+def test_c_grade_sources_preserve_multiple_owners_in_pipeline(tmp_path, monkeypatch):
+    """요구 ① 검증: C등급(비진술서 통복제)에 문서별 sources가 있어야 파이프라인(_cross_check)에서
+    서로 다른 owner 서면(소장, 준비서면 등)의 결함과 진술서(B등급) 결함이 하나로 합쳐져 소실되지 않음을 입증."""
+    from packages.verification_engine.pipeline import DocumentInput, ProjectContext, VerificationPipeline
+    from packages.pii_engine import PseudonymStore
+
+    shared_fact = (
+        "2023년 5월 10일 피고 회사 공장에서 기계 정비 작업을 수행하던 도중 안전장치가 제대로 작동하지 않아 "
+        "작업자의 오른손이 롤러에 끼이는 중대한 사고가 발생하였습니다."
+    )
+    doc_fact = _make_doc("d_fact", f"사 실 경 위 서\n작성인: 박○○\n\n{shared_fact}", "사실경위서.pdf")
+    doc_comp = _make_doc("d_comp", f"소  장\n원고 홍길동\n\n{shared_fact}", "소장.pdf")
+    doc_prep = _make_doc("d_prep", f"준 비 서 면\n원고 대리인\n\n{shared_fact}", "준비서면.pdf")
+    doc_stmt = _make_doc("d_stmt", f"진 술 서\n성명: 김○○\n\n{shared_fact}", "진술서.pdf")
+
+    docs_map = {"d_fact": doc_fact, "d_comp": doc_comp, "d_prep": doc_prep, "d_stmt": doc_stmt}
+    from packages.verification_engine import pipeline as pipeline_module
+    monkeypatch.setattr(pipeline_module, "parse_document", lambda path, **kw: docs_map[kw["document_id"]])
+    monkeypatch.setattr(pipeline_module, "PseudonymStore", lambda project_id, **kw: PseudonymStore(project_id, root=tmp_path))
+
+    pipeline = VerificationPipeline()
+    result = pipeline.run(
+        "run-multi-owner-copy",
+        ProjectContext("proj-multi-owner-copy"),
+        [
+            DocumentInput("d_fact", "사실경위서.pdf", "사실경위서.pdf"),
+            DocumentInput("d_comp", "소장.pdf", "소장.pdf"),
+            DocumentInput("d_prep", "준비서면.pdf", "준비서면.pdf"),
+            DocumentInput("d_stmt", "진술서.pdf", "진술서.pdf"),
+        ],
+    )
+
+    copy_findings = [f for f in result.project_findings if f.type == FindingType.CROSS_DOC_COPY.value]
+    owners = {f.document_id: f.evidence_grade for f in copy_findings}
+    # 진술서(B등급 1건)와 비진술서 소장·준비서면(각 C등급 1건)이 서로 충돌 없이 보존되어야 한다
+    assert owners.get("d_stmt") == EvidenceGrade.B
+    assert owners.get("d_comp") == EvidenceGrade.C
+    assert owners.get("d_prep") == EvidenceGrade.C
+    assert len(copy_findings) == 3
+
+
+def test_running_head_and_subtitle_headings_classification():
+    """요구 ② 검증: 1쪽 상단 running_head 블록에 위치한 표제 및 부제목/관리기호 병기 표제 정상 분류."""
+    # 1. running_head에만 '사실경위서 ― 사건 부제목'이 있고 본문은 항목부터 시작하는 다쪽 서면
+    doc_rh_fact = NormalizedDocument(
+        document_id="rh_fact",
+        filename="rh_fact.pdf",
+        mime_type="application/pdf",
+        sha256="0" * 64,
+        pages=[
+            Page(
+                page_number=1,
+                blocks=[
+                    Block("rh1", "SD-07 | 사실경위서 ― 현장 설비 점검 사건", 1, block_type="running_head"),
+                    Block("p1", "1. 작성 경위\n본 문서는 당시 상황을 기록한 것입니다.", 1, block_type="paragraph"),
+                ],
+            )
+        ],
+    )
+    kind, _ = _document_title_kind(doc_rh_fact)
+    assert kind == DOC_KIND_FACT_CONFIRMATION
+
+    # 2. running_head에 '대금 청구 준비서면 관리번호 SD-03 / ...'가 있는 다쪽 서면
+    doc_rh_plead = NormalizedDocument(
+        document_id="rh_plead",
+        filename="rh_plead.pdf",
+        mime_type="application/pdf",
+        sha256="0" * 64,
+        pages=[
+            Page(
+                page_number=1,
+                blocks=[
+                    Block("rh2", "대금 청구 준비서면 관리번호 SD-03 / 2026년 검토 제출본 / 1쪽", 1, block_type="running_head"),
+                    Block("p2", "1. 변론의 요지\n원고의 주장을 정리합니다.", 1, block_type="paragraph"),
+                ],
+            )
+        ],
+    )
+    kind, _ = _document_title_kind(doc_rh_plead)
+    assert kind == DOC_KIND_PLEADING
+
+    # 3. '편철 확인서 ...' 또는 '제출자료 편철 및 표기 설명서 ...' 등 편철 안내 문서는 OTHER로 유지 (오탐 방지)
+    doc_rh_cover = NormalizedDocument(
+        document_id="rh_cover",
+        filename="rh_cover.pdf",
+        mime_type="application/pdf",
+        sha256="0" * 64,
+        pages=[
+            Page(
+                page_number=1,
+                blocks=[
+                    Block("rh3", "편철 확인서 관리번호 SD-01 / 2026년 검토 제출본 / 1쪽", 1, block_type="running_head"),
+                    Block("p3", "1. 제출 취지\n이 자료는 서면 묶음에 편철하여 제출한다.", 1, block_type="paragraph"),
+                ],
+            )
+        ],
+    )
+    kind, _ = _document_title_kind(doc_rh_cover)
+    assert kind != DOC_KIND_STATEMENT
+    assert kind != DOC_KIND_FACT_CONFIRMATION
+    assert kind != DOC_KIND_PLEADING
+
+
+
