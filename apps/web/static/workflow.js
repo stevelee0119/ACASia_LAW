@@ -301,13 +301,14 @@ const workflowUI = (() => {
     const view=modal("검토 변경 이력",[content],async()=>{}); view.readOnly();
   }
   async function activate(tab) {
-    if (tab === "issues" || tab === "review") {await refresh(); if(tab === "review") renderFindings();}
+    if (tab === "issues" || tab === "review") {await refresh(); renderFindings();}
   }
   function init() {
     const toolbar=document.querySelector('[data-panel="issues"] .toolbar');
     const issueActions=node("div",null,"actions");
     $("editIssues").textContent="검토 범위";
-    issueActions.append($("editIssues"),button("쟁점 추가",()=>issueEditor()),iconButton("contact","담당자·대리 당사자",profileEditor));
+    // TK-88: 3단 체계 전환에 따라 툴바 입력 도구 축소
+    // issueActions.append($("editIssues"),button("쟁점 추가",()=>issueEditor()),iconButton("contact","담당자·대리 당사자",profileEditor));
     toolbar.append(issueActions);
     const workbench=node("div");workbench.id="issueWorkbench";$("claims").before(workbench);
     initNavigation();

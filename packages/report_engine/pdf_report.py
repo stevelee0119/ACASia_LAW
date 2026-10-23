@@ -235,7 +235,8 @@ def build_report_pdf(
                                                        "TIMELINE_CONTRADICTION", "ARITHMETIC_MISMATCH"}, styles))
 
     # --- 5. AI 작성 분석 및 법률 주장 타당성 검토 -----------------------
-    story.append(Paragraph(_escape("5. AI 작성 분석 및 법률 주장 타당성 검토"), styles["h1"]))
+    story.append(Paragraph(_escape("5. AI 작성 분석 및 법률 주장 타당성 검토 (3단 체계)"), styles["h1"]))
+    story.append(Paragraph(_escape("1. AI 작성·보안 진단"), styles["h2"]))
     ai_rows = [["문서", "AI 진단", "확신도", "판정 근거"]]
     for d in run_result.documents:
         det = getattr(d, "ai_detector_result", {}) or {}
@@ -253,23 +254,40 @@ def build_report_pdf(
         story.append(Paragraph(_escape("모델별 AI 작성 판정"), styles["h2"]))
         story.append(table([["문서", "모델", "판정", "점수", "근거"], *opinion_rows], [80, 70, 70, 30, 240]))
 
-    # AI 환각 및 법률 주장 타당성 대조표
-    all_hallucination_rows = []
+    from .review_tiers import classify_row_tier
+    tier2_rows = []
+    tier3_rows = []
     for d in run_result.documents:
         for row in getattr(d, "ai_hallucination_table", []) or []:
-            all_hallucination_rows.append([
-                d.filename + " " + str(row.get("location", "")),
-                str(row.get("claim_text", ""))[:120] + "\n(" + str(row.get("cited_authority", "")) + ")",
-                "[평가] " + str(row.get("validity_verdict", "") or "확인 필요") + "\n"
-                + str(row.get("ai_generation_basis", ""))[:120] + "\n"
-                + format_context_review(row.get("context_review")),
-                row_cell_text(row, limit=900),  # 항목별 줄바꿈. 모델 의견이 잘리지 않게 칸 전체가 아닌 부분별로 자른다
-            ])
-    if all_hallucination_rows:
-        story.append(Spacer(1, 4))
-        story.append(Paragraph(_escape("법률 인용 오류·근거 미확인 주장 대조표 (AI 작성 여부 판단과 별개)"), styles["h2"]))
+            cell_loc = d.filename + " " + str(row.get("location", ""))
+            cell_claim = str(row.get("claim_text", ""))[:120] + "\n(" + str(row.get("cited_authority", "")) + ")"
+            cell_basis = ("[평가] " + str(row.get("validity_verdict", "") or "확인 필요") + "\n"
+                          + str(row.get("ai_generation_basis", ""))[:120] + "\n"
+                          + format_context_review(row.get("context_review")))
+            cell_review = row_cell_text(row, limit=900)
+            formatted_entry = [cell_loc, cell_claim, cell_basis, cell_review]
+
+            tier = classify_row_tier(row)
+            if tier == 2:
+                tier2_rows.append(formatted_entry)
+            else:
+                tier3_rows.append(formatted_entry)
+
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(_escape("2. 판례·법령·주요참고문헌 인용 오류·미확인 검토 (AI 작성 여부 판단과 별개)"), styles["h2"]))
+    if tier2_rows:
         h_table_rows = [["위치", "문서 주장 / 인용", "인용 오류·미확인 근거 및 주장 평가", "법리적 타당성 검토 및 반박 근거"]]
-        story.append(table(h_table_rows + all_hallucination_rows, [60, 105, 110, 215]))
+        story.append(table(h_table_rows + tier2_rows, [60, 105, 110, 215]))
+    else:
+        story.append(Paragraph(_escape("해당 인용 오류·미확인 항목이 없습니다."), styles["body"]))
+
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(_escape("3. 법률적으로 무리한 주장"), styles["h2"]))
+    if tier3_rows:
+        t3_table_rows = [["위치", "문서 주장 / 인용", "법리 검토 결과 및 근거", "반박 근거 및 확인 필요 내용"]]
+        story.append(table(t3_table_rows + tier3_rows, [60, 105, 110, 215]))
+    else:
+        story.append(Paragraph(_escape("해당 무리한 주장 또는 참고자료 모순 항목이 없습니다."), styles["body"]))
 
     from packages.legal_engine.related_authorities import report_lines as related_lines
     for line in related_lines(run_result.documents):

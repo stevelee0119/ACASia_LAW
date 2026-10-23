@@ -1765,3 +1765,47 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
   cursor: pointer;
 }
 
+
+
+/* TK-88: 3단 체계 및 상호 참조 앵커 스타일 */
+.cross-ref-anchor {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  background-color: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  color: #1d4ed8;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+}
+.cross-ref-anchor:hover {
+  background-color: #e2e8f0;
+  text-decoration: underline;
+}
+.tier3-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+.tier3-table th {
+  background: #edf2f0;
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 13px;
+  border: 1px solid var(--line);
+}
+.tier3-table td {
+  padding: 12px;
+  border: 1px solid var(--line);
+  vertical-align: top;
+  font-size: 13px;
+  line-height: 1.55;
+}
+#tier3Table {
+  table-layout: fixed;
+}
+#tier3Table td {
+  overflow-wrap: anywhere;
+}
