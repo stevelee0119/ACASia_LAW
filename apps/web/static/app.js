@@ -172,18 +172,70 @@ function filterUnverifiedAuthorities(items) {
   );
 }
 
-// 인용 식별자 내 개인정보 및 사건 관련 괄호 부기 제거 함수 (TK-94)
-// 판례·법령 인용 식별자에 덧붙여진 당사자 성명, 직위 부기, 괄호 설명 등을 제거하여
-// MASKED 정책 시 외부 AI로 개인정보가 유출되지 않도록 실질 마스킹 처리한다.
+// 인용 식별자 내 허용 요소(판례: 법원·선고일·사건번호·종국구분·전원합의체 / 법령: 법령명·조항호·시점표기)만 추출 (TK-94)
+// 지우는 방식 대신 허용 목록 화이트리스트 추출을 적용하여 당사자 성명, 괄호/대괄호 부기 등 불필요한 개인정보를 완전히 배제한다.
+// 추출에 실패하거나 개인 식별 정보만 있는 경우 '식별자 확인 불가'를 반환한다.
 function maskAuthorityIdentifier(rawAuth) {
-  if (!rawAuth) return "";
-  let text = String(rawAuth).trim();
-  // 1. 괄호 부기(예: (홍길동 관련), (원고 김철수), (사건 관련자), (피고 측 서면)) 제거
-  text = text.replace(/\s*\([^)]*(?:원고|피고|신청인|피신청인|고소인|피의자|작성자|당사자|관련|사건|[가-힣]{2,4})[^)]*\)/g, "");
-  // 2. 괄호 외부에 남아있는 당사자명/성명 부기 제거 (예: '원고 홍길동', '피고 김철수')
-  text = text.replace(/(?:원고|피고|신청인|피신청인|고소인|피의자)\s+[가-힣]{2,4}/g, "");
-  // 3. 연속 공백 정리
-  return text.replace(/\s+/g, " ").trim();
+  if (!rawAuth) return "식별자 확인 불가";
+  const text = String(rawAuth).trim();
+  if (!text) return "식별자 확인 불가";
+
+  // 1. 법령 조항 우선 검사 (제X조가 포함된 경우 명백한 법령)
+  const articleMatch = text.match(/제\s*\d+\s*조(?:의\s*\d+)?(?:\s*제\s*\d+\s*항)?(?:\s*제\s*\d+\s*호)?(?:\s*제\s*[가-힣]\s*목)?/);
+  if (articleMatch) {
+    const parts = [];
+    const prefix = text.slice(0, articleMatch.index).trim();
+    // 법령명 추출 (예: 민법, 형법, 근로기준법, 개인정보 보호법, 상가건물 임대차보호법 등)
+    const prefixLawMatch = prefix.match(/([가-힣0-9·\s]+?(?:법|법률|령|규칙|조례|규정|정관|약관|지침|기준|세칙))$/);
+    if (prefixLawMatch) {
+      parts.push(prefixLawMatch[1].trim());
+    }
+    parts.push(articleMatch[0].replace(/\s+/g, " ").trim());
+    // 법령 시점 표기 추출 (괄호 안 개정/시행/신설/폐지 등 유지)
+    const temporalMatch = text.match(/\([^)]*?(?:개정|시행|신설|폐지|효력|적용)[^)]*?\)/);
+    if (temporalMatch) {
+      parts.push(temporalMatch[0].trim());
+    }
+    return parts.join(" ");
+  }
+
+  // 2. 판례 요소 검사 (법원, 선고/결정일, 사건번호, 전원합의체, 판결/결정 종국구분)
+  // 사건번호는 괄호로 둘러싸인 형태((2021다12345))도 보존하도록 매칭
+  const caseNoMatch = text.match(/(?:\(?\b\d{2,4}\s*(?:가합|가단|가소|나|다|라|마|그|바|사|고합|고단|고정|노|도|로|모|구|구합|구단|누|두|루|무|드|르|므|브|스|허|후|카|타|헌가|헌나|헌다|헌라|헌마|헌바|헌사|헌아|초)\s*\d+\b\)?)|\b\d{2,4}\s*[가-힣]{1,4}\s*\d+\b/);
+  const courtMatch = text.match(/(?:대법원|헌법재판소|(?:서울|수원|부산|대구|대전|광주|인천|울산|춘천|청주|전주|제주|의정부|창원)(?:고등|지방|가정|행정|회생)?법원|(?:고등|지방|가정|행정|회생)법원)/);
+  const verdictTypeMatch = text.match(/(?:판결|결정|명령|심판)/);
+
+  if (caseNoMatch || (courtMatch && verdictTypeMatch)) {
+    const parts = [];
+    if (courtMatch) parts.push(courtMatch[0]);
+    // 선고/결정일자 추출 (예: 2020. 12. 24. 선고)
+    const dateMatch = text.match(/\d{4}\s*[.년]\s*\d{1,2}\s*[.월]\s*\d{1,2}\s*[.일]?\s*(?:선고|결정|자)?/);
+    if (dateMatch && (!caseNoMatch || !caseNoMatch[0].includes(dateMatch[0]))) {
+      parts.push(dateMatch[0].trim());
+    }
+    // 전원합의체 추출
+    if (/전원합의체/.test(text)) parts.push("전원합의체");
+    // 사건번호
+    if (caseNoMatch) parts.push(caseNoMatch[0].trim());
+    // 종국구분 (판결/결정 등)
+    if (verdictTypeMatch && !parts.some(p => p.includes(verdictTypeMatch[0]))) {
+      parts.push(verdictTypeMatch[0]);
+    }
+    if (parts.length > 0) return parts.join(" ");
+  }
+
+  // 3. 조항 없는 단독 법령명 검사 (예: '상가건물 임대차보호법')
+  const standaloneLawMatch = text.match(/^([가-힣0-9·\s]+?(?:법|법률|령|규칙|조례|규정|정관|약관|지침|기준|세칙))(?:\s*[(（【[].*?[)）】\]]|\s*$)/);
+  if (standaloneLawMatch) {
+    const parts = [standaloneLawMatch[1].trim()];
+    const temporalMatch = text.match(/\([^)]*?(?:개정|시행|신설|폐지|효력|적용)[^)]*?\)/);
+    if (temporalMatch) {
+      parts.push(temporalMatch[0].trim());
+    }
+    return parts.join(" ");
+  }
+
+  return "식별자 확인 불가";
 }
 
 // 서면 내 출처 미확인 판례·법령 전체에 대한 엘박스/법률 AI 일괄 검증 프롬프트 생성 (TK-94)

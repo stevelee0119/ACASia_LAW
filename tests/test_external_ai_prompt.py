@@ -229,3 +229,58 @@ def test_styles_css_classes_defined():
     assert ".review-prompt-notice" in content
     assert ".copy-fallback-dialog" in content
     assert ".copy-fallback-textarea" in content
+
+
+def test_behavior_mask_authority_identifier_whitelist_extraction():
+    """행동 시험 (TK-94 4차 보완): 허용 목록 화이트리스트 추출 파서 검증.
+    
+    1. 판례: 법원·선고일·사건번호·종국구분(판결/결정)·전원합의체 추출.
+    2. 법령: 법령명·조항호·시점 표기 추출.
+    3. 괄호 안 사건번호 유지 및 시점 표기 유지.
+    4. 역할 표기 없는 인명 및 대괄호 부기 제거.
+    5. 추출 실패 시 '식별자 확인 불가' 반환.
+    """
+    mask_fn_code = _extract_js_mask_function()
+
+    runner_script = f"""
+{mask_fn_code}
+
+const testCases = [
+  // 1. 역할 표기 없는 인명 제거
+  {{ input: "대법원 2021다12345 판결 (홍길동)", expected: "대법원 2021다12345 판결" }},
+  // 2. 대괄호 부기 제거
+  {{ input: "대법원 2021다12345 판결 [홍길동 사건]", expected: "대법원 2021다12345 판결" }},
+  // 3. 괄호 안 사건번호 유지
+  {{ input: "대법원 (2021다12345) 판결", expected: "대법원 (2021다12345) 판결" }},
+  // 4. 선고일자 및 전원합의체 유지
+  {{ input: "대법원 2020. 12. 24. 선고 2018다20000 전원합의체 판결", expected: "대법원 2020. 12. 24. 선고 전원합의체 2018다20000 판결" }},
+  // 5. 법령 조항 및 부기 제거
+  {{ input: "민법 제398조 제2항 (원고 김철수 손해배상 사건)", expected: "민법 제398조 제2항" }},
+  // 6. 법령 시점 표기 유지
+  {{ input: "근로기준법 제76조의2 제1항 (2023. 5. 10. 법률 제12345호로 개정되기 전의 것)", expected: "근로기준법 제76조의2 제1항 (2023. 5. 10. 법률 제12345호로 개정되기 전의 것)" }},
+  // 7. 단독 법령명 및 역할 표기 없는 인명 괄호 제거
+  {{ input: "상가건물 임대차보호법 (홍길동)", expected: "상가건물 임대차보호법" }},
+  // 8. 조항 있는 복합 법령명
+  {{ input: "상가건물 임대차보호법 제10조의4", expected: "상가건물 임대차보호법 제10조의4" }},
+  // 9. 식별자 요소 없는 일반 서술 문구 -> 식별자 확인 불가
+  {{ input: "원고 홍길동의 진술서 내용", expected: "식별자 확인 불가" }},
+  // 10. 개인정보(전화번호 등)만 있는 문구 -> 식별자 확인 불가
+  {{ input: "홍길동 (010-1234-5678)", expected: "식별자 확인 불가" }},
+  // 11. 빈 문자열 -> 식별자 확인 불가
+  {{ input: "", expected: "식별자 확인 불가" }}
+];
+
+const results = testCases.map(tc => ({{
+  input: tc.input,
+  actual: maskAuthorityIdentifier(tc.input),
+  expected: tc.expected
+}}));
+
+process.stdout.write(JSON.stringify(results));
+"""
+    proc = subprocess.run(["node"], input=runner_script.encode("utf-8"), capture_output=True, check=True)
+    results = json.loads(proc.stdout.decode("utf-8"))
+
+    for r in results:
+        assert r["actual"] == r["expected"], f"Failed for input '{r['input']}': got '{r['actual']}', expected '{r['expected']}'"
+
