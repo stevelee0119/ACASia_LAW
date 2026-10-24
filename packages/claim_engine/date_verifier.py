@@ -842,7 +842,7 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
 
         # 대상 수식어 구간(예: '위 인가 신청에 대하여', '이 사건 신청에 대한' 등) 수집
         target_prep_spans = []
-        for m_tp in re.finditer(r"(?:[그위해당동본이]\s*)?(?:[가-힣0-9]{1,10}\s+)?[가-힣0-9]{1,10}\s*(?:에\s*(?:대한|대하여|대해|관한|관하여|관해))", clause_text):
+        for m_tp in re.finditer(r"(?:[그위해당동본이]\s*)?[가-힣0-9]{1,10}\s*(?:에\s*(?:대한|대하여|대해|관한|관하여|관해))", clause_text):
             pre_part = clause_text[:m_tp.start()].rstrip()
             if pre_part.endswith(("한", "낸", "제출한", "신청한", "청구한", "받은", "내린")):
                 continue
