@@ -311,13 +311,13 @@ def test_temporal_event_exclusion_controls():
     "pair_idx,variant_name,heading,body_text",
     [
         # 1. 신청 -> 처분 (행정절차법 제17조)
-        (1, "어순 역전", "1-1. 처분", "불승인처분은 2024. 9. 5.에 발령되었는데, 그 처분의 대상인 허가신청은 2024. 9. 12.에 있었습니다."),
+        (1, "어순 역전", "1-1. 처분", "허가에 대한 불승인처분은 2024. 9. 5.에 발령되었는데, 위 허가신청은 2024. 9. 12.에 있었습니다."),
         (1, "연결어미 변형", "1-2. 처분", "신청인은 2024. 9. 12. 변경신청을 한바, 관할청의 거부처분은 2024. 9. 5.에 이미 내려졌습니다."),
         (1, "동의어 변형", "1-3. 처분", "원고는 2024. 9. 12. 재심청구를 제출하였으나, 이에 대한 기각결정은 2024. 9. 5.에 발령되었습니다."),
         # 2. 발송 -> 도달 (민법 제111조)
-        (2, "어순 역전", "2-1. 도달", "해당 서류를 수령한 날은 2024. 8. 10.인데, 우편물의 발송일은 2024. 8. 15.로 확인되었습니다."),
+        (2, "어순 역전", "2-1. 도달", "해당 우편물을 수령한 날은 2024. 8. 10.인데, 위 우편물의 발송일은 2024. 8. 15.로 확인되었습니다."),
         (2, "연결어미 변형", "2-2. 도달", "피고가 2024. 8. 15. 최고서를 발송한 뒤, 원고는 2024. 8. 10.에 이를 수령하였습니다."),
-        (2, "동의어 변형", "2-3. 도달", "원고가 2024. 8. 15. 통지서를 송부하였으나, 피고는 2024. 8. 10.에 이미 송달받았다고 주장합니다."),
+        (2, "동의어 변형", "2-3. 도달", "원고가 2024. 8. 15. 통지서를 송부하였으나, 피고는 2024. 8. 10.에 이미 해당 통지서를 송달받았습니다."),
         # 3. 체결 -> 해지/이행 (민법 제543조)
         (3, "어순 역전", "3-1. 계약", "공급계약에 대한 해제 통지는 2024. 7. 10.에 있었고, 원고와 피고 사이의 공급계약 체결일은 2024. 7. 20.입니다."),
         (3, "연결어미 변형", "3-2. 계약", "당사자들은 2024. 7. 20. 매매계약을 체결한바, 매매계약 해지 통지는 2024. 7. 10.에 발송되었습니다."),
@@ -332,7 +332,7 @@ def test_temporal_event_exclusion_controls():
         (5, "동의어 변형", "5-3. 소송", "신청서가 2024. 4. 12. 법원에 접수되었으나, 재판장의 보정권고는 2024. 4. 5.에 내려졌습니다."),
         # 6. 발생 -> 청구 (상법 제724조)
         (6, "어순 역전", "6-1. 보험", "피해자는 2024. 3. 10. 보험금을 청구하였고, 이 사건 사고발생일은 2024. 3. 20.입니다."),
-        (6, "연결어미 변형", "6-2. 보험", "교통사고가 2024. 3. 20. 발생한바, 손해배상 청구는 2024. 3. 10.에 이미 제기되었습니다."),
+        (6, "연결어미 변형", "6-2. 보험", "교통사고가 2024. 3. 20. 발생한바, 위 사고로 인한 손해배상 청구는 2024. 3. 10.에 이미 제기되었습니다."),
         (6, "동의어 변형", "6-3. 보험", "손해는 2024. 3. 20. 발생하였으나, 그에 대한 손해배상금 지급청구는 2024. 3. 10.에 접수되었습니다."),
         # 7. 기간시작 -> 기간종료 (민법 제157조)
         (7, "어순 역전", "7-1. 임대", "임대차의 종료일은 2024. 10. 15.이고, 임대차 개시일은 2024. 11. 1.로 기재되었습니다."),
@@ -742,5 +742,114 @@ def test_w3_occurrence_report_and_target_normalization():
     doc_ctrl_perm = _make_doc("인가 신청-결정 정상", t_ctrl_perm)
     f_ctrl_perm = [f for f in verify_dates_in_document(doc_ctrl_perm) if f.type == FindingType.TIMELINE_CONTRADICTION]
     assert len(f_ctrl_perm) == 0, f"W3 인가 신청-결정 정상 순서 오탐 발생: {f_ctrl_perm}"
+
+
+def test_z1_deleted_bypass_branches_false_positive_controls():
+    """Z1: 대상 결합 우회 분기(지시어 바인딩 및 규칙별 결합) 완전 삭제 후 현행 오탐 6꼴 방지 검증 (한국어 주석)."""
+    # 1) 다른 대상인데 문장에 '위'가 포함된 경우
+    t1 = "원고는 2024. 8. 15. 이 사건 토지 매매계약을 체결하였고, 피고는 2024. 8. 1. 위 건물에 대한 임대차계약을 해지하였습니다."
+    f1 = [f for f in verify_dates_in_document(_make_doc("오탐 1 다른 대상", t1)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f1) == 0, f"Z1 오탐 1 실패: {f1}"
+
+    # 2) 해고 통지 뒤 구제 신청을 역순으로 서술 (일자는 정상: 해고 5. 20. -> 구제신청 6. 1.)
+    t2 = "신청인은 2024. 6. 1. 노동위원회에 구제신청을 하였는데, 사용자는 2024. 5. 20. 이미 해고통지를 마쳤습니다."
+    f2 = [f for f in verify_dates_in_document(_make_doc("오탐 2 역순 서술 정상 일자", t2)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f2) == 0, f"Z1 오탐 2 실패: {f2}"
+
+    # 3) 다른 사고의 발생·청구
+    t3 = "1차 사고는 2024. 8. 20. 발생하였고, 원고는 2024. 8. 10. 2차 사고로 인한 보험금을 청구하였습니다."
+    f3 = [f for f in verify_dates_in_document(_make_doc("오탐 3 다른 사고", t3)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f3) == 0, f"Z1 오탐 3 실패: {f3}"
+
+    # 4) '해당'이 다른 대상을 가리키는 경우
+    t4 = "원고는 2024. 7. 10. 공사계약을 체결하였고, 피고는 2024. 7. 1. 해당 용역계약을 해지하였습니다."
+    f4 = [f for f in verify_dates_in_document(_make_doc("오탐 4 다른 대상 지시", t4)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f4) == 0, f"Z1 오탐 4 실패: {f4}"
+
+    # 5) 소 제기와 그보다 앞선 행정처분 (정상적인 회고 서술)
+    t5 = "원고는 2024. 9. 1. 이 사건 소를 제기하였는데, 피고 행정청은 2024. 8. 1. 이미 불승인처분을 하였습니다."
+    f5 = [f for f in verify_dates_in_document(_make_doc("오탐 5 소제기 및 선행 처분", t5)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f5) == 0, f"Z1 오탐 5 실패: {f5}"
+
+    # 6) 상대방 주장 인용 ('…다고 주장합니다')
+    t6 = "피고는 원고가 2024. 8. 15. 신청하여 2024. 8. 1. 처분이 내려졌다고 주장합니다."
+    f6 = [f for f in verify_dates_in_document(_make_doc("오탐 6 상대방 주장", t6)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f6) == 0, f"Z1 오탐 6 실패: {f6}"
+
+
+def test_z2_target_extraction_positives_and_controls():
+    """Z2: 대상 추출 개선에 따른 놓침 4꼴 양성 4건 및 정상 대조군 4건 검증 (한국어 주석)."""
+    # 1. '위 [X] 신청에 대하여' 꼴의 처분·결정
+    # 1-양성: 신청 9. 15. > 처분 9. 5. (역전)
+    t1_pos = "원고는 2024. 9. 15. 건축허가를 신청하였는데, 관할청은 2024. 9. 5. 위 건축허가 신청에 대하여 불승인처분을 하였습니다."
+    f1_pos = [f for f in verify_dates_in_document(_make_doc("위 신청에 대하여 양성", t1_pos)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f1_pos) == 1, f"Z2-1 양성 검출 실패: {f1_pos}"
+    assert f1_pos[0].confidence_features.get("sub_rule") == "TARGET_BOUND_DISPOSITION"
+    # 1-대조: 신청 9. 5. <= 처분 9. 15. (정상)
+    t1_ctrl = "원고는 2024. 9. 5. 건축허가를 신청하였고, 관할청은 2024. 9. 15. 위 건축허가 신청에 대하여 불승인처분을 하였습니다."
+    f1_ctrl = [f for f in verify_dates_in_document(_make_doc("위 신청에 대하여 대조", t1_ctrl)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f1_ctrl) == 0, f"Z2-1 정상 대조 오탐: {f1_ctrl}"
+
+    # 2. '[X]로 인한 [Y]를 청구'
+    # 2-양성: 화재 발생 8. 10. > 청구 8. 1. (역전)
+    t2_pos = "이 사건 화재는 2024. 8. 10. 발생하였는데, 원고는 2024. 8. 1. 위 화재로 인한 보험금을 청구하였습니다."
+    f2_pos = [f for f in verify_dates_in_document(_make_doc("원인 대상 청구 양성", t2_pos)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f2_pos) == 1, f"Z2-2 양성 검출 실패: {f2_pos}"
+    assert f2_pos[0].confidence_features.get("sub_rule") == "OCCURRENCE_BEFORE_CLAIM"
+    # 2-대조: 화재 발생 8. 1. <= 청구 8. 10. (정상)
+    t2_ctrl = "이 사건 화재는 2024. 8. 1. 발생하였고, 원고는 2024. 8. 10. 위 화재로 인한 보험금을 청구하였습니다."
+    f2_ctrl = [f for f in verify_dates_in_document(_make_doc("원인 대상 청구 대조", t2_ctrl)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f2_ctrl) == 0, f"Z2-2 정상 대조 오탐: {f2_ctrl}"
+
+    # 3. '위 [X]를 [기관]에 신고' (처소/상대 부사어 허용)
+    # 3-양성: 사고 발생 7. 20. > 신고 7. 10. (역전)
+    t3_pos = "이 사건 교통사고는 2024. 7. 20. 발생하였는데, 원고는 2024. 7. 10. 위 교통사고를 경찰서에 신고하였습니다."
+    f3_pos = [f for f in verify_dates_in_document(_make_doc("기관 신고 양성", t3_pos)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f3_pos) == 1, f"Z2-3 양성 검출 실패: {f3_pos}"
+    assert f3_pos[0].confidence_features.get("sub_rule") == "OCCURRENCE_BEFORE_CLAIM"
+    # 3-대조: 사고 발생 7. 10. <= 신고 7. 20. (정상)
+    t3_ctrl = "이 사건 교통사고는 2024. 7. 10. 발생하였고, 원고는 2024. 7. 20. 위 교통사고를 경찰서에 신고하였습니다."
+    f3_ctrl = [f for f in verify_dates_in_document(_make_doc("기관 신고 대조", t3_ctrl)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f3_ctrl) == 0, f"Z2-3 정상 대조 오탐: {f3_ctrl}"
+
+    # 4. 피동 주제 '[문서]는 송부되었고 … 도달' (한 문장 안 절 간 주제 대상 승계)
+    # 4-양성: 송부 6. 20. > 도달 6. 10. (역전)
+    t4_pos = "이 사건 최고서는 2024. 6. 20. 발송되었는데, 상대방에게는 2024. 6. 10. 이미 도달하였습니다."
+    f4_pos = [f for f in verify_dates_in_document(_make_doc("피동 주제 도달 양성", t4_pos)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f4_pos) == 1, f"Z2-4 양성 검출 실패: {f4_pos}"
+    assert f4_pos[0].confidence_features.get("sub_rule") == "SEND_BEFORE_RECEIPT"
+    # 4-대조: 송부 6. 10. <= 도달 6. 20. (정상)
+    t4_ctrl = "이 사건 최고서는 2024. 6. 10. 발송되었고, 상대방에게는 2024. 6. 20. 도달하였습니다."
+    f4_ctrl = [f for f in verify_dates_in_document(_make_doc("피동 주제 도달 대조", t4_ctrl)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f4_ctrl) == 0, f"Z2-4 정상 대조 오탐: {f4_ctrl}"
+
+
+def test_z3_opponent_claim_sentence_ending_exclusion():
+    """Z3: 상대방 주장 표면형 종결형(-습니다, -다, -고 있습니다 등) 배제 검증 (한국어 주석)."""
+    cases = [
+        "피고는 원고가 2024. 8. 15. 신청하여 2024. 8. 1. 처분이 내려졌다고 주장합니다.",
+        "피고는 원고가 2024. 8. 15. 신청하여 2024. 8. 1. 처분이 내려졌다고 다툽니다.",
+        "피고는 원고가 2024. 8. 15. 신청하여 2024. 8. 1. 처분이 내려졌다고 주장하고 있습니다.",
+        "피고는 원고가 2024. 8. 15. 신청하여 2024. 8. 1. 처분이 내려졌다고 진술합니다.",
+        "피고는 원고가 2024. 8. 15. 신청하여 2024. 8. 1. 처분이 내려졌다고 항변합니다.",
+    ]
+    for idx, c in enumerate(cases):
+        findings = [f for f in verify_dates_in_document(_make_doc(f"종결형 배제 {idx+1}", c)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+        assert len(findings) == 0, f"Z3 종결형 주장 배제 실패: {c} -> {findings}"
+
+
+def test_z4_suffix_matching_restriction():
+    """Z4: 접미 일치 제한 (핵심 명사 같고 수식어 다른 대상 대조 vs 지시어 해소 양성) 검증 (한국어 주석)."""
+    # 1. 대조: 핵심 명사(인가)는 같으나 수식어가 다른 서로 다른 대상 ('1차 사업인가' vs '2차 사업인가')
+    t_diff = "원고는 2024. 5. 1. 1차 사업인가를 신청하였고, 행정청은 2024. 4. 1. 2차 사업인가에 대하여 불승인처분을 하였습니다."
+    f_diff = [f for f in verify_dates_in_document(_make_doc("수식어 다른 대상 대조", t_diff)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_diff) == 0, f"Z4 수식어 다른 대상 오탐: {f_diff}"
+
+    # 2. 양성: '[수식어] [핵심] 신청'과 '위 [핵심] 신청에 대한 결정' (지시어로 해소된 짧은 꼴 결합)
+    t_ana = "원고는 2024. 5. 1. 도시정비 사업인가를 신청하였는데, 행정청은 2024. 4. 1. 위 인가 신청에 대하여 불승인처분을 내렸습니다."
+    f_ana = [f for f in verify_dates_in_document(_make_doc("지시어 접미 양성", t_ana)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_ana) == 1, f"Z4 지시어 접미 양성 검출 실패: {f_ana}"
+    assert f_ana[0].confidence_features.get("sub_rule") == "TARGET_BOUND_DISPOSITION"
+
 
 
