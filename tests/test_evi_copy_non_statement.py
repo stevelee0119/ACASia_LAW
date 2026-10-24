@@ -514,12 +514,13 @@ def test_job_title_sojang_negative_not_pleading():
         kind, _ = _document_title_kind(doc)
         assert kind != DOC_KIND_PLEADING, f"직위 표제가 PLEADING으로 오분류됨: {text.splitlines()[0]}"
 
-    # 2. 양성 기준군 4건 (실제 소송 서면 표제 꼴은 정상적으로 PLEADING으로 분류되어야 함)
+    # 2. 양성 기준군 5건 (실제 소송 서면 표제 꼴은 정상적으로 PLEADING으로 분류되어야 함)
     positive_cases = [
         ("소  장\n원고 홍길동\n피고 주식회사", DOC_KIND_PLEADING),
         ("SD-01 | 소장 ― 손해배상(기) 청구의 소\n원고 대리인 변호사", DOC_KIND_PLEADING),
         ("소장 (청구취지 및 청구원인 변경)\n사건 2024가단12345", DOC_KIND_PLEADING),
         ("원고 소장\n당사자 표시 및 청구원인", DOC_KIND_PLEADING),
+        ("대금 청구 소장\n원고 홍길동\n피고 주식회사", DOC_KIND_PLEADING),
     ]
     for idx, (text, expected_kind) in enumerate(positive_cases):
         doc = _make_doc(f"pos_plead_{idx}", text)
