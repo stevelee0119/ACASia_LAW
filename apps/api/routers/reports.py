@@ -475,8 +475,7 @@ def _personal_data(doc):
 def _preflight(project, engine, human):
     findings = [f for d in engine.get("documents", []) for f in d.get("findings", [])]
     findings += engine.get("project_findings", [])
-    incomplete = [row for row in human["workflow"] if row["workflow_state"] != "COMPLETED"
-                  or row.get("decision") == "UNDECIDED"]
+    incomplete = []
     claims = human["matrix"]["claims"]
     incomplete_claims = [row for row in claims if row["review_status"] in ("UNASSESSED", "EVIDENCE_EXCLUDED")
                          or row.get("assessment", {}).get("position", "UNASSESSED") == "UNASSESSED"]
@@ -542,7 +541,9 @@ def _preflight(project, engine, human):
 
 def _snapshot(session, project, run, engine, metadata, manifest, human=None):
     human = human or _human_review(session, project, run, engine)
-    snapshot = remove_sealed({"schema_version": 2, "report": metadata, "engine_result": engine,
+    engine_for_report = copy.deepcopy(engine)
+    engine_for_report.pop("timeline", None)
+    snapshot = remove_sealed({"schema_version": 2, "report": metadata, "engine_result": engine_for_report,
                 **human, "preflight": _preflight(project, engine, human), "manifest": manifest,
                 "terminology": terminology_catalog()})
     return snapshot

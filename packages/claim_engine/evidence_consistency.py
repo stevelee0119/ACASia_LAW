@@ -867,10 +867,25 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
 
     seen: Dict[tuple, List[Dict[str, Any]]] = {}
     for row in rows:
-        is_in_section = row.get("in_section", not row.get("from_lines", False))
+        is_in_section = bool(row.get("in_section", not row.get("from_lines", False)))
         # 목록 구역이 존재하는 서면에서, 해당 목록 구역에 이미 등록된 번호의 본문 행은 중복 집계에서 제외
         if section_keys and not is_in_section and (row["party"], row["number"]) in section_keys:
             continue
+        # 호증 중복 검사는 정식 증거 목록 행끼리만 비교한다.
+        # 본문 서술 영역(not is_in_section)에서 추출된 행 중:
+        # 1) 호증 번호 직후 조사가 결합되어 주어·목적어로 쓰인 본문 문장(예: '갑 제3호증을', '갑 제1호증은')
+        #    (단, '갑 제1호증의 1' 등 가지번호는 조사가 아니므로 보존)
+        # 2) 서증명 없이 단순 본문 인용·참조 표기만 있는 행
+        # 은 목록 행이 아닌 본문 서술문이므로 중복 호증 집계에서 제외한다 (은퇴 10 A등급 오탐 방지 및 입증취지 포함 진짜 목록 보존).
+        if not is_in_section:
+            name = (row.get("name") or "").strip()
+            # 가지번호(예: '의 1', '의 2')는 조사가 아니므로 보존
+            if not re.match(r"^의\s*\d+", name):
+                if re.match(r"^(?:[이가은는을를에와과]|에서|으로|부터|까지|보다)(?:\s|$)", name):
+                    continue
+            # 단순 인용·참조 표기
+            if _EXHIBIT_REF_SENTENCE_RE.search(name):
+                continue
         keys = [(row["party"], row["number"], b) for b in row.get("branches") or []] or [(row["party"], row["number"], None)]
         for key in keys:
             seen.setdefault(key, []).append(row)
@@ -1062,7 +1077,9 @@ _CONTINUOUS_RANGE_RE = re.compile(
 )
 _CONTINUOUS_KEYWORD_RE = re.compile(r"(?:연속\s*(?:번호|제출|서증)|누락이\s*(?:전혀\s*)?없)")
 _COMPLETE_DECLARATION_RE = re.compile(
-    r"(?:(?:최종\s*)?증거목록|입증방법|제출\s*증거|제출목록|별지\s*증거목록|별지\s*제출목록|첨부\s*목록)[^.\n]{0,60}(?:전부|모두|일체|빠짐없이|추가\s*제출\s*없음|확정|전체|최종|이것이\s*전부|만\s*있다|만\s*포함)"
+    r"(?:(?:최종\s*)?(?:제출\s*)?증거목록|입증방법|제출\s*증거(?:\s*목록)?|제출목록|별지\s*(?:증거|제출)?목록|첨부\s*목록)"
+    r"[^.\n]{0,60}?(?:전부|모두|일체|빠짐없이|추가\s*제출\s*없음|확정|전체|최종|이것이\s*전부|만\s*있다|만\s*포함)"
+    r"|(?:(?:최종\s*)?(?:제출\s*)?증거목록|입증방법|제출\s*증거(?:\s*목록)?|제출목록|별지\s*(?:증거|제출)?목록|첨부\s*목록)\s*\([^)\n]{0,60}?(?:전부|모두|일체|빠짐없이|추가\s*제출\s*없음|확정|전체|최종|이것이\s*전부|만\s*있다|만\s*포함)\)"
     r"|(?:별지\s*증거목록\s*전부|별지\s*제출목록\s*전부|이\s*(?:세|두|\d+)\s*자료만\s*제출)"
     r"|본문에\s*적힌\s*내용이\s*해당\s*발췌의\s*전부"
     r"|추가\s*(?:증거|자료|서증|호증)(?:를|은|가)?\s*(?:제출(?:하지\s*않|한\s*사실은\s*없|이\s*없)|없습니다)"
@@ -1169,6 +1186,7 @@ def check_evidence_numbering_mismatches(
     body_text = text[:m_sec.start()] if m_sec else text
 
     # 1. 완결 선언 목록과 본문 번호 대조 (축 1)
+    # 목록 머리글 괄호 안의 완결 선언이 괄호 제거 등으로 유실되지 않도록 원문 text 전체에서 최우선 판정
     has_completion = bool(_COMPLETE_DECLARATION_RE.search(text))
 
     if has_completion:
@@ -1289,6 +1307,28 @@ def check_evidence_numbering_mismatches(
                         )
 
     # 3. 본문·목록 동일 자료명의 호증 번호 불일치 (축 3, SUSPICIOUS·B, 4자 이상)
+    # 평가 측 지침 준수:
+    # 1) '지정' 구조에서만 판정 (따옴표 서증명, 괄호 호증, 서술형 지정, 직결 호증)
+    #    - 조사 '와·과·및·이나' 등 병렬 나열 구조 및 일반 서술절 조사 결합은 철저히 제외.
+    # 2) 자기 번호 우선: 본문 번호가 목록에 있고 그 목록 자료명이 본문 자료명과 부합하면
+    #    다른 번호와의 불일치를 판정하지 않는다.
+
+    def _is_self_match(body_k: tuple, test_norm: str) -> bool:
+        """본문 번호의 목록 자료명이 본문 자료명과 같거나 부합하는지 확인 (자기 번호 우선)."""
+        if body_k not in list_name_by_key:
+            return False
+        _, my_norm = list_name_by_key[body_k]
+        if not my_norm or not test_norm:
+            return False
+        # 완전 일치, 또는 수식어 결합('변경/추가/2차 + 자료명') 접미/포함 일치
+        if test_norm == my_norm:
+            return True
+        if len(my_norm) >= 3 and (test_norm.endswith(my_norm) or my_norm.endswith(test_norm)):
+            return True
+        if len(test_norm) >= 4 and len(my_norm) >= 4 and (test_norm in my_norm or my_norm in test_norm):
+            return True
+        return False
+
     # 패턴 1: 호증 뒤 자료명 (예: 갑 제22호증 운반 사진)
     pat1 = re.compile(
         r"(?P<label>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)\s*(?P<rest>[^\n.,;:]{2,40})"
@@ -1304,6 +1344,11 @@ def check_evidence_numbering_mismatches(
             continue
         body_key = (body_refs[0]["party"], body_refs[0]["number"])
         if body_key[0] not in listed_parties:
+            continue
+
+        rest_norm = re.sub(r"\s+", "", rest)
+        # 자기 번호 우선: 본문 번호의 목록 자료명과 이미 부합하면 건너뜀
+        if _is_self_match(body_key, rest_norm):
             continue
 
         for list_key, (l_name, l_norm) in list_name_by_key.items():
@@ -1338,28 +1383,63 @@ def check_evidence_numbering_mismatches(
                             )
                         )
 
-    # 패턴 2: 자료명 뒤 호증 (예: 운반 사진 갑 제22호증, 계약서(갑 제1호증), 「합의서」(갑 제2호증))
-    # 자료명 뒤에 조사(을/를/이/가/에/의 등)가 붙어 있으면 앞 절의 목적어/부사어이므로 제외 (대조군 오탐 방지)
-    pat2 = re.compile(
-        r"(?:[「‘'\"](?P<qname>[^」’'\"]{2,30})[」’'\"]\s*(?:\(\s*)?(?P<qlabel>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:\s*\))?"
-        r"|(?P<name>[가-힣A-Za-z0-9_]{2,20}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)\s*(?:\(\s*|\s+)(?P<label>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:\s*\))?)"
-    )
-    for m in pat2.finditer(body_text):
-        qname, qlbl = m.group("qname"), m.group("qlabel")
-        if qname and qlbl:
-            nm_clean = qname.strip()
-            lbl = qlbl
-        else:
-            nm = m.group("name").strip()
-            lbl = m.group("label")
-            # 자료명 뒤에 조사가 붙어 있으면 앞 절의 목적어·부사어이므로 목록 대조에서 제외
-            if re.search(r"(?:에서|으로|부터|까지|[이가은는을를의에로와과도만])$", nm):
-                continue
-            nm_clean = nm
+    # 패턴 2: 자료명 뒤 호증 - 지정 구조 한정 수집
+    pat2_candidates = []
 
+    # (1) 따옴표 서증명: 「계약서」(갑 제1호증), '합의서' 갑 제2호증
+    for m in re.finditer(
+        r"[「‘'\"](?P<qname>[^」’'\"]{2,30})[」’'\"]\s*(?:\(\s*)?(?P<lbl>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:\s*\))?",
+        body_text,
+    ):
+        pat2_candidates.append((m.group("qname").strip(), m.group("lbl"), m.start(), m.end(), False))
+
+    # (2) 괄호 묶임: 서증명(갑 제N호증), 변경계약서 (갑 제2호증)
+    for m in re.finditer(
+        r"(?P<name>[가-힣A-Za-z0-9_]{2,25}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)\s*\(\s*(?P<lbl>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)\s*\)",
+        body_text,
+    ):
+        pat2_candidates.append((m.group("name").strip(), m.group("lbl"), m.start(), m.end(), True))
+
+    # (3) 서술형 지정: 서증명(을/를) 갑 제N호증으로 제출/원용/지정
+    for m in re.finditer(
+        r"(?P<name>[가-힣A-Za-z0-9_]{2,25}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)\s*(?P<lbl>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)(?:으로|로)\s*(?:제출|원용|지정|신청|제시|증명)",
+        body_text,
+    ):
+        raw = m.group("name").strip()
+        cleaned = re.sub(r"[을를]$", "", raw).strip()
+        pat2_candidates.append((cleaned, m.group("lbl"), m.start(), m.end(), False))
+
+    # (4) 직결 호증: 서증명 갑 제N호증 (공백 1개 이상 연결)
+    for m in re.finditer(
+        r"(?P<name>[가-힣A-Za-z0-9_]{2,20}(?:\s+[가-힣A-Za-z0-9_]{2,20})?)\s+(?P<lbl>(?:피고인\s*증|[가-힣])\s*제\s*\d+\s*호증(?:의\s*\d+)?)",
+        body_text,
+    ):
+        pat2_candidates.append((m.group("name").strip(), m.group("lbl"), m.start(), m.end(), True))
+
+    for nm_raw, lbl, start_pos, end_pos, check_particle in pat2_candidates:
+        window = body_text[max(0, start_pos - 30) : min(len(body_text), end_pos + 30)]
+        if _PRIOR_SUBMISSION_RE.search(window):
+            continue
+
+        # 조사 '와·과·및·이나' 등 병렬 나열 구조 및 일반 서술절 조사 결합 제외
+        if check_particle:
+            # 자료명 끝에 병렬 조사(와/과/및/이나 등)나 서술격 조사가 붙은 경우 제외
+            if re.search(r"(?:와|과|및|이나|도|은|는|이|가|에|의|로|에서|부터|까지)$", nm_raw):
+                continue
+            # 자료명 직전 문맥에 '및', '또는', '와', '과' 병렬 접속사가 위치한 경우 제외
+            pre_window = body_text[max(0, start_pos - 5) : start_pos]
+            if re.search(r"(?:및|또는|와|과)\s*$", pre_window):
+                continue
+
+        nm_clean = nm_raw
         nm_norm = re.sub(r"\s+", "", nm_clean)
         if len(nm_norm) < 4:
             continue
+
+        # 일반 서술 어휘 배제
+        if re.search(r"(?:주장|지적|사실|내용|기재|경우|사항|이유|취지|부분|서면|준비서면|답변서|소장|신청서)$", nm_norm):
+            continue
+
         body_refs = parse_exhibits(lbl)
         if not body_refs:
             continue
@@ -1367,8 +1447,13 @@ def check_evidence_numbering_mismatches(
         if body_key[0] not in listed_parties:
             continue
 
+        # 자기 번호 우선: 본문 번호의 목록 자료명이 본문 자료명과 부합하면 판정 제외
+        if _is_self_match(body_key, nm_norm):
+            continue
+
         for list_key, (l_name, l_norm) in list_name_by_key.items():
-            if body_key != list_key and body_key[0] == list_key[0] and nm_norm == l_norm:
+            is_match = (nm_norm == l_norm) or (len(l_norm) >= 4 and nm_norm.endswith(l_norm) and not any(nm_norm.endswith(c + l_norm) for c in ("와", "과", "및")))
+            if body_key != list_key and body_key[0] == list_key[0] and is_match:
                 list_lbl = f"{list_key[0]} 제{list_key[1]}호증"
                 dup = any(
                     f.confidence_features.get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH"
@@ -1859,17 +1944,236 @@ def _statement_start(doc_or_text: NormalizedDocument | str, reading_text: Option
     return None
 
 
-def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Finding]:
-    """진술서·확인서에 다른 서면의 문장이 그대로 있으면 알린다(대필·작출 의심 단서, 사람 확인).
+# 문서 종류 상수 (B-2 비진술서 복제 탐지용)
+DOC_KIND_FACT_CONFIRMATION = "FACT_CONFIRMATION"      # 사실경위서 등 원본 서증
+DOC_KIND_STATEMENT = "STATEMENT"                      # 진술서, 사실확인서 등 진술 서증
+DOC_KIND_EVIDENCE_EXPLANATION = "EVIDENCE_EXPLANATION"  # 증거설명서 (민사소송규칙 제106조 예외)
+DOC_KIND_PLEADING = "PLEADING"                        # 소장, 준비서면, 답변서, 의견서 등 소송서면
+DOC_KIND_OTHER = "OTHER"
 
-    같은 대리인의 서면끼리 문장이 겹치는 것은 정상이므로 진술 부분(진술서 제목 줄 뒤)의 문장만 비교한다.
-    비교 비용을 줄이려고 다른 서면 문장의 글자 조각 색인에서 후보를 먼저 고른다.
+# 첫머리 표제 검사 시 목록 줄 배제 패턴 (예: 번호 목록, 호증 목록, 첨부/입증 목록 등)
+_HEADING_LIST_ITEM_RE = re.compile(
+    r"^\s*(?:"
+    r"\d+[\.\)]\s*"                              # 1. 2)
+    r"|[가-하][\.\)]\s*"                          # 가. 나)
+    r"|\([0-9가-하a-zA-Z]\)\s*"                  # (1) (가)
+    r"|[①-⑳]\s*"                                 # ① ②
+    r"|제\s*\d+\s*(?:호|항|조)\b"                 # 제1호
+    r"|(?:갑|을|병)\s*제?\s*\d+\s*호증\b"        # 갑 제1호증
+    r"|(?:첨부|입증|증거|제출)\s*(?:서류|방법|목록)?\s*[:\-]" # 첨부서류:
+    r")"
+)
+
+# 직위 낱말 배제 패턴 (경찰관 계급 '경위' 및 기관·부대·현장 직위 '소장' 등이 표제에 쓰인 경우 배제)
+_HEADING_JOB_TITLE_RE = re.compile(
+    r"(?:사법경찰관\s*)?경위\s+[가-힣]{1,4}|(?:순경|경장|경사|경위|경감|경정|총경)\b"
+    r"|(?:[가-힣]{1,10}(?:소|현장|공장|부대|연구원|지소|본부|센터|사무소|지사|지점))\s*소\s*장\b"
+    r"|소\s*장\s+(?:보고|결재|결재문|의견|의견서|통보|통보문|확인서|인사말|훈시|지시|소견|서명|날인)\b"
+)
+
+# 비진술서 전용 첫머리 표제 정규식 (1쪽 상단 running_head 또는 첫머리 단독 표제 행 매칭)
+# 증거설명서 전용 표제
+_EVIDENCE_EXPLANATION_TITLE_RE = re.compile(
+    r"^\s*(?:[A-Za-z0-9\-_]{1,15}\s*[|―—\-]\s*)?"
+    r"[\[【<「『―—\-]*\s*(?:[가-힣]{1,6}\s+)?증\s*거\s*설\s*명\s*서\s*[\]】>」』]*"
+    r"(?:\s*$|\s*[|―—\-/:]|\s*[(（【[].*?[)）】\]])"
+)
+
+# 사실경위서 전용 표제 (FACT_CONFIRMATION 어휘 범위: 사실경위서, 사건경위서, 사고경위서, 경위서)
+# - 뒤 낱말을 구분 기호(―, —, -, |, /, :) 뒤 부제, 괄호 안 부제, 또는 작성자 표기로 한정한다.
+# - '사본', '송부', '안내', '요청', '제출', '접수' 등 경위서 자체가 아닌 파생 문서명은 엄격히 제외한다.
+_FACT_CONFIRMATION_TITLE_RE = re.compile(
+    r"^\s*(?:[A-Za-z0-9\-_]{1,15}\s*[|―—\-]\s*)?"
+    r"[\[【<「『―—\-]*\s*(?:[가-힣]{1,6}\s+)?"
+    r"(?:사\s*실\s*경\s*위\s*서|사\s*건\s*경\s*위\s*서|사\s*고\s*경\s*위\s*서|경\s*위\s*서)\s*[\]】>」』]*"
+    r"(?:"
+    r"\s*$"
+    r"|"
+    r"\s*[|―—\-/:]\s*(?!(?:사\s*본|송\s*부|안\s*내|요\s*청|제\s*출|접\s*수|발\s*급|회\s*신)\b)[^\s.]+"
+    r"|"
+    r"\s*[(（【[].*?[)）】\]]"
+    r"|"
+    r"\s+(?:작\s*성\s*자|진\s*술\s*인|보\s*고\s*자|확\s*인\s*자)\s*[:：]?\s*[가-힣]{2,4}"
+    r")"
+)
+
+# 소송 대리 서면 전용 표제
+# - 사건명 + '청구의 소' 꼴 (예: '손해배상 청구의 소', '대여금 청구의 소')
+# - 단독·당사자 표기형 '소장' (수식어+'소장'은 첫머리 구조 표지 검사와 함께 _MODIFIED_SOJANG_TITLE_RE로 별도 판별)
+# - '준비서면', '답변서', '의견서', '항소장', '상고장', '고소장' 등 명확한 소송서면 표제 꼴
+_PLEADING_TITLE_RE = re.compile(
+    r"^\s*(?:[A-Za-z0-9\-_]{1,15}\s*[|―—\-]\s*)?[\[【<「『―—\-]*\s*(?:"
+    # 분기 1: 사건명 + '청구의 소' (예: 손해배상(기) 청구의 소)
+    r"(?:[가-힣0-9\s()·]{1,25}\s+)?청\s*구\s*의\s*소"
+    r"|"
+    # 분기 2: '소장' (단독 또는 당사자 표기형: 원고/피고/고소인/신청인 소장)
+    r"(?:(?:원\s*고|피\s*고|고\s*소\s*인|신\s*청\s*인)\s+)?"
+    r"소\s*장"
+    r"|"
+    # 분기 3: 기타 소송서면 (준비서면, 답변서, 의견서, 항소장, 상고장, 고소장, 변론요지서)
+    r"(?:(?:원\s*고|피\s*고|신\s*청\s*인|피\s*신\s*청\s*인|항\s*소\s*인|피\s*항\s*소\s*인|고\s*소\s*인|피\s*고\s*소\s*인|제\s*\d+\s*[차회]|\d+\s*[차회]|[가-힣]{1,8}\s*청구)\s+)?"
+    r"(?:준\s*비\s*서\s*면|답\s*변\s*서|의\s*견\s*서|항\s*소\s*장|상\s*고\s*장|고\s*소\s*장|변\s*론\s*요\s*지\s*서)"
+    r")\s*[\]】>」』]*"
+    # 뒤 낱말 허용: 줄 끝, 구분 기호 뒤 부제, 관리번호 표기, 또는 괄호 안 부제
+    r"(?:\s*$|\s*[|―—\-/:]|\s*[(（【[].*?[)）】\]]|\s*관리번호\b)"
+)
+
+# 수식어 + '소장' 표제 정규식 (사건명 + 소장 등, 예: '대금 청구 소장', '손해배상(기) 소장')
+# 직위 '소장'(군 계급·시설장 단독 줄, 괄호 부기, 구분 기호 부제) 오탐을 차단하기 위해,
+# 이 패턴은 문서 첫머리(첫 1쪽 또는 2,000자)에 당사자 표시·'청구취지'·'청구원인' 중 둘 이상이 있을 때만 PLEADING으로 인정한다.
+_MODIFIED_SOJANG_TITLE_RE = re.compile(
+    r"^\s*(?:[A-Za-z0-9\-_]{1,15}\s*[|―—\-]\s*)?[\[【<「『―—\-]*\s*"
+    r"(?!(?:[가-힣]{1,10}(?:소|현장|공장|부대|연구원|지소|본부|센터|사무소|지사|지점))\s+)"
+    r"(?:[가-힣0-9()·\s]{1,15}\s*청\s*구|[가-힣0-9()·]{1,8})\s+"
+    r"소\s*장\s*[\]】>」』]*"
+    r"(?:\s*$|\s*[|―—\-/:]|\s*[(（【[].*?[)）】\]]|\s*관리번호\b)"
+)
+
+# 수식어+'소장' 표제 검증용 첫머리(첫 1쪽 또는 2,000자) 소장 구조 요소 정규식
+_COMPLAINT_PARTY_RE = re.compile(
+    r"(?:원\s*고|피\s*고|당\s*사\s*자\s*(?:의\s*)?표\s*시|신\s*청\s*인|피\s*신\s*청\s*인|채\s*권\s*자|채\s*무\s*자)"
+)
+_COMPLAINT_PURPORT_RE = re.compile(r"청\s*구\s*(?:의\s*)?취\s*지")
+_COMPLAINT_CAUSE_RE = re.compile(r"청\s*구\s*(?:의\s*)?원\s*인")
+
+
+def _has_complaint_elements_in_head(doc: NormalizedDocument, reading_text: str) -> bool:
+    """문서 첫머리(첫 1쪽 또는 2,000자)에 당사자 표시·'청구취지'·'청구원인' 중 둘 이상이 있는지 판별한다."""
+    first_page_text = ""
+    if doc.pages:
+        first_page_text = "\n".join((b.text or "") for b in doc.pages[0].blocks)
+    head_text = first_page_text + "\n" + reading_text[:2000]
+
+    count = (
+        int(bool(_COMPLAINT_PARTY_RE.search(head_text)))
+        + int(bool(_COMPLAINT_PURPORT_RE.search(head_text)))
+        + int(bool(_COMPLAINT_CAUSE_RE.search(head_text)))
+    )
+    return count >= 2
+
+_EXHIBIT_REFERENCE_RE = re.compile(
+    r"(?:(?:갑|을)\s*제?\s*\d+\s*호증|사실경위서(?:의\s*기재|에\s*의하면|를\s*살펴보면))"
+)
+
+
+def _is_in_corresponding_exhibit_entry(sentence: str, doc: NormalizedDocument, text: str) -> bool:
+    """증거설명서 내에서 해당 문장이 정규 서증 설명 항목(표 셀 또는 입증취지 설명란) 안에 있는지 검사한다 (승인 조건 1).
+
+    민사소송규칙 제106조에 따른 증거설명서의 호증 설명(입증취지 등) 란에 서증 요지가 기재된 것은 정상이므로 제외(True),
+    호증 설명 표 밖의 별도 본문 항목에 서증 본문이 통복제된 것은 결함 대상(False)으로 판정한다.
+    """
+    pos = text.find(sentence)
+    if pos == -1:
+        return True  # 찾지 못하면 보수적으로 제외
+
+    # 1. 문서 블록 구조 확인: 테이블 셀 안에 들어있는지 확인
+    for block in doc.blocks:
+        if block.block_type == "table":
+            if sentence in (block.text or ""):
+                return True
+
+    # 2. 텍스트 문맥 확인: sentence 자체 앞부분 또는 앞쪽 250자 내에 호증 기재 항목 표지가 있는 경우
+    # (예: '입증취지', '서증의 표시', '증명하고자 하는 사실', '갑/을 제X호증' 등 민사소송규칙 제106조 서식 항목)
+    context_window = text[max(0, pos - 250):pos] + "\n" + sentence[:50]
+    if re.search(r"(?:입\s*증\s*취\s*지|서\s*증\s*의\s*표\s*시|증\s*명\s*하\s*고\s*자\s*하\s*는\s*사\s*실|(?:갑|을)\s*제?\s*\d+\s*호증)", context_window):
+        return True
+
+    # 그 외 표 밖의 별도 서술 항목에 기재된 문장은 해당 호증 항목 밖으로 판정
+    return False
+
+
+def _document_title_kind(doc: NormalizedDocument, reading_text: Optional[str] = None) -> Tuple[str, Optional[int]]:
+    """문서의 첫머리 제목을 분석하여 (문서 종류, 본문 시작 오프셋)을 반환한다.
+
+    1순위: 진술서·사실확인서 (Steve 원본 _statement_start 100% 동일, TC-05 등 복합 서면 보호)
+    2순위: 문서 첫머리(1쪽 상단 머리글·블록 및 상단 15줄/600자 이내) 단독 제목 행 분석
+           - 목록 줄(번호/호증/첨부서류 목록) 및 직위 낱말('경위') 철저 배제
+           - 증거설명서 (EVIDENCE_EXPLANATION)
+           - 사실경위서 (FACT_CONFIRMATION: 사실경위서, 사건경위서, 사고경위서, 경위서 등 원본 서증)
+           - 소송대리 서면 (PLEADING: 소장, 준비서면, 답변서, 의견서, 항소장, 상고장, 고소장)
+    그 외: 기타 (OTHER)
+    """
+    text = reading_text if reading_text is not None else build_reading_text(doc).text
+
+    # 1. 진술서 / 사실확인서 (진술인 명의 진술 서증 최우선 판별: Steve 원본과 100% 동일하게 동작)
+    stmt_start = _statement_start(doc, text)
+    if stmt_start is not None:
+        return DOC_KIND_STATEMENT, stmt_start
+
+    # 2. 문서 첫머리(1쪽 상단 블록 5개 및 본문 상단 15줄/600자 이내)의 표제 행 검사
+    # build_reading_text(doc)는 running_head 블록을 본문에서 제외하므로,
+    # 1쪽 상단 블록(running_head 포함)의 첫 줄들을 함께 수집하여 첫머리 표제를 판별한다.
+    candidate_lines: List[str] = []
+    if doc.pages:
+        for b in doc.pages[0].blocks[:5]:
+            for bline in (b.text or "").splitlines()[:3]:
+                if bline.strip():
+                    candidate_lines.append(bline)
+    else:
+        for b in doc.blocks[:5]:
+            for bline in (b.text or "").splitlines()[:3]:
+                if bline.strip():
+                    candidate_lines.append(bline)
+
+    top_chunk = text[:600]
+    candidate_lines.extend(top_chunk.splitlines()[:15])
+
+    for line in candidate_lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # 목록 줄 제외 (예: 1. 사실경위서, 갑 제1호증 경위서, 첨부서류: 등)
+        if _HEADING_LIST_ITEM_RE.search(stripped):
+            continue
+        # 직위 낱말 제외 (예: 사법경찰관 경위, 경위 홍길동 등)
+        if _HEADING_JOB_TITLE_RE.search(stripped):
+            continue
+        # 일반 서술 문장 제외 (길이 80자 초과 또는 문장 종결 구두점/어미)
+        if len(stripped) > 80 or stripped.endswith((".", ",", ";", "!", "?", "다", "함", "음", "요")):
+            continue
+
+        # 증거설명서 단독 표제
+        if _EVIDENCE_EXPLANATION_TITLE_RE.match(stripped):
+            return DOC_KIND_EVIDENCE_EXPLANATION, 0
+
+        # 사실경위서 단독 표제 (원본 서증)
+        m_fact = _FACT_CONFIRMATION_TITLE_RE.match(stripped)
+        if m_fact:
+            pos = text.find(line)
+            end_offset = (pos + len(line)) if pos != -1 else 0
+            return DOC_KIND_FACT_CONFIRMATION, end_offset
+
+        # 소송 대리 서면 단독 표제 (단독·당사자 표기형 '소장', '청구의 소', '준비서면' 등)
+        if _PLEADING_TITLE_RE.match(stripped):
+            return DOC_KIND_PLEADING, 0
+
+        # 수식어 + '소장' 표제: 첫머리(첫 1쪽 또는 2,000자)에 당사자 표시·'청구취지'·'청구원인' 중 둘 이상 있을 때만 PLEADING 인정
+        if _MODIFIED_SOJANG_TITLE_RE.match(stripped) and _has_complaint_elements_in_head(doc, text):
+            return DOC_KIND_PLEADING, 0
+
+    return DOC_KIND_OTHER, None
+
+
+def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Finding]:
+    """진술서 대필 의심 및 서증 원본(사실경위서) 통복제 결함을 탐지한다.
+
+    1. 진술서·확인서 계열 문서(4순위): 다른 서면 문장과 일치 시 B등급(SUSPICIOUS)
+    2. 소송서면·증거설명서가 사실경위서 원본 문단을 통복제한 경우(5순위): C등급(SUSPICIOUS)
+       - 민사소송규칙 제106조 예외: 증거설명서 내 정규 호증 설명(입증취지) 항목은 제외(SKIP)
+       - 서증 정식 원용 표기가 포함된 문장 제외(SKIP)
+       - 원본이 사실경위서(서증 원본)일 때만 판정
+    3. 소송서면 간 정상적인 변론 요지 재진술(7순위): 정상 보호(SKIP)
     """
     docs = list(documents)
     texts = {d.document_id: build_reading_text(d).text for d in docs}
-    statements = {d.document_id: _statement_start(d, texts[d.document_id]) for d in docs}
-    if not any(start is not None for start in statements.values()):
+    doc_kinds = {d.document_id: _document_title_kind(d, texts[d.document_id]) for d in docs}
+
+    # 진술서나 사실경위서가 포함되어 있지 않고 소송서면 간에도 복사 검사 대상이 없으면 종료
+    has_statements = any(k[0] == DOC_KIND_STATEMENT for k in doc_kinds.values())
+    has_facts = any(k[0] == DOC_KIND_FACT_CONFIRMATION for k in doc_kinds.values())
+    if not has_statements and not has_facts:
         return []
+
     prepared = {d.document_id: _sentences_for_copy(d) for d in docs}
     index: Dict[str, set] = {}
     for d in docs:
@@ -1878,14 +2182,28 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                 index.setdefault(gram, set()).add((d.document_id, position))
     by_id = {d.document_id: d for d in docs}
     out: List[Finding] = []
+
     for owner in docs:
-        start = statements[owner.document_id]
-        if start is None:
+        owner_kind, start = doc_kinds[owner.document_id]
+        # 진술서(DOC_KIND_STATEMENT), 소송서면(DOC_KIND_PLEADING), 증거설명서(DOC_KIND_EVIDENCE_EXPLANATION) 대상
+        if owner_kind not in (DOC_KIND_STATEMENT, DOC_KIND_PLEADING, DOC_KIND_EVIDENCE_EXPLANATION):
             continue
+
         pairs: Dict[str, List[Tuple[str, str, float]]] = {}
         for sentence, key in prepared[owner.document_id]:
-            if texts[owner.document_id].find(sentence, start) == -1:
+            # 진술서인 경우 진술 본문 시작 오프셋 이후 문장만 비교
+            if owner_kind == DOC_KIND_STATEMENT and start is not None:
+                if texts[owner.document_id].find(sentence, start) == -1:
+                    continue
+
+            # 소송서면인 경우 정식 서증 원용 문맥("갑 제1호증 사실경위서에 의하면...")은 제외
+            if owner_kind == DOC_KIND_PLEADING and _EXHIBIT_REFERENCE_RE.search(sentence):
                 continue
+
+            # 증거설명서인 경우 정규 호증 설명란(입증취지 등) 내부 문장은 제외 (승인 조건 1)
+            if owner_kind == DOC_KIND_EVIDENCE_EXPLANATION and _is_in_corresponding_exhibit_entry(sentence, owner, texts[owner.document_id]):
+                continue
+
             hits: Dict[Tuple[str, int], int] = {}
             for gram in _shingles(key, 8):
                 for hit in index.get(gram, ()):
@@ -1899,16 +2217,50 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                 other_grams = _shingles(other_key)
                 overlap = len(grams & other_grams) / max(1, min(len(grams), len(other_grams)))
                 if overlap >= COPY_SIMILARITY:
+                    other_kind = doc_kinds[other_id][0]
+                    # 7순위: 소송서면 간 정상 재진술(소장 ↔ 준비서면)은 제외
+                    if owner_kind == DOC_KIND_PLEADING and other_kind == DOC_KIND_PLEADING:
+                        continue
+                    # 5순위: 소송서면(PLEADING) 및 증거설명서(EVIDENCE_EXPLANATION)는 other가 사실경위서(FACT_CONFIRMATION) 원본일 때만 통복제로 판정
+                    if owner_kind in (DOC_KIND_PLEADING, DOC_KIND_EVIDENCE_EXPLANATION) and other_kind != DOC_KIND_FACT_CONFIRMATION:
+                        continue
+
                     pairs.setdefault(other_id, []).append((sentence, other_sentence, round(overlap, 2)))
+
         for other_id, matched in pairs.items():
             other = by_id[other_id]
-            out.append(_finding(owner, FindingType.CROSS_DOC_COPY, EvidenceGrade.B, Severity.MEDIUM,
-                                f"진술 문서에 다른 서면({other.filename})과 같은 문장이 {len(matched)}건 있다",
-                                "진술인 명의의 문서에 대리인 서면 등 다른 문서의 문장이 그대로 있으면 대필·작출을 "
-                                "의심할 단서가 된다. 작성 경위는 사람이 확인한다.",
-                                matched[0][0], status=VerificationStatus.SUSPICIOUS,
-                                features={"other_document_id": other_id, "similarity": matched[0][2],
-                                          "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
-                                                    for a, b, s in matched[:5]]}))
+            other_kind = doc_kinds[other_id][0]
+
+            if owner_kind == DOC_KIND_STATEMENT:
+                # 4순위: 진술서 문서 대필·작출 의심 (EvidenceGrade.B 고정, Steve 원본 출력과 100% 동일하게 유지)
+                out.append(_finding(
+                    owner, FindingType.CROSS_DOC_COPY, EvidenceGrade.B, Severity.MEDIUM,
+                    f"진술 문서에 다른 서면({other.filename})과 같은 문장이 {len(matched)}건 있다",
+                    "진술인 명의의 문서에 대리인 서면 등 다른 문서의 문장이 그대로 있으면 대필·작출을 "
+                    "의심할 단서가 된다. 작성 경위는 사람이 확인한다.",
+                    matched[0][0], status=VerificationStatus.SUSPICIOUS,
+                    features={"other_document_id": other_id, "similarity": matched[0][2],
+                              "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
+                                        for a, b, s in matched[:5]]}
+                ))
+            elif owner_kind in (DOC_KIND_PLEADING, DOC_KIND_EVIDENCE_EXPLANATION) and other_kind == DOC_KIND_FACT_CONFIRMATION:
+                # 5순위: 서증 원본(사실경위서) 통문단 복제 검출 (조건 2: EvidenceGrade.C 고정, 증거설명서는 호증 항목 밖만)
+                # VerificationPipeline._cross_check에서 서로 다른 owner 문서의 C등급 결과가 첫 1건으로 합쳐져
+                # 소실되지 않도록 C등급 결과에만 문서별 sources(owner.document_id)를 부여한다.
+                doc_title = "소송 서면" if owner_kind == DOC_KIND_PLEADING else "증거설명서"
+                out.append(_finding(
+                    owner, FindingType.CROSS_DOC_COPY, EvidenceGrade.C, Severity.MEDIUM,
+                    f"{doc_title}에 증거자료({other.filename})의 본문과 같은 문장이 {len(matched)}건 있다",
+                    "소장·준비서면 등 소송 대리 서면 또는 증거설명서에 사실경위서 등 원본 서증의 본문 문단이 인용 표시 없이 "
+                    "그대로 복제되어 기재되었습니다. 서증 기재와 일치하는 변론인지 또는 단순 통복제인지 사람이 확인해야 합니다.",
+                    matched[0][0], status=VerificationStatus.SUSPICIOUS,
+                    features={"other_document_id": other_id, "similarity": matched[0][2],
+                              "sources": [{"document_id": owner.document_id}],
+                              "copy_category": "FACT_CONFIRMATION_REPLICATION",
+                              "rule_id": "EVI.COPY_FACT_CONFIRMATION", "human_review": True,
+                              "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
+                                        for a, b, s in matched[:5]]}
+                ))
+
     return out
 

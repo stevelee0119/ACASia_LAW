@@ -82,7 +82,8 @@ def upload_page():
 
 
 def select_file(page):
-    page.locator("#privacyAck").check()
+    # 같은 세션·프로젝트에서 이미 확인된 상태를 모의하거나 모달에서 확인 진행 (TK-85)
+    page.evaluate("setPrivacyAck(state.project?.id, true)")
     page.locator("#fileInput").set_input_files({"name": "검토의견서.docx", "mimeType": "application/octet-stream", "buffer": PAYLOAD})
     expect(page.locator("#uploadStatus")).to_contain_text("파일 등록 결과")
 
@@ -112,7 +113,7 @@ def test_registration_outcome_and_no_blind_post_retry(upload_page, mode, expecte
 
 def test_unreadable_local_file_is_not_sent(upload_page):
     page, control = upload_page
-    page.locator("#privacyAck").check()
+    page.evaluate("setPrivacyAck(state.project?.id, true)")
     page.evaluate("""async () => {
         const file = new File(['data'], 'unavailable.docx');
         file.arrayBuffer = async () => {throw new DOMException('Unavailable', 'NotReadableError');};
