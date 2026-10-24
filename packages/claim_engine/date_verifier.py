@@ -55,16 +55,6 @@ HEADING_LINE_RE = re.compile(
     r")\s*(?P<title>[^\n]{1,80})"
 )
 
-# 인과적 원인 행위/사건 표지 (신청, 발송, 제출, 체결, 착수 등 능동적 선행 행위)
-CAUSE_ACTIONS_RE = re.compile(
-    r"(?:신청|청구|발송|제출|송달|인도|체결|입사|착수|의뢰|요청|납부|교부|제기|통지하|통지를\s*발송)"
-)
-
-# 인과적 결과 행위/사건 표지 (결정, 처분, 도달, 수신, 해제, 퇴사, 완료, 통지받음 등 후행 결과)
-EFFECT_ACTIONS_RE = re.compile(
-    r"(?:결정|처분|도달|수신|퇴사|완료|회신|반환|인가|승인|종료|만료|지급받|수령|통지받|통지되었|해제되었|해지되었)"
-)
-
 # 정정 서술 배제 표지 (~로 정정한다, ~가 아니라, 오기이다 등)
 CORRECTION_EXCLUDE_RE = re.compile(
     r"(?:정정(?:합|한|합니|하|되)|아니라|오기(?:이|입|였)|착오(?:로|에)|바로잡)"
@@ -84,6 +74,100 @@ AUTHORITY_EXCLUDE_RE = re.compile(
 DIFFERENT_SUBJECTS_RE = re.compile(
     r"(?:원고(?:는|가|의)|신청인(?:은|이|의))\s*.*?(?:피고(?:는|가|의)|피신청인(?:은|이|의))|"
     r"(?:피고(?:는|가|의)|피신청인(?:은|이|의))\s*.*?(?:원고(?:는|가|의)|신청인(?:은|이|의))"
+)
+
+# 앞선 사건을 대상·근거·첨부로 삼는 정상 회고 서술 배제 표지
+# (나중 서면이 앞선 처분을 다툼, '~에 따라' 참조, 나중 청구의 대상이 앞선 결정, 앞선 회신 첨부, '~를 거쳐' 회고 등)
+RETROSPECTIVE_OBJECT_EXCLUDE_RE = re.compile(
+    r"(?:취소를\s*구|무효(?:확인)?를\s*구|위법(?:성|함)?을\s*다투|다투(?:고자|며|는|었)|"
+    r"대상으로\s*(?:하|삼|한)|별지로\s*첨부|첨부(?:하여|하였|했|함)|"
+    r"거쳐\s*(?:제기|청구|신청|소송)|에\s*따라\s*(?:제출|청구|신청|첨부))"
+)
+
+# 재입사·별개 기간·선행 계약 예외 표지
+SEPARATE_PERIOD_EXCLUDE_RE = re.compile(
+    r"(?:재입사|별개(?:의)?\s*(?:기간|근로|계약)|이전\s*(?:근로)?계약과\s*별도)"
+)
+
+# 한국어 고유어 수관형사 매핑 (민법 제157조·제160조 기간 산정용)
+KOREAN_NUMERAL_MAP: Dict[str, int] = {
+    "한": 1, "두": 2, "세": 3, "석": 3, "네": 4, "넉": 4,
+    "다섯": 5, "여섯": 6, "일곱": 7, "여덟": 8, "아홉": 9,
+    "열": 10, "열한": 11, "열두": 12,
+}
+
+# 구조적 패턴용 날짜 부분 정규식
+_DATE_PAT = r"(?:19|20)\d{2}\s*(?:[.\-/]\s*\d{1,2}\s*[.\-/]\s*\d{1,2}\s*\.?|년\s*\d{1,2}\s*월\s*\d{1,2}\s*일)"
+
+# 규칙 1-A1: 동일 주체의 개시일(입사일 등)–종료일(최종 퇴사일 등) 명사구 역전
+SAME_SUBJECT_LIFECYCLE_RE = re.compile(
+    rf"(?P<start_label>입사일|근무\s*시작일|재직\s*시작일|계약\s*체결일|임대차\s*개시일)[은는이가을를]\s*"
+    rf"(?P<d1>{_DATE_PAT})\s*(?:로\s*(?:적었|기재되었|정하였)[가-힣\s.,]*?|이고|이며|이나|인데|,)\s*"
+    rf"(?:(?:같은|동일|위|그)\s*[가-힣]{{1,6}}의\s*)?"
+    rf"(?P<end_label>(?:최종\s*)?(?:퇴사일|퇴직일|근무\s*종료일|해고일|계약\s*종료일|계약\s*해지일))[은는이가을를]\s*"
+    rf"(?P<d2>{_DATE_PAT})"
+)
+
+# 규칙 1-A2: 동일 주체·근로관계의 개시일(입사일) 후 일정 기간(N개월/달/년/일) 근무 뒤 사직·퇴사 일자 역전
+LIFECYCLE_DURATION_INVERSION_RE = re.compile(
+    rf"(?P<start_label>입사일|근무\s*시작일|재직\s*시작일|계약\s*체결일)[은는이가을를]\s*(?P<d1>{_DATE_PAT})"
+    rf"[^.!?]{{0,25}}?[.!?]?\s*(?:[가-힣\s]{{0,15}}?)?"
+    rf"(?P<n>\d{{1,3}}|한|두|세|석|네|넉|다섯|여섯|일곱|여덟|아홉|열|열한|열두)\s*"
+    rf"(?P<unit>개월|달|년|일)\s*(?:간|동안)?\s*(?:근무|재직|복무|사용|거주)한\s*(?:뒤|후|다음)"
+    rf"[^.!?]{{0,40}}?(?:사직|퇴사|퇴직|해지|종료)[^.!?]{{0,25}}?"
+    rf"(?:발송일|제출일|통지일|일자|날)[은는이가]\s*(?P<d2>{_DATE_PAT})"
+)
+
+# 규칙 1-B1: 선행 신청·청구를 직접 대상으로 삼은('~에 대한') 후행 처분·결정의 발령일 역전
+TARGET_BOUND_DISPOSITION_RE = re.compile(
+    rf"(?:(?P<cause_noun>(?:최초\s*|첫\s*)?[가-힣]{{0,8}}?(?:신청|청구|접수))\s*(?:일[은는이가]?\s*)?(?P<d1>{_DATE_PAT})|"
+    rf"(?:최초\s*|첫\s*)?(?P<d1_alt>{_DATE_PAT})\s*(?:자\s*)?(?P<cause_noun_alt>[가-힣]{{0,8}}?(?:신청|청구|접수)))\s*"
+    rf"에\s*대한\s*"
+    rf"(?P<effect_noun>[가-힣\s]{{0,12}}?(?:거부\s*처분|불승인\s*처분|불허가\s*처분|처분|기각\s*결정|각하\s*결정|결정|승인\s*처분|인가\s*처분))[은는이가]\s*"
+    rf"(?P<d2>{_DATE_PAT})\s*에\s*(?:발령|통지|고지|송달|내려|이루어)"
+)
+
+# 규칙 1-B2: 선행 행위(신청·계약·청구) D1 후 지시어('그/위/해당 <동일명사>')로 결합된 후행 처분·해제 D2 역전
+ANAPHORIC_TARGET_INVERSION_RE = re.compile(
+    rf"(?P<d1>{_DATE_PAT})\s*[에\s]*[가-힣\s]{{0,15}}?(?P<noun>신청|청구|계약|접수)"
+    rf"(?:을\s*하|를\s*하|하였|했|을?\s*체결하|을?\s*체결했|을?\s*제출하|을?\s*제출했)[^.!?]{{0,30}}?"
+    rf"(?:그|위|해당|동)\s*(?P=noun)\s*(?:에\s*대한|에\s*관한|의)\s*"
+    rf"(?P<effect_noun>[가-힣\s]{{0,12}}?(?:거부\s*처분|불승인\s*처분|처분|기각\s*결정|결정|해제\s*통지|해지\s*통지|승인|인가|회신))"
+    rf"[은는이가을를]?\s*(?P<d2>{_DATE_PAT})\s*[에\s]*(?:발령|통지|고지|송달|발송|수신|도달|내려)"
+)
+
+# 규칙 2: 동일 행위 기간(D1부터 D2까지) 종료('끝난 뒤') 후 최초 문서 작성·산정일(D3) 역전
+PERIOD_END_WRITE_INVERSION_RE = re.compile(
+    rf"(?P<act>[가-힣]{{2,6}})\s*기간[은는이가]?\s*(?P<d1>{_DATE_PAT})\s*(?:부터|~|∼)\s*(?P<d2>{_DATE_PAT})\s*까지"
+    rf"[^.!?]{{0,20}}?(?:그\s*|위\s*)?(?P=act)[이가은는]?\s*(?:끝난|종료된|마친|완료된)\s*(?:뒤|후|다음)"
+    rf"[^.!?]{{0,35}}?(?:처음|최초로?)?\s*[가-힣\s]{{1,15}}?(?:처음\s*|최초로?\s*)?(?:작성|발급|발행|산정)한\s*(?:날|일자)[은는이가]\s*(?P<d3>{_DATE_PAT})"
+)
+
+# 규칙 3: 동일 행위 명사 결합 상대 일자('다음 날/이튿날/N일 뒤') 역산 모순 (민법 제157조·제160조)
+RELATIVE_NEXT_DAY_INVERSION_RE = re.compile(
+    rf"(?P<d1>{_DATE_PAT})\s*[에\s]*(?:처음\s*|최초로?\s*)?(?P<act>[가-힣]{{2,6}})"
+    rf"(?:하였|했|하고|했고|하였으며|한\s*뒤|한\s*후|되었|됐),?\s*"
+    rf"(?:(?:그\s*|위\s*)?(?P=act)\s*(?:한\s*)?|그\s*)"
+    rf"(?:(?P<next_day>다음\s*날|이튿날|익일)|"
+    rf"(?P<n>\d{{1,3}}|한|두|세|석|네|넉|다섯|여섯|일곱|여덟|아홉|열)\s*(?P<unit>일|개월|달|년)\s*(?:뒤|후|경과\s*후|지난\s*뒤))인\s*"
+    rf"(?P<d2>{_DATE_PAT})"
+)
+
+# 규칙 4-A: 동일 일자 내 지시어('그 <명사>보다 앞선') 결합 상대 시각(HH:MM) 역전
+SAME_DAY_EARLIER_TIME_INVERSION_RE = re.compile(
+    rf"(?P<act>[가-힣]{{2,8}})\s*(?:시각|시간)[은는이가]\s*(?P<d1>{_DATE_PAT})\s*(?P<t1>\d{{1,2}}:\d{{2}})\s*"
+    rf"(?:이고|이며|,)\s*(?:그|위|해당)\s*(?P=act)보다\s*"
+    rf"(?:(?P<offset>\d{{1,3}})\s*(?P<unit>분|시간)\s*)?"
+    rf"(?P<rel>앞선|먼저\s*한|먼저\s*이루어진|이른)\s*[가-힣\s]{{1,15}}?[은는이가]\s*"
+    rf"(?:같은\s*날|당일)\s*(?P<t2>\d{{1,2}}:\d{{2}})"
+)
+
+# 규칙 4-B: 동일 목적물('그 <목적물>')의 최초 회수·확보 시각(T1) vs 같은 날 이미 전달·인계된 시각(T2) 역전
+SAME_OBJECT_FIRST_ACQUIRE_TIME_INVERSION_RE = re.compile(
+    rf"(?P<d1>{_DATE_PAT})\s*(?P<t1>\d{{1,2}}:\d{{2}})\s*에\s*(?P<obj>[가-힣]{{2,10}})[을를]\s*"
+    rf"(?:처음|최초로?)\s*(?:회수|확보|수령|입수|인수|작성)[가-힣\s.!?]{{1,35}}?"
+    rf"(?:그|위|해당)\s*(?P<obj2>[가-힣]{{2,10}})[이가은는]\s*(?:같은\s*날|당일)\s*"
+    rf"(?P<t2>\d{{1,2}}:\d{{2}})\s*에\s*(?:이미|벌써)\s*[가-힣\s]{{0,18}}?(?:전달|인계|교부|제출|반출|발송)되"
 )
 
 
@@ -116,6 +200,68 @@ def _parse_valid_date(year: int, month: int, day: int) -> Optional[datetime.date
         return datetime.date(year, month, day)
     except (ValueError, OverflowError):
         return None
+
+
+def _parse_date_str(text: str) -> Optional[datetime.date]:
+    """날짜 문자열(YYYY. M. D., YYYY-MM-DD, YYYY년 M월 D일 등)에서 date 객체를 추출한다."""
+    nums = [int(x) for x in re.findall(r"\d+", text)[:3]]
+    if len(nums) != 3:
+        return None
+    return _parse_valid_date(nums[0], nums[1], nums[2])
+
+
+def _parse_minutes(hhmm: str) -> Optional[int]:
+    """HH:MM 문자열을 자정 기준 분(0~1440)으로 변환한다."""
+    parts = hhmm.strip().split(":")
+    if len(parts) != 2:
+        return None
+    try:
+        h, m = int(parts[0]), int(parts[1])
+        if 0 <= h <= 24 and 0 <= m < 60:
+            return h * 60 + m
+    except ValueError:
+        pass
+    return None
+
+
+def _parse_numeral(val: str) -> Optional[int]:
+    """숫자 또는 한국어 고유어 수관형사('한', '두', '세' 등)를 정수로 변환한다."""
+    v = val.strip()
+    if v.isdigit():
+        return int(v)
+    return KOREAN_NUMERAL_MAP.get(v)
+
+
+def _add_civil_period(start: datetime.date, n: int, unit: str, *, inclusive: bool = False) -> datetime.date:
+    """민법 제157조(초일 불산입 원칙)·제159조·제160조(역에 의한 계산, 말일 보정)에 따른 기간 만료일 산출.
+
+    - 일 단위: 초일 불산입 시 start + n일, 초일 산입(오전 0시 시작 등 예외) 시 start + max(0, n - 1)일.
+    - 월/달/개월·년 단위: 역에 의하여 계산하되 마지막 달에 해당 일이 없으면 그 달의 말일로 하며(민법 제160조 제3항),
+      초일 불산입 시 전일(해당일)에 만료하고, 초일 산입 시 하루 앞선 날을 최소 만료 가능일로 반환한다.
+    """
+    if unit == "일":
+        offset = max(0, n - 1) if inclusive else n
+        return start + datetime.timedelta(days=offset)
+    months = n * 12 if unit == "년" else n
+    y, m = divmod(start.month - 1 + months, 12)
+    year, month = start.year + y, m + 1
+    last_day = calendar.monthrange(year, month)[1]
+    expiry_excl = datetime.date(year, month, min(start.day, last_day))
+    return expiry_excl - datetime.timedelta(days=1) if inclusive else expiry_excl
+
+
+def _same_object_noun(left: str, right: str) -> bool:
+    """두 목적물 명사가 동일하거나 핵심 접미 명사(2글자 이상, 예: '저장장치'와 '장치')를 공유하는지 판정한다."""
+    a, b = re.sub(r"\s+", "", left), re.sub(r"\s+", "", right)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if len(b) >= 2 and a.endswith(b):
+        return True
+    if len(a) >= 2 and b.endswith(a):
+        return True
+    return False
 
 
 def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
@@ -470,12 +616,71 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                     )
                                 )
 
-    # 5. 같은 문맥 내 두 사건 일자의 인과적 선후 역전 검증 (TEMPORAL_EVENT_INVERSION, B등급)
-    # 원인 행위(신청, 제출, 체결 등)와 결과 행위(결정, 처분, 해제 등)의 일시 선후 모순 판정
+    # 5. 동일 주체·동일 대상 결합 기반 사건 일시·기간 선후 역전 검증 (TEMPORAL_EVENT_INVERSION, B등급)
+    # - 조건 ①: 은퇴 4세트 미득점 7항목 진단표의 4대 결합 구조에 한정하여 판정
+    # - 조건 ②: 같은 주체·같은 대상 명사·지시어(그/위/해당/에 대한) 결합 필수, 앞선 사건을 대상·근거·첨부로 삼는 정상 회고 서술 제외
+    # - 조건 ③: 기간·상대 일자 오차는 민법 제157조(초일 불산입 원칙)·제159조·제160조(역에 의한 월·년 계산, 말일 보정) 적용
     EXHIBIT_SECTION_RE = re.compile(r"(?:입증\s*방법|첨부\s*서류|증거\s*목록|서증\s*목록)")
 
+    def _emit_temporal_inversion(
+        *,
+        block_obj: Any,
+        heading: Optional[str],
+        rule_sub_id: str,
+        title: str,
+        detail_body: str,
+        excerpt_text: str,
+        extra_features: Dict[str, Any],
+    ) -> None:
+        """인과·시간 선후 역전 Finding을 중복 없이 추가한다."""
+        for existing_f in findings:
+            if (
+                existing_f.type == FindingType.TIMELINE_CONTRADICTION
+                and existing_f.page == block_obj.page
+                and existing_f.confidence_features.get("sub_rule") == rule_sub_id
+                and existing_f.confidence_features.get("excerpt_key") == excerpt_text[:80]
+            ):
+                return
+        h_pref = f"[{heading}] " if heading else ""
+        features = {
+            "deterministic_rule": True,
+            "rule_id": "claim_engine.date_verifier:TEMPORAL_EVENT_INVERSION",
+            "sub_rule": rule_sub_id,
+            "excerpt_key": excerpt_text[:80],
+            **extra_features,
+        }
+        if heading:
+            features["heading"] = heading
+        findings.append(
+            Finding.create(
+                type=FindingType.TIMELINE_CONTRADICTION,
+                status=VerificationStatus.CONTRADICTED,
+                severity=Severity.HIGH,
+                evidence_grade=EvidenceGrade.B,
+                title=title,
+                detail=f"{h_pref}{detail_body}",
+                confidence=0.9,
+                confidence_features=features,
+                document_id=doc.document_id,
+                block_id=block_obj.block_id,
+                page=block_obj.page,
+                engine=ENGINE_NAME,
+                tags=["TIMELINE", "DATE-INVERSION", "TEMPORAL"],
+                evidence=[
+                    Evidence.create(
+                        description=f"{h_pref}동일 주체·대상 사건의 일시·기간 선후 역전".strip(),
+                        grade=EvidenceGrade.B,
+                        document_id=doc.document_id,
+                        block_id=block_obj.block_id,
+                        page=block_obj.page,
+                        excerpt=excerpt_text[:240],
+                        supports=True,
+                    )
+                ],
+            )
+        )
+
     for block in doc.body_blocks():
-        # 표 블록 및 머리글 제외
         if block.block_type in ("table", "table_line", "running_head"):
             continue
 
@@ -484,121 +689,255 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
             continue
 
         eff_h = _find_effective_heading(text, 0, current_heading)
-        # 입증방법 / 첨부서류 / 증거목록 구역은 서증 나열 구역이므로 인과적 선후 비교 제외
         if eff_h and EXHIBIT_SECTION_RE.search(eff_h):
             continue
         if EXHIBIT_SECTION_RE.search(text[:60]):
             continue
 
-        h_prefix = f"[{eff_h}] " if eff_h else ""
+        # 블록 전체를 공백 정규화한 단락 문자열 (인접 2문장 결합 구조 검사용)
+        norm_block = " ".join(text.split())
+        if len(norm_block) < 15:
+            continue
 
-        # 문장 단위(한글 음절 뒤 마침표 또는 줄바꿈) 분할 검사 (날짜 속 마침표 보호)
-        sentences = re.split(r"(?<=[가-힣][.!?])\s+|\n+", text)
-        for sent in sentences:
-            sent_s = sent.strip()
-            if not sent_s or len(sent_s) < 15:
+        # 공통 배제 가드 검사 함수 (매칭 구간 및 직후 문맥 45자까지 포함하여 정정·장래·회고 표지 확인)
+        def _is_excluded_context(m_obj: re.Match[str]) -> bool:
+            start_idx = max(0, m_obj.start() - 15)
+            end_idx = min(len(norm_block), m_obj.end() + 45)
+            span_text = norm_block[start_idx:end_idx]
+            if CORRECTION_EXCLUDE_RE.search(span_text):
+                return True
+            if FUTURE_EXCLUDE_RE.search(span_text):
+                return True
+            if AUTHORITY_EXCLUDE_RE.search(span_text):
+                return True
+            if DIFFERENT_SUBJECTS_RE.search(m_obj.group(0)):
+                return True
+            if RETROSPECTIVE_OBJECT_EXCLUDE_RE.search(span_text):
+                return True
+            if SEPARATE_PERIOD_EXCLUDE_RE.search(span_text):
+                return True
+            return False
+
+        # (규칙 1-A1) 동일 주체의 개시일(입사일 등)–종료일(최종 퇴사일 등) 명사구 쌍 역전
+        for m in SAME_SUBJECT_LIFECYCLE_RE.finditer(norm_block):
+            matched = m.group(0)
+            if _is_excluded_context(m):
                 continue
+            d1 = _parse_date_str(m.group("d1"))
+            d2 = _parse_date_str(m.group("d2"))
+            if d1 and d2 and d2 < d1:
+                s_lbl, e_lbl = m.group("start_label"), m.group("end_label")
+                _emit_temporal_inversion(
+                    block_obj=block,
+                    heading=eff_h,
+                    rule_sub_id="SAME_SUBJECT_LIFECYCLE",
+                    title=f"사건 일자 선후 모순: {s_lbl}({m.group('d1').strip()})보다 {e_lbl}({m.group('d2').strip()})이 앞섬",
+                    detail_body=(
+                        f"동일 주체의 '{s_lbl}({m.group('d1').strip()})'보다 종료 시점인 "
+                        f"'{e_lbl}({m.group('d2').strip()})'이 시간상 앞서 기재되어 선후 관계가 모순된다."
+                    ),
+                    excerpt_text=matched,
+                    extra_features={"cause_date": str(d1), "effect_date": str(d2)},
+                )
 
-            # 제외 꼴 1: 정정 서술 (~로 정정한다, ~가 아니라, 오기이다 등)
-            if CORRECTION_EXCLUDE_RE.search(sent_s):
+        # (규칙 1-A2) 동일 주체 개시일(입사일) 후 일정 기간(N개월/달/년/일) 근무 뒤 사직·퇴사 발송일 역전 (민법 제157조·제160조)
+        for m in LIFECYCLE_DURATION_INVERSION_RE.finditer(norm_block):
+            matched = m.group(0)
+            if _is_excluded_context(m):
                 continue
-            # 제외 꼴 2: 장래/예정/변제기 서술 (~할 예정, ~까지 지급하기로, 이행기 등)
-            if FUTURE_EXCLUDE_RE.search(sent_s):
-                continue
-            # 제외 꼴 3: 판례·법령 인용 문맥 (선고, 공포, 대법원 판결 등)
-            if AUTHORITY_EXCLUDE_RE.search(sent_s):
-                continue
-            # 제외 꼴 4: 별개 주체 대립 (원고 vs 피고가 각각 다른 절에서 분리된 행위)
-            if DIFFERENT_SUBJECTS_RE.search(sent_s):
-                continue
-
-            # 문장 내 날짜 목록 추출
-            date_matches = list(DATE_GENERAL_RE.finditer(sent_s))
-            if len(date_matches) < 2:
-                continue
-
-            # 인접하거나 동일 문장 내 날짜 쌍 비교
-            for idx_a in range(len(date_matches) - 1):
-                m_a = date_matches[idx_a]
-                m_b = date_matches[idx_a + 1]
-
-                d_a = _parse_valid_date(int(m_a.group("year")), int(m_a.group("month")), int(m_a.group("day")))
-                d_b = _parse_valid_date(int(m_b.group("year")), int(m_b.group("month")), int(m_b.group("day")))
-                if not d_a or not d_b:
-                    continue
-
-                # 날짜 A와 날짜 B 사이 텍스트(A의 서술부) 및 날짜 B 이후 텍스트(B의 서술부)
-                between_text = sent_s[m_a.end():m_b.start()]
-                tail_text = sent_s[m_b.end():min(len(sent_s), m_b.end() + 35)]
-
-                has_cause_between = bool(CAUSE_ACTIONS_RE.search(between_text))
-                has_effect_between = bool(EFFECT_ACTIONS_RE.search(between_text))
-                has_cause_tail = bool(CAUSE_ACTIONS_RE.search(tail_text))
-                has_effect_tail = bool(EFFECT_ACTIONS_RE.search(tail_text))
-
-                # 케이스 1: 날짜 A가 원인 행위이고, 날짜 B가 결과 행위인데 d_a > d_b (원인이 결과보다 미래)
-                is_inversion_case1 = has_cause_between and has_effect_tail and not has_effect_between and d_a > d_b
-
-                # 케이스 2: 날짜 A가 결과 행위이고, 날짜 B가 원인 행위인데 d_b > d_a (역순 서술에서 원인이 결과보다 미래)
-                # 예: "2024. 3. 10. 변경 인가 처분이 내려졌으나, 이는 2024. 4. 20. 제출된 서류에 따른 것입니다."
-                is_inversion_case2 = has_effect_between and has_cause_tail and not has_cause_between and d_b > d_a
-
-                # 케이스 3: 시간 순서 연결어("이후", "뒤에", "경과 후", "거쳐", "따라")로 연결되었는데 d_a > d_b
-                has_temporal_seq = bool(re.search(r"(?:이후|뒤에|경과\s*후|거쳐|따라|바탕으로)\s*", between_text))
-                is_inversion_case3 = has_temporal_seq and (d_a > d_b) and (has_cause_between or has_effect_tail)
-
-                if is_inversion_case1 or is_inversion_case2 or is_inversion_case3:
-                    earlier_action_date = d_a if (is_inversion_case1 or is_inversion_case3) else d_b
-                    later_action_date = d_b if (is_inversion_case1 or is_inversion_case3) else d_a
-
-                    # 중복 방지
-                    dup = False
-                    for existing_f in findings:
-                        if existing_f.type == FindingType.TIMELINE_CONTRADICTION and str(d_a) in existing_f.detail and str(d_b) in existing_f.detail:
-                            dup = True
-                            break
-                    if dup:
-                        continue
-
-                    features = {
-                        "deterministic_rule": True,
-                        "cause_date": str(earlier_action_date),
-                        "effect_date": str(later_action_date),
-                        "rule_id": "claim_engine.date_verifier:TEMPORAL_EVENT_INVERSION",
-                    }
-                    if eff_h:
-                        features["heading"] = eff_h
-
-                    findings.append(
-                        Finding.create(
-                            type=FindingType.TIMELINE_CONTRADICTION,
-                            status=VerificationStatus.CONTRADICTED,
-                            severity=Severity.HIGH,
-                            evidence_grade=EvidenceGrade.B,
-                            title=f"사건 일자 선후 모순: 선행 행위일({earlier_action_date})이 후행 처분·결과일({later_action_date})보다 미래로 기재",
-                            detail=(
-                                f"{h_prefix}본문 문맥상 선행 사건({earlier_action_date})과 후행 결과 사건({later_action_date})의 "
-                                f"선후 관계가 시간적 인과관계에 반하여 역전되어 기재되었다."
-                            ),
-                            confidence=0.9,
-                            confidence_features=features,
-                            document_id=doc.document_id,
-                            block_id=block.block_id,
-                            page=block.page,
-                            engine=ENGINE_NAME,
-                            tags=["TIMELINE", "DATE-INVERSION", "TEMPORAL"],
-                            evidence=[
-                                Evidence.create(
-                                    description=f"{h_prefix}인과적 선후 역전 문맥".strip(),
-                                    grade=EvidenceGrade.B,
-                                    document_id=doc.document_id,
-                                    block_id=block.block_id,
-                                    page=block.page,
-                                    excerpt=sent_s[:200],
-                                    supports=True,
-                                )
-                            ],
-                        )
+            d1 = _parse_date_str(m.group("d1"))
+            d2 = _parse_date_str(m.group("d2"))
+            n_val = _parse_numeral(m.group("n"))
+            unit = m.group("unit")
+            if d1 and d2 and n_val:
+                earliest_expiry = _add_civil_period(d1, n_val, unit, inclusive=True)
+                expiry_excl = _add_civil_period(d1, n_val, unit, inclusive=False)
+                if d2 < d1 or d2 < earliest_expiry:
+                    s_lbl = m.group("start_label")
+                    _emit_temporal_inversion(
+                        block_obj=block,
+                        heading=eff_h,
+                        rule_sub_id="LIFECYCLE_DURATION_INVERSION",
+                        title=(
+                            f"사건 일자·기간 선후 모순: {s_lbl}({m.group('d1').strip()})로부터 "
+                            f"{m.group('n')}{unit} 근무 뒤 일자가 {m.group('d2').strip()}로 기재"
+                        ),
+                        detail_body=(
+                            f"'{s_lbl}'을 {m.group('d1').strip()}로 기재하면서 {m.group('n')}{unit} 근무한 뒤의 "
+                            f"사직·퇴사 관련 일자를 그보다 앞선 {m.group('d2').strip()}로 기재하였다 "
+                            f"(민법 제157조·제160조상 최소 만료일: 초일 산입 {earliest_expiry}, 초일 불산입 {expiry_excl})."
+                        ),
+                        excerpt_text=matched,
+                        extra_features={
+                            "cause_date": str(d1),
+                            "effect_date": str(d2),
+                            "earliest_expiry": str(earliest_expiry),
+                            "exclusive_expiry": str(expiry_excl),
+                        },
                     )
+
+        # (규칙 1-B1) 선행 신청·청구를 직접 대상으로 삼은('~에 대한') 후행 처분·결정의 발령일 역전
+        for m in TARGET_BOUND_DISPOSITION_RE.finditer(norm_block):
+            matched = m.group(0)
+            if _is_excluded_context(m):
+                continue
+            d1_raw = (m.group("d1") or m.group("d1_alt") or "").strip()
+            d2_raw = (m.group("d2") or "").strip()
+            d1 = _parse_date_str(d1_raw)
+            d2 = _parse_date_str(d2_raw)
+            if d1 and d2 and d2 < d1:
+                c_noun = (m.group("cause_noun") or m.group("cause_noun_alt") or "").strip()
+                e_noun = m.group("effect_noun").strip()
+                _emit_temporal_inversion(
+                    block_obj=block,
+                    heading=eff_h,
+                    rule_sub_id="TARGET_BOUND_DISPOSITION",
+                    title=f"사건 일자 선후 모순: {c_noun}({d1_raw})에 대한 {e_noun} 발령일({d2_raw})이 앞섬",
+                    detail_body=(
+                        f"선행 '{c_noun}({d1_raw})'을 대상으로 한 후행 '{e_noun}'의 발령일({d2_raw})이 "
+                        f"신청·청구일보다 앞서 기재되어 인과적 선후 관계가 모순된다."
+                    ),
+                    excerpt_text=matched,
+                    extra_features={"cause_date": str(d1), "effect_date": str(d2)},
+                )
+
+        # (규칙 1-B2) 선행 행위 D1 후 지시어('그/위/해당 <동일명사>')로 결합된 후행 처분·해제 D2 역전
+        for m in ANAPHORIC_TARGET_INVERSION_RE.finditer(norm_block):
+            matched = m.group(0)
+            if _is_excluded_context(m):
+                continue
+            d1 = _parse_date_str(m.group("d1"))
+            d2 = _parse_date_str(m.group("d2"))
+            if d1 and d2 and d2 < d1:
+                noun = m.group("noun").strip()
+                e_noun = m.group("effect_noun").strip()
+                _emit_temporal_inversion(
+                    block_obj=block,
+                    heading=eff_h,
+                    rule_sub_id="ANAPHORIC_TARGET_INVERSION",
+                    title=f"사건 일자 선후 모순: 선행 {noun}({m.group('d1').strip()})보다 그 {noun}에 대한 {e_noun}({m.group('d2').strip()})이 앞섬",
+                    detail_body=(
+                        f"선행 '{noun}({m.group('d1').strip()})'과 지시어로 결합된 동일 대상의 후행 '{e_noun}({m.group('d2').strip()})' 일자가 "
+                        f"선행 행위일보다 앞서 기재되어 인과적 선후 관계가 모순된다."
+                    ),
+                    excerpt_text=matched,
+                    extra_features={"cause_date": str(d1), "effect_date": str(d2)},
+                )
+
+        # (규칙 2) 동일 행위 기간(D1부터 D2까지) 종료('끝난 뒤') 후 최초 문서 작성·산정일(D3) 역전
+        for m in PERIOD_END_WRITE_INVERSION_RE.finditer(norm_block):
+            matched = m.group(0)
+            if _is_excluded_context(m):
+                continue
+            d1 = _parse_date_str(m.group("d1"))
+            d2 = _parse_date_str(m.group("d2"))
+            d3 = _parse_date_str(m.group("d3"))
+            if d1 and d2 and d3 and d1 <= d2 and d3 < d2:
+                act = m.group("act").strip()
+                _emit_temporal_inversion(
+                    block_obj=block,
+                    heading=eff_h,
+                    rule_sub_id="PERIOD_END_WRITE_INVERSION",
+                    title=f"사건 일자 선후 모순: {act} 종료일({m.group('d2').strip()}) 뒤 처음 작성한 날({m.group('d3').strip()})이 종료일보다 앞섬",
+                    detail_body=(
+                        f"{act}기간({m.group('d1').strip()} ~ {m.group('d2').strip()})의 {act}이 끝난 뒤 처음 작성·산정한 날을 "
+                        f"종료일({m.group('d2').strip()})보다 앞선 {m.group('d3').strip()}로 기재하여 선후 관계가 모순된다."
+                    ),
+                    excerpt_text=matched,
+                    extra_features={"period_start": str(d1), "cause_date": str(d2), "effect_date": str(d3)},
+                )
+
+        # (규칙 3) 동일 행위 명사 결합 상대 일자('다음 날/이튿날/N일 뒤') 역산 모순 (민법 제157조·제160조)
+        for m in RELATIVE_NEXT_DAY_INVERSION_RE.finditer(norm_block):
+            matched = m.group(0)
+            if _is_excluded_context(m):
+                continue
+            d1 = _parse_date_str(m.group("d1"))
+            d2 = _parse_date_str(m.group("d2"))
+            if not d1 or not d2:
+                continue
+            act = m.group("act").strip()
+            if m.group("next_day"):
+                # 민법 제157조(초일 불산입): d1의 다음 날(익일/이튿날)은 d1 + 1일
+                expected_d2 = d1 + datetime.timedelta(days=1)
+                if d2 != expected_d2:
+                    _emit_temporal_inversion(
+                        block_obj=block,
+                        heading=eff_h,
+                        rule_sub_id="RELATIVE_NEXT_DAY_INVERSION",
+                        title=f"상대 일자 계산·선후 모순: {act}일({m.group('d1').strip()})의 다음 날이 {m.group('d2').strip()}로 기재",
+                        detail_body=(
+                            f"{m.group('d1').strip()}에 '{act}'한 다음 날(민법 제157조 초일 불산입 기준 {expected_d2})을 "
+                            f"그보다 앞선(또는 불일치하는) {m.group('d2').strip()}로 기재하여 달력 계산과 충돌한다."
+                        ),
+                        excerpt_text=matched,
+                        extra_features={"cause_date": str(d1), "effect_date": str(d2), "expected_date": str(expected_d2)},
+                    )
+            elif m.group("n") and m.group("unit"):
+                n_val = _parse_numeral(m.group("n"))
+                unit = m.group("unit")
+                if n_val:
+                    earliest = _add_civil_period(d1, n_val, unit, inclusive=True)
+                    if d2 < earliest:
+                        _emit_temporal_inversion(
+                            block_obj=block,
+                            heading=eff_h,
+                            rule_sub_id="RELATIVE_PERIOD_INVERSION",
+                            title=f"상대 기간 선후 모순: {act}일({m.group('d1').strip()})로부터 {m.group('n')}{unit} 뒤가 {m.group('d2').strip()}로 기재",
+                            detail_body=(
+                                f"{m.group('d1').strip()} '{act}' 이후 {m.group('n')}{unit}이 지난 시점(민법 제157조·제160조 최소 만료일 {earliest})을 "
+                                f"그보다 앞선 {m.group('d2').strip()}로 기재하여 선후 관계가 모순된다."
+                            ),
+                            excerpt_text=matched,
+                            extra_features={"cause_date": str(d1), "effect_date": str(d2), "earliest_expiry": str(earliest)},
+                        )
+
+        # (규칙 4-A) 동일 일자 내 지시어('그 <명사>보다 앞선') 결합 상대 시각(HH:MM) 역전
+        for m in SAME_DAY_EARLIER_TIME_INVERSION_RE.finditer(norm_block):
+            matched = m.group(0)
+            if _is_excluded_context(m):
+                continue
+            d1 = _parse_date_str(m.group("d1"))
+            t1_min = _parse_minutes(m.group("t1"))
+            t2_min = _parse_minutes(m.group("t2"))
+            if d1 and t1_min is not None and t2_min is not None and t2_min >= t1_min:
+                act = m.group("act").strip()
+                _emit_temporal_inversion(
+                    block_obj=block,
+                    heading=eff_h,
+                    rule_sub_id="SAME_DAY_EARLIER_TIME_INVERSION",
+                    title=f"동일 일자 시각 선후 모순: {act} 시각({m.group('d1').strip()} {m.group('t1')})보다 앞선 시각이 같은 날 {m.group('t2')}로 기재",
+                    detail_body=(
+                        f"{act} 시각({m.group('d1').strip()} {m.group('t1')})보다 앞선 시점이라고 서술하면서 "
+                        f"실제 시각은 그보다 늦은 같은 날 {m.group('t2')}로 기재하여 시간 선후 관계가 충돌한다."
+                    ),
+                    excerpt_text=matched,
+                    extra_features={"date": str(d1), "time_1": m.group("t1"), "time_2": m.group("t2")},
+                )
+
+        # (규칙 4-B) 동일 목적물('그 <목적물>')의 최초 회수·확보 시각(T1) vs 같은 날 이미 전달·인계된 시각(T2) 역전
+        for m in SAME_OBJECT_FIRST_ACQUIRE_TIME_INVERSION_RE.finditer(norm_block):
+            matched = m.group(0)
+            if _is_excluded_context(m):
+                continue
+            obj1, obj2 = m.group("obj").strip(), m.group("obj2").strip()
+            if not _same_object_noun(obj1, obj2):
+                continue
+            d1 = _parse_date_str(m.group("d1"))
+            t1_min = _parse_minutes(m.group("t1"))
+            t2_min = _parse_minutes(m.group("t2"))
+            if d1 and t1_min is not None and t2_min is not None and t2_min < t1_min:
+                _emit_temporal_inversion(
+                    block_obj=block,
+                    heading=eff_h,
+                    rule_sub_id="SAME_OBJECT_FIRST_ACQUIRE_TIME_INVERSION",
+                    title=f"동일 목적물 시각 선후 모순: {obj1} 최초 확보({m.group('d1').strip()} {m.group('t1')})보다 앞서 같은 날 {m.group('t2')}에 인계·전달 기재",
+                    detail_body=(
+                        f"동일 목적물('{obj1}' / '그 {obj2}')을 {m.group('d1').strip()} {m.group('t1')}에 처음 회수·확보하였다고 하면서, "
+                        f"그보다 앞선 같은 날 {m.group('t2')}에 이미 전달·인계되었다고 기재하여 시각 순서가 역전되었다."
+                    ),
+                    excerpt_text=matched,
+                    extra_features={"date": str(d1), "acquire_time": m.group("t1"), "transfer_time": m.group("t2")},
+                )
 
     return findings
