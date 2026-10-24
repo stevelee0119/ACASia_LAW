@@ -465,3 +465,96 @@ def test_v3_evidence_category_prefix_modifiers():
         assert len(findings) == 1, f"V3 접미 서증명 양성 미탐지: {body} -> {findings}"
 
 
+# ==============================================================================
+# B-1 6차 보완 검증 테스트: X1 ~ X3 전용 검증 (한국어 주석)
+# ==============================================================================
+
+
+def test_x1_total_amount_modifiers_with_particles():
+    """X1: 금전 명사 + 전칭 + 조사(을·를·이·가) 결합 양성 3변형 및 비금전 대조 검증 (한국어 주석)."""
+    # 1. 양성군 3변형: 조사가 붙은 전칭 (모두를, 전부를, 전액이)
+    pos_cases = [
+        # 1) '모두를' (대여금 모두를 변제하였다 -> 견적서로 단정 불가)
+        ("피고는 대여금 모두를 변제하였음이 견적서(을 제1호증)로 증명됩니다.", "1. 을 제1호증 견적서"),
+        # 2) '전부를' (물품대금 전부를 지급하였다 -> 산출내역서로 단정 불가)
+        ("원고에 대한 물품대금 전부를 지급한 사실은 산출내역서(을 제2호증)에 의하여 인정됩니다.", "1. 을 제2호증 산출내역서"),
+        # 3) '전액이' (공사비 전액이 완납되었다 -> 예산서로 단정 불가)
+        ("이 사건 공사비 전액이 완납되었음은 예산서(을 제3호증)를 통하여 입증됩니다.", "1. 을 제3호증 예산서"),
+    ]
+    for body, exhibit in pos_cases:
+        doc = _make_doc(body, "입증방법", exhibit)
+        findings = [f for f in check_evidence_overreach(doc) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+        assert len(findings) == 1, f"X1 조사 붙은 전칭 양성 미탐지: {body} -> {findings}"
+
+    # 2. 대조군: '모두를 위하여'처럼 금전 명사가 없는 일반 전칭
+    neg_doc = _make_doc(
+        "당사자 모두를 위하여 합의한 사실은 안내문(갑 제1호증)에 의하여 확인됩니다.",
+        "입증방법", "1. 갑 제1호증 안내문"
+    )
+    findings_neg = [
+        f for f in check_evidence_overreach(neg_doc)
+        if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH
+        and "전칭" in f.title
+    ]
+    assert len(findings_neg) == 0, f"X1 비금전 전칭 오탐 발생: {findings_neg}"
+
+
+def test_x2_exhibit_sender_verb_chain():
+    """X2: 발신인 관형절의 동사 연쇄('작성하여 보낸', '작성·발송한') 상대방 발신 제외 및 자기 측 판정 검증 (한국어 주석)."""
+    # 1. 피고가 작성하여 보낸 을 제1호증 -> 상대방 발신 통지이므로 C(오탐) 제외 대조군
+    doc_opp1 = _make_doc(
+        "피고가 작성하여 보낸 통지서(을 제1호증)에 의하여 해제 의사가 표시된 사실을 알 수 있습니다.",
+        "입증방법", "1. 을 제1호증 통지서",
+        "원고 소송대리인 변호사 홍길동",
+    )
+    f_opp1 = [f for f in check_evidence_overreach(doc_opp1) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_opp1) == 0, f"X2 상대방 발신(작성하여 보낸) 오탐 발생: {f_opp1}"
+
+    # 2. 피고가 작성·발송한 을 제2호증 -> 상대방 발신이므로 제외 대조군
+    doc_opp2 = _make_doc(
+        "피고가 작성·발송한 최고서(을 제2호증)에 의하여 최고 사실이 확인됩니다.",
+        "입증방법", "1. 을 제2호증 최고서",
+        "원고 소송대리인 변호사 홍길동",
+    )
+    f_opp2 = [f for f in check_evidence_overreach(doc_opp2) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_opp2) == 0, f"X2 상대방 발신(작성·발송한) 오탐 발생: {f_opp2}"
+
+    # 3. 같은 꼴에 원고(자기 측)가 작성하여 보낸 갑 제1호증으로 상대방 의사표시 도달 단정 -> 과장 양성 판정
+    doc_self = _make_doc(
+        "원고가 작성하여 보낸 내용증명(갑 제1호증)에 의하여 피고가 이를 승낙하였음이 입증됩니다.",
+        "입증방법", "1. 갑 제1호증 내용증명",
+        "원고 소송대리인 변호사 홍길동",
+    )
+    f_self = [f for f in check_evidence_overreach(doc_self) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_self) == 1, f"X2 자기 측 발신 통지 단정 미탐지: {f_self}"
+
+
+def test_x3_opponent_claim_and_dispute_expansion():
+    """X3: 상대방 주장 정규식(주장·다투·번복·항변 4꼴 및 30자 초과) 배제와 자기 측 진술 과장 양성 검증 (한국어 주석)."""
+    # 1. 상대방 + 주장·다투·번복·항변 4꼴 (서증 인용 포함 30자 초과 포함) -> 오탐 0건
+    opp_cases = [
+        # 1) 다투지만
+        "피고는 원고가 제출한 견적서(갑 제1호증)를 근거로 대여금 전액을 변제하였다고 다투지만 이는 전혀 이유가 없습니다.",
+        # 2) 주장하지만
+        "피고는 원고의 통지서(갑 제2호증)에 대하여 이미 채무 전액을 변제하였다고 주장하지만 사실과 다릅니다.",
+        # 3) 번복하였으나
+        "피고는 산출내역서(갑 제3호증)에 기재된 대금 전액을 이미 지급하였다고 번복하였으나 신빙성이 없습니다.",
+        # 4) 항변하나
+        "피고는 공사비 예산서(갑 제4호증)에 비추어 공사대금 일체를 완납하였다고 항변하나 부당합니다.",
+    ]
+    for text in opp_cases:
+        doc = _make_doc(text, "입증방법", "1. 갑 제1호증 견적서\n2. 갑 제2호증 통지서\n3. 갑 제3호증 산출내역서\n4. 갑 제4호증 예산서", "원고 소송대리인 변호사 홍길동")
+        findings = [f for f in check_evidence_overreach(doc) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+        assert len(findings) == 0, f"X3 상대방 주장 배제 실패(오탐 발생): {text} -> {findings}"
+
+    # 2. 자기 측 '원고는 … 진술'이 견적서로 전액 변제를 과장 단정하는 경우 -> 양성 정상 판정
+    doc_self = _make_doc(
+        "원고는 견적서(을 제1호증)에 비추어 공사대금 전액을 이미 지급하였다고 진술합니다.",
+        "입증방법", "1. 을 제1호증 견적서",
+        "원고 소송대리인 변호사 홍길동",
+    )
+    findings_self = [f for f in check_evidence_overreach(doc_self) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(findings_self) == 1, f"X3 자기 측 과장 진술 미탐지: {findings_self}"
+
+
+

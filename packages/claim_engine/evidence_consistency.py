@@ -573,13 +573,13 @@ COMPLETION_PREDICATE_RE = re.compile(
     r"(?<![가-힣])갚[가-힣]+"
 )
 
-# V1: 수량 전칭 정규식 (금전·채무·완료 대상 N과 전칭의 양방향 어순 결합)
+# V1, X1: 수량 전칭 정규식 (금전·채무·완료 대상 N과 전칭의 양방향 어순 결합 및 조사 허용)
 # N: …대금|…금|…비|…채무|차임|원리금|공사|용역|업무
 _AMOUNT_NOUN_PAT = r"(?:[가-힣]{0,10}(?:대금|금|비|채무)|차임|원리금|공사|용역|업무)"
 
 TOTAL_AMOUNT_MODIFIER_RE = re.compile(
-    rf"(?:(?<![가-힣])(?:전액|전부|모두|일체)(?:의|\s+){_AMOUNT_NOUN_PAT}(?![가-힣]))|"
-    rf"(?:(?<![가-힣]){_AMOUNT_NOUN_PAT}(?:[을를이가의]|에\s*대한)?\s*(?:전액|전부|모두|일체)(?![가-힣]))"
+    rf"(?:(?<![가-힣])(?:전액|전부|모두|일체)(?:[을를이가은는의]|으로|로)?(?:의|\s+){_AMOUNT_NOUN_PAT}(?![가-힣]))|"
+    rf"(?:(?<![가-힣]){_AMOUNT_NOUN_PAT}(?:[을를이가의]|에\s*대한)?\s*(?:전액|전부|모두|일체)(?:[을를이가은는의]|으로|로)?(?![가-힣]))"
 )
 
 # S1: 술어 낱말 경계 매칭 함수 (합의서, 확정판결, 계속적 거래 등 복합명사 오탐 방지)
@@ -649,23 +649,51 @@ _DIRECT_PROOF_STRUCTURE_RE = re.compile(
     r")"
 )
 
-# B-1 5. 제외 가드 (부정된 술어, 상대방 주장, 가정·조건, 의문)
+# B-1 5, X3: 제외 가드 (부정된 술어, 상대방 주장, 가정·조건, 의문)
 _NEGATED_PREDICATE_RE = re.compile(
     r"(?:볼\s*수\s*없|할\s*수\s*없|아니다|아닙니다|아니며|아니고|않았다|않았음|않는다|배제할\s*수\s*없|단정할\s*수\s*없)"
 )
-_OPPONENT_CLAIM_RE = re.compile(
-    r"(?:주장하나|주장하지만|주장과\s*달리|주장에\s*불과|주장하고\s*있으나|"
-    r"(?:피고|원고|상대방)(?:는|은|가|이|측은)\s*[^.]{0,30}?(?:주장|항변|진술))"
+
+# X3: 상대방 주장 술어 정규식 (주장·진술·항변·번복·다투 확장)
+_OPPONENT_CLAIM_VERBS_PAT = (
+    r"(?:(?:주장|진술|항변|번복)(?:하|했|하였)?(?:나|지만|는데|으나|며|고\s*있으나)|"
+    r"다투(?:나|지만|는데|었으나|며|고\s*있))"
 )
+
+def _get_opponent_party_pattern(author_party: Optional[str]) -> str:
+    """서면 작성 당사자에 대응하는 상대 당사자 정규식 패턴을 반환한다 (X3)."""
+    if author_party in ("원고", "신청인", "채권자"):
+        return r"(?:피고|상대방|피신청인|채무자)"
+    elif author_party in ("피고", "피신청인", "채무자"):
+        return r"(?:원고|상대방|신청인|채권자)"
+    else:
+        return r"(?:피고|상대방|피신청인)"
+
+def _is_opponent_claim(text: str, author_party: Optional[str] = None) -> bool:
+    """상대방의 주장·진술·항변·번복·다툼인지 검사한다 (X3).
+
+    1) 작성 당사자의 상대 당사자가 주어이고 뒤에 주장·다툼 술어가 오는 경우 (30자 창 제한 없이 문장/절 끝까지)
+    2) 인용절 뒤 주장 표지 ('...라고 주장하나/다투지만' 등)
+    단, 작성자 본인('원고는 ... 진술')은 제외하지 않는다.
+    """
+    if re.search(rf"(?:라고|다고|라며|다며)\s*{_OPPONENT_CLAIM_VERBS_PAT}", text):
+        return True
+
+    opp_pat = _get_opponent_party_pattern(author_party)
+    if re.search(rf"{opp_pat}(?:는|은|가|이|측은)\s+.*{_OPPONENT_CLAIM_VERBS_PAT}", text):
+        return True
+
+    return False
+
 _CONDITIONAL_RE = re.compile(r"(?:라면|한다면|할\s*경우|인\s*경우)(?:는|,|\s)")
 _QUESTION_RE = re.compile(r"(?:인가|인지\s*여부|일까)(?:\?|\.|\s|$)")
 
-# S7: 절 단위 제외 가드 검사
-def _is_scope_excluded(clause_text: str) -> bool:
-    """술어가 위치한 절 단위로 부정, 상대방 주장, 가정·조건, 의문 가드를 검사한다 (S7)."""
+# S7, X3: 절 단위 제외 가드 검사
+def _is_scope_excluded(clause_text: str, author_party: Optional[str] = None) -> bool:
+    """술어가 위치한 절 단위로 부정, 상대방 주장, 가정·조건, 의문 가드를 검사한다 (S7, X3)."""
     if _NEGATED_PREDICATE_RE.search(clause_text):
         return True
-    if _OPPONENT_CLAIM_RE.search(clause_text):
+    if _is_opponent_claim(clause_text, author_party):
         return True
     if _CONDITIONAL_RE.search(clause_text):
         return True
@@ -701,9 +729,9 @@ def _detect_exhibit_sender(row: Dict[str, Any], label: str, sent_clean: str) -> 
     m_desc = re.search(r"(?:발신인|작성자|보낸\s*이|발송자)\s*[:：]?\s*(?P<p>원고|피고|신청인|피신청인|채권자|채무자)", desc)
     if m_desc:
         return m_desc.group("p")
-    # 바로 앞 관형절: [당사자](가|이) (보낸|발송한|작성한|통지한) [서증명/라벨]
+    # 바로 앞 관형절: [당사자](가|이) [동사 연쇄 최대 2개] (보낸|발송한|작성한|통지한|송부한) [서증명/라벨] (X2)
     m_prep = re.search(
-        rf"(?P<p>원고|피고|신청인|피신청인|채권자|채무자)(?:가|이)\s*(?:보낸|발송한|작성한|통지한)\s*[^.!?]{{0,25}}?{re.escape(label)}",
+        rf"(?P<p>원고|피고|신청인|피신청인|채권자|채무자)(?:가|이)\s*(?:[가-힣]{{1,6}}(?:하여|해|하고|·)\s*){{0,2}}(?:보낸|발송한|작성한|통지한|송부한)\s*[^.!?]{{0,25}}?{re.escape(label)}",
         sent_clean,
     )
     if m_prep:
@@ -810,8 +838,8 @@ def check_evidence_overreach(
                     debug_counters["no_scope"] += 1
                 continue
 
-            # S7: 술어가 위치한 대상 절 단위 제외 가드 검사
-            if _is_scope_excluded(scope_text):
+            # S7, X3: 술어가 위치한 대상 절 및 문장 단위 제외 가드 검사
+            if _is_scope_excluded(scope_text, author_party) or _is_opponent_claim(sent_clean, author_party):
                 if debug_counters is not None:
                     debug_counters["excluded"] += 1
                 continue
