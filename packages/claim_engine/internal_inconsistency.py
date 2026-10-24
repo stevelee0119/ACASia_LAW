@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import List, Optional, Tuple, Dict, Any
 
 from packages.common.enums import EvidenceGrade, FindingType, Severity, VerificationStatus
@@ -29,20 +30,16 @@ ENGINE_NAME = "claim_engine"
 
 # --- 정당한 차이 (Legitimate Differences) 및 예외 가드 ---
 _LEGITIMATE_EXCEPTION_RE = re.compile(
-    r"(?:오기(?:이므로|로\s*인하여)?\s*[^.\n]{0,60}?(?:바로잡|정정)|"
+    r"(?:오기(?:이므로|로\s*인하여)?\s*.*?(?:바로잡|정정)|"
     r"(?:바로잡|정정)합니다|"
     r"착오로\s*(?:잘못\s*)?기재|"
     r"주위적(?:으로)?|예비적(?:으로)?|"
-    r"설령\s*[^.\n]{0,60}?(?:가정하더라도|본다\s*하더라도)|"
-    r"(?:피고|상대방|피신청인)(?:는|이|가|의)\s*[^.\n]{0,100}?(?:[다라]고|[다라]며)\s*(?:주장|다투|진술|번복|항변)|"
-    r"(?:피고|상대방)(?:는|의)\s*[^.\n]{0,60}?(?:주장하나|주장은\s*사실과\s*다르|주장은\s*이유\s*없))"
+    r"설령\s*.*?(?:가정하더라도|본다\s*하더라도)|"
+    r"(?:원고|피고|상대방)(?:는|의)\s*.*?(?:주장은\s*사실과\s*다르|주장은\s*이유\s*없))"
 )
 
 # 부가세/세액 구분 예외 패턴
 _VAT_RE = re.compile(r"(?:부가(?:가치)?세|공급가액|세액|VAT)", re.IGNORECASE)
-
-# 후속 일자(치료, 입원 등) 배제 패턴 (대조군 2)
-_INCIDENT_DATE_EXCLUDE_RE = re.compile(r"(?:치료|입원|진단|통고|수령|해제|지급기일|만기|퇴원|발급|합의)")
 
 # 절 분리 정규식: 숫자가 아닌 쉼표, 세미콜론, 서술어 어간 뒤 연결어미
 _CLAUSE_SPLIT_RE = re.compile(
@@ -51,10 +48,59 @@ _CLAUSE_SPLIT_RE = re.compile(
     r"(?<=[가-힣])(?:한\s*(?:후|뒤|다음))\s+"
 )
 
-# 상대방 주장 인용절 패턴 (T2: 상대방 주어 + 인용 종결 + 주장/다툼/진술/번복/항변)
-_OPPONENT_CLAIM_RE = re.compile(
-    r"(?:피고|상대방|피신청인)(?:는|이|가)\s*[^.\n]{0,100}?(?:[다라]고|[다라]며)\s*(?:주장|다투|진술|번복|항변)(?:합니다|한다|하였|하고|하며|함|이나|으나|지만)?"
-)
+def _detect_author_party(doc: NormalizedDocument) -> Optional[str]:
+    """서면 작성 당사자(원고 또는 피고 등)를 식별한다 (Y4)."""
+    for b in doc.body_blocks():
+        text = b.text or ""
+        if re.search(r"원고(?:\s*소송)?대리인|신청인\s*대리인|채권자\s*대리인", text):
+            return "원고"
+        if re.search(r"피고(?:\s*소송)?대리인|피신청인\s*대리인|채무자\s*대리인", text):
+            return "피고"
+        m_author = re.search(r"(?:작성자|서면작성인|제출인)\s*[:：]?\s*(원고|피고)", text)
+        if m_author:
+            return m_author.group(1)
+    return None
+
+def _is_opponent_claim_sentence(sentence: str, author_party: Optional[str]) -> bool:
+    """문장 경계 안에서 상대방 주장/다툼인지 검사한다 (Y4).
+
+    1) 날짜 표기 마침표에 끊기지 않도록 문장 경계 안에서 검사
+    2) 술어: (주장|진술|항변|번복)(하|합|했|하였) | 다(투|툽|퉜|퉈)
+    3) 주어: 작성자의 상대 당사자. 작성자 미정 시 피고 주장 또는 반박 표지 결합 인용 제외.
+    """
+    pred_pat = r"(?:(?:주장|진술|항변|번복)(?:하|합|했|하였)|다(?:투|툽|퉜|퉈))"
+
+    # 반박 표지 또는 대비 연결어미 (-나, -지만, -는데, -으나, 사실과 다르, 이유 없 등)
+    has_rebuttal = bool(re.search(r"(?:사실과\s*다르|이유\s*없|배척되어야|부당하|어불성설)", sentence))
+    has_contrast = bool(re.search(
+        r"(?:(?:주장|진술|항변|번복)(?:하|합|했|하였)?(?:이나|으나|지만|는데|자|며|고\s*있으나)|"
+        r"(?:주장|진술|항변|번복)과\s*달리)",
+        sentence
+    ))
+
+    # 1. 다툼 술어 ('다툽니다', '다투었으나', '다투지만' 등)
+    if re.search(r"(?:[다라]고|[다라]며)?\s*다(?:투|툽|퉜|퉈)", sentence):
+        if author_party == "원고" and re.search(r"(?:원고|신청인|채권자)(?:는|은|이|가)\s+.*다(?:투|툽|퉜|퉈)", sentence):
+            return False
+        return True
+
+    # 2. 피고/상대방/피신청인이 주어인 경우 (피고 측 본인 서면 제외)
+    if re.search(rf"(?:피고|상대방|피신청인|채무자)(?:는|은|이|가|측은)\s+.*{pred_pat}", sentence, re.DOTALL):
+        if author_party != "피고":
+            return True
+
+    # 3. 원고/신청인이 주어인 경우
+    if re.search(rf"(?:원고|신청인|채권자)(?:는|은|이|가|측은)\s+.*{pred_pat}", sentence, re.DOTALL):
+        if author_party == "피고" or has_rebuttal or has_contrast:
+            return True
+        return False
+
+    # 4. 주어가 특정되지 않은 인용절 뒤 주장/진술
+    if re.search(rf"(?:[다라]고|[다라]며)\s*{pred_pat}", sentence):
+        if has_rebuttal or has_contrast:
+            return True
+
+    return False
 
 # --- 1. 속성 사전 (표면형 전체 코드 상수화) ---
 
@@ -117,38 +163,82 @@ _EXHIBIT_TARGET_RE = re.compile(
 # 날짜 패턴 (YYYY. M. D. 또는 YYYY년 M월 D일)
 _DATE_RE = re.compile(r"(?P<y>\d{4})[.\s년]+(?P<m>\d{1,2})[.\s월]+(?P<d>\d{1,2})[.\s일]*")
 
-# 한국어 금액 파싱 패턴 (T5: 억·만 아래 자리의 천·백·십 단위 및 아라비아 숫자 혼용 지원)
+# 한국어 금액 파싱 패턴 (T5, Y8: 천·백·십 및 한글 수사 일~구, 스물~쉰 혼용 지원, 서술어 삼킴 방지)
 _KOREAN_MONEY_RE = re.compile(
     r"(?:"
-    r"(?P<eok>\d+(?:,\d{3})*|\d+)\s*억\s*(?:(?P<man>[0-9,가-힣]+)\s*만\s*)?(?:(?P<won>[0-9,가-힣]+)\s*)?원?"
+    r"(?P<eok>\d+(?:,\d{3})*|\d+)\s*억\s*(?:(?P<man>[0-9,천백십일이삼사오육칠팔구]+)\s*만\s*)?(?:(?P<won>[0-9,천백십일이삼사오육칠팔구]+)\s*)?원?"
     r"|"
-    r"(?P<man_only>[0-9,가-힣]+)\s*만\s*(?:(?P<won_sub>[0-9,가-힣]+)\s*)?원?"
+    r"(?P<man_only>[0-9,천백십일이삼사오육칠팔구]+)\s*만\s*(?:(?P<won_sub>[0-9,천백십일이삼사오육칠팔구]+)\s*)?원?"
     r"|"
     r"(?P<won_only>\d+(?:,\d{3})*|\d+)\s*원"
     r")"
 )
 
-# T4: 계약 대금 명사 사전 (전체 기재: 매매대금, 공사대금, 용역대금, 차임, 보증금, 대여금, 약정금, 계약금액, 대금)
+# T4, Y1: 계약 대금 명사 사전 (전체 기재: 매매대금, 공사대금, 용역대금, 차임, 보증금, 대여금, 약정금, 계약금액, 대금)
 CONTRACT_AMOUNT_NOUNS = frozenset({
     "매매대금", "공사대금", "용역대금", "차임", "보증금", "임대차보증금",
     "대여금", "약정금", "계약금액", "대금",
 })
 
-# 수량/금액 총액 및 계약대금 한정 표지 (T4: '총'은 선택 표지, 계약대금 명사 + 확정 서술 매칭)
-_TOTAL_AMOUNT_KEYWORD_RE = re.compile(
-    r"(?:"
-    r"(?:총\s*)?(?:매매대금|공사대금|용역대금|임대차보증금|보증금|대여금|약정금|계약금액|대금|차임)|"
-    r"매매대금\s*총액|공사대금\s*총액|총액|전액|총약정금액|총\s*수량|합계"
-    r")"
+# Y1: 명시 총액 표지 정규식 (총·총액·합계·전액 결합 시에만 참)
+_EXPLICIT_TOTAL_KEYWORD_RE = re.compile(
+    r"(?:(?<![가-힣])총\s*(?:매매대금|공사대금|용역대금|임대차보증금|보증금|대여금|약정금|계약금액|대금|차임|금액|비용)|"
+    r"(?:매매대금|공사대금|용역대금|계약금액|대금|약정금|대여금)\s*총액|총액|전액|합계|총\s*약정금액)"
 )
 
-# 확정 서술 패턴 (T4: -은/는 … 원(이다|으로 정하|으로 약정 등))
+# Y1: 확정 서술 패턴 (이다|입니다|으로 정하|으로 약정|으로 합의 등)
 _DEFINITIVE_PREDICATE_RE = re.compile(
-    r"(?:이다|입니다|으로\s*정하|으로\s*약정|으로\s*합의|으로\s*기재|으로\s*명시|임|이었|상당)"
+    r"(?:이다|입니다|으로\s*정하|으로\s*약정|으로\s*합의|으로\s*기재|으로\s*명시)"
 )
 
-# 부분 금액 배제 수식어
-_PARTIAL_PREFIX_RE = re.compile(r"(?:잔금|잔대금|중[·\s]*잔금|나머지|일부|지연손해금|이자|원리금|계약금|중도금)\s*$")
+# Y1: 지급·변제 배제 술어 패턴 (지급·변제·송금·입금·수령 등은 계약 총액 슬롯 제외)
+_DISCHARGE_PREDICATE_RE = re.compile(
+    r"(?:지급(?:하|합|했|하였|될|된|할|받)?|변제(?:하|합|했|하였|할)?|송금(?:하|합|했|하였|할)?|입금(?:하|합|했|하였|할)?|수령(?:하|합|했|하였|할)?|납부|상환|지출|결제)"
+)
+
+# Y1: 부분 금액 배제 수식어 (중·가운데·의 일부·그중 등 포함)
+_PARTIAL_PREFIX_RE = re.compile(
+    r"(?:잔금|잔대금|중[·\s]*잔금|나머지|일부|지연손해금|이자|원리금|계약금|중도금|중|가운데|의\s*일부|그중|그\s*가운데)\s*$"
+)
+
+# Y2: 대금 명사 정규형 매핑 함수
+def _normalize_amount_noun(text: str) -> str:
+    """대금 명사를 정규형(대금, 보증금, 차임, 대여금, 약정금 등)으로 변환한다 (Y2)."""
+    if re.search(r"보증금|임대차보증금", text):
+        return "보증금"
+    if re.search(r"차임|월세", text):
+        return "차임"
+    if re.search(r"대여금", text):
+        return "대여금"
+    if re.search(r"약정금", text):
+        return "약정금"
+    if re.search(r"매매대금|공사대금|용역대금|계약금액|대금", text):
+        return "대금"
+    return "대금"
+
+# Y3: 대상 핵심 명사 및 사건 술어 종류 닫힌 사전
+EVENT_PREDICATE_MAP = {
+    "사고": re.compile(r"(?:발생(?:하|했|하였|한|하고|하여|자마자)?|일어나|났)"),
+    "화재": re.compile(r"(?:발생(?:하|했|하였|한|하고|하여|자마자)?|일어나|났)"),
+    "계약": re.compile(r"(?:체결(?:하|했|하였|한|하고|하여)?|맺(?:었|은|고)?)"),
+    "해지": re.compile(r"(?:해지(?:하|했|하였|한|하고|하여|되었|된|되)?)"),
+    "해제": re.compile(r"(?:해제(?:하|했|하였|한|하고|하여|되었|된|되)?)"),
+}
+
+# Y6: 수량 속성 정규식 및 배제 단위
+_QUANTITY_RE = re.compile(
+    r"(?P<num>\d+(?:,\d{3})*|\d+(?:\.\d+)?)\s*(?P<unit>[a-zA-Z㎡㎥%]|[가-힣]{1,2}?)(?=(?:으로|로|을|를|이|가|은|는|에|의)?(?:\s+|[.,;]|$|[가-힣]))"
+)
+_QUANTITY_EXCLUDE_UNITS = frozenset({
+    "원", "만원", "억원", "년", "월", "일", "시", "분", "초",
+    "호", "조", "항", "쪽", "회", "차", "번", "호증",
+})
+_QUANTITY_PARTIAL_RE = re.compile(
+    r"(?:그중|그\s*가운데|일부|나머지|추가로|1차|2차|3차|분할|선지급|선납|선인도)"
+)
+_QUANTITY_DEFINITIVE_RE = re.compile(
+    r"(?:이다|입니다|(?:으)?로\s*(?:정하|약정|합의|기재|명시)|(?:정하|약정|합의|기재|명시)(?:하|했|하였|된|될|할)|을\s*(?:공급|납품|매매|인도)|에\s*달하|임)"
+)
 
 # T3: 동일 대상 지시어 패턴 (지시어는 키에서 제외하고 핵심 명사만 추출)
 _TARGET_REF_RE = re.compile(
@@ -190,9 +280,21 @@ _TEMPORAL_SEQUENCE_WORDS_RE = re.compile(
     r"(?:발송|도달|수령|송달|신청|처분|통지|체결|해지|해제|입사|퇴사|보정명령)"
 )
 
+KOREAN_NUM_MAP = {
+    "일": 1, "이": 2, "삼": 3, "사": 4, "오": 5, "육": 6, "칠": 7, "팔": 8, "구": 9,
+    "스물": 20, "서른": 30, "마흔": 40, "쉰": 50,
+}
+
+def _korean_digit_val(s: Optional[str]) -> int:
+    if not s:
+        return 1
+    s = s.strip()
+    if s.isdigit():
+        return int(s)
+    return KOREAN_NUM_MAP.get(s, 1)
 
 def _parse_sub_chunk(s: str) -> int:
-    """천, 백, 십 단위 및 아라비아 숫자가 혼용된 금액 청크를 정수로 변환한다."""
+    """천, 백, 십 단위 및 아라비아/한글 숫자가 혼용된 금액 청크를 정수로 변환한다 (T5, Y8)."""
     s = s.strip().replace(",", "")
     if not s:
         return 0
@@ -201,32 +303,42 @@ def _parse_sub_chunk(s: str) -> int:
 
     total = 0
     # 천 단위
-    m_cheon = re.search(r"(\d+)?천", s)
+    m_cheon = re.search(r"(\d+|[일이삼사오육칠팔구])?천", s)
     if m_cheon:
-        val = int(m_cheon.group(1)) if m_cheon.group(1) else 1
+        val = _korean_digit_val(m_cheon.group(1))
         total += val * 1000
         s = s[:m_cheon.start()] + s[m_cheon.end():]
     # 백 단위
-    m_baek = re.search(r"(\d+)?백", s)
+    m_baek = re.search(r"(\d+|[일이삼사오육칠팔구])?백", s)
     if m_baek:
-        val = int(m_baek.group(1)) if m_baek.group(1) else 1
+        val = _korean_digit_val(m_baek.group(1))
         total += val * 100
         s = s[:m_baek.start()] + s[m_baek.end():]
     # 십 단위
-    m_sip = re.search(r"(\d+)?십", s)
+    m_sip = re.search(r"(\d+|[일이삼사오육칠팔구])?십", s)
     if m_sip:
-        val = int(m_sip.group(1)) if m_sip.group(1) else 1
+        val = _korean_digit_val(m_sip.group(1))
         total += val * 10
         s = s[:m_sip.start()] + s[m_sip.end():]
-    # 남은 순수 숫자
+    # 한글 수사(스물, 서른 등)
+    for k_w, k_v in [("스물", 20), ("서른", 30), ("마흔", 40), ("쉰", 50)]:
+        if k_w in s:
+            total += k_v
+            s = s.replace(k_w, "")
+    # 남은 숫자 (아라비아 숫자 또는 한글 일의 자리)
     m_rem = re.search(r"\d+", s)
     if m_rem:
         total += int(m_rem.group(0))
+    else:
+        for k_w, k_v in [("일", 1), ("이", 2), ("삼", 3), ("사", 4), ("오", 5), ("육", 6), ("칠", 7), ("팔", 8), ("구", 9)]:
+            if k_w in s:
+                total += k_v
+                break
     return total
 
 
 def _parse_korean_amount(text: str) -> Optional[int]:
-    """한국어 금액 표현을 원 단위 정수로 환산한다 (T5).
+    """한국어 금액 표현을 원 단위 정수로 환산한다 (T5, Y8).
     
     천·백·십 혼용 ('2억 5천만 원', '3천5백만 원', '1억2천만 원', '5,000만 원' 등)을 지원한다.
     """
@@ -300,6 +412,16 @@ class _SignerStatement:
     exhibit_or_target: str
     signer_name: str
     is_sole: bool
+    sentence: str
+    page: int
+
+
+@dataclass
+class _QuantityStatement:
+    target_key: str
+    target_noun: str
+    quantity: Decimal
+    unit: str
     sentence: str
     page: int
 
@@ -388,6 +510,10 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
     clause_stmts: List[_ExhibitClauseStatement] = []
     location_stmts: List[_LocationStatement] = []
     signer_stmts: List[_SignerStatement] = []
+    quantity_stmts: List[_QuantityStatement] = []
+
+    # Y4: 서면 작성 당사자 식별
+    author_party = _detect_author_party(doc)
 
     # 서증 목록 사전 구축 (서증명/번호 -> 작성자 속성)
     exhibit_author_map: Dict[str, str] = {}
@@ -400,10 +526,12 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
             if author_m:
                 exhibit_author_map[ex_key] = author_m.group("author")
 
-    # T6: 단락(block) 단위 직전 절대 일자 및 주어 유지 변수
+    # T6, Y8: 단락(block) 단위 직전 절대 일자, 직전 단락 일자 및 주어 유지 변수
     current_block_id: Optional[str] = None
     block_last_date: Optional[Tuple[int, int, int]] = None
+    prev_block_last_date: Optional[Tuple[int, int, int]] = None
     block_last_subject: str = "당사자"
+    is_first_sentence_in_block = True
 
     # 문장 단위로 순회
     for start, end in sentence_bounds(text):
@@ -411,8 +539,8 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
         if len(sentence) < 10:
             continue
 
-        # T2: 정당한 차이 및 상대방 주장 인용 필터링
-        if _LEGITIMATE_EXCEPTION_RE.search(sentence) or _OPPONENT_CLAIM_RE.search(sentence):
+        # T2, Y4: 정당한 차이 및 상대방 주장 인용 필터링
+        if _LEGITIMATE_EXCEPTION_RE.search(sentence) or _is_opponent_claim_sentence(sentence, author_party):
             continue
 
         page = 1
@@ -423,17 +551,29 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
             b_id = getattr(b_obj, "block_id", None)
             if b_id != current_block_id:
                 current_block_id = b_id
+                prev_block_last_date = block_last_date
                 block_last_date = None
+                is_first_sentence_in_block = True
                 block_last_subject = "당사자"
 
-        # T8: 당사자 지위 3항 구조 (당사자, 계약, 지위) 추출
+        # T8, Y5: 당사자 지위 3항 구조 (계약 분류 코드 통일 및 계약명 선행/후행/생략 매칭)
         if not _ROLE_EXCLUDE_RE.search(sentence):
-            for role_m in _PARTY_ROLE_STMT_RE.finditer(sentence):
-                party_val = role_m.group("party")
-                contract_val = role_m.group("contract") or _contract_category(sentence)
+            party_m = re.search(r"(?P<party>원고|피고(?:인)?|신청인|피신청인)(?:는|은|이|가)", sentence)
+            role_m = re.search(r"(?P<role>임대인|임차인|매도인|매수인|도급인|수급인|대주|차주|위임인|수임인)(?:이다|입니다|(?:으)?로서|인|이며|이고|에\s*해당)", sentence)
+            if party_m and role_m:
+                party_val = party_m.group("party")
                 role_val = role_m.group("role")
-                key = f"{party_val}_{contract_val}"
-                role_stmts.append(_RoleStatement(key, party_val, contract_val, role_val, sentence, page))
+                raw_contract = _contract_category(sentence)
+                role_default = {
+                    "임대인": "LEASE", "임차인": "LEASE",
+                    "매도인": "SALE", "매수인": "SALE",
+                    "도급인": "CONSTRUCTION", "수급인": "CONSTRUCTION",
+                    "대주": "LOAN", "차주": "LOAN",
+                    "위임인": "MANDATE", "수임인": "MANDATE",
+                }
+                contract_code = raw_contract if raw_contract != "CONTRACT" else role_default.get(role_val, "CONTRACT")
+                key = f"{party_val}_{contract_code}"
+                role_stmts.append(_RoleStatement(key, party_val, contract_code, role_val, sentence, page))
 
         # 서증 조항 상반 원용 (문장 내 모든 출현 탐색)
         clause_matches = list(_EXHIBIT_CLAUSE_RE.finditer(sentence))
@@ -472,14 +612,19 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
             )
             block_last_subject = last_subject
 
-        # T6: 날짜 해소 (절대 날짜 우선, 상대 날짜 표현 시 단락 직전 절대 날짜 승계)
+        # T6, Y8: 날짜 해소 (절대 날짜 우선, 상대 날짜 표현 시 단락 내 직전 절대 날짜 또는 직전 단락 마지막 날짜 승계)
         last_date: Optional[Tuple[int, int, int]] = None
         date_m_sent = _DATE_RE.search(sentence)
         if date_m_sent:
             last_date = (int(date_m_sent.group("y")), int(date_m_sent.group("m")), int(date_m_sent.group("d")))
             block_last_date = last_date
-        elif _RELATIVE_DATE_RE.search(sentence) and block_last_date:
-            last_date = block_last_date
+        elif _RELATIVE_DATE_RE.search(sentence):
+            if block_last_date:
+                last_date = block_last_date
+            elif is_first_sentence_in_block and prev_block_last_date:
+                last_date = prev_block_last_date
+                block_last_date = prev_block_last_date
+        is_first_sentence_in_block = False
 
         # A-4 선후 관계 키워드 2개 이상 교차 시 일시 슬롯 배제 가드
         seq_words = _TEMPORAL_SEQUENCE_WORDS_RE.findall(sentence)
@@ -504,38 +649,60 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
             if date_m:
                 last_date = (int(date_m.group("y")), int(date_m.group("m")), int(date_m.group("d")))
                 block_last_date = last_date
-            elif _RELATIVE_DATE_RE.search(clause) and block_last_date:
-                last_date = block_last_date
+            elif _RELATIVE_DATE_RE.search(clause):
+                if block_last_date:
+                    last_date = block_last_date
+                elif prev_block_last_date:
+                    last_date = prev_block_last_date
+                    block_last_date = prev_block_last_date
 
-            # (3-3) 금액 슬롯 추출 (T4: 계약 대금 명사 사전 + 확정 서술 매칭, '총'은 선택 표지)
+            # (3-3) 금액 슬롯 추출 (Y1, Y2: 명시 총액 표지 분리, 확정 서술 결합, 지급/변제 배제, 키 정규형)
             if not _VAT_RE.search(clause):
                 has_contract_amt = any(n in clause for n in CONTRACT_AMOUNT_NOUNS)
-                has_total_kw = bool(_TOTAL_AMOUNT_KEYWORD_RE.search(clause))
+                has_total_kw = bool(_EXPLICIT_TOTAL_KEYWORD_RE.search(clause))
                 if has_contract_amt or has_total_kw:
                     amt_match = _KOREAN_MONEY_RE.search(clause)
                     if amt_match:
                         raw_amt = amt_match.group(0)
                         preceding = clause[max(0, amt_match.start() - 15):amt_match.start()]
                         following = clause[amt_match.end():min(len(clause), amt_match.end() + 20)]
-                        # 확정 서술 확인: '총' 표지가 있거나 확정 서술어(-이다/-으로 정하 등)가 결합된 경우
-                        is_definitive = has_total_kw or bool(_DEFINITIVE_PREDICATE_RE.search(following)) or not following.strip()
-                        if is_definitive and not _PARTIAL_PREFIX_RE.search(preceding):
+
+                        # Y1: 부분 금액 표지 확인 (금액 앞 '중/가운데/의 일부' 또는 부분 접두어)
+                        has_partial = bool(_PARTIAL_PREFIX_RE.search(preceding)) or bool(re.search(r"(?:중|가운데|의\s*일부)$", preceding.strip()))
+                        has_discharge = bool(_DISCHARGE_PREDICATE_RE.search(following))
+
+                        # 확정 서술 확인:
+                        # 1) 명시 총액 표지가 있는 경우 (단, 지급/변제 술어나 부분 표지가 없어야 함)
+                        # 2) 명시 총액 표지가 없으면 확정 서술 결합 필수 (-이다/-으로 정하 등) 및 지급/변제 술어 배제
+                        is_definitive = False
+                        if not has_partial and not has_discharge:
+                            if has_total_kw:
+                                is_definitive = True
+                            elif bool(_DEFINITIVE_PREDICATE_RE.search(following)):
+                                is_definitive = True
+
+                        if is_definitive:
                             amount_val = _parse_korean_amount(raw_amt)
                             if amount_val:
                                 cat = _contract_category(clause) if re.search(r"매매|공사|도급|대여|임대차|위임", clause) else _contract_category(sentence)
-                                key = f"total_amount_{cat}"
+                                norm_amt = _normalize_amount_noun(clause)
+                                period = "월" if re.search(r"(?:매월|월\s*|월\b)", clause) else ("연" if re.search(r"(?:매년|연\s*|연\b)", clause) else "")
+                                key = f"total_amount_{cat}_{norm_amt}_{period}" if period else f"total_amount_{cat}_{norm_amt}"
                                 amount_stmts.append(_AmountStatement(key, amount_val, raw_amt, clause, page))
 
-            # (3-4) 일자 슬롯 추출 (동일 사건 복수 일자 - T3: 지시어 제거 및 핵심 명사 정규화)
-            if not is_cross_event_sequence and not _INCIDENT_DATE_EXCLUDE_RE.search(clause):
-                incident_m = _TARGET_REF_RE.search(clause)
-                cur_date = date_m or (last_date if _RELATIVE_DATE_RE.search(clause) else None)
-                if incident_m and (date_m or last_date):
-                    norm_kind = _normalize_incident_kind(incident_m.group("kind"))
-                    target_key = f"event_{norm_kind}"
-                    d_tuple = (int(date_m.group("y")), int(date_m.group("m")), int(date_m.group("d"))) if date_m else last_date
-                    if d_tuple:
-                        date_stmts.append(_DateStatement(target_key, d_tuple, f"{d_tuple[0]}. {d_tuple[1]}. {d_tuple[2]}.", clause, page))
+            # (3-4) 일자 슬롯 추출 (Y3: 대상 핵심 명사 + 사건 술어 닫힌 사전 결합)
+            if not is_cross_event_sequence:
+                for target_kind, pred_re in EVENT_PREDICATE_MAP.items():
+                    target_pat = rf"(?:위|이\s*사건|본건|해당|동)?\s*(?:[가-힣]{{0,6}})?{target_kind}"
+                    if re.search(target_pat, clause) and pred_re.search(clause):
+                        # 대상 명사가 단순 부사어로만 쓰였는지 확인 (사고에 관하여/대하여 청구/지급 등 배제)
+                        if re.search(rf"{target_kind}(?:에\s*관하여|에\s*대하여|에\s*따른|으로\s*인한)\s*[^,]+?(?:청구|인도|지급|이행|치료|입원|보상)", clause):
+                            continue
+                        # 그 술어가 있는 절의 날짜(date_m)이거나 상대 날짜일 때만 승계
+                        d_tuple = (int(date_m.group("y")), int(date_m.group("m")), int(date_m.group("d"))) if date_m else (last_date if _RELATIVE_DATE_RE.search(clause) else None)
+                        if d_tuple:
+                            target_key = f"event_{target_kind}"
+                            date_stmts.append(_DateStatement(target_key, d_tuple, f"{d_tuple[0]}. {d_tuple[1]}. {d_tuple[2]}.", clause, page))
 
             # (3-5) 장소 슬롯 추출 (조건 3 & T6)
             if _STAY_PREDICATE_RE.search(clause) and last_date:
@@ -557,6 +724,26 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                         s_name = nm_match.group("party_name") or nm_match.group("name") or nm_match.group("name2") or nm_match.group("alias")
                         if s_name and s_name not in ("피고", "원고", "피고인", "작성", "서명", "확인", "사건"):
                             signer_stmts.append(_SignerStatement(ex_target, s_name, is_sole, clause, page))
+
+            # (3-7) 수량 슬롯 추출 (Y6: 대상 명사 + 단위 + 확정 서술 결합)
+            if not _QUANTITY_PARTIAL_RE.search(clause):
+                for q_m in _QUANTITY_RE.finditer(clause):
+                    u = q_m.group("unit")
+                    if u in _QUANTITY_EXCLUDE_UNITS:
+                        continue
+                    following_q = clause[q_m.end():min(len(clause), q_m.end() + 20)]
+                    if _QUANTITY_DEFINITIVE_RE.search(following_q) or _EXPLICIT_TOTAL_KEYWORD_RE.search(clause):
+                        try:
+                            q_val = Decimal(q_m.group("num").replace(",", ""))
+                            if q_val > 0:
+                                m_tn = re.search(r"(?:위|본건|해당|이\s*사건)?\s*(?P<target>[가-힣]{0,8}(?:제품|기계|물품|자재|목적물|토지|건물))", clause)
+                                if not m_tn:
+                                    m_tn = re.search(r"(?:위|본건|해당|이\s*사건)?\s*(?P<target>[가-힣]{0,8}(?:제품|기계|물품|자재|목적물|토지|건물))", sentence)
+                                target_noun = m_tn.group("target").strip() if m_tn else "목적물"
+                                q_key = f"quantity_{target_noun}_{u}"
+                                quantity_stmts.append(_QuantityStatement(q_key, target_noun, q_val, u, clause, page))
+                        except InvalidOperation:
+                            pass
 
     # --- 4. 버킷 기반 비교 및 모순 판정 ---
 
@@ -804,6 +991,42 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                         "rule_id": "EVI.INCONS_SIGNER_INTERNAL",
                         "inconsistency_type": "SIGNER",
                         "statements": [first.sentence[:200], other.sentence[:200]],
+                    },
+                ))
+                break
+
+    # (7) 수량 모순 판정 (Y6: C등급 / UNVERIFIED)
+    quantity_by_key = defaultdict(list)
+    for qs in quantity_stmts:
+        quantity_by_key[qs.target_key].append(qs)
+
+    for key, stmts in quantity_by_key.items():
+        if len(stmts) < 2:
+            continue
+        first = stmts[0]
+        for other in stmts[1:]:
+            if first.quantity != other.quantity:
+                title = f"문서 내 동일 목적물 수량 진술 불일치: {first.quantity}{first.unit} ↔ {other.quantity}{other.unit}"
+                detail = (
+                    f"동일한 {first.target_noun}에 관하여 확정 수량을 서로 다르게 진술하였습니다. "
+                    f"단순 오기이거나 주장 변경인지 사람이 확인해야 합니다."
+                )
+                excerpt = f"[{first.page}쪽] {first.sentence[:120]} ↔ [{other.page}쪽] {other.sentence[:120]}"
+                findings.append(_make_incons_finding(
+                    doc=doc,
+                    kind=FindingType.FACT_CONTRADICTION,
+                    grade=EvidenceGrade.C,
+                    severity=Severity.MEDIUM,
+                    status=VerificationStatus.UNVERIFIED,
+                    title=title,
+                    detail=detail,
+                    excerpt=excerpt,
+                    page=first.page,
+                    features={
+                        "rule_id": "EVI.INCONS_INTERNAL_QUANTITY",
+                        "inconsistency_type": "QUANTITY",
+                        "statements": [first.sentence[:200], other.sentence[:200]],
+                        "human_review": True,
                     },
                 ))
                 break

@@ -331,3 +331,160 @@ def test_internal_inconsistency_linear_performance():
     ratio = min_4x / max(min_1x, 1e-6)
     assert min_4x < 1.0, f"4배 텍스트 실행 시간이 1초를 초과함: {min_4x:.4f}s"
     assert ratio < 8.0, f"4배/1배 성능 비가 8배를 초과함 (비선형 의심): {ratio:.2f}배"
+
+
+# ==============================================================================
+# 6. B-3 4차 보완 Y1~Y6, Y8 단위 시험 (한국어 주석 포함)
+# ==============================================================================
+
+def test_y1_amount_definitive_and_partial_payment():
+    """Y1: 대금 중 일부 지급 대조군 및 총액 확정 둘 충돌 양성 검증 (한국어 주석)."""
+    # 1. 대조군: '대금 중 일부 지급'은 계약 총액 슬롯 제외 (오탐 0)
+    text_ctrl = "원고는 피고에게 공사대금 중 500만 원을 지급하였습니다. 한편 피고는 공사대금 중 1,000만 원을 수령하였습니다."
+    doc_ctrl = _make_doc(text_ctrl)
+    findings_ctrl = [f for f in check_internal_inconsistency(doc_ctrl) if f.confidence_features.get("inconsistency_type") == "AMOUNT"]
+    assert len(findings_ctrl) == 0, f"Y1 일부 지급 오탐 발생: {findings_ctrl}"
+
+    # 2. 양성: 총액 확정 둘이 충돌하는 경우
+    text_pos = "이 사건 매매대금 총액은 3억 원으로 약정하였습니다. 그러나 다른 서면에서 위 매매대금 총액을 4억 원으로 정하였습니다."
+    doc_pos = _make_doc(text_pos)
+    findings_pos = [f for f in check_internal_inconsistency(doc_pos) if f.confidence_features.get("inconsistency_type") == "AMOUNT"]
+    assert len(findings_pos) == 1, f"Y1 총액 충돌 미탐지: {findings_pos}"
+
+
+def test_y2_amount_deposit_and_rent_separation():
+    """Y2: 임대차의 보증금과 월 차임 분리 대조군 및 동일 보증금 충돌 양성 검증 (한국어 주석)."""
+    # 1. 대조군: 보증금 5,000만 원과 월 차임 200만 원은 별개 속성이므로 모순 아님
+    text_ctrl = "이 사건 임대차계약의 보증금은 5,000만 원입니다. 한편 위 임대차계약의 월 차임은 200만 원으로 정하였습니다."
+    doc_ctrl = _make_doc(text_ctrl)
+    findings_ctrl = [f for f in check_internal_inconsistency(doc_ctrl) if f.confidence_features.get("inconsistency_type") == "AMOUNT"]
+    assert len(findings_ctrl) == 0, f"Y2 보증금-차임 오탐 발생: {findings_ctrl}"
+
+    # 2. 양성: 동일 계약의 보증금을 서로 다르게 확정한 경우
+    text_pos = "이 사건 임대차계약의 보증금은 5,000만 원입니다. 한편 다른 서면에서 위 임대차계약의 보증금을 7,000만 원으로 약정하였습니다."
+    doc_pos = _make_doc(text_pos)
+    findings_pos = [f for f in check_internal_inconsistency(doc_pos) if f.confidence_features.get("inconsistency_type") == "AMOUNT"]
+    assert len(findings_pos) == 1, f"Y2 동일 보증금 충돌 미탐지: {findings_pos}"
+
+
+def test_y3_date_event_predicate_and_exclude_removal():
+    """Y3: 체결일/이행일, 발생일/청구일/치료일 대조군 및 동일 사고일 충돌 양성 검증 (한국어 주석)."""
+    # 1. 대조군 1: 체결일과 이행일은 별개 사건 술어이므로 모순 아님
+    text_ctrl1 = "원고는 2023. 5. 1. 이 사건 매매계약을 체결하였습니다. 한편 피고는 2023. 6. 1. 위 계약에 따른 목적물을 인도하였습니다."
+    doc_ctrl1 = _make_doc(text_ctrl1)
+    findings_ctrl1 = [f for f in check_internal_inconsistency(doc_ctrl1) if f.confidence_features.get("inconsistency_type") == "DATE"]
+    assert len(findings_ctrl1) == 0, f"Y3 체결일-인도일 오탐 발생: {findings_ctrl1}"
+
+    # 2. 대조군 2: 사고 발생일과 보험금 청구일은 별개 사건 술어이므로 모순 아님
+    text_ctrl2 = "2023. 3. 10. 이 사건 교통사고가 발생하였습니다. 원고는 2023. 4. 1. 위 사고에 관하여 보험금을 청구하였습니다."
+    doc_ctrl2 = _make_doc(text_ctrl2)
+    findings_ctrl2 = [f for f in check_internal_inconsistency(doc_ctrl2) if f.confidence_features.get("inconsistency_type") == "DATE"]
+    assert len(findings_ctrl2) == 0, f"Y3 발생일-청구일 오탐 발생: {findings_ctrl2}"
+
+    # 3. 대조군 3: 사고 발생일과 병원 치료일은 구조 규칙에 의해 슬롯 분리 (오탐 0)
+    text_ctrl3 = "2023. 2. 1. 이 사건 사고가 발생하였습니다. 원고는 2023. 2. 15. 병원에서 치료를 받았습니다."
+    doc_ctrl3 = _make_doc(text_ctrl3)
+    findings_ctrl3 = [f for f in check_internal_inconsistency(doc_ctrl3) if f.confidence_features.get("inconsistency_type") == "DATE"]
+    assert len(findings_ctrl3) == 0, f"Y3 발생일-치료일 오탐 발생: {findings_ctrl3}"
+
+    # 4. 양성: 동일 사고 발생일을 서로 다르게 진술한 경우 (지시어 다름)
+    text_pos = "이 사건 교통사고는 2023. 5. 10. 발생하였습니다. 한편 다른 준비서면에서 위 사고는 2023. 5. 20. 일어났다고 기재하였습니다."
+    doc_pos = _make_doc(text_pos)
+    findings_pos = [f for f in check_internal_inconsistency(doc_pos) if f.confidence_features.get("inconsistency_type") == "DATE"]
+    assert len(findings_pos) == 1, f"Y3 동일 사고 발생일 충돌 미탐지: {findings_pos}"
+
+
+def test_y4_opponent_claim_with_date_and_conjugations():
+    """Y4: 날짜 낀 상대방 다툼 및 반박 표지 제외와 작성자 자신 진술 충돌 양성 검증 (한국어 주석)."""
+    # 1. 대조군 1: 날짜가 포함된 '…다고 다툽니다' 오탐 0
+    text_ctrl1 = "원고는 대여금을 청구합니다. 피고는 2024. 3. 15. 대여금을 전액 변제하였다고 다툽니다."
+    doc_ctrl1 = _make_doc(text_ctrl1)
+    findings_ctrl1 = [f for f in check_internal_inconsistency(doc_ctrl1) if f.confidence_features.get("inconsistency_type") == "AMOUNT"]
+    assert len(findings_ctrl1) == 0, f"Y4 날짜 낀 다툼 오탐 발생: {findings_ctrl1}"
+
+    # 2. 대조군 2: 원고 주장 인용 + '사실과 다릅니다' 오탐 0
+    text_ctrl2 = "피고가 소송대리인을 통하여 제출합니다. 원고는 2024. 1. 10. 계약을 체결하였다고 주장하지만 이는 전혀 사실과 다릅니다."
+    doc_ctrl2 = _make_doc(text_ctrl2)
+    findings_ctrl2 = [f for f in check_internal_inconsistency(doc_ctrl2) if f.confidence_features.get("inconsistency_type") == "DATE"]
+    assert len(findings_ctrl2) == 0, f"Y4 상대방 주장 인용 반박 오탐 발생: {findings_ctrl2}"
+
+    # 3. 대조군 3: '다퉜으나' 오탐 0
+    text_ctrl3 = "피고는 2023. 8. 1. 사고가 발생하지 않았다고 다퉜으나 이유 없습니다."
+    doc_ctrl3 = _make_doc(text_ctrl3)
+    findings_ctrl3 = [f for f in check_internal_inconsistency(doc_ctrl3) if f.confidence_features.get("inconsistency_type") == "DATE"]
+    assert len(findings_ctrl3) == 0, f"Y4 다퉜으나 오탐 발생: {findings_ctrl3}"
+
+    # 4. 양성: 작성자 자신의 두 진술 충돌 (원고의 체결일 충돌)
+    text_pos = "원고는 2023. 5. 1. 이 사건 계약을 체결하였다고 진술합니다. 한편 원고는 위 계약을 2023. 6. 1. 체결하였다고 주장합니다."
+    doc_pos = _make_doc(text_pos)
+    findings_pos = [f for f in check_internal_inconsistency(doc_pos) if f.confidence_features.get("inconsistency_type") == "DATE"]
+    assert len(findings_pos) == 1, f"Y4 작성자 본인 진술 충돌 미탐지: {findings_pos}"
+
+
+def test_y5_party_role_contract_word_order_variants():
+    """Y5: 계약명 선행·후행·생략 3변형 양성 및 별개 계약 대조군 검증 (한국어 주석)."""
+    # 1. 양성 변형 1: 계약명 선행 ('위 임대차계약에서 원고는 임대인으로서...')
+    text_v1 = "위 임대차계약에서 원고는 임대인으로서 목적물을 인도하였습니다. 한편 다른 준비서면에서 원고는 위 계약의 임차인입니다."
+    doc_v1 = _make_doc(text_v1)
+    findings_v1 = [f for f in check_internal_inconsistency(doc_v1) if f.confidence_features.get("inconsistency_type") == "ROLE"]
+    assert len(findings_v1) == 1, f"Y5 계약명 선행 지위 역전 미탐지: {findings_v1}"
+
+    # 2. 양성 변형 2: 계약명 후행 ('원고는 이 사건 임대차계약의 임대인입니다...')
+    text_v2 = "원고는 이 사건 임대차계약의 임대인입니다. 그러나 원고는 위 계약의 임차인으로서 차임을 지급하였습니다."
+    doc_v2 = _make_doc(text_v2)
+    findings_v2 = [f for f in check_internal_inconsistency(doc_v2) if f.confidence_features.get("inconsistency_type") == "ROLE"]
+    assert len(findings_v2) == 1, f"Y5 계약명 후행 지위 역전 미탐지: {findings_v2}"
+
+    # 3. 양성 변형 3: 계약명 생략 / 문장 내 종류 ('본건 임대차 관계에서 원고는 임대인이다...')
+    text_v3 = "본건 임대차 관계에서 원고는 임대인이다. 한편 원고는 위 계약의 임차인으로서 보증금을 청구한다."
+    doc_v3 = _make_doc(text_v3)
+    findings_v3 = [f for f in check_internal_inconsistency(doc_v3) if f.confidence_features.get("inconsistency_type") == "ROLE"]
+    assert len(findings_v3) == 1, f"Y5 계약명 생략 지위 역전 미탐지: {findings_v3}"
+
+    # 4. 대조군: 별개 계약 (매매계약 매수인 vs 임대차계약 임대인)
+    text_ctrl = "원고는 이 사건 매매계약의 매수인입니다. 한편 원고는 위 임대차계약의 임대인입니다."
+    doc_ctrl = _make_doc(text_ctrl)
+    findings_ctrl = [f for f in check_internal_inconsistency(doc_ctrl) if f.confidence_features.get("inconsistency_type") == "ROLE"]
+    assert len(findings_ctrl) == 0, f"Y5 별개 계약 지위 오탐 발생: {findings_ctrl}"
+
+
+def test_y6_quantity_inconsistency_and_controls():
+    """Y6: 수량 속성 충돌 3변형(대, 톤, ㎡) 양성 및 부분 인도/추가 납품 대조군 검증 (한국어 주석)."""
+    # 1. 양성 변형 1: 개수/대수 충돌 ('10대' ↔ '20대')
+    text_v1 = "이 사건 기계의 납품 수량은 10대로 약정하였습니다. 한편 다른 준비서면에서 위 기계의 납품 수량은 20대로 기재하였습니다."
+    doc_v1 = _make_doc(text_v1)
+    findings_v1 = [f for f in check_internal_inconsistency(doc_v1) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(findings_v1) == 1, f"Y6 대수 수량 충돌 미탐지: {findings_v1}"
+
+    # 2. 양성 변형 2: 중량 충돌 ('50톤' ↔ '80톤')
+    text_v2 = "이 사건 자재의 총 수량은 50톤으로 정하였습니다. 그러나 다른 서면에서 위 자재의 총 수량은 80톤으로 합의하였습니다."
+    doc_v2 = _make_doc(text_v2)
+    findings_v2 = [f for f in check_internal_inconsistency(doc_v2) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(findings_v2) == 1, f"Y6 중량 수량 충돌 미탐지: {findings_v2}"
+
+    # 3. 양성 변형 3: 면적 충돌 ('500㎡' ↔ '700㎡')
+    text_v3 = "이 사건 토지의 면적은 500㎡입니다. 한편 다른 서면에서 위 토지의 면적은 700㎡로 명시하였습니다."
+    doc_v3 = _make_doc(text_v3)
+    findings_v3 = [f for f in check_internal_inconsistency(doc_v3) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(findings_v3) == 1, f"Y6 면적 수량 충돌 미탐지: {findings_v3}"
+
+    # 4. 대조군: 부분 인도 및 추가 납품 (오탐 0)
+    text_ctrl = "원고는 위 물품 중 일부인 10개를 1차로 납품하였습니다. 한편 피고는 추가로 20개를 인도받았습니다."
+    doc_ctrl = _make_doc(text_ctrl)
+    findings_ctrl = [f for f in check_internal_inconsistency(doc_ctrl) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(findings_ctrl) == 0, f"Y6 부분 인도/추가 납품 오탐 발생: {findings_ctrl}"
+
+
+def test_y8_relative_date_cross_block_and_korean_numbers():
+    """Y8: 단락 간 상대 날짜 승계 및 한글 수사(스물·서른, 삼천만 원) 검증 (한국어 주석)."""
+    # 1. 단락 첫 문장 상대 날짜 승계 충돌
+    b1 = "2023. 5. 10. 이 사건 교통사고가 발생하였습니다."
+    b2 = "당일 위 교통사고가 다시 일어난 사실은 없으며, 다른 준비서면에서 위 사고는 2023. 5. 25. 발생하였다고 적었습니다."
+    doc_date = _make_doc(b1, b2)
+    findings_date = [f for f in check_internal_inconsistency(doc_date) if f.confidence_features.get("inconsistency_type") == "DATE"]
+    assert len(findings_date) == 1, f"Y8 단락 간 상대 날짜 승계 충돌 미탐지: {findings_date}"
+
+    # 2. 한글 수사 변환 ('삼천만 원' -> 30,000,000원)
+    assert _parse_korean_amount("삼천만 원") == 30_000_000
+    assert _parse_korean_amount("3천5백만 원") == 35_000_000
+    assert _parse_korean_amount("2억 5천만 원") == 250_000_000

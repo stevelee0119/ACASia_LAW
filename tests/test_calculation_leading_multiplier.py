@@ -121,6 +121,22 @@ def test_leading_multiplier_control_case_3_non_amount_multiplication():
     assert res is None
 
 
+def test_y7_non_currency_area_and_year_formula():
+    """Y7: 통화 표지가 없는 면적·치수·연도 산식은 산식 결과가 없어야 한다 (한국어 주석)."""
+    # 1. 연도 곱셈 ('2,024 × 3 = 6,072') -> 통화 표지 없으므로 산식 결과 없음
+    from packages.claim_engine.calculation import row_final_amount
+    amt, check = row_final_amount("2,024 × 3 = 6,072")
+    assert check is None, f"연도 곱셈에서 산식 검증 발생 오탐: {check}"
+
+    # 2. 면적 산식 ('면적 150 × 20 = 3,000제곱미터') -> 통화 표지 없으므로 산식 결과 없음
+    amt_area, check_area = row_final_amount("면적 150 × 20 = 3,000제곱미터")
+    assert check_area is None, f"면적 산식에서 산식 검증 발생 오탐: {check_area}"
+
+    # 3. evaluate_expression 단독 호출 시에도 통화 없으면 None
+    assert evaluate_expression("2,024 × 3") is None
+    assert evaluate_expression("150 × 20") is None
+
+
 # --- 3. 기존 산식 호환성 검증 ---
 
 def test_formula_backward_compatibility():
