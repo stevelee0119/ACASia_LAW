@@ -557,4 +557,126 @@ def test_x3_opponent_claim_and_dispute_expansion():
     assert len(findings_self) == 1, f"X3 자기 측 과장 진술 미탐지: {findings_self}"
 
 
+# ==============================================================================
+# B-1 7차 보완 검증 테스트: V1 ~ V5 전용 검증 (한국어 주석)
+# ==============================================================================
+
+
+def test_v1_total_amount_completion_matrix_and_joint_combination():
+    """V1: 금전 전칭의 완료_확정 매트릭스 적용 및 결합 원용 합집합 판정 검증 (한국어 주석)."""
+    # 1. 영수증/통장거래내역(영수입금 범주)으로 '대금 전액 지급' -> 정상 입증(대조군, 과장 아님)
+    doc_rcpt = _make_doc(
+        "피고는 공사대금 전액을 모두 지급하였습니다(을 제1호증 영수증).",
+        "입증방법", "1. 을 제1호증 영수증",
+        "원고 소송대리인 변호사 홍길동"
+    )
+    f_rcpt = [f for f in check_evidence_overreach(doc_rcpt) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_rcpt) == 0, f"V1 영수증으로 대금 전액 지급 입증 오탐 발생: {f_rcpt}"
+
+    doc_bank = _make_doc(
+        "원고는 대여금 전액을 변제한 사실이 계좌거래내역(을 제2호증)에 의하여 확인됩니다.",
+        "입증방법", "1. 을 제2호증 계좌거래내역",
+        "원고 소송대리인 변호사 홍길동"
+    )
+    f_bank = [f for f in check_evidence_overreach(doc_bank) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_bank) == 0, f"V1 계좌거래내역으로 전액 변제 입증 오탐 발생: {f_bank}"
+
+    # 2. 견적서(견적계획) + 이체확인증(영수입금) 결합 원용으로 '대금 전액 지급' -> 합집합으로 커버되므로 정상(대조군)
+    doc_joint = _make_doc(
+        "공사대금 전액을 완납한 사실은 견적서(을 제1호증) 및 이체확인증(을 제2호증)에 의하여 입증됩니다.",
+        "입증방법", "1. 을 제1호증 견적서\n2. 을 제2호증 이체확인증",
+        "원고 소송대리인 변호사 홍길동"
+    )
+    f_joint = [f for f in check_evidence_overreach(doc_joint) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_joint) == 0, f"V1 견적서+이체확인증 결합 원용 오탐 발생: {f_joint}"
+
+    # 3. 견적서·명함(견적계획·명의식별) 단독으로 '대금 전액 지급' -> 과장 양성 정상 판정 유지
+    doc_pos = _make_doc(
+        "피고는 물품대금 전액을 모두 지급하였음이 물품 견적서(을 제3호증)에 의하여 증명됩니다.",
+        "입증방법", "1. 을 제3호증 물품 견적서",
+        "원고 소송대리인 변호사 홍길동"
+    )
+    f_pos = [f for f in check_evidence_overreach(doc_pos) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_pos) == 1, f"V1 견적서 단독 전액 지급 과장 미탐지: {f_pos}"
+
+
+def test_v2_negated_predicate_expansion():
+    """V2: '-기 어렵습니다', '-기에 부족합니다' 부정 구조 오탐 제외 검증 (한국어 주석)."""
+    cases = [
+        # 1) 보기 어렵습니다
+        "견적서(갑 제1호증)만으로 대금 전액을 완납하였다고 보기 어렵습니다.",
+        # 2) 인정하기 어렵습니다
+        "명함(갑 제2호증)에 의하여 거래 전체가 확정되었다고 인정하기 어렵습니다.",
+        # 3) 증명하기에 부족합니다
+        "진단서(갑 제3호증)는 피고의 고의를 증명하기에 부족합니다.",
+        # 4) 판단하기 곤란합니다
+        "통지서(갑 제4호증)로 상대방이 승낙하였다고 판단하기 곤란합니다.",
+    ]
+    for text in cases:
+        doc = _make_doc(text, "입증방법", "1. 갑 제1호증 견적서\n2. 갑 제2호증 명함\n3. 갑 제3호증 진단서\n4. 갑 제4호증 통지서", "원고 소송대리인 변호사 홍길동")
+        findings = [f for f in check_evidence_overreach(doc) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+        assert len(findings) == 0, f"V2 부정 구조 오탐 발생: {text} -> {findings}"
+
+
+def test_v3_opponent_claim_sentence_endings():
+    """V3: 상대방 주장 종결형(주장합니다, 다툽니다, 주장하고 있습니다) 오탐 제외 및 자기 측 양성 유지 검증 (한국어 주석)."""
+    # 1. 상대방 + 종결형 (오탐 0건)
+    opp_cases = [
+        # 주장합니다
+        "피고는 견적서(을 제1호증)로 공사대금을 완납하였다고 주장합니다.",
+        # 다툽니다
+        "피고는 산출내역서(을 제2호증)에 따라 물품대금 전액을 변제하였다고 다툽니다.",
+        # 주장하고 있습니다
+        "피고는 예산서(을 제3호증)에 비추어 모든 채무를 갚았다고 주장하고 있습니다.",
+        # 다퉜으나
+        "피고는 통지서(을 제4호증)를 근거로 계약이 합의 해지되었다고 다퉜으나 사실이 아닙니다.",
+    ]
+    for text in opp_cases:
+        doc = _make_doc(text, "입증방법", "1. 을 제1호증 견적서\n2. 을 제2호증 산출내역서\n3. 을 제3호증 예산서\n4. 을 제4호증 통지서", "원고 소송대리인 변호사 홍길동")
+        findings = [f for f in check_evidence_overreach(doc) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+        assert len(findings) == 0, f"V3 상대방 종결형 주장 오탐 발생: {text} -> {findings}"
+
+    # 2. 자기 측(원고) 서술 + 과장 -> 양성 판정 정상 유지
+    doc_self = _make_doc(
+        "원고는 견적서(갑 제1호증)에 의하여 공사대금 전액을 이미 지급하였습니다.",
+        "입증방법", "1. 갑 제1호증 견적서",
+        "원고 소송대리인 변호사 홍길동"
+    )
+    f_self = [f for f in check_evidence_overreach(doc_self) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_self) == 1, f"V3 자기 측 과장 서술 미탐지: {f_self}"
+
+
+def test_v4_conditional_hypothetical_expansion():
+    """V4: '-었다면', '-였다면', '설령' 가정 표지 오탐 제외 검증 (한국어 주석)."""
+    hypo_cases = [
+        # 1) 지급하였다면
+        "설령 피고가 견적서(을 제1호증) 기재 공사대금을 지급하였다면 이는 별개의 문제입니다.",
+        # 2) 변제받았다면
+        "피고가 통지서(을 제2호증)대로 채무 전액을 변제받았다면 영수증을 제출하여야 마땅합니다.",
+        # 3) 완납하더라도
+        "피고가 예산서(을 제3호증) 금액을 전액 완납하더라도 지연손해금 채무는 남아 있습니다.",
+    ]
+    for text in hypo_cases:
+        doc = _make_doc(text, "입증방법", "1. 을 제1호증 견적서\n2. 을 제2호증 통지서\n3. 을 제3호증 예산서", "원고 소송대리인 변호사 홍길동")
+        findings = [f for f in check_evidence_overreach(doc) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+        assert len(findings) == 0, f"V4 가정·조건 오탐 발생: {text} -> {findings}"
+
+
+def test_v5_sender_adverb_interposition():
+    """V5: 발신인 관형절에 부사가 삽입된 경우('[상대방]가 [부사] [동사]하여 [동사]한') 상대방 발신 제외 검증 (한국어 주석)."""
+    adv_cases = [
+        # 피고가 직접 작성하여 보낸 통지서 (상대방 발신 -> 제외)
+        "피고가 직접 작성하여 보낸 통지서(을 제1호증)에 의하여 해제 의사가 표시된 사실이 확인됩니다.",
+        # 피고가 스스로 작성·발송한 최고서 (상대방 발신 -> 제외)
+        "피고가 스스로 작성하여 발송한 최고서(을 제2호증)로 최고 사실을 증명합니다.",
+        # 피고가 미리 송부한 안내문 (상대방 발신 -> 제외)
+        "피고가 미리 송부한 안내문(을 제3호증)에 의하여 통지 사실이 인정됩니다.",
+    ]
+    for text in adv_cases:
+        doc = _make_doc(text, "입증방법", "1. 을 제1호증 통지서\n2. 을 제2호증 최고서\n3. 을 제3호증 안내문", "원고 소송대리인 변호사 홍길동")
+        findings = [f for f in check_evidence_overreach(doc) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+        assert len(findings) == 0, f"V5 부사 삽입 상대방 발신 오탐 발생: {text} -> {findings}"
+
+
+
 

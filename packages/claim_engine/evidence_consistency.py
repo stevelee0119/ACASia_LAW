@@ -649,15 +649,17 @@ _DIRECT_PROOF_STRUCTURE_RE = re.compile(
     r")"
 )
 
-# B-1 5, X3: 제외 가드 (부정된 술어, 상대방 주장, 가정·조건, 의문)
+# B-1 5, X3, V2: 제외 가드 (부정된 술어, 상대방 주장, 가정·조건, 의문)
 _NEGATED_PREDICATE_RE = re.compile(
-    r"(?:볼\s*수\s*없|할\s*수\s*없|아니다|아닙니다|아니며|아니고|않았다|않았음|않는다|배제할\s*수\s*없|단정할\s*수\s*없)"
+    r"(?:볼\s*수\s*없|할\s*수\s*없|아니다|아닙니다|아니며|아니고|않았다|않았음|않는다|배제할\s*수\s*없|단정할\s*수\s*없|"
+    r"(?:보|인정하|단정하|판단하)기\s*(?:어렵|힘들|곤란)|"
+    r"(?:인정하|증명하)기에\s*부족|부족하다고\s*보)"
 )
 
-# X3: 상대방 주장 술어 정규식 (주장·진술·항변·번복·다투 확장)
+# X3, V3: 상대방 주장 술어 정규식 (종결형 및 활용형 어미 제한 없이 허용)
 _OPPONENT_CLAIM_VERBS_PAT = (
-    r"(?:(?:주장|진술|항변|번복)(?:하|했|하였)?(?:나|지만|는데|으나|며|고\s*있으나)|"
-    r"다투(?:나|지만|는데|었으나|며|고\s*있))"
+    r"(?:(?:주장|진술|항변|번복)(?:하|합|했|하였|한)|"
+    r"다(?:투|툽|퉜|퉈))"
 )
 
 def _get_opponent_party_pattern(author_party: Optional[str]) -> str:
@@ -670,22 +672,44 @@ def _get_opponent_party_pattern(author_party: Optional[str]) -> str:
         return r"(?:피고|상대방|피신청인)"
 
 def _is_opponent_claim(text: str, author_party: Optional[str] = None) -> bool:
-    """상대방의 주장·진술·항변·번복·다툼인지 검사한다 (X3).
+    """상대방의 주장·진술·항변·번복·다툼인지 검사한다 (X3, V3).
 
     1) 작성 당사자의 상대 당사자가 주어이고 뒤에 주장·다툼 술어가 오는 경우 (30자 창 제한 없이 문장/절 끝까지)
-    2) 인용절 뒤 주장 표지 ('...라고 주장하나/다투지만' 등)
-    단, 작성자 본인('원고는 ... 진술')은 제외하지 않는다.
+    2) 인용절 뒤 반박 표지 ('...라고 주장하나/다투지만' 등)
+    단, 작성자 본인이 주어인 진술('원고는 ... 진술합니다')은 제외하지 않는다.
     """
-    if re.search(rf"(?:라고|다고|라며|다며)\s*{_OPPONENT_CLAIM_VERBS_PAT}", text):
-        return True
+    cleaned = text.strip()
+    my_pat = (
+        r"(?:원고|신청인|채권자)"
+        if author_party in ("원고", "신청인", "채권자")
+        else r"(?:피고|피신청인|채무자)"
+        if author_party in ("피고", "피신청인", "채무자")
+        else None
+    )
+    # 문장의 주어가 작성자 본인인 경우 상대방 주장 아님 (V3)
+    if my_pat and re.search(rf"^{my_pat}(?:는|은|가|이|측은)\b", cleaned):
+        return False
 
     opp_pat = _get_opponent_party_pattern(author_party)
-    if re.search(rf"{opp_pat}(?:는|은|가|이|측은)\s+.*{_OPPONENT_CLAIM_VERBS_PAT}", text):
+    if re.search(rf"{opp_pat}(?:는|은|가|이|측은)\s+.*{_OPPONENT_CLAIM_VERBS_PAT}", cleaned):
         return True
+
+    # 반박 연결어미(-나, -지만, -는데, -으나, -며)가 붙은 인용절
+    if re.search(r"(?:라고|다고|라며|다며)\s*(?:(?:주장|진술|항변|번복)(?:하|합|했|하였)?(?:나|지만|는데|으나|며)|다투(?:나|지만|는데|었으나|며))", cleaned):
+        return True
+
+    # 상대방이 언급된 문맥에서의 인용 종결
+    if opp_pat and re.search(opp_pat, cleaned):
+        if re.search(rf"(?:라고|다고|라며|다며)\s*{_OPPONENT_CLAIM_VERBS_PAT}", cleaned):
+            return True
 
     return False
 
-_CONDITIONAL_RE = re.compile(r"(?:라면|한다면|할\s*경우|인\s*경우)(?:는|,|\s)")
+# V4: 가정·조건 표지 ('-었/였/았다면', '라면', '할 경우', '인 경우', '하더라도', '설령' 확장)
+_CONDITIONAL_RE = re.compile(
+    r"(?:(?:[었였았]?다면|라면|할\s*경우|인\s*경우|하더라도|더라도)(?:는|,|\s|$)|"
+    r"설령)"
+)
 _QUESTION_RE = re.compile(r"(?:인가|인지\s*여부|일까)(?:\?|\.|\s|$)")
 
 # S7, X3: 절 단위 제외 가드 검사
@@ -729,9 +753,12 @@ def _detect_exhibit_sender(row: Dict[str, Any], label: str, sent_clean: str) -> 
     m_desc = re.search(r"(?:발신인|작성자|보낸\s*이|발송자)\s*[:：]?\s*(?P<p>원고|피고|신청인|피신청인|채권자|채무자)", desc)
     if m_desc:
         return m_desc.group("p")
-    # 바로 앞 관형절: [당사자](가|이) [동사 연쇄 최대 2개] (보낸|발송한|작성한|통지한|송부한) [서증명/라벨] (X2)
+    # 바로 앞 관형절: [당사자](가|이) [부사 1개 허용] [동사 연쇄 최대 2개] (보낸|발송한|작성한|통지한|송부한) [서증명/라벨] (X2, V5)
     m_prep = re.search(
-        rf"(?P<p>원고|피고|신청인|피신청인|채권자|채무자)(?:가|이)\s*(?:[가-힣]{{1,6}}(?:하여|해|하고|·)\s*){{0,2}}(?:보낸|발송한|작성한|통지한|송부한)\s*[^.!?]{{0,25}}?{re.escape(label)}",
+        rf"(?P<p>원고|피고|신청인|피신청인|채권자|채무자)(?:가|이)\s*"
+        rf"(?:(?!(?:원고|피고|신청인|피신청인|채권자|채무자|갑|을|소갑|소을)\b)[가-힣]{{1,4}}\s+)?"
+        rf"(?:[가-힣]{{1,6}}(?:하여|해|하고|·)\s*){{0,2}}"
+        rf"(?:보낸|발송한|작성한|통지한|송부한)\s*[^.!?]{{0,25}}?{re.escape(label)}",
         sent_clean,
     )
     if m_prep:
@@ -823,9 +850,33 @@ def check_evidence_overreach(
             if target_clauses:
                 proof_scope_by_row[row["label"]] = " ".join(target_clauses)
 
-        # 복수 서증 공동 원용 결합 판정
-        has_payment_proof = any(_PROVABLE_PAYMENT_KINDS_RE.search(r.get("name", "")) for r in cited_rows)
-        has_agreement_proof = any(_PROVABLE_AGREEMENT_KINDS_RE.search(r.get("name", "")) for r in cited_rows)
+        # V1: 인용된 모든 서증 범주의 매트릭스 능력 합집합 산출 (결합 원용 합집합 판정)
+        combined_capabilities: Dict[str, bool] = {
+            "전칭_전기간": False,
+            "내심의상태": False,
+            "완료_확정": False,
+            "상대방의사표시": False,
+        }
+        for cr in cited_rows:
+            cr_name = (cr.get("name") or "").strip()
+            cr_purpose = (cr.get("purpose") or "").strip()
+            cr_desc = f"{cr_name} {cr_purpose}".strip()
+            cr_cat = None
+            cr_name_clean = re.sub(r"\s+", "", cr_name)
+            for cat_name, cat_words in EVIDENCE_KIND_CATEGORIES.items():
+                for w in cat_words:
+                    w_clean = re.sub(r"\s+", "", w)
+                    if cr_name_clean.endswith(w_clean) or w_clean in cr_name_clean:
+                        cr_cat = cat_name
+                        break
+                if cr_cat:
+                    break
+            if cr_cat and cr_cat in EVIDENCE_CAPABILITY_MATRIX:
+                for pred_cat, can_cover in EVIDENCE_CAPABILITY_MATRIX[cr_cat].items():
+                    if can_cover:
+                        combined_capabilities[pred_cat] = True
+            if _PAYMENT_RECEIPT_NOTE_RE.search(cr_desc):
+                combined_capabilities["완료_확정"] = True
 
         # 서증별 판정
         for row in cited_rows:
@@ -872,10 +923,8 @@ def check_evidence_overreach(
 
             matched_pred_cats: List[str] = []
 
-            # 1) 전칭_전기간: 낱말 경계 일치 또는 수량 전칭(채무/대금 명사 수식)
+            # 1) 전칭_전기간: 낱말 경계 일치 (기간·범위 전칭만 담당, 금전 전칭은 완료_확정으로 분리) (V1)
             if any(_match_predicate_word(pw, scope_text) for pw in CLAIM_PREDICATE_CATEGORIES["전칭_전기간"]):
-                matched_pred_cats.append("전칭_전기간")
-            elif TOTAL_AMOUNT_MODIFIER_RE.search(scope_text):
                 matched_pred_cats.append("전칭_전기간")
 
             # 2) 내심의상태: 고의·악의·인식·공모·통모 또는 -(려는|할|ㄹ) 의사 구조
@@ -896,10 +945,14 @@ def check_evidence_overreach(
                 else:
                     matched_pred_cats.append("내심의상태")
 
-            # 3) 완료_확정: 낱말 경계 일치 또는 완료 술어 구조('지급을 마친', '갚았다' 등)
+            # 3) 완료_확정: 낱말 경계 일치 또는 완료 술어 구조('지급을 마친', '갚았다' 등), 또는 금전 전칭 + 지급·변제 술어 (V1)
             has_comp = any(_match_predicate_word(pw, scope_text) for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"])
             if not has_comp and COMPLETION_PREDICATE_RE.search(scope_text):
                 has_comp = True
+            if not has_comp and TOTAL_AMOUNT_MODIFIER_RE.search(scope_text):
+                # V1: 금전 전칭은 술어가 지급·변제·수령·완료이면 '완료_확정'의 수식으로 보아 '완료_확정' 매트릭스를 따름
+                if re.search(r"(?:지급|변제|수령|완납|완료|정산|상환|갚|입금|결제)", scope_text):
+                    has_comp = True
             if has_comp:
                 matched_pred_cats.append("완료_확정")
 
@@ -927,24 +980,12 @@ def check_evidence_overreach(
                     debug_counters["no_pred"] += 1
                 continue
 
-            # 결합 서증 예외: 결제/합의 가능 서증이 결합되어 있고 해당 술어(완료_확정, 상대방의사표시)를 증명하는 경우
-            if has_payment_proof and "완료_확정" in matched_pred_cats and "전칭_전기간" not in matched_pred_cats:
-                if debug_counters is not None:
-                    debug_counters["covered"] += 1
-                continue
-            if has_agreement_proof and "상대방의사표시" in matched_pred_cats:
-                if debug_counters is not None:
-                    debug_counters["covered"] += 1
-                continue
-            if _PAYMENT_RECEIPT_NOTE_RE.search(combined_desc) and "완료_확정" in matched_pred_cats and "전칭_전기간" not in matched_pred_cats:
-                if debug_counters is not None:
-                    debug_counters["covered"] += 1
-                continue
-
-            # 매트릭스 판정 (조건 2: 판정은 매트릭스만으로 하고 다른 낱말 조건을 덧붙이지 않는다)
-            matrix_row = EVIDENCE_CAPABILITY_MATRIX.get(matched_cat, {})
-            uncovered_preds = [p for p in matched_pred_cats if not matrix_row.get(p, False)]
+            # V1: 결합 원용 매트릭스 합집합 판정 (인용된 서증들의 능력 합집합이 주장 술어 범주를 덮지 못할 때만 과장 판정)
+            uncovered_preds = [p for p in matched_pred_cats if not combined_capabilities.get(p, False)]
             if not uncovered_preds:
+                if debug_counters is not None:
+                    debug_counters["covered"] += 1
+                continue
                 if debug_counters is not None:
                     debug_counters["covered"] += 1
                 continue
