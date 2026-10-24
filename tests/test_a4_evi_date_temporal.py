@@ -572,3 +572,106 @@ def test_temporal_event_inversion_performance_scaling():
 
     assert min_4x < 1.0, f"4배 길이 최솟값이 1초 이상입니다: {min_4x:.4f}s"
     assert ratio < 8.0, f"4배/1배 최솟값 비율이 8배 이상입니다: {ratio:.2f}x (1x: {min_1x:.4f}s, 4x: {min_4x:.4f}s)"
+
+
+# ==============================================================================
+# A-4 5차 보완 검증 테스트: U1 ~ U3 전용 검증
+# ==============================================================================
+
+
+def test_u1_narrative_order_and_new_cycle():
+    """U1: 글이 밝힌 순서(-ㄴ 뒤, -ㄴ 후, -ㄴ 다음, -다가)와 새 주기(새로, 다시) 검증 (한국어 주석)."""
+    # 1. 정상 순서 대조군 (날짜 순서 일치: 오탐 0건)
+    normal_cases = [
+        "원고는 2020. 3. 1. 퇴직한 뒤 2021. 5. 1. 새로 입사하였습니다.",
+        "피고는 2020. 1. 10. 계약을 해지한 다음 2020. 5. 1. 다시 체결하였습니다.",
+        "원고는 2020. 2. 1. 퇴사하였다가 2020. 8. 1. 재입사하였습니다.",
+    ]
+    for text in normal_cases:
+        doc = _make_doc("1. 사실관계", text)
+        findings = verify_dates_in_document(doc)
+        inversions = [
+            f for f in findings
+            if f.type == FindingType.TIMELINE_CONTRADICTION
+            and f.confidence_features.get("rule_id") == "claim_engine.date_verifier:TEMPORAL_EVENT_INVERSION"
+        ]
+        assert len(inversions) == 0, f"U1 정상 순서 오탐 발생: {text} -> {inversions}"
+
+    # 2. 날짜 역전 양성군 (글의 순서와 반대 날짜 기재: NARRATIVE_TEMPORAL_ORDER_INVERSION 양성)
+    reversed_cases = [
+        ("원고는 2022. 3. 1. 퇴직한 뒤 2021. 5. 1. 입사하였습니다.", "2022. 3. 1.", "2021. 5. 1."),
+        ("피고는 2022. 1. 10. 계약을 해지한 다음 2021. 5. 1. 체결하였습니다.", "2022. 1. 10.", "2021. 5. 1."),
+        ("원고는 2022. 2. 1. 퇴사하였다가 2021. 8. 1. 입사하였습니다.", "2022. 2. 1.", "2021. 8. 1."),
+    ]
+    for text, d_cause, d_effect in reversed_cases:
+        doc = _make_doc("1. 사실관계", text)
+        findings = verify_dates_in_document(doc)
+        inversions = [
+            f for f in findings
+            if f.type == FindingType.TIMELINE_CONTRADICTION
+            and f.confidence_features.get("rule_id") == "claim_engine.date_verifier:TEMPORAL_EVENT_INVERSION"
+        ]
+        assert len(inversions) == 1, f"U1 역전 미탐지: {text} -> {findings}"
+        assert inversions[0].confidence_features.get("sub_rule") == "NARRATIVE_TEMPORAL_ORDER_INVERSION"
+        assert inversions[0].evidence_grade == EvidenceGrade.B
+
+
+def test_u2_correction_sentence_handling():
+    """U2: 정정 문장('착오이므로', '오기이므로', '바로잡는다') 슬롯 정제 및 역전 검증 (한국어 주석)."""
+    # 1. 정정 후 값이 정상 순서인 경우 (정정 후 입사 6. 1. -> 퇴사 7. 1.) -> 오탐 0건
+    text_normal = (
+        "원고가 2023. 5. 1. 입사하였다고 적은 것은 착오이므로 2023. 6. 1.로 바로잡는다; "
+        "원고는 2023. 7. 1. 퇴사하였습니다."
+    )
+    doc_normal = _make_doc("2. 정정 사항", text_normal)
+    findings_normal = verify_dates_in_document(doc_normal)
+    inversions_normal = [
+        f for f in findings_normal
+        if f.type == FindingType.TIMELINE_CONTRADICTION
+        and f.confidence_features.get("rule_id") == "claim_engine.date_verifier:TEMPORAL_EVENT_INVERSION"
+    ]
+    assert len(inversions_normal) == 0, f"U2 정정 후 정상 순서 오탐 발생: {findings_normal}"
+
+    # 2. 정정 후 값도 다른 절과 역전인 경우 (정정 후 입사 8. 1. -> 퇴사 7. 1.) -> 양성 탐지
+    text_reversed = (
+        "원고가 2023. 5. 1. 입사하였다고 적은 것은 착오이므로 2023. 8. 1.로 바로잡는다; "
+        "원고는 2023. 7. 1. 퇴사하였습니다."
+    )
+    doc_reversed = _make_doc("2. 정정 사항", text_reversed)
+    findings_reversed = verify_dates_in_document(doc_reversed)
+    inversions_reversed = [
+        f for f in findings_reversed
+        if f.type == FindingType.TIMELINE_CONTRADICTION
+        and f.confidence_features.get("rule_id") == "claim_engine.date_verifier:TEMPORAL_EVENT_INVERSION"
+    ]
+    assert len(inversions_reversed) >= 1, f"U2 정정 후 역전 미탐지: {findings_reversed}"
+    assert inversions_reversed[0].confidence_features.get("sub_rule") == "SAME_SUBJECT_LIFECYCLE"
+    assert inversions_reversed[0].evidence_grade == EvidenceGrade.B
+
+
+def test_u3_passive_intransitive_target_binding():
+    """U3: 피동·자동사 사건의 주격/주제어 대상 바인딩 및 '에 관하여' 검증 (한국어 주석)."""
+    # 1. '소장은 접수되었는데 … 위 소장에 관하여 보정명령' (접수일 > 보정명령일: 양성)
+    text_reversed = "소장은 2024. 5. 10. 접수되었는데, 재판장은 위 소장에 관하여 2024. 4. 20. 보정명령을 발령하였습니다."
+    doc_reversed = _make_doc("3. 소송 경과", text_reversed)
+    findings_reversed = verify_dates_in_document(doc_reversed)
+    inversions_reversed = [
+        f for f in findings_reversed
+        if f.type == FindingType.TIMELINE_CONTRADICTION
+        and f.confidence_features.get("rule_id") == "claim_engine.date_verifier:TEMPORAL_EVENT_INVERSION"
+    ]
+    assert len(inversions_reversed) == 1, f"U3 소장 접수-보정명령 역전 미탐지: {findings_reversed}"
+    assert inversions_reversed[0].confidence_features.get("sub_rule") == "RECEIPT_BEFORE_AMENDMENT"
+    assert inversions_reversed[0].evidence_grade == EvidenceGrade.B
+
+    # 2. 같은 꼴 정상 순서 (접수일 <= 보정명령일: 오탐 0건)
+    text_normal = "소장은 2024. 4. 20. 접수되었는데, 재판장은 위 소장에 관하여 2024. 5. 10. 보정명령을 발령하였습니다."
+    doc_normal = _make_doc("3. 소송 경과", text_normal)
+    findings_normal = verify_dates_in_document(doc_normal)
+    inversions_normal = [
+        f for f in findings_normal
+        if f.type == FindingType.TIMELINE_CONTRADICTION
+        and f.confidence_features.get("rule_id") == "claim_engine.date_verifier:TEMPORAL_EVENT_INVERSION"
+    ]
+    assert len(inversions_normal) == 0, f"U3 정상 순서 오탐 발생: {findings_normal}"
+
