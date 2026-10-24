@@ -675,3 +675,72 @@ def test_u3_passive_intransitive_target_binding():
     ]
     assert len(inversions_normal) == 0, f"U3 정상 순서 오탐 발생: {findings_normal}"
 
+
+def test_w1_target_bypass_branch_removal():
+    """W1: 대상 결합 우회 분기(발생->청구, 접수->보정, 신청->처분/통지, 발송->도달) 삭제 및 대상 상이 시 오탐 0건 검증 (한국어 주석)."""
+    # 1. '해고 통지를 받은 뒤 구제신청을 하였다' (정상 순서, 대상 상이: 해고 vs 구제 -> 오탐 0건)
+    t1 = "원고는 2024. 3. 1. 해고 통지를 받은 뒤 2024. 3. 20. 노동위원회에 구제신청을 하였습니다."
+    doc1 = _make_doc("1. 해고통지 뒤 구제신청", t1)
+    f1 = [f for f in verify_dates_in_document(doc1) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f1) == 0, f"W1 해고통지-구제신청 오탐 발생: {f1}"
+
+    # 2. 다른 서면의 발송·수령 (A 서면 발송 vs B 서면 수령 -> 대상 상이로 결합 제외, 오탐 0건)
+    t2 = "원고는 2024. 5. 10. 답변서를 발송하였고, 2024. 5. 1. 준비서면을 수령하였습니다."
+    doc2 = _make_doc("2. 별개 서면 발송 수령", t2)
+    f2 = [f for f in verify_dates_in_document(doc2) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f2) == 0, f"W1 별개 서면 발송-수령 오탐 발생: {f2}"
+
+    # 3. 다른 사고의 발생·청구 (A사고 발생 vs B사고 청구 -> 대상 상이로 결합 제외, 오탐 0건)
+    t3 = "1차 사고는 2024. 8. 10. 발생하였고, 원고는 2024. 8. 1. 2차 사고 보험금을 청구하였습니다."
+    doc3 = _make_doc("3. 별개 사고 발생 청구", t3)
+    f3 = [f for f in verify_dates_in_document(doc3) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f3) == 0, f"W1 별개 사고 발생-청구 오탐 발생: {f3}"
+
+
+def test_w2_opponent_claim_regex_expansion():
+    """W2: 상대방 주장 정규식 5가지 꼴(주장·다투·진술·항변·번복) 배제 및 오탐 0건 검증 (한국어 주석)."""
+    # 상대방(피고)의 주장·다툼·진술·항변·번복 인용 5가지 표현
+    claim_patterns = [
+        "피고는 원고가 2024. 7. 20. 통지서를 발송하여 2024. 7. 10. 도달했다고 주장하지만 이는 사실이 아닙니다.",
+        "피고는 원고가 2024. 7. 20. 통지서를 발송하여 2024. 7. 10. 도달했다고 다투지만 이유가 없습니다.",
+        "피고는 원고가 2024. 7. 20. 통지서를 발송하여 2024. 7. 10. 도달했다고 진술하였으나 근거가 없습니다.",
+        "피고는 원고가 2024. 7. 20. 통지서를 발송하여 2024. 7. 10. 도달했다고 항변하나 부당합니다.",
+        "피고는 원고가 2024. 7. 20. 통지서를 발송하여 2024. 7. 10. 도달했다고 번복하였으나 신빙성이 없습니다.",
+    ]
+    for idx, text in enumerate(claim_patterns):
+        doc = _make_doc(f"상대방 주장 배제 {idx+1}", text)
+        findings = [f for f in verify_dates_in_document(doc) if f.type == FindingType.TIMELINE_CONTRADICTION]
+        assert len(findings) == 0, f"W2 상대방 주장 배제 실패(오탐 발생): {text} -> {findings}"
+
+
+def test_w3_occurrence_report_and_target_normalization():
+    """W3: 발생->신고 규칙 및 대상 끝 사건 낱말 정규화 양성/대조 검증 (한국어 주석)."""
+    # 1. 사고 발생 -> 보험사 신고 역전 양성 (발생 5. 1. > 신고 4. 20.)
+    t_pos_rep = "이 사건 사고는 2024. 5. 1. 발생하였는데, 원고는 2024. 4. 20. 위 사고를 보험사에 신고하였습니다."
+    doc_pos_rep = _make_doc("사고 발생-신고 역전", t_pos_rep)
+    f_pos_rep = [f for f in verify_dates_in_document(doc_pos_rep) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_pos_rep) == 1, f"W3 사고 발생-신고 역전 미탐지: {f_pos_rep}"
+    assert f_pos_rep[0].confidence_features.get("sub_rule") == "OCCURRENCE_BEFORE_CLAIM"
+    assert f_pos_rep[0].evidence_grade == EvidenceGrade.B
+
+    # 1-대조. 사고 발생 -> 보험사 신고 정상 순서 (발생 4. 20. <= 신고 5. 1. -> 오탐 0건)
+    t_ctrl_rep = "이 사건 사고는 2024. 4. 20. 발생하였고, 원고는 2024. 5. 1. 위 사고를 보험사에 신고하였습니다."
+    doc_ctrl_rep = _make_doc("사고 발생-신고 정상", t_ctrl_rep)
+    f_ctrl_rep = [f for f in verify_dates_in_document(doc_ctrl_rep) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_ctrl_rep) == 0, f"W3 사고 발생-신고 정상 순서 오탐 발생: {f_ctrl_rep}"
+
+    # 2. 사업 인가 신청 -> 인가 신청 결정 역전 양성 (대상 정규화: '사업 인가' vs '위 인가 신청' -> 핵심 '인가' 일치, 신청 5. 1. > 처분 4. 1.)
+    t_pos_perm = "원고는 2024. 5. 1. 사업 인가를 신청하였는데, 행정청은 2024. 4. 1. 위 인가 신청에 대하여 기각 결정을 내렸습니다."
+    doc_pos_perm = _make_doc("인가 신청-결정 역전", t_pos_perm)
+    f_pos_perm = [f for f in verify_dates_in_document(doc_pos_perm) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_pos_perm) == 1, f"W3 인가 신청-결정 역전 미탐지: {f_pos_perm}"
+    assert f_pos_perm[0].confidence_features.get("sub_rule") == "TARGET_BOUND_DISPOSITION"
+    assert f_pos_perm[0].evidence_grade == EvidenceGrade.B
+
+    # 2-대조. 사업 인가 신청 -> 인가 신청 결정 정상 순서 (신청 4. 1. <= 처분 5. 1. -> 오탐 0건)
+    t_ctrl_perm = "원고는 2024. 4. 1. 사업 인가를 신청하였고, 행정청은 2024. 5. 1. 위 인가 신청에 대하여 기각 결정을 내렸습니다."
+    doc_ctrl_perm = _make_doc("인가 신청-결정 정상", t_ctrl_perm)
+    f_ctrl_perm = [f for f in verify_dates_in_document(doc_ctrl_perm) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_ctrl_perm) == 0, f"W3 인가 신청-결정 정상 순서 오탐 발생: {f_ctrl_perm}"
+
+

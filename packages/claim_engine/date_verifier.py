@@ -120,7 +120,7 @@ CLAUSE_DELIMITER_RE = re.compile(
     r",\s*|;\s*|\n+|"
     r"(?<=[가-힣][다음함임것바기]\.)\s+|"
     r"(?:"
-    r"(?<=[가-힣])(?:하고|했고|하고는|하며|했으나|하나|하지만|하였고|하였으나|하였으며|하여|한바|인바|"
+    r"(?<=[가-힣])(?:하고|했고|하고는|하며|했으나|하나|하지만|하였고|하였으나|하였으며|(?<!대)(?<!관)(?<!의)하여|한바|인바|"
     r"하였는데|되었는데|했는데|한데|인데|였는데|았는데|었는데|은바|는바|"
     r"(?:한|된|받은|보낸|마친|끝난)\s*(?:후|뒤|다음)(?:에|는|,|\s)?)|"
     r"(?:(?<=\.)|(?<=\d)|\s+)이(?:고|며|나|지만|인데)|"
@@ -147,8 +147,8 @@ EXCLUDE_FUTURE_RE = re.compile(
     r"(?:변제기|이행기|예정(?:이다|일|이며|이나)?|하기로\s*한다|하기로\s*약정|도래하지|기한이\s*도래)"
 )
 EXCLUDE_OPPONENT_CLAIM_RE = re.compile(
-    r"(?:라고|다고|라며|다며)\s*(?:주장하나|주장한바|주장하지만|주장하므로|주장하며)|"
-    r"(?:라는|다는)\s*(?:피고|원고|신청인|상대방)?\s*(?:의\s*)?주장은"
+    r"(?:(?:라고|다고|라며|다며)\s*(?:(?:주장|진술|항변|번복)(?:하|했|하였)?(?:나|지만|는데|으나|으므로|며)|다투(?:나|지만|는데|었으나|며))|"
+    r"(?:라는|다는)\s*(?:피고|원고|신청인|상대방)?\s*(?:의\s*)?주장은)"
 )
 EXCLUDE_NEGATION_RE = re.compile(
     r"(?:하지\s*않았|하지\s*아니하였|한\s*사실이\s*없|한\s*바\s*없|되지\s*않았|아니하였다|없었다|아니다)"
@@ -248,6 +248,12 @@ EVENT_KIND_SURFACE_FORMS: Dict[str, Tuple[str, ...]] = {
         "소장접수", "사건접수", "신청접수", "접수일",
         "접수", "접수하", "접수했", "접수한", "접수된", "접수되었", "접수되어", "접수되",
     ),
+    "신고": (
+        "신고일", "신고접수일", "사고신고",
+        "신고",
+        "신고하", "신고했", "신고한",
+        "신고되", "신고된", "신고되었", "신고되어",
+    ),
     "보정": (
         "보정",
         "보정하", "보정했", "보정한",
@@ -339,7 +345,7 @@ EVENT_ORDER_RULES: List[Dict[str, Any]] = [
     # 6. 발생 -> 청구/신고 (상법 제724조·민법 제750조)
     {
         "cause_kind": "발생",
-        "effect_kinds": ("신청",),
+        "effect_kinds": ("신청", "신고"),
         "rule_id": "OCCURRENCE_BEFORE_CLAIM",
         "statute": "상법 제724조·민법 제750조",
         "require_target_match": True,
@@ -474,8 +480,16 @@ def _add_civil_period(
 
 
 def _normalize_target(t: str) -> str:
-    """대상 명사구에서 지시어('이 사건', '위', '해당', '동', '본건', '이', '그') 및 공백을 정규화한다."""
-    cleaned = re.sub(r"^(?:이\s*사건|위|해당|동|본건|이|그)\s*", "", t)
+    """대상 명사구에서 지시어('이 사건', '위', '해당', '동', '본건', '이', '그') 및 공백을 정규화하고,
+    대상 끝에 붙은 사건 낱말(신청·청구·처분·통지·명령·결정·계약)을 분리한다 (W3).
+    """
+    if not t:
+        return ""
+    cleaned = re.sub(r"^(?:이\s*사건|위|해당|동|본건|이|그)\s*", "", t).strip()
+    # 대상 끝에 사건 낱말이 붙어 있고 앞에 핵심 명사가 있는 경우(예: '인가 신청' -> '인가', '인가 처분' -> '인가') 분리
+    m = re.match(r"^(?P<core>.+?)\s*(?:신청|청구|처분|통지|명령|결정|계약)(?:서|문)?$", cleaned)
+    if m and m.group("core").strip():
+        cleaned = m.group("core").strip()
     return re.sub(r"\s+", "", cleaned)
 
 
@@ -489,10 +503,11 @@ def _extract_target_modifier(t: str) -> Optional[str]:
 
 
 def _same_object_noun(left: str, right: str) -> bool:
-    """두 목적물 명사가 엄격히 일치하는지 판정한다 (R4).
+    """두 목적물 명사가 엄격히 일치하는지 판정한다 (R4, W3).
 
     핵심 명사와 수식어가 모두 같아야 하며, '1차 처분'과 '2차 처분'처럼 수식어가 다르면 다른 대상으로 본다.
-    지시어는 직전 대상 명사구로 푼 상태에서 비교한다.
+    지시어 및 대상 끝 사건 낱말을 정규화한 상태에서 비교한다.
+    '사업인가'와 '인가'처럼 한쪽이 다른 쪽의 핵심 명사인 경우도 동일 대상으로 판정한다 (W3).
     """
     mod_l = _extract_target_modifier(left)
     mod_r = _extract_target_modifier(right)
@@ -505,6 +520,9 @@ def _same_object_noun(left: str, right: str) -> bool:
     if not a or not b:
         return False
     if a == b:
+        return True
+    # 핵심 명사 일치 (예: '사업인가'와 '인가'처럼 한쪽이 다른 쪽의 접미어인 경우)
+    if (a.endswith(b) or b.endswith(a)) and min(len(a), len(b)) >= 2:
         return True
     return False
 
@@ -720,11 +738,12 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
 
     last_subject: Optional[str] = None
     last_target: Optional[str] = None
+    next_clause_has_anaphora = False
     period_counter = 0
 
     for clause_text, start_pos, end_pos, delim_str in clause_parts:
-        # R6: 5대 제외 문맥 절 단위 필터링
-        if _is_clause_excluded(clause_text):
+        # R6: 5대 제외 문맥 절 단위 필터링 (구분자 결합 형태 포함 검사)
+        if _is_clause_excluded(clause_text) or _is_clause_excluded(clause_text + delim_str):
             continue
 
         # 연도 추적
@@ -821,6 +840,14 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
         is_next = bool(RELATIVE_NEXT_DAY_RE.search(clause_text))
         is_zero = bool(ZERO_HOUR_RE.search(clause_text))
 
+        # 대상 수식어 구간(예: '위 인가 신청에 대하여', '이 사건 신청에 대한' 등) 수집
+        target_prep_spans = []
+        for m_tp in re.finditer(r"(?:[그위해당동본이]\s*)?(?:[가-힣0-9]{1,10}\s+)?[가-힣0-9]{1,10}\s*(?:에\s*(?:대한|대하여|대해|관한|관하여|관해))", clause_text):
+            pre_part = clause_text[:m_tp.start()].rstrip()
+            if pre_part.endswith(("한", "낸", "제출한", "신청한", "청구한", "받은", "내린")):
+                continue
+            target_prep_spans.append(m_tp.span())
+
         # 절 안의 모든 사건 낱말 출현 위치 수집 (R2)
         event_matches: List[Tuple[int, int, str, str]] = []
         for kind, surfs in EVENT_KIND_SURFACE_FORMS.items():
@@ -832,6 +859,10 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
                         break
                     # 주체 매칭 구간(예: '신청인은'의 '신청')은 배제
                     if subj_span and subj_span[0] <= f_idx < subj_span[1]:
+                        idx = f_idx + len(s)
+                        continue
+                    # 대상 수식어 구간(예: '인가 신청에 대하여') 안의 사건 낱말은 배제
+                    if any(sp[0] <= f_idx < sp[1] for sp in target_prep_spans):
                         idx = f_idx + len(s)
                         continue
                     event_matches.append((f_idx, f_idx + len(s), kind, s))
@@ -940,6 +971,9 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
                     has_anaphora = True
                     target = last_target
 
+            if next_clause_has_anaphora:
+                has_anaphora = True
+
             if not target and last_target and has_anaphora:
                 target = last_target
 
@@ -980,6 +1014,11 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
                 seen_clause_kinds[k] = cs
         slots.extend(seen_clause_kinds.values())
 
+        if "에 대한" in delim_str or "에 대하여" in delim_str or "에 관한" in delim_str or "에 관하여" in delim_str:
+            next_clause_has_anaphora = True
+        else:
+            next_clause_has_anaphora = False
+
     # 지시어 해소: 대상이 없거나 지시어가 있는데 아직 안 풀린 경우 앞선 슬롯에서 해소 (R4: 직전 대상 치환)
     for i in range(len(slots)):
         if slots[i].has_anaphora:
@@ -990,6 +1029,19 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
 
     # U2: 정정 문장 안에서는 정정 전 값(표지 앞 값)의 슬롯을 지우고, 정정 후 값('…로 바로잡/정정')만 남긴다
     slots = _apply_correction_slots(block_text, slots)
+
+    # W2: 상대방 주장 문장 내 모든 슬롯 제외
+    sent_spans = []
+    last_s = 0
+    for m_s in SENTENCE_DELIM_RE.finditer(block_text):
+        sent_spans.append((last_s, m_s.end(), block_text[last_s:m_s.end()]))
+        last_s = m_s.end()
+    if last_s < len(block_text):
+        sent_spans.append((last_s, len(block_text), block_text[last_s:]))
+
+    for s_start, s_end, s_text in sent_spans:
+        if EXCLUDE_OPPONENT_CLAIM_RE.search(s_text):
+            slots = [s for s in slots if not (s_start <= s.span_in_block[0] < s_end)]
 
     return slots
 
@@ -1555,43 +1607,68 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
 
                     # R4: 대상 엄격 일치 요구 검증
                     if rule.get("require_target_match"):
-                        c_target = cause_slot.target or cause_slot.kind
-                        e_target = effect_slot.target or effect_slot.kind
-                        if not e_target and effect_slot.has_anaphora:
-                            e_target = c_target
+                        c_target = cause_slot.target or ""
+                        e_target = effect_slot.target or ""
+
+                        # 수식어(1차 vs 2차, A vs B)가 다르면 서로 다른 사건이므로 무조건 제외 (R4)
+                        mod_c = _extract_target_modifier(c_target)
+                        mod_e = _extract_target_modifier(e_target)
+                        if (mod_c or mod_e) and mod_c != mod_e:
+                            continue
 
                         matched_target = False
-                        if e_target and _same_object_noun(c_target, e_target):
+                        # 1) 엄격 일치 (W3: 대상 끝 사건 낱말 분리 후 일치, 접미어 일치)
+                        if c_target and e_target and _same_object_noun(c_target, e_target):
                             matched_target = True
 
-                        # 발생 -> 청구 대상 결합: 사고/손해 <-> 보험금/손해배상/청구 허용
-                        if not matched_target and rule["rule_id"] == "OCCURRENCE_BEFORE_CLAIM":
-                            acc_words = ("사고", "교통사고", "손해", "사건")
-                            claim_words = ("보험금", "손해배상", "손해배상금", "청구", "지급", "배상", "치료비")
-                            c_is_acc = any(w in c_target for w in acc_words) or any(w in cause_slot.clause_text for w in acc_words)
-                            e_is_claim = any(w in e_target for w in claim_words) or any(w in effect_slot.clause_text for w in claim_words)
-                            if c_is_acc and e_is_claim:
+                        # 2) 지시어 또는 상대 명사구 바인딩 (그에 대한, 이에 대한, 위 신청, 위 소장 등)
+                        if not matched_target:
+                            has_ref = (
+                                effect_slot.has_anaphora
+                                or any(w in cause_slot.clause_text or w in effect_slot.clause_text for w in ("에 대한", "에 대하여", "이에 대한", "이에 대하여", "그에 대한", "그에 대하여", "해당", "위 "))
+                            )
+                            if has_ref:
                                 matched_target = True
 
-                        # 신청 -> 처분/통지 결합: 동일 신청에 대한 처분/통지 허용
-                        # 접수 -> 보정 대상 결합: 소장/신청서/사건 <-> 보정명령/보정권고
-                        if not matched_target and rule["rule_id"] == "RECEIPT_BEFORE_AMENDMENT":
-                            if any(w in c_target or w in cause_slot.clause_text for w in ("소장", "신청서", "사건", "신청")):
-                                if any(t_w in e_target or t_w in effect_slot.clause_text for t_w in ("보정", "명령", "권고")):
+                        # 3) 규칙별 종속적 행위 결합 (W1 정밀화: 우회 분기를 삭제하고 엄격한 종속성 검증)
+                        if not matched_target:
+                            # 3-1. 발송 -> 도달: 동일 서면의 발송과 도달 (후행 서면이 생략되었거나 동일 서면인 경우)
+                            if rule["rule_id"] == "SEND_BEFORE_RECEIPT":
+                                # 서로 다른 서면(답변서 != 준비서면)이 명시된 경우 제외
+                                if not (c_target and e_target and c_target != e_target and not _same_object_noun(c_target, e_target)):
                                     matched_target = True
 
-                        if not matched_target and rule["rule_id"] == "TARGET_BOUND_DISPOSITION":
-                            mod_c = _extract_target_modifier(c_target)
-                            mod_e = _extract_target_modifier(e_target)
-                            if (mod_c or mod_e) and mod_c != mod_e:
-                                continue
-                            if "신청" in c_target or "신청" in cause_slot.clause_text or "청구" in c_target or "청구" in cause_slot.clause_text:
-                                if any(t_w in e_target or t_w in effect_slot.clause_text for t_w in ("처분", "결정", "통지", "명령", "불승인", "기각", "거부")):
-                                    matched_target = True
+                            # 3-2. 접수 -> 보정: 소장/신청서 접수에 대한 법원의 보정명령 (R4)
+                            elif rule["rule_id"] == "RECEIPT_BEFORE_AMENDMENT":
+                                if any(w in c_target or w in cause_slot.clause_text for w in ("소장", "신청서", "사건", "신청")):
+                                    if any(w in e_target or w in effect_slot.clause_text for w in ("보정", "명령", "권고")):
+                                        matched_target = True
 
-                        # 발송/통지 -> 도달 결합: 동일 통지/서류의 발송과 도달 허용
-                        if not matched_target and rule["rule_id"] == "SEND_BEFORE_RECEIPT":
-                            matched_target = True
+                            # 3-3. 신청 -> 처분: 원고/신청인의 신청에 대한 관할청/법원의 처분·결정
+                            elif rule["rule_id"] == "TARGET_BOUND_DISPOSITION":
+                                # 통지인 경우: 반드시 그 신청에 대한 결과통지여야 함 ('해고 통지' 등 독립적 통지는 매칭 제외, W1)
+                                if effect_slot.kind == "통지":
+                                    is_bound_notice = any(w in e_target or w in effect_slot.clause_text for w in ("결과통지", "통고", "회신", "통보", "위", "그"))
+                                    if is_bound_notice:
+                                        matched_target = True
+                                else:
+                                    # 처분인 경우: 거부, 기각, 각하, 불승인, 승인, 처분, 결정 등 종속 처분
+                                    c_core = _normalize_target(c_target)
+                                    e_core = _normalize_target(e_target)
+                                    if c_core and e_core and c_core != e_core:
+                                        if any(disp in e_core for disp in ("거부", "불승인", "기각", "각하", "처분", "결정", "승인", "인용")):
+                                            matched_target = True
+                                    else:
+                                        matched_target = True
+
+                            # 3-4. 발생 -> 청구/신고: 사고/손해 발생에 대한 청구/신고 (W3)
+                            elif rule["rule_id"] == "OCCURRENCE_BEFORE_CLAIM":
+                                acc_words = ("사고", "교통사고", "손해", "사건", "화재", "재해")
+                                claim_words = ("보험금", "손해배상", "손해배상금", "청구", "신고", "배상", "치료비")
+                                c_is_acc = any(w in c_target for w in acc_words) or any(w in cause_slot.clause_text for w in acc_words)
+                                e_is_claim = any(w in e_target for w in claim_words) or any(w in effect_slot.clause_text for w in claim_words)
+                                if c_is_acc and e_is_claim:
+                                    matched_target = True
 
                         if not matched_target:
                             continue
