@@ -186,9 +186,9 @@ _EXPLICIT_TOTAL_KEYWORD_RE = re.compile(
     r"(?:매매대금|공사대금|용역대금|계약금액|대금|약정금|대여금)\s*총액|총액|전액|합계|총\s*약정금액)"
 )
 
-# Y1: 확정 서술 패턴 (이다|입니다|으로 정하|으로 약정|으로 합의 등)
+# Y1, Q3: 확정 서술 패턴 (어간+어미 결합 및 과거형 '…원이었습니다' 확장)
 _DEFINITIVE_PREDICATE_RE = re.compile(
-    r"(?:이다|입니다|으로\s*정하|으로\s*약정|으로\s*합의|으로\s*기재|으로\s*명시)"
+    r"(?:(?:이|였|이었)?(?:다|습니다|입니다|음)|(?:으)?로\s*(?:정하|약정|합의|기재|명시))"
 )
 
 # Y1: 지급·변제 배제 술어 패턴 (지급·변제·송금·입금·수령 등은 계약 총액 슬롯 제외)
@@ -216,28 +216,124 @@ def _normalize_amount_noun(text: str) -> str:
         return "대금"
     return "대금"
 
-# Y3: 대상 핵심 명사 및 사건 술어 종류 닫힌 사전
+# Y3, Q3: 대상 핵심 명사 및 사건 술어 종류 닫힌 사전 (사건 술어 받침 결합 활용형 '일어난' 확장)
 EVENT_PREDICATE_MAP = {
-    "사고": re.compile(r"(?:발생(?:하|했|하였|한|하고|하여|자마자)?|일어나|났)"),
-    "화재": re.compile(r"(?:발생(?:하|했|하였|한|하고|하여|자마자)?|일어나|났)"),
+    "사고": re.compile(r"(?:발생(?:하|했|하였|한|하고|하여|자마자)?|일어나|일어난|일어났|났|난)"),
+    "화재": re.compile(r"(?:발생(?:하|했|하였|한|하고|하여|자마자)?|일어나|일어난|일어났|났|난)"),
     "계약": re.compile(r"(?:체결(?:하|했|하였|한|하고|하여)?|맺(?:었|은|고)?)"),
     "해지": re.compile(r"(?:해지(?:하|했|하였|한|하고|하여|되었|된|되)?)"),
     "해제": re.compile(r"(?:해제(?:하|했|하였|한|하고|하여|되었|된|되)?)"),
 }
 
-# Y6: 수량 속성 정규식, 허용 단위 목록 및 배제 패턴
+# Y6, Q1: 수량 속성 정규식 - 단위는 구조로 추출 (메모 129 준수, 닫힌 단위 목록 열거 금지)
 _QUANTITY_RE = re.compile(
-    r"(?P<num>\d+(?:,\d{3})*|\d+(?:\.\d+)?)\s*(?P<unit>개|대|톤|평|㎡|m²|명|필지|건|통|권|장|박스|상자|포대)(?=(?:으로|로|을|를|이|가|은|는|에|의|임|이다|입니다)?(?:\s+|[.,;]|$))"
+    r"(?P<num>\d+(?:,\d{3})*|\d+(?:\.\d+)?)\s*"
+    r"(?P<unit>[가-힣]{1,2}?|[A-Za-z㎡㎏ℓ²³]{1,4})"
+    r"(?=(?:으로|로|을|를|이|가|은|는|에|의|임|(?:이|였|이었)?(?:다|습니다|입니다|음)|(?:으)?로\s*(?:정하|약정|합의|기재|명시))(?:\s+|[.,;!?~]|$)|(?:\s+|[.,;!?~]|$))"
 )
+
+# Q1: 수량 단위 제외 규칙 (금액 단위, 날짜·시각, 조문·순번, 비율)
+_EXCLUDED_QUANTITY_UNITS_RE = re.compile(
+    r"^(?:원|만|억|천|만원|억원|천원|년|월|일|시|분|초|조|항|호|차|번|회|%|퍼센트|배)$|"
+    r"[원만억천년월일시분초조항호차번회배%]|퍼센트"
+)
+
 _QUANTITY_ARITHMETIC_EXCLUDE_RE = re.compile(
     r"(?:[+=×÷*\/]|합계|총계|더한|합한|합쳐|산출|공제한|각\s*\d+|배수|곱한|정정값)"
 )
 _QUANTITY_PARTIAL_RE = re.compile(
     r"(?:그중|그\s*가운데|일부|나머지|추가로|1차|2차|3차|분할|선지급|선납|선인도)"
 )
+# Q3: 수량 뒤 서술 표지 (과거형 '…개였습니다' 등 확장)
 _QUANTITY_DEFINITIVE_RE = re.compile(
-    r"(?:이다|입니다|(?:으)?로\s*(?:정하|약정|합의|기재|명시)|(?:정하|약정|합의|기재|명시)(?:하|했|하였|된|될|할)|을\s*(?:공급|납품|매매|인도|보유)|에\s*달하|임)"
+    r"(?:(?:이|였|이었)?(?:다|습니다|입니다|음)|(?:으)?로\s*(?:정하|약정|합의|기재|명시)|(?:정하|약정|합의|기재|명시)(?:하|했|하였|된|될|할)|을\s*(?:공급|납품|매매|인도|보유)|에\s*달하)"
 )
+
+# Q2: 수량 대상 명사 구조적 추출 관련 정규식
+_PARTY_TITLE_EXCLUDE_PAT = re.compile(
+    r"^(?:원고|피고(?:인)?|신청인|피신청인|채권자|채무자|당사자|소외|참가인|대리인|변호사|보조참가인|상대방)(?:들|측)?(?:에게|한테|와의|과의|과|와|에|는|은|이|가|을|를|의)?$"
+)
+_DEMONSTRATIVE_PREFIX_RE = re.compile(r"^(?:위|이\s*사건|본건|해당|동)\s*")
+_PROPERTY_HEAD_PAT = re.compile(r"(?:수량|개수|물량|공급량|인도량|납품량|총량|수치)")
+_EXCLUDED_PROCEDURAL_NOUNS = {
+    "소송", "본안", "청구", "서증", "호증", "제출", "주장", "진술", "항변", "입증",
+    "사실", "이유", "당시", "경우", "관련", "기준", "내용", "결과", "기재",
+}
+_PARTICLE_STRIP_RE = re.compile(r"(?:을|를|이|가|은|는|의|에)$")
+
+def _extract_quantity_target(
+    clause: str,
+    q_start: int,
+    sentence: str,
+    last_target: Optional[str] = None,
+) -> Optional[str]:
+    """Q2: 수량 앞의 주제·주어·목적어 명사구에서 핵심 명사를 구조적으로 추출한다."""
+    preceding = clause[:q_start].strip()
+    if not preceding and sentence:
+        clause_idx = sentence.find(clause)
+        if clause_idx > 0:
+            preceding = sentence[:clause_idx].strip()
+
+    # 1) '수량·개수·물량'처럼 속성 이름 자체가 머리 명사이면 그 앞 'X의'의 X를 추출 ('위 [X]의 인도 수량' -> X)
+    m_prop = re.search(
+        r"(?:(?P<pfx>위|이\s*사건|본건|해당|동)\s*)?(?P<target>[가-힣a-zA-Z0-9]{2,15})\s*의\s*(?:[가-힣a-zA-Z0-9]{1,10}\s+)*(?:수량|개수|물량|공급량|인도량|납품량|총량|수치)\s*(?:은|는|이|가|을|를|의)?\s*$",
+        preceding
+    )
+    if m_prop:
+        raw_t = m_prop.group("target")
+        clean_t = _DEMONSTRATIVE_PREFIX_RE.sub("", raw_t).strip()
+        clean_t = _PARTICLE_STRIP_RE.sub("", clean_t).strip()
+        if not _PARTY_TITLE_EXCLUDE_PAT.match(clean_t) and clean_t not in _EXCLUDED_PROCEDURAL_NOUNS:
+            if len(clean_t) >= 2:
+                return clean_t
+
+    # 1-1) 속성 명사만 지시어와 함께 단독으로 쓰인 경우 ('위 수량은', '해당 물량은') 직전 대상으로 푼다
+    if re.search(r"(?:위|이\s*사건|본건|해당|동)\s*(?:수량|개수|물량|공급량|인도량|납품량|총량|수치)\s*(?:은|는|이|가|을|를|의)?\s*$", preceding):
+        if last_target:
+            return last_target
+
+    # 2) 수량 바로 앞 수식 명사 ('노트북 10대', '사과 100상자', '신발 50켤레')
+    m_direct = re.search(r"(?:(?P<pfx>위|이\s*사건|본건|해당|동)\s*)?(?P<noun>[가-힣a-zA-Z0-9]{2,15})\s*$", preceding)
+    if m_direct:
+        raw_n = m_direct.group("noun")
+        clean_n = _DEMONSTRATIVE_PREFIX_RE.sub("", raw_n).strip()
+        clean_n = _PARTICLE_STRIP_RE.sub("", clean_n).strip()
+        if not _PARTY_TITLE_EXCLUDE_PAT.match(clean_n) and not _PROPERTY_HEAD_PAT.match(clean_n) and clean_n not in _EXCLUDED_PROCEDURAL_NOUNS:
+            if len(clean_n) >= 2:
+                return clean_n
+
+    # 3) 수량 앞 주제·주어·목적어 명사구 (X(은|는|이|가|을|를|의)) 역순 탐색 (수량에 가장 가까운 것 우선)
+    matches = list(re.finditer(
+        r"(?:(?P<pfx>위|이\s*사건|본건|해당|동)\s*)?(?P<noun>[가-힣a-zA-Z0-9]{2,15})\s*(?P<p>은|는|이|가|을|를|의)",
+        preceding
+    ))
+    for m in reversed(matches):
+        raw_n = m.group("noun")
+        clean_n = _DEMONSTRATIVE_PREFIX_RE.sub("", raw_n).strip()
+        clean_n = _PARTICLE_STRIP_RE.sub("", clean_n).strip()
+        if _PARTY_TITLE_EXCLUDE_PAT.match(clean_n) or clean_n in _EXCLUDED_PROCEDURAL_NOUNS:
+            continue
+        if _PROPERTY_HEAD_PAT.match(clean_n):
+            continue
+        if len(clean_n) >= 2:
+            return clean_n
+
+    # 4) 수량 뒤에 '의 [명사구]'가 오는 후행 수식 구조 ('50대의 차량을', '100개의 부품을')
+    following_scope = clause[q_start:min(len(clause), q_start + 40)]
+    m_post = re.search(r"\d+\s*[가-힣a-zA-Z0-9㎡㎏ℓ²³]{1,4}\s*의\s*(?:(?P<pfx>위|이\s*사건|본건|해당|동)\s*)?(?P<noun>[가-힣a-zA-Z0-9]{2,15})", following_scope)
+    if m_post:
+        raw_n = m_post.group("noun")
+        clean_n = _DEMONSTRATIVE_PREFIX_RE.sub("", raw_n).strip()
+        clean_n = _PARTICLE_STRIP_RE.sub("", clean_n).strip()
+        if not _PARTY_TITLE_EXCLUDE_PAT.match(clean_n) and clean_n not in _EXCLUDED_PROCEDURAL_NOUNS:
+            if len(clean_n) >= 2:
+                return clean_n
+
+    # 5) 지시어만 남은 경우 직전 대상 승계
+    if re.search(r"(?:위|본건|해당|이\s*사건)", preceding) and last_target:
+        return last_target
+
+    return None
 
 # T3: 동일 대상 지시어 패턴 (지시어는 키에서 제외하고 핵심 명사만 추출)
 _TARGET_REF_RE = re.compile(
@@ -525,11 +621,12 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
             if author_m:
                 exhibit_author_map[ex_key] = author_m.group("author")
 
-    # T6, Y8: 단락(block) 단위 직전 절대 일자, 직전 단락 일자 및 주어 유지 변수
+    # T6, Y8, Q2: 단락(block) 단위 직전 절대 일자, 직전 단락 일자, 주어 및 수량 대상 유지 변수
     current_block_id: Optional[str] = None
     block_last_date: Optional[Tuple[int, int, int]] = None
     prev_block_last_date: Optional[Tuple[int, int, int]] = None
     block_last_subject: str = "당사자"
+    block_last_quantity_target: Optional[str] = None
     is_first_sentence_in_block = True
 
     # 문장 단위로 순회
@@ -554,6 +651,7 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                 block_last_date = None
                 is_first_sentence_in_block = True
                 block_last_subject = "당사자"
+                block_last_quantity_target = None
 
         # T8, Y5: 당사자 지위 3항 구조 (계약 분류 코드 통일 및 계약명 선행/후행/생략 매칭)
         if not _ROLE_EXCLUDE_RE.search(sentence):
@@ -628,6 +726,9 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
         # A-4 선후 관계 키워드 2개 이상 교차 시 일시 슬롯 배제 가드
         seq_words = _TEMPORAL_SEQUENCE_WORDS_RE.findall(sentence)
         is_cross_event_sequence = len(set(seq_words)) >= 2
+
+        # Q2: 수량 대상 명사 유지 변수
+        last_quantity_target: Optional[str] = block_last_quantity_target
 
         for clause in clauses:
             # (3-1) 주체 업데이트
@@ -724,24 +825,25 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                         if s_name and s_name not in ("피고", "원고", "피고인", "작성", "서명", "확인", "사건"):
                             signer_stmts.append(_SignerStatement(ex_target, s_name, is_sole, clause, page))
 
-            # (3-7) 수량 슬롯 추출 (Y6: 대상 명사 + 단위 + 확정 서술 결합 및 산식 제외)
+            # (3-7) 수량 슬롯 추출 (Y6, Q1~Q3: 구조적 대상 추출, 구조적 단위 추출, 활용형 확장)
             if not _QUANTITY_PARTIAL_RE.search(clause) and not _QUANTITY_ARITHMETIC_EXCLUDE_RE.search(sentence) and not _QUANTITY_ARITHMETIC_EXCLUDE_RE.search(clause):
                 for q_m in _QUANTITY_RE.finditer(clause):
                     u = q_m.group("unit")
-                    following_q = clause[q_m.end():min(len(clause), q_m.end() + 20)]
+                    # Q1: 금액·일시·조문·비율 단위 제외
+                    if _EXCLUDED_QUANTITY_UNITS_RE.search(u):
+                        continue
+                    following_q = clause[q_m.end():min(len(clause), q_m.end() + 30)]
                     if _QUANTITY_DEFINITIVE_RE.search(following_q) or _EXPLICIT_TOTAL_KEYWORD_RE.search(clause):
                         try:
                             q_val = Decimal(q_m.group("num").replace(",", ""))
                             if q_val > 0:
-                                m_tn = re.search(r"(?:위|본건|해당|이\s*사건)?\s*(?P<target>[가-힣]{0,8}?(?:차량|자동차|기계|장비|물품|제품|자재|목적물|토지|건물|필지|면적|인원|인력))", clause)
-                                if not m_tn:
-                                    m_tn = re.search(r"(?:위|본건|해당|이\s*사건)?\s*(?P<target>[가-힣]{0,8}?(?:차량|자동차|기계|장비|물품|제품|자재|목적물|토지|건물|필지|면적|인원|인력))", sentence)
-                                if not m_tn:
-                                    continue
-                                raw_t = m_tn.group("target").strip()
-                                target_noun = re.sub(r"^(?:위|본건|해당|이\s*사건)\s*", "", raw_t).strip()
+                                target_noun = _extract_quantity_target(
+                                    clause, q_m.start(), sentence, last_quantity_target
+                                )
                                 if not target_noun:
                                     continue
+                                last_quantity_target = target_noun
+                                block_last_quantity_target = target_noun
                                 q_key = f"quantity_{target_noun}_{u}"
                                 quantity_stmts.append(_QuantityStatement(q_key, target_noun, q_val, u, clause, page))
                         except InvalidOperation:

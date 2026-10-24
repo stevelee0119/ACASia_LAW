@@ -22,8 +22,8 @@
 | 11 | `test_control_6_different_exhibit_clauses` | `test_control_different_exhibit_clauses` | `tests/test_evi_incons_internal.py` | 대조군 명칭 정규화 (상이한 서증 조항 대조군) |
 | 12 | `test_control_7_non_exclusive_location_movement` | `test_control_non_exclusive_location_movement` | `tests/test_evi_incons_internal.py` | 대조군 명칭 정규화 (비배타적 일반 이동 대조군) |
 | 13 | `test_control_8_joint_multiple_signers` | `test_control_joint_multiple_signers` | `tests/test_evi_incons_internal.py` | 대조군 명칭 정규화 (공동 서명자 정상 서술 대조군) |
-| 14 | `test_control_9_opponent_claim_citation` | `test_control_t2_opponent_claim_citation_claims`, `test_control_t2_opponent_claim_citation_dispute`, `test_control_t2_opponent_claim_citation_retraction` | `tests/test_evi_incons_internal.py` | T2 지시: 상대방 주장 인용 3꼴('주장합니다', '다툽니다', '번복합니다')로 확장 분리 |
-| 15 | `test_control_10_valid_arithmetic_formula` | `test_control_t1_no_internal_arithmetic_detection` | `tests/test_evi_incons_internal.py` | T1 지시: EVI-INCONS 모듈 내 산식 미검출 확인 대조군으로 전환 |
+| 14 | `test_control_9_opponent_claim_citation` | `test_control_t2_opponent_claim_citation_claims`, `test_control_t2_opponent_claim_citation_disputes`, `test_control_t2_opponent_claim_citation_recants` | `tests/test_evi_incons_internal.py` | T2 지시: 상대방 주장 인용 3꼴('주장합니다', '다툽니다', '번복합니다')로 확장 분리 |
+| 15 | `test_control_10_valid_arithmetic_formula` | `test_control_t1_no_arithmetic_mismatch_in_b3` | `tests/test_evi_incons_internal.py` | T1 지시: EVI-INCONS 모듈 내 산식 미검출 확인 대조군으로 전환 |
 
 ## 3. 검증 결과
 - `tests/test_calculation_leading_multiplier.py`: 13 passed (100% 통과, 이전된 산식 시험 포함).

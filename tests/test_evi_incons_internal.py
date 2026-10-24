@@ -488,3 +488,99 @@ def test_y8_relative_date_cross_block_and_korean_numbers():
     assert _parse_korean_amount("삼천만 원") == 30_000_000
     assert _parse_korean_amount("3천5백만 원") == 35_000_000
     assert _parse_korean_amount("2억 5천만 원") == 250_000_000
+
+
+# ==============================================================================
+# B-3 5차 보완 검증 테스트: Q1 ~ Q3 전용 검증 (한국어 주석)
+# ==============================================================================
+
+
+def test_q1_unlisted_quantity_units_and_excluded_units():
+    """Q1: 목록 밖 단위(켤레, 리터) 구조적 추출 양성 및 제외 단위(조문·순번·비율) 슬롯 배제 검증 (한국어 주석)."""
+    # 1. 목록 밖 단위 1: '켤레' ('50켤레' ↔ '30켤레' 충돌 = 양성)
+    text_u1 = (
+        "원고는 피고에게 신발 50켤레를 공급하기로 약정하였습니다. "
+        "그러나 실제 인도된 위 신발은 30켤레였습니다."
+    )
+    doc_u1 = _make_doc(text_u1)
+    f_u1 = [f for f in check_internal_inconsistency(doc_u1) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(f_u1) == 1, f"Q1 목록 밖 단위(켤레) 수량 충돌 미탐지: {f_u1}"
+
+    # 2. 목록 밖 단위 2: '리터' ('300리터' ↔ '200리터' 충돌 = 양성)
+    text_u2 = (
+        "이 사건 원유의 납품 수량은 300리터로 정하였습니다. "
+        "한편 다른 준비서면에서 위 원유의 납품 수량은 200리터로 기재하였습니다."
+    )
+    doc_u2 = _make_doc(text_u2)
+    f_u2 = [f for f in check_internal_inconsistency(doc_u2) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(f_u2) == 1, f"Q1 목록 밖 단위(리터) 수량 충돌 미탐지: {f_u2}"
+
+    # 3. 제외 단위 검증: 조문(조·항·호), 순번(차·번·회), 비율(%, 배) -> 수량 슬롯 배제 (오탐 0건)
+    text_ex = (
+        "원고는 민법 제100조 및 제2항 제3호에 따라 연 5%의 비율에 의한 지연손해금을 청구하며, "
+        "손해배상금은 약정액의 2배에 달하고, 제3차에 걸친 5회 납품 과정에서 10번 확인하였습니다."
+    )
+    doc_ex = _make_doc(text_ex)
+    f_ex = [f for f in check_internal_inconsistency(doc_ex) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(f_ex) == 0, f"Q1 조문·순번·비율 단위 슬롯 오탐 발생: {f_ex}"
+
+
+def test_q2_unlisted_quantity_targets_and_controls():
+    """Q2: 목록 밖 대상(노트북, 마스크) 구조적 추출 양성 및 서로 다른 대상 대조군 검증 (한국어 주석)."""
+    # 1. 목록 밖 대상 1: '노트북' ('50대' ↔ '30대' 충돌 = 양성)
+    text_t1 = (
+        "원고는 피고에게 노트북 50대를 공급하기로 약정하였습니다. "
+        "그러나 실제로 납품된 위 노트북은 30대였습니다."
+    )
+    doc_t1 = _make_doc(text_t1)
+    f_t1 = [f for f in check_internal_inconsistency(doc_t1) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(f_t1) == 1, f"Q2 목록 밖 대상(노트북) 충돌 미탐지: {f_t1}"
+
+    # 2. 목록 밖 대상 2: '마스크' 및 속성 머리 명사 해소('위 [X]의 인도 수량' -> X) ('5,000매' ↔ '3,000매' 충돌 = 양성)
+    text_t2 = (
+        "이 사건 마스크의 계약 수량은 5,000매로 약정하였습니다. "
+        "한편 위 마스크의 실제 인도 수량은 3,000매였습니다."
+    )
+    doc_t2 = _make_doc(text_t2)
+    f_t2 = [f for f in check_internal_inconsistency(doc_t2) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(f_t2) == 1, f"Q2 목록 밖 대상(마스크) 속성 수량 충돌 미탐지: {f_t2}"
+
+    # 3. 대조군: 서로 다른 대상의 수량 서술 ('노트북 50대' vs '모니터 30대' -> 모순 아님, 대조군 오탐 0건)
+    text_ctrl = (
+        "원고는 피고에게 노트북 50대를 납품하였습니다. "
+        "또한 피고에게 모니터 30대를 인도하였습니다."
+    )
+    doc_ctrl = _make_doc(text_ctrl)
+    f_ctrl = [f for f in check_internal_inconsistency(doc_ctrl) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(f_ctrl) == 0, f"Q2 서로 다른 대상 대조군 오탐 발생: {f_ctrl}"
+
+
+def test_q3_definitive_predicate_and_event_predicate_inflections():
+    """Q3: 과거형 확정 서술('…원이었습니다', '…개였습니다') 및 사건 술어 받침 결합('일어난') 양성 검증 (한국어 주석)."""
+    # 1. 금액 과거형 확정 서술 충돌 ('…원이었습니다')
+    text_amt = (
+        "이 사건 공사계약 총액은 50,000,000원이었습니다. "
+        "그러나 다른 준비서면에서 위 공사계약 총액은 80,000,000원이었습니다."
+    )
+    doc_amt = _make_doc(text_amt)
+    f_amt = [f for f in check_internal_inconsistency(doc_amt) if f.confidence_features.get("inconsistency_type") == "AMOUNT"]
+    assert len(f_amt) == 1, f"Q3 과거형 금액 확정 서술('원이었습니다') 충돌 미탐지: {f_amt}"
+
+    # 2. 수량 과거형 확정 서술 충돌 ('…개였습니다')
+    text_qty = (
+        "이 사건 부품의 납품 수량은 100개였습니다. "
+        "한편 다른 준비서면에서 위 부품의 납품 수량은 80개였습니다."
+    )
+    doc_qty = _make_doc(text_qty)
+    f_qty = [f for f in check_internal_inconsistency(doc_qty) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(f_qty) == 1, f"Q3 과거형 수량 확정 서술('개였습니다') 충돌 미탐지: {f_qty}"
+
+    # 3. 일자 사건 술어 관형형 받침 결합 ('…가 일어난 [날짜]')
+    text_date = (
+        "이 사건 화재가 일어난 2023. 5. 10. 당시 건물에 상주하고 있었습니다. "
+        "그러나 피고는 위 화재가 2023. 5. 25. 발생하였다고 적었습니다."
+    )
+    doc_date = _make_doc(text_date)
+    f_date = [f for f in check_internal_inconsistency(doc_date) if f.confidence_features.get("inconsistency_type") == "DATE"]
+    assert len(f_date) == 1, f"Q3 사건 술어 관형형('일어난') 일자 충돌 미탐지: {f_date}"
+
