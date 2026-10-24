@@ -630,8 +630,10 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
         prefixes = {re.sub(r"\s", "", pair[0]) for pair in pairs}
         if len(prefixes) != 1:
             return original
-        # Keep the approved date-availability residual and native/GLOBAL guards.
-        if len({re.sub(r"\s", "", row.get("date") or "") for row in same}) != 1:
+        # 양쪽 모두 날짜가 기재되어 있으나 서로 다른 경우에만 별개 자료로 보아 original을 유지하고,
+        # 한쪽에만 날짜가 병기된 동일 자료명 접두(prefixes == 1) 반복은 같은 호증의 부연 설명으로 취급한다.
+        non_empty_dates = {re.sub(r"\s", "", row.get("date") or "") for row in same if (row.get("date") or "").strip()}
+        if len(non_empty_dates) > 1:
             return original
         if any(first_token_identifier(pair[2]) for pair in pairs):
             return original
