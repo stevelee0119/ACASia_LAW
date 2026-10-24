@@ -174,21 +174,139 @@ function filterUnverifiedAuthorities(items) {
 
 // 인용 식별자 내 허용 요소(판례: 법원·선고일·사건번호·종국구분·전원합의체 / 법령: 법령명·조항호·시점표기)만 추출 (TK-94)
 // 지우는 방식 대신 허용 목록 화이트리스트 추출을 적용하여 당사자 성명, 괄호/대괄호 부기 등 불필요한 개인정보를 완전히 배제한다.
-// 추출에 실패하거나 개인 식별 정보만 있는 경우 '식별자 확인 불가'를 반환한다.
+// 법령명은 조문 바로 앞 최소 접미 어절(끝 1~4어절, 조사로 끝나는 어절·당사자 표기·인명 제외)만 추출하며,
+// 추출에 실패하거나 개인 식별 정보만 있는 경우 조문만 반환하거나 '식별자 확인 불가'를 반환한다.
 function maskAuthorityIdentifier(rawAuth) {
   if (!rawAuth) return "식별자 확인 불가";
   const text = String(rawAuth).trim();
   if (!text) return "식별자 확인 불가";
 
-  // 1. 법령 조항 우선 검사 (제X조가 포함된 경우 명백한 법령)
-  const articleMatch = text.match(/제\s*\d+\s*조(?:의\s*\d+)?(?:\s*제\s*\d+\s*항)?(?:\s*제\s*\d+\s*호)?(?:\s*제\s*[가-힣]\s*목)?/);
+  // 조문 바로 앞 텍스트(또는 단독 법령 텍스트)에서 최소 접미 어절(끝 1~4어절, 조사로 끝나는 어절·당사자 표기·인명 제외)만 법령명으로 추출
+  function extractMinimalLawName(rawPrefix) {
+    if (!rawPrefix) return "";
+    // 1) '홍길동(원고)' 형태 및 일반 괄호·대괄호 부기 제거, 앞뒤 구분자 정리
+    const cleaned = rawPrefix
+      .replace(/[가-힣]{2,4}\s*[(（【\[][^)\]）】]*(?:원고|피고|신청인|피신청인|채권자|채무자|고소인|피의자|피고인|당사자)[^)\]）】]*[)）】\]]/g, " ")
+      .replace(/[(（【\[].*?[)）】\]]/g, " ")
+      .replace(/^[\s|―—\-/:,.;]+|[\s|―—\-/:,.;]+$/g, "")
+      .trim();
+    if (!cleaned) return "";
+
+    const allTokens = cleaned.split(/\s+/).filter(Boolean);
+    if (allTokens.length === 0) return "";
+
+    // 당사자·역할·소송서술 배제 어절
+    const roleOrStopWordRe = /^(?:원고|피고|신청인|피신청인|채권자|채무자|고소인|피고소인|피의자|피고인|상대방|당사자|소송대리인|대리인|변호사|법무법인|작성자|진술인|참고인|증인|피해자|본인|측|주장|인용|적용|위반|근거|관련|사건|내용|판례|법원|재판부)(?:측|들)?$/;
+    // 조사·어미로 끝나는 어절 배제
+    const particleEndingRe = /(?:의|이|가|은|는|을|를|에서|에게|께|한테|으로|로|와|과|도|만|부터|까지|라|라는|다는|하는|한|된|인|할|던|따른|의한|관하여|대하여|대한)$/;
+    // 법령 종별 접미사
+    const lawSuffixRe = /(?:법|법률|시행령|시행규칙|령|규칙|조례|규정|정관|약관|지침|기준|세칙)$/;
+    // 법령이 아닌 일반 '-법/-령' 단어 배제
+    const nonLawWordRe = /^(?:방법|불법|위법|적법|합법|사법|입법|수법|기법|해법|문법|화법|선법|비법|요령|명령|발령|수령|고령|연령|대통령|소장)$/;
+    // 앞에 수식 명사 어절을 가질 수 있는 복합 법령 후행 어절
+    const compoundLawTailRe = /^(?:보호법|보장법|기본법|특별법|특례법|관리법|촉진법|처벌법|규제법|절차법|사업법|진흥법|지원법|예방법|보험법|거래법|보상법|임대차보호법|손해배상보장법|관계조정법|가중처벌법|이용촉진법)$/;
+    // 복합 법령의 선행 법률·제도 도메인 어근
+    const legalDomainRootRe = /(?:정보|건물|주택|배상|비밀|생활|소비|환경|안전|보건|재해|통신|범죄|폭력|금융|규제|거래|유통|부동산|국토|도시|위생|건강|보험|보상|산업|공정|보호|보장|관리|소유|이용|촉진|처벌|특례|지원|진흥|사업|개발|시설|물품|용역|하도급|가맹|전자|자동차|철도|항공|해양|수산|농업|임업|축산|교육|문화|예술|체육|과학|기술|에너지|원자력|폐기물|수도|하수도|하천|도로|항만|공항|건축|건설|소방|재난|응급|의료|약사|식품|마약|감염|검역|특허|실용|디자인|상표|저작|영업|부정경쟁|채무|회생|파산|중재|조정|공탁|등기|가족|호적|민사|형사|가사|행정|헌법|군사|국가|지방|공공|공익|공무원|군인|경찰|검찰|법원|변호사|법무사|세무사|회계사|노무사|근로|고용|노동|퇴직|연금|기초|장애|아동|청소년|여성|노인|보훈|유공자|개인|위치|신용|자본|증권|신탁|여신|은행|상호|새마을|협동조합|상가|임대차|약관|할부|방문|집합)/;
+
+    // 1. 차단 대상 어절(비한글, 당사자 표기, 당사자 뒤 인명, 조사/어미로 끝나는 어절) 표시
+    const isBlockedToken = new Array(allTokens.length).fill(false);
+    for (let i = 0; i < allTokens.length; i++) {
+      const tok = allTokens[i];
+      if (!/^[가-힣0-9·]+$/.test(tok)) {
+        isBlockedToken[i] = true;
+        continue;
+      }
+      const isNextGwanHan = i + 1 < allTokens.length && allTokens[i + 1] === "관한";
+      const isEndedWithE = tok.endsWith("에") && !isNextGwanHan;
+      if (roleOrStopWordRe.test(tok) || particleEndingRe.test(tok) || isEndedWithE) {
+        isBlockedToken[i] = true;
+        // 당사자 역할어 바로 뒤에 오는 2~4자 한글(인명)도 함께 차단
+        if (roleOrStopWordRe.test(tok) && i + 1 < allTokens.length) {
+          const nextTok = allTokens[i + 1];
+          if (/^[가-힣]{2,4}$/.test(nextTok) && !lawSuffixRe.test(nextTok)) {
+            isBlockedToken[i + 1] = true;
+          }
+        }
+      }
+    }
+
+    // 2. 조문 바로 앞 마지막 어절 검사
+    const lastIdx = allTokens.length - 1;
+    const lastTok = allTokens[lastIdx];
+    if (
+      isBlockedToken[lastIdx] ||
+      lastTok.length < 2 ||
+      !lawSuffixRe.test(lastTok) ||
+      nonLawWordRe.test(lastTok)
+    ) {
+      return "";
+    }
+
+    // 3. 최소 접미 어절 수집 (끝 1~4어절)
+    const collected = [lastTok];
+    let cursor = lastIdx;
+
+    // (a) 하위 규범 종별어(시행령, 시행규칙 등)인 경우 바로 앞 본법 어절 결합
+    if (/^(?:시행령|시행규칙|규칙|조례|규정|정관|약관|지침|기준|세칙)$/.test(lastTok) && cursor - 1 >= 0) {
+      const prevTok = allTokens[cursor - 1];
+      if (!isBlockedToken[cursor - 1] && /(?:법|법률)$/.test(prevTok) && !nonLawWordRe.test(prevTok)) {
+        collected.unshift(prevTok);
+        cursor -= 1;
+      }
+    }
+
+    const headTok = collected[0];
+
+    // (b) '~에 관한 법률/특례법/규칙/규정' 꼴 (끝 1~4어절)
+    if (/(?:법률|법|규칙|규정|지침)$/.test(headTok) && cursor - 1 >= 0 && allTokens[cursor - 1] === "관한") {
+      collected.unshift("관한");
+      cursor -= 1;
+      if (cursor - 1 >= 0 && /^(?:[가-힣0-9·]+에|등에)$/.test(allTokens[cursor - 1])) {
+        const eTok = allTokens[cursor - 1];
+        if (!/^(?:원고|피고|신청인|피신청인|채권자|채무자|고소인|피의자|피고인|상대방|당사자)에$/.test(eTok)) {
+          collected.unshift(eTok);
+          cursor -= 1;
+          while (collected.length < 4 && cursor - 1 >= 0) {
+            const prevTok = allTokens[cursor - 1];
+            if (prevTok === "및" || (!isBlockedToken[cursor - 1] && legalDomainRootRe.test(prevTok))) {
+              collected.unshift(prevTok);
+              cursor -= 1;
+            } else {
+              break;
+            }
+          }
+          if (collected[0] === "및") collected.shift();
+        }
+      }
+    }
+    // (c) 복합 법령 후행 어절(보호법, 보장법, 임대차보호법 등) 또는 '및' 결합 법령인 경우 앞의 법률 도메인 어절 결합 (끝 1~4어절)
+    else if (compoundLawTailRe.test(headTok) || (cursor - 1 >= 0 && allTokens[cursor - 1] === "및")) {
+      while (collected.length < 4 && cursor - 1 >= 0) {
+        const prevTok = allTokens[cursor - 1];
+        if (prevTok === "및" || (!isBlockedToken[cursor - 1] && legalDomainRootRe.test(prevTok))) {
+          collected.unshift(prevTok);
+          cursor -= 1;
+        } else {
+          break;
+        }
+      }
+      if (collected[0] === "및") collected.shift();
+    }
+
+    return collected.join(" ");
+  }
+
+  // 괄호·대괄호 부기를 제거한 본체 텍스트
+  const textWithoutBrackets = text.replace(/[(（【\[].*?[)）】\]]/g, " ").trim();
+
+  // 1. 법령 조항 우선 검사 (본체에 제X조가 포함된 경우 명백한 법령)
+  const articleMatch = textWithoutBrackets.match(/제\s*\d+\s*조(?:의\s*\d+)?(?:\s*제\s*\d+\s*항)?(?:\s*제\s*\d+\s*호)?(?:\s*제\s*[가-힣]\s*목)?/);
   if (articleMatch) {
     const parts = [];
-    const prefix = text.slice(0, articleMatch.index).trim();
-    // 법령명 추출 (예: 민법, 형법, 근로기준법, 개인정보 보호법, 상가건물 임대차보호법 등)
-    const prefixLawMatch = prefix.match(/([가-힣0-9·\s]+?(?:법|법률|령|규칙|조례|규정|정관|약관|지침|기준|세칙))$/);
-    if (prefixLawMatch) {
-      parts.push(prefixLawMatch[1].trim());
+    const prefix = textWithoutBrackets.slice(0, articleMatch.index).trim();
+    const lawName = extractMinimalLawName(prefix);
+    if (lawName) {
+      parts.push(lawName);
     }
     parts.push(articleMatch[0].replace(/\s+/g, " ").trim());
     // 법령 시점 표기 추출 (괄호 안 개정/시행/신설/폐지 등 유지)
@@ -225,9 +343,9 @@ function maskAuthorityIdentifier(rawAuth) {
   }
 
   // 3. 조항 없는 단독 법령명 검사 (예: '상가건물 임대차보호법')
-  const standaloneLawMatch = text.match(/^([가-힣0-9·\s]+?(?:법|법률|령|규칙|조례|규정|정관|약관|지침|기준|세칙))(?:\s*[(（【[].*?[)）】\]]|\s*$)/);
-  if (standaloneLawMatch) {
-    const parts = [standaloneLawMatch[1].trim()];
+  const standaloneLawName = extractMinimalLawName(text);
+  if (standaloneLawName) {
+    const parts = [standaloneLawName];
     const temporalMatch = text.match(/\([^)]*?(?:개정|시행|신설|폐지|효력|적용)[^)]*?\)/);
     if (temporalMatch) {
       parts.push(temporalMatch[0].trim());
