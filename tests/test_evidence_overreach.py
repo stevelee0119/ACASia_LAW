@@ -232,3 +232,148 @@ def test_pipeline_evidence_overreach_entrypoint():
     assert f.confidence_features.get("exhibit") == "을 제2호증"
     assert f.confidence_features.get("category") == "ESTIMATE_OVERREACH"
     assert "을 제2호증" in f.evidence[0].excerpt
+
+
+# --- 5. B-1 4차 보완 S1~S8 검증 시험 ----------------------------------------------
+
+def test_s1_predicate_word_boundary_and_non_intent_controls():
+    """S1: '의사표시', 직업 '의사', '해지 의사', 복합어('합의서', '확정판결', '계속적 거래') 대조군 (오탐 0)."""
+    # 1) 의사표시, 해지 의사 통지 대조
+    doc1 = _make_doc(
+        "원고는 계약 해제의 의사표시를 최고서(갑 제1호증)로써 피고에게 도달시켰습니다.",
+        "입증방법", "1. 갑 제1호증 최고서 (발신인: 원고)"
+    )
+    assert len(check_evidence_overreach(doc1)) == 0
+
+    # 2) 직업 의사 대조
+    doc2 = _make_doc(
+        "원고는 담당 의사의 진단에 따라 상해진단서(갑 제2호증)를 발급받았습니다.",
+        "입증방법", "1. 갑 제2호증 상해진단서"
+    )
+    assert len(check_evidence_overreach(doc2)) == 0
+
+    # 3) 낱말 경계 복합어 대조: 합의서, 확정판결, 계속적 거래
+    doc3 = _make_doc(
+        "당사자들은 합의서(을 제1호증)를 작성하였고, 확정판결 및 계속적 거래 관계를 유지하였습니다.",
+        "입증방법", "1. 을 제1호증 합의서"
+    )
+    assert len(check_evidence_overreach(doc3)) == 0
+
+
+def test_s2_notice_predicate_subject_controls_and_positive():
+    """S2: 자기 측 통지로 자기 해제 의사표시 도달 증명은 오탐 0, 상대방 승낙 단정은 양성(B)."""
+    # 1) 정상 대조군: 자기 측 통지로 자기 해제 의사표시의 도달을 증명
+    doc_ctrl = _make_doc(
+        "원고는 최고서(갑 제1호증)에 의하여 원고의 해제 의사가 피고에게 도달하였음을 확인합니다.",
+        "입증방법", "1. 갑 제1호증 최고서 (발신인: 원고)"
+    )
+    assert len(check_evidence_overreach(doc_ctrl)) == 0
+
+    # 2) 양성: 자기 측 통지로 피고(상대방)의 승낙을 단정
+    doc_pos = _make_doc(
+        "원고의 최고서(갑 제1호증)에 의하여 피고가 계약 해제를 승낙한 사실이 입증됩니다.",
+        "입증방법", "1. 갑 제1호증 최고서 (발신인: 원고)"
+    )
+    findings = check_evidence_overreach(doc_pos)
+    assert len(findings) == 1
+    assert findings[0].evidence_grade == EvidenceGrade.B
+
+
+def test_s3_sender_detection_from_exhibit_or_prep_clause():
+    """S3: 발신인이 자기 측이고 술어 주체가 상대방인 문장 양성, 상대방 발신 통지는 제외 대조군."""
+    # 1) 바로 앞 관형절로 발신인 특정 양성
+    doc_pos = _make_doc(
+        "원고가 발송한 최고서(갑 제1호증)에 따라 피고가 채무를 승인한 사실이 확인됩니다.",
+        "입증방법", "1. 갑 제1호증 최고서"
+    )
+    findings = check_evidence_overreach(doc_pos)
+    assert len(findings) == 1
+    assert findings[0].evidence_grade == EvidenceGrade.B
+
+    # 2) 상대방 발신 통지는 상대방 의무 입증에 정당하므로 제외 대조군
+    doc_ctrl = _make_doc(
+        "피고가 발송한 최고서(갑 제1호증)에 의하여 피고의 채무 승인 사실이 명백히 입증됩니다.",
+        "입증방법", "1. 갑 제1호증 최고서"
+    )
+    assert len(check_evidence_overreach(doc_ctrl)) == 0
+
+
+def test_s4_direct_proof_structure_five_surface_forms():
+    """S4: 직접 증명 구조 5대 표면형((으)로, 에 의하여, 을/를 통해, 에 비추어, (으)로써) B등급 검증."""
+    surface_cases = [
+        ("(으)로", "최고서(갑 제1호증)로 피고가 승낙한 사실이 입증됩니다."),
+        ("에 의하여", "갑 제1호증에 의하여 피고가 동의한 사실이 인정됩니다."),
+        ("을/를 통해", "내용증명(갑 제1호증)을 통해 피고가 승인하였음이 확인됩니다."),
+        ("에 비추어", "갑 제1호증에 비추어 피고가 합의한 사실이 분명히 밝혀집니다."),
+        ("(으)로써", "갑 제1호증으로써 피고의 승낙 사실이 명백히 증명됩니다."),
+    ]
+    for surf_label, text in surface_cases:
+        doc = _make_doc(text, "입증방법", "1. 갑 제1호증 내용증명우편(최고서) (발신인: 원고)")
+        findings = check_evidence_overreach(doc)
+        assert len(findings) == 1, f"표면형 {surf_label} 검출 실패: {text}"
+        assert findings[0].evidence_grade == EvidenceGrade.B, f"표면형 {surf_label} B등급 실패: {findings[0]}"
+
+
+def test_s5_no_proof_scope_clause_excluded():
+    """S5: 증명 대상 절이 없는 단순 사실 언급 서면은 판정 제외 (오탐 0)."""
+    doc = _make_doc(
+        "원고는 피고에게 최고서(갑 제1호증)를 우체국을 통하여 발송한 사실이 있습니다.",
+        "입증방법", "1. 갑 제1호증 최고서"
+    )
+    assert len(check_evidence_overreach(doc)) == 0
+
+
+def test_s6_completion_and_total_amount_predicates():
+    """S6: '지급을 마친', '갚았다', '납부를 끝마쳤다' 및 채무 명사 수식 전칭 양성 검증."""
+    # 1) 지급을 마친
+    doc1 = _make_doc(
+        "공사대금 지급을 마친 사실은 공사비 산출내역서(을 제1호증)로 직접 입증됩니다.",
+        "입증방법", "1. 을 제1호증 공사비 산출내역서"
+    )
+    assert len(check_evidence_overreach(doc1)) == 1
+
+    # 2) 갚았다
+    doc2 = _make_doc(
+        "원고에 대한 차용금을 모두 갚았음이 견적서(을 제2호증)에 의하여 확인됩니다.",
+        "입증방법", "1. 을 제2호증 견적서"
+    )
+    assert len(check_evidence_overreach(doc2)) == 1
+
+    # 3) 납부를 끝마쳤다
+    doc3 = _make_doc(
+        "피고는 공사비 납부를 끝마쳤음을 산출내역서(을 제3호증)를 통해 증명합니다.",
+        "입증방법", "1. 을 제3호증 산출내역서"
+    )
+    assert len(check_evidence_overreach(doc3)) == 1
+
+    # 4) 채무 명사 수식 전칭('모든 채무를 전액') 영수증 양성
+    doc4 = _make_doc(
+        "피고는 모든 채무를 전액 완납하였음이 영수증(을 제4호증)으로 증명됩니다.",
+        "입증방법", "1. 을 제4호증 영수증"
+    )
+    assert len(check_evidence_overreach(doc4)) == 1
+
+
+def test_s7_clause_level_exclusion_guard():
+    """S7: 다른 절에 부정 표현이 있어도 증명 대상 절의 과장은 정확히 잡히는 양성 검증."""
+    doc = _make_doc(
+        "원고의 청구는 이유가 없으나, 피고가 계약 해제를 승낙한 사실은 최고서(갑 제1호증)에 의하여 명백히 입증됩니다.",
+        "입증방법", "1. 갑 제1호증 최고서 (발신인: 원고)"
+    )
+    findings = check_evidence_overreach(doc)
+    assert len(findings) == 1
+    assert findings[0].evidence_grade == EvidenceGrade.B
+
+
+def test_s8_severity_assertion_retained():
+    """S8: 발신인 불명 통지는 C등급 및 Severity.MEDIUM 단언 검증."""
+    doc = _make_doc(
+        "피고는 자신의 채무를 명시적으로 승인하였습니다(갑 제6호증 내용증명).",
+        "입증방법", "1. 갑 제6호증 내용증명우편"
+    )
+    findings = check_evidence_overreach(doc)
+    ovr = [f for f in findings if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(ovr) == 1
+    assert ovr[0].evidence_grade == EvidenceGrade.C
+    assert ovr[0].severity == Severity.MEDIUM
+
