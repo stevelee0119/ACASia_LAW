@@ -88,6 +88,313 @@ function toast(message) {
     try { if (el.matches(":popover-open")) el.hidePopover(); } catch (error) { /* 무시 */ }
   }, 6500);
 }
+
+// 클립보드 복사 실패 시 직접 텍스트를 선택하여 복사할 수 있는 대화상자 표시 (TK-94)
+function showCopyFallbackDialog(text) {
+  let dlg = $("copyFallbackDialog");
+  if (!dlg) {
+    dlg = node("dialog", null, "copy-fallback-dialog");
+    dlg.id = "copyFallbackDialog";
+    const header = node("div", null, "dialog-heading");
+    header.append(node("h3", "프롬프트 직접 복사"));
+    const closeBtn = node("button", "닫기", "icon");
+    closeBtn.type = "button";
+    closeBtn.addEventListener("click", () => dlg.close());
+    header.append(closeBtn);
+
+    const desc = node("p", "클립보드 자동 복사에 실패했습니다. 아래 텍스트를 전체 선택(Ctrl+A) 후 복사(Ctrl+C)하여 사용해 주세요.", "muted small");
+    const ta = node("textarea", null, "copy-fallback-textarea");
+    ta.id = "copyFallbackTextarea";
+    ta.rows = 12;
+    ta.readOnly = true;
+
+    const footer = node("div", null, "dialog-footer");
+    const selBtn = button("전체 선택", () => {
+      ta.select();
+      ta.focus();
+    }, "secondary");
+    const okBtn = button("닫기", () => dlg.close(), "primary");
+    footer.append(selBtn, okBtn);
+
+    dlg.append(header, desc, ta, footer);
+    document.body.appendChild(dlg);
+  }
+  const textarea = $("copyFallbackTextarea");
+  if (textarea) textarea.value = text;
+  dlg.showModal();
+  if (textarea) {
+    textarea.select();
+    textarea.focus();
+  }
+}
+
+// 텍스트 클립보드 복사 헬퍼 (TK-94)
+async function copyToClipboard(text, successMessage = "클립보드에 복사되었습니다.") {
+  let copied = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    }
+  } catch (e) {
+    copied = false;
+  }
+  if (!copied) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      copied = Boolean(document.execCommand("copy"));
+      document.body.removeChild(ta);
+    } catch (err) {
+      copied = false;
+    }
+  }
+  if (copied) {
+    toast(successMessage);
+  } else {
+    showCopyFallbackDialog(text);
+  }
+}
+
+// 서면 내 출처 미확인 판례·법령 필터링 함수 (TK-94)
+// 대상 필터: official_status가 OFFICIAL_NOT_FOUND 또는 UNVERIFIED_SCOPE인 항목만 엄격히 수집 (공식 확인 항목 배제)
+function filterUnverifiedAuthorities(items) {
+  if (!Array.isArray(items)) return [];
+  return items.filter(it => 
+    Boolean(it && it.cited_authority) && (
+      it.official_status === "OFFICIAL_NOT_FOUND" ||
+      it.official_status === "UNVERIFIED_SCOPE"
+    )
+  );
+}
+
+// 인용 식별자 내 허용 요소(판례: 법원·선고일·사건번호·종국구분·전원합의체 / 법령: 법령명·조항호·시점표기)만 추출 (TK-94)
+// 지우는 방식 대신 허용 목록 화이트리스트 추출을 적용하여 당사자 성명, 괄호/대괄호 부기 등 불필요한 개인정보를 완전히 배제한다.
+// 법령명은 조문 바로 앞 최소 접미 어절(끝 1~4어절, 조사로 끝나는 어절·당사자 표기·인명 제외)만 추출하며,
+// 추출에 실패하거나 개인 식별 정보만 있는 경우 조문만 반환하거나 '식별자 확인 불가'를 반환한다.
+function maskAuthorityIdentifier(rawAuth) {
+  if (!rawAuth) return "식별자 확인 불가";
+  const text = String(rawAuth).trim();
+  if (!text) return "식별자 확인 불가";
+
+  // 조문 바로 앞 텍스트(또는 단독 법령 텍스트)에서 최소 접미 어절(끝 1~4어절, 조사로 끝나는 어절·당사자 표기·인명 제외)만 법령명으로 추출
+  function extractMinimalLawName(rawPrefix) {
+    if (!rawPrefix) return "";
+    // 1) '홍길동(원고)' 형태 및 일반 괄호·대괄호 부기 제거, 앞뒤 구분자 정리
+    const cleaned = rawPrefix
+      .replace(/[가-힣]{2,4}\s*[(（【\[][^)\]）】]*(?:원고|피고|신청인|피신청인|채권자|채무자|고소인|피의자|피고인|당사자)[^)\]）】]*[)）】\]]/g, " ")
+      .replace(/[(（【\[].*?[)）】\]]/g, " ")
+      .replace(/^[\s|―—\-/:,.;]+|[\s|―—\-/:,.;]+$/g, "")
+      .trim();
+    if (!cleaned) return "";
+
+    const allTokens = cleaned.split(/\s+/).filter(Boolean);
+    if (allTokens.length === 0) return "";
+
+    // 당사자·역할·소송서술 배제 어절
+    const roleOrStopWordRe = /^(?:원고|피고|신청인|피신청인|채권자|채무자|고소인|피고소인|피의자|피고인|상대방|당사자|소송대리인|대리인|변호사|법무법인|작성자|진술인|참고인|증인|피해자|본인|측|주장|인용|적용|위반|근거|관련|사건|내용|판례|법원|재판부)(?:측|들)?$/;
+    // 조사·어미로 끝나는 어절 배제
+    const particleEndingRe = /(?:의|이|가|은|는|을|를|에서|에게|께|한테|으로|로|와|과|도|만|부터|까지|라|라는|다는|하는|한|된|인|할|던|따른|의한|관하여|대하여|대한)$/;
+    // 법령 종별 접미사
+    const lawSuffixRe = /(?:법|법률|시행령|시행규칙|령|규칙|조례|규정|정관|약관|지침|기준|세칙)$/;
+    // 법령이 아닌 일반 '-법/-령' 단어 배제
+    const nonLawWordRe = /^(?:방법|불법|위법|적법|합법|사법|입법|수법|기법|해법|문법|화법|선법|비법|요령|명령|발령|수령|고령|연령|대통령|소장)$/;
+    // 앞에 수식 명사 어절을 가질 수 있는 복합 법령 후행 어절
+    const compoundLawTailRe = /^(?:보호법|보장법|기본법|특별법|특례법|관리법|촉진법|처벌법|규제법|절차법|사업법|진흥법|지원법|예방법|보험법|거래법|보상법|임대차보호법|손해배상보장법|관계조정법|가중처벌법|이용촉진법)$/;
+    // 복합 법령의 선행 법률·제도 도메인 어근
+    const legalDomainRootRe = /(?:정보|건물|주택|배상|비밀|생활|소비|환경|안전|보건|재해|통신|범죄|폭력|금융|규제|거래|유통|부동산|국토|도시|위생|건강|보험|보상|산업|공정|보호|보장|관리|소유|이용|촉진|처벌|특례|지원|진흥|사업|개발|시설|물품|용역|하도급|가맹|전자|자동차|철도|항공|해양|수산|농업|임업|축산|교육|문화|예술|체육|과학|기술|에너지|원자력|폐기물|수도|하수도|하천|도로|항만|공항|건축|건설|소방|재난|응급|의료|약사|식품|마약|감염|검역|특허|실용|디자인|상표|저작|영업|부정경쟁|채무|회생|파산|중재|조정|공탁|등기|가족|호적|민사|형사|가사|행정|헌법|군사|국가|지방|공공|공익|공무원|군인|경찰|검찰|법원|변호사|법무사|세무사|회계사|노무사|근로|고용|노동|퇴직|연금|기초|장애|아동|청소년|여성|노인|보훈|유공자|개인|위치|신용|자본|증권|신탁|여신|은행|상호|새마을|협동조합|상가|임대차|약관|할부|방문|집합)/;
+
+    // 1. 차단 대상 어절(비한글, 당사자 표기, 당사자 뒤 인명, 조사/어미로 끝나는 어절) 표시
+    const isBlockedToken = new Array(allTokens.length).fill(false);
+    for (let i = 0; i < allTokens.length; i++) {
+      const tok = allTokens[i];
+      if (!/^[가-힣0-9·]+$/.test(tok)) {
+        isBlockedToken[i] = true;
+        continue;
+      }
+      const isNextGwanHan = i + 1 < allTokens.length && allTokens[i + 1] === "관한";
+      const isEndedWithE = tok.endsWith("에") && !isNextGwanHan;
+      if (roleOrStopWordRe.test(tok) || particleEndingRe.test(tok) || isEndedWithE) {
+        isBlockedToken[i] = true;
+        // 당사자 역할어 바로 뒤에 오는 2~4자 한글(인명)도 함께 차단
+        if (roleOrStopWordRe.test(tok) && i + 1 < allTokens.length) {
+          const nextTok = allTokens[i + 1];
+          if (/^[가-힣]{2,4}$/.test(nextTok) && !lawSuffixRe.test(nextTok)) {
+            isBlockedToken[i + 1] = true;
+          }
+        }
+      }
+    }
+
+    // 2. 조문 바로 앞 마지막 어절 검사
+    const lastIdx = allTokens.length - 1;
+    const lastTok = allTokens[lastIdx];
+    if (
+      isBlockedToken[lastIdx] ||
+      lastTok.length < 2 ||
+      !lawSuffixRe.test(lastTok) ||
+      nonLawWordRe.test(lastTok)
+    ) {
+      return "";
+    }
+
+    // 3. 최소 접미 어절 수집 (끝 1~4어절)
+    const collected = [lastTok];
+    let cursor = lastIdx;
+
+    // (a) 하위 규범 종별어(시행령, 시행규칙 등)인 경우 바로 앞 본법 어절 결합
+    if (/^(?:시행령|시행규칙|규칙|조례|규정|정관|약관|지침|기준|세칙)$/.test(lastTok) && cursor - 1 >= 0) {
+      const prevTok = allTokens[cursor - 1];
+      if (!isBlockedToken[cursor - 1] && /(?:법|법률)$/.test(prevTok) && !nonLawWordRe.test(prevTok)) {
+        collected.unshift(prevTok);
+        cursor -= 1;
+      }
+    }
+
+    const headTok = collected[0];
+
+    // (b) '~에 관한 법률/특례법/규칙/규정' 꼴 (끝 1~4어절)
+    if (/(?:법률|법|규칙|규정|지침)$/.test(headTok) && cursor - 1 >= 0 && allTokens[cursor - 1] === "관한") {
+      collected.unshift("관한");
+      cursor -= 1;
+      if (cursor - 1 >= 0 && /^(?:[가-힣0-9·]+에|등에)$/.test(allTokens[cursor - 1])) {
+        const eTok = allTokens[cursor - 1];
+        if (!/^(?:원고|피고|신청인|피신청인|채권자|채무자|고소인|피의자|피고인|상대방|당사자)에$/.test(eTok)) {
+          collected.unshift(eTok);
+          cursor -= 1;
+          while (collected.length < 4 && cursor - 1 >= 0) {
+            const prevTok = allTokens[cursor - 1];
+            if (prevTok === "및" || (!isBlockedToken[cursor - 1] && legalDomainRootRe.test(prevTok))) {
+              collected.unshift(prevTok);
+              cursor -= 1;
+            } else {
+              break;
+            }
+          }
+          if (collected[0] === "및") collected.shift();
+        }
+      }
+    }
+    // (c) 복합 법령 후행 어절(보호법, 보장법, 임대차보호법 등) 또는 '및' 결합 법령인 경우 앞의 법률 도메인 어절 결합 (끝 1~4어절)
+    else if (compoundLawTailRe.test(headTok) || (cursor - 1 >= 0 && allTokens[cursor - 1] === "및")) {
+      while (collected.length < 4 && cursor - 1 >= 0) {
+        const prevTok = allTokens[cursor - 1];
+        if (prevTok === "및" || (!isBlockedToken[cursor - 1] && legalDomainRootRe.test(prevTok))) {
+          collected.unshift(prevTok);
+          cursor -= 1;
+        } else {
+          break;
+        }
+      }
+      if (collected[0] === "및") collected.shift();
+    }
+
+    return collected.join(" ");
+  }
+
+  // 괄호·대괄호 부기를 제거한 본체 텍스트
+  const textWithoutBrackets = text.replace(/[(（【\[].*?[)）】\]]/g, " ").trim();
+
+  // 1. 법령 조항 우선 검사 (본체에 제X조가 포함된 경우 명백한 법령)
+  const articleMatch = textWithoutBrackets.match(/제\s*\d+\s*조(?:의\s*\d+)?(?:\s*제\s*\d+\s*항)?(?:\s*제\s*\d+\s*호)?(?:\s*제\s*[가-힣]\s*목)?/);
+  if (articleMatch) {
+    const parts = [];
+    const prefix = textWithoutBrackets.slice(0, articleMatch.index).trim();
+    const lawName = extractMinimalLawName(prefix);
+    if (lawName) {
+      parts.push(lawName);
+    }
+    parts.push(articleMatch[0].replace(/\s+/g, " ").trim());
+    // 법령 시점 표기 추출 (괄호 안 개정/시행/신설/폐지 등 유지)
+    const temporalMatch = text.match(/\([^)]*?(?:개정|시행|신설|폐지|효력|적용)[^)]*?\)/);
+    if (temporalMatch) {
+      parts.push(temporalMatch[0].trim());
+    }
+    return parts.join(" ");
+  }
+
+  // 2. 판례 요소 검사 (법원, 선고/결정일, 사건번호, 전원합의체, 판결/결정 종국구분)
+  // 사건번호는 괄호로 둘러싸인 형태((2021다12345))도 보존하도록 매칭
+  const caseNoMatch = text.match(/(?:\(?\b\d{2,4}\s*(?:가합|가단|가소|나|다|라|마|그|바|사|고합|고단|고정|노|도|로|모|구|구합|구단|누|두|루|무|드|르|므|브|스|허|후|카|타|헌가|헌나|헌다|헌라|헌마|헌바|헌사|헌아|초)\s*\d+\b\)?)|\b\d{2,4}\s*[가-힣]{1,4}\s*\d+\b/);
+  const courtMatch = text.match(/(?:대법원|헌법재판소|(?:서울|수원|부산|대구|대전|광주|인천|울산|춘천|청주|전주|제주|의정부|창원)(?:고등|지방|가정|행정|회생)?법원|(?:고등|지방|가정|행정|회생)법원)/);
+  const verdictTypeMatch = text.match(/(?:판결|결정|명령|심판)/);
+
+  if (caseNoMatch || (courtMatch && verdictTypeMatch)) {
+    const parts = [];
+    if (courtMatch) parts.push(courtMatch[0]);
+    // 선고/결정일자 추출 (예: 2020. 12. 24. 선고)
+    const dateMatch = text.match(/\d{4}\s*[.년]\s*\d{1,2}\s*[.월]\s*\d{1,2}\s*[.일]?\s*(?:선고|결정|자)?/);
+    if (dateMatch && (!caseNoMatch || !caseNoMatch[0].includes(dateMatch[0]))) {
+      parts.push(dateMatch[0].trim());
+    }
+    // 전원합의체 추출
+    if (/전원합의체/.test(text)) parts.push("전원합의체");
+    // 사건번호
+    if (caseNoMatch) parts.push(caseNoMatch[0].trim());
+    // 종국구분 (판결/결정 등)
+    if (verdictTypeMatch && !parts.some(p => p.includes(verdictTypeMatch[0]))) {
+      parts.push(verdictTypeMatch[0]);
+    }
+    if (parts.length > 0) return parts.join(" ");
+  }
+
+  // 3. 조항 없는 단독 법령명 검사 (예: '상가건물 임대차보호법')
+  const standaloneLawName = extractMinimalLawName(text);
+  if (standaloneLawName) {
+    const parts = [standaloneLawName];
+    const temporalMatch = text.match(/\([^)]*?(?:개정|시행|신설|폐지|효력|적용)[^)]*?\)/);
+    if (temporalMatch) {
+      parts.push(temporalMatch[0].trim());
+    }
+    return parts.join(" ");
+  }
+
+  return "식별자 확인 불가";
+}
+
+// 서면 내 출처 미확인 판례·법령 전체에 대한 엘박스/법률 AI 일괄 검증 프롬프트 생성 (TK-94)
+// 법령·판례의 실재 여부 검증용이므로 본문 문맥(claim_text) 및 당사자 개인정보는 일체 배제하고 인용 식별자만 포함하며,
+// externalAiPolicy가 MASKED인 경우 인용 식별자 속 괄호 부기 및 인명도 실질 제거/마스킹한다.
+function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "", externalAiPolicy = "MASKED") {
+  const dateStr = incidentDate || "미지정 (소송 진행 시점 기준)";
+  let itemsListText = "";
+
+  items.forEach((it, idx) => {
+    // 본문 문맥이나 당사자 개인정보는 일체 배제하고 인용 표기(사건번호, 법령명/조문)만 목록화하되,
+    // MASKED 정책 시 식별자 내 괄호 부기 및 개인정보를 실질적으로 가림 처리한다.
+    const rawAuth = String(it.cited_authority || "").trim();
+    const auth = externalAiPolicy === "MASKED" ? maskAuthorityIdentifier(rawAuth) : rawAuth;
+    if (auth) {
+      itemsListText += `${idx + 1}. ${auth}\n`;
+    }
+  });
+
+  return `[역할]
+당신은 대한민국 법률 및 판례 검증 전문 AI입니다.
+아래 소송 서면에서 인용되었으나 공식 DB에서 출처가 확인되지 않은 [판례·법령 목록 ${items.length}건]에 대해 실재 여부와 판결요지/조문 내용을 정밀 검증해 주세요.
+
+※ 고지: 외부 AI 답변은 법적 효력이 있는 공식 확인이 아니며, 실제 변론 및 증거 제출 시에는 법원 판결서 사본 또는 국가법령정보센터 공식 원문으로 반드시 확인해야 합니다.
+
+[기준 시점]
+- ${dateStr}
+
+[검증 대상 판례·법령 목록 (${items.length}건 - 인용 식별자)]
+${itemsListText}
+[검증 요청 사항]
+위 각 판례/법령 항목에 대해 다음 내용을 일목요연하게 표 및 요약으로 답변해 주세요:
+1. 실재 여부: 실제 존재하는 판례/법령인가? (대법원/하급심 여부, 정확한 사건번호, 선고일자)
+2. 판시사항/조문 내용: 해당 판례의 공식 판결요지(판시사항) 또는 해당 법령 조항의 핵심 규정 내용
+3. 판례 대체/보강: 만약 위 사건번호가 존재하지 않는 가공(환각) 판례라면, 동일한 쟁점을 다룬 실제 대법원 판례 제시
+
+[답변 형식]
+- 종합 검증 결과 요약 표 (번호 | 인용 식별자 | 실재 여부 | 공식 판결요지/조문 핵심 | 비고)
+- 각 항목별 상세 확인 내용`;
+}
+
 async function api(path, options = {}) {
   const authVersion = operationsUI.authVersion?.() || 0;
   const {interactiveAuth = true, ...request} = options;
@@ -756,6 +1063,7 @@ function renderHallucinationSummary(rows) {
     summary.textContent = `판례 인용 및 법률 주장 검토 항목이 총 ${rows.length}건입니다(${parts.join(", ")}). ` +
       "공식 DB 미확인은 부존재를 뜻하지 않으며, 원문 일치 판례는 구체적 사건 적용성을 직접 검토하시기 바랍니다.";
     summary.className = "warning-text";
+
   } else {
     summary.textContent = `소장 인용 판례가 공식 DB와 일치 확인되었습니다(${parts.join(", ")}). 판례의 구체적 사건 적용성은 직접 검토하시기 바랍니다.`;
     summary.className = "safe-text";
@@ -2100,6 +2408,38 @@ function renderFindings() {
       if (tier3EmptyMsg) tier3EmptyMsg.hidden = true;
       for (const item of tier3Items) {
         tier3Container.append(renderReviewRow(item, 3, findingsMap));
+      }
+    }
+  }
+
+// TK-94: 미확인 판례/법령 정리된 표 하단부에 [📋 엘박스/AI 검증 프롬프트] 소형 버튼 단일 배치
+  const tableActions = $("reviewTableActions");
+  if (tableActions) {
+    tableActions.replaceChildren();
+
+    // 외부 AI 전송 정책 확인: LOCAL_ONLY인 경우 외부 전송 버튼 숨김
+    const policy = state.project?.external_ai_policy || "LOCAL_ONLY";
+    if (policy === "LOCAL_ONLY") {
+      tableActions.hidden = true;
+    } else {
+      // 대상 필터: filterUnverifiedAuthorities 함수 사용 (공식 확인 항목 배제)
+      const unverifiedAuthorities = filterUnverifiedAuthorities(filteredItems);
+
+      if (unverifiedAuthorities.length > 0) {
+        const promptBtn = button("📋 엘박스/AI 검증 프롬프트", () => {
+          copyToClipboard(
+            buildExternalAiPromptForUnverifiedAuthorities(unverifiedAuthorities, state.project?.incident_date, policy),
+            "엘박스/법률 AI 검증 프롬프트가 복사되었습니다."
+          );
+        }, "external-ai-prompt-btn");
+        promptBtn.title = `미확인 판례·법령 ${unverifiedAuthorities.length}건을 엘박스 등 법률 AI에 한 번에 질의할 수 있는 일괄 프롬프트를 복사합니다. (외부 AI 답변은 공식 확인이 아닙니다)`;
+
+        const badge = node("span", `(미확인 판례·법령 ${unverifiedAuthorities.length}건)`, "muted small review-prompt-count");
+        const notice = node("span", "※ 외부 AI 답변은 공식 확인이 아니므로 원문 확인이 필요합니다.", "muted small review-prompt-notice");
+        tableActions.append(promptBtn, badge, notice);
+        tableActions.hidden = false;
+      } else {
+        tableActions.hidden = true;
       }
     }
   }
