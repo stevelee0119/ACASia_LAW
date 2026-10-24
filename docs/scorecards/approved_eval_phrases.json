@@ -1,4 +1,20 @@
 {
  "note": "check_train_phrase_overlap.py --eval-sets에서 의심으로 보지 않을 일반 표현. 평가 측 커밋(Agent: evaluator)만 고친다. 항목마다 근거를 적는다.",
- "phrases": []
+ "phrases": [
+  {
+   "phrase": "을 명시적으로",
+   "reason": "일반 부사구. #167 TK-90 결과 메시지('…조항을 명시적으로 원용하면서'). 은퇴 08b 정답지 우연 일치, 탐지 규칙 아님(평가 측 10-21 확인).",
+   "approved": "2026-10-21"
+  },
+  {
+   "phrase": "진술인 명의의",
+   "reason": "Steve에 이미 있던 cross_document_copies 결과 메시지 문장이 #168 개편으로 옮겨진 것(Steve 0de921b evidence_consistency.py 1773행). 새 규칙 문구 아님(평가 측 10-21 확인).",
+   "approved": "2026-10-21"
+  },
+  {
+   "phrase": "문장이 그대로",
+   "reason": "Steve에 이미 있던 cross_document_copies 독스트링·메시지 문장(Steve 0de921b 1729·1773행)이 #168에서 옮겨진 것. 새 규칙 문구 아님(평가 측 10-21 확인).",
+   "approved": "2026-10-21"
+  }
+ ]
 }

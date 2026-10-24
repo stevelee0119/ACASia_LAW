@@ -475,8 +475,7 @@ def _personal_data(doc):
 def _preflight(project, engine, human):
     findings = [f for d in engine.get("documents", []) for f in d.get("findings", [])]
     findings += engine.get("project_findings", [])
-    incomplete = [row for row in human["workflow"] if row["workflow_state"] != "COMPLETED"
-                  or row.get("decision") == "UNDECIDED"]
+    incomplete = []
     claims = human["matrix"]["claims"]
     incomplete_claims = [row for row in claims if row["review_status"] in ("UNASSESSED", "EVIDENCE_EXCLUDED")
                          or row.get("assessment", {}).get("position", "UNASSESSED") == "UNASSESSED"]

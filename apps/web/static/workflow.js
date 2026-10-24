@@ -301,21 +301,16 @@ const workflowUI = (() => {
     const view=modal("검토 변경 이력",[content],async()=>{}); view.readOnly();
   }
   async function activate(tab) {
-    if (tab === "issues" || tab === "review") {await refresh(); if(tab === "review") renderFindings();}
+    if (tab === "issues" || tab === "review") {await refresh(); renderFindings();}
   }
   function init() {
     const toolbar=document.querySelector('[data-panel="issues"] .toolbar');
     const issueActions=node("div",null,"actions");
     $("editIssues").textContent="검토 범위";
-    issueActions.append($("editIssues"),button("쟁점 추가",()=>issueEditor()),iconButton("contact","담당자·대리 당사자",profileEditor));
+    // TK-88: 3단 체계 전환에 따라 툴바 입력 도구 축소
+    // issueActions.append($("editIssues"),button("쟁점 추가",()=>issueEditor()),iconButton("contact","담당자·대리 당사자",profileEditor));
     toolbar.append(issueActions);
     const workbench=node("div");workbench.id="issueWorkbench";$("claims").before(workbench);
-    const reviewToolbar=document.querySelector('[data-panel="review"] .toolbar');
-    const filter=field("workflowFilter","진행 상태","","text",{"":"모든 진행 상태",...states});filter.querySelector("select").id="workflowFilter";
-    const assignee=field("assigneeFilter","담당자 검색");assignee.querySelector("input").id="assigneeFilter";
-    filter.onchange=renderFindings;assignee.oninput=renderFindings;
-    const bulk=button("선택 항목 검토 (0)",bulkEditor);bulk.id="batchReview";
-    const controls=node("div",null,"toolbar workflow-filters");controls.append(filter,assignee,bulk,iconButton("history","검토 이력",()=>showHistory()));reviewToolbar.after(controls);
     initNavigation();
     const submitted=field("submitted_on","제출일","","date");$("documentForm").querySelector(".form-grid").append(submitted);
   }

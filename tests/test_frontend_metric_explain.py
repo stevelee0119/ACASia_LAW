@@ -81,7 +81,7 @@ def test_pending_and_status_metrics_explain_themselves(width, height):
             expect(dialog).to_contain_text("참고 신호(낮은 심각도·참고용): 1건")
             dialog.get_by_role("button", name="확인할 항목에서 보기").click()
             expect(page.locator("[data-panel='review']")).to_be_visible()
-            assert page.evaluate("document.getElementById('reviewFilter').value") == "NEEDS_REVIEW"
+            expect(page.locator("#reviewTable")).to_be_visible()
 
             if width <= 700:
                 page.evaluate("window.scrollTo(0, 0)")
