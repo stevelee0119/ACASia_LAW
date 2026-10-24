@@ -182,3 +182,50 @@ def test_pipeline_evidence_overreach_entrypoint():
     assert f.confidence_features.get("exhibit") == "을 제2호증"
     assert f.confidence_features.get("category") == "ESTIMATE_OVERREACH"
     assert "을 제2호증" in f.evidence[0].excerpt
+
+
+# --- 4. 평가 측 2차 탐침 및 구조적 증거 과장 시험 -----------------------------------
+
+def test_control_opposite_party_notice_approval_claim_no_finding():
+    """평가 측 탐침 대조 1: 상대방이 보낸 통지서로 상대방의 의무 승인/합의를 주장하는 정상 서면 오탐 배제."""
+    doc = _make_doc(
+        "소장",
+        "원고 홍길동",
+        "피고 주식회사 케이건설",
+        "피고가 발송한 최고서에 피고의 채무 승인 사실이 기재되어 있습니다(갑 제2호증).",
+        "원고 소송대리인 변호사 김변호",
+        "입증방법",
+        "1. 갑 제1호증 도급계약서",
+        "2. 갑 제2호증 최고서 (발신인: 피고)",
+    )
+    findings = check_evidence_overreach(doc)
+    assert len(findings) == 0, f"상대방 발신 통지서로 상대방 승인 주장은 정상이므로 오탐 배제되어야 함: {findings}"
+
+
+def test_control_estimate_scope_specification_no_finding():
+    """평가 측 탐침 대조 2: 견적서로 공사 범위를 특정하고 그 범위의 공사 완료를 서술한 정상 문장 오탐 배제."""
+    doc = _make_doc(
+        "피고는 견적서(을 제2호증)에 기재된 방수공사 범위를 시공 범위로 특정하고, 해당 범위의 공사를 정상적으로 완료하였습니다.",
+        "입증방법",
+        "1. 을 제1호증 도급계약서",
+        "2. 을 제2호증 견적서",
+    )
+    findings = check_evidence_overreach(doc)
+    assert len(findings) == 0, f"견적서로 시공 범위를 특정한 후 완료를 서술한 정상 문장은 오탐 배제되어야 함: {findings}"
+
+
+def test_positive_structural_overreach_single_item_to_universal_claim():
+    """구조적 과장 양성: 단편적 자료 한정 표지(1건, 접촉기록만으로 등)로 전체·전원·완전 증명을 단정한 경우 B확정(OVERCLAIM)."""
+    doc = _make_doc(
+        "출입문 카드 접촉 기록만으로 휴게 없이 하루 종일 일했음이 입증된다.",
+        "관리번호 SD-TEST",
+    )
+    findings = check_evidence_overreach(doc)
+    struct_ovr = [f for f in findings if f.type == FindingType.OVERCLAIM]
+    assert len(struct_ovr) == 1
+    f = struct_ovr[0]
+    assert f.evidence_grade == EvidenceGrade.B
+    assert f.severity == Severity.HIGH
+    assert f.status == VerificationStatus.CONTRADICTED
+    assert f.confidence_features.get("category") == "STRUCTURAL_OVERREACH"
+
