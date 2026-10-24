@@ -30,6 +30,7 @@ from packages.common.enums import EvidenceGrade, FindingType, VerificationStatus
 from packages.claim_engine.internal_inconsistency import (
     check_internal_inconsistency,
     _parse_korean_amount,
+    _QUANTITY_RE,
 )
 
 
@@ -583,4 +584,52 @@ def test_q3_definitive_predicate_and_event_predicate_inflections():
     doc_date = _make_doc(text_date)
     f_date = [f for f in check_internal_inconsistency(doc_date) if f.confidence_features.get("inconsistency_type") == "DATE"]
     assert len(f_date) == 1, f"Q3 사건 술어 관형형('일어난') 일자 충돌 미탐지: {f_date}"
+
+
+def test_qq1_to_qq3_quantity_unit_and_definitive_and_modifier():
+    """QQ1~QQ3: 단위 조사 분리, 확정 서술 값 직후 매칭, 전칭 부사 건너뛰기 검증 (한국어 주석)."""
+    # QQ1: '[N]명과', '[N]개를', '[N]대가' 꼴에서 단위가 한 글자로 잡히는지 검증
+    # 5명과 -> 단위 '명', 10개를 -> 단위 '개', 20대가 -> 단위 '대'
+    text_qq1 = (
+        "인부 5명과 작업하였습니다. "
+        "부품 10개를 납품하였습니다. "
+        "차량 20대가 인도되었습니다."
+    )
+    matches_q = list(_QUANTITY_RE.finditer(text_qq1))
+    assert len(matches_q) == 3
+    units = []
+    for m in matches_q:
+        u = m.group("unit")
+        if len(u) == 2 and u[1] in ("과", "와", "을", "를", "이", "가", "은", "는", "에", "의", "로", "도", "만"):
+            u = u[0]
+        units.append(u)
+    assert units == ["명", "개", "대"], f"QQ1 단위 조사 축소 실패: {units}"
+
+    # QQ2: '[N]명과 [다른 동사]하였습니다' = 확정 서술 없음 -> 슬롯 없음 (오탐 0)
+    # 서로 다른 일의 인원 수 서술이 모순으로 오탐되지 않음
+    text_qq2_ctrl = (
+        "원고는 공사 현장에서 인부 5명과 함께 작업을 진행하였습니다. "
+        "피고는 다른 현장에서 인부 8명과 함께 청소를 완료하였습니다."
+    )
+    doc_qq2_ctrl = _make_doc(text_qq2_ctrl)
+    f_qq2_ctrl = [f for f in check_internal_inconsistency(doc_qq2_ctrl) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(f_qq2_ctrl) == 0, f"QQ2 다른 동사 결합 인원 수 오탐 발생: {f_qq2_ctrl}"
+
+    # QQ2: '[N][단위]이었습니다·입니다', '[N][단위]를 납품하였다' = 값 직후 확정 서술 -> 슬롯 생성 및 모순 검출
+    text_qq2_pos = (
+        "원고가 피고에게 납품한 부품은 100개였습니다. "
+        "그러나 피고는 위 부품을 80개만 납품받았다고 기재되어 실제로 공급된 부품은 80개입니다."
+    )
+    doc_qq2_pos = _make_doc(text_qq2_pos)
+    f_qq2_pos = [f for f in check_internal_inconsistency(doc_qq2_pos) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(f_qq2_pos) == 1, f"QQ2 값 직후 확정 서술('개였습니다'/'개입니다') 충돌 미탐지: {f_qq2_pos}"
+
+    # QQ3: '[대상]은 모두 [N][단위]입니다' + '위 [대상]의 [속성] 수량은 [M][단위]였습니다' = 전칭 부사 건너뛰고 대상 일치하여 양성 검출
+    text_qq3 = (
+        "이 사건 노트북은 모두 50대입니다. "
+        "한편 위 노트북의 실제 납품 수량은 30대였습니다."
+    )
+    doc_qq3 = _make_doc(text_qq3)
+    f_qq3 = [f for f in check_internal_inconsistency(doc_qq3) if f.confidence_features.get("inconsistency_type") == "QUANTITY"]
+    assert len(f_qq3) == 1, f"QQ3 전칭 부사('모두') 건너뛰기 후 수량 충돌 미탐지: {f_qq3}"
 

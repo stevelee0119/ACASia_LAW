@@ -186,9 +186,12 @@ _EXPLICIT_TOTAL_KEYWORD_RE = re.compile(
     r"(?:매매대금|공사대금|용역대금|계약금액|대금|약정금|대여금)\s*총액|총액|전액|합계|총\s*약정금액)"
 )
 
-# Y1, Q3: 확정 서술 패턴 (어간+어미 결합 및 과거형 '…원이었습니다' 확장)
-_DEFINITIVE_PREDICATE_RE = re.compile(
-    r"(?:(?:이|였|이었)?(?:다|습니다|입니다|음)|(?:으)?로\s*(?:정하|약정|합의|기재|명시))"
+# Y1, Q3, QQ2: 금액 확정 서술 패턴 (값 바로 뒤에 붙는 서술만 re.match로 매칭)
+_DEFINITIVE_PREDICATE_MATCH_RE = re.compile(
+    r"^\s*(?:"
+    r"(?:(?:이|였|이었)(?:다|습니다|음)|입니다|이다|임)|"
+    r"(?:(?:으)?로\s*(?:정하|약정|합의|기재|명시))"
+    r")"
 )
 
 # Y1: 지급·변제 배제 술어 패턴 (지급·변제·송금·입금·수령 등은 계약 총액 슬롯 제외)
@@ -225,11 +228,11 @@ EVENT_PREDICATE_MAP = {
     "해제": re.compile(r"(?:해제(?:하|했|하였|한|하고|하여|되었|된|되)?)"),
 }
 
-# Y6, Q1: 수량 속성 정규식 - 단위는 구조로 추출 (메모 129 준수, 닫힌 단위 목록 열거 금지)
+# Y6, Q1, QQ1: 수량 속성 정규식 - 단위는 구조로 추출 (메모 129 준수, 닫힌 단위 목록 열거 금지, 과·와·도·만 허용)
 _QUANTITY_RE = re.compile(
     r"(?P<num>\d+(?:,\d{3})*|\d+(?:\.\d+)?)\s*"
     r"(?P<unit>[가-힣]{1,2}?|[A-Za-z㎡㎏ℓ²³]{1,4})"
-    r"(?=(?:으로|로|을|를|이|가|은|는|에|의|임|(?:이|였|이었)?(?:다|습니다|입니다|음)|(?:으)?로\s*(?:정하|약정|합의|기재|명시))(?:\s+|[.,;!?~]|$)|(?:\s+|[.,;!?~]|$))"
+    r"(?=(?:으로|로|을|를|이|가|은|는|에|의|과|와|도|만|임|(?:이|였|이었)?(?:다|습니다|입니다|음)|(?:으)?로\s*(?:정하|약정|합의|기재|명시))(?:\s+|[.,;!?~]|$)|(?:\s+|[.,;!?~]|$))"
 )
 
 # Q1: 수량 단위 제외 규칙 (금액 단위, 날짜·시각, 조문·순번, 비율)
@@ -244,9 +247,13 @@ _QUANTITY_ARITHMETIC_EXCLUDE_RE = re.compile(
 _QUANTITY_PARTIAL_RE = re.compile(
     r"(?:그중|그\s*가운데|일부|나머지|추가로|1차|2차|3차|분할|선지급|선납|선인도)"
 )
-# Q3: 수량 뒤 서술 표지 (과거형 '…개였습니다' 등 확장)
-_QUANTITY_DEFINITIVE_RE = re.compile(
-    r"(?:(?:이|였|이었)?(?:다|습니다|입니다|음)|(?:으)?로\s*(?:정하|약정|합의|기재|명시)|(?:정하|약정|합의|기재|명시)(?:하|했|하였|된|될|할)|을\s*(?:공급|납품|매매|인도|보유)|에\s*달하)"
+# Q3, QQ2: 수량 값 바로 뒤에 붙는 확정 서술 정규식 (앞에서부터 re.match 매칭, 공백만 허용)
+_QUANTITY_DEFINITIVE_MATCH_RE = re.compile(
+    r"^\s*(?:"
+    r"(?:(?:이|였|이었)(?:다|습니다|음)|입니다|이다|임)|"
+    r"(?:(?:으)?로\s*(?:정하|약정|합의|기재|명시))|"
+    r"(?:(?:을|를)\s*(?:공급|납품|매매|인도|보유))"
+    r")"
 )
 
 # Q2: 수량 대상 명사 구조적 추출 관련 정규식
@@ -258,6 +265,10 @@ _PROPERTY_HEAD_PAT = re.compile(r"(?:수량|개수|물량|공급량|인도량|�
 _EXCLUDED_PROCEDURAL_NOUNS = {
     "소송", "본안", "청구", "서증", "호증", "제출", "주장", "진술", "항변", "입증",
     "사실", "이유", "당시", "경우", "관련", "기준", "내용", "결과", "기재",
+}
+# QQ3: 수량 수식 부사·관형사 문법 범주 (내용어가 아니므로 대상 명사에서 제외)
+_QUANTITY_MODIFIER_ADVERBS = {
+    "모두", "총", "전부", "약", "합계", "도합", "무려", "겨우", "최소", "최대",
 }
 _PARTICLE_STRIP_RE = re.compile(r"(?:을|를|이|가|은|는|의|에)$")
 
@@ -292,13 +303,18 @@ def _extract_quantity_target(
         if last_target:
             return last_target
 
-    # 2) 수량 바로 앞 수식 명사 ('노트북 10대', '사과 100상자', '신발 50켤레')
+    # 2) 수량 바로 앞 수식 명사 ('노트북 10대', '사과 100상자', '신발 50켤레', QQ3: 전칭·수량 부사 '모두·총' 등 제외)
     m_direct = re.search(r"(?:(?P<pfx>위|이\s*사건|본건|해당|동)\s*)?(?P<noun>[가-힣a-zA-Z0-9]{2,15})\s*$", preceding)
     if m_direct:
         raw_n = m_direct.group("noun")
         clean_n = _DEMONSTRATIVE_PREFIX_RE.sub("", raw_n).strip()
         clean_n = _PARTICLE_STRIP_RE.sub("", clean_n).strip()
-        if not _PARTY_TITLE_EXCLUDE_PAT.match(clean_n) and not _PROPERTY_HEAD_PAT.match(clean_n) and clean_n not in _EXCLUDED_PROCEDURAL_NOUNS:
+        if (
+            not _PARTY_TITLE_EXCLUDE_PAT.match(clean_n)
+            and not _PROPERTY_HEAD_PAT.match(clean_n)
+            and clean_n not in _EXCLUDED_PROCEDURAL_NOUNS
+            and clean_n not in _QUANTITY_MODIFIER_ADVERBS
+        ):
             if len(clean_n) >= 2:
                 return clean_n
 
@@ -311,7 +327,11 @@ def _extract_quantity_target(
         raw_n = m.group("noun")
         clean_n = _DEMONSTRATIVE_PREFIX_RE.sub("", raw_n).strip()
         clean_n = _PARTICLE_STRIP_RE.sub("", clean_n).strip()
-        if _PARTY_TITLE_EXCLUDE_PAT.match(clean_n) or clean_n in _EXCLUDED_PROCEDURAL_NOUNS:
+        if (
+            _PARTY_TITLE_EXCLUDE_PAT.match(clean_n)
+            or clean_n in _EXCLUDED_PROCEDURAL_NOUNS
+            or clean_n in _QUANTITY_MODIFIER_ADVERBS
+        ):
             continue
         if _PROPERTY_HEAD_PAT.match(clean_n):
             continue
@@ -773,12 +793,12 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
 
                         # 확정 서술 확인:
                         # 1) 명시 총액 표지가 있는 경우 (단, 지급/변제 술어나 부분 표지가 없어야 함)
-                        # 2) 명시 총액 표지가 없으면 확정 서술 결합 필수 (-이다/-으로 정하 등) 및 지급/변제 술어 배제
+                        # 2) 명시 총액 표지가 없으면 확정 서술 결합 필수 (-이다/-으로 정하 등, QQ2: re.match) 및 지급/변제 술어 배제
                         is_definitive = False
                         if not has_partial and not has_discharge:
                             if has_total_kw:
                                 is_definitive = True
-                            elif bool(_DEFINITIVE_PREDICATE_RE.search(following)):
+                            elif bool(_DEFINITIVE_PREDICATE_MATCH_RE.match(following)):
                                 is_definitive = True
 
                         if is_definitive:
@@ -825,15 +845,21 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                         if s_name and s_name not in ("피고", "원고", "피고인", "작성", "서명", "확인", "사건"):
                             signer_stmts.append(_SignerStatement(ex_target, s_name, is_sole, clause, page))
 
-            # (3-7) 수량 슬롯 추출 (Y6, Q1~Q3: 구조적 대상 추출, 구조적 단위 추출, 활용형 확장)
+            # (3-7) 수량 슬롯 추출 (Y6, Q1~Q3, QQ1~QQ3: 구조적 대상·단위 추출, 단위 조사 축소, 값 직후 확정 서술 매칭)
             if not _QUANTITY_PARTIAL_RE.search(clause) and not _QUANTITY_ARITHMETIC_EXCLUDE_RE.search(sentence) and not _QUANTITY_ARITHMETIC_EXCLUDE_RE.search(clause):
                 for q_m in _QUANTITY_RE.finditer(clause):
                     u = q_m.group("unit")
+                    q_end = q_m.end()
+                    # QQ1: 단위 토큰의 두 번째 글자가 조사이면 한 글자 단위로 축소하고 나머지를 뒤 조건으로 넘김
+                    if len(u) == 2 and u[1] in ("과", "와", "을", "를", "이", "가", "은", "는", "에", "의", "로", "도", "만"):
+                        u = u[0]
+                        q_end -= 1
+
                     # Q1: 금액·일시·조문·비율 단위 제외
                     if _EXCLUDED_QUANTITY_UNITS_RE.search(u):
                         continue
-                    following_q = clause[q_m.end():min(len(clause), q_m.end() + 30)]
-                    if _QUANTITY_DEFINITIVE_RE.search(following_q) or _EXPLICIT_TOTAL_KEYWORD_RE.search(clause):
+                    following_q = clause[q_end:min(len(clause), q_end + 30)]
+                    if _QUANTITY_DEFINITIVE_MATCH_RE.match(following_q) or _EXPLICIT_TOTAL_KEYWORD_RE.search(clause):
                         try:
                             q_val = Decimal(q_m.group("num").replace(",", ""))
                             if q_val > 0:
