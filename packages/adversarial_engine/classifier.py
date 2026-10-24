@@ -65,12 +65,33 @@ OFFICIAL_GUIDELINE_RE = re.compile(
     r"(?:[가-힣]{1,20}\s*)?(?:실무\s*)?(?:가이드라인|지침|기준|매뉴얼|요령|수칙|고시)(?:에\s*(?:따라|의거하여|의하여)|상)?"
 )
 
+# 문장 구분 부호가 없는 비정상적·초장문 텍스트에서 classify()가 길이의 제곱에
+# 비례해 느려지는 것을 방지하기 위한 문장 탐색 최대 반경 (TK-93).
+MAX_SENTENCE_WINDOW = 400
+
+
+def _sentence_span(text: str, start: int, end: int, window: int = MAX_SENTENCE_WINDOW) -> Tuple[int, int]:
+    """start~end를 감싸는 문장의 (start_idx, end_idx) 범위를 구한다.
+
+    문장 부호(.!?。\n)를 기준으로 하되, 부호가 없는 긴 텍스트에서 제곱 시간(O(N^2))으로
+    치솟지 않도록 앞뒤 탐색 길이에 상한(window)을 둔다 (TK-93).
+    """
+    search_start = max(0, start - window)
+    search_end = min(len(text), end + window)
+
+    left = max((text.rfind(mark, search_start, start) for mark in ".!?。\n"), default=-1)
+    s_start = search_start if left == -1 else left + 1
+
+    ends = [i for i in (text.find(mark, end, search_end) for mark in ".!?。\n") if i != -1]
+    s_end = min(ends) if ends else search_end
+
+    return s_start, s_end
+
 
 def _commanding_sentence(text: str, start: int, end: int) -> bool:
     """start~end가 든 문장에 명령·요청 어미 또는 AI(검토 시스템) 호명이 있는가."""
-    left = max(text.rfind(ch, 0, start) for ch in ".!?。\n")
-    rights = [i for i in (text.find(ch, end) for ch in ".!?。\n") if i != -1]
-    sentence = text[left + 1:(min(rights) + 1) if rights else len(text)]
+    s_start, s_end = _sentence_span(text, start, end)
+    sentence = text[s_start:s_end]
     return bool(IMPERATIVE_RE.search(sentence) or AI_ADDRESSING_RE.search(sentence))
 
 
@@ -126,9 +147,8 @@ NORMATIVE_RULE_RE = re.compile(
 
 def _normative_rule_sentence(text: str, hit: PatternHit) -> bool:
     """지시형 낱말이 든 문장이 규정·법령의 규범적 금지·의무 서술인지 본다('…승인 절차를 생략하고 반출할 수 없다')."""
-    start = max((text.rfind(mark, 0, hit.start) for mark in ".!?。\n"), default=-1) + 1
-    ends = [i for i in (text.find(mark, hit.end) for mark in ".!?。\n") if i >= 0]
-    sentence = text[start:min(ends) if ends else len(text)]
+    s_start, s_end = _sentence_span(text, hit.start, hit.end)
+    sentence = text[s_start:s_end]
     return bool(NORMATIVE_RULE_RE.search(sentence)) and not IMPERATIVE_RE.search(sentence)
 
 
@@ -136,9 +156,8 @@ def _narrative_sentence(text: str, hit: PatternHit) -> bool:
     """지시형 낱말이 든 문장이 한국어 과거 서술로 끝나는지 본다("…규칙을 무시하고 영업을 계속하였다").
 
     영어 등 다른 언어의 명령문은 여기에 해당하지 않는다(명령형 판별이 한국어 어미 기준이기 때문)."""
-    start = max((text.rfind(mark, 0, hit.start) for mark in ".!?。\n"), default=-1) + 1
-    ends = [i for i in (text.find(mark, hit.end) for mark in ".!?。\n") if i >= 0]
-    sentence = text[start:min(ends) if ends else len(text)]
+    s_start, s_end = _sentence_span(text, hit.start, hit.end)
+    sentence = text[s_start:s_end]
     return bool(NARRATIVE_PAST_RE.search(sentence)) and not IMPERATIVE_RE.search(sentence)
 
 
@@ -149,9 +168,8 @@ def _is_narrated_legal_context(text: str, hit: PatternHit) -> bool:
     과거 행위 서술과 관형형("-한 처분", "-하였다"), 법률 판단("-은 위법하다") 문장이고
     AI 호명이나 명령형 종결이 없으면 정상 변론 서술로 본다.
     """
-    start = max((text.rfind(mark, 0, hit.start) for mark in ".!?。\n"), default=-1) + 1
-    ends = [i for i in (text.find(mark, hit.end) for mark in ".!?。\n") if i >= 0]
-    sentence = text[start:min(ends) if ends else len(text)]
+    s_start, s_end = _sentence_span(text, hit.start, hit.end)
+    sentence = text[s_start:s_end]
 
     # 1. AI 호명이 있으면 진짜 지시문이므로 정상 서술로 보지 않는다 (TK-92 요구 3).
     if AI_ADDRESSING_RE.search(sentence):
@@ -162,7 +180,7 @@ def _is_narrated_legal_context(text: str, hit: PatternHit) -> bool:
         return False
 
     # 3. hit 직후가 단독 명령형 종결인 경우 (예: "...검증 절차를 즉시 중단하라.") 정상 서술로 보지 않는다.
-    tail_after_hit = text[hit.end:min(ends) if ends else len(text)].strip()
+    tail_after_hit = text[hit.end:s_end].strip()
     if re.match(r"^(?:하라|해라|하시오|하십시오|하세요|할\s*것|말\s*것|마십시오|마라)[.!?]*$", tail_after_hit):
         return False
 
