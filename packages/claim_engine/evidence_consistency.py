@@ -1780,16 +1780,15 @@ _FACT_CONFIRMATION_TITLE_RE = re.compile(
 
 # 소송 대리 서면 전용 표제
 # - 사건명 + '청구의 소' 꼴 (예: '손해배상 청구의 소', '대여금 청구의 소')
-# - '소장'은 직위(기관·부대·현장 수식, 뒤에 다른 명사) 오인을 방지하면서도 실제 서면 표제 꼴(사건명/청구 수식, 당사자 표기, 단독, 구분 기호/괄호 뒤 부제)을 일반 규칙으로 허용.
+# - 단독·당사자 표기형 '소장' (수식어+'소장'은 첫머리 구조 표지 검사와 함께 _MODIFIED_SOJANG_TITLE_RE로 별도 판별)
 # - '준비서면', '답변서', '의견서', '항소장', '상고장', '고소장' 등 명확한 소송서면 표제 꼴
 _PLEADING_TITLE_RE = re.compile(
     r"^\s*(?:[A-Za-z0-9\-_]{1,15}\s*[|―—\-]\s*)?[\[【<「『―—\-]*\s*(?:"
     # 분기 1: 사건명 + '청구의 소' (예: 손해배상(기) 청구의 소)
     r"(?:[가-힣0-9\s()·]{1,25}\s+)?청\s*구\s*의\s*소"
     r"|"
-    # 분기 2: '소장' (직위 오인 방지: 기관/부대/현장 수식 및 뒤 명사 배제, 사건명/청구 수식, 당사자 표기 또는 단독 허용)
-    r"(?!(?:[가-힣]{1,10}(?:소|현장|공장|부대|연구원|지소|본부|센터|사무소|지사|지점))\s+)"
-    r"(?:(?:원\s*고|피\s*고|고\s*소\s*인|신\s*청\s*인|[가-힣0-9()·]{1,15}\s*청\s*구|[가-힣0-9()·]{1,8})\s+)?"
+    # 분기 2: '소장' (단독 또는 당사자 표기형: 원고/피고/고소인/신청인 소장)
+    r"(?:(?:원\s*고|피\s*고|고\s*소\s*인|신\s*청\s*인)\s+)?"
     r"소\s*장"
     r"|"
     # 분기 3: 기타 소송서면 (준비서면, 답변서, 의견서, 항소장, 상고장, 고소장, 변론요지서)
@@ -1799,6 +1798,39 @@ _PLEADING_TITLE_RE = re.compile(
     # 뒤 낱말 허용: 줄 끝, 구분 기호 뒤 부제, 관리번호 표기, 또는 괄호 안 부제
     r"(?:\s*$|\s*[|―—\-/:]|\s*[(（【[].*?[)）】\]]|\s*관리번호\b)"
 )
+
+# 수식어 + '소장' 표제 정규식 (사건명 + 소장 등, 예: '대금 청구 소장', '손해배상(기) 소장')
+# 직위 '소장'(군 계급·시설장 단독 줄, 괄호 부기, 구분 기호 부제) 오탐을 차단하기 위해,
+# 이 패턴은 문서 첫머리(첫 1쪽 또는 2,000자)에 당사자 표시·'청구취지'·'청구원인' 중 둘 이상이 있을 때만 PLEADING으로 인정한다.
+_MODIFIED_SOJANG_TITLE_RE = re.compile(
+    r"^\s*(?:[A-Za-z0-9\-_]{1,15}\s*[|―—\-]\s*)?[\[【<「『―—\-]*\s*"
+    r"(?!(?:[가-힣]{1,10}(?:소|현장|공장|부대|연구원|지소|본부|센터|사무소|지사|지점))\s+)"
+    r"(?:[가-힣0-9()·\s]{1,15}\s*청\s*구|[가-힣0-9()·]{1,8})\s+"
+    r"소\s*장\s*[\]】>」』]*"
+    r"(?:\s*$|\s*[|―—\-/:]|\s*[(（【[].*?[)）】\]]|\s*관리번호\b)"
+)
+
+# 수식어+'소장' 표제 검증용 첫머리(첫 1쪽 또는 2,000자) 소장 구조 요소 정규식
+_COMPLAINT_PARTY_RE = re.compile(
+    r"(?:원\s*고|피\s*고|당\s*사\s*자\s*(?:의\s*)?표\s*시|신\s*청\s*인|피\s*신\s*청\s*인|채\s*권\s*자|채\s*무\s*자)"
+)
+_COMPLAINT_PURPORT_RE = re.compile(r"청\s*구\s*(?:의\s*)?취\s*지")
+_COMPLAINT_CAUSE_RE = re.compile(r"청\s*구\s*(?:의\s*)?원\s*인")
+
+
+def _has_complaint_elements_in_head(doc: NormalizedDocument, reading_text: str) -> bool:
+    """문서 첫머리(첫 1쪽 또는 2,000자)에 당사자 표시·'청구취지'·'청구원인' 중 둘 이상이 있는지 판별한다."""
+    first_page_text = ""
+    if doc.pages:
+        first_page_text = "\n".join((b.text or "") for b in doc.pages[0].blocks)
+    head_text = first_page_text + "\n" + reading_text[:2000]
+
+    count = (
+        int(bool(_COMPLAINT_PARTY_RE.search(head_text)))
+        + int(bool(_COMPLAINT_PURPORT_RE.search(head_text)))
+        + int(bool(_COMPLAINT_CAUSE_RE.search(head_text)))
+    )
+    return count >= 2
 
 _EXHIBIT_REFERENCE_RE = re.compile(
     r"(?:(?:갑|을)\s*제?\s*\d+\s*호증|사실경위서(?:의\s*기재|에\s*의하면|를\s*살펴보면))"
@@ -1892,8 +1924,12 @@ def _document_title_kind(doc: NormalizedDocument, reading_text: Optional[str] = 
             end_offset = (pos + len(line)) if pos != -1 else 0
             return DOC_KIND_FACT_CONFIRMATION, end_offset
 
-        # 소송 대리 서면 단독 표제
+        # 소송 대리 서면 단독 표제 (단독·당사자 표기형 '소장', '청구의 소', '준비서면' 등)
         if _PLEADING_TITLE_RE.match(stripped):
+            return DOC_KIND_PLEADING, 0
+
+        # 수식어 + '소장' 표제: 첫머리(첫 1쪽 또는 2,000자)에 당사자 표시·'청구취지'·'청구원인' 중 둘 이상 있을 때만 PLEADING 인정
+        if _MODIFIED_SOJANG_TITLE_RE.match(stripped) and _has_complaint_elements_in_head(doc, text):
             return DOC_KIND_PLEADING, 0
 
     return DOC_KIND_OTHER, None

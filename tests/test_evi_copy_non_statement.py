@@ -500,27 +500,39 @@ def test_running_head_and_subtitle_headings_classification():
 
 
 def test_job_title_sojang_negative_not_pleading():
-    """요구 ① 및 ③ 검증: 직위(기관·부대·현장 수식, 뒤에 다른 명사) '소장'은 PLEADING으로 분류되지 않아야 함 (음성 시험)."""
-    # 1. 음성 대조군 5건 (직위 '소장'이므로 PLEADING이 아니어야 함)
+    """요구 ① 및 ③ 검증: 직위(기관·부대·현장 수식, 뒤에 다른 명사, 군 계급·시설장 4꼴) '소장'은 PLEADING으로 분류되지 않아야 함 (음성 시험)."""
+    # 1. 음성 대조군 9건 (기존 5건 + 6차 회귀 직위 '소장' 4꼴: 군 계급 단독 줄, 시설장 단독 줄, 괄호 부기, 구분 기호 부제)
     negative_cases = [
         "관리사무소 소장 확인서\n1. 확인 내용: 입주민 시설 점검 내역입니다.",
         "연구소 소장 명의 업무보고\n본 보고서는 신규 장비 검토 결과입니다.",
         "공사현장 소장 결재문\n금일 안전점검 완료 사항을 결재 요청합니다.",
         "소장 보고\n당월 시설 관리 현황 보고서입니다.",
         "파출소 소장 통보문\n관내 순찰 및 특이사항 통보의 건입니다.",
+        # 6차 추가 4꼴 음성 시험 (수식어+'소장' 형태이나 첫머리 당사자 표시·청구취지·청구원인 중 2개 이상 미충족)
+        "육군 소장\n1. 부대 지휘 및 동절기 작전 기강 확립 지시 사항입니다.",
+        "어린이집 소장\n보육시설 월간 운영 및 급식 위생 점검표입니다.",
+        "육군 소장 (진)\n정기 부대 순시 및 안전 점검 결과 기록입니다.",
+        "보육원 소장 ― 시설물 점검 확인\n본 문서는 동절기 소방 설비 점검 내역입니다.",
     ]
     for idx, text in enumerate(negative_cases):
         doc = _make_doc(f"neg_job_{idx}", text)
         kind, _ = _document_title_kind(doc)
         assert kind != DOC_KIND_PLEADING, f"직위 표제가 PLEADING으로 오분류됨: {text.splitlines()[0]}"
 
-    # 2. 양성 기준군 5건 (실제 소송 서면 표제 꼴은 정상적으로 PLEADING으로 분류되어야 함)
+    # 2. 양성 기준군 6건 (단독·당사자 표기형 및 첫머리에 당사자 표시·청구취지·청구원인 중 2개 이상 있는 사건명+소장 표제)
     positive_cases = [
         ("소  장\n원고 홍길동\n피고 주식회사", DOC_KIND_PLEADING),
         ("SD-01 | 소장 ― 손해배상(기) 청구의 소\n원고 대리인 변호사", DOC_KIND_PLEADING),
         ("소장 (청구취지 및 청구원인 변경)\n사건 2024가단12345", DOC_KIND_PLEADING),
         ("원고 소장\n당사자 표시 및 청구원인", DOC_KIND_PLEADING),
-        ("대금 청구 소장\n원고 홍길동\n피고 주식회사", DOC_KIND_PLEADING),
+        (
+            "대금 청구 소장\n원고 홍길동\n피고 주식회사\n\n청 구 취 지\n1. 피고는 원고에게 금원을 지급하라.\n\n청 구 원 인\n1. 계약 경위",
+            DOC_KIND_PLEADING,
+        ),
+        (
+            "손해배상(기) 소장 ― 불법행위 배상 청구\n당사자 표시: 원고 김○○, 피고 박○○\n청구취지: 피고는 원고에게 배상금을 지급하라.",
+            DOC_KIND_PLEADING,
+        ),
     ]
     for idx, (text, expected_kind) in enumerate(positive_cases):
         doc = _make_doc(f"pos_plead_{idx}", text)
