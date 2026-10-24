@@ -23,6 +23,13 @@ APP_JS = ROOT / "apps" / "web" / "static" / "app.js"
 STYLES_CSS = ROOT / "apps" / "web" / "static" / "styles.css"
 
 
+def _extract_js_filter_function() -> str:
+    content = APP_JS.read_text(encoding="utf-8")
+    m = re.search(r"(function filterUnverifiedAuthorities\([\s\S]+?\n\})", content)
+    assert m, "filterUnverifiedAuthorities function definition not found in app.js"
+    return m.group(1)
+
+
 def _extract_js_prompt_function() -> str:
     content = APP_JS.read_text(encoding="utf-8")
     m = re.search(r"(function buildExternalAiPromptForUnverifiedAuthorities\([\s\S]+?\n\})", content)
@@ -37,11 +44,12 @@ def test_index_html_has_review_table_actions():
 
 
 def test_app_js_external_ai_prompt_function_and_fallback():
-    """app.js에 단일화된 일괄 프롬프트 생성 함수, 클립보드 복사 헬퍼 및 fallback 대화상자가 정의되어 있어야 함."""
+    """app.js에 단일화된 일괄 프롬프트 생성 함수, 필터 분리 함수, 클립보드 복사 헬퍼 및 fallback 대화상자가 정의되어 있어야 함."""
     content = APP_JS.read_text(encoding="utf-8")
 
     assert "async function copyToClipboard(" in content
     assert "function showCopyFallbackDialog(" in content
+    assert "function filterUnverifiedAuthorities(" in content
     assert "function buildExternalAiPromptForUnverifiedAuthorities(" in content
     assert "copyFallbackDialog" in content
 
@@ -50,12 +58,18 @@ def test_behavior_prompt_generation_excludes_pii_and_claim_text():
     """행동 시험: claim_text에 성명, 전화번호, 주소 등 개인정보가 포함되어 있어도 프롬프트 출력에는 일체 포함되지 않아야 함."""
     fn_code = _extract_js_prompt_function()
 
+    # friendlyText 가명화/마스킹 모의 함수 포함
     runner_script = f"""
+function friendlyText(text) {{
+  if (!text) return text;
+  return text.replace(/홍길동/g, "홍OO").replace(/010-9876-5432/g, "010-****-5432");
+}}
+
 {fn_code}
 
 const sampleItems = [
   {{
-    cited_authority: "대법원 2021다12345 판결",
+    cited_authority: "대법원 2021다12345 판결 (홍길동 관련)",
     claim_text: "원고 홍길동(010-9876-5432, 서울 강남구 테헤란로 123)은 피고에게 5천만원을 대여하였다고 주장",
     verdict_label: "공식 DB 미확인 (원문 확인 필요)",
     official_status: "OFFICIAL_NOT_FOUND"
@@ -79,7 +93,9 @@ process.stdout.write(JSON.stringify(result));
     assert "민법 제398조 제2항" in generated_prompt
 
     # 2. 본문 문맥(claim_text) 및 개인정보(이름, 전화번호, 주소, 주민등록번호)는 100% 배제되어야 함
+    # 인용 식별자 자체에 들어간 당사자명도 friendlyText로 홍OO로 가명화되어 원본 이름은 없어야 함
     assert "홍길동" not in generated_prompt
+    assert "홍OO" in generated_prompt
     assert "010-9876-5432" not in generated_prompt
     assert "테헤란로" not in generated_prompt
     assert "이몽룡" not in generated_prompt
@@ -108,25 +124,24 @@ process.stdout.write(JSON.stringify(result));
 
 
 def test_behavior_filter_boundary_official_status():
-    """행동 시험: 필터 경계가 official_status in ('OFFICIAL_NOT_FOUND', 'UNVERIFIED_SCOPE')만 엄격히 수집해야 함."""
-    runner_script = """
+    """행동 시험: app.js의 실제 filterUnverifiedAuthorities 함수를 실행하여 official_status in ('OFFICIAL_NOT_FOUND', 'UNVERIFIED_SCOPE')만 엄격히 수집하는지 검증."""
+    filter_fn_code = _extract_js_filter_function()
+
+    runner_script = f"""
+{filter_fn_code}
+
 const filteredItems = [
-  { cited_authority: "대법원 2020다1111 판결", official_status: "OFFICIAL_NOT_FOUND", verdict_label: "공식 DB 미확인" },
-  { cited_authority: "상가임대차보호법 제10조의4", official_status: "UNVERIFIED_SCOPE", verdict_label: "미확인 범위" },
+  {{ cited_authority: "대법원 2020다1111 판결", official_status: "OFFICIAL_NOT_FOUND", verdict_label: "공식 DB 미확인" }},
+  {{ cited_authority: "상가임대차보호법 제10조의4", official_status: "UNVERIFIED_SCOPE", verdict_label: "미확인 범위" }},
   // 공식 확인된 항목은 '부당', '왜곡' 라벨이 붙어있더라도 필터에서 반드시 제외되어야 함
-  { cited_authority: "대법원 2015다2222 판결", official_status: "OFFICIAL_CONFIRMED", verdict_label: "판례 취지 왜곡 (부당)" },
-  { cited_authority: "민법 제565조", official_status: "OFFICIAL_CONFIRMED", verdict_label: "공식 원문 일치" },
+  {{ cited_authority: "대법원 2015다2222 판결", official_status: "OFFICIAL_CONFIRMED", verdict_label: "판례 취지 왜곡 (부당)" }},
+  {{ cited_authority: "민법 제565조", official_status: "OFFICIAL_CONFIRMED", verdict_label: "공식 원문 일치" }},
   // cited_authority가 없는 항목은 제외
-  { cited_authority: "", official_status: "OFFICIAL_NOT_FOUND", verdict_label: "미확인" }
+  {{ cited_authority: "", official_status: "OFFICIAL_NOT_FOUND", verdict_label: "미확인" }}
 ];
 
-// app.js의 필터 로직 검증
-const unverifiedAuthorities = filteredItems.filter(it => 
-  Boolean(it.cited_authority) && (
-    it.official_status === "OFFICIAL_NOT_FOUND" ||
-    it.official_status === "UNVERIFIED_SCOPE"
-  )
-);
+// app.js에서 추출한 실제 함수 실행
+const unverifiedAuthorities = filterUnverifiedAuthorities(filteredItems);
 
 process.stdout.write(JSON.stringify(unverifiedAuthorities.map(it => it.cited_authority)));
 """

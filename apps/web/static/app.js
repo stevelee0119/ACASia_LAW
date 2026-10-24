@@ -160,6 +160,18 @@ async function copyToClipboard(text, successMessage = "클립보드에 복사되
   }
 }
 
+// 서면 내 출처 미확인 판례·법령 필터링 함수 (TK-94)
+// 대상 필터: official_status가 OFFICIAL_NOT_FOUND 또는 UNVERIFIED_SCOPE인 항목만 엄격히 수집 (공식 확인 항목 배제)
+function filterUnverifiedAuthorities(items) {
+  if (!Array.isArray(items)) return [];
+  return items.filter(it => 
+    Boolean(it && it.cited_authority) && (
+      it.official_status === "OFFICIAL_NOT_FOUND" ||
+      it.official_status === "UNVERIFIED_SCOPE"
+    )
+  );
+}
+
 // 서면 내 출처 미확인 판례·법령 전체에 대한 엘박스/법률 AI 일괄 검증 프롬프트 생성 (TK-94)
 // 법령·판례의 실재 여부 검증용이므로 본문 문맥(claim_text) 및 당사자 개인정보는 일체 배제하고 인용 식별자만 포함
 function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "") {
@@ -167,8 +179,10 @@ function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "")
   let itemsListText = "";
 
   items.forEach((it, idx) => {
-    // 본문 문맥이나 당사자 개인정보는 일체 배제하고 인용 표기(사건번호, 법령명/조문)만 포함
-    const auth = String(it.cited_authority || "").trim();
+    // 본문 문맥이나 당사자 개인정보는 일체 배제하고 인용 표기(사건번호, 법령명/조문)만 포함하되,
+    // 인용 식별자 자체에 개인정보가 포함되었을 가능성까지 차단하기 위해 friendlyText 적용
+    const rawAuth = String(it.cited_authority || "").trim();
+    const auth = typeof friendlyText === "function" ? friendlyText(rawAuth) : rawAuth;
     if (auth) {
       itemsListText += `${idx + 1}. ${auth}\n`;
     }
@@ -2223,13 +2237,8 @@ function renderFindings() {
     if (policy === "LOCAL_ONLY") {
       tableActions.hidden = true;
     } else {
-      // 대상 필터: official_status가 OFFICIAL_NOT_FOUND 또는 UNVERIFIED_SCOPE인 항목만 엄격히 수집
-      const unverifiedAuthorities = filteredItems.filter(it => 
-        Boolean(it.cited_authority) && (
-          it.official_status === "OFFICIAL_NOT_FOUND" ||
-          it.official_status === "UNVERIFIED_SCOPE"
-        )
-      );
+      // 대상 필터: filterUnverifiedAuthorities 함수 사용 (공식 확인 항목 배제)
+      const unverifiedAuthorities = filterUnverifiedAuthorities(filteredItems);
 
       if (unverifiedAuthorities.length > 0) {
         const promptBtn = button("📋 엘박스/AI 검증 프롬프트", () => {
