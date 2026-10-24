@@ -182,6 +182,119 @@ def test_negative_6_different_clauses_no_conflict():
     assert len(findings) == 0
 
 
+def test_positive_arithmetic_multiplication():
+    """양성: 곱셈 산술 불일치 탐지 (18회 × 74,000원 = 1,432,000원)."""
+    text = "이에 따른 용역 대금은 총 18회 × 74,000원 = 1,432,000원으로 산출됩니다."
+    doc = _make_doc(text)
+    findings = check_internal_inconsistency(doc)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.type == FindingType.ARITHMETIC_MISMATCH
+    assert f.evidence_grade == EvidenceGrade.C
+    assert f.status == VerificationStatus.SUSPICIOUS
+    assert f.confidence_features.get("expected") == 18 * 74000
+    assert f.confidence_features.get("actual") == 1432000
+
+
+def test_positive_arithmetic_addition():
+    """양성: 덧셈 합산 불일치 탐지 (2,430,000원 + 1,170,000원 = 3,900,000원)."""
+    text = "미지급 비용 2,430,000원 + 1,170,000원 = 총 3,900,000원의 지급을 청구합니다."
+    doc = _make_doc(text)
+    findings = check_internal_inconsistency(doc)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.type == FindingType.ARITHMETIC_MISMATCH
+    assert f.evidence_grade == EvidenceGrade.C
+    assert f.status == VerificationStatus.SUSPICIOUS
+    assert f.confidence_features.get("expected") == 2430000 + 1170000
+    assert f.confidence_features.get("actual") == 3900000
+
+
+def test_positive_arithmetic_subtraction():
+    """양성: 뺄셈 차감 불일치 탐지 (73,400,000원 - 18,600,000원 - 7,900,000원 = 잔액 48,900,000원)."""
+    text = "원금 73,400,000원 - 18,600,000원 - 7,900,000원 = 잔액 48,900,000원이 남았습니다."
+    doc = _make_doc(text)
+    findings = check_internal_inconsistency(doc)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.type == FindingType.ARITHMETIC_MISMATCH
+    assert f.confidence_features.get("expected") == 73400000 - 18600000 - 7900000
+    assert f.confidence_features.get("actual") == 48900000
+
+
+def test_positive_arithmetic_net_description():
+    """양성: 서술형 순액 불일치 탐지 (지출 2,740,000원과 환급 860,000원 ... 순액 1,980,000원)."""
+    text = "해당 분기 지출 2,740,000원과 환급 860,000원을 반영할 때 순액은 1,980,000원에 달합니다."
+    doc = _make_doc(text)
+    findings = check_internal_inconsistency(doc)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.type == FindingType.ARITHMETIC_MISMATCH
+    assert f.confidence_features.get("expected") == 2740000 - 860000
+    assert f.confidence_features.get("actual") == 1980000
+
+
+def test_positive_approval_after_service_date_inversion():
+    """양성: 결재일 > 송달완료일 선후 역전 모순 탐지."""
+    text = (
+        "이 사건 행정처분의 결재일자는 2024. 6. 14.로 확인됩니다. "
+        "그러나 상대방에게의 송달완료일자는 2024. 6. 11.로 기재되어 선후가 맞지 않습니다."
+    )
+    doc = _make_doc(text)
+    findings = check_internal_inconsistency(doc)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.type == FindingType.FACT_CONTRADICTION
+    assert f.confidence_features.get("rule_id") == "EVI.INCONS_DATE_INVERSION"
+
+
+def test_positive_exclusive_location_contradiction():
+    """양성: 동일 일시 상호배타적 장소 독점 모순 탐지."""
+    text = "피고는 2026. 3. 13. 10:20 내내 접수대에만 있었고 다른 곳에 가지 않았다고 하면서도 같은 일시 배수실에만 있었다고 진술합니다."
+    doc = _make_doc(text)
+    findings = check_internal_inconsistency(doc)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.type == FindingType.FACT_CONTRADICTION
+    assert f.confidence_features.get("rule_id") == "EVI.INCONS_LOC_EXCLUSIVE"
+
+
+def test_positive_receipt_number_date_contradiction():
+    """양성: 동일 접수번호 접수일자 불일치 탐지."""
+    text = (
+        "피고 제출 서류에 따르면 접수번호 DM-A42의 접수일자는 2026. 3. 5.로 기재되어 있습니다. "
+        "반면 다른 목록표에서는 접수번호 DM-A42의 일자가 2026. 3. 8.로 서로 다릅니다."
+    )
+    doc = _make_doc(text)
+    findings = check_internal_inconsistency(doc)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.type == FindingType.FACT_CONTRADICTION
+    assert f.confidence_features.get("rule_id") == "EVI.INCONS_RECEIPT_DATE"
+
+
+def test_negative_correct_arithmetic_calculation():
+    """대조: 정확한 산술 계산식 (오탐 0)."""
+    text = (
+        "정상 정산 결과 18회 × 74,000원 = 1,332,000원이며, "
+        "미지급분 2,430,000원 + 1,170,000원 = 총 3,600,000원이 정확히 계산되었습니다."
+    )
+    doc = _make_doc(text)
+    findings = check_internal_inconsistency(doc)
+    assert len(findings) == 0
+
+
+def test_negative_vat_breakdown_no_false_positive():
+    """대조: 부가세 별도 공급가액과 부가세 포함 총액의 정상 구분 서술 (오탐 0)."""
+    text = (
+        "이 사건 공사계약의 공급가액은 1000만원으로 약정하였습니다. "
+        "또한 부가세 포함 총액은 1100만원으로 확정되어 세금계산서가 발행되었습니다."
+    )
+    doc = _make_doc(text)
+    findings = check_internal_inconsistency(doc)
+    assert len(findings) == 0
+
+
 # --- 3. 정규식 선형 시간 복잡도 검증 시험 ---
 
 def test_regex_linear_performance():
