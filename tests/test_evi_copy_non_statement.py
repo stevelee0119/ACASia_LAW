@@ -499,4 +499,61 @@ def test_running_head_and_subtitle_headings_classification():
     assert kind != DOC_KIND_PLEADING
 
 
+def test_job_title_sojang_negative_not_pleading():
+    """요구 ① 및 ③ 검증: 직위(기관·부대·현장 수식, 뒤에 다른 명사) '소장'은 PLEADING으로 분류되지 않아야 함 (음성 시험)."""
+    # 1. 음성 대조군 5건 (직위 '소장'이므로 PLEADING이 아니어야 함)
+    negative_cases = [
+        "관리사무소 소장 확인서\n1. 확인 내용: 입주민 시설 점검 내역입니다.",
+        "연구소 소장 명의 업무보고\n본 보고서는 신규 장비 검토 결과입니다.",
+        "공사현장 소장 결재문\n금일 안전점검 완료 사항을 결재 요청합니다.",
+        "소장 보고\n당월 시설 관리 현황 보고서입니다.",
+        "파출소 소장 통보문\n관내 순찰 및 특이사항 통보의 건입니다.",
+    ]
+    for idx, text in enumerate(negative_cases):
+        doc = _make_doc(f"neg_job_{idx}", text)
+        kind, _ = _document_title_kind(doc)
+        assert kind != DOC_KIND_PLEADING, f"직위 표제가 PLEADING으로 오분류됨: {text.splitlines()[0]}"
+
+    # 2. 양성 기준군 4건 (실제 소송 서면 표제 꼴은 정상적으로 PLEADING으로 분류되어야 함)
+    positive_cases = [
+        ("소  장\n원고 홍길동\n피고 주식회사", DOC_KIND_PLEADING),
+        ("SD-01 | 소장 ― 손해배상(기) 청구의 소\n원고 대리인 변호사", DOC_KIND_PLEADING),
+        ("소장 (청구취지 및 청구원인 변경)\n사건 2024가단12345", DOC_KIND_PLEADING),
+        ("원고 소장\n당사자 표시 및 청구원인", DOC_KIND_PLEADING),
+    ]
+    for idx, (text, expected_kind) in enumerate(positive_cases):
+        doc = _make_doc(f"pos_plead_{idx}", text)
+        kind, _ = _document_title_kind(doc)
+        assert kind == expected_kind, f"정상 소송서면 표제가 분류 실패함: {text.splitlines()[0]}"
+
+
+def test_derived_documents_negative_not_fact_confirmation():
+    """요구 ② 및 ③ 검증: '사본·송부·안내·요청' 등 경위서 자체가 아닌 파생 문서는 FACT_CONFIRMATION으로 분류되지 않아야 함 (음성 시험)."""
+    # 1. 음성 대조군 5건 (파생 문서명이므로 FACT_CONFIRMATION이 아니어야 함)
+    negative_cases = [
+        "사실경위서 사본 제출\n첨부자료 원본 대조필 사본 제출 목록입니다.",
+        "사고경위서 송부의 건\n수신: 관련 부서\n참조: 인사팀",
+        "경위서 발급 및 작성 안내문\n임직원 사고 발생 시 처리 절차 안내입니다.",
+        "사건경위서 제출 요청서\n사건 관련 경위서 작성을 요청하오니 회신 바랍니다.",
+        "경위서 ― 사본 일체\n관련 서류 사본 일체를 제출합니다.",
+    ]
+    for idx, text in enumerate(negative_cases):
+        doc = _make_doc(f"neg_fact_{idx}", text)
+        kind, _ = _document_title_kind(doc)
+        assert kind != DOC_KIND_FACT_CONFIRMATION, f"파생 문서 표제가 FACT_CONFIRMATION으로 오분류됨: {text.splitlines()[0]}"
+
+    # 2. 양성 기준군 4건 (실제 서증 원본 경위서 표제는 정상적으로 FACT_CONFIRMATION으로 분류되어야 함)
+    positive_cases = [
+        ("사 실 경 위 서\n1. 발생 경위: 당일 작업 현황입니다.", DOC_KIND_FACT_CONFIRMATION),
+        ("SD-07 | 사실경위서 ― 현장 설비 점검 사건\n1. 일시 및 장소", DOC_KIND_FACT_CONFIRMATION),
+        ("사고경위서 (작성자: 박○○)\n사고 발생 직후 조치 내역입니다.", DOC_KIND_FACT_CONFIRMATION),
+        ("경위서 작성자: 홍길동\n당시 상황에 대한 육하원칙 진술입니다.", DOC_KIND_FACT_CONFIRMATION),
+    ]
+    for idx, (text, expected_kind) in enumerate(positive_cases):
+        doc = _make_doc(f"pos_fact_{idx}", text)
+        kind, _ = _document_title_kind(doc)
+        assert kind == expected_kind, f"정상 사실경위서 표제가 분류 실패함: {text.splitlines()[0]}"
+
+
+
 
