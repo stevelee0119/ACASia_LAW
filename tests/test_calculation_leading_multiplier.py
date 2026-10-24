@@ -66,6 +66,41 @@ def test_leading_multiplier_positive_case_3_asterisk_and_count():
     assert res == Decimal("1800000")
 
 
+# --- T1: calculation.py 새 꼴 3변형 시험 (천 단위 쉼표 수 × 정수, 결과 뒤 단위·조사) ---
+
+def test_calculation_comma_number_times_integer_mismatch():
+    """T1 변형 1: 천 단위 쉼표 수 × 정수 = 잘못 적힌 결과 (50,000 × 3 = 140,000원)."""
+    from packages.claim_engine.calculation import row_final_amount
+    amt, check = row_final_amount("재료비 50,000 × 3 = 140,000원")
+    assert amt is not None
+    assert amt.value == Decimal("140000")
+    assert check is not None
+    assert check.computed == Decimal("150000")
+    assert not check.matches
+
+
+def test_calculation_integer_times_comma_number_with_josa():
+    """T1 변형 2: 정수 × 천 단위 쉼표 수 = 잘못 적힌 결과 뒤 조사 (3 × 50,000 = 140,000원으로 계산된다)."""
+    from packages.claim_engine.calculation import row_final_amount
+    amt, check = row_final_amount("수량 단가 3 × 50,000 = 140,000원으로 계산된다")
+    assert amt is not None
+    assert amt.value == Decimal("140000")
+    assert check is not None
+    assert check.computed == Decimal("150000")
+    assert not check.matches
+
+
+def test_calculation_unit_amount_times_count_with_predicate():
+    """T1 변형 3: 단위 금액 × 수 = 잘못 적힌 결과 뒤 서술어 (15,000원 × 12 = 210,000원에 달한다)."""
+    from packages.claim_engine.calculation import row_final_amount
+    amt, check = row_final_amount("노무비 15,000원 × 12 = 210,000원에 달한다")
+    assert amt is not None
+    assert amt.value == Decimal("210000")
+    assert check is not None
+    assert check.computed == Decimal("180000")
+    assert not check.matches
+
+
 # --- 2. 대조군 3건 (오탐 방지) ---
 
 def test_leading_multiplier_control_case_1_single_amount():

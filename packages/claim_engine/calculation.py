@@ -126,19 +126,24 @@ AMOUNT_HEADER_RE = re.compile(r"(금액|합계|청구액|손해액|피해액|소
 
 def evaluate_expression(text: str) -> Optional[Decimal]:
     """'3,100,000원 + 1,250,000원', '500,000원 × 3', '3 × 500,000원', '물품내역 1차 14건 × 17,000원' 같은 산식의 값. 산식이 아니면 None."""
-    # 1. '수 × 금액' 선행 배수 산식 처리 (수량/개월수 × 단가)
+    # 1. '수 × 금액' 선행 배수 산식 처리 (수량/개월수 × 단가 및 '천 단위 쉼표 수 × 정수')
     lead_match = LEADING_MULTIPLIER_RE.search(text)
     if lead_match:
         prefix = text[:lead_match.start()].strip()
         # 선행 텍스트에 연산자(+, -, *, /, =)가 없어야 단일 라벨 뒤의 수량 산식으로 취급
         if not re.search(r"[+\-−×xX*＋/=]", prefix):
-            lead_mult = Decimal(lead_match.group("mult").replace(",", ""))
+            raw_lead = lead_match.group("mult")
+            lead_mult = Decimal(raw_lead.replace(",", ""))
             remainder = text[lead_match.end():]
             amounts = parse_amounts(remainder)
             if not amounts:
                 amt = parse_cell_amount(remainder)
-                if amt and re.search(r"[원₩\\]|천|만|억", remainder):
-                    return lead_mult * amt.value
+                if amt:
+                    has_currency = bool(re.search(r"[원₩\\]|천|만|억", remainder))
+                    has_comma = ("," in raw_lead) or ("," in amt.raw)
+                    has_large_number = (lead_mult >= 1000) or (amt.value >= 1000)
+                    if has_currency or (has_comma and (lead_mult > 0 and amt.value > 0)) or (has_large_number and (lead_mult > 0 and amt.value > 0)):
+                        return lead_mult * amt.value
                 return None
             total = lead_mult * amounts[0].value
             cursor = amounts[0].end
@@ -204,8 +209,6 @@ def parse_cell_amount(text: str, *, block_id: Optional[str] = None, page: Option
 def row_final_amount(text: str) -> Tuple[Optional[Amount], Optional[CalculationCheck]]:
     """행의 최종 금액과(있으면) 그 행 산식의 검산 결과. '=' 뒤 금액을 최종 금액으로 본다."""
     amounts = parse_amounts(text)
-    if not amounts:
-        return None, None
     if "=" in text:
         left, _, right = text.rpartition("=")
         right_amounts = parse_amounts(right)
@@ -217,6 +220,25 @@ def row_final_amount(text: str) -> Tuple[Optional[Amount], Optional[CalculationC
                 check = CalculationCheck(kind="FORMULA", stated=final.value, computed=value,
                                          detail=f"산식 '{' '.join(text.split())}'의 계산값 {value:,} / 기재 {final.value:,}")
             return Amount(final.value, final.raw, len(left) + 1 + final.start, len(left) + 1 + final.end), check
+        else:
+            # 우변에 조사가 붙어 있거나 단위가 생략된 경우 (T1: 결과 뒤 단위·조사 지원)
+            right_cell_amt = parse_cell_amount(right)
+            if not right_cell_amt:
+                m_num = re.search(r"(?P<val>\d{1,3}(?:,\d{3})+|\d+)\s*(?:원)?", right)
+                if m_num:
+                    try:
+                        v = Decimal(m_num.group("val").replace(",", ""))
+                        if v > 0:
+                            right_cell_amt = Amount(v, m_num.group(0), m_num.start(), m_num.end())
+                    except InvalidOperation:
+                        pass
+            if right_cell_amt and value is not None:
+                check = CalculationCheck(kind="FORMULA", stated=right_cell_amt.value, computed=value,
+                                         detail=f"산식 '{' '.join(text.split())}'의 계산값 {value:,} / 기재 {right_cell_amt.value:,}")
+                return Amount(right_cell_amt.value, right_cell_amt.raw, len(left) + 1 + right_cell_amt.start, len(left) + 1 + right_cell_amt.end), check
+
+    if not amounts:
+        return None, None
     if len(amounts) == 1:
         return amounts[0], None
     return None, None
