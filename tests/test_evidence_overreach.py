@@ -377,3 +377,91 @@ def test_s8_severity_assertion_retained():
     assert ovr[0].evidence_grade == EvidenceGrade.C
     assert ovr[0].severity == Severity.MEDIUM
 
+
+# ==============================================================================
+# B-1 5차 보완 검증 테스트: V1 ~ V3 전용 검증
+# ==============================================================================
+
+
+def test_v1_total_amount_modifiers():
+    """V1: 수량 전칭 양방향 어순('명사 뒤 전칭' 및 '전칭 + 명사')과 대조군 검증 (한국어 주석)."""
+    # 1. 양성군 4건: 명사 뒤 전칭 3꼴 + 전칭 선행 어순 1꼴
+    pos_cases = [
+        # 1) 대여금 전액을 갚았다 (견적서로는 대여금 전액 변제 단정 불가)
+        ("피고는 대여금 전액을 변제하였음이 견적서(을 제1호증)로 증명됩니다.", "1. 을 제1호증 견적서"),
+        # 2) 물품대금을 모두 지급하였다
+        ("원고에 대한 물품대금을 모두 지급하였음은 산출내역서(을 제2호증)에 의하여 인정됩니다.", "1. 을 제2호증 산출내역서"),
+        # 3) 공사가 전부 끝마쳐졌다
+        ("이 사건 인테리어 공사가 전부 완료되었음은 설계도(을 제3호증)로 입증됩니다.", "1. 을 제3호증 설계도"),
+        # 4) 어순 바꿈: 전액 공사대금을 완납하였다
+        ("피고가 전액 공사대금을 완납한 사실은 예산서(을 제4호증)에 비추어 명백합니다.", "1. 을 제4호증 예산서"),
+    ]
+    for body, exhibit in pos_cases:
+        doc = _make_doc(body, "입증방법", exhibit)
+        findings = [f for f in check_evidence_overreach(doc) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+        assert len(findings) == 1, f"V1 전칭 양성 미탐지: {body} -> {findings}"
+
+    # 2. 대조군 2건: 금전·채무·완료 대상 N 범위 밖의 일반 전칭 (과장 아님)
+    neg_cases = [
+        # 모두 출석하였다
+        ("주주들이 모두 출석하여 회의를 진행한 사실은 안내문(갑 제1호증)에 의하여 확인됩니다.", "1. 갑 제1호증 안내문"),
+        # 전부 기각
+        ("원고의 주장이 법원에서 전부 기각된 사실은 통지서(갑 제2호증)로 알 수 있습니다.", "1. 갑 제2호증 통지서"),
+    ]
+    for body, exhibit in neg_cases:
+        doc = _make_doc(body, "입증방법", exhibit)
+        findings = [
+            f for f in check_evidence_overreach(doc)
+            if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH
+            and "전칭" in f.title
+        ]
+        assert len(findings) == 0, f"V1 비금전 전칭 오탐 발생: {body} -> {findings}"
+
+
+def test_v2_completion_predicates_and_inflections():
+    """V2: 완료 술어의 다양한 활용형 및 피동형과 비대상 대조군 검증 (한국어 주석)."""
+    # 1. 양성군 4건: 끝마쳐졌다, 갚은, 끝났다, 마쳐
+    pos_cases = [
+        # 공사가 끝마쳐졌다
+        ("본건 공사가 끝마쳐졌음이 견적서(을 제1호증)에 의하여 입증됩니다.", "1. 을 제1호증 견적서"),
+        # 채무를 갚은
+        ("원고에게 채무를 갚은 사실은 산출내역서(을 제2호증)로 확인됩니다.", "1. 을 제2호증 산출내역서"),
+        # 납부가 끝났다
+        ("공사비 납부가 끝났음이 예산서(을 제3호증)를 통하여 증명됩니다.", "1. 을 제3호증 예산서"),
+        # 지급을 마쳐
+        ("피고는 대금 지급을 마쳐 이행을 완료한 사실이 설계도(을 제4호증)로 입증됩니다.", "1. 을 제4호증 설계도"),
+    ]
+    for body, exhibit in pos_cases:
+        doc = _make_doc(body, "입증방법", exhibit)
+        findings = [f for f in check_evidence_overreach(doc) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+        assert len(findings) == 1, f"V2 완료 술어 양성 미탐지: {body} -> {findings}"
+
+    # 2. 대조군: 대상이 금전·채무·공사 등이 아닌 일반 서술
+    neg_doc = _make_doc(
+        "이 사건 회의가 끝났다(갑 제1호증 안내문).",
+        "입증방법", "1. 갑 제1호증 안내문"
+    )
+    findings_neg = [
+        f for f in check_evidence_overreach(neg_doc)
+        if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH
+        and "완료" in f.title
+    ]
+    assert len(findings_neg) == 0, f"V2 비대상 완료 오탐 발생: {findings_neg}"
+
+
+def test_v3_evidence_category_prefix_modifiers():
+    """V3: 수식어가 붙은 서증명(접미 일치: …산출내역서, …견적서, …등록증) 범주 인식 검증 (한국어 주석)."""
+    cases = [
+        # 공사비 산출내역서 (견적계획 범주 -> 완료 단정 과장)
+        ("피고는 공사대금을 완납하였습니다(을 제1호증 공사비 산출내역서).", "1. 을 제1호증 공사비 산출내역서"),
+        # 물품 견적서 (견적계획 범주 -> 지급 완료 과장)
+        ("원고는 물품대금을 모두 지급하였습니다(을 제2호증 물품 견적서).", "1. 을 제2호증 물품 견적서"),
+        # 사업자 등록증 (명의식별 범주 -> 지급 완료 과장)
+        ("피고는 대금 지급을 완료하였습니다(을 제3호증 사업자 등록증).", "1. 을 제3호증 사업자 등록증"),
+    ]
+    for body, exhibit in cases:
+        doc = _make_doc(body, "입증방법", exhibit)
+        findings = [f for f in check_evidence_overreach(doc) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+        assert len(findings) == 1, f"V3 접미 서증명 양성 미탐지: {body} -> {findings}"
+
+
