@@ -109,74 +109,120 @@ PARTY_TITLES: Tuple[str, ...] = (
     "근로자", "사용자", "청구인", "피청구인",
 )
 
-# A-4 2. 기관명 접미 규칙 (조건 6: 기관명 열거 금지, 접미 규칙으로 포착)
+# A-4 2. 기관명 접미 규칙 (조건 6, R5: 기관명 열거 금지, 접미 규칙으로 포착)
 ORGAN_SUFFIX_RE = re.compile(
-    r"[가-힣]{1,15}(?:법원|위원회|세무서|경찰서|소방서|관할청|처분청|행정청|검찰청|노동청|국세청|구청|시청|지청)"
+    r"[가-힣]{0,15}(?:법원|위원회|세무서|경찰서|소방서|관할청|처분청|행정청|검찰청|노동청|국세청|구청|시청|지청|공단|사무소|공사)"
 )
 
 # 주체 추출 정규식: 당사자 호칭 또는 기관명 접미 + 주격/보조사
 SUBJECT_RE = re.compile(
-    r"(?:(?P<party>" + "|".join(PARTY_TITLES) + r")|(?P<organ>[가-힣]{1,15}(?:법원|위원회|세무서|경찰서|소방서|관할청|처분청|행정청|검찰청|노동청|국세청|구청|시청|지청)))"
+    r"(?:(?P<party>" + "|".join(PARTY_TITLES) + r")|(?P<organ>[가-힣]{0,15}(?:법원|위원회|세무서|경찰서|소방서|관할청|처분청|행정청|검찰청|노동청|국세청|구청|시청|지청|공단|사무소|공사)))"
     r"(?P<particle>[은는이가의])"
 )
 
-# 절 분리 정규식: 쉼표, 세미콜론, 연결어미 (-고, -며, -나, -한 후, -한 뒤, -하여, -한바 등), 문장 종결어미 (조건 1)
+# 절 분리 정규식: 쉼표, 세미콜론, 연결어미 (-고, -며, -나, -한 후, -한 뒤, -하여, -한바 등), 관형절 경계, 문장 종결어미 (R2)
 CLAUSE_DELIMITER_RE = re.compile(
     r",\s*|;\s*|\n+|"
     r"(?<=[가-힣][다음함임것바기]\.)\s+|"
     r"(?:"
     r"(?<=[가-힣])(?:하고|했고|하고는|하며|했으나|하나|하지만|하였고|하였으나|하였으며|하여|한바|인바|"
+    r"하였는데|되었는데|했는데|한데|인데|였는데|았는데|었는데|은바|는바|"
     r"(?:한|된|받은|보낸|마친|끝난)\s*(?:후|뒤|다음)(?:에|는|,|\s)?)|"
     r"(?:(?<=\.)|(?<=\d)|\s+)이(?:고|며|나|지만|인데)|"
-    r"(?:(?<=\.)|(?<=\d)|\s+)에\s*대한"
+    r"(?:(?<=\.)|(?<=\d)|\s+)에\s*대한|"
+    r"(?<=[가-힣])(?:내린|처분한|결정한|신청한|청구한|제출한|발송한|송부한|체결한|약정한|작성한)\s+(?=[가-힣]{2,})|"
+    r"(?<=[가-힣])(?:다가|자마자|자)\s+"
     r")\s*"
 )
 
-# A-4 3. 7대 사건 종류 표면형 닫힌 사전 (조건 2: 활용형·동의어 표면형 전체를 코드 상수로 정의)
+# R3: 문서 명사는 사건이 아니라 대상(OBJECT) 사전으로 분리
+DOCUMENT_OBJECT_NOUNS: Tuple[str, ...] = (
+    "신청서", "청구서", "소장", "의견서", "답변서", "준비서면",
+    "통지서", "최고서", "처분서", "결정서", "보정명령서", "결정문", "통지문",
+    "확인서", "증명서", "산정서", "계약서", "합의서", "약정서", "공문",
+    "임대차계약", "공급계약", "매매계약", "근로계약", "업무협약", "임대차", "근무기간", "임대기간", "계약기간",
+)
+
+# R6: 명확한 5대 제외 대상 정규식 (절 단위 검사)
+EXCLUDE_CASE_LAW_RE = re.compile(
+    r"(?:대법원|판결|판례|헌법재판소|결정례|선고|대판|선기)\s*(?:\d{2,4}[가-힣]+\d+|\d{4}\.\s*\d{1,2}\.\s*\d{1,2}\.|\([가-힣\s]+\))|"
+    r"(?:법|령|규칙)\s*제\s*\d+\s*조"
+)
+EXCLUDE_FUTURE_RE = re.compile(
+    r"(?:변제기|이행기|예정(?:이다|일|이며|이나)?|하기로\s*한다|하기로\s*약정|도래하지|기한이\s*도래)"
+)
+EXCLUDE_OPPONENT_CLAIM_RE = re.compile(
+    r"(?:라고|다고|라며|다며)\s*(?:주장하나|주장한바|주장하지만|주장하므로|주장하며)|"
+    r"(?:라는|다는)\s*(?:피고|원고|신청인|상대방)?\s*(?:의\s*)?주장은"
+)
+EXCLUDE_NEGATION_RE = re.compile(
+    r"(?:하지\s*않았|하지\s*아니하였|한\s*사실이\s*없|한\s*바\s*없|되지\s*않았|아니하였다|없었다|아니다)"
+)
+EXCLUDE_CORRECTION_RE = re.compile(
+    r"(?:이\s*아니라|가\s*아니라|의\s*오기이다|의\s*오기로|의\s*착오로|으로\s*정정)"
+)
+
+# A-4 3. 7대 사건 종류 표면형 닫힌 사전 (R3: 행위 동사 및 파생어만 유지, 문서 명사 및 삭제 대상 제거)
 EVENT_KIND_SURFACE_FORMS: Dict[str, Tuple[str, ...]] = {
     "신청": (
         "허가신청", "변경신청", "교부신청", "재심청구", "심판청구", "구제신청", "지급청구", "손해배상청구", "소송제기",
-        "신청서제출", "청구서제출", "소장제출", "의견서제출",
         "손해배상 청구", "손해배상금 지급청구", "보험금 청구",
-        "신청서", "청구서", "신청", "청구",
-        "신청하", "청구하", "신청했", "청구했", "신청한", "청구한", "신청된", "청구된", "제출하", "제출했", "제기되었", "제기했",
+        "신청", "청구", "제기", "제출",
+        "신청하", "청구하", "제기하", "제출하",
+        "신청했", "청구했", "제기했", "제출했",
+        "신청한", "청구한", "제기한", "제출한",
+        "신청된", "청구된", "제기된", "제출된",
+        "신청되어", "청구되어", "제기되어", "제출되어",
     ),
     "처분": (
         "과징금부과처분", "영업정지처분", "직위해제처분", "거부처분", "불승인처분", "불허가처분",
-        "기각결정", "각하결정", "인용결정", "승인처분", "인가처분", "보정명령",
-        "처분", "결정", "고지", "통고", "명령", "판정", "의결",
-        "처분하", "결정하", "고지하", "통고하", "명령하",
-        "처분했", "결정했", "고지했", "통고했", "명령했",
-        "처분된", "결정된", "내려진", "발령",
+        "기각결정", "각하결정", "인용결정", "승인처분", "인가처분",
+        "처분", "결정", "명령", "판정", "의결",
+        "처분하", "결정하", "명령하", "판정하", "의결하",
+        "처분했", "결정했", "명령했", "판정했", "의결했",
+        "처분한", "결정한", "명령한", "판정한", "의결한",
+        "처분된", "결정된", "내려진", "발령", "발령된", "명령된",
+        "처분되어", "결정되어", "발령되어",
     ),
     "통지": (
-        "해제통지", "해지통지", "결과통지", "최고서",
+        "해제통지", "해지통지", "결과통지", "최고",
         "해제 통지", "해지 통지",
-        "통지서", "통지", "회신", "통보", "안내", "공지",
-        "통지하", "회신하", "통보하", "통지했", "회신했", "통보했", "통지된", "발송된통지",
+        "통지", "발령", "고지", "통고", "회신", "통보",
+        "통지하", "발령하", "고지하", "통고하", "회신하", "통보하",
+        "통지했", "발령했", "고지했", "통고했", "회신했", "통보했",
+        "통지한", "발령한", "고지한", "통고한", "회신한", "통보한",
+        "통지된", "발령된", "고지된", "통보된",
     ),
     "발송": (
         "발송일", "발신일", "송부일", "발송일시", "발신일시",
         "발송", "송부", "발신",
-        "발송하", "송부하", "발신하", "발송했", "송부했", "발신했",
-        "보냈", "보낸", "부친", "부쳤", "발송한", "송부한",
+        "발송하", "송부하", "발신하",
+        "발송했", "송부했", "발신했",
+        "보냈", "보낸", "부친", "부쳤",
+        "발송한", "송부한", "발신한",
+        "발송된", "송부된", "발신된",
     ),
     "도달": (
         "결정도달", "송달", "도달일", "수령일", "송달일", "도달일시", "수령일시", "송달일시",
-        "도달", "수령", "송달받", "수임", "교부받",
-        "도달하", "수령하", "도달했", "수령했", "도달한", "수령한",
-        "받았", "받은", "교부", "인계",
+        "도달", "수령", "수신", "송달",
+        "도달하", "수령하", "수신하", "송달하",
+        "도달했", "수령했", "수신했", "송달했", "송달받", "송달받았",
+        "도달한", "수령한", "수신한", "송달한", "송달받은",
+        "도달된", "수령된", "수신된", "송달된",
     ),
     "체결": (
         "계약체결", "협약체결", "합의체결",
         "체결일", "계약체결일", "체결", "약정", "계약을맺",
-        "체결하", "약정하", "체결했", "약정했", "체결한", "약정한",
-        "맺었", "맺은",
+        "체결하", "약정하", "체결했", "약정했",
+        "체결한", "약정한", "맺었", "맺은",
+        "체결된", "약정된",
     ),
     "이행": (
-        "이행", "변제", "지급", "인도", "결제", "정산",
+        "이행", "변제", "지급", "인도",
         "이행하", "변제하", "지급하", "인도하",
         "이행했", "변제했", "지급했", "인도했",
+        "이행한", "변제한", "지급한", "인도한",
+        "이행된", "변제된", "지급된", "인도된",
     ),
     "해지": (
         "계약해지", "계약해제", "합의해제", "해제통지", "해지통지", "해제 통지", "해지 통지",
@@ -187,47 +233,46 @@ EVENT_KIND_SURFACE_FORMS: Dict[str, Tuple[str, ...]] = {
     "입사": (
         "입사일", "근무시작일", "재직시작일", "채용일", "임용일",
         "입사", "채용", "취직", "근무시작", "재직시작", "임용",
-        "입사하", "채용하", "입사했", "채용했", "입사한", "채용된",
+        "입사하", "채용하", "취직하", "임용하",
+        "입사했", "채용했", "취직했", "임용했",
+        "입사한", "채용된", "임용된",
     ),
     "퇴사": (
         "최종퇴사일", "최종퇴직일", "퇴사일", "퇴직일", "해고일", "사직일", "근무종료일",
         "사직통지", "사직 통지", "해고통지", "해고 통지",
         "퇴사", "퇴직", "해고", "사직", "근무종료", "최종퇴사", "최종퇴직",
         "퇴사하", "퇴직하", "해고하", "사직하",
-        "퇴사했", "퇴직했", "해고했", "사직했", "퇴직한", "해고된",
+        "퇴사했", "퇴직했", "해고했", "사직했", "퇴사한", "퇴직한", "해고된", "사직한",
     ),
     "접수": (
         "소장접수", "사건접수", "신청접수", "접수일",
         "접수", "접수하", "접수했", "접수한", "접수된", "접수되었", "접수되어", "접수되",
     ),
     "보정": (
-        "보정명령", "보정권고", "보정명령일",
-        "보정", "보정하", "보정했", "보정명령을내", "보정명령한",
+        "보정",
+        "보정하", "보정했", "보정한",
+        "보정명령을내",
     ),
     "발생": (
         "사고발생", "손해발생", "사건발생", "발생일", "사고발생일",
-        "교통사고", "사고",
-        "발생", "발생하", "발생했", "발생한",
+        "교통사고", "사고", "손해",
+        "발생", "성립", "발생하", "성립하", "발생했", "성립했", "발생한", "성립한",
     ),
     "기간시작": (
-        "임대차개시일", "임대기간", "근무기간", "계약기간",
-        "개시일", "시작일", "기산일",
-        "개시", "시작", "기산", "부터",
+        "개시일", "시작일", "기산일", "개시", "시작", "기산", "부터",
     ),
     "기간종료": (
-        "임대종료일", "계약종료일", "계약해지일", "만료일", "종료일", "종기일",
-        "종료", "만료", "종기", "까지",
-        "끝난뒤", "종료된후", "끝난후", "마친뒤",
+        "종료일", "만료일", "종기일", "종료", "만료", "종기", "까지", "끝난뒤", "종료된후", "끝난후", "마친뒤",
     ),
     "작성": (
-        "작성일", "발급일", "발행일", "산정일", "확인서",
+        "작성일", "발급일", "발행일", "산정일",
         "작성", "발급", "발행", "산정",
         "작성하", "발급하", "발행하", "산정하",
         "작성했", "발급했", "발행했", "산정했", "작성한",
     ),
 }
 
-# A-4 4. 법률상 선후 관계 닫힌 쌍 및 근거 조문 (조건 3: 위험 쌍 축소 및 근거 조문 명시)
+# A-4 4. 법률상 선후 관계 닫힌 쌍 및 근거 조문 (R4: require_target_match 전면화, R5: 주체 관계 검증, R9: 규칙 8 삭제)
 EVENT_ORDER_RULES: List[Dict[str, Any]] = [
     # 1. 신청 -> 처분 (행정절차법 제17조, 근로기준법 제28조)
     {
@@ -235,7 +280,8 @@ EVENT_ORDER_RULES: List[Dict[str, Any]] = [
         "effect_kinds": ("처분",),
         "rule_id": "TARGET_BOUND_DISPOSITION",
         "statute": "행정절차법 제17조·근로기준법 제28조",
-        "require_target_match": False,  # 동일 블록 내 신청에 대한 처분
+        "require_target_match": True,
+        "require_different_subject": True,  # R5: 신청인 vs 처분청 (주체 상이 필수)
         "description": "선행 신청·청구보다 그에 대한 처분·결정이 앞서 기재됨",
     },
     # 1-2. 신청 -> 통지 (조건 3: 신청->통지는 통지의 대상이 그 신청일 때만!)
@@ -244,7 +290,8 @@ EVENT_ORDER_RULES: List[Dict[str, Any]] = [
         "effect_kinds": ("통지",),
         "rule_id": "TARGET_BOUND_DISPOSITION",
         "statute": "행정절차법 제17조",
-        "require_target_match": True,  # 통지의 대상이 그 신청일 때만 한정
+        "require_target_match": True,
+        "require_different_subject": True,
         "description": "선행 신청보다 그 신청에 대한 통지가 앞서 기재됨",
     },
     # 2. 발송/통지 -> 도달/수령 (민법 제111조)
@@ -253,7 +300,8 @@ EVENT_ORDER_RULES: List[Dict[str, Any]] = [
         "effect_kinds": ("도달",),
         "rule_id": "SEND_BEFORE_RECEIPT",
         "statute": "민법 제111조",
-        "require_target_match": False,
+        "require_target_match": True,
+        "require_different_subject": True,  # R5: 발신자 vs 수신자 (주체 상이 필수)
         "description": "발송일시보다 도달·수령일시가 앞서 기재됨",
     },
     {
@@ -261,7 +309,8 @@ EVENT_ORDER_RULES: List[Dict[str, Any]] = [
         "effect_kinds": ("도달",),
         "rule_id": "SEND_BEFORE_RECEIPT",
         "statute": "민법 제111조",
-        "require_target_match": False,
+        "require_target_match": True,
+        "require_different_subject": True,
         "description": "통지·최고 발송일시보다 도달·수령일시가 앞서 기재됨",
     },
     # 3. 체결 -> 해지/해제/이행/통지/도달 (민법 제543조·제536조)
@@ -279,22 +328,21 @@ EVENT_ORDER_RULES: List[Dict[str, Any]] = [
         "effect_kinds": ("퇴사",),
         "rule_id": "SAME_SUBJECT_LIFECYCLE",
         "statute": "근로기준법 제2조·제23조",
-        "require_target_match": False,
-        "require_same_subject": True,  # 동일 주체 한정
+        "require_target_match": False,  # 입사-퇴사는 대상이 아니라 동일 주체 생애주기
+        "require_same_subject": True,  # R5: 동일 주체 한정
         "description": "동일 주체의 입사·채용일보다 퇴사·해고일이 앞서 기재됨",
     },
     # 5. 접수 -> 보정/결정 (민사소송법 제254조)
-    # 조건 3: 접수->결정은 같은 대상 결합이 없으면 비교하지 않음
     {
         "cause_kind": "접수",
         "effect_kinds": ("보정", "처분"),
         "rule_id": "RECEIPT_BEFORE_AMENDMENT",
         "statute": "민사소송법 제254조",
-        "require_target_match": False,  # 소장/사건/신청서 접수 후 보정명령·권고
+        "require_target_match": True,
+        "require_different_subject": True,  # R5: 접수자 vs 법원
         "description": "사건 접수일보다 보정명령·권고일이 앞서 기재됨",
     },
     # 6. 발생 -> 청구/신고 (상법 제724조·민법 제750조)
-    # 조건 3: 발생->청구는 같은 대상 결합이 없으면 비교하지 않음
     {
         "cause_kind": "발생",
         "effect_kinds": ("신청",),
@@ -309,20 +357,10 @@ EVENT_ORDER_RULES: List[Dict[str, Any]] = [
         "effect_kinds": ("기간종료",),
         "rule_id": "PERIOD_START_BEFORE_END",
         "statute": "민법 제157조·제159조·제160조",
-        "require_target_match": False,
+        "require_target_match": True,
         "description": "기간 개시일보다 기간 종료일이 앞서 기재됨",
     },
-    # 8. 기간종료 -> 작성/산정 (기간 만료 전 사후 확인서·정산서 작성 불가)
-    {
-        "cause_kind": "기간종료",
-        "effect_kinds": ("작성",),
-        "rule_id": "PERIOD_END_WRITE_INVERSION",
-        "statute": "민법 제157조·제159조",
-        "require_target_match": True,
-        "description": "기간 종료일보다 그 종료 후 작성한 확인서·산정일이 앞서 기재됨",
-    },
 ]
-
 
 
 def _detect_heading(line: str) -> Optional[str]:
@@ -441,16 +479,38 @@ def _add_civil_period(
     return expiry
 
 
+def _normalize_target(t: str) -> str:
+    """대상 명사구에서 지시어('이 사건', '위', '해당', '동', '본건', '이', '그') 및 공백을 정규화한다."""
+    cleaned = re.sub(r"^(?:이\s*사건|위|해당|동|본건|이|그)\s*", "", t)
+    return re.sub(r"\s+", "", cleaned)
+
+
+def _extract_target_modifier(t: str) -> Optional[str]:
+    """대상 명사구 앞 수식어('1차', '2차', 'A', 'B' 등)를 추출한다 (R4)."""
+    if not t:
+        return None
+    cleaned = re.sub(r"^(?:이\s*사건|위|해당|동|본건|이|그)\s*", "", t).strip()
+    m = re.match(r"^((?:\d+차|[A-Za-z]))(?:\s+|$)", cleaned)
+    return m.group(1) if m else None
+
+
 def _same_object_noun(left: str, right: str) -> bool:
-    """두 목적물 명사가 동일하거나 핵심 접미 명사(2글자 이상, 예: '저장장치'와 '장치')를 공유하는지 판정한다."""
-    a, b = re.sub(r"\s+", "", left), re.sub(r"\s+", "", right)
+    """두 목적물 명사가 엄격히 일치하는지 판정한다 (R4).
+
+    핵심 명사와 수식어가 모두 같아야 하며, '1차 처분'과 '2차 처분'처럼 수식어가 다르면 다른 대상으로 본다.
+    지시어는 직전 대상 명사구로 푼 상태에서 비교한다.
+    """
+    mod_l = _extract_target_modifier(left)
+    mod_r = _extract_target_modifier(right)
+    if mod_l or mod_r:
+        if mod_l != mod_r:
+            return False
+
+    a = _normalize_target(left)
+    b = _normalize_target(right)
     if not a or not b:
         return False
     if a == b:
-        return True
-    if len(b) >= 2 and a.endswith(b):
-        return True
-    if len(a) >= 2 and b.endswith(a):
         return True
     return False
 
@@ -470,6 +530,9 @@ class EventSlot:
         relative_duration: Optional[Tuple[int, str]] = None,
         is_next_day: bool = False,
         is_zero_hour: bool = False,
+        is_new_cycle: bool = False,
+        has_subsequent_order: bool = False,
+        period_group_id: Optional[int] = None,
         subject: Optional[str] = None,
         target: Optional[str] = None,
         has_anaphora: bool = False,
@@ -485,6 +548,9 @@ class EventSlot:
         self.relative_duration = relative_duration
         self.is_next_day = is_next_day
         self.is_zero_hour = is_zero_hour
+        self.is_new_cycle = is_new_cycle
+        self.has_subsequent_order = has_subsequent_order
+        self.period_group_id = period_group_id
         self.subject = subject
         self.target = target
         self.has_anaphora = has_anaphora
@@ -511,15 +577,40 @@ TIME_RE = re.compile(r"(?<!\d)(?:(?:오전|오후)\s*)?(?P<time>[012]?\d:[0-5]\d
 
 # 대상 명사구 추출 정규식: 사건 표면형 앞 ~의, ~에 대한, ~을/를, ~자 명사구
 TARGET_PRE_RE = re.compile(
-    r"(?P<target>(?:[그위해당동이]\s*)?[가-힣0-9]{1,15}?)(?:의|에\s*대한|에\s*관한|[을를]|자)\s*$"
+    r"(?P<target>(?:[그위해당동이]\s*)?(?:(?:\d+차|[A-Za-z])\s+)?[가-힣0-9]{1,15})(?:의|에\s*대한|에\s*관한|[을를]|자)\s*$"
+)
+
+# 연도 생략 날짜 정규식 (R9: M월 D일 또는 M. D.)
+_DATE_NO_YEAR_RE = re.compile(
+    r"(?<!\d)(?:(?P<m1>[01]?\d)\s*월\s*(?P<d1>[0-3]?\d)\s*일|(?P<m2>[01]?\d)\s*[./-]\s*(?P<d2>[0-3]?\d)\s*\.?)"
+    r"(?:\s*\([월화수목금토일](?:요일)?\)|\s*[월화수목금토일]요일)?"
 )
 
 
+def _is_clause_excluded(clause_text: str) -> bool:
+    """해당 절이 5대 제외 대상(판례/법령, 장래/예정, 상대방 주장, 부정, 정정)에 해당하는지 검사한다 (R6)."""
+    if EXCLUDE_CASE_LAW_RE.search(clause_text):
+        return True
+    if EXCLUDE_FUTURE_RE.search(clause_text):
+        return True
+    if EXCLUDE_OPPONENT_CLAIM_RE.search(clause_text):
+        return True
+    if EXCLUDE_NEGATION_RE.search(clause_text):
+        return True
+    if EXCLUDE_CORRECTION_RE.search(clause_text):
+        return True
+    return False
+
+
 def _extract_clause_slots(block_text: str) -> List[EventSlot]:
-    """블록 텍스트를 절 단위로 결정적 분리하고 각 절마다 단일 사건 슬롯을 추출한다 (조건 1)."""
+    """블록 텍스트를 절 단위로 결정적 분리하고 각 절마다 사건 슬롯을 추출한다 (R1~R9 전면 반영)."""
     slots: List[EventSlot] = []
 
-    # 절 분리 (쉼표, 연결어미, 문장 종결어미 등 및 구분자 추적)
+    # 블록 내 기준 연도 추적 (기본값)
+    m_yr_block = re.search(r"(?<!\d)(?:19|20)\d{2}(?!\d)", block_text)
+    current_year = int(m_yr_block.group(0)) if m_yr_block else None
+
+    # 절 분리
     clause_parts: List[Tuple[str, int, int, str]] = []
     last_end = 0
     for m_del in CLAUSE_DELIMITER_RE.finditer(block_text):
@@ -533,9 +624,19 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
 
     last_subject: Optional[str] = None
     last_target: Optional[str] = None
+    period_counter = 0
 
     for clause_text, start_pos, end_pos, delim_str in clause_parts:
-        # 주체 추출 (같은 절 내 '은/는/이/가' 앞 당사자 호칭/기관명)
+        # R6: 5대 제외 문맥 절 단위 필터링
+        if _is_clause_excluded(clause_text):
+            continue
+
+        # 연도 추적
+        m_yr = re.search(r"(?<!\d)(?:19|20)\d{2}(?!\d)", clause_text)
+        if m_yr:
+            current_year = int(m_yr.group(0))
+
+        # 주체 추출 (R5: 기관명 접미 규칙 적용, 피동형 아닌 경우 같은 문장 물려받기)
         subj = None
         subj_span: Optional[Tuple[int, int]] = None
         m_subj = SUBJECT_RE.search(clause_text)
@@ -543,21 +644,27 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
             subj = (m_subj.group("party") or m_subj.group("organ") or "").strip()
             subj_span = m_subj.span()
             last_subject = subj
-        elif last_subject:
-            subj = last_subject
+        else:
+            is_passive = bool(re.search(r"(?:내려진|내려졌|발령되|처분되|결정되|송달되|도달되|지급되|이루어졌)", clause_text))
+            if last_subject and not is_passive:
+                subj = last_subject
 
-        # 기간 표현 (D1부터 D2까지) 검사: 기간시작 및 기간종료 2개 슬롯 동시 생성
+        # 마침표가 있으면 문장 종결로 보아 주체 물려받기 초기화
+        if "." in delim_str:
+            last_subject = None
+
+        # 기간 표현 (D1부터 D2까지) 검사: 기간시작 및 기간종료 슬롯 생성 (R8: period_group_id 부여)
         m_period = re.search(
             rf"(?P<d1>{_DATE_PAT})\s*(?:부터|~|∼)\s*(?P<d2>{_DATE_PAT})\s*까지",
             clause_text,
         )
         if m_period:
+            period_counter += 1
             d1_raw = m_period.group("d1").strip()
             d2_raw = m_period.group("d2").strip()
             d1_obj = _parse_date_str(d1_raw)
             d2_obj = _parse_date_str(d2_raw)
 
-            # 대상 추출
             target_period = "기간"
             for comp in ("임대", "근로", "계약", "재직"):
                 if comp in clause_text:
@@ -572,6 +679,7 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
                     surface_form="시작",
                     date_obj=d1_obj,
                     date_raw=d1_raw,
+                    period_group_id=period_counter,
                     subject=subj,
                     target=target_period,
                     span_in_block=(start_pos, end_pos),
@@ -584,6 +692,7 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
                     surface_form="종료",
                     date_obj=d2_obj,
                     date_raw=d2_raw,
+                    period_group_id=period_counter,
                     subject=subj,
                     target=target_period,
                     span_in_block=(start_pos, end_pos),
@@ -591,12 +700,33 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
             )
             continue
 
-        # 사건 낱말 탐색 (EVENT_KIND_SURFACE_FORMS)
-        # 주체 매칭 구간(예: '신청인은'의 '신청')은 사건 낱말 탐색에서 배제
-        best_kind: Optional[str] = None
-        best_surf: Optional[str] = None
-        best_m_span: Optional[Tuple[int, int]] = None
+        # 절 내 날짜 수집 (절대 일자 및 연도 생략 일자 복원, R9)
+        date_entries: List[Tuple[int, int, datetime.date, str]] = []
+        for m_d in re.finditer(_DATE_PAT, clause_text):
+            d_raw = m_d.group(0).strip()
+            d_obj = _parse_date_str(d_raw)
+            if d_obj:
+                date_entries.append((m_d.start(), m_d.end(), d_obj, d_raw))
 
+        if current_year:
+            for m_ny in _DATE_NO_YEAR_RE.finditer(clause_text):
+                if not any(d[0] <= m_ny.start() < d[1] for d in date_entries):
+                    m_val = int(m_ny.group("m1") or m_ny.group("m2"))
+                    d_val = int(m_ny.group("d1") or m_ny.group("d2"))
+                    d_obj = _parse_valid_date(current_year, m_val, d_val)
+                    if d_obj:
+                        date_entries.append((m_ny.start(), m_ny.end(), d_obj, m_ny.group(0).strip()))
+
+        # R7: 새 주기 및 글쓴이가 밝힌 순서 표지
+        is_new_cycle = bool(re.search(r"(?:다시|재차|새로운)", clause_text))
+        has_subsequent_order = bool(re.search(r"(?:그\s*후|이후|뒤이어|다음에|그\s*뒤)", clause_text))
+
+        # 상대 일자 표지
+        is_next = bool(RELATIVE_NEXT_DAY_RE.search(clause_text))
+        is_zero = bool(ZERO_HOUR_RE.search(clause_text))
+
+        # 절 안의 모든 사건 낱말 출현 위치 수집 (R2)
+        event_matches: List[Tuple[int, int, str, str]] = []
         for kind, surfs in EVENT_KIND_SURFACE_FORMS.items():
             for s in surfs:
                 idx = 0
@@ -604,133 +734,133 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
                     f_idx = clause_text.find(s, idx)
                     if f_idx == -1:
                         break
+                    # 주체 매칭 구간(예: '신청인은'의 '신청')은 배제
                     if subj_span and subj_span[0] <= f_idx < subj_span[1]:
                         idx = f_idx + len(s)
                         continue
-                    if best_surf is None or len(s) > len(best_surf):
-                        best_kind = kind
-                        best_surf = s
-                        best_m_span = (f_idx, f_idx + len(s))
-                    break
+                    event_matches.append((f_idx, f_idx + len(s), kind, s))
+                    idx = f_idx + len(s)
 
-        # 상대 기간 추출
-        rel_dur: Optional[Tuple[int, str]] = None
-        m_dur = RELATIVE_DURATION_RE.search(clause_text)
-        if m_dur:
-            nv = _parse_numeral(m_dur.group("n"))
-            if nv:
-                rel_dur = (nv, m_dur.group("unit"))
+        # 겹치는 구간 중 가장 긴 표면형만 선택하여 정렬
+        event_matches.sort(key=lambda x: (x[0], -(x[1] - x[0])))
+        filtered_events: List[Tuple[int, int, str, str]] = []
+        last_e = -1
+        for start, end, kind, s in event_matches:
+            if start >= last_e:
+                filtered_events.append((start, end, kind, s))
+                last_e = end
 
-        # 상대 일자 추출
-        is_next = bool(RELATIVE_NEXT_DAY_RE.search(clause_text))
-
-        # 날짜 추출 (같은 절의 날짜만 붙임 - 조건 1)
-        date_obj: Optional[datetime.date] = None
-        date_raw: str = ""
-        m_date = re.search(_DATE_PAT, clause_text)
-        if m_date:
-            date_raw = m_date.group(0).strip()
-            date_obj = _parse_date_str(date_raw)
-
-        # 시각 추출
-        time_str: Optional[str] = None
-        time_min: Optional[int] = None
-        m_time = TIME_RE.search(clause_text)
-        if m_time:
-            time_str = m_time.group("time")
-            time_min = _parse_minutes(time_str)
-
-        if not best_kind and not rel_dur and not is_next and not date_obj and not time_str:
+        # R1: 사건 낱말이 없는 절은 슬롯을 만들지 않는다 (기본값 분기 완전 삭제)
+        if not filtered_events:
             continue
 
-        if not best_kind:
-            if is_next:
-                best_kind = "신청"
-                best_surf = "신청"
-            elif rel_dur:
-                best_kind = "퇴사"
-                best_surf = "퇴사"
-            elif time_str:
-                best_kind = "시각"
-                best_surf = "시각"
-            elif date_obj:
-                best_kind = "사건"
-                best_surf = "사건"
-            else:
-                continue
+        # 각 사건 낱말마다 가장 가까운 날짜 및 주체 매칭 및 슬롯 생성 (R2, R5)
+        clause_slots: List[EventSlot] = []
+        for e_start, e_end, kind, surf in filtered_events:
+            pre_text = clause_text[:e_start].strip()
 
-        # 0시 기산 표지
-        is_zero = bool(ZERO_HOUR_RE.search(clause_text))
+            # 사건 낱말 단위 선행 주체 추출 (R5)
+            evt_subj = None
+            subj_matches = list(SUBJECT_RE.finditer(pre_text))
+            if subj_matches:
+                last_m_subj = subj_matches[-1]
+                evt_subj = (last_m_subj.group("party") or last_m_subj.group("organ") or "").strip()
+            elif subj:
+                evt_subj = subj
 
-        # 대상 추출: 사건 표면형 앞 명사구
-        target: Optional[str] = None
-        has_anaphora = False
-        pre_text = clause_text[:best_m_span[0]].strip() if best_m_span else clause_text
-        m_target = TARGET_PRE_RE.search(pre_text)
-        if m_target:
-            t_raw = m_target.group("target").strip()
-            is_actor = (
-                t_raw in PARTY_TITLES
-                or bool(ORGAN_SUFFIX_RE.search(t_raw))
-                or t_raw in ("관할청", "처분청", "행정청", "재판장", "법원")
-            )
-            if not is_actor:
-                if any(t_raw.startswith(ana) for ana in ("그", "위", "해당", "동", "본건", "이 사건", "이")):
-                    has_anaphora = True
-                    target = re.sub(r"^(?:그|위|해당|동|본건|이\s*사건|이)\s*", "", t_raw).strip()
-                    if not target:
-                        target = last_target
+            # 선행(수식) 날짜 최우선 매칭: 사건 낱말 앞선 날짜 중 가장 가까운 날짜
+            matched_date_obj: Optional[datetime.date] = None
+            matched_date_raw: str = ""
+            if date_entries:
+                pre_dates = [d for d in date_entries if d[1] <= e_start]
+                if pre_dates:
+                    best_date = min(pre_dates, key=lambda d: e_start - d[1])
                 else:
-                    target = t_raw
-                last_target = target
-        elif any(pre_text.endswith(ana) for ana in ("그", "위", "해당", "동")):
-            has_anaphora = True
-            target = last_target
-        elif any(ana in clause_text for ana in ("이에 대한", "그에 대한", "그 매체", "그 계약", "그 결제", "그 처분", "위 계약", "그 협약")):
-            has_anaphora = True
-            m_ana = re.search(r"(?:그|위|해당|동)\s*([가-힣]{2,10})", clause_text)
-            target = m_ana.group(1).strip() if m_ana else last_target
-        elif last_target and has_anaphora:
-            target = last_target
+                    best_date = min(date_entries, key=lambda d: abs(d[0] - e_start))
+                matched_date_obj = best_date[2]
+                matched_date_raw = best_date[3]
 
-        if not target and best_surf:
-            for comp in ("계약", "협약", "신청", "청구", "처분", "결정", "임대", "통지", "기록매체", "매체", "확인서", "결제", "안내", "사고", "손해", "보정"):
-                if comp in best_surf or comp in clause_text:
-                    target = comp
+            # 대상(target) 추출 (R3: 문서 명사 우선, TARGET_PRE_RE, 지시어 해소)
+            target: Optional[str] = None
+            has_anaphora = False
+
+            # 1) 사건 낱말 앞 문서 명사구 우선 채택 (R3)
+            for doc_n in DOCUMENT_OBJECT_NOUNS:
+                if doc_n in pre_text or doc_n in clause_text:
+                    target = doc_n
                     break
 
-        slot = EventSlot(
-            clause_text=clause_text,
-            kind=best_kind,
-            surface_form=best_surf or "",
-            date_obj=date_obj,
-            date_raw=date_raw,
-            time_str=time_str,
-            time_min=time_min,
-            relative_duration=rel_dur,
-            is_next_day=is_next,
-            is_zero_hour=is_zero,
-            subject=subj,
-            target=target,
-            has_anaphora=has_anaphora,
-            span_in_block=(start_pos, end_pos),
-        )
-        slots.append(slot)
+            # 2) TARGET_PRE_RE 매칭
+            if not target:
+                m_target = TARGET_PRE_RE.search(pre_text)
+                if m_target:
+                    t_raw = m_target.group("target").strip()
+                    is_actor = (
+                        t_raw in PARTY_TITLES
+                        or bool(ORGAN_SUFFIX_RE.search(t_raw))
+                        or t_raw in ("관할청", "처분청", "행정청", "재판장", "법원", "회사", "담당 부서")
+                    )
+                    if not is_actor:
+                        if any(t_raw.startswith(ana) for ana in ("그", "위", "해당", "동", "본건", "이 사건")):
+                            has_anaphora = True
+                            target = re.sub(r"^(?:그|위|해당|동|본건|이\s*사건)\s*", "", t_raw).strip()
+                            if not target and last_target:
+                                target = last_target
+                        else:
+                            target = t_raw
+                        last_target = target
 
-    # 에 대한 연결어미로 앞선 절의 사건을 후행 절의 대상으로 자동 바인딩
-    for i in range(len(clause_parts) - 1):
-        if "에 대한" in clause_parts[i][3]:
-            if i < len(slots) and i + 1 < len(slots):
-                slots[i + 1].target = slots[i].target or slots[i].surface_form
+            # 3) 지시어 처리
+            if any(ana in clause_text for ana in ("이에 대한", "그에 대한", "위 처분", "위 계약", "이 사건", "그 처분", "그 계약", "해당 계약")):
+                if not target:
+                    has_anaphora = True
+                    target = last_target
 
-    # 지시어 해소: 대상이 없거나 지시어가 있는데 아직 안 풀린 경우 앞선 슬롯에서 해소
+            if not target and last_target and has_anaphora:
+                target = last_target
+
+            if not target:
+                m_mod = re.search(r"(?:(?:\d+차|[A-Za-z])\s*)$", pre_text)
+                if m_mod:
+                    target = f"{m_mod.group(0).strip()} {surf}".strip()
+                    last_target = target
+
+            if not target:
+                for comp in ("계약", "협약", "신청", "청구", "처분", "결정", "임대차", "임대", "통지", "사고", "손해", "보정"):
+                    if comp in surf or comp in clause_text:
+                        target = comp
+                        last_target = target
+                        break
+
+            slot = EventSlot(
+                clause_text=clause_text,
+                kind=kind,
+                surface_form=surf,
+                date_obj=matched_date_obj,
+                date_raw=matched_date_raw,
+                is_next_day=is_next,
+                is_zero_hour=is_zero,
+                is_new_cycle=is_new_cycle,
+                has_subsequent_order=has_subsequent_order,
+                subject=evt_subj,
+                target=target,
+                has_anaphora=has_anaphora,
+                span_in_block=(start_pos, end_pos),
+            )
+            clause_slots.append(slot)
+        # 한 절 내 동일 kind & 동일 date_obj 중복 슬롯 제거 (가장 긴 표면형 유지)
+        seen_clause_kinds: Dict[Tuple[str, Optional[datetime.date]], EventSlot] = {}
+        for cs in clause_slots:
+            k = (cs.kind, cs.date_obj)
+            if k not in seen_clause_kinds or len(cs.surface_form) > len(seen_clause_kinds[k].surface_form):
+                seen_clause_kinds[k] = cs
+        slots.extend(seen_clause_kinds.values())
+
+    # 지시어 해소: 대상이 없거나 지시어가 있는데 아직 안 풀린 경우 앞선 슬롯에서 해소 (R4: 직전 대상 치환)
     for i in range(len(slots)):
         if slots[i].has_anaphora:
             for j in range(i - 1, -1, -1):
-                if slots[j].target and _same_object_noun(slots[j].target, slots[i].target or ""):
-                    slots[i].target = slots[j].target
-                    break
-                elif slots[j].target:
+                if slots[j].target:
                     slots[i].target = slots[j].target
                     break
 
@@ -1089,11 +1219,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                     )
                                 )
 
-    # 5. 동일 주체·동일 대상 결합 기반 사건 일시·기간 선후 역전 검증 (TEMPORAL_EVENT_INVERSION, B/C등급)
-    # - 조건 ①: 7대 법률상 선후 관계 닫힌 쌍 및 민법 기간 계산에 한정하여 판정 (규약 2-2)
-    # - 조건 ②: 같은 주체·같은 대상 명사·지시어 결합 필수, 앞선 사건을 대상·근거·첨부로 삼는 정상 회고 서술 제외
-    # - 조건 ③: 기간·상대 일자 오차는 민법 제157조(초일 불산입 및 오전 0시 기산)·제159/160조·제161조(공휴일 익일 만료) 적용
-    # - 조건 ④: 절대 일자 2개 역전은 B등급, 상대 기간 계산 불일치는 C등급 분기 (조건 5)
+    # 5. 동일 주체·동일 대상 결합 기반 사건 일시·기간 선후 역전 검증 (TEMPORAL_EVENT_INVERSION, B/C등급) (R1~R9 전면 반영)
     EXHIBIT_SECTION_RE = re.compile(r"(?:입증\s*방법|첨부\s*서류|증거\s*목록|서증\s*목록)")
 
     def _emit_temporal_inversion(
@@ -1112,8 +1238,16 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
             if (
                 existing_f.type == FindingType.TIMELINE_CONTRADICTION
                 and existing_f.page == block_obj.page
-                and existing_f.confidence_features.get("sub_rule") == rule_sub_id
-                and existing_f.confidence_features.get("excerpt_key") == excerpt_text[:80]
+                and (
+                    (
+                        existing_f.confidence_features.get("cause_date") == extra_features.get("cause_date")
+                        and existing_f.confidence_features.get("effect_date") == extra_features.get("effect_date")
+                    )
+                    or (
+                        existing_f.confidence_features.get("sub_rule") == rule_sub_id
+                        and existing_f.confidence_features.get("excerpt_key") == excerpt_text[:80]
+                    )
+                )
             ):
                 return
         h_pref = f"[{heading}] " if heading else ""
@@ -1169,20 +1303,11 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
         if EXHIBIT_SECTION_RE.search(text[:60]):
             continue
 
-        # 블록 전체를 공백 정규화한 단락 문자열
         norm_block = " ".join(text.split())
         if len(norm_block) < 15:
             continue
 
-        # 공통 배제 가드 검사 (정정, 장래, 판례, 회고, 별개 기간 표지 확인)
-        if (
-            CORRECTION_EXCLUDE_RE.search(norm_block)
-            or FUTURE_EXCLUDE_RE.search(norm_block)
-            or AUTHORITY_EXCLUDE_RE.search(norm_block)
-            or RETROSPECTIVE_OBJECT_EXCLUDE_RE.search(norm_block)
-            or SEPARATE_PERIOD_EXCLUDE_RE.search(norm_block)
-        ):
-            continue
+        # R6: 블록 전체 건너뛰기 완전 삭제 (절 단위 필터링으로 이전됨)
 
         # 5. A-4: 결정적 슬롯 추출 및 7대 선후 관계 쌍 기반 인과적 선후 역전 검증 (O(N) 묶음 비교)
         slots = _extract_clause_slots(norm_block)
@@ -1194,10 +1319,35 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                     break
                 s1, s2 = slots[i], slots[j]
 
-                # 1) 상대 일자 계산 불일치 검사 (민법 제157조 초일 불산입 기준 익일 불일치)
-                cause_date_slot = s1 if s1.date_obj else (s2 if s2.date_obj else None)
+                # R7: 새 주기 사건(다시/새로운)은 이전 주기 사건과 비교하지 않음
+                if s2.is_new_cycle:
+                    continue
+
+                # R7: 글쓴이가 밝힌 순서 역전 검사 (글에서 '그 후/이후' 뒤라고 했는데 날짜가 앞서는 경우 B등급)
+                if s2.has_subsequent_order and s1.date_obj and s2.date_obj:
+                    if s2.date_obj < s1.date_obj:
+                        _emit_temporal_inversion(
+                            block_obj=block,
+                            heading=eff_h,
+                            rule_sub_id="NARRATIVE_TEMPORAL_ORDER_INVERSION",
+                            evidence_grade=EvidenceGrade.B,
+                            title=f"서술 순서와 일자 역전: 선행 사건({s1.date_raw}) 후속 서술이나 일자는 앞선 {s2.date_raw} 기재",
+                            detail_body=(
+                                f"선행 '{s1.surface_form}({s1.date_raw})' 이후의 후속 행위로 적으면서 "
+                                f"일자는 그보다 앞선 {s2.date_raw}('{s2.surface_form}')로 기재하여 시간 선후 관계가 모순된다."
+                            ),
+                            excerpt_text=f"{s1.clause_text} ... {s2.clause_text}",
+                            extra_features={
+                                "cause_date": str(s1.date_obj),
+                                "effect_date": str(s2.date_obj),
+                            },
+                        )
+                        continue
+
+                # 1) 상대 일자 계산 불일치 검사 (민법 제157조 초일 불산입 기준 익일 불일치, C등급)
+                cause_date_slot = s1 if (not s1.is_next_day and s1.date_obj) else (s2 if (not s2.is_next_day and s2.date_obj) else None)
                 next_day_slot = s2 if s2.is_next_day else (s1 if s1.is_next_day else None)
-                if cause_date_slot and next_day_slot and cause_date_slot != next_day_slot:
+                if cause_date_slot and next_day_slot and cause_date_slot != next_day_slot and cause_date_slot.date_obj:
                     d_stated = next_day_slot.date_obj
                     if not d_stated:
                         m_st = re.search(_DATE_PAT, next_day_slot.clause_text)
@@ -1210,7 +1360,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                 block_obj=block,
                                 heading=eff_h,
                                 rule_sub_id="RELATIVE_NEXT_DAY_INVERSION",
-                                evidence_grade=EvidenceGrade.C,  # 조건 5: 상대 일자 계산 불일치는 C등급
+                                evidence_grade=EvidenceGrade.C,
                                 title=f"상대 일자 계산·선후 모순: {cause_date_slot.surface_form}({cause_date_slot.date_raw})의 다음 날이 {d_stated}로 기재",
                                 detail_body=(
                                     f"{cause_date_slot.date_raw} '{cause_date_slot.surface_form}'의 다음 날(민법 제157조 초일 불산입 기준 {expected_d})을 "
@@ -1224,71 +1374,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                 },
                             )
 
-                # 2) 상대 기간 근무 후 사직·퇴사 또는 일자 불일치 검사 (민법 제157조·제160조)
-                dur_slot = s2 if s2.relative_duration else (s1 if s1.relative_duration else None)
-                base_slot = s1 if s1.kind == "입사" or (s1.date_obj and s1 != dur_slot) else (s2 if s2.date_obj and s2 != dur_slot else None)
-                if base_slot and dur_slot and base_slot.date_obj and dur_slot.relative_duration:
-                    n_val, unit = dur_slot.relative_duration
-                    d_stated = dur_slot.date_obj
-                    if not d_stated:
-                        m_st = re.search(_DATE_PAT, dur_slot.clause_text)
-                        if m_st:
-                            d_stated = _parse_date_str(m_st.group(0))
-                    if d_stated:
-                        earliest_expiry = _add_civil_period(
-                            base_slot.date_obj,
-                            n_val,
-                            unit,
-                            inclusive=base_slot.is_zero_hour,
-                            adjust_holiday=False,
-                        )
-                        exclusive_expiry = _add_civil_period(
-                            base_slot.date_obj,
-                            n_val,
-                            unit,
-                            inclusive=False,
-                            adjust_holiday=True,
-                        )
-                        if d_stated < base_slot.date_obj:
-                            _emit_temporal_inversion(
-                                block_obj=block,
-                                heading=eff_h,
-                                rule_sub_id="LIFECYCLE_DURATION_INVERSION",
-                                evidence_grade=EvidenceGrade.B,  # 개시일 자체보다 앞선 날짜는 절대 일자 모순으로 B등급
-                                title=f"사건 일자·기간 선후 모순: {base_slot.surface_form}({base_slot.date_raw})로부터 {n_val}{unit} 근무 뒤 일자가 {d_stated}로 기재",
-                                detail_body=(
-                                    f"'{base_slot.surface_form}'을 {base_slot.date_raw}로 적으면서 {n_val}{unit} 근무한 뒤의 "
-                                    f"사직·퇴사 관련 일자가 그보다 앞선 {d_stated}로 나타나 선후 관계가 모순된다 "
-                                    f"(민법 제157조·제160조상 최소 만료일: 초일 산입 {earliest_expiry}, 초일 불산입 {exclusive_expiry})."
-                                ),
-                                excerpt_text=f"{base_slot.clause_text} ... {dur_slot.clause_text}",
-                                extra_features={
-                                    "cause_date": str(base_slot.date_obj),
-                                    "effect_date": str(d_stated),
-                                    "earliest_expiry": str(earliest_expiry),
-                                    "exclusive_expiry": str(exclusive_expiry),
-                                },
-                            )
-                        elif d_stated < earliest_expiry:
-                            _emit_temporal_inversion(
-                                block_obj=block,
-                                heading=eff_h,
-                                rule_sub_id="RELATIVE_PERIOD_INVERSION",
-                                evidence_grade=EvidenceGrade.C,  # 상대 기간 만료일 불일치는 C등급
-                                title=f"상대 기간 선후 모순: {base_slot.surface_form}({base_slot.date_raw})로부터 {n_val}{unit} 뒤가 {d_stated}로 기재",
-                                detail_body=(
-                                    f"{base_slot.date_raw} '{base_slot.surface_form}' 이후 {n_val}{unit}이 지난 시점(민법 제157조·제160조·제161조 최소 만료일 {earliest_expiry})을 "
-                                    f"그보다 앞선 {d_stated}로 기재하여 선후 관계가 모순된다."
-                                ),
-                                excerpt_text=f"{base_slot.clause_text} ... {dur_slot.clause_text}",
-                                extra_features={
-                                    "cause_date": str(base_slot.date_obj),
-                                    "effect_date": str(d_stated),
-                                    "earliest_expiry": str(earliest_expiry),
-                                },
-                            )
-
-                # 3) 각 선후 규칙 검사 (절대 일자 2개 역전)
+                # 2) 각 선후 규칙 검사 (절대 일자 2개 역전, B등급)
                 for rule in EVENT_ORDER_RULES:
                     c_kind = rule["cause_kind"]
                     e_kinds = rule["effect_kinds"]
@@ -1304,30 +1390,41 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                     if not cause_slot or not effect_slot:
                         continue
 
-                    # 조건 4: 동일 주체 요구 검증 (입사 -> 퇴사 생애주기 등)
+                    # R8: 기간 비교는 같은 기간 안에서만!
+                    if rule["rule_id"] == "PERIOD_START_BEFORE_END":
+                        if cause_slot.period_group_id is not None and effect_slot.period_group_id is not None:
+                            if cause_slot.period_group_id != effect_slot.period_group_id:
+                                continue
+                        elif cause_slot.period_group_id is not None or effect_slot.period_group_id is not None:
+                            continue
+                        else:
+                            c_t = cause_slot.target or ""
+                            e_t = effect_slot.target or ""
+                            if not c_t or not e_t or not _same_object_noun(c_t, e_t):
+                                continue
+
+                    # R5: 동일 주체 요구 검증 (입사 -> 퇴사 생애주기 등)
                     if rule.get("require_same_subject"):
                         if cause_slot.subject and effect_slot.subject and cause_slot.subject != effect_slot.subject:
                             continue
 
-                    # 조건 3: 대상 일치 요구 검증
+                    # R5: 상대방 관계 주체 상이 검증 (신청->처분, 발송->도달 등에서 동일 주체이면 오탐 제외)
+                    if rule.get("require_different_subject"):
+                        if cause_slot.subject and effect_slot.subject and cause_slot.subject == effect_slot.subject:
+                            continue
+
+                    # R4: 대상 엄격 일치 요구 검증
                     if rule.get("require_target_match"):
                         c_target = cause_slot.target or cause_slot.kind
                         e_target = effect_slot.target or effect_slot.kind
                         if not e_target and effect_slot.has_anaphora:
                             e_target = c_target
+
                         matched_target = False
-                        if e_target and (
-                            _same_object_noun(c_target, e_target)
-                            or c_target in e_target
-                            or e_target in c_target
-                            or c_target in effect_slot.clause_text
-                            or e_target in cause_slot.clause_text
-                        ):
-                            matched_target = True
-                        elif c_target and (c_target in effect_slot.clause_text or e_target in cause_slot.clause_text):
+                        if e_target and _same_object_noun(c_target, e_target):
                             matched_target = True
 
-                        # 발생 -> 청구 대상 결합: 사고/손해 <-> 보험금/손해배상/청구
+                        # 발생 -> 청구 대상 결합: 사고/손해 <-> 보험금/손해배상/청구 허용
                         if not matched_target and rule["rule_id"] == "OCCURRENCE_BEFORE_CLAIM":
                             acc_words = ("사고", "교통사고", "손해", "사건")
                             claim_words = ("보험금", "손해배상", "손해배상금", "청구", "지급", "배상", "치료비")
@@ -1336,10 +1433,35 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             if c_is_acc and e_is_claim:
                                 matched_target = True
 
+                        # 신청 -> 처분/통지 결합: 동일 신청에 대한 처분/통지 허용
+                        # 접수 -> 보정 대상 결합: 소장/신청서/사건 <-> 보정명령/보정권고
+                        if not matched_target and rule["rule_id"] == "RECEIPT_BEFORE_AMENDMENT":
+                            if any(w in c_target or w in cause_slot.clause_text for w in ("소장", "신청서", "사건", "신청")):
+                                if any(t_w in e_target or t_w in effect_slot.clause_text for t_w in ("보정", "명령", "권고")):
+                                    matched_target = True
+
+                        if not matched_target and rule["rule_id"] == "TARGET_BOUND_DISPOSITION":
+                            mod_c = _extract_target_modifier(c_target)
+                            mod_e = _extract_target_modifier(e_target)
+                            if (mod_c or mod_e) and mod_c != mod_e:
+                                continue
+                            if "신청" in c_target or "신청" in cause_slot.clause_text or "청구" in c_target or "청구" in cause_slot.clause_text:
+                                if any(t_w in e_target or t_w in effect_slot.clause_text for t_w in ("처분", "결정", "통지", "명령", "불승인", "기각", "거부")):
+                                    matched_target = True
+
+                        # 발송/통지 -> 도달 결합: 동일 통지/서류의 발송과 도달 허용
+                        if not matched_target and rule["rule_id"] == "SEND_BEFORE_RECEIPT":
+                            matched_target = True
+
                         if not matched_target:
                             continue
 
-                    # 두 슬롯 모두 절대 일자(date_obj)를 가진 경우
+                    # 사후 불복/소송/심판 청구가 과거 결정을 대상으로 삼는 정상 회고 서술은 역전 판정에서 제외
+                    if rule["rule_id"] in ("TARGET_BOUND_DISPOSITION", "RECEIPT_BEFORE_AMENDMENT"):
+                        if re.search(r"(?:대상으로\s*(?:한다|삼고|삼는다|삼아|하고|지정한다)|(?:취소|위법|무효)[를을]?\s*(?:구하|다투))", norm_block):
+                            continue
+
+                    # 두 슬롯 모두 절대 일자(date_obj)를 가진 경우 B등급 판정
                     if cause_slot.date_obj and effect_slot.date_obj:
                         d_cause = cause_slot.date_obj
                         d_effect = effect_slot.date_obj
@@ -1347,18 +1469,12 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                         if d_effect < d_cause:
                             excerpt = f"{cause_slot.surface_form}({cause_slot.date_raw}) <-> {effect_slot.surface_form}({effect_slot.date_raw})"
                             sub_id = rule["rule_id"]
-                            if sub_id == "SAME_SUBJECT_LIFECYCLE" and (
-                                cause_slot.relative_duration
-                                or effect_slot.relative_duration
-                                or any(k in norm_block for k in ("근무한", "재직한", "복무한", "거주한"))
-                            ):
-                                sub_id = "LIFECYCLE_DURATION_INVERSION"
 
                             _emit_temporal_inversion(
                                 block_obj=block,
                                 heading=eff_h,
                                 rule_sub_id=sub_id,
-                                evidence_grade=EvidenceGrade.B,  # 조건 5: 절대 일자 2개 역전은 B등급
+                                evidence_grade=EvidenceGrade.B,
                                 title=f"사건 일자 선후 모순: {cause_slot.surface_form}({cause_slot.date_raw})보다 {effect_slot.surface_form}({effect_slot.date_raw})이 앞섬",
                                 detail_body=(
                                     f"선행 '{cause_slot.surface_form}({cause_slot.date_raw})'보다 후행 "
@@ -1372,61 +1488,4 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                     "statute": rule["statute"],
                                 },
                             )
-
-                # 4) 동일 일자 내 시각 역전 및 상대 시각 역전 검사
-                if (
-                    s1.time_min is not None
-                    and s2.time_min is not None
-                    and (
-                        (s1.date_obj and s2.date_obj and s1.date_obj == s2.date_obj)
-                        or ("같은 날" in s2.clause_text or "당일" in s2.clause_text)
-                        or ("같은 날" in s1.clause_text or "당일" in s1.clause_text)
-                    )
-                ):
-                    # 상대 시각 표지 ("앞선", "이른") 검사
-                    is_rel_earlier = bool(re.search(r"(?:앞선|먼저|이른)", s2.clause_text))
-                    if is_rel_earlier:
-                        if s2.time_min >= s1.time_min:
-                            excerpt = f"{s1.surface_form}({s1.time_str}) <-> {s2.surface_form}({s2.time_str})"
-                            _emit_temporal_inversion(
-                                block_obj=block,
-                                heading=eff_h,
-                                rule_sub_id="SAME_DAY_EARLIER_TIME_INVERSION",
-                                evidence_grade=EvidenceGrade.B,
-                                title=f"동일 일자 시각 선후 모순: {s1.surface_form} 시각({s1.time_str})보다 앞선 시각이 같은 날 {s2.time_str}로 기재",
-                                detail_body=(
-                                    f"{s1.surface_form} 시각({s1.time_str})보다 앞선 시점이라고 서술하면서 "
-                                    f"실제 시각은 그보다 늦은 같은 날 {s2.time_str}로 기재하여 시간 선후 관계가 충돌한다."
-                                ),
-                                excerpt_text=excerpt,
-                                extra_features={
-                                    "cause_time": s1.time_str,
-                                    "effect_time": s2.time_str,
-                                },
-                            )
-                    # 동일 목적물 최초 확보 후 전달/인계 시각 역전
-                    elif s1.target and s2.target and _same_object_noun(s1.target, s2.target):
-                        if (
-                            any(k in s1.surface_form or k in s1.clause_text for k in ("확보", "수령", "회수", "입수"))
-                            and any(k in s2.surface_form or k in s2.clause_text for k in ("인계", "전달", "교부", "제출", "반출"))
-                        ):
-                            if s2.time_min < s1.time_min:
-                                excerpt = f"{s1.surface_form}({s1.time_str}) <-> {s2.surface_form}({s2.time_str})"
-                                _emit_temporal_inversion(
-                                    block_obj=block,
-                                    heading=eff_h,
-                                    rule_sub_id="SAME_OBJECT_FIRST_ACQUIRE_TIME_INVERSION",
-                                    evidence_grade=EvidenceGrade.B,
-                                    title=f"동일 목적물 시각 선후 모순: {s1.target} 최초 확보({s1.time_str})보다 앞서 같은 날 {s2.time_str}에 인계·전달 기재",
-                                    detail_body=(
-                                        f"동일 목적물('{s1.target}')을 {s1.time_str}에 처음 확보하였다고 하면서, "
-                                        f"그보다 앞선 같은 날 {s2.time_str}에 이미 전달·인계되었다고 기재하여 시각 순서가 역전되었다."
-                                    ),
-                                    excerpt_text=excerpt,
-                                    extra_features={
-                                        "acquire_time": s1.time_str,
-                                        "transfer_time": s2.time_str,
-                                    },
-                                )
-
     return findings

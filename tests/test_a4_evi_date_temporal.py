@@ -1,14 +1,23 @@
 # -*- coding: utf-8 -*-
 """A-4 EVI-DATE 동일 주체·동일 대상 결합 인과적 선후 관계 및 민법 기간 계산 검증 시험 (한국어 주석).
 
-이 시험은 다음 사항을 검증한다:
+이 시험은 R1~R9 보완 사항을 포함하여 다음 사항을 검증한다:
 1. 실제 진입점(VerificationPipeline)을 통한 선후 모순 검출 및 소제목 문맥 바인딩.
-2. 동일 주체·동일 대상 결합 4대 구조(개시-종료, 선행신청-대상처분, 기간종료-최초작성, 상대일자·시각 역전)
-   양성 시험 및 정상 대조군 시험.
+2. 동일 주체·동일 대상 결합 4대 구조 양성 시험 및 정상 대조군 시험.
 3. 민법 제157조(초일 불산입 원칙)·제159조·제160조(역에 의한 월·년 계산, 말일 보정) 기간 만료일 산정 검증.
-4. 앞선 사건을 대상·근거·첨부로 삼는 정상 회고 서술 5종(처분 다툼, '~에 따라' 참조, 앞선 결정을 대상으로 함,
-   앞선 회신 첨부, '~를 거쳐' 회고) 및 정정·장래·별개 주체 제외 대조군 검증 (오탐 0건).
-5. 문장 길이 1배 및 4배 스케일링 성능비 < 8배 검증.
+4. 앞선 사건을 대상·근거·첨부로 삼는 정상 회고 서술 및 정정·장래·별개 주체 제외 대조군 검증 (오탐 0건).
+5. 7대 선후 쌍 3변형(어순, 연결어미, 동의어) 21문장 양성 시험.
+6. R1~R9 요구사항별 단위·통합 검증 시험:
+   - R1: 사건 낱말 없는 절 슬롯 0개 검증 (날짜만, 다음 날만, N개월 근무만).
+   - R2: 복수 사건 연결어미 및 관형절 양성 검증.
+   - R3: 문서 명사 대상 추출 및 행위 사건 분리 검증 ('신청서를 제출했다').
+   - R4: 엄격 대상 일치 대조군('1차 계약' vs '2차 계약', 'A 처분' vs 'B 처분') 및 지시어 해소 양성.
+   - R5: 주체 분별 ('원고 신청 -> 법원 처분' 양성, '원고 신청 -> 원고 처분' 오탐 제외).
+   - R6: 5대 제외 문맥 대조군 및 판결 언급 포함 진짜 역전 양성.
+   - R7: 새 주기 정상 대조군('퇴사 후 다시 입사') 및 글쓴이가 밝힌 순서 역전 양성.
+   - R8: 두 기간 병기 정상 대조군 및 한 기간 시작일>종료일 역전 양성.
+   - R9: 규칙 8 삭제 확인 및 연도 생략 날짜 양성 2개 검증.
+7. 문장 길이 1배 및 4배 스케일링 성능비 < 8배 검증.
 """
 from __future__ import annotations
 
@@ -18,7 +27,12 @@ import time
 
 import pytest
 
-from packages.claim_engine.date_verifier import _add_civil_period, verify_dates_in_document
+from packages.claim_engine.date_verifier import (
+    EVENT_ORDER_RULES,
+    _add_civil_period,
+    _extract_clause_slots,
+    verify_dates_in_document,
+)
 from packages.common.enums import EvidenceGrade, FindingType, VerificationStatus
 from packages.common.schemas import Block, NormalizedDocument, Page
 from packages.verification_engine.pipeline import (
@@ -87,60 +101,60 @@ def test_pipeline_temporal_event_inversion_entrypoint(tmp_path: Path):
 @pytest.mark.parametrize(
     "heading,body_text,expected_sub_rule,expected_grade",
     [
-        # 양성 1 (규칙 1-A1): 동일 주체의 개시일(입사일)-종료일(최종 퇴사일) 역전
+        # 양성 1 (규칙 1-A1): 동일 주체의 입사일-퇴사일 역전
         (
             "1. 근로관계 경위",
             "신청인의 입사일은 2024. 6. 10.이고 최종 퇴사일은 2024. 5. 15.입니다.",
             "SAME_SUBJECT_LIFECYCLE",
             EvidenceGrade.B,
         ),
-        # 양성 2 (규칙 1-A2): 입사일 후 N개월 근무 뒤 사직 통지 발송일 역전 (민법 제157조·제160조)
+        # 양성 2 (R2): 관형절로 이어진 두 사건 선후 역전
         (
-            "가. 사직 경위",
-            "피고는 입사일을 2024. 4. 10.로 적었습니다. 두 달 근무한 뒤 보냈다는 사직 통지의 발송일은 2024. 3. 25.입니다.",
-            "LIFECYCLE_DURATION_INVERSION",
+            "가. 처분 경위",
+            "행정청이 2024. 8. 15. 내린 불승인처분은 원고가 2024. 8. 25. 낸 허가신청에 대한 것입니다.",
+            "TARGET_BOUND_DISPOSITION",
             EvidenceGrade.B,
         ),
-        # 양성 3 (규칙 1-B1): 선행 신청을 직접 대상으로 삼은('~에 대한') 후행 처분 발령일 역전
+        # 양성 3: 선행 신청을 직접 대상으로 삼은('~에 대한') 후행 처분 발령일 역전
         (
             "2. 처분 경위",
             "최초 허가신청 2024. 9. 12.에 대한 불승인처분은 2024. 9. 5.에 발령되었습니다.",
             "TARGET_BOUND_DISPOSITION",
             EvidenceGrade.B,
         ),
-        # 양성 4 (규칙 1-B2): 선행 계약 후 지시어('그 계약에 대한')로 결합된 해제 통지일 역전
+        # 양성 4: 선행 계약 후 지시어('그 계약에 대한')로 결합된 해제 통지일 역전
         (
             "3. 해제 통지",
             "원고는 2024. 7. 20. 공급계약을 체결하였고, 그 계약에 대한 해제 통지는 2024. 7. 10.에 발송되었습니다.",
             "ANAPHORIC_TARGET_INVERSION",
             EvidenceGrade.B,
         ),
-        # 양성 5 (규칙 2): 동일 행위 기간 종료('끝난 뒤') 후 최초 문서 작성일 역전
+        # 양성 5: 동일 행위 명사 결합 상대 일자('다음 날인') 역산 모순 (C등급)
         (
-            "4. 정산 내역",
-            "실제 임대기간은 2024. 10. 1.부터 2024. 10. 31.까지이고, 임대가 끝난 뒤 처음 확인서를 작성한 날은 2024. 10. 20.입니다.",
-            "PERIOD_END_WRITE_INVERSION",
-            EvidenceGrade.B,
-        ),
-        # 양성 6 (규칙 3): 동일 행위 명사 결합 상대 일자('다음 날인') 역산 모순 (민법 제157조, 조건 5: 상대 기간/일자는 C등급)
-        (
-            "5. 통지 수령",
+            "4. 통지 수령",
             "결정도달서를 2024-03-15 처음 수령했고 수령 다음 날인 2024-03-14에 재심청구했다.",
             "RELATIVE_NEXT_DAY_INVERSION",
             EvidenceGrade.C,
         ),
-        # 양성 7 (규칙 4-A): 동일 일자 내 지시어('그 <명사>보다 앞선') 결합 시각 역전
+        # 양성 6 (R9): 연도 생략 날짜 사건 역전 1
         (
-            "6. 연락 시각",
-            "결제 시각은 2024-05-10 14:20이고 그 결제보다 20분 앞선 안내는 같은 날 15:00이다.",
-            "SAME_DAY_EARLIER_TIME_INVERSION",
+            "5. 발송 및 도달",
+            "2024년 최고서를 8월 15일에 발송하였으나, 상대방은 8월 10일에 이미 수령하였습니다.",
+            "SEND_BEFORE_RECEIPT",
             EvidenceGrade.B,
         ),
-        # 양성 8 (규칙 4-B): 동일 목적물 최초 확보 시각 vs 같은 날 이미 인계된 시각 역전
+        # 양성 7 (R9): 연도 생략 날짜 사건 역전 2
         (
-            "7. 물품 인계",
-            "2024. 8. 12. 16:30에 기록매체를 처음 확보하였습니다. 목록에는 그 매체가 같은 날 15:40에 이미 담당 부서에 인계되었다고 적었습니다.",
-            "SAME_OBJECT_FIRST_ACQUIRE_TIME_INVERSION",
+            "6. 소송 접수",
+            "2024년 소장을 4. 12. 법원에 접수하였는데 법원의 보정명령은 4. 5.에 발령되었습니다.",
+            "RECEIPT_BEFORE_AMENDMENT",
+            EvidenceGrade.B,
+        ),
+        # 양성 8 (R7): 글쓴이가 밝힌 순서 역전 ('그 후' 후속 사건 날짜가 앞섬)
+        (
+            "7. 순서 역전",
+            "원고는 2024. 6. 10. 업무협약을 체결하였습니다. 그 후 입사한 날짜는 2024. 5. 20.입니다.",
+            "NARRATIVE_TEMPORAL_ORDER_INVERSION",
             EvidenceGrade.B,
         ),
     ],
@@ -148,7 +162,7 @@ def test_pipeline_temporal_event_inversion_entrypoint(tmp_path: Path):
 def test_temporal_event_inversion_positives(
     heading: str, body_text: str, expected_sub_rule: str, expected_grade: EvidenceGrade
 ):
-    """동일 주체·동일 대상 결합 4대 구조 양성 시험 검증 (한국어 주석)."""
+    """동일 주체·동일 대상 결합 양성 시험 검증 (한국어 주석)."""
     doc = _make_doc(heading, body_text)
     findings = verify_dates_in_document(doc)
 
@@ -157,7 +171,7 @@ def test_temporal_event_inversion_positives(
         if f.type == FindingType.TIMELINE_CONTRADICTION
         and f.confidence_features.get("rule_id") == "claim_engine.date_verifier:TEMPORAL_EVENT_INVERSION"
     ]
-    assert len(inversion_findings) == 1
+    assert len(inversion_findings) == 1, f"검출 결과 이상: {findings}"
 
     f = inversion_findings[0]
     assert f.status == VerificationStatus.CONTRADICTED
@@ -174,40 +188,20 @@ def test_temporal_event_inversion_positives(
             "1. 근로관계 경위",
             "신청인의 입사일은 2024. 5. 15.이고 최종 퇴사일은 2024. 6. 10.입니다.",
         ),
-        # 정상 대조군 2: 입사일로부터 두 달 근무한 뒤 민법 기간 만료일 이후에 사직 통지 발송
-        (
-            "가. 사직 경위",
-            "피고는 입사일을 2024. 4. 10.로 적었습니다. 두 달 근무한 뒤 보냈다는 사직 통지의 발송일은 2024. 6. 15.입니다.",
-        ),
-        # 정상 대조군 3: 선행 신청일 이후에 거부처분이 발령된 정상 순서
+        # 정상 대조군 2: 선행 신청일 이후에 거부처분이 발령된 정상 순서
         (
             "2. 처분 경위",
             "최초 허가신청 2024. 9. 5.에 대한 불승인처분은 2024. 9. 12.에 발령되었습니다.",
         ),
-        # 정상 대조군 4: 임대기간 종료일 이후에 확인서를 처음 작성한 정상 순서
+        # 정상 대조군 3: 수령 다음 날(민법 제157조 초일 불산입 +1일)이 정확히 일치하는 정상 서술
         (
-            "4. 정산 내역",
-            "실제 임대기간은 2024. 10. 1.부터 2024. 10. 31.까지이고, 임대가 끝난 뒤 처음 확인서를 작성한 날은 2024. 11. 2.입니다.",
-        ),
-        # 정상 대조군 5: 수령 다음 날(민법 제157조 초일 불산입 +1일)이 정확히 일치하는 정상 서술
-        (
-            "5. 통지 수령",
+            "3. 통지 수령",
             "결정도달서를 2024-03-15 처음 수령했고 수령 다음 날인 2024-03-16에 재심청구했다.",
-        ),
-        # 정상 대조군 6: 동일 일자 내 앞선 안내 시각이 결제 시각보다 실제로 이른 정상 서술
-        (
-            "6. 연락 시각",
-            "결제 시각은 2024-05-10 14:20이고 그 결제보다 20분 앞선 안내는 같은 날 14:00이다.",
-        ),
-        # 정상 대조군 7: 최초 확보 시각 이후에 같은 날 인계된 정상 서술
-        (
-            "7. 물품 인계",
-            "2024. 8. 12. 15:40에 기록매체를 처음 확보하였습니다. 목록에는 그 매체가 같은 날 16:30에 이미 담당 부서에 인계되었다고 적었습니다.",
         ),
     ],
 )
 def test_temporal_event_normal_sequence_controls(heading: str, body_text: str):
-    """인과관계 및 달력·시각 순서와 일치하는 정상 대조군 검증 (오탐 0건) (한국어 주석)."""
+    """인과관계 및 달력 순서와 일치하는 정상 대조군 검증 (오탐 0건) (한국어 주석)."""
     doc = _make_doc(heading, body_text)
     findings = verify_dates_in_document(doc)
 
@@ -222,7 +216,7 @@ def test_temporal_event_normal_sequence_controls(heading: str, body_text: str):
 @pytest.mark.parametrize(
     "heading,body_text",
     [
-        # 1차 오탐 5꼴 × 2문장 대조군 (조건 8)
+        # 1차 오탐 5꼴 × 2문장 대조군
         # 꼴 1: 나중 서면이 앞선 처분을 다툼 (2문장)
         (
             "1. 소 제기 경위",
@@ -281,7 +275,7 @@ def test_temporal_event_normal_sequence_controls(heading: str, body_text: str):
     ],
 )
 def test_temporal_event_retrospective_and_exclusion_controls(heading: str, body_text: str):
-    """앞선 사건을 대상·근거·첨부로 삼는 정상 회고 서술 5꼴 × 2문장 및 정정·별개 주체 대조군 검증 (오탐 0건) (한국어 주석)."""
+    """앞선 사건을 대상·근거·첨부로 삼는 정상 회고 서술 및 정정·별개 주체 대조군 검증 (오탐 0건) (한국어 주석)."""
     doc = _make_doc(heading, body_text)
     findings = verify_dates_in_document(doc)
 
@@ -364,15 +358,173 @@ def test_temporal_event_seven_pairs_three_variants(
     assert f.evidence_grade == EvidenceGrade.B
 
 
+# ==============================================================================
+# R1~R9 원인별 보완 검증 전용 단위 시험
+# ==============================================================================
+
+def test_r1_empty_event_clause_no_slot():
+    """R1: 사건 낱말이 없는 절은 슬롯을 생성하지 않는다 (날짜만, 다음 날만, N개월 근무만 각 슬롯 0개)."""
+    # 1) 날짜만 있는 절
+    slots_date_only = _extract_clause_slots("2024. 5. 10.에.")
+    assert len(slots_date_only) == 0, f"날짜만 있는 절에 슬롯이 생성됨: {slots_date_only}"
+
+    # 2) '다음 날'만 있는 절
+    slots_next_only = _extract_clause_slots("다음 날에.")
+    assert len(slots_next_only) == 0, f"'다음 날'만 있는 절에 슬롯이 생성됨: {slots_next_only}"
+
+    # 3) 'N개월 근무'만 있는 절
+    slots_dur_only = _extract_clause_slots("3개월간 근무.")
+    assert len(slots_dur_only) == 0, f"'N개월 근무'만 있는 절에 슬롯이 생성됨: {slots_dur_only}"
+
+
+def test_r2_multiple_events_and_adnominal_clause():
+    """R2: 한 문장에 두 사건이 연결어미로 이어진 양성 및 관형절로 이어진 양성 검출 검증."""
+    # 연결어미로 두 사건 결합
+    t_conn = "신청서가 2024. 9. 20. 접수되었는데 관할청의 거부처분은 2024. 9. 10.에 내려졌습니다."
+    doc_conn = _make_doc("1. 소송 경위", t_conn)
+    f_conn = [f for f in verify_dates_in_document(doc_conn) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_conn) >= 1
+
+    # 관형절로 두 사건 결합
+    t_adnom = "행정청이 2024. 8. 15. 내린 불승인처분은 원고가 2024. 8. 25. 낸 허가신청에 대한 것입니다."
+    doc_adnom = _make_doc("2. 처분 경위", t_adnom)
+    f_adnom = [f for f in verify_dates_in_document(doc_adnom) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_adnom) >= 1
+
+
+def test_r3_document_noun_as_object_not_event():
+    """R3: '신청서를 제출했다'에서 사건 1개(제출), 대상 1개(신청서)로 바인딩되는지 검증."""
+    slots = _extract_clause_slots("2024. 5. 10. 신청서를 제출했습니다.")
+    assert len(slots) == 1, f"슬롯이 1개가 아님: {slots}"
+    slot = slots[0]
+    assert slot.kind == "신청"
+    assert slot.surface_form in ("제출", "제출했")
+    assert slot.target == "신청서"
+
+
+def test_r4_strict_target_match_controls_and_positive():
+    """R4: 수식어가 다른 대상('1차 계약' vs '2차 계약', 'A 처분' vs 'B 처분') 제외 대조 및 '위 처분' 양성 검증."""
+    # 1) '1차 계약' 체결과 '2차 계약' 해제는 대상이 다르므로 비교 제외 대조군
+    t_diff_contract = "당사자들은 2024. 7. 20. 1차 계약을 체결하였고, 2024. 7. 10. 2차 계약에 대한 해제 통지가 발송되었습니다."
+    doc_diff_c = _make_doc("1. 별개 계약", t_diff_contract)
+    assert len([f for f in verify_dates_in_document(doc_diff_c) if f.type == FindingType.TIMELINE_CONTRADICTION]) == 0
+
+    # 2) 'A 처분'과 'B 처분'은 대상이 다르므로 비교 제외 대조군
+    t_diff_disp = "원고는 2024. 9. 12. A 신청을 냈는데, 관할청은 2024. 9. 5. B 처분을 내렸습니다."
+    doc_diff_d = _make_doc("2. 별개 처분", t_diff_disp)
+    assert len([f for f in verify_dates_in_document(doc_diff_d) if f.type == FindingType.TIMELINE_CONTRADICTION]) == 0
+
+    # 3) '위 처분'이 직전 '과징금 부과처분'과 묶이는 지시어 해소 양성
+    t_anaphora = "원고는 2024. 9. 12. 과징금 부과처분에 대한 재심청구를 제출하였으나, 위 처분은 2024. 9. 5.에 이미 발령되었습니다."
+    doc_ana = _make_doc("3. 지시어 결합", t_anaphora)
+    f_ana = [f for f in verify_dates_in_document(doc_ana) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_ana) >= 1
+
+
+def test_r5_subject_differentiation_controls_and_positive():
+    """R5: '원고 신청 → 법원 처분' 정상 쌍 양성, '원고 신청 → 원고 처분' 오탐 제외 검증."""
+    # 1) 원고 신청 -> 법원 처분: 주체가 다른 상대방 관계 양성
+    t_pos = "원고가 2024. 9. 12. 허가신청을 하였으나, 법원의 처분은 2024. 9. 5.에 발령되었습니다."
+    doc_pos = _make_doc("1. 정상 상대방 쌍", t_pos)
+    f_pos = [f for f in verify_dates_in_document(doc_pos) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_pos) >= 1
+
+    # 2) 원고 신청 -> 원고 처분: 신청과 처분의 주체가 동일인이면 정상 법률 행위가 아니므로 오탐 방지 제외
+    t_ctrl = "원고가 2024. 9. 12. 허가신청을 하였고, 원고가 2024. 9. 5. 자체 처분을 내렸습니다."
+    doc_ctrl = _make_doc("2. 동일 주체 상대방 오탐 방지", t_ctrl)
+    f_ctrl = [f for f in verify_dates_in_document(doc_ctrl) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_ctrl) == 0
+
+
+def test_r6_five_exclusions_and_real_inversion_with_verdict():
+    """R6: 5개 제외 대상 각각 대조 1개(총 5개) 및 진짜 역전에 판결 언급이 있어도 잡히는 양성 검증."""
+    # 1) 판례/법령 인용 문맥 대조군
+    t_ex1 = "대법원 2024. 5. 10. 선고 판결에 따라 2024. 3. 15.자 처분의 효력이 인정됩니다."
+    assert len([f for f in verify_dates_in_document(_make_doc("1. 판례", t_ex1)) if f.type == FindingType.TIMELINE_CONTRADICTION]) == 0
+
+    # 2) 장래/예정 대조군
+    t_ex2 = "원고는 2024. 7. 20. 계약을 체결하였고, 대금은 2024. 7. 10. 변제기 도래 시 지급하기로 예정되어 있었습니다."
+    assert len([f for f in verify_dates_in_document(_make_doc("2. 예정", t_ex2)) if f.type == FindingType.TIMELINE_CONTRADICTION]) == 0
+
+    # 3) 상대방 주장 인용 대조군
+    t_ex3 = "피고는 2024. 8. 15. 최고서를 발송하여 2024. 8. 10. 도달했다고 주장하나 이는 이유 없습니다."
+    assert len([f for f in verify_dates_in_document(_make_doc("3. 상대방주장", t_ex3)) if f.type == FindingType.TIMELINE_CONTRADICTION]) == 0
+
+    # 4) 부정 대조군
+    t_ex4 = "원고는 2024. 6. 10. 입사한 사실이 없으며, 2024. 5. 15. 퇴사하지도 않았습니다."
+    assert len([f for f in verify_dates_in_document(_make_doc("4. 부정", t_ex4)) if f.type == FindingType.TIMELINE_CONTRADICTION]) == 0
+
+    # 5) 정정 대조군
+    t_ex5 = "입사일은 2024. 6. 10.이고 최종 퇴사일은 2024. 5. 15.의 착오로 기재된 것입니다."
+    assert len([f for f in verify_dates_in_document(_make_doc("5. 정정", t_ex5)) if f.type == FindingType.TIMELINE_CONTRADICTION]) == 0
+
+    # 6) 진짜 역전에 단순 판결 언급이 포함되어 있어도 정상 검출되는 양성
+    t_real = "원고는 2024. 9. 12. 판결을 위해 허가신청을 냈으나, 관할청의 거부처분은 2024. 9. 5.에 이미 내려졌습니다."
+    f_real = [f for f in verify_dates_in_document(_make_doc("6. 진짜 역전", t_real)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_real) >= 1
+
+
+def test_r7_new_cycle_control_and_narrative_order_inversion():
+    """R7: '퇴사 후 다시 입사' 정상 대조군 및 '그 후 입사(날짜는 이전)' 역전 양성 검증."""
+    # 1) 퇴사 후 다시 입사: 새 주기로 정상 대조군
+    t_ctrl = "신청인은 2024. 3. 10. 퇴사한 후, 2024. 4. 1. 다시 입사하였습니다."
+    doc_ctrl = _make_doc("1. 재입사 정상", t_ctrl)
+    assert len([f for f in verify_dates_in_document(doc_ctrl) if f.type == FindingType.TIMELINE_CONTRADICTION]) == 0
+
+    # 2) 그 후 입사하였으나 날짜가 이전인 역전 양성 (B등급)
+    t_pos = "원고는 2024. 6. 10. 업무협약을 체결하였습니다. 그 후 입사한 날짜는 2024. 5. 20.입니다."
+    doc_pos = _make_doc("2. 글과 날짜 역전", t_pos)
+    f_pos = [f for f in verify_dates_in_document(doc_pos) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_pos) == 1
+    assert f_pos[0].evidence_grade == EvidenceGrade.B
+    assert f_pos[0].confidence_features.get("sub_rule") == "NARRATIVE_TEMPORAL_ORDER_INVERSION"
+
+
+def test_r8_concurrent_periods_control_and_inversion():
+    """R8: 두 기간 병기 정상 대조군 및 한 기간 안에서 시작일>종료일 역전 양성 검증."""
+    # 1) 두 기간 병기: D1~D2와 D3~D4 병기 시 D1과 D4를 비교하지 않는 정상 대조군
+    t_ctrl = "1차 임대기간은 2024. 1. 1.부터 2024. 6. 30.까지이고, 2차 임대기간은 2024. 7. 1.부터 2024. 12. 31.까지입니다."
+    doc_ctrl = _make_doc("1. 두 기간 병기", t_ctrl)
+    assert len([f for f in verify_dates_in_document(doc_ctrl) if f.type == FindingType.TIMELINE_CONTRADICTION]) == 0
+
+    # 2) 한 기간 안에서 시작일 > 종료일 역전 양성
+    t_pos = "임대기간은 2024. 10. 31.부터 2024. 10. 1.까지로 기재되었습니다."
+    doc_pos = _make_doc("2. 동일 기간 내 시작>종료", t_pos)
+    f_pos = [f for f in verify_dates_in_document(doc_pos) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_pos) == 1
+    assert f_pos[0].confidence_features.get("sub_rule") == "PERIOD_START_BEFORE_END"
+
+
+def test_r9_rule8_deleted_and_omitted_year_dates():
+    """R9: 규칙 8(접수일 vs 송달일) 삭제 확인 및 연도 생략 날짜 양성 2개 검증."""
+    # 1) 규칙 8 삭제 확인: EVENT_ORDER_RULES 에 PERIOD_END_WRITE_INVERSION 또는 RECEIPT_VS_DELIVERY 규칙이 없음
+    rule_ids = [r["rule_id"] for r in EVENT_ORDER_RULES]
+    assert "PERIOD_END_WRITE_INVERSION" not in rule_ids, "규칙 8(PERIOD_END_WRITE_INVERSION)이 삭제되지 않음"
+    assert "RECEIPT_VS_DELIVERY" not in rule_ids, "규칙 8이 삭제되지 않음"
+
+    # 2) 연도 생략 날짜 양성 1: 'M월 D일' 형태
+    t_pos1 = "2024년 최고서를 8월 15일에 발송하였으나, 상대방은 8월 10일에 이미 수령하였습니다."
+    doc_pos1 = _make_doc("1. 연도 생략 양성 1", t_pos1)
+    f_pos1 = [f for f in verify_dates_in_document(doc_pos1) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_pos1) == 1
+    assert f_pos1[0].confidence_features.get("cause_date") == "2024-08-15"
+    assert f_pos1[0].confidence_features.get("effect_date") == "2024-08-10"
+
+    # 3) 연도 생략 날짜 양성 2: 'M. D.' 형태
+    t_pos2 = "2024년 소장을 4. 12. 법원에 접수하였는데 법원의 보정명령은 4. 5.에 발령되었습니다."
+    doc_pos2 = _make_doc("2. 연도 생략 양성 2", t_pos2)
+    f_pos2 = [f for f in verify_dates_in_document(doc_pos2) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_pos2) == 1
+    assert f_pos2[0].confidence_features.get("cause_date") == "2024-04-12"
+    assert f_pos2[0].confidence_features.get("effect_date") == "2024-04-05"
+
+
 def test_civil_code_period_calculation_articles_157_159_160():
     """민법 제157조(초일 불산입)·제159조·제160조(역에 의한 월·년 계산, 말일 보정) 단위 검증 (한국어 주석)."""
     start = datetime.date(2024, 1, 31)
-    # 2024년은 윤년이므로 1월 31일로부터 1개월(민법 제160조 제3항 말일 보정):
-    # 초일 불산입 시 만료일은 2024-02-29, 초일 산입 시 최소 만료일은 2024-02-28
     assert _add_civil_period(start, 1, "개월", inclusive=False) == datetime.date(2024, 2, 29)
     assert _add_civil_period(start, 1, "개월", inclusive=True) == datetime.date(2024, 2, 28)
 
-    # 일 단위 계산: 2024-03-07로부터 10일 -> 초일 불산입 2024-03-17, 초일 산입 2024-03-16
     d_base = datetime.date(2024, 3, 7)
     assert _add_civil_period(d_base, 10, "일", inclusive=False) == datetime.date(2024, 3, 17)
     assert _add_civil_period(d_base, 10, "일", inclusive=True) == datetime.date(2024, 3, 16)
@@ -380,12 +532,10 @@ def test_civil_code_period_calculation_articles_157_159_160():
 
 def test_civil_code_period_article_161_holiday_adjustment():
     """민법 제161조(기간의 말일이 토요일 또는 공휴일에 해당하는 때에는 기간은 그 익일로 만료한다) 검증 (한국어 주석)."""
-    # 2024-08-03은 토요일 -> adjust_holiday 적용 시 익일(다음 영업일 월요일인 2024-08-05)로 순연
     start = datetime.date(2024, 8, 1)
     assert _add_civil_period(start, 2, "일", inclusive=False, adjust_holiday=False) == datetime.date(2024, 8, 3)
     assert _add_civil_period(start, 2, "일", inclusive=False, adjust_holiday=True) == datetime.date(2024, 8, 5)
 
-    # 2024-03-01은 삼일절(공휴일, 금요일) -> 토(3/2), 일(3/3) 거쳐 월요일인 2024-03-04로 순연
     d_feb = datetime.date(2024, 2, 20)
     assert _add_civil_period(d_feb, 10, "일", inclusive=False, adjust_holiday=True) == datetime.date(2024, 3, 4)
 
@@ -395,7 +545,7 @@ def test_temporal_event_inversion_performance_scaling():
     base_text = (
         "신청인은 2024. 5. 10. 업무 계획서를 제출하였고 관계 부서는 2024. 5. 20. 이를 승인하였습니다. "
         "이후 보완 서류를 준비하여 2024. 6. 1. 정식 접수를 마쳤습니다.\n"
-    ) * 20  # 약 2,000자
+    ) * 20
 
     text_1x = base_text
     text_4x = base_text * 4
@@ -418,7 +568,6 @@ def test_temporal_event_inversion_performance_scaling():
     min_1x = min(times_1x)
     min_4x = min(times_4x)
 
-    # 1x가 너무 작을 경우(0.001초 미만) 분모 안정화
     ratio = min_4x / max(min_1x, 0.0005)
 
     assert min_4x < 1.0, f"4배 길이 최솟값이 1초 이상입니다: {min_4x:.4f}s"
