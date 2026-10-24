@@ -85,59 +85,69 @@ def test_pipeline_temporal_event_inversion_entrypoint(tmp_path: Path):
 
 
 @pytest.mark.parametrize(
-    "heading,body_text,expected_sub_rule",
+    "heading,body_text,expected_sub_rule,expected_grade",
     [
         # 양성 1 (규칙 1-A1): 동일 주체의 개시일(입사일)-종료일(최종 퇴사일) 역전
         (
             "1. 근로관계 경위",
             "신청인의 입사일은 2024. 6. 10.이고 최종 퇴사일은 2024. 5. 15.입니다.",
             "SAME_SUBJECT_LIFECYCLE",
+            EvidenceGrade.B,
         ),
         # 양성 2 (규칙 1-A2): 입사일 후 N개월 근무 뒤 사직 통지 발송일 역전 (민법 제157조·제160조)
         (
             "가. 사직 경위",
             "피고는 입사일을 2024. 4. 10.로 적었습니다. 두 달 근무한 뒤 보냈다는 사직 통지의 발송일은 2024. 3. 25.입니다.",
             "LIFECYCLE_DURATION_INVERSION",
+            EvidenceGrade.B,
         ),
         # 양성 3 (규칙 1-B1): 선행 신청을 직접 대상으로 삼은('~에 대한') 후행 처분 발령일 역전
         (
             "2. 처분 경위",
             "최초 허가신청 2024. 9. 12.에 대한 불승인처분은 2024. 9. 5.에 발령되었습니다.",
             "TARGET_BOUND_DISPOSITION",
+            EvidenceGrade.B,
         ),
         # 양성 4 (규칙 1-B2): 선행 계약 후 지시어('그 계약에 대한')로 결합된 해제 통지일 역전
         (
             "3. 해제 통지",
             "원고는 2024. 7. 20. 공급계약을 체결하였고, 그 계약에 대한 해제 통지는 2024. 7. 10.에 발송되었습니다.",
             "ANAPHORIC_TARGET_INVERSION",
+            EvidenceGrade.B,
         ),
         # 양성 5 (규칙 2): 동일 행위 기간 종료('끝난 뒤') 후 최초 문서 작성일 역전
         (
             "4. 정산 내역",
             "실제 임대기간은 2024. 10. 1.부터 2024. 10. 31.까지이고, 임대가 끝난 뒤 처음 확인서를 작성한 날은 2024. 10. 20.입니다.",
             "PERIOD_END_WRITE_INVERSION",
+            EvidenceGrade.B,
         ),
-        # 양성 6 (규칙 3): 동일 행위 명사 결합 상대 일자('다음 날인') 역산 모순 (민법 제157조)
+        # 양성 6 (규칙 3): 동일 행위 명사 결합 상대 일자('다음 날인') 역산 모순 (민법 제157조, 조건 5: 상대 기간/일자는 C등급)
         (
             "5. 통지 수령",
             "결정도달서를 2024-03-15 처음 수령했고 수령 다음 날인 2024-03-14에 재심청구했다.",
             "RELATIVE_NEXT_DAY_INVERSION",
+            EvidenceGrade.C,
         ),
         # 양성 7 (규칙 4-A): 동일 일자 내 지시어('그 <명사>보다 앞선') 결합 시각 역전
         (
             "6. 연락 시각",
             "결제 시각은 2024-05-10 14:20이고 그 결제보다 20분 앞선 안내는 같은 날 15:00이다.",
             "SAME_DAY_EARLIER_TIME_INVERSION",
+            EvidenceGrade.B,
         ),
         # 양성 8 (규칙 4-B): 동일 목적물 최초 확보 시각 vs 같은 날 이미 인계된 시각 역전
         (
             "7. 물품 인계",
             "2024. 8. 12. 16:30에 기록매체를 처음 확보하였습니다. 목록에는 그 매체가 같은 날 15:40에 이미 담당 부서에 인계되었다고 적었습니다.",
             "SAME_OBJECT_FIRST_ACQUIRE_TIME_INVERSION",
+            EvidenceGrade.B,
         ),
     ],
 )
-def test_temporal_event_inversion_positives(heading: str, body_text: str, expected_sub_rule: str):
+def test_temporal_event_inversion_positives(
+    heading: str, body_text: str, expected_sub_rule: str, expected_grade: EvidenceGrade
+):
     """동일 주체·동일 대상 결합 4대 구조 양성 시험 검증 (한국어 주석)."""
     doc = _make_doc(heading, body_text)
     findings = verify_dates_in_document(doc)
@@ -151,7 +161,7 @@ def test_temporal_event_inversion_positives(heading: str, body_text: str, expect
 
     f = inversion_findings[0]
     assert f.status == VerificationStatus.CONTRADICTED
-    assert f.evidence_grade == EvidenceGrade.B
+    assert f.evidence_grade == expected_grade
     assert f.confidence_features.get("sub_rule") == expected_sub_rule
     assert f"[{heading}]" in f.detail
 
@@ -212,37 +222,58 @@ def test_temporal_event_normal_sequence_controls(heading: str, body_text: str):
 @pytest.mark.parametrize(
     "heading,body_text",
     [
-        # 회고 정상 대조군 1: 나중 서면이 앞선 처분을 다툼
+        # 1차 오탐 5꼴 × 2문장 대조군 (조건 8)
+        # 꼴 1: 나중 서면이 앞선 처분을 다툼 (2문장)
         (
             "1. 소 제기 경위",
             "원고는 2024. 5. 10. 취소소장을 제출하여 2024. 3. 15.자 과징금부과처분의 취소를 구합니다.",
         ),
-        # 회고 정상 대조군 2: '~에 따라' 앞선 문서를 참조·제출
+        (
+            "1-2. 이의신청 경위",
+            "신청인은 2024. 6. 20. 이의신청서를 내면서 2024. 4. 10.자 영업정지처분의 위법함을 다투고자 합니다.",
+        ),
+        # 꼴 2: '~에 따라' 참조 (2문장)
         (
             "2. 서류 제출",
             "신청인은 2024. 6. 1. 보정명령에 따라 2024. 4. 10.자 결정문을 제출하였습니다.",
         ),
-        # 회고 정상 대조군 3: 나중 청구의 대상이 앞선 결정
+        (
+            "2-2. 계획서 제출",
+            "피고는 2024. 7. 15. 행정청의 처분에 따라 2024. 5. 2.자 조치계획서를 제출하였습니다.",
+        ),
+        # 꼴 3: 나중 청구 대상이 앞선 결정 (2문장)
         (
             "3. 심판청구 대상",
             "2024. 7. 15. 제기된 이 사건 심판청구는 2024. 5. 20. 내려진 기각결정을 대상으로 한다.",
         ),
-        # 회고 정상 대조군 4: 나중 서면에 앞선 회신을 첨부
+        (
+            "3-2. 재심청구 대상",
+            "2024. 8. 1. 접수된 재심청구는 2024. 6. 10.자 초심결정을 대상으로 삼고 있습니다.",
+        ),
+        # 꼴 4: 앞선 회신 첨부 (2문장)
         (
             "4. 입증 방법",
             "원고는 2024. 8. 10. 준비서면을 제출하면서 2024. 6. 5. 수신한 회신 공문을 별지로 첨부하였다.",
         ),
-        # 회고 정상 대조군 5: '~를 거쳐' 앞선 처분을 회고 서술
+        (
+            "4-2. 소명자료 제출",
+            "신청인은 2024. 9. 12. 소명자료를 내며 2024. 7. 20.자 질의회신 문서를 첨부하였습니다.",
+        ),
+        # 꼴 5: '~를 거쳐' 회고 (2문장)
         (
             "5. 전심 절차",
             "청구인은 2024. 9. 1. 이의신청을 거쳐 2024. 7. 1.자 처분의 위법성을 다투고자 합니다.",
         ),
-        # 제외 꼴 6: 정정 서술 (~가 아니라 ~로 정정한다)
+        (
+            "5-2. 소송 제기",
+            "원고는 2024. 10. 5. 전심 절차를 거쳐 2024. 8. 15.자 불승인 결정을 다투는 소송을 제기했습니다.",
+        ),
+        # 정정 서술 (~가 아니라 ~로 정정한다)
         (
             "6. 사실관계 정정",
             "입사일은 2024. 6. 10.이고 최종 퇴사일은 2024. 5. 15.이 아니라 2024. 8. 15.로 정정하여 기재합니다.",
         ),
-        # 제외 꼴 7: 별개 주체의 대립 행위 (원고 vs 피고)
+        # 별개 주체의 대립 행위 (원고 vs 피고)
         (
             "7. 당사자 주장",
             "원고는 2024. 6. 10. 의견서를 제출하였고, 피고는 2024. 5. 15. 행정 조사를 완료하였습니다.",
@@ -250,7 +281,7 @@ def test_temporal_event_normal_sequence_controls(heading: str, body_text: str):
     ],
 )
 def test_temporal_event_retrospective_and_exclusion_controls(heading: str, body_text: str):
-    """앞선 사건을 대상·근거·첨부로 삼는 정상 회고 서술 5종 및 정정·별개 주체 대조군 검증 (오탐 0건) (한국어 주석)."""
+    """앞선 사건을 대상·근거·첨부로 삼는 정상 회고 서술 5꼴 × 2문장 및 정정·별개 주체 대조군 검증 (오탐 0건) (한국어 주석)."""
     doc = _make_doc(heading, body_text)
     findings = verify_dates_in_document(doc)
 
@@ -260,6 +291,77 @@ def test_temporal_event_retrospective_and_exclusion_controls(heading: str, body_
         and f.confidence_features.get("rule_id") == "claim_engine.date_verifier:TEMPORAL_EVENT_INVERSION"
     ]
     assert len(inversion_findings) == 0
+
+
+def test_temporal_event_exclusion_controls():
+    """조건 8: 되살린 test_temporal_event_exclusion_controls 복구 검증 (한국어 주석)."""
+    controls = [
+        ("1. 처분 다툼", "원고는 2024. 5. 10. 취소소장을 제출하여 2024. 3. 15.자 과징금부과처분의 취소를 구합니다."),
+        ("2. 명령 참조", "신청인은 2024. 6. 1. 보정명령에 따라 2024. 4. 10.자 결정문을 제출하였습니다."),
+        ("3. 대상 지정", "2024. 7. 15. 제기된 이 사건 심판청구는 2024. 5. 20. 내려진 기각결정을 대상으로 한다."),
+        ("4. 회신 첨부", "원고는 2024. 8. 10. 준비서면을 제출하면서 2024. 6. 5. 수신한 회신 공문을 별지로 첨부하였다."),
+        ("5. 전심 회고", "청구인은 2024. 9. 1. 이의신청을 거쳐 2024. 7. 1.자 처분의 위법성을 다투고자 합니다."),
+    ]
+    for h, b in controls:
+        doc = _make_doc(h, b)
+        findings = verify_dates_in_document(doc)
+        inversion_findings = [
+            f for f in findings
+            if f.type == FindingType.TIMELINE_CONTRADICTION
+            and f.confidence_features.get("rule_id") == "claim_engine.date_verifier:TEMPORAL_EVENT_INVERSION"
+        ]
+        assert len(inversion_findings) == 0, f"오탐 발생: {h} - {b}"
+
+
+@pytest.mark.parametrize(
+    "pair_idx,variant_name,heading,body_text",
+    [
+        # 1. 신청 -> 처분 (행정절차법 제17조)
+        (1, "어순 역전", "1-1. 처분", "불승인처분은 2024. 9. 5.에 발령되었는데, 그 처분의 대상인 허가신청은 2024. 9. 12.에 있었습니다."),
+        (1, "연결어미 변형", "1-2. 처분", "신청인은 2024. 9. 12. 변경신청을 한바, 관할청의 거부처분은 2024. 9. 5.에 이미 내려졌습니다."),
+        (1, "동의어 변형", "1-3. 처분", "원고는 2024. 9. 12. 재심청구를 제출하였으나, 이에 대한 기각결정은 2024. 9. 5.에 발령되었습니다."),
+        # 2. 발송 -> 도달 (민법 제111조)
+        (2, "어순 역전", "2-1. 도달", "해당 서류를 수령한 날은 2024. 8. 10.인데, 우편물의 발송일은 2024. 8. 15.로 확인되었습니다."),
+        (2, "연결어미 변형", "2-2. 도달", "피고가 2024. 8. 15. 최고서를 발송한 뒤, 원고는 2024. 8. 10.에 이를 수령하였습니다."),
+        (2, "동의어 변형", "2-3. 도달", "원고가 2024. 8. 15. 통지서를 송부하였으나, 피고는 2024. 8. 10.에 이미 송달받았다고 주장합니다."),
+        # 3. 체결 -> 해지/이행 (민법 제543조)
+        (3, "어순 역전", "3-1. 계약", "공급계약에 대한 해제 통지는 2024. 7. 10.에 있었고, 원고와 피고 사이의 공급계약 체결일은 2024. 7. 20.입니다."),
+        (3, "연결어미 변형", "3-2. 계약", "당사자들은 2024. 7. 20. 매매계약을 체결한바, 매매계약 해지 통지는 2024. 7. 10.에 발송되었습니다."),
+        (3, "동의어 변형", "3-3. 계약", "원고는 2024. 7. 20. 업무협약을 약정하였으나, 그 협약의 해제 통지는 2024. 7. 10.에 도달하였습니다."),
+        # 4. 입사 -> 퇴사 (근로기준법 제2조)
+        (4, "어순 역전", "4-1. 근로", "근로자의 최종 퇴사일은 2024. 5. 15.인데, 회사의 입사일은 2024. 6. 10.로 적혀 있습니다."),
+        (4, "연결어미 변형", "4-2. 근로", "신청인은 2024. 6. 10. 회사에 입사한 뒤, 2024. 5. 15.에 사직하였습니다."),
+        (4, "동의어 변형", "4-3. 근로", "피고 회사는 2024. 6. 10. 원고를 채용하였으나, 원고에 대한 해고 통지는 2024. 5. 15.에 이루어졌습니다."),
+        # 5. 접수 -> 보정 (민사소송법 제254조)
+        (5, "어순 역전", "5-1. 소송", "소장에 대한 보정명령은 2024. 4. 5.에 내려졌으나, 법원에 소장을 접수한 날은 2024. 4. 12.입니다."),
+        (5, "연결어미 변형", "5-2. 소송", "원고가 2024. 4. 12. 사건을 접수한바, 법원의 보정명령은 2024. 4. 5.에 발령되었습니다."),
+        (5, "동의어 변형", "5-3. 소송", "신청서가 2024. 4. 12. 법원에 접수되었으나, 재판장의 보정권고는 2024. 4. 5.에 내려졌습니다."),
+        # 6. 발생 -> 청구 (상법 제724조)
+        (6, "어순 역전", "6-1. 보험", "피해자는 2024. 3. 10. 보험금을 청구하였고, 이 사건 사고발생일은 2024. 3. 20.입니다."),
+        (6, "연결어미 변형", "6-2. 보험", "교통사고가 2024. 3. 20. 발생한바, 손해배상 청구는 2024. 3. 10.에 이미 제기되었습니다."),
+        (6, "동의어 변형", "6-3. 보험", "손해는 2024. 3. 20. 발생하였으나, 그에 대한 손해배상금 지급청구는 2024. 3. 10.에 접수되었습니다."),
+        # 7. 기간시작 -> 기간종료 (민법 제157조)
+        (7, "어순 역전", "7-1. 임대", "임대차의 종료일은 2024. 10. 15.이고, 임대차 개시일은 2024. 11. 1.로 기재되었습니다."),
+        (7, "연결어미 변형", "7-2. 임대", "근무기간은 2024. 11. 1.부터 시작하여, 그 기간의 종료는 2024. 10. 15.로 정하였습니다."),
+        (7, "동의어 변형", "7-3. 임대", "계약의 기산일은 2024. 11. 1.이며, 계약의 만료일은 2024. 10. 15.입니다."),
+    ],
+)
+def test_temporal_event_seven_pairs_three_variants(
+    pair_idx: int, variant_name: str, heading: str, body_text: str
+):
+    """조건 8: 7대 선후 쌍 각각 양성 1개 이상 × 세 변형(어순, 연결어미, 동의어) 21문장 검증 (한국어 주석)."""
+    doc = _make_doc(heading, body_text)
+    findings = verify_dates_in_document(doc)
+
+    inversion_findings = [
+        f for f in findings
+        if f.type == FindingType.TIMELINE_CONTRADICTION
+        and f.confidence_features.get("rule_id") == "claim_engine.date_verifier:TEMPORAL_EVENT_INVERSION"
+    ]
+    assert len(inversion_findings) >= 1, f"검출 실패: 쌍 {pair_idx} ({variant_name}) - {body_text}"
+    f = inversion_findings[0]
+    assert f.status == VerificationStatus.CONTRADICTED
+    assert f.evidence_grade == EvidenceGrade.B
 
 
 def test_civil_code_period_calculation_articles_157_159_160():
@@ -274,6 +376,18 @@ def test_civil_code_period_calculation_articles_157_159_160():
     d_base = datetime.date(2024, 3, 7)
     assert _add_civil_period(d_base, 10, "일", inclusive=False) == datetime.date(2024, 3, 17)
     assert _add_civil_period(d_base, 10, "일", inclusive=True) == datetime.date(2024, 3, 16)
+
+
+def test_civil_code_period_article_161_holiday_adjustment():
+    """민법 제161조(기간의 말일이 토요일 또는 공휴일에 해당하는 때에는 기간은 그 익일로 만료한다) 검증 (한국어 주석)."""
+    # 2024-08-03은 토요일 -> adjust_holiday 적용 시 익일(다음 영업일 월요일인 2024-08-05)로 순연
+    start = datetime.date(2024, 8, 1)
+    assert _add_civil_period(start, 2, "일", inclusive=False, adjust_holiday=False) == datetime.date(2024, 8, 3)
+    assert _add_civil_period(start, 2, "일", inclusive=False, adjust_holiday=True) == datetime.date(2024, 8, 5)
+
+    # 2024-03-01은 삼일절(공휴일, 금요일) -> 토(3/2), 일(3/3) 거쳐 월요일인 2024-03-04로 순연
+    d_feb = datetime.date(2024, 2, 20)
+    assert _add_civil_period(d_feb, 10, "일", inclusive=False, adjust_holiday=True) == datetime.date(2024, 3, 4)
 
 
 def test_temporal_event_inversion_performance_scaling():
