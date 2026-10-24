@@ -55,6 +55,38 @@ HEADING_LINE_RE = re.compile(
     r")\s*(?P<title>[^\n]{1,80})"
 )
 
+# 인과적 원인 행위/사건 표지 (신청, 발송, 제출, 체결, 착수 등 능동적 선행 행위)
+CAUSE_ACTIONS_RE = re.compile(
+    r"(?:신청|청구|발송|제출|송달|인도|체결|입사|착수|의뢰|요청|납부|교부|제기|통지하|통지를\s*발송)"
+)
+
+# 인과적 결과 행위/사건 표지 (결정, 처분, 도달, 수신, 해제, 퇴사, 완료, 통지받음 등 후행 결과)
+EFFECT_ACTIONS_RE = re.compile(
+    r"(?:결정|처분|도달|수신|퇴사|완료|회신|반환|인가|승인|종료|만료|지급받|수령|통지받|통지되었|해제되었|해지되었)"
+)
+
+# 정정 서술 배제 표지 (~로 정정한다, ~가 아니라, 오기이다 등)
+CORRECTION_EXCLUDE_RE = re.compile(
+    r"(?:정정(?:합|한|합니|하|되)|아니라|오기(?:이|입|였)|착오(?:로|에)|바로잡)"
+)
+
+# 장래/예정/약정 배제 표지 (~할 예정, ~까지 변제하기로, 이행기 등)
+FUTURE_EXCLUDE_RE = re.compile(
+    r"(?:예정(?:입|이|으|된)|변제하기로|지급하기로|이행기|약정기한|추후|향후|계획(?:입|이|으)|기한을\s*[0-9가-힣\s.]+로|도래할)"
+)
+
+# 판례/법령 인용 배제 표지 (선고, 공포, 시행 등)
+AUTHORITY_EXCLUDE_RE = re.compile(
+    r"(?:선고|판결|공포|시행|법률|조례|규칙|대법원|헌법재판소)"
+)
+
+# 별개 주체 대립 표지 (원고와 피고가 각각 다른 절에서 분리된 행위를 할 때)
+DIFFERENT_SUBJECTS_RE = re.compile(
+    r"(?:원고(?:는|가|의)|신청인(?:은|이|의))\s*.*?(?:피고(?:는|가|의)|피신청인(?:은|이|의))|"
+    r"(?:피고(?:는|가|의)|피신청인(?:은|이|의))\s*.*?(?:원고(?:는|가|의)|신청인(?:은|이|의))"
+)
+
+
 
 def _detect_heading(line: str) -> Optional[str]:
     """한 줄이 소제목/목차인지 검사하여 정리된 소제목 문자열을 반환한다."""
@@ -437,5 +469,136 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                         ],
                                     )
                                 )
+
+    # 5. 같은 문맥 내 두 사건 일자의 인과적 선후 역전 검증 (TEMPORAL_EVENT_INVERSION, B등급)
+    # 원인 행위(신청, 제출, 체결 등)와 결과 행위(결정, 처분, 해제 등)의 일시 선후 모순 판정
+    EXHIBIT_SECTION_RE = re.compile(r"(?:입증\s*방법|첨부\s*서류|증거\s*목록|서증\s*목록)")
+
+    for block in doc.body_blocks():
+        # 표 블록 및 머리글 제외
+        if block.block_type in ("table", "table_line", "running_head"):
+            continue
+
+        text = block.text
+        if not text:
+            continue
+
+        eff_h = _find_effective_heading(text, 0, current_heading)
+        # 입증방법 / 첨부서류 / 증거목록 구역은 서증 나열 구역이므로 인과적 선후 비교 제외
+        if eff_h and EXHIBIT_SECTION_RE.search(eff_h):
+            continue
+        if EXHIBIT_SECTION_RE.search(text[:60]):
+            continue
+
+        h_prefix = f"[{eff_h}] " if eff_h else ""
+
+        # 문장 단위(한글 음절 뒤 마침표 또는 줄바꿈) 분할 검사 (날짜 속 마침표 보호)
+        sentences = re.split(r"(?<=[가-힣][.!?])\s+|\n+", text)
+        for sent in sentences:
+            sent_s = sent.strip()
+            if not sent_s or len(sent_s) < 15:
+                continue
+
+            # 제외 꼴 1: 정정 서술 (~로 정정한다, ~가 아니라, 오기이다 등)
+            if CORRECTION_EXCLUDE_RE.search(sent_s):
+                continue
+            # 제외 꼴 2: 장래/예정/변제기 서술 (~할 예정, ~까지 지급하기로, 이행기 등)
+            if FUTURE_EXCLUDE_RE.search(sent_s):
+                continue
+            # 제외 꼴 3: 판례·법령 인용 문맥 (선고, 공포, 대법원 판결 등)
+            if AUTHORITY_EXCLUDE_RE.search(sent_s):
+                continue
+            # 제외 꼴 4: 별개 주체 대립 (원고 vs 피고가 각각 다른 절에서 분리된 행위)
+            if DIFFERENT_SUBJECTS_RE.search(sent_s):
+                continue
+
+            # 문장 내 날짜 목록 추출
+            date_matches = list(DATE_GENERAL_RE.finditer(sent_s))
+            if len(date_matches) < 2:
+                continue
+
+            # 인접하거나 동일 문장 내 날짜 쌍 비교
+            for idx_a in range(len(date_matches) - 1):
+                m_a = date_matches[idx_a]
+                m_b = date_matches[idx_a + 1]
+
+                d_a = _parse_valid_date(int(m_a.group("year")), int(m_a.group("month")), int(m_a.group("day")))
+                d_b = _parse_valid_date(int(m_b.group("year")), int(m_b.group("month")), int(m_b.group("day")))
+                if not d_a or not d_b:
+                    continue
+
+                # 날짜 A와 날짜 B 사이 텍스트(A의 서술부) 및 날짜 B 이후 텍스트(B의 서술부)
+                between_text = sent_s[m_a.end():m_b.start()]
+                tail_text = sent_s[m_b.end():min(len(sent_s), m_b.end() + 35)]
+
+                has_cause_between = bool(CAUSE_ACTIONS_RE.search(between_text))
+                has_effect_between = bool(EFFECT_ACTIONS_RE.search(between_text))
+                has_cause_tail = bool(CAUSE_ACTIONS_RE.search(tail_text))
+                has_effect_tail = bool(EFFECT_ACTIONS_RE.search(tail_text))
+
+                # 케이스 1: 날짜 A가 원인 행위이고, 날짜 B가 결과 행위인데 d_a > d_b (원인이 결과보다 미래)
+                is_inversion_case1 = has_cause_between and has_effect_tail and not has_effect_between and d_a > d_b
+
+                # 케이스 2: 날짜 A가 결과 행위이고, 날짜 B가 원인 행위인데 d_b > d_a (역순 서술에서 원인이 결과보다 미래)
+                # 예: "2024. 3. 10. 변경 인가 처분이 내려졌으나, 이는 2024. 4. 20. 제출된 서류에 따른 것입니다."
+                is_inversion_case2 = has_effect_between and has_cause_tail and not has_cause_between and d_b > d_a
+
+                # 케이스 3: 시간 순서 연결어("이후", "뒤에", "경과 후", "거쳐", "따라")로 연결되었는데 d_a > d_b
+                has_temporal_seq = bool(re.search(r"(?:이후|뒤에|경과\s*후|거쳐|따라|바탕으로)\s*", between_text))
+                is_inversion_case3 = has_temporal_seq and (d_a > d_b) and (has_cause_between or has_effect_tail)
+
+                if is_inversion_case1 or is_inversion_case2 or is_inversion_case3:
+                    earlier_action_date = d_a if (is_inversion_case1 or is_inversion_case3) else d_b
+                    later_action_date = d_b if (is_inversion_case1 or is_inversion_case3) else d_a
+
+                    # 중복 방지
+                    dup = False
+                    for existing_f in findings:
+                        if existing_f.type == FindingType.TIMELINE_CONTRADICTION and str(d_a) in existing_f.detail and str(d_b) in existing_f.detail:
+                            dup = True
+                            break
+                    if dup:
+                        continue
+
+                    features = {
+                        "deterministic_rule": True,
+                        "cause_date": str(earlier_action_date),
+                        "effect_date": str(later_action_date),
+                        "rule_id": "claim_engine.date_verifier:TEMPORAL_EVENT_INVERSION",
+                    }
+                    if eff_h:
+                        features["heading"] = eff_h
+
+                    findings.append(
+                        Finding.create(
+                            type=FindingType.TIMELINE_CONTRADICTION,
+                            status=VerificationStatus.CONTRADICTED,
+                            severity=Severity.HIGH,
+                            evidence_grade=EvidenceGrade.B,
+                            title=f"사건 일자 선후 모순: 선행 행위일({earlier_action_date})이 후행 처분·결과일({later_action_date})보다 미래로 기재",
+                            detail=(
+                                f"{h_prefix}본문 문맥상 선행 사건({earlier_action_date})과 후행 결과 사건({later_action_date})의 "
+                                f"선후 관계가 시간적 인과관계에 반하여 역전되어 기재되었다."
+                            ),
+                            confidence=0.9,
+                            confidence_features=features,
+                            document_id=doc.document_id,
+                            block_id=block.block_id,
+                            page=block.page,
+                            engine=ENGINE_NAME,
+                            tags=["TIMELINE", "DATE-INVERSION", "TEMPORAL"],
+                            evidence=[
+                                Evidence.create(
+                                    description=f"{h_prefix}인과적 선후 역전 문맥".strip(),
+                                    grade=EvidenceGrade.B,
+                                    document_id=doc.document_id,
+                                    block_id=block.block_id,
+                                    page=block.page,
+                                    excerpt=sent_s[:200],
+                                    supports=True,
+                                )
+                            ],
+                        )
+                    )
 
     return findings
