@@ -172,17 +172,32 @@ function filterUnverifiedAuthorities(items) {
   );
 }
 
+// 인용 식별자 내 개인정보 및 사건 관련 괄호 부기 제거 함수 (TK-94)
+// 판례·법령 인용 식별자에 덧붙여진 당사자 성명, 직위 부기, 괄호 설명 등을 제거하여
+// MASKED 정책 시 외부 AI로 개인정보가 유출되지 않도록 실질 마스킹 처리한다.
+function maskAuthorityIdentifier(rawAuth) {
+  if (!rawAuth) return "";
+  let text = String(rawAuth).trim();
+  // 1. 괄호 부기(예: (홍길동 관련), (원고 김철수), (사건 관련자), (피고 측 서면)) 제거
+  text = text.replace(/\s*\([^)]*(?:원고|피고|신청인|피신청인|고소인|피의자|작성자|당사자|관련|사건|[가-힣]{2,4})[^)]*\)/g, "");
+  // 2. 괄호 외부에 남아있는 당사자명/성명 부기 제거 (예: '원고 홍길동', '피고 김철수')
+  text = text.replace(/(?:원고|피고|신청인|피신청인|고소인|피의자)\s+[가-힣]{2,4}/g, "");
+  // 3. 연속 공백 정리
+  return text.replace(/\s+/g, " ").trim();
+}
+
 // 서면 내 출처 미확인 판례·법령 전체에 대한 엘박스/법률 AI 일괄 검증 프롬프트 생성 (TK-94)
-// 법령·판례의 실재 여부 검증용이므로 본문 문맥(claim_text) 및 당사자 개인정보는 일체 배제하고 인용 식별자만 포함
-function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "") {
+// 법령·판례의 실재 여부 검증용이므로 본문 문맥(claim_text) 및 당사자 개인정보는 일체 배제하고 인용 식별자만 포함하며,
+// externalAiPolicy가 MASKED인 경우 인용 식별자 속 괄호 부기 및 인명도 실질 제거/마스킹한다.
+function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "", externalAiPolicy = "MASKED") {
   const dateStr = incidentDate || "미지정 (소송 진행 시점 기준)";
   let itemsListText = "";
 
   items.forEach((it, idx) => {
-    // 본문 문맥이나 당사자 개인정보는 일체 배제하고 인용 표기(사건번호, 법령명/조문)만 포함하되,
-    // 인용 식별자 자체에 개인정보가 포함되었을 가능성까지 차단하기 위해 friendlyText 적용
+    // 본문 문맥이나 당사자 개인정보는 일체 배제하고 인용 표기(사건번호, 법령명/조문)만 목록화하되,
+    // MASKED 정책 시 식별자 내 괄호 부기 및 개인정보를 실질적으로 가림 처리한다.
     const rawAuth = String(it.cited_authority || "").trim();
-    const auth = typeof friendlyText === "function" ? friendlyText(rawAuth) : rawAuth;
+    const auth = externalAiPolicy === "MASKED" ? maskAuthorityIdentifier(rawAuth) : rawAuth;
     if (auth) {
       itemsListText += `${idx + 1}. ${auth}\n`;
     }
@@ -2243,7 +2258,7 @@ function renderFindings() {
       if (unverifiedAuthorities.length > 0) {
         const promptBtn = button("📋 엘박스/AI 검증 프롬프트", () => {
           copyToClipboard(
-            buildExternalAiPromptForUnverifiedAuthorities(unverifiedAuthorities, state.project?.incident_date),
+            buildExternalAiPromptForUnverifiedAuthorities(unverifiedAuthorities, state.project?.incident_date, policy),
             "엘박스/법률 AI 검증 프롬프트가 복사되었습니다."
           );
         }, "external-ai-prompt-btn");

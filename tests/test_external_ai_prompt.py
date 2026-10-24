@@ -30,6 +30,13 @@ def _extract_js_filter_function() -> str:
     return m.group(1)
 
 
+def _extract_js_mask_function() -> str:
+    content = APP_JS.read_text(encoding="utf-8")
+    m = re.search(r"(function maskAuthorityIdentifier\([\s\S]+?\n\})", content)
+    assert m, "maskAuthorityIdentifier function definition not found in app.js"
+    return m.group(1)
+
+
 def _extract_js_prompt_function() -> str:
     content = APP_JS.read_text(encoding="utf-8")
     m = re.search(r"(function buildExternalAiPromptForUnverifiedAuthorities\([\s\S]+?\n\})", content)
@@ -54,18 +61,14 @@ def test_app_js_external_ai_prompt_function_and_fallback():
     assert "copyFallbackDialog" in content
 
 
-def test_behavior_prompt_generation_excludes_pii_and_claim_text():
-    """행동 시험: claim_text에 성명, 전화번호, 주소 등 개인정보가 포함되어 있어도 프롬프트 출력에는 일체 포함되지 않아야 함."""
-    fn_code = _extract_js_prompt_function()
+def test_behavior_prompt_generation_masked_policy_excludes_pii_and_claim_text():
+    """행동 시험 (MASKED 정책): 가짜 함수 없이 실제 app.js 함수로 인용 식별자 속 당사자명/괄호 부기 및 claim_text가 실제 제거됨을 검증."""
+    mask_fn_code = _extract_js_mask_function()
+    prompt_fn_code = _extract_js_prompt_function()
 
-    # friendlyText 가명화/마스킹 모의 함수 포함
     runner_script = f"""
-function friendlyText(text) {{
-  if (!text) return text;
-  return text.replace(/홍길동/g, "홍OO").replace(/010-9876-5432/g, "010-****-5432");
-}}
-
-{fn_code}
+{mask_fn_code}
+{prompt_fn_code}
 
 const sampleItems = [
   {{
@@ -75,42 +78,78 @@ const sampleItems = [
     official_status: "OFFICIAL_NOT_FOUND"
   }},
   {{
-    cited_authority: "민법 제398조 제2항",
+    cited_authority: "민법 제398조 제2항 (원고 김철수 손해배상 사건)",
     claim_text: "피고 주식회사 갑을(대표이사 이몽룡, 주민등록번호 750101-1234567)의 손해배상 예정액 감액 주장",
     verdict_label: "공식 DB 미확인",
     official_status: "OFFICIAL_NOT_FOUND"
   }}
 ];
 
-const result = buildExternalAiPromptForUnverifiedAuthorities(sampleItems, "2023-05-10");
+const result = buildExternalAiPromptForUnverifiedAuthorities(sampleItems, "2023-05-10", "MASKED");
 process.stdout.write(JSON.stringify(result));
 """
     proc = subprocess.run(["node"], input=runner_script.encode("utf-8"), capture_output=True, check=True)
     generated_prompt = json.loads(proc.stdout.decode("utf-8"))
 
-    # 1. 인용 식별자는 포함되어 있어야 함
+    # 1. 인용 식별자의 본체는 포함되어 있어야 함
     assert "대법원 2021다12345 판결" in generated_prompt
     assert "민법 제398조 제2항" in generated_prompt
 
-    # 2. 본문 문맥(claim_text) 및 개인정보(이름, 전화번호, 주소, 주민등록번호)는 100% 배제되어야 함
-    # 인용 식별자 자체에 들어간 당사자명도 friendlyText로 홍OO로 가명화되어 원본 이름은 없어야 함
+    # 2. 식별자 내부의 괄호 부기 및 인명은 MASKED 정책에 따라 실제 제거되어야 함
     assert "홍길동" not in generated_prompt
-    assert "홍OO" in generated_prompt
+    assert "(홍길동 관련)" not in generated_prompt
+    assert "김철수" not in generated_prompt
+    assert "(원고 김철수 손해배상 사건)" not in generated_prompt
+
+    # 3. 본문 문맥(claim_text) 및 개인정보(전화번호, 주소, 주민등록번호, 대표자명, 주장 내용)는 100% 배제
     assert "010-9876-5432" not in generated_prompt
     assert "테헤란로" not in generated_prompt
     assert "이몽룡" not in generated_prompt
     assert "750101-1234567" not in generated_prompt
-    assert "원고" not in generated_prompt
-    assert "피고" not in generated_prompt
+    assert "대여하였다고 주장" not in generated_prompt
+
+
+def test_behavior_prompt_generation_original_policy_preserves_authority_but_excludes_claim_text():
+    """행동 시험 (ORIGINAL 정책): 가짜 함수 없이 실제 app.js 함수로 식별자 원본은 보존되되 claim_text는 배제됨을 검증."""
+    mask_fn_code = _extract_js_mask_function()
+    prompt_fn_code = _extract_js_prompt_function()
+
+    runner_script = f"""
+{mask_fn_code}
+{prompt_fn_code}
+
+const sampleItems = [
+  {{
+    cited_authority: "대법원 2021다12345 판결 (홍길동 관련)",
+    claim_text: "원고 홍길동(010-9876-5432, 서울 강남구 테헤란로 123)은 피고에게 5천만원을 대여하였다고 주장",
+    verdict_label: "공식 DB 미확인 (원문 확인 필요)",
+    official_status: "OFFICIAL_NOT_FOUND"
+  }}
+];
+
+const result = buildExternalAiPromptForUnverifiedAuthorities(sampleItems, "2023-05-10", "ORIGINAL");
+process.stdout.write(JSON.stringify(result));
+"""
+    proc = subprocess.run(["node"], input=runner_script.encode("utf-8"), capture_output=True, check=True)
+    generated_prompt = json.loads(proc.stdout.decode("utf-8"))
+
+    # ORIGINAL 정책에서는 괄호 부기를 포함한 원본 식별자가 그대로 보존됨
+    assert "대법원 2021다12345 판결 (홍길동 관련)" in generated_prompt
+
+    # 그러나 claim_text 본문 문맥(전화번호, 주소, 주장 문구)은 여전히 프롬프트에 들어가지 않음
+    assert "010-9876-5432" not in generated_prompt
+    assert "테헤란로" not in generated_prompt
     assert "대여하였다고 주장" not in generated_prompt
 
 
 def test_behavior_prompt_includes_official_notice():
     """행동 시험: 외부 AI 답변은 공식 확인이 아니라는 필수 고지 문구가 프롬프트에 포함되어야 함."""
-    fn_code = _extract_js_prompt_function()
+    mask_fn_code = _extract_js_mask_function()
+    prompt_fn_code = _extract_js_prompt_function()
 
     runner_script = f"""
-{fn_code}
+{mask_fn_code}
+{prompt_fn_code}
 
 const sampleItems = [{{ cited_authority: "대법원 2018다99999 판결" }}];
 const result = buildExternalAiPromptForUnverifiedAuthorities(sampleItems, "2024-01-01");
