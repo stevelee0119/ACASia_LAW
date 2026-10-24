@@ -763,8 +763,8 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             f"{m.group('n')}{unit} 근무 뒤 일자가 {m.group('d2').strip()}로 기재"
                         ),
                         detail_body=(
-                            f"'{s_lbl}'을 {m.group('d1').strip()}로 기재하면서 {m.group('n')}{unit} 근무한 뒤의 "
-                            f"사직·퇴사 관련 일자를 그보다 앞선 {m.group('d2').strip()}로 기재하였다 "
+                            f"'{s_lbl}'을 {m.group('d1').strip()}로 적으면서 {m.group('n')}{unit} 근무한 뒤의 "
+                            f"사직·퇴사 관련 일자가 그보다 앞선 {m.group('d2').strip()}로 나타나 선후 관계가 모순된다 "
                             f"(민법 제157조·제160조상 최소 만료일: 초일 산입 {earliest_expiry}, 초일 불산입 {expiry_excl})."
                         ),
                         excerpt_text=matched,
