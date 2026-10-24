@@ -559,3 +559,53 @@ def test_control_self_number_priority_numeric_stage_variation():
     assert len(mismatches) == 0, f"자기 번호 목록명과 일치하는 차수 수식어 결합 행은 다른 번호와 접미 일치해도 오탐 배제되어야 함: {mismatches}"
 
 
+# --- 34. 대조군 시험 16 (A-3 잔여: 동일 번호·동일 자료명 접두·한쪽만 날짜 병기된 반복은 호증 중복 아님) ---
+def test_control_same_number_same_prefix_one_sided_date_not_duplicate():
+    """같은 호증 번호와 같은 자료명 접두('계약서,' vs '계약서:')를 공유하면서 한쪽에만 날짜가 병기된 2행 반복은 A등급 호증 중복으로 오탐되지 않음 (A-3 잔여)."""
+    doc = _make_doc([
+        "- 갑 제4호증 물품공급계약서, 대금 지급 기한에 관한 약정 조항 확인",
+        "- 갑 제4호증 물품공급계약서: 기본 계약 체결 경위 설명 (2024-05-10)",
+    ])
+    from packages.claim_engine.evidence_consistency import check_exhibits
+    findings = check_exhibits(doc)
+    dup_findings = [
+        f for f in findings
+        if f.confidence_features.get("rule_id") == "EVI.EVIDENCE_NUMBER_DUPLICATE"
+    ]
+    assert len(dup_findings) == 0, f"동일 번호·동일 자료명 접두에 한쪽만 날짜가 붙은 반복은 중복 오탐되지 않아야 함: {dup_findings}"
+
+
+# --- 35. 양성 시험 (A-3 잔여 사전 의견 반영: 같은 번호·다른 자료명·한쪽만 날짜 병기된 진짜 중복 탐지) ---
+def test_positive_same_number_different_names_one_sided_date_is_duplicate():
+    """같은 호증 번호에 서로 다른 자료명('물품공급계약서,' vs '세금계산서:')이 붙고 한쪽에만 날짜가 병기된 경우 진짜 호증 중복(A등급)으로 정상 탐지됨 (평가 측 사전 의견 반영)."""
+    doc = _make_doc([
+        "- 갑 제4호증 물품공급계약서, 대금 지급 기한에 관한 약정 조항 확인",
+        "- 갑 제4호증 세금계산서: 부가가치세 신고 내역 확인 (2024-05-10)",
+    ])
+    from packages.claim_engine.evidence_consistency import check_exhibits
+    findings = check_exhibits(doc)
+    dup_findings = [
+        f for f in findings
+        if f.confidence_features.get("rule_id") == "EVI.EVIDENCE_NUMBER_DUPLICATE"
+    ]
+    assert len(dup_findings) == 1, f"같은 번호·다른 자료명·한쪽만 날짜인 진짜 중복은 반드시 탐지되어야 함: {dup_findings}"
+    assert "갑 제4호증" in dup_findings[0].title
+
+
+# --- 36. 양성 시험 (A-3 잔여: 같은 번호·같은 자료명 접두이나 양쪽 날짜가 서로 다른 별개 자료 중복 탐지) ---
+def test_positive_same_number_same_prefix_conflicting_dates_is_duplicate():
+    """같은 호증 번호와 같은 자료명 접두라도 양쪽에 서로 다른 날짜가 명시된 경우 별개 자료의 번호 중복으로 정상 탐지됨."""
+    doc = _make_doc([
+        "- 갑 제4호증 물품공급계약서, 1차 공급 약정 (2024-03-01)",
+        "- 갑 제4호증 물품공급계약서: 2차 공급 약정 (2024-05-10)",
+    ])
+    from packages.claim_engine.evidence_consistency import check_exhibits
+    findings = check_exhibits(doc)
+    dup_findings = [
+        f for f in findings
+        if f.confidence_features.get("rule_id") == "EVI.EVIDENCE_NUMBER_DUPLICATE"
+    ]
+    assert len(dup_findings) == 1, f"양쪽 날짜가 서로 다른 별개 자료의 같은 번호 부여는 중복으로 탐지되어야 함: {dup_findings}"
+
+
+
