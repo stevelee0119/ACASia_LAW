@@ -141,8 +141,27 @@ def test_only_first_token_is_classified_even_with_long_later_identifier(tmp_path
                                         ("검수기록", "2022. 7. 19."),
                                         ("입고목록", "2021. 6. 24.")])
 def test_missing_vs_observed_date_remains_the_original_protected_residual(tmp_path, proposed, title, date):
+    """docs/handoff/requests/126_tk73_one_sided_date_residual_release.md
+
+    동일 자료명에 한쪽만 날짜가 병기된 동일 호증 번호 반복은 단순 반복 인용이므로 중복 0건으로 해제(새 계약).
+    """
     doc = document(tmp_path, [f"갑 제1호증: {title}, 설명 부분을 가리킨다.",
                               f"갑 제1호증 {title}: 순서를 기록하고 {date} 내용을 덧붙인다."])
+    rows = engine.exhibit_rows(doc)
+    assert [bool(row.get("date")) for row in rows] == [False, True]
+    before = baseline_numbering(doc, rows)
+    after = proposed(doc, rows)
+    assert len(duplicate(before)) == 1 and len(duplicate(after)) == 0
+    assert contract(before) != contract(after)
+
+
+@pytest.mark.parametrize("title,other,date", [("운송대장", "정비일지", "2023. 8. 12."),
+                                              ("검수기록", "배치도면", "2022. 7. 19."),
+                                              ("입고목록", "관측보고", "2021. 6. 24.")])
+def test_different_title_with_one_sided_date_keeps_duplicate_1(tmp_path, proposed, title, other, date):
+    """자료명 접두가 다르고 한쪽만 날짜가 있는 경우 진정한 호증 중복 1건을 엄격히 유지함을 검증."""
+    doc = document(tmp_path, [f"갑 제1호증: {title}, 설명 부분을 가리킨다.",
+                              f"갑 제1호증 {other}: 순서를 기록하고 {date} 내용을 덧붙인다."])
     rows = engine.exhibit_rows(doc)
     assert [bool(row.get("date")) for row in rows] == [False, True]
     before = baseline_numbering(doc, rows)

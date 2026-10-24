@@ -172,3 +172,58 @@ def test_committed_verdict_file_is_valid_json_list():
     assert isinstance(data, list)
     for item in data:
         assert set(tool.REQUIRED) <= set(item), item.get("version")
+
+
+# 2026-10-24 개정(변경 분류 기준) — decided_at이 개정일 이후인 판정서에만 basis 규칙을 적용한다.
+def new_verdict(version, frm, level, **extra):
+    return verdict(version, frm, level, decided_at="2026-10-24", **extra)
+
+
+def test_new_verdict_requires_basis():
+    problems = tool.check_bump((0, 13, 1), (0, 14, 0), [new_verdict("0.14.0", "0.13.1", "minor")], set())
+    assert any("basis" in p for p in problems)
+
+
+def test_old_verdict_without_basis_still_passes():
+    assert tool.check_bump((0, 13, 0), (0, 13, 1), [verdict("0.13.1", "0.13.0", "patch", decided_at="2026-10-18")], set()) == []
+
+
+@pytest.mark.parametrize("basis, level", [
+    (["added", "fixed"], "minor"),
+    (["changed"], "minor"),
+    (["fixed", "security"], "patch"),
+    (["known_open"], "patch"),
+])
+def test_level_is_the_highest_basis(basis, level):
+    new = (0, 14, 0) if level == "minor" else (0, 13, 2)
+    v = new_verdict(".".join(map(str, new)), "0.13.1", level, basis=basis)
+    assert tool.check_bump((0, 13, 1), new, [v], set()) == []
+
+
+def test_level_lower_than_highest_basis_fails():
+    v = new_verdict("0.13.2", "0.13.1", "patch", basis=["added"])
+    assert any("가장 높은 자리" in p for p in tool.check_bump((0, 13, 1), (0, 13, 2), [v], set()))
+
+
+def test_unknown_basis_fails():
+    v = new_verdict("0.13.2", "0.13.1", "patch", basis=["convenience_score"])
+    assert any("알 수 없는 분류" in p for p in tool.check_bump((0, 13, 1), (0, 13, 2), [v], set()))
+
+
+def test_performance_minor_requires_rer_at_least_ten_percent():
+    low = new_verdict("0.14.0", "0.13.1", "minor", basis=["performance_minor"], rer=0.09)
+    assert any("rer" in p for p in tool.check_bump((0, 13, 1), (0, 14, 0), [low], set()))
+    ok = new_verdict("0.14.0", "0.13.1", "minor", basis=["performance_minor"], rer=0.10)
+    assert tool.check_bump((0, 13, 1), (0, 14, 0), [ok], set()) == []
+
+
+def test_performance_patch_requires_rer_below_ten_percent():
+    high = new_verdict("0.13.2", "0.13.1", "patch", basis=["performance_patch"], rer=0.12)
+    assert any("rer" in p for p in tool.check_bump((0, 13, 1), (0, 13, 2), [high], set()))
+
+
+def test_milestone_major_needs_user_approval():
+    v = new_verdict("1.0.0", "0.14.0", "major", basis=["milestone"])
+    assert any("사용자 승인" in p for p in tool.check_bump((0, 14, 0), (1, 0, 0), [v], set()))
+    v_ok = new_verdict("1.0.0", "0.14.0", "major", basis=["milestone"], user_approved=True)
+    assert tool.check_bump((0, 14, 0), (1, 0, 0), [v_ok], set()) == []
