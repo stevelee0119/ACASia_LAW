@@ -1601,10 +1601,31 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
   border-top: 2px dashed var(--line);
 }
 
-/* 업로드 개인정보 안내 및 확인 체크박스 */
-.privacy-notice {
-  margin: 12px 0 16px;
-  padding: 14px 16px;
+/* 업로드 개인정보 안내 및 확인 체크박스 (TK-85) */
+.privacy-notice-link-wrap {
+  margin: 6px 0 12px;
+}
+.privacy-revisit-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  color: var(--muted, #64748b);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.privacy-revisit-link:hover {
+  color: var(--text, #1e293b);
+}
+#privacyDialog {
+  width: min(560px, calc(100% - 32px));
+}
+#privacyDialog .privacy-notice-text {
+  margin: 12px 0;
+  padding: 12px 14px;
   background: #fdfaf2;
   border: 1px solid #e8dbb8;
   border-radius: 6px;
@@ -1806,4 +1827,47 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
   background-color: #f8fafc;
   resize: vertical;
   margin: 10px 0;
+}
+
+/* TK-88: 3단 체계 및 상호 참조 앵커 스타일 */
+.cross-ref-anchor {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  background-color: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  color: #1d4ed8;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+}
+.cross-ref-anchor:hover {
+  background-color: #e2e8f0;
+  text-decoration: underline;
+}
+.tier3-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+.tier3-table th {
+  background: #edf2f0;
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 13px;
+  border: 1px solid var(--line);
+}
+.tier3-table td {
+  padding: 12px;
+  border: 1px solid var(--line);
+  vertical-align: top;
+  font-size: 13px;
+  line-height: 1.55;
+}
+#tier3Table {
+  table-layout: fixed;
+}
+#tier3Table td {
+  overflow-wrap: anywhere;
 }
