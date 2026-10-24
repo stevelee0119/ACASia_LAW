@@ -678,5 +678,94 @@ def test_v5_sender_adverb_interposition():
         assert len(findings) == 0, f"V5 부사 삽입 상대방 발신 오탐 발생: {text} -> {findings}"
 
 
+def test_bb1_to_bb4_specific_debt_and_opponent_confirmation():
+    """BB1~BB4: 특정 금액 vs 채무 전체 전칭, 지급 술어 어간, 거래내역 결합, 상대방 확인서 검증 (한국어 주석)."""
+    # BB1: 1) 당사자에 대한 채무 전체 + 변제 + 영수증 -> 양성 (영수증이 채무 전체 소멸 단정 불가)
+    doc_bb1_pos1 = _make_doc(
+        "피고에 대한 채무 전부를 변제하여 영수증(갑 제1호증)에 의하여 밝혀집니다.",
+        "입증방법", "1. 갑 제1호증 영수증", "원고 소송대리인 변호사 홍길동"
+    )
+    f_bb1_pos1 = [f for f in check_evidence_overreach(doc_bb1_pos1) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_bb1_pos1) == 1, f"BB1 채무 전부 영수증 과장 미탐지: {f_bb1_pos1}"
+
+    doc_bb1_pos2 = _make_doc(
+        "피고에 대한 채무 일체를 변제하여 영수증(갑 제1호증)에 의하여 확인됩니다.",
+        "입증방법", "1. 갑 제1호증 영수증", "원고 소송대리인 변호사 홍길동"
+    )
+    f_bb1_pos2 = [f for f in check_evidence_overreach(doc_bb1_pos2) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_bb1_pos2) == 1, f"BB1 채무 일체 영수증 과장 미탐지: {f_bb1_pos2}"
+
+    # BB1: 2) 특정 대금 전액 지급 + 영수증 -> 대조 (영수증이 특정 대금 지급 증명 가능)
+    doc_bb1_neg1 = _make_doc(
+        "원고는 공사대금 전액을 지급하여 영수증(갑 제1호증)에 의하여 확인됩니다.",
+        "입증방법", "1. 갑 제1호증 영수증", "원고 소송대리인 변호사 홍길동"
+    )
+    f_bb1_neg1 = [f for f in check_evidence_overreach(doc_bb1_neg1) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_bb1_neg1) == 0, f"BB1 특정 대금 전액 영수증 오탐: {f_bb1_neg1}"
+
+    # BB1: 3) 특정 대금 채무 전부 변제 + 영수증 -> 대조 (특정 채무이므로 영수증 증명 가능)
+    doc_bb1_neg2 = _make_doc(
+        "원고는 대여금 채무 전부를 변제하여 영수증(갑 제1호증)에 의하여 확인됩니다.",
+        "입증방법", "1. 갑 제1호증 영수증", "원고 소송대리인 변호사 홍길동"
+    )
+    f_bb1_neg2 = [f for f in check_evidence_overreach(doc_bb1_neg2) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_bb1_neg2) == 0, f"BB1 특정 대금 채무 전부 영수증 오탐: {f_bb1_neg2}"
+
+    # BB2: 금전 전칭 + 치른/받은/납부한 + 견적서/신분증 -> 양성 (지급 불충분 서증)
+    doc_bb2_pos1 = _make_doc(
+        "원고는 물품대금 전액을 모두 치른 사실이 견적서(갑 제1호증)에 의하여 입증됩니다.",
+        "입증방법", "1. 갑 제1호증 견적서", "원고 소송대리인 변호사 홍길동"
+    )
+    f_bb2_pos1 = [f for f in check_evidence_overreach(doc_bb2_pos1) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_bb2_pos1) == 1, f"BB2 치른 술어 견적서 과장 미탐지: {f_bb2_pos1}"
+
+    doc_bb2_pos2 = _make_doc(
+        "원고는 공사비 전액을 납부한 사실이 사업자등록증(갑 제1호증)에 의하여 밝혀집니다.",
+        "입증방법", "1. 갑 제1호증 사업자등록증", "원고 소송대리인 변호사 홍길동"
+    )
+    f_bb2_pos2 = [f for f in check_evidence_overreach(doc_bb2_pos2) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_bb2_pos2) == 1, f"BB2 납부한 술어 신분/등록증 과장 미탐지: {f_bb2_pos2}"
+
+    # BB2: 같은 술어 + 영수증 -> 대조 (영수증 증명 가능)
+    doc_bb2_neg = _make_doc(
+        "원고는 물품대금 전액을 모두 치른 사실이 영수증(갑 제1호증)에 의하여 입증됩니다.",
+        "입증방법", "1. 갑 제1호증 영수증", "원고 소송대리인 변호사 홍길동"
+    )
+    f_bb2_neg = [f for f in check_evidence_overreach(doc_bb2_neg) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_bb2_neg) == 0, f"BB2 치른 술어 영수증 오탐: {f_bb2_neg}"
+
+    # BB3: 견적서 + 계좌거래내역/통장거래내역 결합 원용 -> 대조
+    doc_bb3_comb = _make_doc(
+        "원고는 공사대금 전액을 지급하여 견적서(갑 제1호증) 및 계좌거래내역(갑 제2호증)에 의하여 확인됩니다.",
+        "입증방법", "1. 갑 제1호증 견적서\n2. 갑 제2호증 계좌거래내역", "원고 소송대리인 변호사 홍길동"
+    )
+    f_bb3_comb = [f for f in check_evidence_overreach(doc_bb3_comb) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_bb3_comb) == 0, f"BB3 견적서+거래내역 결합 오탐: {f_bb3_comb}"
+
+    # BB3: 견적서 단독 원용 -> 양성 유지
+    doc_bb3_single = _make_doc(
+        "원고는 공사대금 전액을 지급하여 견적서(갑 제1호증)에 의하여 확인됩니다.",
+        "입증방법", "1. 갑 제1호증 견적서", "원고 소송대리인 변호사 홍길동"
+    )
+    f_bb3_single = [f for f in check_evidence_overreach(doc_bb3_single) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_bb3_single) == 1, f"BB3 견적서 단독 미탐지: {f_bb3_single}"
+
+    # BB4: 상대방이 작성해 보낸 확인서 + 상대방 측 완료 사실 증명 -> 대조 (자인이므로 과장 아님)
+    doc_bb4_neg = _make_doc(
+        "피고가 작성하여 보낸 확인서(갑 제1호증)에 의하여 피고가 공사를 완료한 사실이 확인됩니다.",
+        "입증방법", "1. 갑 제1호증 확인서", "원고 소송대리인 변호사 홍길동"
+    )
+    f_bb4_neg = [f for f in check_evidence_overreach(doc_bb4_neg) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_bb4_neg) == 0, f"BB4 상대방 작성 확인서 오탐: {f_bb4_neg}"
+
+    # BB4: 자기 측 작성 확인서로 완료 단정 -> 양성 유지
+    doc_bb4_pos = _make_doc(
+        "원고가 작성한 확인서(갑 제1호증)에 의하여 원고의 채무가 모두 완납된 사실이 입증됩니다.",
+        "입증방법", "1. 갑 제1호증 확인서", "원고 소송대리인 변호사 홍길동"
+    )
+    f_bb4_pos = [f for f in check_evidence_overreach(doc_bb4_pos) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_bb4_pos) == 1, f"BB4 자기 측 확인서 과장 미탐지: {f_bb4_pos}"
+
+
 
 

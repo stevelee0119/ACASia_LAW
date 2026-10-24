@@ -523,15 +523,21 @@ def check_exhibits(doc: NormalizedDocument) -> List[Finding]:
 
 # --- TK-91 증거 과장 (EVI-OVR) 구조적 탐지 --------------------------------------------
 
-# B-1 1. 7대 서증 닫힌 범주 사전 (조건 1: '현장'·'감정서' 완전 제외, 조건 5: 서증 명칭에서만 추출, V3: 접미 일치 표면형 보강)
+# B-1 1. 7대 서증 닫힌 범주 사전 (조건 1: '현장'·'감정서' 완전 제외, 조건 5: 서증 명칭에서만 추출, V3: 접미 일치 표면형 보강, BB3: 거래내역·각서 통합)
 EVIDENCE_KIND_CATEGORIES: Dict[str, Tuple[str, ...]] = {
     "일방통지": ("내용증명", "최고서", "통고서", "통지서", "안내문", "공문", "내용증명우편"),
     "견적계획": ("견적서", "견적", "공사계획서", "산출내역서", "공사비산출내역서", "공사비 산출내역서", "설계도", "예산서", "내역서"),
     "명의식별": ("통장표지", "통장사본", "통장 표지", "사업자등록증", "등록증", "신분증", "가족관계증명서", "주민등록등본", "법인등기부"),
     "진단상태": ("진단서", "소견서", "진료기록", "의무기록", "상해진단서"),  # 감정서 제외
     "영상사진": ("사진", "영상", "캡처", "녹화", "동영상", "화면캡처"),      # 현장 제외
-    "영수입금": ("영수증", "입금증", "이체확인증", "송금확인증", "무통장입금표", "계좌이체영수증", "입금확인증"),
-    "진술확인": ("확인서", "인우보증서", "진술서", "사실확인서"),
+    "영수입금": (
+        "영수증", "입금증", "이체확인증", "송금확인증", "무통장입금표", "계좌이체영수증", "입금확인증",
+        "계좌거래내역", "통장거래내역", "거래내역", "세금계산서", "지급증명서", "확인증",
+    ),
+    "진술확인": (
+        "확인서", "인우보증서", "진술서", "사실확인서",
+        "각서", "이행각서", "합의서", "약정서", "조율서", "협약서",
+    ),
 }
 
 # B-1 2. 4대 주장 술어 닫힌 범주 사전 (S1: '의사' 단독 삭제, '과실·불법행위' 법률 평가 삭제)
@@ -557,30 +563,70 @@ INTENT_STATE_RE = re.compile(
     r"(?:가해|가해자|가해\s*행위|가해\s*사실|가한\s*사실)"
 )
 
-# V2: 완료 술어 구조 정규식 (어간 + 어미/피동 결합, 대상 명사구와 결합)
+# V2, BB2: 완료 술어 구조 정규식 (어간 + 어미/피동 결합, 대상 명사구와 결합, 지급 행위 어간 '치르·받·납부·송금' 포함)
 _COMPLETION_VERB_STEMS = (
     r"(?:마치|마쳤|마친|마쳐|"
     r"끝마치|끝마쳤|끝마친|끝마쳐|"
     r"끝내|끝냈|끝낸|"
     r"끝나|끝났|끝난|"
-    r"갚)"
+    r"갚|"
+    r"치르|치렀|치른|치러|"
+    r"받았|받은|받아|"
+    r"납부(?:하|하여|하였|했|한|해|합)|"
+    r"송금(?:하|하여|하였|했|한|해|합))"
 )
 
 COMPLETION_PREDICATE_RE = re.compile(
     rf"(?:(?:지급|변제|납부|이행|시공|공사|인도|대금|채무|[가-힣]{{0,8}}(?:대금|금|비|채무))"
-    rf"(?:[을를이가]|의)?\s*(?:(?:모두|전부|전액|이미|다)\s*)?"
-    rf"{_COMPLETION_VERB_STEMS}(?:(?:지|졌)[가-힣]*|[가-힣]*))|"
-    r"(?<![가-힣])갚[가-힣]+"
+    rf"(?:[을를이가]|의)?\s*(?:(?:모두|전부|전액|이미|다)(?:[을를이가은는의]|으로|로)?\s*)*"
+    rf"(?:{_COMPLETION_VERB_STEMS}(?:(?:지|졌)[가-힣]*|[가-힣]*)|(?:지급|변제|수령|정산|상환|결제)(?:하|하여|하였|했|한|해|합|받)[가-힣]*))|"
+    r"(?<![가-힣])(?:갚[가-힣]+|치르(?:었[가-힣]*|어[가-힣]*|고|면|다)|치렀[가-힣]*|치른|치러[가-힣]*|받았[가-힣]*|받은|"
+    r"납부(?:하|하여|하였|했|한|해|합)[가-힣]*|송금(?:하|하여|하였|했|한|해|합)[가-힣]*|냈[가-힣]*|낸)"
 )
 
-# V1, X1: 수량 전칭 정규식 (금전·채무·완료 대상 N과 전칭의 양방향 어순 결합 및 조사 허용)
+# V1, X1, BB1: 수량 전칭 정규식 (금전·채무·완료 대상 N과 전칭의 양방향 어순 결합 및 조사 허용)
 # N: …대금|…금|…비|…채무|차임|원리금|공사|용역|업무
 _AMOUNT_NOUN_PAT = r"(?:[가-힣]{0,10}(?:대금|금|비|채무)|차임|원리금|공사|용역|업무)"
 
 TOTAL_AMOUNT_MODIFIER_RE = re.compile(
-    rf"(?:(?<![가-힣])(?:전액|전부|모두|일체)(?:[을를이가은는의]|으로|로)?(?:의|\s+){_AMOUNT_NOUN_PAT}(?![가-힣]))|"
-    rf"(?:(?<![가-힣]){_AMOUNT_NOUN_PAT}(?:[을를이가의]|에\s*대한)?\s*(?:전액|전부|모두|일체)(?:[을를이가은는의]|으로|로)?(?![가-힣]))"
+    rf"(?:(?<![가-힣])(?:전액|전부|모두|일체)(?:[을를이가은는의]|으로|로)?(?:의|\s+)(?P<noun1>{_AMOUNT_NOUN_PAT})(?![가-힣]))|"
+    rf"(?:(?<![가-힣])(?P<noun2>{_AMOUNT_NOUN_PAT})(?:[을를이가의]|에\s*대한)?\s*(?:전액|전부|모두|일체)(?:[을를이가은는의]|으로|로)?(?![가-힣]))|"
+    rf"(?:(?<![가-힣])(?:모든|일체(?:의)?)\s*(?P<noun3>{_AMOUNT_NOUN_PAT})(?:[을를이가은는의]|으로|로)?(?![가-힣]))"
 )
+
+# BB1: 특정 금액 명사 판정 보조 함수
+_SPECIFIC_AMOUNT_NOUN_SUFFIX_RE = re.compile(r"(?:[가-힣]{0,8}(?:대금|금|비)|차임|원리금)$")
+_PARTY_NAME_PAT = r"(?:원고|피고|신청인|피신청인|채권자|채무자|상대방)"
+
+
+def _is_specific_amount_debt(noun: str, pre_text: str, full_match: str) -> bool:
+    """N이 (가) '특정 채무의 금액 범위'인지, (나) '채무 전체'인지 판정한다 (BB1)."""
+    n = noun.strip()
+    # 1. '모든', '일체의'가 명사 앞에 오면 무조건 (나)
+    if re.search(r"(?:모든|일체(?:의)?)\s*$", pre_text) or full_match.startswith(("모든", "일체의", "일체 ")):
+        return False
+
+    # 2. 맨 '채무'인 경우 (접두 금액 명사 없음)
+    if n == "채무":
+        m_spec = re.search(rf"([가-힣]{{1,8}}(?:대금|금|비)|차임|원리금)(?:의|\s+)?$", pre_text)
+        if m_spec:
+            spec_word = m_spec.group(1)
+            if not re.search(rf"{_PARTY_NAME_PAT}(?:에\s*대한)?$", spec_word):
+                return True
+        return False
+
+    # 3. 접미사가 '채무'인 복합어: 예) '공사대금채무', '대여금채무'
+    if n.endswith("채무"):
+        prefix = n[:-2]
+        if _SPECIFIC_AMOUNT_NOUN_SUFFIX_RE.search(prefix):
+            return True
+        return False
+
+    # 4. 특정 금액 명사: …대금|…금|…비|차임|원리금
+    if _SPECIFIC_AMOUNT_NOUN_SUFFIX_RE.search(n):
+        return True
+
+    return False
 
 # S1: 술어 낱말 경계 매칭 함수 (합의서, 확정판결, 계속적 거래 등 복합명사 오탐 방지)
 def _match_predicate_word(pw: str, text: str) -> bool:
@@ -731,14 +777,7 @@ _PROOF_VERB_RE = re.compile(
     r"알\s*수\s*있다|알\s*수\s*있습니다|명백하다|명백합니다|소명된다|소명됩니다|직접\s*(?:확인|입증|증명)|분명히\s*밝)"
 )
 
-# 6. 복수 서증 결합 원용 결합 시 입증 가능 서증 (과장 배제용)
-_PROVABLE_PAYMENT_KINDS_RE = re.compile(
-    r"(?:영수증|입금확인증|송금확인증|계좌거래내역|이체확인증|세금계산서|통장거래내역|지급증명서)"
-)
-_PROVABLE_AGREEMENT_KINDS_RE = re.compile(
-    r"(?:합의서|각서|이행각서|계약서|약정서|조율서|협약서|판결문|조서)"
-)
-# 결제·확인 부기 예외
+# 결제·확인 부기 예외 (BB3: _PROVABLE_PAYMENT_KINDS_RE, _PROVABLE_AGREEMENT_KINDS_RE는 EVIDENCE_KIND_CATEGORIES로 통합 후 삭제)
 _PAYMENT_RECEIPT_NOTE_RE = re.compile(r"(?:영수|완납|입금\s*확인|수납|결제\s*완료)")
 
 # S3: 발신인은 증거목록 작성자 칸 또는 바로 앞 관형절에서만 결정
@@ -923,9 +962,22 @@ def check_evidence_overreach(
 
             matched_pred_cats: List[str] = []
 
-            # 1) 전칭_전기간: 낱말 경계 일치 (기간·범위 전칭만 담당, 금전 전칭은 완료_확정으로 분리) (V1)
+            # 1) 전칭_전기간: 낱말 경계 일치 (기간·범위 전칭만 담당, 금전 전칭 중 (나) 채무 전체는 전칭_전기간으로 분류) (V1, BB1)
             if any(_match_predicate_word(pw, scope_text) for pw in CLAIM_PREDICATE_CATEGORIES["전칭_전기간"]):
                 matched_pred_cats.append("전칭_전기간")
+
+            # BB1, BB2: 수량 전칭 매칭 분석 ((가) 특정 금액 vs (나) 채무 전체)
+            m_total_amt = TOTAL_AMOUNT_MODIFIER_RE.search(scope_text)
+            is_specific_amt: Optional[bool] = None
+            if m_total_amt:
+                noun_text = m_total_amt.group("noun1") or m_total_amt.group("noun2") or m_total_amt.group("noun3") or ""
+                pre_ctx = scope_text[:m_total_amt.start()]
+                is_specific_amt = _is_specific_amount_debt(noun_text, pre_ctx, m_total_amt.group(0))
+                if not is_specific_amt:
+                    # (나) 당사자 사이 채무 전체: '[당사자]에 대한 채무 전부', '모든 채무', '채무 일체' 등
+                    # 전칭_전기간으로 분류하여 어떤 범주도 못 덮도록 함 (BB1)
+                    if "전칭_전기간" not in matched_pred_cats:
+                        matched_pred_cats.append("전칭_전기간")
 
             # 2) 내심의상태: 고의·악의·인식·공모·통모 또는 -(려는|할|ㄹ) 의사 구조
             has_intent = any(_match_predicate_word(pw, scope_text) for pw in CLAIM_PREDICATE_CATEGORIES["내심의상태"])
@@ -945,15 +997,28 @@ def check_evidence_overreach(
                 else:
                     matched_pred_cats.append("내심의상태")
 
-            # 3) 완료_확정: 낱말 경계 일치 또는 완료 술어 구조('지급을 마친', '갚았다' 등), 또는 금전 전칭 + 지급·변제 술어 (V1)
+            # 3) 완료_확정: 낱말 경계 일치 또는 완료 술어 구조('지급을 마친', '갚았다', '치른', '받은', '납부한', '송금한' 등) (V1, BB2)
             has_comp = any(_match_predicate_word(pw, scope_text) for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"])
             if not has_comp and COMPLETION_PREDICATE_RE.search(scope_text):
                 has_comp = True
-            if not has_comp and TOTAL_AMOUNT_MODIFIER_RE.search(scope_text):
-                # V1: 금전 전칭은 술어가 지급·변제·수령·완료이면 '완료_확정'의 수식으로 보아 '완료_확정' 매트릭스를 따름
-                if re.search(r"(?:지급|변제|수령|완납|완료|정산|상환|갚|입금|결제)", scope_text):
+
+            # BB2: 금전 전칭 중 (가) 특정 금액 명사인 경우, N이 '완료_확정' 술어의 목적어(N(을|를)? … 술어 같은 절)일 때만 '완료_확정'으로 봄
+            if not has_comp and m_total_amt and is_specific_amt:
+                after_amt = scope_text[m_total_amt.end():]
+                first_clause = re.split(r"[,.?!]|(?:이나|으나|는데|한바|지만|반면)", after_amt)[0]
+                if COMPLETION_PREDICATE_RE.search(first_clause) or any(_match_predicate_word(pw, first_clause) for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"]):
                     has_comp = True
-            if has_comp:
+                else:
+                    m_obj = re.search(
+                        r"^(?:[을를이가은는의]|으로|로)?\s*(?:(?:이미|다|모두|전부|전액|직접|이를|[가-힣]{1,8}[에에게로으로]?)\s*){0,3}(?P<pred>[가-힣]+)",
+                        after_amt
+                    )
+                    if m_obj:
+                        pred_cand = m_obj.group("pred")
+                        if any(_match_predicate_word(pw, pred_cand) for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"]) or COMPLETION_PREDICATE_RE.search(pred_cand):
+                            has_comp = True
+
+            if has_comp and "완료_확정" not in matched_pred_cats:
                 matched_pred_cats.append("완료_확정")
 
             # 4) 상대방의사표시: 승낙·승인·동의·합의·수락
@@ -986,22 +1051,34 @@ def check_evidence_overreach(
                 if debug_counters is not None:
                     debug_counters["covered"] += 1
                 continue
-                if debug_counters is not None:
-                    debug_counters["covered"] += 1
-                continue
 
-            # S3: 발신인이 상대방인 일방통지는 상대방 의무 입증에 정당하므로 제외
-            if matched_cat == "일방통지":
+            # S3, BB4: 발신인이 상대방인 일방통지 및 진술확인은 상대방 쪽 사실 입증에 정당하므로 제외
+            if matched_cat in ("일방통지", "진술확인"):
                 is_opp_sender = False
                 if sender:
                     if author_party == "원고" and sender in ("피고", "채무자", "피신청인"):
                         is_opp_sender = True
                     elif author_party == "피고" and sender in ("원고", "채권자", "신청인"):
                         is_opp_sender = True
+
                 if is_opp_sender:
-                    if debug_counters is not None:
-                        debug_counters["excluded"] += 1
-                    continue
+                    if matched_cat == "일방통지":
+                        if debug_counters is not None:
+                            debug_counters["excluded"] += 1
+                        continue
+                    elif matched_cat == "진술확인":
+                        # BB4: 술어의 주체가 상대방이거나 상대방 의무의 이행·완료일 때로 한정
+                        # 자기 측 의무를 상대방 확인서로 단정하는 꼴은 과장 판정 유지
+                        is_own_duty_claim = False
+                        if author_party and cl_subj == author_party:
+                            is_own_duty_claim = True
+                        elif author_party and re.search(rf"(?<![가-힣]){author_party}(?:가|이|는|은)\s*.*?(?:변제|지급|완납|이행)", scope_text):
+                            is_own_duty_claim = True
+
+                        if not is_own_duty_claim:
+                            if debug_counters is not None:
+                                debug_counters["excluded"] += 1
+                            continue
 
             # S8: 등급 결정 공통 기준 적용
             # B = 직접 증명 구조 + 매트릭스 '못 덮음' + (통지류는 자기 측 발신)
