@@ -66,6 +66,41 @@ def test_leading_multiplier_positive_case_3_asterisk_and_count():
     assert res == Decimal("1800000")
 
 
+# --- T1: calculation.py 새 꼴 3변형 시험 (천 단위 쉼표 수 × 정수, 결과 뒤 단위·조사) ---
+
+def test_calculation_comma_number_times_integer_mismatch():
+    """T1 변형 1: 천 단위 쉼표 수 × 정수 = 잘못 적힌 결과 (50,000 × 3 = 140,000원)."""
+    from packages.claim_engine.calculation import row_final_amount
+    amt, check = row_final_amount("재료비 50,000 × 3 = 140,000원")
+    assert amt is not None
+    assert amt.value == Decimal("140000")
+    assert check is not None
+    assert check.computed == Decimal("150000")
+    assert not check.matches
+
+
+def test_calculation_integer_times_comma_number_with_josa():
+    """T1 변형 2: 정수 × 천 단위 쉼표 수 = 잘못 적힌 결과 뒤 조사 (3 × 50,000 = 140,000원으로 계산된다)."""
+    from packages.claim_engine.calculation import row_final_amount
+    amt, check = row_final_amount("수량 단가 3 × 50,000 = 140,000원으로 계산된다")
+    assert amt is not None
+    assert amt.value == Decimal("140000")
+    assert check is not None
+    assert check.computed == Decimal("150000")
+    assert not check.matches
+
+
+def test_calculation_unit_amount_times_count_with_predicate():
+    """T1 변형 3: 단위 금액 × 수 = 잘못 적힌 결과 뒤 서술어 (15,000원 × 12 = 210,000원에 달한다)."""
+    from packages.claim_engine.calculation import row_final_amount
+    amt, check = row_final_amount("노무비 15,000원 × 12 = 210,000원에 달한다")
+    assert amt is not None
+    assert amt.value == Decimal("210000")
+    assert check is not None
+    assert check.computed == Decimal("180000")
+    assert not check.matches
+
+
 # --- 2. 대조군 3건 (오탐 방지) ---
 
 def test_leading_multiplier_control_case_1_single_amount():
@@ -84,6 +119,22 @@ def test_leading_multiplier_control_case_3_non_amount_multiplication():
     """대조군 3: 금액 단위가 없는 순수 숫자 곱셈은 금액 산식으로 평가하지 않는다."""
     res = evaluate_expression("3 × 5")
     assert res is None
+
+
+def test_y7_non_currency_area_and_year_formula():
+    """Y7: 통화 표지가 없는 면적·치수·연도 산식은 산식 결과가 없어야 한다 (한국어 주석)."""
+    # 1. 연도 곱셈 ('2,024 × 3 = 6,072') -> 통화 표지 없으므로 산식 결과 없음
+    from packages.claim_engine.calculation import row_final_amount
+    amt, check = row_final_amount("2,024 × 3 = 6,072")
+    assert check is None, f"연도 곱셈에서 산식 검증 발생 오탐: {check}"
+
+    # 2. 면적 산식 ('면적 150 × 20 = 3,000제곱미터') -> 통화 표지 없으므로 산식 결과 없음
+    amt_area, check_area = row_final_amount("면적 150 × 20 = 3,000제곱미터")
+    assert check_area is None, f"면적 산식에서 산식 검증 발생 오탐: {check_area}"
+
+    # 3. evaluate_expression 단독 호출 시에도 통화 없으면 None
+    assert evaluate_expression("2,024 × 3") is None
+    assert evaluate_expression("150 × 20") is None
 
 
 # --- 3. 기존 산식 호환성 검증 ---

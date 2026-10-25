@@ -1646,11 +1646,14 @@ def check_evidence_form_defects(
 
 def check_document(doc: NormalizedDocument) -> List[Finding]:
     exhibits = exhibit_rows(doc)
+    from .internal_inconsistency import check_internal_inconsistency
+
     return (
         check_exhibits(doc)
         + check_statements(doc, exhibits)
         + check_evidence_numbering_mismatches(doc, exhibits)
         + check_evidence_form_defects(doc, exhibits)
+        + check_internal_inconsistency(doc)
     )
 
 
