@@ -73,7 +73,6 @@ def test_findings_from_one_citation_are_grouped(tmp_path):
             page.route("**/*", respond)
             page.goto("http://groups.test/")
             select_first_project(page)
-            page.get_by_role("button", name="검증·검토", exact=True).click()
             page.locator("[data-tab='review']").click()
             rows = page.locator("#aiVerificationRows tr")
             expect(rows).to_have_count(2)
@@ -83,6 +82,8 @@ def test_findings_from_one_citation_are_grouped(tmp_path):
             expect(grouped.locator(".derived-findings")).to_contain_text("공식 DB에서 확인되지 않은 판례에 기댄 주장")
             expect(rows.filter(has_text="다른 인용의 항목").locator(".derived-findings")).to_have_count(0)
             page.locator("[data-tab='review']").click()
+            # 2026-10-25(평가 측 개정): 참고문헌 처리 기록은 표 위 상태 줄을 펼쳐 본다.
+            page.locator("#referenceStatus summary").first.click()
             references = page.locator(".reference-section")
             expect(references.locator("h3")).to_have_text("주요 참고문헌 검토 결과(RAG)")
             expect(references).to_contain_text("부분 처리·제한 있음")

@@ -1871,3 +1871,26 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
 #tier3Table td {
   overflow-wrap: anywhere;
 }
+
+/* TK-127: 표 안 판정 문구는 칸 안에서 줄바꿈한다(옆 칸 겹침 방지). 짧은 등급 표시는 .badge 기본(nowrap) 유지 */
+.review-items-table .validity-verdict, .tier3-table .validity-verdict {
+  display: inline-block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; word-break: keep-all; line-height: 1.45;
+}
+.review-items-table td, .tier3-table td { overflow-wrap: anywhere; }
+/* TK-126: 엘박스/AI 검증 프롬프트 버튼을 표 위에 주 버튼으로 둔다 */
+.review-prompt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: #f3f8f6; }
+.review-prompt-bar[hidden] { display: none; }
+.review-prompt-bar .external-ai-prompt-btn { font-size: 15px; font-weight: 600; padding: 10px 18px; min-height: 44px; }
+
+/* 2026-10-25 평면 탭(사용자 요구): 하위 탭 없이 다섯 개 탭, 아이콘 + 이름 */
+.workspace-tabs {margin-top:20px; gap:6px;}
+.workspace-tabs button {display:inline-flex; align-items:center; gap:6px; padding:12px 14px; min-height:44px; font-size:15px;}
+.workspace-tabs button svg, .workspace-tabs button i {width:17px; height:17px; flex:none;}
+@media(max-width:700px) {.workspace-tabs {flex-wrap:wrap; overflow-x:visible; gap:2px;} .workspace-tabs button {padding:8px 8px; font-size:13px; white-space:normal;}}
+.reference-status {margin:8px 0;}
+.reference-status-line > summary {cursor:pointer; padding:8px 12px; border:1px solid var(--line); border-radius:6px; background:#f7f9fb; font-size:14px;}
+.reference-observations, .external-ai-answer {margin-top:8px; padding:8px 10px; border-left:3px solid #8aa9c7; background:#f5f8fb; border-radius:4px;}
+.external-ai-answer {border-left-color:#b48a2c; background:#fbf7ee;}
+.reference-observations p, .external-ai-answer p {margin:4px 0; overflow-wrap:anywhere;}
+.review-prompt-bar .external-ai-import-btn {font-size:15px; font-weight:600; padding:10px 18px; min-height:44px;}
+.external-answer-preview-item {padding:8px 0; border-bottom:1px solid var(--line);}

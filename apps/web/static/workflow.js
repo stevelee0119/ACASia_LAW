@@ -3,34 +3,6 @@
 const workflowUI = (() => {
   let projectId = null, matrix = null, issues = [], workflows = new Map(), generation = 0;
   const selected = new Set();
-  const groups = {
-    documents:{title:"자료", icon:"files", tabs:["documents"]},
-    review:{title:"검증·검토", icon:"scan-search", tabs:["ai-verification", "review", "issues"]},
-    reports:{title:"보고서", icon:"file-chart-column", tabs:["reports", "audit"]},
-  };
-  const lastTabs = Object.fromEntries(Object.entries(groups).map(([key, group]) => [key, group.tabs[0]]));
-  function syncNavigation(tab) {
-    const selectedGroup = Object.keys(groups).find(key => groups[key].tabs.includes(tab));
-    if (!selectedGroup) return;
-    lastTabs[selectedGroup] = tab;
-    document.querySelectorAll("[data-workspace-group]").forEach(control => {
-      control.setAttribute("aria-pressed", String(control.dataset.workspaceGroup === selectedGroup));
-    });
-    document.querySelectorAll(".tabs [data-tab]").forEach(control => {
-      control.hidden = !groups[selectedGroup].tabs.includes(control.dataset.tab);
-    });
-  }
-  function initNavigation() {
-    const nav = node("nav", null, "workspace-groups"); nav.id = "workspaceGroups";
-    nav.setAttribute("aria-label", "검토 업무");
-    Object.entries(groups).forEach(([key, group]) => {
-      const control = button(group.title, () => switchTab(lastTabs[key]));
-      control.dataset.workspaceGroup = key;
-      const glyph = node("i"); glyph.dataset.lucide = group.icon; control.prepend(glyph); nav.append(control);
-    });
-    document.querySelector(".tabs").before(nav);
-    syncNavigation("documents");
-  }
   const states = {NOT_STARTED:"미검토", IN_PROGRESS:"검토 중", ACTION_REQUIRED:"조치 필요", COMPLETED:"검토 완료", DEFERRED:"판단 보류"};
   const decisions = {UNDECIDED:"판단 전", AGREED:"동의", FALSE_POSITIVE:"오탐", PARTLY_AGREED:"일부 동의"};
   const positions = {UNASSESSED:"검토 전", ASSERTED:"주장", ADMITTED:"인정", DENIED:"부인", UNKNOWN:"불지", CONDITIONAL:"가정적 주장", ALTERNATIVE:"예비적 주장"};
@@ -301,18 +273,10 @@ const workflowUI = (() => {
     const view=modal("검토 변경 이력",[content],async()=>{}); view.readOnly();
   }
   async function activate(tab) {
-    if (tab === "issues" || tab === "review") {await refresh(); renderFindings();}
+    if (tab === "legal-claims" || tab === "review") {await refresh(); renderFindings();}
   }
   function init() {
-    const toolbar=document.querySelector('[data-panel="issues"] .toolbar');
-    const issueActions=node("div",null,"actions");
-    $("editIssues").textContent="검토 범위";
-    // TK-88: 3단 체계 전환에 따라 툴바 입력 도구 축소
-    // issueActions.append($("editIssues"),button("쟁점 추가",()=>issueEditor()),iconButton("contact","담당자·대리 당사자",profileEditor));
-    toolbar.append(issueActions);
-    const workbench=node("div");workbench.id="issueWorkbench";$("claims").before(workbench);
-    initNavigation();
     const submitted=field("submitted_on","제출일","","date");$("documentForm").querySelector(".form-grid").append(submitted);
   }
-  return {init,refresh,activate,syncNavigation,matches,priority,decorateFinding,enhanceFinding,field,modal,table,located,selected,bulkEditor,renderReviewCount,get workflows(){return workflows;}};
+  return {init,refresh,activate,matches,priority,decorateFinding,enhanceFinding,field,modal,table,located,selected,bulkEditor,renderReviewCount,get workflows(){return workflows;}};
 })();

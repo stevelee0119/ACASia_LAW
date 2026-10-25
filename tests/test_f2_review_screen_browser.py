@@ -363,7 +363,6 @@ def test_f2_review_table_renders_four_columns(f2_browser_page):
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="review"]').click()
 
     panel = page.locator('section[data-panel="review"]')
@@ -377,27 +376,30 @@ def test_f2_review_table_renders_four_columns(f2_browser_page):
     expect(headers.nth(2)).to_have_text("인용 오류·미확인 근거 및 주장 평가 (작성 주체 판단에 쓰지 않음)")
     expect(headers.nth(3)).to_have_text("확인이 필요한 내용")
 
-    # 3단 법률적으로 무리한 주장 표(tier3Table) 4열 헤더 별도 검증 (TK-88)
-    tier3_headers = panel.locator(".tier3-table thead th")
+    # 3단 법률적으로 무리한 주장 표는 독립 탭(legal-claims)에 있다 (2026-10-25 보완, 사용자 10-19 개선안 4항)
+    expect(panel.locator(".tier3-table")).to_have_count(0)
+    page.locator('.tabs button[data-tab="legal-claims"]').click()
+    claims_panel = page.locator('section[data-panel="legal-claims"]')
+    tier3_headers = claims_panel.locator(".tier3-table thead th")
     expect(tier3_headers).to_have_count(4)
     expect(tier3_headers.nth(0)).to_have_text("위치")
     expect(tier3_headers.nth(1)).to_have_text("문서 주장 및 인용 내용")
     expect(tier3_headers.nth(2)).to_have_text("법리 검토 결과 및 근거")
     expect(tier3_headers.nth(3)).to_have_text("확인이 필요한 내용")
 
-    # 2단 인용 표(2개 행) 및 3단 무리한 주장 표(1개 행) 분리 노출 검증 (TK-88)
+    # 2단 인용 표(2개 행) 및 3단 무리한 주장 표(1개 행) 분리 노출 검증 (TK-88, 3단은 독립 탭)
+    tier3_rows = claims_panel.locator("#tier3Rows tr")
+    expect(tier3_rows).to_have_count(1)
+    page.locator('.tabs button[data-tab="review"]').click()
     rows = panel.locator("#aiVerificationRows tr")
     expect(rows).to_have_count(2)
-
-    tier3_rows = panel.locator("#tier3Rows tr")
-    expect(tier3_rows).to_have_count(1)
 
     # 4열 확인이 필요한 내용 요약 박스 검증
     summary_box = rows.first.locator(".review-summary-box")
     expect(summary_box).to_be_visible()
     expect(summary_box.locator(".summary-target")).to_contain_text("확인 대상")
     expect(summary_box.locator(".summary-reason")).to_contain_text("의심 사유")
-    expect(summary_box.locator(".summary-action")).to_contain_text("확인 방법")
+    expect(summary_box.locator(".summary-action")).to_have_count(0)  # 2026-10-25 보완: 반복되는 '확인 방법' 줄 삭제(사용자 요구)
 
 
 def test_f2_review_summary_box_renders_instead_of_inline_workflow(f2_browser_page):
@@ -406,7 +408,6 @@ def test_f2_review_summary_box_renders_instead_of_inline_workflow(f2_browser_pag
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="review"]').click()
 
     panel = page.locator('section[data-panel="review"]')
@@ -422,7 +423,8 @@ def test_f2_review_summary_box_renders_instead_of_inline_workflow(f2_browser_pag
     for i in range(2):
         expect(rows.nth(i).locator(".review-summary-box")).to_be_visible()
 
-    tier3_rows = panel.locator("#tier3Rows tr")
+    page.locator('.tabs button[data-tab="legal-claims"]').click()
+    tier3_rows = page.locator('section[data-panel="legal-claims"] #tier3Rows tr')
     expect(tier3_rows.first.locator(".review-summary-box")).to_be_visible()
 
 
@@ -432,7 +434,6 @@ def test_f2_review_summary_content_elements(f2_browser_page):
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="review"]').click()
 
     panel = page.locator('section[data-panel="review"]')
@@ -444,8 +445,7 @@ def test_f2_review_summary_content_elements(f2_browser_page):
     expect(box.locator(".summary-target")).to_contain_text("대법원 2022다99999 판결")
     expect(box.locator(".summary-reason")).to_be_visible()
     expect(box.locator(".summary-reason")).to_contain_text("타당성 검토 결과: 해당 판례 미존재")
-    expect(box.locator(".summary-action")).to_be_visible()
-    expect(box.locator(".summary-action")).to_contain_text("원문 확인 요청")
+    expect(box.locator(".summary-action")).to_have_count(0)  # 2026-10-25 보완: '확인 방법' 줄 삭제
 
 
 def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_page):
@@ -454,7 +454,6 @@ def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_pag
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="review"]').click()
 
     panel = page.locator('section[data-panel="review"]')
@@ -475,8 +474,7 @@ def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_pag
 
     # 3. 2단 표의 2번째 행(counteraction 없는 위치 행: 헌법 제10조, 1쪽)의 확인 방법 텍스트 검증: '권위명 원문 대조 (N쪽)' 분기
     box3 = rows.nth(1).locator(".review-summary-box")
-    expect(box3.locator(".summary-action")).to_be_visible()
-    expect(box3.locator(".summary-action")).to_contain_text("헌법 제10조 원문 대조 (1쪽)")
+    expect(box3.locator(".summary-action")).to_have_count(0)  # 2026-10-25 보완: '확인 방법' 줄 삭제
 
 
 def test_f2_filters_search_severity_review_status(f2_browser_page):
@@ -485,7 +483,6 @@ def test_f2_filters_search_severity_review_status(f2_browser_page):
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="review"]').click()
 
     panel = page.locator('section[data-panel="review"]')
@@ -508,8 +505,9 @@ def test_f2_filters_search_severity_review_status(f2_browser_page):
     search_input.fill("")
     expect(rows).to_have_count(2)
 
-    # 3단 표의 사실관계 항목('일자 선후 모순') 확인
-    tier3_rows = panel.locator("#tier3Rows tr")
+    # 3단 표의 사실관계 항목('일자 선후 모순') 확인 (독립 탭)
+    page.locator('.tabs button[data-tab="legal-claims"]').click()
+    tier3_rows = page.locator('section[data-panel="legal-claims"] #tier3Rows tr')
     expect(tier3_rows).to_have_count(1)
     expect(tier3_rows.first).to_contain_text("일자 선후 모순")
 
@@ -525,7 +523,6 @@ def test_f2_checkboxes_and_batch_review(f2_browser_page):
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="review"]').click()
 
     panel = page.locator('section[data-panel="review"]')
@@ -542,7 +539,6 @@ def test_f2_derived_findings_bundle_and_multi_save(f2_browser_page):
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="review"]').click()
 
     panel = page.locator('section[data-panel="review"]')
@@ -573,7 +569,6 @@ def test_f2_references_and_unverified_scope_rendered(f2_browser_page):
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="review"]').click()
 
     panel = page.locator('section[data-panel="review"]')
@@ -584,7 +579,10 @@ def test_f2_references_and_unverified_scope_rendered(f2_browser_page):
     expect(unverified).to_contain_text("관련 별지 서증")
 
     # RAG 주요 참고문헌 및 관련 법조문 확인
+    # 2026-10-25 사용자 요구(평가 측 개정): 참고문헌 처리 기록은 하단 절이 아니라 표 위 상태 줄(펼침)에 둔다.
+    status = panel.locator("#referenceStatus")
+    status.locator("summary").first.click()
+    expect(status).to_contain_text("주요 참고문헌 검토 결과(RAG)")
     ref_container = panel.locator("#reviewReferencesContainer")
-    expect(ref_container).to_contain_text("주요 참고문헌 검토 결과(RAG)")
     expect(ref_container).to_contain_text("추가 관련 법조문 검토")
     expect(ref_container).to_contain_text("민법 제750조")

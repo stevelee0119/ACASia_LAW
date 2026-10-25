@@ -185,7 +185,6 @@ def test_external_ai_prompt_button_hidden_when_local_only():
         page.goto("http://localhost/")
         select_first_project(page)
 
-        page.get_by_role("button", name="검증·검토", exact=True).click()
         page.locator('.tabs button[data-tab="review"]').click()
 
         # #reviewTableActions 엘리먼트가 숨겨져 있는지(hidden) 검증
@@ -207,7 +206,6 @@ def test_external_ai_prompt_button_visible_when_masked_with_notice():
         page.goto("http://localhost/")
         select_first_project(page)
 
-        page.get_by_role("button", name="검증·검토", exact=True).click()
         page.locator('.tabs button[data-tab="review"]').click()
 
         actions = page.locator("#reviewTableActions")
@@ -254,7 +252,6 @@ def test_external_ai_prompt_copy_fallback_dialog_on_failure():
         page.goto("http://localhost/")
         select_first_project(page)
 
-        page.get_by_role("button", name="검증·검토", exact=True).click()
         page.locator('.tabs button[data-tab="review"]').click()
 
         actions = page.locator("#reviewTableActions")
