@@ -1111,7 +1111,7 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
                             last_target = target
                             last_topic_target = target
 
-            # 3) U3, AA2, AA3, AA4, AA6: 피동·자동사 사건 낱말일 때, 같은 절의 'X(은|는|이|가)'에서 X가 문서·계약·사건 명사이면 X를 대상으로 바인딩
+            # 3) U3, AA2, AA3, AA4, AA6, DD1: 피동·자동사 사건 낱말일 때, 같은 절의 'X(은|는|이|가)'에서 X가 문서·계약·사건 명사이면 X를 대상으로 바인딩
             if not target and _is_passive_or_intransitive_event(kind, surf, clause_text, following_evt):
                 for m_topic in re.finditer(r"(?:^|[\s,;])(?P<x>(?:[그위해당동본이]\s*)?(?:(?:\d+차|[A-Za-z])\s+)?[가-힣0-9]{1,15})(?P<p>은|는|이|가)(?!\S)", clause_text):
                     cand_raw = _clean_target_candidate(m_topic.group("x").strip())
@@ -1126,11 +1126,18 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
                         continue
                     cand_has_ana, cand_core = _check_target_anaphora(cand_raw)
                     cand_clean = _normalize_target(cand_core) if cand_has_ana else _normalize_target(cand_raw)
-                    if cand_clean in ("신청", "청구", "처분", "결정", "통지", "명령", "계약", "보정"):
+                    # DD1: 사건 낱말뿐이거나 처분 성격/종류 명사뿐인 주제는 대상에서 제외하여 응답 사건의 AA1 승계 허용
+                    if cand_clean in (
+                        "신청", "청구", "처분", "결정", "통지", "명령", "계약", "보정",
+                        "거부", "불승인", "기각", "각하", "승인", "인용", "불허", "불허가", "반려",
+                    ):
                         continue
+                    # DD1: 대상 유효성 검사는 정규화 전 이름(_cand_full)으로 계약·문서 접미어 검사
+                    _cand_full = re.sub(r"\s+", "", cand_core if cand_has_ana else cand_raw)
                     is_valid_object = (
                         cand_clean in DOCUMENT_OBJECT_NOUNS
-                        or any(cand_clean.endswith(k) for k in ("계약", "협약", "합의", "신청", "청구", "처분", "명령", "사건", "소장", "화재", "사고", "손해", "재해", "보정"))
+                        or _cand_full in DOCUMENT_OBJECT_NOUNS
+                        or any(_cand_full.endswith(k) for k in ("계약", "협약", "합의", "신청", "청구", "처분", "명령", "사건", "소장", "화재", "사고", "손해", "재해", "보정"))
                     )
                     if is_valid_object:
                         if cand_has_ana:

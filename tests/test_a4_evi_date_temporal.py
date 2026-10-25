@@ -852,4 +852,18 @@ def test_z4_suffix_matching_restriction():
     assert f_ana[0].confidence_features.get("sub_rule") == "TARGET_BOUND_DISPOSITION"
 
 
+def test_dd1_distinct_contract_topic_in_passive_clause_control():
+    """DD1: 피동 절의 주제가 '그와 무관한 [다른 계약]'처럼 다른 계약일 때 앞 절 계약 승계 방지 대조군 검증 (한국어 주석)."""
+    # 1) 원고는 2024. 7. 20. 공사계약을 체결하였고, 그와 무관한 다른계약은 2024. 7. 10. 해지되었습니다 -> 오탐 0건
+    t_dd1 = "원고는 2024. 7. 20. 공사계약을 체결하였고, 그와 무관한 다른계약은 2024. 7. 10. 해지되었습니다."
+    f_dd1 = [f for f in verify_dates_in_document(_make_doc("DD1 다른 계약 피동 절 대조", t_dd1)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_dd1) == 0, f"DD1 다른 계약 오탐 발생: {f_dd1}"
+
+    # 2) 별개 협약이 해제된 경우 대조군
+    t_dd2 = "당사자들은 2024. 8. 15. 업무협약을 체결하였으며, 전혀 무관한 별개협약은 2024. 8. 1. 해제되었습니다."
+    f_dd2 = [f for f in verify_dates_in_document(_make_doc("DD1 다른 협약 피동 절 대조", t_dd2)) if f.type == FindingType.TIMELINE_CONTRADICTION]
+    assert len(f_dd2) == 0, f"DD1 다른 협약 오탐 발생: {f_dd2}"
+
+
+
 
