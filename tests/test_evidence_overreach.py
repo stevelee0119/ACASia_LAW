@@ -767,5 +767,25 @@ def test_bb1_to_bb4_specific_debt_and_opponent_confirmation():
     assert len(f_bb4_pos) == 1, f"BB4 자기 측 확인서 과장 미탐지: {f_bb4_pos}"
 
 
+def test_cc1_settlement_agreement_exclusion_controls():
+    """CC1: 합의서류(합의서, 약정서 등)로 상대방 합의 및 감면 합의 증명 시 7대 범주 미포함(미판정) 정상 대조군 검증 (한국어 주석)."""
+    # 1. 합의서로 상대방의 합의 증명 -> finding 없음 (정상 대조군)
+    doc_settle1 = _make_doc(
+        "피고가 이에 동의하여 원고와 합의한 사실은 합의서(갑 제1호증)에 의하여 명백히 입증됩니다.",
+        "입증방법", "1. 갑 제1호증 합의서", "원고 소송대리인 변호사 홍길동"
+    )
+    f_settle1 = [f for f in check_evidence_overreach(doc_settle1) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_settle1) == 0, f"CC1 합의서로 상대방 합의 입증 오탐: {f_settle1}"
+
+    # 2. 합의서로 감면 합의 증명 -> finding 없음 (정상 대조군)
+    doc_settle2 = _make_doc(
+        "피고가 채무액을 감면하기로 합의한 사실은 합의서(을 제1호증)에 의하여 확인됩니다.",
+        "입증방법", "1. 을 제1호증 합의서", "원고 소송대리인 변호사 홍길동"
+    )
+    f_settle2 = [f for f in check_evidence_overreach(doc_settle2) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_settle2) == 0, f"CC1 합의서로 감면 합의 입증 오탐: {f_settle2}"
+
+
+
 
 
