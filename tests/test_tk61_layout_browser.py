@@ -200,7 +200,6 @@ def test_tk61_review_table_fixed_layout_and_column_widths(tk61_browser_page):
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="review"]').click()
 
     panel = page.locator('section[data-panel="review"]')
@@ -247,7 +246,6 @@ def test_tk61_security_finding_items_vertical_layout(tk61_browser_page):
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="ai-verification"]').click()
 
     panel = page.locator('section[data-panel="ai-verification"]')

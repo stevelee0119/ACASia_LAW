@@ -47,7 +47,9 @@ def _extract_js_prompt_function() -> str:
 def test_index_html_has_review_table_actions():
     """index.html에 검토 표 하단 액션 컨테이너(reviewTableActions)가 구비되어 있어야 함."""
     content = INDEX_HTML.read_text(encoding="utf-8")
-    assert '<div id="reviewTableActions" class="review-table-actions"' in content
+    assert '<div id="reviewTableActions" class="review-table-actions' in content
+    # 2026-10-25 보완: 버튼 줄은 표 위에 둔다(사용자 요구 '버튼이 작아 눈에 띄지 않음')
+    assert content.index('id="reviewTableActions"') < content.index('id="reviewTable"')
 
 
 def test_app_js_external_ai_prompt_function_and_fallback():
@@ -212,7 +214,7 @@ def test_single_button_bound_at_table_bottom_without_row_duplicates():
 
     # 표 하단부 reviewTableActions에 버튼 바인딩 확인
     assert '$("reviewTableActions")' in content
-    assert 'button("📋 엘박스/AI 검증 프롬프트"' in content
+    assert 'button("📋 엘박스/AI 검증 프롬프트 만들기"' in content
     assert "buildExternalAiPromptForUnverifiedAuthorities(" in content
 
     # 개별 행(tdClaim) 및 요약 배너에는 프롬프트 버튼이 없어야 함 (단일화)

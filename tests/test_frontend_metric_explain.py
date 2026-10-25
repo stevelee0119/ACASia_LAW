@@ -79,7 +79,7 @@ def test_pending_and_status_metrics_explain_themselves(width, height):
             expect(dialog).to_contain_text("문제가 의심되는 항목(검토 후 조치 필요): 1건")
             expect(dialog).to_contain_text("시스템이 확인하지 못한 항목(원문 확인 필요): 1건")
             expect(dialog).to_contain_text("참고 신호(낮은 심각도·참고용): 1건")
-            dialog.get_by_role("button", name="확인할 항목에서 보기").click()
+            dialog.get_by_role("button", name="출처가 확인되지 않는 항목에서 보기").click()
             expect(page.locator("[data-panel='review']")).to_be_visible()
             expect(page.locator("#reviewTable")).to_be_visible()
 

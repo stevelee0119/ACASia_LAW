@@ -299,6 +299,15 @@ def create_app() -> FastAPI:
     if (web_dir / "index.html").exists():
         app.mount("/static", StaticFiles(directory=str(web_dir / "static")), name="static")
 
+        # TK-130: 배포 뒤 예전 화면 파일을 쓰지 않도록 화면 파일은 매번 재확인(ETag 304)하게 한다.
+        @app.middleware("http")
+        async def _web_revalidate(request, call_next):
+            response = await call_next(request)
+            path = request.url.path
+            if (path == "/" or path.startswith("/static/")) and "cache-control" not in response.headers:
+                response.headers["Cache-Control"] = "no-cache"
+            return response
+
         @app.get("/")
         def index() -> FileResponse:
             return FileResponse(str(web_dir / "index.html"))

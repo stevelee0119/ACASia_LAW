@@ -343,3 +343,27 @@ def review_history(project_id: str, subject_id: str | None = None, limit: int = 
     if subject_id:
         query = query.where(ReviewRevision.subject_id == subject_id)
     return [as_dict(r) for r in session.scalars(query.order_by(ReviewRevision.id.desc()).limit(limit))]
+
+
+class ExternalPromptTexts(BaseModel):
+    texts: list[str] = Field(default_factory=list, max_length=200)
+
+    @field_validator("texts")
+    @classmethod
+    def limit_length(cls, texts):
+        return [str(t)[:2000] for t in texts]
+
+
+# 2026-10-25 사용자 요구: '법률적으로 무리한 주장' 탭의 엘박스/AI 검증 프롬프트에는 주장 문장이 들어가므로
+# 프로젝트의 외부 AI 전송 정책에 따라 서버에서 가린 뒤에만 돌려준다(브라우저 정규식 가림에 맡기지 않는다).
+@router.post("/projects/{project_id}/external-ai/prompt-texts")
+def external_prompt_texts(project_id: str, payload: ExternalPromptTexts, session: Session = Depends(get_db)):
+    project = project_or_404(session, project_id)
+    policy = str(project.external_ai_policy or "MASKED")
+    if policy == "LOCAL_ONLY":
+        raise HTTPException(403, "이 프로젝트는 외부 AI 전송을 허용하지 않습니다")
+    if policy == "ORIGINAL":
+        return {"policy": policy, "texts": payload.texts}
+    from packages.pii_engine import PIIEngine, PseudonymStore
+    engine = PIIEngine(PseudonymStore(project_id=project_id))
+    return {"policy": "MASKED", "texts": [engine.mask_text(text).masked_text for text in payload.texts]}
