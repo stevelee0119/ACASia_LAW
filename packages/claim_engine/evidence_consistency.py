@@ -517,7 +517,653 @@ def check_exhibits(doc: NormalizedDocument) -> List[Finding]:
     out.extend(_numbering(doc, rows))
     out.extend(_attached_originals(doc, rows))
     out.extend(_attached_amounts(doc, rows))
+    out.extend(check_evidence_overreach(doc, rows))
     return out
+
+
+# --- TK-91 증거 과장 (EVI-OVR) 구조적 탐지 --------------------------------------------
+
+# B-1 1. 7대 서증 닫힌 범주 사전 (조건 1: '현장'·'감정서' 완전 제외, 조건 5: 서증 명칭에서만 추출, V3: 접미 일치 표면형 보강, BB3: 거래내역 통합, CC1: 각서·합의서 제외)
+EVIDENCE_KIND_CATEGORIES: Dict[str, Tuple[str, ...]] = {
+    "일방통지": ("내용증명", "최고서", "통고서", "통지서", "안내문", "공문", "내용증명우편"),
+    "견적계획": ("견적서", "견적", "공사계획서", "산출내역서", "공사비산출내역서", "공사비 산출내역서", "설계도", "예산서", "내역서"),
+    "명의식별": ("통장표지", "통장사본", "통장 표지", "사업자등록증", "등록증", "신분증", "가족관계증명서", "주민등록등본", "법인등기부"),
+    "진단상태": ("진단서", "소견서", "진료기록", "의무기록", "상해진단서"),  # 감정서 제외
+    "영상사진": ("사진", "영상", "캡처", "녹화", "동영상", "화면캡처"),      # 현장 제외
+    "영수입금": (
+        "영수증", "입금증", "이체확인증", "송금확인증", "무통장입금표", "계좌이체영수증", "입금확인증",
+        "계좌거래내역", "통장거래내역", "거래내역", "세금계산서", "지급증명서", "확인증",
+    ),
+    "진술확인": (
+        "확인서", "인우보증서", "진술서", "사실확인서",
+    ),
+}
+
+# B-1 2. 4대 주장 술어 닫힌 범주 사전 (S1: '의사' 단독 삭제, '과실·불법행위' 법률 평가 삭제)
+CLAIM_PREDICATE_CATEGORIES: Dict[str, Tuple[str, ...]] = {
+    "전칭_전기간": (
+        "항상", "매번", "모든", "계속", "내내", "줄곧", "일체",
+    ),
+    "내심의상태": (
+        "고의", "악의", "인식", "공모", "통모",
+    ),
+    "완료_확정": (
+        "완납", "완료", "변제", "이행완료", "지급완료", "정산완료", "시공완료", "준공", "완성",
+        "확정", "확정되었", "확정적으로",
+    ),
+    "상대방의사표시": (
+        "승낙", "승인", "동의", "합의", "수락",
+    ),
+}
+
+# S1: 내심의 의사 구조 정규식 (단독 '의사'가 아닌 주관적 의도 표현만 포착)
+INTENT_STATE_RE = re.compile(
+    r"(?:려는|할|ㄹ)\s*의사(?:로|를\s*가지고|가\s*있었)|"
+    r"(?:가해|가해자|가해\s*행위|가해\s*사실|가한\s*사실)"
+)
+
+# V2, BB2: 완료 술어 구조 정규식 (어간 + 어미/피동 결합, 대상 명사구와 결합, 지급 행위 어간 '치르·받·납부·송금' 포함)
+_COMPLETION_VERB_STEMS = (
+    r"(?:마치|마쳤|마친|마쳐|"
+    r"끝마치|끝마쳤|끝마친|끝마쳐|"
+    r"끝내|끝냈|끝낸|"
+    r"끝나|끝났|끝난|"
+    r"갚|"
+    r"치르|치렀|치른|치러|"
+    r"받았|받은|받아|"
+    r"납부(?:하|하여|하였|했|한|해|합)|"
+    r"송금(?:하|하여|하였|했|한|해|합))"
+)
+
+COMPLETION_PREDICATE_RE = re.compile(
+    rf"(?:(?:지급|변제|납부|이행|시공|공사|인도|대금|채무|[가-힣]{{0,8}}(?:대금|금|비|채무))"
+    rf"(?:[을를이가]|의)?\s*(?:(?:모두|전부|전액|이미|다)(?:[을를이가은는의]|으로|로)?\s*)*"
+    rf"(?:{_COMPLETION_VERB_STEMS}(?:(?:지|졌)[가-힣]*|[가-힣]*)|(?:지급|변제|수령|정산|상환|결제)(?:하|하여|하였|했|한|해|합|받)[가-힣]*))|"
+    r"(?<![가-힣])(?:갚[가-힣]+|치르(?:었[가-힣]*|어[가-힣]*|고|면|다)|치렀[가-힣]*|치른|치러[가-힣]*|받았[가-힣]*|받은|"
+    r"납부(?:하|하여|하였|했|한|해|합)[가-힣]*|송금(?:하|하여|하였|했|한|해|합)[가-힣]*|냈[가-힣]*|낸)"
+)
+
+# V1, X1, BB1: 수량 전칭 정규식 (금전·채무·완료 대상 N과 전칭의 양방향 어순 결합 및 조사 허용)
+# N: …대금|…금|…비|…채무|차임|원리금|공사|용역|업무
+_AMOUNT_NOUN_PAT = r"(?:[가-힣]{0,10}(?:대금|금|비|채무)|차임|원리금|공사|용역|업무)"
+
+TOTAL_AMOUNT_MODIFIER_RE = re.compile(
+    rf"(?:(?<![가-힣])(?:전액|전부|모두|일체)(?:[을를이가은는의]|으로|로)?(?:의|\s+)(?P<noun1>{_AMOUNT_NOUN_PAT})(?![가-힣]))|"
+    rf"(?:(?<![가-힣])(?P<noun2>{_AMOUNT_NOUN_PAT})(?:[을를이가의]|에\s*대한)?\s*(?:전액|전부|모두|일체)(?:[을를이가은는의]|으로|로)?(?![가-힣]))|"
+    rf"(?:(?<![가-힣])(?:모든|일체(?:의)?)\s*(?P<noun3>{_AMOUNT_NOUN_PAT})(?:[을를이가은는의]|으로|로)?(?![가-힣]))"
+)
+
+# BB1: 특정 금액 명사 판정 보조 함수
+_SPECIFIC_AMOUNT_NOUN_SUFFIX_RE = re.compile(r"(?:[가-힣]{0,8}(?:대금|금|비)|차임|원리금)$")
+_PARTY_NAME_PAT = r"(?:원고|피고|신청인|피신청인|채권자|채무자|상대방)"
+
+
+def _is_specific_amount_debt(noun: str, pre_text: str, full_match: str) -> bool:
+    """N이 (가) '특정 채무의 금액 범위'인지, (나) '채무 전체'인지 판정한다 (BB1)."""
+    n = noun.strip()
+    # 1. '모든', '일체의'가 명사 앞에 오면 무조건 (나)
+    if re.search(r"(?:모든|일체(?:의)?)\s*$", pre_text) or full_match.startswith(("모든", "일체의", "일체 ")):
+        return False
+
+    # 2. 맨 '채무'인 경우 (접두 금액 명사 없음)
+    if n == "채무":
+        m_spec = re.search(rf"([가-힣]{{1,8}}(?:대금|금|비)|차임|원리금)(?:의|\s+)?$", pre_text)
+        if m_spec:
+            spec_word = m_spec.group(1)
+            if not re.search(rf"{_PARTY_NAME_PAT}(?:에\s*대한)?$", spec_word):
+                return True
+        return False
+
+    # 3. 접미사가 '채무'인 복합어: 예) '공사대금채무', '대여금채무'
+    if n.endswith("채무"):
+        prefix = n[:-2]
+        if _SPECIFIC_AMOUNT_NOUN_SUFFIX_RE.search(prefix):
+            return True
+        return False
+
+    # 4. 특정 금액 명사: …대금|…금|…비|차임|원리금
+    if _SPECIFIC_AMOUNT_NOUN_SUFFIX_RE.search(n):
+        return True
+
+    return False
+
+# S1: 술어 낱말 경계 매칭 함수 (합의서, 확정판결, 계속적 거래 등 복합명사 오탐 방지)
+def _match_predicate_word(pw: str, text: str) -> bool:
+    """낱말 경계로 술어를 매칭한다 (S1: 부분 문자열 오탐 방지)."""
+    pat = rf"(?:^|[\s,.\(]|[은는이가을를의로에와과도])(?P<word>{re.escape(pw)})(?:[\s,.\)]|[은는이가을를의로에와과도]|(?:하였|했|하여|하고|하며|한|된다|되|된|였|다|고|며|면|지|라|어|아|나|음|기)|$)"
+    return bool(re.search(pat, text))
+
+# B-1 3. 능력 매트릭스 (7대 범주 × 4대 술어 범주, 조건 2: 칸마다 덮음/못 덮음 상수화)
+EVIDENCE_CAPABILITY_MATRIX: Dict[str, Dict[str, bool]] = {
+    "일방통지": {
+        "전칭_전기간": False,
+        "내심의상태": False,
+        "완료_확정": False,
+        "상대방의사표시": False,
+    },
+    "견적계획": {
+        "전칭_전기간": False,
+        "내심의상태": False,
+        "완료_확정": False,
+        "상대방의사표시": False,
+    },
+    "명의식별": {
+        "전칭_전기간": False,
+        "내심의상태": False,
+        "완료_확정": False,
+        "상대방의사표시": False,
+    },
+    "진단상태": {
+        "전칭_전기간": False,
+        "내심의상태": False,
+        "완료_확정": False,
+        "상대방의사표시": False,
+    },
+    "영상사진": {
+        "전칭_전기간": False,
+        "내심의상태": False,
+        "완료_확정": False,
+        "상대방의사표시": False,
+    },
+    "영수입금": {
+        "전칭_전기간": False,  # 전액·모든 채무 등 전칭은 단독으로 못 덮음
+        "내심의상태": False,
+        "완료_확정": True,   # 그 금액 한도에서 변제·완료는 덮음
+        "상대방의사표시": False,
+    },
+    "진술확인": {
+        "전칭_전기간": False,
+        "내심의상태": False,
+        "완료_확정": False,
+        "상대방의사표시": False,
+    },
+}
+
+# B-1 S4: 직접 증명 구조 정규식 (표면형 5종: (으)로, 에 의하여/해/하면/한, 을/를 통해/통하여, 에 비추어, (으)로써)
+_DIRECT_PROOF_STRUCTURE_RE = re.compile(
+    r"(?:"
+    r"(?:갑|을|소갑|소을|제)\s*(?:제\s*)?\d+호증[^\n.]{0,35}?"
+    r"(?:(?:으로|로|으로써|로써)|에\s*의(?:하여|해|하면|한)|을\s*통(?:해|하여)|를\s*통(?:해|하여)|에\s*비추어|에\s*따라)[^\n.]{0,30}?"
+    r"(?:입증|증명|확인|밝혀|드러나|인정|완납|변제|정산|완료|마쳤|끝마쳤)"
+    r"|"
+    r"(?:완납|변제|정산|결제|지급|완료|준공|인도|완성|동의|승낙|합의|승인|고의|악의|인식|공모|통모|직접\s*(?:확인|입증|증명))[^\n.]{0,20}?\((?:갑|을|소갑|소을|제)\s*(?:제\s*)?\d+호증\)"
+    r"|"
+    r"\((?:갑|을|소갑|소을|제)\s*(?:제\s*)?\d+호증\)[^\n.]{0,25}?"
+    r"(?:에\s*따라|으로|로|으로써|로써|에\s*의(?:하여|해|하면|한)|을\s*통(?:해|하여)|를\s*통(?:해|하여)|에\s*비추어)?[^\n.]{0,30}?"
+    r"(?:완납|변제|정산|결제|지급|완료|준공|인도|완성|동의|승낙|합의|승인|고의|악의|인식|공모|통모|입증|증명|확인|인정)"
+    r")"
+)
+
+# B-1 5, X3, V2: 제외 가드 (부정된 술어, 상대방 주장, 가정·조건, 의문)
+_NEGATED_PREDICATE_RE = re.compile(
+    r"(?:볼\s*수\s*없|할\s*수\s*없|아니다|아닙니다|아니며|아니고|않았다|않았음|않는다|배제할\s*수\s*없|단정할\s*수\s*없|"
+    r"(?:보|인정하|단정하|판단하)기\s*(?:어렵|힘들|곤란)|"
+    r"(?:인정하|증명하)기에\s*부족|부족하다고\s*보)"
+)
+
+# X3, V3: 상대방 주장 술어 정규식 (종결형 및 활용형 어미 제한 없이 허용)
+_OPPONENT_CLAIM_VERBS_PAT = (
+    r"(?:(?:주장|진술|항변|번복)(?:하|합|했|하였|한)|"
+    r"다(?:투|툽|퉜|퉈))"
+)
+
+def _get_opponent_party_pattern(author_party: Optional[str]) -> str:
+    """서면 작성 당사자에 대응하는 상대 당사자 정규식 패턴을 반환한다 (X3)."""
+    if author_party in ("원고", "신청인", "채권자"):
+        return r"(?:피고|상대방|피신청인|채무자)"
+    elif author_party in ("피고", "피신청인", "채무자"):
+        return r"(?:원고|상대방|신청인|채권자)"
+    else:
+        return r"(?:피고|상대방|피신청인)"
+
+def _is_opponent_claim(text: str, author_party: Optional[str] = None) -> bool:
+    """상대방의 주장·진술·항변·번복·다툼인지 검사한다 (X3, V3).
+
+    1) 작성 당사자의 상대 당사자가 주어이고 뒤에 주장·다툼 술어가 오는 경우 (30자 창 제한 없이 문장/절 끝까지)
+    2) 인용절 뒤 반박 표지 ('...라고 주장하나/다투지만' 등)
+    단, 작성자 본인이 주어인 진술('원고는 ... 진술합니다')은 제외하지 않는다.
+    """
+    cleaned = text.strip()
+    my_pat = (
+        r"(?:원고|신청인|채권자)"
+        if author_party in ("원고", "신청인", "채권자")
+        else r"(?:피고|피신청인|채무자)"
+        if author_party in ("피고", "피신청인", "채무자")
+        else None
+    )
+    # 문장의 주어가 작성자 본인인 경우 상대방 주장 아님 (V3)
+    if my_pat and re.search(rf"^{my_pat}(?:는|은|가|이|측은)\b", cleaned):
+        return False
+
+    opp_pat = _get_opponent_party_pattern(author_party)
+    if re.search(rf"{opp_pat}(?:는|은|가|이|측은)\s+.*{_OPPONENT_CLAIM_VERBS_PAT}", cleaned):
+        return True
+
+    # 반박 연결어미(-나, -지만, -는데, -으나, -며)가 붙은 인용절
+    if re.search(r"(?:라고|다고|라며|다며)\s*(?:(?:주장|진술|항변|번복)(?:하|합|했|하였)?(?:나|지만|는데|으나|며)|다투(?:나|지만|는데|었으나|며))", cleaned):
+        return True
+
+    # 상대방이 언급된 문맥에서의 인용 종결
+    if opp_pat and re.search(opp_pat, cleaned):
+        if re.search(rf"(?:라고|다고|라며|다며)\s*{_OPPONENT_CLAIM_VERBS_PAT}", cleaned):
+            return True
+
+    return False
+
+# V4: 가정·조건 표지 ('-었/였/았다면', '라면', '할 경우', '인 경우', '하더라도', '설령' 확장)
+_CONDITIONAL_RE = re.compile(
+    r"(?:(?:[었였았]?다면|라면|할\s*경우|인\s*경우|하더라도|더라도)(?:는|,|\s|$)|"
+    r"설령)"
+)
+_QUESTION_RE = re.compile(r"(?:인가|인지\s*여부|일까)(?:\?|\.|\s|$)")
+
+# S7, X3: 절 단위 제외 가드 검사
+def _is_scope_excluded(clause_text: str, author_party: Optional[str] = None) -> bool:
+    """술어가 위치한 절 단위로 부정, 상대방 주장, 가정·조건, 의문 가드를 검사한다 (S7, X3)."""
+    if _NEGATED_PREDICATE_RE.search(clause_text):
+        return True
+    if _is_opponent_claim(clause_text, author_party):
+        return True
+    if _CONDITIONAL_RE.search(clause_text):
+        return True
+    if _QUESTION_RE.search(clause_text):
+        return True
+    return False
+
+# 증명 결론 술어 표지 (조건 3 증명 대상 절 판별용)
+_PROOF_VERB_RE = re.compile(
+    r"(?:인정된다|인정됩니다|입증된다|입증됩니다|확인된다|확인됩니다|밝혀졌다|밝혀집니다|증명된다|증명됩니다|"
+    r"알\s*수\s*있다|알\s*수\s*있습니다|명백하다|명백합니다|소명된다|소명됩니다|직접\s*(?:확인|입증|증명)|분명히\s*밝)"
+)
+
+# 결제·확인 부기 예외 (BB3: _PROVABLE_PAYMENT_KINDS_RE, _PROVABLE_AGREEMENT_KINDS_RE는 EVIDENCE_KIND_CATEGORIES로 통합 후 삭제)
+_PAYMENT_RECEIPT_NOTE_RE = re.compile(r"(?:영수|완납|입금\s*확인|수납|결제\s*완료)")
+
+# S3: 발신인은 증거목록 작성자 칸 또는 바로 앞 관형절에서만 결정
+def _detect_exhibit_sender(row: Dict[str, Any], label: str, sent_clean: str) -> Optional[str]:
+    """서증 작성자/발신인을 증거목록 또는 바로 앞 관형절에서만 결정한다 (S3)."""
+    author = (row.get("author") or "").strip()
+    desc = f"{row.get('name', '')} {row.get('purpose', '')}".strip()
+    if author:
+        for p in ("원고", "피고", "신청인", "피신청인", "채권자", "채무자"):
+            if p in author:
+                return p
+    m_desc = re.search(r"(?:발신인|작성자|보낸\s*이|발송자)\s*[:：]?\s*(?P<p>원고|피고|신청인|피신청인|채권자|채무자)", desc)
+    if m_desc:
+        return m_desc.group("p")
+    # 바로 앞 관형절: [당사자](가|이) [부사 1개 허용] [동사 연쇄 최대 2개] (보낸|발송한|작성한|통지한|송부한) [서증명/라벨] (X2, V5)
+    m_prep = re.search(
+        rf"(?P<p>원고|피고|신청인|피신청인|채권자|채무자)(?:가|이)\s*"
+        rf"(?:(?!(?:원고|피고|신청인|피신청인|채권자|채무자|갑|을|소갑|소을)\b)[가-힣]{{1,4}}\s+)?"
+        rf"(?:[가-힣]{{1,6}}(?:하여|해|하고|·)\s*){{0,2}}"
+        rf"(?:보낸|발송한|작성한|통지한|송부한)\s*[^.!?]{{0,25}}?{re.escape(label)}",
+        sent_clean,
+    )
+    if m_prep:
+        return m_prep.group("p")
+    return None
+
+def _find_clause_subject(cl_text: str, pred_pos: Optional[int] = None) -> Optional[str]:
+    """절 안에서 술어 직전의 주체 당사자(원고, 피고 등)를 추출한다 (S2: 관형절 주체 오인 방지)."""
+    sub_text = cl_text[:pred_pos] if pred_pos is not None else cl_text
+    matches = list(re.finditer(r"(?P<p>원고|피고|신청인|피신청인|채권자|채무자)(?:[은는이가의]|측[은는이가의])", sub_text))
+    if matches:
+        return matches[-1].group("p")
+    return None
+
+
+def check_evidence_overreach(
+    doc: NormalizedDocument,
+    exhibits: Optional[Sequence[Dict[str, Any]]] = None,
+    debug_counters: Optional[Dict[str, int]] = None,
+) -> List[Finding]:
+    """증거 과장(EVI-OVR) 구조적 탐지: 본문 원용 주장 사실과 서증 속성의 객관적 범위 대조 (TK-91, S1~S9)."""
+    rows = list(exhibits) if exhibits is not None else exhibit_rows(doc)
+    out: List[Finding] = []
+    text = build_reading_text(doc).text
+
+    # S9: 디버그 카운터 초기화
+    if debug_counters is not None:
+        for k in ("no_cat", "no_row", "no_scope", "no_pred", "covered", "excluded", "pos_emitted"):
+            debug_counters.setdefault(k, 0)
+
+    # 서면 제출 당사자(원고/피고 등) 판별
+    author_party, my_party_chars = _detect_author_party(doc, rows)
+
+    # 호증별 행 인덱싱 (party, number) -> row
+    row_by_key = {}
+    for r in rows:
+        row_by_key[(r["party"], r["number"])] = r
+
+    # 문장 단위 분할
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    for sent in sentences:
+        sent_clean = re.sub(r"\s+", " ", sent).strip()
+        if not sent_clean or len(sent_clean) < 10:
+            continue
+
+        # 서증 인용 확인 (조건 5: 증거목록 및 인용 괄호에서만 서증 추출)
+        refs = parse_exhibits(sent_clean)
+        if not refs:
+            continue
+
+        cited_rows = []
+        for ref in refs:
+            k = (ref["party"], ref["number"])
+            if k in row_by_key:
+                cited_rows.append(row_by_key[k])
+
+        if not cited_rows:
+            if debug_counters is not None:
+                debug_counters["no_row"] += 1
+            continue
+
+        # 조건 3: 서증 인용이 지배하는 증명 대상 절 판별
+        is_direct_proof = bool(_DIRECT_PROOF_STRUCTURE_RE.search(sent_clean))
+
+        clauses = [c.strip() for c in re.split(r"[,;]|\s*(?:하고|하며|하였으나|하나|하지만|한바|인바)\s*", sent_clean) if c.strip()]
+
+        # 각 호증별 인용 절 및 지배받는 증명 결론 절 범위 산출 (S5: 대상 절 없으면 판정 제외)
+        proof_scope_by_row: Dict[str, str] = {}
+        for row in cited_rows:
+            target_clauses = []
+            for idx, cl in enumerate(clauses):
+                cl_refs = parse_exhibits(cl)
+                k_list = [(r["party"], r["number"]) for r in cl_refs]
+                if (row["party"], row["number"]) in k_list:
+                    target_clauses.append(cl)
+                    is_governing = bool(re.search(r"(?:에\s*의(?:하여|해|하면|한)|에\s*따라|으로|로|으로써|로써|을\s*통(?:해|하여)|를\s*통(?:해|하여)|에\s*비추어)\s*$", cl))
+                    if idx + 1 < len(clauses):
+                        next_cl = clauses[idx + 1]
+                        if is_governing and (_PROOF_VERB_RE.search(next_cl) or any(_match_predicate_word(pw, next_cl) for words in CLAIM_PREDICATE_CATEGORIES.values() for pw in words)):
+                            target_clauses.append(next_cl)
+                        elif _PROOF_VERB_RE.search(next_cl):
+                            target_clauses.append(next_cl)
+                elif any((r["party"], r["number"]) in k_list for r in cl_refs):
+                    pass
+                elif _PROOF_VERB_RE.search(cl) and is_direct_proof:
+                    target_clauses.append(cl)
+
+            # S5: 증명 대상 절이 존재할 때만 scope_text 등록 (sent_clean 대체 삭제)
+            if target_clauses:
+                proof_scope_by_row[row["label"]] = " ".join(target_clauses)
+
+        # V1: 인용된 모든 서증 범주의 매트릭스 능력 합집합 산출 (결합 원용 합집합 판정)
+        combined_capabilities: Dict[str, bool] = {
+            "전칭_전기간": False,
+            "내심의상태": False,
+            "완료_확정": False,
+            "상대방의사표시": False,
+        }
+        for cr in cited_rows:
+            cr_name = (cr.get("name") or "").strip()
+            cr_purpose = (cr.get("purpose") or "").strip()
+            cr_desc = f"{cr_name} {cr_purpose}".strip()
+            cr_cat = None
+            cr_name_clean = re.sub(r"\s+", "", cr_name)
+            for cat_name, cat_words in EVIDENCE_KIND_CATEGORIES.items():
+                for w in cat_words:
+                    w_clean = re.sub(r"\s+", "", w)
+                    if cr_name_clean.endswith(w_clean) or w_clean in cr_name_clean:
+                        cr_cat = cat_name
+                        break
+                if cr_cat:
+                    break
+            if cr_cat and cr_cat in EVIDENCE_CAPABILITY_MATRIX:
+                for pred_cat, can_cover in EVIDENCE_CAPABILITY_MATRIX[cr_cat].items():
+                    if can_cover:
+                        combined_capabilities[pred_cat] = True
+            if _PAYMENT_RECEIPT_NOTE_RE.search(cr_desc):
+                combined_capabilities["완료_확정"] = True
+
+        # 서증별 판정
+        for row in cited_rows:
+            label = row["label"]
+            scope_text = proof_scope_by_row.get(label)
+
+            # S5: 대상 절이 없으면 그 서증은 판정하지 않는다
+            if not scope_text:
+                if debug_counters is not None:
+                    debug_counters["no_scope"] += 1
+                continue
+
+            # S7, X3: 술어가 위치한 대상 절 및 문장 단위 제외 가드 검사
+            if _is_scope_excluded(scope_text, author_party) or _is_opponent_claim(sent_clean, author_party):
+                if debug_counters is not None:
+                    debug_counters["excluded"] += 1
+                continue
+
+            name = (row.get("name") or "").strip()
+            author = (row.get("author") or "").strip()
+            purpose = (row.get("purpose") or "").strip()
+            combined_desc = f"{name} {purpose}".strip()
+
+            # 조건 1 & 5, V3: 서증 명칭에서 7대 서증 범주 매칭 (공백 정규화 및 접미 일치 지원)
+            matched_cat: Optional[str] = None
+            name_clean = re.sub(r"\s+", "", name)
+            for cat_name, cat_words in EVIDENCE_KIND_CATEGORIES.items():
+                for w in cat_words:
+                    w_clean = re.sub(r"\s+", "", w)
+                    if name_clean.endswith(w_clean) or w_clean in name_clean:
+                        matched_cat = cat_name
+                        break
+                if matched_cat:
+                    break
+
+            if not matched_cat:
+                if debug_counters is not None:
+                    debug_counters["no_cat"] += 1
+                continue
+
+            # S1, S2, S6: 주장 술어 범주 추출
+            sender = _detect_exhibit_sender(row, label, sent_clean)
+            cl_subj = _find_clause_subject(scope_text)
+
+            matched_pred_cats: List[str] = []
+
+            # 1) 전칭_전기간: 낱말 경계 일치 (기간·범위 전칭만 담당, 금전 전칭 중 (나) 채무 전체는 전칭_전기간으로 분류) (V1, BB1)
+            if any(_match_predicate_word(pw, scope_text) for pw in CLAIM_PREDICATE_CATEGORIES["전칭_전기간"]):
+                matched_pred_cats.append("전칭_전기간")
+
+            # BB1, BB2: 수량 전칭 매칭 분석 ((가) 특정 금액 vs (나) 채무 전체)
+            m_total_amt = TOTAL_AMOUNT_MODIFIER_RE.search(scope_text)
+            is_specific_amt: Optional[bool] = None
+            if m_total_amt:
+                noun_text = m_total_amt.group("noun1") or m_total_amt.group("noun2") or m_total_amt.group("noun3") or ""
+                pre_ctx = scope_text[:m_total_amt.start()]
+                is_specific_amt = _is_specific_amount_debt(noun_text, pre_ctx, m_total_amt.group(0))
+                if not is_specific_amt:
+                    # (나) 당사자 사이 채무 전체: '[당사자]에 대한 채무 전부', '모든 채무', '채무 일체' 등
+                    # 전칭_전기간으로 분류하여 어떤 범주도 못 덮도록 함 (BB1)
+                    if "전칭_전기간" not in matched_pred_cats:
+                        matched_pred_cats.append("전칭_전기간")
+
+            # 2) 내심의상태: 고의·악의·인식·공모·통모 또는 -(려는|할|ㄹ) 의사 구조
+            has_intent = any(_match_predicate_word(pw, scope_text) for pw in CLAIM_PREDICATE_CATEGORIES["내심의상태"])
+            if not has_intent and INTENT_STATE_RE.search(scope_text):
+                has_intent = True
+
+            if has_intent:
+                # S2: 통지류에서 술어 주체 확인 (발신인과 다른 당사자일 때만 카운트, 주체 미정 시 제외)
+                m_intent_pos = INTENT_STATE_RE.search(scope_text)
+                intent_pos = m_intent_pos.start() if m_intent_pos else None
+                intent_subj = _find_clause_subject(scope_text, intent_pos) or cl_subj
+                if matched_cat == "일방통지":
+                    if intent_subj and sender and intent_subj != sender:
+                        matched_pred_cats.append("내심의상태")
+                    elif not sender and intent_subj:
+                        matched_pred_cats.append("내심의상태")
+                else:
+                    matched_pred_cats.append("내심의상태")
+
+            # 3) 완료_확정: 낱말 경계 일치 또는 완료 술어 구조('지급을 마친', '갚았다', '치른', '받은', '납부한', '송금한' 등) (V1, BB2)
+            has_comp = any(_match_predicate_word(pw, scope_text) for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"])
+            if not has_comp and COMPLETION_PREDICATE_RE.search(scope_text):
+                has_comp = True
+
+            # BB2: 금전 전칭 중 (가) 특정 금액 명사인 경우, N이 '완료_확정' 술어의 목적어(N(을|를)? … 술어 같은 절)일 때만 '완료_확정'으로 봄
+            if not has_comp and m_total_amt and is_specific_amt:
+                after_amt = scope_text[m_total_amt.end():]
+                first_clause = re.split(r"[,.?!]|(?:이나|으나|는데|한바|지만|반면)", after_amt)[0]
+                if COMPLETION_PREDICATE_RE.search(first_clause) or any(_match_predicate_word(pw, first_clause) for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"]):
+                    has_comp = True
+                else:
+                    m_obj = re.search(
+                        r"^(?:[을를이가은는의]|으로|로)?\s*(?:(?:이미|다|모두|전부|전액|직접|이를|[가-힣]{1,8}[에에게로으로]?)\s*){0,3}(?P<pred>[가-힣]+)",
+                        after_amt
+                    )
+                    if m_obj:
+                        pred_cand = m_obj.group("pred")
+                        if any(_match_predicate_word(pw, pred_cand) for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"]) or COMPLETION_PREDICATE_RE.search(pred_cand):
+                            has_comp = True
+
+            if has_comp and "완료_확정" not in matched_pred_cats:
+                matched_pred_cats.append("완료_확정")
+
+            # 4) 상대방의사표시: 승낙·승인·동의·합의·수락
+            has_opp_decl = any(_match_predicate_word(pw, scope_text) for pw in CLAIM_PREDICATE_CATEGORIES["상대방의사표시"])
+            if has_opp_decl:
+                # S2: 통지류에서 술어 주체 확인 (발신인과 다른 당사자일 때만 카운트, 주체 미정 시 제외)
+                opp_pos = None
+                for pw in CLAIM_PREDICATE_CATEGORIES["상대방의사표시"]:
+                    m_pw = re.search(rf"(?:^|[\s,.\(]|[은는이가을를의로에와과도])({re.escape(pw)})", scope_text)
+                    if m_pw:
+                        opp_pos = m_pw.start()
+                        break
+                opp_subj = _find_clause_subject(scope_text, opp_pos) or cl_subj
+                if matched_cat == "일방통지":
+                    if opp_subj and sender and opp_subj != sender:
+                        matched_pred_cats.append("상대방의사표시")
+                    elif not sender and opp_subj:
+                        matched_pred_cats.append("상대방의사표시")
+                else:
+                    matched_pred_cats.append("상대방의사표시")
+
+            if not matched_pred_cats:
+                if debug_counters is not None:
+                    debug_counters["no_pred"] += 1
+                continue
+
+            # V1: 결합 원용 매트릭스 합집합 판정 (인용된 서증들의 능력 합집합이 주장 술어 범주를 덮지 못할 때만 과장 판정)
+            uncovered_preds = [p for p in matched_pred_cats if not combined_capabilities.get(p, False)]
+            if not uncovered_preds:
+                if debug_counters is not None:
+                    debug_counters["covered"] += 1
+                continue
+
+            # S3, BB4: 발신인이 상대방인 일방통지 및 진술확인은 상대방 쪽 사실 입증에 정당하므로 제외
+            if matched_cat in ("일방통지", "진술확인"):
+                is_opp_sender = False
+                if sender:
+                    if author_party == "원고" and sender in ("피고", "채무자", "피신청인"):
+                        is_opp_sender = True
+                    elif author_party == "피고" and sender in ("원고", "채권자", "신청인"):
+                        is_opp_sender = True
+
+                if is_opp_sender:
+                    if matched_cat == "일방통지":
+                        if debug_counters is not None:
+                            debug_counters["excluded"] += 1
+                        continue
+                    elif matched_cat == "진술확인":
+                        # BB4: 술어의 주체가 상대방이거나 상대방 의무의 이행·완료일 때로 한정
+                        # 자기 측 의무를 상대방 확인서로 단정하는 꼴은 과장 판정 유지
+                        is_own_duty_claim = False
+                        if author_party and cl_subj == author_party:
+                            is_own_duty_claim = True
+                        elif author_party and re.search(rf"(?<![가-힣]){author_party}(?:가|이|는|은)\s*.*?(?:변제|지급|완납|이행)", scope_text):
+                            is_own_duty_claim = True
+
+                        if not is_own_duty_claim:
+                            if debug_counters is not None:
+                                debug_counters["excluded"] += 1
+                            continue
+
+            # S8: 등급 결정 공통 기준 적용
+            # B = 직접 증명 구조 + 매트릭스 '못 덮음' + (통지류는 자기 측 발신)
+            # 진단·상태류와 진술·확인류는 C 상한
+            is_own_sender = False
+            if matched_cat == "일방통지" and sender:
+                if author_party == "원고" and sender in ("원고", "신청인", "채권자"):
+                    is_own_sender = True
+                elif author_party == "피고" and sender in ("피고", "피신청인", "채무자"):
+                    is_own_sender = True
+                elif not author_party:
+                    is_own_sender = True
+
+            if matched_cat in ("진단상태", "진술확인"):
+                grade = EvidenceGrade.C
+                severity = Severity.MEDIUM
+                status = VerificationStatus.UNVERIFIED
+            elif is_direct_proof:
+                if matched_cat == "일방통지":
+                    grade = EvidenceGrade.B if is_own_sender else EvidenceGrade.C
+                    severity = Severity.HIGH if is_own_sender else Severity.MEDIUM
+                    status = VerificationStatus.CONTRADICTED if is_own_sender else VerificationStatus.UNVERIFIED
+                else:
+                    grade = EvidenceGrade.B
+                    severity = Severity.HIGH
+                    status = VerificationStatus.CONTRADICTED
+            else:
+                grade = EvidenceGrade.C
+                severity = Severity.MEDIUM
+                status = VerificationStatus.UNVERIFIED
+
+            cat_map = {
+                "일방통지": "NOTICE_OVERREACH",
+                "견적계획": "ESTIMATE_OVERREACH",
+                "명의식별": "IDENTIFIER_OVERREACH",
+                "진단상태": "DIAGNOSTIC_ASSERTION",
+                "영상사진": "PHOTO_OVERREACH",
+                "영수입금": "RECEIPT_OVERREACH",
+                "진술확인": "STATEMENT_OVERREACH",
+            }
+            cat_tag = cat_map.get(matched_cat, f"{matched_cat}_OVERREACH")
+            pred_desc = {
+                "상대방의사표시": "상대방 승낙·동의",
+                "완료_확정": "대금 완납·시공 완료",
+                "내심의상태": "가해 사실 직접 증명·고의",
+                "전칭_전기간": "전액·전 기간 전칭",
+            }
+            pred_summary = "·".join(pred_desc.get(p, p) for p in uncovered_preds)
+
+            out.append(
+                _finding(
+                    doc,
+                    FindingType.EVIDENCE_PURPOSE_MISMATCH,
+                    grade,
+                    severity,
+                    f"서증 증명력 한계 초과 원용: {label} {name} → {pred_summary}",
+                    f"해당 서증의 객관적 성격({matched_cat})상 본문 주장 사실({pred_summary})을 직접 또는 단독으로 뒷받침하기 부족하다.",
+                    f"{label} {name} | {scope_text[:120]}",
+                    page=row.get("page"),
+                    status=status,
+                    features={
+                        "exhibit": label,
+                        "category": cat_tag,
+                        "uncovered_predicates": uncovered_preds,
+                        "sender_identified": is_own_sender if matched_cat == "일방통지" else True,
+                        "rule_id": f"claim_engine.evidence_consistency:{cat_tag}",
+                    },
+                )
+            )
+            if debug_counters is not None:
+                debug_counters["pos_emitted"] += 1
+
+    # 중복 제거 (동일 호증·동일 범주에 대한 동일 문맥 중복 방지)
+    dedup: List[Finding] = []
+    seen_keys = set()
+    for f in out:
+        k = (
+            f.confidence_features.get("exhibit"),
+            f.confidence_features.get("category"),
+            (f.evidence[0].excerpt if f.evidence else "")[:50],
+        )
+        if k not in seen_keys:
+            seen_keys.add(k)
+            dedup.append(f)
+
+    return dedup
 
 
 def _attached_amounts(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Finding]:
@@ -630,8 +1276,10 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
         prefixes = {re.sub(r"\s", "", pair[0]) for pair in pairs}
         if len(prefixes) != 1:
             return original
-        # Keep the approved date-availability residual and native/GLOBAL guards.
-        if len({re.sub(r"\s", "", row.get("date") or "") for row in same}) != 1:
+        # 양쪽 모두 날짜가 기재되어 있으나 서로 다른 경우에만 별개 자료로 보아 original을 유지하고,
+        # 한쪽에만 날짜가 병기된 동일 자료명 접두(prefixes == 1) 반복은 같은 호증의 부연 설명으로 취급한다.
+        non_empty_dates = {re.sub(r"\s", "", row.get("date") or "") for row in same if (row.get("date") or "").strip()}
+        if len(non_empty_dates) > 1:
             return original
         if any(first_token_identifier(pair[2]) for pair in pairs):
             return original
@@ -1644,11 +2292,14 @@ def check_evidence_form_defects(
 
 def check_document(doc: NormalizedDocument) -> List[Finding]:
     exhibits = exhibit_rows(doc)
+    from .internal_inconsistency import check_internal_inconsistency
+
     return (
         check_exhibits(doc)
         + check_statements(doc, exhibits)
         + check_evidence_numbering_mismatches(doc, exhibits)
         + check_evidence_form_defects(doc, exhibits)
+        + check_internal_inconsistency(doc)
     )
 
 
