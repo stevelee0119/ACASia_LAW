@@ -3,7 +3,7 @@
 이 문서 하나가 Antigravity에 대한 현행 지시다. 이전 전달문 전체를 대체한다. 작성: 평가 에이전트(Claude Code).
 
 전달 기록: 2026-10-21 사용자가 Antigravity에 전달 완료(`a491318` 판, TK-95 우선 처리 포함).
-추가 전달: 2026-10-22 D-4(#171) 3차 판정 행 전달 완료(`8860fa4` 판). 2026-10-24 B-2(#168) 4차 판정 행 전달 완료(`91374bb` 판). 2026-10-24 B-2 5차·TK-93·TK-94 판정 행 전달 완료(`a413a47` 판). 2026-10-24 B-2 6차 판정 행 전달 완료(`0b257ea` 판). 2026-10-24 B-2(병합)·TK-94 5차 판정 행 전달 완료(`a170e75` 판). 2026-10-24 2-1절(0.14.0 릴리스 순서) 전달 완료(`577cfe2` 판). 2026-10-24 A-4(#175 불승인) 판정 행·A-3 사전 의견 전달 완료(`5331abd` 판). 2026-10-24 2-2절(탐지 PR 공통 수용 규약)·#175·#176·#165·#167 PR별 보완 지시 전달 완료(`d0f40df` 판). 2026-10-24 메모 보정본 3건(#175·#165·#167) 조건부 승인 지시·#177 닫기·TK-125 반영 안내 전달 완료(`cc9c7d4` 판). 2026-10-24 #176 수용·병합 안내 전달 완료(`cb83414` 판). 2026-10-24 #175 4차 보완 지시(R1~R9)·A-4 범위 유지 안내 전달 완료(`04de460` 판). 2026-10-24 버전·릴리스 정책 개정 안내·#165 4차 보완 지시(S1~S9) 전달 완료(`4c5045e` 판). 2026-10-24 #167 3차 보완 지시(T1~T9)·#178 병합 안내 전달 완료(`b8319b5` 판). 2026-10-24 #175 5차 보완 지시(U1~U4) 전달 완료(`2ede86e` 판). 2026-10-24 #165 5차 보완 지시(V1~V4) 전달 완료(`7e9d176` 판). 2026-10-24 #165 6차 보완 지시(X1~X3) 전달 완료(`8b19ae2` 판). 2026-10-24 #175 6차 보완 지시(W1~W3) 전달 완료(`18eb446` 판). 2026-10-24 #167 4차 보완 지시(Y1~Y9) 전달 완료(`ba29ae8` 판). 2026-10-25 #175 7차(Z1~Z4)·#165 7차(V1~V5)·#167 5차(Q1~Q3) 보완 지시 전달 완료(`357d87f` 판). 2026-10-25 #175 8차(AA1~AA6)·#165 8차(BB1~BB4)·#167 6차(QQ1~QQ3) 보완 지시 전달 완료(`f7754e3` 판). 2026-10-25 #165 9차 판정(CC1 조건부 승인) 전달 완료(`120c95e` 판). 2026-10-25 #167·#175 사전 검증 부록 전달 완료(`73c351d` 판).
+추가 전달: 2026-10-22 D-4(#171) 3차 판정 행 전달 완료(`8860fa4` 판). 2026-10-24 B-2(#168) 4차 판정 행 전달 완료(`91374bb` 판). 2026-10-24 B-2 5차·TK-93·TK-94 판정 행 전달 완료(`a413a47` 판). 2026-10-24 B-2 6차 판정 행 전달 완료(`0b257ea` 판). 2026-10-24 B-2(병합)·TK-94 5차 판정 행 전달 완료(`a170e75` 판). 2026-10-24 2-1절(0.14.0 릴리스 순서) 전달 완료(`577cfe2` 판). 2026-10-24 A-4(#175 불승인) 판정 행·A-3 사전 의견 전달 완료(`5331abd` 판). 2026-10-24 2-2절(탐지 PR 공통 수용 규약)·#175·#176·#165·#167 PR별 보완 지시 전달 완료(`d0f40df` 판). 2026-10-24 메모 보정본 3건(#175·#165·#167) 조건부 승인 지시·#177 닫기·TK-125 반영 안내 전달 완료(`cc9c7d4` 판). 2026-10-24 #176 수용·병합 안내 전달 완료(`cb83414` 판). 2026-10-24 #175 4차 보완 지시(R1~R9)·A-4 범위 유지 안내 전달 완료(`04de460` 판). 2026-10-24 버전·릴리스 정책 개정 안내·#165 4차 보완 지시(S1~S9) 전달 완료(`4c5045e` 판). 2026-10-24 #167 3차 보완 지시(T1~T9)·#178 병합 안내 전달 완료(`b8319b5` 판). 2026-10-24 #175 5차 보완 지시(U1~U4) 전달 완료(`2ede86e` 판). 2026-10-24 #165 5차 보완 지시(V1~V4) 전달 완료(`7e9d176` 판). 2026-10-24 #165 6차 보완 지시(X1~X3) 전달 완료(`8b19ae2` 판). 2026-10-24 #175 6차 보완 지시(W1~W3) 전달 완료(`18eb446` 판). 2026-10-24 #167 4차 보완 지시(Y1~Y9) 전달 완료(`ba29ae8` 판). 2026-10-25 #175 7차(Z1~Z4)·#165 7차(V1~V5)·#167 5차(Q1~Q3) 보완 지시 전달 완료(`357d87f` 판). 2026-10-25 #175 8차(AA1~AA6)·#165 8차(BB1~BB4)·#167 6차(QQ1~QQ3) 보완 지시 전달 완료(`f7754e3` 판). 2026-10-25 #165 9차 판정(CC1 조건부 승인) 전달 완료(`120c95e` 판). 2026-10-25 #167·#175 사전 검증 부록 전달 완료(`73c351d` 판). 2026-10-25 #165 CC1·#175 DD1 판정 전달 완료. 2026-10-25 2-1-1절(0.14.0 버전 커밋 지시) 전달 완료(`d5c111f` 판, #179 병합 `988c678` 뒤).
 
 ## 0. 가장 중요한 것: 말뭉치·평가 세트 문장을 규칙에 옮기지 않는다
 - **train 문장 틀 금지(10-17 사용자 지시)는 그대로다.** #125·#126 1차는 train 결함 문장을 정규식으로 옮겨 불승인됐다(train 40/40·32/40, 같은 유형 은퇴 항목 득점 0, 다른 표현 0/5·0/4).
@@ -107,6 +107,112 @@ release_highlights.json "0.14":
 
 **수용 기준**: diff가 위 세 파일과 생성물(README 변경표·RELEASE_HISTORY)뿐, 필수 CI 성공, 판정서와 버전 일치. 평가 측은 diff와 CI만 확인하고 수용한다(탐지 변경 없음, 재측정 없음).
 
+## 2-3. 0.14.0 화면 오구현 보완 + 평면 탭·참고문헌 행 통합·외부 AI 답변 반영 (10-25 개정, 사용자 지시 '잘못 구현된 기능을 즉각 원래 구현하고자 했던 방향대로 변경')
+0.14.0에서 사용자 개선안(10-19) 3·4항이 다르게 구현됐다. 원인은 평가 측 티켓·판정에 있었다. 이번부터 사용자 요구 티켓은 **사용자 원문과 원문 대응표**를 수용 기준으로 하고, **화면 캡처를 사용자에게 확인받은 뒤** 수용한다(AGENT_ROLES 2.1). 10-25 첫 사전 검증 화면을 본 사용자 추가 요구(평면 탭 5개·답변 붙여넣기·3번째 탭 프롬프트·참고문헌 표 통합)를 반영해 TK-126·127(1단계)·128을 **PR 1개**로 묶었다(같은 파일, 한 사본에서 함께 사전 검증). 같은 날 사용자 결정으로 '공식 DB로 다시 조회' 버튼(평가 측 추가안)을 철회하고, 반복을 줄이도록 '수정본 그대로 적용·하지 않을 것·평가 측 수용 절차 고정'으로 지시를 다시 썼다(3차 개정). 이어 사용자가 화면 6장 확인('그대로 진행'), 답변 브라우저 저장, 활동 기록 화면 삭제를 결정해 4차 개정했다. 아래가 사용자에게 낸 지시문 전문이다.
+
+[Antigravity 지시 — TK-126·127(1단계)·128 화면 개편, PR 1개. 2026-10-25 4차 개정. 앞선 TK-126 지시 세 판은 모두 이 지시로 대체한다]
+
+■ 이 지시의 목적: 한 번에 수용
+평가 측이 아래 수정 전체를 Steve `b68e70f` 사본에 먼저 적용해 시험·화면을 확인했고, 사용자가 화면 6장을 보고 '그대로 진행'으로 확정했다(활동 기록 화면 삭제·답변 브라우저 저장 결정 포함). 구현 측은 **검증된 수정본을 그대로 적용**하고 아래 '제출 전 확인'만 돌린다. 새 설계·추가 개선·리팩터링을 하지 않는다. 그래야 보완 왕복 없이 한 번에 수용된다.
+
+■ 1. 작업 절차 (이 순서 그대로)
+1) 평가 PR #182가 Steve_ACASiaLAW에 병합된 뒤 시작한다(보호 시험 `tests/acceptance/test_f1_screen_protected.py` 수정이 #182에 있다). 현재 Steve = `b68e70f`이고 #182는 문서·보호 시험만 바꾸므로 아래 패치는 충돌 없이 적용된다(평가 측 `git apply --check` 확인).
+2) 새 브랜치에서: `git apply --3way docs/handoff/patches/TK-126-128_prevalidated_b68e70f.diff` (18개 파일, 536줄 추가·187줄 삭제: apps/api/main.py, apps/api/routers/workspace.py, apps/web/index.html, apps/web/static/{app.js,styles.css,workflow.js}, tests 12개).
+3) 충돌이 나면(그 사이 Steve가 같은 줄을 바꾼 경우만) 양쪽을 모두 살려 합치고, PR 본문에 파일·줄과 처리 내용을 적는다. 충돌이 없으면 패치 외 변경을 하지 않는다.
+4) '제출 전 확인'을 돌리고 결과를 PR 본문에 붙인다. 커밋 끝 `Agent: implementer`. PR 대상 Steve_ACASiaLAW, 제목 `fix(ui): TK-126·127·128 화면 개편 — 평면 탭·참고문헌 행 통합·외부 AI 답변 반영`.
+
+■ 2. 수정본이 하는 일 (원인 → 고친 것, 줄 번호는 b68e70f)
+1. '확인 방법' 반복: app.js 2148~2167행 블록 삭제.
+2. 프롬프트 버튼이 작고 표 아래: #reviewTableActions를 표 위 띠(review-prompt-bar)로, 큰 버튼 "📋 엘박스/AI 검증 프롬프트 만들기".
+3. 셀 넘침: .badge(styles.css 483행~) nowrap이 .validity-verdict에도 걸림 → 두 표의 .validity-verdict만 줄바꿈 허용.
+4. 3번째 탭 '주장·쟁점' → '법률적으로 무리한 주장'(legal-claims). index.html 11·15행, workflow.js 304·307~313행, app.js 624·2583~2604·2798행. 쟁점 API·DB는 남김.
+5. 배포 뒤 옛 화면: main.py 300행 뒤 미들웨어, /·/static/*에 Cache-Control: no-cache.
+6. 탭 두 줄(묶음 → 하위 탭): workflow.js 6~33행 groups·syncNavigation·initNavigation·314행 호출 삭제(app.js switchTab의 syncNavigation 호출 줄도). 상단 탭 5개 [자료][AI 작성·보안 진단][출처가 확인되지 않는 항목][법률적으로 무리한 주장][보고서]. 활동 기록 화면 삭제(사용자 결정): index.html 17행 audit 패널·audit 탭 단추, app.js switchTab의 loadAudit 줄·loadAudit 함수·refreshAudit 처리 줄. 서버 감사 기록·/audit API는 그대로. '확인할 항목' 문구 전부 교체(index.html 11·13·14·15행, app.js 1240·1779·2077·2488행). 700px 이하 줄바꿈.
+7. 참고문헌 결과가 표 아래 별도 절(renderFindings 2464행): 의견(engine_data.rag.observations)을 claim_id → claims[].citation_ids → 행 citation_id로, 실패 시 문장 포함 비교(양쪽 8자 이상)로 표 행 3열에 붙임. 못 붙인 의견은 별도 행(불부합은 3번째 탭). 하단 절 삭제, 표 위 #referenceStatus 한 줄 상태(펼치면 기존 처리 기록), 3번째 탭 #legalReferenceStatus는 한 줄만.
+8. 답변을 다시 넣을 버튼 없음: 프롬프트 번호(A1·B1)와 결과 블록(<<<ACAS_RESULT … ACAS_RESULT>>>), '📥 외부 AI 답변 붙여넣기' → 미리보기 → '표에 반영'. 행 3열에 '외부 AI 답변 A1 (공식 확인 아님)'. 판정 배지·공식 상태·등급 불변. 답변은 브라우저 저장(localStorage, 사용자 결정).
+9. 3번째 탭 프롬프트 없음: 주장 문장은 서버가 정책대로 가린다 — POST /projects/{id}/external-ai/prompt-texts (LOCAL_ONLY 403, MASKED는 PIIEngine 가림, ORIGINAL 원문). #legalClaimsActions 띠에 프롬프트·붙여넣기 버튼.
+
+■ 3. 하지 않을 것 (넣으면 범위 밖으로 되돌린다)
+- '공식 DB로 다시 조회' 버튼·자동 재조회: 만들지 않는다(사용자 결정 10-25 — 공식 DB는 검증 실행 때 law_go_kr 어댑터로 이미 조회하고, 재검증은 엘박스 프롬프트로 충분. 공식 재조회가 필요하면 기존 '다시 검증').
+- 외부 AI 답변으로 판정 배지·official_status·등급·점수를 바꾸는 것.
+- 답변의 서버 저장·DB 표·migrations: 하지 않는다(사용자 결정 — 브라우저 저장).
+- 보고서에 답변 넣기: 이 PR에 넣지 않는다. 별도 TK-129로 평가 측이 사전 검증 뒤 따로 지시한다.
+- 활동 기록 화면·버튼을 다른 곳(보고서 탭 하위 탭 등)에 다시 만드는 것.
+- TK-127 2단계(인용 행의 Drive 색인 조회, review_items 서버 필드), 탐지·채점·RAG 엔진 변경.
+- 수정본에 없는 문구·색·배치 변경, 함수 이름 변경, 리팩터링.
+- 시험 삭제·약화(수정본의 시험 변경은 옛 구조 단언을 새 위치로 옮긴 것뿐이고 check_test_edits 통과 확인됨).
+
+■ 4. 사전 검증 중 실제로 깨졌던 곳 (손으로 옮겨 적을 때 같은 실수 금지)
+- 결과 블록은 buildExternalAiPromptForUnverifiedAuthorities 함수 **안의 문자열**로 둔다. test_external_ai_prompt.py가 이 함수만 떼어 node로 실행하므로 바깥 상수·함수를 부르면 실패한다.
+- 붙여넣기 버튼의 번호↔행 연결은 **버튼을 누를 때** 저장소에서 읽는다. 버튼을 그릴 때 읽으면 프롬프트를 만든 뒤에도 비어 있다.
+- 참고문헌 처리 기록(referenceSection)을 두 탭에 모두 그리면 같은 문구가 두 번 생겨 기존 시험(test_frontend_citation_groups·test_frontend_summary_compact)이 strict mode로 실패한다. 상세는 #referenceStatus 하나에만.
+
+■ 5. 제출 전 확인 (PR 본문에 결과 붙이기)
+- pytest -q tests/acceptance tests/test_frontend_*.py tests/test_external_ai_prompt.py tests/test_external_ai_prompt_browser.py tests/test_f1_ai_security_tab_browser.py tests/test_f2_review_screen_browser.py tests/test_tk61_layout_browser.py tests/test_tk88_three_tier_review.py tests/test_upload_privacy_notice_browser.py tests/test_tk126_flat_tabs_answer_import.py tests/test_workspace.py tests/test_api.py
+  → 평가 측 사전 검증: 1,410건 실패 0, 건너뜀 25(같은 수가 나와야 한다).
+- python scripts/check_test_edits.py --base origin/Steve_ACASiaLAW → '기존 시험의 삭제·표시 변경 없음'.
+- git diff --stat origin/Steve_ACASiaLAW → 위 18개 파일만(충돌 처리 파일은 본문에 따로 적음).
+
+■ 6. 평가 측 수용 절차 (이것만 본다 — 추가 요구 없음)
+1) 필수 CI 성공(인용). 2) PR diff = 수정본(충돌 처리분 제외 차이 0). 3) 위 시험 묶음 평가 측 재실행 실패 0. 4) 탐지 diff 0·고정·은퇴 점수 불변(엔진 미변경 확인). 5) 실제 화면 캡처(긴 판정 문구 포함)를 원문 대응표(TK-126 1~7, TK-127 1~3, TK-128 1~5)와 함께 사용자에게 제시 → 사용자 확인 뒤 수용.
+- 2)~4)가 맞으면 평가 측은 코드 보완 지시를 내지 않는다. 화면에서 사용자가 새로 요구하는 것은 새 티켓으로 따로 낸다(이 PR을 다시 열지 않는다).
+
+■ 7. 미검증 (평가 측이 사용자 실사용으로 확인, 구현 측 조치 불필요)
+- 운영 데이터 화면, 운영 Drive 의견이 행에 붙는 비율, 실제 엘박스 답변의 결과 블록 준수율, 붙여넣은 답변 문장의 인젝션 탐지(미구현 — 표시는 textContent라 실행되지 않음).
+
+■ 참고 문서
+- docs/handoff/TK-126_v014_screen_rework.md, TK-127_drive_reference_row_integration.md, TK-128_external_ai_prompt_tier3_and_answer_import.md (사용자 원문·원문 대응표·원인 상세).
+
+
+## 2-4. TK-129 보고서에 외부 AI 답변 포함 (10-25, 사용자 지시 'TK-129 착수')
+TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에서 사전 검증했다. 아래가 사용자에게 낸 지시문 전문이다.
+
+[Antigravity 지시 — TK-129 보고서에 외부 AI 답변 포함, PR 1개. 2026-10-25]
+
+■ 이 지시의 목적: 한 번에 수용
+사용자 요구: "AI 검토내용이 표에 반영된 후 다시 보고서를 생성할때, 그 내용이 보고서 내용에 반영되도록" (답변은 브라우저에 저장하고, 공유는 보고서로 한다 — 사용자 결정). 평가 측이 TK-126·127·128 수정본 위 사본에 아래 수정을 먼저 적용해 시험으로 확인했다. 구현 측은 **검증된 수정본을 그대로 적용**하고 '제출 전 확인'만 돌린다. 새 설계·추가 개선·리팩터링을 하지 않는다.
+
+■ 1. 작업 절차 (이 순서 그대로)
+1) TK-126·127·128 PR이 Steve_ACASiaLAW에 병합된 뒤 시작한다(이 수정본은 그 수정본 위에서 만들었다).
+2) 새 브랜치에서: `git apply --3way docs/handoff/patches/TK-129_prevalidated_after_TK126.diff` (9개 파일, 249줄 추가·14줄 삭제: apps/api/schemas.py, apps/api/routers/reports.py, apps/web/static/{app.js,report-workbench.js}, packages/report_engine/{external_answers.py(새),pdf_report.py,docx_report.py,exporters.py}, tests/test_tk129_report_external_answers.py(새)). 평가 측 확인: b68e70f + TK-126 수정본 위에 그대로 적용된다.
+3) 충돌이 나면(TK-126 PR이 수정본과 다르게 병합된 곳만) 양쪽을 살려 합치고 PR 본문에 파일·줄·처리를 적는다. 충돌이 없으면 패치 외 변경을 하지 않는다.
+4) '제출 전 확인' 결과를 PR 본문에 붙인다. 커밋 끝 `Agent: implementer`. PR 대상 Steve_ACASiaLAW, 제목 `feat(report): TK-129 표에 반영한 외부 AI 답변을 보고서에 포함`.
+
+■ 2. 원인과 수정본이 하는 일 (줄 번호는 b68e70f + TK-126 수정본 기준)
+원인: 보고서는 서버가 실행 결과 고정본으로만 만든다. 화면 요청(report-workbench.js 72행)과 요청 모델(ReportRequest, schemas.py 174~181행)에 답변 칸이 없고, 고정본(_snapshot, reports.py 542행)에도 자리가 없어서, 브라우저에 저장된 답변이 보고서로 갈 길이 없다.
+1. 요청 모델: ExternalAiAnswer(code ^[AB]\d{1,3}$, item_id ≤300, verdict·basis·summary ≤1000, applied_at ≤60). ReportRequest.external_ai_answers(≤400, 기본 []). report-jobs는 model_dump()를 저장·복원하므로 그대로 이어진다.
+2. 새 모듈 packages/report_engine/external_answers.py: 제목 "외부 AI 참고 의견 (사용자 입력, 공식 확인 아님)", 안내문, 머리글 [번호, 대상, 판정, 근거, 요지, 반영 시각]. 대상 문구는 서버가 고정 결과에서 다시 찾는다(documents[].review_items의 item_id → 인용 표기/주장 문장, 참고문헌 행 id `{문서 id}_REFERENCE_{claim_id}` → claim_quote). 브라우저가 보낸 대상 문구는 받지 않는다.
+3. reports.py: (a) 219행 _resolve_run 끝 — 표에 없는 item_id면 422(unknown_item_ids). (b) 247행 _build_draft — checked_answers 결과를 _snapshot(external=…)으로. (c) 542행 _snapshot — external이 있을 때만 frozen["external_ai_answers"](없으면 키 없음 → 기존 고정본 해시 불변). (d) 640행 확정 — external=frozen.get("external_ai_answers")를 반드시 넘긴다(확정은 고정본을 새로 만들므로 빠뜨리면 확정본에서 답변이 사라진다).
+4. 형식: PDF(pdf_report.py 290행 뒤)·Word(docx_report.py 226행 뒤)에 '3. 법률적으로 무리한 주장' 다음 절, Excel(exporters.py 236행 앞) '외부AI참고의견' 시트 — 모두 답변이 있을 때만. JSON은 review_snapshot에 자동 포함. CSV·manifest·highlight 제외. 공유용 가림은 shareable_snapshot이 고정본 전체를 가리므로 추가 코드 없음. Excel 수식 방지는 기존 safe_cell.
+5. 화면: app.js externalStoreKey·loadExternalStore에 (projectId, runId) 인자(기본 현재 값), externalAnswersForReport(projectId, runId) 추가(번호·행이 모두 남은 답변만). report-workbench.js 생성 창에 답변이 있을 때만 체크 상자 "표에 반영한 외부 AI 답변 n건을 '외부 AI 참고 의견(공식 확인 아님)'으로 함께 싣기"(기본 선택), 요청 본문 external_ai_answers(체크 해제 시 []).
+
+■ 3. 하지 않을 것 (넣으면 범위 밖으로 되돌린다)
+- 답변의 서버 저장·DB 표·migrations(사용자 결정: 브라우저 저장).
+- 답변으로 판정·등급·점수·요약·다른 절을 바꾸는 것. 보고서 다른 절의 순서·문구 변경.
+- CSV·manifest·highlight에 답변 넣기.
+- 브라우저가 보낸 대상 문구를 보고서에 쓰는 것(대상은 서버가 고정 결과에서 찾는다).
+- 기존 시험 수정·삭제(이 수정본은 기존 시험을 고치지 않는다).
+
+■ 4. 사전 검증 결과 (평가 측 재실행)
+- 새 시험 tests/test_tk129_report_external_answers.py 5건 통과. 기능을 끈 사본(보고서 행 함수가 빈 목록)에서는 2건 실패 — 시험이 기능을 실제로 잡는다.
+- 보고서·화면·API 관련 시험 2,022건 실패 0, 건너뜀 25(보고서를 다루는 기존 시험 전부 + TK-126 시험 묶음 + 새 시험).
+- 확정(finalize)에 답변을 넘기지 않은 사본에서는 확정본 시험이 실패 — 3(d) 누락을 시험이 잡는다.
+- 전체 tests 실행은 평가 측에서 진행 중이며 결과는 HISTORY에 추가한다(구현 측 조치 불필요).
+- 미검증: 운영 보고서 실제 모양(긴 답변의 PDF 줄바꿈), 실제 엘박스 답변 분량.
+
+■ 5. 제출 전 확인 (PR 본문에 결과 붙이기)
+- pytest -q tests/test_tk129_report_external_answers.py tests/test_report_completion.py tests/test_report_timeline_exclusion.py tests/test_source_objects.py tests/test_identity_security.py tests/test_operations_completion.py tests/test_improvements.py tests/test_evidence_hardening.py tests/test_tk126_flat_tabs_answer_import.py tests/test_frontend_report_button.py tests/test_frontend_report_progress.py tests/test_api.py → 실패 0.
+- python scripts/check_test_edits.py --base origin/Steve_ACASiaLAW → '기존 시험의 삭제·표시 변경 없음'.
+- git diff --stat origin/Steve_ACASiaLAW → 위 9개 파일만.
+
+■ 6. 평가 측 수용 절차 (이것만 본다 — 추가 요구 없음)
+1) 필수 CI 성공(인용). 2) PR diff = 수정본(충돌 처리분 제외 차이 0). 3) 위 시험 평가 측 재실행 실패 0. 4) 탐지 diff 0·고정·은퇴 점수 불변(보고서 엔진만 변경). 5) 답변을 반영한 실제 보고서(PDF·Word·Excel) 캡처를 원문 대응표(TK-129 1~3)와 함께 사용자에게 제시 → 사용자 확인 뒤 수용.
+- 2)~4)가 맞으면 평가 측은 코드 보완 지시를 내지 않는다. 새 요구는 새 티켓으로 따로 낸다.
+
+■ 참고 문서
+- docs/handoff/TK-129_report_includes_external_ai_answers.md (사용자 원문·원문 대응표·원인·줄 번호 상세).
+
+
 ## 2-2. 탐지 PR 공통 수용 규약 — 하드코딩 금지 (2026-10-24 사용자 지시 '평가기준을 엄격히 적용하되 하드코딩으로 충족하지 못하게 제한')
 10-24 검토(#175 `618130c`·#165 `94c645f`·#167 `af28269`/`0731277`)에서 세 PR이 같은 방식으로 실패했다. 은퇴 세트 항목만 정확히 오르고(EVI-DATE 7·EVI-OVR 5·EVI-INCONS 3) train 같은 유형은 0이다. 평가 측의 비공개 다른 표현 탐침도 0이다(#175 0/4·#165 0/2·#167 장소·서명자 규칙 0). 새 정규식은 고정 낱말 여러 개를 순서대로 이은 문장 틀이다. 그 낱말은 은퇴 항목 위치 소제목 낱말과 8~9개씩 겹친다. **아래 규약은 A-4·B-1·B-3과 이후 모든 탐지 PR에 적용한다. 하나라도 어기면 점수와 무관하게 불승인한다.**
 
@@ -176,6 +282,10 @@ release_highlights.json "0.14":
 | D-4 TK-88 | 메모 #159 `1be8cdd` 조건부 승인(닫음) / 구현 #171 `ef47063` | **수용·병합** | Steve `ccf0773`(10-22). 완료. 참고: 3단 표 글자·줄 간격이 2단과 같은지 다음 손질 때 확인. |
 | E-1 TK-83 | 메모 #160 승인 / 구현 #166 `3bf5439` | **수용·병합** | Steve `34d8b18`(10-21). 완료. |
 | (사용자 지시) TK-94 외부 AI 검증 프롬프트 | #164 `bbc5a4a`(6차) | **수용·병합** | Steve `ce323c7`(10-24). 비차단 후속: '…및…에 관한 법률' 꼴 긴 법령명 일부 잘림(정확도). |
+| TK-126 0.14.0 화면 오구현 보완·평면 탭 5개 | — | **지시 개정(10-25), 평가 측 사전 검증 완료, TK-127·128과 PR 1개** | '확인 방법' 삭제·프롬프트 버튼 표 위 강조·셀 넘침·3단 독립 탭·배포 캐시·상단 평면 탭 5개. 2-3절, 수정본 `patches/TK-126-128_prevalidated_b68e70f.diff` |
+| TK-127 Drive 근거 상단 표 통합 | — | **1단계 지시(10-25 개정, 사전 검증 완료)·2단계 설계 메모 먼저** | 1단계: 대조 의견을 표 행에 연결, 하단 절 → 표 위 상태 줄. 2단계: 인용 행 Drive 조회. 2-3절, `TK-127_…md` |
+| TK-129 보고서에 외부 AI 답변 포함 | — | **지시(10-25), 평가 측 사전 검증 완료** | 보고서 요청에 브라우저 답변 동봉 → 서버 고정본(해시)·PDF·Word·Excel·JSON. 선행 TK-126 PR. 2-4절, 수정본 `patches/TK-129_prevalidated_after_TK126.diff` |
+| TK-128 두 표 프롬프트·외부 AI 답변 붙여넣기 | — | **지시(10-25 개정, 사전 검증 완료)** | 번호·결과 블록, 붙여넣기→미리보기→표에 반영, 3단 서버 가림 API. 서버 저장은 사용자 결정 대기. 2-3절, `TK-128_…md` |
 
 - 공통: 화면 PR(D)의 기존 시험 수정은 대응표가 승인 조건이다. 시험을 지우면 CI '점수 하락 게이트'의 `check_test_edits.py`가 실패한다. 그때는 사유 문서를 `docs/handoff/requests/`에 둔다.
 

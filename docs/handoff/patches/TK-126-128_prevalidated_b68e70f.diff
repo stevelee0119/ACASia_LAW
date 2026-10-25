@@ -1,0 +1,1263 @@
+diff --git a/apps/api/main.py b/apps/api/main.py
+index 10bbdf8..4af836e 100644
+--- a/apps/api/main.py
++++ b/apps/api/main.py
+@@ -299,6 +299,15 @@ def create_app() -> FastAPI:
+     if (web_dir / "index.html").exists():
+         app.mount("/static", StaticFiles(directory=str(web_dir / "static")), name="static")
+ 
++        # TK-130: 배포 뒤 예전 화면 파일을 쓰지 않도록 화면 파일은 매번 재확인(ETag 304)하게 한다.
++        @app.middleware("http")
++        async def _web_revalidate(request, call_next):
++            response = await call_next(request)
++            path = request.url.path
++            if (path == "/" or path.startswith("/static/")) and "cache-control" not in response.headers:
++                response.headers["Cache-Control"] = "no-cache"
++            return response
++
+         @app.get("/")
+         def index() -> FileResponse:
+             return FileResponse(str(web_dir / "index.html"))
+diff --git a/apps/api/routers/workspace.py b/apps/api/routers/workspace.py
+index dc97950..d47ec93 100644
+--- a/apps/api/routers/workspace.py
++++ b/apps/api/routers/workspace.py
+@@ -343,3 +343,27 @@ def review_history(project_id: str, subject_id: str | None = None, limit: int =
+     if subject_id:
+         query = query.where(ReviewRevision.subject_id == subject_id)
+     return [as_dict(r) for r in session.scalars(query.order_by(ReviewRevision.id.desc()).limit(limit))]
++
++
++class ExternalPromptTexts(BaseModel):
++    texts: list[str] = Field(default_factory=list, max_length=200)
++
++    @field_validator("texts")
++    @classmethod
++    def limit_length(cls, texts):
++        return [str(t)[:2000] for t in texts]
++
++
++# 2026-10-25 사용자 요구: '법률적으로 무리한 주장' 탭의 엘박스/AI 검증 프롬프트에는 주장 문장이 들어가므로
++# 프로젝트의 외부 AI 전송 정책에 따라 서버에서 가린 뒤에만 돌려준다(브라우저 정규식 가림에 맡기지 않는다).
++@router.post("/projects/{project_id}/external-ai/prompt-texts")
++def external_prompt_texts(project_id: str, payload: ExternalPromptTexts, session: Session = Depends(get_db)):
++    project = project_or_404(session, project_id)
++    policy = str(project.external_ai_policy or "MASKED")
++    if policy == "LOCAL_ONLY":
++        raise HTTPException(403, "이 프로젝트는 외부 AI 전송을 허용하지 않습니다")
++    if policy == "ORIGINAL":
++        return {"policy": policy, "texts": payload.texts}
++    from packages.pii_engine import PIIEngine, PseudonymStore
++    engine = PIIEngine(PseudonymStore(project_id=project_id))
++    return {"policy": "MASKED", "texts": [engine.mask_text(text).masked_text for text in payload.texts]}
+diff --git a/apps/web/index.html b/apps/web/index.html
+index f98d3bc..7e8b117 100644
+--- a/apps/web/index.html
++++ b/apps/web/index.html
+@@ -8,13 +8,12 @@
+ <div id="staleNotice" class="notice warning" hidden>검토 자료 또는 설정이 변경되었습니다. 기존 결과는 변경 전 자료 기준입니다.<button id="reverify">다시 검증</button></div>
+ <div id="progress" class="progress" hidden><div><span id="progressText"></span><span id="progressPercent"></span></div><progress id="progressBar" max="100" value="0"></progress><p id="progressNotice" class="progress-notice" role="status" hidden></p></div>
+ <div id="summary" class="summary"></div>
+-<nav class="tabs" aria-label="검토 화면"><button data-tab="documents" class="active">검토 자료</button><button data-tab="ai-verification">AI 작성·보안 진단</button><button data-tab="review">확인할 항목</button><button data-tab="issues">주장·쟁점</button><button data-tab="reports">보고서</button><button data-tab="audit">활동 기록</button></nav>
++<nav class="tabs workspace-tabs" aria-label="검토 화면"><button data-tab="documents" class="active"><i data-lucide="files"></i>자료</button><button data-tab="ai-verification"><i data-lucide="shield-check"></i>AI 작성·보안 진단</button><button data-tab="review"><i data-lucide="search-x"></i>출처가 확인되지 않는 항목</button><button data-tab="legal-claims"><i data-lucide="scale"></i>법률적으로 무리한 주장</button><button data-tab="reports"><i data-lucide="file-chart-column"></i>보고서</button></nav>
+ <section data-panel="documents"><div class="toolbar"><h2>검토 자료 <span id="scopeCount" class="muted"></span></h2><div class="actions"><select id="scopeFilter" aria-label="검토 범위"><option value="all">전체 자료</option><option value="included">검토에 포함</option><option value="excluded">검토에서 제외</option></select><label class="button" for="fileInput" id="fileInputButton"><i data-lucide="upload"></i>파일 추가</label><input id="fileInput" type="file" multiple hidden></div></div><p class="privacy-notice-link-wrap"><button type="button" id="privacyNoticeRevisit" class="privacy-revisit-link" aria-haspopup="dialog"><i data-lucide="shield-check"></i>개인정보 안내 다시 보기</button></p><div id="bulkActions" class="toolbar" hidden><span id="selectedCount"></span><div class="actions"><button id="bulkExclude">선택 자료 제외</button><button id="bulkInclude">선택 자료 다시 포함</button></div></div><div id="dropArea" class="table-wrap"><table><thead><tr><th><input id="selectAll" type="checkbox" aria-label="표시된 자료 모두 선택"></th><th>파일명</th><th>증거번호 / 제출자</th><th>검토 범위</th><th>관리</th></tr></thead><tbody id="documentRows"></tbody></table><p id="documentEmpty" class="empty-small">등록된 자료가 없습니다.</p></div></section>
+-<section data-panel="ai-verification" hidden><div class="toolbar"><h2>AI 작성·보안 진단</h2></div><div id="aiTabNoticeBanner" class="info-banner"><span>판례 인용·법령 등 <strong><a href="#" data-jump-tab="review">확인할 항목(인용 오류·미확인 검토)</a></strong> 탭에서 확인하실 수 있습니다.</span></div><div id="aiSummaryCards" class="summary-cards"></div></section>
+-<section data-panel="review" hidden><div id="highSecurityAlertBanner" class="high-security-alert" hidden role="alert"><span id="highSecurityAlertText"></span> <a href="#" data-jump-tab="ai-verification" class="alert-link">AI 작성·보안 진단 탭에서 확인 &rarr;</a></div><div class="toolbar"><h2>확인할 항목</h2><div class="filters"><input id="findingSearch" type="search" placeholder="항목 검색" aria-label="항목 검색"><select id="severityFilter" aria-label="중요도"><option value="">모든 중요도</option><option value="CRITICAL">매우 높음</option><option value="HIGH">높음</option><option value="MEDIUM">보통</option><option value="LOW">낮음</option><option value="INFO">참고</option></select></div></div><section id="hallucinationSection" class="hallucination-section" aria-labelledby="hallucinationTitle"><h4 id="hallucinationTitle">판례·법령·주요참고문헌 인용 오류·미확인 검토 (AI 작성 여부 판단과 별개)</h4><p id="hallucinationSummary" class="muted"></p></section><div class="table-wrap"><table class="ai-table review-items-table" id="reviewTable"><thead><tr><th style="width:10%">위치</th><th style="width:25%">문서 주장 및 인용 내용</th><th style="width:25%">인용 오류·미확인 근거 및 주장 평가 (작성 주체 판단에 쓰지 않음)</th><th style="width:40%">확인이 필요한 내용</th></tr></thead><tbody id="aiVerificationRows"></tbody></table><p id="aiVerificationEmpty" class="empty-small">검증 결과가 없거나 표시할 확인 항목이 없습니다.</p></div><div id="reviewTableActions" class="review-table-actions" hidden></div><section id="tier3Section" class="tier3-section" aria-labelledby="tier3Title"><h4 id="tier3Title">법률적으로 무리한 주장</h4><div class="table-wrap"><table class="tier3-table" id="tier3Table"><thead><tr><th style="width:10%">위치</th><th style="width:25%">문서 주장 및 인용 내용</th><th style="width:25%">법리 검토 결과 및 근거</th><th style="width:40%">확인이 필요한 내용</th></tr></thead><tbody id="tier3Rows"></tbody></table><p id="tier3Empty" class="empty-small">무리한 주장 또는 참고자료 모순 항목이 없습니다.</p></div></section><div id="findings" hidden></div><div id="unverifiedScopeContainer"></div><div id="reviewReferencesContainer" class="review-references-wrap"></div></section>
+-<section data-panel="issues" hidden><div class="toolbar"><h2>주장·쟁점</h2><button id="editIssues"><i data-lucide="pencil"></i>쟁점 편집</button></div><div id="issueTags"></div><div id="claims"></div></section>
++<section data-panel="ai-verification" hidden><div class="toolbar"><h2>AI 작성·보안 진단</h2></div><div id="aiTabNoticeBanner" class="info-banner"><span>판례 인용·법령 등 <strong><a href="#" data-jump-tab="review">출처가 확인되지 않는 항목</a></strong> 탭에서 확인하실 수 있습니다.</span></div><div id="aiSummaryCards" class="summary-cards"></div></section>
++<section data-panel="review" hidden><div id="highSecurityAlertBanner" class="high-security-alert" hidden role="alert"><span id="highSecurityAlertText"></span> <a href="#" data-jump-tab="ai-verification" class="alert-link">AI 작성·보안 진단 탭에서 확인 &rarr;</a></div><div class="toolbar"><h2>출처가 확인되지 않는 항목</h2><div class="filters"><input id="findingSearch" type="search" placeholder="항목 검색" aria-label="항목 검색"><select id="severityFilter" aria-label="중요도"><option value="">모든 중요도</option><option value="CRITICAL">매우 높음</option><option value="HIGH">높음</option><option value="MEDIUM">보통</option><option value="LOW">낮음</option><option value="INFO">참고</option></select></div></div><section id="hallucinationSection" class="hallucination-section" aria-labelledby="hallucinationTitle"><h4 id="hallucinationTitle">판례·법령·주요참고문헌 인용 오류·미확인 검토 (AI 작성 여부 판단과 별개)</h4><p id="hallucinationSummary" class="muted"></p></section><div id="referenceStatus" class="reference-status"></div><div id="reviewTableActions" class="review-table-actions review-prompt-bar" hidden></div><div class="table-wrap"><table class="ai-table review-items-table" id="reviewTable"><thead><tr><th style="width:10%">위치</th><th style="width:25%">문서 주장 및 인용 내용</th><th style="width:25%">인용 오류·미확인 근거 및 주장 평가 (작성 주체 판단에 쓰지 않음)</th><th style="width:40%">확인이 필요한 내용</th></tr></thead><tbody id="aiVerificationRows"></tbody></table><p id="aiVerificationEmpty" class="empty-small">검증 결과가 없거나 표시할 확인 항목이 없습니다.</p></div><div id="findings" hidden></div><div id="unverifiedScopeContainer"></div><div id="reviewReferencesContainer" class="review-references-wrap"></div></section>
++<section data-panel="legal-claims" hidden><div class="toolbar"><h2>법률적으로 무리한 주장</h2></div><section id="tier3Section" class="tier3-section" aria-labelledby="tier3Title"><p id="tier3Title" class="muted">출처는 확인되나 판례·법령 취지와 맞지 않거나 참고자료와 모순되는 주장입니다. 인용 자체가 확인되지 않는 항목은 '출처가 확인되지 않는 항목' 탭에 있습니다.</p><div id="legalReferenceStatus" class="reference-status"></div><div id="legalClaimsActions" class="review-table-actions review-prompt-bar" hidden></div><div class="table-wrap"><table class="tier3-table" id="tier3Table"><thead><tr><th style="width:10%">위치</th><th style="width:25%">문서 주장 및 인용 내용</th><th style="width:25%">법리 검토 결과 및 근거</th><th style="width:40%">확인이 필요한 내용</th></tr></thead><tbody id="tier3Rows"></tbody></table><p id="tier3Empty" class="empty-small">무리한 주장 또는 참고자료 모순 항목이 없습니다.</p></div></section></section>
+ <section data-panel="reports" hidden><div class="toolbar"><h2>검토 보고서</h2></div><p class="report-privacy-notice" id="reportPrivacyNotice"><i data-lucide="shield-check"></i><span id="reportPrivacyNoticeText"></span></p><p id="reportScope" class="muted"></p><p class="muted report-hint">보고서는 화면 위쪽의 '보고서 생성' 버튼으로 만들고, 여기에서 내려받습니다.</p><div id="reportList"></div></section>
+-<section data-panel="audit" hidden><div class="toolbar"><h2>활동 기록</h2><button id="refreshAudit" class="icon" title="새로고침" aria-label="새로고침"><i data-lucide="refresh-cw"></i></button></div><div id="audit"></div></section>
+ </section><footer class="site-footer"><small>© ACASia_LAW 법률문서 검증시스템. 본 프로그램은 저작권법에 의해 보호되며, 무단 복제·배포·개작을 금합니다.</small><small>개발 기여: 스티브, 아나스타샤, 스텔라, 에이미, 쏘니</small></footer></main></div>
+ <dialog id="projectDialog"><form id="projectForm"><div class="dialog-heading"><h2 id="projectDialogTitle">새 프로젝트</h2><button type="button" class="icon" data-close title="닫기" aria-label="닫기"><i data-lucide="x"></i></button></div><div class="form-grid"><label class="full">프로젝트명<input name="name" maxlength="300" required></label><label>사건번호<input name="case_number" placeholder="미입력"></label><label>법원<input name="court" placeholder="미입력"></label><label>적용법령 기준일<input name="incident_date" type="date"></label><label>검증 깊이<select name="verification_profile"><option value="STANDARD">표준 검토</option><option value="QUICK">빠른 검토</option><option value="DEEP_VERIFY">심층 검토</option></select></label><label class="full">외부 AI 전송<select name="external_ai_policy"><option value="LOCAL_ONLY">전송 안 함</option><option value="MASKED">개인정보 가림 후 전송</option><option value="ORIGINAL">원문 전송 허용</option></select></label><label class="full">당사자 (한 줄에 한 명)<textarea name="parties" rows="2"></textarea></label><label class="full">검토 쟁점 (한 줄에 하나)<textarea name="requested_issues" rows="3"></textarea></label><label class="full">업무 메모<textarea name="memo" rows="2"></textarea></label></div><p id="projectError" class="error" role="alert"></p><div class="dialog-footer"><button type="button" data-close>취소</button><button id="projectSubmit" class="primary" type="submit">생성</button></div></form></dialog>
+ <dialog id="documentDialog"><form id="documentForm"><div class="dialog-heading"><h2>자료 정보</h2><button type="button" class="icon" data-close aria-label="닫기" title="닫기"><i data-lucide="x"></i></button></div><div class="form-grid"><label class="full">증거번호<input name="evidence_number" maxlength="120" placeholder="예: 갑 제1호증"></label><label>제출자<select name="submitted_by"><option value="UNSPECIFIED">미지정</option><option value="OWN">우리 측</option><option value="OPPONENT">상대방</option><option value="COURT">법원</option><option value="THIRD_PARTY">제3자</option></select></label><label>문서 구분<input name="document_kind" maxlength="60"></label></div><div class="dialog-footer"><button type="button" data-close>취소</button><button type="submit" class="primary">저장</button></div></form></dialog>
+diff --git a/apps/web/static/app.js b/apps/web/static/app.js
+index 63098a6..3f5370b 100644
+--- a/apps/web/static/app.js
++++ b/apps/web/static/app.js
+@@ -359,7 +359,7 @@ function maskAuthorityIdentifier(rawAuth) {
+ // 서면 내 출처 미확인 판례·법령 전체에 대한 엘박스/법률 AI 일괄 검증 프롬프트 생성 (TK-94)
+ // 법령·판례의 실재 여부 검증용이므로 본문 문맥(claim_text) 및 당사자 개인정보는 일체 배제하고 인용 식별자만 포함하며,
+ // externalAiPolicy가 MASKED인 경우 인용 식별자 속 괄호 부기 및 인명도 실질 제거/마스킹한다.
+-function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "", externalAiPolicy = "MASKED") {
++function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "", externalAiPolicy = "MASKED", prefix = "A") {
+   const dateStr = incidentDate || "미지정 (소송 진행 시점 기준)";
+   let itemsListText = "";
+ 
+@@ -369,7 +369,7 @@ function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "",
+     const rawAuth = String(it.cited_authority || "").trim();
+     const auth = externalAiPolicy === "MASKED" ? maskAuthorityIdentifier(rawAuth) : rawAuth;
+     if (auth) {
+-      itemsListText += `${idx + 1}. ${auth}\n`;
++      itemsListText += `${prefix}${idx + 1}. ${auth}\n`;
+     }
+   });
+ 
+@@ -392,7 +392,142 @@ ${itemsListText}
+ 
+ [답변 형식]
+ - 종합 검증 결과 요약 표 (번호 | 인용 식별자 | 실재 여부 | 공식 판결요지/조문 핵심 | 비고)
+-- 각 항목별 상세 확인 내용`;
++- 각 항목별 상세 확인 내용
++
++[결과 블록 — 답변 맨 끝에 반드시 아래 형식 그대로]
++항목마다 한 줄씩, 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
++<<<ACAS_RESULT
++${prefix}1 | 판정: 확인/부존재/불일치/불명 | 근거: 사건번호·선고일 또는 법령·조문 | 요지: 한두 문장
++ACAS_RESULT>>>`;
++}
++
++// 2026-10-25 사용자 요구: 엘박스 등 외부 AI 답변을 다시 붙여넣어 표에 반영한다.
++// 번호(A1·B1)와 고정 결과 블록으로 답변을 행에 연결하며, 외부 AI 답변은 공식 확인 상태를 바꾸지 않는다.
++const EXTERNAL_ANSWER_OPEN = "<<<ACAS_RESULT", EXTERNAL_ANSWER_CLOSE = "ACAS_RESULT>>>";
++function externalAnswerFormat(prefix) {
++  return `
++[결과 블록 — 답변 맨 끝에 반드시 아래 형식 그대로]
++항목마다 한 줄씩, 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
++${EXTERNAL_ANSWER_OPEN}
++${prefix}1 | 판정: 확인/부존재/불일치/불명 | 근거: 사건번호·선고일 또는 법령·조문 | 요지: 한두 문장
++${EXTERNAL_ANSWER_CLOSE}`;
++}
++function parseExternalAnswers(text) {
++  const raw = String(text || "");
++  const start = raw.lastIndexOf(EXTERNAL_ANSWER_OPEN), end = raw.lastIndexOf(EXTERNAL_ANSWER_CLOSE);
++  const body = start >= 0 && end > start ? raw.slice(start + EXTERNAL_ANSWER_OPEN.length, end) : raw;
++  const answers = new Map();
++  for (const line of body.split(/\r?\n/)) {
++    const cells = line.replace(/^\s*\|/, "").split(/[|｜]/).map(c => c.trim());
++    const code = (cells[0] || "").replace(/[*`\s.]/g, "").toUpperCase();
++    if (!/^[AB]\d{1,3}$/.test(code)) continue;
++    const answer = {code, verdict: "", basis: "", summary: ""};
++    for (const cell of cells.slice(1)) {
++      const m = cell.match(/^(판정|근거|요지)\s*[:：]\s*(.*)$/);
++      if (m) answer[{판정: "verdict", 근거: "basis", 요지: "summary"}[m[1]]] = m[2].slice(0, 1000);
++      else if (cell) answer.summary = [answer.summary, cell].filter(Boolean).join(" ").slice(0, 1000);
++    }
++    if (answer.verdict || answer.basis || answer.summary) answers.set(code, answer);
++  }
++  return [...answers.values()];
++}
++function externalStoreKey() { return `acas.externalAi.${state.project?.id || "none"}.${state.run?.id || "none"}`; }
++function loadExternalStore() {
++  try { return JSON.parse(localStorage.getItem(externalStoreKey()) || "{}") || {}; } catch (e) { return {}; }
++}
++function saveExternalStore(store) {
++  try { localStorage.setItem(externalStoreKey(), JSON.stringify(store)); } catch (e) { toast("이 브라우저에 답변을 저장하지 못했습니다. 화면을 새로 고치면 사라집니다."); }
++}
++function rememberPromptCodes(prefix, items) {
++  const store = loadExternalStore();
++  store.codes = {...(store.codes || {})};
++  for (const key of Object.keys(store.codes)) if (key.startsWith(prefix)) delete store.codes[key];
++  items.forEach((item, index) => { store.codes[`${prefix}${index + 1}`] = item.item_id; });
++  saveExternalStore(store);
++}
++function applyStoredExternalAnswers(items) {
++  const store = loadExternalStore();
++  const byItem = new Map(Object.entries(store.answers || {}).map(([code, answer]) => [store.codes?.[code], {...answer, code}]));
++  for (const item of items) if (byItem.has(item.item_id)) item.external_ai_answer = byItem.get(item.item_id);
++}
++function externalAnswerBlock(answer) {
++  const box = node("div", null, "external-ai-answer");
++  box.append(node("strong", `외부 AI 답변 ${answer.code} (공식 확인 아님)`));
++  if (answer.verdict) box.append(node("p", `판정: ${answer.verdict}`));
++  if (answer.basis) box.append(node("p", `근거: ${answer.basis}`));
++  if (answer.summary) box.append(node("p", `요지: ${answer.summary}`));
++  box.append(node("small", `${answer.applied_at || ""} 반영 · 참고용이며 위 공식 DB 판정은 바뀌지 않습니다. 원문은 판결서·국가법령정보센터로 확인하십시오.`, "muted"));
++  return box;
++}
++function openExternalAnswerImport(prefix, rowsByCode) {
++  const input = workflowUI.field("answer", "엘박스 등 외부 AI 답변 전문", "", "textarea");
++  input.classList.add("full");
++  input.querySelector("textarea").rows = 12;
++  const hint = node("p", `프롬프트 끝의 결과 블록(${EXTERNAL_ANSWER_OPEN} … ${EXTERNAL_ANSWER_CLOSE})을 읽어 ${prefix}1, ${prefix}2 … 번호의 행에 붙입니다. 외부 AI 답변은 공식 확인이 아닙니다.`, "muted full");
++  workflowUI.modal("외부 AI 답변 붙여넣기", [hint, input], async values => {
++    const parsed = parseExternalAnswers(values.answer).filter(a => a.code.startsWith(prefix));
++    if (!parsed.length) throw new Error(`결과 블록에서 ${prefix} 번호 항목을 찾지 못했습니다. 프롬프트의 결과 블록 형식으로 다시 요청하세요.`);
++    const matched = parsed.filter(a => rowsByCode.has(a.code));
++    const missing = parsed.filter(a => !rowsByCode.has(a.code)).map(a => a.code);
++    setTimeout(() => previewExternalAnswers(matched, missing, rowsByCode), 0);
++  }, true);
++}
++function previewExternalAnswers(answers, missing, rowsByCode) {
++  const list = node("div", null, "full external-answer-preview");
++  for (const a of answers) {
++    const row = rowsByCode.get(a.code);
++    const card = node("div", null, "external-answer-preview-item");
++    card.append(node("strong", `${a.code} → ${row.cited_authority || friendlyText(row.claim_text || "") || row.item_id}`),
++      node("p", [a.verdict && `판정: ${a.verdict}`, a.basis && `근거: ${a.basis}`, a.summary && `요지: ${a.summary}`].filter(Boolean).join(" · ")));
++    list.append(card);
++  }
++  if (missing.length) list.append(node("p", `표에 없는 번호라 반영하지 않음: ${missing.join(", ")} (프롬프트를 만든 뒤 표가 바뀌었을 수 있습니다)`, "warning-text"));
++  if (!answers.length) list.append(node("p", "반영할 항목이 없습니다.", "muted"));
++  const view = workflowUI.modal(`표에 반영할 답변 ${answers.length}건 확인`, [list], async () => {
++    const store = loadExternalStore();
++    store.answers = {...(store.answers || {})};
++    const appliedAt = new Date().toLocaleString("ko-KR");
++    for (const a of answers) store.answers[a.code] = {...a, applied_at: appliedAt};
++    saveExternalStore(store);
++    renderFindings();
++    toast(`외부 AI 답변 ${answers.length}건을 표에 반영했습니다(공식 확인 아님).`);
++  }, true);
++  view.submit.textContent = "표에 반영";
++  if (!answers.length) view.submit.hidden = true;
++}
++function externalAnswerButton(prefix, items) {
++  const b = button("📥 외부 AI 답변 붙여넣기", () => {
++    const store = loadExternalStore(), rowsByCode = new Map();
++    for (const [code, itemId] of Object.entries(store.codes || {})) {
++      const item = code.startsWith(prefix) && items.find(i => i.item_id === itemId);
++      if (item) rowsByCode.set(code, item);
++    }
++    if (!rowsByCode.size) { toast("먼저 이 표의 '엘박스/AI 검증 프롬프트 만들기'로 번호가 붙은 프롬프트를 만드세요."); return; }
++    openExternalAnswerImport(prefix, rowsByCode);
++  }, "external-ai-import-btn");
++  b.title = "엘박스 등에서 받은 답변을 붙여넣어 번호별로 표의 행에 반영합니다. 공식 확인 상태는 바뀌지 않습니다.";
++  return b;
++}
++function buildExternalAiPromptForLegalClaims(entries, incidentDate = "") {
++  const list = entries.map(e => `${e.code}. ${e.authority ? `[인용] ${e.authority}\n    ` : ""}[주장] ${e.claim}`).join("\n");
++  return `[역할]
++당신은 대한민국 법률 및 판례 검증 전문 AI입니다.
++아래는 소송 서면에서 법리상 무리하거나 판례 취지와 맞지 않을 수 있다고 표시된 [주장 ${entries.length}건]입니다. 각 주장이 인용한 판례·법령의 취지에 비추어 성립하는지 검토해 주세요.
++
++※ 고지: 외부 AI 답변은 법적 효력이 있는 공식 확인이 아니며, 실제 변론 및 증거 제출 시에는 법원 판결서 사본 또는 국가법령정보센터 공식 원문으로 반드시 확인해야 합니다.
++※ 개인정보는 프로젝트 정책에 따라 가림 처리되었습니다.
++
++[기준 시점]
++- ${incidentDate || "미지정 (소송 진행 시점 기준)"}
++
++[검토 대상 주장 목록]
++${list}
++
++[검토 요청 사항]
++1. 인용한 판례·법령의 실제 판시사항·조문 취지
++2. 주장이 그 취지와 부합하는지, 사실관계 차이로 적용이 어려운지
++3. 주장을 뒷받침하거나 반박하는 실제 대법원 판례
++${externalAnswerFormat("B")}`;
+ }
+ 
+ async function api(path, options = {}) {
+@@ -512,13 +647,11 @@ function dateText(value) {
+ }
+ 
+ function switchTab(tab) {
+-  workflowUI.syncNavigation(tab);
+   document.querySelectorAll("[data-tab]").forEach(el => {
+     el.classList.toggle("active", el.dataset.tab === tab);
+     el.setAttribute("aria-current", el.dataset.tab === tab ? "page" : "false");
+   });
+   document.querySelectorAll("[data-panel]").forEach(el => el.hidden = el.dataset.panel !== tab);
+-  if (tab === "audit") loadAudit().catch(e => toast(e.message));
+   workflowUI.activate(tab).catch(e => toast(e.message));
+ }
+ async function loadProjects() {
+@@ -621,7 +754,6 @@ function renderProject() {
+   renderDocuments();
+   renderUploadStatus();
+   renderSummary();
+-  renderIssues();
+   renderTimeline();
+   operationsUI.renderJobControls();
+   projectTools.renderControls();
+@@ -1237,7 +1369,7 @@ function explainReviewPending() {
+     "원인과 대책은 ‘진행 상태’ 설명에서 확인할 수 있습니다.", "warning-text"));
+   children.push(node("p", "각 항목을 열어 ‘지적 수용’, ‘오탐’, ‘조치 완료’ 중 하나로 결정하면 이 숫자가 줄어듭니다.", "muted"));
+   const view = explainDialog("확인 전 항목이란", children);
+-  children[children.length - 1].after(button("확인할 항목에서 보기", () => showPendingFindings(view), "primary"));
++  children[children.length - 1].after(button("출처가 확인되지 않는 항목에서 보기", () => showPendingFindings(view), "primary"));
+ }
+ 
+ function showPendingFindings(view) {
+@@ -1776,7 +1908,7 @@ async function loadFindingCategories(options = {}) {
+ }
+ 
+ function isAISecurityFinding(f) {
+-  // 배정표 로드 실패 시 모든 항목을 '확인할 항목'에 표시
++  // 배정표 로드 실패 시 모든 항목을 '출처가 확인되지 않는 항목'에 표시
+   if (!state.findingCategories || state.findingCategories.error) {
+     return false;
+   }
+@@ -1924,6 +2056,75 @@ const VERDICT_HOLDING_DISTORTION = "판례 취지 왜곡 (판시사항과 상반
+ const VERDICT_FACT_DISTINGUISHABLE = "적용 차이 (사실관계 상이 / 전문가 검토 필요)";
+ const VERDICT_OFFICIAL_CONFIRMED = "공식 원문 일치 (사건 적용성 직접 검토 필요)";
+ 
++// 2026-10-25 사용자 요구: 주요 참고문헌(RAG) 대조 결과는 하단 별도 절이 아니라 상단 표 행의 근거 자료로 쓴다.
++// 연결 순서: ① 관찰의 claim_id → 문서 claims[].citation_ids → 행의 citation_id, ② 주장 인용문과 행 주장 문장의 포함 관계.
++const REFERENCE_RELATIONS = {SUPPORTS:["부합", "SUCCESS"], CONTRADICTS:["불부합", "CRITICAL"], CONTEXT:["맥락 참고", "info"], INSUFFICIENT:["근거 부족", "muted"]};
++function compactText(text) { return String(text || "").replace(/\s+/g, ""); }
++function attachReferenceObservations(items, docs) {
++  const unmatched = [];
++  for (const d of docs) {
++    const rag = d.engine_data?.rag;
++    const observations = rag?.observations || [];
++    if (!observations.length) continue;
++    const sources = new Map((rag.sources || []).map(s => [s.source_id, s]));
++    const claimCitations = new Map((d.claims || []).map(c => [c.claim_id, c.citation_ids || []]));
++    const docItems = items.filter(i => i.doc === d);
++    for (const observation of observations) {
++      const entry = {...observation, source: sources.get(observation.source_id)};
++      const citationIds = claimCitations.get(observation.claim_id) || [];
++      let target = docItems.find(i => i.citation_id && citationIds.includes(i.citation_id));
++      const quote = compactText(observation.claim_quote);
++      if (!target && quote.length >= 8) target = docItems.find(i => {
++        const claim = compactText(i.claim_text);
++        return claim.length >= 8 && (claim.includes(quote) || quote.includes(claim));
++      });
++      if (target) (target.reference_observations ||= []).push(entry);
++      else unmatched.push({doc: d, observation: entry});
++    }
++  }
++  return unmatched;
++}
++function referenceObservationRow({doc, observation}, index) {
++  const contradicts = observation.relationship === "CONTRADICTS";
++  return {
++    doc, item_id: `${doc.id || doc.document_id}_REFERENCE_${observation.claim_id || index}`, kind: "REFERENCE",
++    document_id: doc.id || doc.document_id, reference_library: true, claim_text: observation.claim_quote,
++    verdict_label: contradicts ? "참고문헌과 불부합" : "참고문헌 대조 의견", severity: contradicts ? "MEDIUM" : "INFO",
++    finding_ids: [], reference_observations: [observation], tier: contradicts ? 3 : 2,
++  };
++}
++function referenceObservationBlock(observations) {
++  const box = node("div", null, "reference-observations");
++  box.append(node("strong", "주요 참고문헌 대조 (참고문헌·구속력 없음, 공식 확인 아님)"));
++  for (const o of observations) {
++    const [name, cls] = REFERENCE_RELATIONS[o.relationship] || [o.relationship || "대조 결과", "muted"];
++    const line = node("p", null, "reference-observation");
++    const where = o.source ? `${o.source.title || o.source_id}${o.source.page ? ` · ${o.source.page_numbers_reliable === false ? "텍스트 구간 " + o.source.page : o.source.page + "쪽"}` : ""}` : (o.source_id || "참고자료");
++    line.append(node("span", name, `badge ${cls} small`), document.createTextNode(` ${where}`));
++    box.append(line);
++    if (o.explanation) box.append(node("p", `AI 참고 의견: ${o.explanation}`, "small"));
++    if (o.source_quote) {
++      const quote = node("details");
++      quote.append(node("summary", "참고문헌 발췌"), node("blockquote", o.source_quote));
++      box.append(quote);
++    }
++  }
++  return box;
++}
++function referenceStatusLine(docs, unmatchedCount, withDetails = true) {
++  const library = state.result?.run_manifest?.reference_library;
++  if (!library) return null;
++  const linked = docs.reduce((n, d) => n + (d.engine_data?.rag?.observations || []).length, 0) - unmatchedCount;
++  const details = node("details", null, "reference-status-line");
++  const text = library.status === "DISABLED" ? "주요 참고문헌 대조: 사용 안 함(폴더 설정 없음) · 표의 행은 공식 DB 기준으로만 작성"
++    : `주요 참고문헌 대조: 색인 ${library.files_indexed || 0}/${library.files_seen || 0}건 · 표의 행에 반영한 의견 ${linked}건` + (unmatchedCount ? ` · 행과 연결되지 않아 별도 행으로 추가 ${unmatchedCount}건` : "");
++  if (!withDetails) return node("p", `${text} · 처리 기록은 '출처가 확인되지 않는 항목' 탭에서 펼쳐 봅니다.`, "muted reference-status-brief");
++  details.append(node("summary", text));
++  const full = referenceSection(docs);
++  if (full) details.append(full);
++  return details;
++}
++
+ function classifyReviewItemTier(item, findingsMap) {
+   // item에 서버가 계산한 tier 속성이 있으면 최우선 반영
+   if (item.tier === 2 || item.tier === 3) return item.tier;
+@@ -2068,13 +2269,13 @@ function renderReviewRow(item, tier, findingsMap) {
+   }) || verdictStr.includes("부당") || (item.basis || "").includes("FABRICATION");
+ 
+   if (tier === 2 && hasDistortion) {
+-    tdClaim.append(button("3단 무리한 주장 확인 →", () => {
+-      switchTab("review");
++    tdClaim.append(button("법률적으로 무리한 주장 탭에서 확인 →", () => {
++      switchTab("legal-claims");
+       const target = $("tier3Table") || $(`row_${item.item_id}`);
+       if (target) target.scrollIntoView({ behavior: "smooth" });
+     }, "link-button small cross-ref-anchor"));
+   } else if (tier === 3 && (isHallucinatedOrInvalid || hasDistortion)) {
+-    tdClaim.append(button("2단 출처 부존재 확인 →", () => {
++    tdClaim.append(button("출처가 확인되지 않는 항목 탭에서 확인 →", () => {
+       switchTab("review");
+       const target = $("reviewTable") || $(`row_${item.item_id}`);
+       if (target) target.scrollIntoView({ behavior: "smooth" });
+@@ -2100,6 +2301,8 @@ function renderReviewRow(item, tier, findingsMap) {
+   if (item.reference_case_match) {
+     tdBasis.append(node("p", `표준판례 사건정보 대조: ${item.reference_case_match}`, "basis-text"));
+   }
++  if (item.reference_observations?.length) tdBasis.append(referenceObservationBlock(item.reference_observations));
++  if (item.external_ai_answer) tdBasis.append(externalAnswerBlock(item.external_ai_answer));
+   if (item.context_review?.reason) {
+     const review = item.context_review;
+     const context = node("div", null, "citation-context-review");
+@@ -2145,26 +2348,6 @@ function renderReviewRow(item, tier, findingsMap) {
+     summaryBox.append(reasonLine);
+   }
+ 
+-  // 3) 확인 방법
+-  let verifyText = (item.counteraction || "").trim();
+-  if (!verifyText) {
+-    const locStr = item.location?.display || (item.location?.page ? `${item.location.page}쪽` : (typeof item.location === "string" ? item.location : ""));
+-    if (item.cited_authority && locStr) {
+-      verifyText = `${item.cited_authority} 원문 대조 (${locStr})`;
+-    } else if (item.reference_case_match) {
+-      verifyText = `표준판례 대조: ${item.reference_case_match}`;
+-    } else if (item.doc?.filename && locStr) {
+-      verifyText = `${item.doc.filename} ${locStr} 대조`;
+-    } else if (item.doc?.filename) {
+-      verifyText = `${item.doc.filename} 원문 대조`;
+-    }
+-  }
+-  if (verifyText) {
+-    const verifyLine = node("p", null, "summary-line summary-action");
+-    verifyLine.append(node("strong", "확인 방법: "), document.createTextNode(verifyText));
+-    summaryBox.append(verifyLine);
+-  }
+-
+   // 4) 상세 법리 의견
+   if (item.reasoning_sections || item.legal_reasoning) {
+     const extra = node("details", null, "summary-details");
+@@ -2333,6 +2516,9 @@ function renderFindings() {
+     }
+   }
+ 
++  const unmatchedReferences = attachReferenceObservations(allReviewItems, docs);
++  unmatchedReferences.forEach((entry, index) => allReviewItems.push(referenceObservationRow(entry, index)));
++  applyStoredExternalAnswers(allReviewItems);
+   // 판례 통계 요약 갱신
+   let hallucinationRows = [];
+   for (const d of docs) {
+@@ -2426,17 +2612,18 @@ function renderFindings() {
+       const unverifiedAuthorities = filterUnverifiedAuthorities(filteredItems);
+ 
+       if (unverifiedAuthorities.length > 0) {
+-        const promptBtn = button("📋 엘박스/AI 검증 프롬프트", () => {
++        const promptBtn = button("📋 엘박스/AI 검증 프롬프트 만들기", () => {
++          rememberPromptCodes("A", unverifiedAuthorities);
+           copyToClipboard(
+             buildExternalAiPromptForUnverifiedAuthorities(unverifiedAuthorities, state.project?.incident_date, policy),
+             "엘박스/법률 AI 검증 프롬프트가 복사되었습니다."
+           );
+-        }, "external-ai-prompt-btn");
++        }, "primary external-ai-prompt-btn");
+         promptBtn.title = `미확인 판례·법령 ${unverifiedAuthorities.length}건을 엘박스 등 법률 AI에 한 번에 질의할 수 있는 일괄 프롬프트를 복사합니다. (외부 AI 답변은 공식 확인이 아닙니다)`;
+ 
+         const badge = node("span", `(미확인 판례·법령 ${unverifiedAuthorities.length}건)`, "muted small review-prompt-count");
+         const notice = node("span", "※ 외부 AI 답변은 공식 확인이 아니므로 원문 확인이 필요합니다.", "muted small review-prompt-notice");
+-        tableActions.append(promptBtn, badge, notice);
++        tableActions.append(promptBtn, externalAnswerButton("A", unverifiedAuthorities), badge, notice);
+         tableActions.hidden = false;
+       } else {
+         tableActions.hidden = true;
+@@ -2444,6 +2631,40 @@ function renderFindings() {
+     }
+   }
+ 
++  // 2026-10-25 사용자 요구: '법률적으로 무리한 주장' 탭에도 엘박스/AI 검증 프롬프트와 답변 붙여넣기를 둔다.
++  // 주장 문장이 들어가므로 서버의 프로젝트 정책 가림을 거친 문장만 프롬프트에 넣는다.
++  const legalActions = $("legalClaimsActions");
++  if (legalActions) {
++    legalActions.replaceChildren();
++    const policy = state.project?.external_ai_policy || "LOCAL_ONLY";
++    if (policy === "LOCAL_ONLY" || !tier3Items.length) {
++      legalActions.hidden = true;
++    } else {
++      const promptBtn = button("📋 엘박스/AI 검증 프롬프트 만들기", action(async () => {
++        const pid = state.project.id;
++        const {texts} = await api(`/projects/${pid}/external-ai/prompt-texts`, {method: "POST", body: {texts: tier3Items.map(i => friendlyText(i.claim_text || ""))}});
++        const entries = tier3Items.map((item, index) => ({
++          code: `B${index + 1}`, claim: texts[index] || "",
++          authority: item.cited_authority ? (policy === "MASKED" ? maskAuthorityIdentifier(item.cited_authority) : item.cited_authority) : "",
++        }));
++        rememberPromptCodes("B", tier3Items);
++        await copyToClipboard(buildExternalAiPromptForLegalClaims(entries, state.project?.incident_date), "엘박스/법률 AI 검토 프롬프트가 복사되었습니다.");
++      }), "primary external-ai-prompt-btn");
++      promptBtn.title = `이 표의 주장 ${tier3Items.length}건을 개인정보 가림 후 한 번에 질의하는 프롬프트를 복사합니다. (외부 AI 답변은 공식 확인이 아닙니다)`;
++      legalActions.append(promptBtn, externalAnswerButton("B", tier3Items),
++        node("span", `(검토 대상 주장 ${tier3Items.length}건)`, "muted small review-prompt-count"),
++        node("span", "※ 외부 AI 답변은 공식 확인이 아니므로 원문 확인이 필요합니다.", "muted small review-prompt-notice"));
++      legalActions.hidden = false;
++    }
++  }
++  for (const id of ["referenceStatus", "legalReferenceStatus"]) {
++    const box = $(id);
++    if (!box) continue;
++    box.replaceChildren();
++    const line = referenceStatusLine(docs, unmatchedReferences.length, id === "referenceStatus");
++    if (line) box.append(line);
++  }
++
+   // 4. 하단 미확인 범위 및 RAG/추가 법조문 보존 (정보 손실 0 유지)
+   const unverifiedContainer = $("unverifiedScopeContainer");
+   if (unverifiedContainer) {
+@@ -2461,8 +2682,7 @@ function renderFindings() {
+   const refContainer = $("reviewReferencesContainer");
+   if (refContainer) {
+     refContainer.replaceChildren();
+-    const references = referenceSection(docs);
+-    if (references) refContainer.append(references);
++
+     for (const d of docs) {
+       const related = d.engine_data?.related_authorities;
+       if (!related) continue;
+@@ -2485,7 +2705,7 @@ function renderAIVerification() {
+ 
+   // 배정표 로드 실패 시 AI 탭 오류 안내
+   if (state.findingCategories?.error) {
+-    const errBox = node("div", "배정표를 불러오지 못했습니다. 모든 검토 항목은 '확인할 항목' 탭에서 확인할 수 있습니다.", "alert-box error");
++    const errBox = node("div", "배정표를 불러오지 못했습니다. 모든 검토 항목은 '출처가 확인되지 않는 항목' 탭에서 확인할 수 있습니다.", "alert-box error");
+     errBox.id = "findingCategoriesErrorNotice";
+     cardsContainer.append(errBox);
+   }
+@@ -2580,28 +2800,6 @@ function reasoningBlock(r) {
+   return box;
+ }
+ 
+-function renderIssues() {
+-  $("issueTags").replaceChildren(...(state.project.requested_issues || []).map(t => node("span", t, "issue-tag")));
+-  const claims = (state.result.documents || []).flatMap(d => (d.claims || []).map(c => ({
+-    ...c,
+-    filename: d.filename
+-  })));
+-  $("claims").replaceChildren();
+-  if (!claims.length) empty($("claims"), "추출된 주장이 없습니다.");
+-  for (const c of claims) {
+-    const row = node("article", null, "row-item");
+-    row.append(node("p", c.text || c.claim_text || c.statement || JSON.stringify(c)), node("div", `${c.filename} · ${c.page||"?"}쪽 · 자동 추출 · 입증 여부 미판단`, "row-meta"));
+-    for (const link of c.evidence_links || []) {
+-      if (!link.document_ids.length) row.append(node("p", `${link.reference}: 등록 자료 없음`, "muted"));
+-      for (const id of link.document_ids) {
+-        const document = state.documents.find(d => d.id === id);
+-        if (document) row.append(button(`${link.reference} · ${document.filename}`, () => openDocument(document)));
+-      }
+-    }
+-    $("claims").append(row);
+-  }
+-}
+-
+ function renderTimeline() {
+   const root = $("timeline");
+   if (!root) return;
+@@ -2758,30 +2956,6 @@ async function loadReports() {
+ async function createReport() {
+   return reportWorkbench.create();
+ }
+-async function loadAudit() {
+-  const id = state.project?.id;
+-  if (!id) return;
+-  const data = await api(`/projects/${id}/audit`);
+-  if (id !== state.project?.id) return;
+-  $("audit").replaceChildren();
+-  for (const e of data.events) {
+-    const row = node("article", null, "row-item");
+-    const title = {
+-      USER_OVERRIDE: "사용자 변경",
+-      DOCUMENT_UPLOADED: "자료 등록",
+-      REPORT_GENERATED: "보고서 생성",
+-      EXPORT: "자료 내려받기",
+-      VERIFICATION_STARTED: "검증 시작",
+-      VERIFICATION_COMPLETED: "검증 완료"
+-    } [e.event_type] || e.event_type;
+-    row.append(node("strong", title), node("div", `${dateText(e.created_at)} · ${e.actor}`, "row-meta"));
+-    const details = node("details");
+-    details.append(node("summary", "기록 상세"), node("pre", JSON.stringify(e.payload, null, 2), "technical"));
+-    row.append(details);
+-    $("audit").append(row);
+-  }
+-  if (!data.events.length) empty($("audit"), "활동 기록이 없습니다.");
+-}
+ document.querySelectorAll("[data-close]").forEach(el => el.onclick = () => el.closest("dialog").close());
+ document.querySelectorAll("[data-tab]").forEach(el => el.onclick = () => switchTab(el.dataset.tab));
+ document.addEventListener("click", e => {
+@@ -2795,7 +2969,7 @@ document.addEventListener("click", e => {
+ $("menuButton").onclick = () => $("sidebar").classList.toggle("open");
+ $("projectSearch").oninput = renderProjects;
+ $("newProjectBtn").onclick = action(() => editProject(true));
+-for (const id of ["editProject", "editIssues"]) $(id).onclick = action(() => editProject());
++for (const id of ["editProject"]) $(id).onclick = action(() => editProject());
+ $("projectForm").onsubmit = saveProject;
+ $("scopeFilter").onchange = renderDocuments;
+ $("selectAll").onchange = () => {
+@@ -2900,7 +3074,6 @@ for (const id of ["verifyBtn", "reverify"]) $(id).onclick = action(verify);
+ for (const id of ["findingSearch", "severityFilter"]) $(id)?.addEventListener("input", renderFindings);
+ $("severityFilter")?.addEventListener("change", renderFindings);
+ $("reportBtn").onclick = action(createReport);
+-$("refreshAudit").onclick = action(loadAudit);
+ $("prevPage").onclick = action(async () => {
+   state.page--;
+   await renderPage();
+diff --git a/apps/web/static/styles.css b/apps/web/static/styles.css
+index 3702261..45445ca 100644
+--- a/apps/web/static/styles.css
++++ b/apps/web/static/styles.css
+@@ -1871,3 +1871,26 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
+ #tier3Table td {
+   overflow-wrap: anywhere;
+ }
++
++/* TK-127: 표 안 판정 문구는 칸 안에서 줄바꿈한다(옆 칸 겹침 방지). 짧은 등급 표시는 .badge 기본(nowrap) 유지 */
++.review-items-table .validity-verdict, .tier3-table .validity-verdict {
++  display: inline-block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; word-break: keep-all; line-height: 1.45;
++}
++.review-items-table td, .tier3-table td { overflow-wrap: anywhere; }
++/* TK-126: 엘박스/AI 검증 프롬프트 버튼을 표 위에 주 버튼으로 둔다 */
++.review-prompt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: #f3f8f6; }
++.review-prompt-bar[hidden] { display: none; }
++.review-prompt-bar .external-ai-prompt-btn { font-size: 15px; font-weight: 600; padding: 10px 18px; min-height: 44px; }
++
++/* 2026-10-25 평면 탭(사용자 요구): 하위 탭 없이 다섯 개 탭, 아이콘 + 이름 */
++.workspace-tabs {margin-top:20px; gap:6px;}
++.workspace-tabs button {display:inline-flex; align-items:center; gap:6px; padding:12px 14px; min-height:44px; font-size:15px;}
++.workspace-tabs button svg, .workspace-tabs button i {width:17px; height:17px; flex:none;}
++@media(max-width:700px) {.workspace-tabs {flex-wrap:wrap; overflow-x:visible; gap:2px;} .workspace-tabs button {padding:8px 8px; font-size:13px; white-space:normal;}}
++.reference-status {margin:8px 0;}
++.reference-status-line > summary {cursor:pointer; padding:8px 12px; border:1px solid var(--line); border-radius:6px; background:#f7f9fb; font-size:14px;}
++.reference-observations, .external-ai-answer {margin-top:8px; padding:8px 10px; border-left:3px solid #8aa9c7; background:#f5f8fb; border-radius:4px;}
++.external-ai-answer {border-left-color:#b48a2c; background:#fbf7ee;}
++.reference-observations p, .external-ai-answer p {margin:4px 0; overflow-wrap:anywhere;}
++.review-prompt-bar .external-ai-import-btn {font-size:15px; font-weight:600; padding:10px 18px; min-height:44px;}
++.external-answer-preview-item {padding:8px 0; border-bottom:1px solid var(--line);}
+diff --git a/apps/web/static/workflow.js b/apps/web/static/workflow.js
+index fe23373..706564b 100644
+--- a/apps/web/static/workflow.js
++++ b/apps/web/static/workflow.js
+@@ -3,34 +3,6 @@
+ const workflowUI = (() => {
+   let projectId = null, matrix = null, issues = [], workflows = new Map(), generation = 0;
+   const selected = new Set();
+-  const groups = {
+-    documents:{title:"자료", icon:"files", tabs:["documents"]},
+-    review:{title:"검증·검토", icon:"scan-search", tabs:["ai-verification", "review", "issues"]},
+-    reports:{title:"보고서", icon:"file-chart-column", tabs:["reports", "audit"]},
+-  };
+-  const lastTabs = Object.fromEntries(Object.entries(groups).map(([key, group]) => [key, group.tabs[0]]));
+-  function syncNavigation(tab) {
+-    const selectedGroup = Object.keys(groups).find(key => groups[key].tabs.includes(tab));
+-    if (!selectedGroup) return;
+-    lastTabs[selectedGroup] = tab;
+-    document.querySelectorAll("[data-workspace-group]").forEach(control => {
+-      control.setAttribute("aria-pressed", String(control.dataset.workspaceGroup === selectedGroup));
+-    });
+-    document.querySelectorAll(".tabs [data-tab]").forEach(control => {
+-      control.hidden = !groups[selectedGroup].tabs.includes(control.dataset.tab);
+-    });
+-  }
+-  function initNavigation() {
+-    const nav = node("nav", null, "workspace-groups"); nav.id = "workspaceGroups";
+-    nav.setAttribute("aria-label", "검토 업무");
+-    Object.entries(groups).forEach(([key, group]) => {
+-      const control = button(group.title, () => switchTab(lastTabs[key]));
+-      control.dataset.workspaceGroup = key;
+-      const glyph = node("i"); glyph.dataset.lucide = group.icon; control.prepend(glyph); nav.append(control);
+-    });
+-    document.querySelector(".tabs").before(nav);
+-    syncNavigation("documents");
+-  }
+   const states = {NOT_STARTED:"미검토", IN_PROGRESS:"검토 중", ACTION_REQUIRED:"조치 필요", COMPLETED:"검토 완료", DEFERRED:"판단 보류"};
+   const decisions = {UNDECIDED:"판단 전", AGREED:"동의", FALSE_POSITIVE:"오탐", PARTLY_AGREED:"일부 동의"};
+   const positions = {UNASSESSED:"검토 전", ASSERTED:"주장", ADMITTED:"인정", DENIED:"부인", UNKNOWN:"불지", CONDITIONAL:"가정적 주장", ALTERNATIVE:"예비적 주장"};
+@@ -301,18 +273,10 @@ const workflowUI = (() => {
+     const view=modal("검토 변경 이력",[content],async()=>{}); view.readOnly();
+   }
+   async function activate(tab) {
+-    if (tab === "issues" || tab === "review") {await refresh(); renderFindings();}
++    if (tab === "legal-claims" || tab === "review") {await refresh(); renderFindings();}
+   }
+   function init() {
+-    const toolbar=document.querySelector('[data-panel="issues"] .toolbar');
+-    const issueActions=node("div",null,"actions");
+-    $("editIssues").textContent="검토 범위";
+-    // TK-88: 3단 체계 전환에 따라 툴바 입력 도구 축소
+-    // issueActions.append($("editIssues"),button("쟁점 추가",()=>issueEditor()),iconButton("contact","담당자·대리 당사자",profileEditor));
+-    toolbar.append(issueActions);
+-    const workbench=node("div");workbench.id="issueWorkbench";$("claims").before(workbench);
+-    initNavigation();
+     const submitted=field("submitted_on","제출일","","date");$("documentForm").querySelector(".form-grid").append(submitted);
+   }
+-  return {init,refresh,activate,syncNavigation,matches,priority,decorateFinding,enhanceFinding,field,modal,table,located,selected,bulkEditor,renderReviewCount,get workflows(){return workflows;}};
++  return {init,refresh,activate,matches,priority,decorateFinding,enhanceFinding,field,modal,table,located,selected,bulkEditor,renderReviewCount,get workflows(){return workflows;}};
+ })();
+diff --git a/tests/test_external_ai_prompt.py b/tests/test_external_ai_prompt.py
+index e47c1c9..28fa6e3 100644
+--- a/tests/test_external_ai_prompt.py
++++ b/tests/test_external_ai_prompt.py
+@@ -47,7 +47,9 @@ def _extract_js_prompt_function() -> str:
+ def test_index_html_has_review_table_actions():
+     """index.html에 검토 표 하단 액션 컨테이너(reviewTableActions)가 구비되어 있어야 함."""
+     content = INDEX_HTML.read_text(encoding="utf-8")
+-    assert '<div id="reviewTableActions" class="review-table-actions"' in content
++    assert '<div id="reviewTableActions" class="review-table-actions' in content
++    # 2026-10-25 보완: 버튼 줄은 표 위에 둔다(사용자 요구 '버튼이 작아 눈에 띄지 않음')
++    assert content.index('id="reviewTableActions"') < content.index('id="reviewTable"')
+ 
+ 
+ def test_app_js_external_ai_prompt_function_and_fallback():
+@@ -212,7 +214,7 @@ def test_single_button_bound_at_table_bottom_without_row_duplicates():
+ 
+     # 표 하단부 reviewTableActions에 버튼 바인딩 확인
+     assert '$("reviewTableActions")' in content
+-    assert 'button("📋 엘박스/AI 검증 프롬프트"' in content
++    assert 'button("📋 엘박스/AI 검증 프롬프트 만들기"' in content
+     assert "buildExternalAiPromptForUnverifiedAuthorities(" in content
+ 
+     # 개별 행(tdClaim) 및 요약 배너에는 프롬프트 버튼이 없어야 함 (단일화)
+diff --git a/tests/test_external_ai_prompt_browser.py b/tests/test_external_ai_prompt_browser.py
+index 5351a0f..4155019 100644
+--- a/tests/test_external_ai_prompt_browser.py
++++ b/tests/test_external_ai_prompt_browser.py
+@@ -185,7 +185,6 @@ def test_external_ai_prompt_button_hidden_when_local_only():
+         page.goto("http://localhost/")
+         select_first_project(page)
+ 
+-        page.get_by_role("button", name="검증·검토", exact=True).click()
+         page.locator('.tabs button[data-tab="review"]').click()
+ 
+         # #reviewTableActions 엘리먼트가 숨겨져 있는지(hidden) 검증
+@@ -207,7 +206,6 @@ def test_external_ai_prompt_button_visible_when_masked_with_notice():
+         page.goto("http://localhost/")
+         select_first_project(page)
+ 
+-        page.get_by_role("button", name="검증·검토", exact=True).click()
+         page.locator('.tabs button[data-tab="review"]').click()
+ 
+         actions = page.locator("#reviewTableActions")
+@@ -254,7 +252,6 @@ def test_external_ai_prompt_copy_fallback_dialog_on_failure():
+         page.goto("http://localhost/")
+         select_first_project(page)
+ 
+-        page.get_by_role("button", name="검증·검토", exact=True).click()
+         page.locator('.tabs button[data-tab="review"]').click()
+ 
+         actions = page.locator("#reviewTableActions")
+diff --git a/tests/test_f1_ai_security_tab_browser.py b/tests/test_f1_ai_security_tab_browser.py
+index e36cd3b..4362bf1 100644
+--- a/tests/test_f1_ai_security_tab_browser.py
++++ b/tests/test_f1_ai_security_tab_browser.py
+@@ -201,7 +201,6 @@ def test_ai_tab_renamed_and_notice_banner_visible(f1_browser_page):
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+ 
+     ai_tab_btn = page.locator('.tabs button[data-tab="ai-verification"]')
+     expect(ai_tab_btn).to_have_text("AI 작성·보안 진단")
+@@ -216,7 +215,7 @@ def test_ai_tab_renamed_and_notice_banner_visible(f1_browser_page):
+ 
+     banner = panel.locator("#aiTabNoticeBanner")
+     expect(banner).to_be_visible()
+-    expect(banner).to_contain_text("확인할 항목")
++    expect(banner).to_contain_text("출처가 확인되지 않는 항목")
+ 
+ 
+ def test_ai_tab_shows_security_card_and_no_citation_rows(f1_browser_page):
+@@ -225,7 +224,6 @@ def test_ai_tab_shows_security_card_and_no_citation_rows(f1_browser_page):
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="ai-verification"]').click()
+ 
+     panel = page.locator('section[data-panel="ai-verification"]')
+@@ -249,7 +247,6 @@ def test_review_tab_filters_out_ai_security_findings(f1_browser_page):
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="review"]').click()
+ 
+     findings_container = page.locator('section[data-panel="review"]')
+@@ -268,7 +265,6 @@ def test_high_security_alert_banner_visible_and_jumpable(f1_browser_page):
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="review"]').click()
+ 
+     # D2: HIGH 이상 보안 항목 상단 고정 안내 배너 확인
+@@ -291,7 +287,6 @@ def test_temporary_citation_section_preserved_under_review(f1_browser_page):
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="review"]').click()
+ 
+     # 통합 표 패널 확인
+diff --git a/tests/test_f2_review_screen_browser.py b/tests/test_f2_review_screen_browser.py
+index fc6042e..7c9a077 100644
+--- a/tests/test_f2_review_screen_browser.py
++++ b/tests/test_f2_review_screen_browser.py
+@@ -363,7 +363,6 @@ def test_f2_review_table_renders_four_columns(f2_browser_page):
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="review"]').click()
+ 
+     panel = page.locator('section[data-panel="review"]')
+@@ -377,27 +376,30 @@ def test_f2_review_table_renders_four_columns(f2_browser_page):
+     expect(headers.nth(2)).to_have_text("인용 오류·미확인 근거 및 주장 평가 (작성 주체 판단에 쓰지 않음)")
+     expect(headers.nth(3)).to_have_text("확인이 필요한 내용")
+ 
+-    # 3단 법률적으로 무리한 주장 표(tier3Table) 4열 헤더 별도 검증 (TK-88)
+-    tier3_headers = panel.locator(".tier3-table thead th")
++    # 3단 법률적으로 무리한 주장 표는 독립 탭(legal-claims)에 있다 (2026-10-25 보완, 사용자 10-19 개선안 4항)
++    expect(panel.locator(".tier3-table")).to_have_count(0)
++    page.locator('.tabs button[data-tab="legal-claims"]').click()
++    claims_panel = page.locator('section[data-panel="legal-claims"]')
++    tier3_headers = claims_panel.locator(".tier3-table thead th")
+     expect(tier3_headers).to_have_count(4)
+     expect(tier3_headers.nth(0)).to_have_text("위치")
+     expect(tier3_headers.nth(1)).to_have_text("문서 주장 및 인용 내용")
+     expect(tier3_headers.nth(2)).to_have_text("법리 검토 결과 및 근거")
+     expect(tier3_headers.nth(3)).to_have_text("확인이 필요한 내용")
+ 
+-    # 2단 인용 표(2개 행) 및 3단 무리한 주장 표(1개 행) 분리 노출 검증 (TK-88)
++    # 2단 인용 표(2개 행) 및 3단 무리한 주장 표(1개 행) 분리 노출 검증 (TK-88, 3단은 독립 탭)
++    tier3_rows = claims_panel.locator("#tier3Rows tr")
++    expect(tier3_rows).to_have_count(1)
++    page.locator('.tabs button[data-tab="review"]').click()
+     rows = panel.locator("#aiVerificationRows tr")
+     expect(rows).to_have_count(2)
+ 
+-    tier3_rows = panel.locator("#tier3Rows tr")
+-    expect(tier3_rows).to_have_count(1)
+-
+     # 4열 확인이 필요한 내용 요약 박스 검증
+     summary_box = rows.first.locator(".review-summary-box")
+     expect(summary_box).to_be_visible()
+     expect(summary_box.locator(".summary-target")).to_contain_text("확인 대상")
+     expect(summary_box.locator(".summary-reason")).to_contain_text("의심 사유")
+-    expect(summary_box.locator(".summary-action")).to_contain_text("확인 방법")
++    expect(summary_box.locator(".summary-action")).to_have_count(0)  # 2026-10-25 보완: 반복되는 '확인 방법' 줄 삭제(사용자 요구)
+ 
+ 
+ def test_f2_review_summary_box_renders_instead_of_inline_workflow(f2_browser_page):
+@@ -406,7 +408,6 @@ def test_f2_review_summary_box_renders_instead_of_inline_workflow(f2_browser_pag
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="review"]').click()
+ 
+     panel = page.locator('section[data-panel="review"]')
+@@ -422,7 +423,8 @@ def test_f2_review_summary_box_renders_instead_of_inline_workflow(f2_browser_pag
+     for i in range(2):
+         expect(rows.nth(i).locator(".review-summary-box")).to_be_visible()
+ 
+-    tier3_rows = panel.locator("#tier3Rows tr")
++    page.locator('.tabs button[data-tab="legal-claims"]').click()
++    tier3_rows = page.locator('section[data-panel="legal-claims"] #tier3Rows tr')
+     expect(tier3_rows.first.locator(".review-summary-box")).to_be_visible()
+ 
+ 
+@@ -432,7 +434,6 @@ def test_f2_review_summary_content_elements(f2_browser_page):
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="review"]').click()
+ 
+     panel = page.locator('section[data-panel="review"]')
+@@ -444,8 +445,7 @@ def test_f2_review_summary_content_elements(f2_browser_page):
+     expect(box.locator(".summary-target")).to_contain_text("대법원 2022다99999 판결")
+     expect(box.locator(".summary-reason")).to_be_visible()
+     expect(box.locator(".summary-reason")).to_contain_text("타당성 검토 결과: 해당 판례 미존재")
+-    expect(box.locator(".summary-action")).to_be_visible()
+-    expect(box.locator(".summary-action")).to_contain_text("원문 확인 요청")
++    expect(box.locator(".summary-action")).to_have_count(0)  # 2026-10-25 보완: '확인 방법' 줄 삭제
+ 
+ 
+ def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_page):
+@@ -454,7 +454,6 @@ def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_pag
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="review"]').click()
+ 
+     panel = page.locator('section[data-panel="review"]')
+@@ -475,8 +474,7 @@ def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_pag
+ 
+     # 3. 2단 표의 2번째 행(counteraction 없는 위치 행: 헌법 제10조, 1쪽)의 확인 방법 텍스트 검증: '권위명 원문 대조 (N쪽)' 분기
+     box3 = rows.nth(1).locator(".review-summary-box")
+-    expect(box3.locator(".summary-action")).to_be_visible()
+-    expect(box3.locator(".summary-action")).to_contain_text("헌법 제10조 원문 대조 (1쪽)")
++    expect(box3.locator(".summary-action")).to_have_count(0)  # 2026-10-25 보완: '확인 방법' 줄 삭제
+ 
+ 
+ def test_f2_filters_search_severity_review_status(f2_browser_page):
+@@ -485,7 +483,6 @@ def test_f2_filters_search_severity_review_status(f2_browser_page):
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="review"]').click()
+ 
+     panel = page.locator('section[data-panel="review"]')
+@@ -508,8 +505,9 @@ def test_f2_filters_search_severity_review_status(f2_browser_page):
+     search_input.fill("")
+     expect(rows).to_have_count(2)
+ 
+-    # 3단 표의 사실관계 항목('일자 선후 모순') 확인
+-    tier3_rows = panel.locator("#tier3Rows tr")
++    # 3단 표의 사실관계 항목('일자 선후 모순') 확인 (독립 탭)
++    page.locator('.tabs button[data-tab="legal-claims"]').click()
++    tier3_rows = page.locator('section[data-panel="legal-claims"] #tier3Rows tr')
+     expect(tier3_rows).to_have_count(1)
+     expect(tier3_rows.first).to_contain_text("일자 선후 모순")
+ 
+@@ -525,7 +523,6 @@ def test_f2_checkboxes_and_batch_review(f2_browser_page):
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="review"]').click()
+ 
+     panel = page.locator('section[data-panel="review"]')
+@@ -542,7 +539,6 @@ def test_f2_derived_findings_bundle_and_multi_save(f2_browser_page):
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="review"]').click()
+ 
+     panel = page.locator('section[data-panel="review"]')
+@@ -573,7 +569,6 @@ def test_f2_references_and_unverified_scope_rendered(f2_browser_page):
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="review"]').click()
+ 
+     panel = page.locator('section[data-panel="review"]')
+@@ -584,7 +579,10 @@ def test_f2_references_and_unverified_scope_rendered(f2_browser_page):
+     expect(unverified).to_contain_text("관련 별지 서증")
+ 
+     # RAG 주요 참고문헌 및 관련 법조문 확인
++    # 2026-10-25 사용자 요구(평가 측 개정): 참고문헌 처리 기록은 하단 절이 아니라 표 위 상태 줄(펼침)에 둔다.
++    status = panel.locator("#referenceStatus")
++    status.locator("summary").first.click()
++    expect(status).to_contain_text("주요 참고문헌 검토 결과(RAG)")
+     ref_container = panel.locator("#reviewReferencesContainer")
+-    expect(ref_container).to_contain_text("주요 참고문헌 검토 결과(RAG)")
+     expect(ref_container).to_contain_text("추가 관련 법조문 검토")
+     expect(ref_container).to_contain_text("민법 제750조")
+diff --git a/tests/test_frontend_admin.py b/tests/test_frontend_admin.py
+index 4dc0052..4a6606f 100644
+--- a/tests/test_frontend_admin.py
++++ b/tests/test_frontend_admin.py
+@@ -307,28 +307,24 @@ def test_grouped_workbench_preserves_all_tools_and_selected_case(admin_page):
+         renderProject();
+         state.run = {id:'retained-run', state:'VERIFYING'};
+     }""")
+-    groups = page.locator("#workspaceGroups")
+-    expect(groups.get_by_role("button")).to_have_count(3)
+-    for group, tools in (
+-        ("자료", ("documents",)),
+-        ("검증·검토", ("ai-verification", "review", "issues")),
+-        ("보고서", ("reports", "audit")),
+-    ):
+-        groups.get_by_role("button", name=group, exact=True).click()
+-        assert page.locator(".tabs [data-tab]:visible").count() == len(tools)
+-        for tab in tools:
+-            page.locator(f'.tabs [data-tab="{tab}"]').click()
+-            expect(page.locator(f'[data-panel="{tab}"]')).to_be_visible()
+-    groups.get_by_role("button", name="검증·검토", exact=True).click()
+-    expect(page.locator('[data-panel="issues"]')).to_be_visible()
++    # 2026-10-25 사용자 요구(평가 측 개정): 하위 탭 없는 다섯 개 평면 탭. 활동 기록 화면은 두지 않는다(사용자 결정).
++    tabs = page.locator(".tabs [data-tab]:visible")
++    expect(tabs).to_have_count(5)
++    assert tabs.all_inner_texts() == ["자료", "AI 작성·보안 진단", "출처가 확인되지 않는 항목", "법률적으로 무리한 주장", "보고서"]
++    for tab in ("documents", "ai-verification", "review", "legal-claims", "reports"):
++        page.locator(f'.tabs [data-tab="{tab}"]').click()
++        expect(page.locator(f'[data-panel="{tab}"]')).to_be_visible()
++    expect(page.locator('[data-panel="audit"], [data-tab="audit"], #openAudit')).to_have_count(0)
++    page.locator('.tabs [data-tab="legal-claims"]').click()
++    expect(page.locator('[data-panel="legal-claims"]')).to_be_visible()
+     page.locator("#adminNavigation").click()
+     expect(page.locator("#projectView")).to_be_hidden()
+     page.get_by_role("button", name="작업 공간", exact=True).click()
+     expect(page.locator("#projectTitle")).to_have_text("합성 사건")
+-    expect(page.locator('[data-panel="issues"]')).to_be_visible()
++    expect(page.locator('[data-panel="legal-claims"]')).to_be_visible()
+     assert page.evaluate("state.run.id") == "retained-run"
+     page.set_viewport_size({"width": 390, "height": 844})
+-    assert groups.evaluate("el => el.scrollWidth <= el.clientWidth")
++    assert page.locator(".tabs").evaluate("el => el.scrollWidth <= el.clientWidth")
+     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+ 
+ 
+diff --git a/tests/test_frontend_citation_groups.py b/tests/test_frontend_citation_groups.py
+index 45170d9..9ac5bae 100644
+--- a/tests/test_frontend_citation_groups.py
++++ b/tests/test_frontend_citation_groups.py
+@@ -73,7 +73,6 @@ def test_findings_from_one_citation_are_grouped(tmp_path):
+             page.route("**/*", respond)
+             page.goto("http://groups.test/")
+             select_first_project(page)
+-            page.get_by_role("button", name="검증·검토", exact=True).click()
+             page.locator("[data-tab='review']").click()
+             rows = page.locator("#aiVerificationRows tr")
+             expect(rows).to_have_count(2)
+@@ -83,6 +82,8 @@ def test_findings_from_one_citation_are_grouped(tmp_path):
+             expect(grouped.locator(".derived-findings")).to_contain_text("공식 DB에서 확인되지 않은 판례에 기댄 주장")
+             expect(rows.filter(has_text="다른 인용의 항목").locator(".derived-findings")).to_have_count(0)
+             page.locator("[data-tab='review']").click()
++            # 2026-10-25(평가 측 개정): 참고문헌 처리 기록은 표 위 상태 줄을 펼쳐 본다.
++            page.locator("#referenceStatus summary").first.click()
+             references = page.locator(".reference-section")
+             expect(references.locator("h3")).to_have_text("주요 참고문헌 검토 결과(RAG)")
+             expect(references).to_contain_text("부분 처리·제한 있음")
+diff --git a/tests/test_frontend_metric_explain.py b/tests/test_frontend_metric_explain.py
+index 9e24b9f..2ecab85 100644
+--- a/tests/test_frontend_metric_explain.py
++++ b/tests/test_frontend_metric_explain.py
+@@ -79,7 +79,7 @@ def test_pending_and_status_metrics_explain_themselves(width, height):
+             expect(dialog).to_contain_text("문제가 의심되는 항목(검토 후 조치 필요): 1건")
+             expect(dialog).to_contain_text("시스템이 확인하지 못한 항목(원문 확인 필요): 1건")
+             expect(dialog).to_contain_text("참고 신호(낮은 심각도·참고용): 1건")
+-            dialog.get_by_role("button", name="확인할 항목에서 보기").click()
++            dialog.get_by_role("button", name="출처가 확인되지 않는 항목에서 보기").click()
+             expect(page.locator("[data-panel='review']")).to_be_visible()
+             expect(page.locator("#reviewTable")).to_be_visible()
+ 
+diff --git a/tests/test_frontend_report_progress.py b/tests/test_frontend_report_progress.py
+index a493de9..82945f7 100644
+--- a/tests/test_frontend_report_progress.py
++++ b/tests/test_frontend_report_progress.py
+@@ -75,7 +75,6 @@ def test_report_generation_shows_live_progress(width, height):
+             page.route("**/*", respond)
+             page.goto("http://reports.test/")
+             select_first_project(page)
+-            page.locator("#workspaceGroups").get_by_role("button", name="보고서", exact=True).click()
+             # 보고서 생성은 상단 버튼으로 하고, 보고서 탭에는 생성 버튼이 없다(0.9.9).
+             page.locator("[data-tab='reports']").click()
+             expect(page.locator("[data-panel='reports'] button", has_text="보고서 생성")).to_have_count(0)
+diff --git a/tests/test_frontend_summary_compact.py b/tests/test_frontend_summary_compact.py
+index 9c34a82..37e33a1 100644
+--- a/tests/test_frontend_summary_compact.py
++++ b/tests/test_frontend_summary_compact.py
+@@ -77,6 +77,8 @@ def test_summary_metrics_are_compact(width, height, max_cell, tmp_path):
+             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+             page.evaluate("switchTab('review')")
+             page.get_by_text("준비서면.pdf: 추가 관련 법조문 검토", exact=True).click()
++            # 2026-10-25(평가 측 개정): 참고문헌 처리 기록은 표 위 상태 줄을 펼쳐 본다.
++            page.locator("#referenceStatus summary").first.click()
+             page.get_by_text("준비서면.pdf: 검색 완료 · AI 대조 미실행", exact=True).click()
+             expect(page.get_by_text("민법 제492조", exact=False)).to_contain_text("별도 검토 필요")
+             expect(page.get_by_text("12일 × 60000원 = 720000원", exact=True)).to_be_visible()
+diff --git a/tests/test_tk126_flat_tabs_answer_import.py b/tests/test_tk126_flat_tabs_answer_import.py
+new file mode 100644
+index 0000000..a9f10cc
+--- /dev/null
++++ b/tests/test_tk126_flat_tabs_answer_import.py
+@@ -0,0 +1,169 @@
++# -*- coding: utf-8 -*-
++"""TK-126·127·128 (2026-10-25 사용자 요구) 화면 시험.
++
++1. 상단 탭은 하위 탭 없이 다섯 개다(자료·AI 작성·보안 진단·출처가 확인되지 않는 항목·법률적으로 무리한 주장·보고서).
++2. 주요 참고문헌(RAG) 대조 의견은 하단 절이 아니라 표의 행에 붙고, 행과 연결되지 않은 '불부합' 의견은 3번째 탭의 행이 된다.
++3. 두 표 모두 엘박스/AI 검증 프롬프트와 '외부 AI 답변 붙여넣기'가 있고, 붙여넣은 답변은 번호로 행에 반영되되
++   공식 확인 배지는 바뀌지 않는다.
++4. 3번째 탭 프롬프트의 주장 문장은 서버의 프로젝트 정책 가림을 거친다.
++"""
++from __future__ import annotations
++
++from pathlib import Path
++from urllib.parse import urlsplit
++
++from playwright.sync_api import expect, sync_playwright
++from frontend_helpers import select_first_project
++from test_api import client, project  # noqa: F401  (fixture 재사용)
++
++ROOT = Path(__file__).resolve().parents[1]
++ORIGINAL_CLAIM = "원고 홍길동(010-9876-5432)은 해지 통보 없이 계약이 소멸하였다고 주장한다"
++MASKED_CLAIM = "원고 [인물1]([전화1])은 해지 통보 없이 계약이 소멸하였다고 주장한다"
++
++
++def _result():
++    items = [
++        {"item_id": "item_a", "kind": "CITATION", "document_id": "d1", "location": {"display": "2쪽"},
++         "claim_text": "청구권 행사 기한이 지났다는 주장", "cited_authority": "대법원 2022다99999 판결",
++         "official_status": "OFFICIAL_NOT_FOUND", "reference_status": "NOT_CHECKED",
++         "verdict_label": "공식 DB 미확인 (원문 확인 필요)", "severity": "HIGH", "finding_ids": [], "citation_id": "cit_1"},
++        {"item_id": "item_b", "kind": "FACT", "document_id": "d1", "location": {"display": "4쪽"},
++         "claim_text": ORIGINAL_CLAIM, "official_status": "NOT_ASSESSED", "reference_status": "NOT_CHECKED",
++         "verdict_label": "사실관계 상이", "severity": "MEDIUM", "finding_ids": []},
++    ]
++    rag = {"status": "ADVISORY_REVIEWED", "sources": [{"source_id": "R1", "title": "표준판례집", "page": 12, "text": "발췌"}],
++           "observations": [
++               {"claim_id": "c1", "claim_quote": "청구권 행사 기한", "source_id": "R1", "source_quote": "기한 기산점 설명",
++                "relationship": "CONTRADICTS", "explanation": "기산점이 다르다", "advisory_only": True},
++               {"claim_id": "c9", "claim_quote": "표에 없는 별도 주장 문장입니다", "source_id": "R1", "source_quote": "다른 설명",
++                "relationship": "CONTRADICTS", "explanation": "참고문헌과 다르다", "advisory_only": True}]}
++    return {"status": "COMPLETED",
++            "run_manifest": {"reference_library": {"status": "READY", "files_indexed": 1, "files_seen": 1, "checked_at": "2026-10-25"}},
++            "documents": [{"id": "d1", "filename": "서면.pdf", "quarantined": False, "findings": [], "review_items": items,
++                           "claims": [{"claim_id": "c1", "citation_ids": ["cit_1"]}], "engine_data": {"rag": rag}}]}
++
++
++def _page(p, prompt_calls):
++    project_data = {"id": "p1", "name": "합성 사건", "can_delete": True, "document_count": 1, "external_ai_policy": "MASKED",
++                    "scope_revision": 0, "incident_date": "2024-05-01", "requested_issues": []}
++    run = {"id": "r1", "project_id": "p1", "state": "COMPLETED", "progress": 1, "stage_message": "", "document_ids": ["d1"],
++           "scores": {}, "unverified_items": [], "errors": [], "unavailable_sources": [], "input_snapshot": {"scope_revision": 0},
++           "started_at": "2026-10-25T00:00:00"}
++    static_dir = ROOT / "apps/web/static"
++    files = {f"/static/{f.relative_to(static_dir).as_posix()}": f for f in static_dir.rglob("*") if f.is_file()}
++    files["/"] = ROOT / "apps/web/index.html"
++    fixed = {"/api/health": {"status": "ok", "version": "0.14.0"},
++             "/api/auth/me": {"user_id": "u", "email": "t@example.com", "display_name": "검토자", "role": "ADMIN", "authentication": "local"},
++             "/api/verification-runs": {"active_count": 0, "runs": []}, "/api/projects": [project_data], "/api/projects/p1": project_data,
++             "/api/projects/p1/documents": [{"id": "d1", "filename": "서면.pdf", "included_in_verification": True}],
++             "/api/projects/p1/runs": [run], "/api/projects/p1/audit": {"events": []},
++             "/api/privacy-notice": {"version": "v1", "bullets": [], "ack_label": "", "report_header": ""},
++             "/api/finding-categories": {"categories": {}, "tabs": {}, "counts": {}}}
++
++    def handler(route):
++        path = urlsplit(route.request.url).path
++        if path in files:
++            return route.fulfill(path=str(files[path]))
++        if path == "/api/projects/p1/external-ai/prompt-texts":
++            body = route.request.post_data_json
++            prompt_calls.append(body)
++            return route.fulfill(json={"policy": "MASKED", "texts": [MASKED_CLAIM if t == ORIGINAL_CLAIM else t for t in body["texts"]]})
++        if path.endswith(("/result", "/results")):
++            return route.fulfill(json=_result())
++        if path.endswith("/case-matrix"):
++            return route.fulfill(body="null", content_type="application/json")
++        if path in fixed:
++            return route.fulfill(json=fixed[path])
++        route.fulfill(json=[])
++
++    browser = p.chromium.launch()
++    context = browser.new_context(viewport={"width": 1280, "height": 900})
++    context.add_init_script("""window.__copied = [];
++      Object.defineProperty(navigator, 'clipboard', {value: {writeText: async t => { window.__copied.push(t); }}});""")
++    page = context.new_page()
++    page.route("**/*", handler)
++    page.goto("http://localhost/")
++    select_first_project(page)
++    return browser, page
++
++
++def test_rag_observations_attach_to_rows_and_bottom_section_is_gone():
++    with sync_playwright() as p:
++        browser, page = _page(p, [])
++        page.locator('.tabs [data-tab="review"]').click()
++        row = page.locator("#aiVerificationRows tr", has_text="대법원 2022다99999 판결")
++        expect(row.locator(".reference-observations")).to_contain_text("불부합")
++        expect(row.locator(".reference-observations")).to_contain_text("표준판례집 · 12쪽")
++        expect(page.locator("#reviewReferencesContainer .reference-section")).to_have_count(0)
++        expect(page.locator("#referenceStatus")).to_contain_text("표의 행에 반영한 의견 1건")
++        page.locator('.tabs [data-tab="legal-claims"]').click()
++        expect(page.locator("#tier3Rows tr", has_text="표에 없는 별도 주장 문장입니다")).to_contain_text("참고문헌과 불부합")
++        browser.close()
++
++
++def test_answer_import_applies_to_row_without_changing_official_badge():
++    with sync_playwright() as p:
++        browser, page = _page(p, [])
++        page.locator('.tabs [data-tab="review"]').click()
++        bar = page.locator("#reviewTableActions")
++        bar.get_by_role("button", name="📋 엘박스/AI 검증 프롬프트 만들기").click()
++        prompt = page.evaluate("window.__copied.at(-1)")
++        assert "A1. 대법원 2022다99999 판결" in prompt and "<<<ACAS_RESULT" in prompt
++        bar.get_by_role("button", name="📥 외부 AI 답변 붙여넣기").click()
++        answer = "요약 생략\n<<<ACAS_RESULT\nA1 | 판정: 부존재 | 근거: 해당 사건번호 없음 | 요지: 유사 판례는 2021다1\nA7 | 판정: 확인\nACAS_RESULT>>>"
++        page.get_by_role("dialog", name="외부 AI 답변 붙여넣기").locator("textarea").fill(answer)
++        page.get_by_role("dialog", name="외부 AI 답변 붙여넣기").get_by_role("button", name="저장").click()
++        preview = page.get_by_role("dialog", name="표에 반영할 답변 1건 확인")
++        expect(preview).to_contain_text("A1 → 대법원 2022다99999 판결")
++        expect(preview).to_contain_text("A7")
++        preview.get_by_role("button", name="표에 반영").click()
++        row = page.locator("#aiVerificationRows tr", has_text="대법원 2022다99999 판결")
++        expect(row.locator(".external-ai-answer")).to_contain_text("외부 AI 답변 A1 (공식 확인 아님)")
++        expect(row.locator(".external-ai-answer")).to_contain_text("판정: 부존재")
++        expect(row.locator(".validity-verdict")).to_have_text("공식 DB 미확인 (원문 확인 필요)")
++        # 2026-10-25 사용자 결정: 공식 DB는 검증 실행 때 이미 조회하므로 '다시 조회' 버튼을 두지 않는다.
++        expect(row.locator(".external-ai-answer")).to_contain_text("참고용이며 위 공식 DB 판정은 바뀌지 않습니다")
++        expect(row.get_by_role("button", name="공식 DB로 다시 조회")).to_have_count(0)
++        browser.close()
++
++
++def test_legal_claims_tab_prompt_uses_server_masked_claims_and_imports_answers():
++    calls = []
++    with sync_playwright() as p:
++        browser, page = _page(p, calls)
++        page.locator('.tabs [data-tab="legal-claims"]').click()
++        bar = page.locator("#legalClaimsActions")
++        expect(bar).to_be_visible()
++        bar.get_by_role("button", name="📋 엘박스/AI 검증 프롬프트 만들기").click()
++        page.wait_for_function("window.__copied.length > 0")
++        prompt = page.evaluate("window.__copied.at(-1)")
++        assert calls and ORIGINAL_CLAIM in calls[0]["texts"]
++        assert MASKED_CLAIM in prompt and "010-9876-5432" not in prompt and "홍길동" not in prompt
++        assert "B1." in prompt and "<<<ACAS_RESULT" in prompt
++        code = next(line.split(".")[0] for line in prompt.splitlines() if MASKED_CLAIM in line)
++        bar.get_by_role("button", name="📥 외부 AI 답변 붙여넣기").click()
++        dialog = page.get_by_role("dialog", name="외부 AI 답변 붙여넣기")
++        dialog.locator("textarea").fill(f"<<<ACAS_RESULT\n{code.strip()} | 판정: 불일치 | 근거: 민법 제543조 | 요지: 해지 의사표시가 필요\nACAS_RESULT>>>")
++        dialog.get_by_role("button", name="저장").click()
++        page.get_by_role("dialog", name="표에 반영할 답변 1건 확인").get_by_role("button", name="표에 반영").click()
++        row = page.locator("#tier3Rows tr", has_text="해지 통보 없이")
++        expect(row.locator(".external-ai-answer")).to_contain_text("근거: 민법 제543조")
++        browser.close()
++
++
++def test_prompt_texts_endpoint_follows_project_policy(client, project):  # noqa: F811
++    from apps.api.db import Project, get_session_factory
++    url = f"/api/projects/{project['id']}/external-ai/prompt-texts"
++
++    def set_policy(policy):
++        with get_session_factory()() as session:
++            session.get(Project, project["id"]).external_ai_policy = policy
++            session.commit()
++
++    set_policy("LOCAL_ONLY")
++    assert client.post(url, json={"texts": [ORIGINAL_CLAIM]}).status_code == 403
++    set_policy("MASKED")
++    masked = client.post(url, json={"texts": [ORIGINAL_CLAIM]}).json()
++    assert masked["policy"] == "MASKED" and "010-9876-5432" not in masked["texts"][0]
++    set_policy("ORIGINAL")
++    assert client.post(url, json={"texts": [ORIGINAL_CLAIM]}).json()["texts"] == [ORIGINAL_CLAIM]
+diff --git a/tests/test_tk61_layout_browser.py b/tests/test_tk61_layout_browser.py
+index 131b832..ed24379 100644
+--- a/tests/test_tk61_layout_browser.py
++++ b/tests/test_tk61_layout_browser.py
+@@ -200,7 +200,6 @@ def test_tk61_review_table_fixed_layout_and_column_widths(tk61_browser_page):
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="review"]').click()
+ 
+     panel = page.locator('section[data-panel="review"]')
+@@ -247,7 +246,6 @@ def test_tk61_security_finding_items_vertical_layout(tk61_browser_page):
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+-    page.get_by_role("button", name="검증·검토", exact=True).click()
+     page.locator('.tabs button[data-tab="ai-verification"]').click()
+ 
+     panel = page.locator('section[data-panel="ai-verification"]')
+diff --git a/tests/test_tk88_three_tier_review.py b/tests/test_tk88_three_tier_review.py
+index a4c90a3..0baaa83 100644
+--- a/tests/test_tk88_three_tier_review.py
++++ b/tests/test_tk88_three_tier_review.py
+@@ -478,7 +478,6 @@ def test_table1_ten_rows_rendered_in_browser():
+ 
+             # 홈 화면에서 프로젝트 선택 후 검증·검토 화면 진입 (시간 초과 방지)
+             select_first_project(page)
+-            page.get_by_role("button", name="검증·검토", exact=True).click()
+ 
+             # 확인할 항목(review) 탭 진입
+             page.locator('.tabs button[data-tab="review"]').click()
+@@ -493,7 +492,8 @@ def test_table1_ten_rows_rendered_in_browser():
+             expect(page.locator("#row_item_5")).to_be_visible()
+             expect(page.locator("#row_item_10")).to_be_visible()
+ 
+-            # 3단 표 (#tier3Rows) 확인: 6, 7, 8, 9번 (총 4행)
++            # 3단 표 (#tier3Rows) 확인: 6, 7, 8, 9번 (총 4행) — 독립 탭 legal-claims
++            page.locator('.tabs button[data-tab="legal-claims"]').click()
+             tier3_rows = page.locator("#tier3Rows tr")
+             expect(tier3_rows).to_have_count(4)
+             expect(page.locator("#tier3Rows #row_item_6")).to_be_visible()
+@@ -522,5 +522,5 @@ def test_frontend_app_js_classification_matches_specification():
+     assert "취지 왜곡" in app_js or "부당" in app_js  # 6번 행 3단 분기
+     assert "참고문헌(구속력 없음)" in app_js  # 참고문헌 구속력 배제 배지
+     assert "대조 안 함" in app_js  # 미대조 배지
+-    assert "3단 무리한 주장 확인 →" in app_js  # 2단->3단 상호 참조
+-    assert "2단 출처 부존재 확인 →" in app_js  # 3단->2단 상호 참조
++    assert "법률적으로 무리한 주장 탭에서 확인 →" in app_js  # 2단->3단 상호 참조
++    assert "출처가 확인되지 않는 항목 탭에서 확인 →" in app_js  # 3단->2단 상호 참조

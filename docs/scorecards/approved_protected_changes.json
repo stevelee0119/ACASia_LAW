@@ -10,6 +10,41 @@
       "path": "scripts/codeql_pr_diff.py",
       "commit": "05e540919eee927b931ddfbe713fea6baebef43d",
       "reason": "PR #104 already merged by user before protection was added; evaluator reviewed initial security gate scope and existing synthetic tests. Exact initial path+SHA only; future edits need separate review."
+    },
+    {
+      "path": "tests/fixtures/retired_sealed/sealed_20261025/SD-01.pdf",
+      "commit": "c58c683d4d57891543771d774dafb011cf675511",
+      "reason": "사용자 결정(2026-10-25)으로 0.14.0 봉인 채점을 마친 sealed_20261025를 개발용으로 이전. 사용자가 GitHub 웹으로 직접 업로드(봉인 파일은 사용자 PC에만 있어 평가 측이 올릴 수 없음). 평가 측 확인: 문서 7·결함 44, 리눅스 재측정 c512462 25.0·907c2fa 27.3이 사용자 봉인 채점과 같음. 이 경로·SHA에만 적용."
+    },
+    {
+      "path": "tests/fixtures/retired_sealed/sealed_20261025/SD-02.pdf",
+      "commit": "c58c683d4d57891543771d774dafb011cf675511",
+      "reason": "사용자 결정(2026-10-25)으로 0.14.0 봉인 채점을 마친 sealed_20261025를 개발용으로 이전. 사용자가 GitHub 웹으로 직접 업로드(봉인 파일은 사용자 PC에만 있어 평가 측이 올릴 수 없음). 평가 측 확인: 문서 7·결함 44, 리눅스 재측정 c512462 25.0·907c2fa 27.3이 사용자 봉인 채점과 같음. 이 경로·SHA에만 적용."
+    },
+    {
+      "path": "tests/fixtures/retired_sealed/sealed_20261025/SD-03.pdf",
+      "commit": "c58c683d4d57891543771d774dafb011cf675511",
+      "reason": "사용자 결정(2026-10-25)으로 0.14.0 봉인 채점을 마친 sealed_20261025를 개발용으로 이전. 사용자가 GitHub 웹으로 직접 업로드(봉인 파일은 사용자 PC에만 있어 평가 측이 올릴 수 없음). 평가 측 확인: 문서 7·결함 44, 리눅스 재측정 c512462 25.0·907c2fa 27.3이 사용자 봉인 채점과 같음. 이 경로·SHA에만 적용."
+    },
+    {
+      "path": "tests/fixtures/retired_sealed/sealed_20261025/SD-04.pdf",
+      "commit": "c58c683d4d57891543771d774dafb011cf675511",
+      "reason": "사용자 결정(2026-10-25)으로 0.14.0 봉인 채점을 마친 sealed_20261025를 개발용으로 이전. 사용자가 GitHub 웹으로 직접 업로드(봉인 파일은 사용자 PC에만 있어 평가 측이 올릴 수 없음). 평가 측 확인: 문서 7·결함 44, 리눅스 재측정 c512462 25.0·907c2fa 27.3이 사용자 봉인 채점과 같음. 이 경로·SHA에만 적용."
+    },
+    {
+      "path": "tests/fixtures/retired_sealed/sealed_20261025/SD-05.pdf",
+      "commit": "c58c683d4d57891543771d774dafb011cf675511",
+      "reason": "사용자 결정(2026-10-25)으로 0.14.0 봉인 채점을 마친 sealed_20261025를 개발용으로 이전. 사용자가 GitHub 웹으로 직접 업로드(봉인 파일은 사용자 PC에만 있어 평가 측이 올릴 수 없음). 평가 측 확인: 문서 7·결함 44, 리눅스 재측정 c512462 25.0·907c2fa 27.3이 사용자 봉인 채점과 같음. 이 경로·SHA에만 적용."
+    },
+    {
+      "path": "tests/fixtures/retired_sealed/sealed_20261025/SD-06.pdf",
+      "commit": "c58c683d4d57891543771d774dafb011cf675511",
+      "reason": "사용자 결정(2026-10-25)으로 0.14.0 봉인 채점을 마친 sealed_20261025를 개발용으로 이전. 사용자가 GitHub 웹으로 직접 업로드(봉인 파일은 사용자 PC에만 있어 평가 측이 올릴 수 없음). 평가 측 확인: 문서 7·결함 44, 리눅스 재측정 c512462 25.0·907c2fa 27.3이 사용자 봉인 채점과 같음. 이 경로·SHA에만 적용."
+    },
+    {
+      "path": "tests/fixtures/retired_sealed/sealed_20261025/SD-07.pdf",
+      "commit": "c58c683d4d57891543771d774dafb011cf675511",
+      "reason": "사용자 결정(2026-10-25)으로 0.14.0 봉인 채점을 마친 sealed_20261025를 개발용으로 이전. 사용자가 GitHub 웹으로 직접 업로드(봉인 파일은 사용자 PC에만 있어 평가 측이 올릴 수 없음). 평가 측 확인: 문서 7·결함 44, 리눅스 재측정 c512462 25.0·907c2fa 27.3이 사용자 봉인 채점과 같음. 이 경로·SHA에만 적용."
     }
   ]
 }
