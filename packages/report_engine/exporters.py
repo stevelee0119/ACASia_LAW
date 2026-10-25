@@ -233,6 +233,14 @@ def to_xlsx(run_result: Any, *, reveal_sealed: bool = False) -> bytes:
         append(matrix, [row["claim"].get("claim_id"), row.get("document_id"), row["claim"].get("text"),
                         assessment.get("issue_id"), assessment.get("position"), row.get("review_status"),
                         assessment.get("evidence_links", []), assessment.get("missing_material"), assessment.get("note")])
+    from .external_answers import EXTERNAL_AI_HEADERS, external_answer_rows
+
+    external_rows = external_answer_rows(snapshot)
+    if external_rows:
+        external_sheet = workbook.create_sheet("외부AI참고의견")
+        append(external_sheet, EXTERNAL_AI_HEADERS)
+        for row in external_rows:
+            append(external_sheet, row)
     issues = workbook.create_sheet("쟁점")
     columns = ["id", "title", "elements", "reference_date", "legal_basis", "priority", "note"]
     append(issues, columns)

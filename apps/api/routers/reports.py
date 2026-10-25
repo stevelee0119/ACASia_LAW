@@ -19,6 +19,7 @@ from packages.common.enums import AuditEventType
 from packages.common.storage import get_storage, sha256_bytes
 from packages.common.terminology import report_label, terminology_catalog
 from packages.report_engine import build_highlight_pdf, build_report_pdf, to_csv, to_json, to_manifest, to_xlsx
+from packages.report_engine.external_answers import checked_answers, unknown_items
 from packages.report_engine.snapshot import canonical_hash, remove_sealed, shareable_snapshot, view_from_snapshot
 
 from ..db import (
@@ -217,6 +218,11 @@ def _resolve_run(session: Session, project_id: str, payload: ReportRequest) -> V
     if payload.detail_level == "SUMMARY" and "json" not in payload.formats and set(payload.formats) & {"pdf", "docx", "xlsx"}:
         # 요약본은 전체 기술 기록을 싣지 않으므로, 그 기록을 담은 검증 상세(JSON)를 함께 만든다.
         payload.formats = [*payload.formats, "json"]
+    if payload.external_ai_answers:
+        unknown = unknown_items(run.result_json or {}, [a.model_dump() for a in payload.external_ai_answers])
+        if unknown:
+            raise HTTPException(422, {"message": "이 검증 결과의 표에 없는 항목의 외부 AI 답변이 있습니다. 화면을 새로 고친 뒤 다시 생성하세요",
+                                      "unknown_item_ids": unknown[:20]})
     return run
 
 
@@ -244,7 +250,8 @@ def _build_draft(session: Session, project: Project, run: VerificationRun, paylo
                 "audience": payload.audience, "detail_level": payload.detail_level, "created_by": actor,
                 "created_at": report.created_at.isoformat(), "finalized_by": None, "finalized_at": None,
                 "note": "", "source_run_id": run.id, "source_run_hash": canonical_hash(engine)}
-    snapshot = _snapshot(session, project, run, engine, metadata, manifest)
+    external = checked_answers(engine, [a.model_dump() for a in payload.external_ai_answers])
+    snapshot = _snapshot(session, project, run, engine, metadata, manifest, external=external)
     progress("고정본을 만드는 중", 30)
     review = _save_review(session, report, snapshot)
     _generate_artifacts(session, report, review, project, audit, strict=False, progress=progress)
@@ -539,14 +546,18 @@ def _preflight(project, engine, human):
     return data
 
 
-def _snapshot(session, project, run, engine, metadata, manifest, human=None):
+def _snapshot(session, project, run, engine, metadata, manifest, human=None, external=None):
     human = human or _human_review(session, project, run, engine)
     engine_for_report = copy.deepcopy(engine)
     engine_for_report.pop("timeline", None)
-    snapshot = remove_sealed({"schema_version": 2, "report": metadata, "engine_result": engine_for_report,
-                **human, "preflight": _preflight(project, engine, human), "manifest": manifest,
-                "terminology": terminology_catalog()})
-    return snapshot
+    frozen = {"schema_version": 2, "report": metadata, "engine_result": engine_for_report,
+              **human, "preflight": _preflight(project, engine, human), "manifest": manifest,
+              "terminology": terminology_catalog()}
+    if external:
+        # TK-129: 고정본 해시에 묶어 초안·확정본·내려받기가 같은 답변을 싣게 한다. 답변이 없으면 키를 두지 않아
+        # 기존 보고서의 고정본 해시가 바뀌지 않는다.
+        frozen["external_ai_answers"] = external
+    return remove_sealed(frozen)
 
 
 def _save_review(session, report, snapshot):
@@ -637,7 +648,8 @@ def finalize_report(report_id: str, payload: ReportFinalizeRequest, session: Ses
                 "acknowledgments": payload.model_dump(exclude={"note", "expected_preflight_hash"})}
     audit = make_audit(session)
     snapshot = _snapshot(session, project, run, frozen["engine_result"], metadata,
-                         project_manifest(project.id, session=session), human=human)
+                         project_manifest(project.id, session=session), human=human,
+                         external=frozen.get("external_ai_answers"))
     review = _save_review(session, final, snapshot)
     _generate_artifacts(session, final, review, project, audit, strict=True)
     session.commit()
