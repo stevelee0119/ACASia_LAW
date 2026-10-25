@@ -117,7 +117,7 @@ release_highlights.json "0.14":
 
 ■ 1. 작업 절차 (이 순서 그대로)
 1) 평가 PR #182가 Steve_ACASiaLAW에 병합된 뒤 시작한다(보호 시험 `tests/acceptance/test_f1_screen_protected.py` 수정이 #182에 있다). 현재 Steve = `b68e70f`이고 #182는 문서·보호 시험만 바꾸므로 아래 패치는 충돌 없이 적용된다(평가 측 `git apply --check` 확인).
-2) 새 브랜치에서: `git apply --3way docs/handoff/patches/TK-126-128_prevalidated_b68e70f.diff` (18개 파일, 536줄 추가·187줄 삭제: apps/api/main.py, apps/api/routers/workspace.py, apps/web/index.html, apps/web/static/{app.js,styles.css,workflow.js}, tests 12개).
+2) 새 브랜치에서: `git apply --3way docs/handoff/patches/TK-126-128_prevalidated_b68e70f.diff` (19개 파일, 539줄 추가·187줄 삭제 — 10-25 보충으로 tests/test_drive_rag_relevance.py 포함: apps/api/main.py, apps/api/routers/workspace.py, apps/web/index.html, apps/web/static/{app.js,styles.css,workflow.js}, tests 12개).
 3) 충돌이 나면(그 사이 Steve가 같은 줄을 바꾼 경우만) 양쪽을 모두 살려 합치고, PR 본문에 파일·줄과 처리 내용을 적는다. 충돌이 없으면 패치 외 변경을 하지 않는다.
 4) '제출 전 확인'을 돌리고 결과를 PR 본문에 붙인다. 커밋 끝 `Agent: implementer`. PR 대상 Steve_ACASiaLAW, 제목 `fix(ui): TK-126·127·128 화면 개편 — 평면 탭·참고문헌 행 통합·외부 AI 답변 반영`.
 
@@ -150,8 +150,9 @@ release_highlights.json "0.14":
 ■ 5. 제출 전 확인 (PR 본문에 결과 붙이기)
 - pytest -q tests/acceptance tests/test_frontend_*.py tests/test_external_ai_prompt.py tests/test_external_ai_prompt_browser.py tests/test_f1_ai_security_tab_browser.py tests/test_f2_review_screen_browser.py tests/test_tk61_layout_browser.py tests/test_tk88_three_tier_review.py tests/test_upload_privacy_notice_browser.py tests/test_tk126_flat_tabs_answer_import.py tests/test_workspace.py tests/test_api.py
   → 평가 측 사전 검증: 1,410건 실패 0, 건너뜀 25(같은 수가 나와야 한다).
+- (10-25 보충) pytest -q tests/test_drive_rag_relevance.py → 47건 실패 0.
 - python scripts/check_test_edits.py --base origin/Steve_ACASiaLAW → '기존 시험의 삭제·표시 변경 없음'.
-- git diff --stat origin/Steve_ACASiaLAW → 위 18개 파일만(충돌 처리 파일은 본문에 따로 적음).
+- git diff --stat origin/Steve_ACASiaLAW → 위 19개 파일만(충돌 처리 파일은 본문에 따로 적음).
 
 ■ 6. 평가 측 수용 절차 (이것만 본다 — 추가 요구 없음)
 1) 필수 CI 성공(인용). 2) PR diff = 수정본(충돌 처리분 제외 차이 0). 3) 위 시험 묶음 평가 측 재실행 실패 0. 4) 탐지 diff 0·고정·은퇴 점수 불변(엔진 미변경 확인). 5) 실제 화면 캡처(긴 판정 문구 포함)를 원문 대응표(TK-126 1~7, TK-127 1~3, TK-128 1~5)와 함께 사용자에게 제시 → 사용자 확인 뒤 수용.

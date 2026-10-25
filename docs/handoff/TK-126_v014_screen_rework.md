@@ -58,3 +58,8 @@
 - 원문 대응표 1~7을 평가 측 화면 캡처로 확인한 뒤 **사용자 확인**을 받는다(10-25 사전 검증 화면 6장 사용자 확인 '그대로 진행').
 - 탐지 diff 0, 고정·은퇴 점수 불변(화면·API만 바뀐다). 필수 CI 성공.
 - 수정본 밖의 변경을 섞지 않는다.
+
+## 10-25 보충 (전체 시험에서 발견)
+- `tests/test_drive_rag_relevance.py::test_web_shows_drive_health_selection_and_duplicates`가 TK-127의 '참고문헌 처리 기록 → 표 위 접힘 상태 줄' 변경으로 실패했다(접힌 상세 안의 `.reference-section`이 보이지 않아 스크린샷 시간 초과). 옛 화면 단언이므로 평가 측이 고쳤다: `switchTab('review')` 뒤와 `renderFindings()` 재렌더 뒤에 `#referenceStatus summary`를 펼친다. 수정본에 포함(19개 파일). 그 파일 47건 실패 0.
+- 전체 `tests`(TK-129까지 적용한 사본, 4묶음 병렬): 10,462건 중 실패 5 → 위 1건(수정) + 시간 시험 4건(병렬 실행 부하, 단독 재실행 통과).
+
