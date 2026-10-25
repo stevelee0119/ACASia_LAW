@@ -22,7 +22,7 @@
 | 4 | 3번째 탭 = 법률적으로 무리한 주장, 주장·쟁점 내용 삭제 | '법률적으로 무리한 주장' 탭에 3단 표만 있다. 쟁점·요건사실 표가 없다. '출처가 확인되지 않는 항목' 탭에는 3단 표가 없다 |
 | 5 | 배포 뒤 새 화면 | `/`·`/static/*` 응답에 `Cache-Control: no-cache` |
 | 6 | 상단 탭 5개, 세부 탭 없음 | 상단에 [자료][AI 작성·보안 진단][출처가 확인되지 않는 항목][법률적으로 무리한 주장][보고서] 다섯 개만 보이고 '검증·검토' 묶음 단추·하위 탭 줄이 없다. 탭 이름 '확인할 항목'은 모두 '출처가 확인되지 않는 항목'으로 바뀐다. 390px 폭에서 탭이 줄바꿈되어 가로 스크롤이 없다 |
-| 7 | (평가 측 배치 — 사용자 결정 대기) 활동 기록 | 보고서 탭 아래 '활동 기록 보기' 버튼으로 열고, 활동 기록 화면에 '보고서로' 버튼 |
+| 7 | (10-25 사용자 결정) "활동 기록은 삭제(보고서 탭 하단에 다시 세부 탭이 생성되지 않도록), 현재 [보고서] 탭의 내용만 계속 활용 예정" | 활동 기록 탭·패널·버튼이 화면 어디에도 없다(`[data-panel="audit"]`·`[data-tab="audit"]` 0개). 서버의 감사 기록·`/projects/{id}/audit` API는 그대로 둔다. 상단 '작업 기록'(검증 작업 기록, operations.js)은 다른 기능이라 유지 |
 
 ## 평가 측 사전 검증(임시 사본, 저장소 밖)
 - '고칠 것' 전체(TK-127·128 포함)를 `b68e70f` 사본에 적용했다. 수정본: `docs/handoff/patches/TK-126-128_prevalidated_b68e70f.diff`(보호 시험 수정은 평가 PR #182에 있으므로 뺐다).
@@ -39,22 +39,22 @@
 5. **배포 캐시:** `apps/api/main.py` 300행 `app.mount("/static", …)` 뒤에 `_web_revalidate` 미들웨어(`/`·`/static/*`에 `Cache-Control: no-cache`, 이미 있으면 두지 않음).
 6. **평면 탭 5개(새 요구):**
    - 원인: `workflow.js` 6~33행이 상단 '묶음 단추'(`#workspaceGroups`: 자료·검증·검토·보고서)를 만들고, `syncNavigation`이 `.tabs` 줄에서 선택한 묶음의 탭만 보이게 한다. 그래서 탭이 두 줄(묶음 → 하위 탭)이다.
-   - 고칠 것: `groups`·`lastTabs`·`initNavigation`과 314행 `initNavigation();` 호출을 지운다. `syncNavigation(tab)`은 남겨 `audit`일 때 보고서 탭에 `active`를 다시 준다(`requestAnimationFrame`; `switchTab`이 먼저 `active`를 지우므로).
-   - `index.html` 11행 `.tabs`를 `class="tabs workspace-tabs"`로 하고 단추를 아이콘+이름으로: `files` 자료 / `shield-check` AI 작성·보안 진단 / `search-x` 출처가 확인되지 않는 항목 / `scale` 법률적으로 무리한 주장 / `file-chart-column` 보고서 / `audit` 단추는 `hidden`(아이콘 `history`). 아이콘은 모두 `vendor/lucide.min.js`에 있다(평가 측 확인).
-   - 보고서 패널 `#reportList` 뒤에 `<button type="button" id="openAudit" data-jump-tab="audit">활동 기록 보기</button>`, 활동 기록 툴바에 `<button type="button" id="backToReports" data-jump-tab="reports">보고서로</button>`. `data-jump-tab` 처리기는 `app.js` 2788행에 이미 있다.
+   - 고칠 것: `groups`·`lastTabs`·`syncNavigation`·`initNavigation`과 314행 `initNavigation();` 호출, 반환 객체의 `syncNavigation`을 지운다. `app.js` `switchTab`의 `workflowUI.syncNavigation(tab);` 줄도 지운다.
+   - `index.html` 11행 `.tabs`를 `class="tabs workspace-tabs"`로 하고 단추를 아이콘+이름으로: `files` 자료 / `shield-check` AI 작성·보안 진단 / `search-x` 출처가 확인되지 않는 항목 / `scale` 법률적으로 무리한 주장 / `file-chart-column` 보고서. `audit` 단추는 지운다. 아이콘은 모두 `vendor/lucide.min.js`에 있다(평가 측 확인).
+   - 활동 기록 화면 삭제(사용자 결정): `index.html` 17행 `section[data-panel="audit"]` 전체, `app.js` `switchTab`의 `if (tab === "audit") loadAudit()…` 줄, `loadAudit` 함수, `$("refreshAudit").onclick` 줄. 서버 감사 API는 그대로.
    - '확인할 항목' 문구를 모두 '출처가 확인되지 않는 항목'으로: `index.html` 11·13(배너 링크)·14(h2)·15(3단 안내)행, `app.js` 1240행(`button("확인할 항목에서 보기"…)`), 1779행 주석, 2077행 상호 참조, 2488행 오류 문구.
    - CSS: `.workspace-tabs`(아이콘 정렬, 최소 높이 44px), 700px 이하 `flex-wrap:wrap; white-space:normal`(가로 스크롤 금지).
 
 ## 시험 (구현 측이 고치고, PR에 '전 요구 → 새 확인 위치' 대응표를 낸다)
 - 수정본의 시험 변경을 그대로 쓴다. 요지:
   - '검증·검토' 묶음 단추 클릭 줄 삭제(`test_external_ai_prompt_browser.py`·`test_f1_ai_security_tab_browser.py`·`test_f2_review_screen_browser.py`·`test_frontend_citation_groups.py`·`test_tk61_layout_browser.py`·`test_tk88_three_tier_review.py`). `.tabs button[data-tab=…]` 클릭은 그대로 동작한다.
-  - `test_frontend_admin.py::test_grouped_workbench_preserves_all_tools_and_selected_case`: 묶음 3개 단언 → 평면 탭 5개·이름 순서·`#openAudit`/`#backToReports` 왕복·390px에서 `.tabs` 넘침 없음.
+  - `test_frontend_admin.py::test_grouped_workbench_preserves_all_tools_and_selected_case`: 묶음 3개 단언 → 평면 탭 5개·이름 순서·활동 기록 탭·패널 0개·390px에서 `.tabs` 넘침 없음.
   - `test_frontend_report_progress.py`: `#workspaceGroups` 보고서 클릭 줄 삭제.
   - 문구 변경 단언: `test_frontend_metric_explain.py`('출처가 확인되지 않는 항목에서 보기'), `test_f1_ai_security_tab_browser.py` 배너, `test_tk88_three_tier_review.py` 상호 참조.
   - 이전 사전 검증분(3단 탭·확인 방법·버튼 위치)은 이전 판과 같다.
 - 시험 함수 삭제는 없다.
 
 ## 수용 기준
-- 원문 대응표 1~6을 평가 측 화면 캡처로 확인한 뒤 **사용자 확인**을 받는다. 7은 사용자 결정에 따른다.
+- 원문 대응표 1~7을 평가 측 화면 캡처로 확인한 뒤 **사용자 확인**을 받는다(10-25 사전 검증 화면 6장 사용자 확인 '그대로 진행').
 - 탐지 diff 0, 고정·은퇴 점수 불변(화면·API만 바뀐다). 필수 CI 성공.
 - 수정본 밖의 변경을 섞지 않는다.
