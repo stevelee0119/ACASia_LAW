@@ -88,6 +88,313 @@ function toast(message) {
     try { if (el.matches(":popover-open")) el.hidePopover(); } catch (error) { /* 무시 */ }
   }, 6500);
 }
+
+// 클립보드 복사 실패 시 직접 텍스트를 선택하여 복사할 수 있는 대화상자 표시 (TK-94)
+function showCopyFallbackDialog(text) {
+  let dlg = $("copyFallbackDialog");
+  if (!dlg) {
+    dlg = node("dialog", null, "copy-fallback-dialog");
+    dlg.id = "copyFallbackDialog";
+    const header = node("div", null, "dialog-heading");
+    header.append(node("h3", "프롬프트 직접 복사"));
+    const closeBtn = node("button", "닫기", "icon");
+    closeBtn.type = "button";
+    closeBtn.addEventListener("click", () => dlg.close());
+    header.append(closeBtn);
+
+    const desc = node("p", "클립보드 자동 복사에 실패했습니다. 아래 텍스트를 전체 선택(Ctrl+A) 후 복사(Ctrl+C)하여 사용해 주세요.", "muted small");
+    const ta = node("textarea", null, "copy-fallback-textarea");
+    ta.id = "copyFallbackTextarea";
+    ta.rows = 12;
+    ta.readOnly = true;
+
+    const footer = node("div", null, "dialog-footer");
+    const selBtn = button("전체 선택", () => {
+      ta.select();
+      ta.focus();
+    }, "secondary");
+    const okBtn = button("닫기", () => dlg.close(), "primary");
+    footer.append(selBtn, okBtn);
+
+    dlg.append(header, desc, ta, footer);
+    document.body.appendChild(dlg);
+  }
+  const textarea = $("copyFallbackTextarea");
+  if (textarea) textarea.value = text;
+  dlg.showModal();
+  if (textarea) {
+    textarea.select();
+    textarea.focus();
+  }
+}
+
+// 텍스트 클립보드 복사 헬퍼 (TK-94)
+async function copyToClipboard(text, successMessage = "클립보드에 복사되었습니다.") {
+  let copied = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    }
+  } catch (e) {
+    copied = false;
+  }
+  if (!copied) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      copied = Boolean(document.execCommand("copy"));
+      document.body.removeChild(ta);
+    } catch (err) {
+      copied = false;
+    }
+  }
+  if (copied) {
+    toast(successMessage);
+  } else {
+    showCopyFallbackDialog(text);
+  }
+}
+
+// 서면 내 출처 미확인 판례·법령 필터링 함수 (TK-94)
+// 대상 필터: official_status가 OFFICIAL_NOT_FOUND 또는 UNVERIFIED_SCOPE인 항목만 엄격히 수집 (공식 확인 항목 배제)
+function filterUnverifiedAuthorities(items) {
+  if (!Array.isArray(items)) return [];
+  return items.filter(it => 
+    Boolean(it && it.cited_authority) && (
+      it.official_status === "OFFICIAL_NOT_FOUND" ||
+      it.official_status === "UNVERIFIED_SCOPE"
+    )
+  );
+}
+
+// 인용 식별자 내 허용 요소(판례: 법원·선고일·사건번호·종국구분·전원합의체 / 법령: 법령명·조항호·시점표기)만 추출 (TK-94)
+// 지우는 방식 대신 허용 목록 화이트리스트 추출을 적용하여 당사자 성명, 괄호/대괄호 부기 등 불필요한 개인정보를 완전히 배제한다.
+// 법령명은 조문 바로 앞 최소 접미 어절(끝 1~4어절, 조사로 끝나는 어절·당사자 표기·인명 제외)만 추출하며,
+// 추출에 실패하거나 개인 식별 정보만 있는 경우 조문만 반환하거나 '식별자 확인 불가'를 반환한다.
+function maskAuthorityIdentifier(rawAuth) {
+  if (!rawAuth) return "식별자 확인 불가";
+  const text = String(rawAuth).trim();
+  if (!text) return "식별자 확인 불가";
+
+  // 조문 바로 앞 텍스트(또는 단독 법령 텍스트)에서 최소 접미 어절(끝 1~4어절, 조사로 끝나는 어절·당사자 표기·인명 제외)만 법령명으로 추출
+  function extractMinimalLawName(rawPrefix) {
+    if (!rawPrefix) return "";
+    // 1) '홍길동(원고)' 형태 및 일반 괄호·대괄호 부기 제거, 앞뒤 구분자 정리
+    const cleaned = rawPrefix
+      .replace(/[가-힣]{2,4}\s*[(（【\[][^)\]）】]*(?:원고|피고|신청인|피신청인|채권자|채무자|고소인|피의자|피고인|당사자)[^)\]）】]*[)）】\]]/g, " ")
+      .replace(/[(（【\[].*?[)）】\]]/g, " ")
+      .replace(/^[\s|―—\-/:,.;]+|[\s|―—\-/:,.;]+$/g, "")
+      .trim();
+    if (!cleaned) return "";
+
+    const allTokens = cleaned.split(/\s+/).filter(Boolean);
+    if (allTokens.length === 0) return "";
+
+    // 당사자·역할·소송서술 배제 어절
+    const roleOrStopWordRe = /^(?:원고|피고|신청인|피신청인|채권자|채무자|고소인|피고소인|피의자|피고인|상대방|당사자|소송대리인|대리인|변호사|법무법인|작성자|진술인|참고인|증인|피해자|본인|측|주장|인용|적용|위반|근거|관련|사건|내용|판례|법원|재판부)(?:측|들)?$/;
+    // 조사·어미로 끝나는 어절 배제
+    const particleEndingRe = /(?:의|이|가|은|는|을|를|에서|에게|께|한테|으로|로|와|과|도|만|부터|까지|라|라는|다는|하는|한|된|인|할|던|따른|의한|관하여|대하여|대한)$/;
+    // 법령 종별 접미사
+    const lawSuffixRe = /(?:법|법률|시행령|시행규칙|령|규칙|조례|규정|정관|약관|지침|기준|세칙)$/;
+    // 법령이 아닌 일반 '-법/-령' 단어 배제
+    const nonLawWordRe = /^(?:방법|불법|위법|적법|합법|사법|입법|수법|기법|해법|문법|화법|선법|비법|요령|명령|발령|수령|고령|연령|대통령|소장)$/;
+    // 앞에 수식 명사 어절을 가질 수 있는 복합 법령 후행 어절
+    const compoundLawTailRe = /^(?:보호법|보장법|기본법|특별법|특례법|관리법|촉진법|처벌법|규제법|절차법|사업법|진흥법|지원법|예방법|보험법|거래법|보상법|임대차보호법|손해배상보장법|관계조정법|가중처벌법|이용촉진법)$/;
+    // 복합 법령의 선행 법률·제도 도메인 어근
+    const legalDomainRootRe = /(?:정보|건물|주택|배상|비밀|생활|소비|환경|안전|보건|재해|통신|범죄|폭력|금융|규제|거래|유통|부동산|국토|도시|위생|건강|보험|보상|산업|공정|보호|보장|관리|소유|이용|촉진|처벌|특례|지원|진흥|사업|개발|시설|물품|용역|하도급|가맹|전자|자동차|철도|항공|해양|수산|농업|임업|축산|교육|문화|예술|체육|과학|기술|에너지|원자력|폐기물|수도|하수도|하천|도로|항만|공항|건축|건설|소방|재난|응급|의료|약사|식품|마약|감염|검역|특허|실용|디자인|상표|저작|영업|부정경쟁|채무|회생|파산|중재|조정|공탁|등기|가족|호적|민사|형사|가사|행정|헌법|군사|국가|지방|공공|공익|공무원|군인|경찰|검찰|법원|변호사|법무사|세무사|회계사|노무사|근로|고용|노동|퇴직|연금|기초|장애|아동|청소년|여성|노인|보훈|유공자|개인|위치|신용|자본|증권|신탁|여신|은행|상호|새마을|협동조합|상가|임대차|약관|할부|방문|집합)/;
+
+    // 1. 차단 대상 어절(비한글, 당사자 표기, 당사자 뒤 인명, 조사/어미로 끝나는 어절) 표시
+    const isBlockedToken = new Array(allTokens.length).fill(false);
+    for (let i = 0; i < allTokens.length; i++) {
+      const tok = allTokens[i];
+      if (!/^[가-힣0-9·]+$/.test(tok)) {
+        isBlockedToken[i] = true;
+        continue;
+      }
+      const isNextGwanHan = i + 1 < allTokens.length && allTokens[i + 1] === "관한";
+      const isEndedWithE = tok.endsWith("에") && !isNextGwanHan;
+      if (roleOrStopWordRe.test(tok) || particleEndingRe.test(tok) || isEndedWithE) {
+        isBlockedToken[i] = true;
+        // 당사자 역할어 바로 뒤에 오는 2~4자 한글(인명)도 함께 차단
+        if (roleOrStopWordRe.test(tok) && i + 1 < allTokens.length) {
+          const nextTok = allTokens[i + 1];
+          if (/^[가-힣]{2,4}$/.test(nextTok) && !lawSuffixRe.test(nextTok)) {
+            isBlockedToken[i + 1] = true;
+          }
+        }
+      }
+    }
+
+    // 2. 조문 바로 앞 마지막 어절 검사
+    const lastIdx = allTokens.length - 1;
+    const lastTok = allTokens[lastIdx];
+    if (
+      isBlockedToken[lastIdx] ||
+      lastTok.length < 2 ||
+      !lawSuffixRe.test(lastTok) ||
+      nonLawWordRe.test(lastTok)
+    ) {
+      return "";
+    }
+
+    // 3. 최소 접미 어절 수집 (끝 1~4어절)
+    const collected = [lastTok];
+    let cursor = lastIdx;
+
+    // (a) 하위 규범 종별어(시행령, 시행규칙 등)인 경우 바로 앞 본법 어절 결합
+    if (/^(?:시행령|시행규칙|규칙|조례|규정|정관|약관|지침|기준|세칙)$/.test(lastTok) && cursor - 1 >= 0) {
+      const prevTok = allTokens[cursor - 1];
+      if (!isBlockedToken[cursor - 1] && /(?:법|법률)$/.test(prevTok) && !nonLawWordRe.test(prevTok)) {
+        collected.unshift(prevTok);
+        cursor -= 1;
+      }
+    }
+
+    const headTok = collected[0];
+
+    // (b) '~에 관한 법률/특례법/규칙/규정' 꼴 (끝 1~4어절)
+    if (/(?:법률|법|규칙|규정|지침)$/.test(headTok) && cursor - 1 >= 0 && allTokens[cursor - 1] === "관한") {
+      collected.unshift("관한");
+      cursor -= 1;
+      if (cursor - 1 >= 0 && /^(?:[가-힣0-9·]+에|등에)$/.test(allTokens[cursor - 1])) {
+        const eTok = allTokens[cursor - 1];
+        if (!/^(?:원고|피고|신청인|피신청인|채권자|채무자|고소인|피의자|피고인|상대방|당사자)에$/.test(eTok)) {
+          collected.unshift(eTok);
+          cursor -= 1;
+          while (collected.length < 4 && cursor - 1 >= 0) {
+            const prevTok = allTokens[cursor - 1];
+            if (prevTok === "및" || (!isBlockedToken[cursor - 1] && legalDomainRootRe.test(prevTok))) {
+              collected.unshift(prevTok);
+              cursor -= 1;
+            } else {
+              break;
+            }
+          }
+          if (collected[0] === "및") collected.shift();
+        }
+      }
+    }
+    // (c) 복합 법령 후행 어절(보호법, 보장법, 임대차보호법 등) 또는 '및' 결합 법령인 경우 앞의 법률 도메인 어절 결합 (끝 1~4어절)
+    else if (compoundLawTailRe.test(headTok) || (cursor - 1 >= 0 && allTokens[cursor - 1] === "및")) {
+      while (collected.length < 4 && cursor - 1 >= 0) {
+        const prevTok = allTokens[cursor - 1];
+        if (prevTok === "및" || (!isBlockedToken[cursor - 1] && legalDomainRootRe.test(prevTok))) {
+          collected.unshift(prevTok);
+          cursor -= 1;
+        } else {
+          break;
+        }
+      }
+      if (collected[0] === "및") collected.shift();
+    }
+
+    return collected.join(" ");
+  }
+
+  // 괄호·대괄호 부기를 제거한 본체 텍스트
+  const textWithoutBrackets = text.replace(/[(（【\[].*?[)）】\]]/g, " ").trim();
+
+  // 1. 법령 조항 우선 검사 (본체에 제X조가 포함된 경우 명백한 법령)
+  const articleMatch = textWithoutBrackets.match(/제\s*\d+\s*조(?:의\s*\d+)?(?:\s*제\s*\d+\s*항)?(?:\s*제\s*\d+\s*호)?(?:\s*제\s*[가-힣]\s*목)?/);
+  if (articleMatch) {
+    const parts = [];
+    const prefix = textWithoutBrackets.slice(0, articleMatch.index).trim();
+    const lawName = extractMinimalLawName(prefix);
+    if (lawName) {
+      parts.push(lawName);
+    }
+    parts.push(articleMatch[0].replace(/\s+/g, " ").trim());
+    // 법령 시점 표기 추출 (괄호 안 개정/시행/신설/폐지 등 유지)
+    const temporalMatch = text.match(/\([^)]*?(?:개정|시행|신설|폐지|효력|적용)[^)]*?\)/);
+    if (temporalMatch) {
+      parts.push(temporalMatch[0].trim());
+    }
+    return parts.join(" ");
+  }
+
+  // 2. 판례 요소 검사 (법원, 선고/결정일, 사건번호, 전원합의체, 판결/결정 종국구분)
+  // 사건번호는 괄호로 둘러싸인 형태((2021다12345))도 보존하도록 매칭
+  const caseNoMatch = text.match(/(?:\(?\b\d{2,4}\s*(?:가합|가단|가소|나|다|라|마|그|바|사|고합|고단|고정|노|도|로|모|구|구합|구단|누|두|루|무|드|르|므|브|스|허|후|카|타|헌가|헌나|헌다|헌라|헌마|헌바|헌사|헌아|초)\s*\d+\b\)?)|\b\d{2,4}\s*[가-힣]{1,4}\s*\d+\b/);
+  const courtMatch = text.match(/(?:대법원|헌법재판소|(?:서울|수원|부산|대구|대전|광주|인천|울산|춘천|청주|전주|제주|의정부|창원)(?:고등|지방|가정|행정|회생)?법원|(?:고등|지방|가정|행정|회생)법원)/);
+  const verdictTypeMatch = text.match(/(?:판결|결정|명령|심판)/);
+
+  if (caseNoMatch || (courtMatch && verdictTypeMatch)) {
+    const parts = [];
+    if (courtMatch) parts.push(courtMatch[0]);
+    // 선고/결정일자 추출 (예: 2020. 12. 24. 선고)
+    const dateMatch = text.match(/\d{4}\s*[.년]\s*\d{1,2}\s*[.월]\s*\d{1,2}\s*[.일]?\s*(?:선고|결정|자)?/);
+    if (dateMatch && (!caseNoMatch || !caseNoMatch[0].includes(dateMatch[0]))) {
+      parts.push(dateMatch[0].trim());
+    }
+    // 전원합의체 추출
+    if (/전원합의체/.test(text)) parts.push("전원합의체");
+    // 사건번호
+    if (caseNoMatch) parts.push(caseNoMatch[0].trim());
+    // 종국구분 (판결/결정 등)
+    if (verdictTypeMatch && !parts.some(p => p.includes(verdictTypeMatch[0]))) {
+      parts.push(verdictTypeMatch[0]);
+    }
+    if (parts.length > 0) return parts.join(" ");
+  }
+
+  // 3. 조항 없는 단독 법령명 검사 (예: '상가건물 임대차보호법')
+  const standaloneLawName = extractMinimalLawName(text);
+  if (standaloneLawName) {
+    const parts = [standaloneLawName];
+    const temporalMatch = text.match(/\([^)]*?(?:개정|시행|신설|폐지|효력|적용)[^)]*?\)/);
+    if (temporalMatch) {
+      parts.push(temporalMatch[0].trim());
+    }
+    return parts.join(" ");
+  }
+
+  return "식별자 확인 불가";
+}
+
+// 서면 내 출처 미확인 판례·법령 전체에 대한 엘박스/법률 AI 일괄 검증 프롬프트 생성 (TK-94)
+// 법령·판례의 실재 여부 검증용이므로 본문 문맥(claim_text) 및 당사자 개인정보는 일체 배제하고 인용 식별자만 포함하며,
+// externalAiPolicy가 MASKED인 경우 인용 식별자 속 괄호 부기 및 인명도 실질 제거/마스킹한다.
+function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "", externalAiPolicy = "MASKED") {
+  const dateStr = incidentDate || "미지정 (소송 진행 시점 기준)";
+  let itemsListText = "";
+
+  items.forEach((it, idx) => {
+    // 본문 문맥이나 당사자 개인정보는 일체 배제하고 인용 표기(사건번호, 법령명/조문)만 목록화하되,
+    // MASKED 정책 시 식별자 내 괄호 부기 및 개인정보를 실질적으로 가림 처리한다.
+    const rawAuth = String(it.cited_authority || "").trim();
+    const auth = externalAiPolicy === "MASKED" ? maskAuthorityIdentifier(rawAuth) : rawAuth;
+    if (auth) {
+      itemsListText += `${idx + 1}. ${auth}\n`;
+    }
+  });
+
+  return `[역할]
+당신은 대한민국 법률 및 판례 검증 전문 AI입니다.
+아래 소송 서면에서 인용되었으나 공식 DB에서 출처가 확인되지 않은 [판례·법령 목록 ${items.length}건]에 대해 실재 여부와 판결요지/조문 내용을 정밀 검증해 주세요.
+
+※ 고지: 외부 AI 답변은 법적 효력이 있는 공식 확인이 아니며, 실제 변론 및 증거 제출 시에는 법원 판결서 사본 또는 국가법령정보센터 공식 원문으로 반드시 확인해야 합니다.
+
+[기준 시점]
+- ${dateStr}
+
+[검증 대상 판례·법령 목록 (${items.length}건 - 인용 식별자)]
+${itemsListText}
+[검증 요청 사항]
+위 각 판례/법령 항목에 대해 다음 내용을 일목요연하게 표 및 요약으로 답변해 주세요:
+1. 실재 여부: 실제 존재하는 판례/법령인가? (대법원/하급심 여부, 정확한 사건번호, 선고일자)
+2. 판시사항/조문 내용: 해당 판례의 공식 판결요지(판시사항) 또는 해당 법령 조항의 핵심 규정 내용
+3. 판례 대체/보강: 만약 위 사건번호가 존재하지 않는 가공(환각) 판례라면, 동일한 쟁점을 다룬 실제 대법원 판례 제시
+
+[답변 형식]
+- 종합 검증 결과 요약 표 (번호 | 인용 식별자 | 실재 여부 | 공식 판결요지/조문 핵심 | 비고)
+- 각 항목별 상세 확인 내용`;
+}
+
 async function api(path, options = {}) {
   const authVersion = operationsUI.authVersion?.() || 0;
   const {interactiveAuth = true, ...request} = options;
@@ -435,6 +742,8 @@ async function loadPrivacyNotice() {
   renderPrivacyNoticeElements();
 }
 
+let pendingUploadFiles = [];
+
 function getPrivacyAck(projectId) {
   if (!projectId) return false;
   return sessionStorage.getItem(`privacy_ack_${projectId}`) === "true";
@@ -459,32 +768,67 @@ function syncPrivacyAck() {
   }
 }
 
-function checkPrivacyAck(projectId) {
+function openPrivacyDialog(forUpload = true) {
   if (!isPrivacyNoticeLoaded()) {
     const msg = privacyNoticeConfig?.error || "개인정보 처리 안내를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.";
     toast(msg);
     return false;
   }
-  const ack = $("privacyAck")?.checked || getPrivacyAck(projectId);
-  if (!ack) {
+  const dialog = $("privacyDialog");
+  if (!dialog) return false;
+  const p = state.project;
+  const ack = getPrivacyAck(p?.id);
+  const cb = $("privacyAck");
+  if (cb) cb.checked = ack;
+  const errEl = $("privacyAckError");
+  if (errEl) {
+    errEl.hidden = true;
+    errEl.textContent = "";
+  }
+  const confirmBtn = $("privacyConfirmBtn");
+  if (confirmBtn) {
+    confirmBtn.textContent = forUpload ? "확인 후 업로드" : "확인";
+  }
+  dialog.showModal();
+  if (cb && !ack) {
+    cb.focus();
+  }
+  return true;
+}
+
+function handlePrivacyConfirm() {
+  if (!isPrivacyNoticeLoaded()) {
+    const msg = privacyNoticeConfig?.error || "개인정보 처리 안내를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.";
+    toast(msg);
+    return;
+  }
+  const cb = $("privacyAck");
+  if (!cb?.checked) {
     const msg = privacyNoticeConfig.ack_error_message || "연락처, 주민등록번호 이외의 개인정보가 미포함되었거나 직접 가림 처리하였음을 확인해야 업로드할 수 있습니다.";
     const errEl = $("privacyAckError");
     if (errEl) {
       errEl.textContent = msg;
       errEl.hidden = false;
     }
+    cb?.focus();
     toast(msg);
-    $("privacyAck")?.focus();
-    return false;
+    return;
   }
-  setPrivacyAck(projectId, true);
+  const p = state.project;
+  setPrivacyAck(p?.id, true);
   const errEl = $("privacyAckError");
   if (errEl) {
     errEl.hidden = true;
     errEl.textContent = "";
   }
-  return true;
+  const filesToUpload = pendingUploadFiles;
+  pendingUploadFiles = [];
+  $("privacyDialog")?.close();
+  if (filesToUpload && filesToUpload.length > 0) {
+    upload(filesToUpload);
+  }
 }
+
 
 function renderSummary() {
   $("summary").replaceChildren();
@@ -719,6 +1063,7 @@ function renderHallucinationSummary(rows) {
     summary.textContent = `판례 인용 및 법률 주장 검토 항목이 총 ${rows.length}건입니다(${parts.join(", ")}). ` +
       "공식 DB 미확인은 부존재를 뜻하지 않으며, 원문 일치 판례는 구체적 사건 적용성을 직접 검토하시기 바랍니다.";
     summary.className = "warning-text";
+
   } else {
     summary.textContent = `소장 인용 판례가 공식 DB와 일치 확인되었습니다(${parts.join(", ")}). 판례의 구체적 사건 적용성은 직접 검토하시기 바랍니다.`;
     summary.className = "safe-text";
@@ -1183,8 +1528,9 @@ async function reconcileUploads(batch) {
 async function upload(files) {
   const id = state.project?.id;
   if (!id || !files.length) return;
-  if (!checkPrivacyAck(id)) {
-    $("fileInput").value = "";
+  if (!getPrivacyAck(id)) {
+    pendingUploadFiles = files;
+    openPrivacyDialog(true);
     return;
   }
   if (state.uploadBatch?.busy) return toast("다른 파일의 등록이 진행 중입니다.");
@@ -1565,9 +1911,275 @@ async function saveRowWorkflow(item, patch) {
 }
 
 
+// TK-88: 3단 체계(AI 작성·보안 / 인용 오류·미확인 / 법률적 무리 주장) 분류
+// 1순위: 결과 유형 (FindingType / rule_id)
+// 2순위: 공식 조회 및 출처 상태 (basis / error_category / official_status)
+// 3순위: 법리 검토 판정 문장 (validity_verdict)
+// 표준 판정 문장 상수 (review_tiers.py 일치)
+const VERDICT_INVALID_CASE_NUMBER = "근거 결여 (성립 불가한 사건번호)";
+const VERDICT_OFFICIAL_NOT_FOUND = "공식 DB 미확인 (원문 확인 필요)";
+const VERDICT_QUOTE_MODIFIED = "인용문 변형 (원문과 어절 차이)";
+const VERDICT_CONTENT_MISMATCH = "인용 내용 불일치 (원문 대조 필요)";
+const VERDICT_HOLDING_DISTORTION = "판례 취지 왜곡 (판시사항과 상반 / 부당)";
+const VERDICT_FACT_DISTINGUISHABLE = "적용 차이 (사실관계 상이 / 전문가 검토 필요)";
+const VERDICT_OFFICIAL_CONFIRMED = "공식 원문 일치 (사건 적용성 직접 검토 필요)";
+
+function classifyReviewItemTier(item, findingsMap) {
+  // item에 서버가 계산한 tier 속성이 있으면 최우선 반영
+  if (item.tier === 2 || item.tier === 3) return item.tier;
+
+  const leadF = (item.finding_ids && item.finding_ids.length && findingsMap) ? findingsMap.get(item.finding_ids[0]) : null;
+  const ruleId = String(item.rule_id || (leadF?.confidence_features || {}).rule_id || "");
+  const findingType = String(item.finding_type || leadF?.type || "");
+  const basis = String(item.basis || (leadF?.confidence_features || {}).basis || "");
+  const errorCategory = String(item.error_category || (leadF?.confidence_features || {}).error_category || "");
+  const officialStatus = String(item.official_status || "");
+  const verdict = String(item.verdict_label || item.validity_verdict || "");
+  const citedAuthority = String(item.cited_authority || "");
+  const isCitation = Boolean(
+    citedAuthority
+    || item.citation_id
+    || item.kind === "CITATION"
+    || String(item.item_id || "").includes("CITATION")
+  );
+
+  // 1. 고유 3단 전용 규칙 (출처 여부 불문 3단)
+  // 8번 행: 참고자료 모순 (TK-70)
+  if (ruleId.includes("REFERENCE_CONTRADICTION") || verdict.includes("참고자료 모순")) return 3;
+  // 9번 행: 가짜 판례·조문 기반 법률 주장 (AI_HALLUCINATED_CONTENT)
+  if (findingType.includes("HALLUCINATED") || ruleId.includes("HALLUCINATED")) return 3;
+
+  // 2. 인용 행(CITATION) 처리: basis와 판정 문장을 결과 유형보다 먼저 본다 (요구 2)
+  if (isCitation) {
+    // [표 1 3단 예외 항목 선제 판정]
+    // 6번 행: 판례 취지 왜곡 (부당 원용) - 상수 완전 일치 우선
+    if (verdict === VERDICT_HOLDING_DISTORTION || (verdict.includes("취지 왜곡") && verdict.includes("상반"))) return 3;
+    // 7번 행: 적용 차이 (사실관계 상이)
+    if (verdict === VERDICT_FACT_DISTINGUISHABLE || errorCategory === "APPLICATION_DIFFERENCE" || basis === "DISTINGUISHABLE" || verdict.includes("사실관계 상이")) return 3;
+
+    // [표 1 2단 출처 오류/미확인 항목]
+    // 1번 행: 성립 불가한 사건번호 (2단 고정)
+    if (verdict === VERDICT_INVALID_CASE_NUMBER || basis === "FABRICATION_SUSPECTED" || verdict.includes("성립 불가")) return 2;
+    // 2번 행: 공식 DB 미확인
+    if (verdict === VERDICT_OFFICIAL_NOT_FOUND || basis === "UNCONFIRMED" || officialStatus === "OFFICIAL_NOT_FOUND" || officialStatus === "UNCONFIRMED" || verdict.includes("공식 DB 미확인") || verdict.includes("원문 확인 필요")) return 2;
+    // 3번 행: 인용문 변형 / 내용 불일치
+    if (verdict === VERDICT_QUOTE_MODIFIED || verdict === VERDICT_CONTENT_MISMATCH || errorCategory === "LEGAL_CITATION_ERROR" || verdict.includes("인용문 변형") || verdict.includes("인용 내용 불일치")) return 2;
+    // 4번 행: 객관적 판시사항 왜곡 인용문
+    if (findingType.includes("DISTORTION") || ruleId.includes("DISTORTION")) return 2;
+    // 5번 행: 시적 적용 오류
+    if (findingType.includes("TEMPORAL") || ruleId.includes("TEMPORAL")) return 2;
+    // 10번 행: 공식 원문 일치
+    if (verdict === VERDICT_OFFICIAL_CONFIRMED || basis === "OFFICIAL_CONFIRMED" || officialStatus === "OFFICIAL_CONFIRMED" || verdict.includes("공식 원문 일치")) return 2;
+    // 기타 인용 검색 불일치
+    if (["NOT_FOUND", "METADATA_MISMATCH", "CITATION_TEXT"].some(k => findingType.includes(k))) return 2;
+
+    // 인용 행의 기본값은 2단 (출처 검증)
+    return 2;
+  }
+
+  // 3. 비인용 행(사실관계 불일치, 일자 모순 등) 처리
+  if (item.kind === "FACT" || findingType.includes("FACT") || findingType.includes("TIMELINE")) return 3;
+
+  // 기본값: 3단
+  return 3;
+}
+
+function renderReviewRow(item, tier, findingsMap) {
+  const tr = node("tr");
+  if (item.item_id) tr.id = `row_${item.item_id}`;
+
+  // 1열: 위치
+  const tdLoc = node("td");
+  tdLoc.append(node("strong", item.doc?.filename || "문서"));
+  const locText = item.location?.display || (item.location?.page ? `${item.location.page}쪽` : "");
+  if (locText) {
+    tdLoc.append(node("p", locText, "muted small"));
+  }
+  if (item.location?.page) {
+    tdLoc.append(button(`${item.location.page}쪽 보기`, () => viewDocument(item.document_id, item.location.page), "link-button small"));
+  }
+  if (item.kind) {
+    tdLoc.append(node("span", label(item.kind), "badge info small"));
+  }
+  // RAG / 참고문헌 표시 조건 (구속력 없음 / 대조 안 함 분별)
+  const isRef = item.reference_library || (item.rule_id || "").includes("REFERENCE") || (item.finding_ids || []).some(fid => {
+    const f = findingsMap?.get(fid);
+    return f && ((f.confidence_features || {}).rule_id || "").includes("REFERENCE");
+  });
+  if (isRef) {
+    tdLoc.append(node("span", "참고문헌(구속력 없음)", "badge warning small"));
+  }
+  if (item.reference_status === "NOT_CHECKED" || item.reference_status === "UNVERIFIED" || item.reference_status === "SKIPPED") {
+    tdLoc.append(node("span", "대조 안 함", "badge muted small"));
+  }
+
+  // 2열: 문서 주장 및 인용 내용
+  const tdClaim = node("td");
+  if (item.cited_authority) {
+    tdClaim.append(node("strong", item.cited_authority));
+  }
+  if (item.claim_text) {
+    tdClaim.append(node("p", friendlyText(item.claim_text), "claim-text"));
+  }
+  if (item.finding_ids && item.finding_ids.length > 0 && findingsMap) {
+    const firstFinding = findingsMap.get(item.finding_ids[0]);
+    if (firstFinding) {
+      tdClaim.append(button(`상세 보기: ${friendlyText(firstFinding.title)}`, () => openFinding(firstFinding), "link-button small"));
+      const ruleId = (firstFinding.confidence_features || {}).rule_id;
+      if (ruleId === "RAG.REFERENCE_CONTRADICTION") {
+        const refDetails = node("details", null, "reference-contradiction-details");
+        refDetails.append(node("summary", "참고자료 대조 전문 및 모델 의견 펼치기"));
+        const feat = firstFinding.confidence_features || {};
+        if (feat.claim_quote) {
+          refDetails.append(node("p", `서면 주장 인용: ${feat.claim_quote}`, "small"));
+        }
+        if (feat.basis_quote) {
+          refDetails.append(node("p", `참고자료 규정 원문: ${feat.basis_quote}`, "small"));
+        }
+        const modelOpinion = feat.model_opinion || firstFinding.detail;
+        if (modelOpinion) {
+          refDetails.append(node("p", `모델 의견: ${modelOpinion}`, "small"));
+        }
+        tdClaim.append(refDetails);
+      }
+    }
+    if (item.finding_ids.length > 1) {
+      const derived = node("details", null, "derived-findings");
+      derived.append(node("summary", `같은 인용에서 파생된 항목 ${item.finding_ids.length - 1}건`));
+      for (const fid of item.finding_ids.slice(1)) {
+        const m = findingsMap.get(fid);
+        if (m) {
+          derived.append(button(`${label(m.severity)} · ${friendlyText(m.title)}`, () => openFinding(m), "link-button"));
+        }
+      }
+      tdClaim.append(derived);
+    }
+  }
+
+  // 상호 참조 앵커 (2단 <-> 3단)
+  const verdictStr = String(item.verdict_label || item.validity_verdict || "");
+  const hasDistortion = verdictStr.includes("왜곡") || (item.finding_ids || []).some(fid => {
+    const f = findingsMap?.get(fid);
+    const ft = String(f?.type || ""); return f && (ft.includes("DISTORTION") || ((f.confidence_features || {}).rule_id || "").includes("DISTORTION"));
+  });
+  const isHallucinatedOrInvalid = (item.finding_ids || []).some(fid => {
+    const f = findingsMap?.get(fid);
+    const ft = String(f?.type || ""); return f && (ft.includes("HALLUCINATED") || ft.includes("ARGUMENT_INVALID"));
+  }) || verdictStr.includes("부당") || (item.basis || "").includes("FABRICATION");
+
+  if (tier === 2 && hasDistortion) {
+    tdClaim.append(button("3단 무리한 주장 확인 →", () => {
+      switchTab("review");
+      const target = $("tier3Table") || $(`row_${item.item_id}`);
+      if (target) target.scrollIntoView({ behavior: "smooth" });
+    }, "link-button small cross-ref-anchor"));
+  } else if (tier === 3 && (isHallucinatedOrInvalid || hasDistortion)) {
+    tdClaim.append(button("2단 출처 부존재 확인 →", () => {
+      switchTab("review");
+      const target = $("reviewTable") || $(`row_${item.item_id}`);
+      if (target) target.scrollIntoView({ behavior: "smooth" });
+    }, "link-button small cross-ref-anchor"));
+  }
+
+  // 3열: 근거 확인 결과 / 법리 검토 결과 및 근거
+  const tdBasis = node("td");
+  let verdictCls = "badge HIGH";
+  if (item.official_status === "OFFICIAL_CONFIRMED" || item.verdict_label?.includes("일치")) {
+    verdictCls = "badge SUCCESS";
+  } else if (String(item.verdict_label).includes("부당") || String(item.verdict_label).includes("결여")) {
+    verdictCls = "badge CRITICAL";
+  }
+  tdBasis.append(
+    node("span", label(item.severity), `badge ${item.severity}`),
+    node("span", item.verdict_label || "확인 필요", `${verdictCls} validity-verdict`)
+  );
+  const basisText = item.ai_generation_basis || (item.official_status ? label(item.official_status) : "");
+  if (basisText) {
+    tdBasis.append(node("p", basisText, "basis-text"));
+  }
+  if (item.reference_case_match) {
+    tdBasis.append(node("p", `표준판례 사건정보 대조: ${item.reference_case_match}`, "basis-text"));
+  }
+  if (item.context_review?.reason) {
+    const review = item.context_review;
+    const context = node("div", null, "citation-context-review");
+    context.append(node("strong", "인용 취지·맥락 검토 (AI 참고 의견)"), node("p", review.reason || "판단 유보"));
+    for (const opinion of review.opinions || []) {
+      const stage = {primary: "1차 검토", critic: "독립 교차검토", grounder: "근거 대조"}[opinion.stage] || opinion.stage;
+      context.append(node("p", `${stage}: ${opinion.rationale}`));
+      const evidence = node("details");
+      evidence.append(node("summary", "공식 원문 근거"));
+      for (const quote of opinion.evidence_quotes || []) evidence.append(node("blockquote", quote));
+      context.append(evidence);
+    }
+    if (review.source_truncated) context.append(node("p", "공식 원문 일부 범위에 대한 의견입니다.", "muted"));
+    context.append(node("small", "문구 일치, 법리 취지, 구체적 사안 적용은 별개이며 작성 주체 판정에는 사용하지 않습니다.", "muted"));
+    tdBasis.append(context);
+  }
+
+  // 4열: 확인이 필요한 내용 요약 (TK-87)
+  const tdSummary = node("td", null, "review-summary-cell");
+  const summaryBox = node("div", null, "review-summary-box");
+  const leadF = (item.finding_ids && item.finding_ids.length && findingsMap) ? findingsMap.get(item.finding_ids[0]) : null;
+
+  // 1) 대상
+  const targetText = item.cited_authority || (item.claim_text ? friendlyText(item.claim_text) : "") || (leadF ? friendlyText(leadF.title) : "");
+  if (targetText) {
+    const targetLine = node("p", null, "summary-line summary-target");
+    targetLine.append(node("strong", "확인 대상: "), document.createTextNode(targetText));
+    summaryBox.append(targetLine);
+  }
+
+  // 2) 사유 축약
+  const rawReason = (item.reasoning_sections?.review || item.legal_reasoning || item.ai_generation_basis || (leadF ? leadF.detail : "") || item.verdict_label || "").trim();
+  if (rawReason) {
+    let shortReason = rawReason;
+    const firstDot = rawReason.indexOf(". ");
+    if (firstDot > 20 && firstDot < 120) {
+      shortReason = rawReason.slice(0, firstDot + 1);
+    } else if (rawReason.length > 100) {
+      shortReason = rawReason.slice(0, 97) + " …";
+    }
+    const reasonLine = node("p", null, "summary-line summary-reason");
+    reasonLine.append(node("strong", "의심 사유: "), document.createTextNode(shortReason));
+    summaryBox.append(reasonLine);
+  }
+
+  // 3) 확인 방법
+  let verifyText = (item.counteraction || "").trim();
+  if (!verifyText) {
+    const locStr = item.location?.display || (item.location?.page ? `${item.location.page}쪽` : (typeof item.location === "string" ? item.location : ""));
+    if (item.cited_authority && locStr) {
+      verifyText = `${item.cited_authority} 원문 대조 (${locStr})`;
+    } else if (item.reference_case_match) {
+      verifyText = `표준판례 대조: ${item.reference_case_match}`;
+    } else if (item.doc?.filename && locStr) {
+      verifyText = `${item.doc.filename} ${locStr} 대조`;
+    } else if (item.doc?.filename) {
+      verifyText = `${item.doc.filename} 원문 대조`;
+    }
+  }
+  if (verifyText) {
+    const verifyLine = node("p", null, "summary-line summary-action");
+    verifyLine.append(node("strong", "확인 방법: "), document.createTextNode(verifyText));
+    summaryBox.append(verifyLine);
+  }
+
+  // 4) 상세 법리 의견
+  if (item.reasoning_sections || item.legal_reasoning) {
+    const extra = node("details", null, "summary-details");
+    extra.append(node("summary", "상세 법리 의견"));
+    extra.append(reasoningBlock(item));
+    summaryBox.append(extra);
+  }
+
+  tdSummary.append(summaryBox);
+  tr.append(tdLoc, tdClaim, tdBasis, tdSummary);
+  return tr;
+}
+
 function renderFindings() {
   const query = ($("findingSearch")?.value || "").toLowerCase();
-  const revFilter = $("reviewFilter")?.value || "";
   const sevFilter = $("severityFilter")?.value || "";
 
   // D2: HIGH 이상 AI·보안 항목 존재 시 최상단 한 줄 고정 안내 배너 유지
@@ -1653,6 +2265,7 @@ function renderFindings() {
             counteraction: row.recommended_counteraction,
             ai_generation_basis: row.ai_generation_basis,
             context_review: row.context_review,
+            legal_reasoning: row.legal_reasoning,
             basis: row.basis,
           });
         }
@@ -1729,60 +2342,9 @@ function renderFindings() {
   }
   renderHallucinationSummary(hallucinationRows);
 
-  const stageFilter = $("workflowFilter")?.value || "";
-  const assigneeFilter = ($("assigneeFilter")?.value || "").trim().toLowerCase();
-
-  // 2. 필터링 (검색어, 심각도, 검토 상태, 진행 상태, 담당자)
+  // 2. 필터링 (검색어, 심각도)
   const filteredItems = allReviewItems.filter(item => {
     if (sevFilter && item.severity !== sevFilter) return false;
-
-    // 검토 상태 필터 (reviewFilter: NEEDS_REVIEW, ACCEPTED, FALSE_POSITIVE, RESOLVED)
-    if (revFilter) {
-      if (!item.finding_ids || !item.finding_ids.length) {
-        if (revFilter !== "NEEDS_REVIEW") return false;
-      } else {
-        const matchRev = item.finding_ids.some(fid => {
-          const f = findingsMap.get(fid);
-          const wf = workflowUI?.workflows?.get(fid);
-          let st = f?.review_status || "NEEDS_REVIEW";
-          if (wf && wf.workflow_state === "COMPLETED") {
-            st = wf.decision === "FALSE_POSITIVE" ? "FALSE_POSITIVE" : (wf.decision === "AGREED" ? "ACCEPTED" : "RESOLVED");
-          }
-          return st === revFilter;
-        });
-        if (!matchRev) return false;
-      }
-    }
-
-    // 진행 상태 필터 (workflowFilter: NOT_STARTED, IN_PROGRESS, ACTION_REQUIRED, COMPLETED, DEFERRED)
-    if (stageFilter) {
-      if (!item.finding_ids || !item.finding_ids.length) {
-        if (stageFilter !== "NOT_STARTED") return false;
-      } else {
-        const matchStage = item.finding_ids.some(fid => {
-          const wf = workflowUI?.workflows?.get(fid);
-          const f = findingsMap.get(fid);
-          let st = wf?.workflow_state;
-          if (!st) {
-            st = (f?.review_status && f.review_status !== "NEEDS_REVIEW") ? "COMPLETED" : "NOT_STARTED";
-          }
-          return st === stageFilter;
-        });
-        if (!matchStage) return false;
-      }
-    }
-
-    // 담당자 필터 (assigneeFilter)
-    if (assigneeFilter) {
-      if (!item.finding_ids || !item.finding_ids.length) return false;
-      const matchAssignee = item.finding_ids.some(fid => {
-        const f = findingsMap.get(fid);
-        const wf = workflowUI?.workflows?.get(fid);
-        const ass = (wf?.assignee || f?.assignee || "").toLowerCase();
-        return ass.includes(assigneeFilter);
-      });
-      if (!matchAssignee) return false;
-    }
 
     if (query) {
       const texts = [
@@ -1803,226 +2365,81 @@ function renderFindings() {
   });
 
   const rankMap = { CRITICAL: 5, HIGH: 4, MEDIUM: 3, LOW: 2, INFO: 1 };
-  filteredItems.sort((a, b) => {
-    const prioA = (a.finding_ids && a.finding_ids.length)
-      ? Math.min(...a.finding_ids.map(fid => {
-          const wf = workflowUI?.workflows?.get(fid);
-          const f = findingsMap.get(fid);
-          return wf?.priority || f?.priority || 2;
-        }))
-      : 2;
-    const prioB = (b.finding_ids && b.finding_ids.length)
-      ? Math.min(...b.finding_ids.map(fid => {
-          const wf = workflowUI?.workflows?.get(fid);
-          const f = findingsMap.get(fid);
-          return wf?.priority || f?.priority || 2;
-        }))
-      : 2;
-    if (prioA !== prioB) return prioA - prioB;
-    return (rankMap[b.severity] || 0) - (rankMap[a.severity] || 0);
-  });
+  filteredItems.sort((a, b) => (rankMap[b.severity] || 0) - (rankMap[a.severity] || 0));
 
-  // 전체 선택 체크박스 동기화
-  const selectAllBox = $("selectAllFindings");
-  if (selectAllBox) {
-    const selectableFids = filteredItems.flatMap(it => it.finding_ids || []);
-    selectAllBox.checked = selectableFids.length > 0 && selectableFids.every(fid => workflowUI?.selected?.has(fid));
-    selectAllBox.onchange = (e) => {
-      for (const fid of selectableFids) {
-        if (e.target.checked) workflowUI?.selected?.add(fid);
-        else workflowUI?.selected?.delete(fid);
-      }
-      workflowUI?.renderReviewCount?.();
-      renderFindings();
-    };
+  // 3. 2단(인용 오류·미확인) 및 3단(무리한 주장) 분리 렌더링 (TK-88)
+  const tier2Items = [];
+  const tier3Items = [];
+  for (const item of filteredItems) {
+    const tier = classifyReviewItemTier(item, findingsMap);
+    if (tier === 2) tier2Items.push(item);
+    else tier3Items.push(item);
   }
 
-  // 3. 4열 통합 검토 표 렌더링
+  // [2단] 판례·법령·주요참고문헌 인용 오류·미확인 검토 표
   const rowsContainer = $("aiVerificationRows");
   const emptyMsg = $("aiVerificationEmpty");
   if (rowsContainer) {
     rowsContainer.replaceChildren();
-    if (!filteredItems.length) {
+    if (!tier2Items.length) {
       if (emptyMsg) {
         emptyMsg.hidden = false;
-        emptyMsg.textContent = state.run ? "표시할 확인 항목이 없습니다." : "검증 결과가 없습니다.";
+        emptyMsg.textContent = state.run ? "표시할 인용 오류·미확인 항목이 없습니다." : "검증 결과가 없습니다.";
       }
     } else {
       if (emptyMsg) emptyMsg.hidden = true;
-      for (const item of filteredItems) {
-        const tr = node("tr");
+      for (const item of tier2Items) {
+        rowsContainer.append(renderReviewRow(item, 2, findingsMap));
+      }
+    }
+  }
 
-        // 1열: 위치 + 행 선택 체크박스
-        const tdLoc = node("td");
-        if (item.finding_ids && item.finding_ids.length > 0) {
-          const rowCheck = node("input");
-          rowCheck.type = "checkbox";
-          rowCheck.className = "row-checkbox";
-          rowCheck.setAttribute("aria-label", "행 선택");
-          rowCheck.checked = item.finding_ids.every(fid => workflowUI?.selected?.has(fid));
-          rowCheck.onchange = (e) => {
-            for (const fid of item.finding_ids) {
-              if (e.target.checked) workflowUI?.selected?.add(fid);
-              else workflowUI?.selected?.delete(fid);
-            }
-            workflowUI?.renderReviewCount?.();
-            if (selectAllBox) {
-              const selectableFids = filteredItems.flatMap(it => it.finding_ids || []);
-              selectAllBox.checked = selectableFids.length > 0 && selectableFids.every(fid => workflowUI?.selected?.has(fid));
-            }
-          };
-          tdLoc.append(rowCheck);
-        }
-        tdLoc.append(node("strong", item.doc?.filename || "문서"));
-        const locText = item.location?.display || (item.location?.page ? `${item.location.page}쪽` : "");
-        if (locText) {
-          tdLoc.append(node("p", locText, "muted small"));
-        }
-        if (item.location?.page) {
-          tdLoc.append(button(`${item.location.page}쪽 보기`, () => viewDocument(item.document_id, item.location.page), "link-button small"));
-        }
-        if (item.kind) {
-          tdLoc.append(node("span", label(item.kind), "badge info small"));
-        }
+  // [3단] 법률적으로 무리한 주장 표
+  const tier3Container = $("tier3Rows");
+  const tier3EmptyMsg = $("tier3Empty");
+  if (tier3Container) {
+    tier3Container.replaceChildren();
+    if (!tier3Items.length) {
+      if (tier3EmptyMsg) {
+        tier3EmptyMsg.hidden = false;
+        tier3EmptyMsg.textContent = state.run ? "무리한 주장 또는 참고자료 모순 항목이 없습니다." : "검증 결과가 없습니다.";
+      }
+    } else {
+      if (tier3EmptyMsg) tier3EmptyMsg.hidden = true;
+      for (const item of tier3Items) {
+        tier3Container.append(renderReviewRow(item, 3, findingsMap));
+      }
+    }
+  }
 
-        // 2열: 문서 주장 및 인용 내용
-        const tdClaim = node("td");
-        if (item.cited_authority) {
-          tdClaim.append(node("strong", item.cited_authority));
-        }
-        if (item.claim_text) {
-          tdClaim.append(node("p", friendlyText(item.claim_text), "claim-text"));
-        }
-        if (item.finding_ids && item.finding_ids.length > 0) {
-          const firstFinding = findingsMap.get(item.finding_ids[0]);
-          if (firstFinding) {
-            tdClaim.append(button(`상세 보기: ${friendlyText(firstFinding.title)}`, () => openFinding(firstFinding), "link-button small"));
-          }
-          if (item.finding_ids.length > 1) {
-            const derived = node("details", null, "derived-findings");
-            derived.append(node("summary", `같은 인용에서 파생된 항목 ${item.finding_ids.length - 1}건`));
-            for (const fid of item.finding_ids.slice(1)) {
-              const m = findingsMap.get(fid);
-              if (m) {
-                derived.append(button(`${label(m.severity)} · ${friendlyText(m.title)}`, () => openFinding(m), "link-button"));
-              }
-            }
-            tdClaim.append(derived);
-          }
-        }
+// TK-94: 미확인 판례/법령 정리된 표 하단부에 [📋 엘박스/AI 검증 프롬프트] 소형 버튼 단일 배치
+  const tableActions = $("reviewTableActions");
+  if (tableActions) {
+    tableActions.replaceChildren();
 
-        // 3열: 근거 확인 결과
-        const tdBasis = node("td");
-        let verdictCls = "badge HIGH";
-        if (item.official_status === "OFFICIAL_CONFIRMED" || item.verdict_label?.includes("일치")) {
-          verdictCls = "badge SUCCESS";
-        } else if (String(item.verdict_label).includes("부당") || String(item.verdict_label).includes("결여")) {
-          verdictCls = "badge CRITICAL";
-        }
-        tdBasis.append(
-          node("span", label(item.severity), `badge ${item.severity}`),
-          node("span", item.verdict_label || "확인 필요", `${verdictCls} validity-verdict`)
-        );
-        const basisText = item.ai_generation_basis || (item.official_status ? label(item.official_status) : "");
-        if (basisText) {
-          tdBasis.append(node("p", basisText, "basis-text"));
-        }
-        if (item.reference_case_match) {
-          tdBasis.append(node("p", `표준판례 사건정보 대조: ${item.reference_case_match}`, "basis-text"));
-        }
-        if (item.context_review?.reason) {
-          const review = item.context_review;
-          const context = node("div", null, "citation-context-review");
-          context.append(node("strong", "인용 취지·맥락 검토 (AI 참고 의견)"), node("p", review.reason || "판단 유보"));
-          for (const opinion of review.opinions || []) {
-            const stage = {primary: "1차 검토", critic: "독립 교차검토", grounder: "근거 대조"}[opinion.stage] || opinion.stage;
-            context.append(node("p", `${stage}: ${opinion.rationale}`));
-            const evidence = node("details");
-            evidence.append(node("summary", "공식 원문 근거"));
-            for (const quote of opinion.evidence_quotes || []) evidence.append(node("blockquote", quote));
-            context.append(evidence);
-          }
-          if (review.source_truncated) context.append(node("p", "공식 원문 일부 범위에 대한 의견입니다.", "muted"));
-          context.append(node("small", "문구 일치, 법리 취지, 구체적 사안 적용은 별개이며 작성 주체 판정에는 사용하지 않습니다.", "muted"));
-          tdBasis.append(context);
-        }
+    // 외부 AI 전송 정책 확인: LOCAL_ONLY인 경우 외부 전송 버튼 숨김
+    const policy = state.project?.external_ai_policy || "LOCAL_ONLY";
+    if (policy === "LOCAL_ONLY") {
+      tableActions.hidden = true;
+    } else {
+      // 대상 필터: filterUnverifiedAuthorities 함수 사용 (공식 확인 항목 배제)
+      const unverifiedAuthorities = filterUnverifiedAuthorities(filteredItems);
 
-        // 4열: 법리적 타당성 검토 및 반박 근거 & 행 안 워크플로우 조작
-        const tdReason = node("td");
-        tdReason.append(
-          reasoningBlock(item),
-          node("div", `대응 방안: ${item.counteraction || ""}`, "counteraction-box")
-        );
-        if (item.finding_ids && item.finding_ids.length > 0) {
-          const leadF = findingsMap.get(item.finding_ids[0]);
-          const leadWf = workflowUI?.workflows?.get(leadF?.id) || {};
-          let currentStatus = leadF?.review_status || "NEEDS_REVIEW";
-          if (leadWf.workflow_state === "COMPLETED") {
-            currentStatus = leadWf.decision === "FALSE_POSITIVE" ? "FALSE_POSITIVE" : (leadWf.decision === "AGREED" ? "ACCEPTED" : "RESOLVED");
-          }
-          const currentPrio = leadWf.priority || leadF?.priority || 2;
-          const currentAssignee = leadWf.assignee || leadF?.assignee || "";
+      if (unverifiedAuthorities.length > 0) {
+        const promptBtn = button("📋 엘박스/AI 검증 프롬프트", () => {
+          copyToClipboard(
+            buildExternalAiPromptForUnverifiedAuthorities(unverifiedAuthorities, state.project?.incident_date, policy),
+            "엘박스/법률 AI 검증 프롬프트가 복사되었습니다."
+          );
+        }, "external-ai-prompt-btn");
+        promptBtn.title = `미확인 판례·법령 ${unverifiedAuthorities.length}건을 엘박스 등 법률 AI에 한 번에 질의할 수 있는 일괄 프롬프트를 복사합니다. (외부 AI 답변은 공식 확인이 아닙니다)`;
 
-          const wfBox = node("div", null, "inline-workflow-box");
-          const controls = node("div", null, "inline-workflow-controls");
-
-          // 1) 검토 상태 (확인 전/지적 수용/오탐/조치 완료)
-          const stLabel = node("label", null, "inline-field");
-          stLabel.append(node("strong", "검토 상태: "));
-          const sel = node("select", null, "inline-workflow-select");
-          sel.setAttribute("aria-label", "행 검토 상태");
-          for (const [val, text] of [
-            ["NEEDS_REVIEW", "확인 전"],
-            ["ACCEPTED", "지적 수용"],
-            ["FALSE_POSITIVE", "오탐"],
-            ["RESOLVED", "조치 완료"],
-          ]) {
-            const opt = node("option", text);
-            opt.value = val;
-            if (currentStatus === val) opt.selected = true;
-            sel.append(opt);
-          }
-          sel.addEventListener("change", () => saveRowWorkflow(item, { review_status: sel.value }));
-          stLabel.append(sel);
-
-          // 2) 우선순위 (1: 우선 검토 / 2: 보통 / 3: 후순위)
-          const prioLabel = node("label", null, "inline-field");
-          prioLabel.append(node("strong", "우선순위: "));
-          const prioSel = node("select", null, "inline-priority-select");
-          prioSel.setAttribute("aria-label", "행 우선순위");
-          for (const [val, text] of [
-            ["1", "우선 검토"],
-            ["2", "보통"],
-            ["3", "후순위"],
-          ]) {
-            const opt = node("option", text);
-            opt.value = val;
-            if (String(currentPrio) === String(val)) opt.selected = true;
-            prioSel.append(opt);
-          }
-          prioSel.addEventListener("change", () => saveRowWorkflow(item, { priority: prioSel.value }));
-          prioLabel.append(prioSel);
-
-          // 3) 담당자
-          const assLabel = node("label", null, "inline-field");
-          assLabel.append(node("strong", "담당자: "));
-          const assInput = node("input", null, "inline-assignee-input");
-          assInput.type = "text";
-          assInput.placeholder = "담당자";
-          assInput.value = currentAssignee;
-          assInput.setAttribute("aria-label", "행 담당자");
-          assInput.addEventListener("change", () => saveRowWorkflow(item, { assignee: assInput.value }));
-          assLabel.append(assInput);
-
-          controls.append(stLabel, prioLabel, assLabel);
-          wfBox.append(controls);
-          tdReason.append(wfBox);
-        } else {
-          tdReason.append(node("div", "검토 상태: 저장 불가 (정보 전용)", "inline-workflow-note"));
-        }
-
-        tr.append(tdLoc, tdClaim, tdBasis, tdReason);
-        rowsContainer.append(tr);
+        const badge = node("span", `(미확인 판례·법령 ${unverifiedAuthorities.length}건)`, "muted small review-prompt-count");
+        const notice = node("span", "※ 외부 AI 답변은 공식 확인이 아니므로 원문 확인이 필요합니다.", "muted small review-prompt-notice");
+        tableActions.append(promptBtn, badge, notice);
+        tableActions.hidden = false;
+      } else {
+        tableActions.hidden = true;
       }
     }
   }
@@ -2186,13 +2603,15 @@ function renderIssues() {
 }
 
 function renderTimeline() {
-  $("timeline").replaceChildren();
+  const root = $("timeline");
+  if (!root) return;
+  root.replaceChildren();
   const events = state.run?.timeline || [];
-  if (!events.length) empty($("timeline"), "추출된 사건 일지가 없습니다.");
+  if (!events.length) empty(root, "추출된 사건 일지가 없습니다.");
   for (const e of events) {
     const row = node("article", null, "row-item");
     row.append(node("strong", e.date || e.event_date || "날짜 미확인"), node("p", e.description || e.text || JSON.stringify(e)), node("div", `${state.documents.find(d=>d.id===e.document_id)?.filename||""} · 문서 기재 내용 기준`, "row-meta"));
-    $("timeline").append(row);
+    root.append(row);
   }
 }
 async function openDocument(d, finding = null, runId = state.run?.id) {
@@ -2389,12 +2808,36 @@ $("bulkExclude").onclick = action(() => setScope([...state.selected], false));
 $("bulkInclude").onclick = action(() => setScope([...state.selected], true));
 if ($("privacyAck")) {
   $("privacyAck").onchange = e => {
-    setPrivacyAck(state.project?.id, e.target.checked);
     if (e.target.checked && $("privacyAckError")) {
       $("privacyAckError").hidden = true;
       $("privacyAckError").textContent = "";
     }
   };
+}
+if ($("privacyConfirmBtn")) {
+  $("privacyConfirmBtn").onclick = handlePrivacyConfirm;
+}
+if ($("privacyCancelBtn")) {
+  $("privacyCancelBtn").onclick = () => {
+    pendingUploadFiles = [];
+    if ($("fileInput")) $("fileInput").value = "";
+    $("privacyDialog")?.close();
+  };
+}
+if ($("privacyNoticeRevisit")) {
+  $("privacyNoticeRevisit").onclick = e => {
+    e.preventDefault();
+    pendingUploadFiles = [];
+    openPrivacyDialog(false);
+  };
+}
+if ($("privacyDialog")) {
+  $("privacyDialog").addEventListener("close", () => {
+    if (pendingUploadFiles.length > 0) {
+      pendingUploadFiles = [];
+      if ($("fileInput")) $("fileInput").value = "";
+    }
+  });
 }
 const fileBtnEl = $("fileInputButton") || document.querySelector('label[for="fileInput"]');
 if (fileBtnEl) {
@@ -2412,7 +2855,15 @@ $("fileInput").onchange = action(e => {
     const msg = privacyNoticeConfig?.error || "개인정보 처리 안내를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.";
     return toast(msg);
   }
-  return upload([...e.target.files]);
+  const files = [...e.target.files];
+  if (!files.length) return;
+  const id = state.project?.id;
+  if (!id) return;
+  if (getPrivacyAck(id)) {
+    return upload(files);
+  }
+  pendingUploadFiles = files;
+  openPrivacyDialog(true);
 });
 $("dropArea").ondragover = e => {
   e.preventDefault();
@@ -2426,7 +2877,15 @@ $("dropArea").ondrop = action(async e => {
     const msg = privacyNoticeConfig?.error || "개인정보 처리 안내를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.";
     return toast(msg);
   }
-  await upload([...e.dataTransfer.files]);
+  const files = [...e.dataTransfer.files];
+  if (!files.length) return;
+  const id = state.project?.id;
+  if (!id) return;
+  if (getPrivacyAck(id)) {
+    return upload(files);
+  }
+  pendingUploadFiles = files;
+  openPrivacyDialog(true);
 });
 $("documentForm").onsubmit = action(async e => {
   e.preventDefault();
@@ -2438,7 +2897,8 @@ $("documentForm").onsubmit = action(async e => {
   await refreshScope();
 });
 for (const id of ["verifyBtn", "reverify"]) $(id).onclick = action(verify);
-for (const id of ["findingSearch", "reviewFilter", "severityFilter"]) $(id).addEventListener("input", renderFindings);
+for (const id of ["findingSearch", "severityFilter"]) $(id)?.addEventListener("input", renderFindings);
+$("severityFilter")?.addEventListener("change", renderFindings);
 $("reportBtn").onclick = action(createReport);
 $("refreshAudit").onclick = action(loadAudit);
 $("prevPage").onclick = action(async () => {
@@ -2572,16 +3032,18 @@ $("settingsButton").onclick = action(async () => {
   $("settingsDialog").showModal();
   await renderStorage();
 });
-$("calculationForm").onsubmit = action(async e => {
-  e.preventDefault();
-  const data = Object.fromEntries(new FormData(e.currentTarget));
-  data.inclusive = e.currentTarget.elements.inclusive.checked;
-  const result = await api("/calculations/interest", {
-    method: "POST",
-    body: data
+if ($("calculationForm")) {
+  $("calculationForm").onsubmit = action(async e => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.currentTarget));
+    data.inclusive = e.currentTarget.elements.inclusive.checked;
+    const result = await api("/calculations/interest", {
+      method: "POST",
+      body: data
+    });
+    $("calculationResult").replaceChildren(node("h3", `이자 ${Number(result.interest).toLocaleString("ko-KR")}원`), node("p", `${result.days}일 · 합계 ${Number(result.total).toLocaleString("ko-KR")}원`), node("p", result.formula, "technical"), node("p", "연 365일 기준 단리 계산. 적용 이율·기간 및 초일 산입 여부는 담당 변호사가 확정합니다.", "muted"));
   });
-  $("calculationResult").replaceChildren(node("h3", `이자 ${Number(result.interest).toLocaleString("ko-KR")}원`), node("p", `${result.days}일 · 합계 ${Number(result.total).toLocaleString("ko-KR")}원`), node("p", result.formula, "technical"), node("p", "연 365일 기준 단리 계산. 적용 이율·기간 및 초일 산입 여부는 담당 변호사가 확정합니다.", "muted"));
-});
+}
 // 화면 구성요소는 각각 별도 파일이다. 배포 중이거나 캐시가 어긋나면 그중
 // 하나가 로드되지 않을 수 있고, 그때 남는 것은 "operationsUI is not defined"
 // 같은 문구와 빈 프로젝트 목록이다. 자료가 사라진 것처럼 보이지만 실제로는
@@ -2595,7 +3057,6 @@ function missingModules() {
     [typeof adminUI, "사용자 관리"],
     [typeof workflowUI, "검토 작업"],
     [typeof projectTools, "프로젝트 관리"],
-    [typeof calculationWorkbench, "금액 계산"],
   ].filter(([kind]) => kind === "undefined").map(([, label]) => label);
 }
 
@@ -2640,6 +3101,5 @@ if (!missingModules().length) {
   workflowUI.init();
   operationsUI.init();
   projectTools.init();
-  calculationWorkbench.init();
 }
 init();

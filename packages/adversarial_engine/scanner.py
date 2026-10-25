@@ -309,7 +309,7 @@ class AdversarialScanner:
         out: List[Finding] = []
         for key, value in doc.metadata.items():
             text = str(value)
-            if not text.strip() or len(text) < 8:
+            if not text.strip() or len(text.strip()) < 4:
                 continue
             normalized, kinds = normalize_for_classification(text)
             classification = classify(normalized, source_layer="metadata", visible=False, block_type="metadata")
@@ -362,7 +362,7 @@ class AdversarialScanner:
         entries += [("ACTUAL_TEXT", "actual_text", str(t), None) for t in doc.structure.get("actual_text_strings") or []]
         flagged_paths: set = set()
         for path, layer, text, name in entries:
-            if len(text.strip()) < 6:
+            if len(text.strip()) < 4:
                 continue
             if name == "북마크 제목 이어 읽기" and "OUTLINE" in flagged_paths:
                 continue  # 제목 하나로 이미 보고했다
@@ -409,8 +409,12 @@ class AdversarialScanner:
                 confidence=0.85, confidence_features=features, document_id=doc.document_id, engine=ENGINE_NAME,
                 meta_message_type=MetaMessageType.MM1_MACHINE_INSTRUCTION, forensic_level=ForensicLevel.NOTABLE,
                 tags=["ZERO_WIDTH"]))
+        has_page_layers = any(k.startswith("pypdf_page_") for k in doc.raw_layers)
         for layer_name, text in doc.raw_layers.items():
             if not text:
+                continue
+            # 페이지별 레이어가 있으면 합쳐진 pypdf_stream_text는 중복 스캔하지 않는다
+            if layer_name == "pypdf_stream_text" and has_page_layers:
                 continue
             for signal in scan_unicode(text):
                 recovered = signal.recovered_text
@@ -428,12 +432,19 @@ class AdversarialScanner:
                     "layer": layer_name,
                     "recovered_instruction": hidden_instruction,
                 }
+                # 레이어 이름에 페이지 번호가 포함되어 있다면 추출
+                page_no = None
+                p_match = re.search(r"_p(?:age_)?(\d+)\b", layer_name)
+                if p_match:
+                    page_no = int(p_match.group(1))
+
                 out.append(
                     Finding.create(
                         type=FindingType.UNICODE_SMUGGLING,
                         status=VerificationStatus.SUSPICIOUS,
                         severity=severity,
                         evidence_grade=EvidenceGrade.A,
+                        page=page_no,
                         title=f"Unicode 은닉 신호: {signal.kind}" + (f" — {signal.detail}" if signal.kind == "ZERO_WIDTH" else ""),
                         detail=f"{layer_name} 레이어. {signal.detail}"
                         + (" 복원된 문자열에 지시형 표현이 있다." if hidden_instruction else ""),
@@ -444,11 +455,13 @@ class AdversarialScanner:
                         meta_message_type=MetaMessageType.MM1_MACHINE_INSTRUCTION,
                         forensic_level=ForensicLevel.SUSPICIOUS if hidden_instruction else ForensicLevel.NOTABLE,
                         sealed_excerpt=recovered or signal.sample,
+                        tags=[signal.kind] + (["ZERO_WIDTH"] if signal.kind == "ZERO_WIDTH" else []),
                         evidence=[
                             Evidence.create(
                                 description=f"{layer_name} 레이어 Unicode 신호",
                                 grade=EvidenceGrade.A,
                                 document_id=doc.document_id,
+                                page=page_no,
                                 excerpt=_excerpt(signal.sample),
                                 sealed=True,
                             )
@@ -525,25 +538,27 @@ class AdversarialScanner:
 
         for delta in compare_layers(layers):
             instruction_segments = []
+            layer_name = "annotation" if delta.right_layer == "annotation_text" else "hidden_text"
             for segment in delta.only_in_right:
-                classification = classify(segment, source_layer="hidden_text", visible=False)
-                if classification.label != AdversarialClass.BENIGN_CONTENT:
+                classification = classify(segment, source_layer=layer_name, visible=False)
+                if classification.label not in (AdversarialClass.BENIGN_CONTENT, AdversarialClass.INSTRUCTION_LIKE):
                     instruction_segments.append((segment, classification))
             if not instruction_segments and delta.difference <= 0:
                 continue
 
             ocr_layers = {"ocr_layer", "independent_ocr"}
             is_ocr = bool({delta.left_layer, delta.right_layer} & ocr_layers)
+            is_annotation = bool({delta.left_layer, delta.right_layer} & {"annotation_text"})
             finding_type = FindingType.OCR_LAYER_INJECTION if is_ocr and instruction_segments else (
                 FindingType.OCR_LAYER_MISMATCH if is_ocr else FindingType.HIDDEN_TEXT_MISMATCH
             )
             severity = Severity.INFO
             if instruction_segments:
                 severity = Severity.CRITICAL if is_ocr else Severity.HIGH
-            elif not is_ocr and delta.difference > 40:
+            elif not is_ocr and not is_annotation and delta.difference > 40:
                 severity = Severity.MEDIUM
-            # OCR은 인식 오차가 있으므로 단순 분량 차이로는 Finding을 만들지 않는다.
-            # 지시형 문자열이 한쪽 레이어에만 존재할 때만 보고한다.
+            # OCR과 주석은 본문 표시 텍스트와 본질적으로 분량이 다르므로 단순 분량 차이로는 Finding을 만들지 않는다.
+            # 지시형 문자열이 존재할 때만 보고한다.
 
             if severity == Severity.INFO:
                 continue

@@ -33,6 +33,8 @@ def test_retry_button_tracks_the_new_run_until_completion(tmp_path, width, heigh
                    "/api/verification-runs": {"active_count": 0, "runs": []}}
         if path in replies:
             return route.fulfill(json=replies[path])
+        if path.endswith("/job"):
+            return route.fulfill(json={"state": "FAILED", "attempts": 1, "max_attempts": 3, "history": []})
         if path == "/api/verification-runs/old/retry":
             posts.append(path)
             return route.fulfill(status=202, json=child)
@@ -63,7 +65,9 @@ def test_retry_button_tracks_the_new_run_until_completion(tmp_path, width, heigh
             page.route("**/*", respond)
             page.goto("http://retry.test/")
             select_first_project(page)
-            page.get_by_role("button", name="같은 입력으로 재시도", exact=True).click()
+            page.get_by_role("button", name="작업 기록", exact=True).click()
+            job_dialog = page.get_by_role("dialog", name="검증 작업 기록", exact=True)
+            job_dialog.get_by_role("button", name="같은 입력으로 재시도", exact=True).click()
             dialog = page.get_by_role("dialog", name="검증 재시도", exact=True)
             expect(dialog).to_contain_text("현재 분석 엔진")
             dialog.get_by_role("button", name="확인", exact=True).click()

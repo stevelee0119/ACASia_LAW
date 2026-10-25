@@ -185,7 +185,9 @@ def technical_payload(run_result):
     result = jsonable_payload(to_payload(run_result))
     # The static glossary is versioned separately; retain every execution/review field.
     result.pop("terminology", None)
+    result.pop("timeline", None)
     result.get("review_snapshot", {}).pop("terminology", None)
+    result.get("review_snapshot", {}).pop("timeline", None)
     return compact_claim_rows(result)
 
 

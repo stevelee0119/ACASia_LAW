@@ -762,7 +762,19 @@ class PdfParser(DocumentParser):
                 pass
             annotations: List[Dict[str, Any]] = []
             has_signature = False
+            pypdf_page_texts: Dict[int, str] = {}
             for pno, page in enumerate(reader.pages, start=1):
+                # pdfplumber가 놓칠 수 있는 폭 0 문자(U+200B 등) 및 스트림 텍스트 보존
+                try:
+                    p_txt = page.extract_text() or ""
+                except Exception:
+                    p_txt = ""
+                if p_txt:
+                    pypdf_page_texts[pno] = p_txt
+                    # 폭 0 문자(Cf 영역 및 포맷 문자) 존재 시 별도 레이어로 보존
+                    if any(ord(ch) in (0x200B, 0x200C, 0x200D, 0xFEFF, 0x2060, 0x200E, 0x200F) for ch in p_txt):
+                        doc.raw_layers[f"pypdf_page_{pno}"] = p_txt
+
                 for annot_ref in page.get("/Annots") or []:
                     try:
                         annot = annot_ref.get_object()
@@ -790,6 +802,9 @@ class PdfParser(DocumentParser):
                     annotations.append(entry)
             doc.structure["annotations"] = annotations
             doc.structure["has_signature_field"] = has_signature
+            if pypdf_page_texts:
+                doc.structure["pypdf_pages"] = pypdf_page_texts
+                doc.raw_layers["pypdf_stream_text"] = "\n".join(pypdf_page_texts.values())
 
             # 첨부파일
             try:

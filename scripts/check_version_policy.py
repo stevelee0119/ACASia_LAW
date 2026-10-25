@@ -1,14 +1,17 @@
 """프로그램 버전 정책 점검(평가 에이전트 소관, 보호 경로). 정책: docs/scorecards/VERSION_POLICY.md
 
-버전(`packages/common/config.py`의 `Settings.version`, X.Y.Z)은 **커밋이 아니라 평가 측이 잰 성능**으로만 올린다.
-- 정수 X: 성능의 급격한 상승 (사용자 승인 필요)
-- 소수점 첫째 자리 Y: 일부 성능 개선
-- 소수점 둘째 자리 Z: 미세한 성능 개선
+버전(`packages/common/config.py`의 `Settings.version`, X.Y.Z)은 **커밋이 아니라 평가 측 판정서**로만 올린다.
+2026-10-24 개정(사용자 채택): 자리는 수용된 변경의 분류(`basis`) 가운데 가장 높은 것으로 정한다.
+- 정수 X: breaking·milestone (사용자 승인 필요)
+- 소수점 첫째 자리 Y: added·changed·deprecated·removed·performance_minor(합산 오류 감소율 10% 이상)
+- 소수점 둘째 자리 Z: fixed·security·performance_patch·known_open
 이 도구는 기준 커밋 이후 버전이 바뀐 모든 커밋을 찾아 다음을 확인한다.
 1. 바뀐 버전은 **한 단계만** 오른다(내려가기·단계 건너뛰기 불가). 올린 자리 아래 자리는 0으로 되돌린다(예: 0.9.13 → 0.9.14 / 0.10.0 / 1.0.0).
 2. `docs/scorecards/version_verdicts.json`에 그 버전의 **판정서**(평가 측이 작성)가 있고, 판정서의 `from`·`level`이 실제 상향과 같다.
 3. 판정서에 측정 커밋·측정 조건·근거 수치가 있다. 정수 상향은 `user_approved: true`다.
 4. 판정서 하나는 한 번만 쓰인다(같은 버전을 두 번 올리거나 한 판정으로 두 단계를 올릴 수 없다).
+5. `decided_at`이 2026-10-24 이후인 판정서는 `basis`가 있고, 그 가장 높은 분류의 자리가 `level`과 같다.
+   `performance_minor`이면 `rer` 0.10 이상, `performance_patch`이면 0 초과 0.10 미만.
 버전이 바뀌지 않은 커밋은 통과다. 즉 **판정서 없는 상향(커밋마다 올리기)은 실패**한다.
 
     python scripts/check_version_policy.py --base HEAD~1        # 종료 코드: 0 통과, 1 위반, 2 측정 못 함
@@ -30,6 +33,35 @@ VERDICTS = ROOT / "docs" / "scorecards" / "version_verdicts.json"
 VERSION_RE = re.compile(r'^\s*version:\s*str\s*=\s*"(\d+)\.(\d+)\.(\d+)"', re.M)
 LEVELS = ("major", "minor", "patch")
 REQUIRED = ("version", "from", "level", "measured_commit", "conditions", "evidence", "decided_by", "decided_at")
+BASIS_SINCE = "2026-10-24"  # 변경 분류 기준 개정일(VERSION_POLICY 5절). 이전 판정서에는 적용하지 않는다.
+BASIS_LEVEL = {
+    "breaking": "major", "milestone": "major",
+    "added": "minor", "changed": "minor", "deprecated": "minor", "removed": "minor", "performance_minor": "minor",
+    "fixed": "patch", "security": "patch", "performance_patch": "patch", "known_open": "patch",
+}
+MINOR_RER = 0.10
+
+
+def check_basis(verdict: Dict, level: str) -> List[str]:
+    """개정 기준의 판정서 분류 점검. 위반 사유 목록."""
+    if str(verdict.get("decided_at") or "") < BASIS_SINCE:
+        return []
+    basis = verdict.get("basis")
+    if not isinstance(basis, list) or not basis:
+        return ["판정서에 basis(변경 분류 목록)가 없다"]
+    unknown = [b for b in basis if b not in BASIS_LEVEL]
+    if unknown:
+        return [f"알 수 없는 분류 {unknown}"]
+    problems: List[str] = []
+    highest = min((BASIS_LEVEL[b] for b in basis), key=LEVELS.index)
+    if highest != level:
+        problems.append(f"분류 {basis}의 가장 높은 자리({highest})와 상향 자리({level})가 다르다")
+    rer = verdict.get("rer")
+    if "performance_minor" in basis and not (isinstance(rer, (int, float)) and rer >= MINOR_RER):
+        problems.append(f"performance_minor는 합산 오류 감소율(rer) {MINOR_RER} 이상이어야 한다(rer={rer})")
+    if "performance_patch" in basis and not (isinstance(rer, (int, float)) and 0 < rer < MINOR_RER):
+        problems.append(f"performance_patch는 rer가 0 초과 {MINOR_RER} 미만이어야 한다(rer={rer})")
+    return problems
 
 
 def parse_version(text: str) -> Optional[Tuple[int, int, int]]:
@@ -81,6 +113,7 @@ def check_bump(old: Tuple[int, int, int], new: Tuple[int, int, int], verdicts: L
         problems.append(f"{label}: 판정서의 from({verdict.get('from')})이 실제 이전 버전과 다르다")
     if verdict.get("level") != level:
         problems.append(f"{label}: 판정서의 등급({verdict.get('level')})과 실제 상향 자리({level})가 다르다")
+    problems.extend(f"{label}: {p}" for p in check_basis(verdict, level))
     if level == "major" and verdict.get("user_approved") is not True:
         problems.append(f"{label}: 정수 상향은 사용자 승인(user_approved: true)이 필요하다")
     if fmt(new) in used:

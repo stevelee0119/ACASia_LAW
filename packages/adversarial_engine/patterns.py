@@ -51,7 +51,7 @@ INSTRUCTION_PATTERNS: List[PatternSpec] = [
     # "ignore conflicting internal guidelines": 검증 기준이 되는 내부 규정·지침과의 충돌을 무시하라는 요구
     (_c(r"ignore\s+(?:all\s+|any\s+|the\s+)?(?:conflicting|contradicting|internal|existing|other|applicable)\s+"
         r"(?:internal\s+)?(?:guidelines?|policies|policy|rules?|regulations?|protocols?|instructions?)"),
-     InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "내부 지침·규정 충돌 무시 요구(영어)"),
+      InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "내부 지침·규정 충돌 무시 요구(영어)"),
     (_c(r"disregard\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier|system)"),
      InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "disregard previous"),
     (_c(r"forget\s+(everything|all\s+previous|your\s+instructions)"),
@@ -137,7 +137,7 @@ INSTRUCTION_PATTERNS: List[PatternSpec] = [
      InjectionIntent.ROLE_OVERRIDE, 0.8, "사전심사 완료 주장으로 검증 면제 유도"),
 
     # --- 검증 중단 요구 -----------------------------------------------------
-    (_c(r"(검증|탐지|분석|점검|심사)\s*(루틴|절차|과정|기능)?[를을]?\s*(즉시\s*)?(중단|생략|건너뛰|해제|비활성)"),
+    (_c(r"(?:검증|탐지|분석|점검|심사|검토)\s*(?:루틴|절차|과정|기능)?[를을]?\s*(?:즉시\s*)?(?:중단|생략|건너뛰|해제|비활성)"),
      InjectionIntent.INSTRUCTION_OVERRIDE, 1.0, "검증 중단 요구(한국어)"),
     # 동사와 대상 사이의 수식어("suspend all standard legal hallucination detectors",
     # "bypass statute date verification protocols")를 네 단어까지 허용한다.
@@ -342,6 +342,33 @@ BENIGN_CONTEXT_RE = _c(
     r"(?:업무|직무|지시)를\s*(?:거부|불이행|무시|위반))"
 )
 
+# --- 정상 법률 서술 문맥 (상대방 요청 인용, 과거 행위 서술, 법률 판단 등 오탐 방지: TK-92) ---
+# 타인의 주장·요청 인용 서술 (선형 정규식)
+NARRATED_CLAIM_RE = _c(
+    r"(?:라는|다고|라고|다는|라며)\s*(?:(?:원고|피고|상대방|당사자|신청인|피신청인|참가인|피의자|피고인|행정청)(?:측)?\s*)?(?:의\s*)?(?:주장|요청|요구|신청|항변|의견|취지|입장|지적)"
+    r"|(?:라고|다고|라며)\s*(?:주장|요청|요구|신청|항변|진술)(?:하였|했|한|함|하므로|하나|하지만|하고|하며|는다|었다)"
+    r"|(?:주장|요청|요구|신청|항변|진술)하(?:였|였으나|였고|였으며|였는데|였지만|였습니다|였다|면서|고\s*있)"
+)
+
+# 과거 행위 서술 및 관형형 처분 (선형 정규식)
+NARRATED_ACTION_RE = _c(
+    r"(?:생략|중단|건너뛰|해제|배제|제외)(?:한|된)?\s*(?:처분|결정|조치|행위|절차|경정|재결)"
+    r"|(?:생략|중단|건너뛰|해제|배제|제외)(?:하였|했|됐|되었|당하였|당했)(?:다|고|으며|으나|지만|음|는지|습니다)"
+    r"|(?:생략|중단|배제|제외)(?:하고|하여|한\s*채)\s*[^.\n]{0,50}?(?:하였|했|됐|되었다|습니다|임|음)"
+)
+
+# 법률 판단 문장 (선형 정규식)
+LEGAL_JUDGMENT_RE = _c(
+    r"(?:위법|부당|무효|취소|당연무효|부적법|위헌|위배|위반)(?:하다|이다|에\s*해당|라\s*할|하다고|되|이라|합니다|입니다|하므로|하여|하더라도)"
+    r"|(?:위법|부당|하자|효력\s*없)(?:하여|하므로|하므로써|하더라도|함)"
+)
+
+# 문장 끝 종결 명령형 어미 (프롬프트 인젝션 판별용)
+TERMINAL_IMPERATIVE_RE = _c(
+    r"(?:하라|해라|하시오|하십시오|하세요|할\s*것|말\s*것|마십시오|마세요|마라|바랍니다|주십시오|주세요|"
+    r"해야\s*한다|하여야\s*한다|하도록\s*하라)\s*[.!?]*\s*$"
+)
+
 # --- 지시문을 '언급'하는 문맥과 '명령'하는 문맥의 구분 ----------------------------
 #
 # 문서가 지시문·공격 기법을 주제로 설명하는 경우(목차·표제·점검 항목·사례 설명)에도
@@ -365,6 +392,13 @@ IMPERATIVE_RE = _c(
     r"(하라|해라|하시오|하십시오|하세요|할\s*것|말\s*것|마십시오|마세요|마라|바랍니다|주십시오|주세요|"
     r"해야\s*한다|하여야\s*한다|하도록|반환하|출력하라|처리하라|\bplease\b|\bmust\b|\bshall\b)"
     r"|하지\s*않아도\s*됩니다|넣지\s*않는\s*편이\s*좋|말아\s*주십시오"
+)
+
+# 영문 명령·요청 표현 (조동사 및 문장/절 시작 명령 동사, 중첩 반복 없는 선형 정규식)
+ENGLISH_IMPERATIVE_RE = _c(
+    r"\b(?:please|must|shall|should|do\s+not|don't|never|always)\b"
+    r"|^[ \t>*#\d.-]*\b(?:output|return|report|conclude|emit|display|print|write|ignore|disregard|skip|bypass|drop|override|set|use|follow|stop|halt|disable|suppress|ensure|consider|treat|mark)\b"
+    r"|(?:[.!?;\n]|\b(?:and|then)\b)[ \t]*\b(?:output|return|report|conclude|emit|display|print|write|ignore|disregard|skip|bypass|drop|override|set|use|follow|stop|halt|disable|suppress|ensure|consider|treat|mark)\b"
 )
 # 문서 스스로 그런 지시를 따르지 않는다고 밝히는 설명
 DISCLAIMER_RE = _c(

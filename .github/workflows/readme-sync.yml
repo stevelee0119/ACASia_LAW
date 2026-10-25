@@ -1,11 +1,11 @@
 name: README 변경표 갱신
 
-# 푸시될 때마다 README의 '버전별 변경 내역' 표를 docs/releases.json과 프로그램 버전에 맞춘다.
+# 푸시될 때마다 README의 '버전별 변경 내역'(릴리스 계열 요약)과 docs/RELEASE_HISTORY.md(버전별 상세)를 docs/releases.json과 프로그램 버전에 맞춘다.
 # 버전을 올렸는데 기록이 없으면 마지막 커밋 제목으로 항목을 채운다. 바뀐 것이 있을 때만 커밋한다.
 on:
   push:
     branches: ["main", "claude/**"]
-    paths-ignore: ["README.md", "docs/releases.json"]
+    paths-ignore: ["README.md", "docs/releases.json", "docs/RELEASE_HISTORY.md"]
   workflow_dispatch:
 
 permissions:
@@ -31,12 +31,12 @@ jobs:
         run: python scripts/update_readme.py
       - name: 바뀐 경우에만 커밋
         run: |
-          if git diff --quiet -- README.md docs/releases.json; then
+          if git diff --quiet -- README.md docs/releases.json docs/RELEASE_HISTORY.md && [ -z "$(git ls-files --others --exclude-standard docs/RELEASE_HISTORY.md)" ]; then
             echo "README가 이미 최신입니다."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md docs/releases.json
+          git add README.md docs/releases.json docs/RELEASE_HISTORY.md
           git commit -m "docs: README 버전별 변경표 자동 갱신 [skip ci]"
           git push origin "HEAD:${GITHUB_REF_NAME}"

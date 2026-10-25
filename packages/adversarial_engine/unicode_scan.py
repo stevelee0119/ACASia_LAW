@@ -46,12 +46,19 @@ def scan_unicode(text: str) -> List[UnicodeSignal]:
             homoglyph_positions.append(i)
 
     for ch, positions in zw_positions.items():
+        # 폭 0 문자가 여러 개 쓰여 은닉된 전체 구문을 포섭하도록 범위를 잡는다
+        start_pos = positions[0]
+        end_pos = positions[-1]
+        sample_str = _context_for_range(text, start_pos, end_pos, padding=40)
+        # 폭 0 문자를 제거하여 원래 은닉된 문자열 복원
+        recovered = re.sub(r"[\u200b\u200c\u200d\ufeff\u2060\u200e\u200f]", "", sample_str) if len(positions) >= 2 else ""
         signals.append(
             UnicodeSignal(
                 kind="ZERO_WIDTH",
                 detail=f"{ZERO_WIDTH[ch]} (U+{ord(ch):04X}) {len(positions)}회",
                 positions=positions[:50],
-                sample=_context(text, positions[0]),
+                sample=sample_str,
+                recovered_text=recovered.strip(),
             )
         )
 
@@ -143,3 +150,10 @@ def _separated_instruction(text: str):
 def _context(text: str, index: int, width: int = 60) -> str:
     start = max(0, index - width)
     return text[start : index + width].replace("\n", " ")
+
+
+def _context_for_range(text: str, start_idx: int, end_idx: int, padding: int = 40) -> str:
+    """지정된 인덱스 범위를 포함하는 문맥 문자열을 추출한다."""
+    start = max(0, start_idx - padding)
+    end = min(len(text), end_idx + padding + 1)
+    return text[start:end].replace("\n", " ")
