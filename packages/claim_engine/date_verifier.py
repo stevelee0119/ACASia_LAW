@@ -104,10 +104,14 @@ PARTY_TITLES: Tuple[str, ...] = (
     "근로자", "사용자", "청구인", "피청구인",
 )
 
-# A-4 2. 기관명 접미 규칙 (조건 6, R5: 기관명 열거 금지, 접미 규칙으로 포착, U3: 재판장·판사 포함)
+# A-4 2. 기관명 접미 규칙 (조건 6, R5: 기관명 열거 금지, 접미 규칙으로 포착, U3: 재판장·판사 포함, AA4: 대상 명사구 끝 고정 기관 판정)
 ORGAN_SUFFIX_RE = re.compile(
     r"[가-힣]{0,15}(?:법원|위원회|세무서|경찰서|소방서|관할청|처분청|행정청|검찰청|노동청|국세청|구청|시청|지청|공단|사무소|공사|재판장|판사)"
 )
+ORGAN_ACTOR_END_RE = re.compile(
+    r"[가-힣]{0,15}(?:법원|위원회|세무서|경찰서|소방서|관할청|처분청|행정청|검찰청|노동청|국세청|구청|시청|지청|공단|사무소|공사|재판장|판사)$"
+)
+PARTY_TITLES_SET = set(PARTY_TITLES) | {"원고측", "피고측", "상대방"}
 
 # 주체 추출 정규식: 당사자 호칭 또는 기관명 접미 + 주격/보조사
 SUBJECT_RE = re.compile(
@@ -136,6 +140,11 @@ DOCUMENT_OBJECT_NOUNS: Tuple[str, ...] = (
     "통지서", "최고서", "처분서", "결정서", "보정명령서", "결정문", "통지문",
     "확인서", "증명서", "산정서", "계약서", "합의서", "약정서", "공문",
     "임대차계약", "공급계약", "매매계약", "근로계약", "업무협약", "임대차", "근무기간", "임대기간", "계약기간",
+)
+
+# AA7·AA8: 구체적 고유 대상이 없는 일반 사건·종류 명사 (지시어 결합 시 앞선 구체적 대상으로 해소 허용)
+GENERIC_EVENT_NOUNS: Tuple[str, ...] = (
+    "계약", "처분", "신청", "청구", "통지", "명령", "결정", "보정", "보정명령", "기간", "사건", "소송", "문서", "서류"
 )
 
 # R6: 명확한 5대 제외 대상 정규식 (절 단위 검사)
@@ -608,6 +617,104 @@ TARGET_PRE_RE = re.compile(
     r"(?:\s*(?:기각|각하|인용|거부|불허|승인|취소|불승인|일체))?\s*$"
 )
 
+# AA2 정정: 대상 명사구 창 끊기 토큰 규칙 및 지시어/호칭 규칙
+UNAMBIGUOUS_PARTICLES = (
+    "은", "는", "을", "를", "에게", "에서", "으로", "와", "과", "에는", "에도"
+)
+DATE_TOKEN_RE = re.compile(r"^[\d.\-년월일]+$")
+CONNECTIVE_CUT_WORDS = {
+    "관한", "대한", "인한", "따른", "대해", "관해", "의한"
+}
+_ANAPHORA_PATTERN = re.compile(r"^(?P<ana>그|위|해당|동|본건|이\s*사건)\s+(?P<rest>[가-힣].*)")
+
+
+def _is_particle_cut_token(tok: str) -> bool:
+    """AA2 정정: 앞쪽 토큰이 단의 조사, 날짜, 당사자 호칭+조사인지 판정한다."""
+    if tok in PARTY_TITLES_SET or tok in CONNECTIVE_CUT_WORDS:
+        return True
+    if DATE_TOKEN_RE.match(tok):
+        return True
+    if any(tok.endswith(p) for p in UNAMBIGUOUS_PARTICLES):
+        return True
+    for p in ("이", "가", "의", "에"):
+        if tok.endswith(p) and len(tok) > len(p):
+            stem = tok[:-len(p)]
+            if stem in PARTY_TITLES_SET:
+                return True
+    return False
+
+
+def _clean_target_candidate(raw: str) -> str:
+    """AA2 정정: 대상 명사구 창의 앞쪽 토큰이 조사/관형연결/당사자호칭이면 거기서 창을 끊는다.
+    마지막 토큰은 끊지 않으며, '이 사건'의 '이'는 끊지 않는다.
+    """
+    tokens = raw.strip().split()
+    if not tokens:
+        return ""
+
+    if len(tokens) == 1:
+        tok = tokens[0]
+        if tok in PARTY_TITLES_SET or tok in ("그", "위", "해당", "동", "본건"):
+            return ""
+        return raw.strip()
+
+    cut_idx = 0
+    # 마지막 토큰(tokens[-1])은 끊지 않는다
+    for i in range(len(tokens) - 2, -1, -1):
+        tok = tokens[i]
+        # '이 사건'의 '이'는 끊지 않는다
+        if tok == "이" and i + 1 < len(tokens) and tokens[i + 1].startswith("사건"):
+            continue
+        if _is_particle_cut_token(tok):
+            cut_idx = i + 1
+            break
+
+    cleaned_tokens = tokens[cut_idx:]
+    if not cleaned_tokens:
+        return ""
+
+    if len(cleaned_tokens) == 1:
+        if cleaned_tokens[0] in PARTY_TITLES_SET or cleaned_tokens[0] in ("그", "위", "해당", "동", "본건"):
+            return ""
+
+    return " ".join(cleaned_tokens)
+
+
+def _check_target_anaphora(t_raw: str) -> Tuple[bool, str]:
+    """AA3: 독립 토큰 지시어 여부를 판정하고, 핵심 대상을 분리한다."""
+    m_ana = _ANAPHORA_PATTERN.match(t_raw)
+    if not m_ana:
+        return False, t_raw
+    ana_kw = re.sub(r"\s+", "", m_ana.group("ana"))
+    rest_t = m_ana.group("rest").strip()
+    # '해당'은 뒤 명사가 대상 명사(문서·계약·사건)일 때만 지시어로 본다 (기관·장소·용역 등 제외)
+    if ana_kw == "해당":
+        if ORGAN_ACTOR_END_RE.search(rest_t) or rest_t in ("기관", "장소", "청", "부서", "법원", "회사"):
+            return False, t_raw
+        is_valid_anaphora_object = (
+            rest_t in DOCUMENT_OBJECT_NOUNS
+            or any(rest_t.endswith(k) for k in ("계약", "협약", "합의", "신청", "청구", "처분", "명령", "사건", "소장", "화재", "사고", "손해", "재해", "보정"))
+        )
+        if not is_valid_anaphora_object:
+            return False, t_raw
+    return True, rest_t
+
+
+def _has_own_object_marker(text: str) -> bool:
+    """AA1: 절 안에 자기 목적어/대상 표지(X을/를, X에 대하여/대한/관하여, 대상X의)가 있는지 검사한다."""
+    if re.search(r"[가-힣0-9]{1,15}\s*[을를]", text):
+        return True
+    m_prep = re.search(r"(?P<noun>[가-힣0-9]{1,15})\s*에\s*(?:대하여|대한|관하여|대해|관해)", text)
+    if m_prep and m_prep.group("noun") not in ("이", "그", "저", "위", "해당"):
+        return True
+    for m_ui in re.finditer(r"(?P<noun>[가-힣0-9]{1,15})\s*의", text):
+        n = m_ui.group("noun").strip()
+        if n in PARTY_TITLES_SET or bool(ORGAN_ACTOR_END_RE.search(n)) or n in ("관할청", "처분청", "행정청", "재판장", "판사", "법원", "회사", "담당 부서"):
+            continue
+        return True
+    return False
+
+
 # U1: 순서 연결어 정규식 및 헬퍼
 SUBSEQUENT_ORDER_RE = re.compile(r"(?:그\s*후|이후|그\s*뒤|뒤이어|다음에)")
 CONJUGATED_ORDER_RE = re.compile(r"(?P<verb>[가-힣]+)\s*(?P<conn>뒤|후|다음)|다가")
@@ -636,11 +743,23 @@ def _has_narrative_order_connective(text: str) -> bool:
     return False
 
 
-def _is_passive_or_intransitive_event(kind: str, surf: str) -> bool:
-    """피동·자동사 사건 낱말인지 판정한다 (U3: 접수되·발생하·도달하·송달되·해지되·체결되·발령되·결정되·내려지 등)."""
+# AA6 정정: 피동 술어 정규식
+PASSIVE_VERB_RE = re.compile(
+    r"(?:되었|되어|되고|되는|된|돼|됐|받았|받아|당하|내려지|내려졌|이루어지|이루어졌)"
+)
+
+
+def _is_passive_or_intransitive_event(kind: str, surf: str, clause_text: str = "", following_text: str = "") -> bool:
+    """피동·자동사 사건 낱말인지 판정한다 (AA6 정정: 자동사 접수·발생·도달 및 사건 낱말 또는 일치 끝부터 절 끝까지 피동 술어)."""
     if kind in ("접수", "발생", "도달"):
         return True
-    return any(p in surf for p in ("접수", "발생", "도달", "송달", "해지되", "체결되", "발령되", "결정되", "내려지", "이루어지"))
+    if any(p in surf for p in ("접수", "발생", "도달", "송달", "되", "돼", "됐", "되었", "받", "당하", "내려지", "내려졌", "이루어지", "이루어졌")):
+        return True
+    if following_text and PASSIVE_VERB_RE.search(following_text):
+        return True
+    if clause_text and PASSIVE_VERB_RE.search(clause_text):
+        return True
+    return False
 
 
 def _apply_correction_slots(block_text: str, slots: List[EventSlot]) -> List[EventSlot]:
@@ -929,6 +1048,7 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
             # 대상(target) 추출 (R3: 문서 명사 우선, TARGET_PRE_RE, 지시어 해소, U3: 피동·자동사 대상 포착)
             target: Optional[str] = None
             has_anaphora = False
+            following_evt = clause_text[e_end:]
 
             # 1) 사건 낱말 앞 문서 명사구 우선 채택 (R3)
             for doc_n in DOCUMENT_OBJECT_NOUNS:
@@ -940,61 +1060,80 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
                     last_topic_target = target
                     break
 
-            # 2) TARGET_PRE_RE 매칭 (Z2: 최대 3개 명사, 날짜 앞뒤 유연화, 부사어 허용 및 W3 끝 분리)
+            # 2) TARGET_PRE_RE 매칭 (Z2, AA2, AA3, AA4: 창 끊기, 지시어 독립 토큰, 기관 끝 고정)
             if not target:
                 m_target = TARGET_PRE_RE.search(pre_text)
                 if m_target:
-                    t_raw = m_target.group("target").strip()
-                    is_actor = (
-                        t_raw in PARTY_TITLES
-                        or bool(ORGAN_SUFFIX_RE.search(t_raw))
-                        or t_raw in ("관할청", "처분청", "행정청", "재판장", "법원", "회사", "담당 부서")
-                    )
-                    if not is_actor:
-                        t_has_ana = any(t_raw.startswith(ana) for ana in ("그", "위", "해당", "동", "본건", "이 사건"))
-                        cleaned = _normalize_target(t_raw)
-                        if t_has_ana:
-                            has_anaphora = True
-                            target = cleaned or last_target
-                        else:
-                            target = cleaned
-                        if target:
-                            last_target = target
-                            last_topic_target = target
+                    t_raw = _clean_target_candidate(m_target.group("target").strip())
+                    if t_raw:
+                        is_actor = (
+                            t_raw in PARTY_TITLES_SET
+                            or bool(ORGAN_ACTOR_END_RE.search(t_raw))
+                            or t_raw in ("관할청", "처분청", "행정청", "재판장", "법원", "회사", "담당 부서")
+                        )
+                        if not is_actor:
+                            t_has_ana, t_core = _check_target_anaphora(t_raw)
+                            cleaned = _normalize_target(t_core) if t_has_ana else _normalize_target(t_raw)
+                            if t_has_ana:
+                                has_anaphora = True
+                                target = cleaned or last_target
+                            else:
+                                target = cleaned
+                            if target:
+                                last_target = target
+                                last_topic_target = target
 
-            # 2-2) 후행 텍스트가 '...에 대한 것입니다/처분입니다' 꼴인 경우, 대상 신청을 찾아 target으로 채택 (W3)
+                # 지시어 대명사 '이에 대한', '그에 대한' 해소
+                if not target and re.search(r"(?:이|그|위)\s*에\s*(?:대한|대하여|대해|관한|관하여|관해)", pre_text):
+                    if last_target:
+                        target = last_target
+                        has_anaphora = True
+                        last_topic_target = target
+
+            # 2-2) 후행 텍스트가 '...에 대한 것입니다/처분입니다' 꼴인 경우, 대상 신청을 찾아 target으로 채택 (W3, AA2)
             if not target:
                 m_post = re.search(
                     r"(?P<post_target>(?:[그위해당동이]\s*)?(?:(?:\d+차|[A-Za-z])\s+)?(?:[가-힣0-9]{1,15}\s+){0,2}[가-힣0-9]{1,15})"
                     r"(?:에\s*(?:대한|대하여|따른))\s*(?:것(?:이다|입니다)|처분|결정|명령)",
-                    clause_text[e_end:]
+                    following_evt
                 )
                 if m_post:
-                    pt_raw = m_post.group("post_target").strip()
-                    pt_clean = _normalize_target(pt_raw)
-                    if pt_clean:
-                        target = pt_clean
-                        last_target = target
-                        last_topic_target = target
+                    pt_raw = _clean_target_candidate(m_post.group("post_target").strip())
+                    if pt_raw:
+                        pt_has_ana, pt_core = _check_target_anaphora(pt_raw)
+                        pt_clean = _normalize_target(pt_core) if pt_has_ana else _normalize_target(pt_raw)
+                        if pt_has_ana:
+                            has_anaphora = True
+                            target = pt_clean or last_target
+                        else:
+                            target = pt_clean
+                        if target:
+                            last_target = target
+                            last_topic_target = target
 
-            # 3) U3: 피동·자동사 사건 낱말일 때, 같은 절의 'X(은|는|이|가)'에서 X가 문서·계약·사건 명사이면 X를 대상으로 바인딩
-            if not target and _is_passive_or_intransitive_event(kind, surf):
+            # 3) U3, AA2, AA3, AA4, AA6: 피동·자동사 사건 낱말일 때, 같은 절의 'X(은|는|이|가)'에서 X가 문서·계약·사건 명사이면 X를 대상으로 바인딩
+            if not target and _is_passive_or_intransitive_event(kind, surf, clause_text, following_evt):
                 for m_topic in re.finditer(r"(?:^|[\s,;])(?P<x>(?:[그위해당동본이]\s*)?(?:(?:\d+차|[A-Za-z])\s+)?[가-힣0-9]{1,15})(?P<p>은|는|이|가)(?!\S)", clause_text):
-                    cand_raw = m_topic.group("x").strip()
+                    cand_raw = _clean_target_candidate(m_topic.group("x").strip())
+                    if not cand_raw:
+                        continue
                     is_actor = (
-                        cand_raw in PARTY_TITLES
-                        or bool(ORGAN_SUFFIX_RE.search(cand_raw))
+                        cand_raw in PARTY_TITLES_SET
+                        or bool(ORGAN_ACTOR_END_RE.search(cand_raw))
                         or cand_raw in ("관할청", "처분청", "행정청", "재판장", "법원", "회사", "담당 부서")
                     )
                     if is_actor:
                         continue
-                    cand_clean = re.sub(r"^(?:그|위|해당|동|본건|이\s*사건)\s*", "", cand_raw).strip()
+                    cand_has_ana, cand_core = _check_target_anaphora(cand_raw)
+                    cand_clean = _normalize_target(cand_core) if cand_has_ana else _normalize_target(cand_raw)
+                    if cand_clean in ("신청", "청구", "처분", "결정", "통지", "명령", "계약", "보정"):
+                        continue
                     is_valid_object = (
                         cand_clean in DOCUMENT_OBJECT_NOUNS
                         or any(cand_clean.endswith(k) for k in ("계약", "협약", "합의", "신청", "청구", "처분", "명령", "사건", "소장", "화재", "사고", "손해", "재해", "보정"))
                     )
                     if is_valid_object:
-                        if any(cand_raw.startswith(ana) for ana in ("그", "위", "해당", "동", "본건", "이 사건")):
+                        if cand_has_ana:
                             has_anaphora = True
                             target = cand_clean or last_target
                         else:
@@ -1004,11 +1143,11 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
                         break
 
             # 4) 사건 표면형(surf) 자체에 고유 대상 명사가 합성된 경우 (예: '허가신청' -> '허가', '변경신청' -> '변경', '재심청구' -> '재심', '공사계약' -> '공사')
-            # 처분의 성격/종류 명사('거부', '불승인', '기각', '각하', '승인', '인용', '불허', '불허가')는 고유 대상이 아니므로 제외
+            # 처분의 성격/종류 명사('거부', '불승인', '기각', '각하', '승인', '인용', '불허', '불허가', '보정')는 고유 대상이 아니므로 제외
             if not target:
                 surf_core = _normalize_target(surf)
                 if surf_core and surf_core != surf and surf_core not in (
-                    "신청", "청구", "처분", "결정", "통지", "명령", "계약",
+                    "신청", "청구", "처분", "결정", "통지", "명령", "계약", "보정",
                     "거부", "불승인", "기각", "각하", "승인", "인용", "불허", "불허가",
                 ):
                     target = surf_core
@@ -1023,31 +1162,23 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
                     last_target = target
                     last_topic_target = target
 
-            # 5) Z2-④: 같은 문장에서 주어가 생략되었거나 대상이 생략된 다음 절은 앞 절의 대상 승계
+            # AA8: 사건 낱말 자체뿐인 대상(정규화 시 빈 문자열 또는 사건 낱말)은 대상 없음으로 처리하여 AA1 승계를 허용
+            if target:
+                norm_t = _normalize_target(target)
+                if not norm_t or norm_t in ("처분", "결정", "명령", "보정명령", "보정", "통지", "신청", "청구"):
+                    target = None
+
+            # 5) AA1: 같은 문장에서 피동·자동사이고 자기 목적어·대상 표지가 없는 경우에만 앞 절 대상 승계 (우회 분기 삭제)
             if not target and (last_topic_target or last_target):
                 if (
-                    _is_passive_or_intransitive_event(kind, surf)
-                    or kind in ("도달", "보정", "처분")
-                    or any(conn in prev_delim for conn in ("으나", "는데", "한바", "고", "지만"))
-                    or ("." not in prev_delim and prev_delim)
+                    ("." not in prev_delim)
+                    and _is_passive_or_intransitive_event(kind, surf, clause_text, following_evt)
+                    and not _has_own_object_marker(clause_text)
                 ):
                     target = last_topic_target or last_target
                     has_anaphora = True
 
-            # 6) 지시어 처리 (Z1: 풀리지 않은 지시어는 대상이 없는 것으로 봄)
-            if any(ana in clause_text for ana in ("이에 대한", "그에 대한", "위 처분", "위 계약", "이 사건", "그 처분", "그 계약", "해당 계약")):
-                if not target and last_target:
-                    has_anaphora = True
-                    target = last_target
-
-            if next_clause_has_anaphora and not target and last_target:
-                has_anaphora = True
-                target = last_target
-
-            if not target and last_target and has_anaphora:
-                target = last_target
-
-            # Z2-③: 청구·신고 사건의 원인 대상(cause_target) 추출
+            # Z2-③, AA2, AA3: 청구·신고 사건의 원인 대상(cause_target) 추출
             cause_target: Optional[str] = None
             if kind in ("신청", "신고"):
                 m_cause = re.search(
@@ -1056,14 +1187,15 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
                     clause_text[:e_end]
                 )
                 if m_cause:
-                    cx_raw = m_cause.group("cx").strip()
-                    cx_has_ana = any(cx_raw.startswith(ana) for ana in ("그", "위", "해당", "동", "본건", "이 사건"))
-                    cx_clean = _normalize_target(cx_raw)
-                    if cx_has_ana:
-                        has_anaphora = True
-                        cause_target = cx_clean or last_target
-                    else:
-                        cause_target = cx_clean
+                    cx_raw = _clean_target_candidate(m_cause.group("cx").strip())
+                    if cx_raw:
+                        cx_has_ana, cx_core = _check_target_anaphora(cx_raw)
+                        cx_clean = _normalize_target(cx_core) if cx_has_ana else _normalize_target(cx_raw)
+                        if cx_has_ana:
+                            has_anaphora = True
+                            cause_target = cx_clean or last_target
+                        else:
+                            cause_target = cx_clean
 
             slot = EventSlot(
                 clause_text=clause_text,
@@ -1089,6 +1221,10 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
             if k not in seen_clause_kinds or len(cs.surface_form) > len(seen_clause_kinds[k].surface_form):
                 seen_clause_kinds[k] = cs
         slots.extend(seen_clause_kinds.values())
+        for vcs in seen_clause_kinds.values():
+            if vcs.target:
+                last_target = vcs.target
+                last_topic_target = vcs.target
 
         if "에 대한" in delim_str or "에 대하여" in delim_str or "에 관한" in delim_str or "에 관하여" in delim_str:
             next_clause_has_anaphora = True
@@ -1096,9 +1232,10 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
             next_clause_has_anaphora = False
         prev_delim = delim_str
 
-    # 지시어 해소: 대상이 없거나 지시어가 있는데 아직 안 풀린 경우 앞선 슬롯에서 해소 (R4: 직전 대상 치환)
+    # 지시어 해소: 대상이 없거나 일반 사건 명사('그 계약', '위 처분' 등 구체적 대상 부재)인 경우 앞선 슬롯에서 해소 (R4, AA7, AA8)
     for i in range(len(slots)):
-        if slots[i].has_anaphora:
+        tgt_norm = _normalize_target(slots[i].target) if slots[i].target else ""
+        if slots[i].has_anaphora and (not slots[i].target or not tgt_norm or tgt_norm in GENERIC_EVENT_NOUNS):
             for j in range(i - 1, -1, -1):
                 if slots[j].target:
                     slots[i].target = slots[j].target
@@ -1714,9 +1851,10 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                         if not matched_target:
                             continue
 
-                    # 사후 불복/소송/심판 청구가 과거 결정을 대상으로 삼는 정상 회고 서술은 역전 판정에서 제외
+                    # AA5: 사후 불복/소송/심판 청구가 과거 결정을 대상으로 삼는 정상 회고 서술은 문장 안의 쌍 단위로 역전 판정에서 제외
                     if rule["rule_id"] in ("TARGET_BOUND_DISPOSITION", "RECEIPT_BEFORE_AMENDMENT"):
-                        if re.search(r"(?:대상으로\s*(?:한다|삼고|삼는다|삼아|하고|지정한다)|(?:취소|위법|무효)[를을]?\s*(?:구하|다투)|소를\s*제기|소송을\s*제기)", norm_block):
+                        pair_scope = f"{cause_slot.clause_text} {effect_slot.clause_text}"
+                        if re.search(r"(?:대상으로\s*(?:한다|삼고|삼는다|삼아|하고|지정한다)|(?:취소|위법|무효)[를을]?\s*(?:구하|구한|구합|다투|다툽|다퉜))", pair_scope):
                             continue
                         if cause_slot.target in ("소", "소송", "행정소송", "취소소송") or cause_slot.surface_form == "소송제기":
                             continue
