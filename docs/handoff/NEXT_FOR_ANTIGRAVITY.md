@@ -107,92 +107,49 @@ release_highlights.json "0.14":
 
 **수용 기준**: diff가 위 세 파일과 생성물(README 변경표·RELEASE_HISTORY)뿐, 필수 CI 성공, 판정서와 버전 일치. 평가 측은 diff와 CI만 확인하고 수용한다(탐지 변경 없음, 재측정 없음).
 
-## 2-3. 0.14.0 화면 오구현 보완 (10-25, 사용자 지시 '잘못 구현된 기능을 즉각 원래 구현하고자 했던 방향대로 변경')
-0.14.0에서 사용자 개선안(10-19) 3·4항이 다르게 구현됐다. 원인은 평가 측 티켓·판정에 있었다(티켓에서 원문이 바뀜, 옛 보호 시험을 새 요구보다 우선, 기술 지표만으로 수용). 이번부터 사용자 요구 티켓은 **사용자 원문과 원문 대응표**를 수용 기준으로 하고, **화면 캡처를 사용자에게 확인받은 뒤** 수용한다(AGENT_ROLES 2.1).
+## 2-3. 0.14.0 화면 오구현 보완 + 평면 탭·참고문헌 행 통합·외부 AI 답변 반영 (10-25 개정, 사용자 지시 '잘못 구현된 기능을 즉각 원래 구현하고자 했던 방향대로 변경')
+0.14.0에서 사용자 개선안(10-19) 3·4항이 다르게 구현됐다. 원인은 평가 측 티켓·판정에 있었다. 이번부터 사용자 요구 티켓은 **사용자 원문과 원문 대응표**를 수용 기준으로 하고, **화면 캡처를 사용자에게 확인받은 뒤** 수용한다(AGENT_ROLES 2.1). 10-25 첫 사전 검증 화면을 본 사용자 추가 요구(평면 탭 5개·답변 붙여넣기·3번째 탭 프롬프트·참고문헌 표 통합)를 반영해 TK-126·127(1단계)·128을 **PR 1개**로 묶었다(같은 파일, 한 사본에서 함께 사전 검증). 아래가 사용자에게 낸 지시문 전문이다.
 
-작업 순서와 PR 단위:
-1. **TK-126**(아래 전문, 평가 측 사전 검증 완료) — PR 1개. 기준 Steve 최신(`b68e70f` 이후). 평가 PR #182에 보호 시험 수정이 들어 있으므로 #182 병합 뒤 Steve를 받아 시작한다.
-2. **TK-127** 설계 메모(`docs/handoff/TK-127_drive_reference_row_integration.md` '설계 메모에 담을 것' 1~5) — 메모 PR 먼저, 승인 뒤 구현.
-3. **TK-128** 설계 메모(`docs/handoff/TK-128_external_ai_prompt_tier3_and_answer_import.md` '설계 메모에 담을 것' 1~5) — TK-126 병합 뒤.
+[Antigravity 지시 — TK-126·127·128 화면 개편 (1개 PR), 2026-10-25 개정판. 앞서 받은 TK-126 지시는 이 지시로 대체한다]
 
-### TK-126 전문
-- 근거: 사용자 개선안(2026-10-19) 3나·3다(제목)·4항, 사용자 지적(2026-10-25). 평가 측 원인 분석: HISTORY 2026-10-25 '0.14.0 화면 오구현 원인'.
-- 기준 SHA: Steve `b68e70f`(= 운영 main `28d3397` 제품). 줄 번호는 이 SHA 기준.
-- 분류: `fixed`(사용자 요구 미이행·표시 결함) + `changed`. **사용자 확인 뒤 수용**(AGENT_ROLES 2.1 '사용자 요구 원문 대조 수용').
+■ 배경
+0.14.0에서 사용자 개선안(10-19) 3·4항이 다르게 구현됐다(원인은 평가 측 티켓·판정). 평가 측이 수정을 Steve `b68e70f` 사본에 먼저 적용해 사용자에게 화면을 보였고, 사용자가 추가로 요구했다: 상단 탭 5개 평면화, 두 표의 '외부 AI 답변 붙여넣기·표에 반영' 버튼, 3번째 탭 프롬프트, 주요참고문헌 결과를 하단이 아닌 표 행에 통합. 아래는 그 전체를 사전 검증한 결과다.
 
-## 사용자 원문
-- (10-19, 3나) "타당성에 대해 사용자에게 검토해서 검토상태, 의견, 담당자를 기재하도록 하지 말고, 확인이 필요한 내용이 어떤 것인지를 요약해서 설명해 주는게 좋을 것 같아. 이 프로그램의 목적은 … 사용자에게 서면과 관련해 어떤 점을 의심하고 재검증해야 하는지를 명확하게 인지시켜주는 거야."
-- (10-19, 4) "'판례·법령·주요참고문헌 인용 오류·미확인 검토 탭에서 '법률상 무리한 주장'이라고 정리하고 있는 부분들을 분리해서 [주장, 쟁점] 탭으로 옮기는 것 … [AI 작성여부] - [출처가 확인되지 않는 판례, 법령 등] - [법률적으로 무리한 주장]의 체계"
-- (10-25, 1) "확인대상과 의심 사유는 설명을 하되, … 엘박스에 입력해 실제 존재하는 판례, 법령인지 검증할 수 있도록 프롬프트를 생성 … 쓸데없는 '확인방법'만 각 항별로 유사하게 반복되어 있는 것은 불필요 … 엘박스/AI 검증 프롬프트 버튼은 너무 작아 눈에 잘 띄지 않아."
-- (10-25, 2) "법리검토(법령 규정 적용 배제) 등과 관련된 부분이 표의 해당 셀을 넘어가서 다른 셀과 중복되어 읽을 수 없도록 되어 있어."
-- (10-25, 4) "3번째 탭의 주장, 쟁점은 두번째 탭의 '법률적으로 무리한 주장' 부분을 별도 탭으로 옮기고, 현재 내용은 없애는 것으로 개편 …"
-- (10-25, 평가 측 확인) 배포 뒤 브라우저가 0.13.1 화면 파일을 계속 써서 사용자가 캐시를 지운 뒤에야 0.14.0 화면이 보였다.
+■ 기준·산출물
+- 시작: 평가 PR #182 병합 뒤의 Steve_ACASiaLAW 최신(보호 시험 `tests/acceptance/test_f1_screen_protected.py` 수정이 #182에 있다). PR 1개, 대상 Steve_ACASiaLAW.
+- 사전 검증 수정본: `docs/handoff/patches/TK-126-128_prevalidated_b68e70f.diff` (18개 파일, `git apply --3way`로 적용 가능. 보호 시험은 뺐다). 이 수정본이 수용 기준의 기준이다. 다르게 구현하려면 PR 본문에 이유와 같은 결과임을 적는다.
+- 상세(원문·원문 대응표·원인·줄 번호·시험): `docs/handoff/TK-126_v014_screen_rework.md`, `TK-127_drive_reference_row_integration.md`, `TK-128_external_ai_prompt_tier3_and_answer_import.md`. 줄 번호는 `b68e70f` 기준.
 
-## 원문 대응표 (수용 기준)
-| # | 원문 | 확인할 화면·동작 |
-|---|---|---|
-| 1 | 확인 대상·의심 사유만, '확인 방법' 반복 삭제 | 확인할 항목·법률적으로 무리한 주장 표 4열에 '확인 대상'·'의심 사유'(·'상세 법리 의견' 접힘)만 있고 '확인 방법' 줄이 없다 |
-| 2 | 엘박스/AI 검증 프롬프트 버튼이 눈에 띄게 | 확인할 항목 탭에서 표 **위**의 띠에 큰 버튼('📋 엘박스/AI 검증 프롬프트 만들기')이 있다. LOCAL_ONLY·대상 0건이면 숨김(기존 규칙 유지) |
-| 3 | 셀 넘침 없음 | 긴 판정 문구(예: '법리 검토(법정 규정 적용 배제): …')가 3열 안에서 줄바꿈되고 4열과 겹치지 않는다 |
-| 4 | 3번째 탭 = 법률적으로 무리한 주장, 주장·쟁점 내용 삭제 | 검증·검토 아래 탭이 'AI 작성·보안 진단 / 확인할 항목 / 법률적으로 무리한 주장' 3개. 3번째 탭에 3단 표만 있고 쟁점·요건사실·당사자 주장·변호사 판단 표가 없다. 확인할 항목 탭에는 3단 표가 없다 |
-| 5 | 배포 뒤 새 화면 | `/`·`/static/*` 응답에 `Cache-Control: no-cache`(ETag 재확인). 배포 뒤 일반 새로고침으로 새 화면이 보인다 |
+■ 원인과 고칠 것 (번호 = 원인)
+1. '확인 방법' 반복 — `app.js` 2148~2167행 `// 3) 확인 방법` 블록이 행마다 같은 문장을 만든다 → 블록 삭제.
+2. 프롬프트 버튼이 작고 표 아래 — `index.html` `#reviewTableActions`가 표 뒤, 버튼이 소형 클래스 → 표 위 띠(`review-prompt-bar`)로 옮기고 `"📋 엘박스/AI 검증 프롬프트 만들기"`, 클래스 `primary external-ai-prompt-btn`, 최소 높이 44px.
+3. 셀 넘침 — `.badge`(`styles.css` 483행~)의 `white-space:nowrap`이 3열 `.validity-verdict`에도 걸림 → 두 표의 `.validity-verdict`만 `white-space:normal; overflow-wrap:anywhere; word-break:keep-all; display:inline-block; max-width:100%`.
+4. 3번째 탭이 '주장·쟁점' — `index.html` 11·15행, `workflow.js` 304·307~313행, `app.js` 624·2583~2604·2798행 → `legal-claims` 탭('법률적으로 무리한 주장')으로 바꾸고 `#tier3Section`을 옮긴다(id 유지). 쟁점 화면 코드만 지우고 API·DB는 둔다.
+5. 배포 뒤 옛 화면 — 정적 파일에 재확인 지시가 없음 → `apps/api/main.py` 300행 정적 마운트 뒤 미들웨어: `/`·`/static/*`에 `Cache-Control: no-cache`(이미 있으면 두지 않음).
+6. 탭이 두 줄(묶음 → 하위 탭) — `workflow.js` 6~33행 `groups`·`initNavigation`이 '자료/검증·검토/보고서' 묶음 단추를 만들고 `syncNavigation`이 하위 탭만 보이게 함 → `groups`·`lastTabs`·`initNavigation`·314행 호출 삭제. `.tabs`를 `tabs workspace-tabs`로 하고 단추 5개(아이콘 files·shield-check·search-x·scale·file-chart-column): 자료 / AI 작성·보안 진단 / 출처가 확인되지 않는 항목 / 법률적으로 무리한 주장 / 보고서. `audit` 단추는 hidden, 보고서 패널에 `#openAudit`('활동 기록 보기', `data-jump-tab="audit"`), 활동 기록 툴바에 `#backToReports`('보고서로'). `syncNavigation`은 audit일 때 보고서 탭에 active를 requestAnimationFrame으로 다시 준다. '확인할 항목' 문구 전부 → '출처가 확인되지 않는 항목'(`index.html` 11·13·14·15행, `app.js` 1240·1779·2077·2488행). 700px 이하에서 탭 줄바꿈(가로 스크롤 금지).
+7. 참고문헌 결과가 표 아래 별도 절 — `renderFindings` 2464행이 `referenceSection(docs)`(1073행)를 표 아래에 붙이고, 의견(`engine_data.rag.observations`)과 표 행을 잇는 코드가 없음 → (a) `attachReferenceObservations(items, docs)`: 의견의 `claim_id` → 문서 `claims[].citation_ids` → 행 `citation_id`, 실패 시 `claim_quote`·`claim_text` 공백 제거 포함 비교(둘 다 8자 이상) → `item.reference_observations`. (b) 못 붙인 의견은 `kind:"REFERENCE"` 행으로 추가하고 `tier`를 직접 준다(CONTRADICTS 3, 그 밖 2). (c) 3열에 '주요 참고문헌 대조 (참고문헌·구속력 없음, 공식 확인 아님)' 상자(부합/불부합/맥락 참고/근거 부족 · 자료명 · 쪽 · AI 참고 의견 · 발췌 접힘). (d) 하단 붙이기 삭제, 표 위 `#referenceStatus`에 한 줄 상태(펼치면 기존 `referenceSection` 전체), 3번째 탭 `#legalReferenceStatus`에는 한 줄만(상세를 두 곳에 그리면 같은 문구가 겹쳐 시험이 깨진다 — 사전 검증 중 확인). 연결·행 추가는 필터·정렬 전에 한다.
+8. 답변을 다시 넣을 버튼이 없음 — 프롬프트가 번호·고정 형식이 없어 답변을 행에 연결할 수 없음 → (a) 2단 프롬프트 함수(362행)에 `prefix="A"`, 번호 `A1.`, 395행 뒤에 결과 블록(`<<<ACAS_RESULT` / `A1 | 판정: … | 근거: … | 요지: …` / `ACAS_RESULT>>>`)을 **함수 안 문자열로**(시험이 이 함수만 떼어 node로 실행한다 — 바깥 상수를 부르면 깨짐, 사전 검증 중 확인). (b) `parseExternalAnswers`: 마지막 블록(없으면 전체)에서 `^[AB]\d{1,3}$` 번호 줄만, 칸 `|`·`｜`, `판정:`·`근거:`·`요지:`, 필드 1,000자 상한. (c) 프롬프트 버튼을 누를 때 번호↔item_id 저장, '📥 외부 AI 답변 붙여넣기'를 누를 **때** 행을 찾는다(그릴 때 찾으면 비어 있다 — 사전 검증 중 확인). (d) 붙여넣기 대화상자 → 미리보기('표에 반영할 답변 n건 확인', 표에 없는 번호 경고) → '표에 반영' → 행 3열 '외부 AI 답변 A1 (공식 확인 아님)'. 판정 배지·공식 상태·등급은 바꾸지 않는다. 값은 textContent로만.
+9. 3번째 탭에 프롬프트가 없음 — 3단 행에는 주장 문장이 들어가는데 브라우저 정규식 가림은 인용 식별자용이다 → `apps/api/routers/workspace.py`에 `POST /projects/{id}/external-ai/prompt-texts`(texts ≤200개·각 2,000자, LOCAL_ONLY 403, ORIGINAL 그대로, MASKED는 `PIIEngine(PseudonymStore(project_id=…)).mask_text(t).masked_text`). `#legalClaimsActions` 띠에 프롬프트(B1…, 서버에서 가린 [주장], MASKED일 때 `maskAuthorityIdentifier`한 [인용])와 '📥 외부 AI 답변 붙여넣기'. LOCAL_ONLY·3단 0건이면 숨김.
 
-## 평가 측 사전 검증(임시 사본, 저장소 밖)
-- 아래 '고칠 것'을 `b68e70f` 사본에 그대로 적용했다.
-- 화면 캡처 2장(확인할 항목·법률적으로 무리한 주장, 긴 판정 문구 주입)으로 대응표 1~4를 확인했다.
-- 관련 시험 전체 통과: `tests/acceptance`, `tests/test_frontend_*.py`, `test_f1_*`, `test_f2_*`, `test_tk88_three_tier_review.py`, `test_external_ai_prompt*.py`, `test_tk61_layout_browser.py`, `test_upload_privacy_notice_browser.py`, `test_api.py`, `test_drive_rag_relevance.py`.
-- 단, 아래 '시험' 절의 수정을 함께 적용한 상태에서의 결과다. 수정하지 않으면 옛 구조를 단언하는 10건이 실패한다(회귀가 아니라 옛 요구를 담은 단언).
-- `check_test_edits --base origin/Steve_ACASiaLAW` 통과.
-- 보호 시험 `tests/acceptance/test_f1_screen_protected.py`는 평가 측이 평가 PR로 먼저 고친다. 확인 탭에 `legal-claims`를 추가했고, 현재 코드에서도 통과한다.
-- 미검증: 실제 운영 데이터, 모바일 폭(390px) 화면.
+■ 평가 측 사전 검증 결과 (b68e70f 사본, 수정본 그대로)
+- 시험 1,410건 실패 0, 건너뜀 25: tests/acceptance, tests/test_frontend_*.py, test_external_ai_prompt*.py, test_f1_ai_security_tab_browser.py, test_f2_review_screen_browser.py, test_tk61_layout_browser.py, test_tk88_three_tier_review.py, test_upload_privacy_notice_browser.py, 새 test_tk126_flat_tabs_answer_import.py(4건), test_workspace.py, test_api.py.
+- check_test_edits --base b68e70f 통과(시험 삭제·약화 없음). 화면 캡처 5장을 사용자에게 제시함.
+- 미검증: 운영 데이터 화면, 운영 Drive 의견이 행에 붙는 비율, 실제 엘박스 답변이 결과 블록을 지키는 비율, 답변 문장 인젝션 탐지 재사용(미구현).
 
-## 고칠 것 (`b68e70f` 기준)
-1. **'확인 방법' 삭제:** `apps/web/static/app.js` 2148~2167행(`// 3) 확인 방법` 블록 전체)을 지운다. 확인 대상·의심 사유·상세 법리 의견은 그대로 둔다.
-2. **프롬프트 버튼 강조·위치:** `apps/web/index.html`의 `<div id="reviewTableActions" class="review-table-actions" hidden></div>`를 표 아래에서 빼서 `hallucinationSection` 바로 뒤, `#reviewTable`의 `.table-wrap` 앞에 둔다. 클래스는 `review-table-actions review-prompt-bar`로 한다. `app.js` 2429행 버튼 문구를 `"📋 엘박스/AI 검증 프롬프트 만들기"`, 2434행 클래스를 `"primary external-ai-prompt-btn"`으로 바꾼다. `styles.css`에 다음을 더한다.
-   ```css
-   .review-prompt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0 14px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:#f3f8f6}
-   .review-prompt-bar[hidden]{display:none}
-   .review-prompt-bar .external-ai-prompt-btn{font-size:15px;font-weight:600;padding:10px 18px;min-height:44px}
-   ```
-3. **셀 넘침:** 원인은 `.badge`(`styles.css` 483행~)의 `white-space: nowrap`이 3열 `span.badge.validity-verdict`(app.js `renderReviewRow`)에도 걸리는 것이다. 다음을 더한다(짧은 등급 표시는 그대로 nowrap).
-   ```css
-   .review-items-table .validity-verdict,.tier3-table .validity-verdict{display:inline-block;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:keep-all;line-height:1.45}
-   .review-items-table td,.tier3-table td{overflow-wrap:anywhere}
-   ```
-4. **3단 독립 탭:**
-   - `index.html` 11행: `<button data-tab="issues">주장·쟁점</button>` → `<button data-tab="legal-claims">법률적으로 무리한 주장</button>`.
-   - `index.html` 14행 review 패널 안의 `<section id="tier3Section" …>…</section>`을 빼고, 15행 issues 패널 전체를 다음으로 바꾼다: `<section data-panel="legal-claims" hidden><div class="toolbar"><h2>법률적으로 무리한 주장</h2></div>` + 옮긴 `tier3Section`(제목 h4는 안내 문장 `<p id="tier3Title" class="muted">출처는 확인되나 판례·법령 취지와 맞지 않거나 참고자료와 모순되는 주장입니다. 인용 자체가 확인되지 않는 항목은 '확인할 항목' 탭에 있습니다.</p>`로) + `</section>`. `#tier3Table`·`#tier3Rows`·`#tier3Empty` id는 유지한다.
-   - `workflow.js` 8행 탭 목록 `"issues"` → `"legal-claims"`, 304행 `tab === "issues"` → `tab === "legal-claims"`, 307~313행 issues 패널 툴바·`issueWorkbench` 생성 코드를 지운다(`renderMatrix`는 `issueWorkbench`가 없으면 바로 돌아간다, 141행).
-   - `app.js` 624행 `renderIssues();`와 2583~2604행 `renderIssues` 함수를 지운다. 2798행 `["editProject", "editIssues"]` → `["editProject"]`.
-   - 상호 참조 단추: 2071행 `"3단 무리한 주장 확인 →"`·`switchTab("review")` → `"법률적으로 무리한 주장 탭에서 확인 →"`·`switchTab("legal-claims")`. 2077행 `"2단 출처 부존재 확인 →"` → `"확인할 항목 탭에서 출처 확인 →"`(이동 탭 `review` 유지).
-   - 쟁점·주장 API·DB(`/issues`, `case-matrix`, `review-workflows`)와 보고서의 3단 소제목은 이번에 지우지 않는다(화면에서만 제거).
-5. **배포 캐시:** `apps/api/main.py` 300행 `app.mount("/static", …)` 바로 뒤에 다음 미들웨어를 둔다.
-   ```python
-   @app.middleware("http")
-   async def _web_revalidate(request, call_next):
-       response = await call_next(request)
-       path = request.url.path
-       if (path == "/" or path.startswith("/static/")) and "cache-control" not in response.headers:
-           response.headers["Cache-Control"] = "no-cache"
-       return response
-   ```
+■ 시험 (수정본에 포함, 그대로 적용)
+- 옛 구조 단언을 새 구조로 옮긴 것: '검증·검토' 묶음 클릭 줄 삭제(6개 파일), test_frontend_admin 평면 탭 5개·활동 기록 왕복·390px 넘침 없음, test_frontend_report_progress 묶음 클릭 삭제, 문구 변경 3곳, 참고문헌 상세는 #referenceStatus를 펼친 뒤 확인(3개 파일). 시험 함수 삭제 없음.
+- 새 tests/test_tk126_flat_tabs_answer_import.py 4건: 참고문헌 행 연결·하단 절 없음 / 2단 답변 반영·배지 불변 / 3단 서버 가림·답변 반영 / 가림 API 정책별(403·가림·원문).
 
-## 시험 (구현 측이 고치고, 대응표 '전 요구 → 새 확인 위치'를 PR에 낸다)
-- `tests/test_frontend_admin.py` 314·323·328행: `"issues"` → `"legal-claims"`.
-- `tests/test_f2_review_screen_browser.py`:
-  - 3단 표 단언(381~393·425·512행 부근)은 `legal-claims` 탭을 연 뒤 `section[data-panel="legal-claims"]`에서 확인한다. 확인할 항목 패널에는 `.tier3-table`이 0개임을 단언한다.
-  - '확인 방법' 단언(400·447~448·478~479행)은 `.summary-action` 0개 단언으로 바꾼다.
-- `tests/test_tk88_three_tier_review.py`: 497행 앞에서 `legal-claims` 탭을 클릭한다. 525~526행 상호 참조 문구를 새 문구로 바꾼다.
-- `tests/test_external_ai_prompt.py`: 50행 클래스 접두 단언과 '표 위' 위치 단언(`index('id="reviewTableActions"') < index('id="reviewTable"')`), 215행 새 버튼 문구.
-- 새 시험(구현 측):
-  - `/`·`/static/app.js` 응답의 `Cache-Control: no-cache`(TestClient).
-  - 긴 판정 문구 행에서 `.validity-verdict`의 `getBoundingClientRect().right`가 자기 `td`의 right를 넘지 않음(브라우저).
-- 시험 함수 삭제는 없다. 단언을 옮기거나 반대로 바꾸는 것뿐이다(평가 측 사전 검증에서 `check_test_edits` 통과).
+■ 범위 밖 (이 PR에 넣지 않음)
+- 답변의 서버 저장(실행별 표·감사·보고서 반영): 사용자 결정 대기. 이번은 브라우저 저장(localStorage, try/catch).
+- TK-127 2단계(인용 행의 Drive 색인 조회, review_items 서버 필드): 설계 메모 먼저.
+- 활동 기록 위치는 사용자 결정에 따라 바뀔 수 있다(지금은 보고서 탭 안 버튼).
 
-## 수용 기준
-- 원문 대응표 1~5를 평가 측 화면 캡처로 확인한 뒤 **사용자 확인**을 받는다.
-- 탐지 diff 0, 고정·은퇴 점수 불변. 필수 CI 성공.
-- 위 '고칠 것' 밖의 변경을 섞지 않는다(TK-127·128은 별도 PR).
+■ 제출물·수용 기준
+- PR 본문: 원문 대응표(TK-126 1~7, TK-127 1~3, TK-128 1~5)마다 확인 위치, 수정본과 다른 곳과 이유, 옛 단언 → 새 확인 위치 표.
+- 필수 CI 성공. 탐지 diff 0, 고정·은퇴 점수 불변(엔진 미변경).
+- 평가 측이 화면 캡처로 대응표를 확인하고 **사용자 확인을 받은 뒤** 수용한다.
+- 커밋 끝에 `Agent: implementer`.
 
 
 ## 2-2. 탐지 PR 공통 수용 규약 — 하드코딩 금지 (2026-10-24 사용자 지시 '평가기준을 엄격히 적용하되 하드코딩으로 충족하지 못하게 제한')
@@ -264,9 +221,9 @@ release_highlights.json "0.14":
 | D-4 TK-88 | 메모 #159 `1be8cdd` 조건부 승인(닫음) / 구현 #171 `ef47063` | **수용·병합** | Steve `ccf0773`(10-22). 완료. 참고: 3단 표 글자·줄 간격이 2단과 같은지 다음 손질 때 확인. |
 | E-1 TK-83 | 메모 #160 승인 / 구현 #166 `3bf5439` | **수용·병합** | Steve `34d8b18`(10-21). 완료. |
 | (사용자 지시) TK-94 외부 AI 검증 프롬프트 | #164 `bbc5a4a`(6차) | **수용·병합** | Steve `ce323c7`(10-24). 비차단 후속: '…및…에 관한 법률' 꼴 긴 법령명 일부 잘림(정확도). |
-| TK-126 0.14.0 화면 오구현 보완 | — | **지시(10-25), 평가 측 사전 검증 완료** | '확인 방법' 삭제·프롬프트 버튼 표 위 강조·셀 넘침·3단 독립 탭(주장·쟁점 삭제)·배포 캐시. 2-3절 |
-| TK-127 Drive 근거 상단 표 통합 | — | **설계 메모 먼저(10-25)** | 개선안 3다 미이행분. 2-3절, `TK-127_…md` |
-| TK-128 3단 프롬프트·외부 AI 답변 재입력 | — | **설계 메모 먼저(10-25)** | 사용자 요구(10-25). 평가 측 검토: 가능(외부 AI 참고 의견으로만). 2-3절, `TK-128_…md` |
+| TK-126 0.14.0 화면 오구현 보완·평면 탭 5개 | — | **지시 개정(10-25), 평가 측 사전 검증 완료, TK-127·128과 PR 1개** | '확인 방법' 삭제·프롬프트 버튼 표 위 강조·셀 넘침·3단 독립 탭·배포 캐시·상단 평면 탭 5개. 2-3절, 수정본 `patches/TK-126-128_prevalidated_b68e70f.diff` |
+| TK-127 Drive 근거 상단 표 통합 | — | **1단계 지시(10-25 개정, 사전 검증 완료)·2단계 설계 메모 먼저** | 1단계: 대조 의견을 표 행에 연결, 하단 절 → 표 위 상태 줄. 2단계: 인용 행 Drive 조회. 2-3절, `TK-127_…md` |
+| TK-128 두 표 프롬프트·외부 AI 답변 붙여넣기 | — | **지시(10-25 개정, 사전 검증 완료)** | 번호·결과 블록, 붙여넣기→미리보기→표에 반영, 3단 서버 가림 API. 서버 저장은 사용자 결정 대기. 2-3절, `TK-128_…md` |
 
 - 공통: 화면 PR(D)의 기존 시험 수정은 대응표가 승인 조건이다. 시험을 지우면 CI '점수 하락 게이트'의 `check_test_edits.py`가 실패한다. 그때는 사유 문서를 `docs/handoff/requests/`에 둔다.
 
