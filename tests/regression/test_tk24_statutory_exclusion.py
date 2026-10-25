@@ -162,9 +162,18 @@ def test_synthetic_txt_pipeline_preserves_new_finding(tmp_path):
 def test_synthetic_repeated_input_finishes_within_tenth_second():
     # Run the new regexes and clause analysis thousands of times, including nonmatches.
     examples = [POSITIVES[0], POSITIVES[2], CONTROLS[0], "형평 " + "가" * 100 + " 법정 기간 검토"]
-    start = perf_counter()
-    results = [exclusion_clauses(examples[i % 4]) for i in range(2000)]
-    elapsed = perf_counter() - start
+    # 2026-10-25 평가 측: 전체 시험 세션의 큰 힙에서 2세대 GC 한 번이 0.2~0.4초 걸려(로컬 재현 0.385초)
+    # PR CI에서 0.25·0.23초로 두 번 실패했다. 재는 것은 정규식·절 분석 시간이므로 측정 구간만 GC를 멈춘다(기준 0.1초 유지).
+    import gc
+
+    gc.collect()
+    gc.disable()
+    try:
+        start = perf_counter()
+        results = [exclusion_clauses(examples[i % 4]) for i in range(2000)]
+        elapsed = perf_counter() - start
+    finally:
+        gc.enable()
     assert sum(bool(v) for v in results) == 1000
     assert elapsed < 0.1
 
