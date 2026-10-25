@@ -28,7 +28,7 @@ LEGAL_IDENTIFIER_PATTERNS = [
     re.compile(r"\d{4}\.\s*\d{1,2}\.\s*\d{1,2}\.?"),          # 선고일자
     re.compile(r"\b(19|20)\d{2}\b"),                            # 연도
     re.compile(r"(?:계약번호\s*)?제\s*[\d]{4}-[가-힣A-Za-z0-9]+-\d+호?"), # 계약번호
-    re.compile(r"법인(?:등록)?번호\s*[:：]?\s*[\d\-]+"),         # 법인등록번호 라벨 문맥 (사건 검증용)
+    re.compile(r"법인(?:등록)?번호\s*(?:[:：]\s*)?[\d\-]+"),         # 법인등록번호 라벨 문맥 (사건 검증용)
 ]
 
 # 법인등록번호는 사건 검증에 쓰이므로 마스킹 대상에서 제외한다
@@ -36,11 +36,11 @@ CORP_NO_RE = re.compile(r"\b\d{6}-\d{7}\b")
 # 사업자등록번호: NNN-NN-NNNNN 형태의 새 PII 종류(BUSINESS_REGISTRATION)로 마스킹
 BUSINESS_NO_RE = re.compile(r"\b\d{3}-\d{2}-\d{5}\b")
 BUSINESS_REG_LABELLED_RE = re.compile(
-    r"(?:사업자\s*(?:등록)?\s*번호|사업자번호)\s*[:：]?\s*(\d{3}[-\s]\d{2}[-\s]\d{5})(?!\d)"
+    r"(?:사업자(?:\s*등록)?\s*번호|사업자번호)\s*(?:[:：]\s*)?(\d{3}[-\s]\d{2}[-\s]\d{5})(?!\d)"
 )
 BUSINESS_REG_STANDALONE_RE = re.compile(r"(?<![\d\-])(\d{3}-\d{2}-\d{5})(?![\d\-])")
-CORP_LABEL_PREFIX_RE = re.compile(r"(?:법인(?:등록)?번호|법인등기번호)\s*[:：]?\s*$")
-RRN_LABEL_PREFIX_RE = re.compile(r"(?:주민등록번호|주민번호)\s*[:：]?\s*$")
+CORP_LABEL_PREFIX_RE = re.compile(r"(?:법인(?:등록)?번호|법인등기번호)\s*(?:[:：]\s*)?$")
+RRN_LABEL_PREFIX_RE = re.compile(r"(?:주민등록번호|주민번호)\s*(?:[:：]\s*)?$")
 
 
 
@@ -67,7 +67,7 @@ RRN_RE = re.compile(r"(?<!\d)(\d{2})(\d{2})(\d{2})[ \t]*[-–]?[ \t]*([1-9])(\d{
 # 뒷자리가 별표 등으로 일부 마스킹된 주민등록번호(예: 780512-1******)
 RRN_MASKED_RE = re.compile(r"(?<!\d)(\d{2})(\d{2})(\d{2})[ \t]*[-–]?[ \t]*([1-9])([*●xX]{6})(?!\d)")
 # 주민등록번호 라벨이 명시된 문맥에서는 뒷자리 첫 글자와 관계없이 13자리 번호 또는 마스킹 번호를 개인정보로 포착한다.
-RRN_LABELLED_RE = re.compile(r"(?:주민등록번호|주민번호)\s*[:：]?\s*(\d{2}\d{2}\d{2}[ \t]*[-–]?[ \t]*[\d*●xX]{7})(?!\d)")
+RRN_LABELLED_RE = re.compile(r"(?:주민등록번호|주민번호)\s*(?:[:：]\s*)?(\d{2}\d{2}\d{2}[ \t]*[-–]?[ \t]*[\d*●xX]{7})(?!\d)")
 PHONE_RE = re.compile(r"(?<!\d)(01[016789][-\s.]?\d{3,4}[-\s.]?\d{4}|0\d{1,2}[-\s.]?\d{3,4}[-\s.]?\d{4})(?!\d)")
 # 연락처·주민번호는 숫자 사이 구분 문자의 표기만 정규화한 뷰에서 검사한다.
 # 구분 문자는 정규화 단계에서 하이픈 하나로 모이고, 공백·개행은 제거된다.
@@ -76,7 +76,7 @@ RRN_MASKED_NORMALIZED_RE = re.compile(
     r"(?<!\d)((?:\d-?){6})([1-9](?:-?[*●xX]){6})(?![\d])"
 )
 RRN_LABELLED_NORMALIZED_RE = re.compile(
-    r"(?:주민등록번호|주민번호)\s*[:：]?\s*((?:\d-?){6}(?:[\d*●xX]-?){7})(?!\d)"
+    r"(?:주민등록번호|주민번호)\s*(?:[:：]\s*)?((?:\d-?){6}(?:[\d*●xX]-?){7})(?!\d)"
 )
 PHONE_NORMALIZED_RE = re.compile(
     r"(?<!\d)(?:01-?[016789](?:-?\d){3,4}(?:-?\d){4}|"
@@ -84,7 +84,7 @@ PHONE_NORMALIZED_RE = re.compile(
 )
 BUSINESS_REG_NORMALIZED_RE = re.compile(r"(?<![\d-])(\d{3}-\d{2}-\d{5})(?![\d-])")
 BUSINESS_REG_LABELLED_NORMALIZED_RE = re.compile(
-    r"(?:사업자\s*(?:등록)?\s*번호|사업자번호)\s*[:：]?\s*"
+    r"(?:사업자(?:\s*등록)?\s*번호|사업자번호)\s*(?:[:：]\s*)?"
     r"(\d{3}-\d{2}-\d{5})(?!\d)"
 )
 # 차량번호: "12가 3456", "345나 7890", "서울 12가 3456" 등 (일반 명사 '차량' 오탐 방지 및 조사 허용)
@@ -95,7 +95,7 @@ VEHICLE_RE = re.compile(
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 ACCOUNT_RE = re.compile(r"(?<!\d)\d{2,3}[-\s]\d{2,6}[-\s]\d{2,6}(?:[-\s]\d{1,6})?(?!\d)")
 MILITARY_ID_RE = re.compile(
-    r"(?:군번\s*[:\s]?\s*)(\d{2}[-\s]?\d{5,8})(?![0-9])|"
+    r"(?:군번\s*(?::\s*)?)(\d{2}[-\s]?\d{5,8})(?![0-9])|"
     r"(?<![0-9A-Za-z\-])(\d{2}-\d{5,8})(?![0-9\-])|"
     r"(?<![0-9A-Za-z])\d{2}[-\s]?\d{8}(?![0-9])|"
     r"(?<![A-Za-z])[가-힣]?\d{7,8}(?=\s*군번)"
@@ -110,7 +110,7 @@ DRIVER_LICENSE_RE = re.compile(
 )
 # 은행명·계좌 표지 바로 뒤의 번호는 자릿수 배열(6-2-6 등)과 관계없이 계좌번호다.
 ACCOUNT_LABELLED_RE = re.compile(
-    r"(?:은행|뱅크|금고|농협|수협|신협|우체국|증권|계좌\s*(?:번호)?\s*(?:는|은|[:：])?)\s*"
+    r"(?:은행|뱅크|금고|농협|수협|신협|우체국|증권|계좌(?:\s*번호)?(?:\s*(?:는|은|[:：]))?)\s*"
     r"(\d{2,6}(?:-\d{2,7}){2,3})(?![\d\-])"
 )
 # 소속 부대와 계급을 함께 적은 표기는 단독으로도 사람을 좁힐 수 있는 준식별자다.
@@ -405,11 +405,16 @@ def _has_category_name_ambiguity(word: str) -> bool:
 
 
 # '군'이 호칭(홍길동 군)이 아니라 군(軍)인 경우("유능한 군 장교", "현역 군 간부")
+MILITARY_NOUNS = (
+    "장교", "간부", "병사", "병력", "부대", "복무", "당국", "사법", "검찰", "수사",
+    "형법", "인사", "기밀", "시설", "부사관", "병원", "조직", "내부", "전산", "보안", "의무",
+)
 MILITARY_NOUN_AFTER_GUN_RE = re.compile(
-    r"\s*(?:장교|간부|병사|병력|부대|복무|당국|사법|검찰|수사|형법|인사|기밀|시설|부사관|병원|조직|내부|전산|보안|의무)")
+    rf"[ \t]*(?:{'|'.join(MILITARY_NOUNS)})"
+)
 DOB_RE = re.compile(
-    r"(?:19|20)\d{2}\s*[.\-년]\s*\d{1,2}\s*[.\-월]\s*\d{1,2}\s*[.\-일\s]?\s*(?:생|출생|일생)|"
-    r"(?:생년월일|출생일)\s*[:\s]?\s*(?:19|20)\d{2}\s*[.\-년]\s*\d{1,2}\s*[.\-월]\s*\d{1,2}\s*[.\-일]?"
+    r"(?:19|20)\d{2}\s*[.\-년]\s*\d{1,2}\s*[.\-월]\s*\d{1,2}\s*(?:[.\-일]\s*)?(?:생|출생|일생)|"
+    r"(?:생년월일|출생일)\s*(?::\s*)?(?:19|20)\d{2}\s*[.\-년]\s*\d{1,2}\s*[.\-월]\s*\d{1,2}\s*[.\-일]?"
 )
 # 지명 앞부분의 길이를 제한한다. '[가-힣]+' 뒤에 '시|군|구'를 찾게 하면 한글이 길게
 # 이어진 구간에서 시작 위치마다 끝까지 되짚어 비용이 길이의 제곱으로 늘었다.
@@ -503,13 +508,13 @@ DISEASE_NAMES = (
     rf"{CANCER_PREFIXES}\s*암|(?<![가-힣])암(?![가-힣])|종양|알츠하이머|비염|폐렴)"
 )
 MEDICAL_DIAGNOSIS_RE = re.compile(
-    r"(?:진단|치료|투병|질환|질병|증상|환자|진료기록상)?\s*(?:소아청소년과|내과|외과|이비인후과|정신건강의학과|정형외과|안과|피부과)?\s*(?:에서)?\s*"
+    r"(?:(?:진단|치료|투병|질환|질병|증상|환자|진료기록상)\s*)?(?:(?:소아청소년과|내과|외과|이비인후과|정신건강의학과|정형외과|안과|피부과)\s*)?(?:에서\s*)?"
     rf"((?:(?:만성|급성|중증|악성|양성|원발성|전이성|초기|말기)\s*)?{DISEASE_NAMES}"
     rf"(?:(?:\s*(?:및|또는|과|와)\s*){DISEASE_NAMES})?"
     r"(?:\s*(?:치료|투병|진단|증상|환자))?)"
 )
 MEDICAL_PRESCRIPTION_RE = re.compile(
-    r"(?:처방|복용|투약|약제|약품|약물)\s*(?:내역|기록|은|는|이|가|:\s*)?\s*"
+    r"(?:처방|복용|투약|약제|약품|약물)(?:\s*(?:내역|기록|은|는|이|가|:))?"
     r"([가-힣A-Za-z0-9\s,·~]+?(?:\d+(?:\.\d+)?\s*(?:mg|g|ml|정|포|캡슐|회|일분)|흡입액|복용약|주사액)[가-힣A-Za-z0-9\s,·~]*)"
 )
 # 법인 표기. 조사·부사로 끝나는 앞말을 상호로 오인하지 않도록 stopword를 둔다.
@@ -1021,7 +1026,8 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
                 # 직함 앞 단어가 조사(과, 와, 은, 는, 이, 가, 을, 를, 의, 에, 로, 도, 만, 에게)로 끝나면 인명이 아니므로 제외
                 if re.search(r"(?:과|와|은|는|이|가|을|를|의|에|로|도|만|에게)$", name):
                     continue
-                if re.search(r"\s*군$", full_matched) and MILITARY_NOUN_AFTER_GUN_RE.match(text, m.end()):
+                # '군' 표기 뒤 군사 명사가 오는 경우(예: 현역 군 간부) 인명에서 제외 (정규식 비사용으로 ReDoS 원천 방지)
+                if full_matched.endswith("군") and text[m.end():m.end() + 20].lstrip(" \t").startswith(MILITARY_NOUNS):
                     continue
             matches.append(PIIMatch(kind, name, start, end, block_id, page, 0.75, "직함·당사자·가족 표기 문맥"))
 
@@ -1032,6 +1038,10 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
             if not med_text:
                 continue
             start, end = m.start(idx), m.end(idx)
+            # 처방 표현은 앞 공백을 본문 묶음이 함께 읽으므로(겹치는 \s* 제거, ReDoS 방지) 위치는 공백을 뺀 곳부터 잡는다.
+            group = m.group(idx) or ""
+            start += len(group) - len(group.lstrip())
+            end -= len(group) - len(group.rstrip())
             if _covered_by_span(guard_spans, start, end):
                 continue
             matches.append(PIIMatch("MEDICAL", med_text, start, end, block_id, page, 0.85, "질병·처방 등 민감 의료정보"))
