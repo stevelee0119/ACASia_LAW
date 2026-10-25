@@ -160,5 +160,45 @@
   },
   "decided_by": "claude-code (평가 측)",
   "decided_at": "2026-10-18"
+ },
+ {
+  "version": "0.14.0",
+  "from": "0.13.1",
+  "level": "minor",
+  "basis": [
+   "added",
+   "changed",
+   "removed",
+   "fixed",
+   "performance_patch"
+  ],
+  "rer": 0.048,
+  "measured_commit": "907c2fafb21691f09c115a09394b45ff1b59b90f",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.11.15",
+   "tesseract": "5.3.4 kor (CI와 같음)",
+   "scoring": "고정 채점기 불변. 직전 릴리스 main c512462(0.13.1)와 후보 907c2fa를 같은 환경·같은 날(2026-10-25) 평가 측이 각각 측정(오프라인, 항목 단위)"
+  },
+  "evidence": {
+   "M1": {
+    "production": "main c512462(0.13.1) dev 82.6 / holdout 80.1 / 오탐 0 / A 0",
+    "candidate": "907c2fa dev 82.6 / holdout 81.9 / 오탐 0 / A 0",
+    "delta": "dev 0, holdout +1.8(INJ-ZWSP 1항목, TK-89 인젝션 채널 구조 탐지). 합산 RER (164.5-162.7)/(200-162.7)=4.8% → performance_patch. 같은 인젝션 유형이 train에서도 함께 오름(평가 세트 문구 일치 아님)"
+   },
+   "M2": "미측정. 봉인 세트는 이 평가 세션 컨테이너에 없음. 참고(공개된 은퇴 세트·개발 말뭉치라 M2 근거 아님): 은퇴 08/08b/09/10 27.2/40.7/48.3/35.1(FP 1) → 48.9/42.6/50.0/43.9(FP 0), train 01~04 26.5×4 → 37.5/37.5/37.5/36.5. 오른 항목 유형: EVI-COPY 15, INJ 채널 34, EVI-DATE 2, EVI-INCONS 1. 하락 항목 0",
+   "M3": "added: A-4 #175 사건 순서 역전(EVI-DATE), B-3 #167(TK-90) 문서 안 장소·서명자·수량 불일치, B-2 #168 경위서 원문 통째 복제(EVI-COPY), B-1 #165(TK-91) 서증 원용 범위 초과(EVI-OVR, 세트 득점 없음·일반 표현 탐침 26/28·오탐 0/62로만 검증, 사용자 결정 10-25), #164(TK-94) 미확인 판례·법령 외부 AI 검증 프롬프트. changed: #171(TK-88) 검토 화면 3단·보고서 3단 소제목, #155(TK-87) '확인이 필요한 내용' 요약, #153(TK-85) 업로드 시점 개인정보 확인, #150(TK-84) 참고자료 의견·인용 전문 표시, #166(TK-83) auto 법리 검토 부분 에스컬레이션. removed: #154(TK-86) 버전 비교·근거 찾기·금액 계산·사건 일지 탭(API 유지, 공개 API 제거 없음). fixed: 은퇴 10 오탐 1→0(#176 A-3), #147(TK-92) 정상 서술 지시문 오탐, #149(TK-81)·#163 증거 목록 오탐, #152(TK-82) Drive 내려받기 재시도. 각 PR은 평가 측 수용 판정(HISTORY)과 진입점·화면 시험·대응표로 확인",
+   "M4": "해당 없음(입력 형식별 변경 없음). 개인정보 엔진(packages/pii_engine) 변경 0",
+   "P1": "907c2fa verify_all full --base c512462: regression_gate 회귀 없음, score_gate 통과, 종료 0",
+   "P2": "고정 오탐 0·A등급 0 유지, 은퇴 4세트·train 하락 항목 0(평가 측 재실행)",
+   "P3": "verify_all hardcoding_diff·test_edits·protected_paths 통과. 탐지 PR 3건(#165·#167·#175)은 전달문 2-2절 규약과 평가 측 탐침(문장 비공개)으로 수용",
+   "P4": "verify_all full: acceptance 1231·regression_ledger 2357·full_tests 8989·browser_tests 197 통과, 실제 실패 0·strict XPASS 0. 비공개 개인정보 세트는 이 세션에 없어 미측정(개인정보 엔진 변경 0)",
+   "P5": "열린 신규 회귀 티켓 0",
+   "P6": "이 판정서와 HISTORY 2026-10-25",
+   "unmeasured": "AI 작성 판별·공식 DB 대조·Drive 대조(온라인 영역), 봉인 세트"
+  },
+  "decided_by": "claude-code (평가 측)",
+  "decided_at": "2026-10-25"
  }
 ]
