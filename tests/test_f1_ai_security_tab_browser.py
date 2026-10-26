@@ -201,7 +201,6 @@ def test_ai_tab_renamed_and_notice_banner_visible(f1_browser_page):
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
 
     ai_tab_btn = page.locator('.tabs button[data-tab="ai-verification"]')
     expect(ai_tab_btn).to_have_text("AI 작성·보안 진단")
@@ -216,7 +215,7 @@ def test_ai_tab_renamed_and_notice_banner_visible(f1_browser_page):
 
     banner = panel.locator("#aiTabNoticeBanner")
     expect(banner).to_be_visible()
-    expect(banner).to_contain_text("확인할 항목")
+    expect(banner).to_contain_text("출처가 확인되지 않는 항목")
 
 
 def test_ai_tab_shows_security_card_and_no_citation_rows(f1_browser_page):
@@ -225,7 +224,6 @@ def test_ai_tab_shows_security_card_and_no_citation_rows(f1_browser_page):
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="ai-verification"]').click()
 
     panel = page.locator('section[data-panel="ai-verification"]')
@@ -249,7 +247,6 @@ def test_review_tab_filters_out_ai_security_findings(f1_browser_page):
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="review"]').click()
 
     findings_container = page.locator('section[data-panel="review"]')
@@ -268,7 +265,6 @@ def test_high_security_alert_banner_visible_and_jumpable(f1_browser_page):
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="review"]').click()
 
     # D2: HIGH 이상 보안 항목 상단 고정 안내 배너 확인
@@ -291,7 +287,6 @@ def test_temporary_citation_section_preserved_under_review(f1_browser_page):
     page.goto("http://localhost/")
     select_first_project(page)
 
-    page.get_by_role("button", name="검증·검토", exact=True).click()
     page.locator('.tabs button[data-tab="review"]').click()
 
     # 통합 표 패널 확인

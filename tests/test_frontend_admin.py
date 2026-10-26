@@ -307,28 +307,24 @@ def test_grouped_workbench_preserves_all_tools_and_selected_case(admin_page):
         renderProject();
         state.run = {id:'retained-run', state:'VERIFYING'};
     }""")
-    groups = page.locator("#workspaceGroups")
-    expect(groups.get_by_role("button")).to_have_count(3)
-    for group, tools in (
-        ("자료", ("documents",)),
-        ("검증·검토", ("ai-verification", "review", "issues")),
-        ("보고서", ("reports", "audit")),
-    ):
-        groups.get_by_role("button", name=group, exact=True).click()
-        assert page.locator(".tabs [data-tab]:visible").count() == len(tools)
-        for tab in tools:
-            page.locator(f'.tabs [data-tab="{tab}"]').click()
-            expect(page.locator(f'[data-panel="{tab}"]')).to_be_visible()
-    groups.get_by_role("button", name="검증·검토", exact=True).click()
-    expect(page.locator('[data-panel="issues"]')).to_be_visible()
+    # 2026-10-25 사용자 요구(평가 측 개정): 하위 탭 없는 다섯 개 평면 탭. 활동 기록 화면은 두지 않는다(사용자 결정).
+    tabs = page.locator(".tabs [data-tab]:visible")
+    expect(tabs).to_have_count(5)
+    assert tabs.all_inner_texts() == ["자료", "AI 작성·보안 진단", "출처가 확인되지 않는 항목", "법률적으로 무리한 주장", "보고서"]
+    for tab in ("documents", "ai-verification", "review", "legal-claims", "reports"):
+        page.locator(f'.tabs [data-tab="{tab}"]').click()
+        expect(page.locator(f'[data-panel="{tab}"]')).to_be_visible()
+    expect(page.locator('[data-panel="audit"], [data-tab="audit"], #openAudit')).to_have_count(0)
+    page.locator('.tabs [data-tab="legal-claims"]').click()
+    expect(page.locator('[data-panel="legal-claims"]')).to_be_visible()
     page.locator("#adminNavigation").click()
     expect(page.locator("#projectView")).to_be_hidden()
     page.get_by_role("button", name="작업 공간", exact=True).click()
     expect(page.locator("#projectTitle")).to_have_text("합성 사건")
-    expect(page.locator('[data-panel="issues"]')).to_be_visible()
+    expect(page.locator('[data-panel="legal-claims"]')).to_be_visible()
     assert page.evaluate("state.run.id") == "retained-run"
     page.set_viewport_size({"width": 390, "height": 844})
-    assert groups.evaluate("el => el.scrollWidth <= el.clientWidth")
+    assert page.locator(".tabs").evaluate("el => el.scrollWidth <= el.clientWidth")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 

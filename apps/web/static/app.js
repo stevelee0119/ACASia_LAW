@@ -359,7 +359,7 @@ function maskAuthorityIdentifier(rawAuth) {
 // 서면 내 출처 미확인 판례·법령 전체에 대한 엘박스/법률 AI 일괄 검증 프롬프트 생성 (TK-94)
 // 법령·판례의 실재 여부 검증용이므로 본문 문맥(claim_text) 및 당사자 개인정보는 일체 배제하고 인용 식별자만 포함하며,
 // externalAiPolicy가 MASKED인 경우 인용 식별자 속 괄호 부기 및 인명도 실질 제거/마스킹한다.
-function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "", externalAiPolicy = "MASKED") {
+function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "", externalAiPolicy = "MASKED", prefix = "A") {
   const dateStr = incidentDate || "미지정 (소송 진행 시점 기준)";
   let itemsListText = "";
 
@@ -369,7 +369,7 @@ function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "",
     const rawAuth = String(it.cited_authority || "").trim();
     const auth = externalAiPolicy === "MASKED" ? maskAuthorityIdentifier(rawAuth) : rawAuth;
     if (auth) {
-      itemsListText += `${idx + 1}. ${auth}\n`;
+      itemsListText += `${prefix}${idx + 1}. ${auth}\n`;
     }
   });
 
@@ -392,7 +392,142 @@ ${itemsListText}
 
 [답변 형식]
 - 종합 검증 결과 요약 표 (번호 | 인용 식별자 | 실재 여부 | 공식 판결요지/조문 핵심 | 비고)
-- 각 항목별 상세 확인 내용`;
+- 각 항목별 상세 확인 내용
+
+[결과 블록 — 답변 맨 끝에 반드시 아래 형식 그대로]
+항목마다 한 줄씩, 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
+<<<ACAS_RESULT
+${prefix}1 | 판정: 확인/부존재/불일치/불명 | 근거: 사건번호·선고일 또는 법령·조문 | 요지: 한두 문장
+ACAS_RESULT>>>`;
+}
+
+// 2026-10-25 사용자 요구: 엘박스 등 외부 AI 답변을 다시 붙여넣어 표에 반영한다.
+// 번호(A1·B1)와 고정 결과 블록으로 답변을 행에 연결하며, 외부 AI 답변은 공식 확인 상태를 바꾸지 않는다.
+const EXTERNAL_ANSWER_OPEN = "<<<ACAS_RESULT", EXTERNAL_ANSWER_CLOSE = "ACAS_RESULT>>>";
+function externalAnswerFormat(prefix) {
+  return `
+[결과 블록 — 답변 맨 끝에 반드시 아래 형식 그대로]
+항목마다 한 줄씩, 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
+${EXTERNAL_ANSWER_OPEN}
+${prefix}1 | 판정: 확인/부존재/불일치/불명 | 근거: 사건번호·선고일 또는 법령·조문 | 요지: 한두 문장
+${EXTERNAL_ANSWER_CLOSE}`;
+}
+function parseExternalAnswers(text) {
+  const raw = String(text || "");
+  const start = raw.lastIndexOf(EXTERNAL_ANSWER_OPEN), end = raw.lastIndexOf(EXTERNAL_ANSWER_CLOSE);
+  const body = start >= 0 && end > start ? raw.slice(start + EXTERNAL_ANSWER_OPEN.length, end) : raw;
+  const answers = new Map();
+  for (const line of body.split(/\r?\n/)) {
+    const cells = line.replace(/^\s*\|/, "").split(/[|｜]/).map(c => c.trim());
+    const code = (cells[0] || "").replace(/[*`\s.]/g, "").toUpperCase();
+    if (!/^[AB]\d{1,3}$/.test(code)) continue;
+    const answer = {code, verdict: "", basis: "", summary: ""};
+    for (const cell of cells.slice(1)) {
+      const m = cell.match(/^(판정|근거|요지)\s*[:：]\s*(.*)$/);
+      if (m) answer[{판정: "verdict", 근거: "basis", 요지: "summary"}[m[1]]] = m[2].slice(0, 1000);
+      else if (cell) answer.summary = [answer.summary, cell].filter(Boolean).join(" ").slice(0, 1000);
+    }
+    if (answer.verdict || answer.basis || answer.summary) answers.set(code, answer);
+  }
+  return [...answers.values()];
+}
+function externalStoreKey() { return `acas.externalAi.${state.project?.id || "none"}.${state.run?.id || "none"}`; }
+function loadExternalStore() {
+  try { return JSON.parse(localStorage.getItem(externalStoreKey()) || "{}") || {}; } catch (e) { return {}; }
+}
+function saveExternalStore(store) {
+  try { localStorage.setItem(externalStoreKey(), JSON.stringify(store)); } catch (e) { toast("이 브라우저에 답변을 저장하지 못했습니다. 화면을 새로 고치면 사라집니다."); }
+}
+function rememberPromptCodes(prefix, items) {
+  const store = loadExternalStore();
+  store.codes = {...(store.codes || {})};
+  for (const key of Object.keys(store.codes)) if (key.startsWith(prefix)) delete store.codes[key];
+  items.forEach((item, index) => { store.codes[`${prefix}${index + 1}`] = item.item_id; });
+  saveExternalStore(store);
+}
+function applyStoredExternalAnswers(items) {
+  const store = loadExternalStore();
+  const byItem = new Map(Object.entries(store.answers || {}).map(([code, answer]) => [store.codes?.[code], {...answer, code}]));
+  for (const item of items) if (byItem.has(item.item_id)) item.external_ai_answer = byItem.get(item.item_id);
+}
+function externalAnswerBlock(answer) {
+  const box = node("div", null, "external-ai-answer");
+  box.append(node("strong", `외부 AI 답변 ${answer.code} (공식 확인 아님)`));
+  if (answer.verdict) box.append(node("p", `판정: ${answer.verdict}`));
+  if (answer.basis) box.append(node("p", `근거: ${answer.basis}`));
+  if (answer.summary) box.append(node("p", `요지: ${answer.summary}`));
+  box.append(node("small", `${answer.applied_at || ""} 반영 · 참고용이며 위 공식 DB 판정은 바뀌지 않습니다. 원문은 판결서·국가법령정보센터로 확인하십시오.`, "muted"));
+  return box;
+}
+function openExternalAnswerImport(prefix, rowsByCode) {
+  const input = workflowUI.field("answer", "엘박스 등 외부 AI 답변 전문", "", "textarea");
+  input.classList.add("full");
+  input.querySelector("textarea").rows = 12;
+  const hint = node("p", `프롬프트 끝의 결과 블록(${EXTERNAL_ANSWER_OPEN} … ${EXTERNAL_ANSWER_CLOSE})을 읽어 ${prefix}1, ${prefix}2 … 번호의 행에 붙입니다. 외부 AI 답변은 공식 확인이 아닙니다.`, "muted full");
+  workflowUI.modal("외부 AI 답변 붙여넣기", [hint, input], async values => {
+    const parsed = parseExternalAnswers(values.answer).filter(a => a.code.startsWith(prefix));
+    if (!parsed.length) throw new Error(`결과 블록에서 ${prefix} 번호 항목을 찾지 못했습니다. 프롬프트의 결과 블록 형식으로 다시 요청하세요.`);
+    const matched = parsed.filter(a => rowsByCode.has(a.code));
+    const missing = parsed.filter(a => !rowsByCode.has(a.code)).map(a => a.code);
+    setTimeout(() => previewExternalAnswers(matched, missing, rowsByCode), 0);
+  }, true);
+}
+function previewExternalAnswers(answers, missing, rowsByCode) {
+  const list = node("div", null, "full external-answer-preview");
+  for (const a of answers) {
+    const row = rowsByCode.get(a.code);
+    const card = node("div", null, "external-answer-preview-item");
+    card.append(node("strong", `${a.code} → ${row.cited_authority || friendlyText(row.claim_text || "") || row.item_id}`),
+      node("p", [a.verdict && `판정: ${a.verdict}`, a.basis && `근거: ${a.basis}`, a.summary && `요지: ${a.summary}`].filter(Boolean).join(" · ")));
+    list.append(card);
+  }
+  if (missing.length) list.append(node("p", `표에 없는 번호라 반영하지 않음: ${missing.join(", ")} (프롬프트를 만든 뒤 표가 바뀌었을 수 있습니다)`, "warning-text"));
+  if (!answers.length) list.append(node("p", "반영할 항목이 없습니다.", "muted"));
+  const view = workflowUI.modal(`표에 반영할 답변 ${answers.length}건 확인`, [list], async () => {
+    const store = loadExternalStore();
+    store.answers = {...(store.answers || {})};
+    const appliedAt = new Date().toLocaleString("ko-KR");
+    for (const a of answers) store.answers[a.code] = {...a, applied_at: appliedAt};
+    saveExternalStore(store);
+    renderFindings();
+    toast(`외부 AI 답변 ${answers.length}건을 표에 반영했습니다(공식 확인 아님).`);
+  }, true);
+  view.submit.textContent = "표에 반영";
+  if (!answers.length) view.submit.hidden = true;
+}
+function externalAnswerButton(prefix, items) {
+  const b = button("📥 외부 AI 답변 붙여넣기", () => {
+    const store = loadExternalStore(), rowsByCode = new Map();
+    for (const [code, itemId] of Object.entries(store.codes || {})) {
+      const item = code.startsWith(prefix) && items.find(i => i.item_id === itemId);
+      if (item) rowsByCode.set(code, item);
+    }
+    if (!rowsByCode.size) { toast("먼저 이 표의 '엘박스/AI 검증 프롬프트 만들기'로 번호가 붙은 프롬프트를 만드세요."); return; }
+    openExternalAnswerImport(prefix, rowsByCode);
+  }, "external-ai-import-btn");
+  b.title = "엘박스 등에서 받은 답변을 붙여넣어 번호별로 표의 행에 반영합니다. 공식 확인 상태는 바뀌지 않습니다.";
+  return b;
+}
+function buildExternalAiPromptForLegalClaims(entries, incidentDate = "") {
+  const list = entries.map(e => `${e.code}. ${e.authority ? `[인용] ${e.authority}\n    ` : ""}[주장] ${e.claim}`).join("\n");
+  return `[역할]
+당신은 대한민국 법률 및 판례 검증 전문 AI입니다.
+아래는 소송 서면에서 법리상 무리하거나 판례 취지와 맞지 않을 수 있다고 표시된 [주장 ${entries.length}건]입니다. 각 주장이 인용한 판례·법령의 취지에 비추어 성립하는지 검토해 주세요.
+
+※ 고지: 외부 AI 답변은 법적 효력이 있는 공식 확인이 아니며, 실제 변론 및 증거 제출 시에는 법원 판결서 사본 또는 국가법령정보센터 공식 원문으로 반드시 확인해야 합니다.
+※ 개인정보는 프로젝트 정책에 따라 가림 처리되었습니다.
+
+[기준 시점]
+- ${incidentDate || "미지정 (소송 진행 시점 기준)"}
+
+[검토 대상 주장 목록]
+${list}
+
+[검토 요청 사항]
+1. 인용한 판례·법령의 실제 판시사항·조문 취지
+2. 주장이 그 취지와 부합하는지, 사실관계 차이로 적용이 어려운지
+3. 주장을 뒷받침하거나 반박하는 실제 대법원 판례
+${externalAnswerFormat("B")}`;
 }
 
 async function api(path, options = {}) {
@@ -512,13 +647,11 @@ function dateText(value) {
 }
 
 function switchTab(tab) {
-  workflowUI.syncNavigation(tab);
   document.querySelectorAll("[data-tab]").forEach(el => {
     el.classList.toggle("active", el.dataset.tab === tab);
     el.setAttribute("aria-current", el.dataset.tab === tab ? "page" : "false");
   });
   document.querySelectorAll("[data-panel]").forEach(el => el.hidden = el.dataset.panel !== tab);
-  if (tab === "audit") loadAudit().catch(e => toast(e.message));
   workflowUI.activate(tab).catch(e => toast(e.message));
 }
 async function loadProjects() {
@@ -621,7 +754,6 @@ function renderProject() {
   renderDocuments();
   renderUploadStatus();
   renderSummary();
-  renderIssues();
   renderTimeline();
   operationsUI.renderJobControls();
   projectTools.renderControls();
@@ -1237,7 +1369,7 @@ function explainReviewPending() {
     "원인과 대책은 ‘진행 상태’ 설명에서 확인할 수 있습니다.", "warning-text"));
   children.push(node("p", "각 항목을 열어 ‘지적 수용’, ‘오탐’, ‘조치 완료’ 중 하나로 결정하면 이 숫자가 줄어듭니다.", "muted"));
   const view = explainDialog("확인 전 항목이란", children);
-  children[children.length - 1].after(button("확인할 항목에서 보기", () => showPendingFindings(view), "primary"));
+  children[children.length - 1].after(button("출처가 확인되지 않는 항목에서 보기", () => showPendingFindings(view), "primary"));
 }
 
 function showPendingFindings(view) {
@@ -1776,7 +1908,7 @@ async function loadFindingCategories(options = {}) {
 }
 
 function isAISecurityFinding(f) {
-  // 배정표 로드 실패 시 모든 항목을 '확인할 항목'에 표시
+  // 배정표 로드 실패 시 모든 항목을 '출처가 확인되지 않는 항목'에 표시
   if (!state.findingCategories || state.findingCategories.error) {
     return false;
   }
@@ -1924,6 +2056,75 @@ const VERDICT_HOLDING_DISTORTION = "판례 취지 왜곡 (판시사항과 상반
 const VERDICT_FACT_DISTINGUISHABLE = "적용 차이 (사실관계 상이 / 전문가 검토 필요)";
 const VERDICT_OFFICIAL_CONFIRMED = "공식 원문 일치 (사건 적용성 직접 검토 필요)";
 
+// 2026-10-25 사용자 요구: 주요 참고문헌(RAG) 대조 결과는 하단 별도 절이 아니라 상단 표 행의 근거 자료로 쓴다.
+// 연결 순서: ① 관찰의 claim_id → 문서 claims[].citation_ids → 행의 citation_id, ② 주장 인용문과 행 주장 문장의 포함 관계.
+const REFERENCE_RELATIONS = {SUPPORTS:["부합", "SUCCESS"], CONTRADICTS:["불부합", "CRITICAL"], CONTEXT:["맥락 참고", "info"], INSUFFICIENT:["근거 부족", "muted"]};
+function compactText(text) { return String(text || "").replace(/\s+/g, ""); }
+function attachReferenceObservations(items, docs) {
+  const unmatched = [];
+  for (const d of docs) {
+    const rag = d.engine_data?.rag;
+    const observations = rag?.observations || [];
+    if (!observations.length) continue;
+    const sources = new Map((rag.sources || []).map(s => [s.source_id, s]));
+    const claimCitations = new Map((d.claims || []).map(c => [c.claim_id, c.citation_ids || []]));
+    const docItems = items.filter(i => i.doc === d);
+    for (const observation of observations) {
+      const entry = {...observation, source: sources.get(observation.source_id)};
+      const citationIds = claimCitations.get(observation.claim_id) || [];
+      let target = docItems.find(i => i.citation_id && citationIds.includes(i.citation_id));
+      const quote = compactText(observation.claim_quote);
+      if (!target && quote.length >= 8) target = docItems.find(i => {
+        const claim = compactText(i.claim_text);
+        return claim.length >= 8 && (claim.includes(quote) || quote.includes(claim));
+      });
+      if (target) (target.reference_observations ||= []).push(entry);
+      else unmatched.push({doc: d, observation: entry});
+    }
+  }
+  return unmatched;
+}
+function referenceObservationRow({doc, observation}, index) {
+  const contradicts = observation.relationship === "CONTRADICTS";
+  return {
+    doc, item_id: `${doc.id || doc.document_id}_REFERENCE_${observation.claim_id || index}`, kind: "REFERENCE",
+    document_id: doc.id || doc.document_id, reference_library: true, claim_text: observation.claim_quote,
+    verdict_label: contradicts ? "참고문헌과 불부합" : "참고문헌 대조 의견", severity: contradicts ? "MEDIUM" : "INFO",
+    finding_ids: [], reference_observations: [observation], tier: contradicts ? 3 : 2,
+  };
+}
+function referenceObservationBlock(observations) {
+  const box = node("div", null, "reference-observations");
+  box.append(node("strong", "주요 참고문헌 대조 (참고문헌·구속력 없음, 공식 확인 아님)"));
+  for (const o of observations) {
+    const [name, cls] = REFERENCE_RELATIONS[o.relationship] || [o.relationship || "대조 결과", "muted"];
+    const line = node("p", null, "reference-observation");
+    const where = o.source ? `${o.source.title || o.source_id}${o.source.page ? ` · ${o.source.page_numbers_reliable === false ? "텍스트 구간 " + o.source.page : o.source.page + "쪽"}` : ""}` : (o.source_id || "참고자료");
+    line.append(node("span", name, `badge ${cls} small`), document.createTextNode(` ${where}`));
+    box.append(line);
+    if (o.explanation) box.append(node("p", `AI 참고 의견: ${o.explanation}`, "small"));
+    if (o.source_quote) {
+      const quote = node("details");
+      quote.append(node("summary", "참고문헌 발췌"), node("blockquote", o.source_quote));
+      box.append(quote);
+    }
+  }
+  return box;
+}
+function referenceStatusLine(docs, unmatchedCount, withDetails = true) {
+  const library = state.result?.run_manifest?.reference_library;
+  if (!library) return null;
+  const linked = docs.reduce((n, d) => n + (d.engine_data?.rag?.observations || []).length, 0) - unmatchedCount;
+  const details = node("details", null, "reference-status-line");
+  const text = library.status === "DISABLED" ? "주요 참고문헌 대조: 사용 안 함(폴더 설정 없음) · 표의 행은 공식 DB 기준으로만 작성"
+    : `주요 참고문헌 대조: 색인 ${library.files_indexed || 0}/${library.files_seen || 0}건 · 표의 행에 반영한 의견 ${linked}건` + (unmatchedCount ? ` · 행과 연결되지 않아 별도 행으로 추가 ${unmatchedCount}건` : "");
+  if (!withDetails) return node("p", `${text} · 처리 기록은 '출처가 확인되지 않는 항목' 탭에서 펼쳐 봅니다.`, "muted reference-status-brief");
+  details.append(node("summary", text));
+  const full = referenceSection(docs);
+  if (full) details.append(full);
+  return details;
+}
+
 function classifyReviewItemTier(item, findingsMap) {
   // item에 서버가 계산한 tier 속성이 있으면 최우선 반영
   if (item.tier === 2 || item.tier === 3) return item.tier;
@@ -2068,13 +2269,13 @@ function renderReviewRow(item, tier, findingsMap) {
   }) || verdictStr.includes("부당") || (item.basis || "").includes("FABRICATION");
 
   if (tier === 2 && hasDistortion) {
-    tdClaim.append(button("3단 무리한 주장 확인 →", () => {
-      switchTab("review");
+    tdClaim.append(button("법률적으로 무리한 주장 탭에서 확인 →", () => {
+      switchTab("legal-claims");
       const target = $("tier3Table") || $(`row_${item.item_id}`);
       if (target) target.scrollIntoView({ behavior: "smooth" });
     }, "link-button small cross-ref-anchor"));
   } else if (tier === 3 && (isHallucinatedOrInvalid || hasDistortion)) {
-    tdClaim.append(button("2단 출처 부존재 확인 →", () => {
+    tdClaim.append(button("출처가 확인되지 않는 항목 탭에서 확인 →", () => {
       switchTab("review");
       const target = $("reviewTable") || $(`row_${item.item_id}`);
       if (target) target.scrollIntoView({ behavior: "smooth" });
@@ -2100,6 +2301,8 @@ function renderReviewRow(item, tier, findingsMap) {
   if (item.reference_case_match) {
     tdBasis.append(node("p", `표준판례 사건정보 대조: ${item.reference_case_match}`, "basis-text"));
   }
+  if (item.reference_observations?.length) tdBasis.append(referenceObservationBlock(item.reference_observations));
+  if (item.external_ai_answer) tdBasis.append(externalAnswerBlock(item.external_ai_answer));
   if (item.context_review?.reason) {
     const review = item.context_review;
     const context = node("div", null, "citation-context-review");
@@ -2143,26 +2346,6 @@ function renderReviewRow(item, tier, findingsMap) {
     const reasonLine = node("p", null, "summary-line summary-reason");
     reasonLine.append(node("strong", "의심 사유: "), document.createTextNode(shortReason));
     summaryBox.append(reasonLine);
-  }
-
-  // 3) 확인 방법
-  let verifyText = (item.counteraction || "").trim();
-  if (!verifyText) {
-    const locStr = item.location?.display || (item.location?.page ? `${item.location.page}쪽` : (typeof item.location === "string" ? item.location : ""));
-    if (item.cited_authority && locStr) {
-      verifyText = `${item.cited_authority} 원문 대조 (${locStr})`;
-    } else if (item.reference_case_match) {
-      verifyText = `표준판례 대조: ${item.reference_case_match}`;
-    } else if (item.doc?.filename && locStr) {
-      verifyText = `${item.doc.filename} ${locStr} 대조`;
-    } else if (item.doc?.filename) {
-      verifyText = `${item.doc.filename} 원문 대조`;
-    }
-  }
-  if (verifyText) {
-    const verifyLine = node("p", null, "summary-line summary-action");
-    verifyLine.append(node("strong", "확인 방법: "), document.createTextNode(verifyText));
-    summaryBox.append(verifyLine);
   }
 
   // 4) 상세 법리 의견
@@ -2333,6 +2516,9 @@ function renderFindings() {
     }
   }
 
+  const unmatchedReferences = attachReferenceObservations(allReviewItems, docs);
+  unmatchedReferences.forEach((entry, index) => allReviewItems.push(referenceObservationRow(entry, index)));
+  applyStoredExternalAnswers(allReviewItems);
   // 판례 통계 요약 갱신
   let hallucinationRows = [];
   for (const d of docs) {
@@ -2426,22 +2612,57 @@ function renderFindings() {
       const unverifiedAuthorities = filterUnverifiedAuthorities(filteredItems);
 
       if (unverifiedAuthorities.length > 0) {
-        const promptBtn = button("📋 엘박스/AI 검증 프롬프트", () => {
+        const promptBtn = button("📋 엘박스/AI 검증 프롬프트 만들기", () => {
+          rememberPromptCodes("A", unverifiedAuthorities);
           copyToClipboard(
             buildExternalAiPromptForUnverifiedAuthorities(unverifiedAuthorities, state.project?.incident_date, policy),
             "엘박스/법률 AI 검증 프롬프트가 복사되었습니다."
           );
-        }, "external-ai-prompt-btn");
+        }, "primary external-ai-prompt-btn");
         promptBtn.title = `미확인 판례·법령 ${unverifiedAuthorities.length}건을 엘박스 등 법률 AI에 한 번에 질의할 수 있는 일괄 프롬프트를 복사합니다. (외부 AI 답변은 공식 확인이 아닙니다)`;
 
         const badge = node("span", `(미확인 판례·법령 ${unverifiedAuthorities.length}건)`, "muted small review-prompt-count");
         const notice = node("span", "※ 외부 AI 답변은 공식 확인이 아니므로 원문 확인이 필요합니다.", "muted small review-prompt-notice");
-        tableActions.append(promptBtn, badge, notice);
+        tableActions.append(promptBtn, externalAnswerButton("A", unverifiedAuthorities), badge, notice);
         tableActions.hidden = false;
       } else {
         tableActions.hidden = true;
       }
     }
+  }
+
+  // 2026-10-25 사용자 요구: '법률적으로 무리한 주장' 탭에도 엘박스/AI 검증 프롬프트와 답변 붙여넣기를 둔다.
+  // 주장 문장이 들어가므로 서버의 프로젝트 정책 가림을 거친 문장만 프롬프트에 넣는다.
+  const legalActions = $("legalClaimsActions");
+  if (legalActions) {
+    legalActions.replaceChildren();
+    const policy = state.project?.external_ai_policy || "LOCAL_ONLY";
+    if (policy === "LOCAL_ONLY" || !tier3Items.length) {
+      legalActions.hidden = true;
+    } else {
+      const promptBtn = button("📋 엘박스/AI 검증 프롬프트 만들기", action(async () => {
+        const pid = state.project.id;
+        const {texts} = await api(`/projects/${pid}/external-ai/prompt-texts`, {method: "POST", body: {texts: tier3Items.map(i => friendlyText(i.claim_text || ""))}});
+        const entries = tier3Items.map((item, index) => ({
+          code: `B${index + 1}`, claim: texts[index] || "",
+          authority: item.cited_authority ? (policy === "MASKED" ? maskAuthorityIdentifier(item.cited_authority) : item.cited_authority) : "",
+        }));
+        rememberPromptCodes("B", tier3Items);
+        await copyToClipboard(buildExternalAiPromptForLegalClaims(entries, state.project?.incident_date), "엘박스/법률 AI 검토 프롬프트가 복사되었습니다.");
+      }), "primary external-ai-prompt-btn");
+      promptBtn.title = `이 표의 주장 ${tier3Items.length}건을 개인정보 가림 후 한 번에 질의하는 프롬프트를 복사합니다. (외부 AI 답변은 공식 확인이 아닙니다)`;
+      legalActions.append(promptBtn, externalAnswerButton("B", tier3Items),
+        node("span", `(검토 대상 주장 ${tier3Items.length}건)`, "muted small review-prompt-count"),
+        node("span", "※ 외부 AI 답변은 공식 확인이 아니므로 원문 확인이 필요합니다.", "muted small review-prompt-notice"));
+      legalActions.hidden = false;
+    }
+  }
+  for (const id of ["referenceStatus", "legalReferenceStatus"]) {
+    const box = $(id);
+    if (!box) continue;
+    box.replaceChildren();
+    const line = referenceStatusLine(docs, unmatchedReferences.length, id === "referenceStatus");
+    if (line) box.append(line);
   }
 
   // 4. 하단 미확인 범위 및 RAG/추가 법조문 보존 (정보 손실 0 유지)
@@ -2461,8 +2682,7 @@ function renderFindings() {
   const refContainer = $("reviewReferencesContainer");
   if (refContainer) {
     refContainer.replaceChildren();
-    const references = referenceSection(docs);
-    if (references) refContainer.append(references);
+
     for (const d of docs) {
       const related = d.engine_data?.related_authorities;
       if (!related) continue;
@@ -2485,7 +2705,7 @@ function renderAIVerification() {
 
   // 배정표 로드 실패 시 AI 탭 오류 안내
   if (state.findingCategories?.error) {
-    const errBox = node("div", "배정표를 불러오지 못했습니다. 모든 검토 항목은 '확인할 항목' 탭에서 확인할 수 있습니다.", "alert-box error");
+    const errBox = node("div", "배정표를 불러오지 못했습니다. 모든 검토 항목은 '출처가 확인되지 않는 항목' 탭에서 확인할 수 있습니다.", "alert-box error");
     errBox.id = "findingCategoriesErrorNotice";
     cardsContainer.append(errBox);
   }
@@ -2578,28 +2798,6 @@ function reasoningBlock(r) {
     box.append(label, list);
   }
   return box;
-}
-
-function renderIssues() {
-  $("issueTags").replaceChildren(...(state.project.requested_issues || []).map(t => node("span", t, "issue-tag")));
-  const claims = (state.result.documents || []).flatMap(d => (d.claims || []).map(c => ({
-    ...c,
-    filename: d.filename
-  })));
-  $("claims").replaceChildren();
-  if (!claims.length) empty($("claims"), "추출된 주장이 없습니다.");
-  for (const c of claims) {
-    const row = node("article", null, "row-item");
-    row.append(node("p", c.text || c.claim_text || c.statement || JSON.stringify(c)), node("div", `${c.filename} · ${c.page||"?"}쪽 · 자동 추출 · 입증 여부 미판단`, "row-meta"));
-    for (const link of c.evidence_links || []) {
-      if (!link.document_ids.length) row.append(node("p", `${link.reference}: 등록 자료 없음`, "muted"));
-      for (const id of link.document_ids) {
-        const document = state.documents.find(d => d.id === id);
-        if (document) row.append(button(`${link.reference} · ${document.filename}`, () => openDocument(document)));
-      }
-    }
-    $("claims").append(row);
-  }
 }
 
 function renderTimeline() {
@@ -2758,30 +2956,6 @@ async function loadReports() {
 async function createReport() {
   return reportWorkbench.create();
 }
-async function loadAudit() {
-  const id = state.project?.id;
-  if (!id) return;
-  const data = await api(`/projects/${id}/audit`);
-  if (id !== state.project?.id) return;
-  $("audit").replaceChildren();
-  for (const e of data.events) {
-    const row = node("article", null, "row-item");
-    const title = {
-      USER_OVERRIDE: "사용자 변경",
-      DOCUMENT_UPLOADED: "자료 등록",
-      REPORT_GENERATED: "보고서 생성",
-      EXPORT: "자료 내려받기",
-      VERIFICATION_STARTED: "검증 시작",
-      VERIFICATION_COMPLETED: "검증 완료"
-    } [e.event_type] || e.event_type;
-    row.append(node("strong", title), node("div", `${dateText(e.created_at)} · ${e.actor}`, "row-meta"));
-    const details = node("details");
-    details.append(node("summary", "기록 상세"), node("pre", JSON.stringify(e.payload, null, 2), "technical"));
-    row.append(details);
-    $("audit").append(row);
-  }
-  if (!data.events.length) empty($("audit"), "활동 기록이 없습니다.");
-}
 document.querySelectorAll("[data-close]").forEach(el => el.onclick = () => el.closest("dialog").close());
 document.querySelectorAll("[data-tab]").forEach(el => el.onclick = () => switchTab(el.dataset.tab));
 document.addEventListener("click", e => {
@@ -2795,7 +2969,7 @@ document.addEventListener("click", e => {
 $("menuButton").onclick = () => $("sidebar").classList.toggle("open");
 $("projectSearch").oninput = renderProjects;
 $("newProjectBtn").onclick = action(() => editProject(true));
-for (const id of ["editProject", "editIssues"]) $(id).onclick = action(() => editProject());
+for (const id of ["editProject"]) $(id).onclick = action(() => editProject());
 $("projectForm").onsubmit = saveProject;
 $("scopeFilter").onchange = renderDocuments;
 $("selectAll").onchange = () => {
@@ -2900,7 +3074,6 @@ for (const id of ["verifyBtn", "reverify"]) $(id).onclick = action(verify);
 for (const id of ["findingSearch", "severityFilter"]) $(id)?.addEventListener("input", renderFindings);
 $("severityFilter")?.addEventListener("change", renderFindings);
 $("reportBtn").onclick = action(createReport);
-$("refreshAudit").onclick = action(loadAudit);
 $("prevPage").onclick = action(async () => {
   state.page--;
   await renderPage();
