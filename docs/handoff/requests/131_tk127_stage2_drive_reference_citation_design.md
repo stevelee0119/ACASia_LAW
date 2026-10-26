@@ -1,6 +1,6 @@
 # [설계 메모] TK-127 2단계: 인용 행(판례·법령)의 Google Drive 색인 대조
 
-- **작성일**: 2026-10-26 (4차 개정)
+- **작성일**: 2026-10-26 (5차 개정)
 - **작성자**: Antigravity (구현 에이전트)
 - **대상 브랜치**: `Steve_ACASiaLAW` (기준 제품 코드 SHA: `3fee071c17921c9add11167250744f646903cee3`)
 - **문서 성격**: 설계 제안 메모 (본 PR에서는 제품 코드 및 시험 수정 0줄 유지)
@@ -11,7 +11,7 @@
 ## 1. 배경 및 목적
 
 - **배경**: TK-127 1단계(#183, Steve `3fee071c17921c9add11167250744f646903cee3`)를 통해 주요 참고문헌(Google Drive) 대조 의견이 웹 검토 표의 행에 바인딩되었습니다. 2단계는 사용자 요구(2026-10-25) *"공식데이터베이스의 자료를 API로 검색하는 것에 추가로 구글 DRIVE의 자료를 활용"* 중 미이행분인 **인용 행(판례·법령)을 Google Drive 색인에서도 직접 찾아 근거로 연결**하는 기능을 다룹니다.
-- **원칙**: 엔진 및 데이터 파이프라인의 확장이 수반되므로 제품 코드 수정에 앞서 본 설계 제안을 제출하여 평가 측(Codex) 검토와 사용자 승인을 득한 후 별도 구현 티켓으로 착수합니다. 점수나 테스트 결과를 임의로 고정하거나 성능을 사전 단정하지 않습니다.
+- **원칙**: 엔진 및 데이터 파이프라인의 확장이 수반되므로 제품 코드 수정에 앞서 본 설계 제안을 제출하여 평가 측(Codex) 검토와 사용자 승인을 득한 후 별도 구현 티켓으로 착수합니다. 점수나 테스트 결과를 임의로 고정하거나 성능을 사전 단정하지 않으며, 코드 참조는 유동적인 행 번호 대신 파일 경로와 심볼명을 기준으로 관리합니다.
 
 ---
 
@@ -87,7 +87,7 @@
         return String(text || "").replace(EXPLICIT_WHITESPACE_RE, "");
       }
       ```
-    - *(주의: 실제 양 언어 정규화 모듈의 완전한 일치 여부는 향후 구현 티켓에서 동등성 시험을 통과하기 전까지 무조건적 일치로 사전 단정하지 않음).*
+    - *(주의: 실제 양 언어 정규화 모듈의 완전한 일치 여부는 향후 구현 티켓에서 동등성 시험을 통과하기 전까지 무조건적 일치로 사전 단정하지 않고 설계 제안 규약으로 관리함).*
 
 - **매칭 계약 순서 및 엄격 조건**:
   1. **1순위: ID 기반 우선 매칭**:
@@ -135,14 +135,17 @@
   - TK-127 2단계의 Drive 대조는 엔진 파이프라인이 로컬 Google Drive 문서를 색인/검색하여 인용 행에 자동 매칭한 사설 참고자료 대조 결과이므로, 인용 검토 표 내의 개별 행 근거 자료(3열)에 독립 표기.
 
 ### 4) 측정 방안 및 안정성 기준
-*(근거 심볼: `scripts/score_gate.py`, `scripts/scorecard.py`, `scripts/check_case_literals.py`, `scripts/check_test_edits.py`)*
-- **오프라인 세트의 한계와 실측 방안**:
-  - 개발(dev), 홀드아웃(holdout), 은퇴(retired) 세트는 고정 오프라인 서면이며 Drive 연동이 비활성화(`RAG_DRIVE_FOLDER_ID=""`)되어 있어 점수 측정 도구로는 Drive 검색 효과를 직접 측정할 수 없음.
-  - 따라서 오프라인 점수 게이트(`python scripts/score_gate.py`)는 **회귀 방지(Regression Gate)** 목적으로만 활용하며, dev 82.6 이상, holdout 81.9 이상 유지 및 오탐(False Positive) 0건 유지를 안정성 통과 기준으로 설정.
-- **운영 Drive 환경 실측 방안 (향후 구현 검증 단계)**:
-  - 실제 운영 Drive 폴더가 설정된 환경에서 실서면 1건 이상을 검증 파이프라인에 입력.
-  - **보안 및 개인정보 보호 엄수**: PR 및 보고서 작성 시 실제 사건번호, 당사자명, 서면 원문, 구체적 문구의 노출을 엄격히 금지함 (`check_case_literals.py` 준수).
-  - 검증 증빙 자료는 **비식별화된 집계 지표(인용 행 Drive 매칭 건수 Hit Count)** 및 개인정보/사건 식별정보가 완전 마스킹된 웹 화면 캡처 1건으로 한정.
+*(근거 심볼: `scripts/score_gate.py`, `docs/scorecards/baseline.json`, `scripts/scorecard.py`, `scripts/check_case_literals.py`, `scripts/check_test_edits.py`)*
+- **오프라인 점수 게이트의 역할 및 출처 (회귀 방지 전용)**:
+  - 권위 있는 점수 판정은 CI에서 실행되는 `python scripts/score_gate.py`가 동일 SHA에서 권위 있는 기준선 파일(`docs/scorecards/baseline.json`)과 비교하여 점수 하락이 없음을 검증하는 것입니다.
+  - 현재 기준선(`docs/scorecards/baseline.json`, 기준 SHA `3fee071c17921c9add11167250744f646903cee3`)에 기록된 관찰값은 다음과 같습니다:
+    - 개발 세트 (`sets.dev`): 가중 재현율 `weighted_recall: 0.826` (82.6점), 오탐 `false_positives: 0`
+    - 홀드아웃 세트 (`sets.holdout`): 가중 재현율 `weighted_recall: 0.819` (81.9점), 오탐 `false_positives: 0`
+  - 위 수치는 기준선의 현재 관찰값이며, 별도의 독립된 임의 합격 기준선이 아닙니다. 향후 구현 시에도 별도 기준을 신설하지 않고 `score_gate.py`의 기준선 대조 판정을 단일 권위 기준으로 삼습니다.
+- **오프라인 세트의 한계 및 Drive 실측 방안**:
+  - 개발(dev), 홀드아웃(holdout), 은퇴(retired) 세트는 고정 오프라인 서면이며 Google Drive 연동이 비활성화(`RAG_DRIVE_FOLDER_ID=""`)되어 있으므로, 오프라인 점수 게이트로는 Google Drive 검색/대조의 실제 효과나 성능 향상을 입증할 수 없습니다. 오프라인 게이트 통과는 기존 검증 기능에 대한 '회귀 없음(No Regression)'만을 보증합니다.
+  - Google Drive 연동 기능의 실제 효과는 향후 운영 Drive 환경에서 실제 서면을 입력하여 검증해야 합니다.
+  - **보안 및 개인정보 보호 엄수**: 운영 Drive 실측 검증 시 실제 사건번호, 당사자명, 서면 원문, 구체적 문구의 노출을 엄격히 금지합니다 (`check_case_literals.py` 준수). 검증 증빙 자료는 **비식별화된 집계 지표(인용 행 Drive 매칭 건수 Hit Count)** 및 개인정보/사건 식별정보가 완전 마스킹된 웹 화면 캡처 1건으로 한정합니다.
 
 ### 5) 성능 및 개인정보 보호 (PII)
 *(근거 심볼: `packages/rag_engine/review.py` 내 `_split_sources_into_batches`, `packages/pii_engine/detector.py` 내 `PIIEngine.mask_text`, `packages/common/enums.py` 내 `ExternalAIPolicy`)*
@@ -178,6 +181,6 @@
 
 ## 4. 향후 절차
 
-1. 본 설계 메모 4차 개정안 제출 및 평가 측(Codex) 재검토, 사용자 승인.
+1. 본 설계 메모 5차 개정안 제출 및 평가 측(Codex) 재검토, 사용자 승인.
 2. 승인 완료 후 세부 구현 티켓 발행 및 제품 코드/시험 구현 착수.
 3. 제품 코드 수정 전후 오프라인 회귀 게이트(`score_gate.py`) 및 운영 Drive 실측 검증 완료 후 병합.
