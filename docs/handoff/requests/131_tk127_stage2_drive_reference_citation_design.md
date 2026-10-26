@@ -1,6 +1,6 @@
 # [설계 메모] TK-127 2단계: 인용 행(판례·법령)의 Google Drive 색인 대조
 
-- **작성일**: 2026-10-27 (8차 개정)
+- **작성일**: 2026-10-27 (9차 개정)
 - **작성자**: Antigravity (구현 에이전트)
 - **대상 브랜치**: `Steve_ACASiaLAW` (기준 제품 코드 SHA: `3fee071c17921c9add11167250744f646903cee3`)
 - **문서 성격**: 설계 제안 메모 (본 PR에서는 제품 코드 및 시험 수정 0줄 유지)
@@ -169,10 +169,15 @@ stateDiagram-v2
          - 예상 결과: 자동 연결 배제, fallback 차단, `reference_status=SUPPORTED` 승격 금지 (`UNMATCHED` / `PENDING_REVIEW` 유지).
        - **다중 후보 경쟁**: 동일하거나 비슷한 텍스트(예: 15자 이상 문구)를 가진 검토 행이 2개 이상 존재하는 경우 $\rightarrow$ 충돌로 간주하여 자동 연결 배제, 미매칭 유지, SUPPORTED 승격 방지.
        - **일반 상용구 우연 포함**: "이유 없다", "주문과 같이 판결한다", "법률상 근거가 없다" 등 흔한 일반 문구가 포함된 경우 $\rightarrow$ 전체 인용 식별자 불일치 시 자동 연결 금지.
-    2. **정답 통제 자료 기반 1:1 비교 및 집계 검증**:
-       - 정답 매칭 라벨이 구축된 통제 테스트셋(Ground Truth Control Dataset)을 구성.
-       - 서버 파이프라인(`build_document_review_items`)과 브라우저(`attachReferenceObservations`)의 실행 결과를 각각 비교하여 **정확 연결(True Positive)**과 **오연결(False Positive)**을 집계.
-       - 단언 기준: **오연결(False Positive) = 0건**, 양측 구현의 매칭 결과 일치율 100%.
+    2. **정답 통제 자료 기반 1:1 비교 및 동적 지표 집계 검증 (하드코딩 방지)**:
+       - 정답 매칭 라벨이 구축된 독립 통제 테스트셋($N_{total} \ge 20$, 양성 $N_{matchable} \ge 10$, 음성 대조군 $N_{unmatchable} \ge 10$)을 구성.
+       - 서버 파이프라인(`build_document_review_items`)과 브라우저(`attachReferenceObservations`)를 실제 실행하여 반환된 결과로부터 $TP, FP, FN$을 동적으로 집계.
+       - 단언 기준:
+         - **오연결 수 (FP) = 0건** (엄격 일치).
+         - **최소 정답 연결 수 (TP) $\ge 8$건** ($N_{matchable} \ge 10$ 기준).
+         - **매칭 가능 대상 커버리지 ($TP / N_{matchable}$) $\ge 80.0\%$**.
+         - **정밀도 ($TP / (TP + FP)$) = 100.0%** (단, $TP+FP=0$인 경우 정밀도 100% 간주 금지 및 판정 보류 예외 처리).
+         - 양측 구현의 매칭 결과 일치율 100%.
     3. **공통 공백 문자 집합 경계 및 무폭 제어문자 검증**:
        - `U+FEFF`(BOM), `U+001C~U+001F`(FS~US 4종), `U+00A0`, `U+3000` 포함 입력 시 양 언어 정규화 동등성 검증.
 
@@ -206,22 +211,64 @@ stateDiagram-v2
   - 위 수치는 기준선의 현재 관찰값이며, 별도의 독립된 임의 합격 기준선이 아닙니다. 향후 구현 시에도 별도 기준을 신설하지 않고 `score_gate.py`의 기준선 대조 판정을 단일 권위 기준으로 삼습니다.
   - 개발(dev), 홀드아웃(holdout), 은퇴(retired) 세트는 고정 오프라인 서면이며 Google Drive 연동이 비활성화(`RAG_DRIVE_FOLDER_ID=""`)되어 있으므로, 오프라인 점수 게이트로는 Google Drive 검색/대조의 실제 효과나 성능 향상을 입증할 수 없습니다. 오프라인 게이트 통과는 기존 검증 기능에 대한 '회귀 없음(No Regression)'만을 보증합니다.
 
-- **운영 Drive 환경 실측 및 품질 검증 기준 (단순 매칭 건수 단독 사용 금지)**:
-  - **단순 매칭 건수(Hit Count) 단독 사용 금지**:
-    - 단순히 "Drive 대조 결과 N건 매칭"과 같은 집계 지표는 잘못 연결된 오연결(False Positive)을 숨길 수 있으므로, 품질 통과 증거로 단독 사용할 수 없습니다.
-  - **비식별화된 품질 측정 지표**:
-    - 실측 검증 시 통제 서면 표본에 대해 다음 지표를 분리 산출:
-      1. **정답 연결 수 (True Positive Matches)**: 인용 식별자(사건번호 또는 법령명+조문)와 내용이 실제로 일치하여 올바른 행에 연결된 건수.
-      2. **오연결 수 (False Positive Matches)**: 다른 조문, 다른 사건, 또는 일반 문구 유사성으로 잘못된 행에 바인딩된 건수.
-      3. **미매칭 건수 (Unmatched Observations)**: 기준 미달로 연결되지 않고 독립 관찰로 남은 건수.
+- **통제 자료 기반 지표 정의 및 분모·분자 명시 규정**:
+  - **배경 및 원인**:
+    - 매칭 결과가 0건($TP = 0, FP = 0$)인 경우, 분모가 0이 되어 수학적으로 정밀도가 정의되지 않음에도 불구하고 이를 100%로 간주하거나 합격 처리하면 기능이 완전히 결함 상태(아무것도 매칭하지 못함)여도 통과되는 치명적인 허점이 발생합니다.
+    - 따라서 정답 라벨이 존재하는 통제 자료를 기준으로 분모와 분자를 명시적으로 정의하고, 최소 정답 연결 수 및 커버리지 기준을 필수로 도입합니다.
+  - **통제 자료 측정 지표의 수학적 정의**:
+    1. **전체 인용 대상 수 ($N_{total}$, 분모 1)**: 통제 서면에 존재하는 전체 판례·법령 인용 행의 총합 ($N_{total} = N_{matchable} + N_{unmatchable}$).
+    2. **매칭 가능 대상 수 ($N_{matchable}$, 분모 2 - Ground Truth Positives)**: Drive 색인 코퍼스 내에 실제로 대응되는 정답 참고자료가 존재하여, 이상적으로 연결되어야 하는 인용 행의 총수.
+    3. **매칭 불가 대상 수 ($N_{unmatchable}$, 대조군 - Ground Truth Negatives)**: Drive 코퍼스 내에 대응 자료가 없거나, 다른 조문·다른 사건번호를 가진 대조군 자료로서 연결되지 않아야 정상인 인용 행의 총수.
+    4. **실제 정답 연결 수 ($TP$, True Positives, 분자 1)**: $N_{matchable}$ 중 올바른 대상 자료에 정확히 연결된 건수 (식별자 및 문맥 일치).
+    5. **오연결 수 ($FP$, False Positives)**: 다른 사건번호, 다른 조문, 또는 일반 문구 유사성으로 잘못 연결된 건수.
+    6. **누락 수 ($FN$, False Negatives)**: $N_{matchable}$ 중 매칭되지 못하고 누락된 건수 ($FN = N_{matchable} - TP$).
+    7. **정확한 미매칭 수 ($TN$, True Negatives)**: $N_{unmatchable}$ 중 올바르게 미매칭(`UNMATCHED`)으로 유지된 건수.
+  - **지표 산출 공식**:
+    - **정답 연결 정밀도 (Precision)**:
+      $$\text{Precision} = \frac{TP}{TP + FP}$$
+    - **매칭 가능 대상 커버리지 / 재현율 (Recall / Matchable Coverage)**:
+      $$\text{Coverage}_{matchable} = \frac{TP}{N_{matchable}} = \frac{TP}{TP + FN}$$
+    - **전체 인용 대비 커버리지 (Total Citation Coverage)**:
+      $$\text{Coverage}_{total} = \frac{TP}{N_{total}}$$
+
+- **매칭 0건 ($TP + FP = 0$) 사례의 엄격 판정 규정**:
+  - $TP + FP = 0$ (실제 연결 건수 0건)인 경우:
+    - **정밀도를 100%로 간주하거나 합격으로 처리하는 것을 절대 금지**합니다.
+    - 정밀도는 **"측정 불가 (Undefined / 분모 0)"**로 표기합니다.
+    - 판정 결과는 **"판정 보류 / 유효성 미입증 (Indeterminate / Insufficient Signal)"**으로 처리하며 합격 판정을 일체 부여하지 않습니다.
+
+- **기능 유효성 판정을 위한 품질 합격 기준 (Pass Criteria) 및 표본 구성 근거**:
+  - **통제 자료 표본 구성 방법 및 표본 크기 산정 근거**:
+    - 통제 자료는 정답 연결 여부가 1:1 수동 검증된 **독립 통제 세트(Ground Truth Control Dataset)**로 구성합니다.
+    - **최소 표본 크기**: 통제 인용 행 총합 $N_{total} \ge 20$건 이상 확보.
+      - **양성 표본 ($N_{matchable} \ge 10$건)**: Drive 코퍼스 내에 동일 판례 사건번호 및 법령명+조문이 명확히 존재하는 정답 쌍 10건 이상.
+      - **음성 대조군 표본 ($N_{unmatchable} \ge 10$건)**: 조문 번호 불일치(5건), 사건번호 불일치(3건), 일반 상용구 우연 포함(2건) 등 식별자 충돌 및 부재 대조군 10건 이상.
+    - **산정 근거**: $N_{matchable} \ge 10$건이어야 80% 커버리지($TP \ge 8$건) 달성 여부를 통계적으로 유의미하게 판별할 수 있으며, 음성 대조군 10건을 통해 식별자 충돌 Hard Stop 및 Fallback 금지 규칙의 무오류($FP = 0$)를 동시 입증할 수 있습니다.
   - **합격 기준 (Pass Criteria)**:
-    - **오연결 수(False Positive Matches) = 0건** (오연결 발생 시 해당 매칭 규칙 불합격 및 롤백).
-    - 정답 연결 정밀도(Precision): $TP / (TP + FP) = 100\%$.
-  - **수동 교차 검증 절차 (Manual Review)**:
-    - 운영 Drive 실측 검증 시, 매칭된 결과 중 최소 10건 이상(전체 매칭이 10건 미만인 경우 전수)을 무작위 추출하여 검토자가 원본 인용과 Drive 발췌문의 법률적 부합 여부를 1:1 수동 교차 검증.
-  - **보안 및 개인정보 보호 엄수**:
-    - 운영 Drive 실측 검증 결과 보고 시 실제 사건번호, 당사자명, 서면 원문, 구체적 문구의 노출을 엄격히 금지합니다 (`check_case_literals.py` 준수).
-    - 증빙 자료는 **비식별화된 집계 지표(정답 연결 수, 오연결 수, 정밀도, 수동 검증 확인 결과)** 및 개인정보/사건 식별정보가 완전 마스킹된 웹 화면 캡처 1건으로 한정합니다.
+    1. **오연결 수 (FP)**: **$FP = 0$건** (오연결 1건이라도 발생 시 즉시 불합격 및 롤백).
+    2. **최소 정답 연결 수 (TP)**: **$TP \ge 8$건** (기능의 실질적 유효성 보장).
+    3. **매칭 가능 대상 커버리지 ($\text{Coverage}_{matchable}$)**: **$\ge 80.0\%$** ($TP / N_{matchable} \ge 0.8$).
+    4. **정답 연결 정밀도 (Precision)**: **$100.0\%$** (단, $TP \ge 8, FP = 0$ 조건 충족 시에만 산출 유효).
+  - **기준 미충족 시 처리 규정**:
+    - $TP < 8$건이거나 커버리지 $< 80\%$인 경우:
+      - "통과"로 보고할 수 없으며, 반드시 **"표본 부족 / 판정 불가 (Insufficient Sample / Indeterminate)"** 또는 **"커버리지 미달 (Failed Coverage)"**로 보고하고 롤백합니다.
+  - **운영 검증 결과 보고 시 개인정보 보호 및 집계치 한정 공개**:
+    - 운영 Drive 실측 검증 보고 시 실제 사건번호, 당사자명, 서면 원문, 파일명 등 구체적 사건 리터럴의 노출을 엄격히 금지합니다 (`check_case_literals.py` 준수).
+    - 증빙 자료는 **비식별화된 집계 지표($N_{total}, N_{matchable}, N_{unmatchable}, TP, FP, FN, \text{Precision}, \text{Coverage}$)** 및 개인정보가 완전 마스킹된 웹 화면 캡처 1건으로 한정하여 공개합니다.
+
+- **CI 하드코딩 방지 및 독립 통제 사례 기반 동적 계산 방안**:
+  - **하드코딩 판정 절대 금지**:
+    - CI 시험 코드 내에 고정된 기대 점수나 정적 결과 문자열을 하드코딩(`assert score == 100`, `assert result == "OK"`)하여 통과시키는 것을 금지합니다 (`check_hardcoding_diff.py` 준수).
+  - **동적 계산 검증 메커니즘**:
+    - 향후 구현될 `tests/test_tk127_stage2_server_reference_observations_sync.py`에서는:
+      1. 비식별화된 구조화 통제 사례(`ControlCase(citations, drive_corpus, ground_truth_labels)`)를 테스트 픽스처로 주입합니다 (합성 사건번호 `2021다10001`, 가상 법령 `민법 제1000조` 등 모의 식별자 사용).
+      2. 서버 파이프라인 매칭 엔진(`build_document_review_items`)과 브라우저 매칭 로직(`attachReferenceObservations`)을 실제로 실행하여 반환된 관찰 목록에서 $TP, FP, FN$을 동적으로 카운트 계산합니다.
+      3. 동적으로 집계된 지표에 대해 다음 단언을 기계적으로 검증합니다:
+         - `assert fp == 0, f"False Positives detected: {fp}"`
+         - `assert tp >= 8, f"Insufficient True Positives: {tp} < 8"`
+         - `assert tp / matchable_count >= 0.8, f"Coverage below 80%: {tp / matchable_count}"`
+         - `assert tp + fp > 0, "No matches evaluated"`
+      4. 이를 통해 정적 상수 하드코딩 없이, 통제 사례에 대한 실제 파이프라인 알고리즘의 동작 결과를 바탕으로 기준 충족 여부를 동적으로 판정합니다.
 
 ### 5) 성능 및 개인정보 보호 (PII)
 *(근거 심볼: `packages/rag_engine/review.py` 내 `_split_sources_into_batches`, `packages/pii_engine/detector.py` 내 `PIIEngine.mask_text`, `packages/common/enums.py` 내 `ExternalAIPolicy`)*
@@ -257,7 +304,7 @@ stateDiagram-v2
 
 ## 4. 향후 절차
 
-1. 본 설계 메모 8차 개정안 제출 및 평가 측(Codex) 재검토, 사용자 승인.
+1. 본 설계 메모 9차 개정안 제출 및 평가 측(Codex) 재검토, 사용자 승인.
 2. **사용자 승인 완료 전 제품 코드 구현 착수 절대 금지**.
 3. 사용자 승인 완료 후 세부 구현 티켓 발행 및 제품 코드/시험 구현 착수.
-4. 제품 코드 수정 전후 오프라인 회귀 게이트(`score_gate.py`) 및 운영 Drive 실측 검증(오연결 0건, 정밀도 100%, 수동 교차 검증) 완료 후 병합.
+4. 제품 코드 수정 전후 오프라인 회귀 게이트(`score_gate.py`) 및 통제 자료 실측 검증(오연결 0건, 최소 $TP \ge 8$건, 커버리지 $\ge 80\%$, 정밀도 100%, 수동 교차 검증) 완료 후 병합.
