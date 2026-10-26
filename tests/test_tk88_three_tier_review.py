@@ -478,7 +478,6 @@ def test_table1_ten_rows_rendered_in_browser():
 
             # 홈 화면에서 프로젝트 선택 후 검증·검토 화면 진입 (시간 초과 방지)
             select_first_project(page)
-            page.get_by_role("button", name="검증·검토", exact=True).click()
 
             # 확인할 항목(review) 탭 진입
             page.locator('.tabs button[data-tab="review"]').click()
@@ -493,7 +492,8 @@ def test_table1_ten_rows_rendered_in_browser():
             expect(page.locator("#row_item_5")).to_be_visible()
             expect(page.locator("#row_item_10")).to_be_visible()
 
-            # 3단 표 (#tier3Rows) 확인: 6, 7, 8, 9번 (총 4행)
+            # 3단 표 (#tier3Rows) 확인: 6, 7, 8, 9번 (총 4행) — 독립 탭 legal-claims
+            page.locator('.tabs button[data-tab="legal-claims"]').click()
             tier3_rows = page.locator("#tier3Rows tr")
             expect(tier3_rows).to_have_count(4)
             expect(page.locator("#tier3Rows #row_item_6")).to_be_visible()
@@ -522,5 +522,5 @@ def test_frontend_app_js_classification_matches_specification():
     assert "취지 왜곡" in app_js or "부당" in app_js  # 6번 행 3단 분기
     assert "참고문헌(구속력 없음)" in app_js  # 참고문헌 구속력 배제 배지
     assert "대조 안 함" in app_js  # 미대조 배지
-    assert "3단 무리한 주장 확인 →" in app_js  # 2단->3단 상호 참조
-    assert "2단 출처 부존재 확인 →" in app_js  # 3단->2단 상호 참조
+    assert "법률적으로 무리한 주장 탭에서 확인 →" in app_js  # 2단->3단 상호 참조
+    assert "출처가 확인되지 않는 항목 탭에서 확인 →" in app_js  # 3단->2단 상호 참조

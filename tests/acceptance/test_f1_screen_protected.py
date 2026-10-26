@@ -116,7 +116,9 @@ def test_t2r_every_finding_title_is_visible_in_ai_tab_or_review_tab():
             out = []
             for _, title, _ in SYNTHETIC:
                 seen = False
-                for tab in ("ai-verification", "review"):
+                # 2026-10-25 사용자 요구(10-19 개선안 4항): '법률적으로 무리한 주장'은 독립 탭(legal-claims)이다.
+                # 정보 손실 감시(어느 탭에든 제목이 보여야 함)는 그대로 두고, 확인할 탭만 넓힌다(평가 측 개정).
+                for tab in ("ai-verification", "review", "legal-claims"):
                     page.evaluate(f"switchTab('{tab}')")
                     if page.locator(f"[data-panel='{tab}']").get_by_text(title).count() > 0:
                         seen = True

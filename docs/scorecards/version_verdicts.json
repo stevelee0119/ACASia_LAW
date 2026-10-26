@@ -200,5 +200,41 @@
   },
   "decided_by": "claude-code (평가 측)",
   "decided_at": "2026-10-25"
+ },
+ {
+  "version": "0.15.0",
+  "from": "0.14.0",
+  "level": "minor",
+  "basis": [
+   "added",
+   "changed",
+   "removed",
+   "fixed",
+   "security"
+  ],
+  "measured_commit": "2f61f82a0b87cc48b7014690b7c9b9d21d0f9460",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.11.15",
+   "tesseract": "5.3.4 kor (CI와 같음)",
+   "scoring": "고정 채점기 불변. 수용 SHA 2f61f82에서 평가 측 측정(오프라인). Steve 3fee071과 제품 diff 0. 기준선(운영 0.14.0 main 28d3397과 같은 값) 대비",
+   "track": "RELEASE_PROCEDURE 2-6 직전 릴리스 결함 교정 간소 경로(2026-10-25 사용자 지시)"
+  },
+  "evidence": {
+   "M1": "dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 기준선(0.14.0)과 같음(변화 0). score_gate 통과, regression_gate(기준 e980640) 회귀 없음. 합산 RER 0",
+   "M2": "봉인 생략(2-6 간소 경로). 개인정보 엔진 변경은 동등성 근거로 대체: 시험 자료 문장 9,728개 detect() 결과 차이 0(의도된 차이 1꼴 — '처방 5mg'류 위치 앞 공백 1자 제외), '군' 표기 줄바꿈·공백 21자 이상 경우 이름을 더 가림(보호 강화 쪽). CI 은퇴 세트 비교 통과",
+   "M3": "fixed: TK-126(0.14.0 화면 오구현 — '확인 방법' 반복 삭제, 프롬프트 버튼 강조, 판정 문구 셀 넘침, 3번째 탭 '법률적으로 무리한 주장' 독립, 배포 캐시), TK-127 1단계(주요참고문헌 대조 의견을 표 행에 통합, 하단 절 제거). changed: 상단 평면 탭 5개, '확인할 항목' → '출처가 확인되지 않는 항목'. removed: 쟁점·활동 기록 화면(API 유지). added: TK-128 두 표 엘박스/AI 프롬프트·외부 AI 답변 붙여넣기→표에 반영(공식 확인 아님), 3단 프롬프트 서버 가림 API. security: 개인정보 탐지 정규식 ReDoS(CodeQL py/polynomial-redos 5건, 최악 입력 40초 초과 → 0.97초/200×2,000자). 모두 #183에서 평가 측 수용·사용자 화면 확인(10-25)",
+   "M4": "개인정보 엔진(packages/pii_engine/detector.py) 정규식 동등 변환 — M2 동등성 근거",
+   "P1": "2f61f82 regression_gate 회귀 없음; verify_all 전체 모드는 2-6에 따라 수용 SHA 단계별 실행(scorecard·score_gate·regression_gate·hardcoding_diff·check_test_edits·check_protected_paths·check_version_policy 모두 0)과 같은 SHA CI로 갈음",
+   "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
+   "P3": "hardcoding_diff 통과(추가 340줄에 시험 입력 값 없음)",
+   "P4": "평가 측 관련 시험 3,837건 실패 0(건너뜀 25), CI 전 스위트(SQLite·PostgreSQL) 성공",
+   "P5": "열린 신규 회귀 티켓 0(TK-126·127은 이 릴리스로 교정, TK-127 2단계·TK-129는 새 기능 과제)",
+   "P6": "이 판정서",
+   "unmeasured": "온라인 경로(공식 DB·Drive·모델) — 이번 변경은 화면·가림 API·개인정보 정규식이라 배포 직후 health SHA·버전 확인으로 갈음(2-6). 실제 운영 데이터 화면은 배포 뒤 사용자 확인"
+  },
+  "decided_by": "claude-code (평가 측)",
+  "decided_at": "2026-10-25"
  }
 ]

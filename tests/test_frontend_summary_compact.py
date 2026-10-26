@@ -77,6 +77,8 @@ def test_summary_metrics_are_compact(width, height, max_cell, tmp_path):
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.evaluate("switchTab('review')")
             page.get_by_text("준비서면.pdf: 추가 관련 법조문 검토", exact=True).click()
+            # 2026-10-25(평가 측 개정): 참고문헌 처리 기록은 표 위 상태 줄을 펼쳐 본다.
+            page.locator("#referenceStatus summary").first.click()
             page.get_by_text("준비서면.pdf: 검색 완료 · AI 대조 미실행", exact=True).click()
             expect(page.get_by_text("민법 제492조", exact=False)).to_contain_text("별도 검토 필요")
             expect(page.get_by_text("12일 × 60000원 = 720000원", exact=True)).to_be_visible()

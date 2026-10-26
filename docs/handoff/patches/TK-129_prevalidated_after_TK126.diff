@@ -1,0 +1,395 @@
+diff --git a/apps/api/routers/reports.py b/apps/api/routers/reports.py
+index 3250219..343e40f 100644
+--- a/apps/api/routers/reports.py
++++ b/apps/api/routers/reports.py
+@@ -19,6 +19,7 @@ from packages.common.enums import AuditEventType
+ from packages.common.storage import get_storage, sha256_bytes
+ from packages.common.terminology import report_label, terminology_catalog
+ from packages.report_engine import build_highlight_pdf, build_report_pdf, to_csv, to_json, to_manifest, to_xlsx
++from packages.report_engine.external_answers import checked_answers, unknown_items
+ from packages.report_engine.snapshot import canonical_hash, remove_sealed, shareable_snapshot, view_from_snapshot
+ 
+ from ..db import (
+@@ -217,6 +218,11 @@ def _resolve_run(session: Session, project_id: str, payload: ReportRequest) -> V
+     if payload.detail_level == "SUMMARY" and "json" not in payload.formats and set(payload.formats) & {"pdf", "docx", "xlsx"}:
+         # 요약본은 전체 기술 기록을 싣지 않으므로, 그 기록을 담은 검증 상세(JSON)를 함께 만든다.
+         payload.formats = [*payload.formats, "json"]
++    if payload.external_ai_answers:
++        unknown = unknown_items(run.result_json or {}, [a.model_dump() for a in payload.external_ai_answers])
++        if unknown:
++            raise HTTPException(422, {"message": "이 검증 결과의 표에 없는 항목의 외부 AI 답변이 있습니다. 화면을 새로 고친 뒤 다시 생성하세요",
++                                      "unknown_item_ids": unknown[:20]})
+     return run
+ 
+ 
+@@ -244,7 +250,8 @@ def _build_draft(session: Session, project: Project, run: VerificationRun, paylo
+                 "audience": payload.audience, "detail_level": payload.detail_level, "created_by": actor,
+                 "created_at": report.created_at.isoformat(), "finalized_by": None, "finalized_at": None,
+                 "note": "", "source_run_id": run.id, "source_run_hash": canonical_hash(engine)}
+-    snapshot = _snapshot(session, project, run, engine, metadata, manifest)
++    external = checked_answers(engine, [a.model_dump() for a in payload.external_ai_answers])
++    snapshot = _snapshot(session, project, run, engine, metadata, manifest, external=external)
+     progress("고정본을 만드는 중", 30)
+     review = _save_review(session, report, snapshot)
+     _generate_artifacts(session, report, review, project, audit, strict=False, progress=progress)
+@@ -539,14 +546,18 @@ def _preflight(project, engine, human):
+     return data
+ 
+ 
+-def _snapshot(session, project, run, engine, metadata, manifest, human=None):
++def _snapshot(session, project, run, engine, metadata, manifest, human=None, external=None):
+     human = human or _human_review(session, project, run, engine)
+     engine_for_report = copy.deepcopy(engine)
+     engine_for_report.pop("timeline", None)
+-    snapshot = remove_sealed({"schema_version": 2, "report": metadata, "engine_result": engine_for_report,
+-                **human, "preflight": _preflight(project, engine, human), "manifest": manifest,
+-                "terminology": terminology_catalog()})
+-    return snapshot
++    frozen = {"schema_version": 2, "report": metadata, "engine_result": engine_for_report,
++              **human, "preflight": _preflight(project, engine, human), "manifest": manifest,
++              "terminology": terminology_catalog()}
++    if external:
++        # TK-129: 고정본 해시에 묶어 초안·확정본·내려받기가 같은 답변을 싣게 한다. 답변이 없으면 키를 두지 않아
++        # 기존 보고서의 고정본 해시가 바뀌지 않는다.
++        frozen["external_ai_answers"] = external
++    return remove_sealed(frozen)
+ 
+ 
+ def _save_review(session, report, snapshot):
+@@ -637,7 +648,8 @@ def finalize_report(report_id: str, payload: ReportFinalizeRequest, session: Ses
+                 "acknowledgments": payload.model_dump(exclude={"note", "expected_preflight_hash"})}
+     audit = make_audit(session)
+     snapshot = _snapshot(session, project, run, frozen["engine_result"], metadata,
+-                         project_manifest(project.id, session=session), human=human)
++                         project_manifest(project.id, session=session), human=human,
++                         external=frozen.get("external_ai_answers"))
+     review = _save_review(session, final, snapshot)
+     _generate_artifacts(session, final, review, project, audit, strict=True)
+     session.commit()
+diff --git a/apps/api/schemas.py b/apps/api/schemas.py
+index 0cb2241..e5f9e82 100644
+--- a/apps/api/schemas.py
++++ b/apps/api/schemas.py
+@@ -171,6 +171,16 @@ class RevealRequest(BaseModel):
+     reviewer: str = "user"
+ 
+ 
++class ExternalAiAnswer(BaseModel):
++    """TK-129: 화면에서 표에 반영한 외부 AI 답변(사용자 입력, 공식 확인 아님)."""
++    code: str = Field(pattern=r"^[AB]\d{1,3}$")
++    item_id: str = Field(min_length=1, max_length=300)
++    verdict: str = Field(default="", max_length=1000)
++    basis: str = Field(default="", max_length=1000)
++    summary: str = Field(default="", max_length=1000)
++    applied_at: str = Field(default="", max_length=60)
++
++
+ class ReportRequest(BaseModel):
+     run_id: Optional[str] = None
+     formats: List[str] = Field(default_factory=lambda: ["pdf", "xlsx", "csv", "json", "manifest"])
+@@ -179,6 +189,8 @@ class ReportRequest(BaseModel):
+     # SUMMARY: 판단에 필요한 내용만 싣고 전체 기술 기록은 검증 상세(JSON)에 보존한다.
+     # FULL: 전체 기술 기록을 PDF·Word·Excel에도 싣는다(인용이 많으면 수천 쪽이 된다).
+     detail_level: Literal["SUMMARY", "FULL"] = "SUMMARY"
++    # TK-129: 브라우저에만 저장된 외부 AI 답변을 보고서 고정본에 싣기 위해 생성 요청에 함께 보낸다.
++    external_ai_answers: List[ExternalAiAnswer] = Field(default_factory=list, max_length=400)
+ 
+     @field_validator("audience", mode="before")
+     @classmethod
+diff --git a/apps/web/static/app.js b/apps/web/static/app.js
+index 3f5370b..894e910 100644
+--- a/apps/web/static/app.js
++++ b/apps/web/static/app.js
+@@ -431,9 +431,15 @@ function parseExternalAnswers(text) {
+   }
+   return [...answers.values()];
+ }
+-function externalStoreKey() { return `acas.externalAi.${state.project?.id || "none"}.${state.run?.id || "none"}`; }
+-function loadExternalStore() {
+-  try { return JSON.parse(localStorage.getItem(externalStoreKey()) || "{}") || {}; } catch (e) { return {}; }
++function externalStoreKey(projectId = state.project?.id, runId = state.run?.id) { return `acas.externalAi.${projectId || "none"}.${runId || "none"}`; }
++function loadExternalStore(projectId, runId) {
++  try { return JSON.parse(localStorage.getItem(externalStoreKey(projectId, runId)) || "{}") || {}; } catch (e) { return {}; }
++}
++// TK-129: 보고서 생성 요청에 함께 보낼, 표에 반영한 답변 목록(번호와 행이 모두 남아 있는 것만).
++function externalAnswersForReport(projectId, runId) {
++  const store = loadExternalStore(projectId, runId);
++  return Object.entries(store.answers || {}).filter(([code]) => store.codes?.[code]).map(([code, a]) => ({
++    code, item_id: store.codes[code], verdict: a.verdict || "", basis: a.basis || "", summary: a.summary || "", applied_at: a.applied_at || ""}));
+ }
+ function saveExternalStore(store) {
+   try { localStorage.setItem(externalStoreKey(), JSON.stringify(store)); } catch (e) { toast("이 브라우저에 답변을 저장하지 못했습니다. 화면을 새로 고치면 사라집니다."); }
+diff --git a/apps/web/static/report-workbench.js b/apps/web/static/report-workbench.js
+index 13cfc0b..8bd249c 100644
+--- a/apps/web/static/report-workbench.js
++++ b/apps/web/static/report-workbench.js
+@@ -61,15 +61,18 @@ const reportWorkbench = (() => {
+     // 수천 쪽이 되므로, 그 기록은 검증 상세(JSON)로 함께 만들어 보존한다.
+     const depth=workflowUI.field("detail_level","보고서 분량","SUMMARY","text",
+       {SUMMARY:"요약본 (권장) — 전체 기술 기록은 검증 상세(JSON)로 함께 생성",FULL:"전체 기술 기록 포함 — 매우 길어질 수 있음"});
+-    const editor=workflowUI.modal("검토 보고서 초안",[
+-      workflowUI.field("audience","보고서 용도","INTERNAL","text",{INTERNAL:"내부 검토용",SHAREABLE:"공유용 (내부 메모 제외)"}), depth, choices, view.box
+-    ],async(values,form)=>{
++    // TK-129: 표에 반영한 외부 AI 답변(브라우저 저장)을 보고서에 '외부 AI 참고 의견(공식 확인 아님)'으로 싣는다.
++    const external=typeof externalAnswersForReport==="function"?externalAnswersForReport(pid,run.id):[];
++    const fields=[workflowUI.field("audience","보고서 용도","INTERNAL","text",{INTERNAL:"내부 검토용",SHAREABLE:"공유용 (내부 메모 제외)"}), depth, choices];
++    if(external.length)fields.push(workflowUI.field("include_external_ai",`표에 반영한 외부 AI 답변 ${external.length}건을 '외부 AI 참고 의견(공식 확인 아님)'으로 함께 싣기`,true,"checkbox"));
++    const editor=workflowUI.modal("검토 보고서 초안",[...fields, view.box],async(values,form)=>{
+       const selected=Object.keys(formats).filter(key=>form.elements[key].checked);
+       if(!selected.length)throw new Error("보고서 형식을 하나 이상 선택하세요.");
+       const inputs=[...form.querySelectorAll("select, input")];
+       inputs.forEach(input=>{input.disabled=true;});
+       try{
+-        const job=await api(`/projects/${pid}/report-jobs`,{method:"POST",body:{run_id:run.id,formats:selected,audience:values.audience,detail_level:values.detail_level,include_sealed:false}});
++        const job=await api(`/projects/${pid}/report-jobs`,{method:"POST",body:{run_id:run.id,formats:selected,audience:values.audience,detail_level:values.detail_level,include_sealed:false,
++          external_ai_answers:form.elements.include_external_ai?.checked?external:[]}});
+         watching.add(job.job_id);
+         try{
+           const done=await follow(job,view,()=>editor.dialog.isConnected);
+diff --git a/packages/report_engine/docx_report.py b/packages/report_engine/docx_report.py
+index 14931ff..c8736b9 100644
+--- a/packages/report_engine/docx_report.py
++++ b/packages/report_engine/docx_report.py
+@@ -225,6 +225,13 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
+     else:
+         paragraph("해당 무리한 주장 또는 참고자료 모순 항목이 없습니다.")
+ 
++    from .external_answers import EXTERNAL_AI_HEADERS, EXTERNAL_AI_NOTICE, EXTERNAL_AI_TITLE, external_answer_rows
++    external_rows = external_answer_rows(snapshot)
++    if external_rows:
++        doc.add_heading(EXTERNAL_AI_TITLE, 2)
++        paragraph(EXTERNAL_AI_NOTICE)
++        table(EXTERNAL_AI_HEADERS, external_rows, [0.5, 1.5, 0.9, 1.4, 1.9, 0.8])
++
+     from packages.legal_engine.related_authorities import report_lines as related_lines
+     for line in related_lines(run_result.documents):
+         paragraph(line)
+diff --git a/packages/report_engine/exporters.py b/packages/report_engine/exporters.py
+index 9a0c094..f5298f3 100644
+--- a/packages/report_engine/exporters.py
++++ b/packages/report_engine/exporters.py
+@@ -233,6 +233,14 @@ def to_xlsx(run_result: Any, *, reveal_sealed: bool = False) -> bytes:
+         append(matrix, [row["claim"].get("claim_id"), row.get("document_id"), row["claim"].get("text"),
+                         assessment.get("issue_id"), assessment.get("position"), row.get("review_status"),
+                         assessment.get("evidence_links", []), assessment.get("missing_material"), assessment.get("note")])
++    from .external_answers import EXTERNAL_AI_HEADERS, external_answer_rows
++
++    external_rows = external_answer_rows(snapshot)
++    if external_rows:
++        external_sheet = workbook.create_sheet("외부AI참고의견")
++        append(external_sheet, EXTERNAL_AI_HEADERS)
++        for row in external_rows:
++            append(external_sheet, row)
+     issues = workbook.create_sheet("쟁점")
+     columns = ["id", "title", "elements", "reference_date", "legal_basis", "priority", "note"]
+     append(issues, columns)
+diff --git a/packages/report_engine/external_answers.py b/packages/report_engine/external_answers.py
+new file mode 100644
+index 0000000..dc0d658
+--- /dev/null
++++ b/packages/report_engine/external_answers.py
+@@ -0,0 +1,49 @@
++"""TK-129: 검토자가 화면 표에 반영한 외부 AI 답변을 보고서에 싣는다.
++
++답변은 사용자가 붙여넣은 외부 AI(엘박스 등)의 의견이다. 공식 확인이 아니므로 판정·등급·점수에는
++쓰지 않고, 보고서에는 별도 절로만 싣는다. 대상 문구는 브라우저가 보낸 값을 쓰지 않고 고정된
++검증 결과의 표 항목(review_items)에서 다시 찾는다.
++"""
++from __future__ import annotations
++
++from typing import Any, Dict, List
++
++EXTERNAL_AI_TITLE = "외부 AI 참고 의견 (사용자 입력, 공식 확인 아님)"
++EXTERNAL_AI_NOTICE = ("엘박스 등 외부 AI의 답변을 검토자가 표에 반영한 것입니다. 공식 DB 판정·등급·점수에는 쓰지 않았으며, "
++                      "판례·법령 원문은 판결서·국가법령정보센터로 확인해야 합니다.")
++EXTERNAL_AI_HEADERS = ["번호", "대상", "판정", "근거", "요지", "반영 시각"]
++
++
++def _targets(engine: Dict[str, Any]) -> Dict[str, str]:
++    """표 항목 id → 대상 문구. 화면이 만드는 참고문헌 행 id(`{문서}_REFERENCE_{claim_id}`)도 포함한다."""
++    targets: Dict[str, str] = {}
++    for doc in engine.get("documents", []) or []:
++        doc_id = doc.get("id") or doc.get("document_id") or ""
++        for item in doc.get("review_items", []) or []:
++            if item.get("item_id"):
++                targets[item["item_id"]] = str(item.get("cited_authority") or item.get("claim_text") or item["item_id"])
++        for observation in ((doc.get("engine_data") or {}).get("rag") or {}).get("observations", []) or []:
++            if observation.get("claim_id"):
++                targets.setdefault(f"{doc_id}_REFERENCE_{observation['claim_id']}",
++                                   str(observation.get("claim_quote") or observation["claim_id"]))
++    return targets
++
++
++def unknown_items(engine: Dict[str, Any], answers: List[Dict[str, Any]]) -> List[str]:
++    targets = _targets(engine)
++    return sorted({a["item_id"] for a in answers if a["item_id"] not in targets})
++
++
++def checked_answers(engine: Dict[str, Any], answers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
++    """번호 순으로 정렬하고 대상 문구를 고정 결과에서 채운다. 같은 번호는 마지막 것만 남긴다."""
++    targets = _targets(engine)
++    by_code: Dict[str, Dict[str, Any]] = {}
++    for answer in answers:
++        if answer["item_id"] in targets:
++            by_code[answer["code"]] = {**answer, "target": targets[answer["item_id"]][:500]}
++    return [by_code[code] for code in sorted(by_code, key=lambda c: (c[0], int(c[1:])))]
++
++
++def external_answer_rows(snapshot: Dict[str, Any]) -> List[List[str]]:
++    return [[a.get("code", ""), a.get("target", ""), a.get("verdict", ""), a.get("basis", ""),
++             a.get("summary", ""), a.get("applied_at", "")] for a in (snapshot or {}).get("external_ai_answers", []) or []]
+diff --git a/packages/report_engine/pdf_report.py b/packages/report_engine/pdf_report.py
+index 48f4f0a..0fbc938 100644
+--- a/packages/report_engine/pdf_report.py
++++ b/packages/report_engine/pdf_report.py
+@@ -289,6 +289,14 @@ def build_report_pdf(
+     else:
+         story.append(Paragraph(_escape("해당 무리한 주장 또는 참고자료 모순 항목이 없습니다."), styles["body"]))
+ 
++    from .external_answers import EXTERNAL_AI_HEADERS, EXTERNAL_AI_NOTICE, EXTERNAL_AI_TITLE, external_answer_rows
++    external_rows = external_answer_rows(getattr(run_result, "review_snapshot", {}))
++    if external_rows:
++        story.append(Spacer(1, 4))
++        story.append(Paragraph(_escape(EXTERNAL_AI_TITLE), styles["h2"]))
++        story.append(Paragraph(_escape(EXTERNAL_AI_NOTICE), styles["small"]))
++        story.append(table([EXTERNAL_AI_HEADERS, *external_rows], [30, 120, 60, 110, 120, 50]))
++
+     from packages.legal_engine.related_authorities import report_lines as related_lines
+     for line in related_lines(run_result.documents):
+         story.append(Paragraph(_escape(line), styles["small"]))
+diff --git a/tests/test_tk129_report_external_answers.py b/tests/test_tk129_report_external_answers.py
+new file mode 100644
+index 0000000..41e93cc
+--- /dev/null
++++ b/tests/test_tk129_report_external_answers.py
+@@ -0,0 +1,130 @@
++# -*- coding: utf-8 -*-
++"""TK-129 (2026-10-25 사용자 요구) 표에 반영한 외부 AI 답변을 보고서에 싣는다.
++
++원문: "AI 검토내용이 표에 반영된 후 다시 보고서를 생성할때, 그 내용이 보고서 내용에 반영되도록 기능구현을 하면,
++보고서가 브라우저 저장된 AI 답변을 담을 수 있지 않을까?"
++"""
++from __future__ import annotations
++
++import copy
++import io
++import json
++import zipfile
++from urllib.parse import urlsplit
++
++import openpyxl
++from playwright.sync_api import expect, sync_playwright
++from pypdf import PdfReader
++
++from apps.api.schemas import ReportRequest
++from apps.api.workspace import ReportReview
++from apps.api.snapshot_store import unpack as unpack_snapshot
++from test_report_completion import create, download, finalize, report_case  # noqa: F401
++import test_tk126_flat_tabs_answer_import as screen
++
++TITLE = "외부 AI 참고 의견 (사용자 입력, 공식 확인 아님)"
++
++
++def _with_table_items(case):
++    result = copy.deepcopy(case.run.result_json)
++    doc = result["documents"][0]
++    doc["review_items"] = [{"item_id": "d1_CITATION_cit_1", "kind": "CITATION", "cited_authority": "대법원 2022다99999 판결",
++                            "claim_text": "청구권 행사 기한 주장"}]
++    doc["engine_data"]["rag"] = {"observations": [{"claim_id": "c1", "claim_quote": "참고문헌과 다른 주장 문장",
++                                                    "relationship": "CONTRADICTS"}]}
++    case.run.result_json = result
++    case.session.commit()
++
++
++ANSWERS = [
++    {"code": "A1", "item_id": "d1_CITATION_cit_1", "verdict": "부존재", "basis": "해당 사건번호 없음",
++     "summary": "같은 쟁점의 실제 판례 확인 필요", "applied_at": "2026. 10. 25. 오후 1:00"},
++    {"code": "B1", "item_id": "d1_REFERENCE_c1", "verdict": "불일치", "basis": "민법 제543조",
++     "summary": "=HYPERLINK(\"https://invalid.example\") 해지 의사표시 필요", "applied_at": ""},
++]
++
++
++def _create(case, answers, formats, audience="INTERNAL"):
++    response = case.client.post("/api/projects/p1/reports",
++                                json={"audience": audience, "formats": formats, "external_ai_answers": answers})
++    assert response.status_code == 201, response.text
++    return response.json()
++
++
++def test_answers_are_frozen_into_every_format_and_survive_finalize(report_case):  # noqa: F811
++    case = report_case
++    _with_table_items(case)
++    draft = _create(case, ANSWERS, ["pdf", "docx", "xlsx", "json"])
++    final = finalize(case, draft)
++    assert final.status_code == 201, final.text
++    for report in (draft, final.json()):
++        pdf = "\n".join(p.extract_text() for p in PdfReader(io.BytesIO(download(case, report, "pdf"))).pages)
++        xml = zipfile.ZipFile(io.BytesIO(download(case, report, "docx"))).read("word/document.xml").decode()
++        workbook = openpyxl.load_workbook(io.BytesIO(download(case, report, "xlsx")))
++        payload = json.loads(download(case, report, "json"))
++        for text in (pdf, xml):
++            assert "외부 AI 참고 의견" in text and "부존재" in text and "민법 제543조" in text
++        sheet = workbook["외부AI참고의견"]
++        rows = [[c.value for c in row] for row in sheet.iter_rows()]
++        assert rows[0] == ["번호", "대상", "판정", "근거", "요지", "반영 시각"]
++        # 대상 문구는 브라우저 값이 아니라 고정 결과의 표 항목에서 찾는다.
++        assert rows[1][:3] == ["A1", "대법원 2022다99999 판결", "부존재"]
++        assert rows[2][1] == "참고문헌과 다른 주장 문장"
++        assert str(rows[2][4]).startswith("'=")  # 수식으로 실행되지 않게 막는다
++        assert [a["code"] for a in payload["review_snapshot"]["external_ai_answers"]] == ["A1", "B1"]
++
++
++def test_unknown_table_item_is_rejected_and_no_answers_keep_snapshot_unchanged(report_case):  # noqa: F811
++    case = report_case
++    _with_table_items(case)
++    bad = case.client.post("/api/projects/p1/reports", json={"formats": ["json"], "external_ai_answers": [
++        {**ANSWERS[0], "item_id": "other-run-item"}]})
++    assert bad.status_code == 422 and "other-run-item" in bad.text
++    assert case.client.post("/api/projects/p1/reports", json={"formats": ["json"], "external_ai_answers": [
++        {**ANSWERS[0], "code": "C1"}]}).status_code == 422
++    plain = create(case, ["json"])
++    snapshot = unpack_snapshot(case.storage, case.session.get(ReportReview, plain["report_id"]).review_snapshot)
++    assert "external_ai_answers" not in snapshot
++
++
++def test_shareable_report_masks_personal_data_in_answers(report_case):  # noqa: F811
++    case = report_case
++    _with_table_items(case)
++    answers = [{**ANSWERS[0], "summary": "원고 홍길동 user@example.com 관련 판례 없음"}]
++    draft = _create(case, answers, ["json", "docx"], "SHAREABLE")
++    output = download(case, draft, "json").decode()
++    xml = zipfile.ZipFile(io.BytesIO(download(case, draft, "docx"))).read("word/document.xml").decode()
++    for text in (output, xml):
++        assert "관련 판례 없음" in text and "홍길동" not in text and "user@example.com" not in text
++
++
++def test_report_job_request_round_trips_answers():
++    request = ReportRequest(formats=["json"], external_ai_answers=ANSWERS)
++    assert ReportRequest(**request.model_dump()).external_ai_answers == request.external_ai_answers
++
++
++def test_report_dialog_sends_answers_reflected_in_table():
++    bodies = []
++    with sync_playwright() as p:
++        browser, page = screen._page(p, [])
++        page.on("request", lambda r: bodies.append(r.post_data_json) if r.url.endswith("/report-jobs") and r.method == "POST" else None)
++        page.route("**/api/projects/p1/report-jobs", lambda route: route.fulfill(json={
++            "job_id": "j1", "state": "FAILED", "stage": "", "percent": 0, "error": "시험 중단", "formats": ["json"]}))
++        page.locator('.tabs [data-tab="review"]').click()
++        bar = page.locator("#reviewTableActions")
++        bar.get_by_role("button", name="📋 엘박스/AI 검증 프롬프트 만들기").click()
++        bar.get_by_role("button", name="📥 외부 AI 답변 붙여넣기").click()
++        dialog = page.get_by_role("dialog", name="외부 AI 답변 붙여넣기")
++        dialog.locator("textarea").fill("<<<ACAS_RESULT\nA1 | 판정: 부존재 | 근거: 없음 | 요지: 확인 필요\nACAS_RESULT>>>")
++        dialog.get_by_role("button", name="저장").click()
++        page.get_by_role("dialog", name="표에 반영할 답변 1건 확인").get_by_role("button", name="표에 반영").click()
++        page.locator("#reportBtn").click()
++        report = page.get_by_role("dialog", name="검토 보고서 초안")
++        checkbox = report.get_by_label("표에 반영한 외부 AI 답변 1건을 '외부 AI 참고 의견(공식 확인 아님)'으로 함께 싣기")
++        expect(checkbox).to_be_checked()
++        report.get_by_role("button", name="초안 생성").click()
++        page.wait_for_timeout(500)
++        assert bodies and bodies[-1]["external_ai_answers"][0]["code"] == "A1"
++        assert bodies[-1]["external_ai_answers"][0]["item_id"] == "item_a"
++        assert bodies[-1]["external_ai_answers"][0]["verdict"] == "부존재"
++        browser.close()
