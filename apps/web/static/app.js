@@ -435,11 +435,18 @@ function externalStoreKey(projectId = state.project?.id, runId = state.run?.id) 
 function loadExternalStore(projectId, runId) {
   try { return JSON.parse(localStorage.getItem(externalStoreKey(projectId, runId)) || "{}") || {}; } catch (e) { return {}; }
 }
-// TK-129: 보고서 생성 요청에 함께 보낼, 표에 반영한 답변 목록(번호와 행이 모두 남아 있는 것만).
+// TK-129: 보고서 생성 요청에 함께 보낼, 표에 반영한 답변 목록.
+// 답변-행 연결을 코드가 아니라 원래 항목 ID에 고정하여, 프롬프트 갱신 후 코드가 재할당되어도 이전 답변이 오염 전송되지 않도록 한다.
 function externalAnswersForReport(projectId, runId) {
   const store = loadExternalStore(projectId, runId);
-  return Object.entries(store.answers || {}).filter(([code]) => store.codes?.[code]).map(([code, a]) => ({
-    code, item_id: store.codes[code], verdict: a.verdict || "", basis: a.basis || "", summary: a.summary || "", applied_at: a.applied_at || ""}));
+  return Object.entries(store.answers || {})
+    .filter(([code, a]) => {
+      const boundItemId = store.codes?.[code];
+      return boundItemId && (!a.item_id || a.item_id === boundItemId);
+    })
+    .map(([code, a]) => ({
+      code, item_id: a.item_id || store.codes[code],
+      verdict: a.verdict || "", basis: a.basis || "", summary: a.summary || "", applied_at: a.applied_at || ""}));
 }
 function saveExternalStore(store) {
   try { localStorage.setItem(externalStoreKey(), JSON.stringify(store)); } catch (e) { toast("이 브라우저에 답변을 저장하지 못했습니다. 화면을 새로 고치면 사라집니다."); }
@@ -447,13 +454,28 @@ function saveExternalStore(store) {
 function rememberPromptCodes(prefix, items) {
   const store = loadExternalStore();
   store.codes = {...(store.codes || {})};
+  store.answers = {...(store.answers || {})};
   for (const key of Object.keys(store.codes)) if (key.startsWith(prefix)) delete store.codes[key];
-  items.forEach((item, index) => { store.codes[`${prefix}${index + 1}`] = item.item_id; });
+  items.forEach((item, index) => {
+    const code = `${prefix}${index + 1}`;
+    store.codes[code] = item.item_id;
+    // 코드가 다른 항목에 재할당된 경우 기존 답변을 삭제하여 오염을 방지한다.
+    if (store.answers[code] && store.answers[code].item_id && store.answers[code].item_id !== item.item_id) {
+      delete store.answers[code];
+    }
+  });
   saveExternalStore(store);
 }
 function applyStoredExternalAnswers(items) {
   const store = loadExternalStore();
-  const byItem = new Map(Object.entries(store.answers || {}).map(([code, answer]) => [store.codes?.[code], {...answer, code}]));
+  // 원래 항목 ID와 현재 코드가 일치하는 유효한 답변만 표에 연결
+  const byItem = new Map();
+  for (const [code, answer] of Object.entries(store.answers || {})) {
+    const boundItemId = store.codes?.[code];
+    if (boundItemId && (!answer.item_id || answer.item_id === boundItemId)) {
+      byItem.set(boundItemId, {...answer, code, item_id: boundItemId});
+    }
+  }
   for (const item of items) if (byItem.has(item.item_id)) item.external_ai_answer = byItem.get(item.item_id);
 }
 function externalAnswerBlock(answer) {
@@ -493,7 +515,11 @@ function previewExternalAnswers(answers, missing, rowsByCode) {
     const store = loadExternalStore();
     store.answers = {...(store.answers || {})};
     const appliedAt = new Date().toLocaleString("ko-KR");
-    for (const a of answers) store.answers[a.code] = {...a, applied_at: appliedAt};
+    for (const a of answers) {
+      const row = rowsByCode.get(a.code);
+      // 답변 저장 시 원래 item_id를 함께 보존하여 코드 재할당 시 오염을 방지한다.
+      store.answers[a.code] = {...a, item_id: row?.item_id || a.item_id || "", applied_at: appliedAt};
+    }
     saveExternalStore(store);
     renderFindings();
     toast(`외부 AI 답변 ${answers.length}건을 표에 반영했습니다(공식 확인 아님).`);

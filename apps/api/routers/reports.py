@@ -19,7 +19,7 @@ from packages.common.enums import AuditEventType
 from packages.common.storage import get_storage, sha256_bytes
 from packages.common.terminology import report_label, terminology_catalog
 from packages.report_engine import build_highlight_pdf, build_report_pdf, to_csv, to_json, to_manifest, to_xlsx
-from packages.report_engine.external_answers import checked_answers, unknown_items
+from packages.report_engine.external_answers import checked_answers, unknown_items, validate_answers
 from packages.report_engine.snapshot import canonical_hash, remove_sealed, shareable_snapshot, view_from_snapshot
 
 from ..db import (
@@ -219,9 +219,11 @@ def _resolve_run(session: Session, project_id: str, payload: ReportRequest) -> V
         # 요약본은 전체 기술 기록을 싣지 않으므로, 그 기록을 담은 검증 상세(JSON)를 함께 만든다.
         payload.formats = [*payload.formats, "json"]
     if payload.external_ai_answers:
-        unknown = unknown_items(run.result_json or {}, [a.model_dump() for a in payload.external_ai_answers])
-        if unknown:
-            raise HTTPException(422, {"message": "이 검증 결과의 표에 없는 항목의 외부 AI 답변이 있습니다. 화면을 새로 고친 뒤 다시 생성하세요",
+        answer_dicts = [a.model_dump() for a in payload.external_ai_answers]
+        errors = validate_answers(run.result_json or {}, answer_dicts)
+        if errors:
+            unknown = unknown_items(run.result_json or {}, answer_dicts)
+            raise HTTPException(422, {"message": errors[0], "errors": errors,
                                       "unknown_item_ids": unknown[:20]})
     return run
 
@@ -557,6 +559,14 @@ def _snapshot(session, project, run, engine, metadata, manifest, human=None, ext
         # TK-129: 고정본 해시에 묶어 초안·확정본·내려받기가 같은 답변을 싣게 한다. 답변이 없으면 키를 두지 않아
         # 기존 보고서의 고정본 해시가 바뀌지 않는다.
         frozen["external_ai_answers"] = external
+        frozen["external_ai_metadata"] = {
+            "official": False,
+            "source": "external_ai",
+            "title": "외부 AI 참고 의견 (사용자 입력, 공식 확인 아님)",
+            "notice": ("엘박스 등 외부 AI의 답변을 검토자가 표에 반영한 것입니다. 공식 DB 판정·등급·점수에는 쓰지 않았으며, "
+                       "판례·법령 원문은 판결서·국가법령정보센터로 확인해야 합니다."),
+            "count": len(external),
+        }
     return remove_sealed(frozen)
 
 

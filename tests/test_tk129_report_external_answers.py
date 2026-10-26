@@ -19,29 +19,35 @@ from pypdf import PdfReader
 from apps.api.schemas import ReportRequest
 from apps.api.workspace import ReportReview
 from apps.api.snapshot_store import unpack as unpack_snapshot
+from packages.report_engine.external_answers import (
+    EXTERNAL_AI_HEADERS,
+    EXTERNAL_AI_NOTICE,
+    EXTERNAL_AI_STATUS_LABEL,
+    EXTERNAL_AI_TITLE,
+)
 from test_report_completion import create, download, finalize, report_case  # noqa: F401
 import test_tk126_flat_tabs_answer_import as screen
 
-TITLE = "외부 AI 참고 의견 (사용자 입력, 공식 확인 아님)"
+# 사건번호 형태(2022다99999 등) 리터럴 의존을 방지하기 위해 일반 합성 인용구 사용
+SYNTHETIC_CITATION = "예시 판례 인용구"
+
+ANSWERS = [
+    {"code": "A1", "item_id": "d1_CITATION_cit_1", "verdict": "부존재", "basis": "해당 판례 없음",
+     "summary": "같은 쟁점의 실제 판례 확인 필요", "applied_at": "2026. 10. 25. 오후 1:00"},
+    {"code": "B1", "item_id": "d1_REFERENCE_c1", "verdict": "불일치", "basis": "민법 제543조",
+     "summary": "=HYPERLINK(\"https://invalid.example\") 해지 의사표시 필요", "applied_at": ""},
+]
 
 
 def _with_table_items(case):
     result = copy.deepcopy(case.run.result_json)
     doc = result["documents"][0]
-    doc["review_items"] = [{"item_id": "d1_CITATION_cit_1", "kind": "CITATION", "cited_authority": "대법원 2022다99999 판결",
+    doc["review_items"] = [{"item_id": "d1_CITATION_cit_1", "kind": "CITATION", "cited_authority": SYNTHETIC_CITATION,
                             "claim_text": "청구권 행사 기한 주장"}]
     doc["engine_data"]["rag"] = {"observations": [{"claim_id": "c1", "claim_quote": "참고문헌과 다른 주장 문장",
                                                     "relationship": "CONTRADICTS"}]}
     case.run.result_json = result
     case.session.commit()
-
-
-ANSWERS = [
-    {"code": "A1", "item_id": "d1_CITATION_cit_1", "verdict": "부존재", "basis": "해당 사건번호 없음",
-     "summary": "같은 쟁점의 실제 판례 확인 필요", "applied_at": "2026. 10. 25. 오후 1:00"},
-    {"code": "B1", "item_id": "d1_REFERENCE_c1", "verdict": "불일치", "basis": "민법 제543조",
-     "summary": "=HYPERLINK(\"https://invalid.example\") 해지 의사표시 필요", "applied_at": ""},
-]
 
 
 def _create(case, answers, formats, audience="INTERNAL"):
@@ -52,6 +58,7 @@ def _create(case, answers, formats, audience="INTERNAL"):
 
 
 def test_answers_are_frozen_into_every_format_and_survive_finalize(report_case):  # noqa: F811
+    """모든 지원 포맷(PDF, Word, Excel, JSON)에 비공식성 표시가 일관되게 포함되는지 검증."""
     case = report_case
     _with_table_items(case)
     draft = _create(case, ANSWERS, ["pdf", "docx", "xlsx", "json"])
@@ -62,26 +69,105 @@ def test_answers_are_frozen_into_every_format_and_survive_finalize(report_case):
         xml = zipfile.ZipFile(io.BytesIO(download(case, report, "docx"))).read("word/document.xml").decode()
         workbook = openpyxl.load_workbook(io.BytesIO(download(case, report, "xlsx")))
         payload = json.loads(download(case, report, "json"))
+
+        # PDF 및 DOCX 비공식성 표시 검증
         for text in (pdf, xml):
-            assert "외부 AI 참고 의견" in text and "부존재" in text and "민법 제543조" in text
+            assert EXTERNAL_AI_TITLE in text and "부존재" in text and "민법 제543조" in text
+            assert EXTERNAL_AI_NOTICE in text or "공식 확인 아님" in text
+
+        # XLSX 안내 행 및 안내 열 검증
         sheet = workbook["외부AI참고의견"]
         rows = [[c.value for c in row] for row in sheet.iter_rows()]
-        assert rows[0] == ["번호", "대상", "판정", "근거", "요지", "반영 시각"]
-        # 대상 문구는 브라우저 값이 아니라 고정 결과의 표 항목에서 찾는다.
-        assert rows[1][:3] == ["A1", "대법원 2022다99999 판결", "부존재"]
-        assert rows[2][1] == "참고문헌과 다른 주장 문장"
-        assert str(rows[2][4]).startswith("'=")  # 수식으로 실행되지 않게 막는다
-        assert [a["code"] for a in payload["review_snapshot"]["external_ai_answers"]] == ["A1", "B1"]
+        # 1행: 비공식성 안내 행
+        assert rows[0][0] == f"[안내] {EXTERNAL_AI_TITLE}: {EXTERNAL_AI_NOTICE}"
+        # 2행: 헤더 (공식 여부 안내 열 포함)
+        assert rows[1] == EXTERNAL_AI_HEADERS
+        # 3행: 첫 번째 데이터 행
+        assert rows[2][:3] == ["A1", SYNTHETIC_CITATION, "부존재"]
+        assert rows[2][6] == EXTERNAL_AI_STATUS_LABEL
+        assert rows[3][1] == "참고문헌과 다른 주장 문장"
+        assert str(rows[3][4]).startswith("'=")  # 수식 인젝션 방지
+        assert rows[3][6] == EXTERNAL_AI_STATUS_LABEL
+
+        # JSON official=false 메타데이터 및 안내문 검증
+        snapshot = payload["review_snapshot"]
+        assert snapshot["external_ai_metadata"]["official"] is False
+        assert snapshot["external_ai_metadata"]["notice"] == EXTERNAL_AI_NOTICE
+        answers = snapshot["external_ai_answers"]
+        assert len(answers) == 2
+        for a in answers:
+            assert a["official"] is False
+            assert a["source"] == "external_ai"
+            assert a["notice"] == EXTERNAL_AI_NOTICE
 
 
-def test_unknown_table_item_is_rejected_and_no_answers_keep_snapshot_unchanged(report_case):  # noqa: F811
+def test_csv_scope_and_notice_included_in_metadata(report_case):  # noqa: F811
+    """CSV 지원 범위(단일 표 특성상 제외됨) 및 비공식성 안내가 메타데이터에 명시되는지 검증."""
     case = report_case
     _with_table_items(case)
-    bad = case.client.post("/api/projects/p1/reports", json={"formats": ["json"], "external_ai_answers": [
+    draft = _create(case, ANSWERS, ["csv"])
+    csv_bytes = download(case, draft, "csv")
+    csv_text = csv_bytes.decode("utf-8-sig")
+    assert "external_ai_scope" in csv_text
+    assert "공식 확인 아님" in csv_text
+
+
+def test_legacy_fallback_items_and_observation_without_claim_id_are_accepted(report_case):  # noqa: F811
+    """review_items가 없는 레거시 fallback 행 및 claim_id 없는 관찰 행도 422 없이 성공적으로 고정되는지 검증."""
+    case = report_case
+    result = copy.deepcopy(case.run.result_json)
+    doc = result["documents"][0]
+    # review_items를 완전히 비움 (레거시 환경 재현)
+    doc["review_items"] = []
+    doc["ai_hallucination_table"] = [
+        {"citation_id": "fb_cit_1", "cited_authority": "폴백 판례 인용구", "claim_text": "폴백 주장", "validity_verdict": "미확인"}
+    ]
+    # claim_id가 없는 참고문헌 관찰
+    doc["engine_data"]["rag"] = {
+        "observations": [
+            {"claim_quote": "claim_id 없는 관찰 문장", "relationship": "INSUFFICIENT"}
+        ]
+    }
+    case.run.result_json = result
+    case.session.commit()
+
+    doc_id = doc.get("id") or doc.get("document_id")
+    fallback_answers = [
+        {"code": "A1", "item_id": f"{doc_id}_CITATION_fb_cit_1", "verdict": "확인", "basis": "근거", "summary": "요약", "applied_at": ""},
+        {"code": "B1", "item_id": f"{doc_id}_REFERENCE_0", "verdict": "참고", "basis": "법령", "summary": "관찰 답변", "applied_at": ""},
+    ]
+
+    draft = _create(case, fallback_answers, ["json"])
+    assert draft["report_id"] is not None
+    payload = json.loads(download(case, draft, "json"))
+    answers = payload["review_snapshot"]["external_ai_answers"]
+    assert len(answers) == 2
+    assert answers[0]["code"] == "A1" and answers[0]["target"] == "폴백 판례 인용구"
+    assert answers[1]["code"] == "B1" and answers[1]["target"] == "claim_id 없는 관찰 문장"
+
+
+def test_unknown_table_item_and_code_conflicts_are_rejected(report_case):  # noqa: F811
+    """존재하지 않는 항목이나 코드 충돌이 422로 거부되는지 검증."""
+    case = report_case
+    _with_table_items(case)
+    # 1) 존재하지 않는 항목 ID
+    bad_item = case.client.post("/api/projects/p1/reports", json={"formats": ["json"], "external_ai_answers": [
         {**ANSWERS[0], "item_id": "other-run-item"}]})
-    assert bad.status_code == 422 and "other-run-item" in bad.text
-    assert case.client.post("/api/projects/p1/reports", json={"formats": ["json"], "external_ai_answers": [
-        {**ANSWERS[0], "code": "C1"}]}).status_code == 422
+    assert bad_item.status_code == 422 and "other-run-item" in bad_item.text
+
+    # 2) 유효하지 않은 코드 형식
+    bad_code = case.client.post("/api/projects/p1/reports", json={"formats": ["json"], "external_ai_answers": [
+        {**ANSWERS[0], "code": "INVALID_CODE"}]})
+    assert bad_code.status_code == 422
+
+    # 3) 동일 코드에 서로 다른 item_id 바인딩 시도
+    conflict = case.client.post("/api/projects/p1/reports", json={"formats": ["json"], "external_ai_answers": [
+        ANSWERS[0],
+        {**ANSWERS[1], "code": "A1", "item_id": "d1_REFERENCE_c1"}
+    ]})
+    assert conflict.status_code == 422
+
+    # 답변 없는 요청은 external_ai_answers 키를 생성하지 않음
     plain = create(case, ["json"])
     snapshot = unpack_snapshot(case.storage, case.session.get(ReportReview, plain["report_id"]).review_snapshot)
     assert "external_ai_answers" not in snapshot
@@ -101,6 +187,47 @@ def test_shareable_report_masks_personal_data_in_answers(report_case):  # noqa: 
 def test_report_job_request_round_trips_answers():
     request = ReportRequest(formats=["json"], external_ai_answers=ANSWERS)
     assert ReportRequest(**request.model_dump()).external_ai_answers == request.external_ai_answers
+
+
+def test_prompt_refresh_code_reuse_regression():
+    """프롬프트 갱신으로 코드가 다른 행에 재할당되었을 때 이전 답변이 오염 전송되지 않는 브라우저 로직 회귀 시험."""
+    bodies = []
+    with sync_playwright() as p:
+        browser, page = screen._page(p, [])
+        page.on("request", lambda r: bodies.append(r.post_data_json) if r.url.endswith("/report-jobs") and r.method == "POST" else None)
+        page.route("**/api/projects/p1/report-jobs", lambda route: route.fulfill(json={
+            "job_id": "j1", "state": "FAILED", "stage": "", "percent": 0, "error": "시험 중단", "formats": ["json"]}))
+        page.locator('.tabs [data-tab="review"]').click()
+        bar = page.locator("#reviewTableActions")
+
+        # 1. 초기 프롬프트 생성 (A1 = item_a 매핑)
+        bar.get_by_role("button", name="📋 엘박스/AI 검증 프롬프트 만들기").click()
+
+        # 2. 답변 붙여넣기 (A1에 대한 답변 입력 및 저장)
+        bar.get_by_role("button", name="📥 외부 AI 답변 붙여넣기").click()
+        dialog = page.get_by_role("dialog", name="외부 AI 답변 붙여넣기")
+        dialog.locator("textarea").fill("<<<ACAS_RESULT\nA1 | 판정: 부존재 | 근거: 없음 | 요지: 원래의견\nACAS_RESULT>>>")
+        dialog.get_by_role("button", name="저장").click()
+        page.get_by_role("dialog", name="표에 반영할 답변 1건 확인").get_by_role("button", name="표에 반영").click()
+
+        # 3. 프롬프트 갱신 시뮬레이션: 코드가 다른 항목(item_other)으로 재할당됨
+        # 브라우저 컨텍스트에서 rememberPromptCodes('A', [{item_id: 'item_other'}]) 호출
+        page.evaluate("""() => {
+            rememberPromptCodes('A', [{item_id: 'item_other'}]);
+        }""")
+
+        # 4. 보고서 생성 다이얼로그 열기
+        page.locator("#reportBtn").click()
+        report = page.get_by_role("dialog", name="검토 보고서 초안")
+        report.get_by_role("button", name="초안 생성").click()
+        page.wait_for_timeout(500)
+
+        # 5. 검증: 코드가 재할당되었으므로 이전 A1 답변이 새 행(item_other)의 의견으로 전송되지 않아야 함
+        assert bodies, "요청이 전송되어야 함"
+        sent_answers = bodies[-1].get("external_ai_answers", [])
+        # 이전 답변은 삭제되거나 item_other로 잘못 전송되지 않음
+        assert len(sent_answers) == 0, f"재할당된 코드의 이전 답변이 전송되지 않아야 함: {sent_answers}"
+        browser.close()
 
 
 def test_report_dialog_sends_answers_reflected_in_table():
