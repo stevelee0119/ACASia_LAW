@@ -33,7 +33,7 @@
 
 ## 시험
 - 새 `tests/test_tk126_flat_tabs_answer_import.py::test_rag_observations_attach_to_rows_and_bottom_section_is_gone`: claim_id 연결 행에 '불부합'·'표준판례집 · 12쪽', 하단 `.reference-section` 0개, 상태 줄 '표의 행에 반영한 의견 1건', 연결 못 한 불부합 의견이 3번째 탭 행으로.
-- 기존 단언 이동(평가 측 개정, 수정본에 포함): `test_frontend_citation_groups.py`·`test_frontend_summary_compact.py`·`test_f2_review_screen_browser.py`는 `#referenceStatus summary`를 먼저 펼친다.
+- 기존 단언 이동(평가 측 개정, 수정본에 포함): `test_frontend_citation_groups.py`·`test_frontend_summary_compact.py`·`test_f2_review_screen_browser.py`·`test_drive_rag_relevance.py`(10-25 보충)는 `#referenceStatus summary`를 먼저 펼친다.
 
 ## 2단계 설계 메모에 담을 것 (승인 전 구현 금지)
 1. 인용 행의 Drive 조회: 질의(사건번호·법령명·조문 정규화), 색인 범위 한계, 발췌 길이, 외부 모델 미사용 시 로컬 검색만.

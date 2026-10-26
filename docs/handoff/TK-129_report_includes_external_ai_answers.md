@@ -23,7 +23,7 @@
 ## 평가 측 사전 검증 (TK-126 수정본 위 임시 사본, 저장소 밖)
 - 새 시험 `tests/test_tk129_report_external_answers.py` 5건 통과. 기능을 끈 사본(행 함수가 빈 목록 반환)에서는 2건 실패, 확정에 답변을 넘기지 않은 사본에서는 확정본 시험 실패 — 시험이 기능을 실제로 잡는다.
 - 보고서·화면·API 관련 시험 2,022건 실패 0, 건너뜀 25: 보고서를 다루는 기존 시험 전부(`test_report_completion`·`test_report_timeline_exclusion`·`test_source_objects`·`test_identity_security`·`test_operations_completion`·`test_improvements`·`test_evidence_hardening`·`test_efficient_llm_routing`·`test_tk78_opt_in_routing`·`test_auth_migration_merge`·`korean_law_profile/test_review_path`·`regression/test_post013_tk55…`) + TK-126 시험 묶음 + 새 시험.
-- 전체 `tests` 결과는 HISTORY 10-25 'TK-129 사전 검증'에 적는다.
+- 전체 `tests`(TK-126+129 적용 사본, 4묶음 병렬): 10,462건 중 실패 5 — TK-127 옛 단언 1건(`test_drive_rag_relevance`, TK-126 수정본에서 고침, 47건 통과)과 병렬 부하에 따른 시간 시험 4건(단독 재실행 통과). TK-129 변경에 따른 실패 0.
 - `git apply --check`: `b68e70f` + TK-126 수정본 위에 통과.
 - 미검증: 운영 보고서 실제 화면(긴 답변이 PDF 표에서 줄바꿈되는 모양), 실제 엘박스 답변 분량.
 

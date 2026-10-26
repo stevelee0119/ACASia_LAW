@@ -107,6 +107,9 @@ release_highlights.json "0.14":
 
 **수용 기준**: diff가 위 세 파일과 생성물(README 변경표·RELEASE_HISTORY)뿐, 필수 CI 성공, 판정서와 버전 일치. 평가 측은 diff와 CI만 확인하고 수용한다(탐지 변경 없음, 재측정 없음).
 
+## 2-1-2. 0.15.0 버전 커밋 지시 (10-25, 간소 경로 RELEASE_PROCEDURE 2-6)
+평가 PR(판정서 0.15.0 포함)이 Steve에 병합된 뒤, 새 브랜치에서 `git apply docs/handoff/patches/v0.15.0_version_commit.diff` 하나로 커밋한다(5개 파일: config.py 버전, releases.json, release_highlights.json, README 변경표, RELEASE_HISTORY — 평가 측 사전 검증: check_version_policy 통과, update_readme --check 0). 커밋 제목 `chore(release): 버전 0.15.0 판정서 반영`, 끝 `Agent: implementer`. 다른 변경 금지. 평가 측은 diff와 CI만 확인한다.
+
 ## 2-3. 0.14.0 화면 오구현 보완 + 평면 탭·참고문헌 행 통합·외부 AI 답변 반영 (10-25 개정, 사용자 지시 '잘못 구현된 기능을 즉각 원래 구현하고자 했던 방향대로 변경')
 0.14.0에서 사용자 개선안(10-19) 3·4항이 다르게 구현됐다. 원인은 평가 측 티켓·판정에 있었다. 이번부터 사용자 요구 티켓은 **사용자 원문과 원문 대응표**를 수용 기준으로 하고, **화면 캡처를 사용자에게 확인받은 뒤** 수용한다(AGENT_ROLES 2.1). 10-25 첫 사전 검증 화면을 본 사용자 추가 요구(평면 탭 5개·답변 붙여넣기·3번째 탭 프롬프트·참고문헌 표 통합)를 반영해 TK-126·127(1단계)·128을 **PR 1개**로 묶었다(같은 파일, 한 사본에서 함께 사전 검증). 같은 날 사용자 결정으로 '공식 DB로 다시 조회' 버튼(평가 측 추가안)을 철회하고, 반복을 줄이도록 '수정본 그대로 적용·하지 않을 것·평가 측 수용 절차 고정'으로 지시를 다시 썼다(3차 개정). 이어 사용자가 화면 6장 확인('그대로 진행'), 답변 브라우저 저장, 활동 기록 화면 삭제를 결정해 4차 개정했다. 아래가 사용자에게 낸 지시문 전문이다.
 
@@ -117,7 +120,7 @@ release_highlights.json "0.14":
 
 ■ 1. 작업 절차 (이 순서 그대로)
 1) 평가 PR #182가 Steve_ACASiaLAW에 병합된 뒤 시작한다(보호 시험 `tests/acceptance/test_f1_screen_protected.py` 수정이 #182에 있다). 현재 Steve = `b68e70f`이고 #182는 문서·보호 시험만 바꾸므로 아래 패치는 충돌 없이 적용된다(평가 측 `git apply --check` 확인).
-2) 새 브랜치에서: `git apply --3way docs/handoff/patches/TK-126-128_prevalidated_b68e70f.diff` (18개 파일, 536줄 추가·187줄 삭제: apps/api/main.py, apps/api/routers/workspace.py, apps/web/index.html, apps/web/static/{app.js,styles.css,workflow.js}, tests 12개).
+2) 새 브랜치에서: `git apply --3way docs/handoff/patches/TK-126-128_prevalidated_b68e70f.diff` (19개 파일, 539줄 추가·187줄 삭제 — 10-25 보충으로 tests/test_drive_rag_relevance.py 포함: apps/api/main.py, apps/api/routers/workspace.py, apps/web/index.html, apps/web/static/{app.js,styles.css,workflow.js}, tests 12개).
 3) 충돌이 나면(그 사이 Steve가 같은 줄을 바꾼 경우만) 양쪽을 모두 살려 합치고, PR 본문에 파일·줄과 처리 내용을 적는다. 충돌이 없으면 패치 외 변경을 하지 않는다.
 4) '제출 전 확인'을 돌리고 결과를 PR 본문에 붙인다. 커밋 끝 `Agent: implementer`. PR 대상 Steve_ACASiaLAW, 제목 `fix(ui): TK-126·127·128 화면 개편 — 평면 탭·참고문헌 행 통합·외부 AI 답변 반영`.
 
@@ -150,8 +153,9 @@ release_highlights.json "0.14":
 ■ 5. 제출 전 확인 (PR 본문에 결과 붙이기)
 - pytest -q tests/acceptance tests/test_frontend_*.py tests/test_external_ai_prompt.py tests/test_external_ai_prompt_browser.py tests/test_f1_ai_security_tab_browser.py tests/test_f2_review_screen_browser.py tests/test_tk61_layout_browser.py tests/test_tk88_three_tier_review.py tests/test_upload_privacy_notice_browser.py tests/test_tk126_flat_tabs_answer_import.py tests/test_workspace.py tests/test_api.py
   → 평가 측 사전 검증: 1,410건 실패 0, 건너뜀 25(같은 수가 나와야 한다).
+- (10-25 보충) pytest -q tests/test_drive_rag_relevance.py → 47건 실패 0.
 - python scripts/check_test_edits.py --base origin/Steve_ACASiaLAW → '기존 시험의 삭제·표시 변경 없음'.
-- git diff --stat origin/Steve_ACASiaLAW → 위 18개 파일만(충돌 처리 파일은 본문에 따로 적음).
+- git diff --stat origin/Steve_ACASiaLAW → 위 19개 파일만(충돌 처리 파일은 본문에 따로 적음).
 
 ■ 6. 평가 측 수용 절차 (이것만 본다 — 추가 요구 없음)
 1) 필수 CI 성공(인용). 2) PR diff = 수정본(충돌 처리분 제외 차이 0). 3) 위 시험 묶음 평가 측 재실행 실패 0. 4) 탐지 diff 0·고정·은퇴 점수 불변(엔진 미변경 확인). 5) 실제 화면 캡처(긴 판정 문구 포함)를 원문 대응표(TK-126 1~7, TK-127 1~3, TK-128 1~5)와 함께 사용자에게 제시 → 사용자 확인 뒤 수용.
@@ -162,6 +166,40 @@ release_highlights.json "0.14":
 
 ■ 참고 문서
 - docs/handoff/TK-126_v014_screen_rework.md, TK-127_drive_reference_row_integration.md, TK-128_external_ai_prompt_tier3_and_answer_import.md (사용자 원문·원문 대응표·원인 상세).
+
+
+## 2-3-1. #183 1차 판정 — 보완 1건 (10-25, 사용자 지시 '126~128 평가')
+
+[Antigravity 보완 지시 — PR #183(head 7946aaf) 1차 판정: 보완 1건(CodeQL 새 경고 게이트 실패). 2026-10-25]
+
+■ 판정 요약
+- PR diff = 평가 측 수정본(주석 1줄 차이뿐), 필수 시험 CI 전부 성공, 평가 측 재실행 시험 실패 0, 탐지 점수 불변(dev 82.6 / holdout 81.9 / 오탐 0, 회귀 게이트 '회귀 없음'). 화면은 사전 검증 화면과 같다.
+- 실패 1건: 'CodeQL 새 경고 게이트' — py/polynomial-redos 5건(심각도 7.5). 이것만 고치면 수용 절차 5)(사용자 화면 확인)로 넘어간다. 원인은 평가 측 수정본에 있었다(사전 검증에서 CodeQL을 돌리지 않음).
+
+■ 원인 (줄 번호는 7946aaf의 packages/pii_engine/detector.py)
+1. 이번 PR의 가림 API(POST /projects/{id}/external-ai/prompt-texts)가 사용자 입력을 PIIEngine.mask_text → detect()에 그대로 넘긴다. CodeQL이 이 경로를 '외부 입력 → 다항 시간 정규식'으로 잡았다: 43행 CORP/RRN_LABEL_PREFIX_RE(885행 사용, 2건), 112행 ACCOUNT_LABELLED_RE(905행), 38행 BUSINESS_REG_LABELLED_RE(912행), 1024행 re.search(r"\s*군$", …).
+2. 공통 원인: `\s*[:：]?\s*`처럼 공백을 먹는 부분이 선택 요소를 사이에 두고 연달아 있어, 같은 공백을 여러 방식으로 나눠 맞추며 되짚는다(겹치는 \s*).
+3. 경고 목록 밖이지만 실제로 가장 느린 것: 505행 MEDICAL_DIAGNOSIS_RE(`(…)?\s*(…)?\s*(?:에서)?\s*` — 공백 150자에 2.8초)와 511행 MEDICAL_PRESCRIPTION_RE(앞 `\s*…\s*` + 묶음 안의 \s — '처방' 뒤 공백 2,000자에 48초). 평가 측 재현: 라벨 뒤 공백 200자 9~13초, 400자 40초 초과(고치기 전).
+
+■ 고칠 것 — 평가 측 수정본을 그대로 적용
+- PR 브랜치에서: git apply --3way docs/handoff/patches/TK-128_pii_redos_fix_on_183.diff (평가 브랜치 커밋, 7946aaf 기준; 2개 파일: packages/pii_engine/detector.py 18줄 추가·14줄 삭제, tests/test_pii_redos_linear.py 새 파일 51줄)
+- 수정 원리: 의미가 같은 겹침 없는 꼴로 바꾼다. `X\s*[:：]?\s*` → `X\s*(?:[:：]\s*)?`, `A\s*(?:B)?\s*` → `A(?:\s*B)?\s*`, `(?:P)?\s*(?:Q)?\s*(?:R)?\s*` → `(?:P\s*)?(?:Q\s*)?(?:R\s*)?`, `\s*군$` → `군$`. 대상: 31·38·42·43·70·79·86·98·112·411·412·506·512행, 1024행.
+- 처방(512행)은 앞 \s*를 없애고 묶음 클래스가 공백을 함께 읽게 했다. 그래서 1034행 뒤에서 위치(start·end)를 묶음 앞뒤 공백만큼 줄인다(문구 med_text는 원래도 strip).
+
+■ 평가 측 사전 검증 결과 (7946aaf + 수정본)
+- 시간: 모든 라벨 + 공백 2,000자 ≤0.01초, 8,000자 ≤0.03초. 가림 API 최대 입력(200개 × 2,000자, 최악 라벨) 전체 0.84초.
+- 탐지 동등성: 시험 자료의 한국어 문장 9,722개에서 고치기 전후 detect() 결과(종류·시작·끝·문구) 차이 0. 의도된 차이 1꼴: '처방 5mg …'처럼 처방어 바로 뒤에 용량이 오면 위치가 앞 공백 1자를 빼고 잡힌다(문구 동일, 가림 범위만 공백 1자 줄어듦).
+- 점수: scorecard dev 82.6 / holdout 81.9 / 오탐 0 / 인젝션 방어(불변), score_gate 통과, regression_gate(기준 e980640) 회귀 없음.
+- 시험: 새 tests/test_pii_redos_linear.py 13건 통과(라벨별 길이 4배 시간 비 < 8, 상한 2초, 탐지 결과 고정). 개인정보·보고서·작업공간·TK-126 시험 119건 실패 0. check_test_edits 통과.
+- 미검증: CodeQL 재분석 결과(평가 측에서 CodeQL을 돌릴 수 없음 — 이 PR CI의 'CodeQL 새 경고 게이트'로 확인).
+
+■ 하지 않을 것
+- 가림 API를 없애거나 입력을 줄이는 것으로 경고를 피하지 않는다(사용자 요구 기능). 정규식의 탐지 범위(무엇을 잡는지)를 바꾸지 않는다. 수정본 밖의 변경을 섞지 않는다.
+
+■ 제출물·수용 기준
+- 같은 PR에 커밋 1개(끝 `Agent: implementer`). 본문에 'CodeQL 새 경고 게이트' 결과와 pytest -q tests/test_pii_redos_linear.py tests/test_pii_and_claims.py tests/test_tk126_flat_tabs_answer_import.py 결과를 붙인다.
+- 평가 측 확인: CodeQL 새 경고 게이트 성공 + 필수 CI 성공 + diff = 수정본. 맞으면 코드 보완 지시 없이 사용자 화면 확인 단계로 간다.
+- 개인정보 엔진 변경이므로 평가 측이 수용 SHA에서 verify_all 1회를 돈다(AGENT_ROLES 2.1).
 
 
 ## 2-4. TK-129 보고서에 외부 AI 답변 포함 (10-25, 사용자 지시 'TK-129 착수')
@@ -197,7 +235,7 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 - 새 시험 tests/test_tk129_report_external_answers.py 5건 통과. 기능을 끈 사본(보고서 행 함수가 빈 목록)에서는 2건 실패 — 시험이 기능을 실제로 잡는다.
 - 보고서·화면·API 관련 시험 2,022건 실패 0, 건너뜀 25(보고서를 다루는 기존 시험 전부 + TK-126 시험 묶음 + 새 시험).
 - 확정(finalize)에 답변을 넘기지 않은 사본에서는 확정본 시험이 실패 — 3(d) 누락을 시험이 잡는다.
-- 전체 tests 실행은 평가 측에서 진행 중이며 결과는 HISTORY에 추가한다(구현 측 조치 불필요).
+- 전체 tests(TK-126+129 적용 사본): 10,462건 중 TK-129 변경에 따른 실패 0(실패 5건은 TK-126 보충으로 고친 옛 단언 1건과 병렬 부하 시간 시험 4건 — 단독 재실행 통과).
 - 미검증: 운영 보고서 실제 모양(긴 답변의 PDF 줄바꿈), 실제 엘박스 답변 분량.
 
 ■ 5. 제출 전 확인 (PR 본문에 결과 붙이기)
@@ -282,9 +320,9 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 | D-4 TK-88 | 메모 #159 `1be8cdd` 조건부 승인(닫음) / 구현 #171 `ef47063` | **수용·병합** | Steve `ccf0773`(10-22). 완료. 참고: 3단 표 글자·줄 간격이 2단과 같은지 다음 손질 때 확인. |
 | E-1 TK-83 | 메모 #160 승인 / 구현 #166 `3bf5439` | **수용·병합** | Steve `34d8b18`(10-21). 완료. |
 | (사용자 지시) TK-94 외부 AI 검증 프롬프트 | #164 `bbc5a4a`(6차) | **수용·병합** | Steve `ce323c7`(10-24). 비차단 후속: '…및…에 관한 법률' 꼴 긴 법령명 일부 잘림(정확도). |
-| TK-126 0.14.0 화면 오구현 보완·평면 탭 5개 | — | **지시 개정(10-25), 평가 측 사전 검증 완료, TK-127·128과 PR 1개** | '확인 방법' 삭제·프롬프트 버튼 표 위 강조·셀 넘침·3단 독립 탭·배포 캐시·상단 평면 탭 5개. 2-3절, 수정본 `patches/TK-126-128_prevalidated_b68e70f.diff` |
-| TK-127 Drive 근거 상단 표 통합 | — | **1단계 지시(10-25 개정, 사전 검증 완료)·2단계 설계 메모 먼저** | 1단계: 대조 의견을 표 행에 연결, 하단 절 → 표 위 상태 줄. 2단계: 인용 행 Drive 조회. 2-3절, `TK-127_…md` |
-| TK-129 보고서에 외부 AI 답변 포함 | — | **지시(10-25), 평가 측 사전 검증 완료** | 보고서 요청에 브라우저 답변 동봉 → 서버 고정본(해시)·PDF·Word·Excel·JSON. 선행 TK-126 PR. 2-4절, 수정본 `patches/TK-129_prevalidated_after_TK126.diff` |
+| TK-126 0.14.0 화면 오구현 보완·평면 탭 5개 | #183 | **Steve 병합 `3fee071`(10-25) — 배포 대기** | '확인 방법' 삭제·프롬프트 버튼 표 위 강조·셀 넘침·3단 독립 탭·배포 캐시·상단 평면 탭 5개. 2-3절, 수정본 `patches/TK-126-128_prevalidated_b68e70f.diff` |
+| TK-127 Drive 근거 상단 표 통합 | #183 | **1단계 Steve 병합(0.15.0 배포 대상)·2단계 설계 메모 먼저 — 0.15.0 다음 릴리스 범위(사용자 결정 10-25)** | 1단계: 대조 의견을 표 행에 연결, 하단 절 → 표 위 상태 줄. 2단계: 인용 행 Drive 조회. 2-3절, `TK-127_…md` |
+| TK-129 보고서에 외부 AI 답변 포함 | — | **지시(10-25), 평가 측 사전 검증 완료, 착수 가능 — 0.15.0 다음 릴리스 범위(사용자 결정 10-25)** | 보고서 요청에 브라우저 답변 동봉 → 서버 고정본(해시)·PDF·Word·Excel·JSON. 선행 TK-126 PR. 2-4절, 수정본 `patches/TK-129_prevalidated_after_TK126.diff` |
 | TK-128 두 표 프롬프트·외부 AI 답변 붙여넣기 | — | **지시(10-25 개정, 사전 검증 완료)** | 번호·결과 블록, 붙여넣기→미리보기→표에 반영, 3단 서버 가림 API. 서버 저장은 사용자 결정 대기. 2-3절, `TK-128_…md` |
 
 - 공통: 화면 PR(D)의 기존 시험 수정은 대응표가 승인 조건이다. 시험을 지우면 CI '점수 하락 게이트'의 `check_test_edits.py`가 실패한다. 그때는 사유 문서를 `docs/handoff/requests/`에 둔다.
