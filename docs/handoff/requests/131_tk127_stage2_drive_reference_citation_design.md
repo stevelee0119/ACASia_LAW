@@ -1,0 +1,339 @@
+# [설계 메모] TK-127 2단계: 인용 행(판례·법령)의 Google Drive 색인 대조
+
+- **작성일**: 2026-10-27 (10차 개정)
+- **작성자**: Antigravity (구현 에이전트)
+- **대상 브랜치**: `Steve_ACASiaLAW` (기준 제품 코드 SHA: `3fee071c17921c9add11167250744f646903cee3`)
+- **문서 성격**: 설계 제안 메모 (본 PR에서는 제품 코드 및 시험 수정 0줄 유지)
+- **상태**: 평가 측(Codex) 재검토 및 사용자 승인 대기
+
+---
+
+## 1. 배경 및 목적
+
+- **배경**: TK-127 1단계(#183, Steve `3fee071c17921c9add11167250744f646903cee3`)를 통해 주요 참고문헌(Google Drive) 대조 의견이 웹 검토 표의 행에 바인딩되었습니다. 2단계는 사용자 요구(2026-10-25) *"공식데이터베이스의 자료를 API로 검색하는 것에 추가로 구글 DRIVE의 자료를 활용"* 중 미이행분인 **인용 행(판례·법령)을 Google Drive 색인에서도 직접 찾아 근거로 연결**하는 기능을 다룹니다.
+- **원칙**:
+  1. 엔진 및 데이터 파이프라인의 확장이 수반되므로 제품 코드 수정에 앞서 본 설계 제안을 제출하여 평가 측(Codex) 검토와 사용자 승인을 득한 후 별도 구현 티켓으로 착수합니다. 사용자의 설계 승인을 받기 전에는 제품 코드 구현 착수로 넘기지 않습니다.
+  2. 점수나 테스트 결과를 임의로 고정하거나 성능을 사전 단정하지 않으며, 코드 참조는 유동적인 행 번호 대신 파일 경로와 심볼명을 기준으로 관리합니다.
+  3. **오근거 연결 방지 및 인용 식별자 중심 바인딩**: 짧거나 흔한 문구 우연 일치에 따른 오매칭을 원천 차단하기 위해 8자 부분 문자열만으로 근거를 자동 연결하는 로직을 전면 폐지하며, 안정적인 식별자(`claim_id`/`citation_id`, 정규화된 사건번호·법령명·조문) 일치를 최우선으로 합니다. 특히 명시적인 식별자 충돌(법령명 동일·조문 불일치, 사건번호 불일치)은 물론, **인용 행 또는 후보 자료 중 어느 한쪽이라도 법률 식별자가 없는 '식별자 부재'의 경우에도 fallback을 전면 금지(Fallback Forbidden)**하여 자동 연결 및 `SUPPORTED` 승격을 차단합니다. 3순위 fallback은 **양측 모두에 전체 식별자 일치가 전제된 상태**에서만 15자 이상의 고유 단일 문맥에 한하여 극히 제한적으로 인정합니다.
+
+---
+
+## 2. 항목별 세부 설계 및 근거 코드 심볼
+
+### 1) 인용 행의 Drive 조회 및 매칭 메커니즘
+*(근거 심볼: `packages/rag_engine/review.py` 내 `_match_citations_to_references`, `review_document`, `packages/rag_engine/library.py` 내 `ReferenceLibrary.select`, `ReferenceLibrary.match_case`)*
+- **질의 생성 및 정규화 규칙**:
+  - **판례 사건번호**:
+    - 법원명 및 불필요한 공백 제거 후 연도·사건부호·일련번호 정규화.
+    - 정규식 경계 매칭: `rf"(?<!\d){re.escape(canonical_case_no)}(?!\d)"` (사건번호 앞뒤 비숫자 경계 대조, `_match_citations_to_references`).
+    - 색인 조회: `ReferenceLibrary` 내 전문 색인에서 정규화된 사건번호를 단일 질의어로 조회하거나, 표준 판례표가 존재할 경우 `ReferenceLibrary.match_case`로 정확 일치 조회.
+  - **법령명 및 조문**:
+    - 법령명 내 특수기호(`「`, `」`, `『`, `』`) 및 공백 제거 (예: `민법`, `근로기준법`).
+    - 조문 정규화 패턴: `rf"제\s*{re.escape(str(article))}\s*조"`
+    - 근접 윈도우 대조: 조문 출현 위치 기준 앞뒤 100자 이내에 정규화된 법령명이 함께 출현하는지 대조 (`_match_citations_to_references`).
+- **단계별 용량·처리 한도 구분 (기준 SHA `3fee071c17921c9add11167250744f646903cee3` 설정 대조)**:
+  - **색인/동기화 단계 한도 (`ReferenceLibrary._sync_files`)**:
+    - `rag_inventory_max_files`: Drive 폴더 내 인벤토리 수집 상한. 기본값 **20,000개 파일** (설정: `LV_RAG_INVENTORY_MAX_FILES`, `packages/common/config.py`).
+    - `rag_max_files`: 1회 동기화 시 새로 색인(파싱/저장)할 파일 수 예산 한도. 기본값 **1,000개 파일** (설정: `LV_RAG_MAX_FILES`, `packages/common/config.py`, `library.py`의 `_sync_files`).
+    - `rag_download_mb`: 파일 다운로드 크기 한도. 기본값 **128MB** (설정: `LV_RAG_DOWNLOAD_MB`, `packages/common/config.py`).
+    - `rag_sync_seconds`: 동기화 실행 타임아웃. 기본값 **120초** (설정: `LV_RAG_SYNC_SECONDS`, `packages/common/config.py`).
+  - **검색/선택 단계 한도 (`ReferenceLibrary.select`)**:
+    - `ReferenceLibrary.select(text, limit=12)`: 서면 본문 및 키워드 기반으로 색인 코퍼스에서 연관성이 높은 참고자료 발췌(`sources`)를 선택하는 함수. 기본값 **최대 12개 발췌** (`library.py`).
+    - `ReferenceLibrary.search_case_table(text, limit=5)`: 구조화 판례 사건표 대조 시 선택 개수. 기본값 **최대 5개 행** (`library.py`).
+  - **외부 모델 배치 단계 한도 (`review.py`의 `_split_sources_into_batches`)**:
+    - `max_items_limit = 6`: 배치당 최대 참고자료 개수 **6개**.
+    - `max_chars_limit = 6000`: 배치당 최대 발췌 글자 수 합계 **6,000자**.
+    - *(주의: 5~6개 파일은 색인 상한이 아니며, 외부 모델 호출 프롬프트에 실어 보낼 때의 단일 배치 묶음 한도임).*
+  - **발췌 목표 길이 (향후 구현 설계 목표)**:
+    - 판례 인용은 사건번호 출현 전후 200~400자, 법령 인용은 해당 조문 윈도우 200~500자(최대 1,000자 이내)로 한정하여 토큰 소비를 최소화하도록 구현 목표 설정.
+- **로컬 전용(`LOCAL_ONLY`) 및 빠른 검토(`QUICK`) 원칙**:
+  - `context.profile == VerificationProfile.QUICK` 또는 `context.external_ai_policy == ExternalAIPolicy.LOCAL_ONLY`인 경우(`review.py`의 프로필 분기), 외부 LLM 호출을 전면 배제하고 파이썬 정규식 및 텍스트 윈도우 기반의 결정론적 로컬 매칭(`_match_citations_to_references` 확장)만 수행.
+- **공식 확인(`OFFICIAL_CONFIRMED`) 격상 불가 원칙 및 화면 표시**:
+  - Google Drive 자료는 사설 참고문헌이므로, 공식 DB(대법원·국가법령정보) API 확인 없이 `OFFICIAL_CONFIRMED`로 격상하지 않음 (`official_status` 불변 유지).
+  - 참고자료 지지 상태(`reference_status`)는 식별자 일치 또는 엄격 검증을 통과한 경우에만 `SUPPORTED`로 갱신하거나 `evidence_sources`에 Drive 출처를 추가 (`packages/verification_engine/review_items.py`).
+  - 화면 표시 문구는 1단계와 동일하게 `참고문헌(구속력 없음, 공식 확인 아님)` 또는 `주요 참고문헌 대조(구속력 없음)`를 유지하여 사용자의 법적 효력 오인을 방지 (`apps/web/static/app.js`의 `referenceObservationBlock`).
+
+### 2) 서버 연결 및 정규화·식별자 중심 매칭 계약
+*(근거 심볼: `packages/verification_engine/review_items.py` 내 `build_document_review_items`, `packages/verification_engine/pipeline.py` 내 `reference_review`, `packages/common/schemas.py` 내 `ReviewItem`, `apps/web/static/app.js` 내 `attachReferenceObservations`)*
+
+- **서버 생성 방식**:
+  - 1단계에서는 클라이언트 브라우저(`app.js`)가 `attachReferenceObservations()`를 통해 렌더링 시점에 동적 바인딩하던 로직을 서버 파이프라인의 `packages/verification_engine/review_items.py`(`build_document_review_items`)로 이전.
+  - `ReviewItem` 도메인 모델(`packages/common/schemas.py`)에 `reference_observations: List[Dict[str, Any]] = field(default_factory=list)` 필드를 추가하고 `to_dict()`에 직렬화 포함.
+
+- **공백 정규화 계약 (Python과 JavaScript 간 명시적 문자 집합 규약)**:
+  - **배경 및 원인**:
+    - JavaScript 정규식 `\s`와 Python `re \s`는 매칭하는 유니코드 공백 집합이 다릅니다 (`U+FEFF`, `U+001C~U+001F` 등 취급 차이).
+    - 따라서 언어별 메타문자 `\s`에 동작을 위임하면 서버와 브라우저 간 정규화 결과가 어긋나 매칭이 깨질 수 있습니다.
+  - **권위 있는 공통 공백 문자 집합 (White-list of Whitespace) 확정**:
+    두 구현은 언어별 `\s`를 직접 쓰지 않고, 아래 **명시적 문자 코드포인트 집합을 완전히 동일하게 제거 대상 공백으로 확정**합니다:
+    1. **기본 ASCII 공백 및 제어문자**: `\u0020`(스페이스), `\u0009`(`\t`), `\u000A`(`\n`), `\u000D`(`\r`), `\u000B`(`\v`), `\u000C`(`\f`)
+    2. **ASCII 정보 분리 제어문자 (명시적 포함 확정)**: `\u001C`(FS), `\u001D`(GS), `\u001E`(RS), `\u001F`(US) — 서면 파싱/OCR 텍스트에 포함될 수 있으므로 양쪽 모두 공백 제거 대상에 명시적으로 포함함.
+    3. **유니코드 특수 공백**: `\u00A0`(NBSP), `\u1680`, `\u2000`~`\u200A`(En/Em Space 등), `\u2028`(Line Separator), `\u2029`(Paragraph Separator), `\u202F`(Narrow NBSP), `\u205F`(Math Space), `\u3000`(전각 공백)
+    4. **무폭 제어/BOM 문자**: `\uFEFF`(BOM / Zero Width No-Break Space)
+  - **명시적 구현 표현 (언어별 `\s` 사용 금지)**:
+    - **공통 명시적 정규식 문자 클래스**:
+      `[\u0009-\u000D\u001C-\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]+`
+    - **Python 구현 규약**:
+      ```python
+      EXPLICIT_WHITESPACE_RE = re.compile(
+          r"[\u0009-\u000D\u001C-\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]+"
+      )
+      def compact_text(text: str) -> str:
+          return EXPLICIT_WHITESPACE_RE.sub("", str(text or ""))
+      ```
+    - **JavaScript 구현 규약**:
+      ```javascript
+      const EXPLICIT_WHITESPACE_RE = /[\u0009-\u000D\u001C-\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]+/g;
+      function compactText(text) {
+        return String(text || "").replace(EXPLICIT_WHITESPACE_RE, "");
+      }
+      ```
+
+- **개정된 매칭 우선순위 및 엄격 매칭 계약 (오근거 연결 차단)**:
+  짧고 일반적인 문구의 우연한 일치로 인한 오연결을 차단하기 위해, **8자 이상 부분 문자열 단독 조건에 의한 자동 연결 및 SUPPORTED 승격을 전면 폐지**하고 아래의 엄격한 3계층 우선순위 및 종료 조건(Hard Stop / Fallback Forbidden) 계약을 적용합니다:
+
+  1. **1순위: 구조적 ID 기반 우선 매칭 (최우선 확정)**:
+     - 관찰의 `claim_id` $\rightarrow$ 문서 `claims[].citation_ids` 조회 $\rightarrow$ 검토 행의 `citation_id`가 해당 목록에 포함되면 즉시 매칭 (`app.js`의 `attachReferenceObservations`).
+     - 상태: 즉시 매칭 성공 $\rightarrow$ 비구속적 참고 근거 바인딩.
+
+  2. **2순위: 인용 식별자(Citation Identifier) 완전 일치 매칭**:
+     - 1순위 ID 매칭이 없을 때, 인용의 핵심 법률 식별자를 엄격 대조:
+       - **판례 인용**: 정규화된 사건번호(`canonical_case_no`)가 Drive 발췌 문맥과 정확히 경계 일치(`(?<!\d)...(?!\d)`)하는 경우.
+       - **법령 인용**: 정규화된 법령명과 조문 번호(`제N조`)가 근접 윈도우(100자) 내에 동시 출현하여 모두 일치하는 경우.
+     - **명시적 식별자 충돌 시 Hard Stop (종료 조건 확정)**:
+       - 법령명은 동일하나 조문 번호가 다른 경우(예: 민법 제103조 vs 제104조) 또는 사건번호가 다른 경우(예: 2020도16420 vs 2020도16421)는 **명시적 식별자 충돌(Conflict)**로 판정합니다.
+       - **식별자 충돌 발생 시 3순위 fallback으로 넘어가지 않고 즉시 매칭을 종료(Hard Stop)**합니다.
+       - 어떠한 경우에도 자동 연결 및 `SUPPORTED` 승격을 금지하며, `UNMATCHED`/`PENDING_REVIEW` 상태로 남깁니다.
+
+  3. **식별자 부재 시 Fallback 전면 금지 규정 (Fallback Forbidden)**:
+     - **식별자 부재의 정의**:
+       - (1) **인용 행(검토 대상 서면 행)**에 정규화 가능한 판례 사건번호 또는 법령명+조문 번호가 존재하지 않는 경우,
+       - 또는 (2) **Drive 후보 발췌 자료**에 해당 판례 사건번호 또는 법령명+조문 번호가 전혀 출현하지 않는 경우
+       - 위 (1)과 (2) 중 **어느 한쪽이라도 법률 식별자가 없는 상태를 '식별자 부재'로 확정**합니다.
+     - **금지 조치**:
+       - **식별자 정보가 없으면 텍스트 fallback을 통한 자동 연결 및 SUPPORTED 승격을 전면 금지(No Fallback)**합니다.
+       - 식별자가 없는 인용 행 또는 후보 발췌 자료는 본문 텍스트가 15자 이상이거나 유일 후보이더라도 **텍스트 유사성만으로 인용 행에 자동 연결하는 것을 일체 불허**하며, 즉시 미매칭(`UNMATCHED`)으로 분류하여 `PENDING_REVIEW`로 남깁니다.
+
+  4. **3순위: 전체 식별자 일치 전제 하 보조적 텍스트 Fallback (복합 문맥 대조 한정)**:
+     - 3순위 Fallback은 "식별자가 없을 때 쓰는 대체 경로"가 결코 아니며, **인용 행과 후보 자료 양쪽에 모두 해당 인용의 전체 식별자(사건번호 전체 또는 법령명+조문 전체)가 온전히 존재하여 일치함이 전제된 상태**에서, 단순 윈도우(100자) 매칭 범위를 벗어난 복합 문맥에 대해 아래 3가지 조건을 **모두 만족할 때만 극히 예외적으로 보조 연결을 인정**합니다:
+       - **전제 조건 (전체 식별자 일치 필수)**: 인용 행의 전체 식별자(사건번호 전체 또는 법령명+조문 전체)가 후보 발췌문 내에 온전히 일치해야 함. 식별자가 부재하거나 충돌하면 위 규칙에 의해 Fallback 자체가 금지됨.
+       - **조건 A (최소 길이)**: 정규화된 인용문(`quote_compact`) 및 주장 텍스트(`claim_compact`)가 모두 **15자 이상**.
+       - **조건 B (상호 부분 포함)**: `(quote_compact in claim_compact) or (claim_compact in quote_compact)`.
+       - **조건 C (고유 단일 후보, Unique Candidate)**: 위 조건을 만족하는 행 후보가 **정확히 1개**여야 함. 동일/유사 문구를 포함하는 후보 행이 2개 이상이면 **충돌로 간주하여 자동 연결 금지**.
+
+  5. **미매칭 및 검토 대기 (`UNMATCHED` / `PENDING_REVIEW`)**:
+     - 위 1~3순위 조건을 충족하지 못하거나, 명시적 식별자 충돌(Hard Stop), 식별자 부재(Fallback Forbidden), 복수 후보 경쟁 시:
+       - **절대로 `reference_status=SUPPORTED`로 자동 승격하지 않음**.
+       - 해당 관찰은 `unmatched`로 분류되어 인용 행에 바인딩되지 않고, 표 하단의 독립된 참고문헌 관찰 행(`kind: "REFERENCE"`)으로만 표시되거나 `PENDING_REVIEW` 상태로 유지.
+
+```mermaid
+stateDiagram-v2
+    [*] --> CitationDetected
+    CitationDetected --> IDMatched: 1순위 claim_id / citation_id 일치
+    CitationDetected --> CheckIdentifier: ID 불일치
+
+    CheckIdentifier --> IdentifierMatched: 2순위 사건번호 또는 법령명+조문 전체 일치 (기본 윈도우)
+    CheckIdentifier --> IdentifierConflictHardStop: 명시적 식별자 충돌 (조문 불일치 / 사건번호 불일치)
+    CheckIdentifier --> MissingIdentifierHardStop: 식별자 부재 (인용 행 또는 후보 자료에 식별자 없음)
+    CheckIdentifier --> CheckFallback: 전체 식별자 일치 확인 하 복합 문맥 대조
+
+    IdentifierConflictHardStop --> UnmatchedPending: Fallback 금지 / Hard Stop
+    MissingIdentifierHardStop --> UnmatchedPending: Fallback 전면 금지 (식별자 결여)
+    CheckFallback --> FallbackMatched: 3순위 고유 단일 후보 & 15자 이상 상호 포함 (전체 식별자 일치 확인)
+    CheckFallback --> UnmatchedPending: 다중 후보 충돌 / 텍스트 불일치
+
+    IDMatched --> BoundReference: 비구속적 참고 근거 바인딩 (SUPPORTED)
+    IdentifierMatched --> BoundReference: 비구속적 참고 근거 바인딩 (SUPPORTED)
+    FallbackMatched --> BoundReference: 제한적 바인딩 (SUPPORTED)
+
+    UnmatchedPending --> UnmatchedRow: 독립 관찰 행 표시 (SUPPORTED 승격 금지)
+    BoundReference --> NonBindingUI: UI '참고문헌·구속력 없음' 표기
+    UnmatchedRow --> NonBindingUI
+    NonBindingUI --> OfficialUnchanged: 공식 확인(official_status) 불변 유지
+    OfficialUnchanged --> [*]
+```
+
+- **향후 구현 회귀 시험 계획 (오매칭 차단 및 정확도 통제 시험)**:
+  - `tests/test_tk127_stage2_server_reference_observations_sync.py`:
+    1. **식별자 충돌 Hard Stop 및 오매칭 방지 반례 시험 (자동 연결 및 SUPPORTED 승격 금지 검증)**:
+       - **식별자 부재 시 Fallback 금지 반례 (15자 이상·유일 후보·텍스트 포함 충족 시에도 차단)**:
+         - 시나리오 A (후보 발췌문에 식별자 부재): 서면 인용에 판례/법령 식별자가 있으나 후보 발췌문에 사건번호나 법령조문이 전혀 없고 서면 본문 문구(15자 이상)만 길게 일치하는 경우 $\rightarrow$ Fallback 전면 금지, 자동 연결 배제, `SUPPORTED` 승격 차단 (`UNMATCHED` 유지).
+         - 시나리오 B (인용 행에 식별자 부재): 검토 행에 법률 식별자가 없는 일반 서면 문구인 경우 $\rightarrow$ 후보 발췌문과 15자 이상 본문이 일치하더라도 Fallback 금지, 법률 인용 자동 연결 배제.
+       - **법령명 동일·조문 불일치 반례 (15자 이상·유일 후보·텍스트 포함 충족 시에도 차단)**:
+         - 조건: 서면 `"민법 제103조에 위반되어 무효이다"` (15자 이상) vs 발췌문 `"민법 제104조에 위반되어 무효이다"`.
+         - 상세 시나리오: 후보 발췌문에 15자 이상의 서면 문구가 상호 포함되거나 유일 후보로 검색되더라도, 서면의 조문(`제103조`)과 발췌문의 조문(`제104조`)이 불일치하면 **Hard Stop이 발동되어 3순위 fallback 진입이 차단**됨.
+         - 예상 결과: 자동 연결 배제, fallback 차단, `reference_status=SUPPORTED` 승격 금지 (`UNMATCHED` / `PENDING_REVIEW` 유지).
+       - **사건번호 불일치 반례 (15자 이상·유일 후보·텍스트 포함 충족 시에도 차단)**:
+         - 조건: 서면 `"대법원 2020도16420 판결에 따르면"` (17자) vs 발췌문 `"대법원 2020도16421 판결에 따르면"`.
+         - 상세 시나리오: 후보 발췌문이 고유 단일 후보이고 15자 이상의 텍스트 상호 포함 조건을 충족하더라도, 사건번호의 일련번호(`2020도16420` vs `2020도16421`)가 불일치하면 **Hard Stop이 발동되어 3순위 fallback 진입이 차단**됨.
+         - 예상 결과: 자동 연결 배제, fallback 차단, `reference_status=SUPPORTED` 승격 금지 (`UNMATCHED` / `PENDING_REVIEW` 유지).
+       - **다중 후보 경쟁**: 동일하거나 비슷한 텍스트(예: 15자 이상 문구)를 가진 검토 행이 2개 이상 존재하는 경우 $\rightarrow$ 충돌로 간주하여 자동 연결 배제, 미매칭 유지, SUPPORTED 승격 방지.
+       - **일반 상용구 우연 포함**: "이유 없다", "주문과 같이 판결한다", "법률상 근거가 없다" 등 흔한 일반 문구가 포함된 경우 $\rightarrow$ 전체 인용 식별자 불일치 시 자동 연결 금지.
+    2. **정답 통제 자료 기반 1:1 비교 및 유형별 동적 지표 집계 검증 (하드코딩 방지)**:
+       - 정답 매칭 라벨이 구축된 독립 통제 테스트셋($N_{total} \ge 20$)을 판례/법령, 충돌/부재 등 4대 유형별로 층화 구성:
+         - 양성: 판례 양성(P1, $N \ge 5$), 법령 양성(P2, $N \ge 5$) $\rightarrow$ 총 $N_{matchable} \ge 10$건
+         - 음성: 조문 충돌(N1, $N \ge 5$), 사건번호 충돌(N2, $N \ge 3$), 발췌문 식별자 부재(N3, $N \ge 2$), 인용행 식별자 부재(N4, $N \ge 2$) $\rightarrow$ 총 $N_{unmatchable} \ge 10$건
+       - 서버 파이프라인(`build_document_review_items`)과 브라우저(`attachReferenceObservations`)를 실제 실행하여 반환된 결과로부터 합산 지표 및 **유형별 세부 지표($TP_k, FP_k, FN_k, \text{Coverage}_k$)를 동적으로 산출**.
+       - 단언 기준:
+         - **모든 음성 유형(N1~N4) 및 전체 오연결 수**: 개별 및 전체 **$FP = 0$건** (엄격 일치).
+         - **양성 유형별 커버리지**: 판례(P1) $\text{Coverage}_{P1} \ge 80.0\%$, 법령(P2) $\text{Coverage}_{P2} \ge 80.0\%$ (유형별 독립 단언, 특정 유형 실패 상쇄 불가).
+         - **최소 정답 연결 수**: 합산 $TP \ge 8$건 ($N_{matchable} \ge 10$ 기준).
+         - **정밀도**: $100.0\%$ (단, $TP+FP=0$인 경우 정밀도 100% 간주 금지 및 판정 보류 예외 처리).
+         - **표본 부족/불일치 단언**: 유형별 표본 미달 시 `Insufficient Stratified Sample` 예외 및 판정 보류 검증.
+         - 양측 구현의 매칭 결과 일치율 100%.
+    3. **공통 공백 문자 집합 경계 및 무폭 제어문자 검증**:
+       - `U+FEFF`(BOM), `U+001C~U+001F`(FS~US 4종), `U+00A0`, `U+3000` 포함 입력 시 양 언어 정규화 동등성 검증.
+
+### 3) 보고서 반영 계획
+*(근거 심볼: `packages/report_engine/pdf_report.py` 내 `build_report_pdf`, `packages/report_engine/docx_report.py` 내 `build_report_docx`, `packages/report_engine/exporters.py` 내 `to_payload`, `to_json`)*
+- **반영 대상 형식**: PDF, Word(docx), Excel(xlsx), JSON 내보내기.
+- **배치 위치**:
+  - 인용 검토 표의 '근거 자료 / 대조 결과' 열(3열)에 `[참고문헌 대조]` 소제목과 함께 출처 파일명 및 발췌 내용을 표시.
+- **모든 지원 출력에 대한 비공식성 안내 명시**:
+  - 모든 내보내기 형식에 "본 참고문헌 대조 의견은 사설 Google Drive 자료를 기반으로 한 보조 검토 의견이며, 공식 판정·등급·점수 또는 공식 확인(OFFICIAL_CONFIRMED)이 아닙니다"라는 안내 문구를 명시.
+  - **PDF / Word**: 표 상단 및 각 행 대조 결과 블록에 `참고문헌(구속력 없음, 공식 확인 아님)` 문구 표시.
+  - **Excel (xlsx)**:
+    - 검토 표 상단에 눈에 띄는 안내 행(`[안내] 본 참고문헌 대조 결과는 사설 Google Drive 자료에 기반한 비구속적 참고 의견이며 공식 확인이 아닙니다`) 추가.
+    - 3열 헤더 또는 별도 열에 `참고문헌 대조(구속력 없음)` 명시.
+  - **JSON**:
+    - `reference_observations` 항목에 기계 판독 가능한 메타데이터(`"source": "google_drive"`, `"official": false`, `"binding": false`, `"notice": "비구속적 사설 참고문헌 대조 결과"`)를 표준 필드로 포함.
+  - **CSV 지원 범위 명시**:
+    - 현재 시스템의 공식 보고서 내보내기는 PDF, DOCX, XLSX, JSON의 4종을 지원하며, 일반 CSV 내보내기는 지원 범위에 포함되지 않음(XLSX 및 JSON 스냅샷으로 대체). 향후 CSV 내보내기가 추가될 경우 XLSX와 동일하게 최상단 메타데이터 안내 행 및 비공식성 고지 열을 필수로 반영하도록 규정.
+- **TK-129 '외부 AI 참고 의견' 절과의 명확한 분리**:
+  - 향후 TK-129가 병합되면 들어올 '외부 AI 질의 답변' 독립 절(`doc_result.external_ai_answers`)과 본 Drive 대조를 완전히 분리.
+  - 인용 검토 표 내의 개별 행 근거 자료(3열)에 독립 표기.
+
+### 4) 측정 방안 및 품질·안정성 기준
+*(근거 심볼: `scripts/score_gate.py`, `docs/scorecards/baseline.json`, `scripts/scorecard.py`, `scripts/check_case_literals.py`, `scripts/check_test_edits.py`)*
+
+- **오프라인 점수 게이트의 역할 및 출처 (회귀 방지 전용)**:
+  - 권위 있는 점수 판정은 CI에서 실행되는 `python scripts/score_gate.py`가 동일 SHA에서 권위 있는 기준선 파일(`docs/scorecards/baseline.json`)과 비교하여 점수 하락이 없음을 검증하는 것입니다.
+  - 현재 기준선(`docs/scorecards/baseline.json`, 기준 SHA `3fee071c17921c9add11167250744f646903cee3`)에 기록된 관찰값은 다음과 같습니다:
+    - 개발 세트 (`sets.dev`): 가중 재현율 `weighted_recall: 0.826` (82.6점), 오탐 `false_positives: 0`
+    - 홀드아웃 세트 (`sets.holdout`): 가중 재현율 `weighted_recall: 0.819` (81.9점), 오탐 `false_positives: 0`
+  - 위 수치는 기준선의 현재 관찰값이며, 별도의 독립된 임의 합격 기준선이 아닙니다. 향후 구현 시에도 별도 기준을 신설하지 않고 `score_gate.py`의 기준선 대조 판정을 단일 권위 기준으로 삼습니다.
+  - 개발(dev), 홀드아웃(holdout), 은퇴(retired) 세트는 고정 오프라인 서면이며 Google Drive 연동이 비활성화(`RAG_DRIVE_FOLDER_ID=""`)되어 있으므로, 오프라인 점수 게이트로는 Google Drive 검색/대조의 실제 효과나 성능 향상을 입증할 수 없습니다. 오프라인 게이트 통과는 기존 검증 기능에 대한 '회귀 없음(No Regression)'만을 보증합니다.
+
+- **통제 자료 기반 지표 정의 및 분모·분자 명시 규정**:
+  - **배경 및 원인**:
+    - 매칭 결과가 0건($TP = 0, FP = 0$)인 경우, 분모가 0이 되어 수학적으로 정밀도가 정의되지 않음에도 불구하고 이를 100%로 간주하거나 합격 처리하면 기능이 완전히 결함 상태(아무것도 매칭하지 못함)여도 통과되는 치명적인 허점이 발생합니다.
+    - 또한 합산 지표만 평가하면 특정 유형(예: 법령 조문 충돌 오연결, 또는 법령 조문 미매칭)의 실패가 다른 유형(판례 매칭)의 성공에 가려질 위험이 있습니다.
+    - 따라서 정답 라벨이 존재하는 통제 자료를 기준으로 분모와 분자를 명시적으로 정의하고, 양성·음성 표본을 유형별로 층화하여 하위 지표를 동적으로 산출합니다.
+  - **통제 자료 측정 지표의 수학적 정의**:
+    1. **전체 인용 대상 수 ($N_{total}$, 분모 1)**: 통제 서면에 존재하는 전체 판례·법령 인용 행의 총합 ($N_{total} = N_{matchable} + N_{unmatchable}$).
+    2. **매칭 가능 대상 수 ($N_{matchable}$, 분모 2 - Ground Truth Positives)**: Drive 색인 코퍼스 내에 실제로 대응되는 정답 참고자료가 존재하여, 이상적으로 연결되어야 하는 인용 행의 총수.
+    3. **매칭 불가 대상 수 ($N_{unmatchable}$, 대조군 - Ground Truth Negatives)**: Drive 코퍼스 내에 대응 자료가 없거나, 다른 조문·다른 사건번호를 가진 대조군 자료로서 연결되지 않아야 정상인 인용 행의 총수.
+    4. **실제 정답 연결 수 ($TP$, True Positives, 분자 1)**: $N_{matchable}$ 중 올바른 대상 자료에 정확히 연결된 건수 (식별자 및 문맥 일치).
+    5. **오연결 수 ($FP$, False Positives)**: 다른 사건번호, 다른 조문, 또는 일반 문구 유사성으로 잘못 연결된 건수.
+    6. **누락 수 ($FN$, False Negatives)**: $N_{matchable}$ 중 매칭되지 못하고 누락된 건수 ($FN = N_{matchable} - TP$).
+    7. **정확한 미매칭 수 ($TN$, True Negatives)**: $N_{unmatchable}$ 중 올바르게 미매칭(`UNMATCHED`)으로 유지된 건수.
+  - **지표 산출 공식**:
+    - **정답 연결 정밀도 (Precision)**:
+      $$\text{Precision} = \frac{TP}{TP + FP}$$
+    - **매칭 가능 대상 커버리지 / 재현율 (Recall / Matchable Coverage)**:
+      $$\text{Coverage}_{matchable} = \frac{TP}{N_{matchable}} = \frac{TP}{TP + FN}$$
+    - **전체 인용 대비 커버리지 (Total Citation Coverage)**:
+      $$\text{Coverage}_{total} = \frac{TP}{N_{total}}$$
+
+- **매칭 0건 ($TP + FP = 0$) 사례의 엄격 판정 규정**:
+  - $TP + FP = 0$ (실제 연결 건수 0건)인 경우:
+    - **정밀도를 100%로 간주하거나 합격으로 처리하는 것을 절대 금지**합니다.
+    - 정밀도는 **"측정 불가 (Undefined / 분모 0)"**로 표기합니다.
+    - 판정 결과는 **"판정 보류 / 유효성 미입증 (Indeterminate / Insufficient Signal)"**으로 처리하며 합격 판정을 일체 부여하지 않습니다.
+
+- **표본 구성 한계 명시, 유형별 층화(Stratification) 및 파일럿 운영 수용 기준**:
+  - **통계적 보증 주장 배제 및 파일럿 최소 기준 한정**:
+    - 본 설계의 통제 표본($N_{total} \ge 20$)은 **"파일럿 1단계 도입을 위한 운영상 최소 수용 기준(Operational Minimum Acceptance Criteria)"으로 엄격히 한정**합니다.
+    - 본 표본 규모만으로 운영 환경 전체의 오매칭 위험에 대한 **통계적 보증을 주장하지 않습니다**. (통계적 위험 관리 관점에서 95% 신뢰수준 하 오매칭 위험 $\le 5\%$를 입증하려면 Rule of Three에 의해 최소 60건의 음성 대조군에서 무오류가 확인되어야 하므로, 이는 파일럿 안착 후 장기 확대 표본 검증 과제로 분리합니다).
+  - **양성·음성 표본의 유형별 층화(Stratified) 구성**:
+    합산 지표가 특정 유형의 실패를 감추지 않도록, 표본을 4대 핵심 축으로 분할합니다:
+    1. **양성 표본 유형 (총 $N_{matchable} \ge 10$건)**:
+       - **유형 P1 (판례 양성 표본, 최소 $N \ge 5$건)**: 정규화된 사건번호 경계 일치 및 판례 발췌문 인용.
+       - **유형 P2 (법령 양성 표본, 최소 $N \ge 5$건)**: 법령명+조문 100자 윈도우 일치 및 조문 본문 인용.
+    2. **음성 대조군 표본 유형 (총 $N_{unmatchable} \ge 10$건)**:
+       - **유형 N1 (법령명 동일·조문 불일치 대조군, 최소 $N \ge 5$건)**: 동일 법령명이나 조문 번호 불일치 (Hard Stop 검증).
+       - **유형 N2 (사건번호 불일치 대조군, 최소 $N \ge 3$건)**: 연도 또는 일련번호 불일치 (Hard Stop 검증).
+       - **유형 N3 (후보 발췌문 식별자 부재 대조군, 최소 $N \ge 2$건)**: 발췌문에 식별자 결여 시 Fallback 금지 검증.
+       - **유형 N4 (인용 행 식별자 부재 대조군, 최소 $N \ge 2$건)**: 인용 행에 식별자 결여 시 Fallback 금지 검증.
+  - **파일럿 품질 합격 기준 (Pass Criteria)**:
+    1. **유형별 오연결 수 ($FP_k$)**: 모든 음성 유형(N1~N4) 및 전체에 대해 **$FP = 0$건** (1건이라도 발생 시 즉시 불합격 및 롤백).
+    2. **유형별 최소 커버리지**: 판례(P1) **$\text{Coverage}_{P1} \ge 80.0\%$**, 법령(P2) **$\text{Coverage}_{P2} \ge 80.0\%$** 각각 달성 필수 (한 유형이 100%여도 다른 유형이 80% 미만이면 전체 불합격).
+    3. **최소 정답 연결 수 ($TP$)**: 합산 **$TP \ge 8$건** ($N_{matchable} \ge 10$ 기준).
+    4. **정답 연결 정밀도 ($\text{Precision}$)**: **$100.0\%$** (단, $TP \ge 8, FP = 0$ 충족 시에만 산출 유효).
+
+- **통제 표본 지표와 실제 운영 Drive 검증의 명확한 구분 및 운영 보고 원칙**:
+  - **두 검증 체계의 분리**:
+    - **(A) 통제 표본 벤치마크 (Controlled Benchmark / CI Integration)**: 비식별화된 모의 통제 픽스처를 기반으로 CI에서 파이프라인 알고리즘의 유형별 동작을 기계적으로 검증.
+    - **(B) 실제 운영 Drive 검증 (Production Drive Verification)**: 실제 Google Drive 코퍼스 연동 환경에서 실서면을 대상으로 실측 검증.
+  - **표본 부족/판정 보류 규정**:
+    - 통제 표본 또는 운영 실측 표본의 전체 규모가 $N_{total} < 20$이거나,
+    - 특정 세부 유형(P1, P2, N1~N4)의 표본 수가 위 최소 할당량에 미달하거나,
+    - $TP + FP = 0$이거나,
+    - 특정 유형의 커버리지가 미달할 경우:
+      - **"합격" 판정을 절대 부여하지 않으며**, 반드시 **"표본 부족 / 판정 보류 (Insufficient Stratified Sample / Indeterminate)"**로 보고하고 롤백/배포 불가 처리합니다.
+  - **운영 검증 결과 보고 시 개인정보 보호 및 집계치 한정 공개**:
+    - 운영 Drive 실측 검증 보고 시 실제 사건번호, 당사자명, 서면 원문, 파일명 등 구체적 사건 리터럴의 노출을 엄격히 금지합니다 (`check_case_literals.py` 준수).
+    - 증빙 자료는 아래와 같은 **유형별 비식별 집계표** 및 개인정보가 완전 마스킹된 웹 화면 캡처 1건으로 한정하여 공개합니다:
+      | 검증 유형 | 표본 수 ($N$) | 정답 연결 ($TP$) | 오연결 ($FP$) | 누락 ($FN$) | 커버리지 | 판정 |
+      | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+      | **P1. 판례 양성** | $\ge 5$ | $\ge 4$ | 0 | $\le 1$ | $\ge 80\%$ | 합격 / 보류 |
+      | **P2. 법령 양성** | $\ge 5$ | $\ge 4$ | 0 | $\le 1$ | $\ge 80\%$ | 합격 / 보류 |
+      | **N1. 조문 불일치** | $\ge 5$ | - | 0 | - | - | 합격 / 보류 |
+      | **N2. 사건 불일치** | $\ge 3$ | - | 0 | - | - | 합격 / 보류 |
+      | **N3. 발췌문 식별자 부재** | $\ge 2$ | - | 0 | - | - | 합격 / 보류 |
+      | **N4. 인용행 식별자 부재** | $\ge 2$ | - | 0 | - | - | 합격 / 보류 |
+      | **합계 (전체)** | $\ge 20$ | $\ge 8$ | 0 | $\le 2$ | $\ge 80\%$ | 최종 판정 |
+
+- **CI 하드코딩 방지 및 독립 통제 사례 기반 동적 계산 방안**:
+  - **하드코딩 판정 절대 금지**:
+    - CI 시험 코드 내에 고정된 기대 점수나 정적 결과 문자열을 하드코딩(`assert score == 100`, `assert result == "OK"`)하여 통과시키는 것을 금지합니다 (`check_hardcoding_diff.py` 준수).
+  - **동적 계산 검증 메커니즘**:
+    - 향후 구현될 `tests/test_tk127_stage2_server_reference_observations_sync.py`에서는:
+      1. 비식별화된 구조화 층화 통제 사례(`ControlCase(citations, drive_corpus, ground_truth_labels, type_tag)`)를 테스트 픽스처로 주입합니다 (합성 사건번호 `2021다10001`, 가상 법령 `민법 제1000조` 등 모의 식별자 사용).
+      2. 서버 파이프라인 매칭 엔진(`build_document_review_items`)과 브라우저 매칭 로직(`attachReferenceObservations`)을 실제로 실행하여 반환된 관찰 목록에서 합산 및 **유형별 $TP_k, FP_k, FN_k$를 동적으로 집계**합니다.
+      3. 동적으로 집계된 지표에 대해 다음 단언을 기계적으로 검증합니다:
+         - `assert all(fp_k == 0 for fp_k in per_type_fp.values()), f"FP detected: {per_type_fp}"`
+         - `assert per_type_tp["P1"] / p1_count >= 0.8, "Precedent coverage < 80%"`
+         - `assert per_type_tp["P2"] / p2_count >= 0.8, "Statute coverage < 80%"`
+         - `assert total_tp >= 8, f"Insufficient total TP: {total_tp} < 8"`
+         - `assert total_tp + total_fp > 0, "No matches evaluated (indeterminate)"`
+      4. 이를 통해 정적 상수 하드코딩 없이, 통제 사례에 대한 실제 파이프라인 알고리즘의 동작 결과를 바탕으로 기준 충족 여부를 동적으로 판정합니다.
+
+### 5) 성능 및 개인정보 보호 (PII)
+*(근거 심볼: `packages/rag_engine/review.py` 내 `_split_sources_into_batches`, `packages/pii_engine/detector.py` 내 `PIIEngine.mask_text`, `packages/common/enums.py` 내 `ExternalAIPolicy`)*
+- **성능 목표 (향후 구현 설계 목표)**:
+  - 인용 행 다수 존재 시 인용별 개별 색인 호출을 지양하고, 서면 내 모든 인용(사건번호·법령조문)을 1회의 역색인/필터링 패스로 일괄 매핑하는 아키텍처 지향.
+  - 인용 행 대조 단계 전체에 대해 타임아웃 상한(예: 3~5초 시간 예산 목표)을 두어 초과 시 안전하게 graceful degradation(로컬 매칭 결과까지만 반환)하도록 설계.
+  - *(주의: 3~5초는 측정된 확정 제약이 아니라 향후 구현에서 달성해야 할 설계 목표 예산임).*
+- **개인정보 보호 정책 준수**:
+  - Drive 발췌문 및 서면 인용문을 외부 모델에 전송해야 할 경우 `context.external_ai_policy` 철저 준수:
+    - `LOCAL_ONLY`: 외부 전송 원천 금지 (로컬 정규식 매칭만 수행).
+    - `MASKED`: `PIIEngine.mask_text()`를 거쳐 개인식별정보를 비식별화 후 전송.
+    - `ORIGINAL`: 사용자 명시적 허용 시에만 전송.
+
+---
+
+## 3. 사전에 확인할 기존 시험 및 코드 위치 요약표 (기준 SHA: `3fee071c17921c9add11167250744f646903cee3`)
+
+본 PR에서는 제품 코드 및 시험을 전혀 수정하지 않으며, 향후 구현 착수 시 연계될 핵심 모듈과 시험은 다음과 같습니다. 파일별 행 번호는 커밋 및 포맷팅에 따라 유동적일 수 있으므로 **파일 경로와 심볼명**을 기준으로 관리합니다.
+
+| 구분 | 파일 경로 | 주요 함수 / 설정 심볼 (기준 SHA `3fee071c17921c9add11167250744f646903cee3`) | 역할 및 검증 포인트 |
+| :--- | :--- | :--- | :--- |
+| **RAG 엔진** | `packages/rag_engine/review.py` | `_match_citations_to_references`<br>`review_document`<br>`_split_sources_into_batches` | 사건번호 경계 일치, 법령명+조 근접 대조<br>서면 인용 대조 및 결과 수집, QUICK/LOCAL_ONLY 분기<br>모델 배치 분할 (최대 6개, 6,000자) |
+| **Drive 라이브러리** | `packages/rag_engine/library.py` | `ReferenceLibrary._sync_files`<br>`ReferenceLibrary.select`<br>`ReferenceLibrary.search`<br>`ReferenceLibrary.has_case_tables`<br>`ReferenceLibrary.case_table_status`<br>`ReferenceLibrary.match_case`<br>`ReferenceLibrary.search_case_table` | 파일 동기화 및 신규 색인 예산 (`rag_max_files`)<br>문서 연관 자료 선택 (기본 `limit=12` 발췌)<br>단순 검색 래퍼<br>표 후보 존재 여부 확인<br>표 후보 색인 상태 반환<br>구조화 판례표 정확 대조<br>사건표 행 단위 관련 검색 (기본 `limit=5`) |
+| **검토 항목 생성** | `packages/verification_engine/review_items.py` | `derive_item_severity`<br>`build_document_review_items` | Finding 심각도 순수 파생<br>단일 문서 검토 항목 생성 메인 함수 (인용 행 루프, `reference_status` 결정, `evidence_sources` 출처 생성, 미연결 Finding 루프) |
+| **파이프라인 단계** | `packages/verification_engine/pipeline.py` | `manifest.stage("reference_sync")`<br>`manifest.stage("reference_review")` | 참고자료 동기화 파이프라인 단계<br>문서별 Drive 대조 실행 파이프라인 단계 |
+| **공통 스키마** | `packages/common/schemas.py` | `ReviewItemKind` (Enum)<br>`ReviewItem` (dataclass)<br>`ReviewItem.to_dict()` | 검토 항목 종류 정의<br>`reference_observations` 필드 추가 대상<br>직렬화 사전 변환 |
+| **웹 화면** | `apps/web/static/app.js` | `compactText`<br>`attachReferenceObservations`<br>`referenceObservationRow`<br>`referenceObservationBlock`<br>`referenceStatusLine` | 공백 제거 정규화 함수<br>브라우저 측 행 연결 (1순위 ID, 2순위 식별자 일치, 식별자 충돌 시 Hard Stop 차단, 3순위 고유단일 fallback)<br>미매칭 관찰 행 생성<br>3열 참고문헌 대조 블록 렌더링<br>표 위 상태 줄 렌더링 |
+| **보고서 엔진** | `packages/report_engine/pdf_report.py`<br>`packages/report_engine/docx_report.py`<br>`packages/report_engine/exporters.py` | `build_report_pdf`<br>`build_report_docx`<br>`to_payload`, `to_json` | PDF 검토 표 렌더링<br>Word 검토 표 렌더링<br>JSON/Excel `review_items` 내보내기 (안내 행 및 official=false 메타데이터 반영)<br>*(참고: `external_answers.py`는 기준 SHA 시점 미존재)* |
+| **설정** | `packages/common/config.py` | `Settings.rag_drive_folder_id`<br>`Settings.rag_sync_seconds`<br>`Settings.rag_max_files`<br>`Settings.rag_inventory_max_files`<br>`Settings.rag_download_mb` | Drive 폴더 ID<br>동기화 타임아웃 (기본 120초)<br>신규 색인 파일 상한 (기본 1,000개 파일)<br>인벤토리 수집 상한 (기본 20,000개 파일)<br>다운로드 한도 (기본 128MB) |
+| **관련 기존 시험** | `tests/test_drive_rag_relevance.py`<br>`tests/test_f2_review_screen_browser.py`<br>`tests/test_tk126_flat_tabs_answer_import.py` | 파일 전체 | Drive RAG 관련성 시험<br>검토 화면 통합 렌더링 시험<br>1단계 평면 탭 시험 |
+
+---
+
+## 4. 향후 절차
+
+1. 본 설계 메모 10차 개정안 제출 및 평가 측(Codex) 재검토, 사용자 승인.
+2. **사용자 승인 완료 전 제품 코드 구현 착수 절대 금지**.
+3. 사용자 승인 완료 후 세부 구현 티켓 발행 및 제품 코드/시험 구현 착수.
+4. 제품 코드 수정 전후 오프라인 회귀 게이트(`score_gate.py`) 및 통제 자료/운영 실측 검증(유형별 오연결 0건, 유형별 커버리지 $\ge 80\%$, 최소 합산 $TP \ge 8$건, 정밀도 100%, 수동 교차 검증) 완료 후 병합.
