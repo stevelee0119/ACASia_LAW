@@ -138,14 +138,14 @@ def validate_answers(engine: Dict[str, Any], answers: List[Dict[str, Any]]) -> L
             errors.append(f"유효하지 않은 외부 AI 답변 코드 형식입니다: {code}")
             continue
 
-        # 3) 동일 코드에 서로 다른 item_id 바인딩 검증 (코드 충돌 방지)
+        # 3) 동일 코드에 서로 다른 대상 item_id 바인딩 검증 (코드 충돌 방지)
         if code in code_to_item and code_to_item[code] != item_id:
-            errors.append(f"코드 {code}가 서로 다른 항목({code_to_item[code]}, {item_id})에 중복 지정되었습니다.")
+            errors.append(f"코드 {code}가 다중 대상({code_to_item[code]}, {item_id})에 중복 매핑되었습니다.")
         code_to_item[code] = item_id
 
-        # 4) 동일 item_id에 서로 다른 코드 바인딩 검증
+        # 4) 동일 item_id에 복수 코드 바인딩 검증
         if item_id in item_to_code and item_to_code[item_id] != code:
-            errors.append(f"항목 {item_id}에 서로 다른 코드({item_to_code[item_id]}, {code})가 중복 지정되었습니다.")
+            errors.append(f"대상 {item_id}에 복수 코드({item_to_code[item_id]}, {code})가 중복 매핑되었습니다.")
         item_to_code[item_id] = code
 
     return errors
