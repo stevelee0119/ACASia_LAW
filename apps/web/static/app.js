@@ -436,16 +436,17 @@ function loadExternalStore(projectId, runId) {
   try { return JSON.parse(localStorage.getItem(externalStoreKey(projectId, runId)) || "{}") || {}; } catch (e) { return {}; }
 }
 // TK-129: 보고서 생성 요청에 함께 보낼, 표에 반영한 답변 목록.
-// 답변-행 연결을 코드가 아니라 원래 항목 ID에 고정하여, 프롬프트 갱신 후 코드가 재할당되어도 이전 답변이 오염 전송되지 않도록 한다.
+// 답변-행 연결을 코드가 아니라 원래 항목 ID에 고정한다. item_id가 없는 이전 버전 구형 답변은 안전한 원래 항목 확인이 불가하므로 제외한다.
 function externalAnswersForReport(projectId, runId) {
   const store = loadExternalStore(projectId, runId);
   return Object.entries(store.answers || {})
     .filter(([code, a]) => {
       const boundItemId = store.codes?.[code];
-      return boundItemId && (!a.item_id || a.item_id === boundItemId);
+      // item_id가 없는 이전 버전 답변은 보고서 전송에서 완전히 제외
+      return Boolean(a.item_id && boundItemId && a.item_id === boundItemId);
     })
     .map(([code, a]) => ({
-      code, item_id: a.item_id || store.codes[code],
+      code, item_id: a.item_id,
       verdict: a.verdict || "", basis: a.basis || "", summary: a.summary || "", applied_at: a.applied_at || ""}));
 }
 function saveExternalStore(store) {
@@ -459,8 +460,8 @@ function rememberPromptCodes(prefix, items) {
   items.forEach((item, index) => {
     const code = `${prefix}${index + 1}`;
     store.codes[code] = item.item_id;
-    // 코드가 다른 항목에 재할당된 경우 기존 답변을 삭제하여 오염을 방지한다.
-    if (store.answers[code] && store.answers[code].item_id && store.answers[code].item_id !== item.item_id) {
+    // 코드가 다른 항목에 재할당된 경우 또는 item_id가 없는 구형 답변인 경우 기존 답변을 삭제하여 오염을 방지한다.
+    if (store.answers[code] && (!store.answers[code].item_id || store.answers[code].item_id !== item.item_id)) {
       delete store.answers[code];
     }
   });
@@ -468,15 +469,25 @@ function rememberPromptCodes(prefix, items) {
 }
 function applyStoredExternalAnswers(items) {
   const store = loadExternalStore();
-  // 원래 항목 ID와 현재 코드가 일치하는 유효한 답변만 표에 연결
+  // 원래 항목 ID(item_id)가 명시되어 있고 현재 코드 매핑과 일치하는 유효한 답변만 표에 연결
   const byItem = new Map();
+  let legacySkipped = false;
   for (const [code, answer] of Object.entries(store.answers || {})) {
     const boundItemId = store.codes?.[code];
-    if (boundItemId && (!answer.item_id || answer.item_id === boundItemId)) {
+    if (!answer.item_id) {
+      // item_id가 없는 이전 버전 답변은 안전한 원래 항목을 확인할 수 없으므로 표에 자동 연결하지 않음
+      legacySkipped = true;
+      continue;
+    }
+    if (boundItemId && answer.item_id === boundItemId) {
       byItem.set(boundItemId, {...answer, code, item_id: boundItemId});
     }
   }
   for (const item of items) if (byItem.has(item.item_id)) item.external_ai_answer = byItem.get(item.item_id);
+  if (legacySkipped && !window.__legacy_answer_notified) {
+    window.__legacy_answer_notified = true;
+    toast("이전 버전에서 저장된 외부 AI 답변은 원래 항목 ID가 없어 표에 반영되지 않습니다. '외부 AI 답변 붙여넣기'로 다시 적용하세요.");
+  }
 }
 function externalAnswerBlock(answer) {
   const box = node("div", null, "external-ai-answer");

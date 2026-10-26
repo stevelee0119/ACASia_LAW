@@ -230,6 +230,58 @@ def test_prompt_refresh_code_reuse_regression():
         browser.close()
 
 
+def test_legacy_stored_answers_without_item_id_are_excluded_regression():
+    """item_id가 없는 이전 버전 localStorage 답변은 표에도 보고서 요청에도 나오지 않는 회귀 시험."""
+    bodies = []
+    with sync_playwright() as p:
+        browser, page = screen._page(p, [])
+        page.on("request", lambda r: bodies.append(r.post_data_json) if r.url.endswith("/report-jobs") and r.method == "POST" else None)
+        page.route("**/api/projects/p1/report-jobs", lambda route: route.fulfill(json={
+            "job_id": "j1", "state": "FAILED", "stage": "", "percent": 0, "error": "시험 중단", "formats": ["json"]}))
+        page.locator('.tabs [data-tab="review"]').click()
+
+        # 1. item_id가 없는 이전 버전 구형 답변 및 코드 재사용 매핑을 localStorage에 주입
+        page.evaluate("""() => {
+            const key = externalStoreKey();
+            const legacyStore = {
+                codes: {"A1": "item_a"},
+                answers: {
+                    "A1": {code: "A1", verdict: "부존재", basis: "구형근거", summary: "구형답변요약"} // item_id 없음!
+                }
+            };
+            localStorage.setItem(key, JSON.stringify(legacyStore));
+            // 표를 다시 렌더링하여 적용 시도
+            renderFindings();
+        }""")
+        page.wait_for_timeout(300)
+
+        # 2. UI 검증: item_id가 없으므로 표의 행에 외부 AI 답변 박스가 표시되지 않아야 함
+        answers_in_table = page.locator("#aiVerificationRows .external-ai-answer")
+        expect(answers_in_table).to_have_count(0)
+
+        # 3. 프롬프트 코드를 다른 항목(item_other)에 재할당 시뮬레이션
+        page.evaluate("""() => {
+            rememberPromptCodes('A', [{item_id: 'item_other'}]);
+            renderFindings();
+        }""")
+        page.wait_for_timeout(300)
+
+        # 재할당 후에도 여전히 표에 표시되지 않아야 함
+        expect(answers_in_table).to_have_count(0)
+
+        # 4. 보고서 생성 시뮬레이션
+        page.locator("#reportBtn").click()
+        report = page.get_by_role("dialog", name="검토 보고서 초안")
+        report.get_by_role("button", name="초안 생성").click()
+        page.wait_for_timeout(500)
+
+        # 5. API 요청 본문 검증: 구형 답변은 보고서 전송 대상에서 완전히 제외되어야 함
+        assert bodies, "보고서 생성 요청이 전송되어야 함"
+        sent_answers = bodies[-1].get("external_ai_answers", [])
+        assert len(sent_answers) == 0, f"item_id 없는 구형 답변은 보고서 요청에 포함되지 않아야 함: {sent_answers}"
+        browser.close()
+
+
 def test_report_dialog_sends_answers_reflected_in_table():
     bodies = []
     with sync_playwright() as p:
