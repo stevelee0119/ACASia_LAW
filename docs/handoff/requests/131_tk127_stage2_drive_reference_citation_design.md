@@ -1,6 +1,6 @@
 # [설계 메모] TK-127 2단계: 인용 행(판례·법령)의 Google Drive 색인 대조
 
-- **작성일**: 2026-10-26 (6차 개정)
+- **작성일**: 2026-10-26 (7차 개정)
 - **작성자**: Antigravity (구현 에이전트)
 - **대상 브랜치**: `Steve_ACASiaLAW` (기준 제품 코드 SHA: `3fee071c17921c9add11167250744f646903cee3`)
 - **문서 성격**: 설계 제안 메모 (본 PR에서는 제품 코드 및 시험 수정 0줄 유지)
@@ -14,7 +14,7 @@
 - **원칙**:
   1. 엔진 및 데이터 파이프라인의 확장이 수반되므로 제품 코드 수정에 앞서 본 설계 제안을 제출하여 평가 측(Codex) 검토와 사용자 승인을 득한 후 별도 구현 티켓으로 착수합니다. 사용자의 설계 승인을 받기 전에는 제품 코드 구현 착수로 넘기지 않습니다.
   2. 점수나 테스트 결과를 임의로 고정하거나 성능을 사전 단정하지 않으며, 코드 참조는 유동적인 행 번호 대신 파일 경로와 심볼명을 기준으로 관리합니다.
-  3. **오근거 연결 방지 및 인용 식별자 중심 바인딩**: 짧거나 흔한 문구 우연 일치에 따른 오매칭을 원천 차단하기 위해 8자 부분 문자열만으로 근거를 자동 연결하지 않으며, 안정적인 식별자(`claim_id`/`citation_id`, 정규화된 사건번호·법령명·조문) 일치를 최우선으로 합니다.
+  3. **오근거 연결 방지 및 인용 식별자 중심 바인딩**: 짧거나 흔한 문구 우연 일치에 따른 오매칭을 원천 차단하기 위해 8자 부분 문자열만으로 근거를 자동 연결하는 로직을 전면 폐지하며, 안정적인 식별자(`claim_id`/`citation_id`, 정규화된 사건번호·법령명·조문) 일치를 최우선으로 합니다. 특히 명시적인 식별자 충돌(법령명 동일·조문 불일치, 사건번호 불일치)은 fallback을 원천 차단하는 종료 조건(Hard Stop)으로 확정하고, fallback은 식별자 정보가 없는 경우에만 제한적으로 검토하며 식별 근거 조건을 키워드 일부가 아닌 해당 인용의 전체 식별자 일치로 강화합니다.
 
 ---
 
@@ -90,7 +90,7 @@
       ```
 
 - **개정된 매칭 우선순위 및 엄격 매칭 계약 (오근거 연결 차단)**:
-  짧고 일반적인 문구의 우연한 일치로 인한 오연결을 차단하기 위해, **8자 이상 부분 문자열 단독 조건에 의한 자동 연결 및 SUPPORTED 승격을 전면 폐지**하고 아래의 엄격한 3계층 우선순위 계약을 적용합니다:
+  짧고 일반적인 문구의 우연한 일치로 인한 오연결을 차단하기 위해, **8자 이상 부분 문자열 단독 조건에 의한 자동 연결 및 SUPPORTED 승격을 전면 폐지**하고 아래의 엄격한 3계층 우선순위 및 종료 조건(Hard Stop) 계약을 적용합니다:
 
   1. **1순위: 구조적 ID 기반 우선 매칭 (최우선 확정)**:
      - 관찰의 `claim_id` $\rightarrow$ 문서 `claims[].citation_ids` 조회 $\rightarrow$ 검토 행의 `citation_id`가 해당 목록에 포함되면 즉시 매칭 (`app.js`의 `attachReferenceObservations`).
@@ -100,17 +100,21 @@
      - 1순위 ID 매칭이 없을 때, 인용의 핵심 법률 식별자를 엄격 대조:
        - **판례 인용**: 정규화된 사건번호(`canonical_case_no`)가 Drive 발췌 문맥과 정확히 경계 일치(`(?<!\d)...(?!\d)`)하는 경우.
        - **법령 인용**: 정규화된 법령명과 조문 번호(`제N조`)가 근접 윈도우(100자) 내에 동시 출현하여 모두 일치하는 경우.
-     - 법령명은 같으나 조문이 다른 경우(예: 민법 제103조 vs 제104조) 또는 사건번호가 다른 경우 매칭 실패 처리.
+     - **명시적 식별자 충돌 시 Hard Stop (종료 조건 확정)**:
+       - 법령명은 동일하나 조문 번호가 다른 경우(예: 민법 제103조 vs 제104조) 또는 사건번호가 다른 경우(예: 2020도16420 vs 2020도16421)는 **명시적 식별자 충돌(Conflict)**로 판정합니다.
+       - **식별자 충돌 발생 시 3순위 fallback으로 넘어가지 않고 즉시 매칭을 종료(Hard Stop)**합니다.
+       - 어떠한 경우에도 자동 연결 및 `SUPPORTED` 승격을 금지하며, `UNMATCHED`/`PENDING_REVIEW` 상태로 남깁니다.
 
-  3. **3순위: 제한적 텍스트 Fallback (고유 단일 후보 & 인용 식별 근거 필수)**:
-     - 1순위와 2순위로 매칭되지 않은 경우, 단순 문자열 포함만으로는 연결하지 않으며 **다음 4가지 조건을 모두 만족할 때만 극히 제한적으로 허용**:
+  3. **3순위: 극히 제한적 텍스트 Fallback (식별자 정보 부재 시 한정 & 전체 식별자 일치 필수)**:
+     - **진입 제한**: 서면 인용 또는 후보 자료에 식별자 충돌이 없는 경우 중에서, **식별자 정보(사건번호·조문)가 아예 존재하지 않는 경우에만 극히 제한적으로 fallback 검토에 진입**합니다. 명시적 식별자가 존재하는 인용은 2순위에서 일치하지 않거나 충돌하면 위 Hard Stop에 의해 즉시 종료됩니다.
+     - 단순 문자열 포함만으로는 연결하지 않으며 **다음 4가지 조건을 모두 만족할 때만 극히 예외적으로 허용**:
        - **조건 A (최소 길이)**: 정규화된 인용문(`quote_compact`) 및 주장 텍스트(`claim_compact`)가 모두 **15자 이상** (기존 8자에서 상향).
        - **조건 B (상호 부분 포함)**: `(quote_compact in claim_compact) or (claim_compact in quote_compact)`.
        - **조건 C (고유 단일 후보, Unique Candidate)**: 위 조건을 만족하는 행 후보가 **정확히 1개**여야 함. 동일/유사 문구를 포함하는 후보 행이 2개 이상이면 **충돌로 간주하여 자동 연결 금지**.
-       - **조건 D (인용 식별 근거 최소 1건 확보)**: 해당 발췌문 내에 적어도 대상 행의 법률 키워드(사건번호 또는 법령명)가 1개 이상 함께 출현해야 함.
+       - **조건 D (전체 식별자 완전 일치)**: 식별 근거 조건은 키워드 일부가 아니라 **해당 인용의 전체 식별자(사건번호 전체 또는 법령명+조문 전체)가 발췌문 내에 온전히 일치**해야 함. 키워드 단편 일치나 일부 누락은 불인정하며, 충돌 시 즉시 탈락.
 
   4. **미매칭 및 검토 대기 (`UNMATCHED` / `PENDING_REVIEW`)**:
-     - 위 1~3순위 조건을 충족하지 못하거나, 복수 후보 경쟁 또는 인용 식별자가 불일치하는 경우:
+     - 위 1~3순위 조건을 충족하지 못하거나, 명시적 식별자 충돌(Hard Stop), 복수 후보 경쟁, 또는 식별자 불일치 시:
        - **절대로 `reference_status=SUPPORTED`로 자동 승격하지 않음**.
        - 해당 관찰은 `unmatched`로 분류되어 인용 행에 바인딩되지 않고, 표 하단의 독립된 참고문헌 관찰 행(`kind: "REFERENCE"`)으로만 표시되거나 `PENDING_REVIEW` 상태로 유지.
 
@@ -119,13 +123,19 @@ stateDiagram-v2
     [*] --> CitationDetected
     CitationDetected --> IDMatched: 1순위 claim_id / citation_id 일치
     CitationDetected --> CheckIdentifier: ID 불일치
-    CheckIdentifier --> IdentifierMatched: 2순위 사건번호 또는 법령명+조문 완전 일치
-    CheckIdentifier --> CheckFallback: 식별자 불일치
-    CheckFallback --> FallbackMatched: 3순위 고유 단일 후보 & 식별근거 확보 & 15자 이상
-    CheckFallback --> UnmatchedPending: 다중 후보 충돌 / 식별근거 없음 / 일반문구
+
+    CheckIdentifier --> IdentifierMatched: 2순위 사건번호 또는 법령명+조문 전체 일치
+    CheckIdentifier --> IdentifierConflictHardStop: 명시적 식별자 충돌 (조문 불일치 / 사건번호 불일치)
+    CheckIdentifier --> CheckFallback: 식별자 부재 시에만 fallback 검토
+
+    IdentifierConflictHardStop --> UnmatchedPending: fallback 차단 (Hard Stop)
+    CheckFallback --> FallbackMatched: 3순위 고유 단일 후보 & 전체 식별자 일치 & 15자 이상
+    CheckFallback --> UnmatchedPending: 다중 후보 충돌 / 식별자 불일치 / 일반문구
+
     IDMatched --> BoundReference: 비구속적 참고 근거 바인딩 (SUPPORTED)
     IdentifierMatched --> BoundReference: 비구속적 참고 근거 바인딩 (SUPPORTED)
     FallbackMatched --> BoundReference: 제한적 바인딩 (SUPPORTED)
+
     UnmatchedPending --> UnmatchedRow: 독립 관찰 행 표시 (SUPPORTED 승격 금지)
     BoundReference --> NonBindingUI: UI '참고문헌·구속력 없음' 표기
     UnmatchedRow --> NonBindingUI
@@ -135,11 +145,17 @@ stateDiagram-v2
 
 - **향후 구현 회귀 시험 계획 (오매칭 차단 및 정확도 통제 시험)**:
   - `tests/test_tk127_stage2_server_reference_observations_sync.py`:
-    1. **오매칭 방지 통제 테스트 케이스 (자동 연결 및 SUPPORTED 승격 금지 검증)**:
-       - **다중 후보 경쟁**: 동일하거나 비슷한 텍스트(예: 8자~15자 문구)를 가진 검토 행이 2개 이상 존재하는 경우 $\rightarrow$ 자동 연결 배제, 미매칭 유지, SUPPORTED 승격 방지.
-       - **일반 상용구 우연 포함**: "이유 없다", "주문과 같이 판결한다", "법률상 근거가 없다" 등 흔한 일반 문구가 포함된 경우 $\rightarrow$ 인용 식별자 불일치 시 자동 연결 금지.
-       - **법령명 동일·조문 불일치**: 동일한 법령명(예: `민법`)이지만 조문 번호가 다른 경우 (예: 서면 `제103조`, 발췌문 `제104조`) $\rightarrow$ 매칭 실패, SUPPORTED 승격 금지.
-       - **사건번호 불일치**: 연도나 일련번호가 다른 경우 (예: 서면 `2020도16420`, 발췌문 `2020도16421`) $\rightarrow$ 자동 연결 차단, SUPPORTED 승격 금지.
+    1. **식별자 충돌 Hard Stop 및 오매칭 방지 반례 시험 (자동 연결 및 SUPPORTED 승격 금지 검증)**:
+       - **법령명 동일·조문 불일치 반례 (15자 이상·유일 후보·텍스트 포함 충족 시에도 차단)**:
+         - 조건: 서면 `"민법 제103조에 위반되어 무효이다"` (15자 이상) vs 발췌문 `"민법 제104조에 위반되어 무효이다"`.
+         - 상세 시나리오: 후보 발췌문에 15자 이상의 서면 문구가 상호 포함되거나 유일 후보로 검색되더라도, 서면의 조문(`제103조`)과 발췌문의 조문(`제104조`)이 불일치하면 **Hard Stop이 발동되어 3순위 fallback 진입이 차단**됨.
+         - 예상 결과: 자동 연결 배제, fallback 차단, `reference_status=SUPPORTED` 승격 금지 (`UNMATCHED` / `PENDING_REVIEW` 유지).
+       - **사건번호 불일치 반례 (15자 이상·유일 후보·텍스트 포함 충족 시에도 차단)**:
+         - 조건: 서면 `"대법원 2020도16420 판결에 따르면"` (17자) vs 발췌문 `"대법원 2020도16421 판결에 따르면"`.
+         - 상세 시나리오: 후보 발췌문이 고유 단일 후보이고 15자 이상의 텍스트 상호 포함 조건을 충족하더라도, 사건번호의 일련번호(`2020도16420` vs `2020도16421`)가 불일치하면 **Hard Stop이 발동되어 3순위 fallback 진입이 차단**됨.
+         - 예상 결과: 자동 연결 배제, fallback 차단, `reference_status=SUPPORTED` 승격 금지 (`UNMATCHED` / `PENDING_REVIEW` 유지).
+       - **다중 후보 경쟁**: 동일하거나 비슷한 텍스트(예: 15자 이상 문구)를 가진 검토 행이 2개 이상 존재하는 경우 $\rightarrow$ 충돌로 간주하여 자동 연결 배제, 미매칭 유지, SUPPORTED 승격 방지.
+       - **일반 상용구 우연 포함**: "이유 없다", "주문과 같이 판결한다", "법률상 근거가 없다" 등 흔한 일반 문구가 포함된 경우 $\rightarrow$ 전체 인용 식별자 불일치 시 자동 연결 금지.
     2. **정답 통제 자료 기반 1:1 비교 및 집계 검증**:
        - 정답 매칭 라벨이 구축된 통제 테스트셋(Ground Truth Control Dataset)을 구성.
        - 서버 파이프라인(`build_document_review_items`)과 브라우저(`attachReferenceObservations`)의 실행 결과를 각각 비교하여 **정확 연결(True Positive)**과 **오연결(False Positive)**을 집계.
@@ -219,7 +235,7 @@ stateDiagram-v2
 | **검토 항목 생성** | `packages/verification_engine/review_items.py` | `derive_item_severity`<br>`build_document_review_items` | Finding 심각도 순수 파생<br>단일 문서 검토 항목 생성 메인 함수 (인용 행 루프, `reference_status` 결정, `evidence_sources` 출처 생성, 미연결 Finding 루프) |
 | **파이프라인 단계** | `packages/verification_engine/pipeline.py` | `manifest.stage("reference_sync")`<br>`manifest.stage("reference_review")` | 참고자료 동기화 파이프라인 단계<br>문서별 Drive 대조 실행 파이프라인 단계 |
 | **공통 스키마** | `packages/common/schemas.py` | `ReviewItemKind` (Enum)<br>`ReviewItem` (dataclass)<br>`ReviewItem.to_dict()` | 검토 항목 종류 정의<br>`reference_observations` 필드 추가 대상<br>직렬화 사전 변환 |
-| **웹 화면** | `apps/web/static/app.js` | `compactText`<br>`attachReferenceObservations`<br>`referenceObservationRow`<br>`referenceObservationBlock`<br>`referenceStatusLine` | 공백 제거 정규화 함수<br>브라우저 측 행 연결 (1순위 ID, 2순위 식별자 일치, 3순위 고유단일 fallback)<br>미매칭 관찰 행 생성<br>3열 참고문헌 대조 블록 렌더링<br>표 위 상태 줄 렌더링 |
+| **웹 화면** | `apps/web/static/app.js` | `compactText`<br>`attachReferenceObservations`<br>`referenceObservationRow`<br>`referenceObservationBlock`<br>`referenceStatusLine` | 공백 제거 정규화 함수<br>브라우저 측 행 연결 (1순위 ID, 2순위 식별자 일치, 식별자 충돌 시 Hard Stop 차단, 3순위 고유단일 fallback)<br>미매칭 관찰 행 생성<br>3열 참고문헌 대조 블록 렌더링<br>표 위 상태 줄 렌더링 |
 | **보고서 엔진** | `packages/report_engine/pdf_report.py`<br>`packages/report_engine/docx_report.py`<br>`packages/report_engine/exporters.py` | `build_report_pdf`<br>`build_report_docx`<br>`to_payload`, `to_json` | PDF 검토 표 렌더링<br>Word 검토 표 렌더링<br>JSON/Excel `review_items` 내보내기 (안내 행 및 official=false 메타데이터 반영)<br>*(참고: `external_answers.py`는 기준 SHA 시점 미존재)* |
 | **설정** | `packages/common/config.py` | `Settings.rag_drive_folder_id`<br>`Settings.rag_sync_seconds`<br>`Settings.rag_max_files`<br>`Settings.rag_inventory_max_files`<br>`Settings.rag_download_mb` | Drive 폴더 ID<br>동기화 타임아웃 (기본 120초)<br>신규 색인 파일 상한 (기본 1,000개 파일)<br>인벤토리 수집 상한 (기본 20,000개 파일)<br>다운로드 한도 (기본 128MB) |
 | **관련 기존 시험** | `tests/test_drive_rag_relevance.py`<br>`tests/test_f2_review_screen_browser.py`<br>`tests/test_tk126_flat_tabs_answer_import.py` | 파일 전체 | Drive RAG 관련성 시험<br>검토 화면 통합 렌더링 시험<br>1단계 평면 탭 시험 |
@@ -228,7 +244,7 @@ stateDiagram-v2
 
 ## 4. 향후 절차
 
-1. 본 설계 메모 6차 개정안 제출 및 평가 측(Codex) 재검토, 사용자 승인.
+1. 본 설계 메모 7차 개정안 제출 및 평가 측(Codex) 재검토, 사용자 승인.
 2. **사용자 승인 완료 전 제품 코드 구현 착수 절대 금지**.
 3. 사용자 승인 완료 후 세부 구현 티켓 발행 및 제품 코드/시험 구현 착수.
 4. 제품 코드 수정 전후 오프라인 회귀 게이트(`score_gate.py`) 및 운영 Drive 실측 검증(오연결 0건, 정밀도 100%, 수동 교차 검증) 완료 후 병합.
