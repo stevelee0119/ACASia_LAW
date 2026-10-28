@@ -107,7 +107,7 @@ release_highlights.json "0.14":
 
 **수용 기준**: diff가 위 세 파일과 생성물(README 변경표·RELEASE_HISTORY)뿐, 필수 CI 성공, 판정서와 버전 일치. 평가 측은 diff와 CI만 확인하고 수용한다(탐지 변경 없음, 재측정 없음).
 
-> **상태(10-28 평가 측 확인):** 0.15.0 버전 커밋 #187 병합(`fdf11b1`), 릴리스 #189 main 병합(`08d40ff`, 10-26). **운영 배포 확인(health 0.15.0·`08d40ff`, 10-28)** — TK-126·128 deployed, TK-127 1단계 배포. #186 TK-127 2단계 메모 Steve 병합(`efc9c9c`), 평가 측 검토 전. #185 TK-129 1차 판정 보완 2건(2-4-1절) → 2차(bdc242c) 보완 1건: 보고서 표 열 너비(2-4-2절, 10-28).
+> **상태(10-28 평가 측 확인):** 0.15.0 버전 커밋 #187 병합(`fdf11b1`), 릴리스 #189 main 병합(`08d40ff`, 10-26). **운영 배포 확인(health 0.15.0·`08d40ff`, 10-28)** — TK-126·128 deployed, TK-127 1단계 배포. #186 TK-127 2단계 메모 Steve 병합(`efc9c9c`), 평가 측 검토 전. #185 TK-129 1차 보완 2건(2-4-1) → 2차 보완 1건(2-4-2) → 3차 `89cf414` 코드 수용·사용자 화면 확인 대기(2-4-3). #191 TK-127 2단계 1차 보완 2건(2-6, 10-28).
 
 ## 2-1-2. 0.15.0 버전 커밋 지시 (10-25, 간소 경로 RELEASE_PROCEDURE 2-6)
 평가 PR(판정서 0.15.0 포함)이 Steve에 병합된 뒤, 새 브랜치에서 `git apply docs/handoff/patches/v0.15.0_version_commit.diff` 하나로 커밋한다(5개 파일: config.py 버전, releases.json, release_highlights.json, README 변경표, RELEASE_HISTORY — 평가 측 사전 검증: check_version_policy 통과, update_readme --check 0). 커밋 제목 `chore(release): 버전 0.15.0 판정서 반영`, 끝 `Agent: implementer`. 다른 변경 금지. 평가 측은 diff와 CI만 확인한다.
@@ -407,6 +407,97 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 - 새 시험(규칙마다 양성 3·대조 3 이상): ① 구조 연결 + 발췌 식별자 부재 → 행에 붙음·SUPPORTED 아님(서로 다른 3꼴) ② 구조 연결 + 식별자 충돌 → 행에 붙음·SUPPORTED 아님 ③ 구조 연결 + 전체 식별자 일치 + SUPPORTS → SUPPORTED(양성 3) ④ 구조 연결 없음 + 식별자 부재·충돌 → 별도 행·승격 없음. 서버·브라우저 결과가 같음을 node 교차 시험으로 확인한다.
 - 통제 벤치마크: 설계 4) 그대로. 유형 N3·N4(식별자 부재)는 '구조 연결 없음' 사례로 구성한다. 구조 연결 사례는 '연결 정확도'와 'SUPPORTED 승격 정확도'를 따로 집계한다(구조 연결로 붙었는데 승격된 부재 사례 = FP).
 - 이슈 #190 수용 기준 1항('식별자 부재 반례에서 연결과 SUPPORTED 승격이 모두 차단')은 '구조 연결이 없는 경우'로 읽고, 구조 연결 사례는 '승격 차단'만 본다.
+
+
+## 2-4-3. #185 3차 확인 — 코드 수용, 사용자 화면 확인 대기 (10-28, 사용자 지시 '#185,#191 평가')
+
+- head `89cf414`: `c23bc00` 코드·시험 diff = 평가 측 수정본(줄 단위 일치), 캡처 06·07 교체(표가 본문 폭 안, '공식 여부' 열이 표 안 — 평가 측 열람). 같은 SHA CI 전부 성공(인용, 두 테스트 실행 모두). 평가 측 사전 검증 사본과 코드 동일(357건 실패 0).
+- 남은 것: 사용자 화면 확인(캡처 01~08·원문 대응표) → "#185병합". 병합 순서는 #185 먼저(2-6절).
+
+## 2-6. #191 TK-127 2단계 1차 판정 — 보완 2건 + 병합 순서 (10-28, 사용자 지시 '#185,#191 평가')
+
+```
+[Codex(구현 대행) 보완 지시 — PR #191(TK-127 2단계, head faafb5e) 1차 판정: 보완 2건 + 병합 순서 1건. 2026-10-28]
+
+■ 판정 요약
+- 같은 SHA CI(인용): 점수 하락 게이트·은퇴 세트 비교·Docker OCR·CodeQL 새 경고 게이트 성공. 테스트는 같은 SHA의 두 실행 중 하나(run 40696157071)는 3종 성공, 다른 하나(run 40696164483)는 'SQLite + 인프로세스 Worker'에서 기존 시험 1건 실패(아래 '관찰' 참조).
+- 구조·계약: 사용자 결정(10-28 '연결 허용·승격만 금지')과 승인 설계 #186을 지킨다(평가 측 코드 검토).
+  · 1순위 구조 연결은 식별자와 무관하게 붙이고, SUPPORTED는 SUPPORTS·전체 식별자·충돌 없음일 때만 준다. 그 밖은 PENDING_REVIEW.
+  · 비구조 연결은 근접 식별자 → 제한 fallback(전체 식별자·15자·고유 단일 후보) 순서로만 한다.
+  · official_status를 보존하고, 화면·보고서 4종에 비공식 표시를 한다. TK-129 id 규칙 `_REFERENCE_O{n}`을 유지한다.
+- 평가 측 재실행(faafb5e): TK-127 새 시험 2개 파일 통과. check_test_edits·check_hardcoding_diff·평가 세트 문구 대조·보호 경로 점검 통과.
+- 결함 2건(평가 측 재현):
+  · ① Drive 인용 검색이 색인 크기에 비례해 매우 느리다.
+  · ② 법령 인용의 조문 식별자가 실제 추출기 출력과 맞지 않는다.
+
+■ 원인 ① — search_citation 성능 (packages/rag_engine/library.py 767~792행, reference_binding.py 77~95행)
+- review.py 283행이 문서의 인용마다 lib.search_citation(citation)을 부른다.
+- search_citation은 적격 파일마다 FTS5 표를 `WHERE file_id=? AND revision=?`로 읽는다. UNINDEXED 열이라 파일마다 전체 표를 훑는다.
+- 그렇게 읽은 모든 청크에 citation_excerpt를 부른다. citation_excerpt(83행)는 식별자가 있는지 보기 전에 글자마다 정규식(authority_text)을 돌린다.
+- 평가 측 측정(합성 색인, 청크 1,000자, 인용 10개):
+  · 1,000청크 9.1초 · 2,000청크 16.7초 · 4,000청크 34.8초 · 8,000청크 73.5초.
+  · 청크 1개·인용 1개당 약 0.9ms다. 인용 30개인 서면이면 8,000청크 색인에서 3분 넘게 늘어난다.
+  · 운영 색인 크기는 미측정이다.
+
+■ 원인 ② — 조문 식별자 (reference_binding.py identifier 28~47행·identifier_match 68~73행, app.js referenceIdentifier 2066행·referenceIdentifierMatch 2102행)
+- (a) 실제 추출기(packages/legal_engine/citation_extractor.py)는 '민법 제103조의2'를 article '103의2'로 남긴다.
+  · identifier는 이것을 '제103의2조'로 만든다. ARTICLE_RE에 맞지 않아 None이 된다.
+  · 결과: '조의N' 인용은 Drive 대조·승격 대상에서 모두 빠진다(평가 측 재현: extract_from_text 출력으로 identifier None).
+  · article '7' + sub '3' 꼴도 sub를 무시한다.
+- (b) 항을 든 인용('근로기준법 제23조 제1항' → '제23조제1항')을 그 조의 본문 발췌('근로기준법 제23조(해고 등의 제한) ① 사용자는…')와 대조하면 문제가 생긴다.
+  · 발췌의 '제23조'를 다른 조문으로 보아 conflict=True가 된다.
+  · 같은 조문을 '충돌'로 판정해, 구조 연결은 PENDING_REVIEW, 비구조 연결은 Hard Stop이 된다.
+  · 평가 측 재현: identifier_match → {'full': False, 'conflict': True}. 같은 조 제1항 표기 발췌는 full, 제2항 발췌는 conflict.
+
+■ 고칠 것 — 평가 측 수정본 그대로 적용 (①②, 4개 파일, +127/−34)
+- 적용(PR 브랜치에서, rebase·force-push 없이 새 커밋):
+  `git fetch origin evaluator/round8-promotion && git show origin/evaluator/round8-promotion:docs/handoff/patches/TK-127_stage2_fixes_on_191.diff | git apply --3way`
+- ① library.search_citation:
+  · 색인을 한 번만 `SELECT file_id, revision, page, start, text FROM chunks WHERE instr(text, ?) > 0`으로 훑는다. 인자는 식별자 앵커의 가장 긴 숫자열이다.
+  · 적격·현재 revision·사례표 제외를 Python에서 거른다.
+  · 정렬(file_id, page, start)과 limit은 그대로다.
+  · reference_binding.citation_excerpt: `anchor not in authority_text(text)`로 먼저 거르고, 있을 때만 원문 위치를 계산한다(IGNORED_CHAR_RE 한 번).
+- ② identifier: article을 `제?N조?(의M)?`로 읽어 '제N조의M'으로 만든다(sub 열 포함). 항·호는 이전처럼 덧붙인다.
+- ② identifier_match: 발췌의 조문 표기를 가장 길게 읽는다. 뒤에 숫자가 이어지면 잘린 표기라 무효다.
+  · article_compatible(같은 조·조의N이고 항·호가 서로 접두 관계)이면 같은 조문으로 본다.
+  · 다른 조·다른 항·조의N 차이는 충돌로 유지한다.
+  · app.js referenceIdentifier·referenceIdentifierMatch·referenceArticleCompatible도 같은 규칙이다(서버·브라우저 동일).
+- 시험(새 시험만 추가, 기존 시험 수정 없음):
+  · test_paragraph_and_sub_article_citations_match_their_own_article: 양성 3꼴 — 항 인용 대 ①표기 조문 본문, article '103의2', article+sub. 서버·Node 모두 연결과 SUPPORTED.
+  · test_different_article_paragraph_or_sub_article_is_conflict: 대조 3꼴 — 다른 항, 조의N 인용 대 본조, 본조 인용 대 조의N. 연결은 유지, 승격은 없고 conflict.
+
+■ 평가 측 사전 검증 (faafb5e + 수정본, 저장소 밖 사본, 평가 측 재실행)
+- 성능: 같은 합성 색인에서 1,000청크 0.05초 · 8,000청크 0.36초(인용 10개). 1,800청크·인용 14개 혼합 색인에서 10.72초 → 0.19초.
+- 동등성: 검색 결과가 원래 구현과 완전히 같다(162건, 결과 해시 일치). 식별자 변형 11꼴을 넣었다: 공백·전각 공백·괄호·판결 표기·다른 사건번호 병기·조의N·제1030조 등. 다른 revision과 사례표 파일도 섞었다.
+- 새 조문 시험 6건 통과. 원래 faafb5e 코드에서는 6건 중 4건 실패한다(결함을 잡음). 기존 test_complete_article_boundary(제8조제2항0 등 잘린 표기) 통과 유지.
+- TK-127 시험 2개 파일 전부 통과. check_test_edits·check_hardcoding_diff·평가 세트 문구 대조 통과.
+- 병합 사전 검증: #185(89cf414) + #191 + 이 수정본 + 아래 병합 보정을 합친 사본에서 관련 13개 파일 255건 실패 0. 넓힌 22개 파일 묶음은 465건 실패 0(조문 수정 전 사본).
+- 미검증: 운영 Drive 색인 크기·검색 시간, Microsoft Word·Excel 직접 표시.
+
+■ 병합 순서 — #185 먼저, 그 뒤 #191 (평가 측 병합 시험으로 확인)
+- 두 PR이 app.js attachReferenceObservations·referenceObservationRow에서 충돌한다. 충돌 구간은 #191 쪽을 택한다(같은 `_REFERENCE_O{n}` 규칙, #191이 상위 집합). 주의: 파일 전체를 한쪽으로 덮어쓰면 #185의 applyStoredExternalAnswers 변경이 사라진다. 평가 측이 이것으로 TK-129 회귀 시험 실패를 재현했다. 충돌 구간만 고른다.
+- 병합 뒤 #185의 test_browser_reference_row_ids_match_server_targets가 실패한다. 이 시험은 app.js에서 함수 3개만 뽑아 node로 돌리는데, 병합 뒤 attachReferenceObservations가 새 보조 함수를 쓰기 때문이다(ReferenceError).
+- 보정: #185 병합 뒤 #191 브랜치에 Steve를 병합 커밋으로 들이고 다음을 적용한다.
+  `git show origin/evaluator/round8-promotion:docs/handoff/patches/TK-127_integration_tk129_test_helper.diff | git apply --3way`
+  · 상수 EXPLICIT_WHITESPACE_RE와 보조 함수 5개를 함께 뽑는다. 단언은 바꾸지 않는다.
+
+■ 관찰 (판정 보류, 새 head CI로 다시 확인)
+- 실패 시험: test_frontend_citation_groups.py::test_findings_from_one_citation_are_grouped(run 40696164483, 하위 summary 클릭 시간 초과 '보이지 않음').
+- 평가 측 재현: 같은 시험을 단독으로 12회씩 돌렸다. Steve 기준 0/12 실패, faafb5e 0/12 실패. 병합 사본 묶음 실행에서도 통과했다.
+- #191의 app.js 변경은 상태 줄·처리 기록 렌더 경로를 바꾸지 않는다.
+- 새 head의 두 테스트 실행이 모두 성공하면 닫는다. 다시 실패하면 재렌더 경쟁(처리 기록 details가 다시 닫힘)을 원인 후보로 별도 티켓을 낸다. 시험을 약화하거나 건너뛰지 않는다.
+
+■ 하지 않을 것
+- 매칭 계약(1·2·3순위, 승격 조건, 15자·고유 단일 후보)과 화면·보고서 문구는 바꾸지 않는다.
+- 기존 시험을 수정하지 않는다(병합 보정의 함수 목록 추가는 예외로 위에 명시). 수정본 밖 변경을 섞지 않는다.
+
+■ 제출물·수용 기준
+- 커밋: 수정본 적용 1개(`Agent: implementer`). #185 병합 뒤 Steve 병합 커밋 + 병합 보정 1개.
+- 필수 CI 5종이 같은 SHA에서 성공해야 하고, 두 테스트 실행 모두 성공해야 한다. PR 코멘트 3줄('검토 요청'은 CI 완료 뒤).
+- 평가 측 확인: diff = faafb5e + 수정본(+ 병합·보정). 통제 파일럿 집계 재산출(유형별 표 갱신).
+- 맞으면 평가 측이 화면 캡처 01~06과 원문 대응표를 사용자에게 제시한다 → 사용자 확인 → 병합.
+- 탐지·RAG 엔진 변경이므로 릴리스 후보 수용 SHA에서 평가 측이 verify_all 전체 1회를 돈다(AGENT_ROLES 2.1).
+```
 
 ## 2-2. 탐지 PR 공통 수용 규약 — 하드코딩 금지 (2026-10-24 사용자 지시 '평가기준을 엄격히 적용하되 하드코딩으로 충족하지 못하게 제한')
 10-24 검토(#175 `618130c`·#165 `94c645f`·#167 `af28269`/`0731277`)에서 세 PR이 같은 방식으로 실패했다. 은퇴 세트 항목만 정확히 오르고(EVI-DATE 7·EVI-OVR 5·EVI-INCONS 3) train 같은 유형은 0이다. 평가 측의 비공개 다른 표현 탐침도 0이다(#175 0/4·#165 0/2·#167 장소·서명자 규칙 0). 새 정규식은 고정 낱말 여러 개를 순서대로 이은 문장 틀이다. 그 낱말은 은퇴 항목 위치 소제목 낱말과 8~9개씩 겹친다. **아래 규약은 A-4·B-1·B-3과 이후 모든 탐지 PR에 적용한다. 하나라도 어기면 점수와 무관하게 불승인한다.**
