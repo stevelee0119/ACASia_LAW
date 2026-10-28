@@ -19,6 +19,17 @@ from test_report_completion import report_case, create  # noqa: F401
 from test_tk127_stage2_reference_binding import make_document, pilot_cases
 
 
+def test_legacy_frozen_finding_views_are_not_re_evaluated():
+    from packages.report_engine.reference_opinions import reference_rows
+
+    for sample in [0, 10, 20]:
+        document = make_document(pilot_cases()[sample])
+        document.findings = [SimpleNamespace(title="합성 고정본 표시 전용 지적")]
+        assert reference_rows(document)[0]["reference_observations"]
+        document.engine_data = {}
+        assert reference_rows(document) == []
+
+
 @pytest.mark.parametrize("index", [1, 2, 3])
 @pytest.mark.parametrize("policy", [ExternalAIPolicy.MASKED, ExternalAIPolicy.ORIGINAL])
 def test_direct_reference_preserves_external_transmission_policy(library, monkeypatch, index, policy):

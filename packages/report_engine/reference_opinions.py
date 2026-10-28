@@ -6,11 +6,18 @@ REPORT_NOTICE = ("본 참고문헌 대조 의견은 사설 Google Drive 자료�
 
 
 def reference_rows(document):
+    if not value(document, "engine_data", {}).get("rag", {}).get("observations"):
+        return []
     items = [i.to_dict() if hasattr(i, "to_dict") else dict(i)
              for i in value(document, "review_items", [])]
     if not items and value(document, "citations", []):
+        import copy
         from packages.verification_engine.review_items import build_document_review_items
-        items = [i.to_dict() for i in build_document_review_items(document)]
+        # Legacy frozen reports expose presentation-only Finding views. Build
+        # citation reference rows without re-evaluating those findings.
+        citation_view = copy.copy(document)
+        citation_view.findings = []
+        items = [i.to_dict() for i in build_document_review_items(citation_view)]
     unmatched = bind_observations(items, document)
     doc_id = value(document, "document_id", "")
     for observation in unmatched:
