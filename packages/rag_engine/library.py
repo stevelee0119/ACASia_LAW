@@ -764,6 +764,43 @@ class ReferenceLibrary:
     def search(self, text, limit=12):
         return self.select(text, limit)["sources"]
 
+    def search_citation(self, citation, limit=12):
+        """Local exact-identifier search independent of whole-document top 12.
+
+        Only the current eligible revision is read. Editorial case tables retain
+        their separate metadata path and cannot supply SUPPORTS here.
+        """
+        import re as _re
+
+        from .reference_binding import anchor_of, citation_excerpt, identifier
+
+        ident = identifier(citation)
+        if not ident:
+            return []
+        eligible = {file_id: meta for file_id, meta in self.eligible.items()
+                    if not (meta.get("structured_case_table") or meta.get("case_table_only"))}
+        if not eligible:
+            return []
+        # 식별자의 가장 긴 숫자열은 공백·괄호 정규화와 무관하게 원문에 그대로 있다. 색인 전체를
+        # 한 번만 훑어 그 숫자열이 있는 청크만 가져온다(파일마다·청크마다 Python 대조를 하지 않는다).
+        digits = max(_re.findall(r"[0-9]+", anchor_of(ident)), key=len, default="")
+        found = []
+        with self.connect() as db:
+            rows = db.execute("SELECT file_id, revision, page, start, text FROM chunks WHERE instr(text, ?) > 0",
+                              (digits,)).fetchall()
+        for file_id, revision, page, start, text in sorted(rows, key=lambda r: (r[0], int(r[2]), int(r[3]))):
+            meta = eligible.get(file_id)
+            if not meta or revision != meta["revision"]:
+                continue
+            excerpt = citation_excerpt(citation, text)
+            if not excerpt:
+                continue
+            found.append({**meta, "file_id": file_id, "page": int(page),
+                          "start": int(start) + text.index(excerpt), "text": excerpt})
+            if len(found) >= limit:
+                return found
+        return found
+
     def has_case_tables(self) -> bool:
         return any(v.get("structured_case_table") for v in self.eligible.values())
 
