@@ -107,6 +107,8 @@ release_highlights.json "0.14":
 
 **수용 기준**: diff가 위 세 파일과 생성물(README 변경표·RELEASE_HISTORY)뿐, 필수 CI 성공, 판정서와 버전 일치. 평가 측은 diff와 CI만 확인하고 수용한다(탐지 변경 없음, 재측정 없음).
 
+> **상태(10-28 평가 측 확인):** 0.15.0 버전 커밋 #187 병합(`fdf11b1`), 릴리스 #189 main 병합(`08d40ff`, 10-26). **운영 배포 확인(health 0.15.0·`08d40ff`, 10-28)** — TK-126·128 deployed, TK-127 1단계 배포. #186 TK-127 2단계 메모 Steve 병합(`efc9c9c`), 평가 측 검토 전. #185 TK-129 1차 판정 보완 2건(2-4-1절) → 2차(bdc242c) 보완 1건: 보고서 표 열 너비(2-4-2절, 10-28).
+
 ## 2-1-2. 0.15.0 버전 커밋 지시 (10-25, 간소 경로 RELEASE_PROCEDURE 2-6)
 평가 PR(판정서 0.15.0 포함)이 Steve에 병합된 뒤, 새 브랜치에서 `git apply docs/handoff/patches/v0.15.0_version_commit.diff` 하나로 커밋한다(5개 파일: config.py 버전, releases.json, release_highlights.json, README 변경표, RELEASE_HISTORY — 평가 측 사전 검증: check_version_policy 통과, update_readme --check 0). 커밋 제목 `chore(release): 버전 0.15.0 판정서 반영`, 끝 `Agent: implementer`. 다른 변경 금지. 평가 측은 diff와 CI만 확인한다.
 
@@ -250,6 +252,161 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 ■ 참고 문서
 - docs/handoff/TK-129_report_includes_external_ai_answers.md (사용자 원문·원문 대응표·원인·줄 번호 상세).
 
+
+
+## 2-4-1. #185 1차 판정 — 보완 2건 (10-28, 인계 지시 '#185 상태 확인·독립 평가')
+
+```
+[Antigravity 보완 지시 — PR #185(TK-129, head 9ed54c5) 1차 판정: 보완 2건. 2026-10-28]
+
+■ 판정 요약
+- 같은 SHA CI(인용): 테스트 3종·Docker OCR readiness·CodeQL 새 경고 게이트·점수 하락 게이트·은퇴 세트 비교 모두 성공.
+- 평가 측 재실행: 제출 전 확인 시험 묶음 실패 0, check_test_edits '기존 시험의 삭제·표시 변경 없음'.
+- 사전 검증 수정본 밖 변경(item_id 고정, 오염 답변 삭제, 비공식 표시 강화, 422 검증 강화)은 방향을 수용한다. 0.15.0(TK-128)에서는 프롬프트를 다시 만들면 번호가 다른 행에 재할당되어, 저장된 답변이 엉뚱한 행에 붙을 수 있었다. 이번 PR이 이를 막는다(분류 fixed).
+- 결함 1건: 참고문헌 별도 행 id가 서버와 화면에서 서로 다르다. 그 결과 보고서에 다른 문장이 대상으로 실리거나, 보고서 생성 전체가 422로 막힌다.
+- 수용 절차 5)의 화면 자료가 부족하다: 캡처 04에 답변 상자가 보이지 않고, 실제 보고서(PDF·Word·Excel) 캡처가 없다.
+
+■ 원인 1 — 참고문헌 별도 행 id 불일치 (줄 번호는 9ed54c5 기준)
+- 화면: app.js 2562~2563행 `unmatchedReferences.forEach((entry, index) => … referenceObservationRow(entry, index))`. 2133행 id는 `${문서}_REFERENCE_${observation.claim_id || index}`이다.
+  · index는 '행에 붙지 못한 관찰 목록'의 순번이다. 그 목록은 모든 문서를 통틀어 매겨진다.
+- 서버: external_answers.py `_targets` 4)는 `targets.setdefault(f"{doc_id}_REFERENCE_{idx}", quote)`로 등록한다.
+  · idx는 '그 문서 observations 배열 전체'의 순번이다. 행에 붙은 관찰도 세고, 문서마다 0부터 다시 센다.
+- claim_id가 없는 관찰은 실제로 생긴다.
+  · rag_engine/provision_quotes.py의 결정론 관찰(QUICK·LOCAL_ONLY 경로, review.py 387·707행)은 claim_id를 넣지 않는다.
+  · 모델 관찰 스키마(review.py 20~29행)에도 claim_id가 없다(문장별 경로 690행에서만 채운다).
+- 평가 측 재현(합성 입력, external_answers._targets·validate_answers 직접 호출):
+  P1. 한 문서의 관찰 [o0(claim_id 있음, 인용 행에 붙음), o1(claim_id 없음)].
+      · 화면 별도 행: o1, id `d1_REFERENCE_0`.
+      · 서버가 `d1_REFERENCE_0`으로 찾는 문장: o0의 claim_quote.
+      · 결과: 보고서 '외부 AI 참고 의견' 표의 대상 칸에 다른 관찰 문장이 실린다(잘못된 귀속).
+  P2. 두 문서가 각각 claim_id 없는 미연결 관찰 1개.
+      · 화면 id: `d1_REFERENCE_0`, `d2_REFERENCE_1`.
+      · 서버: `d2_REFERENCE_1`이 없다 → 422('표에 없는 항목'). 답변이 실린 보고서 전체를 만들 수 없다.
+- 기존 새 시험(test_legacy_fallback_items_and_observation_without_claim_id_are_accepted)은 문서 1개·관찰 1개라 두 순번이 우연히 같아 이 결함을 잡지 못한다.
+
+■ 고칠 것 1 — 평가 측 수정본을 그대로 적용
+- 수정본: docs/handoff/patches/TK-129_reference_row_id_fix_on_185.diff(9ed54c5 기준, 3개 파일).
+  적용: PR 브랜치에서 `git fetch origin evaluator/round8-promotion && git show origin/evaluator/round8-promotion:docs/handoff/patches/TK-129_reference_row_id_fix_on_185.diff | git apply --3way` (평가 브랜치 커밋 fcef610).
+- 원리: 별도 행 id를 '매칭 결과에 따라 달라지는 순번'이 아니라 '문서 안 관찰 순번'으로 고정한다. claim_id가 없을 때 id는 `{문서}_REFERENCE_O{n}`이다. 화면과 서버가 같은 규칙을 쓰므로, 서버가 화면의 매칭 알고리즘을 복제할 필요가 없다.
+  · app.js `attachReferenceObservations`: `observations.forEach((observation, observationIndex) => …)`로 바꾸고, entry에 `observation_index`를 싣는다.
+  · `referenceObservationRow`: index 인자를 없애고 id에 `observation.claim_id || \`O${observation.observation_index}\``를 쓴다. 2563행 호출부도 맞춘다.
+  · external_answers.py `_targets` 4): `targets.setdefault(f"{doc_id}_REFERENCE_{obs.get('claim_id') or f'O{idx}'}", quote)` 한 줄로 바꾼다. 옛 `_REFERENCE_{idx}` 등록은 지운다. docstring도 맞춘다.
+- 시험(같은 파일에 추가, 기존 시험 수정 없음):
+  · 기존 새 시험의 B1 item_id를 `_REFERENCE_O0`으로 바꾼다. 이 PR에서 새로 만든 시험이므로 기존 시험 변경이 아니다.
+  · test_reference_rows_without_claim_id_resolve_to_their_own_observation: 양성 3꼴과 대조 3건.
+    - 양성 3꼴: 앞 관찰이 행에 붙은 경우, 문서 2개, 한 문서에 관찰 2개.
+    - 대조 3건: 옛 순번 꼴 id는 422.
+  · test_browser_reference_row_ids_match_server_targets: node로 app.js의 함수 3개를 실제 실행한다. 화면 행 id·문장이 서버 `_targets`의 키·문장과 같은지 교차 확인한다.
+- 이미 브라우저에 저장된 `_REFERENCE_<숫자>` 답변은 새 id와 맞지 않아 표·보고서에 붙지 않는다. 번호는 프롬프트를 다시 만들 때 정리된다(rememberPromptCodes). 이는 이 PR의 구형 답변 배제 원칙과 같다. 이전 처리 코드를 따로 넣지 않는다.
+
+■ 원인 2 — 사용자 확인 자료 부족 (수용 절차 5)
+- 캡처 04('표 행에 렌더링된 외부 AI 답변 박스')는 표 머리글까지만 보이고 알림창이 가리고 있다. 답변 상자가 화면에 없다. 캡처 01과 사실상 같은 화면이다.
+- 지시서 2-4절 6) 5)가 요구한 '답변을 반영한 실제 보고서(PDF·Word·Excel) 캡처'가 없다.
+
+■ 고칠 것 2 — 캡처 교체·추가 (docs/handoff/screens/tk129/)
+- 04 교체: 답변을 반영한 행까지 스크롤하고 알림이 사라진 뒤 찍는다. '외부 AI 답변 A1 (공식 확인 아님)' 상자와 판정·근거·요지가 다 보여야 한다. 긴 문구 1건(근거 200자 이상)을 포함한다.
+- 새로 06~08: 초안 보고서의 실제 산출물을 찍는다.
+  · PDF: '외부 AI 참고 의견 (사용자 입력, 공식 확인 아님)' 절 쪽. 긴 답변의 줄바꿈이 보여야 한다.
+  · Word: 같은 절.
+  · Excel: '외부AI참고의견' 시트의 안내 행·머리글·'공식 여부' 열.
+- 09(선택): 참고문헌 별도 행(claim_id 없는 관찰)에 답변을 반영한 경우의 보고서 표 대상 칸. 고칠 것 1 확인용.
+- PR 본문 대응표 '구현 위치' 칸의 캡처 번호를 위에 맞게 고친다.
+
+■ 평가 측 사전 검증 결과 (9ed54c5 + 수정본, 저장소 밖 임시 사본, 평가 측 재실행)
+- tests/test_tk129_report_external_answers.py 11건 통과.
+- 수정본에서 제품 코드만 9ed54c5로 되돌린 사본에서는 새 시험 3건이 실패한다. 시험이 결함을 실제로 잡는다.
+- 관련 묶음 17개 파일(제출 전 확인 목록 + TK-126·citation_groups·summary_compact·f2 화면·drive_rag_relevance·external_ai_prompt) 356건 실패 0.
+- check_test_edits(기준 3fee071): '기존 시험의 삭제·표시 변경 없음'. check_hardcoding_diff(기준 3fee071) 새 줄에 시험 입력 값·낱말 없음.
+- 탐지 엔진 변경 없음(보고서·화면만). 점수 재측정 대상 아님. 같은 SHA CI로 확인한다.
+- 미검증:
+  · 운영 데이터의 claim_id 없는 관찰 빈도.
+  · 레거시 fallback(review_items가 없는 옛 실행) 경로에서 화면·서버의 finding 묶음 차이. document_id 없는 finding은 화면에만 FINDING 행이 생길 수 있다. 옛 실행 한정이라 이번 보완 범위 밖이다.
+  · 실제 보고서 화면(캡처는 구현 측 제출물).
+
+■ 하지 않을 것
+- 화면의 매칭 알고리즘을 서버에 복제하지 않는다(수정본의 고정 id로 충분).
+- 다른 행 종류(CITATION·FINDING·review_items)의 id 규칙을 바꾸지 않는다. 보고서 다른 절, 판정·점수를 바꾸지 않는다.
+- 기존 시험을 수정하거나 지우지 않는다. 수정본 밖 변경을 섞지 않는다.
+
+■ 제출물·수용 기준
+- 같은 PR에 커밋 1~2개(끝 `Agent: implementer`): 수정본 적용 1개, 캡처 교체·추가 1개.
+- PR 본문에 다음을 붙인다:
+  · pytest -q tests/test_tk129_report_external_answers.py tests/test_tk126_flat_tabs_answer_import.py tests/test_report_completion.py 결과.
+  · check_test_edits 결과.
+  · 새 head의 CI 결과.
+- 평가 측이 확인할 것:
+  · 필수 CI 5종이 새 head와 같은 SHA에서 성공.
+  · diff = 기존 9ed54c5 + 수정본(+캡처).
+  · 캡처 04·06~08이 위 조건을 충족.
+- 맞으면 코드 보완 지시 없이 캡처와 원문 대응표를 사용자에게 제시한다 → 사용자 확인 → "#185병합".
+```
+
+
+
+## 2-4-2. #185 2차 판정 — 보완 1건(작음) (10-28, 사용자 지시 '#185 보완 커밋 확인')
+
+```
+[Codex(구현 대행) 보완 지시 — PR #185(TK-129, head bdc242c) 2차 판정: 보완 1건(작음). 2026-10-28]
+
+■ 판정 요약
+- 같은 SHA CI(인용): 테스트 3종·Docker OCR readiness·CodeQL 새 경고 게이트·점수 하락 게이트·은퇴 세트 비교 모두 성공.
+- 1차 보완 1(참고문헌 행 id): 이행. 평가 측 확인: 코드·시험 diff(aee705d)가 평가 측 수정본과 +/− 줄 단위로 같다(101줄).
+- 1차 보완 2(캡처): 이행. 04에 긴 답변 상자가 보이고, 06 PDF·07 Word·08 Excel 캡처가 추가되었다.
+- 평가 측 재실행(bdc242c): 관련 17개 파일 356건 실패 0. check_test_edits '기존 시험의 삭제·표시 변경 없음'.
+- 새 결함 1건(캡처 06·07에서 발견): '외부 AI 참고 의견' 표의 열 너비 개수가 머리글 개수와 맞지 않는다.
+
+■ 원인 (bdc242c 기준)
+- 538958a에서 EXTERNAL_AI_HEADERS에 7번째 열 '공식 여부'를 추가했다(external_answers.py). 그런데 너비 목록은 6개 그대로다.
+  · docx_report.py 233행: table(EXTERNAL_AI_HEADERS, external_rows, [0.5, 1.5, 0.9, 1.4, 1.9, 0.8])
+  · pdf_report.py 298행: table([EXTERNAL_AI_HEADERS, *external_rows], [30, 120, 60, 110, 120, 50])
+- Word: table 헬퍼(docx_report.py 64~96행)가 zip(row.cells, widths)로 너비·세로 정렬·셀 여백을 준다. 그래서 7번째 열은 서식이 빠진다. 캡처 07에서 '공식 여부' 열이 표 테두리 밖에 따로 놓였다. PR 본문은 이를 'LibreOffice 배치 차이'로 적었지만, 원인은 너비 목록 누락이다(렌더러 문제가 아님).
+- PDF: 7번째 열 너비가 자동이 되어 표가 본문 폭(A4 − 좌우 18mm ≈ 493pt)을 넘는다. 캡처 06에서 이 표만 다른 표보다 좌우로 튀어나와 있다.
+
+■ 고칠 것 — 평가 측 수정본 그대로 적용
+- 적용(PR 브랜치에서):
+  `git fetch origin evaluator/round8-promotion && git show origin/evaluator/round8-promotion:docs/handoff/patches/TK-129_external_table_widths_fix_on_185.diff | git apply --3way`
+  4개 파일, 34줄 추가·4줄 삭제.
+- external_answers.py: 머리글 옆에 너비 상수를 둔다.
+  · EXTERNAL_AI_PDF_WIDTHS = [28, 100, 55, 125, 95, 47, 40] (합 490pt)
+  · EXTERNAL_AI_DOCX_WIDTHS = [0.4, 1.3, 0.8, 1.6, 1.4, 0.8, 0.7] (합 7.0in = Letter 본문 폭)
+  · 머리글과 너비를 한곳에서 함께 바꾸게 한다.
+- docx_report.py·pdf_report.py: 위 상수를 쓴다.
+- 시험 test_external_section_columns_have_widths_inside_page_in_docx_and_pdf:
+  · 상수 개수 = 머리글 개수.
+  · 합이 본문 폭 이하.
+  · 실제 생성한 Word 표의 모든 행·7열에 지정 너비와 셀 여백(w:tcMar)이 있다.
+  · PDF에 '공식 여부' 열이 있다.
+- 캡처 06·07을 다시 찍는다. 표가 본문 폭 안에 있고, '공식 여부' 열이 표 안에 있어야 한다. PR 본문의 'LibreOffice 배치 차이' 문구는 원인 설명으로 고친다.
+
+■ 평가 측 사전 검증 (bdc242c + 수정본, 저장소 밖 사본, 평가 측 재실행)
+- 새 시험 통과. 너비를 6개로 되돌린 사본에서는 새 시험이 실패한다(7번째 셀 너비 불일치). 시험이 결함을 실제로 잡는다.
+- 관련 17개 파일 357건 실패 0. check_test_edits·check_hardcoding_diff 통과.
+- PDF 실제 생성: 표가 다른 표와 같은 본문 폭 안에 들어오고, 긴 근거 줄바꿈이 정상이다(평가 측 렌더링 확인).
+- 미검증: Word 실제 화면. 평가 측 환경의 LibreOffice가 docx를 열지 못했다. 구조는 시험으로 확인했다. Microsoft Word·Excel 직접 표시도 미확인이다.
+
+■ 하지 않을 것
+- 머리글·열 순서·문구, 다른 표의 너비, 보고서 다른 절은 바꾸지 않는다.
+- 수정본 밖 변경을 섞지 않는다. 기존 시험을 수정하지 않는다.
+
+■ 제출물·수용 기준
+- 커밋 1~2개(수정본 적용, 캡처 06·07 교체). 끝에 `Agent: implementer`.
+- 필수 CI 5종이 새 head와 같은 SHA에서 성공해야 한다. PR 코멘트 3줄('검토 요청'은 CI 완료 뒤).
+- 평가 측 확인: diff = bdc242c + 수정본(+캡처), 캡처 06·07 확인.
+- 맞으면 평가 측이 캡처 01~08과 원문 대응표를 사용자에게 제시한다 → 사용자 화면 확인 → "#185병합".
+```
+
+## 2-5. #190 TK-127 2단계 — 구조 ID 연결과 식별자 부재 규칙 결정 (10-28, 사용자 결정 '연결 허용·승격만 금지')
+
+- 계기: 구현 측(Codex 대행) 메모 `docs/handoff/requests/TK-127_stage2_existing_test_conflict_20261028.md`(브랜치 `antigravity/tk127-stage2-drive-citation` `572e442`). 이슈 #190·인계문의 '식별자 부재 시 자동 연결과 SUPPORTED 승격 모두 금지'를 구조 ID 연결에도 적용하면 기존 시험 `test_rag_observations_attach_to_rows_and_bottom_section_is_gone`(TK-126·127 1단계, 사용자 확인·0.15.0 배포 동작)과 충돌한다.
+- 사용자 결정(10-28): **연결 허용·승격만 금지.** 승인 설계 메모(#186 10차) 2절 2)의 순서를 그대로 따른다.
+  1. 1순위 구조 연결(관찰 `claim_id` → `claims[].citation_ids` → 행 `citation_id`, 같은 문서)은 식별자 유무와 관계없이 그 행에 '참고(비구속·공식 확인 아님)'로 붙인다. 근거: 그 관찰은 RAG 검토가 바로 그 주장에 대해 만든 것이라 텍스트 추측 연결이 아니다.
+  2. `reference_status=SUPPORTED` 승격은 관계가 SUPPORTS이고, 행의 전체 식별자(사건번호 전체 또는 법령명+조문 전체)가 후보 발췌에 온전히 있고 충돌이 없을 때만 한다. 구조 연결이어도 식별자 부재·충돌이면 승격하지 않고 설계 5항의 미확정 상태로 둔다. 화면 배지(부합/불부합/맥락 참고/근거 부족)는 관계 표시라 그대로 둔다.
+  3. 구조 연결이 없을 때(2·3순위)는 설계 그대로: 전체 식별자 일치 필수. 충돌은 Hard Stop, 부재는 Fallback 금지 → 행에 붙이지 않고 별도 '참고문헌 대조 의견' 행(TK-129 id 규칙 `{문서}_REFERENCE_{claim_id 또는 O순번}` 유지).
+  4. `official_status`는 어느 경우에도 바꾸지 않는다.
+- 기존 시험: 수정하지 않는다(위 1이 기존 단언을 그대로 만족). 평가 측 확인: Linux에서 `tests/test_tk126_flat_tabs_answer_import.py` 통과(10-28 #185 사본 재실행 356건 실패 0에 포함). 구현 측 Windows의 화면 시험 4건 실패는 Chromium 미설치 환경 문제로 판단하고, 판정은 같은 SHA CI로 한다.
+- 새 시험(규칙마다 양성 3·대조 3 이상): ① 구조 연결 + 발췌 식별자 부재 → 행에 붙음·SUPPORTED 아님(서로 다른 3꼴) ② 구조 연결 + 식별자 충돌 → 행에 붙음·SUPPORTED 아님 ③ 구조 연결 + 전체 식별자 일치 + SUPPORTS → SUPPORTED(양성 3) ④ 구조 연결 없음 + 식별자 부재·충돌 → 별도 행·승격 없음. 서버·브라우저 결과가 같음을 node 교차 시험으로 확인한다.
+- 통제 벤치마크: 설계 4) 그대로. 유형 N3·N4(식별자 부재)는 '구조 연결 없음' 사례로 구성한다. 구조 연결 사례는 '연결 정확도'와 'SUPPORTED 승격 정확도'를 따로 집계한다(구조 연결로 붙었는데 승격된 부재 사례 = FP).
+- 이슈 #190 수용 기준 1항('식별자 부재 반례에서 연결과 SUPPORTED 승격이 모두 차단')은 '구조 연결이 없는 경우'로 읽고, 구조 연결 사례는 '승격 차단'만 본다.
 
 ## 2-2. 탐지 PR 공통 수용 규약 — 하드코딩 금지 (2026-10-24 사용자 지시 '평가기준을 엄격히 적용하되 하드코딩으로 충족하지 못하게 제한')
 10-24 검토(#175 `618130c`·#165 `94c645f`·#167 `af28269`/`0731277`)에서 세 PR이 같은 방식으로 실패했다. 은퇴 세트 항목만 정확히 오르고(EVI-DATE 7·EVI-OVR 5·EVI-INCONS 3) train 같은 유형은 0이다. 평가 측의 비공개 다른 표현 탐침도 0이다(#175 0/4·#165 0/2·#167 장소·서명자 규칙 0). 새 정규식은 고정 낱말 여러 개를 순서대로 이은 문장 틀이다. 그 낱말은 은퇴 항목 위치 소제목 낱말과 8~9개씩 겹친다. **아래 규약은 A-4·B-1·B-3과 이후 모든 탐지 PR에 적용한다. 하나라도 어기면 점수와 무관하게 불승인한다.**
