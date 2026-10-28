@@ -107,7 +107,7 @@ release_highlights.json "0.14":
 
 **수용 기준**: diff가 위 세 파일과 생성물(README 변경표·RELEASE_HISTORY)뿐, 필수 CI 성공, 판정서와 버전 일치. 평가 측은 diff와 CI만 확인하고 수용한다(탐지 변경 없음, 재측정 없음).
 
-> **상태(10-28 평가 측 확인):** 0.15.0 버전 커밋 #187 병합(`fdf11b1`), 릴리스 #189 main 병합(`08d40ff`, 10-26). **운영 배포 확인(health 0.15.0·`08d40ff`, 10-28)** — TK-126·128 deployed, TK-127 1단계 배포. #186 TK-127 2단계 메모 Steve 병합(`efc9c9c`), 평가 측 검토 전. #185 TK-129 1차 보완 2건(2-4-1) → 2차 보완 1건(2-4-2) → 3차 `89cf414` 코드 수용·사용자 화면 확인 대기(2-4-3). #191 TK-127 2단계 1차 보완 2건(2-6) → `4891f4e` 코드 수용·사용자 화면 확인 대기(10-28). #185 Steve 병합 `5d03247`.
+> **상태(10-28 평가 측 확인):** 0.15.0 버전 커밋 #187 병합(`fdf11b1`), 릴리스 #189 main 병합(`08d40ff`, 10-26). **운영 배포 확인(health 0.15.0·`08d40ff`, 10-28)** — TK-126·128 deployed, TK-127 1단계 배포. #186 TK-127 2단계 메모 Steve 병합(`efc9c9c`), 평가 측 검토 전. #185 TK-129 1차 보완 2건(2-4-1) → 2차 보완 1건(2-4-2) → 3차 `89cf414` 코드 수용·사용자 화면 확인 대기(2-4-3). #191 TK-127 2단계 1차 보완 2건(2-6) → `4891f4e` 코드 수용 → 사용자 결정(빈 괄호 제거·영문 코드 유지) 반영 보완 1건(2-6-1, 10-28). #185 Steve 병합 `5d03247`.
 
 ## 2-1-2. 0.15.0 버전 커밋 지시 (10-25, 간소 경로 RELEASE_PROCEDURE 2-6)
 평가 PR(판정서 0.15.0 포함)이 Steve에 병합된 뒤, 새 브랜치에서 `git apply docs/handoff/patches/v0.15.0_version_commit.diff` 하나로 커밋한다(5개 파일: config.py 버전, releases.json, release_highlights.json, README 변경표, RELEASE_HISTORY — 평가 측 사전 검증: check_version_policy 통과, update_readme --check 0). 커밋 제목 `chore(release): 버전 0.15.0 판정서 반영`, 끝 `Agent: implementer`. 다른 변경 금지. 평가 측은 diff와 CI만 확인한다.
@@ -497,6 +497,52 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 - 평가 측 확인: diff = faafb5e + 수정본(+ 병합·보정). 통제 파일럿 집계 재산출(유형별 표 갱신).
 - 맞으면 평가 측이 화면 캡처 01~06과 원문 대응표를 사용자에게 제시한다 → 사용자 확인 → 병합.
 - 탐지·RAG 엔진 변경이므로 릴리스 후보 수용 SHA에서 평가 측이 verify_all 전체 1회를 돈다(AGENT_ROLES 2.1).
+```
+
+
+## 2-6-1. #191 3차 — 사용자 결정 반영(빈 괄호 제거, 영문 코드 유지) (10-28)
+
+```
+[Codex(구현 대행) 보완 지시 — PR #191(TK-127 2단계, head 4891f4e) 3차: 사용자 결정 반영 1건(작음). 2026-10-28]
+
+■ 판정 요약
+- 코드는 수용했다(평가 측 2차 확인).
+  · 같은 SHA CI 전부 성공, 두 테스트 실행 모두 성공(인용).
+  · 평가 측 재실행 관련 22개 파일 471건 실패 0.
+- 사용자 화면 확인 결과(10-28):
+  · '문서 주장/인용' 칸의 빈 괄호는 제거한다.
+  · 보고서의 영문 상태 코드(SUPPORTS·PENDING_REVIEW) 표기는 현재 상태를 유지한다(바꾸지 않는다).
+
+■ 원인 (4891f4e 기준, TK-88부터 있던 코드)
+- packages/report_engine/pdf_report.py 264행: `cell_claim = claim[:120] + "\n(" + str(row.get("cited_authority", "")) + ")"`
+- packages/report_engine/docx_report.py 203행: `cell_claim = claim + f"\n({row.get('cited_authority', '')})"`
+- 인용 표기(cited_authority)가 없는 행에도 괄호를 붙인다. 그래서 '()'가 남는다. 값이 None이면 '(None)'이 된다.
+- 캡처 03(PDF) 1행에서 확인했다. Word도 같은 코드다.
+
+■ 고칠 것 — 평가 측 수정본 그대로 적용 (3개 파일, +40/−2)
+- 적용(PR 브랜치에서 새 커밋):
+  `git fetch origin evaluator/round8-promotion && git show origin/evaluator/round8-promotion:docs/handoff/patches/TK-127_claim_cell_parentheses_fix_on_191.diff | git apply --3way`
+- 두 줄 모두 `authority = str(row.get("cited_authority") or "").strip()`로 읽는다. 값이 있을 때만 `\n(표기)`를 붙인다.
+- 시험 test_claim_cell_has_no_empty_parentheses_without_authority(tests/test_tk127_stage2_drive_pipeline.py에 추가):
+  · 대조 3건(키 없음·빈 문자열·공백): Word 칸에 괄호가 없고, PDF에 '()'·'(None)'이 없다.
+  · 양성 3건(판례·법령·사건번호 표기): 괄호 안에 그대로 싣는다.
+- 캡처 03(PDF)·04(Word)를 다시 찍는다. 1행 '문서 주장/인용' 칸에 빈 괄호가 없어야 한다.
+
+■ 평가 측 사전 검증 (4891f4e + 수정본, 저장소 밖 사본, 평가 측 재실행)
+- 새 시험 6건 통과. 원래 코드에서는 대조 3건이 실패한다(결함을 잡음).
+- cited_authority를 다루는 시험 전부와 TK-127·TK-129·보고서 시험을 함께 돌렸다: 20개 파일 294건 실패 0. 보호 시험 tests/acceptance/test_f3_protected.py도 포함된다.
+- check_test_edits(기준 5d03247) '기존 시험의 삭제·표시 변경 없음', check_hardcoding_diff 통과.
+- 미검증: Microsoft Word 앱 직접 표시.
+
+■ 하지 않을 것
+- 보고서의 영문 상태·관계 코드는 바꾸지 않는다(사용자 결정: 현재 상태 유지).
+- 다른 칸·표·문구, 매칭 규칙은 바꾸지 않는다. 기존 시험은 수정하지 않는다.
+
+■ 제출물·수용 기준
+- 커밋 1~2개(수정본 적용, 캡처 03·04 교체). 끝에 `Agent: implementer`.
+- 필수 CI 5종이 같은 SHA에서 성공해야 하고, 두 테스트 실행 모두 성공해야 한다. PR 코멘트 3줄('검토 요청'은 CI 완료 뒤).
+- PR의 draft 상태를 해제한다(Ready for review).
+- 평가 측 확인: diff = 4891f4e + 수정본(+캡처). 맞으면 사용자 "#191병합" 대상이다.
 ```
 
 ## 2-2. 탐지 PR 공통 수용 규약 — 하드코딩 금지 (2026-10-24 사용자 지시 '평가기준을 엄격히 적용하되 하드코딩으로 충족하지 못하게 제한')
