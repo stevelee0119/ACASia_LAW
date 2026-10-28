@@ -107,7 +107,7 @@ release_highlights.json "0.14":
 
 **수용 기준**: diff가 위 세 파일과 생성물(README 변경표·RELEASE_HISTORY)뿐, 필수 CI 성공, 판정서와 버전 일치. 평가 측은 diff와 CI만 확인하고 수용한다(탐지 변경 없음, 재측정 없음).
 
-> **상태(10-28 평가 측 확인):** 0.15.0 버전 커밋 #187 병합(`fdf11b1`), 릴리스 #189 main 병합(`08d40ff`, 10-26). **운영 배포 확인(health 0.15.0·`08d40ff`, 10-28)** — TK-126·128 deployed, TK-127 1단계 배포. #186 TK-127 2단계 메모 Steve 병합(`efc9c9c`), 평가 측 검토 전. #185 TK-129 1차 판정 보완 2건(2-4-1절, 10-28).
+> **상태(10-28 평가 측 확인):** 0.15.0 버전 커밋 #187 병합(`fdf11b1`), 릴리스 #189 main 병합(`08d40ff`, 10-26). **운영 배포 확인(health 0.15.0·`08d40ff`, 10-28)** — TK-126·128 deployed, TK-127 1단계 배포. #186 TK-127 2단계 메모 Steve 병합(`efc9c9c`), 평가 측 검토 전. #185 TK-129 1차 판정 보완 2건(2-4-1절) → 2차(bdc242c) 보완 1건: 보고서 표 열 너비(2-4-2절, 10-28).
 
 ## 2-1-2. 0.15.0 버전 커밋 지시 (10-25, 간소 경로 RELEASE_PROCEDURE 2-6)
 평가 PR(판정서 0.15.0 포함)이 Steve에 병합된 뒤, 새 브랜치에서 `git apply docs/handoff/patches/v0.15.0_version_commit.diff` 하나로 커밋한다(5개 파일: config.py 버전, releases.json, release_highlights.json, README 변경표, RELEASE_HISTORY — 평가 측 사전 검증: check_version_policy 통과, update_readme --check 0). 커밋 제목 `chore(release): 버전 0.15.0 판정서 반영`, 끝 `Agent: implementer`. 다른 변경 금지. 평가 측은 diff와 CI만 확인한다.
@@ -341,6 +341,59 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 - 맞으면 코드 보완 지시 없이 캡처와 원문 대응표를 사용자에게 제시한다 → 사용자 확인 → "#185병합".
 ```
 
+
+
+## 2-4-2. #185 2차 판정 — 보완 1건(작음) (10-28, 사용자 지시 '#185 보완 커밋 확인')
+
+```
+[Codex(구현 대행) 보완 지시 — PR #185(TK-129, head bdc242c) 2차 판정: 보완 1건(작음). 2026-10-28]
+
+■ 판정 요약
+- 같은 SHA CI(인용): 테스트 3종·Docker OCR readiness·CodeQL 새 경고 게이트·점수 하락 게이트·은퇴 세트 비교 모두 성공.
+- 1차 보완 1(참고문헌 행 id): 이행. 평가 측 확인: 코드·시험 diff(aee705d)가 평가 측 수정본과 +/− 줄 단위로 같다(101줄).
+- 1차 보완 2(캡처): 이행. 04에 긴 답변 상자가 보이고, 06 PDF·07 Word·08 Excel 캡처가 추가되었다.
+- 평가 측 재실행(bdc242c): 관련 17개 파일 356건 실패 0. check_test_edits '기존 시험의 삭제·표시 변경 없음'.
+- 새 결함 1건(캡처 06·07에서 발견): '외부 AI 참고 의견' 표의 열 너비 개수가 머리글 개수와 맞지 않는다.
+
+■ 원인 (bdc242c 기준)
+- 538958a에서 EXTERNAL_AI_HEADERS에 7번째 열 '공식 여부'를 추가했다(external_answers.py). 그런데 너비 목록은 6개 그대로다.
+  · docx_report.py 233행: table(EXTERNAL_AI_HEADERS, external_rows, [0.5, 1.5, 0.9, 1.4, 1.9, 0.8])
+  · pdf_report.py 298행: table([EXTERNAL_AI_HEADERS, *external_rows], [30, 120, 60, 110, 120, 50])
+- Word: table 헬퍼(docx_report.py 64~96행)가 zip(row.cells, widths)로 너비·세로 정렬·셀 여백을 준다. 그래서 7번째 열은 서식이 빠진다. 캡처 07에서 '공식 여부' 열이 표 테두리 밖에 따로 놓였다. PR 본문은 이를 'LibreOffice 배치 차이'로 적었지만, 원인은 너비 목록 누락이다(렌더러 문제가 아님).
+- PDF: 7번째 열 너비가 자동이 되어 표가 본문 폭(A4 − 좌우 18mm ≈ 493pt)을 넘는다. 캡처 06에서 이 표만 다른 표보다 좌우로 튀어나와 있다.
+
+■ 고칠 것 — 평가 측 수정본 그대로 적용
+- 적용(PR 브랜치에서):
+  `git fetch origin evaluator/round8-promotion && git show origin/evaluator/round8-promotion:docs/handoff/patches/TK-129_external_table_widths_fix_on_185.diff | git apply --3way`
+  4개 파일, 34줄 추가·4줄 삭제.
+- external_answers.py: 머리글 옆에 너비 상수를 둔다.
+  · EXTERNAL_AI_PDF_WIDTHS = [28, 100, 55, 125, 95, 47, 40] (합 490pt)
+  · EXTERNAL_AI_DOCX_WIDTHS = [0.4, 1.3, 0.8, 1.6, 1.4, 0.8, 0.7] (합 7.0in = Letter 본문 폭)
+  · 머리글과 너비를 한곳에서 함께 바꾸게 한다.
+- docx_report.py·pdf_report.py: 위 상수를 쓴다.
+- 시험 test_external_section_columns_have_widths_inside_page_in_docx_and_pdf:
+  · 상수 개수 = 머리글 개수.
+  · 합이 본문 폭 이하.
+  · 실제 생성한 Word 표의 모든 행·7열에 지정 너비와 셀 여백(w:tcMar)이 있다.
+  · PDF에 '공식 여부' 열이 있다.
+- 캡처 06·07을 다시 찍는다. 표가 본문 폭 안에 있고, '공식 여부' 열이 표 안에 있어야 한다. PR 본문의 'LibreOffice 배치 차이' 문구는 원인 설명으로 고친다.
+
+■ 평가 측 사전 검증 (bdc242c + 수정본, 저장소 밖 사본, 평가 측 재실행)
+- 새 시험 통과. 너비를 6개로 되돌린 사본에서는 새 시험이 실패한다(7번째 셀 너비 불일치). 시험이 결함을 실제로 잡는다.
+- 관련 17개 파일 357건 실패 0. check_test_edits·check_hardcoding_diff 통과.
+- PDF 실제 생성: 표가 다른 표와 같은 본문 폭 안에 들어오고, 긴 근거 줄바꿈이 정상이다(평가 측 렌더링 확인).
+- 미검증: Word 실제 화면. 평가 측 환경의 LibreOffice가 docx를 열지 못했다. 구조는 시험으로 확인했다. Microsoft Word·Excel 직접 표시도 미확인이다.
+
+■ 하지 않을 것
+- 머리글·열 순서·문구, 다른 표의 너비, 보고서 다른 절은 바꾸지 않는다.
+- 수정본 밖 변경을 섞지 않는다. 기존 시험을 수정하지 않는다.
+
+■ 제출물·수용 기준
+- 커밋 1~2개(수정본 적용, 캡처 06·07 교체). 끝에 `Agent: implementer`.
+- 필수 CI 5종이 새 head와 같은 SHA에서 성공해야 한다. PR 코멘트 3줄('검토 요청'은 CI 완료 뒤).
+- 평가 측 확인: diff = bdc242c + 수정본(+캡처), 캡처 06·07 확인.
+- 맞으면 평가 측이 캡처 01~08과 원문 대응표를 사용자에게 제시한다 → 사용자 화면 확인 → "#185병합".
+```
 
 ## 2-5. #190 TK-127 2단계 — 구조 ID 연결과 식별자 부재 규칙 결정 (10-28, 사용자 결정 '연결 허용·승격만 금지')
 

@@ -1,0 +1,88 @@
+diff --git a/packages/report_engine/docx_report.py b/packages/report_engine/docx_report.py
+index c8736b9..2ebdf02 100644
+--- a/packages/report_engine/docx_report.py
++++ b/packages/report_engine/docx_report.py
+@@ -225,12 +225,13 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
+     else:
+         paragraph("해당 무리한 주장 또는 참고자료 모순 항목이 없습니다.")
+ 
+-    from .external_answers import EXTERNAL_AI_HEADERS, EXTERNAL_AI_NOTICE, EXTERNAL_AI_TITLE, external_answer_rows
++    from .external_answers import (EXTERNAL_AI_DOCX_WIDTHS, EXTERNAL_AI_HEADERS, EXTERNAL_AI_NOTICE, EXTERNAL_AI_TITLE,
++                                   external_answer_rows)
+     external_rows = external_answer_rows(snapshot)
+     if external_rows:
+         doc.add_heading(EXTERNAL_AI_TITLE, 2)
+         paragraph(EXTERNAL_AI_NOTICE)
+-        table(EXTERNAL_AI_HEADERS, external_rows, [0.5, 1.5, 0.9, 1.4, 1.9, 0.8])
++        table(EXTERNAL_AI_HEADERS, external_rows, EXTERNAL_AI_DOCX_WIDTHS)
+ 
+     from packages.legal_engine.related_authorities import report_lines as related_lines
+     for line in related_lines(run_result.documents):
+diff --git a/packages/report_engine/external_answers.py b/packages/report_engine/external_answers.py
+index 54e80de..3a39bb3 100644
+--- a/packages/report_engine/external_answers.py
++++ b/packages/report_engine/external_answers.py
+@@ -14,6 +14,9 @@ EXTERNAL_AI_NOTICE = ("엘박스 등 외부 AI의 답변을 검토자가 표에
+                       "판례·법령 원문은 판결서·국가법령정보센터로 확인해야 합니다.")
+ EXTERNAL_AI_STATUS_LABEL = "공식 확인 아님 (참고 의견)"
+ EXTERNAL_AI_HEADERS = ["번호", "대상", "판정", "근거", "요지", "반영 시각", "공식 여부"]
++# 열 너비는 머리글과 같은 개수여야 한다. 개수가 다르면 Word는 남는 열에 너비·테두리가 없고 PDF 표는 본문 폭을 넘는다.
++EXTERNAL_AI_PDF_WIDTHS = [28, 100, 55, 125, 95, 47, 40]  # 합 490pt — A4 본문 폭(210mm − 좌우 18mm) 약 493pt 안
++EXTERNAL_AI_DOCX_WIDTHS = [0.4, 1.3, 0.8, 1.6, 1.4, 0.8, 0.7]  # 합 7.0in — Letter 본문 폭(8.5in − 좌우 0.75in)
+ CODE_PATTERN = re.compile(r"^[AB]\d{1,4}$")
+ 
+ 
+diff --git a/packages/report_engine/pdf_report.py b/packages/report_engine/pdf_report.py
+index 0fbc938..5f43fde 100644
+--- a/packages/report_engine/pdf_report.py
++++ b/packages/report_engine/pdf_report.py
+@@ -289,13 +289,14 @@ def build_report_pdf(
+     else:
+         story.append(Paragraph(_escape("해당 무리한 주장 또는 참고자료 모순 항목이 없습니다."), styles["body"]))
+ 
+-    from .external_answers import EXTERNAL_AI_HEADERS, EXTERNAL_AI_NOTICE, EXTERNAL_AI_TITLE, external_answer_rows
++    from .external_answers import (EXTERNAL_AI_HEADERS, EXTERNAL_AI_NOTICE, EXTERNAL_AI_PDF_WIDTHS, EXTERNAL_AI_TITLE,
++                                   external_answer_rows)
+     external_rows = external_answer_rows(getattr(run_result, "review_snapshot", {}))
+     if external_rows:
+         story.append(Spacer(1, 4))
+         story.append(Paragraph(_escape(EXTERNAL_AI_TITLE), styles["h2"]))
+         story.append(Paragraph(_escape(EXTERNAL_AI_NOTICE), styles["small"]))
+-        story.append(table([EXTERNAL_AI_HEADERS, *external_rows], [30, 120, 60, 110, 120, 50]))
++        story.append(table([EXTERNAL_AI_HEADERS, *external_rows], EXTERNAL_AI_PDF_WIDTHS))
+ 
+     from packages.legal_engine.related_authorities import report_lines as related_lines
+     for line in related_lines(run_result.documents):
+diff --git a/tests/test_tk129_report_external_answers.py b/tests/test_tk129_report_external_answers.py
+index 085a5b7..40b120d 100644
+--- a/tests/test_tk129_report_external_answers.py
++++ b/tests/test_tk129_report_external_answers.py
+@@ -384,3 +384,28 @@ console.log(JSON.stringify(rows.map(r => [r.item_id, r.claim_text])));
+                                       for d in docs]})
+     for item_id, quote in rows:
+         assert targets[item_id] == quote
++
++
++def test_external_section_columns_have_widths_inside_page_in_docx_and_pdf(report_case):  # noqa: F811
++    """'공식 여부' 열을 더한 뒤에도 Word·PDF 표의 모든 열에 너비가 있고 본문 폭 안에 든다."""
++    from docx import Document
++    from packages.report_engine.external_answers import (EXTERNAL_AI_DOCX_WIDTHS, EXTERNAL_AI_HEADERS,
++                                                         EXTERNAL_AI_PDF_WIDTHS)
++
++    assert len(EXTERNAL_AI_PDF_WIDTHS) == len(EXTERNAL_AI_DOCX_WIDTHS) == len(EXTERNAL_AI_HEADERS)
++    assert sum(EXTERNAL_AI_PDF_WIDTHS) <= (210 - 36) / 25.4 * 72  # A4 − 좌우 18mm
++    assert sum(EXTERNAL_AI_DOCX_WIDTHS) <= 8.5 - 1.5 + 1e-9  # Letter − 좌우 0.75in
++
++    case = report_case
++    _with_table_items(case)
++    draft = _create(case, ANSWERS, ["pdf", "docx"])
++    document = Document(io.BytesIO(download(case, draft, "docx")))
++    [external] = [t for t in document.tables if [c.text for c in t.rows[0].cells] == EXTERNAL_AI_HEADERS]
++    from docx.oxml.ns import qn
++    from docx.shared import Inches
++    for row in external.rows:
++        # 표 서식(너비·셀 여백)이 7열 모두에 적용되어야 한다. 너비 목록이 짧으면 마지막 열만 서식 없이 남는다.
++        assert [cell.width for cell in row.cells] == [Inches(w) for w in EXTERNAL_AI_DOCX_WIDTHS]
++        assert all(cell._tc.tcPr.find(qn("w:tcMar")) is not None for cell in row.cells)
++    pdf_text = "".join(page.extract_text() for page in PdfReader(io.BytesIO(download(case, draft, "pdf"))).pages)
++    assert "공식 여부" in pdf_text
