@@ -127,3 +127,37 @@ def test_four_reports_retain_unofficial_reference_opinions(report_case, index):
     observation = payload["documents"][0]["reference_observations"][0]
     assert observation["source"] == "google_drive"
     assert observation["official"] is False and observation["binding"] is False
+
+
+@pytest.mark.parametrize("authority,expected", [
+    (None, None), ("", None), ("   ", None),
+    ("합성 판례 표기 가", "(합성 판례 표기 가)"), ("가상보관법 제3조", "(가상보관법 제3조)"), ("2097가합88002", "(2097가합88002)"),
+])
+def test_claim_cell_has_no_empty_parentheses_without_authority(report_case, authority, expected):
+    """2026-10-28 사용자 지시: '문서 주장/인용' 칸의 빈 괄호 제거. 인용 표기가 있으면 그대로 괄호로 싣는다."""
+    case = report_case
+    synthetic = make_document(pilot_cases()[0])
+    doc = vars(synthetic)
+    doc["document_id"] = "d1"
+    doc["filename"] = "합성서면.pdf"
+    row = doc["ai_hallucination_table"][0]
+    if authority is not None:
+        row["cited_authority"] = authority
+    doc["review_items"] = [i.to_dict() for i in build_document_review_items(SimpleNamespace(**doc))]
+    result = copy.deepcopy(case.run.result_json)
+    result["documents"] = [doc]
+    case.run.result_json = result
+    case.session.delete(case.finding)
+    case.session.commit()
+    report = create(case, formats=["pdf", "docx"])
+    blobs = {kind: case.client.get(f"/api/reports/{report['report_id']}/download/{kind}").content for kind in report["artifacts"]}
+    claim = row["claim_text"]
+    cells = [c.text for table in Document(io.BytesIO(blobs["docx"])).tables for r in table.rows for c in r.cells]
+    [claim_cell] = {c for c in cells if c.startswith(claim)}
+    pdf_text = "".join(p.extract_text() for p in PdfReader(io.BytesIO(blobs["pdf"])).pages)
+    if expected is None:
+        assert claim_cell == claim
+        assert "()" not in pdf_text and "(None)" not in pdf_text
+    else:
+        assert claim_cell == claim + "\n" + expected
+        assert expected.replace(" ", "") in pdf_text.replace(" ", "").replace("\n", "")

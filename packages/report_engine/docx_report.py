@@ -200,7 +200,9 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
     for d in run_result.documents:
         for row in getattr(d, "ai_hallucination_table", []) or []:
             cell_loc = d.filename + " " + str(row.get("location", ""))
-            cell_claim = str(row.get("claim_text", "")) + f"\n({row.get('cited_authority', '')})"
+            authority = str(row.get("cited_authority") or "").strip()
+            # 인용 표기가 없는 행(참고문헌 대조 행 등)에는 빈 괄호를 붙이지 않는다.
+            cell_claim = str(row.get("claim_text", "")) + (f"\n({authority})" if authority else "")
             cell_basis = (f"[평가] {row.get('validity_verdict', '') or '확인 필요'}\n{row.get('ai_generation_basis', '')}\n"
                           + format_context_review(row.get("context_review")))
             cell_basis += "\n" + row_basis(d, row)
