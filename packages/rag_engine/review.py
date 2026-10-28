@@ -136,57 +136,26 @@ def validate_claim_request_payload(payload: Any) -> bool:
 
 def _match_citations_to_references(citations: list, sources: list) -> dict:
     """참고자료 본문과 인용(사건번호 또는 법령명+조) 간의 동일성 대조(U1)를 수행합니다."""
+    from .reference_binding import citation_excerpt, value
+
     matches = {}
-    for cit in citations:
-        cid = getattr(cit, "citation_id", None) or (cit.get("citation_id") if isinstance(cit, dict) else None)
+    for citation in citations:
+        cid = value(citation, "citation_id")
         if not cid:
             continue
-        case_no = getattr(cit, "canonical_case_number", None) or getattr(cit, "case_number", None)
-        if not case_no and isinstance(cit, dict):
-            case_no = cit.get("canonical_case_number") or cit.get("case_number")
-
-        law_name = getattr(cit, "law_name", None) or (cit.get("law_name") if isinstance(cit, dict) else None)
-        article = getattr(cit, "article", None) or (cit.get("article") if isinstance(cit, dict) else None)
-
-        for src in sources:
-            text = src.get("text", "")
-            matched = False
-            authority_str = ""
-
-            # 사건번호: 경계 일치
-            if case_no:
-                # Structured precedent rows have their own exact lookup and a
-                # separate reference_case_match field.  A number appearing in
-                # an editorial row is never, by itself, a SUPPORTS verdict.
-                if src.get("structured_case_table"):
-                    continue
-                pattern = rf"(?<!\d){re.escape(str(case_no))}(?!\d)"
-                if re.search(pattern, text):
-                    matched = True
-                    authority_str = str(case_no)
-
-            # 법령: 법령명 + 조 근접 대조 (100자 이내)
-            elif law_name and article:
-                norm_law = re.sub(r"[\s「」『』]+", "", law_name)
-                art_pattern = rf"제\s*{re.escape(str(article))}\s*조"
-                for m in re.finditer(art_pattern, text):
-                    start = max(0, m.start() - 100)
-                    end = min(len(text), m.end() + 100)
-                    window = re.sub(r"[\s「」『』]+", "", text[start:end])
-                    if norm_law in window:
-                        matched = True
-                        authority_str = f"{law_name} 제{article}조"
-                        break
-
-            if matched:
-                matches[cid] = {
-                    "status": "SUPPORTED",
-                    "source_id": src.get("source_id"),
-                    "source_title": src.get("title", ""),
-                    "file_id": src.get("file_id", ""),
-                    "matched_authority": authority_str,
-                }
-                break
+        for source in sources:
+            if source.get("structured_case_table"):
+                continue
+            excerpt = citation_excerpt(citation, source.get("text", ""))
+            if not excerpt:
+                continue
+            matches[cid] = {
+                "status": "SUPPORTED", "relationship": "SUPPORTS",
+                "source_id": source.get("source_id"), "source_title": source.get("title", ""),
+                "file_id": source.get("file_id", ""), "source_quote": excerpt,
+                "matched_authority": value(citation, "raw_text", ""),
+            }
+            break
     return matches
 
 
@@ -306,6 +275,16 @@ def review_document(result, library, router, context, pii):
     korean_profile = bool(getattr(getattr(router, "settings", None), "korean_law_review_profile", False))
     selection = library.select(document + "\n" + "\n".join(context.requested_issues))
     hits = selection.pop("sources")
+    # Direct local identifier queries are independent of document-level relevance.
+    search_citation = getattr(library, "search_citation", None)
+    if callable(search_citation):
+        seen = {(s.get("file_id"), s.get("page"), s.get("text")) for s in hits}
+        for citation in getattr(result, "citations", []) or []:
+            for source in search_citation(citation):
+                key = (source.get("file_id"), source.get("page"), source.get("text"))
+                if key not in seen:
+                    hits.append({**source, "source_id": "R" + str(len(hits) + 1)})
+                    seen.add(key)
     selection["sources_used"] = [{k: h.get(k) for k in ("source_id", "file_id", "title", "folder_path", "page",
                                                        "relevance", "text_coverage", "shared_terms",
                                                        "structured_case_table", "sheet", "row",
@@ -372,6 +351,14 @@ def review_document(result, library, router, context, pii):
     # 2. 규정 조항 인용의 허용·금지 방향 대조는 규칙으로 한다. 모델이 없어도 결과를 남긴다.
     from .provision_quotes import check_quoted_provisions
     provision_obs = check_quoted_provisions(document, sources)
+    from .reference_binding import value
+    citation_observations = [{
+        "claim_quote": mask(value(citation_by_id[cid], "raw_text", "") or match["matched_authority"]),
+        "source_quote": match["source_quote"], "source_id": match["source_id"],
+        "relationship": "SUPPORTS", "method": "DETERMINISTIC_CITATION_COMPARISON",
+        "explanation": "전체 인용 식별자가 참고문헌 발췌에 있습니다. 법리의 타당성이나 공식 확인을 뜻하지 않습니다.",
+    } for cid, match in reference_matches.items()]
+    provision_obs.extend(citation_observations)
     review["deterministic_observations"] = len(provision_obs)
 
     # 3. QUICK 및 LOCAL_ONLY 분기 (외부 모델 호출 차단)
@@ -830,7 +817,7 @@ def report_lines(run_result):
             lines.append(f"{source['source_id']}: {source['title']} / {location} / "
                          f"수정 {source['modified_time']} / SHA-256 {source['sha256']} / {source['url']}")
         for item in review.get("observations", []):
-            kind = "규칙 대조 의견" if item.get("method") == "DETERMINISTIC_PROVISION_COMPARISON" else "AI 참고 의견"
+            kind = "규칙 대조 의견" if item.get("method") in {"DETERMINISTIC_PROVISION_COMPARISON", "DETERMINISTIC_CITATION_COMPARISON"} else "AI 참고 의견"
             lines.append(f"문서: {item['claim_quote']}\n근거 {item['source_id']}: {item['source_quote']}\n"
                          f"{kind}({item['relationship']}): {item['explanation']}")
         for calc in review.get("contract_review", {}).get("calculations", []):

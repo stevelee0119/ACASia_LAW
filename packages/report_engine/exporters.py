@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 from packages.common.enums import MM4_ADVISORY_TYPES, spec_code
 from packages.common.terminology import TERMINOLOGY_VERSION, terminology_catalog, EDITABLE_COPY_NOTICE
 from .serialize import dumps, jsonable_payload
+from .reference_opinions import REPORT_NOTICE, reference_rows, basis_text
 from .snapshot import compact_claim_rows, json_lines, xml_text
 
 FINDING_COLUMNS = [
@@ -88,6 +89,8 @@ def to_payload(run_result: Any, *, reveal_sealed: bool = False) -> dict:
                           else getattr(d, "pages", [])),
                 "page_coverage": d.engine_data.get("page_coverage", []),
                 "findings": [f.to_dict(reveal_sealed=reveal_sealed) for f in d.findings],
+                "reference_notice": REPORT_NOTICE,
+                "reference_observations": [o for item in reference_rows(d) for o in item["reference_observations"]],
                 "review_items": [i.to_dict() if hasattr(i, "to_dict") else dict(i) for i in getattr(d, "review_items", [])],
             }
             for d in run_result.documents
@@ -273,6 +276,14 @@ def to_xlsx(run_result: Any, *, reveal_sealed: bool = False) -> bytes:
         for path, value in json_lines(compact_claim_rows(appendix)):
             for part, offset in enumerate(range(0, max(1, len(value)), 29000), start=1):
                 append(technical, [path, part, value[offset:offset + 29000]])
+
+    reference_sheet = workbook.create_sheet("참고문헌대조")
+    append(reference_sheet, ["[안내] " + REPORT_NOTICE])
+    append(reference_sheet, ["문서", "문서 주장 / 인용", "참고문헌 대조(구속력 없음)", "참고자료 지지 상태", "공식 여부"])
+    for document in run_result.documents:
+        for item in reference_rows(document):
+            append(reference_sheet, [document.filename, item.get("claim_text", ""), basis_text(item),
+                                     item.get("reference_status", "PENDING_REVIEW"), "공식 확인 아님"])
 
     for worksheet in workbook.worksheets:
         worksheet.freeze_panes = "A2"
