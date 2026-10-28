@@ -109,6 +109,48 @@ release_highlights.json "0.14":
 
 > **상태(10-28 평가 측 확인):** 0.15.0 버전 커밋 #187 병합(`fdf11b1`), 릴리스 #189 main 병합(`08d40ff`, 10-26). **운영 배포 확인(health 0.15.0·`08d40ff`, 10-28)** — TK-126·128 deployed, TK-127 1단계 배포. #186 TK-127 2단계 메모 Steve 병합(`efc9c9c`), 평가 측 검토 전. #185 TK-129 1차 보완 2건(2-4-1) → 2차 보완 1건(2-4-2) → 3차 `89cf414` 코드 수용·사용자 화면 확인 대기(2-4-3). #191 TK-127 2단계 1차 보완 2건(2-6) → `4891f4e` 코드 수용 → 사용자 결정(빈 괄호 제거·영문 코드 유지) 반영 보완 1건(2-6-1) → `cfd80c3` 수용, 사용자 병합 대기(10-28). #185 Steve 병합 `5d03247`.
 
+## 2-1-3. 0.16.0 버전 커밋 지시 (10-29, 일반 경로, 구현 한시 대행)
+
+```
+[Codex(구현 대행) 지시 — 0.16.0 버전 커밋 (평가 측 판정서 version_verdicts.json 0.16.0, 2026-10-29)]
+
+■ 배경
+- 릴리스 후보 Steve d2aa19a(TK-129 #185 + TK-127 2단계 #191)에서 평가 측 verify_all 전체 모드가 종료 0으로 끝났다.
+  · 환경은 CI와 같다(Python 3.11.15, tesseract 5.3.4).
+  · 수용 1238·회귀 장부 2357·전체 9094·브라우저 197 통과, 실제 실패 0.
+  · score_gate·regression_gate(기준 0.15.0 main 08d40ff)·hardcoding_diff·test_edits·protected_paths·version_policy 통과.
+- 점수: dev 82.6 / holdout 81.9 / 오탐 0 / A 0(0.15.0과 같음).
+- 판정: minor(0.15.0 → 0.16.0), 분류 added·changed·fixed. 봉인 시험은 변경 범위 밖이라 생략한다(RELEASE_PROCEDURE 2절 2).
+- 이 커밋은 구현 한시 대행 범위('이번 기능 구현 및 릴리스까지', 사용자 지시 10-28) 안이다.
+
+■ 선행
+- 평가 측 판정서가 담긴 평가 PR이 Steve_ACASiaLAW에 병합된 뒤 시작한다. check_version_policy가 판정서를 읽는다.
+
+■ 할 것 — 평가 측 수정본 그대로 (5개 파일, +19/−1)
+- 새 브랜치(예: codex/version-0.16.0, base Steve_ACASiaLAW)에서:
+  `git fetch origin evaluator/round8-promotion && git show origin/evaluator/round8-promotion:docs/handoff/patches/v0.16.0_version_commit.diff | git apply --3way`
+- 대상 파일:
+  · packages/common/config.py: version 0.16.0(주석 포함)
+  · docs/releases.json: 0.16.0 항목
+  · docs/release_highlights.json: 0.16 요약 4줄
+  · README.md·docs/RELEASE_HISTORY.md: scripts/update_readme.py가 생성한 줄
+- 날짜 2026-10-29는 버전 기록일이다. 배포일이 다르면 배포 뒤 평가 측이 README '현재 운영 버전'에 실제 배포일을 적는다(이 커밋에서 바꾸지 않는다).
+
+■ 평가 측 사전 검증 (d2aa19a + 수정본 + 판정서, 저장소 밖 사본)
+- check_version_policy --base 08d40ff: '위반 없음(상향 2건: 0.14.0 → 0.15.0, 0.15.0 → 0.16.0)'.
+- update_readme.py --check 통과.
+- 버전·릴리스 관련 시험 4개 파일 65건 실패 0.
+
+■ 하지 않을 것
+- 다른 파일·코드 변경, 판정서(docs/scorecards/**) 수정, README '현재 운영 버전' 줄 수정.
+
+■ 제출물·수용 기준
+- 커밋 1개(`chore(release): 버전 0.16.0 판정서 반영`, 끝에 `Agent: implementer`), PR 대상 Steve_ACASiaLAW.
+- 필수 CI 5종이 같은 SHA에서 성공해야 한다. PR 코멘트 3줄('검토 요청'은 CI 완료 뒤).
+- 평가 측 확인: diff = 수정본. 맞으면 평가 측은 CI·check_version_policy만으로 수용한다 → 사용자 병합 → 릴리스 PR(Steve → main).
+- main과 Steve의 이력이 갈라져 있다(#189가 은퇴 세트·메모를 빼고 main에 올라감). 릴리스 PR 구성은 평가 측이 따로 안내한다.
+```
+
 ## 2-1-2. 0.15.0 버전 커밋 지시 (10-25, 간소 경로 RELEASE_PROCEDURE 2-6)
 평가 PR(판정서 0.15.0 포함)이 Steve에 병합된 뒤, 새 브랜치에서 `git apply docs/handoff/patches/v0.15.0_version_commit.diff` 하나로 커밋한다(5개 파일: config.py 버전, releases.json, release_highlights.json, README 변경표, RELEASE_HISTORY — 평가 측 사전 검증: check_version_policy 통과, update_readme --check 0). 커밋 제목 `chore(release): 버전 0.15.0 판정서 반영`, 끝 `Agent: implementer`. 다른 변경 금지. 평가 측은 diff와 CI만 확인한다.
 
