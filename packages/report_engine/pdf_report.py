@@ -289,6 +289,15 @@ def build_report_pdf(
     else:
         story.append(Paragraph(_escape("해당 무리한 주장 또는 참고자료 모순 항목이 없습니다."), styles["body"]))
 
+    from .external_answers import (EXTERNAL_AI_HEADERS, EXTERNAL_AI_NOTICE, EXTERNAL_AI_PDF_WIDTHS, EXTERNAL_AI_TITLE,
+                                   external_answer_rows)
+    external_rows = external_answer_rows(getattr(run_result, "review_snapshot", {}))
+    if external_rows:
+        story.append(Spacer(1, 4))
+        story.append(Paragraph(_escape(EXTERNAL_AI_TITLE), styles["h2"]))
+        story.append(Paragraph(_escape(EXTERNAL_AI_NOTICE), styles["small"]))
+        story.append(table([EXTERNAL_AI_HEADERS, *external_rows], EXTERNAL_AI_PDF_WIDTHS))
+
     from packages.legal_engine.related_authorities import report_lines as related_lines
     for line in related_lines(run_result.documents):
         story.append(Paragraph(_escape(line), styles["small"]))
