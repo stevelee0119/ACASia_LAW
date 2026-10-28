@@ -1,0 +1,236 @@
+diff --git a/apps/web/static/app.js b/apps/web/static/app.js
+index fc29b4c..3d81650 100644
+--- a/apps/web/static/app.js
++++ b/apps/web/static/app.js
+@@ -2070,7 +2070,11 @@ function referenceIdentifier(citation) {
+   if (caseMatch) return ["case", caseMatch[1], ""];
+   let law = referenceAuthorityText(citation.law_name);
+   let article = referenceAuthorityText(citation.article);
+-  if (article && !article.startsWith("제")) article = `제${article}조`;
++  const parts = article.match(/^제?([0-9]+)조?(?:의([0-9]+))?$/);
++  if (parts) {
++    const sub = parts[2] || referenceAuthorityText(citation.sub);
++    article = `제${parts[1]}조${sub ? `의${sub}` : ""}`;
++  } else if (article && !article.startsWith("제")) article = `제${article}조`;
+   for (const [field, suffix] of [["paragraph", "항"], ["item", "호"]]) {
+     const part = referenceAuthorityText(citation[field]);
+     if (part) article += part.startsWith("제") ? part : `제${part}${suffix}`;
+@@ -2097,11 +2101,21 @@ function referenceIdentifierMatch(citation, excerpt) {
+   const escaped = [...key].map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+   const lawPattern = new RegExp("(?<![가-힣A-Za-z0-9])" + escaped.join(separator) + "(?:(?![가-힣A-Za-z0-9])|(?=제" + separator + "[0-9]))", "g");
+   const positions = [...original.matchAll(lawPattern)].map(m => referenceTextLength(referenceAuthorityText(original.slice(0, m.index))));
+-  const articles = [...text.matchAll(/제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?(?![0-9])/g)];
++  // 조문 표기는 가장 길게 읽고, 뒤에 숫자가 이어지면 잘린 표기라 어느 조문과도 같지 않다(Python과 같은 규칙).
++  const articles = [...text.matchAll(/제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?/g)].map(m =>
++    ({index:m.index, token:/[0-9]/.test(text.charAt(m.index + m[0].length)) ? null : m[0]}));
+   const nearby = m => positions.some(p => Math.abs(referenceTextLength(text.slice(0, m.index)) - p - referenceTextLength(key)) <= 100);
+-  const conflict = articles.some(m => m[0] !== article && nearby(m));
+-  const full = positions.length > 0 && articles.some(m => m[0] === article) && !conflict;
+-  return {full, proximate:full && articles.some(m => m[0] === article && nearby(m)), conflict};
++  const conflict = articles.some(m => !referenceArticleCompatible(m.token, article) && nearby(m));
++  const full = positions.length > 0 && articles.some(m => referenceArticleCompatible(m.token, article)) && !conflict;
++  return {full, proximate:full && articles.some(m => referenceArticleCompatible(m.token, article) && nearby(m)), conflict};
++}
++// reference_binding.article_compatible과 같은 규칙: 같은 조(조의N 포함)이고 항·호가 어긋나지 않으면 같은 조문.
++function referenceArticleCompatible(found, cited) {
++  if (!found) return false;
++  const base = token => token.match(/^제[0-9]+조(?:의[0-9]+)?/)[0];
++  if (base(found) !== base(cited)) return false;
++  const restFound = found.slice(base(found).length), restCited = cited.slice(base(cited).length);
++  return restFound.startsWith(restCited) || restCited.startsWith(restFound);
+ }
+ function attachReferenceObservations(items, docs) {
+   const unmatched = [];
+diff --git a/packages/rag_engine/library.py b/packages/rag_engine/library.py
+index c067115..3e001f5 100644
+--- a/packages/rag_engine/library.py
++++ b/packages/rag_engine/library.py
+@@ -770,25 +770,35 @@ class ReferenceLibrary:
+         Only the current eligible revision is read. Editorial case tables retain
+         their separate metadata path and cannot supply SUPPORTS here.
+         """
+-        from .reference_binding import citation_excerpt, identifier
++        import re as _re
+ 
+-        if not identifier(citation):
++        from .reference_binding import anchor_of, citation_excerpt, identifier
++
++        ident = identifier(citation)
++        if not ident:
++            return []
++        eligible = {file_id: meta for file_id, meta in self.eligible.items()
++                    if not (meta.get("structured_case_table") or meta.get("case_table_only"))}
++        if not eligible:
+             return []
++        # 식별자의 가장 긴 숫자열은 공백·괄호 정규화와 무관하게 원문에 그대로 있다. 색인 전체를
++        # 한 번만 훑어 그 숫자열이 있는 청크만 가져온다(파일마다·청크마다 Python 대조를 하지 않는다).
++        digits = max(_re.findall(r"[0-9]+", anchor_of(ident)), key=len, default="")
+         found = []
+         with self.connect() as db:
+-            for file_id, meta in sorted(self.eligible.items()):
+-                if meta.get("structured_case_table") or meta.get("case_table_only"):
+-                    continue
+-                rows = db.execute("SELECT page, start, text FROM chunks WHERE file_id=? AND revision=? ORDER BY page, start",
+-                                  (file_id, meta["revision"]))
+-                for page, start, text in rows:
+-                    excerpt = citation_excerpt(citation, text)
+-                    if not excerpt:
+-                        continue
+-                    found.append({**meta, "file_id": file_id, "page": int(page),
+-                                  "start": int(start) + text.index(excerpt), "text": excerpt})
+-                    if len(found) >= limit:
+-                        return found
++            rows = db.execute("SELECT file_id, revision, page, start, text FROM chunks WHERE instr(text, ?) > 0",
++                              (digits,)).fetchall()
++        for file_id, revision, page, start, text in sorted(rows, key=lambda r: (r[0], int(r[2]), int(r[3]))):
++            meta = eligible.get(file_id)
++            if not meta or revision != meta["revision"]:
++                continue
++            excerpt = citation_excerpt(citation, text)
++            if not excerpt:
++                continue
++            found.append({**meta, "file_id": file_id, "page": int(page),
++                          "start": int(start) + text.index(excerpt), "text": excerpt})
++            if len(found) >= limit:
++                return found
+         return found
+ 
+     def has_case_tables(self) -> bool:
+diff --git a/packages/rag_engine/reference_binding.py b/packages/rag_engine/reference_binding.py
+index c74e663..2ddbc29 100644
+--- a/packages/rag_engine/reference_binding.py
++++ b/packages/rag_engine/reference_binding.py
+@@ -11,6 +11,7 @@ EXPLICIT_WHITESPACE_RE = re.compile(
+ NOTICE = "참고문헌·구속력 없음, 공식 확인 아님"
+ CASE_RE = re.compile(r"(?<![0-9])([0-9]{4}[가-힣]{1,4}[0-9]+)(?![0-9])")
+ ARTICLE_RE = re.compile(r"제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?(?![0-9])")
++ARTICLE_TOKEN_RE = re.compile(r"제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?")
+ 
+ 
+ def value(obj, key, default=None):
+@@ -33,7 +34,12 @@ def identifier(citation):
+         return ("case", found.group(1), "")
+     law = authority_text(value(citation, "law_name") or "")
+     article = authority_text(value(citation, "article") or "")
+-    if article and not article.startswith("제"):
++    parts = re.fullmatch(r"제?([0-9]+)조?(?:의([0-9]+))?", article)
++    if parts:
++        # 추출기는 '제103조의2'를 article '103의2'(또는 article '103' + sub '2')로 남긴다.
++        sub = parts.group(2) or authority_text(value(citation, "sub") or "")
++        article = "제" + parts.group(1) + "조" + ("의" + sub if sub else "")
++    elif article and not article.startswith("제"):
+         article = "제" + article + "조"
+     for field, suffix in (("paragraph", "항"), ("item", "호")):
+         part = authority_text(value(citation, field) or "")
+@@ -65,27 +71,52 @@ def identifier_match(citation, excerpt):
+     law_pattern = (r"(?<![가-힣A-Za-z0-9])" + separator.join(re.escape(c) for c in key)
+                    + r"(?:(?![가-힣A-Za-z0-9])|(?=제" + separator + r"[0-9]))")
+     positions = [len(authority_text(original[:m.start()])) for m in re.finditer(law_pattern, original)]
+-    articles = list(ARTICLE_RE.finditer(text))
+-    conflict = any(m.group() != article and any(abs(m.start() - p - len(key)) <= 100 for p in positions)
+-                   for m in articles)
+-    full = bool(positions) and any(m.group() == article for m in articles) and not conflict
+-    near = full and any(m.group() == article and any(abs(m.start() - p - len(key)) <= 100 for p in positions)
+-                        for m in articles)
++    # 조문 표기는 가장 길게 읽는다. 뒤에 숫자가 이어지면('제8조제2항0') 잘린 표기라 어느 조문과도 같지 않다.
++    articles = [(m.start(), None if re.match(r"[0-9]", text[m.end():m.end() + 1]) else m.group())
++                for m in ARTICLE_TOKEN_RE.finditer(text)]
++    nearby = lambda start: any(abs(start - p - len(key)) <= 100 for p in positions)  # noqa: E731
++    conflict = any(not article_compatible(token, article) and nearby(start) for start, token in articles)
++    full = bool(positions) and any(article_compatible(token, article) for _, token in articles) and not conflict
++    near = full and any(article_compatible(token, article) and nearby(start) for start, token in articles)
+     return {"full": full, "proximate": bool(near), "conflict": conflict}
+ 
+ 
++def article_compatible(found, cited):
++    """같은 조(조의N 포함)이고 항·호가 서로 어긋나지 않으면 같은 조문이다.
++
++    '제23조'와 '제23조제1항'은 상하위 관계라 충돌이 아니다. '제23조제2항'과 '제23조제1항',
++    '제103조의2'와 '제103조'는 충돌이다.
++    """
++    if not found:
++        return False
++    base = lambda token: re.match(r"제[0-9]+조(?:의[0-9]+)?", token).group()  # noqa: E731
++    if base(found) != base(cited):
++        return False
++    rest_found, rest_cited = found[len(base(found)):], cited[len(base(cited)):]
++    return rest_found.startswith(rest_cited) or rest_cited.startswith(rest_found)
++
++
++IGNORED_CHAR_RE = re.compile(
++    r"[\u0009-\u000D\u001C-\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF「」『』]"
++)
++
++
++def anchor_of(ident):
++    return ident[1] if ident[0] == "case" else ident[2]
++
++
+ def citation_excerpt(citation, text):
+     """Window of original text, preserving provenance and original whitespace."""
+     ident = identifier(citation)
+     if not ident:
+         return ""
+-    normalized, offsets = [], []
+-    for index, char in enumerate(text):
+-        if authority_text(char):
+-            normalized.append(char)
+-            offsets.append(index)
+-    compact = "".join(normalized)
+-    anchor = ident[1] if ident[0] == "case" else ident[2]
++    text = str(text or "")
++    anchor = anchor_of(ident)
++    # 대부분의 청크에는 식별자가 없다. 한 번의 정규화로 먼저 거르고, 있을 때만 원문 위치를 계산한다.
++    if anchor not in authority_text(text):
++        return ""
++    offsets = [index for index, char in enumerate(text) if not IGNORED_CHAR_RE.match(char)]
++    compact = "".join(text[index] for index in offsets)
+     pos = compact.find(anchor)
+     if pos < 0:
+         return ""
+diff --git a/tests/test_tk127_stage2_reference_binding.py b/tests/test_tk127_stage2_reference_binding.py
+index 6273002..93d79bc 100644
+--- a/tests/test_tk127_stage2_reference_binding.py
++++ b/tests/test_tk127_stage2_reference_binding.py
+@@ -190,3 +190,41 @@ def test_law_name_boundary_and_unique_fallback(law):
+     case["claim"] = "🧾" * 8
+     short = execute_server(case)
+     assert not short["linked"] and not execute_browser([short])[0]["linked"]
++
++
++@pytest.mark.parametrize("citation,excerpt", [
++    # 항을 든 인용과 그 조 본문(항 번호를 ①로 적은 조문 원문): 같은 조문
++    ({"citation_id": "c", "raw_text": "가상보관법 제23조 제1항", "law_name": "가상보관법", "article": "23", "paragraph": "1"},
++     "가상보관법 제23조(보관 기간) ① 보관자는 합성 자료를 정해진 기간 동안 보관한다."),
++    # 추출기가 남기는 '조의N' 꼴(article '103의2')
++    ({"citation_id": "c", "raw_text": "가상점검법 제103조의2", "law_name": "가상점검법", "article": "103의2"},
++     "가상점검법 제103조의2는 합성 점검 절차를 정한다."),
++    # article과 sub를 따로 둔 꼴, 발췌는 그 조의 하위 항을 적은 경우
++    ({"citation_id": "c", "raw_text": "가상운송법 제7조의3", "law_name": "가상운송법", "article": "7", "sub": "3"},
++     "가상운송법 제7조의3 제2항은 합성 운송 기록을 남기게 한다."),
++])
++def test_paragraph_and_sub_article_citations_match_their_own_article(citation, excerpt):
++    case = {"name": "article", "group": "article", "citation": citation, "excerpt": excerpt,
++            "claim": "합성 조문 대조 주장입니다", "structural": True, "relationship": "SUPPORTS"}
++    server = execute_server(case)
++    browser = execute_browser([server])[0]
++    assert server["linked"] and server["supported"] and browser["linked"] and browser["supported"]
++    assert identifier_match(citation, excerpt) == {"full": True, "proximate": True, "conflict": False}
++
++
++@pytest.mark.parametrize("citation,excerpt", [
++    ({"citation_id": "c", "raw_text": "가상보관법 제23조 제1항", "law_name": "가상보관법", "article": "23", "paragraph": "1"},
++     "가상보관법 제23조 제2항은 합성 보관 장소를 정한다."),
++    ({"citation_id": "c", "raw_text": "가상점검법 제103조의2", "law_name": "가상점검법", "article": "103의2"},
++     "가상점검법 제103조는 합성 점검 대상을 정한다."),
++    ({"citation_id": "c", "raw_text": "가상운송법 제7조", "law_name": "가상운송법", "article": "7"},
++     "가상운송법 제7조의3은 합성 운송 기록을 정한다."),
++])
++def test_different_article_paragraph_or_sub_article_is_conflict(citation, excerpt):
++    case = {"name": "article", "group": "article", "citation": citation, "excerpt": excerpt,
++            "claim": "합성 조문 대조 주장입니다", "structural": True, "relationship": "SUPPORTS"}
++    server = execute_server(case)
++    browser = execute_browser([server])[0]
++    # 구조 연결은 유지하되(사용자 결정 10-28) 승격은 하지 않는다.
++    assert server["linked"] and not server["supported"] and browser["linked"] and not browser["supported"]
++    assert identifier_match(citation, excerpt)["conflict"]
