@@ -34,7 +34,7 @@ def _targets(engine: Dict[str, Any]) -> Dict[str, str]:
        - citation_id가 없는 비-AI finding: {docId}_FINDING_{fid}
     3. 주요 참고문헌 관찰(RAG observations):
        - claim_id가 있는 관찰: {docId}_REFERENCE_{claim_id}
-       - claim_id가 없거나 인덱스로 생성되는 행: {docId}_REFERENCE_{index}
+       - claim_id가 없는 관찰: {docId}_REFERENCE_O{문서 안 관찰 순번}
     """
     targets: Dict[str, str] = {}
     docs = engine.get("documents", []) or []
@@ -101,11 +101,8 @@ def _targets(engine: Dict[str, Any]) -> Dict[str, str]:
         observations = ((doc.get("engine_data") or {}).get("rag") or {}).get("observations", []) or []
         for idx, obs in enumerate(observations):
             quote = str(obs.get("claim_quote") or obs.get("claim_id") or f"참고문헌 관찰 {idx + 1}")
-            claim_id = obs.get("claim_id")
-            if claim_id:
-                targets.setdefault(f"{doc_id}_REFERENCE_{claim_id}", quote)
-            # claim_id가 없거나 index로 참조되는 브라우저 fallback 행 지원
-            targets.setdefault(f"{doc_id}_REFERENCE_{idx}", quote)
+            # 화면(referenceObservationRow)과 같은 규칙: claim_id가 없으면 문서 안 관찰 순번 `O{n}`.
+            targets.setdefault(f"{doc_id}_REFERENCE_{obs.get('claim_id') or f'O{idx}'}", quote)
 
     return targets
 

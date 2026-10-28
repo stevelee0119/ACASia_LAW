@@ -2112,8 +2112,9 @@ function attachReferenceObservations(items, docs) {
     const sources = new Map((rag.sources || []).map(s => [s.source_id, s]));
     const claimCitations = new Map((d.claims || []).map(c => [c.claim_id, c.citation_ids || []]));
     const docItems = items.filter(i => i.doc === d);
-    for (const observation of observations) {
-      const entry = {...observation, source: sources.get(observation.source_id)};
+    observations.forEach((observation, observationIndex) => {
+      // TK-129: 별도 행 id는 문서 안 관찰 순번으로 고정한다(서버 external_answers._targets와 같은 규칙).
+      const entry = {...observation, source: sources.get(observation.source_id), observation_index: observationIndex};
       const citationIds = claimCitations.get(observation.claim_id) || [];
       let target = docItems.find(i => i.citation_id && citationIds.includes(i.citation_id));
       const quote = compactText(observation.claim_quote);
@@ -2123,14 +2124,14 @@ function attachReferenceObservations(items, docs) {
       });
       if (target) (target.reference_observations ||= []).push(entry);
       else unmatched.push({doc: d, observation: entry});
-    }
+    });
   }
   return unmatched;
 }
-function referenceObservationRow({doc, observation}, index) {
+function referenceObservationRow({doc, observation}) {
   const contradicts = observation.relationship === "CONTRADICTS";
   return {
-    doc, item_id: `${doc.id || doc.document_id}_REFERENCE_${observation.claim_id || index}`, kind: "REFERENCE",
+    doc, item_id: `${doc.id || doc.document_id}_REFERENCE_${observation.claim_id || `O${observation.observation_index}`}`, kind: "REFERENCE",
     document_id: doc.id || doc.document_id, reference_library: true, claim_text: observation.claim_quote,
     verdict_label: contradicts ? "참고문헌과 불부합" : "참고문헌 대조 의견", severity: contradicts ? "MEDIUM" : "INFO",
     finding_ids: [], reference_observations: [observation], tier: contradicts ? 3 : 2,
@@ -2560,7 +2561,7 @@ function renderFindings() {
   }
 
   const unmatchedReferences = attachReferenceObservations(allReviewItems, docs);
-  unmatchedReferences.forEach((entry, index) => allReviewItems.push(referenceObservationRow(entry, index)));
+  unmatchedReferences.forEach(entry => allReviewItems.push(referenceObservationRow(entry)));
   applyStoredExternalAnswers(allReviewItems);
   // 판례 통계 요약 갱신
   let hallucinationRows = [];

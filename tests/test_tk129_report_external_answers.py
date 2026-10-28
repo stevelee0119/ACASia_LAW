@@ -134,7 +134,7 @@ def test_legacy_fallback_items_and_observation_without_claim_id_are_accepted(rep
     doc_id = doc.get("id") or doc.get("document_id")
     fallback_answers = [
         {"code": "A1", "item_id": f"{doc_id}_CITATION_fb_cit_1", "verdict": "확인", "basis": "근거", "summary": "요약", "applied_at": ""},
-        {"code": "B1", "item_id": f"{doc_id}_REFERENCE_0", "verdict": "참고", "basis": "법령", "summary": "관찰 답변", "applied_at": ""},
+        {"code": "B1", "item_id": f"{doc_id}_REFERENCE_O0", "verdict": "참고", "basis": "법령", "summary": "관찰 답변", "applied_at": ""},
     ]
 
     draft = _create(case, fallback_answers, ["json"])
@@ -307,3 +307,80 @@ def test_report_dialog_sends_answers_reflected_in_table():
         assert bodies[-1]["external_ai_answers"][0]["item_id"] == "item_a"
         assert bodies[-1]["external_ai_answers"][0]["verdict"] == "부존재"
         browser.close()
+
+
+def test_reference_rows_without_claim_id_resolve_to_their_own_observation():
+    """claim_id 없는 관찰의 별도 행 id는 문서 안 관찰 순번이다. 앞 관찰이 행에 붙었거나 문서가 여럿이어도
+    서버가 같은 관찰 문장을 대상으로 찾고, 다른 관찰 문장으로 바꿔 싣지 않는다."""
+    from packages.report_engine.external_answers import _targets, validate_answers
+
+    def doc(doc_id, observations):
+        return {"id": doc_id, "claims": [{"claim_id": "c1", "citation_ids": ["k1"]}],
+                "review_items": [{"item_id": f"{doc_id}_CITATION_k1", "kind": "CITATION", "citation_id": "k1"}],
+                "engine_data": {"rag": {"observations": observations}}}
+
+    linked = {"claim_id": "c1", "claim_quote": "앞 관찰은 인용 행에 붙는 문장", "relationship": "SUPPORTS"}
+    cases = [
+        ([doc("d1", [linked, {"claim_quote": "두 번째 관찰 문장", "relationship": "INSUFFICIENT"}])],
+         {"d1_REFERENCE_O1": "두 번째 관찰 문장"}),
+        ([doc("d1", [{"claim_quote": "첫 문서 관찰", "relationship": "CONTEXT"}]),
+          doc("d2", [{"claim_quote": "둘째 문서 관찰", "relationship": "CONTEXT"}])],
+         {"d1_REFERENCE_O0": "첫 문서 관찰", "d2_REFERENCE_O0": "둘째 문서 관찰"}),
+        ([doc("d3", [{"claim_quote": "세 번째 문서 첫 관찰", "relationship": "CONTRADICTS"},
+                     {"claim_quote": "세 번째 문서 둘째 관찰", "relationship": "CONTEXT"}])],
+         {"d3_REFERENCE_O0": "세 번째 문서 첫 관찰", "d3_REFERENCE_O1": "세 번째 문서 둘째 관찰"}),
+    ]
+    for docs, expected in cases:
+        targets = _targets({"documents": docs})
+        for item_id, quote in expected.items():
+            assert targets[item_id] == quote
+    # 대조: 옛 순번 꼴(문서 밖 전역 순번)은 대상이 아니다.
+    engine = {"documents": cases[1][0]}
+    for stale in ("d2_REFERENCE_1", "d1_REFERENCE_0", "d3_REFERENCE_0"):
+        assert validate_answers(engine, [{"code": "B1", "item_id": stale}])
+
+
+def _js_function(source: str, name: str) -> str:
+    start = source.index(f"function {name}(")
+    depth, index = 0, source.index(") {", start) + 2  # 매개변수 구조 분해의 중괄호는 건너뛴다
+    while True:
+        depth += {"{": 1, "}": -1}.get(source[index], 0)
+        index += 1
+        if depth == 0:
+            return source[start:index]
+
+
+def test_browser_reference_row_ids_match_server_targets():
+    """화면이 만드는 참고문헌 별도 행 id가 서버 대상 목록에 있고, 같은 관찰 문장을 가리킨다."""
+    import json as _json
+    import subprocess
+    from pathlib import Path
+
+    from packages.report_engine.external_answers import _targets
+
+    app = Path("apps/web/static/app.js").read_text(encoding="utf-8")
+    functions = "\n".join(_js_function(app, name) for name in
+                          ("compactText", "attachReferenceObservations", "referenceObservationRow"))
+    docs = [
+        {"id": "d1", "claims": [{"claim_id": "c1", "citation_ids": ["k1"]}],
+         "engine_data": {"rag": {"observations": [
+             {"claim_id": "c1", "claim_quote": "인용 행에 붙는 관찰 문장", "relationship": "SUPPORTS"},
+             {"claim_quote": "행에 붙지 않는 첫째 관찰", "relationship": "INSUFFICIENT"}]}}},
+        {"id": "d2", "claims": [],
+         "engine_data": {"rag": {"observations": [
+             {"claim_quote": "다른 문서의 관찰 문장", "relationship": "CONTRADICTS"},
+             {"claim_id": "c9", "claim_quote": "다른 문서의 둘째 관찰", "relationship": "CONTEXT"}]}}},
+    ]
+    script = functions + f"""
+const docs = {_json.dumps(docs, ensure_ascii=False)};
+const items = [{{doc: docs[0], item_id: "d1_CITATION_k1", kind: "CITATION", citation_id: "k1"}}];
+const rows = attachReferenceObservations(items, docs).map(entry => referenceObservationRow(entry));
+console.log(JSON.stringify(rows.map(r => [r.item_id, r.claim_text])));
+"""
+    proc = subprocess.run(["node"], input=script.encode("utf-8"), capture_output=True, check=True)
+    rows = _json.loads(proc.stdout)
+    assert [row[0] for row in rows] == ["d1_REFERENCE_O1", "d2_REFERENCE_O0", "d2_REFERENCE_c9"]
+    targets = _targets({"documents": [{**d, "review_items": [{"item_id": f"{d['id']}_CITATION_k1", "kind": "CITATION"}]}
+                                      for d in docs]})
+    for item_id, quote in rows:
+        assert targets[item_id] == quote
