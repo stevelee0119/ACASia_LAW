@@ -1500,4 +1500,9 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
   - RELEASE_PROCEDURE 2-6 신설(직전 릴리스 결함 교정 간소 경로): 봉인 시험 생략(엔진 변경 시 동등성 근거 필수), verify_all 전체 1회를 수용 SHA 단계별 실행+같은 SHA CI로 갈음, 고정 벤치 생략, 짧은 판정서, 온라인 점검은 health SHA·버전 확인(온라인 경로 변경 시만 4절 전체). 유지: 필수 CI·P1 회귀 0·기준선 이상·버전 분류 그대로·사용자 병합·기록.
   - 0.15.0 판정서(minor): basis added·changed·removed·fixed·security — 교정 외에 평면 탭(changed)·답변 붙여넣기(added)가 있어 VERSION_POLICY 5절상 minor. measured 2f61f82(= Steve 3fee071 제품 diff 0), 82.6/81.9·오탐 0 불변, RER 0. 버전 커밋을 임시 사본에서 사전 검증(check_version_policy 상향 1건 통과, update_readme --check 0, 관련 시험 통과) → `docs/handoff/patches/v0.15.0_version_commit.diff`.
 - **다음 릴리스 범위 결정(10-25 한국, 사용자 결정 'tk-127 2단계와 tk129를 다음에 배포하도록 하면 될 듯'):** 0.15.0은 #183(TK-126·127 1단계·128·ReDoS)만으로 배포. TK-127 2단계(인용 행 Drive 조회, 설계 메모 먼저)와 TK-129(보고서에 외부 AI 답변)는 그다음 릴리스 범위.
-
+- **Codex 대행 기간 진행 확인(10-26~27 한국, 10-28 평가 측 정리, 사용자 지시 '코덱스를 통해 대신 평가를 진행했는데, 진행상황을 업데이트'):** 저장소의 원격 이력과 PR 상태만으로 확인했다. Codex 측 판정서·측정 기록은 저장소에 없다(점수 재측정 없음).
+  - #187 버전 0.15.0 커밋(`1a786db`·`fe5b208`) Steve 병합 `fdf11b1`(10-26).
+  - #188(Steve → main 릴리스, draft) 닫힘. 대신 #189(`antigravity/release-0.15.0-clean`) main 병합 `08d40ff`(10-26 16:59 KST). main/Steve 제품 코드 diff 0. main에는 은퇴 세트 `sealed_20261025` PDF·정답, 그 보호 경로 승인 항목, TK-127 2단계 메모가 없다(12개 파일). main 전용 커밋 4개(`473314c`·`53a74af`·`906d8ef`·`08d40ff`)가 생겨 다음 Steve → main 릴리스 때 이력 정리가 필요하다.
+  - main README '현재 운영 버전'은 0.14.0 그대로. 0.15.0 배포 health(SHA `08d40ff`·버전 0.15.0) 확인 기록이 없다 → TK-126·127(1단계)·128은 `merged` 유지, health 확인 뒤 `deployed`.
+  - #186 TK-127 2단계 설계 메모 10차 개정(`d20b3ce`) Steve 병합 `efc9c9c`(10-27). 평가 측(Claude Code) 승인 판정 기록은 없다 → 구현 지시 전 평가 측 검토 필요.
+  - #185 TK-129 열림(head `9ed54c5`, 기준 `3fee071`, 15개 파일·CI 성공·병합 충돌 없음). 사전 검증 수정본(9개 파일)보다 넓다: 시험 9건(수정본 5건), 기존 시험 `test_tk126_flat_tabs_answer_import.py` 수정 10줄, 화면 캡처 5장. 평가 측 판정·사용자 화면 확인 전.

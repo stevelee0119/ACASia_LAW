@@ -107,6 +107,8 @@ release_highlights.json "0.14":
 
 **수용 기준**: diff가 위 세 파일과 생성물(README 변경표·RELEASE_HISTORY)뿐, 필수 CI 성공, 판정서와 버전 일치. 평가 측은 diff와 CI만 확인하고 수용한다(탐지 변경 없음, 재측정 없음).
 
+> **상태(10-28 평가 측 확인):** 0.15.0 버전 커밋 #187 병합(`fdf11b1`), 릴리스 #189 main 병합(`08d40ff`, 10-26). health 확인 기록 없음 → 확인 뒤 README·티켓 `deployed`. #186 TK-127 2단계 메모 Steve 병합(`efc9c9c`), 평가 측 검토 전. #185 TK-129 CI 성공, 평가 측 판정 전.
+
 ## 2-1-2. 0.15.0 버전 커밋 지시 (10-25, 간소 경로 RELEASE_PROCEDURE 2-6)
 평가 PR(판정서 0.15.0 포함)이 Steve에 병합된 뒤, 새 브랜치에서 `git apply docs/handoff/patches/v0.15.0_version_commit.diff` 하나로 커밋한다(5개 파일: config.py 버전, releases.json, release_highlights.json, README 변경표, RELEASE_HISTORY — 평가 측 사전 검증: check_version_policy 통과, update_readme --check 0). 커밋 제목 `chore(release): 버전 0.15.0 판정서 반영`, 끝 `Agent: implementer`. 다른 변경 금지. 평가 측은 diff와 CI만 확인한다.
 
