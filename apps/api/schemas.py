@@ -171,6 +171,16 @@ class RevealRequest(BaseModel):
     reviewer: str = "user"
 
 
+class ExternalAiAnswer(BaseModel):
+    """TK-129: 화면에서 표에 반영한 외부 AI 답변(사용자 입력, 공식 확인 아님)."""
+    code: str = Field(pattern=r"^[AB]\d{1,3}$")
+    item_id: str = Field(min_length=1, max_length=300)
+    verdict: str = Field(default="", max_length=1000)
+    basis: str = Field(default="", max_length=1000)
+    summary: str = Field(default="", max_length=1000)
+    applied_at: str = Field(default="", max_length=60)
+
+
 class ReportRequest(BaseModel):
     run_id: Optional[str] = None
     formats: List[str] = Field(default_factory=lambda: ["pdf", "xlsx", "csv", "json", "manifest"])
@@ -179,6 +189,8 @@ class ReportRequest(BaseModel):
     # SUMMARY: 판단에 필요한 내용만 싣고 전체 기술 기록은 검증 상세(JSON)에 보존한다.
     # FULL: 전체 기술 기록을 PDF·Word·Excel에도 싣는다(인용이 많으면 수천 쪽이 된다).
     detail_level: Literal["SUMMARY", "FULL"] = "SUMMARY"
+    # TK-129: 브라우저에만 저장된 외부 AI 답변을 보고서 고정본에 싣기 위해 생성 요청에 함께 보낸다.
+    external_ai_answers: List[ExternalAiAnswer] = Field(default_factory=list, max_length=400)
 
     @field_validator("audience", mode="before")
     @classmethod
