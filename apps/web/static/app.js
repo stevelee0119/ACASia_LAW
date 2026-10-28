@@ -2070,7 +2070,11 @@ function referenceIdentifier(citation) {
   if (caseMatch) return ["case", caseMatch[1], ""];
   let law = referenceAuthorityText(citation.law_name);
   let article = referenceAuthorityText(citation.article);
-  if (article && !article.startsWith("제")) article = `제${article}조`;
+  const parts = article.match(/^제?([0-9]+)조?(?:의([0-9]+))?$/);
+  if (parts) {
+    const sub = parts[2] || referenceAuthorityText(citation.sub);
+    article = `제${parts[1]}조${sub ? `의${sub}` : ""}`;
+  } else if (article && !article.startsWith("제")) article = `제${article}조`;
   for (const [field, suffix] of [["paragraph", "항"], ["item", "호"]]) {
     const part = referenceAuthorityText(citation[field]);
     if (part) article += part.startsWith("제") ? part : `제${part}${suffix}`;
@@ -2097,11 +2101,21 @@ function referenceIdentifierMatch(citation, excerpt) {
   const escaped = [...key].map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const lawPattern = new RegExp("(?<![가-힣A-Za-z0-9])" + escaped.join(separator) + "(?:(?![가-힣A-Za-z0-9])|(?=제" + separator + "[0-9]))", "g");
   const positions = [...original.matchAll(lawPattern)].map(m => referenceTextLength(referenceAuthorityText(original.slice(0, m.index))));
-  const articles = [...text.matchAll(/제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?(?![0-9])/g)];
+  // 조문 표기는 가장 길게 읽고, 뒤에 숫자가 이어지면 잘린 표기라 어느 조문과도 같지 않다(Python과 같은 규칙).
+  const articles = [...text.matchAll(/제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?/g)].map(m =>
+    ({index:m.index, token:/[0-9]/.test(text.charAt(m.index + m[0].length)) ? null : m[0]}));
   const nearby = m => positions.some(p => Math.abs(referenceTextLength(text.slice(0, m.index)) - p - referenceTextLength(key)) <= 100);
-  const conflict = articles.some(m => m[0] !== article && nearby(m));
-  const full = positions.length > 0 && articles.some(m => m[0] === article) && !conflict;
-  return {full, proximate:full && articles.some(m => m[0] === article && nearby(m)), conflict};
+  const conflict = articles.some(m => !referenceArticleCompatible(m.token, article) && nearby(m));
+  const full = positions.length > 0 && articles.some(m => referenceArticleCompatible(m.token, article)) && !conflict;
+  return {full, proximate:full && articles.some(m => referenceArticleCompatible(m.token, article) && nearby(m)), conflict};
+}
+// reference_binding.article_compatible과 같은 규칙: 같은 조(조의N 포함)이고 항·호가 어긋나지 않으면 같은 조문.
+function referenceArticleCompatible(found, cited) {
+  if (!found) return false;
+  const base = token => token.match(/^제[0-9]+조(?:의[0-9]+)?/)[0];
+  if (base(found) !== base(cited)) return false;
+  const restFound = found.slice(base(found).length), restCited = cited.slice(base(cited).length);
+  return restFound.startsWith(restCited) || restCited.startsWith(restFound);
 }
 function attachReferenceObservations(items, docs) {
   const unmatched = [];

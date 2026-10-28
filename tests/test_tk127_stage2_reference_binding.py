@@ -190,3 +190,41 @@ def test_law_name_boundary_and_unique_fallback(law):
     case["claim"] = "🧾" * 8
     short = execute_server(case)
     assert not short["linked"] and not execute_browser([short])[0]["linked"]
+
+
+@pytest.mark.parametrize("citation,excerpt", [
+    # 항을 든 인용과 그 조 본문(항 번호를 ①로 적은 조문 원문): 같은 조문
+    ({"citation_id": "c", "raw_text": "가상보관법 제23조 제1항", "law_name": "가상보관법", "article": "23", "paragraph": "1"},
+     "가상보관법 제23조(보관 기간) ① 보관자는 합성 자료를 정해진 기간 동안 보관한다."),
+    # 추출기가 남기는 '조의N' 꼴(article '103의2')
+    ({"citation_id": "c", "raw_text": "가상점검법 제103조의2", "law_name": "가상점검법", "article": "103의2"},
+     "가상점검법 제103조의2는 합성 점검 절차를 정한다."),
+    # article과 sub를 따로 둔 꼴, 발췌는 그 조의 하위 항을 적은 경우
+    ({"citation_id": "c", "raw_text": "가상운송법 제7조의3", "law_name": "가상운송법", "article": "7", "sub": "3"},
+     "가상운송법 제7조의3 제2항은 합성 운송 기록을 남기게 한다."),
+])
+def test_paragraph_and_sub_article_citations_match_their_own_article(citation, excerpt):
+    case = {"name": "article", "group": "article", "citation": citation, "excerpt": excerpt,
+            "claim": "합성 조문 대조 주장입니다", "structural": True, "relationship": "SUPPORTS"}
+    server = execute_server(case)
+    browser = execute_browser([server])[0]
+    assert server["linked"] and server["supported"] and browser["linked"] and browser["supported"]
+    assert identifier_match(citation, excerpt) == {"full": True, "proximate": True, "conflict": False}
+
+
+@pytest.mark.parametrize("citation,excerpt", [
+    ({"citation_id": "c", "raw_text": "가상보관법 제23조 제1항", "law_name": "가상보관법", "article": "23", "paragraph": "1"},
+     "가상보관법 제23조 제2항은 합성 보관 장소를 정한다."),
+    ({"citation_id": "c", "raw_text": "가상점검법 제103조의2", "law_name": "가상점검법", "article": "103의2"},
+     "가상점검법 제103조는 합성 점검 대상을 정한다."),
+    ({"citation_id": "c", "raw_text": "가상운송법 제7조", "law_name": "가상운송법", "article": "7"},
+     "가상운송법 제7조의3은 합성 운송 기록을 정한다."),
+])
+def test_different_article_paragraph_or_sub_article_is_conflict(citation, excerpt):
+    case = {"name": "article", "group": "article", "citation": citation, "excerpt": excerpt,
+            "claim": "합성 조문 대조 주장입니다", "structural": True, "relationship": "SUPPORTS"}
+    server = execute_server(case)
+    browser = execute_browser([server])[0]
+    # 구조 연결은 유지하되(사용자 결정 10-28) 승격은 하지 않는다.
+    assert server["linked"] and not server["supported"] and browser["linked"] and not browser["supported"]
+    assert identifier_match(citation, excerpt)["conflict"]
