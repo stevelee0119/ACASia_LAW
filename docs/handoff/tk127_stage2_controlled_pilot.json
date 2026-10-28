@@ -1,0 +1,437 @@
+{
+  "scope": "합성 통제 파일럿; 통계적 보증 아님",
+  "production_drive": "미측정",
+  "groups": {
+    "N1": {
+      "n": 5,
+      "server": {
+        "linked": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 5,
+          "precision": null,
+          "coverage": null
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 5,
+          "precision": null,
+          "coverage": null
+        }
+      },
+      "browser": {
+        "linked": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 5,
+          "precision": null,
+          "coverage": null
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 5,
+          "precision": null,
+          "coverage": null
+        }
+      }
+    },
+    "N2": {
+      "n": 3,
+      "server": {
+        "linked": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        }
+      },
+      "browser": {
+        "linked": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        }
+      }
+    },
+    "N3": {
+      "n": 3,
+      "server": {
+        "linked": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        }
+      },
+      "browser": {
+        "linked": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        }
+      }
+    },
+    "N4": {
+      "n": 3,
+      "server": {
+        "linked": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        }
+      },
+      "browser": {
+        "linked": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        }
+      }
+    },
+    "P1": {
+      "n": 5,
+      "server": {
+        "linked": {
+          "TP": 5,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        },
+        "supported": {
+          "TP": 5,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        }
+      },
+      "browser": {
+        "linked": {
+          "TP": 5,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        },
+        "supported": {
+          "TP": 5,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        }
+      }
+    },
+    "P2": {
+      "n": 5,
+      "server": {
+        "linked": {
+          "TP": 5,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        },
+        "supported": {
+          "TP": 5,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        }
+      },
+      "browser": {
+        "linked": {
+          "TP": 5,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        },
+        "supported": {
+          "TP": 5,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        }
+      }
+    },
+    "S_conflict": {
+      "n": 3,
+      "server": {
+        "linked": {
+          "TP": 3,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        }
+      },
+      "browser": {
+        "linked": {
+          "TP": 3,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        }
+      }
+    },
+    "S_context": {
+      "n": 3,
+      "server": {
+        "linked": {
+          "TP": 3,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        }
+      },
+      "browser": {
+        "linked": {
+          "TP": 3,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        }
+      }
+    },
+    "S_match": {
+      "n": 3,
+      "server": {
+        "linked": {
+          "TP": 3,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        },
+        "supported": {
+          "TP": 3,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        }
+      },
+      "browser": {
+        "linked": {
+          "TP": 3,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        },
+        "supported": {
+          "TP": 3,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        }
+      }
+    },
+    "S_missing": {
+      "n": 3,
+      "server": {
+        "linked": {
+          "TP": 3,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        }
+      },
+      "browser": {
+        "linked": {
+          "TP": 3,
+          "FP": 0,
+          "FN": 0,
+          "TN": 0,
+          "precision": 1.0,
+          "coverage": 1.0
+        },
+        "supported": {
+          "TP": 0,
+          "FP": 0,
+          "FN": 0,
+          "TN": 3,
+          "precision": null,
+          "coverage": null
+        }
+      }
+    }
+  },
+  "total": {
+    "server": {
+      "linked": {
+        "TP": 22,
+        "FP": 0,
+        "FN": 0,
+        "TN": 14,
+        "precision": 1.0,
+        "coverage": 1.0
+      },
+      "supported": {
+        "TP": 13,
+        "FP": 0,
+        "FN": 0,
+        "TN": 23,
+        "precision": 1.0,
+        "coverage": 1.0
+      }
+    },
+    "browser": {
+      "linked": {
+        "TP": 22,
+        "FP": 0,
+        "FN": 0,
+        "TN": 14,
+        "precision": 1.0,
+        "coverage": 1.0
+      },
+      "supported": {
+        "TP": 13,
+        "FP": 0,
+        "FN": 0,
+        "TN": 23,
+        "precision": 1.0,
+        "coverage": 1.0
+      }
+    }
+  },
+  "agreement": true,
+  "status": "PASS",
+  "sufficient_sample": true
+}

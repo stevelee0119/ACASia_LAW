@@ -193,6 +193,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
         doc.add_heading("모델별 AI 작성 판정", 2)
         table(["문서", "모델", "판정", "점수", "근거"], opinion_rows, [1.3, 1.2, 1.1, 0.5, 2.9])
 
+    from .reference_opinions import REPORT_NOTICE, row_basis, table_additions
     from .review_tiers import classify_row_tier
     tier2_rows = []
     tier3_rows = []
@@ -202,6 +203,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
             cell_claim = str(row.get("claim_text", "")) + f"\n({row.get('cited_authority', '')})"
             cell_basis = (f"[평가] {row.get('validity_verdict', '') or '확인 필요'}\n{row.get('ai_generation_basis', '')}\n"
                           + format_context_review(row.get("context_review")))
+            cell_basis += "\n" + row_basis(d, row)
             cell_review = row_cell_text(row)
             formatted_entry = [cell_loc, cell_claim, cell_basis, cell_review]
 
@@ -210,9 +212,11 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
                 tier2_rows.append(formatted_entry)
             else:
                 tier3_rows.append(formatted_entry)
+        tier2_rows.extend(table_additions(d, getattr(d, "ai_hallucination_table", []) or []))
 
     doc.add_heading("2. 판례·법령·주요참고문헌 인용 오류·미확인 검토 (AI 작성 여부 판단과 별개)", 2)
     if tier2_rows:
+        paragraph(REPORT_NOTICE)
         table(["위치", "문서 주장 / 인용", "인용 오류·미확인 근거 및 주장 평가", "법리적 타당성 검토 및 반박 근거"],
               tier2_rows, [1.0, 1.7, 1.6, 2.7])
     else:

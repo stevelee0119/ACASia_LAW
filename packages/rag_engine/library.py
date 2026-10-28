@@ -764,6 +764,33 @@ class ReferenceLibrary:
     def search(self, text, limit=12):
         return self.select(text, limit)["sources"]
 
+    def search_citation(self, citation, limit=12):
+        """Local exact-identifier search independent of whole-document top 12.
+
+        Only the current eligible revision is read. Editorial case tables retain
+        their separate metadata path and cannot supply SUPPORTS here.
+        """
+        from .reference_binding import citation_excerpt, identifier
+
+        if not identifier(citation):
+            return []
+        found = []
+        with self.connect() as db:
+            for file_id, meta in sorted(self.eligible.items()):
+                if meta.get("structured_case_table") or meta.get("case_table_only"):
+                    continue
+                rows = db.execute("SELECT page, start, text FROM chunks WHERE file_id=? AND revision=? ORDER BY page, start",
+                                  (file_id, meta["revision"]))
+                for page, start, text in rows:
+                    excerpt = citation_excerpt(citation, text)
+                    if not excerpt:
+                        continue
+                    found.append({**meta, "file_id": file_id, "page": int(page),
+                                  "start": int(start) + text.index(excerpt), "text": excerpt})
+                    if len(found) >= limit:
+                        return found
+        return found
+
     def has_case_tables(self) -> bool:
         return any(v.get("structured_case_table") for v in self.eligible.values())
 
