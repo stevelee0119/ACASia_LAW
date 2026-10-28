@@ -225,12 +225,13 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
     else:
         paragraph("해당 무리한 주장 또는 참고자료 모순 항목이 없습니다.")
 
-    from .external_answers import EXTERNAL_AI_HEADERS, EXTERNAL_AI_NOTICE, EXTERNAL_AI_TITLE, external_answer_rows
+    from .external_answers import (EXTERNAL_AI_DOCX_WIDTHS, EXTERNAL_AI_HEADERS, EXTERNAL_AI_NOTICE, EXTERNAL_AI_TITLE,
+                                   external_answer_rows)
     external_rows = external_answer_rows(snapshot)
     if external_rows:
         doc.add_heading(EXTERNAL_AI_TITLE, 2)
         paragraph(EXTERNAL_AI_NOTICE)
-        table(EXTERNAL_AI_HEADERS, external_rows, [0.5, 1.5, 0.9, 1.4, 1.9, 0.8])
+        table(EXTERNAL_AI_HEADERS, external_rows, EXTERNAL_AI_DOCX_WIDTHS)
 
     from packages.legal_engine.related_authorities import report_lines as related_lines
     for line in related_lines(run_result.documents):

@@ -384,3 +384,28 @@ console.log(JSON.stringify(rows.map(r => [r.item_id, r.claim_text])));
                                       for d in docs]})
     for item_id, quote in rows:
         assert targets[item_id] == quote
+
+
+def test_external_section_columns_have_widths_inside_page_in_docx_and_pdf(report_case):  # noqa: F811
+    """'공식 여부' 열을 더한 뒤에도 Word·PDF 표의 모든 열에 너비가 있고 본문 폭 안에 든다."""
+    from docx import Document
+    from packages.report_engine.external_answers import (EXTERNAL_AI_DOCX_WIDTHS, EXTERNAL_AI_HEADERS,
+                                                         EXTERNAL_AI_PDF_WIDTHS)
+
+    assert len(EXTERNAL_AI_PDF_WIDTHS) == len(EXTERNAL_AI_DOCX_WIDTHS) == len(EXTERNAL_AI_HEADERS)
+    assert sum(EXTERNAL_AI_PDF_WIDTHS) <= (210 - 36) / 25.4 * 72  # A4 − 좌우 18mm
+    assert sum(EXTERNAL_AI_DOCX_WIDTHS) <= 8.5 - 1.5 + 1e-9  # Letter − 좌우 0.75in
+
+    case = report_case
+    _with_table_items(case)
+    draft = _create(case, ANSWERS, ["pdf", "docx"])
+    document = Document(io.BytesIO(download(case, draft, "docx")))
+    [external] = [t for t in document.tables if [c.text for c in t.rows[0].cells] == EXTERNAL_AI_HEADERS]
+    from docx.oxml.ns import qn
+    from docx.shared import Inches
+    for row in external.rows:
+        # 표 서식(너비·셀 여백)이 7열 모두에 적용되어야 한다. 너비 목록이 짧으면 마지막 열만 서식 없이 남는다.
+        assert [cell.width for cell in row.cells] == [Inches(w) for w in EXTERNAL_AI_DOCX_WIDTHS]
+        assert all(cell._tc.tcPr.find(qn("w:tcMar")) is not None for cell in row.cells)
+    pdf_text = "".join(page.extract_text() for page in PdfReader(io.BytesIO(download(case, draft, "pdf"))).pages)
+    assert "공식 여부" in pdf_text

@@ -14,6 +14,9 @@ EXTERNAL_AI_NOTICE = ("엘박스 등 외부 AI의 답변을 검토자가 표에 
                       "판례·법령 원문은 판결서·국가법령정보센터로 확인해야 합니다.")
 EXTERNAL_AI_STATUS_LABEL = "공식 확인 아님 (참고 의견)"
 EXTERNAL_AI_HEADERS = ["번호", "대상", "판정", "근거", "요지", "반영 시각", "공식 여부"]
+# 열 너비는 머리글과 같은 개수여야 한다. 개수가 다르면 Word는 남는 열에 너비·테두리가 없고 PDF 표는 본문 폭을 넘는다.
+EXTERNAL_AI_PDF_WIDTHS = [28, 100, 55, 125, 95, 47, 40]  # 합 490pt — A4 본문 폭(210mm − 좌우 18mm) 약 493pt 안
+EXTERNAL_AI_DOCX_WIDTHS = [0.4, 1.3, 0.8, 1.6, 1.4, 0.8, 0.7]  # 합 7.0in — Letter 본문 폭(8.5in − 좌우 0.75in)
 CODE_PATTERN = re.compile(r"^[AB]\d{1,4}$")
 
 
