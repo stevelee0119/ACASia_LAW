@@ -286,6 +286,7 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 
 ■ 고칠 것 1 — 평가 측 수정본을 그대로 적용
 - 수정본: docs/handoff/patches/TK-129_reference_row_id_fix_on_185.diff(9ed54c5 기준, 3개 파일).
+  적용: PR 브랜치에서 `git fetch origin evaluator/round8-promotion && git show origin/evaluator/round8-promotion:docs/handoff/patches/TK-129_reference_row_id_fix_on_185.diff | git apply --3way` (평가 브랜치 커밋 fcef610).
 - 원리: 별도 행 id를 '매칭 결과에 따라 달라지는 순번'이 아니라 '문서 안 관찰 순번'으로 고정한다. claim_id가 없을 때 id는 `{문서}_REFERENCE_O{n}`이다. 화면과 서버가 같은 규칙을 쓰므로, 서버가 화면의 매칭 알고리즘을 복제할 필요가 없다.
   · app.js `attachReferenceObservations`: `observations.forEach((observation, observationIndex) => …)`로 바꾸고, entry에 `observation_index`를 싣는다.
   · `referenceObservationRow`: index 인자를 없애고 id에 `observation.claim_id || \`O${observation.observation_index}\``를 쓴다. 2563행 호출부도 맞춘다.
