@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -76,7 +77,14 @@ def _page(p, prompt_calls):
             return route.fulfill(json=fixed[path])
         route.fulfill(json=[])
 
-    browser = p.chromium.launch()
+    channel = os.getenv("LV_TEST_BROWSER_CHANNEL")
+    try:
+        browser = p.chromium.launch(**({"channel": channel} if channel else {}))
+    except Exception:
+        # 로컬 Windows 등에서 chromium 바이너리 미설치 시 시스템 브라우저 폴백
+        import time
+        time.sleep(0.5)
+        browser = p.chromium.launch(channel="msedge")
     context = browser.new_context(viewport={"width": 1280, "height": 900})
     context.add_init_script("""window.__copied = [];
       Object.defineProperty(navigator, 'clipboard', {value: {writeText: async t => { window.__copied.push(t); }}});""")
