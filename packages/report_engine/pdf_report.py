@@ -254,16 +254,20 @@ def build_report_pdf(
         story.append(Paragraph(_escape("모델별 AI 작성 판정"), styles["h2"]))
         story.append(table([["문서", "모델", "판정", "점수", "근거"], *opinion_rows], [80, 70, 70, 30, 240]))
 
+    from .reference_opinions import REPORT_NOTICE, row_basis, table_additions
     from .review_tiers import classify_row_tier
     tier2_rows = []
     tier3_rows = []
     for d in run_result.documents:
         for row in getattr(d, "ai_hallucination_table", []) or []:
             cell_loc = d.filename + " " + str(row.get("location", ""))
-            cell_claim = str(row.get("claim_text", ""))[:120] + "\n(" + str(row.get("cited_authority", "")) + ")"
+            authority = str(row.get("cited_authority") or "").strip()
+            # 인용 표기가 없는 행(참고문헌 대조 행 등)에는 빈 괄호를 붙이지 않는다.
+            cell_claim = str(row.get("claim_text", ""))[:120] + (f"\n({authority})" if authority else "")
             cell_basis = ("[평가] " + str(row.get("validity_verdict", "") or "확인 필요") + "\n"
                           + str(row.get("ai_generation_basis", ""))[:120] + "\n"
                           + format_context_review(row.get("context_review")))
+            cell_basis += "\n" + row_basis(d, row)
             cell_review = row_cell_text(row, limit=900)
             formatted_entry = [cell_loc, cell_claim, cell_basis, cell_review]
 
@@ -272,10 +276,12 @@ def build_report_pdf(
                 tier2_rows.append(formatted_entry)
             else:
                 tier3_rows.append(formatted_entry)
+        tier2_rows.extend(table_additions(d, getattr(d, "ai_hallucination_table", []) or []))
 
     story.append(Spacer(1, 4))
     story.append(Paragraph(_escape("2. 판례·법령·주요참고문헌 인용 오류·미확인 검토 (AI 작성 여부 판단과 별개)"), styles["h2"]))
     if tier2_rows:
+        story.append(Paragraph(_escape(REPORT_NOTICE), styles["small"]))
         h_table_rows = [["위치", "문서 주장 / 인용", "인용 오류·미확인 근거 및 주장 평가", "법리적 타당성 검토 및 반박 근거"]]
         story.append(table(h_table_rows + tier2_rows, [60, 105, 110, 215]))
     else:
@@ -288,6 +294,15 @@ def build_report_pdf(
         story.append(table(t3_table_rows + tier3_rows, [60, 105, 110, 215]))
     else:
         story.append(Paragraph(_escape("해당 무리한 주장 또는 참고자료 모순 항목이 없습니다."), styles["body"]))
+
+    from .external_answers import (EXTERNAL_AI_HEADERS, EXTERNAL_AI_NOTICE, EXTERNAL_AI_PDF_WIDTHS, EXTERNAL_AI_TITLE,
+                                   external_answer_rows)
+    external_rows = external_answer_rows(getattr(run_result, "review_snapshot", {}))
+    if external_rows:
+        story.append(Spacer(1, 4))
+        story.append(Paragraph(_escape(EXTERNAL_AI_TITLE), styles["h2"]))
+        story.append(Paragraph(_escape(EXTERNAL_AI_NOTICE), styles["small"]))
+        story.append(table([EXTERNAL_AI_HEADERS, *external_rows], EXTERNAL_AI_PDF_WIDTHS))
 
     from packages.legal_engine.related_authorities import report_lines as related_lines
     for line in related_lines(run_result.documents):

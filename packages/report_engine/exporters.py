@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 from packages.common.enums import MM4_ADVISORY_TYPES, spec_code
 from packages.common.terminology import TERMINOLOGY_VERSION, terminology_catalog, EDITABLE_COPY_NOTICE
 from .serialize import dumps, jsonable_payload
+from .reference_opinions import REPORT_NOTICE, reference_rows, basis_text
 from .snapshot import compact_claim_rows, json_lines, xml_text
 
 FINDING_COLUMNS = [
@@ -88,6 +89,8 @@ def to_payload(run_result: Any, *, reveal_sealed: bool = False) -> dict:
                           else getattr(d, "pages", [])),
                 "page_coverage": d.engine_data.get("page_coverage", []),
                 "findings": [f.to_dict(reveal_sealed=reveal_sealed) for f in d.findings],
+                "reference_notice": REPORT_NOTICE,
+                "reference_observations": [o for item in reference_rows(d) for o in item["reference_observations"]],
                 "review_items": [i.to_dict() if hasattr(i, "to_dict") else dict(i) for i in getattr(d, "review_items", [])],
             }
             for d in run_result.documents
@@ -129,7 +132,8 @@ def to_csv(findings: List[Any], *, reveal_sealed: bool = False, report_metadata=
              "report_audience": metadata.get("audience"), "source_run_id": metadata.get("source_run_id"),
              "snapshot_hash": metadata.get("snapshot_hash"), "created_by": metadata.get("created_by"),
              "finalized_by": metadata.get("finalized_by"), "finalized_at": metadata.get("finalized_at"),
-             "editable_copy_notice": EDITABLE_COPY_NOTICE} if report_metadata else {}
+             "editable_copy_notice": EDITABLE_COPY_NOTICE,
+             "external_ai_scope": "외부 AI 참고의견은 XLSX·PDF·DOCX·JSON 전용 절/시트에만 수록되며 CSV(진단 목록 단일표)에는 포함되지 않음(공식 확인 아님)"} if report_metadata else {}
     writer = csv.DictWriter(buffer, fieldnames=FINDING_COLUMNS + list(extra), extrasaction="ignore")
     writer.writeheader()
     rows = findings_to_rows(findings, reveal_sealed=reveal_sealed)
@@ -233,6 +237,16 @@ def to_xlsx(run_result: Any, *, reveal_sealed: bool = False) -> bytes:
         append(matrix, [row["claim"].get("claim_id"), row.get("document_id"), row["claim"].get("text"),
                         assessment.get("issue_id"), assessment.get("position"), row.get("review_status"),
                         assessment.get("evidence_links", []), assessment.get("missing_material"), assessment.get("note")])
+    from .external_answers import EXTERNAL_AI_HEADERS, EXTERNAL_AI_NOTICE, EXTERNAL_AI_TITLE, external_answer_rows
+
+    external_rows = external_answer_rows(snapshot)
+    if external_rows:
+        external_sheet = workbook.create_sheet("외부AI참고의견")
+        # TK-129: 시트 최상단 안내 행으로 비공식성 및 공식 확인 아님 명시
+        append(external_sheet, [f"[안내] {EXTERNAL_AI_TITLE}: {EXTERNAL_AI_NOTICE}"])
+        append(external_sheet, EXTERNAL_AI_HEADERS)
+        for row in external_rows:
+            append(external_sheet, row)
     issues = workbook.create_sheet("쟁점")
     columns = ["id", "title", "elements", "reference_date", "legal_basis", "priority", "note"]
     append(issues, columns)
@@ -262,6 +276,14 @@ def to_xlsx(run_result: Any, *, reveal_sealed: bool = False) -> bytes:
         for path, value in json_lines(compact_claim_rows(appendix)):
             for part, offset in enumerate(range(0, max(1, len(value)), 29000), start=1):
                 append(technical, [path, part, value[offset:offset + 29000]])
+
+    reference_sheet = workbook.create_sheet("참고문헌대조")
+    append(reference_sheet, ["[안내] " + REPORT_NOTICE])
+    append(reference_sheet, ["문서", "문서 주장 / 인용", "참고문헌 대조(구속력 없음)", "참고자료 지지 상태", "공식 여부"])
+    for document in run_result.documents:
+        for item in reference_rows(document):
+            append(reference_sheet, [document.filename, item.get("claim_text", ""), basis_text(item),
+                                     item.get("reference_status", "PENDING_REVIEW"), "공식 확인 아님"])
 
     for worksheet in workbook.worksheets:
         worksheet.freeze_panes = "A2"
