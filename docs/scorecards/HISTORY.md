@@ -1539,3 +1539,4 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
   - **귀속 제한:** 4.2가 정한 TK-75 OFF는 맞으나, 효율 라우팅(`LV_LLM_EFFICIENT_ROUTING` ON, Sonnet 5.5·gpt-6.1-sol — 10-17 `6e0b2ae` 도입이라 0.12.0엔 없던 경로)과 Drive 색인 상태(0.12.0은 표준판례 표 미선별, TK-74)가 다르다. 그래서 LEG-2·RAG-2 통과를 0.16.0 코드 개선으로 귀속하지 않는다(모델 의견·Drive 항목 단일 변수 비교 아님).
   - ON(앞 실행)·OFF 모두 23/23 — 이 명세에서는 법률지침 ON/OFF 차이가 드러나지 않는다(지침 품질 판정 아님, 10-13 HOLD 유지).
   - TK-127 운영 관찰: 인용 행 SUPPORTED 1(국가재정법 제96조, SUPPORTS)·CONTRADICTED 1(육군 규정 제22조 제4항)·PENDING_REVIEW 3·NOT_MENTIONED 5 — ON 실행과 SUPPORTED·CONTRADICTED 같음. 승격 계약 위반 0.
+- **운영 설정 복원(10-29 한국, 사용자):** OFF 재실행 뒤 `LV_KOREAN_LAW_REVIEW_PROFILE`을 운영값 ON(`1`)으로 되돌림(사용자 보고, 평가 측 health·보고서로 재확인 안 함). 효율 라우팅(`LV_LLM_EFFICIENT_ROUTING`)은 ON·OFF 두 실행 보고서 모두 `llm_efficient_routing: true`로 이미 켜져 있었다(변경 불필요). 다음 온라인 점검의 비교 기준 조건: 법률지침 OFF·효율 라우팅 ON·2판 23/23(`run_a6792cf802e245c9`).
