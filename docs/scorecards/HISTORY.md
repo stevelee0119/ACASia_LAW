@@ -1534,3 +1534,8 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
   - **조건 차이:** 법률지침 ON(`korean_law_review_profile`)·prompt `v0.2+kr2`·효율 라우팅(Sonnet 5.5·gpt-6.1-sol). RELEASE_PROCEDURE 4.2의 'TK75 OFF 먼저' 조건과 다르므로 0.12.0 기준 21/23(OFF)과 증감 비교하지 않는다(OFF 조건 점수 = 측정 못 함). 같은 ON/kr2 조건의 직전 기록 10-13 b68 23/23과 같고 새 실패 0. Drive 표준판례 색인 행 수가 10-13(2,185)과 달라 Drive 항목도 엄밀한 같은 조건은 아니다.
   - **판정:** 배포 정상 동작 확인(회귀 없음). 회귀 티켓 없음.
   - **TK-127 2단계 운영 관찰(채점 항목 아님):** 인용 행 10개 중 SUPPORTED 1(SUPPORTS 관찰)·CONTRADICTED 1(육군 규정 제22조 제4항, CONTRADICTS)·PENDING_REVIEW 4(INSUFFICIENT/CONTEXT)·NOT_MENTIONED 4. 계약(SUPPORTS만 승격)과 어긋나는 행 0. 정확도는 명세에 항목이 없어 측정 못 함.
+- **0.16.0 온라인 점검 OFF 재실행(10-29 한국, 사용자 실행 `rpt_0e4f0a6350de41d0`·run `run_a6792cf802e245c9`, 평가 측 채점):** `LV_KOREAN_LAW_REVIEW_PROFILE` OFF 적용 확인(prompt `v0.2`, `korean_law_review_profile` false). 커밋 `2f06f9a` 일치. 규칙 2판 **23/23**. 모델 27건 성공 27(anthropic 23·openai 3·gemini 1), 최상위 오류 0, `PARTIAL_COMPLETED`(참고자료 동기화 부분, 표준판례 표 PARTIAL 1,551행).
+  - **RELEASE_PROCEDURE 4.3 판정: 정상.** 0.12.0(9c1b218, OFF) 21/23에서 통과한 21항목 모두 통과(새 실패 0). 기존 잔여 LEG-2·RAG-2도 통과.
+  - **귀속 제한:** 4.2가 정한 TK-75 OFF는 맞으나, 효율 라우팅(`LV_LLM_EFFICIENT_ROUTING` ON, Sonnet 5.5·gpt-6.1-sol — 10-17 `6e0b2ae` 도입이라 0.12.0엔 없던 경로)과 Drive 색인 상태(0.12.0은 표준판례 표 미선별, TK-74)가 다르다. 그래서 LEG-2·RAG-2 통과를 0.16.0 코드 개선으로 귀속하지 않는다(모델 의견·Drive 항목 단일 변수 비교 아님).
+  - ON(앞 실행)·OFF 모두 23/23 — 이 명세에서는 법률지침 ON/OFF 차이가 드러나지 않는다(지침 품질 판정 아님, 10-13 HOLD 유지).
+  - TK-127 운영 관찰: 인용 행 SUPPORTED 1(국가재정법 제96조, SUPPORTS)·CONTRADICTED 1(육군 규정 제22조 제4항)·PENDING_REVIEW 3·NOT_MENTIONED 5 — ON 실행과 SUPPORTED·CONTRADICTED 같음. 승격 계약 위반 0.
