@@ -196,7 +196,6 @@ def build_document_review_items(
         # 참고자료 지지 상태(reference_status) 및 출처 반영 (F3)
         rag_data = getattr(doc_result, "engine_data", {}).get("rag", {})
         drive_used = rag_data.get("drive_used", False)
-        ref_matches = rag_data.get("reference_matches", {})
         case_matches = rag_data.get("reference_case_matches", {})
         issues = rag_data.get("issues", [])
 
@@ -214,14 +213,11 @@ def build_document_review_items(
         ]
 
         has_contradicted = any(issue.get("relationship") == "CONTRADICTS" for issue in linked_issues)
-        match_info = ref_matches.get(cid)
         case_match_info = case_matches.get(cid) or {}
 
         # 상태 우선순위: CONTRADICTED > SUPPORTED > NOT_MENTIONED > NOT_CHECKED
         if has_contradicted:
             ref_status = ReferenceSupportStatus.CONTRADICTED
-        elif match_info and match_info.get("status") == "SUPPORTED":
-            ref_status = ReferenceSupportStatus.SUPPORTED
         elif drive_used or rag_data.get("sources"):
             ref_status = ReferenceSupportStatus.NOT_MENTIONED
         else:
@@ -269,13 +265,6 @@ def build_document_review_items(
         evidence_sources: List[str] = []
         if v_row.get("source"):
             evidence_sources.append(str(v_row["source"]))
-        if ref_status == ReferenceSupportStatus.SUPPORTED and match_info:
-            file_id = match_info.get("file_id") or ""
-            source_title = match_info.get("source_title") or "참고자료"
-            # 승인 설계(1.2·2.1)에 따라 Drive URL 형식으로 출처 링크 구성 (한국어 주석 포함)
-            evidence_sources.append(
-                f"참고자료(공식 법령·판례 아님): {source_title} (https://drive.google.com/file/d/{file_id}/view)"
-            )
         if case_match_info.get("status") in {"MATCH", "METADATA_MISMATCH", "AMBIGUOUS", "NOT_IN_REFERENCE"}:
             evidence_sources.append(
                 "표준판례 사건정보 대조: " + str(case_match_info.get("status"))
@@ -367,4 +356,19 @@ def build_document_review_items(
         items.append(item)
         assigned_finding_ids.add(fid)
 
+    from packages.rag_engine.reference_binding import bind_observations
+
+    serialized = [item.to_dict() for item in items]
+    bind_observations(serialized, doc_result)
+    for item, row in zip(items, serialized):
+        item.reference_observations = row["reference_observations"]
+        item.reference_status = ReferenceSupportStatus(row["reference_status"])
+        for observation in item.reference_observations:
+            source = observation.get("source_detail") or {}
+            if source.get("file_id"):
+                from urllib.parse import quote
+                link = (f"참고문헌·구속력 없음, 공식 확인 아님: {source.get('title') or '참고자료'} "
+                        f"(https://drive.google.com/file/d/{quote(str(source['file_id']), safe='')}/view)")
+                if link not in item.evidence_sources:
+                    item.evidence_sources.append(link)
     return items

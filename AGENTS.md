@@ -3,6 +3,7 @@
 먼저 [docs/AGENT_ROLES.md](docs/AGENT_ROLES.md)를 읽는다. 아래는 그 요약이다.
 
 - 담당(2026-10-17 사용자 지시): 새 구현은 **Antigravity**가 맡는다. 지시는 [NEXT_FOR_ANTIGRAVITY](docs/handoff/NEXT_FOR_ANTIGRAVITY.md) 하나로 받는다. **Codex**는 전환 시점에 열린 TK-44·45·49·55·73만 마무리하고 새 티켓을 받지 않는다([NEXT_FOR_CODEX](docs/handoff/NEXT_FOR_CODEX.md)). 평가는 Claude Code 평가 세션이 한다.
+- 한시 대행(2026-10-28 사용자 지시): #185(TK-129 보완)·#190(TK-127 2단계)과 그 릴리스까지는 **Codex 별도 세션**이 Antigravity 대신 구현한다. 2026-10-31부터, 그리고 다음 릴리스의 구현은 다시 Antigravity다. 대행 세션도 이 문서의 구현자 규칙을 그대로 따르고 자기 PR을 판정하지 않는다([AGENT_ROLES](docs/AGENT_ROLES.md)).
 
 - 너는 **구현 에이전트**다. 제품 코드(`packages/`, `apps/`, `workers/`, `config/`, `migrations/`, `docker/`)를 고친다.
 - 다음은 수정하지 않는다: `tests/acceptance/**`, `tests/fixtures/**`, `scripts/eval_testset.py`, `scripts/scorecard.py`, `scripts/score_gate.py`,

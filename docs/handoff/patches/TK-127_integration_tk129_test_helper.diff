@@ -1,0 +1,18 @@
+diff --git a/tests/test_tk129_report_external_answers.py b/tests/test_tk129_report_external_answers.py
+index 40b120d..c6c86c8 100644
+--- a/tests/test_tk129_report_external_answers.py
++++ b/tests/test_tk129_report_external_answers.py
+@@ -359,8 +359,11 @@ def test_browser_reference_row_ids_match_server_targets():
+     from packages.report_engine.external_answers import _targets
+ 
+     app = Path("apps/web/static/app.js").read_text(encoding="utf-8")
+-    functions = "\n".join(_js_function(app, name) for name in
+-                          ("compactText", "attachReferenceObservations", "referenceObservationRow"))
++    # TK-127 2단계 뒤 attachReferenceObservations는 식별자 대조 함수와 공백 상수를 함께 쓴다.
++    constant = next(line for line in app.splitlines() if line.startswith("const EXPLICIT_WHITESPACE_RE"))
++    functions = constant + "\n" + "\n".join(_js_function(app, name) for name in (
++        "compactText", "referenceTextLength", "referenceAuthorityText", "referenceIdentifier",
++        "referenceIdentifierMatch", "referenceArticleCompatible", "attachReferenceObservations", "referenceObservationRow"))
+     docs = [
+         {"id": "d1", "claims": [{"claim_id": "c1", "citation_ids": ["k1"]}],
+          "engine_data": {"rag": {"observations": [

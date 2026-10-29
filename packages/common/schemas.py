@@ -597,6 +597,7 @@ class ReferenceSupportStatus(StrEnum):
     """Drive 참고자료(RAG) 대조 부합성 상태 (축 2, 승격 없는 보조 의견)."""
 
     SUPPORTED = "SUPPORTED"                      # 참고자료 본문에서 지지 구절 확인됨
+    PENDING_REVIEW = "PENDING_REVIEW"            # 연결된 참고 의견의 식별자/지지 관계 미확정
     CONTRADICTED = "CONTRADICTED"                # 참고자료 본문과 상충 구절 확인됨
     NOT_MENTIONED = "NOT_MENTIONED"              # 참고자료 본문에 언급 없음
     NOT_CHECKED = "NOT_CHECKED"                  # 참고자료 대조 미실시 또는 대상 아님
@@ -638,6 +639,7 @@ class ReviewItem:
     reasoning_sections: Optional[Dict[str, str]] = None  # {validity, counter_argument, strategy}
     counteraction: Optional[str] = None          # 권고 대응 방향
     reference_case_match: Optional[str] = None   # 구조화 판례 사건정보 대조(지지 판정과 별개)
+    reference_observations: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """직렬화 사전 반환 (Enum은 문자열로 변환)."""
@@ -651,6 +653,7 @@ class ReviewItem:
             "official_status": str(self.official_status),
             "reference_status": str(self.reference_status),
             "reference_case_match": self.reference_case_match,
+            "reference_observations": self.reference_observations,
             "evidence_sources": self.evidence_sources,
             "verdict_label": self.verdict_label,
             "severity": str(self.severity),

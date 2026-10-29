@@ -236,5 +236,39 @@
   },
   "decided_by": "claude-code (평가 측)",
   "decided_at": "2026-10-25"
+ },
+ {
+  "version": "0.16.0",
+  "from": "0.15.0",
+  "level": "minor",
+  "basis": [
+   "added",
+   "changed",
+   "fixed"
+  ],
+  "measured_commit": "d2aa19a0f0bfc26a745d3749c0caf2133ae99011",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.11.15",
+   "tesseract": "5.3.4 kor (CI와 같음)",
+   "scoring": "고정 채점기 불변. 후보 Steve d2aa19a에서 평가 측 verify_all 전체 모드(기준 0.15.0 main 08d40ff, 환경 CI와 일치)",
+   "track": "일반 경로(RELEASE_PROCEDURE 2절·2-5). 구현은 2026-10-28 사용자 지시로 Codex 별도 세션 한시 대행"
+  },
+  "evidence": {
+   "M1": "dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 0.15.0과 같음(변화 0). score_gate 통과, regression_gate(기준 08d40ff) 회귀 없음. 합산 RER 0",
+   "M2": "봉인 시험 생략(2절 2 적용 범위 밖): main 대비 바뀐 제품 파일은 RAG(packages/rag_engine), 참고자료 상태 연결(verification_engine/review_items.py — reference_status·reference_observations만), 보고서(report_engine), API(apps/api reports·schemas), 화면(apps/web). 오프라인 탐지·채점·개인정보 엔진 출력 불변 — 고정·은퇴 항목 변화 0(regression_gate)으로 확인. CI 은퇴 세트 비교 통과",
+   "M3": "added: TK-129 보고서에 표에 반영한 외부 AI 답변 포함(PDF·Word 절, Excel 시트, JSON 고정본, 공식 확인 아님), TK-127 2단계 인용 행 Drive 참고문헌 대조(식별자 색인 검색, 비구속 참고 표시, 보고서 4종). changed: reference_status 산정(구조 연결 + 전체 식별자 일치·충돌 없음일 때만 SUPPORTED, 그 밖 PENDING_REVIEW; 이전 식별자 존재만으로의 SUPPORTED 경로 대체). fixed: 0.15.0(TK-128) 외부 AI 답변이 프롬프트 번호 재할당 시 다른 행에 붙던 문제, 참고문헌 별도 행 id 서버·화면 불일치. #185·#191 평가 측 수용·사용자 화면 확인(10-28)",
+   "M4": "성능: 인용별 Drive 색인 검색 합성 색인 8,000청크·인용 10개 0.28초(수정 전 73.5초), 결과 동일",
+   "P1": "verify_all 전체 모드 종료 0(d2aa19a): environment·acceptance 1238·regression_ledger 2357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths·version_policy·full_tests 9094·browser_tests 197 모두 통과, 실제 실패 0",
+   "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
+   "P3": "hardcoding_diff 통과(기준 08d40ff, 추가 715줄에 시험 입력 값 없음)",
+   "P4": "#185·#191 같은 SHA CI 전부 성공(인용), 평가 측 관련 시험 재실행 실패 0",
+   "P5": "열린 신규 회귀 티켓 0",
+   "P6": "이 판정서",
+   "unmeasured": "온라인 경로(Drive 대조 정확도·검색 시간, 모델) — RAG 경로를 바꿨으므로 배포 직후 4절 온라인 점검 전체를 한다(2-6 갈음 아님). Microsoft Word·Excel 앱 직접 표시 미확인"
+  },
+  "decided_by": "claude-code (평가 측)",
+  "decided_at": "2026-10-29"
  }
 ]
