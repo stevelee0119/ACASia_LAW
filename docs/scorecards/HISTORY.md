@@ -1679,3 +1679,16 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
 - 판정: 수용. 사용자 병합 대기. 병합 뒤 릴리스 후보 verify_all 전체.
 - 병합: 사용자 지시("#204 병합")로 Steve `b14d7d9`(병합 커밋, expectedHeadSha `0e97f2e`). 이번 릴리스 구현분(TK-130a·b·131·132·133·76 2주기 1항) 모두 병합. 다음: 릴리스 후보 verify_all 전체.
 - 11-02 릴리스 후보 Steve `b14d7d9` verify_all full --base 2f06f9a(0.16.0 main) 종료 0: environment·acceptance 1238·regression_ledger 2357·score_gate·regression_gate(회귀 없음)·hardcoding_diff·test_edits·protected_paths·version_policy·full_tests 9219·browser_tests 197, 실제 실패 0(평가 측 재실행, python 3.11.15·tesseract 5.3.4 — CI와 같음). 오프라인 탐지 엔진 변경(evidence_consistency·hwp_parser·source_review 등 14개 제품 파일)이므로 RELEASE_PROCEDURE 2절 2 봉인 시험 적용 범위. 남은 봉인 세트 없음 → 0.17.0 봉인 세트 출제·채점 프롬프트(`PROMPT_FOR_CODEX_SEALED_SET_0170.md`·`PROMPT_FOR_SCORING_SEALED_0170.md`·`PROMPT_FOR_ANTIGRAVITY_SEALED_0170.md`, 0.14.0판에서 SHA·날짜·폴더만 바꿈) 준비.
+
+### 2026-11-02 #205 README 개편 판정 — 보완 1회(문서 사실 정확도)
+
+- 대상: #205 head `ae343d6`(Antigravity). README.md 1개 파일만 바뀜(+263/−94). 제품·시험 변경 없음. 필수 CI 전부 성공(인용). 자동 생성 릴리스 표 블록 유지(`update_readme --check` 통과, 평가 측 재실행).
+- 확인 결과(평가 측): 탭 5개 이름, 지원 형식(PDF·DOCX·HWP·HWPX·TXT·이미지), 기능 설명 대부분이 코드와 일치한다.
+- 고칠 6곳(사실보다 강한 표현·분류 오기)
+  1. 배지 '7대 결정론 + AI 교차검증': 7영역 중 AI 작성 가능성·법률 주장 일부는 모델 의견이다.
+  2. '결정론적 검사 … 모두 100% 정상 동작': 100%는 측정 근거가 없다.
+  3. EVI-INCONS 항목에 표 합계·산식·지연이자 검산: 계산 엔진 소관이라 분류가 틀렸다.
+  4. 인젝션 '전수 스캔': TK-44·49 known_open(구조 트리·비태그 문서)이 남아 있다.
+  5. 개인정보 '외부 도달 차단' 단정: TK-55 known_open 잔여가 있다.
+  6. OC 키 '발급된 … 이메일 ID 형식': OC는 발급 키가 아니라 가입 이메일의 ID이고, 링크도 개별 안내 페이지라 확인하지 못했다.
+- 보완본 `patches/README_supplement_on_ae343d6.diff`(+7/−6): `update_readme --check`·test_update_readme·no_case_literals 23건·문구 대조 통과(평가 측 재실행).
