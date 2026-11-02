@@ -1576,3 +1576,18 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
   - 서면 목록 기호용 `[①-⑳]`(evidence_consistency·paragraph_reconstruction·reading_text)은 이번 범위에서 뺐다.
 - **#197 TK-130a 2차 판정(11-02 한국) — 수용:** head `cd31262`. 추가 커밋이 보완본과 줄 단위로 일치한다. 같은 SHA의 CI(인용)는 전부 성공했다: 테스트 3종, Docker OCR, 점수 하락 게이트, 은퇴 세트 비교, CodeQL 4종과 새 경고 게이트. Sourcery 스레드 4개는 해결됐다. 사용자 '#197병합' 대기. verify_all 전체 실행은 릴리스 후보에서 한다.
 - **#197 TK-130a Steve 병합(11-02 한국, 사용자 지시 '#197병합'):** head `cd31262`을 병합 커밋 `9a42d1a`로 병합했다(expectedHeadSha 지정). TK-130a는 merged 상태이며 배포 대기다. 다음 단계: TK-130b(Codex)를 최신 Steve `9a42d1a` 위에서 진행한다.
+- **#198 TK-130b 1차 판정(11-02 한국) — 보완 1회 필요(원인은 평가 측 수정본):**
+  - head `f4fc0c8`(Codex). diff는 수정본과 일치한다.
+  - CI(인용): 점수 하락 게이트가 평가 세트 문구 대조 단계에서 실패했고, 나머지는 성공했다.
+  - 원인 ①: 평가 측 수정본 `INFERENCE_NOTES`의 설명문이 평가 세트 정답 문구와 겹쳤다. 사전 검증 때 문구 대조 도구를 돌리지 않은 평가 측 누락이다.
+  - Sourcery 지적 검증:
+    - ② 유효: `spec_source_verdict`가 추정 성공을 NOT_FOUND로 판정한다.
+    - ③ 유효: 후보 조회 시간 초과로 재시도를 소진해도 STATUTE_NONEXISTENT가 남는다.
+    - 문서 근거 약칭 실패 시 추정 생략: 변경 안 함(이미 UNVERIFIED).
+    - law_id 고정 시험 약점: 재현 안 됨(고정을 빼면 시험이 실패한다).
+    - 양성 다양성·심각도 단언: 유효.
+  - 평가 측 보완본 `patches/TK-130b_supplement_on_f4fc0c8.diff` 사전 검증(평가 측 재실행):
+    - 새 시험 26건 통과. 되돌림 검증으로 결함 검출을 확인했다.
+    - 관련 43개 파일 + acceptance + regression 4,332건 실패 0.
+    - 문구 대조 '의심 없음'. 고정 점수 변화 0.
+  - 재발 방지: 평가 측 사전 검증 점검 항목에 `check_train_phrase_overlap.py --eval-sets`를 더한다.
