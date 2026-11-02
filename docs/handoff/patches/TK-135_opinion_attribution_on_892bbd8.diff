@@ -1,0 +1,307 @@
+diff --git a/packages/legal_engine/evidence_pack.py b/packages/legal_engine/evidence_pack.py
+index e86e721..9ffc5f6 100644
+--- a/packages/legal_engine/evidence_pack.py
++++ b/packages/legal_engine/evidence_pack.py
+@@ -13,7 +13,7 @@ import re
+ from typing import Any, Dict, List, Optional, Sequence, Tuple
+ 
+ SCHEMA_VERSION = "evidence-pack-v1"
+-SELECTOR_VERSION = "tk131-1"
++SELECTOR_VERSION = "tk135-1"
+ DEFAULT_BUDGET = 24000
+ HEAD_CHARS = 3000
+ TAIL_CHARS = 3000
+@@ -122,7 +122,11 @@ def _merge(spans: List[Tuple[int, int, str]]) -> List[Tuple[int, int, str]]:
+ 
+ 
+ def _pack(text: str, spans, coverage: str, reasons: List[str]) -> Dict[str, Any]:
++    from packages.legal_engine.opinion_attribution import opinion_ranges
++    ranges = opinion_ranges(text)
++    # 구간마다 겹치는 판결 의견 종류를 적는다. 반대·별개의견 구간은 판시가 아니다(TK-135).
+     segments = [{"segment_id": f"S{i}", "original_start": s, "original_end": e, "selection_reason": r,
++                 "opinion_kinds": sorted({k for rs, re_, k in ranges if rs < e and re_ > s}) or ["MAJORITY"],
+                  "text": text[s:e]} for i, (s, e, r) in enumerate(spans)]
+     omitted, cursor = [], 0
+     for seg in segments:
+diff --git a/packages/legal_engine/opinion_attribution.py b/packages/legal_engine/opinion_attribution.py
+index 0ef13cc..79d9b3c 100644
+--- a/packages/legal_engine/opinion_attribution.py
++++ b/packages/legal_engine/opinion_attribution.py
+@@ -17,7 +17,7 @@
+ from __future__ import annotations
+ 
+ import re
+-from typing import Any, Dict, List, Optional
++from typing import Any, Dict, List, Optional, Tuple
+ 
+ OPINION_KINDS = {"반대의견": "DISSENT", "별개의견": "CONCURRING", "보충의견": "SUPPLEMENTARY",
+                  "반대보충의견": "DISSENT", "다수의견": "MAJORITY"}
+@@ -109,6 +109,38 @@ def split_opinions(text: str) -> Dict[str, Any]:
+     return out
+ 
+ 
++def opinion_ranges(text: str) -> List[Tuple[int, int, str]]:
++    """원문 위치 기준 의견 구간 [(시작, 끝, 종류)]. 표지가 없으면 전체가 다수의견이다(TK-135)."""
++    text = text or ""
++    markers = sorted(list(FULL_MARKER_RE.finditer(text)) + list(SUMMARY_MARKER_RE.finditer(text)),
++                     key=lambda m: m.start())
++    if not markers:
++        return [(0, len(text), "MAJORITY")] if text else []
++    ranges = [(0, markers[0].start(), "MAJORITY")] if markers[0].start() > 0 else []
++    for index, marker in enumerate(markers):
++        end = markers[index + 1].start() if index + 1 < len(markers) else len(text)
++        kind = _kind(marker)
++        ranges.append((marker.start(), end, "MAJORITY" if kind == "SUPPLEMENTARY" else kind))
++    return ranges
++
++
++def quote_opinion(quote: str, text: str) -> Optional[str]:
++    """인용 문구가 판결의 어느 의견에 있는지. 다수의견(다수의견 보충의견 포함)에 있으면 MAJORITY,
++    반대의견·별개의견에만 있으면 그 종류, 어디에도 없거나 표지가 없으면 None(판단하지 않음)."""
++    key = _compact(quote)
++    if len(key) < 6:
++        return None
++    parts = split_opinions(text)
++    if not (parts["DISSENT"] or parts["CONCURRING"]):
++        return None
++    if key in _compact(parts["MAJORITY"]) or any(key in _compact(s) for s in parts["SUPPLEMENTARY"]):
++        return "MAJORITY"
++    for kind in ("DISSENT", "CONCURRING"):
++        if any(key in _compact(s) for s in parts[kind]):
++            return kind
++    return None
++
++
+ def attribute_claim(claim: str, full_text: str, summary: str = "") -> Dict[str, Any]:
+     """서면의 판결 요약이 어느 의견에 가장 가까운지. verdict는 MISATTRIBUTED_OPINION 또는 None."""
+     parts = [split_opinions(full_text), split_opinions(summary)]
+diff --git a/packages/legal_engine/verifier.py b/packages/legal_engine/verifier.py
+index d37f054..1077faf 100644
+--- a/packages/legal_engine/verifier.py
++++ b/packages/legal_engine/verifier.py
+@@ -957,12 +957,24 @@ class LegalVerifier:
+             quote_key = re.sub(r"[\s\"'“”‘’.,·]", "", citation.quoted_text or "")
+             in_dissent = bool(quote_key) and any(quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", d) for d in dissents)
+             in_majority = bool(quote_key) and quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", majority)
++            concurring = [c for p in parts for c in p["CONCURRING"]]
++            in_concurring = len(quote_key) >= 6 and any(
++                quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", c) for c in concurring)
+             if in_dissent and not in_majority:
+                 out.append(make("MISATTRIBUTED_OPINION", VerificationStatus.CONTRADICTED, EvidenceGrade.A,
+                                 "반대의견의 문장을 판결의 판시로 인용",
+                                 "직접 인용한 문장은 이 판결의 반대의견에만 있고 다수의견에는 없다. 반대의견은 판결의 "
+                                 "판시(법원의 판단)가 아니다.", next(d for d in dissents), {"closest": "DISSENT",
+                                 "defect_summary": "반대의견 문장을 판시로 인용"}))
++            elif in_concurring and not in_majority and "별개의견" not in re.sub(r"\s", "", citation.context or ""):
++                # 별개의견은 결론에는 동의하나 이유가 다르다. 서면이 별개의견이라고 밝히지 않고 인용하면 귀속 오류다.
++                # 인용 주변 문맥 밖에서 밝혔을 수 있으므로 SUSPICIOUS·B로 둔다(TK-135).
++                out.append(make("MISATTRIBUTED_OPINION", VerificationStatus.SUSPICIOUS, EvidenceGrade.B,
++                                "별개의견의 문장을 판결의 판시로 인용",
++                                "직접 인용한 문장은 이 판결의 별개의견에만 있고 다수의견에는 없다. 별개의견은 결론에 "
++                                "동의하더라도 판결의 판시(법원의 판단 이유)가 아니다. 인용 주변에 별개의견이라는 표시가 없다.",
++                                next(c for c in concurring if quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", c)),
++                                {"closest": "CONCURRING", "defect_summary": "별개의견 문장을 판시로 인용"}))
+             elif dissents:
+                 result = attribute_claim(citation.quoted_text or claim, full_text, summary)
+                 if result["verdict"] == "MISATTRIBUTED_OPINION":
+diff --git a/packages/verification_engine/pipeline.py b/packages/verification_engine/pipeline.py
+index e0ba222..405c66b 100644
+--- a/packages/verification_engine/pipeline.py
++++ b/packages/verification_engine/pipeline.py
+@@ -1434,21 +1434,26 @@ class VerificationPipeline:
+             if context.external_ai_policy != ExternalAIPolicy.ORIGINAL:
+                 # 전문 전체를 한 번 가리고 구간을 옮긴다. 뒤의 맥락 검토가 전문을 가려 다시 대조할 때와 결과가 같다.
+                 from packages.legal_engine.evidence_pack import project_masked
+-                _, projected = project_masked(str(official["full_text"]),
+-                                              pii.mask_text(str(official["full_text"])), pack["segments"])
++                opinion_text, projected = project_masked(str(official["full_text"]),
++                                                         pii.mask_text(str(official["full_text"])), pack["segments"])
+                 segments = [seg["text"] for seg in projected]
+                 document_text = pii.mask_text(document_text).masked_text
+             else:
++                opinion_text = str(official["full_text"])
+                 segments = [seg["text"] for seg in pack["segments"]]
++            opinion_sections = [{"segment_id": seg["segment_id"], "opinion_kinds": seg["opinion_kinds"]}
++                                for seg in pack["segments"] if seg["opinion_kinds"] != ["MAJORITY"]]
+             source_text = render(segments)
+             outcome = asyncio.run(self.router.cascade(
+                 question=("인용된 판결과 문서 주장을 대조하라. rationale에서 ① 띄어쓰기·어절 등 문구의 차이 "
+                           "② 핵심 법리와 취지·맥락의 동일 여부 ③ 사실관계·적용 요건의 차이와 확인 한계를 구분하라. "
+                           "표현 차이만으로 취지 왜곡이라고 판단하지 말고, 부정·예외·적용 조건을 확인하라. "
+                           "source_excerpt는 판결 원문에서 고른 구간이며 생략 표시 사이는 보내지 않은 부분이다. "
+-                          "반드시 source_excerpt 한 구간 안의 실제 문구를 evidence_quotes에 인용하라."),
++                          "반드시 source_excerpt 한 구간 안의 실제 문구를 evidence_quotes에 인용하라. "
++                          "opinion_sections에 적힌 반대의견·별개의견 구간의 문장은 판결의 판시가 아니므로 문서 주장을 "
++                          "지지하는 근거로 인용하지 말라."),
+                 evidence={"official": {"case_number": official.get("case_number"), "source_excerpt": source_text,
+-                          "excerpt_coverage": pack["coverage_status"],
++                          "excerpt_coverage": pack["coverage_status"], "opinion_sections": opinion_sections,
+                           "confirmed_metadata": {k: official.get(k) for k in (
+                               "court", "decision_date", "decision_type", "case_name")},
+                           "metadata_scope": "OFFICIAL_RECORD_NOT_FULL_TEXT_INFERENCE"},
+@@ -1460,6 +1465,14 @@ class VerificationPipeline:
+             grounded = bool(model_verdicts) and all(
+                 v.get("evidence_quotes") and all(quote_in_one_segment(q, segments)
+                     for q in v["evidence_quotes"]) for v in model_verdicts)
++            # 지지(VERIFIED·SUPPORTED) 판단의 근거가 모두 반대·별개의견 구간에만 있으면 판시 근거가 아니다(TK-135).
++            from packages.legal_engine.opinion_attribution import quote_opinion
++            minority_only = grounded and any(
++                str(v.get("status", "")).upper() in {"VERIFIED", "SUPPORTED"}
++                and all(quote_opinion(q, opinion_text) in {"DISSENT", "CONCURRING"} for q in v["evidence_quotes"])
++                for v in model_verdicts)
++            if minority_only:
++                grounded = False
+             # 모델이 한 번도 실행되지 않은 것과, 실행됐으나 근거 인용이 확인되지
+             # 않은 것은 전혀 다르다. 둘을 같은 문구로 적으면 공급자 키·모델 ID가
+             # 잘못되어 AI가 아무 일도 하지 않는 동안에도 "검토했으나 채택하지
+@@ -1468,6 +1481,8 @@ class VerificationPipeline:
+             model_ran = any(s.get("used") for s in outcome.stages)
+             if grounded:
+                 reason = outcome.rationale
++            elif minority_only:
++                reason = "AI가 근거로 든 원문이 반대의견·별개의견 구간에만 있어 판시 근거로 채택하지 않음"
+             elif model_ran:
+                 reason = "보낸 공식 원문 구간에 있는 근거 인용이 확인되지 않아 AI 의견을 채택하지 않음"
+             else:
+@@ -1494,6 +1509,7 @@ class VerificationPipeline:
+                       "review_id": verdict.get("review_id"),
+                       "source_record_ids": verdict.get("source_record_ids", []),
+                       "advisory_only": True, "source_quotes_validated": grounded,
++                      "minority_opinion_evidence": minority_only,
+                       "model_executed": model_ran,
+                       "consensus": consensus,
+                       # 절단 여부는 마스킹 전 원문 기준 발췌 범위로 정한다(마스킹으로 줄어든 길이를 절단으로 보지 않는다).
+diff --git a/tests/test_tk135_opinion_evidence.py b/tests/test_tk135_opinion_evidence.py
+new file mode 100644
+index 0000000..709a854
+--- /dev/null
++++ b/tests/test_tk135_opinion_evidence.py
+@@ -0,0 +1,128 @@
++"""TK-135: 별개의견 귀속과 의미 검토 근거의 의견 구간. 판결 문장은 모두 합성이다(실제 판결·서면이 아니다)."""
++from __future__ import annotations
++
++import tempfile
++from pathlib import Path
++
++from packages.common.enums import CitationType, EvidenceGrade, VerificationStatus
++from packages.common.schemas import Citation
++from packages.legal_engine.evidence_pack import build_evidence_pack
++from packages.legal_engine.opinion_attribution import opinion_ranges, quote_opinion
++
++MAJ = "임대인은 임차인이 지출한 필요비를 지체 없이 상환하여야 한다."
++CON = "필요비 상환의무의 근거는 신의칙이 아니라 계약의 해석에서 찾아야 한다."
++DIS = "임차인이 미리 알리지 않고 지출한 비용은 상환 대상이 아니라고 보아야 한다."
++FULL = (f"【이유】 상고이유를 판단한다. 1. {MAJ} 그러므로 상고를 기각한다. "
++        f"2. 대법관 갑의 별개의견은 다음과 같다. {CON} "
++        f"3. 대법관 을의 반대의견은 다음과 같다. {DIS} "
++        f"4. 다수의견에 대한 대법관 병의 보충의견은 다음과 같다. 다수의견의 논거를 보충한다.")
++
++
++def citation(quoted, context=""):
++    c = Citation.create(type=CitationType.CASE, raw_text="대법원 2099. 1. 1. 선고 2099다1 전원합의체 판결",
++                        document_id="d1", quoted_text=quoted)
++    c.context = context or f"대법원 2099다1 판결은 '{quoted}'라고 판시하였다."
++    c.attributes["case_claim"] = c.context
++    return c
++
++
++# --- 의견 구간 위치 -----------------------------------------------------------------------------------------
++def test_opinion_ranges_follow_markers_and_map_majority_supplementary_to_majority():
++    kinds = [(k, FULL[s:e]) for s, e, k in opinion_ranges(FULL)]
++    assert [k for k, _ in kinds] == ["MAJORITY", "CONCURRING", "DISSENT", "MAJORITY"]
++    assert MAJ in kinds[0][1] and CON in kinds[1][1] and DIS in kinds[2][1]
++    assert opinion_ranges("【이유】 " + MAJ) == [(0, len("【이유】 " + MAJ), "MAJORITY")]
++
++
++def test_quote_opinion_classifies_each_section_and_ignores_unmarked_text():
++    assert quote_opinion(MAJ, FULL) == "MAJORITY"
++    assert quote_opinion(CON.replace(" ", ""), FULL) == "CONCURRING"
++    assert quote_opinion(DIS, FULL) == "DISSENT"
++    assert quote_opinion("다수의견의 논거를 보충한다", FULL) == "MAJORITY"
++    assert quote_opinion(MAJ, "【이유】 " + MAJ) is None              # 표지 없는 판결은 판단하지 않는다
++
++
++def test_evidence_pack_segments_carry_opinion_kinds():
++    [seg] = build_evidence_pack(FULL, quotes=[DIS])["segments"]
++    assert seg["opinion_kinds"] == ["CONCURRING", "DISSENT", "MAJORITY"]
++    [plain] = build_evidence_pack("【이유】 " + MAJ)["segments"]
++    assert plain["opinion_kinds"] == ["MAJORITY"]
++
++
++# --- 직접 인용 귀속(검증기) -------------------------------------------------------------------------------
++def test_verbatim_quote_from_concurring_opinion_is_suspicious_grade_b():
++    from packages.legal_engine.verifier import LegalVerifier
++    findings = LegalVerifier._opinion_findings(citation(CON), {"full_text": FULL})
++    [mis] = [f for f in findings if f.confidence_features["verdict_label"] == "MISATTRIBUTED_OPINION"]
++    assert mis.status == VerificationStatus.SUSPICIOUS and mis.evidence_grade == EvidenceGrade.B
++    assert mis.confidence_features["closest"] == "CONCURRING" and "별개의견" in mis.title
++
++
++def test_concurring_quote_labelled_as_concurring_in_the_document_is_not_flagged():
++    from packages.legal_engine.verifier import LegalVerifier
++    c = citation(CON, context=f"위 판결의 별개의견은 '{CON}'라고 하였다.")
++    assert not [f for f in LegalVerifier._opinion_findings(c, {"full_text": FULL})
++                if f.confidence_features["verdict_label"] == "MISATTRIBUTED_OPINION"]
++
++
++def test_majority_and_dissent_quotes_keep_existing_results():
++    from packages.legal_engine.verifier import LegalVerifier
++    assert not [f for f in LegalVerifier._opinion_findings(citation(MAJ), {"full_text": FULL})
++                if f.confidence_features["verdict_label"] == "MISATTRIBUTED_OPINION"]
++    [mis] = [f for f in LegalVerifier._opinion_findings(citation(DIS), {"full_text": FULL})
++             if f.confidence_features["verdict_label"] == "MISATTRIBUTED_OPINION"]
++    assert mis.status == VerificationStatus.CONTRADICTED and mis.evidence_grade == EvidenceGrade.A
++
++
++# --- 의미 검토(실제 진입점 _semantic_review) ---------------------------------------------------------------
++def run_review(full_text, status, model_quotes, quoted=MAJ):
++    from packages.llm_router.router import CascadeOutcome, ModelExecution
++    from packages.pii_engine import PIIEngine, PseudonymStore
++    from packages.source_adapters.registry import SourceRegistry
++    from packages.verification_engine.pipeline import DocumentResult, ProjectContext, VerificationPipeline
++
++    sent = {}
++
++    class Router:
++        async def cascade(self, **kwargs):
++            sent.update(kwargs)
++            return CascadeOutcome(VerificationStatus.VERIFIED, EvidenceGrade.A, "모델 의견",
++                                  stages=[{"used": True, "verdict": {"status": status, "rationale": "모델 의견",
++                                                                     "evidence_quotes": model_quotes}}],
++                                  executions=[ModelExecution("PRIMARY_REASONER", "stub", "test", True)])
++
++    c = Citation(citation_id="CIT_TK135", raw_text="대법원 2099다1 판결", type=CitationType.CASE,
++                 case_number="2099다1", quoted_text=quoted,
++                 context=f"대법원 2099다1 판결은 '{quoted}'고 판시하였다.", span=(0, 10))
++    pipeline = VerificationPipeline(registry=SourceRegistry(), router=Router())
++    result = DocumentResult("d", "sample")
++    result.engine_data["legal_verdicts"] = [{"citation_id": c.citation_id, "levels": {"level4": "PENDING_LLM"},
++                                             "official_record": {"full_text": full_text}}]
++    with tempfile.TemporaryDirectory() as tmp:
++        pipeline._semantic_review(result, [c], ProjectContext("tk135"),
++                                  PIIEngine(PseudonymStore("tk135", root=Path(tmp))))
++    return sent, result.engine_data["semantic_reviews"][0]
++
++
++def test_supporting_verdict_grounded_only_in_dissent_is_not_adopted():
++    sent, review = run_review(FULL, "VERIFIED", [DIS])
++    assert review["source_quotes_validated"] is False and review["minority_opinion_evidence"] is True
++    assert review["evidence_quotes"] == [] and "반대의견·별개의견" in review["reason"]
++    official = sent["evidence"]["official"]
++    assert {"segment_id": "S0", "opinion_kinds": ["CONCURRING", "DISSENT", "MAJORITY"]} in official["opinion_sections"]
++    assert "판시가 아니므로" in sent["question"]
++
++
++def test_supporting_verdict_with_a_majority_quote_is_adopted():
++    _, review = run_review(FULL, "VERIFIED", [DIS, MAJ])
++    assert review["source_quotes_validated"] is True and review["minority_opinion_evidence"] is False
++
++
++def test_contradicting_verdict_may_cite_the_dissent():
++    _, review = run_review(FULL, "CONTRADICTED", [DIS], quoted=DIS)
++    assert review["source_quotes_validated"] is True and review["minority_opinion_evidence"] is False
++
++
++def test_unanimous_judgment_is_unchanged():
++    sent, review = run_review("【이유】 " + MAJ, "VERIFIED", [MAJ])
++    assert review["source_quotes_validated"] is True and sent["evidence"]["official"]["opinion_sections"] == []

@@ -1,0 +1,53 @@
+# TK-134 자치법규(조례·규칙) 조회와 조례 판정 분기 (P2, 결함 수정, 평가 측 수정본)
+
+- 결정: 2026-11-03 사용자 '다음 릴리스 범위'·'A1~A3 + B1 설계 메모 진행'. 배정 Antigravity.
+- 기준: Steve `892bbd8`. 수정본 `patches/TK-134_ordinance_lookup_on_892bbd8.diff`(3개 파일 +337).
+
+## 1. 원인(`892bbd8`)
+
+1. `source_adapters/law_go_kr.py`는 `target=law`(법령)만 조회한다. 자치법규(`target=ordin`) 조회가 없다.
+2. `legal_engine/source_review.py` `_is_statute_form`(344행)이 '조례'를 일반 법령 꼴로 본다.
+3. 그래서 법령 목록에 없는 조례(정상)는 `_law_absent` 3분기(489행~)로 가서 STATUTE_NONEXISTENT **CRITICAL**이 된다. 실재하는 조례도 같다.
+
+## 2. 공식 API(법제처 공동활용 가이드, 2026-11-03 평가 측 확인)
+
+- 목록: `https://www.law.go.kr/DRF/lawSearch.do?target=ordin&OC=…&type=JSON&query=…` — 필드 자치법규일련번호·자치법규명·자치법규ID·공포일자·시행일자·지자체기관명·자치법규종류 등.
+  - 출처: <https://open.law.go.kr/LSO/openApi/guideResult.do?htmlName=ordinListGuide>
+- 본문: `https://www.law.go.kr/DRF/lawService.do?target=ordin&ID=…`(또는 `MST=`) — 필드 조문번호·조문여부(조 Y, 편·장·절 N)·조제목·조내용 등.
+  - 출처: <https://open.law.go.kr/LSO/openApi/guideResult.do?htmlName=ordinInfoGuide>
+- **미검증**: JSON 최상위 키 이름과 조문번호 자릿수 형식. 이 세션에 OC 키가 없어 실제 응답을 받지 못했다. 수정본은 구조에 기대지 않고 '자치법규명'을 가진 항목을 재귀로 모으고, 조문번호는 '3'과 '000300'(조 4자리+가지 2자리) 둘 다 받는다.
+
+## 3. 수정(수정본 내용)
+
+1. `law_go_kr.py`
+   - `search_ordinance(name)`: 목록 조회. 이름(공백·낫표 무시)이 정확히 같은 것만 `exact`. 없으면 이름 끝이 같은 것(6자 이상)을 `suffix`로 돌려준다(서면이 지자체 이름을 뺀 경우).
+   - `fetch_ordinance_articles(record)`: 본문 조문번호 목록. 조문여부 N(편·장·절)은 뺀다. 실패하면 None.
+   - 응답 형식이 맞지 않으면 ERROR(부존재로 보지 않음).
+2. `source_review.py`
+   - `_is_ordinance_form`: '조례'로 끝나거나, 첫 어절이 지자체 이름(…시·군·구·도·특별시·광역시·특별자치시·특별자치도)이고 '규칙'으로 끝나는 이름('시행규칙' 제외).
+   - `_law_absent`에 2-1분기: 자치법규 꼴이면 `_ordinance_lookup`으로 판정하고 3분기(CRITICAL)로 가지 않는다.
+   - `_ordinance_lookup`
+     - 조회 실패: UNVERIFIED(`_unverified_finding`), 부존재 아님.
+     - 정확 일치 1건: PARTIALLY_VERIFIED, existence `VERIFIED_IN_ORDINANCE_LIST`. 조문이 있으면 본문 조문번호와 대조(있음 VERIFIED, 없음 LAW_CITATION_ERROR **HIGH** `ORDINANCE_ARTICLE_NOT_FOUND`, 본문 실패 UNVERIFIED).
+     - 여러 건(지자체 미기재 등): PARTIALLY_VERIFIED, `AMBIGUOUS_IN_ORDINANCE_LIST`, 결과 없음(사람이 고름).
+     - 목록에 없음: STATUTE_NONEXISTENT **HIGH**(CRITICAL 아님), `NOT_FOUND_ORDINANCE`, '부존재 확정 아님'.
+3. 새 시험 `tests/test_tk134_ordinance_lookup.py` 8건(가이드 필드 이름으로 만든 합성 응답).
+
+## 4. 평가 측 사전 검증(평가 측 재실행, 저장소 밖 사본)
+
+- 새 시험 8/8 통과.
+- 관련 기존 시험(law_go_kr·source_review·NOT_FOUND_LAW·STATUTE_NONEXISTENT를 쓰는 시험 전부) 통과, 실패 0.
+- 문구 대조 '의심 없음', 하드코딩·시험 수정·보호 경로 점검 통과.
+- 국가 법령 꼴(…법) 미발견은 그대로 NOT_FOUND_LAW CRITICAL(시험으로 고정).
+- verify_all 전체 모드는 TK-135와 같은 방식으로 '검증 결과'에 적는다.
+
+## 5. 구현 측 추가 제출(필수)
+
+- OC 키로 받은 **실제 응답 2건**(목록 1, 본문 1)의 구조 요약: 최상위 키, 항목 배열 키, 조문번호 예 형식. 개인정보·OC 값은 가린다.
+- 실제 형식이 수정본 가정과 다르면 정규화만 고치고 시험에 실제 형식 사례를 하나 더한다. 판정 분기는 바꾸지 않는다.
+
+## 6. 수용
+
+- diff = 수정본(+ 5절 형식 보정).
+- 필수 CI 전부 성공, 기존 시험 수정 0, 고정 변화 0, 은퇴 하락·오탐 증가 0.
+- 실재 조례 CRITICAL 0, 조회 실패는 UNVERIFIED, 국가 법령 판정 불변.
