@@ -13,7 +13,7 @@
 
 # 과제: 봉인 세트로 운영본과 후보를 같은 조건에서 채점 (집계 숫자만)
 
-너는 채점 실행자다. 저장소 `stevelee0119/verify_ACAS_LAW`의 두 커밋을 같은 PC·같은 환경에서 같은 명령으로 채점한다. 판정은 하지 않고 숫자만 보고한다.
+너는 채점 실행자다. 저장소 `stevelee0119/ACASia_LAW`(옛 이름 verify_ACAS_LAW)의 두 커밋을 같은 PC·같은 환경에서 같은 명령으로 채점한다. 판정은 하지 않고 숫자만 보고한다.
 
 | 구분 | 커밋 |
 |---|---|
@@ -39,7 +39,7 @@
 ## 1. 준비
 1. 저장소를 받는다. 이미 있으면 그 사본을 쓴다.
    ```bash
-   git clone https://github.com/stevelee0119/verify_ACAS_LAW.git acas_repo
+   git clone https://github.com/stevelee0119/ACASia_LAW.git acas_repo
    cd acas_repo
    git fetch origin main Steve_ACASiaLAW
    ```
@@ -132,7 +132,7 @@ Set-Location ..\acas_cand_0170; python scripts\scorecard.py --sets holdout --sea
 | 운영본 | 2f06f9a | 0 | false | | | | | | | 방어/실패 |
 | 후보 | b14d7d9 | 0 | false | | | | | | | 방어/실패 |
 
-홀드아웃(환경 점검, 평가 측 리눅스 측정값은 운영본 80.1·후보 81.9): 운영본 <overall>/<weighted_recall>/<false_positives>, 후보 <…>
+홀드아웃(환경 점검, 평가 측 리눅스 측정값은 운영본 81.9·후보 81.9): 운영본 <overall>/<weighted_recall>/<false_positives>, 후보 <…>
 특이사항: <재실행 여부와 사유. 없으면 '없음'>
 ```
 
