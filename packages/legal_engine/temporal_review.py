@@ -34,7 +34,8 @@ from packages.common.schemas import Evidence, Finding
 from .provision_content import compare_claim_to_provision
 
 ENGINE_NAME = "legal_engine.temporal_review"
-CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+# 항 번호 원숫자 1~50. ㉑(U+3251)부터는 ⑳(U+2473)와 코드 범위가 떨어져 있어 [①-⑳]로는 잡히지 않는다(TK-130 2).
+CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿"
 TIME_QUALIFIER_RE = re.compile(r"(?P<kind>행위|범행|처분|사고|계약|사건)\s*(?:당시|시(?:점)?(?:에|의)?)")
 # '2023. 11. 20.'과 '2023년 11월 20일' 표기를 모두 읽는다(공소사실은 흔히 '년월일'로 적는다).
 DATE_RE = re.compile(r"(?P<y>(?:19|20)\d{2})\s*[.년]\s*(?P<m>\d{1,2})\s*[.월]\s*(?P<d>\d{1,2})\s*[.일]?")
