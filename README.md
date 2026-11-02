@@ -1,6 +1,6 @@
 # ACASia_LAW
 
-[![Version](https://img.shields.io/badge/운영%20버전-0.16.0-blue.svg)](#버전별-변경-내역)
+[![Version](https://img.shields.io/badge/운영%20버전-0.17.0-blue.svg)](#버전별-변경-내역)
 [![Inspection Domains](https://img.shields.io/badge/검증%20영역-7대%20영역%20(결정론%20검사%20%2B%20AI%20참고%20의견)-green.svg)](#무엇을-검사하나-7대-검증-영역)
 [![Official Sources](https://img.shields.io/badge/공식%20출처-국가법령정보%20%C2%B7%20KCI%20%C2%B7%20Drive-0A66C2.svg)](#무엇을-검사하나-7대-검증-영역)
 [![Cross Check](https://img.shields.io/badge/AI%20교차검증-GPT%20%C2%B7%20Claude%20%C2%B7%20Gemini-purple.svg)](#환경변수)
@@ -16,7 +16,7 @@
 - **법률 판단을 대신하지 않습니다.** 진정성립·위조·고의와 주장의 당부는 사용자가 최종 판단합니다.
 - **AI 모델의 의견은 참고입니다.** 판정은 공식 출처 조회와 결정론적 구조 검사가 먼저 정합니다.
 
-**현재 운영 버전:** 0.16.0 (2026-10-29 배포). 버전별 변경은 [아래 표](#버전별-변경-내역), 개발 중인 변경과 평가 결과는 [일자별 추이표](docs/scorecards/DAILY_TREND.md)를 보세요.
+**현재 운영 버전:** 0.17.0 (2026-11-03 배포). 버전별 변경은 [아래 표](#버전별-변경-내역), 개발 중인 변경과 평가 결과는 [일자별 추이표](docs/scorecards/DAILY_TREND.md)를 보세요.
 
 ---
 
