@@ -46,7 +46,9 @@ class HwpxParser(DocumentParser):
             doc.structure["zip_entries"] = [i.filename for i in zf.infolist()]
             entries = read_entries(zf, lambda n: n.endswith(".xml"))
             sections = {k: v for k, v in entries.items() if "section" in k.lower()}
-            for name in sorted(sections):
+            manifest = read_entries(zf, lambda n: n.lower().endswith(".hpf"))
+            budget = {"cells": 0}                     # 문서 전체 칸 누계(섹션을 넘어 이어진다)
+            for section_index, name in enumerate(_section_order(sections, manifest)):
                 data = sections[name]
                 xml_parts.append(data.decode("utf-8", "replace"))
                 try:
@@ -54,17 +56,34 @@ class HwpxParser(DocumentParser):
                 except Exception as exc:
                     doc.parse_warnings.append(f"{name} 파싱 실패: {exc}")
                     continue
+                # 문단 글자는 그 문단에 직접 딸린 글자만 모은다. 표(tbl) 안 글자는 표 셀에 한 번만 배정한다(TK-132).
                 for para in root.iter():
-                    if local_name(para.tag) != "p":
+                    if local_name(para.tag) != "p" or _inside_table(para):
                         continue
-                    text = "".join(t.text or "" for t in para.iter() if local_name(t.tag) == "t")
-                    text = text.strip()
+                    text = _own_text(para).strip()
                     if not text:
                         continue
                     page.blocks.append(
                         Block(block_id=new_id("B"), text=text, page=1, source_layer="visible_text")
                     )
                     visible.append(text)
+                for table in _hwpx_tables(root, section_index, doc.parse_warnings, budget):
+                    flat = "\n".join(" | ".join(row) for row in table["cells"])
+                    if not table["complete"]:
+                        # 불완전한 표는 계산·사실·증거·첨부 소비자에 표로 넘기지 않는다(부분 표로 합계·부재를 확정하지 않게).
+                        # 글자는 일반 문단으로 남기고, 위치·사유만 따로 기록한다.
+                        doc.structure.setdefault("partial_tables", []).append(
+                            {k: table[k] for k in ("table_ref", "row_count", "column_count", "nested",
+                                                    "parent_table_ref")} | {"reason": "INCOMPLETE_STRUCTURE"})
+                        page.blocks.append(Block(block_id=new_id("B"), text=flat, page=1, source_layer="visible_text"))
+                        visible.append(flat)
+                        continue
+                    doc.structure.setdefault("tables", []).append(table)
+                    page.blocks.append(Block(
+                        block_id=new_id("B"), text=flat, page=1, source_layer="visible_text", block_type="table",
+                        attributes={"table_index": table["table_index"], "cells": table["cells"],
+                                    "table_ref": table["table_ref"]}))
+                    visible.append(flat)
 
             # 메모/주석/설정
             for name, data in entries.items():
@@ -120,6 +139,131 @@ class HwpxParser(DocumentParser):
                 page_height=p.height,
             )
         return doc
+
+
+# --- HWPX 표(TK-132) ---------------------------------------------------------------------------------------------
+# 상한(TK-132 설계 메모 4의 제안값): 표당 행·열·칸, 문서 전체 칸, 표 중첩 깊이. 할당 전에 검사한다.
+HWPX_MAX_ROWS = 10000
+HWPX_MAX_COLS = 256
+HWPX_MAX_CELLS = 100000
+HWPX_MAX_DOC_CELLS = 200000
+HWPX_MAX_DEPTH = 8
+
+
+def _section_order(sections, manifest):
+    """manifest(content.hpf)의 spine 순서를 먼저 따르고, 없으면 파일 이름의 숫자 순으로 정렬한다(section10이 section2 뒤)."""
+    import posixpath
+
+    order = []
+    for package, data in manifest.items():
+        try:
+            root = parse_xml(data)
+        except Exception:
+            continue
+        href = {el.get("id"): el.get("href") for el in root.iter() if local_name(el.tag) == "item"}
+        base = posixpath.dirname(package)
+        for el in root.iter():
+            if local_name(el.tag) != "itemref":
+                continue
+            target = href.get(el.get("idref")) or ""
+            if not target or "://" in target:                     # 외부 URL은 조회하지 않는다
+                continue
+            # href는 package 문서가 있는 디렉터리 기준이다(Contents/content.hpf의 section2.xml → Contents/section2.xml)
+            path = posixpath.normpath(posixpath.join(base, target)).lstrip("/")
+            if path in sections and path not in order:
+                order.append(path)
+    rest = [n for n in sections if n not in order]
+    number = lambda n: int(re.search(r"(\d+)(?=\D*$)", n).group(1)) if re.search(r"\d+", n) else 0
+    return order + sorted(rest, key=lambda n: (number(n), n))
+
+
+def _inside_table(el) -> bool:
+    return any(local_name(a.tag) == "tbl" for a in el.iterancestors())
+
+
+def _own_text(el) -> str:
+    """el 아래 글자(t) 중 el과 그 글자 사이에 표(tbl)가 끼지 않은 것만 잇는다."""
+    out = []
+    for t in el.iter():
+        if local_name(t.tag) != "t":
+            continue
+        between = []
+        for a in t.iterancestors():
+            if a is el:
+                break
+            between.append(local_name(a.tag))
+        if "tbl" not in between:
+            out.append(t.text or "")
+    return "".join(out)
+
+
+def _int(el, attr, default=None):
+    try:
+        return int(el.get(attr))
+    except (TypeError, ValueError):
+        return default
+
+
+def _hwpx_tables(root, section_index, warnings, budget=None):
+    """섹션 안의 표를 셀 주소·병합 그대로 2차원 표로 만든다. 병합 값은 앵커 칸에만 두고 덮인 칸은 빈칸이다."""
+    tables = []
+    budget = budget if budget is not None else {"cells": 0}
+    for index, tbl in enumerate(el for el in root.iter() if local_name(el.tag) == "tbl"):
+        depth = sum(1 for a in tbl.iterancestors() if local_name(a.tag) == "tbl")
+        ref = f"hwpx_s{section_index}t{index}"
+        rows_attr, cols_attr = _int(tbl, "rowCnt"), _int(tbl, "colCnt")
+        cells, complete = [], depth < HWPX_MAX_DEPTH
+        for r_i, tr in enumerate(c for c in tbl if local_name(c.tag) == "tr"):
+            for c_i, tc in enumerate(c for c in tr if local_name(c.tag) == "tc"):
+                addr = next((c for c in tc if local_name(c.tag) == "cellAddr"), None)
+                span = next((c for c in tc if local_name(c.tag) == "cellSpan"), None)
+                row = _int(addr, "rowAddr", r_i) if addr is not None else r_i
+                col = _int(addr, "colAddr", c_i) if addr is not None else c_i
+                row_span = max(1, _int(span, "rowSpan", 1)) if span is not None else 1
+                col_span = max(1, _int(span, "colSpan", 1)) if span is not None else 1
+                text = " ".join(_own_text(p).strip() for p in tc.iter()
+                                if local_name(p.tag) == "p" and _nearest_cell(p) is tc and _own_text(p).strip())
+                cells.append((row, col, row_span, col_span, text))
+        rows = rows_attr or max((r + rs for r, _, rs, _, _ in cells), default=0)
+        cols = cols_attr or max((c + cs for _, c, _, cs, _ in cells), default=0)
+        if not (0 < rows <= HWPX_MAX_ROWS and 0 < cols <= HWPX_MAX_COLS and rows * cols <= HWPX_MAX_CELLS) \
+                or budget["cells"] + rows * cols > HWPX_MAX_DOC_CELLS:
+            warnings.append(f"{ref}: 표 크기 {rows}x{cols}가 상한을 넘거나 없어 표 구조를 만들지 않았다")
+            continue
+        budget["cells"] += rows * cols
+        grid = [["" for _ in range(cols)] for _ in range(rows)]
+        owner = [[None for _ in range(cols)] for _ in range(rows)]
+        merges = []
+        for row, col, row_span, col_span, text in cells:
+            if not (0 <= row < rows and 0 <= col < cols) or row + row_span > rows or col + col_span > cols:
+                warnings.append(f"{ref}: 셀 주소·병합이 표 범위를 벗어나 그 칸을 빼고 표를 만들었다")
+                complete = False
+                continue
+            if any(owner[r][c] is not None for r in range(row, row + row_span) for c in range(col, col + col_span)):
+                warnings.append(f"{ref}: 겹치는 셀이 있어 뒤 셀을 빼고 표를 만들었다")
+                complete = False
+                continue
+            for r in range(row, row + row_span):
+                for c in range(col, col + col_span):
+                    owner[r][c] = (row, col)
+            grid[row][col] = text
+            if row_span > 1 or col_span > 1:
+                merges.append({"row": row, "col": col, "row_span": row_span, "col_span": col_span})
+        parent = next((a for a in tbl.iterancestors() if local_name(a.tag) == "tbl"), None)
+        tables.append({"table_ref": ref, "page": 1, "table_index": index, "cells": grid, "header": grid[0],
+                       "title": None, "row_count": rows, "column_count": cols, "merges": merges,
+                       "covered": [[r, c] for r in range(rows) for c in range(cols)
+                                   if owner[r][c] not in (None, (r, c))],
+                       "nested": depth > 0, "complete": complete,
+                       "parent_table_ref": (f"hwpx_s{section_index}t"
+                                            f"{[e for e in root.iter() if local_name(e.tag) == 'tbl'].index(parent)}"
+                                            if parent is not None else None),
+                       "representation": "TABLE_BLOCK"})
+    return tables
+
+
+def _nearest_cell(el):
+    return next((a for a in el.iterancestors() if local_name(a.tag) == "tc"), None)
 
 
 class HwpParser(DocumentParser):
