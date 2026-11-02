@@ -587,14 +587,16 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 - 평가 측 확인: diff = 4891f4e + 수정본(+캡처). 맞으면 사용자 "#191병합" 대상이다.
 ```
 
-## 2-7. TK-130 비공식 약칭 법령명 추정 (+ 제21항 이상 원숫자) (11-02, 사용자 지시 'lexdiff 노하우 이식')
-- 티켓: [TK-130](TK-130_informal_law_abbreviation_inference.md). 수정본: `patches/TK-130_abbreviation_inference_on_debbe83.diff`(Steve `debbe83` 기준, 사전 검증 완료).
-- 착수 시점·릴리스 포함은 사용자 결정. 지시문 전문은 사용자에게 전달한 코드 블록과 같다(요지 아래).
-- 원인 1: 비공식 약칭 + 문서에 정식명 없음 → `LAW_ALIASES`·문서 근거·공식 약칭 완전일치 모두 실패 → `_law_absent` 3번 분기 STATUTE_NONEXISTENT CRITICAL(오탐).
-- 고칠 것 1: 어간(최대 2회: 어간, 앞 4자) 재검색 → 공식 약칭(없으면 정식명) 부분수열 점수(종류·첫 글자·어간 3자·단일 후보/차이 100) → 추정 법령에 인용 조문이 있을 때만 existence `INFERRED_FROM_ABBREVIATION`·PARTIALLY_VERIFIED 상한·LOW `ABBREVIATION_INFERRED`, 없으면 원래 CRITICAL.
-- 원인·고칠 것 2: `temporal_review.CIRCLED`·`provision_content.CLAUSE_SPLIT_RE`가 ⑳까지만 → ㊿까지.
-- 하지 않을 것: lexdiff(BSL 1.1) 코드·데이터 복사, `LAW_ALIASES` 추가로 대신하기, 추정을 VERIFIED로 올리기, 부분 포함 일치.
-- 수용: diff = 수정본, CI 5종 성공, 고정 dev/holdout/오탐 변화 0, 기존 시험 수정 0. 릴리스 후보에서 verify_all 전체 1회.
+## 2-7. lexdiff 비교 후속 개선 4건 (11-02 개정, Claude Code·Astra 교차 검증 반영 — 1판 TK-130 지시 폐기)
+- 비교 문서: `requests/LEXDIFF_COMPARISON_20261102.md`(4절 교차 검증).
+- 순서: ① [TK-130a](TK-130_informal_law_abbreviation_inference.md) 원숫자 ㉑~㊿ → ② TK-130b 약칭 추정 2판 → ③ [TK-131](TK-131_precedent_evidence_excerpt.md) 판례 근거 발췌(설계 메모 먼저) → ④ [TK-132](TK-132_hwpx_table_structure.md) HWPX 표 구조(설계 메모 먼저). PR은 하나씩 따로 낸다.
+- 수정본(평가 측 사전 검증 완료, Steve `debbe83` 기준):
+  - `patches/TK-130a_circled_paragraphs_on_debbe83.diff`(3개 파일)
+  - `patches/TK-130b_abbreviation_inference_v2_on_debbe83.diff`(4개 파일)
+  - 1판 `TK-130_abbreviation_inference_on_debbe83.diff`·`_v2.diff`(통합본)는 쓰지 않는다.
+- 2판 수정점: 결과 구분(FOUND/NO_CANDIDATE/AMBIGUOUS/LOOKUP_FAILED/INCOMPLETE·CANDIDATE_LOOKUP_FAILED→UNVERIFIED), 조항 상태별 설명, law_id 고정, 후보 탐색 쪽 상한(검색어 2 × 3쪽).
+- 심각도 정책(평가 측 결정): 후보 없음·모호·조회 실패·상한·조문 부재는 기존 CRITICAL을 유지하고 결과 구분만 기록한다.
+- 지시문 전문은 사용자에게 전달한 코드 블록과 같다.
 
 ## 2-2. 탐지 PR 공통 수용 규약 — 하드코딩 금지 (2026-10-24 사용자 지시 '평가기준을 엄격히 적용하되 하드코딩으로 충족하지 못하게 제한')
 10-24 검토(#175 `618130c`·#165 `94c645f`·#167 `af28269`/`0731277`)에서 세 PR이 같은 방식으로 실패했다. 은퇴 세트 항목만 정확히 오르고(EVI-DATE 7·EVI-OVR 5·EVI-INCONS 3) train 같은 유형은 0이다. 평가 측의 비공개 다른 표현 탐침도 0이다(#175 0/4·#165 0/2·#167 장소·서명자 규칙 0). 새 정규식은 고정 낱말 여러 개를 순서대로 이은 문장 틀이다. 그 낱말은 은퇴 항목 위치 소제목 낱말과 8~9개씩 겹친다. **아래 규약은 A-4·B-1·B-3과 이후 모든 탐지 PR에 적용한다. 하나라도 어기면 점수와 무관하게 불승인한다.**

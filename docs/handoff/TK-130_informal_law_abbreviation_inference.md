@@ -61,3 +61,23 @@
 - 고정 벤치마크 dev·holdout과 오탐 수가 변하지 않는다.
 - CI 필수 검사가 모두 성공한다.
 - 온라인 효과(실제 국가법령정보 목록에서의 추정 정확도·호출 수)는 배포 뒤 온라인 점검에서 확인한다. 사전 검증에서는 측정하지 못했다.
+
+## 5. 2판 (11-02, Astra 재검증 반영) — 1판 수정본은 쓰지 않는다
+
+교차 검증에서 1판의 결함 4개가 지적됐다. 평가 측이 코드로 모두 확인했다.
+
+| # | 1판 결함 | 2판 수정 |
+|---|---|---|
+| ① | 후보 없음·모호·목록 조회 실패·상세 조회 실패가 모두 `(None, None)`이 되어 구분되지 않는다 | `infer_law_by_abbreviation`의 결과를 `FOUND / NO_CANDIDATE / AMBIGUOUS / LOOKUP_FAILED / INCOMPLETE`로 나누고 `review.law_alias.outcome`·notes에 기록한다. 후보를 골랐으나 상세 조회 실패·ID 불일치(`CANDIDATE_LOOKUP_FAILED`)이면 **UNVERIFIED**로 둔다. 같은 함수의 문서 근거 약칭 미해소(66~69행)와 같은 처리다 |
+| ② | 조항이 DELETED·UNVERIFIED여도 '인용 조문이 그 법령에 있어 대조했다'는 LOW 설명이 붙는다 | 조항 상태별 설명을 쓴다. VERIFIED이면 조문 확인, DELETED이면 '법령명 후보만 추정, 지정 조문은 삭제', UNVERIFIED이면 '법령명 후보만 추정, 지정 조항 미확인'. `provision_status`를 기록한다 |
+| ③ | 후보 law_id가 후속 조회에 고정되지 않는다. 동명 법령이 여럿이면 최신 ID가 선택될 수 있다 | `resolve_statute(..., law_id=)`와 `search_law_history(..., law_id=)`를 추가해 고정한다. 정확 이름 목록에 그 ID가 없으면 ERROR다. 반환 기록의 law_id가 후보와 다르면 `CANDIDATE_LOOKUP_FAILED`로 처리한다 |
+| ④ | '최대 2회'는 HTTP 요청 수 상한이 아니다(`_legal_list`가 최대 100쪽을 순회한다) | `_legal_list(max_pages=)`를 추가했다(기본 100, 기존 동작 불변). 후보 탐색은 검색어 최대 2개 × 각 `INFERENCE_MAX_PAGES=3`쪽(300건)까지다. 상한에 걸리면 `INCOMPLETE`이고 후보를 고르지 않는다. 후보를 고른 뒤의 연혁·전문 조회는 기존 경로와 같다 |
+| 표현 | '후보가 하나뿐' | '조회한 후보 N개 중 우선 후보'로 고치고 `candidate_count`를 기록한다 |
+
+- **심각도 정책(평가 측 결정, 사용자 변경 가능)**
+  - `NO_CANDIDATE`·`AMBIGUOUS`·`LOOKUP_FAILED`·`INCOMPLETE`·`ARTICLE_NOT_IN_CANDIDATE`는 TK-130 이전 판정(STATUTE_NONEXISTENT CRITICAL)을 그대로 둔다. 결과 구분만 기록에 남긴다.
+  - 이유: 정확 이름 조회가 정상적으로 0건을 돌려준 상태에서, 추가 탐색이 실패한 것은 새 증거가 아니다. 이 기능으로 기존 진양성(가짜 법령)이 약해지면 안 된다.
+- **분리**
+  - 원숫자(㉑~㊿)는 결함이 명확하고 작으므로 별도 PR로 먼저 처리한다(TK-130a).
+  - 약칭 추정은 TK-130b다.
+  - 수정본: `patches/TK-130a_circled_paragraphs_on_debbe83.diff`, `patches/TK-130b_abbreviation_inference_v2_on_debbe83.diff`.
