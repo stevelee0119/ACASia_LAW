@@ -157,3 +157,11 @@ def test_document_without_table_unchanged(tmp_path):
     doc = hwpx(tmp_path, (0, para("첫째 문단이다.") + para("둘째 문단이다.")))
     assert not doc.structure.get("tables")
     assert "첫째 문단이다." in text_of(doc) and "둘째 문단이다." in text_of(doc)
+
+
+def test_document_cell_limit_counts_across_sections(tmp_path):
+    # 섹션마다 따로 세면 문서 전체 칸 상한(200,000)이 무력화된다. 300×256 = 76,800칸 표 세 개 = 230,400칸.
+    big = '<hp:p><hp:run><hp:tbl rowCnt="300" colCnt="256"><hp:tr>' + cell(0, 0, "가") + "</hp:tr></hp:tbl></hp:run></hp:p>"
+    doc = hwpx(tmp_path, (0, big), (1, big), (2, big))
+    assert len(doc.structure.get("tables") or []) == 2         # 세 번째 표는 문서 상한을 넘어 만들지 않는다
+    assert any("상한" in w for w in doc.parse_warnings)

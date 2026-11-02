@@ -47,6 +47,7 @@ class HwpxParser(DocumentParser):
             entries = read_entries(zf, lambda n: n.endswith(".xml"))
             sections = {k: v for k, v in entries.items() if "section" in k.lower()}
             manifest = read_entries(zf, lambda n: n.lower().endswith(".hpf"))
+            budget = {"cells": 0}                     # 문서 전체 칸 누계(섹션을 넘어 이어진다)
             for section_index, name in enumerate(_section_order(sections, manifest)):
                 data = sections[name]
                 xml_parts.append(data.decode("utf-8", "replace"))
@@ -66,7 +67,7 @@ class HwpxParser(DocumentParser):
                         Block(block_id=new_id("B"), text=text, page=1, source_layer="visible_text")
                     )
                     visible.append(text)
-                for table in _hwpx_tables(root, section_index, doc.parse_warnings):
+                for table in _hwpx_tables(root, section_index, doc.parse_warnings, budget):
                     flat = "\n".join(" | ".join(row) for row in table["cells"])
                     if not table["complete"]:
                         # 불완전한 표는 계산·사실·증거·첨부 소비자에 표로 넘기지 않는다(부분 표로 합계·부재를 확정하지 않게).
@@ -203,9 +204,10 @@ def _int(el, attr, default=None):
         return default
 
 
-def _hwpx_tables(root, section_index, warnings):
+def _hwpx_tables(root, section_index, warnings, budget=None):
     """섹션 안의 표를 셀 주소·병합 그대로 2차원 표로 만든다. 병합 값은 앵커 칸에만 두고 덮인 칸은 빈칸이다."""
-    tables, used_cells = [], 0
+    tables = []
+    budget = budget if budget is not None else {"cells": 0}
     for index, tbl in enumerate(el for el in root.iter() if local_name(el.tag) == "tbl"):
         depth = sum(1 for a in tbl.iterancestors() if local_name(a.tag) == "tbl")
         ref = f"hwpx_s{section_index}t{index}"
@@ -225,10 +227,10 @@ def _hwpx_tables(root, section_index, warnings):
         rows = rows_attr or max((r + rs for r, _, rs, _, _ in cells), default=0)
         cols = cols_attr or max((c + cs for _, c, _, cs, _ in cells), default=0)
         if not (0 < rows <= HWPX_MAX_ROWS and 0 < cols <= HWPX_MAX_COLS and rows * cols <= HWPX_MAX_CELLS) \
-                or used_cells + rows * cols > HWPX_MAX_DOC_CELLS:
+                or budget["cells"] + rows * cols > HWPX_MAX_DOC_CELLS:
             warnings.append(f"{ref}: 표 크기 {rows}x{cols}가 상한을 넘거나 없어 표 구조를 만들지 않았다")
             continue
-        used_cells += rows * cols
+        budget["cells"] += rows * cols
         grid = [["" for _ in range(cols)] for _ in range(rows)]
         owner = [[None for _ in range(cols)] for _ in range(rows)]
         merges = []
