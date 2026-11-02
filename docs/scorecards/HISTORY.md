@@ -1632,3 +1632,11 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
 - 측정 못 함: 실제 판결·모델에서 근거 포함률 변화(배포 뒤 온라인 점검).
 - 판정: 수용. 릴리스 후보에서 verify_all 전체를 한 번 돈다.
 - 병합: 사용자 지시("#202병합")로 Steve `b5fe795`(병합 커밋, expectedHeadSha `da7a6fa`). TK-131 merged, 배포 대기.
+
+### 2026-11-02 #201 TK-132 2차 판정 — 수용
+
+- 대상: PR #201 head `6c8a244`(Codex 대행), base Steve `78c9bfd`. 커밋 2개: `26528c3` = 2판 수정본, `6c8a244` = 보완본 `TK-132_supplement_on_26528c3.diff`(각각 변경 줄 일치, 평가 측 대조). 기존 시험 수정 0.
+- CI(인용): 테스트 3종·Docker OCR·점수 하락 게이트·은퇴 세트 비교·CodeQL 4종·새 경고 게이트 모두 success.
+- 평가 측 재실행: Steve `b5fe795`(#202 병합 뒤)와 합친 사본에서 `test_tk132_hwpx_tables.py` 15·`test_tk131_evidence_pack.py` 17·`test_hwp_parser.py` 18 = 50건 통과. 보완본 사전 검증 사본: 고정 dev 82.6/holdout 81.9/FP0/A0 변화 0, 문구 대조·하드코딩 점검 통과.
+- 측정 못 함: 운영 입력 중 HWPX·표 비율, 실제 한글 프로그램 HWPX의 namespace 변형(고정 벤치마크에 HWPX 0건).
+- 판정: 수용. 사용자 병합 대기.
