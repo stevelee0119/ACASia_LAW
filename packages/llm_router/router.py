@@ -834,11 +834,11 @@ _VERDICT_MAX_TOKENS = 2500
 _VERDICT_FORMAT = (
     "[응답 형식] 다음 키를 가진 JSON 객체 하나만 출력하라.\n"
     "- status: 아래 영문 값 중 하나를 그대로 쓴다.\n"
-    "  VERIFIED(공식 전문이 문서의 주장을 뒷받침함) / PARTIALLY_VERIFIED(일부만 뒷받침하거나 적용에 한계가 있음) /\n"
-    "  CONTRADICTED(공식 전문이 문서의 주장과 반대됨) / UNVERIFIED(판단할 근거가 부족함)\n"
+    "  VERIFIED(제공된 공식 원문이 문서의 주장을 뒷받침함) / PARTIALLY_VERIFIED(일부만 뒷받침하거나 적용에 한계가 있음) /\n"
+    "  CONTRADICTED(제공된 공식 원문이 문서의 주장과 반대됨) / UNVERIFIED(판단할 근거가 부족함)\n"
     "- confidence: 0부터 1 사이의 숫자\n"
     "- rationale: 판단 이유(문자열)\n"
-    "- evidence_quotes: 공식 전문에 있는 문장을 글자 그대로 옮긴 문자열 배열\n"
+    "- evidence_quotes: 제공된 공식 원문(발췌면 한 구간) 안의 문장을 글자 그대로 옮긴 문자열 배열\n"
     "- contradicts: true 또는 false"
 )
 _VERDICT_BREVITY = "[분량] rationale은 400자 이내, evidence_quotes는 최대 3개(각 200자 이내)로 쓰고 JSON 객체 하나만 답하라."

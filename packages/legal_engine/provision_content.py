@@ -107,7 +107,7 @@ def _terms(text: str) -> List[str]:
     return out
 
 
-CLAUSE_SPLIT_RE = re.compile(r"(?<=다\.)\s*|;\s*|\n+|(?=[①-⑳])|(?=\s\d{1,2}\.\s)")
+CLAUSE_SPLIT_RE = re.compile(r"(?<=다\.)\s*|;\s*|\n+|(?=[①-⑳㉑-㉟㊱-㊿])|(?=\s\d{1,2}\.\s)")
 
 
 def _scoped_body(body: str, subject: Optional[str]) -> str:

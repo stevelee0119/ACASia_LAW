@@ -1525,3 +1525,202 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
 - **#191 3차 확인(10-28 한국, 구현 측 검토 요청) — 수용, 사용자 병합 대기:** head `cfd80c3`. `2290dab` = 평가 측 빈 괄호 수정본(+/− 42줄 일치), `cfd80c3` 캡처 03·04 교체(평가 측 열람: 1행 '문서 주장/인용' 칸 빈 괄호 없음, 영문 상태 코드 유지). 같은 SHA CI 전부 성공, PR·push 두 테스트 실행 성공(인용). draft 해제. 코드 = 평가 측 사전 검증 사본(4891f4e+수정본, 294건 실패 0)과 동일, 4891f4e 재실행 471건 실패 0. 남은 것: 사용자 "#191병합" → 릴리스 후보 SHA에서 verify_all 전체 1회·버전 판정.
 - **#191 TK-127 2단계 Steve 병합(10-28 한국, 사용자 지시 '#191 병합'):** head `cfd80c3`(평가 측 수용, 같은 SHA CI 전부 성공, 사용자 화면 확인·결정 반영) merge commit `d2aa19a`(expectedHeadSha 지정). TK-127 2단계 merged(배포 대기). 다음 릴리스 후보 = Steve `d2aa19a`(TK-129 + TK-127 2단계): 평가 측 verify_all 전체 1회(탐지·RAG 엔진 변경)·버전 판정 남음.
 - **릴리스 후보 d2aa19a verify_all 전체·0.16.0 판정(10-29 한국):** Steve `d2aa19a`(TK-129 #185 + TK-127 2단계 #191), 기준 0.15.0 main `08d40ff`, 환경 CI와 일치(Python 3.11.15·tesseract 5.3.4). verify_all 전체 모드 종료 0: 수용 1238·회귀 장부 2357·전체 9094·브라우저 197 통과(실제 실패 0), score_gate·regression_gate(회귀 없음)·hardcoding_diff(추가 715줄)·test_edits·protected_paths(19개 평가 측 또는 승인)·version_policy 통과. dev 82.6/holdout 81.9/오탐 0/A 0(0.15.0과 같음, RER 0). 판정 minor 0.16.0(added·changed·fixed), 봉인 생략(2절 2 변경 범위 밖 — RAG·보고서·화면·API, review_items는 참고자료 상태 필드만). 배포 직후 4절 온라인 점검 전체 필요(RAG 경로 변경). 버전 커밋 수정본 `patches/v0.16.0_version_commit.diff` 사전 검증(check_version_policy 위반 없음, update_readme --check 통과, 관련 시험 65건 실패 0). 전달문 2-1-3절.
+- **평가 PR #193 Steve 병합(10-29 한국, 사용자 지시 '#193병합'):** head `a7985d7`(같은 SHA CI 전부 성공) merge commit `8fe29ab`. 0.16.0 판정서가 Steve에 반영 → 구현 측 0.16.0 버전 커밋(전달문 2-1-3절) 착수 가능.
+- **#194 0.16.0 버전 커밋 확인(10-29 한국, 구현 측 검토 요청) — 수용:** head `0be0a7c`, diff = 평가 측 수정본(줄 일치), 같은 SHA CI 전부 성공·두 테스트 실행 성공(인용). 구현 측 로컬 Windows `test_v4_run_manifest` OCR 단언 실패는 환경 차이(같은 SHA 원격 전체·평가 측 verify_all 통과). 릴리스 PR 사전 시험: main `08d40ff`에 `0be0a7c` 병합 시 #189 별도 커밋 탓 add/add 충돌 14개 파일 — 전부 Steve 쪽으로 해결하면 트리 = Steve와 동일. #189 결정(main에 은퇴 세트 sealed_20261025 미포함)을 유지하려면 그 디렉터리·retired_sealed/README.md·approved_protected_changes.json을 main 쪽으로 되돌린다.
+- **#194 Steve 병합·릴리스 PR #195(10-29 한국, 사용자 지시 '#194 병합'·릴리스 브랜치 푸시 승인):** #194 merge commit `8f24b49`(head `0be0a7c`). 평가 측 release/0.16.0 = main `08d40ff` + Steve `8f24b49` 병합(`5668fc3`, add/add 충돌 14개 Steve 쪽, 트리 = Steve) + #189 결정 유지(`45bf3d9`, sealed_20261025 제외·README·approved_protected_changes main과 같게). 제품 코드·시험 = Steve. 자체 점검: version_policy·protected_paths·update_readme --check·tests/acceptance 통과. PR #195(release/0.16.0 → main) 생성, 병합은 CI 성공 뒤 사용자 지시.
+- **릴리스 0.16.0 main 병합(10-29 한국, 사용자 지시 '#195 병합'):** #195 head `45bf3d9`(같은 SHA CI 전부 성공 — 점수 하락 게이트·은퇴 세트 비교·Docker OCR·CodeQL·두 테스트 실행) merge commit `2f06f9a`(expectedHeadSha 지정). 배포 확인(`/api/health` version 0.16.0·commit 2f06f9a·DB ok) 뒤 README '현재 운영 버전'·TK-127·TK-129 deployed 처리, 이어서 RELEASE_PROCEDURE 4절 온라인 점검 전체(RAG 경로 변경).
+- **0.16.0 운영 배포 확인(10-29 한국):** 사용자가 `/api/health` 확인 — status ok, version 0.16.0, commit `2f06f9a0…`(#195 main 병합 커밋과 일치), database ok. README '현재 운영 버전' 0.16.0(2026-10-29 배포). TK-127(1·2단계)·TK-129 deployed(deployed_on 2026-10-29), TICKET_METRICS 갱신. 남은 것: RELEASE_PROCEDURE 4절 온라인 점검(서면9 보고서 JSON, RAG 경로 변경). 구현 한시 대행(Codex) 범위 종료 — 10-31부터 Antigravity.
+- **0.16.0 배포 직후 온라인 점검(10-29 한국, 사용자 실행 보고서 `rpt_886279ed659c4b3e`·run `run_b761ff1d185e4b87`, 평가 측 채점):** `score_report.py`(명세 case9_state_compensation_online, 규칙 2판) **23/23**, `first_touch_log.jsonl` 기록. manifest `implementation.git_commit` = `2f06f9a`(릴리스 병합 SHA와 일치). 모델 호출 26건 성공 26(anthropic 23·openai 3, gemini 0)·최상위 오류 0·`PARTIAL_COMPLETED`/DRAFT(참고자료 동기화 부분 완료, 표준판례 표 PARTIAL 1,551행 색인), KCI 키 없음(영향 없음).
+  - **조건 차이:** 법률지침 ON(`korean_law_review_profile`)·prompt `v0.2+kr2`·효율 라우팅(Sonnet 5.5·gpt-6.1-sol). RELEASE_PROCEDURE 4.2의 'TK75 OFF 먼저' 조건과 다르므로 0.12.0 기준 21/23(OFF)과 증감 비교하지 않는다(OFF 조건 점수 = 측정 못 함). 같은 ON/kr2 조건의 직전 기록 10-13 b68 23/23과 같고 새 실패 0. Drive 표준판례 색인 행 수가 10-13(2,185)과 달라 Drive 항목도 엄밀한 같은 조건은 아니다.
+  - **판정:** 배포 정상 동작 확인(회귀 없음). 회귀 티켓 없음.
+  - **TK-127 2단계 운영 관찰(채점 항목 아님):** 인용 행 10개 중 SUPPORTED 1(SUPPORTS 관찰)·CONTRADICTED 1(육군 규정 제22조 제4항, CONTRADICTS)·PENDING_REVIEW 4(INSUFFICIENT/CONTEXT)·NOT_MENTIONED 4. 계약(SUPPORTS만 승격)과 어긋나는 행 0. 정확도는 명세에 항목이 없어 측정 못 함.
+- **0.16.0 온라인 점검 OFF 재실행(10-29 한국, 사용자 실행 `rpt_0e4f0a6350de41d0`·run `run_a6792cf802e245c9`, 평가 측 채점):** `LV_KOREAN_LAW_REVIEW_PROFILE` OFF 적용 확인(prompt `v0.2`, `korean_law_review_profile` false). 커밋 `2f06f9a` 일치. 규칙 2판 **23/23**. 모델 27건 성공 27(anthropic 23·openai 3·gemini 1), 최상위 오류 0, `PARTIAL_COMPLETED`(참고자료 동기화 부분, 표준판례 표 PARTIAL 1,551행).
+  - **RELEASE_PROCEDURE 4.3 판정: 정상.** 0.12.0(9c1b218, OFF) 21/23에서 통과한 21항목 모두 통과(새 실패 0). 기존 잔여 LEG-2·RAG-2도 통과.
+  - **귀속 제한:** 4.2가 정한 TK-75 OFF는 맞으나, 효율 라우팅(`LV_LLM_EFFICIENT_ROUTING` ON, Sonnet 5.5·gpt-6.1-sol — 10-17 `6e0b2ae` 도입이라 0.12.0엔 없던 경로)과 Drive 색인 상태(0.12.0은 표준판례 표 미선별, TK-74)가 다르다. 그래서 LEG-2·RAG-2 통과를 0.16.0 코드 개선으로 귀속하지 않는다(모델 의견·Drive 항목 단일 변수 비교 아님).
+  - ON(앞 실행)·OFF 모두 23/23 — 이 명세에서는 법률지침 ON/OFF 차이가 드러나지 않는다(지침 품질 판정 아님, 10-13 HOLD 유지).
+  - TK-127 운영 관찰: 인용 행 SUPPORTED 1(국가재정법 제96조, SUPPORTS)·CONTRADICTED 1(육군 규정 제22조 제4항)·PENDING_REVIEW 3·NOT_MENTIONED 5 — ON 실행과 SUPPORTED·CONTRADICTED 같음. 승격 계약 위반 0.
+- **운영 설정 복원(10-29 한국, 사용자):** OFF 재실행 뒤 `LV_KOREAN_LAW_REVIEW_PROFILE`을 운영값 ON(`1`)으로 되돌림(사용자 보고, 평가 측 health·보고서로 재확인 안 함). 효율 라우팅(`LV_LLM_EFFICIENT_ROUTING`)은 ON·OFF 두 실행 보고서 모두 `llm_efficient_routing: true`로 이미 켜져 있었다(변경 불필요). 다음 온라인 점검의 비교 기준 조건: 법률지침 OFF·효율 라우팅 ON·2판 23/23(`run_a6792cf802e245c9`).
+
+## 2026-11-02 lexdiff 기술 비교·교차 검증(Astra)·TK-130~132
+
+- **lexdiff 정적 분석(`2bcf525`, BSL 1.1)과 ACASia 비교:** `docs/handoff/requests/LEXDIFF_COMPARISON_20261102.md`.
+  - 서면 검증·시점·평가 체계는 ACASia가 우위다.
+  - 법령 검색·위임·별표 열람은 LexDiff가 우위다. 다만 조회 도구 상당수는 korean-law-mcp, 별표 파싱 주 경로는 kordoc에 위임돼 있다.
+  - 두 프로그램을 같은 입력으로 측정한 적은 없다. 점수 수치(82.6/81.9 대 RAGAS 0.47)는 직접 비교하지 않는다.
+- **Astra 교차 검증:**
+  - Astra 사실 주장 12개를 평가 측이 코드로 재확인했다. 그중 HWPX 표 중복 수집은 합성 재현으로 확인했다.
+  - 평가 측 서술 5곳을 정정했다: 인용 검증 기본 모드, '당시' 예외, `applicable_law`, 외부 패키지 위임, 점수 비교.
+  - TK-130 1판 수정본의 결함 4개를 확인하고 2판에서 고쳤다(결과 구분, 조항 상태별 설명, law_id 고정, 탐색 쪽 상한).
+- **TK-130a(원숫자 ㉑~㊿)·TK-130b(약칭 추정 2판) 사전 검증** (debbe83 + 수정본, 저장소 밖 사본, 평가 측 재실행):
+  - 새 시험 12·18건 통과. 제품 코드를 되돌리면 9·12건이 실패한다.
+  - 관련 24개 파일 + acceptance + regression 4,048건 실패 0.
+  - 고정 82.6/81.9/오탐 0/A 0으로 변화 0.
+  - 하드코딩 점검 통과.
+  - 1판 전체 시험은 4분할 10,609건 중 3건 실패했다. 3건 모두 단독 재실행에서 통과해 동시 실행 경합으로 본다.
+  - 2판 전체 시험(debbe83 + TK-130a·b 2판, 2분할 실행): 10,589건 통과, 실패 0, 두 분할 모두 종료 0(평가 측 재실행, 11-02).
+- **TK-131(판례 근거 24,000자 절단)·TK-132(HWPX 표 구조·중복 수집) 등록:** 설계 메모와 측정을 먼저 한다.
+- **측정 못 함:** LexDiff 실행·정확도, 실제 국가법령정보 목록에서의 약칭 추정 정확도, 운영 입력의 HWPX 비율, 24,000자 초과 판례 비율.
+- **#197 TK-130a 1차 판정(11-02 한국) — 보완 1회 필요:**
+  - head `5ababa4`(Codex 구현). PR은 사용자 지시로 평가 측이 대신 열었다.
+  - CI(인용): 같은 SHA에서 전부 성공했다. diff는 수정본과 일치한다.
+  - Sourcery 지적 4건을 평가 측이 검증했고 모두 유효하다.
+    - ① `rag_engine/provision_quotes.py:15` `CIRCLED`가 20자다. 같은 결함의 세 번째 위치이며, 평가 측 사전 검증에서 빠뜨렸다.
+    - ② 내용 대조 시험이 첫 경계를 검증하지 못한다.
+    - ③ 양성 예시의 문장이 다양하지 않다(AGENTS.md L13).
+    - ④ `temporal_review.py:187` 주석이 옛 범위로 남아 있다.
+  - 평가 측 보완본 `patches/TK-130a_supplement_on_5ababa4.diff`를 사전 검증했다(평가 측 재실행).
+    - 시험 18건 통과.
+    - 되돌림 검증: `provision_quotes`만 되돌리면 3건, 정규식에서 ㉑만 빼면 1건, `debbe83` 제품 코드로 되돌리면 13건 실패한다.
+    - 관련 23개 파일 + acceptance + regression 3,859건 실패 0.
+    - 고정 점수 변화 0.
+  - 서면 목록 기호용 `[①-⑳]`(evidence_consistency·paragraph_reconstruction·reading_text)은 이번 범위에서 뺐다.
+- **#197 TK-130a 2차 판정(11-02 한국) — 수용:** head `cd31262`. 추가 커밋이 보완본과 줄 단위로 일치한다. 같은 SHA의 CI(인용)는 전부 성공했다: 테스트 3종, Docker OCR, 점수 하락 게이트, 은퇴 세트 비교, CodeQL 4종과 새 경고 게이트. Sourcery 스레드 4개는 해결됐다. 사용자 '#197병합' 대기. verify_all 전체 실행은 릴리스 후보에서 한다.
+- **#197 TK-130a Steve 병합(11-02 한국, 사용자 지시 '#197병합'):** head `cd31262`을 병합 커밋 `9a42d1a`로 병합했다(expectedHeadSha 지정). TK-130a는 merged 상태이며 배포 대기다. 다음 단계: TK-130b(Codex)를 최신 Steve `9a42d1a` 위에서 진행한다.
+- **#198 TK-130b 1차 판정(11-02 한국) — 보완 1회 필요(원인은 평가 측 수정본):**
+  - head `f4fc0c8`(Codex). diff는 수정본과 일치한다.
+  - CI(인용): 점수 하락 게이트가 평가 세트 문구 대조 단계에서 실패했고, 나머지는 성공했다.
+  - 원인 ①: 평가 측 수정본 `INFERENCE_NOTES`의 설명문이 평가 세트 정답 문구와 겹쳤다. 사전 검증 때 문구 대조 도구를 돌리지 않은 평가 측 누락이다.
+  - Sourcery 지적 검증:
+    - ② 유효: `spec_source_verdict`가 추정 성공을 NOT_FOUND로 판정한다.
+    - ③ 유효: 후보 조회 시간 초과로 재시도를 소진해도 STATUTE_NONEXISTENT가 남는다.
+    - 문서 근거 약칭 실패 시 추정 생략: 변경 안 함(이미 UNVERIFIED).
+    - law_id 고정 시험 약점: 재현 안 됨(고정을 빼면 시험이 실패한다).
+    - 양성 다양성·심각도 단언: 유효.
+  - 평가 측 보완본 `patches/TK-130b_supplement_on_f4fc0c8.diff` 사전 검증(평가 측 재실행):
+    - 새 시험 26건 통과. 되돌림 검증으로 결함 검출을 확인했다.
+    - 관련 43개 파일 + acceptance + regression 4,332건 실패 0.
+    - 문구 대조 '의심 없음'. 고정 점수 변화 0.
+  - 재발 방지: 평가 측 사전 검증 점검 항목에 `check_train_phrase_overlap.py --eval-sets`를 더한다.
+- **#198 TK-130b 2차 판정(11-02 한국) — 수용:** head `4b8bf01`. 추가 커밋이 보완본과 줄 단위로 일치한다. 같은 SHA의 CI(인용)는 전부 성공했다: 점수 하락 게이트(문구 대조 포함), 테스트 3종, Docker OCR, 은퇴 세트 비교, CodeQL 4종과 새 경고 게이트. Sourcery 스레드는 4개가 해결됐고, 2개는 1차 판정에서 답했다(변경 안 함, 재현 안 됨). 사용자 '#198병합' 대기. 릴리스 후보에서 verify_all 전체를 실행한다.
+- **#198 TK-130b Steve 병합(11-02 한국, 사용자 지시 '#198병합'):** head `4b8bf01`을 병합 커밋 `76f5fbb`로 병합했다(expectedHeadSha 지정). TK-130(a·b) 모두 merged 상태이며 배포 대기다. 다음 단계: 릴리스 후보에서 verify_all 전체 실행 → 버전 판정. TK-131·132는 설계 메모부터 진행한다(Codex).
+- **사용자 결정(11-02 한국):** "131·132 티켓 구현까지 모두 마무리되고, lexdiff 관련 기술 중 반영할 내용까지 구현이 완료되면 한 번에 릴리스". 따라서 TK-130a·b(Steve 병합)는 배포하지 않고 다음 릴리스에 함께 묶는다.
+- **TK-131·TK-132 평가 측 수정본 사전 검증(11-02 한국, 설계 메모 단계 생략):**
+  - TK-132 `patches/TK-132_hwpx_tables_on_76f5fbb.diff`(HWPX 표 구조·중복 수집 제거·섹션 숫자 순)
+    - 새 시험 10건 통과. 원래 파서로 되돌리면 8건 실패.
+    - 관련 시험 4,503건 실패 0.
+  - TK-131 `patches/TK-131_evidence_pack_on_76f5fbb.diff`(판례 근거 발췌, 구간 단위 근거 확인, 마스킹 전 기준 절단 판정)
+    - 새 시험 11건 통과. pipeline만 되돌리면 2건 실패.
+    - 관련 시험 4,936건 실패 0.
+  - 공통: 두 수정본은 함께 적용해도 충돌하지 않는다(21건 통과). 고정 점수 변화 0, 문구 대조 통과.
+  - 전체 시험(두 수정본 함께 적용)은 진행 중이다.
+  - 후속 후보(사용자 결정 대기): 구형 HWP 표를 `structure["tables"]`에 연결하는 작업(`_extract_hwp_tables`가 시험에서만 쓰임).
+- **#199(TK-131)·#200(TK-132) 설계 메모 판정(11-02 한국) — 설계 승인(조건부):**
+  - CI(인용): 같은 SHA에서 모두 성공. 메모가 짚은 결함을 평가 측이 코드로 확인했다(1판 수정본에서 빠진 것).
+    - TK-131: `_context_review`가 전문을 다시 마스킹해 대조, `_VERDICT_FORMAT`의 '공식 전문', 예산 초과 시 모델 호출.
+    - TK-132: `content.hpf`를 읽지 못함, 부분 표가 첨부·계산 소비자로 감.
+  - 조건: 메모 설계를 반영한 평가 측 2판 수정본으로 구현한다.
+    - `patches/TK-131_evidence_pack_v2_on_76f5fbb.diff`: 새 시험 17건, 76f5fbb로 되돌리면 6건 실패.
+    - `patches/TK-132_hwpx_tables_v2_on_76f5fbb.diff`: 새 시험 14건, 되돌리면 11건 실패.
+  - 후속으로 남긴 것:
+    - TK-131: 의견 귀속, provider token 예산, pack 해시.
+    - TK-132: namespace URI 확인, XML 노드 누적 상한.
+  - 관련 시험(110·59개 파일)은 진행 중이며 실패 0이다.
+- **#199·#200 Steve 병합(11-02 한국, 사용자 지시 '#199병합, #200병합'):** 설계 메모만 바뀐 PR이다. #199는 `298ac99`, #200은 `78c9bfd`로 병합했다(expectedHeadSha 지정). TK-131·132 2판 수정본은 새 Steve `78c9bfd`에도 충돌 없이 적용된다(평가 측 확인). Codex 구현 지시를 냈다(TK-132 → TK-131).
+- **#201 TK-132 1차 판정(11-02 한국) — 보완 1회(작음):**
+  - head `26528c3`. diff는 2판 수정본과 일치한다.
+  - 구현 측이 지시서와 코드가 어긋나는 점을 보고했고, 평가 측 재현으로 확인했다: `_hwpx_tables`가 문서 전체 칸 누계(`used_cells`)를 섹션마다 0부터 센다. 그래서 문서 상한 200,000칸이 섹션을 넘어 적용되지 않는다. 평가 측 수정본의 결함이다.
+  - 보완본 `patches/TK-132_supplement_on_26528c3.diff`(+15/−5): 문서 단위 칸 누계를 섹션 사이에 넘긴다. 300×256 표 3개를 넣는 시험을 추가했다.
+  - 사전 검증: 시험 15건 통과. 원래대로 되돌리면 새 시험 1건이 실패한다.
+  - CI는 진행 중이다.
+
+### 2026-11-02 #202 TK-131 판정 — 수용
+
+- 대상: PR #202 head `da7a6fa`(Codex 대행, Agent: implementer), base Steve `78c9bfd`.
+- diff: 5개 파일 +453/−13. 평가 측 2판 수정본 `patches/TK-131_evidence_pack_v2_on_76f5fbb.diff`와 변경 줄 일치(평가 측 대조). 기존 시험 수정 0.
+- CI(인용): 테스트 3종·Docker OCR·점수 하락 게이트(문구 대조 포함)·은퇴 세트 비교·CodeQL 4종·새 경고 게이트 모두 success.
+- 평가 측 재실행: `tests/test_tk131_evidence_pack.py` 17건 통과(PR head). 사전 검증 사본: 고정 dev 82.6/holdout 81.9/FP0/A0 변화 0, 점수 게이트 통과.
+- 측정 못 함: 실제 판결·모델에서 근거 포함률 변화(배포 뒤 온라인 점검).
+- 판정: 수용. 릴리스 후보에서 verify_all 전체를 한 번 돈다.
+- 병합: 사용자 지시("#202병합")로 Steve `b5fe795`(병합 커밋, expectedHeadSha `da7a6fa`). TK-131 merged, 배포 대기.
+
+### 2026-11-02 #201 TK-132 2차 판정 — 수용
+
+- 대상: PR #201 head `6c8a244`(Codex 대행), base Steve `78c9bfd`. 커밋 2개: `26528c3` = 2판 수정본, `6c8a244` = 보완본 `TK-132_supplement_on_26528c3.diff`(각각 변경 줄 일치, 평가 측 대조). 기존 시험 수정 0.
+- CI(인용): 테스트 3종·Docker OCR·점수 하락 게이트·은퇴 세트 비교·CodeQL 4종·새 경고 게이트 모두 success.
+- 평가 측 재실행: Steve `b5fe795`(#202 병합 뒤)와 합친 사본에서 `test_tk132_hwpx_tables.py` 15·`test_tk131_evidence_pack.py` 17·`test_hwp_parser.py` 18 = 50건 통과. 보완본 사전 검증 사본: 고정 dev 82.6/holdout 81.9/FP0/A0 변화 0, 문구 대조·하드코딩 점검 통과.
+- 측정 못 함: 운영 입력 중 HWPX·표 비율, 실제 한글 프로그램 HWPX의 namespace 변형(고정 벤치마크에 HWPX 0건).
+- 판정: 수용. 사용자 병합 대기.
+- 병합: 사용자 지시("#201병합")로 Steve `c180db9`(병합 커밋, expectedHeadSha `6c8a244`). TK-132 merged, 배포 대기.
+
+### 2026-11-02 미해결 티켓 릴리스 포함 분석·TK-133 지시
+
+- 사용자 지시: TK-76·44·49·45·55·73 중 이번 릴리스 포함 대상과 점수 기여 추정, 구현 프롬프트.
+- 측정(평가 측 재실행, `b5fe795`와 탐지 동일 사본, 오프라인): 고정 82.6/81.9/FP0/A0, 은퇴 08 48.9·08b 42.6·09 50.0·10 43.9·25 27.3(오탐 0·A 0). 유형별 손실과 판정은 `docs/handoff/requests/RELEASE_CANDIDATE_TICKETS_20261102.md`.
+- 결론: 여섯 티켓은 이번 릴리스 제외(기여 0이거나 설계 주기 필요·사용자 중지). 추가분은 TK-133(구형 HWP 표 구조, 사전 검증 완료) 하나. Codex 대행 지시.
+
+### 2026-11-02 사용자 결정·TK-76 EVI-LOGIC 지시
+
+- 사용자 결정: 이번 릴리스 = TK-133(Codex 구현)·TK-76(Antigravity 구현) 두 건 추가. TK-133 지시는 사용자가 Codex에 전달.
+- TK-76 범위: 2주기 1항 EVI-LOGIC(지각 범위 구조). 평가 측 수정본·사전 검증 결과는 TK-76 티켓 '2주기 1항' 절. 은퇴 08 48.9→53.3, 08b 42.6→46.8, 09 50.0→53.4, 10 43.9→45.8, 25 27.3→29.5(오탐 0·A 0), 고정 변화 0 — 평가 측 재실행. 규칙 설계 때 은퇴 항목을 보았으므로 은퇴 상승은 독립 일반화 증거가 아님(탐침 15/15·대조 0/19가 독립 근거, train·check 미측정).
+- 11-02 TK-76 EVI-LOGIC 지시문 Antigravity 전달 완료(사용자 확인). TK-133 지시문은 Codex 전달 완료. 두 PR 대기.
+- 11-02 TK-76 1판 수정본 일반화 결함(평가 측, 새 탐침 5/9) → 2판 정정: 3차 독립 탐침 7/8·대조 0/10, 은퇴·고정 1판과 같음, 1,834건 실패 0. Antigravity 정정 지시.
+
+### 2026-11-02 #203 TK-133 판정 — 수용
+
+- 대상: PR #203 head `1024ba4`(Codex 대행, Agent: implementer), base Steve `c180db9`. diff 2개 파일 +330/−3, 평가 측 수정본 `TK-133_hwp_binary_tables_on_c180db9.diff`와 변경 줄 일치(평가 측 대조). 기존 시험 수정 0.
+- CI(인용): 최종 상태 모두 success — 테스트 3종·Docker OCR·점수 하락 게이트·은퇴 세트 비교·CodeQL 4종·새 경고 게이트.
+  - PR 실행 1회차 'SQLite + 인프로세스 Worker'가 1건 실패했다(평가 측이 잡 로그 확인): `tests/test_pii_redos_linear.py::test_label_followed_by_long_whitespace_is_linear[생년월일]`.
+  - 원인은 시간 비율 단언이다. 짧은 입력 2.3ms 대 긴 입력 21.4ms로 비율 9.3이 한도 8을 넘었다. 절대값은 한도 2초 안이다.
+  - #203은 `packages/pii_engine`을 바꾸지 않는다(diff 0). 같은 head의 push 실행과 2회차 재실행은 통과했고, 평가 측이 3회 단독 실행했을 때도 모두 통과했다.
+  - 따라서 PR 결함이 아니다. ms 단위 비율 단언이 흔들리는 시험이라 후속 후보로 남긴다(시험 수정은 사용자 승인 필요).
+- 평가 측 재실행: PR head에서 TK-133 17·HWP 18·TK-132 15 = 50건 통과.
+- 판정: 수용. 사용자 병합 대기.
+- 병합: 사용자 지시("#203병합")로 Steve `160e6bb`(병합 커밋, expectedHeadSha `1024ba4`). TK-133 merged, 배포 대기. TK-76 2판 수정본(evidence_consistency)은 hwp_parser와 파일이 겹치지 않아 160e6bb에도 그대로 적용됨(평가 측 확인).
+
+### 2026-11-02 #204 TK-76 EVI-LOGIC 1차 판정 — 보완 1회
+
+- 대상: #204 head `6abf2bc`(Antigravity). 커밋 2개(1판 → 2판으로 되돌려 적용), base 대비 diff는 2판 수정본과 변경 줄 일치(평가 측 대조). 필수 CI 성공(인용). train 보고 EVI-LOGIC 0/4 → 0/4, 오탐 0 → 0(구현 측 측정).
+- 평가 측 4차 새 비공개 탐침: 양성 9/9, 대조 오탐 1/12 → 수용 기준 미달. 원인은 평가 측 수정본 결함(부사 예외를 끝 글자로 비교해 '남편이'를 부사로 오판). 보완본 사전 검증: 탐침 1~4차 대조 0, 평가 세트 검출 문장 불변(점수 불변), 관련 시험 통과, 게이트 통과.
+
+### 2026-11-02 #204 TK-76 EVI-LOGIC 2차 판정 — 수용
+
+- head `0e97f2e`: Steve `160e6bb` 병합 커밋 + 보완본. 평가 측 사전 검증 사본과 제품·시험 diff 0줄. 필수 CI 전부 성공(인용). train 재측정 EVI-LOGIC 0/4 → 0/4·오탐 0(구현 측).
+- 평가 측 5차 새 비공개 탐침: 양성 8/8·대조 0/10(평가 측 재실행). 고정 변화 0, 은퇴 08 53.3·08b 46.8·09 53.4·10 45.8·25 29.5·오탐 0.
+- 판정: 수용. 사용자 병합 대기. 병합 뒤 릴리스 후보 verify_all 전체.
+- 병합: 사용자 지시("#204 병합")로 Steve `b14d7d9`(병합 커밋, expectedHeadSha `0e97f2e`). 이번 릴리스 구현분(TK-130a·b·131·132·133·76 2주기 1항) 모두 병합. 다음: 릴리스 후보 verify_all 전체.
+- 11-02 릴리스 후보 Steve `b14d7d9` verify_all full --base 2f06f9a(0.16.0 main) 종료 0: environment·acceptance 1238·regression_ledger 2357·score_gate·regression_gate(회귀 없음)·hardcoding_diff·test_edits·protected_paths·version_policy·full_tests 9219·browser_tests 197, 실제 실패 0(평가 측 재실행, python 3.11.15·tesseract 5.3.4 — CI와 같음). 오프라인 탐지 엔진 변경(evidence_consistency·hwp_parser·source_review 등 14개 제품 파일)이므로 RELEASE_PROCEDURE 2절 2 봉인 시험 적용 범위. 남은 봉인 세트 없음 → 0.17.0 봉인 세트 출제·채점 프롬프트(`PROMPT_FOR_CODEX_SEALED_SET_0170.md`·`PROMPT_FOR_SCORING_SEALED_0170.md`·`PROMPT_FOR_ANTIGRAVITY_SEALED_0170.md`, 0.14.0판에서 SHA·날짜·폴더만 바꿈) 준비.
+
+### 2026-11-02 #205 README 개편 판정 — 보완 1회(문서 사실 정확도)
+
+- 대상: #205 head `ae343d6`(Antigravity). README.md 1개 파일만 바뀜(+263/−94). 제품·시험 변경 없음. 필수 CI 전부 성공(인용). 자동 생성 릴리스 표 블록 유지(`update_readme --check` 통과, 평가 측 재실행).
+- 확인 결과(평가 측): 탭 5개 이름, 지원 형식(PDF·DOCX·HWP·HWPX·TXT·이미지), 기능 설명 대부분이 코드와 일치한다.
+- 고칠 6곳(사실보다 강한 표현·분류 오기)
+  1. 배지 '7대 결정론 + AI 교차검증': 7영역 중 AI 작성 가능성·법률 주장 일부는 모델 의견이다.
+  2. '결정론적 검사 … 모두 100% 정상 동작': 100%는 측정 근거가 없다.
+  3. EVI-INCONS 항목에 표 합계·산식·지연이자 검산: 계산 엔진 소관이라 분류가 틀렸다.
+  4. 인젝션 '전수 스캔': TK-44·49 known_open(구조 트리·비태그 문서)이 남아 있다.
+  5. 개인정보 '외부 도달 차단' 단정: TK-55 known_open 잔여가 있다.
+  6. OC 키 '발급된 … 이메일 ID 형식': OC는 발급 키가 아니라 가입 이메일의 ID이고, 링크도 개별 안내 페이지라 확인하지 못했다.
+- 보완본 `patches/README_supplement_on_ae343d6.diff`(+7/−6): `update_readme --check`·test_update_readme·no_case_literals 23건·문구 대조 통과(평가 측 재실행).
+
+### 2026-11-02 은퇴 5세트 0.16.0 대 0.17.0 후보 같은 조건 비교 (평가 측 재실행)
+
+- 조건: 오프라인, Linux, python 3.11.15, tesseract 5.3.4, 같은 채점기·같은 은퇴 세트 파일(Steve 쪽 fixtures)로 양쪽 채점.
+  - 0.16.0: main `2f06f9a`
+  - 후보: Steve `b14d7d9`
+- 결과: 0.16.0 → 후보. 다섯 세트 모두 오탐 0 / A 0이다.
+
+  | 세트 | 0.16.0 | 후보 | 증감 |
+  |---|---|---|---|
+  | 08 | 48.9 | 53.3 | +4.4 |
+  | 08b | 42.6 | 46.8 | +4.2 |
+  | 09 | 50.0 | 53.4 | +3.4 |
+  | 10 | 43.9 | 45.8 | +1.9 |
+  | 25 | 27.3 | 29.5 | +2.2 |
+
+- 유형별 득점 차이: EVI-LOGIC만 오른다(+2.0·+2.25·+2.0·+1.0·+1.0). 다른 유형 차이는 0이고, 하락 항목도 0이다.
+- 봉인 세트 sealed_20261102: 사용자 보고(11-02)로 작성 완료.
+  - 구성: 문서 8, 결함 51, 유형 27.
+  - 작성 측 자체 점검: 오류 0 / 경고 0.
+  - 평가 측은 열람하지 않는다. 다음 단계는 다른 새 세션의 독립 자체 점검(지문)과 채점(`PROMPT_FOR_SCORING_SEALED_0170.md`)이다.
+
+### 2026-11-02 봉인 시험·0.17.0 판정
+
+- 봉인 sealed_20261102 채점(사용자 실행, Linux, python 3.11.17, OCR 5.5.0, 두 실행 같은 환경, 채점기 sha256 같음, 지문 8b16cdc0829acee7, 독립 자체 점검 없음 — 작성 측 자체 점검 오류 0·경고 0)
+  - 운영본 `2f06f9a`: 40.2 / 0.402 / 오탐 0 / A 0 / 방어
+  - 후보 `b14d7d9`: 40.2 / 0.402 / 오탐 0 / A 0 / 방어
+  - 판정: 통과(후보가 낮지 않음, 오탐 증가 0). 봉인 세트에서는 개선이 드러나지 않았다(같은 점수).
+  - 홀드아웃 환경 점검: 81.9 / 81.9(평가 측 값과 같음).
+- 0.17.0 판정서(minor, added·changed·fixed, 합산 RER 0)를 `version_verdicts.json`에 넣었다. 버전 커밋 수정본 `patches/v0.17.0_version_commit.diff`를 사전 검증했다(check_version_policy 위반 없음, update_readme --check, 시험 49건). 지시는 전달문 2-1-4절.
+- #205 2차 판정(11-02): head `b54818f` 수용. README가 평가 측 보완본 적용 사본과 바이트 단위로 같다(평가 측 대조). 필수 CI 전부 성공(인용). 사용자 병합 대기. 0.17.0 버전 커밋보다 먼저 병합되면 버전 커밋의 README 덩어리는 update_readme 재실행으로 만든다(전달문 2-1-4).
+- #205 Steve 병합(11-02, 사용자 지시 "#205병합"): `d836a8b`(병합 커밋, expectedHeadSha `b54818f`). 0.17.0 버전 커밋 수정본을 `d836a8b` 기준으로 다시 만들었다(5개 파일 +19/−1, check_version_policy 위반 없음·update_readme --check·관련 시험 실패 0).
