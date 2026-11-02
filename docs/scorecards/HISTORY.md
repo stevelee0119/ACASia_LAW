@@ -1725,3 +1725,4 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
 - #205 2차 판정(11-02): head `b54818f` 수용. README가 평가 측 보완본 적용 사본과 바이트 단위로 같다(평가 측 대조). 필수 CI 전부 성공(인용). 사용자 병합 대기. 0.17.0 버전 커밋보다 먼저 병합되면 버전 커밋의 README 덩어리는 update_readme 재실행으로 만든다(전달문 2-1-4).
 - #205 Steve 병합(11-02, 사용자 지시 "#205병합"): `d836a8b`(병합 커밋, expectedHeadSha `b54818f`). 0.17.0 버전 커밋 수정본을 `d836a8b` 기준으로 다시 만들었다(5개 파일 +19/−1, check_version_policy 위반 없음·update_readme --check·관련 시험 실패 0).
 - 평가 PR #206 Steve 병합(11-02, 사용자 지시 "#206병합"): `2c89b3a`(병합 커밋, expectedHeadSha `883b29f`, 필수 CI 전부 성공). 0.17.0 판정서가 Steve에 반영됨 → 구현 측 0.17.0 버전 커밋(전달문 2-1-4) 착수 가능. 수정본이 `2c89b3a`에 그대로 적용됨(update_readme --check·check_version_policy 위반 없음, 평가 측 확인).
+- #207 0.17.0 버전 커밋 판정(11-03 한국): head `70d96f6` 수용. base `2c89b3a` 대비 diff = 평가 측 수정본(5개 파일 +19/−1, 변경 줄 일치), Agent: implementer, 필수 CI 전부 성공(인용). 수정본은 같은 base에서 check_version_policy 위반 없음·update_readme --check 통과(평가 측 재실행). 사용자 병합 대기 → 릴리스 PR(Steve → main).
