@@ -3,7 +3,8 @@
  "status": {
   "deployed": 93,
   "known_open": 5,
-  "open": 4
+  "open": 3,
+  "merged": 1
  },
  "open": [
   {
@@ -50,10 +51,10 @@
   },
   {
    "id": "TK-130",
-   "status": "open",
+   "status": "merged",
    "kind": "existing",
    "found_on": "2026-11-02",
-   "note": "2026-11-02 사용자 지시(lexdiff 노하우 분석·이식 지시): 문서에 정식명이 없는 비공식 약칭 법령명이 LAW_ALIASES·문서 근거·공식 약칭 완전일치 모두 실패하면 STATUTE_NONEXISTENT CRITICAL(오탐). 해결: 어간 재검색+공식 약칭 부분수열 단일 후보 추정, 조문 실존 시에만 LOW·PARTIALLY_VERIFIED, 아니면 원래 CRITICAL 유지. 부수: 제21항 이상 원숫자(temporal_review·provision_content). 평가 측 수정본 patches/TK-130_abbreviation_inference_on_debbe83.diff 사전 검증. 배정 Antigravity, 착수는 사용자 결정. · 11-02 Astra 재검증 반영 2판: 결과 구분(FOUND/NO_CANDIDATE/AMBIGUOUS/LOOKUP_FAILED/INCOMPLETE, 후보 상세 실패는 UNVERIFIED), 조항 상태별 설명, law_id 고정, 후보 탐색 쪽 상한(검색어 2×3쪽). 원숫자는 TK-130a로 분리 선행. · TK-130a Steve 병합 9a42d1a(11-02, #197 head cd31262). TK-130b 진행 중."
+   "note": "2026-11-02 사용자 지시(lexdiff 노하우 분석·이식 지시): 문서에 정식명이 없는 비공식 약칭 법령명이 LAW_ALIASES·문서 근거·공식 약칭 완전일치 모두 실패하면 STATUTE_NONEXISTENT CRITICAL(오탐). 해결: 어간 재검색+공식 약칭 부분수열 단일 후보 추정, 조문 실존 시에만 LOW·PARTIALLY_VERIFIED, 아니면 원래 CRITICAL 유지. 부수: 제21항 이상 원숫자(temporal_review·provision_content). 평가 측 수정본 patches/TK-130_abbreviation_inference_on_debbe83.diff 사전 검증. 배정 Antigravity, 착수는 사용자 결정. · 11-02 Astra 재검증 반영 2판: 결과 구분(FOUND/NO_CANDIDATE/AMBIGUOUS/LOOKUP_FAILED/INCOMPLETE, 후보 상세 실패는 UNVERIFIED), 조항 상태별 설명, law_id 고정, 후보 탐색 쪽 상한(검색어 2×3쪽). 원숫자는 TK-130a로 분리 선행. · TK-130a Steve 병합 9a42d1a(11-02, #197 head cd31262). TK-130b 진행 중. · TK-130b Steve 병합 76f5fbb(11-02, #198 head 4b8bf01). a·b 모두 merged, 배포 대기."
   },
   {
    "id": "TK-131",
