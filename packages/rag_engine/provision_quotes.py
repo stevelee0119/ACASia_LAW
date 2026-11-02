@@ -12,7 +12,8 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional, Tuple
 
-CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+# 항 번호 원숫자 1~50. ㉑(U+3251)부터는 ⑳(U+2473)와 코드 범위가 떨어져 있다(TK-130a, temporal_review.CIRCLED와 같은 범위).
+CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿"
 RULE_SUFFIX = r"(?:지침|규정|훈령|예규|규칙|내규|요령|기준|수칙|세칙|매뉴얼)"
 NAMED_RULE_RE = re.compile(r"[「『]\s*(?P<name>[^」』\n]{2,60}?" + RULE_SUFFIX + r")\s*[」』]")
 PROVISION_RE = re.compile(

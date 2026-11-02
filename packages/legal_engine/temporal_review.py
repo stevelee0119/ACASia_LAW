@@ -184,7 +184,7 @@ def extract_item_body(article_text: str, item: str) -> Optional[str]:
         return None
     n = int(item)
     # 시작: (시작 또는 개행) + n + "."
-    # 끝: 다음 호 (\n\s*\d+\.) 또는 다음 항 (\n\s*[①-⑳]) 또는 텍스트 끝
+    # 끝: 다음 호 (\n\s*\d+\.) 또는 다음 항 (\n\s*CIRCLED의 원숫자 ①~㊿) 또는 텍스트 끝
     pattern = re.compile(rf"(?:^|\n)\s*{n}\.\s*(?P<body>.*?)(?=(?:\n\s*\d+\.\s*)|(?:\n\s*[{CIRCLED}])|\Z)", re.DOTALL)
     m = pattern.search(article_text or "")
     if m:
