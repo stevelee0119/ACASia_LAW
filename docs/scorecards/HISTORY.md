@@ -1574,3 +1574,4 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
     - 관련 23개 파일 + acceptance + regression 3,859건 실패 0.
     - 고정 점수 변화 0.
   - 서면 목록 기호용 `[①-⑳]`(evidence_consistency·paragraph_reconstruction·reading_text)은 이번 범위에서 뺐다.
+- **#197 TK-130a 2차 판정(11-02 한국) — 수용:** head `cd31262`. 추가 커밋이 보완본과 줄 단위로 일치한다. 같은 SHA의 CI(인용)는 전부 성공했다: 테스트 3종, Docker OCR, 점수 하락 게이트, 은퇴 세트 비교, CodeQL 4종과 새 경고 게이트. Sourcery 스레드 4개는 해결됐다. 사용자 '#197병합' 대기. verify_all 전체 실행은 릴리스 후보에서 한다.
