@@ -43,8 +43,14 @@ def _context_review(verdict, reviews, mask=None):
             continue
         result["reason"] = review.get("reason") or result["reason"]
         quotes = review.get("evidence_quotes") or []
+        # 의미 검토가 실제로 보낸 구간이 기록돼 있으면 그 구간 하나 안에서만 근거를 인정한다(TK-131).
+        spans = [(s.get("masked_start"), s.get("masked_end"))
+                 for s in ((review.get("evidence_pack") or {}).get("segments") or [])
+                 if isinstance(s.get("masked_start"), int) and isinstance(s.get("masked_end"), int)]
+        sent = [source[a:b] for a, b in spans] if spans else [source]
+        within = lambda q: isinstance(q, str) and bool(q.strip()) and any(q in part for part in sent)
         if not (source and review.get("model_executed") and review.get("source_quotes_validated")
-                and quotes and all(isinstance(q, str) and q.strip() and q in source for q in quotes)):
+                and quotes and all(within(q) for q in quotes)):
             result["reason"] = "공식 원문과 근거 인용을 확인하지 못해 취지 동일 여부는 판단 유보합니다."
             continue
         opinions = []
@@ -52,7 +58,7 @@ def _context_review(verdict, reviews, mask=None):
             opinion = stage.get("verdict") or {}
             evidence = opinion.get("evidence_quotes") or []
             if (stage.get("used") and opinion.get("rationale") and evidence
-                    and all(isinstance(q, str) and q.strip() and q in source for q in evidence)):
+                    and all(within(q) for q in evidence)):
                 opinions.append({"stage": stage.get("name", "model"), "status": opinion.get("status"),
                                  "rationale": opinion["rationale"], "evidence_quotes": evidence})
         if opinions:
