@@ -111,7 +111,8 @@ def test_informal_abbreviation_is_inferred_not_reported_absent(adapter, monkeypa
 def test_article_missing_in_candidate_keeps_absence(adapter, monkeypatch):
     install(monkeypatch, adapter, by_stem([row(법령약칭명="시험재해처벌법")]), article="7")
     verdict = verify(adapter, cite("시험재해법", "6"))
-    assert "STATUTE_NONEXISTENT" in types(verdict)
+    absent = [f for f in verdict.findings if f.type.value == "STATUTE_NONEXISTENT"]
+    assert len(absent) == 1 and absent[0].severity.value == "CRITICAL"   # 기존 심각도 그대로
     assert verdict.review["law_alias"]["found"] is False
 
 
@@ -222,3 +223,93 @@ def test_unconfirmed_provision_says_only_the_name_was_inferred(adapter, monkeypa
     assert len(found) == 1 and found[0].confidence_features["provision_status"] == status
     assert phrase in found[0].detail and "인용 조문이 그 법령의 조회 버전에 있어" not in found[0].detail
     assert verdict.status.value != "VERIFIED"
+
+
+# --- 값·문장이 다른 양성 3꼴(AGENTS.md L13): 법령·조문 구조·인용 문장이 모두 다르다 ---------------------------------
+def other_law(name, law_id, mst, article, text):
+    """다른 합성 법령 하나의 목록 행과 본문 응답."""
+    listing = {"법령명한글": name, "법령ID": law_id, "법령일련번호": mst, "공포일자": "20190101",
+               "시행일자": "20190701", "공포번호": "7", "제개정구분명": "제정"}
+    detail = {"법령": {
+        "기본정보": {"법령ID": law_id, "법령일련번호": mst, "법령명_한글": name, "시행일자": "20190701",
+                 "공포일자": "20190101", "공포번호": "7"},
+        "조문": {"조문단위": [{"조문번호": article, "조문여부": "조문", "조문시행일자": "20190701", "조문내용": text}]},
+        "부칙": {"부칙단위": {"부칙공포일자": "20190101", "부칙공포번호": "7",
+                         "부칙내용": ["제1조(시행일) 이 법은 2019년 7월 1일부터 시행한다."]}}}}
+    return listing, detail
+
+
+VARIED = [
+    # (적힌 이름, 인용 원문, 조문 번호, 공식 정식명, 공식 약칭, 조문 본문)
+    ("가상보건법", "가상보건법 제12조에 따라 지원을 신청하였다", "12",
+     "가상보건 진흥 및 지원에 관한 법률", "가상보건진흥법", "제12조(지원) 국가는 비용을 지원할 수 있다."),
+    ("모의교통특별법", "모의교통특별법 제3조는 안전관리 의무를 정한다", "3",
+     "모의교통 안전관리 특별법", None, "제3조(의무) 운영자는 안전관리계획을 세워야 한다."),
+    ("표본정보법", "피고는 표본정보법 제27조를 위반하였다고 주장한다", "27",
+     "표본정보 보호 및 이용에 관한 법률", "표본정보보호법", "제27조(금지) 누구든지 정보를 누설하여서는 아니 된다."),
+]
+
+
+@pytest.mark.parametrize("written,raw,article,name,abbr,text", VARIED)
+def test_varied_laws_and_sentences_are_inferred(adapter, monkeypatch, written, raw, article, name, abbr, text):
+    listing, detail = other_law(name, "000777", "777", article, text)
+    if abbr:
+        listing["법령약칭명"] = abbr
+
+    def request(url, *, params):
+        if "MST" in params:
+            payload = detail
+        else:
+            q = (params.get("query") or "").replace(" ", "")
+            hit = params.get("LID") or (q and q in name.replace(" ", ""))
+            rows = [listing] if hit else []
+            payload = {"LawSearch": {"totalCnt": len(rows), "page": 1, "law": rows}}
+        return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
+    monkeypatch.setattr(adapter, "_http_get", request)
+    citation = Citation.create(CitationType.STATUTE, raw, law_name=written, article=article)
+    verdict = verify(adapter, citation)
+    assert "STATUTE_NONEXISTENT" not in types(verdict)
+    assert verdict.review["law_alias"]["resolved"] == name
+    assert verdict.levels["existence"] == "INFERRED_FROM_ABBREVIATION"
+
+
+# --- 명세 판정값: 추정 성공은 NOT_FOUND가 아니다 ---------------------------------------------------------------------
+def test_spec_verdict_for_inferred_statute_is_partial_not_absent(adapter, monkeypatch):
+    from packages.legal_engine.spec_mapping import spec_source_verdict
+    install(monkeypatch, adapter, by_stem([row(법령약칭명="시험재해처벌법")]))
+    verdict = verify(adapter, cite("시험재해법"))
+    value = spec_source_verdict(verdict.levels, verdict.notes, has_official_record=bool(verdict.official_record))
+    assert str(value) == "PARTIAL"
+
+
+@pytest.mark.parametrize("levels,expected", [
+    ({"existence": "INFERRED_FROM_ABBREVIATION", "content": "CONTRADICTED"}, "MISMATCH"),
+    ({"existence": "NOT_FOUND"}, "NOT_FOUND"),                    # 대조: 부존재는 그대로
+    ({"existence": "VERIFIED", "content": "VERIFIED", "temporal": "VERIFIED"}, "VERIFIED_EXACT"),
+])
+def test_spec_verdict_controls(levels, expected):
+    from packages.legal_engine.spec_mapping import spec_source_verdict
+    assert str(spec_source_verdict(levels, [], has_official_record=True)) == expected
+
+
+# --- 약칭 후보 조회 시간 초과: 재시도 소진 뒤 부존재 CRITICAL을 남기지 않는다 -------------------------------------
+def test_timed_out_candidate_lookup_leaves_no_absence_finding(tmp_path, monkeypatch):
+    # 실제 전송 계층(transport) 경로로 시간 초과를 낸다. 정확 이름 목록은 0건, 어간 검색은 계속 시간 초과.
+    from dataclasses import replace
+    from packages.source_adapters import transport
+    from test_source_transport import install_mock
+
+    def handler(request):
+        query = request.url.params.get("query")
+        if query and query != "시험재해법":
+            raise httpx.ReadTimeout("candidate lookup timed out", request=request)
+        return httpx.Response(200, json={"LawSearch": {"totalCnt": 0, "page": 1, "law": []}})
+    install_mock(monkeypatch, handler)
+    law = LawGoKrAdapter(mirror=LocalLegalMirror(root=tmp_path / "empty"))
+    law.settings = replace(law.settings, allow_network=True, law_go_kr_oc="test")
+    with transport.source_lookup_session(120, retry_backoff=0):
+        result = LegalVerifier(SimpleNamespace(law=law)).verify_citations([cite("시험재해법")])
+    verdict = result.data["verdicts"][0]
+    assert verdict["source_lookup"]["retryable"]
+    assert verdict["status"] == "UNVERIFIED"
+    assert not any(f.type.value == "STATUTE_NONEXISTENT" for f in result.findings)

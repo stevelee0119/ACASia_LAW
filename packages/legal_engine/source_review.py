@@ -783,9 +783,9 @@ def compared_label(citation) -> str:
 
 INFERENCE_NOTES = {
     "NO_CANDIDATE": "공식 목록에서 글자 순서가 맞는 법령 후보를 찾지 못했다",
-    "AMBIGUOUS": "글자 순서가 맞는 법령 후보가 여럿이고 우열이 분명하지 않아 하나로 정하지 않았다",
+    "AMBIGUOUS": "글자 순서가 맞는 법령 후보가 여럿이고 점수 차이가 작아 추정을 보류했다",
     "LOOKUP_FAILED": "약칭 후보 목록 조회에 실패해 후보를 확인하지 못했다",
-    "INCOMPLETE": "약칭 후보 목록이 탐색 상한을 넘어 후보를 정하지 않았다",
+    "INCOMPLETE": "약칭 후보 목록이 탐색 상한을 넘어 추정을 보류했다",
 }
 
 
@@ -821,7 +821,7 @@ def _infer_abbreviation(verifier, verdict, citation, as_of, current_date):
         record["outcome"] = "CANDIDATE_LOOKUP_FAILED"
         verdict.notes.append(
             f"'{citation.law_name}'의 약칭 후보 「{candidate['law_name']}」을(를) 골랐으나 그 법령의 시행 버전·전문 조회를 "
-            "마치지 못했다(법령 ID 확인 포함). 존재하지 않는 법령으로 단정하지 않는다")
+            "마치지 못했다(법령 ID 확인 포함). 부존재 근거로 보지 않는다")
         return {"candidate": candidate}, None
     record["found"] = True
     verdict.notes.append(

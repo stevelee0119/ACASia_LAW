@@ -37,6 +37,11 @@ def spec_source_verdict(levels: Dict[str, str], notes: Sequence[str] = (),
     temporal = levels.get("temporal", "")
     metadata = levels.get("metadata") or levels.get("level2") or ""
 
+    if existence == "INFERRED_FROM_ABBREVIATION" and has_official_record:
+        # 비공식 약칭을 공식 법령으로 추정해 조문을 대조한 경우(TK-130b). 부존재가 아니고 확인 완료도 아니다.
+        if content == "CONTRADICTED" or metadata == "CONTRADICTED":
+            return SourceVerdict.MISMATCH
+        return SourceVerdict.PARTIAL
     if existence != "VERIFIED":
         if _any(NOT_FOUND_HINTS, notes):
             return SourceVerdict.NOT_FOUND
