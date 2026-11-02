@@ -30,6 +30,8 @@ _USED_FIELDS = {
 
 
 EXACT_LAW_NOT_FOUND = "EXACT_LAW_NOT_FOUND:"
+# TK-130 약칭 후보 탐색 전용 목록 쪽 상한(검색어당). 넘으면 후보를 고르지 않는다.
+INFERENCE_MAX_PAGES = 3
 
 
 class OfficialLegalMixin:
@@ -80,11 +82,11 @@ class OfficialLegalMixin:
         except Exception as exc:
             return self._transport_unavailable(audit_query, exc), None
 
-    def _legal_list(self, audit_query, target, root, key, **filters):
+    def _legal_list(self, audit_query, target, root, key, *, max_pages=100, **filters):
         records, sources = [], []
         total = None
         seen_pages = set()
-        for page in range(1, 101):
+        for page in range(1, max_pages + 1):
             response, payload = self._legal_json(
                 audit_query, target=target, display=100, page=page, **filters)
             sources.extend(response.source_records)
@@ -118,7 +120,7 @@ class OfficialLegalMixin:
                 return AdapterResponse(AdapterStatus.ERROR, [], sources[0], str(exc), sources)
         return AdapterResponse(AdapterStatus.ERROR, [], sources[0], "Pagination limit reached", sources)
 
-    def search_law_history(self, law_name):
+    def search_law_history(self, law_name, *, law_id=None):
         from .law_go_kr import _normalize_law_payload, _same_law_name
 
         listed = self._legal_list(law_name, "eflaw", "LawSearch", "law",
@@ -144,7 +146,14 @@ class OfficialLegalMixin:
                                    "Missing or ambiguous exact law identity", listed.source_records)
         # 동명 법령이 전부개정 등으로 복수 law_id를 갖는 경우(예: 근로기준법 구법과 현행법),
         # 시행일자·공포일자가 가장 최신인 법령의 law_id를 채택하여 연혁 단절을 방지한다.
-        if len(identities) == 1:
+        pinned = str(law_id or "").lstrip("0")
+        if pinned:
+            # 호출 측이 고른 법령 ID로 고정한다(TK-130: 추정 후보와 대조 법령이 달라지지 않게).
+            if pinned not in identities:
+                return AdapterResponse(AdapterStatus.ERROR, [], listed.source_record,
+                                       "Pinned law identity is not in the exact-name list", listed.source_records)
+            target_lid = pinned
+        elif len(identities) == 1:
             target_lid = next(iter(identities))
         else:
             sorted_named = sorted(
@@ -166,12 +175,41 @@ class OfficialLegalMixin:
                 history.message = "History contains an unrelated law identity"
         return history
 
-    def resolve_statute(self, law_name, *, as_of=None, current_date=None):
+    def infer_law_by_abbreviation(self, law_name):
+        """적힌 이름이 목록에 없을 때 어간으로 다시 찾아 공식 법령 후보를 고른다(TK-130).
+
+        존재 확인이 아니다. message는 결과 구분이다: FOUND / NO_CANDIDATE / AMBIGUOUS /
+        LOOKUP_FAILED / INCOMPLETE. 검색어는 최대 2개(어간, 앞 4자), 검색어마다 목록은
+        INFERENCE_MAX_PAGES쪽(쪽당 100건)까지만 읽는다. 상한에 걸리면 INCOMPLETE이며 후보를 고르지 않는다.
+        """
+        from packages.legal_engine.law_name_inference import pick, stem
+        from .law_go_kr import _normalize_law_payload
+
+        body = stem(law_name)
+        # 어간이 정식명 안에 이어 나오지 않을 수 있다("…예방 및 처벌…" ← "…처벌법"). 앞 4자로 한 번만 더 찾는다.
+        queries = [q for q in dict.fromkeys([body, body[:4]]) if len(q) >= 3]
+        sources, first, ambiguous = [], None, []
+        for query in queries:
+            listed = self._legal_list(query, "eflaw", "LawSearch", "law", max_pages=INFERENCE_MAX_PAGES,
+                                      query=query, nw="1,2,3", sort="efasc")
+            sources.extend(listed.source_records or [])
+            first = first or listed.source_record
+            if not listed.ok or not listed.complete:
+                code = "INCOMPLETE" if "Pagination limit" in (listed.message or "") else "LOOKUP_FAILED"
+                return AdapterResponse(AdapterStatus.READY, [], first, code, sources, True)
+            chosen, ranked = pick(law_name, _normalize_law_payload({"LawSearch": {"law": listed.records}}))
+            if chosen:
+                return AdapterResponse(AdapterStatus.READY, [chosen], first, "FOUND", sources, True)
+            ambiguous = ambiguous or ranked
+        return AdapterResponse(AdapterStatus.READY, ambiguous, first,
+                               "AMBIGUOUS" if ambiguous else "NO_CANDIDATE", sources, True)
+
+    def resolve_statute(self, law_name, *, as_of=None, current_date=None, law_id=None):
         current = legal_date(current_date) if current_date is not None else today_korea()
         when = legal_date(as_of) if as_of is not None else current
         if not current or not when or when > current:
             return self._unavailable(law_name, AdapterStatus.ERROR, "Invalid or future reference date")
-        history = self.search_law_history(law_name)
+        history = self.search_law_history(law_name, law_id=law_id) if law_id else self.search_law_history(law_name)
         if not history.ok or not history.complete or history.message.startswith(EXACT_LAW_NOT_FOUND):
             return history
         try:
