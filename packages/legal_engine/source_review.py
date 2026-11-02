@@ -67,6 +67,16 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
             verdict.notes.append("법령 약칭 후보를 확인하지 못했다. 정식명칭·조회 상태를 확인해야 한다")
             verdict.findings.append(verifier._unverified_finding(citation, verdict.notes[-1], retried.source_record))
             return verdict
+    inferred = None
+    if response.ok and (response.message or "").startswith("EXACT_LAW_NOT_FOUND:") and not alias:
+        inferred, retried = _infer_abbreviation(verifier, verdict, citation, as_of, current_date)
+        if inferred is not None and retried is None:
+            # 후보는 골랐으나 그 법령의 연혁·전문 조회를 마치지 못했다: 부존재가 아니라 미확인이다.
+            verdict.findings.append(verifier._unverified_finding(citation, verdict.notes[-1], None))
+            return verdict
+        if inferred is not None:
+            inferred["original"] = response
+            response = retried
     if response.ok and (response.message or "").startswith("EXACT_LAW_NOT_FOUND:"):
         _law_absent(verdict, response, verifier=verifier)
         return verdict
@@ -77,6 +87,9 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
     official = response.records[0]
     verdict.official_record = official
     verdict.levels.update(existence="VERIFIED", version="VERIFIED")
+    if inferred is not None:
+        # 약칭 추정으로 찾은 법령은 존재 '확인'이 아니다. 조문 대조는 하되 확인됨으로 올리지 않는다.
+        verdict.levels["existence"] = "INFERRED_FROM_ABBREVIATION"
     verdict.review["version"] = {key: official.get(key) for key in (
         "law_id", "version_id", "effective_from", "effective_until", "promulgation_date",
         "date_basis", "history_complete", "current_version", "current_as_of")}
@@ -95,8 +108,18 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
     verdict.levels["article"] = provision["status"]
     verdict.levels["provision"] = provision["status"]
     if provision["status"] == "NOT_FOUND":
+        if inferred is not None:
+            # 추정 법령에 인용 조문이 없으면 추정을 버리고 원래 판정(법령 목록 미발견)으로 돌아간다.
+            verdict.review["law_alias"].update(found=False, outcome="ARTICLE_NOT_IN_CANDIDATE")
+            verdict.notes.append("추정 후보 법령의 조회 버전에 인용 조문이 없어 추정을 버리고 원래 판정을 유지한다")
+            verdict.official_record = None
+            verdict.levels.update(existence="NOT_FOUND", version="UNVERIFIED")
+            _law_absent(verdict, inferred["original"], verifier=verifier)
+            return verdict
         _article_absent(verdict, official, provision, as_of)
         return verdict
+    if inferred is not None:
+        _abbreviation_inferred(verdict, inferred["candidate"], provision["status"])
     if provision["status"] != "VERIFIED":
         verdict.notes.append(provision.get("reason", "지정 조항호목의 전문을 확인하지 못했다"))
         return verdict
@@ -145,6 +168,8 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
         # 기준일이 없으면 본문 대조를 마쳐도 PARTIALLY_VERIFIED로 두고, 본문 대조 완료는
         # component_summary의 content_confirmed로 따로 센다.
         verdict.status = VerificationStatus.VERIFIED
+    if inferred is not None and verdict.status == VerificationStatus.VERIFIED:
+        verdict.status = VerificationStatus.PARTIALLY_VERIFIED
     # v3 D4: 기준일이 없으면 현행 버전 기준 일치로 확인 완료하고 기준일 확인은 권고로만 둔다.
     verdict.status, label, advisory = provision_label(verdict.levels, verdict.status, as_of)
     verdict.review["verification_label"] = label
@@ -754,3 +779,81 @@ def compared_label(citation) -> str:
     if resolved:
         return f"{resolved}('{citation.raw_text}')"
     return citation.raw_text
+
+
+INFERENCE_NOTES = {
+    "NO_CANDIDATE": "공식 목록에서 글자 순서가 맞는 법령 후보를 찾지 못했다",
+    "AMBIGUOUS": "글자 순서가 맞는 법령 후보가 여럿이고 우열이 분명하지 않아 하나로 정하지 않았다",
+    "LOOKUP_FAILED": "약칭 후보 목록 조회에 실패해 후보를 확인하지 못했다",
+    "INCOMPLETE": "약칭 후보 목록이 탐색 상한을 넘어 후보를 정하지 않았다",
+}
+
+
+def _infer_abbreviation(verifier, verdict, citation, as_of, current_date):
+    """문서에 정식 법령명이 없을 때 공식 목록에서 약칭 후보를 골라 그 법령 ID로 다시 조회한다(TK-130).
+
+    돌려주는 값: (None, None) 후보 없음·모호·후보 목록 조회 실패 — 호출 측은 기존 판정을 유지한다.
+    (inferred, None) 후보는 골랐으나 상세 조회 실패·ID 불일치 — 호출 측은 미확인으로 남긴다.
+    (inferred, response) 후보 법령의 시행 버전 응답.
+    """
+    infer = getattr(verifier.registry.law, "infer_law_by_abbreviation", None)
+    if infer is None:
+        return None, None
+    guess = infer(citation.law_name)
+    verdict.source_records.extend(guess.source_records or [])
+    outcome = guess.message if guess.ok else "LOOKUP_FAILED"
+    record = {"written": citation.law_name, "outcome": outcome, "found": False}
+    verdict.review["law_alias"] = record
+    if outcome != "FOUND":
+        record["candidates"] = [c.get("law_name") for c in (guess.records or [])][:5]
+        verdict.notes.append(f"'{citation.law_name}' 약칭 추정: {INFERENCE_NOTES.get(outcome, outcome)}")
+        return None, None
+    candidate = guess.records[0]
+    record.update(resolved=candidate["law_name"], law_id=candidate["law_id"], basis=candidate["basis"],
+                  score=candidate["score"], candidate_count=candidate.get("candidate_count", 1),
+                  official_abbreviation=candidate.get("abbreviation"))
+    retried = verifier.registry.law.resolve_statute(candidate["law_name"], as_of=as_of, current_date=current_date,
+                                                    law_id=candidate["law_id"])
+    verdict.source_records.extend(retried.source_records)
+    official = retried.records[0] if retried.ok and retried.complete and len(retried.records) == 1 else None
+    same_id = official is not None and str(official.get("law_id") or "").lstrip("0") == candidate["law_id"]
+    if not same_id:
+        record["outcome"] = "CANDIDATE_LOOKUP_FAILED"
+        verdict.notes.append(
+            f"'{citation.law_name}'의 약칭 후보 「{candidate['law_name']}」을(를) 골랐으나 그 법령의 시행 버전·전문 조회를 "
+            "마치지 못했다(법령 ID 확인 포함). 존재하지 않는 법령으로 단정하지 않는다")
+        return {"candidate": candidate}, None
+    record["found"] = True
+    verdict.notes.append(
+        f"'{citation.law_name}'은(는) 공식 법령 목록에 같은 이름이 없어, 조회한 후보 중 우선 후보 「{candidate['law_name']}」"
+        f"(법령 ID {candidate['law_id']})로 추정해 조문을 대조했다(추정, 정식명 확인 필요)")
+    return {"candidate": candidate}, retried
+
+
+PROVISION_PHRASES = {
+    "VERIFIED": "인용 조문이 그 법령의 조회 버전에 있어 이 법령으로 대조했다",
+    "DELETED": "법령명 후보만 추정됐다. 지정 조문은 조회 버전에서 삭제된 조문이다",
+    "UNVERIFIED": "법령명 후보만 추정됐다. 지정 조항은 확인하지 못했다",
+}
+
+
+def _abbreviation_inferred(verdict, candidate, provision_status):
+    """약칭 추정 결과를 LOW로 남긴다. 조항 확인 여부에 따라 설명을 나눈다(TK-130)."""
+    citation = verdict.citation
+    ids = [r.source_record_id for r in verdict.source_records]
+    phrase = PROVISION_PHRASES.get(provision_status, PROVISION_PHRASES["UNVERIFIED"])
+    count = candidate.get("candidate_count", 1)
+    verdict.findings.append(Finding.create(
+        type=FindingType.LAW_CITATION_ERROR, status=VerificationStatus.PARTIALLY_VERIFIED, severity=Severity.LOW,
+        evidence_grade=EvidenceGrade.B,
+        title=f"비공식 약칭으로 적힌 법령(추정: {candidate['law_name']}): {citation.law_name}",
+        detail=(f"공식 법령 목록에 '{citation.law_name}'이라는 이름은 없다. 공식 목록을 조회한 후보 {count}개 중 "
+                f"우선 후보 「{candidate['law_name']}」(법령 ID {candidate['law_id']})로 추정했다. {phrase}. "
+                "추정이므로 정식 법령명으로 고쳐 적는 것이 좋다."),
+        document_id=citation.document_id, block_id=citation.block_id, page=citation.page, span=citation.span,
+        engine="legal_engine", source_record_ids=ids, tags=["LEGAL", "STATUTE", "ABBREVIATION_INFERRED"],
+        confidence_features={"verdict_label": "ABBREVIATION_INFERRED", "law_name": citation.law_name,
+                             "resolved_law_name": candidate["law_name"], "law_id": candidate["law_id"],
+                             "basis": candidate["basis"], "score": candidate["score"],
+                             "candidate_count": count, "provision_status": provision_status},
+    ))
