@@ -1724,3 +1724,20 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
 - 0.17.0 판정서(minor, added·changed·fixed, 합산 RER 0)를 `version_verdicts.json`에 넣었다. 버전 커밋 수정본 `patches/v0.17.0_version_commit.diff`를 사전 검증했다(check_version_policy 위반 없음, update_readme --check, 시험 49건). 지시는 전달문 2-1-4절.
 - #205 2차 판정(11-02): head `b54818f` 수용. README가 평가 측 보완본 적용 사본과 바이트 단위로 같다(평가 측 대조). 필수 CI 전부 성공(인용). 사용자 병합 대기. 0.17.0 버전 커밋보다 먼저 병합되면 버전 커밋의 README 덩어리는 update_readme 재실행으로 만든다(전달문 2-1-4).
 - #205 Steve 병합(11-02, 사용자 지시 "#205병합"): `d836a8b`(병합 커밋, expectedHeadSha `b54818f`). 0.17.0 버전 커밋 수정본을 `d836a8b` 기준으로 다시 만들었다(5개 파일 +19/−1, check_version_policy 위반 없음·update_readme --check·관련 시험 실패 0).
+- 평가 PR #206 Steve 병합(11-02, 사용자 지시 "#206병합"): `2c89b3a`(병합 커밋, expectedHeadSha `883b29f`, 필수 CI 전부 성공). 0.17.0 판정서가 Steve에 반영됨 → 구현 측 0.17.0 버전 커밋(전달문 2-1-4) 착수 가능. 수정본이 `2c89b3a`에 그대로 적용됨(update_readme --check·check_version_policy 위반 없음, 평가 측 확인).
+- #207 0.17.0 버전 커밋 판정(11-03 한국): head `70d96f6` 수용. base `2c89b3a` 대비 diff = 평가 측 수정본(5개 파일 +19/−1, 변경 줄 일치), Agent: implementer, 필수 CI 전부 성공(인용). 수정본은 같은 base에서 check_version_policy 위반 없음·update_readme --check 통과(평가 측 재실행). 사용자 병합 대기 → 릴리스 PR(Steve → main).
+- #207 Steve 병합(11-03 한국, 사용자 지시 "#207병합"): `49e322d`(병합 커밋, expectedHeadSha `70d96f6`).
+- 릴리스 브랜치(11-03 한국, 사용자 지시 "release 브랜치 푸시"): `release/0.17.0` = main `2f06f9a` + Steve `49e322d` 병합 `ba2c3aa`(충돌 없음). 제품 코드 = Steve, #189 결정(sealed_20261025·README 줄·승인 목록 항목 main 미포함) 자동 유지(Steve 대비 11개 파일만 다름). 자체 점검: check_version_policy --base main 위반 없음, check_protected_paths 통과, update_readme --check 통과, tests/acceptance 실패 0. 릴리스 PR #208(→ main) 생성.
+- 릴리스 0.17.0 main 병합(11-03 한국, 사용자 지시 "#208병합"): #208 병합 커밋 `deb387d`(head `ba2c3aa`, expectedHeadSha 확인, merge commit, 필수 CI 전부 성공). 배포 확인(`/api/health` version 0.17.0·commit `deb387d`) 대기 → README 현재 운영 버전·티켓 deployed·온라인 점검.
+- 0.17.0 배포 확인(11-03 한국, 사용자 회신): `/api/health` version 0.17.0, commit `deb387d3bb7a264d34abf593e9fd8e29a3a28fb2`, database ok. README 현재 운영 버전 0.17.0(2026-11-03 배포)·배지, 티켓 TK-130·131·132·133 deployed, TK-76은 2주기 1항만 배포(유형 잔여 open). 평가 브랜치에 Steve `49e322d` 병합(README 갱신 충돌 방지). 다음: 배포 직후 온라인 점검(4절).
+
+### 2026-11-03 0.17.0 배포 직후 온라인 점검 (RELEASE_PROCEDURE 4절)
+
+- 보고서: 사용자 실행, run `run_652b72461668487a`. manifest 구현 커밋 `deb387d`가 릴리스 병합 SHA와 일치한다.
+  - 조건: 법률지침 ON(prompt v0.2+kr2), 효율 라우팅 ON, 교차검증 auto, 네트워크 켬, OCR tesseract 5.5.0.
+  - 모델 실행 28건 모두 성공(anthropic 24, openai 3, gemini 1), 오류 0.
+- 채점(`score_report.py`, case9 명세 규칙 2판, 평가 측 재실행): **23/23**. 10-29 0.16.0 같은 조건(ON·kr2) 23/23과 같고, 새 실패 0 → 4.3 '정상'. `first_touch_log.jsonl`에 기록했다.
+- 0.17.0 변경의 온라인 동작
+  - TK-131 판례 근거 발췌: 이 문서에서는 판례 의미 검토(semantic_reviews)가 0건이다. 인용 판례가 공식 DB에서 확인되지 않아(EX-1) 전문을 받지 못했기 때문이다. 근거 포함률은 측정하지 못했다(해당 입력 없음).
+  - TK-130b 약칭 추정: 법령 판정 10건 중 1건에서 추정을 시도했고 결과는 NO_CANDIDATE다. 정책대로 기존 판정(NOT_FOUND)을 유지했다. FP-1(Drive 육군 규정을 '없는 법령' HIGH로 알리지 않음)은 통과했다. 추정 성공 사례가 없어 정확도는 측정하지 못했다.
+  - EVI-LOGIC·HWP 표: 이 문서(PDF 준비서면)에는 해당 꼴이 없다. 측정 대상이 아니다.
