@@ -75,7 +75,8 @@ _INCAP_RE = re.compile(r"잠든|잠들어\s*있|잠자(?:던|고\s*있)|자고\s
 _FIRST_PERSON_RE = re.compile(r"저는|제가|저도|본인은|진술인은|증인은|나는|내가")
 # 다른 주어(…가·…이·…은·…는). '…이 아니라'(서술격)와 '-이'로 끝나는 부사(깊이·같이 등)는 주어가 아니다.
 _OTHER_SUBJECT_RE = re.compile(r"([가-힣]{2,})(?:가|는|은|이)\s(?!아니)")
-_ADVERB_I = ("깊", "같", "많", "일찍", "곤", "가만", "조용", "편")
+# '-이' 부사 가운데 이 정규식(앞 두 글자 이상)에 걸리는 것만 낱말 전체로 비교한다(끝 글자 비교는 '남편이'를 부사로 오판).
+_ADVERB_I = ("일찍", "곰곰", "틈틈", "깨끗", "번번", "나날", "다달")
 _FORGET_RE = re.compile(r"기억(?:나지|하지)\s*(?:않|못)|알지\s*못")
 _ELSEWHERE_RE = re.compile(r"(?:에|에서)\s*(?:[가-힣]+\s+){0,3}?(?:있었|머물렀|지냈)(?:으나|지만|는데)")
 _SAME_TIME_RE = re.compile(r"(?:같은|그)\s*시각|동시에")
@@ -115,7 +116,7 @@ def perception_conflict(sentence: str) -> Optional[str]:
     if m:
         before = sentence[:m.start()]
         others = [m2 for m2 in _OTHER_SUBJECT_RE.finditer(before)
-                  if not (m2.group(0).rstrip().endswith("이") and m2.group(1).endswith(_ADVERB_I))]
+                  if not (m2.group(0).rstrip().endswith("이") and m2.group(1) in _ADVERB_I)]
         own = bool(_FIRST_PERSON_RE.search(before)) or not others
         if own and not _FORGET_RE.search(sentence) and _PERC_RE.search(sentence[m.end():]):
             return "INCAPACITATED"
