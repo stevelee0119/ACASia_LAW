@@ -498,6 +498,11 @@
    "status": "merged",
    "kind": "existing",
    "note": "2026-11-02 Astra 평가(평가 측 재현): HwpxParser가 표 구조(structure['tables'])를 만들지 않고, 표를 감싼 바깥 문단과 셀 문단이 같은 텍스트를 중복 수집(금액 2회). 설계 메모·측정 먼저. · 설계 메모 #200 조건부 승인·병합(11-02). 구현 #201 26528c3(2판 수정본) 1차 보완 1회(문서 칸 상한 섹션 누계) → 6c8a244 수용(11-02, 수정본·보완본과 줄 일치, CI 전부 성공). · Steve 병합 c180db9(11-02, #201 head 6c8a244) — 배포 대기. 후속: 구형 HWP 표 연결(TK-133 후보), namespace URI·XML 누적 상한."
+  },
+  "TK-133": {
+   "status": "open",
+   "kind": "existing",
+   "note": "2026-11-02 평가 측 등록(TK-132 후속): 구형 HWP HwpParser가 structure['tables']를 만들지 않음(_extract_hwp_tables 미연결), 셀 문단이 문단 복원에서 한 블록으로 합쳐짐. 평가 측 수정본 patches/TK-133_hwp_binary_tables_on_c180db9.diff 사전 검증(관련 1,510건 실패 0, 고정 변화 0). 배정 Codex 대행."
   }
  },
  "updated_on": "2026-10-25"
