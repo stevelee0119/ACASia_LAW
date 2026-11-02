@@ -1,0 +1,199 @@
+"""TK-133: 구형 HWP(바이너리) 표 구조를 structure["tables"]로 연결한다. 합성 레코드만 쓴다(실제 서면이 아니다).
+
+셀 글자는 이미 본문 문단 블록에 있으므로 표 블록은 만들지 않고(LINES_WITH_STRUCTURE) 행·열 구조만 남긴다.
+"""
+import io
+import struct
+import zlib
+
+import olefile
+import pytest
+
+from packages.claim_engine.calculation import CalculationEngine
+from packages.document_engine.hwp_parser import HwpParser
+
+TABLE, LIST_HEADER, PARA_TEXT = 0x4D, 0x48, 0x43
+
+
+def rec(tag, payload, level=0):
+    return struct.pack("<I", tag | (level << 10) | (len(payload) << 20)) + payload
+
+
+def text(value, level=0):
+    return rec(PARA_TEXT, value.encode("utf-16-le"), level)
+
+
+def tbl(rows, cols, level=1):
+    return rec(TABLE, struct.pack("<IHH", 0, rows, cols), level)
+
+
+def cell(col, row, *texts, col_span=1, row_span=1, level=2):
+    header = struct.pack("<hIHHHHH", 1, 0, 0, col, row, col_span, row_span)
+    return rec(LIST_HEADER, header, level) + b"".join(text(t, level + 1) for t in texts)
+
+
+def parse(monkeypatch, tmp_path, *sections):
+    header = b"HWP Document File".ljust(32, b"\0") + struct.pack("<II", 0x05000300, 1) + bytes(216)
+    streams = {"FileHeader": header}
+    for index, body in enumerate(sections):
+        encoder = zlib.compressobj(wbits=-15)
+        streams[f"BodyText/Section{index}"] = encoder.compress(body) + encoder.flush()
+
+    class Ole:
+        def __init__(self, *args):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def exists(self, name):
+            return name in streams
+
+        def get_size(self, name):
+            return len(streams["/".join(name) if isinstance(name, list) else name])
+
+        def openstream(self, name):
+            return io.BytesIO(streams["/".join(name) if isinstance(name, list) else name])
+
+        def listdir(self, **kwargs):
+            return [name.split("/") for name in streams]
+
+    monkeypatch.setattr(olefile, "OleFileIO", Ole)
+    path = tmp_path / "t.hwp"
+    path.write_bytes(b"\xd0\xcf\x11\xe0synthetic")
+    return HwpParser().parse(str(path), document_id="d", filename="t.hwp", mime_type="", sha256="x")
+
+
+def sum_table(total):
+    return (text("가. 손해배상 청구") + tbl(4, 2)
+            + cell(0, 0, "항목") + cell(1, 0, "금액")
+            + cell(0, 1, "치료비") + cell(1, 1, "1,200,000원")
+            + cell(0, 2, "위자료") + cell(1, 2, "3,000,000원")
+            + cell(0, 3, "합계") + cell(1, 3, total)
+            + text("표 뒤 문단"))
+
+
+def arithmetic(doc):
+    return [f for f in CalculationEngine().verify_document(doc) if f.type.value == "ARITHMETIC_MISMATCH"]
+
+
+def visible_text(doc):
+    return "\n".join(b.text for p in doc.pages for b in p.blocks if b.source_layer == "visible_text")
+
+
+# --- 양성 ---------------------------------------------------------------------------------------------
+def test_table_structure_is_exposed_without_duplicate_text(monkeypatch, tmp_path):
+    doc = parse(monkeypatch, tmp_path, sum_table("4,200,000원"))
+    [t] = doc.structure["tables"]
+    assert t["cells"] == [["항목", "금액"], ["치료비", "1,200,000원"], ["위자료", "3,000,000원"], ["합계", "4,200,000원"]]
+    assert t["table_ref"] == "hwp_s0t0" and t["representation"] == "LINES_WITH_STRUCTURE" and t["complete"] is True
+    assert visible_text(doc).count("1,200,000원") == 1          # 본문 블록은 그대로, 표 블록을 더 만들지 않는다
+    assert not any(b.block_type == "table" for p in doc.pages for b in p.blocks)
+
+
+def test_wrong_table_total_is_found_once_through_table_structure(monkeypatch, tmp_path):
+    found = arithmetic(parse(monkeypatch, tmp_path, sum_table("4,500,000원")))
+    assert [f.confidence_features.get("table_ref") for f in found] == ["hwp_s0t0"]   # 표 검산 1건, 중복 없음
+
+
+def test_cell_paragraphs_are_linked_and_not_merged_with_body(monkeypatch, tmp_path):
+    doc = parse(monkeypatch, tmp_path, sum_table("4,200,000원"))
+    [t] = doc.structure["tables"]
+    blocks = [b for p in doc.pages for b in p.blocks]
+    linked = [b for b in blocks if b.attributes.get("table_ref") == "hwp_s0t0"]
+    assert [b.text for b in linked][:2] == ["항목", "금액"] and len(linked) == 8
+    assert sorted(t["line_block_ids"]) == sorted(b.block_id for b in linked)
+    assert any(b.text == "표 뒤 문단" and not b.attributes.get("table_ref") for b in blocks)   # 표 뒤 문단은 본문
+
+
+def test_merged_cells_keep_anchor_only(monkeypatch, tmp_path):
+    body = (tbl(3, 3) + cell(0, 0, "구분", row_span=2) + cell(1, 0, "청구액", col_span=2)
+            + cell(1, 1, "원금") + cell(2, 1, "이자")
+            + cell(0, 2, "갑") + cell(1, 2, "500만원") + cell(2, 2, "30만원"))
+    [t] = parse(monkeypatch, tmp_path, body).structure["tables"]
+    assert t["cells"][0] == ["구분", "청구액", ""] and t["cells"][1][0] == ""
+    assert {"row": 0, "col": 1, "row_span": 1, "col_span": 2} in t["merges"]
+    assert [1, 0] in t["covered"] and [0, 2] in t["covered"]
+
+
+def test_tables_in_two_sections_get_distinct_refs(monkeypatch, tmp_path):
+    doc = parse(monkeypatch, tmp_path, tbl(1, 2) + cell(0, 0, "가") + cell(1, 0, "나"),
+                tbl(1, 2) + cell(0, 0, "다") + cell(1, 0, "라"))
+    assert [t["table_ref"] for t in doc.structure["tables"]] == ["hwp_s0t0", "hwp_s1t0"]
+
+
+# --- 대조 ---------------------------------------------------------------------------------------------
+def test_correct_total_has_no_arithmetic_finding(monkeypatch, tmp_path):
+    assert arithmetic(parse(monkeypatch, tmp_path, sum_table("4,200,000원"))) == []
+
+
+def test_span_outside_table_is_partial_and_not_given_to_consumers(monkeypatch, tmp_path):
+    doc = parse(monkeypatch, tmp_path, tbl(1, 2) + cell(0, 0, "가") + cell(1, 0, "나", col_span=3))
+    assert not doc.structure.get("tables")
+    [partial] = doc.structure["partial_tables"]
+    assert partial["reason"] == "INCOMPLETE_STRUCTURE" and "cells" not in partial
+    assert any("범위를 벗어나" in w for w in doc.parse_warnings)
+    assert "나" in visible_text(doc)                               # 글자는 본문 문단으로 남는다
+
+
+def test_overlapping_cells_make_table_partial(monkeypatch, tmp_path):
+    doc = parse(monkeypatch, tmp_path, tbl(1, 2) + cell(0, 0, "앞", col_span=2) + cell(1, 0, "겹침"))
+    assert not doc.structure.get("tables") and doc.structure["partial_tables"]
+
+
+def test_nested_table_makes_outer_partial(monkeypatch, tmp_path):
+    inner = tbl(1, 2, level=4) + cell(0, 0, "내부", level=5) + cell(1, 0, "7일", level=5)
+    body = tbl(1, 2) + cell(0, 0, "바깥") + rec(LIST_HEADER, struct.pack("<hIHHHHH", 1, 0, 0, 1, 0, 1, 1), 2) + inner
+    doc = parse(monkeypatch, tmp_path, body)
+    assert not doc.structure.get("tables") and doc.structure["partial_tables"]
+
+
+def test_partial_total_table_creates_no_table_finding(monkeypatch, tmp_path):
+    broken = (tbl(3, 2) + cell(0, 0, "항목") + cell(1, 0, "금액") + cell(0, 1, "치료비")
+              + cell(1, 1, "1,200,000원", col_span=4) + cell(0, 2, "합계") + cell(1, 2, "9,999,999원"))
+    found = arithmetic(parse(monkeypatch, tmp_path, broken))
+    assert [f for f in found if (f.confidence_features or {}).get("table_ref")] == []
+
+
+@pytest.mark.parametrize("rows,cols", [(2001, 2), (2, 101), (0, 2)])
+def test_oversized_or_empty_table_is_not_built(monkeypatch, tmp_path, rows, cols):
+    doc = parse(monkeypatch, tmp_path, text("본문") + tbl(rows, cols) + cell(0, 0, "가"))
+    assert not doc.structure.get("tables")
+    if rows and cols:
+        assert any("상한" in w for w in doc.parse_warnings)
+
+
+def test_document_cell_budget_counts_across_sections(monkeypatch, tmp_path):
+    big = tbl(2000, 100) + cell(0, 0, "가")                          # 200,000칸 = 문서 상한
+    doc = parse(monkeypatch, tmp_path, big, tbl(1, 2) + cell(0, 0, "나") + cell(1, 0, "다"))
+    assert [t["table_ref"] for t in doc.structure["tables"]] == ["hwp_s0t0"]
+    assert any("상한" in w for w in doc.parse_warnings)
+
+
+def test_table_structure_failure_keeps_body_text(monkeypatch, tmp_path):
+    import packages.document_engine.hwp_parser as hp
+
+    def boom(*args, **kwargs):
+        raise ValueError("합성 실패")
+    monkeypatch.setattr(hp, "_extract_hwp_table_structures", boom)
+    doc = parse(monkeypatch, tmp_path, sum_table("4,200,000원"))
+    assert "치료비" in visible_text(doc) and not doc.structure.get("tables")
+    assert any("표 구조 복원 실패" in w for w in doc.parse_warnings)
+
+
+def test_document_without_table_unchanged(monkeypatch, tmp_path):
+    doc = parse(monkeypatch, tmp_path, text("첫째 문단이다.") + text("둘째 문단이다."))
+    assert not doc.structure.get("tables") and not doc.structure.get("partial_tables")
+
+
+def test_misaligned_paragraph_order_drops_tables(monkeypatch, tmp_path):
+    import packages.document_engine.hwp_parser as hp
+    original = hp._extract_hwp_text
+    monkeypatch.setattr(hp, "_extract_hwp_text", lambda raw, notes=None: original(raw, notes) + ["덧붙은 문단"])
+    doc = parse(monkeypatch, tmp_path, sum_table("4,200,000원"))
+    assert not doc.structure.get("tables")
+    assert not any(b.attributes.get("table_ref") for p in doc.pages for b in p.blocks)
+    assert any("순서가 맞지 않아" in w for w in doc.parse_warnings)
