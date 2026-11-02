@@ -53,7 +53,78 @@ AFFILIATION_FIELD_RE = re.compile(r"소\s*속\s*[·ㆍ・]?\s*(?:계\s*급)?\s*[
 SIGNATURE_OMITTED_RE = re.compile(r"(서명|날인|기명날인)\s*(생략|없음|미기재)")
 LIMITATION_RE = re.compile(r"(들을\s*수\s*(는\s*)?없|듣지\s*못|보지\s*못|볼\s*수\s*(는\s*)?없|알\s*수\s*(는\s*)?없|"
                            r"기억(하지|나지)\s*(못|않)|확인하지\s*못)")
-CERTAINTY_RE = re.compile(r"확실|분명|틀림없|단언|명백")
+CERTAINTY_RE = re.compile(r"확실|분명|틀림없|단언|명백|(?:음|것)이\s*확정(?:됩|된다|되었|적)")
+# 지각 범위 구조(TK-76): 같은 문장이 지각할 수 없었던 조건을 스스로 밝히면서 직접 지각을 주장하는 꼴.
+# 장면 낱말이 아니라 '접근 부정·닫힌 상태·부재·의식 없음·다른 장소 같은 시각·소리만' 구조와 지각 동사 범주로 본다.
+_PERC_RE = re.compile(r"(?:보았|봤|목격(?:하였|했|한)|읽었|들었|확인(?:하였|했)|직접\s*(?:본|들은|읽은))"
+                      r"(?!\S{0,3}\s*(?:바|적|일)(?:는|은|가|이)?\s*없)")
+_DIRECT_RE = re.compile(r"직접|똑똑히|분명히|생생히|두\s*눈으로|귀로")
+_MEDIATED_RE = re.compile(r"전해\s*들|(?:전화|통화|화상|영상|녹음|녹화|문자|메시지|사진|화면|카메라|CCTV|cctv)"
+                          r"(?:으로|로|를\s*통해|을\s*통해)|보고(?:를)?\s*받|통해\s*(?:들|보|알)")
+_CONCESSIVE = r"(?:고(?:서)?|은\s*채|았지만|았으나|았는데(?:도)?|았음에도|지만|으나|는데도?)"
+_ACCESS_NEG_RE = re.compile(r"(?:열|뜯|열어\s*보|뜯어\s*보|들여다보|꺼내\s*보|개봉하)지(?:도|는)?\s*(?:않|못)" + _CONCESSIVE)
+_INSIDE_RE = re.compile(r"(?:^|[\s,])(?:그\s*)?(?:[가-힣]{1,8}의\s*)?(?:안|속|안쪽|내부)"
+                        r"(?:에|의|에서|에\s*있던|에\s*든|에\s*놓인)?\s")
+_CLOSED_RE = re.compile(r"(?:닫힌|잠긴|잠겨\s*있던|봉인된|밀봉된|덮인|가려진|불투명한?)\s*(?:[가-힣]+\s*){0,2}?(?:안|속|내부)(?:의|에|에서)")
+_OPENED_RE = re.compile(r"열(?:어|고)|개봉(?:하여|하고|한\s*뒤)|뜯(?:어|고)|꺼내")
+_NEVER_THERE_RE = re.compile(r"(?:간|가\s*본|방문한|들어간|참석한)\s*(?:적|일)(?:은|이|도)?\s*(?:없|전혀\s*없)(?:지만|으나|는데|음에도)")
+_INCAP_RE = re.compile(r"잠든|잠들어\s*있|잠자(?:던|고\s*있)|자고\s*있|의식을\s*잃|기절")
+_FIRST_PERSON_RE = re.compile(r"저는|제가|저도|본인은|진술인은|증인은|나는|내가")
+# 다른 주어(…가·…이·…은·…는). '…이 아니라'(서술격)와 '-이'로 끝나는 부사(깊이·같이 등)는 주어가 아니다.
+_OTHER_SUBJECT_RE = re.compile(r"([가-힣]{2,})(?:가|는|은|이)\s(?!아니)")
+_ADVERB_I = ("깊", "같", "많", "일찍", "곤", "가만", "조용", "편")
+_FORGET_RE = re.compile(r"기억(?:나지|하지)\s*(?:않|못)|알지\s*못")
+_ELSEWHERE_RE = re.compile(r"(?:에|에서)\s*(?:[가-힣]+\s+){0,3}?(?:있었|머물렀|지냈)(?:으나|지만|는데)")
+_SAME_TIME_RE = re.compile(r"(?:같은|그)\s*시각|동시에")
+_HEARD_OBJECT_RE = re.compile(r"(?:대화|발언|말|내용)(?:을|를)")
+_SOUND_ONLY_RE = re.compile(r"(?:들은|들린|들었던)\s*(?:[가-힣]+\s*){0,2}?[가-힣]*(?:소리|음)(?:만으로|만\s*듣고)")
+_VISUAL_CLAIM_RE = re.compile(r"(?:직접|분명히|똑똑히)\s*(?:확인(?:하였|했)|보았|봤|읽었)")
+_PERCEPTION_PATTERNS = {
+    "UNOPENED_INSIDE": "열지 않았다고 하면서 그 안의 내용을 지각했다고 한다",
+    "CLOSED_INSIDE": "닫힌 상태의 대상 안을 연 일 없이 직접 지각했다고 한다",
+    "NEVER_PRESENT": "그곳에 간 적이 없다고 하면서 직접 지각했다고 한다",
+    "INCAPACITATED": "잠들었거나 의식이 없던 동안 지각했다고 한다",
+    "ELSEWHERE_SAME_TIME": "다른 장소에 있었다고 하면서 같은 시각 그 장소의 일을 지각했다고 한다",
+    "SOUND_ONLY_VISUAL": "소리만 들었다고 하면서 눈으로 볼 내용을 직접 확인했다고 한다",
+}
+
+
+def perception_conflict(sentence: str) -> Optional[str]:
+    """같은 문장 안의 지각 불가능 조건 + 직접 지각 주장(TK-76). 매개 경로(전화·영상·사진 등)를 밝히면 보지 않는다."""
+    if _MEDIATED_RE.search(sentence):
+        return None
+    m = _ACCESS_NEG_RE.search(sentence)
+    if m:
+        rest = sentence[m.end():]
+        inside = _INSIDE_RE.search(rest)
+        if inside and _PERC_RE.search(rest[inside.end():]):
+            return "UNOPENED_INSIDE"
+    m = _CLOSED_RE.search(sentence)
+    if m and not _OPENED_RE.search(sentence):
+        rest = sentence[m.end():]
+        if _PERC_RE.search(rest) and _DIRECT_RE.search(rest):
+            return "CLOSED_INSIDE"
+    m = _NEVER_THERE_RE.search(sentence)
+    if m and _DIRECT_RE.search(sentence[m.end():]) and _PERC_RE.search(sentence[m.end():]):
+        return "NEVER_PRESENT"
+    m = _INCAP_RE.search(sentence)
+    if m:
+        before = sentence[:m.start()]
+        others = [m2 for m2 in _OTHER_SUBJECT_RE.finditer(before)
+                  if not (m2.group(0).rstrip().endswith("이") and m2.group(1).endswith(_ADVERB_I))]
+        own = bool(_FIRST_PERSON_RE.search(before)) or not others
+        if own and not _FORGET_RE.search(sentence) and _PERC_RE.search(sentence[m.end():]):
+            return "INCAPACITATED"
+    m = _ELSEWHERE_RE.search(sentence)
+    if m:
+        rest = sentence[m.end():]
+        same = _SAME_TIME_RE.search(rest)
+        if same and (_PERC_RE.search(rest[same.end():]) or _HEARD_OBJECT_RE.search(rest[same.end():])):
+            return "ELSEWHERE_SAME_TIME"
+    m = _SOUND_ONLY_RE.search(sentence)
+    if m and _VISUAL_CLAIM_RE.search(sentence[m.end():]):
+        return "SOUND_ONLY_VISUAL"
+    return None
 # 진술인의 위치: 가까이 있었다는 표현과 떨어져 있었다는 표현
 PROXIMITY_RE = re.compile(r"같은\s*테이블|바로\s*옆|옆\s*자리|함께\s*앉|맞은\s*편|곁에")
 DISTANCE_RE = re.compile(r"\d+\s*(?:미터|m|M)\s*(?:가량|정도|쯤)?\s*떨어진|다른\s*테이블|멀리\s*떨어")
@@ -1449,6 +1520,17 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
                                 "진술의 신빙성은 사람이 판단한다.",
                                 shown, status=VerificationStatus.UNVERIFIED,
                                 features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION"}))
+        else:
+            pattern = perception_conflict(sentence)
+            if pattern:
+                # 문장 스스로 지각할 수 없던 조건을 밝혔으므로 문서 안의 모순이다. 신빙성 판단은 사람이 한다(C).
+                out.append(_finding(doc, FindingType.STATEMENT_BEYOND_PERCEPTION, EvidenceGrade.C, Severity.MEDIUM,
+                                    "지각할 수 없던 조건과 직접 지각 주장이 함께 있다: " + _PERCEPTION_PATTERNS[pattern],
+                                    "같은 문장에서 지각할 수 없었던 조건을 밝히면서 직접 지각한 것처럼 진술한다. "
+                                    "진술의 신빙성은 사람이 판단한다.",
+                                    shown, status=VerificationStatus.SUSPICIOUS,
+                                    features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION_STRUCTURE",
+                                              "pattern": pattern}))
         if statement_start is not None and start >= statement_start:
             if PROXIMITY_RE.search(sentence):
                 proximity.append(shown)
