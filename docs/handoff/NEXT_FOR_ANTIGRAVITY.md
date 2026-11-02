@@ -109,6 +109,23 @@ release_highlights.json "0.14":
 
 > **상태(10-28 평가 측 확인):** 0.15.0 버전 커밋 #187 병합(`fdf11b1`), 릴리스 #189 main 병합(`08d40ff`, 10-26). **운영 배포 확인(health 0.15.0·`08d40ff`, 10-28)** — TK-126·128 deployed, TK-127 1단계 배포. #186 TK-127 2단계 메모 Steve 병합(`efc9c9c`), 평가 측 검토 전. #185 TK-129 1차 보완 2건(2-4-1) → 2차 보완 1건(2-4-2) → 3차 `89cf414` 코드 수용·사용자 화면 확인 대기(2-4-3). #191 TK-127 2단계 1차 보완 2건(2-6) → `4891f4e` 코드 수용 → 사용자 결정(빈 괄호 제거·영문 코드 유지) 반영 보완 1건(2-6-1) → `cfd80c3` 수용, 사용자 병합 대기(10-28). #185 Steve 병합 `5d03247`.
 
+## 2-1-4. 0.17.0 버전 커밋 지시 (11-02, 일반 경로)
+
+- 판정서: `docs/scorecards/version_verdicts.json` 0.17.0. minor, basis added·changed·fixed, 측정 커밋 Steve `b14d7d9`.
+- 근거
+  - verify_all 전체 종료 0
+  - 고정 82.6/81.9/FP0/A0 불변
+  - 봉인 sealed_20261102: 운영본·후보 40.2로 같음, 오탐 0
+  - 은퇴 5세트 상승(EVI-LOGIC만), 오탐 0
+- 선행: 판정서가 든 평가 PR이 Steve에 병합된 뒤 시작한다.
+- 수정본: `patches/v0.17.0_version_commit.diff`(5개 파일 +19/−1).
+  - `config.py` version
+  - `docs/releases.json` 0.17.0 항목
+  - `docs/release_highlights.json` 0.17 요약
+  - `update_readme.py`가 만든 README·RELEASE_HISTORY 줄
+- 평가 측 사전 검증(b14d7d9 + 판정서 + 수정본): `check_version_policy --base 2f06f9a` 위반 없음(상향 1건 0.16.0 → 0.17.0), `update_readme --check` 통과, 버전·릴리스 관련 시험 3개 파일 49건 실패 0.
+- #205(README 개편)가 먼저 병합되면 README 위치가 달라진다. 그때는 README 덩어리를 손으로 맞추지 않는다. 나머지 3개 파일을 적용한 뒤 `python scripts/update_readme.py`를 다시 돌린다.
+
 ## 2-1-3. 0.16.0 버전 커밋 지시 (10-29, 일반 경로, 구현 한시 대행)
 
 ```
