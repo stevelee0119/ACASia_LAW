@@ -1,0 +1,66 @@
+diff --git a/packages/legal_engine/provision_content.py b/packages/legal_engine/provision_content.py
+index b3dd21a..cde317d 100644
+--- a/packages/legal_engine/provision_content.py
++++ b/packages/legal_engine/provision_content.py
+@@ -107,7 +107,7 @@ def _terms(text: str) -> List[str]:
+     return out
+ 
+ 
+-CLAUSE_SPLIT_RE = re.compile(r"(?<=다\.)\s*|;\s*|\n+|(?=[①-⑳])|(?=\s\d{1,2}\.\s)")
++CLAUSE_SPLIT_RE = re.compile(r"(?<=다\.)\s*|;\s*|\n+|(?=[①-⑳㉑-㉟㊱-㊿])|(?=\s\d{1,2}\.\s)")
+ 
+ 
+ def _scoped_body(body: str, subject: Optional[str]) -> str:
+diff --git a/packages/legal_engine/temporal_review.py b/packages/legal_engine/temporal_review.py
+index 70aa601..89856d5 100644
+--- a/packages/legal_engine/temporal_review.py
++++ b/packages/legal_engine/temporal_review.py
+@@ -34,7 +34,8 @@ from packages.common.schemas import Evidence, Finding
+ from .provision_content import compare_claim_to_provision
+ 
+ ENGINE_NAME = "legal_engine.temporal_review"
+-CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
++# 항 번호 원숫자 1~50. ㉑(U+3251)부터는 ⑳(U+2473)와 코드 범위가 떨어져 있어 [①-⑳]로는 잡히지 않는다(TK-130 2).
++CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿"
+ TIME_QUALIFIER_RE = re.compile(r"(?P<kind>행위|범행|처분|사고|계약|사건)\s*(?:당시|시(?:점)?(?:에|의)?)")
+ # '2023. 11. 20.'과 '2023년 11월 20일' 표기를 모두 읽는다(공소사실은 흔히 '년월일'로 적는다).
+ DATE_RE = re.compile(r"(?P<y>(?:19|20)\d{2})\s*[.년]\s*(?P<m>\d{1,2})\s*[.월]\s*(?P<d>\d{1,2})\s*[.일]?")
+diff --git a/tests/test_tk130a_circled_paragraphs.py b/tests/test_tk130a_circled_paragraphs.py
+new file mode 100644
+index 0000000..c7eb56f
+--- /dev/null
++++ b/tests/test_tk130a_circled_paragraphs.py
+@@ -0,0 +1,33 @@
++"""TK-130a: 제21항 이상 원숫자(㉑~㊿) 항 경계. ㉑(U+3251)은 ⑳(U+2473)와 코드 범위가 이어지지 않는다."""
++import pytest
++
++# --- TK-130 2: 제21항 이상 원숫자 -------------------------------------------------------------------------------
++from packages.legal_engine.temporal_review import paragraph_text
++
++ALL_CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿"
++ARTICLE = "제9조(시험) " + " ".join(f"{c} 제{i}항 본문." for i, c in enumerate(ALL_CIRCLED, start=1))
++
++
++@pytest.mark.parametrize("n", ["20", "21", "22", "35", "36", "49"])
++def test_paragraphs_beyond_twenty_are_sliced(n):
++    text = paragraph_text(ARTICLE, n)
++    assert f"제{n}항 본문" in text
++    assert f"제{int(n) + 1}항" not in text and f"제{int(n) - 1}항 본문" not in text
++
++
++@pytest.mark.parametrize("n", ["1", "2", "19"])
++def test_paragraphs_below_twenty_unchanged(n):
++    assert paragraph_text(ARTICLE, n).strip() == f"{'①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲'[int(n) - 1]} 제{n}항 본문."
++
++
++def test_last_paragraph_fifty():
++    assert paragraph_text(ARTICLE, "50").strip() == "㊿ 제50항 본문."
++
++
++@pytest.mark.parametrize("first,second", [("㉑", "㉒"), ("㉟", "㊱")])
++def test_content_comparison_scopes_by_paragraphs_beyond_twenty(first, second):
++    # 내용 대조 경로(compare_claim_to_provision → _scoped_body)가 ㉑ 이후 항 경계로 주어별 구절을 나누는지.
++    from packages.legal_engine.provision_content import compare_claim_to_provision
++    body = f"{first} 갑은 30일 이내에 신고하여야 하고 {second} 을은 60일 이내에 신고하여야 하고"
++    result = compare_claim_to_provision("갑은 60일 이내에 신고하여야 한다", body, subject="갑")
++    assert result["status"] == "CONTRADICTED"

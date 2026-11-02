@@ -156,7 +156,9 @@ class LegalVerifier:
                     # A timed-out fallback search is not evidence of absence.
                     verdict.status = VerificationStatus.UNVERIFIED
                     verdict.levels["level1"] = "UNVERIFIED"
-                    verdict.findings = [f for f in verdict.findings if f.type != FindingType.CASE_NOT_FOUND]
+                    # 법령 목록 미발견(STATUTE_NONEXISTENT)도 같다. 약칭 후보 조회가 시간 초과로 끝나면 부존재 근거가 아니다(TK-130b).
+                    verdict.findings = [f for f in verdict.findings
+                                        if f.type not in (FindingType.CASE_NOT_FOUND, FindingType.STATUTE_NONEXISTENT)]
                     verdict.findings.append(self._unverified_finding(
                         verdict.citation, verdict.notes[-1], None))
             # 같은 인용에서 나온 finding을 한 묶음으로 보여 줄 수 있게 인용 식별자를 남긴다.

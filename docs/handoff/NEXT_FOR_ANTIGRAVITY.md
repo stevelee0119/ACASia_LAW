@@ -109,6 +109,23 @@ release_highlights.json "0.14":
 
 > **상태(10-28 평가 측 확인):** 0.15.0 버전 커밋 #187 병합(`fdf11b1`), 릴리스 #189 main 병합(`08d40ff`, 10-26). **운영 배포 확인(health 0.15.0·`08d40ff`, 10-28)** — TK-126·128 deployed, TK-127 1단계 배포. #186 TK-127 2단계 메모 Steve 병합(`efc9c9c`), 평가 측 검토 전. #185 TK-129 1차 보완 2건(2-4-1) → 2차 보완 1건(2-4-2) → 3차 `89cf414` 코드 수용·사용자 화면 확인 대기(2-4-3). #191 TK-127 2단계 1차 보완 2건(2-6) → `4891f4e` 코드 수용 → 사용자 결정(빈 괄호 제거·영문 코드 유지) 반영 보완 1건(2-6-1) → `cfd80c3` 수용, 사용자 병합 대기(10-28). #185 Steve 병합 `5d03247`.
 
+## 2-1-4. 0.17.0 버전 커밋 지시 (11-02, 일반 경로)
+
+- 판정서: `docs/scorecards/version_verdicts.json` 0.17.0. minor, basis added·changed·fixed, 측정 커밋 Steve `b14d7d9`.
+- 근거
+  - verify_all 전체 종료 0
+  - 고정 82.6/81.9/FP0/A0 불변
+  - 봉인 sealed_20261102: 운영본·후보 40.2로 같음, 오탐 0
+  - 은퇴 5세트 상승(EVI-LOGIC만), 오탐 0
+- 선행: 판정서가 든 평가 PR이 Steve에 병합된 뒤 시작한다.
+- 수정본: `patches/v0.17.0_version_commit.diff`(5개 파일 +19/−1).
+  - `config.py` version
+  - `docs/releases.json` 0.17.0 항목
+  - `docs/release_highlights.json` 0.17 요약
+  - `update_readme.py`가 만든 README·RELEASE_HISTORY 줄
+- 평가 측 사전 검증(b14d7d9 + 판정서 + 수정본): `check_version_policy --base 2f06f9a` 위반 없음(상향 1건 0.16.0 → 0.17.0), `update_readme --check` 통과, 버전·릴리스 관련 시험 3개 파일 49건 실패 0.
+- 11-02 갱신: #205가 먼저 병합되어(Steve `d836a8b`), 수정본을 `d836a8b` 기준으로 다시 만들었다. 같은 검증을 다시 통과했다: check_version_policy 위반 없음, update_readme --check 통과, 시험 실패 0. 그대로 적용한다.
+
 ## 2-1-3. 0.16.0 버전 커밋 지시 (10-29, 일반 경로, 구현 한시 대행)
 
 ```
@@ -586,6 +603,35 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 - PR의 draft 상태를 해제한다(Ready for review).
 - 평가 측 확인: diff = 4891f4e + 수정본(+캡처). 맞으면 사용자 "#191병합" 대상이다.
 ```
+
+## 2-7. lexdiff 비교 후속 개선 4건 (11-02 개정, Claude Code·Astra 교차 검증 반영 — 1판 TK-130 지시 폐기)
+- 비교 문서: `requests/LEXDIFF_COMPARISON_20261102.md`(4절 교차 검증).
+- 순서: ① [TK-130a](TK-130_informal_law_abbreviation_inference.md) 원숫자 ㉑~㊿ → ② TK-130b 약칭 추정 2판 → ③ [TK-131](TK-131_precedent_evidence_excerpt.md) 판례 근거 발췌(설계 메모 먼저) → ④ [TK-132](TK-132_hwpx_table_structure.md) HWPX 표 구조(설계 메모 먼저). PR은 하나씩 따로 낸다.
+- 수정본(평가 측 사전 검증 완료, Steve `debbe83` 기준):
+  - `patches/TK-130a_circled_paragraphs_on_debbe83.diff`(3개 파일)
+  - `patches/TK-130b_abbreviation_inference_v2_on_debbe83.diff`(4개 파일)
+  - 1판 `TK-130_abbreviation_inference_on_debbe83.diff`·`_v2.diff`(통합본)는 쓰지 않는다.
+- 2판 수정점: 결과 구분(FOUND/NO_CANDIDATE/AMBIGUOUS/LOOKUP_FAILED/INCOMPLETE·CANDIDATE_LOOKUP_FAILED→UNVERIFIED), 조항 상태별 설명, law_id 고정, 후보 탐색 쪽 상한(검색어 2 × 3쪽).
+- 심각도 정책(평가 측 결정): 후보 없음·모호·조회 실패·상한·조문 부재는 기존 CRITICAL을 유지하고 결과 구분만 기록한다.
+- 지시문 전문은 사용자에게 전달한 코드 블록과 같다.
+- **#197 TK-130a 1차 판정(11-02): 보완 1회.** CI 전부 성공, diff = 수정본. Sourcery 지적 4건 모두 유효: `rag_engine/provision_quotes.py:15` CIRCLED 20자(같은 결함 세 번째 위치), 시험 경계 약점, 문장 다양성, 주석. 보완본 `patches/TK-130a_supplement_on_5ababa4.diff`(사전 검증 완료)를 같은 PR에 커밋 1개로 적용한다.
+- **#197 2차(`cd31262`): 수용.** 보완본과 줄 일치, 같은 SHA CI 전부 성공. 사용자 '#197병합' 뒤 TK-130b 착수.
+- **#198 TK-130b 1차(`f4fc0c8`): 보완 1회.** 원인: 평가 측 수정본 설명 문구가 평가 세트 문구 대조에 걸림, spec_verdict가 추정 성공을 NOT_FOUND로 판정, 재시도 소진 뒤 STATUTE_NONEXISTENT 잔존, 시험 보강. 보완본 `patches/TK-130b_supplement_on_f4fc0c8.diff`(사전 검증 완료)를 같은 PR에 커밋 1개로 적용한다.
+- **#198 2차(`4b8bf01`): 수용.** 보완본과 줄 일치, 같은 SHA CI 전부 성공. 사용자 '#198병합' 뒤 TK-131·132 설계 메모 착수.
+
+## 2-8. TK-76 2주기 1항 — EVI-LOGIC 지각 범위 구조 (11-02, 사용자 결정 '이번 릴리스 포함, Antigravity 구현')
+
+- 이번 릴리스 범위: TK-133(Codex, 구형 HWP 표 구조)과 TK-76 EVI-LOGIC(Antigravity) 두 건이다.
+- 지시문 전달 완료(11-02, 사용자 전달). 원문 내용은 [TK-76 티켓 '2주기 1항'](TK-76_focus_types_generalization_cycle1.md)과 수정본 `patches/TK-76_evi_logic_perception_on_c180db9.diff`(기준 Steve `c180db9`)에 있다.
+- 수용 기준
+  - diff = 수정본
+  - 필수 CI 전부 성공, 기존 시험 수정 0, 고정 변화 0, 은퇴 하락·오탐 증가 0
+  - train EVI-LOGIC·오탐 보고
+  - 평가 측 새 비공개 탐침: 양성 ≥ 2/3, 대조 오탐 0
+- **11-02 정정(2판):** 평가 측 1판 수정본에 일반화 결함 5개가 있었다(새 탐침 5/9). 2판 수정본 `patches/TK-76_evi_logic_perception_v2_on_c180db9.diff`로 바꾼다. 상세는 티켓 '2주기 1항 2판'에 있다. 1판 수정본은 쓰지 않는다.
+- **#204 `6abf2bc` 1차 판정(11-02): 보완 1회.** 4차 탐침 대조 오탐 1/12(평가 측 수정본의 부사 예외 끝 글자 비교 결함). 보완본 `patches/TK-76_supplement_on_6abf2bc.diff`를 적용하고, 그 전에 `origin/Steve_ACASiaLAW`(`160e6bb`)를 병합한다. 상세는 티켓 '#204 1차 판정' 절에 있다.
+- **#204 `0e97f2e` 2차 판정(11-02): 수용.** 5차 탐침 8/8·대조 0/10, CI 성공. 사용자 병합 대기.
+- 상태: 수용.
 
 ## 2-2. 탐지 PR 공통 수용 규약 — 하드코딩 금지 (2026-10-24 사용자 지시 '평가기준을 엄격히 적용하되 하드코딩으로 충족하지 못하게 제한')
 10-24 검토(#175 `618130c`·#165 `94c645f`·#167 `af28269`/`0731277`)에서 세 PR이 같은 방식으로 실패했다. 은퇴 세트 항목만 정확히 오르고(EVI-DATE 7·EVI-OVR 5·EVI-INCONS 3) train 같은 유형은 0이다. 평가 측의 비공개 다른 표현 탐침도 0이다(#175 0/4·#165 0/2·#167 장소·서명자 규칙 0). 새 정규식은 고정 낱말 여러 개를 순서대로 이은 문장 틀이다. 그 낱말은 은퇴 항목 위치 소제목 낱말과 8~9개씩 겹친다. **아래 규약은 A-4·B-1·B-3과 이후 모든 탐지 PR에 적용한다. 하나라도 어기면 점수와 무관하게 불승인한다.**

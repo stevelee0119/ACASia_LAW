@@ -1,0 +1,190 @@
+diff --git a/packages/claim_engine/evidence_consistency.py b/packages/claim_engine/evidence_consistency.py
+index 78682d9..ffb5342 100644
+--- a/packages/claim_engine/evidence_consistency.py
++++ b/packages/claim_engine/evidence_consistency.py
+@@ -53,7 +53,82 @@ AFFILIATION_FIELD_RE = re.compile(r"소\s*속\s*[·ㆍ・]?\s*(?:계\s*급)?\s*[
+ SIGNATURE_OMITTED_RE = re.compile(r"(서명|날인|기명날인)\s*(생략|없음|미기재)")
+ LIMITATION_RE = re.compile(r"(들을\s*수\s*(는\s*)?없|듣지\s*못|보지\s*못|볼\s*수\s*(는\s*)?없|알\s*수\s*(는\s*)?없|"
+                            r"기억(하지|나지)\s*(못|않)|확인하지\s*못)")
+-CERTAINTY_RE = re.compile(r"확실|분명|틀림없|단언|명백")
++CERTAINTY_RE = re.compile(r"확실|분명|틀림없|단언|명백|(?:음|것)이\s*확정(?:됩|된다|되었|적)")
++# 지각 범위 구조(TK-76): 같은 문장이 지각할 수 없었던 조건을 스스로 밝히면서 직접 지각을 주장하는 꼴.
++# 장면 낱말이 아니라 '접근 부정·닫힌 상태·부재·의식 없음·다른 장소 같은 시각·소리만' 구조와 지각 동사 범주로 본다.
++_PERC_RE = re.compile(r"(?:보았|봤|목격(?:하였|했|한)|읽었|들었|확인(?:하였|했)|직접\s*(?:본|들은|읽은))"
++                      r"(?!\S{0,3}\s*(?:바|적|일)(?:는|은|가|이)?\s*없)")
++_DIRECT_RE = re.compile(r"직접|똑똑히|분명히|생생히|두\s*눈으로|귀로")
++_MEDIATED_RE = re.compile(r"전해\s*들|(?:전화|통화|화상|영상|녹음|녹화|문자|메시지|사진|화면|카메라|CCTV|cctv)"
++                          r"(?:으로|로|를\s*통해|을\s*통해)|보고(?:를)?\s*받|통해\s*(?:들|보|알)")
++# 부정 뒤 양보·연결 어미: 않/못 + (았·었·했·하였)? + 지만·으나·는데(도)·음에도, 또는 -고(서)·-은/한 채
++_CONCESSIVE = r"(?:(?:았|었|했|하였)?(?:지만|으나|는데(?:도)?|음에도)|고(?:서)?|은\s*채|한\s*채)"
++_ACCESS_NEG_RE = re.compile(r"(?:열|뜯|펼치|열어\s*보|뜯어\s*보|펼쳐\s*보|들여다보|살펴보|꺼내\s*보|개봉하|열람하)지(?:도|는)?\s*(?:않|못)"
++                            + _CONCESSIVE)
++_INSIDE_RE = re.compile(r"(?:^|[\s,])(?:그\s*)?(?:[가-힣]{1,8}의\s*)?(?:안|속|안쪽|내부)"
++                        r"(?:에|의|에서|에\s*있던|에\s*든|에\s*놓인)?\s")
++_CLOSED_RE = re.compile(r"(?:닫힌|잠긴|잠겨\s*있던|봉인된|밀봉된|덮인|가려진|불투명한?)\s*(?:[가-힣]+\s*){0,2}?(?:안|속|내부)(?:의|에|에서)")
++_OPENED_RE = re.compile(r"열(?:어|고)|개봉(?:하여|하고|한\s*뒤)|뜯(?:어|고)|꺼내")
++_NEVER_THERE_RE = re.compile(r"(?:간|가\s*본|방문한|들어간|참석한)\s*(?:적|일)(?:은|이|도)?\s*(?:없|전혀\s*없)(?:었)?(?:지만|으나|는데|음에도)")
++_INCAP_RE = re.compile(r"잠든|잠들어\s*있|잠자(?:던|고\s*있)|자고\s*있|의식을\s*잃|의식이\s*없|정신을\s*잃|기절|"
++                       r"깨어나지\s*(?:못|않)|깨지\s*(?:못|않)")
++_FIRST_PERSON_RE = re.compile(r"저는|제가|저도|본인은|진술인은|증인은|나는|내가")
++# 다른 주어(…가·…이·…은·…는). '…이 아니라'(서술격)와 '-이'로 끝나는 부사(깊이·같이 등)는 주어가 아니다.
++_OTHER_SUBJECT_RE = re.compile(r"([가-힣]{2,})(?:가|는|은|이)\s(?!아니)")
++_ADVERB_I = ("깊", "같", "많", "일찍", "곤", "가만", "조용", "편")
++_FORGET_RE = re.compile(r"기억(?:나지|하지)\s*(?:않|못)|알지\s*못")
++_ELSEWHERE_RE = re.compile(r"(?:에|에서)\s*(?:[가-힣]+\s+){0,3}?(?:있었|머물렀|지냈)(?:으나|지만|는데)")
++_SAME_TIME_RE = re.compile(r"(?:같은|그)\s*시각|동시에")
++_HEARD_OBJECT_RE = re.compile(r"(?:대화|발언|말|내용)(?:을|를)")
++_SOUND_ONLY_RE = re.compile(r"(?:(?:들은|들린|들었던)\s*(?:[가-힣]+\s*){0,2}?)?[가-힣]*(?:소리|음)"
++                            r"(?:만으로|만\s*(?:듣고|들었(?:지만|으나|는데)|들은\s*채))")
++_VISUAL_CLAIM_RE = re.compile(r"(?:직접|분명히|똑똑히)\s*(?:확인(?:하였|했)|보았|봤|읽었)")
++_PERCEPTION_PATTERNS = {
++    "UNOPENED_INSIDE": "열지 않았다고 하면서 그 안의 내용을 지각했다고 한다",
++    "CLOSED_INSIDE": "닫힌 상태의 대상 안을 연 일 없이 직접 지각했다고 한다",
++    "NEVER_PRESENT": "그곳에 간 적이 없다고 하면서 직접 지각했다고 한다",
++    "INCAPACITATED": "잠들었거나 의식이 없던 동안 지각했다고 한다",
++    "ELSEWHERE_SAME_TIME": "다른 장소에 있었다고 하면서 같은 시각 그 장소의 일을 지각했다고 한다",
++    "SOUND_ONLY_VISUAL": "소리만 들었다고 하면서 눈으로 볼 내용을 직접 확인했다고 한다",
++}
++
++
++def perception_conflict(sentence: str) -> Optional[str]:
++    """같은 문장 안의 지각 불가능 조건 + 직접 지각 주장(TK-76). 매개 경로(전화·영상·사진 등)를 밝히면 보지 않는다."""
++    if _MEDIATED_RE.search(sentence):
++        return None
++    m = _ACCESS_NEG_RE.search(sentence)
++    if m:
++        rest = sentence[m.end():]
++        inside = _INSIDE_RE.search(rest)
++        if inside and _PERC_RE.search(rest[inside.end():]):
++            return "UNOPENED_INSIDE"
++    m = _CLOSED_RE.search(sentence)
++    if m and not _OPENED_RE.search(sentence):
++        rest = sentence[m.end():]
++        if _PERC_RE.search(rest) and _DIRECT_RE.search(rest):
++            return "CLOSED_INSIDE"
++    m = _NEVER_THERE_RE.search(sentence)
++    if m and _DIRECT_RE.search(sentence[m.end():]) and _PERC_RE.search(sentence[m.end():]):
++        return "NEVER_PRESENT"
++    m = _INCAP_RE.search(sentence)
++    if m:
++        before = sentence[:m.start()]
++        others = [m2 for m2 in _OTHER_SUBJECT_RE.finditer(before)
++                  if not (m2.group(0).rstrip().endswith("이") and m2.group(1).endswith(_ADVERB_I))]
++        own = bool(_FIRST_PERSON_RE.search(before)) or not others
++        if own and not _FORGET_RE.search(sentence) and _PERC_RE.search(sentence[m.end():]):
++            return "INCAPACITATED"
++    m = _ELSEWHERE_RE.search(sentence)
++    if m:
++        rest = sentence[m.end():]
++        same = _SAME_TIME_RE.search(rest)
++        if same and (_PERC_RE.search(rest[same.end():]) or _HEARD_OBJECT_RE.search(rest[same.end():])):
++            return "ELSEWHERE_SAME_TIME"
++    m = _SOUND_ONLY_RE.search(sentence)
++    if m and _VISUAL_CLAIM_RE.search(sentence[m.end():]):
++        return "SOUND_ONLY_VISUAL"
++    return None
+ # 진술인의 위치: 가까이 있었다는 표현과 떨어져 있었다는 표현
+ PROXIMITY_RE = re.compile(r"같은\s*테이블|바로\s*옆|옆\s*자리|함께\s*앉|맞은\s*편|곁에")
+ DISTANCE_RE = re.compile(r"\d+\s*(?:미터|m|M)\s*(?:가량|정도|쯤)?\s*떨어진|다른\s*테이블|멀리\s*떨어")
+@@ -1449,6 +1524,17 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
+                                 "진술의 신빙성은 사람이 판단한다.",
+                                 shown, status=VerificationStatus.UNVERIFIED,
+                                 features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION"}))
++        else:
++            pattern = perception_conflict(sentence)
++            if pattern:
++                # 문장 스스로 지각할 수 없던 조건을 밝혔으므로 문서 안의 모순이다. 신빙성 판단은 사람이 한다(C).
++                out.append(_finding(doc, FindingType.STATEMENT_BEYOND_PERCEPTION, EvidenceGrade.C, Severity.MEDIUM,
++                                    "지각할 수 없던 조건과 직접 지각 주장이 함께 있다: " + _PERCEPTION_PATTERNS[pattern],
++                                    "같은 문장에서 지각할 수 없었던 조건을 밝히면서 직접 지각한 것처럼 진술한다. "
++                                    "진술의 신빙성은 사람이 판단한다.",
++                                    shown, status=VerificationStatus.SUSPICIOUS,
++                                    features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION_STRUCTURE",
++                                              "pattern": pattern}))
+         if statement_start is not None and start >= statement_start:
+             if PROXIMITY_RE.search(sentence):
+                 proximity.append(shown)
+diff --git a/tests/test_tk76_perception_structure.py b/tests/test_tk76_perception_structure.py
+new file mode 100644
+index 0000000..064d463
+--- /dev/null
++++ b/tests/test_tk76_perception_structure.py
+@@ -0,0 +1,78 @@
++"""TK-76 EVI-LOGIC: 같은 문장이 지각할 수 없던 조건을 밝히면서 직접 지각을 주장하는 진술(합성 문장만)."""
++import pytest
++
++from packages.claim_engine.evidence_consistency import check_statements, perception_conflict
++from tests.test_v2_root_causes import paged
++
++POSITIVE = [
++    ("UNOPENED_INSIDE", "저는 우편함을 열어 보지 않았는데도 그 속에 있던 고지서의 금액을 읽었습니다."),
++    ("UNOPENED_INSIDE", "증인은 가방을 뜯어 보지 않은 채 그 안쪽 수첩의 메모를 확인했습니다."),
++    ("CLOSED_INSIDE", "참고인은 밀봉된 상자 속의 장부 기재를 분명히 보았다고 하였습니다."),
++    ("NEVER_PRESENT", "저는 그 창고에 방문한 적이 없지만 물건이 쌓여 있던 모습을 직접 보았습니다."),
++    ("INCAPACITATED", "본인은 기절해 있던 동안 상대방이 지갑을 가져가는 것을 목격하였습니다."),
++    ("ELSEWHERE_SAME_TIME", "증인은 병원 대기실에 있었지만 같은 시각 공사 현장에서 소장이 한 지시를 들었습니다."),
++    ("SOUND_ONLY_VISUAL", "복도에서 들린 문소리만으로 들어온 사람이 관리인이었음을 직접 확인했습니다."),
++    # 2판: 어미·범주 변형
++    ("UNOPENED_INSIDE", "저는 수납장을 열지 못했으나 그 속에 놓인 상장의 이름을 읽었습니다."),          # 못 + 했으나
++    ("UNOPENED_INSIDE", "증인은 공책을 펼쳐 보지 않았지만 그 안의 메모를 분명히 확인했습니다."),        # 펼쳐 보
++    ("INCAPACITATED", "진술인은 마취에서 깨어나지 못한 동안 의사들이 한 말을 들었습니다."),            # 깨어나지 못
++    ("SOUND_ONLY_VISUAL", "경적 소리만 듣고 운전자가 피고였음을 직접 확인했습니다."),                 # '들은' 없이 소리만 듣고
++    ("NEVER_PRESENT", "저는 그 매장에 들어간 일이 없었지만 직원이 물건을 숨기는 것을 직접 보았습니다."),  # 없었지만
++]
++CONTROL = [
++    "저는 우편함을 열어 고지서를 꺼낸 뒤 그 안의 금액을 읽었습니다.",               # 연 뒤 지각
++    "가방을 열어 보지 않았으므로 그 안에 무엇이 있었는지는 모릅니다.",               # 지각 주장 없음
++    "증인은 창고에 간 적은 없지만 사진으로 물건의 상태를 확인했습니다.",             # 매개 경로
++    "저는 그 회의에 참석한 적이 없어 직접 들은 바는 없습니다.",                     # 지각 부정
++    "아들이 잠든 사이 저는 거실에서 뉴스를 보았습니다.",                           # 다른 사람이 잠듦
++    "본인은 기절해 있던 동안의 일은 기억나지 않습니다.",                           # 기억 없음
++    "증인은 병원에 있었으나 같은 시각 현장 상황을 전화로 보고받았습니다.",             # 매개 경로
++    "밖에서 들린 소리만으로는 누가 왔는지 알 수 없었습니다.",                       # 시각 주장 없음
++    "피고는 지체하지 않고 전액을 지급하였고 원고는 영수증을 확인했습니다.",           # 정상 항변
++    "닫힌 문 안에서 큰 소리가 나는 것을 들었습니다.",                             # 소리는 닫힌 문 너머로 들림
++    "수납장을 열지 못했으므로 그 속에 무엇이 있었는지 모릅니다.",                    # 지각 주장 없음
++    "경적 소리를 듣고 창밖을 내다보아 운전자를 직접 확인했습니다.",                   # 소리 뒤 눈으로 확인
++    "진술인은 마취에서 깨어난 뒤 간호사에게서 경과를 전해 들었습니다.",               # 매개 경로
++]
++
++
++@pytest.mark.parametrize("pattern,sentence", POSITIVE)
++def test_structural_perception_conflict_is_found(pattern, sentence):
++    assert perception_conflict(sentence) == pattern
++
++
++@pytest.mark.parametrize("sentence", CONTROL)
++def test_controls_are_not_flagged(sentence):
++    assert perception_conflict(sentence) is None
++
++
++def statement_doc(*lines):
++    return paged(["진 술 서¶", "성 명 김○○¶", *[f"{line}¶" for line in lines], "2025. 4. 2.¶", "진술인 김○○ (인)¶"],
++                 doc_id="S", filename="진술서.pdf")
++
++
++def test_entrypoint_reports_suspicious_c_grade_once_per_sentence():
++    found = [f for f in check_statements(statement_doc(POSITIVE[0][1], CONTROL[0]))
++             if str(f.type) == "STATEMENT_BEYOND_PERCEPTION"]
++    assert len(found) == 1
++    finding = found[0]
++    assert finding.status.value == "SUSPICIOUS" and finding.evidence_grade.value == "C"
++    assert finding.confidence_features["pattern"] == "UNOPENED_INSIDE" and finding.confidence_features["human_review"]
++    assert "고지서" in finding.evidence[0].excerpt
++
++
++def test_existing_limitation_rule_keeps_its_status_and_is_not_duplicated():
++    sentence = "본인은 멀리 있어 대화를 들을 수 없었으나 원고가 폭언하지 않은 것은 확실합니다."
++    found = [f for f in check_statements(statement_doc(sentence)) if str(f.type) == "STATEMENT_BEYOND_PERCEPTION"]
++    assert [f.status.value for f in found] == ["UNVERIFIED"]
++
++
++def test_absence_of_observation_turned_into_settled_fact_uses_existing_rule():
++    sentence = "직원이 서류를 꺼내는 모습을 보지 못했다는 사정만으로 서류가 반출되지 않았음이 확정됩니다."
++    found = [f for f in check_statements(statement_doc(sentence)) if str(f.type) == "STATEMENT_BEYOND_PERCEPTION"]
++    assert [f.status.value for f in found] == ["UNVERIFIED"]
++
++
++def test_document_without_statement_conflict_is_unchanged():
++    found = check_statements(statement_doc(*CONTROL))
++    assert [f for f in found if str(f.type) == "STATEMENT_BEYOND_PERCEPTION"] == []
