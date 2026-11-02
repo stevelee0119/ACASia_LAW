@@ -124,7 +124,7 @@ release_highlights.json "0.14":
   - `docs/release_highlights.json` 0.17 요약
   - `update_readme.py`가 만든 README·RELEASE_HISTORY 줄
 - 평가 측 사전 검증(b14d7d9 + 판정서 + 수정본): `check_version_policy --base 2f06f9a` 위반 없음(상향 1건 0.16.0 → 0.17.0), `update_readme --check` 통과, 버전·릴리스 관련 시험 3개 파일 49건 실패 0.
-- #205(README 개편)가 먼저 병합되면 README 위치가 달라진다. 그때는 README 덩어리를 손으로 맞추지 않는다. 나머지 3개 파일을 적용한 뒤 `python scripts/update_readme.py`를 다시 돌린다.
+- 11-02 갱신: #205가 먼저 병합되어(Steve `d836a8b`), 수정본을 `d836a8b` 기준으로 다시 만들었다. 같은 검증을 다시 통과했다: check_version_policy 위반 없음, update_readme --check 통과, 시험 실패 0. 그대로 적용한다.
 
 ## 2-1-3. 0.16.0 버전 커밋 지시 (10-29, 일반 경로, 구현 한시 대행)
 

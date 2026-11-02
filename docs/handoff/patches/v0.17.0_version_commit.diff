@@ -1,8 +1,8 @@
 diff --git a/README.md b/README.md
-index 1c75d65..821cc43 100644
+index 7070bcc..cc37400 100644
 --- a/README.md
 +++ b/README.md
-@@ -28,6 +28,7 @@
+@@ -249,6 +249,7 @@ docker compose up --build
  
  | 릴리스 | 기간 | 핵심 변경 |
  |---|---|---|
