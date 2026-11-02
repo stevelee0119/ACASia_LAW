@@ -11,7 +11,7 @@ import re
 import struct
 import zlib
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from packages.common.schemas import Block, NormalizedDocument, Page, new_id
 
@@ -302,9 +302,31 @@ class HwpParser(DocumentParser):
             doc.structure["page_numbers_reliable"] = False
             doc.parse_warnings.append("HWP 본문 텍스트를 추출했습니다. 원본 쪽 번호와 시각적 배치·서식은 확인되지 않습니다.")
 
+        if texts:
+            # 표 구조(TK-133): 셀 글자는 이미 본문 문단 블록에 있다. 표 블록을 따로 만들어 중복 표시하지 않고,
+            # 행·열 구조만 structure["tables"]에 남긴 뒤 셀 문단 블록에 table_ref를 붙인다(PDF의
+            # LINES_WITH_STRUCTURE와 같은 계약). 문단 순서가 본문과 맞지 않으면 표를 내지 않는다.
+            try:
+                tables, partial, owners = _extract_hwp_table_structures(raw, doc.parse_warnings)
+            except Exception as exc:
+                tables, partial, owners = [], [], []
+                doc.parse_warnings.append(f"HWP 표 구조 복원 실패(본문 텍스트는 유지): {exc}")
+            if tables and len(owners) != len(texts):
+                doc.parse_warnings.append("HWP 표 셀 문단과 본문 문단의 순서가 맞지 않아 표 구조를 내지 않았다")
+                tables, owners = [], []
+            if tables:
+                doc.structure["tables"] = tables
+            if partial:
+                doc.structure["partial_tables"] = partial
+
         page = Page(page_number=1)
-        for t in texts:
-            page.blocks.append(Block(block_id=new_id("B"), text=t, page=1, source_layer="visible_text"))
+        for index, t in enumerate(texts):
+            block = Block(block_id=new_id("B"), text=t, page=1, source_layer="visible_text")
+            ref = owners[index] if texts and tables else None
+            if ref:
+                block.attributes["table_ref"] = ref
+                next(x for x in tables if x["table_ref"] == ref)["line_block_ids"].append(block.block_id)
+            page.blocks.append(block)
         doc.pages.append(page)
         joined = "\n".join(texts)
         doc.raw_layers["rendered_text"] = joined
@@ -444,6 +466,112 @@ def _section_tables(data: bytes) -> List[List[List[str]]]:
     if grid is not None:
         tables.append(grid)
     return tables
+
+
+MAX_HWP_TABLE_ROWS = 2000
+MAX_HWP_TABLE_COLS = 100
+MAX_HWP_DOC_CELLS = 200_000
+
+
+def _extract_hwp_table_structures(raw: bytes, warnings: List[str]
+                                  ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Optional[str]]]:
+    """표를 행·열 구조로 복원한다(TK-133). 병합 값은 앵커 칸에만 두고, 덮인 칸은 빈칸이다.
+
+    셀 주소가 범위 밖이거나 겹치거나, 표 안에 표가 있으면(중첩 표 글자가 바깥 칸에 섞인다) 불완전한 표로 보고
+    소비자(계산·사실·첨부 엔진)에 넘기지 않는다. 돌려주는 값: (완전한 표, 불완전한 표 요약, 비어 있지 않은 문단마다
+    그 문단이 속한 완전한 표의 table_ref 또는 None — _extract_hwp_text와 같은 순서)."""
+    tables: List[Dict[str, Any]] = []
+    partial: List[Dict[str, Any]] = []
+    owners: List[Optional[str]] = []
+    budget = {"cells": 0}
+    for section, data in enumerate(_section_streams(raw)):
+        found, paragraph_owners = _section_table_structures(data, warnings, budget)
+        for index, table in enumerate(found):
+            table["ref"] = ref = f"hwp_s{section}t{index}"
+            if not table["complete"]:
+                partial.append({"table_ref": ref, "row_count": table["row_count"],
+                                "column_count": table["column_count"], "reason": "INCOMPLETE_STRUCTURE"})
+                continue
+            grid = table["cells"]
+            tables.append({"table_ref": ref, "page": 1, "table_index": len(tables), "cells": grid,
+                           "header": grid[0], "title": None, "row_count": len(grid),
+                           "column_count": len(grid[0]), "merges": table["merges"], "covered": table["covered"],
+                           "complete": True, "representation": "LINES_WITH_STRUCTURE",
+                           "source": "HWP_RECORDS", "line_block_ids": []})
+        owners.extend(t["ref"] if t is not None and t["complete"] else None for t in paragraph_owners)
+    return tables, partial, owners
+
+
+def _section_table_structures(data: bytes, warnings: List[str], budget: Dict[str, int]
+                              ) -> Tuple[List[Dict[str, Any]], List[Optional[Dict[str, Any]]]]:
+    out: List[Dict[str, Any]] = []
+    owners: List[Optional[Dict[str, Any]]] = []          # 비어 있지 않은 문단마다 속한 표(셀 밖이면 None)
+    table: Optional[Dict[str, Any]] = None
+    owner: Optional[List[List[Optional[Tuple[int, int]]]]] = None
+    table_level = cell_level = -1
+    cell: Optional[Tuple[int, int]] = None
+
+    def close() -> None:
+        if table is not None:
+            out.append(table)
+
+    for tag, level, body in _records(data):
+        if table is not None and level < table_level:      # 표 제어보다 바깥 수준의 레코드가 나오면 표가 끝났다
+            close()
+            table, owner, cell = None, None, None
+        if tag == HWPTAG_TABLE and len(body) >= 8:
+            if table is not None:                            # 표 안의 표: 글자가 바깥 칸에 섞이므로 불완전
+                if table["complete"]:
+                    warnings.append("HWP 표 안에 표가 있어 바깥 표를 불완전한 표로 두었다")
+                table["complete"] = False
+                continue
+            rows, cols = struct.unpack_from("<HH", body, 4)
+            if not (0 < rows <= MAX_HWP_TABLE_ROWS and 0 < cols <= MAX_HWP_TABLE_COLS) or \
+                    budget["cells"] + rows * cols > MAX_HWP_DOC_CELLS:
+                warnings.append(f"HWP 표 크기({rows}×{cols})가 상한을 넘어 표 구조를 만들지 않았다")
+                continue
+            budget["cells"] += rows * cols
+            table = {"cells": [["" for _ in range(cols)] for _ in range(rows)], "merges": [], "covered": [],
+                     "complete": True, "row_count": rows, "column_count": cols}
+            owner = [[None] * cols for _ in range(rows)]
+            table_level = level
+        elif tag == HWPTAG_LIST_HEADER and table is not None and level in (table_level, table_level + 1):
+            cell, cell_level = None, level
+            if len(body) < 16:
+                table["complete"] = False
+                continue
+            col, row, col_span, row_span = struct.unpack_from("<HHHH", body, 8)
+            rows, cols = table["row_count"], table["column_count"]
+            if col_span < 1 or row_span < 1 or row + row_span > rows or col + col_span > cols:
+                if table["complete"]:
+                    warnings.append("HWP 표 셀 주소·병합 범위가 표 범위를 벗어나 불완전한 표로 두었다")
+                table["complete"] = False
+                continue
+            area = [(r, c) for r in range(row, row + row_span) for c in range(col, col + col_span)]
+            if any(owner[r][c] is not None for r, c in area):
+                if table["complete"]:
+                    warnings.append("HWP 표 셀이 겹쳐 불완전한 표로 두었다")
+                table["complete"] = False
+                continue
+            for r, c in area:
+                owner[r][c] = (row, col)
+            if row_span > 1 or col_span > 1:
+                table["merges"].append({"row": row, "col": col, "row_span": row_span, "col_span": col_span})
+                table["covered"].extend([r, c] for r, c in area if (r, c) != (row, col))
+            cell = (row, col)
+        elif tag == HWPTAG_PARA_TEXT:
+            text = _paragraph_text(body)
+            if not text:
+                continue
+            if table is not None and cell is not None and level > cell_level:
+                row, col = cell
+                grid = table["cells"]
+                grid[row][col] = f"{grid[row][col]} {text}".strip() if grid[row][col] else text
+                owners.append(table)
+            else:
+                owners.append(None)
+    close()
+    return out, owners
 
 
 def _section_streams(raw: bytes, notes: Optional[List[str]] = None) -> List[bytes]:
