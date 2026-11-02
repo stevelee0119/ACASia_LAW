@@ -1,0 +1,418 @@
+diff --git a/packages/legal_engine/law_name_inference.py b/packages/legal_engine/law_name_inference.py
+new file mode 100644
+index 0000000..329e308
+--- /dev/null
++++ b/packages/legal_engine/law_name_inference.py
+@@ -0,0 +1,90 @@
++"""비공식 약칭으로 적힌 법령명의 공식 법령 추정(TK-130).
++
++서면은 공식 약칭이 아닌 줄임말("중대재해법", "인공지능법")을 자주 쓴다. 국가법령정보 목록 검색은 이런 이름에
++0건을 돌려주고, 문서 안에 정식 법령명도 없으면 지금까지는 '법령 목록에서 찾지 못한 법령'(CRITICAL)이 됐다.
++
++어간(끝의 법·시행령·시행규칙을 뗀 몸통)으로 다시 찾은 목록에서, 적힌 이름의 글자가 후보의 공식 약칭
++(약칭이 없으면 정식 법령명) 안에 순서대로 모두 나오는지(부분수열)로 점수를 매긴다. 판단 규칙(보수적):
++- 법령 종류(법률·시행령·시행규칙)가 다르면 후보가 아니다.
++- 후보에 공식 약칭이 있으면 약칭과만 대조한다. 약칭이 없을 때만 정식 법령명과 대조한다.
++- 첫 글자가 같아야 한다. 어간은 3자 이상이어야 한다.
++- 문턱을 넘는 법령(law_id)이 하나뿐이거나, 1위가 2위보다 충분히 앞설 때만 추정한다.
++이 추정은 존재 확인이 아니다. 호출 측은 추정 법령에 인용 조문이 있을 때만 쓰고, '확인됨'으로 올리지 않는다.
++"""
++from __future__ import annotations
++
++import re
++import unicodedata
++from typing import Any, Dict, Iterable, Optional
++
++KIND_SUFFIXES = (("시행규칙", "시행규칙"), ("시행령", "시행령"))
++MIN_STEM = 3
++THRESHOLD = 500
++MARGIN = 100
++
++
++def compact(name: Optional[str]) -> str:
++    text = unicodedata.normalize("NFC", name or "")
++    return re.sub(r"[\s·•「」『』]", "", text)
++
++
++def law_kind(name: str) -> str:
++    c = compact(name)
++    for suffix, kind in KIND_SUFFIXES:
++        if c.endswith(suffix):
++            return kind
++    return "법률"
++
++
++def stem(name: str) -> str:
++    c = compact(name)
++    for suffix, _ in KIND_SUFFIXES:
++        if c.endswith(suffix):
++            c = c[: -len(suffix)]
++            break
++    return re.sub(r"(법률|법)$", "", c)
++
++
++def is_subsequence(query: str, target: str) -> bool:
++    if not query or len(query) > len(target):
++        return False
++    at = 0
++    for ch in query:
++        at = target.find(ch, at)
++        if at < 0:
++            return False
++        at += 1
++    return True
++
++
++def score(written: str, record: Dict[str, Any]) -> int:
++    q = compact(written)
++    if len(stem(q)) < MIN_STEM:
++        return 0
++    abbreviation = compact(record.get("abbreviation"))
++    target = abbreviation or compact(record.get("law_name"))
++    if not target or law_kind(target) != law_kind(q) or target[0] != q[0]:
++        return 0
++    if target == q or not is_subsequence(q, target):
++        return 0
++    base = 800 if abbreviation else 600
++    return base - min(len(target) - len(q), 200 if not abbreviation else 100)
++
++
++def pick(written: str, records: Iterable[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
++    """문턱을 넘는 법령이 하나로 좁혀질 때만 그 법령을 돌려준다."""
++    best: Dict[str, Dict[str, Any]] = {}
++    for record in records:
++        law_id = str(record.get("law_id") or "").lstrip("0")
++        value = score(written, record)
++        if not law_id or value < THRESHOLD:
++            continue
++        if law_id not in best or value > best[law_id]["score"]:
++            best[law_id] = {"law_name": record.get("law_name"), "law_id": law_id,
++                            "abbreviation": record.get("abbreviation") or None, "score": value,
++                            "basis": "OFFICIAL_ABBREVIATION_SUBSEQUENCE" if record.get("abbreviation")
++                            else "OFFICIAL_NAME_SUBSEQUENCE"}
++    ranked = sorted(best.values(), key=lambda c: -c["score"])
++    if not ranked or (len(ranked) > 1 and ranked[0]["score"] - ranked[1]["score"] < MARGIN):
++        return None
++    return ranked[0]
+diff --git a/packages/legal_engine/provision_content.py b/packages/legal_engine/provision_content.py
+index b3dd21a..cde317d 100644
+--- a/packages/legal_engine/provision_content.py
++++ b/packages/legal_engine/provision_content.py
+@@ -107,7 +107,7 @@ def _terms(text: str) -> List[str]:
+     return out
+ 
+ 
+-CLAUSE_SPLIT_RE = re.compile(r"(?<=다\.)\s*|;\s*|\n+|(?=[①-⑳])|(?=\s\d{1,2}\.\s)")
++CLAUSE_SPLIT_RE = re.compile(r"(?<=다\.)\s*|;\s*|\n+|(?=[①-⑳㉑-㉟㊱-㊿])|(?=\s\d{1,2}\.\s)")
+ 
+ 
+ def _scoped_body(body: str, subject: Optional[str]) -> str:
+diff --git a/packages/legal_engine/source_review.py b/packages/legal_engine/source_review.py
+index 42c7b40..3072f5b 100644
+--- a/packages/legal_engine/source_review.py
++++ b/packages/legal_engine/source_review.py
+@@ -67,6 +67,12 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
+             verdict.notes.append("법령 약칭 후보를 확인하지 못했다. 정식명칭·조회 상태를 확인해야 한다")
+             verdict.findings.append(verifier._unverified_finding(citation, verdict.notes[-1], retried.source_record))
+             return verdict
++    inferred = None
++    if response.ok and (response.message or "").startswith("EXACT_LAW_NOT_FOUND:") and not alias:
++        inferred, retried = _infer_abbreviation(verifier, verdict, citation, as_of, current_date)
++        if inferred is not None:
++            inferred["original"] = response
++            response = retried
+     if response.ok and (response.message or "").startswith("EXACT_LAW_NOT_FOUND:"):
+         _law_absent(verdict, response, verifier=verifier)
+         return verdict
+@@ -77,6 +83,9 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
+     official = response.records[0]
+     verdict.official_record = official
+     verdict.levels.update(existence="VERIFIED", version="VERIFIED")
++    if inferred is not None:
++        # 약칭 추정으로 찾은 법령은 존재 '확인'이 아니다. 조문 대조는 하되 확인됨으로 올리지 않는다.
++        verdict.levels["existence"] = "INFERRED_FROM_ABBREVIATION"
+     verdict.review["version"] = {key: official.get(key) for key in (
+         "law_id", "version_id", "effective_from", "effective_until", "promulgation_date",
+         "date_basis", "history_complete", "current_version", "current_as_of")}
+@@ -95,8 +104,17 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
+     verdict.levels["article"] = provision["status"]
+     verdict.levels["provision"] = provision["status"]
+     if provision["status"] == "NOT_FOUND":
++        if inferred is not None:
++            # 추정 법령에 인용 조문이 없으면 추정을 버리고 원래 판정(법령 목록 미발견)으로 돌아간다.
++            verdict.review["law_alias"]["found"] = False
++            verdict.official_record = None
++            verdict.levels.update(existence="NOT_FOUND", version="UNVERIFIED")
++            _law_absent(verdict, inferred["original"], verifier=verifier)
++            return verdict
+         _article_absent(verdict, official, provision, as_of)
+         return verdict
++    if inferred is not None:
++        _abbreviation_inferred(verdict, inferred["candidate"])
+     if provision["status"] != "VERIFIED":
+         verdict.notes.append(provision.get("reason", "지정 조항호목의 전문을 확인하지 못했다"))
+         return verdict
+@@ -145,6 +163,8 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
+         # 기준일이 없으면 본문 대조를 마쳐도 PARTIALLY_VERIFIED로 두고, 본문 대조 완료는
+         # component_summary의 content_confirmed로 따로 센다.
+         verdict.status = VerificationStatus.VERIFIED
++    if inferred is not None and verdict.status == VerificationStatus.VERIFIED:
++        verdict.status = VerificationStatus.PARTIALLY_VERIFIED
+     # v3 D4: 기준일이 없으면 현행 버전 기준 일치로 확인 완료하고 기준일 확인은 권고로만 둔다.
+     verdict.status, label, advisory = provision_label(verdict.levels, verdict.status, as_of)
+     verdict.review["verification_label"] = label
+@@ -754,3 +774,46 @@ def compared_label(citation) -> str:
+     if resolved:
+         return f"{resolved}('{citation.raw_text}')"
+     return citation.raw_text
++
++
++def _infer_abbreviation(verifier, verdict, citation, as_of, current_date):
++    """문서에 정식 법령명이 없을 때 공식 목록에서 약칭 후보를 하나로 좁혀 다시 조회한다(TK-130)."""
++    infer = getattr(verifier.registry.law, "infer_law_by_abbreviation", None)
++    if infer is None:
++        return None, None
++    guess = infer(citation.law_name)
++    verdict.source_records.extend(guess.source_records or [])
++    if not guess.ok or not guess.records:
++        return None, None
++    candidate = guess.records[0]
++    retried = verifier.registry.law.resolve_statute(candidate["law_name"], as_of=as_of, current_date=current_date)
++    verdict.source_records.extend(retried.source_records)
++    if not retried.ok or (retried.message or "").startswith("EXACT_LAW_NOT_FOUND:"):
++        return None, None
++    verdict.review["law_alias"] = {"written": citation.law_name, "resolved": candidate["law_name"],
++                                   "basis": candidate["basis"], "score": candidate["score"],
++                                   "official_abbreviation": candidate.get("abbreviation"), "found": True}
++    verdict.notes.append(
++        f"'{citation.law_name}'은(는) 공식 법령 목록에 같은 이름이 없어, 공식 목록의 "
++        + (f"약칭 「{candidate['abbreviation']}」" if candidate.get("abbreviation") else "법령명")
++        + f"과 글자 순서가 맞는 「{candidate['law_name']}」로 추정해 조문을 대조했다(추정, 정식명 확인 필요)")
++    return {"candidate": candidate, "original": None}, retried
++
++
++def _abbreviation_inferred(verdict, candidate):
++    """약칭 추정으로 조문을 찾은 경우: 부존재(CRITICAL) 대신 정식명 확인 권고(LOW)를 남긴다(TK-130)."""
++    citation = verdict.citation
++    ids = [r.source_record_id for r in verdict.source_records]
++    verdict.findings.append(Finding.create(
++        type=FindingType.LAW_CITATION_ERROR, status=VerificationStatus.PARTIALLY_VERIFIED, severity=Severity.LOW,
++        evidence_grade=EvidenceGrade.B,
++        title=f"비공식 약칭으로 적힌 법령(추정: {candidate['law_name']}): {citation.law_name}",
++        detail=(f"공식 법령 목록에 '{citation.law_name}'이라는 이름은 없다. 공식 목록에서 글자 순서가 맞는 법령이 "
++                f"「{candidate['law_name']}」 하나뿐이고 인용 조문이 그 법령에 있어 이 법령으로 대조했다. "
++                "추정이므로 정식 법령명으로 고쳐 적는 것이 좋다."),
++        document_id=citation.document_id, block_id=citation.block_id, page=citation.page, span=citation.span,
++        engine="legal_engine", source_record_ids=ids, tags=["LEGAL", "STATUTE", "ABBREVIATION_INFERRED"],
++        confidence_features={"verdict_label": "ABBREVIATION_INFERRED", "law_name": citation.law_name,
++                             "resolved_law_name": candidate["law_name"], "basis": candidate["basis"],
++                             "score": candidate["score"]},
++    ))
+diff --git a/packages/legal_engine/temporal_review.py b/packages/legal_engine/temporal_review.py
+index 70aa601..89856d5 100644
+--- a/packages/legal_engine/temporal_review.py
++++ b/packages/legal_engine/temporal_review.py
+@@ -34,7 +34,8 @@ from packages.common.schemas import Evidence, Finding
+ from .provision_content import compare_claim_to_provision
+ 
+ ENGINE_NAME = "legal_engine.temporal_review"
+-CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
++# 항 번호 원숫자 1~50. ㉑(U+3251)부터는 ⑳(U+2473)와 코드 범위가 떨어져 있어 [①-⑳]로는 잡히지 않는다(TK-130 2).
++CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿"
+ TIME_QUALIFIER_RE = re.compile(r"(?P<kind>행위|범행|처분|사고|계약|사건)\s*(?:당시|시(?:점)?(?:에|의)?)")
+ # '2023. 11. 20.'과 '2023년 11월 20일' 표기를 모두 읽는다(공소사실은 흔히 '년월일'로 적는다).
+ DATE_RE = re.compile(r"(?P<y>(?:19|20)\d{2})\s*[.년]\s*(?P<m>\d{1,2})\s*[.월]\s*(?P<d>\d{1,2})\s*[.일]?")
+diff --git a/packages/source_adapters/official_legal.py b/packages/source_adapters/official_legal.py
+index e91606e..b7fd957 100644
+--- a/packages/source_adapters/official_legal.py
++++ b/packages/source_adapters/official_legal.py
+@@ -166,6 +166,29 @@ class OfficialLegalMixin:
+                 history.message = "History contains an unrelated law identity"
+         return history
+ 
++    def infer_law_by_abbreviation(self, law_name):
++        """적힌 이름이 목록에 없을 때 어간으로 다시 찾아 공식 법령 하나를 추정한다(TK-130).
++
++        존재 확인이 아니다. 후보가 하나로 좁혀질 때만 records에 그 후보를 담는다.
++        """
++        from packages.legal_engine.law_name_inference import pick, stem
++        from .law_go_kr import _normalize_law_payload
++
++        body = stem(law_name)
++        # 어간이 정식명 안에 이어 나오지 않을 수 있다("…예방 및 처벌…" ← "…처벌법"). 앞 4자로 한 번만 더 찾는다.
++        queries = [q for q in dict.fromkeys([body, body[:4]]) if len(q) >= 3]
++        sources, first = [], None
++        for query in queries:
++            listed = self._legal_list(query, "eflaw", "LawSearch", "law", query=query, nw="1,2,3", sort="efasc")
++            sources.extend(listed.source_records or [])
++            first = first or listed.source_record
++            if not listed.ok or not listed.complete:
++                return AdapterResponse(listed.status, [], first, listed.message, sources)
++            chosen = pick(law_name, _normalize_law_payload({"LawSearch": {"law": listed.records}}))
++            if chosen:
++                return AdapterResponse(AdapterStatus.READY, [chosen], first, "", sources, True)
++        return AdapterResponse(AdapterStatus.READY, [], first, "", sources, True)
++
+     def resolve_statute(self, law_name, *, as_of=None, current_date=None):
+         current = legal_date(current_date) if current_date is not None else today_korea()
+         when = legal_date(as_of) if as_of is not None else current
+diff --git a/tests/test_tk130_abbreviation_inference.py b/tests/test_tk130_abbreviation_inference.py
+new file mode 100644
+index 0000000..e3b26ce
+--- /dev/null
++++ b/tests/test_tk130_abbreviation_inference.py
+@@ -0,0 +1,154 @@
++"""TK-130: 문서에 정식 법령명이 없는 비공식 약칭의 공식 법령 추정.
++
++합성 법령명만 쓴다(실제 법령·서면의 이름이 아니다). 목록 응답은 어간 검색을 흉내 낸다.
++"""
++from types import SimpleNamespace
++
++import httpx
++import pytest
++
++from packages.common.enums import AdapterStatus, CitationType
++from packages.common.schemas import Citation
++from packages.legal_engine.law_name_inference import pick, score
++from packages.legal_engine.verifier import LegalVerifier
++from packages.source_adapters.law_go_kr import LawGoKrAdapter
++from packages.source_adapters.local_mirror import LocalLegalMirror
++
++FULL = "시험재해 예방 및 처벌 등에 관한 법률"
++
++
++def row(name=FULL, law_id="000901", mst="901", **extra):
++    return {"법령명한글": name, "법령ID": law_id, "법령일련번호": mst, "공포일자": "20200101",
++            "시행일자": "20200301", "공포번호": "11", "제개정구분명": "일부개정", **extra}
++
++
++def body(article="6"):
++    return {"법령": {
++        "기본정보": {"법령ID": "000901", "법령일련번호": "901", "법령명_한글": FULL, "시행일자": "20200301",
++                 "공포일자": "20200101", "공포번호": "11"},
++        "조문": {"조문단위": [{"조문번호": article, "조문여부": "조문", "조문시행일자": "20200301",
++                           "조문내용": f"제{article}조(처벌) 처벌에 관한 본문이다."}]},
++        "부칙": {"부칙단위": {"부칙공포일자": "20200101", "부칙공포번호": "11",
++                         "부칙내용": ["제1조(시행일) 이 법은 2020년 3월 1일부터 시행한다."]}}}}
++
++
++@pytest.fixture
++def adapter(monkeypatch, tmp_path):
++    law = LawGoKrAdapter(mirror=LocalLegalMirror(tmp_path / "empty"))
++    monkeypatch.setattr(law, "status", lambda: AdapterStatus.READY)
++    monkeypatch.setattr(LawGoKrAdapter, "api_key", property(lambda self: "TEST_SECRET_OC"))
++    return law
++
++
++def install(monkeypatch, adapter, rows_for, article="6"):
++    queries = []
++
++    def request(url, *, params):
++        if "MST" in params:
++            payload = body(article)
++        else:
++            queries.append(params.get("query") or params.get("LID"))
++            rows = rows_for(params)
++            payload = {"LawSearch": {"totalCnt": len(rows), "page": 1, "law": rows}}
++        return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
++    monkeypatch.setattr(adapter, "_http_get", request)
++    return queries
++
++
++def by_stem(rows):
++    """적힌 이름 그대로는 0건, 어간·정식명·LID로는 rows를 돌려준다(공식 목록 검색 흉내)."""
++    def rows_for(params):
++        q = params.get("query")
++        if params.get("LID") or q is None:
++            return rows
++        names = [r["법령명한글"].replace(" ", "") for r in rows]
++        return rows if any(q.replace(" ", "") in n for n in names) else []
++    return rows_for
++
++
++def cite(written, article="6"):
++    return Citation.create(CitationType.STATUTE, f"{written} 제{article}조", law_name=written, article=article)
++
++
++def verify(adapter, citation):
++    return LegalVerifier(SimpleNamespace(law=adapter)).verify_statute(
++        citation, as_of="2026-01-01", current_date="2026-09-26")
++
++
++def types(verdict):
++    return {f.type.value for f in verdict.findings}
++
++
++# --- 양성: 비공식 약칭이 공식 약칭(또는 정식명)의 부분수열이고 후보가 하나 ------------------------------
++@pytest.mark.parametrize("written,rows", [
++    ("시험재해법", [row(법령약칭명="시험재해처벌법")]),            # 공식 약칭의 부분수열
++    ("시험재해예방법", [row(법령약칭명="시험재해예방처벌법")]),     # 다른 꼴의 줄임
++    ("시험재해처벌법", [row()]),                                   # 약칭 없음 → 정식명 부분수열
++])
++def test_informal_abbreviation_is_inferred_not_reported_absent(adapter, monkeypatch, written, rows):
++    install(monkeypatch, adapter, by_stem(rows))
++    verdict = verify(adapter, cite(written))
++    assert "STATUTE_NONEXISTENT" not in types(verdict)
++    assert verdict.levels["existence"] == "INFERRED_FROM_ABBREVIATION"
++    assert verdict.review["law_alias"]["resolved"] == FULL
++    assert verdict.status.value != "VERIFIED"          # 추정은 확인됨으로 올리지 않는다
++    assert any("ABBREVIATION_INFERRED" in f.tags for f in verdict.findings)
++
++
++# --- 대조: 추정하지 않고 기존 판정(CRITICAL)을 유지 -----------------------------------------------------------
++def test_article_missing_in_candidate_keeps_absence(adapter, monkeypatch):
++    install(monkeypatch, adapter, by_stem([row(법령약칭명="시험재해처벌법")]), article="7")
++    verdict = verify(adapter, cite("시험재해법", "6"))
++    assert "STATUTE_NONEXISTENT" in types(verdict)
++    assert verdict.review["law_alias"]["found"] is False
++
++
++def test_two_close_candidates_are_not_guessed(adapter, monkeypatch):
++    rows = [row(법령약칭명="시험재해처벌법"),
++            row(name="시험재해 보상 등에 관한 법률", law_id="000902", mst="902", 법령약칭명="시험재해보상법")]
++    install(monkeypatch, adapter, by_stem(rows))
++    verdict = verify(adapter, cite("시험재해법"))
++    assert "STATUTE_NONEXISTENT" in types(verdict)
++
++
++@pytest.mark.parametrize("written,abbr", [
++    ("시험재해법", "시험재해처벌법시행령"),   # 법률 ↔ 시행령 종류 불일치
++    ("재해시험법", "시험재해처벌법"),          # 첫 글자 불일치
++    ("시험법", "시험재해처벌법"),              # 어간 3자 미만
++])
++def test_kind_initial_or_short_stem_controls(written, abbr):
++    assert score(written, {"law_name": FULL, "abbreviation": abbr}) == 0
++
++
++def test_name_is_ignored_when_official_abbreviation_exists():
++    # 정식명은 부분수열이지만 공식 약칭(시행령)과는 종류가 달라 후보가 아니다(test_v096 대조와 같은 원칙).
++    assert pick("시험재해처벌법", [{"law_name": FULL, "law_id": "1", "abbreviation": "시험재해처벌법시행령"}]) is None
++
++
++def test_document_alias_path_is_unchanged(adapter, monkeypatch):
++    queries = install(monkeypatch, adapter, by_stem([row(법령약칭명="시험재해처벌법")]))
++    citation = cite("시험재해법")
++    citation.attributes.update(law_alias_candidate=FULL, law_alias_basis="DOCUMENT_FULL_NAME_PREFIX")
++    verdict = verify(adapter, citation)
++    assert verdict.review["law_alias"]["basis"] == "DOCUMENT_FULL_NAME_PREFIX"
++    assert verdict.levels["existence"] == "VERIFIED"
++    assert "시험재해" not in queries                       # 문서 근거가 있으면 어간 검색을 하지 않는다
++
++
++# --- TK-130 2: 제21항 이상 원숫자 -------------------------------------------------------------------------------
++from packages.legal_engine.temporal_review import paragraph_text  # noqa: E402
++
++ARTICLE = "제9조(시험) " + " ".join(f"{c} 제{i}항 본문." for i, c in enumerate(
++    "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒", start=1))
++
++
++@pytest.mark.parametrize("n", ["20", "21", "22"])
++def test_paragraphs_beyond_twenty_are_sliced(n):
++    text = paragraph_text(ARTICLE, n)
++    assert f"제{n}항 본문" in text
++    assert f"제{int(n) + 1}항" not in text and f"제{int(n) - 1}항 본문" not in text
++
++
++@pytest.mark.parametrize("n", ["1", "2", "19"])
++def test_paragraphs_below_twenty_unchanged(n):
++    assert paragraph_text(ARTICLE, n).strip() == f"{'①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲'[int(n) - 1]} 제{n}항 본문."

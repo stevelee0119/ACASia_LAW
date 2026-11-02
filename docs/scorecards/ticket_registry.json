@@ -483,6 +483,11 @@
    "kind": "existing",
    "note": "2026-10-25 사용자 요구: 표에 반영한 외부 AI 답변(브라우저 저장)을 보고서 생성 시 포함. 평가 측 검토: 가능(보고서 요청에 답변 동봉 → 서버 고정본에 포함·해시, 형식별 '외부 AI 참고 의견(공식 확인 아님)' 절, 공유용은 개인정보 가림). 선행 TK-126 PR.  · 10-25 사전 검증 완료(새 시험 5건, 관련 2,022건 실패 0, 변형 사본 검출 확인), 지시(전달문 2-4절). · 10-25 사용자 결정: 0.15.0 다음 릴리스 범위. · Steve 병합 5d03247(10-28, #185 head 89cf414, 사용자 화면 확인) — 배포 대기. · 0.16.0 배포(main 2f06f9a, #195, health 0.16.0·SHA·DB ok 사용자 확인 10-29).",
    "deployed_on": "2026-10-29"
+  },
+  "TK-130": {
+   "status": "open",
+   "kind": "existing",
+   "note": "2026-11-02 사용자 지시(lexdiff 노하우 분석·이식 지시): 문서에 정식명이 없는 비공식 약칭 법령명이 LAW_ALIASES·문서 근거·공식 약칭 완전일치 모두 실패하면 STATUTE_NONEXISTENT CRITICAL(오탐). 해결: 어간 재검색+공식 약칭 부분수열 단일 후보 추정, 조문 실존 시에만 LOW·PARTIALLY_VERIFIED, 아니면 원래 CRITICAL 유지. 부수: 제21항 이상 원숫자(temporal_review·provision_content). 평가 측 수정본 patches/TK-130_abbreviation_inference_on_debbe83.diff 사전 검증. 배정 Antigravity, 착수는 사용자 결정."
   }
  },
  "updated_on": "2026-10-25"
