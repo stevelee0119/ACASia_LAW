@@ -24,7 +24,7 @@ index e86e721..9ffc5f6 100644
      omitted, cursor = [], 0
      for seg in segments:
 diff --git a/packages/legal_engine/opinion_attribution.py b/packages/legal_engine/opinion_attribution.py
-index 0ef13cc..79d9b3c 100644
+index 0ef13cc..640465a 100644
 --- a/packages/legal_engine/opinion_attribution.py
 +++ b/packages/legal_engine/opinion_attribution.py
 @@ -17,7 +17,7 @@
@@ -36,15 +36,34 @@ index 0ef13cc..79d9b3c 100644
  
  OPINION_KINDS = {"반대의견": "DISSENT", "별개의견": "CONCURRING", "보충의견": "SUPPLEMENTARY",
                   "반대보충의견": "DISSENT", "다수의견": "MAJORITY"}
-@@ -109,6 +109,38 @@ def split_opinions(text: str) -> Dict[str, Any]:
+@@ -87,12 +87,17 @@ def _kind(match: re.Match) -> str:
+     return kind
+ 
+ 
++def _markers(text: str) -> List[re.Match]:
++    """전문·판결요지의 의견 표지를 위치 순으로. split_opinions·opinion_ranges가 함께 쓴다."""
++    return sorted(list(FULL_MARKER_RE.finditer(text)) + list(SUMMARY_MARKER_RE.finditer(text)),
++                  key=lambda m: m.start())
++
++
+ def split_opinions(text: str) -> Dict[str, Any]:
+     """판결 전문·판결요지를 의견 구간으로 나눈다. {'MAJORITY': str, 'DISSENT': [...], ...}"""
+     out: Dict[str, Any] = {"MAJORITY": "", "DISSENT": [], "CONCURRING": [], "SUPPLEMENTARY": []}
+     text = text or ""
+-    markers = sorted(list(FULL_MARKER_RE.finditer(text)) + list(SUMMARY_MARKER_RE.finditer(text)),
+-                     key=lambda m: m.start())
++    markers = _markers(text)
+     if not markers:
+         out["MAJORITY"] = text
+         return out
+@@ -109,6 +114,37 @@ def split_opinions(text: str) -> Dict[str, Any]:
      return out
  
  
 +def opinion_ranges(text: str) -> List[Tuple[int, int, str]]:
 +    """원문 위치 기준 의견 구간 [(시작, 끝, 종류)]. 표지가 없으면 전체가 다수의견이다(TK-135)."""
 +    text = text or ""
-+    markers = sorted(list(FULL_MARKER_RE.finditer(text)) + list(SUMMARY_MARKER_RE.finditer(text)),
-+                     key=lambda m: m.start())
++    markers = _markers(text)
 +    if not markers:
 +        return [(0, len(text), "MAJORITY")] if text else []
 +    ranges = [(0, markers[0].start(), "MAJORITY")] if markers[0].start() > 0 else []
@@ -76,16 +95,16 @@ index 0ef13cc..79d9b3c 100644
      """서면의 판결 요약이 어느 의견에 가장 가까운지. verdict는 MISATTRIBUTED_OPINION 또는 None."""
      parts = [split_opinions(full_text), split_opinions(summary)]
 diff --git a/packages/legal_engine/verifier.py b/packages/legal_engine/verifier.py
-index d37f054..1077faf 100644
+index d37f054..b16e19a 100644
 --- a/packages/legal_engine/verifier.py
 +++ b/packages/legal_engine/verifier.py
 @@ -957,12 +957,24 @@ class LegalVerifier:
              quote_key = re.sub(r"[\s\"'“”‘’.,·]", "", citation.quoted_text or "")
              in_dissent = bool(quote_key) and any(quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", d) for d in dissents)
              in_majority = bool(quote_key) and quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", majority)
-+            concurring = [c for p in parts for c in p["CONCURRING"]]
-+            in_concurring = len(quote_key) >= 6 and any(
-+                quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", c) for c in concurring)
++            concurring = [c for p in parts for c in p["CONCURRING"]
++                          if quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", c)]
++            in_concurring = len(quote_key) >= 6 and bool(concurring)
              if in_dissent and not in_majority:
                  out.append(make("MISATTRIBUTED_OPINION", VerificationStatus.CONTRADICTED, EvidenceGrade.A,
                                  "반대의견의 문장을 판결의 판시로 인용",
@@ -99,7 +118,7 @@ index d37f054..1077faf 100644
 +                                "별개의견의 문장을 판결의 판시로 인용",
 +                                "직접 인용한 문장은 이 판결의 별개의견에만 있고 다수의견에는 없다. 별개의견은 결론에 "
 +                                "동의하더라도 판결의 판시(법원의 판단 이유)가 아니다. 인용 주변에 별개의견이라는 표시가 없다.",
-+                                next(c for c in concurring if quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", c)),
++                                concurring[0],
 +                                {"closest": "CONCURRING", "defect_summary": "별개의견 문장을 판시로 인용"}))
              elif dissents:
                  result = attribute_claim(citation.quoted_text or claim, full_text, summary)

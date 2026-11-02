@@ -1,8 +1,19 @@
 diff --git a/packages/legal_engine/source_review.py b/packages/legal_engine/source_review.py
-index ad1046f..e095360 100644
+index ad1046f..d262a51 100644
 --- a/packages/legal_engine/source_review.py
 +++ b/packages/legal_engine/source_review.py
-@@ -347,6 +347,20 @@ def _is_statute_form(law_name: str) -> bool:
+@@ -68,7 +68,9 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
+             verdict.findings.append(verifier._unverified_finding(citation, verdict.notes[-1], retried.source_record))
+             return verdict
+     inferred = None
+-    if response.ok and (response.message or "").startswith("EXACT_LAW_NOT_FOUND:") and not alias:
++    if response.ok and (response.message or "").startswith("EXACT_LAW_NOT_FOUND:") and not alias \
++            and not _is_ordinance_form(citation.law_name):
++        # 자치법규 꼴은 국가 법령 약칭으로 추정하지 않는다. 자치법규 목록에서 따로 찾는다(TK-134).
+         inferred, retried = _infer_abbreviation(verifier, verdict, citation, as_of, current_date)
+         if inferred is not None and retried is None:
+             # 후보는 골랐으나 그 법령의 연혁·전문 조회를 마치지 못했다: 부존재가 아니라 미확인이다.
+@@ -347,6 +349,20 @@ def _is_statute_form(law_name: str) -> bool:
      return any(cleaned.endswith(s) for s in statute_suffixes)
  
  
@@ -23,7 +34,7 @@ index ad1046f..e095360 100644
  def _is_internal_or_admin_rule(law_name: str) -> bool:
      """법률·대통령령 등 일반 법령이 아닌 내부 규정·행정규칙·지침 형태인지 판정."""
      cleaned = re.sub(r"[「」『』\s]", "", law_name or "")
-@@ -489,6 +503,11 @@ def _law_absent(verdict, response, verifier=None):
+@@ -489,6 +505,11 @@ def _law_absent(verdict, response, verifier=None):
          ))
          return
  
@@ -35,7 +46,7 @@ index ad1046f..e095360 100644
      # 3. 일반 법령(법, 법률 등) 형태: 기존 CRITICAL 부존재 판정 유지 (대조군)
      verdict.findings.append(Finding.create(
          type=FindingType.STATUTE_NONEXISTENT, status=VerificationStatus.NOT_FOUND, severity=Severity.CRITICAL,
-@@ -507,6 +526,85 @@ def _law_absent(verdict, response, verifier=None):
+@@ -507,6 +528,88 @@ def _law_absent(verdict, response, verifier=None):
      ))
  
  
@@ -65,7 +76,8 @@ index ad1046f..e095360 100644
 +        record = records[0]
 +        verdict.status = VerificationStatus.PARTIALLY_VERIFIED
 +        verdict.official_record = record
-+        verdict.levels.update(existence="VERIFIED_IN_ORDINANCE_LIST", version="UNVERIFIED")
++        verdict.levels.update(existence="VERIFIED", version="UNVERIFIED")  # 기존 판정 어휘를 쓴다(spec_mapping·components)
++        verdict.review["ordinance_lookup"]["source"] = "ORDINANCE_LIST"
 +        verdict.notes.append(f"자치법규 목록에서 「{record.get('ordinance_name')}」({record.get('local_government') or '지자체 미상'}, "
 +                             f"시행 {record.get('effective_from') or '미상'})을 확인했다")
 +        if citation.article:
@@ -98,11 +110,13 @@ index ad1046f..e095360 100644
 +    if records:
 +        # 이름 끝만 같은 자치법규가 여럿(지자체 미기재) 또는 같은 이름이 여럿: 존재는 하나 어느 것인지 사람이 고른다.
 +        verdict.status = VerificationStatus.PARTIALLY_VERIFIED
-+        verdict.levels.update(existence="AMBIGUOUS_IN_ORDINANCE_LIST", article="UNVERIFIED", provision="UNVERIFIED")
++        verdict.levels.update(existence="PARTIALLY_VERIFIED", article="UNVERIFIED", provision="UNVERIFIED")
++        verdict.review["ordinance_lookup"]["ambiguous"] = True
 +        names = sorted({f"{r.get('ordinance_name')}({r.get('local_government') or '미상'})" for r in records})
 +        verdict.notes.append(f"자치법규 목록에 이름이 맞는 규범이 {len(records)}건 있다: {', '.join(names[:5])}"
 +                             + (" 외" if len(names) > 5 else "") + ". 어느 지자체 것인지 서면에서 확인해야 한다")
 +        return
++    verdict.notes.append(f"자치법규 목록에서도 「{citation.law_name}」을(를) 찾지 못했다(조회 범위 내 미발견)")
 +    verdict.findings.append(Finding.create(
 +        type=FindingType.STATUTE_NONEXISTENT, status=VerificationStatus.NOT_FOUND, severity=Severity.HIGH,
 +        evidence_grade=EvidenceGrade.B,
@@ -268,10 +282,10 @@ index 0207dcd..f6ab515 100644
      from packages.legal_engine.normalize import canonical_law_name
 diff --git a/tests/test_tk134_ordinance_lookup.py b/tests/test_tk134_ordinance_lookup.py
 new file mode 100644
-index 0000000..1afbaa0
+index 0000000..4eb6a20
 --- /dev/null
 +++ b/tests/test_tk134_ordinance_lookup.py
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,134 @@
 +"""TK-134: 조례 인용은 법령 목록이 아니라 자치법규 목록(target=ordin)에서 확인한다.
 +
 +응답은 법제처 공동활용 가이드(자치법규 목록·본문 조회 API)의 필드 이름으로 만든 합성 응답이다. 실제 응답의
@@ -340,8 +354,8 @@ index 0000000..1afbaa0
 +    serve(monkeypatch, law, [ORDIN], calls=calls)
 +    _, verdict, findings = verify(law, "가람시 공영주차장 운영 조례 제3조는 요금을 정한다.")
 +    assert not [f for f in findings if str(f.severity) in ("CRITICAL", "HIGH")]
-+    assert verdict["levels"]["existence"] == "VERIFIED_IN_ORDINANCE_LIST"
-+    assert verdict["levels"]["article"] == "VERIFIED"
++    assert verdict["levels"]["existence"] == "VERIFIED" and verdict["levels"]["article"] == "VERIFIED"
++    assert verdict["review"]["ordinance_lookup"]["source"] == "ORDINANCE_LIST"
 +    assert any(c.get("target") == "ordin" for c in calls)
 +
 +
@@ -356,7 +370,8 @@ index 0000000..1afbaa0
 +def test_name_without_local_government_matches_several_and_is_left_to_a_person(law, monkeypatch):
 +    serve(monkeypatch, law, [ORDIN, OTHER])
 +    _, verdict, findings = verify(law, "공영주차장 운영 조례 제3조에 따르면 요금이 정해진다.")
-+    assert findings == [] and verdict["levels"]["existence"] == "AMBIGUOUS_IN_ORDINANCE_LIST"
++    assert findings == [] and verdict["levels"]["existence"] == "PARTIALLY_VERIFIED"
++    assert verdict["review"]["ordinance_lookup"]["ambiguous"] is True
 +
 +
 +def test_ordinance_absent_from_both_lists_is_high_not_found(law, monkeypatch):
@@ -384,3 +399,24 @@ index 0000000..1afbaa0
 +def test_article_numbers_in_plain_or_six_digit_form_are_both_read():
 +    from packages.source_adapters.law_go_kr import _ordinance_article_number
 +    assert [_ordinance_article_number(n) for n in ("000300", "000302", "3", "3의2")] == ["3", "3의2", "3", "3의2"]
++
++
++def test_ordinance_verdicts_use_existing_spec_and_component_vocabulary(law, monkeypatch):
++    """새 판정 이름을 만들지 않는다: 명세 판정(spec_mapping)·화면 구성요소(components)가 그대로 읽어야 한다."""
++    from packages.legal_engine.components import citation_components
++    expected = [([ORDIN], "가람시 공영주차장 운영 조례 제3조는 요금을 정한다.", "PARTIAL", "CONFIRMED"),
++                ([ORDIN, OTHER], "공영주차장 운영 조례 제3조에 따르면 요금이 정해진다.", "UNVERIFIABLE", "PARTIAL"),
++                ([], "다솜시 무인비행 관리 조례 제5조는 비행을 금지한다.", "NOT_FOUND", "NOT_FOUND_IN_SEARCHED_SCOPE")]
++    for rows, text, spec, component in expected:
++        serve(monkeypatch, law, rows)
++        _, verdict, _ = verify(law, text)
++        assert str(verdict["spec_verdict"]) == spec
++        [existence] = [c for c in citation_components("STATUTE", verdict["levels"]) if c["key"] == "law_existence"]
++        assert existence["status"] == component
++
++
++def test_ordinance_name_is_not_inferred_as_a_national_law_abbreviation(law, monkeypatch):
++    calls = []
++    serve(monkeypatch, law, [ORDIN], calls=calls)
++    _, verdict, _ = verify(law, "가람시 공영주차장 운영 조례 제3조는 요금을 정한다.")
++    assert "law_alias" not in verdict["review"] and not any("약칭 추정" in n for n in verdict["notes"])

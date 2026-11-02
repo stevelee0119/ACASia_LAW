@@ -1,7 +1,7 @@
 # TK-135 판례 의견 귀속 — 별개의견 인용과 의미 검토 근거 구간 (P2, 결함 수정, 평가 측 수정본)
 
 - 결정: 2026-11-03 사용자 '다음 릴리스 범위'·'A1~A3 + B1 설계 메모 진행'. 배정 Antigravity.
-- 기준: Steve `892bbd8`. 수정본 `patches/TK-135_opinion_attribution_on_892bbd8.diff`(5개 파일 +198/−6).
+- 기준: Steve `892bbd8`. 수정본 `patches/TK-135_opinion_attribution_on_892bbd8.diff`(5개 파일 +204/−8, 11-03 2판: 표지 탐색을 `_markers`로 합쳐 `split_opinions`·`opinion_ranges` 중복 제거, 동작 동일).
 
 ## 1. 현황 정정(평가 측)
 

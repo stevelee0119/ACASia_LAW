@@ -1,7 +1,7 @@
 # TK-134 자치법규(조례·규칙) 조회와 조례 판정 분기 (P2, 결함 수정, 평가 측 수정본)
 
 - 결정: 2026-11-03 사용자 '다음 릴리스 범위'·'A1~A3 + B1 설계 메모 진행'. 배정 Antigravity.
-- 기준: Steve `892bbd8`. 수정본 `patches/TK-134_ordinance_lookup_on_892bbd8.diff`(3개 파일 +337).
+- 기준: Steve `892bbd8`. 수정본 `patches/TK-134_ordinance_lookup_on_892bbd8.diff`(3개 파일 +365/−1, 11-03 2판).
 
 ## 1. 원인(`892bbd8`)
 
@@ -28,14 +28,20 @@
    - `_law_absent`에 2-1분기: 자치법규 꼴이면 `_ordinance_lookup`으로 판정하고 3분기(CRITICAL)로 가지 않는다.
    - `_ordinance_lookup`
      - 조회 실패: UNVERIFIED(`_unverified_finding`), 부존재 아님.
-     - 정확 일치 1건: PARTIALLY_VERIFIED, existence `VERIFIED_IN_ORDINANCE_LIST`. 조문이 있으면 본문 조문번호와 대조(있음 VERIFIED, 없음 LAW_CITATION_ERROR **HIGH** `ORDINANCE_ARTICLE_NOT_FOUND`, 본문 실패 UNVERIFIED).
-     - 여러 건(지자체 미기재 등): PARTIALLY_VERIFIED, `AMBIGUOUS_IN_ORDINANCE_LIST`, 결과 없음(사람이 고름).
+     - 정확 일치 1건: PARTIALLY_VERIFIED, existence `VERIFIED`(기존 어휘), `review.ordinance_lookup.source=ORDINANCE_LIST`. 조문이 있으면 본문 조문번호와 대조(있음 VERIFIED, 없음 LAW_CITATION_ERROR **HIGH** `ORDINANCE_ARTICLE_NOT_FOUND`, 본문 실패 UNVERIFIED).
+     - 여러 건(지자체 미기재 등): PARTIALLY_VERIFIED, existence `PARTIALLY_VERIFIED`, `review.ordinance_lookup.ambiguous=True`, 결과 없음(사람이 고름).
      - 목록에 없음: STATUTE_NONEXISTENT **HIGH**(CRITICAL 아님), `NOT_FOUND_ORDINANCE`, '부존재 확정 아님'.
-3. 새 시험 `tests/test_tk134_ordinance_lookup.py` 8건(가이드 필드 이름으로 만든 합성 응답).
+   - `verify_statute_source`: 자치법규 꼴은 TK-130b 약칭 추정(`_infer_abbreviation`)을 건너뛴다.
+3. 새 시험 `tests/test_tk134_ordinance_lookup.py` 10건(가이드 필드 이름으로 만든 합성 응답).
+
+### 2판 정정(11-03, 기존 코드와의 충돌 점검에서 발견)
+
+1. 1판은 새 판정 이름(`VERIFIED_IN_ORDINANCE_LIST`·`AMBIGUOUS_IN_ORDINANCE_LIST`)을 만들었다. `spec_mapping.spec_source_verdict`와 `components._MEANING`에 등록되지 않아, 실재 조례가 명세 판정 NOT_FOUND·화면 '확인하지 못함'으로 나왔다(재현 확인). 기존 어휘로 바꾸고, 명세·구성요소 판정을 시험으로 고정했다(실재 PARTIAL·CONFIRMED, 여럿 UNVERIFIABLE·PARTIAL, 미발견 NOT_FOUND·NOT_FOUND_IN_SEARCHED_SCOPE).
+2. 조례 이름이 TK-130b 약칭 추정 단계를 먼저 거쳐 국가 법령으로 추정될 수 있었다. 자치법규 꼴은 건너뛴다(시험 추가).
 
 ## 4. 평가 측 사전 검증(평가 측 재실행, 저장소 밖 사본)
 
-- 새 시험 8/8 통과.
+- 새 시험 10/10 통과(2판).
 - 관련 기존 시험(law_go_kr·source_review·NOT_FOUND_LAW·STATUTE_NONEXISTENT를 쓰는 시험 전부) 통과, 실패 0.
 - 문구 대조 '의심 없음', 하드코딩·시험 수정·보호 경로 점검 통과.
 - 국가 법령 꼴(…법) 미발견은 그대로 NOT_FOUND_LAW CRITICAL(시험으로 고정).
