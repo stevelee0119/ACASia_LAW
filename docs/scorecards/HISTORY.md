@@ -1640,3 +1640,4 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
 - 평가 측 재실행: Steve `b5fe795`(#202 병합 뒤)와 합친 사본에서 `test_tk132_hwpx_tables.py` 15·`test_tk131_evidence_pack.py` 17·`test_hwp_parser.py` 18 = 50건 통과. 보완본 사전 검증 사본: 고정 dev 82.6/holdout 81.9/FP0/A0 변화 0, 문구 대조·하드코딩 점검 통과.
 - 측정 못 함: 운영 입력 중 HWPX·표 비율, 실제 한글 프로그램 HWPX의 namespace 변형(고정 벤치마크에 HWPX 0건).
 - 판정: 수용. 사용자 병합 대기.
+- 병합: 사용자 지시("#201병합")로 Steve `c180db9`(병합 커밋, expectedHeadSha `6c8a244`). TK-132 merged, 배포 대기.
