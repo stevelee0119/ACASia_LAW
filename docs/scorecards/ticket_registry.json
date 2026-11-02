@@ -492,7 +492,7 @@
   "TK-131": {
    "status": "open",
    "kind": "existing",
-   "note": "2026-11-02 Astra 평가(평가 측 재확인): pipeline.py:1406 판례 의미 검토가 전문 앞 24,000자만 전송, 'full_text' 이름으로 발췌 전달, source_truncated를 마스킹 뒤 길이로 계산. 설계 메모·측정 먼저(TK-130 다음)."
+   "note": "2026-11-02 Astra 평가(평가 측 재확인): pipeline.py:1406 판례 의미 검토가 전문 앞 24,000자만 전송, 'full_text' 이름으로 발췌 전달, source_truncated를 마스킹 뒤 길이로 계산. 설계 메모·측정 먼저(TK-130 다음). · 설계 메모 #199 조건부 승인·병합(11-02). 구현 #202 head da7a6fa(Codex 대행) 수용(11-02, 2판 수정본과 줄 일치, CI 전부 성공) — 사용자 병합 대기."
   },
   "TK-132": {
    "status": "open",
