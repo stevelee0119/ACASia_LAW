@@ -135,16 +135,25 @@ _LEGAL_LOCATOR_RE = re.compile(r"^(?:조|항|호|목)(?:의|$|[^가-힣])|^조(?
 _JOSA_ONLY_RE = re.compile(r"(?:만(?:[을이은는])?|이(?:다|며|고|라|면)|입니다|은|는|이|가|을|를|의|에(?:서)?|[으]?로|씩|[과와]|도)")
 _OPERATION_WORD_RE = re.compile(r"^(?:곱하|곱한|합하|합한|더하|더한|빼|뺀|공제|차감)")
 # 연산 서술어(명시적 연산 표지)와 합계 표지. 결과를 잇는 절에 이 가운데 하나가 있어야 서술형 산식으로 본다(메모 M4·N3).
-_OP_PREDICATE_RE = re.compile(r"곱하[면여]|곱한|곱하기|합하[면여]|합산하[면여]|합한|합산한|더하[면여]|더한|공제하[면여]|공제한|차감하[면여]|차감한|뺀|빼면")
+# 연산 종류별 서술어. 서술형 판별 관문(_OP_PREDICATE_RE)과 계산(_evaluate_formula_operands)이 같은 목록을 쓴다(평가 측 2차 보완 G1).
+_MUL_PRED = r"곱하[면여]|곱한|곱하기"
+_ADD_PRED = r"합하[면여]|합산하[면여]|합한|합산한|더하[면여]|더한"
+_SUB_PRED = r"공제하[면여]|공제한|차감하[면여]|차감한|뺀|빼면"
+_OP_PREDICATE_RE = re.compile(f"{_MUL_PRED}|{_ADD_PRED}|{_SUB_PRED}")
 # 연산 결과를 가리키는 명사('그 곱은'·'합은'·'차는')는 명시적 연산 표지다. 절 경계가 있어도 결과를 잇는다.
 _OP_RESULT_NOUN_RE = re.compile(r"(?:^|\s)(?:그\s*)?(?P<noun>곱|합|차)(?:은|는|이|가)(?=\s|$)")
 _TOTAL_MARK_RE = re.compile(r"(?:^|\s)(?:총|전체|모두|합계|합산)")
 # 절 경계: 연결 어미(-고·-며·-으나·-지만·-는데) 뒤 공백이나 쉼표가 결과 앞에 있으면 다른 절이다(메모 M4)
 _CLAUSE_BREAK_RE = re.compile(r"[가-힣](?:고|며|으나|지만|는데)(?:\s|,)|,")
+# 피연산자 절 경계: 연결 어미(-고·-며·-으나·-지만·-는데·-므로·-어서·-아서) 뒤, 또는 수 사이가 아닌 쉼표 뒤(평가 측 2차 보완 G2)
+_OPERAND_CLAUSE_BREAK_RE = re.compile(r"[가-힣](?:고|며|으나|지만|는데|므로|어서|아서)(?=[\s,])|,(?!\d)")
+# 차수·순번 표지('1차 120명'의 '1차')는 피연산자가 아니라 이름표다(평가 측 2차 보완 G3)
+_ORDINAL_UNITS = ("차", "번째", "회차", "순위")
 
 # M7: 정당한 차이 가드 정규식
 TAX_DEDUCTION_GUARD_RE = re.compile(r"(?:부가(?:가치)?세|공급가액|세액|VAT|원천징수|지연손해금|할인)")
-APPROX_GUARD_RE = re.compile(r"(?:약|대략|가량|내외|이상|이하|미만|초과)")
+# 근사치 표지는 수치에 붙은 독립 낱말일 때만 본다. '계약'·'위약금'·'약정'의 '약'은 표지가 아니다(평가 측 2차 보완 G4, 메모 M7 '수치 인접')
+APPROX_GUARD_RE = re.compile(r"(?<![가-힣])(?:약|대략)\s*\d|\d[\d,.]*\s*[가-힣]{0,4}?\s*(?:가량|내외|남짓|이상|이하|미만|초과)")
 RANGE_GUARD_RE = re.compile(r"(?:~|내지)")
 CLAIM_QUOTE_GUARD_RE = re.compile(r"(?:주장하(?:나|였으나|며)|주장은\s*사실과|가정하더라도)")
 
@@ -294,6 +303,20 @@ def row_cell_final_amount(text: str, *, block_id: Optional[str] = None, page: Op
 
 # --- TK-76 3주기 1항: 본문 서술형 및 일반 단위 산식 파서 및 검산 로직 (A 산식 일반화) ---
 
+def unit_is_ordinal_label(m: "re.Match", text: str) -> bool:
+    """'1차 120명'·'2회차 지급 30만 원'의 차수·순번(1차·2회차)은 이름표다. 바로 뒤가 연산 기호일 때만 수로 본다(평가 측 2차 보완 G3)."""
+    up = m.group("unit_part") or ""
+    return up in _ORDINAL_UNITS and not re.match(r"\s*[×*xX✕✖\u2a2f+＋\-−=]", text[m.end():])
+
+
+def _operand_clause_start(text: str, tokens: List[dict], end_pos: int) -> int:
+    """end_pos 앞에서 피연산자 2개 이상이 남는 마지막 절 경계 위치. 없으면 0(평가 측 2차 보완 G2)."""
+    for m in reversed(list(_OPERAND_CLAUSE_BREAK_RE.finditer(text, 0, end_pos))):
+        if sum(1 for t in tokens if t["start"] >= m.end() and t["end"] <= end_pos) >= 2:
+            return m.end()
+    return 0
+
+
 def _extract_formula_tokens(text: str) -> List[dict]:
     """문장 내에서 금액 및 일반 수치(단위, 조사 분리 포함) 토큰을 순서대로 추출한다."""
     amounts = parse_amounts(text)
@@ -328,6 +351,8 @@ def _extract_formula_tokens(text: str) -> List[dict]:
         try:
             val = Decimal(num_str)
         except InvalidOperation:
+            continue
+        if unit_is_ordinal_label(m, text):
             continue
         # 앞에 붙은 음수 부호(공백·여는 괄호·문장 시작 뒤의 '-'/'−')는 값에 넣는다(평가 측 보완 F3)
         if s >= 1 and text[s - 1] in "-−" and (s == 1 or text[s - 2] in " \t(:"):
@@ -410,11 +435,11 @@ def _evaluate_formula_operands(ops: List[dict], text: str, after_ops: str = "") 
             return ops[0]["val"] + ops[1]["val"], "+"
         return ops[0]["val"] - ops[1]["val"], "-"
     if len(ops) == 2 and after_ops:
-        if re.search(r"공제하[면여]|차감하[면여]|제외하[면여]|뺀|차감한", after_ops):
+        if re.search(f"{_SUB_PRED}|제외하[면여]", after_ops):
             return ops[0]["val"] - ops[1]["val"], "-"
-        if re.search(r"합계|합하[면여]|합산하[면여]|합한|합산한|더한|모두\s*합하", after_ops):
+        if re.search(f"합계|{_ADD_PRED}|모두\\s*합하", after_ops):
             return ops[0]["val"] + ops[1]["val"], "+"
-        if re.search(r"곱하[면여]|곱한|곱하기|배한|\b배로\b|(?<=\d)\s*배", after_ops) or (
+        if re.search(f"{_MUL_PRED}|배한|\\b배로\\b|(?<=\\d)\\s*배", after_ops) or (
                 ops[0]["josa"] == "씩" and _TOTAL_MARK_RE.search(after_ops)):
             return ops[0]["val"] * ops[1]["val"], "*"
 
@@ -429,16 +454,16 @@ def _evaluate_formula_operands(ops: List[dict], text: str, after_ops: str = "") 
         
         # 덧셈 연산자 판별 (직전 조사 '와/과', 명시적 '+' 기호, '와/과/더한/합한' 등 연결어)
         # '와/과' 나열은 연산이 아니다(평가 측 보완 F1). 기호나 연산 서술어가 있어야 덧셈이다.
-        if raw_lead in ("+", "＋") or re.search(r"[+＋]|합하[면여]|합산하[면여]|합한|더한|더하[면여]", between):
+        if raw_lead in ("+", "＋") or re.search(f"[+＋]|{_ADD_PRED}", between):
             total += op_token["val"]
             primary_op = primary_op or "+"
         # 뺄셈 연산자 판별 (M2: 하이픈 앞뒤 공백 또는 단위 결합 가드)
-        elif raw_lead in ("-", "−") or re.search(r"(?<=\s)[-−](?=\s)|(?<=[가-힣])[-−]|\b공제하[면여]|\b차감하[면여]|\b제외하[면여]|\b뺀", between):
+        elif raw_lead in ("-", "−") or re.search(f"(?<=\\s)[-−](?=\\s)|(?<=[가-힣])[-−]|\\b(?:{_SUB_PRED}|제외하[면여])", between):
             total = total + op_token["val"] if op_token["val"] < 0 else total - op_token["val"]
             primary_op = primary_op or "-"
         # 곱셈 연산자 판별 (기호, 배수 서술어, 주기 단위, '씩' 조사)
         # 단위(일·회·개월 등)만으로 곱셈을 추정하지 않는다(평가 측 보완 F6). '씩'은 결과 앞 합계 표지가 있을 때만.
-        elif re.search(r"[×*xX✕✖\u2a2f]|곱하[면여]|곱한|곱하기|배한|\b배로\b|(?<=\d)\s*배", between) or (
+        elif re.search(f"[×*xX✕✖\u2a2f]|{_MUL_PRED}|배한|\\b배로\\b|(?<=\\d)\\s*배", between) or (
                 prev_josa == "씩" and _TOTAL_MARK_RE.search(after_ops)):
             total *= op_token["val"]
             primary_op = primary_op or "*"
@@ -463,7 +488,8 @@ def _check_statement_formula(text: str) -> Optional[dict]:
     # 1. 등호('=')가 존재하는 산식 처리
     if "=" in text:
         eq_pos = text.rfind("=")
-        ops = [t for t in tokens if t["end"] <= eq_pos]
+        cs = _operand_clause_start(text, tokens, eq_pos)
+        ops = [t for t in tokens if cs <= t["start"] and t["end"] <= eq_pos]
         res = [t for t in tokens if t["start"] >= eq_pos]
         if not ops or not res or len(ops) < 2:
             return None
@@ -493,7 +519,8 @@ def _check_statement_formula(text: str) -> Optional[dict]:
 
     # 2. 서술어로 연결된 산식 처리 (M4: 결과 연결 표지 엄격화)
     res_token = tokens[-1]
-    ops = tokens[:-1]
+    cs = _operand_clause_start(text, tokens[:-1], res_token["start"])
+    ops = [t for t in tokens[:-1] if t["start"] >= cs]
     if len(ops) < 2:
         return None
     between_all = text[ops[0]["start"]:res_token["end"]]
