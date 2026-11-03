@@ -148,7 +148,11 @@ def test_nested_table_makes_outer_partial(monkeypatch, tmp_path):
     inner = tbl(1, 2, level=4) + cell(0, 0, "내부", level=5) + cell(1, 0, "7일", level=5)
     body = tbl(1, 2) + cell(0, 0, "바깥") + rec(LIST_HEADER, struct.pack("<hIHHHHH", 1, 0, 0, 1, 0, 1, 1), 2) + inner
     doc = parse(monkeypatch, tmp_path, body)
-    assert not doc.structure.get("tables") and doc.structure["partial_tables"]
+    # TK-140(사용자 승인 필요): 안쪽 표를 따로 만들고 그 글자를 안쪽 표에만 배정하므로 바깥 표에 섞이지 않는다.
+    # 이름의 '바깥 표 불완전'은 옛 동작이다. 바깥 칸에 안쪽 글자가 섞이지 않는 것을 대신 단언한다.
+    tables = doc.structure["tables"]
+    assert [t["table_ref"] for t in tables] == ["hwp_s0t0", "hwp_s0t1"] and not doc.structure.get("partial_tables")
+    assert tables[0]["cells"] == [["바깥", ""]] and tables[1]["cells"] == [["내부", "7일"]]
 
 
 def test_partial_total_table_creates_no_table_finding(monkeypatch, tmp_path):
