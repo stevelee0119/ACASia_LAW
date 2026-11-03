@@ -678,13 +678,13 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 
 | 티켓 | 수정본·요청서 | 티켓 문서 | PR | 상태 |
 |---|---|---|---|---|
-| TK-76 3주기 1항 PR2 문서 간 대조(B) | `patches/TK-76_cycle3_pr2_xdoc_anchored_on_cf57cb7.diff` | [TK-76 'PR2 지시'](TK-76_focus_types_generalization_cycle1.md) | — | 지시문 제시(11-03) |
-| TK-137 제한형 관련 근거 탐색 | 설계 메모만(코드 금지) | [TK-137 메모 요청](TK-137_related_basis_memo_request.md) | — | 지시문 제시(11-03) |
-| TK-147 TK-56 시간 시험 안정화 | `patches/TK-147_tk56_timing_stability_on_cf57cb7.diff` | [TK-147](TK-147_tk56_timing_test_stability.md) | — | 지시문 제시(11-03). 사용자 '포함' = 기존 시험 수정 승인 |
-| TK-148 ㅇ 초성 사전식 값 | `patches/TK-148_gana_ah_on_cf57cb7.diff` | [TK-148](TK-148_gana_initial_ah.md) | — | **사용자 승인 대기**(기존 시험 단언 1건 변경) |
+| TK-76 3주기 1항 PR2 문서 간 대조(B) | `patches/TK-76_cycle3_pr2_xdoc_anchored_on_cf57cb7.diff` | [TK-76 'PR2 지시'](TK-76_focus_types_generalization_cycle1.md) | — | **전달 완료(11-03, 사용자)** |
+| TK-137 제한형 관련 근거 탐색 | 설계 메모만(코드 금지) | [TK-137 메모 요청](TK-137_related_basis_memo_request.md) | — | **전달 완료(11-03, 사용자)** |
+| TK-147 TK-56 시간 시험 안정화 | `patches/TK-147_tk56_timing_stability_on_cf57cb7.diff` | [TK-147](TK-147_tk56_timing_test_stability.md) | — | **전달 완료(11-03, 사용자)**. 사용자 '포함' = 기존 시험 수정 승인 |
+| TK-148 ㅇ 초성 사전식 값 | `patches/TK-148_gana_ah_on_cf57cb7.diff` | [TK-148](TK-148_gana_initial_ah.md) | — | **사용자 '148 변경승인'(11-03)** → 지시문 제시 |
 
 - 기준 Steve `cf57cb7`. 세 수정본은 서로 겹치지 않는다(PR2·TK-147 합본 verify_all 전체 종료 0, TK-148 관련 시험 136건 통과 — 평가 측 재실행).
-- 릴리스: 사용자 결정(11-03) — 현재 계획된 티켓 전체(TK-76 3주기 나머지·TK-137~139·TK-147·TK-148 승인 시) 구현 뒤 한 번에.
+- 릴리스: 사용자 결정(11-03) — 현재 계획된 티켓 전체(TK-76 3주기 나머지·TK-137~139·TK-147·TK-148) 구현 뒤 한 번에.
 - 한 PR에 한 티켓. 검토 요청은 필수 CI가 끝난 head SHA로 한다.
 
 ## 2-2. 탐지 PR 공통 수용 규약 — 하드코딩 금지 (2026-10-24 사용자 지시 '평가기준을 엄격히 적용하되 하드코딩으로 충족하지 못하게 제한')

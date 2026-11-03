@@ -14,7 +14,7 @@ index 4c59c2c..5bfe2f9 100644
  
  
 diff --git a/tests/test_tk143_short_abbreviation.py b/tests/test_tk143_short_abbreviation.py
-index fbf08a1..07e9cd1 100644
+index fbf08a1..9a6c4bb 100644
 --- a/tests/test_tk143_short_abbreviation.py
 +++ b/tests/test_tk143_short_abbreviation.py
 @@ -16,7 +16,7 @@ def kinds(verdict):
@@ -22,7 +22,7 @@ index fbf08a1..07e9cd1 100644
  def test_gana_code_follows_initial_consonant():
      assert [gana_code(x) for x in ("가", "까", "노", "산", "쌍", "오", "짜", "하", "A")] == \
 -           ["ga", "ga", "na", "sa", "sa", "a", "ja", "ha", None]
-+           ["ga", "ga", "na", "sa", "sa", "ah", "ja", "ha", None]   # ㅇ = 'ah'(TK-148, 사용자 승인 대기)
++           ["ga", "ga", "na", "sa", "sa", "ah", "ja", "ha", None]   # ㅇ = 'ah'(TK-148, 11-03 사용자 승인)
  
  
  def test_two_syllable_stem_is_resolved_from_dictionary_list(monkeypatch, adapter):
