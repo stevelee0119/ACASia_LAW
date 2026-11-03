@@ -647,13 +647,14 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 
 | 티켓 | 수정본(기준 Steve `892bbd8`) | 티켓 | PR | 상태 |
 |---|---|---|---|---|
-| TK-136 외부 AI 프롬프트 엄격성 | `patches/TK-136_external_prompt_strictness_on_892bbd8.diff` | [TK-136](TK-136_external_ai_prompt_strictness.md) | 별도 PR(화면) | 지시 |
-| TK-135 판례 의견 귀속 | `patches/TK-135_opinion_attribution_on_892bbd8.diff` | [TK-135](TK-135_precedent_opinion_attribution.md) | 별도 PR(탐지) | 지시 |
-| TK-134 자치법규 조회 | `patches/TK-134_ordinance_lookup_on_892bbd8.diff` | [TK-134](TK-134_local_ordinance_lookup.md) | 별도 PR(조회) | 지시 |
+| TK-136 외부 AI 프롬프트 엄격성 | `patches/TK-136_external_prompt_strictness_on_892bbd8.diff` | [TK-136](TK-136_external_ai_prompt_strictness.md) | 별도 PR(화면) | 전달 완료(11-03) |
+| TK-135 판례 의견 귀속 | `patches/TK-135_opinion_attribution_on_892bbd8.diff`(2판) | [TK-135](TK-135_precedent_opinion_attribution.md) | 별도 PR(탐지) | 2판 전달 완료(11-03) |
+| TK-134 자치법규 조회 | `patches/TK-134_ordinance_lookup_on_892bbd8.diff`(2판) | [TK-134](TK-134_local_ordinance_lookup.md) | 별도 PR(조회) | 2판 전달 완료(11-03) |
+| TK-76 3주기 1항 EVI-INCONS | 설계 메모만(코드 금지) | [TK-76 '3주기 1항'](TK-76_focus_types_generalization_cycle1.md) | 메모 PR | 전달 완료(11-03) |
 
 - 세 수정본은 서로 겹치지 않는다(평가 측 확인: 각각·연달아 적용 모두 성공).
 - 한 PR에 한 티켓. 검토 요청은 필수 CI가 끝난 head SHA로 한다.
-- TK-76 EVI-INCONS 설계 메모 지시는 은퇴 세트 진단 뒤 따로 낸다.
+- 11-03 사용자가 4건(TK-134 2판·TK-135 2판·TK-136·EVI-INCONS 메모)을 Antigravity에 전달했다.
 
 ## 2-2. 탐지 PR 공통 수용 규약 — 하드코딩 금지 (2026-10-24 사용자 지시 '평가기준을 엄격히 적용하되 하드코딩으로 충족하지 못하게 제한')
 10-24 검토(#175 `618130c`·#165 `94c645f`·#167 `af28269`/`0731277`)에서 세 PR이 같은 방식으로 실패했다. 은퇴 세트 항목만 정확히 오르고(EVI-DATE 7·EVI-OVR 5·EVI-INCONS 3) train 같은 유형은 0이다. 평가 측의 비공개 다른 표현 탐침도 0이다(#175 0/4·#165 0/2·#167 장소·서명자 규칙 0). 새 정규식은 고정 낱말 여러 개를 순서대로 이은 문장 틀이다. 그 낱말은 은퇴 항목 위치 소제목 낱말과 8~9개씩 겹친다. **아래 규약은 A-4·B-1·B-3과 이후 모든 탐지 PR에 적용한다. 하나라도 어기면 점수와 무관하게 불승인한다.**
