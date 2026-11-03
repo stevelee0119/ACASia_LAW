@@ -23,3 +23,14 @@
 
 ## 3. 평가 측 회신 기준
 - '통하지 않을 이유'만 회신한다(2.1 설계 메모 규칙). 승인 뒤 구현 PR. 수용 기준은 메모 승인 때 정한다(오연결 0·finding 영향 0·오프라인 점수 변화 0 포함 예정).
+
+## 4. #225 설계 메모 판정(11-03, head `9d561d9`): 조건부 승인 — 보정본 먼저
+- 메모는 요청 10항을 모두 다뤘고 깊이 1·finding 격리·실행 내 캐시·개인정보 원칙은 승인한다. 다만 평가 측이 코드·실제 응답과 대조한 결과 아래 '통하지 않을 이유'가 있다.
+- **C1 병렬 출력 자리(가장 중요)**: 저장소에 이미 `packages/legal_engine/related_authorities.py`(`review_related_authorities`·`report_lines`)와 파이프라인 단계 `related_authorities`(`pipeline.py` 919~937행), 출력 `engine_data["related_authorities"]`(하나의 dict: origin·status·note·candidates·verdicts·advisory_only)가 있고, 화면(`apps/web/static/app.js` 2825행)·PDF(`pdf_report.py` 307행)·DOCX(`docx_report.py` 242행)가 이를 그린다. 메모의 새 자리 `auxiliary_materials.related_authorities`는 병렬 자리라 화면·보고서에 나오지 않는다. → 기존 단계·자리를 확장하라(예: 기존 dict에 `delegations`·`explicit_references` 목록 키 추가, 기존 국가계약법 쟁점 결과와 한 dict에 공존, `report_lines`·화면 렌더러 확장). 보호 수용 시험 `tests/acceptance/test_f1_protected.py`(98~99행)는 '관련 근거'를 AI 탭에 그리지 않는 것만 단언하므로 기존 인용·참고자료 쪽에 붙이면 충돌하지 않는다. 화면이 바뀌므로 구현 PR 수용은 화면 캡처·사용자 확인 뒤(CLAUDE.md).
+- **C2 상한값이 실측과 맞지 않음**: 평가 측 실측(11-03, http) 위임조문 3단 비교(knd=2) 응답 — 근로기준법 221KB·2.06초, 민법 549KB·2.09초, **건축법 1,309KB·3.04초, 도로교통법 1,144KB·3.19초**(knd=1도 민법 566KB·2.40초). 메모의 '1MB 초과 파싱 중단·호출당 2.0초'면 주요 법령에서 늘 실패한다. 실측 근거로 다시 정하라(응답 크기·호출 시간·문서 누계, 같은 법령은 한 번만 조회하고 여러 조문이 같은 응답을 쓴다). `_http_get`은 timeout 인자를 받지 않는다(`base.py` 109~117행, `settings.http_timeout`) — 다르게 하려면 방법을 적어라.
+- **C3 환경 변수·네트워크 가드**: 키는 `LV_LAW_GO_KR_OC`(메모의 `LAW_GO_KR_OC` 아님, `law_go_kr.py` 26행·`config.py` 135행). `os.environ` 직접 확인 대신 기존 `settings.allow_network`(`base.py` 67행)와 어댑터 상태(READY/UNAVAILABLE)를 재사용하라.
+- **C4 판 선택**: `efYd` 지정 동작은 미확인이다. 인용 판정이 이미 고른 판의 MST를 그대로 쓰고, 3단 비교가 그 판에서 제공되지 않으면(현행만 제공 등) 표시하는 규칙을 적어라.
+- **C5 명시 참조의 대상 법 판별**: '「민법」 제750조에 따라', '같은 법 시행령 제3조', '이 법 제N조', '같은 조 제2항'에서 대상 법을 정하는 규칙(앞말의 법령명 → 그 법, '같은 법/이 법' → 인용 법, 법령명 없음 → 인용 법)과, 대상 조문 본문(발췌)을 어디서 얻는지(추가 조회면 상한 계산에 포함)를 적어라.
+- **C6 측정 계획 수치**: '온라인 탐침 서면(28건)'은 근거가 없다(0.17.0 온라인 탐침은 서면 4종). 측정 서면은 평가 측이 준비한다 — OFF/ON 쌍, 오연결 0·finding 변화 0.
+- **C7 TK-138 예약 필드**: `authority_type`·`authority_weight`를 지금 넣지 말고 TK-138에서 정한다(쓰지 않는 필드 선예약 금지).
+- 다음: 보정본(메모만) → 승인 → 구현 PR.
