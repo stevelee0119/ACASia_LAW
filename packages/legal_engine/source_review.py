@@ -510,6 +510,30 @@ def _law_absent(verdict, response, verifier=None):
         _ordinance_lookup(verdict, verifier, candidates)
         return
 
+    # 2-2. 짧은 약칭 꼴(어간 3자 이하)인데 약칭 추정이 후보 여럿·목록 상한·조회 실패로 결론을 내지 못했으면 부존재로
+    #      단정하지 않는다(TK-143). 공식 목록을 끝까지 읽고도 후보가 전혀 없으면(NO_CANDIDATE) 지금처럼 CRITICAL이다.
+    if _abbreviation_like(citation.law_name) and (verdict.review.get("law_alias") or {}).get("outcome") in UNDECIDED_INFERENCE:
+        verdict.status = VerificationStatus.UNVERIFIED
+        verdict.levels.update(existence="UNVERIFIED", article="UNVERIFIED", provision="UNVERIFIED")
+        alias = verdict.review.get("law_alias") or {}
+        verdict.notes.append(f"'{citation.law_name}'은(는) 약칭으로 보이나 정식 법령을 확인 불가 — 부존재로 단정하지 않는다")
+        verdict.findings.append(Finding.create(
+            type=FindingType.LAW_CITATION_ERROR, status=VerificationStatus.UNVERIFIED, severity=Severity.MEDIUM,
+            evidence_grade=EvidenceGrade.C,
+            title=f"약칭으로 보이나 정식 법령을 확정하지 못함: {citation.law_name}",
+            detail=("공식 법령 목록에 같은 이름이 없고, 약칭 추정으로도 정식 법령 하나를 고르지 못했다"
+                    + (f"(후보: {', '.join(alias.get('candidates') or [])})" if alias.get("candidates") else "")
+                    + ". 실무 줄임말일 수 있으므로 존재하지 않는 법령으로 단정하지 않는다. 정식 법령명을 서면에서 확인해야 한다."),
+            document_id=citation.document_id, block_id=citation.block_id, page=citation.page, span=citation.span,
+            engine="legal_engine", source_record_ids=ids, tags=["LEGAL", "STATUTE", "ABBREVIATION_UNRESOLVED"],
+            confidence_features={"verdict_label": "ABBREVIATION_UNRESOLVED", "law_name": citation.law_name,
+                                 "inference_outcome": alias.get("outcome"), "law_candidates": candidates},
+            evidence=[Evidence.create(description="법령 목록·약칭 추정 결과", grade=EvidenceGrade.C,
+                                      excerpt=", ".join(alias.get("candidates") or candidates) or "(후보 없음)",
+                                      source_record_ids=ids, supports=False)],
+        ))
+        return
+
     # 3. 일반 법령(법, 법률 등) 형태: 기존 CRITICAL 부존재 판정 유지 (대조군)
     verdict.findings.append(Finding.create(
         type=FindingType.STATUTE_NONEXISTENT, status=VerificationStatus.NOT_FOUND, severity=Severity.CRITICAL,
@@ -526,6 +550,17 @@ def _law_absent(verdict, response, verifier=None):
                                   excerpt=", ".join(candidates) or "(목록 없음)", source_record_ids=ids,
                                   supports=False)],
     ))
+
+
+UNDECIDED_INFERENCE = ("AMBIGUOUS", "INCOMPLETE", "LOOKUP_FAILED")
+
+
+def _abbreviation_like(law_name: str) -> bool:
+    """어간(끝의 법·시행령·시행규칙을 뗀 몸통)이 2~3자이고 공백 없는 이름 — 실무 줄임말 꼴(TK-143)."""
+    from .law_name_inference import compact, stem
+
+    c = compact(law_name)
+    return c.endswith(("법", "법시행령", "법시행규칙")) and 2 <= len(stem(c)) <= 3 and " " not in (law_name or "").strip()
 
 
 def _ordinance_lookup(verdict, verifier, law_candidates):
@@ -885,7 +920,7 @@ def compared_label(citation) -> str:
 
 
 INFERENCE_NOTES = {
-    "NO_CANDIDATE": "공식 목록에서 글자 순서가 맞는 법령 후보를 찾지 못했다",
+    "NO_CANDIDATE": "공식 목록에 글자 순서가 맞는 법령 후보가 없다",
     "AMBIGUOUS": "글자 순서가 맞는 법령 후보가 여럿이고 점수 차이가 작아 추정을 보류했다",
     "LOOKUP_FAILED": "약칭 후보 목록 조회에 실패해 후보를 확인하지 못했다",
     "INCOMPLETE": "약칭 후보 목록이 탐색 상한을 넘어 추정을 보류했다",
