@@ -26,6 +26,7 @@ AMOUNT_PART_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(억|천만|백만|만|천)
 TOTAL_LABEL_RE = re.compile(r"(합계|총액|총\s*금액|계|소계|합\s*계|총\s*계|지급총액|지급계|지급\s*총액|공제계|공제총액|공제\s*합계|실지급액|차인지급액|총수령액)")
 ITEM_LABEL_RE = re.compile(r"(항목|내역|세부|명세)")
 PERCENT_RE = re.compile(r"(?P<num>\d+(?:\.\d+)?)\s*%")
+_BARE_PERCENT_RE = re.compile(r"(?P<num>\d+(?:\.\d+)?)%?")
 PERCENT_HEADER_RE = re.compile(r"비율|구성비|점유율|%|퍼센트")
 
 UNIT_MULTIPLIER = {None: 1, "천": 1_000, "만": 10_000, "백만": 1_000_000, "천만": 10_000_000, "억": 100_000_000}
@@ -647,9 +648,11 @@ class CalculationEngine:
             if not pct_cols:
                 continue
             pct_col = pct_cols[0]
+            header_pct = pct_col < len(header) and bool(PERCENT_HEADER_RE.search(header[pct_col]))
             amount_cols = [i for i, h in enumerate(header) if AMOUNT_HEADER_RE.search(h) and i != pct_col]
             if not amount_cols:
-                counts = [sum(1 for r in cells[1:] if i < len(r) and parse_amounts(r[i])) if i != pct_col else -1
+                counts = [sum(1 for r in cells[1:] if i < len(r) and (parse_amounts(r[i]) or parse_cell_amount(r[i])))
+                          if i != pct_col else -1
                           for i in range(width)]
                 amount_cols = [max(range(width), key=lambda i: (counts[i], i))] if max(counts) > 0 else []
             if not amount_cols:
@@ -661,11 +664,17 @@ class CalculationEngine:
                     continue
                 amount = parse_amounts(row[col])
                 if not amount:
+                    cell_amount = parse_cell_amount(row[col])   # 머리글에 단위가 있는 표 칸('1,200,000', TK-146)
+                    amount = [cell_amount] if cell_amount else []
+                if not amount:
                     continue
                 if row and TOTAL_LABEL_RE.fullmatch(row[0].replace(" ", "")):
                     stated = amount[-1].value
                     continue
                 pct = PERCENT_RE.search(row[pct_col])
+                if not pct and header_pct:
+                    # 머리글이 비율(%) 열이면 칸에 % 기호가 없는 수도 비율이다(TK-146)
+                    pct = _BARE_PERCENT_RE.fullmatch(row[pct_col].replace(" ", ""))
                 if pct:
                     items.append((row[0], amount[-1].value, Decimal(pct.group("num")), pct.group("num")))
             computed = sum((value for _, value, _, _ in items), Decimal(0))
@@ -856,6 +865,8 @@ class CalculationEngine:
             # 금액이 존재하는 모든 데이터 열 탐색
             candidate_cols = []
             for col_idx in range(1, col_count):
+                if PERCENT_HEADER_RE.search(header[col_idx]):
+                    continue                     # 비율 열은 금액 합계 검산 대상이 아니다(비율 검사가 따로 본다, TK-146)
                 amounts_in_col = sum(1 for r in cells[1:] if col_idx < len(r) and parse_cell_amount(r[col_idx]))
                 if amounts_in_col >= 2:
                     candidate_cols.append(col_idx)
