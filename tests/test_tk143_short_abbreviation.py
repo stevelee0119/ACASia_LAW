@@ -16,7 +16,7 @@ def kinds(verdict):
 
 def test_gana_code_follows_initial_consonant():
     assert [gana_code(x) for x in ("가", "까", "노", "산", "쌍", "오", "짜", "하", "A")] == \
-           ["ga", "ga", "na", "sa", "sa", "a", "ja", "ha", None]
+           ["ga", "ga", "na", "sa", "sa", "ah", "ja", "ha", None]   # ㅇ = 'ah'(TK-148, 사용자 승인 대기)
 
 
 def test_two_syllable_stem_is_resolved_from_dictionary_list(monkeypatch, adapter):
