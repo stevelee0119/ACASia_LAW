@@ -34,3 +34,14 @@
 - **C6 측정 계획 수치**: '온라인 탐침 서면(28건)'은 근거가 없다(0.17.0 온라인 탐침은 서면 4종). 측정 서면은 평가 측이 준비한다 — OFF/ON 쌍, 오연결 0·finding 변화 0.
 - **C7 TK-138 예약 필드**: `authority_type`·`authority_weight`를 지금 넣지 말고 TK-138에서 정한다(쓰지 않는 필드 선예약 금지).
 - 다음: 보정본(메모만) → 승인 → 구현 PR.
+
+## 5. #225 보정본 판정(11-03, head `9a5846b`): 승인 — 구현 PR에서 N1~N6 반영
+- C1~C7 반영 확인: 기존 `related_authorities` 단계·`engine_data["related_authorities"]` 확장(delegations·explicit_references), 실측 상한(2.5MB·누계 15초·법령당 1회 조회), `LV_LAW_GO_KR_OC`·`settings.allow_network`·어댑터 상태, 판 MST·`thd_cmp_not_supported`, 대상 법 5단계 규칙, 측정 서면 평가 측 준비, TK-138 예약 필드 삭제.
+- 평가 측 확인(11-03): knd=2 응답 `법률조문`에는 위임 없는 조문도 들어 있다(근로기준법 172항목·고유 조번호 116, 위임 없는 항목 108) → 같은 법 조문 발췌를 추가 조회 없이 하는 계획은 사실과 맞다. 같은 조번호가 여러 번 나온다(예: 0001 두 번) → 중복 처리 규칙 필요.
+- 구현 PR에서 반영할 것(메모 재제출 불요, PR 본문에 반영 여부 기재)
+  - N1 `settings.http_timeout` 기본값은 5.0초가 아니라 **12초**다(`config.py` 110행, `LV_HTTP_TIMEOUT`). 호출당은 기존 설정을 쓰고, 문서 누계 15초는 '새 호출 시작 전 남은 예산 확인'으로 지킨다(한 호출이 12초까지 갈 수 있음을 반영).
+  - N2 기존 필드 값·낱말을 바꾸지 않는다: `origin`("DISCOVERED_AUTHORITY")·`status`(SOURCE_REVIEW_ONLY·NOT_ASSESSED·UNVERIFIED)·`note`·`candidates`·`verdicts`. TK-137 상태는 별도 키(예: `delegation_status`)에 둔다. 메모 2.3 예시의 `origin: "national_contract_act_issue"`·`status: "completed"`는 쓰지 않는다. 국가계약법 쟁점이 없고 TK-137 결과만 있으면 `origin`은 같은 값, `candidates`·`verdicts`는 빈 목록.
+  - N3 QUICK 프로필·네트워크 꺼짐·OC 없음에서는 지금과 **같은 결과**를 낸다(쟁점 없으면 `None`, 있으면 기존 dict 그대로) → 오프라인 출력·고정·은퇴 점수 변화 0. 기존 관련 시험 58건(`test_evidence_hardening.py`·`test_f2_review_screen_browser.py`·`test_frontend_summary_compact.py`·`acceptance/test_f1_protected.py` 등, 평가 측 재실행 통과)을 수정 없이 통과해야 한다.
+  - N4 시험의 합성 응답은 실제 형식인 **JSON**(메모 2.8의 'XML' 아님): `LspttnThdCmpLawXService`·`위임조문삼단비교.법률조문`·`시행령조문` 단일/목록·`삼단비교존재여부`.
+  - N5 같은 조번호가 여러 항목으로 오면(조가지번호·항 단위) 합쳐 한 조로 다루고, 인용당 최대 3건 절삭 순서(위임 우선)를 시험한다.
+  - N6 수용: finding·심각도·점수 영향 0(고정·은퇴 변화 0), 기존 시험 수정 0, 새 시험 양성 3·대조 3 이상, 화면 캡처(긴 문구 포함)와 사용자 확인 뒤 수용, 평가 측 온라인 OFF/ON 측정에서 오연결 0.

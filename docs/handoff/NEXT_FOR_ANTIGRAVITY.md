@@ -678,8 +678,8 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 
 | 티켓 | 수정본·요청서 | 티켓 문서 | PR | 상태 |
 |---|---|---|---|---|
-| TK-76 3주기 1항 PR2 문서 간 대조(B) | `patches/TK-76_cycle3_pr2_xdoc_anchored_on_cf57cb7.diff` | [TK-76 'PR2 지시'·'#224 1차 판정'](TK-76_focus_types_generalization_cycle1.md) | #224 `1d6f567` | **1차 보완 1회**(5차 탐침 대조 오탐 1/10, 평가 측 1판 결함 R1·R2) → 2판 증분 `TK-76_cycle3_pr2_fix2_on_1d6f567` 지시 |
-| TK-137 제한형 관련 근거 탐색 | 설계 메모만(코드 금지) | [TK-137 메모 요청·판정](TK-137_related_basis_memo_request.md) | #225 `9d561d9` | **조건부 승인 — 보정본 먼저(C1~C7)** |
+| TK-76 3주기 1항 PR2 문서 간 대조(B) | `patches/TK-76_cycle3_pr2_xdoc_anchored_on_cf57cb7.diff` → 2판 `TK-76_cycle3_pr2_fix2_on_1d6f567` | [TK-76 'PR2'·'#224 1·2차 판정'](TK-76_focus_types_generalization_cycle1.md) | #224 `1d6f567`→`51e86f2` | **2차 판정 수용(11-03)** — 8차 탐침 5/6·대조 0/10. Steve 병합 대기. 후속 S1(입금일 꼴) 다음 PR |
+| TK-137 제한형 관련 근거 탐색 | 설계 메모 → 구현 | [TK-137 메모 요청·판정](TK-137_related_basis_memo_request.md) | #225 `9d561d9`→`9a5846b` | **메모 보정본 승인(11-03)** — 구현 PR에서 N1~N6 반영. Steve 병합(메모) 대기 |
 | TK-147 TK-56 시간 시험 안정화 | `patches/TK-147_tk56_timing_stability_on_cf57cb7.diff` | [TK-147](TK-147_tk56_timing_test_stability.md) | #222 `0890cb3` | **수용·Steve 병합 `200db94`(11-03)** |
 | TK-148 ㅇ 초성 사전식 값 | `patches/TK-148_gana_ah_on_cf57cb7.diff` | [TK-148](TK-148_gana_initial_ah.md) | #223 `f1e3969` | **수용·Steve 병합 `f6aba23`(11-03)**(시험 주석 1줄 승인 전 판 — 비차단, 다음 해당 파일 PR에서 정정) |
 
