@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 OPINION_KINDS = {"반대의견": "DISSENT", "별개의견": "CONCURRING", "보충의견": "SUPPLEMENTARY",
                  "반대보충의견": "DISSENT", "다수의견": "MAJORITY"}
@@ -87,12 +87,17 @@ def _kind(match: re.Match) -> str:
     return kind
 
 
+def _markers(text: str) -> List[re.Match]:
+    """전문·판결요지의 의견 표지를 위치 순으로. split_opinions·opinion_ranges가 함께 쓴다."""
+    return sorted(list(FULL_MARKER_RE.finditer(text)) + list(SUMMARY_MARKER_RE.finditer(text)),
+                  key=lambda m: m.start())
+
+
 def split_opinions(text: str) -> Dict[str, Any]:
     """판결 전문·판결요지를 의견 구간으로 나눈다. {'MAJORITY': str, 'DISSENT': [...], ...}"""
     out: Dict[str, Any] = {"MAJORITY": "", "DISSENT": [], "CONCURRING": [], "SUPPLEMENTARY": []}
     text = text or ""
-    markers = sorted(list(FULL_MARKER_RE.finditer(text)) + list(SUMMARY_MARKER_RE.finditer(text)),
-                     key=lambda m: m.start())
+    markers = _markers(text)
     if not markers:
         out["MAJORITY"] = text
         return out
@@ -107,6 +112,37 @@ def split_opinions(text: str) -> Dict[str, Any]:
             out[kind].append(body)
     out["MAJORITY"] = " ".join(part.strip() for part in majority if part.strip())
     return out
+
+
+def opinion_ranges(text: str) -> List[Tuple[int, int, str]]:
+    """원문 위치 기준 의견 구간 [(시작, 끝, 종류)]. 표지가 없으면 전체가 다수의견이다(TK-135)."""
+    text = text or ""
+    markers = _markers(text)
+    if not markers:
+        return [(0, len(text), "MAJORITY")] if text else []
+    ranges = [(0, markers[0].start(), "MAJORITY")] if markers[0].start() > 0 else []
+    for index, marker in enumerate(markers):
+        end = markers[index + 1].start() if index + 1 < len(markers) else len(text)
+        kind = _kind(marker)
+        ranges.append((marker.start(), end, "MAJORITY" if kind == "SUPPLEMENTARY" else kind))
+    return ranges
+
+
+def quote_opinion(quote: str, text: str) -> Optional[str]:
+    """인용 문구가 판결의 어느 의견에 있는지. 다수의견(다수의견 보충의견 포함)에 있으면 MAJORITY,
+    반대의견·별개의견에만 있으면 그 종류, 어디에도 없거나 표지가 없으면 None(판단하지 않음)."""
+    key = _compact(quote)
+    if len(key) < 6:
+        return None
+    parts = split_opinions(text)
+    if not (parts["DISSENT"] or parts["CONCURRING"]):
+        return None
+    if key in _compact(parts["MAJORITY"]) or any(key in _compact(s) for s in parts["SUPPLEMENTARY"]):
+        return "MAJORITY"
+    for kind in ("DISSENT", "CONCURRING"):
+        if any(key in _compact(s) for s in parts[kind]):
+            return kind
+    return None
 
 
 def attribute_claim(claim: str, full_text: str, summary: str = "") -> Dict[str, Any]:
