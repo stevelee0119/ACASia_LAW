@@ -1434,21 +1434,26 @@ class VerificationPipeline:
             if context.external_ai_policy != ExternalAIPolicy.ORIGINAL:
                 # 전문 전체를 한 번 가리고 구간을 옮긴다. 뒤의 맥락 검토가 전문을 가려 다시 대조할 때와 결과가 같다.
                 from packages.legal_engine.evidence_pack import project_masked
-                _, projected = project_masked(str(official["full_text"]),
-                                              pii.mask_text(str(official["full_text"])), pack["segments"])
+                opinion_text, projected = project_masked(str(official["full_text"]),
+                                                         pii.mask_text(str(official["full_text"])), pack["segments"])
                 segments = [seg["text"] for seg in projected]
                 document_text = pii.mask_text(document_text).masked_text
             else:
+                opinion_text = str(official["full_text"])
                 segments = [seg["text"] for seg in pack["segments"]]
+            opinion_sections = [{"segment_id": seg["segment_id"], "opinion_kinds": seg["opinion_kinds"]}
+                                for seg in pack["segments"] if seg["opinion_kinds"] != ["MAJORITY"]]
             source_text = render(segments)
             outcome = asyncio.run(self.router.cascade(
                 question=("인용된 판결과 문서 주장을 대조하라. rationale에서 ① 띄어쓰기·어절 등 문구의 차이 "
                           "② 핵심 법리와 취지·맥락의 동일 여부 ③ 사실관계·적용 요건의 차이와 확인 한계를 구분하라. "
                           "표현 차이만으로 취지 왜곡이라고 판단하지 말고, 부정·예외·적용 조건을 확인하라. "
                           "source_excerpt는 판결 원문에서 고른 구간이며 생략 표시 사이는 보내지 않은 부분이다. "
-                          "반드시 source_excerpt 한 구간 안의 실제 문구를 evidence_quotes에 인용하라."),
+                          "반드시 source_excerpt 한 구간 안의 실제 문구를 evidence_quotes에 인용하라. "
+                          "opinion_sections에 적힌 반대의견·별개의견 구간의 문장은 판결의 판시가 아니므로 문서 주장을 "
+                          "지지하는 근거로 인용하지 말라."),
                 evidence={"official": {"case_number": official.get("case_number"), "source_excerpt": source_text,
-                          "excerpt_coverage": pack["coverage_status"],
+                          "excerpt_coverage": pack["coverage_status"], "opinion_sections": opinion_sections,
                           "confirmed_metadata": {k: official.get(k) for k in (
                               "court", "decision_date", "decision_type", "case_name")},
                           "metadata_scope": "OFFICIAL_RECORD_NOT_FULL_TEXT_INFERENCE"},
@@ -1460,6 +1465,14 @@ class VerificationPipeline:
             grounded = bool(model_verdicts) and all(
                 v.get("evidence_quotes") and all(quote_in_one_segment(q, segments)
                     for q in v["evidence_quotes"]) for v in model_verdicts)
+            # 지지(VERIFIED·SUPPORTED) 판단의 근거가 모두 반대·별개의견 구간에만 있으면 판시 근거가 아니다(TK-135).
+            from packages.legal_engine.opinion_attribution import quote_opinion
+            minority_only = grounded and any(
+                str(v.get("status", "")).upper() in {"VERIFIED", "SUPPORTED"}
+                and all(quote_opinion(q, opinion_text) in {"DISSENT", "CONCURRING"} for q in v["evidence_quotes"])
+                for v in model_verdicts)
+            if minority_only:
+                grounded = False
             # 모델이 한 번도 실행되지 않은 것과, 실행됐으나 근거 인용이 확인되지
             # 않은 것은 전혀 다르다. 둘을 같은 문구로 적으면 공급자 키·모델 ID가
             # 잘못되어 AI가 아무 일도 하지 않는 동안에도 "검토했으나 채택하지
@@ -1468,6 +1481,8 @@ class VerificationPipeline:
             model_ran = any(s.get("used") for s in outcome.stages)
             if grounded:
                 reason = outcome.rationale
+            elif minority_only:
+                reason = "AI가 근거로 든 원문이 반대의견·별개의견 구간에만 있어 판시 근거로 채택하지 않음"
             elif model_ran:
                 reason = "보낸 공식 원문 구간에 있는 근거 인용이 확인되지 않아 AI 의견을 채택하지 않음"
             else:
@@ -1494,6 +1509,7 @@ class VerificationPipeline:
                       "review_id": verdict.get("review_id"),
                       "source_record_ids": verdict.get("source_record_ids", []),
                       "advisory_only": True, "source_quotes_validated": grounded,
+                      "minority_opinion_evidence": minority_only,
                       "model_executed": model_ran,
                       "consensus": consensus,
                       # 절단 여부는 마스킹 전 원문 기준 발췌 범위로 정한다(마스킹으로 줄어든 길이를 절단으로 보지 않는다).
