@@ -647,8 +647,8 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 
 | 티켓 | 수정본(기준 Steve `892bbd8`) | 티켓 | PR | 상태 |
 |---|---|---|---|---|
-| TK-136 외부 AI 프롬프트 엄격성 | `patches/TK-136_external_prompt_strictness_on_892bbd8.diff` | [TK-136](TK-136_external_ai_prompt_strictness.md) | #211 `ea951b2` | 코드 수용 · 사용자 화면 확인 대기(캡처 `captures/TK-136/`) |
-| TK-135 판례 의견 귀속 | `patches/TK-135_opinion_attribution_on_892bbd8.diff`(2판) | [TK-135](TK-135_precedent_opinion_attribution.md) | #210 `1e1c637` | **수용**(11-03) · 병합 대기 |
+| TK-136 외부 AI 프롬프트 엄격성 | `patches/TK-136_external_prompt_strictness_on_892bbd8.diff` | [TK-136](TK-136_external_ai_prompt_strictness.md) | #211 `ea951b2` | **수용**(11-03, 사용자 화면 확인) · 병합 대기 |
+| TK-135 판례 의견 귀속 | `patches/TK-135_opinion_attribution_on_892bbd8.diff`(2판) | [TK-135](TK-135_precedent_opinion_attribution.md) | #210 `1e1c637` | **Steve 병합 `46e0d72`**(11-03) |
 | TK-134 자치법규 조회 | `patches/TK-134_ordinance_lookup_on_892bbd8.diff`(2판) | [TK-134](TK-134_local_ordinance_lookup.md) | #212 `b3e6eae` | 보완 1건 — PR 본문의 '실제 응답' 정정(코드 변경 없음) |
 | TK-76 3주기 1항 EVI-INCONS | 설계 메모만(코드 금지) | [TK-76 '3주기 1항'](TK-76_focus_types_generalization_cycle1.md) | #213 `4616923` | 조건부 승인 — 보정 M1~M9 반영 보정본 먼저 |
 
