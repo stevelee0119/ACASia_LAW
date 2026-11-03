@@ -680,8 +680,8 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 |---|---|---|---|---|
 | TK-76 3주기 1항 PR2 문서 간 대조(B) | `patches/TK-76_cycle3_pr2_xdoc_anchored_on_cf57cb7.diff` | [TK-76 'PR2 지시'·'#224 1차 판정'](TK-76_focus_types_generalization_cycle1.md) | #224 `1d6f567` | **1차 보완 1회**(5차 탐침 대조 오탐 1/10, 평가 측 1판 결함 R1·R2) → 2판 증분 `TK-76_cycle3_pr2_fix2_on_1d6f567` 지시 |
 | TK-137 제한형 관련 근거 탐색 | 설계 메모만(코드 금지) | [TK-137 메모 요청·판정](TK-137_related_basis_memo_request.md) | #225 `9d561d9` | **조건부 승인 — 보정본 먼저(C1~C7)** |
-| TK-147 TK-56 시간 시험 안정화 | `patches/TK-147_tk56_timing_stability_on_cf57cb7.diff` | [TK-147](TK-147_tk56_timing_test_stability.md) | #222 `0890cb3` | **수용(11-03)**. Steve 병합 대기 |
-| TK-148 ㅇ 초성 사전식 값 | `patches/TK-148_gana_ah_on_cf57cb7.diff` | [TK-148](TK-148_gana_initial_ah.md) | #223 `f1e3969` | **수용(11-03)**(시험 주석 1줄이 승인 전 판 — 비차단). Steve 병합 대기 |
+| TK-147 TK-56 시간 시험 안정화 | `patches/TK-147_tk56_timing_stability_on_cf57cb7.diff` | [TK-147](TK-147_tk56_timing_test_stability.md) | #222 `0890cb3` | **수용·Steve 병합 `200db94`(11-03)** |
+| TK-148 ㅇ 초성 사전식 값 | `patches/TK-148_gana_ah_on_cf57cb7.diff` | [TK-148](TK-148_gana_initial_ah.md) | #223 `f1e3969` | **수용·Steve 병합 `f6aba23`(11-03)**(시험 주석 1줄 승인 전 판 — 비차단, 다음 해당 파일 PR에서 정정) |
 
 - 기준 Steve `cf57cb7`. 세 수정본은 서로 겹치지 않는다(PR2·TK-147 합본 verify_all 전체 종료 0, TK-148 관련 시험 136건 통과 — 평가 측 재실행).
 - 릴리스: 사용자 결정(11-03) — 현재 계획된 티켓 전체(TK-76 3주기 나머지·TK-137~139·TK-147·TK-148) 구현 뒤 한 번에.

@@ -574,14 +574,14 @@
    "note": "2026-11-03 0.17.0 온라인 탐침(docs/scorecards/online_probe_0170_20261103.md)에서 발견. 11-03 사용자 결정 '전부 이번 릴리스에 포함'. P2 표 행 비율 오류를 행 단위로 진단하지 않고 열 합계 불일치로만 잡으며 비율 열을 '원'으로 표기. · 11-03 평가 측 수정본 사전 검증(합본 2판 verify_all 종료 0·고정·은퇴 변화 0), 지시문 Antigravity 전달 완료(11-03, 사용자). · 11-03 #221 `a484deb` 수용(diff=수정본, CI 성공, 합본 후보 verify_all 종료 0) — Steve 병합 대기. · 11-03 #221 Steve 병합 `cf57cb7`(사용자 지시)."
   },
   "TK-147": {
-   "status": "open",
+   "status": "merged",
    "kind": "new",
-   "note": "2026-11-03 #215 CI 1회차에서 발견. tests/test_tk56_structured_name_boundary.py 절대 시간 상한(0.1초) 단발 측정 시험이 흔들림 — 기준 코드 7b41c7d에서도 로컬 재현(0.113초). TK-142와 같은 방식 안정화 후보. 범위 결정 대기. docs/handoff/TK-147_tk56_timing_test_stability.md · 11-03 사용자 'TK147 포함'(기존 시험 수정 승인). 변경안 patches/TK-147_tk56_timing_stability_on_cf57cb7.diff 사전 검증(부하 12회 기존 실패 3 → 0, 지연 주입 탐지 유지). · 11-03 3차 지시 전달 완료(사용자). · 11-03 #222 `0890cb3` 수용 — Steve 병합 대기."
+   "note": "2026-11-03 #215 CI 1회차에서 발견. tests/test_tk56_structured_name_boundary.py 절대 시간 상한(0.1초) 단발 측정 시험이 흔들림 — 기준 코드 7b41c7d에서도 로컬 재현(0.113초). TK-142와 같은 방식 안정화 후보. 범위 결정 대기. docs/handoff/TK-147_tk56_timing_test_stability.md · 11-03 사용자 'TK147 포함'(기존 시험 수정 승인). 변경안 patches/TK-147_tk56_timing_stability_on_cf57cb7.diff 사전 검증(부하 12회 기존 실패 3 → 0, 지연 주입 탐지 유지). · 11-03 3차 지시 전달 완료(사용자). · 11-03 #222 `0890cb3` 수용 — Steve 병합 대기. · 11-03 #222 Steve 병합 `200db94`(사용자 지시)."
   },
   "TK-148": {
-   "status": "open",
+   "status": "merged",
    "kind": "new",
-   "note": "2026-11-03 평가 측 공식 API 실제 응답 확인에서 발견(TK-143 후속). law_name_inference._GANA의 ㅇ 값 'a'가 틀려(정답 'ah') 필터 없는 전체 목록이 와 ㅇ 두 글자 약칭은 늘 INCOMPLETE. 수정본 patches/TK-148_gana_ah_on_cf57cb7.diff. 기존 시험 test_gana_code_follows_initial_consonant 단언 1건 변경 — 사용자 승인 대기. docs/handoff/TK-148_gana_initial_ah.md · 11-03 사용자 '148 변경승인'(범위 포함·기존 시험 단언 1건 변경 승인) → 지시. · 11-03 #223 `f1e3969` 수용(시험 주석 1줄 승인 전 판, 비차단) — Steve 병합 대기."
+   "note": "2026-11-03 평가 측 공식 API 실제 응답 확인에서 발견(TK-143 후속). law_name_inference._GANA의 ㅇ 값 'a'가 틀려(정답 'ah') 필터 없는 전체 목록이 와 ㅇ 두 글자 약칭은 늘 INCOMPLETE. 수정본 patches/TK-148_gana_ah_on_cf57cb7.diff. 기존 시험 test_gana_code_follows_initial_consonant 단언 1건 변경 — 사용자 승인 대기. docs/handoff/TK-148_gana_initial_ah.md · 11-03 사용자 '148 변경승인'(범위 포함·기존 시험 단언 1건 변경 승인) → 지시. · 11-03 #223 `f1e3969` 수용(시험 주석 1줄 승인 전 판, 비차단) — Steve 병합 대기. · 11-03 #223 Steve 병합 `f6aba23`(사용자 지시)."
   }
  },
  "updated_on": "2026-11-03"
