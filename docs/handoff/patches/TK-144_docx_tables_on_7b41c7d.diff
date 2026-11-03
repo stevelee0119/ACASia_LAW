@@ -1,0 +1,226 @@
+diff --git a/packages/document_engine/docx_parser.py b/packages/document_engine/docx_parser.py
+index 3cfc2b5..618d974 100644
+--- a/packages/document_engine/docx_parser.py
++++ b/packages/document_engine/docx_parser.py
+@@ -111,6 +111,7 @@ class DocxParser(DocumentParser):
+                         for paragraph in cell.iter(w("p")):
+                             table_positions[paragraph] = {"table_ref": f"docx_t{table_index}",
+                                 "row": row_index, "column": column_index}
++            paragraph_blocks: Dict[Any, str] = {}             # 표 칸 문단 → 블록 ID(TK-144)
+ 
+             for para in root.iter(w("p")):
+                 text = _para_text(para, include_deleted=False)
+@@ -152,9 +153,12 @@ class DocxParser(DocumentParser):
+                 for h in hidden_run_texts:
+                     visible_text = visible_text.replace(h, "")
+                 if visible_text.strip():
++                    block_id = new_id("B")
++                    if para in table_positions:
++                        paragraph_blocks[para] = block_id
+                     page.blocks.append(
+                         Block(
+-                            block_id=new_id("B"),
++                            block_id=block_id,
+                             text=visible_text.strip(),
+                             page=1,
+                             source_layer="visible_text",
+@@ -179,6 +183,18 @@ class DocxParser(DocumentParser):
+                     )
+                     hidden_parts.append(h.strip())
+ 
++            # 표 구조(TK-144): 칸 문단은 이미 table 블록이다. 표 블록을 새로 만들지 않고 행·열 구조만 남긴다
++            # (HWP의 LINES_WITH_STRUCTURE와 같은 계약). 계산·사실·첨부 소비자는 structure["tables"]만 본다.
++            try:
++                tables, partial = _docx_table_structures(root, paragraph_blocks, doc.parse_warnings)
++            except Exception as exc:                       # 구조 복원 실패는 본문을 해치지 않는다
++                tables, partial = [], []
++                doc.parse_warnings.append(f"DOCX 표 구조 복원 실패(본문 텍스트는 유지): {exc}")
++            if tables:
++                doc.structure["tables"] = tables
++            if partial:
++                doc.structure["partial_tables"] = partial
++
+             # 머리말/꼬리말/각주/미주/주석
+             for entry_name, data in entries.items():
+                 base = entry_name.split("/")[-1]
+@@ -289,3 +305,83 @@ class DocxParser(DocumentParser):
+                 page_height=p.height,
+             )
+         return doc
++
++
++# --- DOCX 표 구조(TK-144) -------------------------------------------------------------------------------------------
++DOCX_MAX_ROWS = 2000
++DOCX_MAX_COLS = 100
++DOCX_MAX_DOC_CELLS = 200_000
++
++
++def _docx_table_structures(root, paragraph_blocks, warnings):
++    """w:tbl을 행·열 표로 만든다. 가로 병합(gridSpan)·세로 병합(vMerge)은 앵커 칸에만 값을 두고 덮인 칸은 비운다.
++
++    칸 글자는 그 칸에 직접 딸린 문단만 모은다(안쪽 표 문단은 안쪽 표에). 주소를 맞출 수 없거나 상한을 넘으면
++    불완전한 표로 두고 소비자에 넘기지 않는다.
++    """
++    tables, partial, budget = [], [], 0
++    all_tables = list(root.iter(w("tbl")))
++    position = {id(t): i for i, t in enumerate(all_tables)}
++    for index, tbl in enumerate(all_tables):
++        ref = f"docx_t{index}"
++        rows = tbl.findall(w("tr"))
++        placed, complete, merges, covered = [], True, [], []
++        open_vmerge = {}                                  # 열 → 세로 병합 앵커 (행, 열)
++        width = 0
++        for r_i, tr in enumerate(rows):
++            col = 0
++            for tc in tr.findall(w("tc")):
++                pr = tc.find(w("tcPr"))
++                span_el = pr.find(w("gridSpan")) if pr is not None else None
++                vm_el = pr.find(w("vMerge")) if pr is not None else None
++                try:
++                    span = max(1, int(span_el.get(w("val")))) if span_el is not None else 1
++                except (TypeError, ValueError):
++                    span, complete = 1, False
++                vmerge = None if vm_el is None else (vm_el.get(w("val")) or "continue")
++                texts = [p for p in tc.iter(w("p"))
++                         if next((a for a in p.iterancestors() if local_name(a.tag) == "tc"), None) is tc]
++                block_ids = [paragraph_blocks[p] for p in texts if p in paragraph_blocks]
++                if vmerge == "continue" and col in open_vmerge:
++                    anchor = open_vmerge[col]
++                    covered.extend([r_i, c] for c in range(col, col + span))
++                    anchor["row_span"] += 1
++                    anchor["block_ids"].extend(block_ids)
++                else:
++                    cell = {"row": r_i, "col": col, "row_span": 1, "col_span": span, "paras": texts,
++                            "block_ids": block_ids}
++                    placed.append(cell)
++                    if vmerge == "restart":
++                        open_vmerge[col] = cell
++                    else:
++                        open_vmerge.pop(col, None)
++                    covered.extend([r_i, c] for c in range(col + 1, col + span))
++                col += span
++            width = max(width, col)
++        height = len(rows)
++        nested = any(local_name(a.tag) == "tbl" for a in tbl.iterancestors())
++        parent = next((a for a in tbl.iterancestors() if local_name(a.tag) == "tbl"), None)
++        if not (0 < height <= DOCX_MAX_ROWS and 0 < width <= DOCX_MAX_COLS) or budget + height * width > DOCX_MAX_DOC_CELLS:
++            warnings.append(f"{ref}: 표 크기 {height}x{width}가 상한을 넘거나 없어 표 구조를 만들지 않았다")
++            continue
++        budget += height * width
++        grid = [["" for _ in range(width)] for _ in range(height)]
++        line_ids = []
++        for cell in placed:
++            text = " ".join(_para_text(p, include_deleted=False).strip() for p in cell["paras"]
++                            if _para_text(p, include_deleted=False).strip())
++            grid[cell["row"]][cell["col"]] = text
++            line_ids.extend(cell["block_ids"])
++            if cell["row_span"] > 1 or cell["col_span"] > 1:
++                merges.append({k: cell[k] for k in ("row", "col", "row_span", "col_span")})
++        entry = {"table_ref": ref, "page": 1, "table_index": len(tables), "cells": grid, "header": grid[0],
++                 "title": None, "row_count": height, "column_count": width, "merges": merges, "covered": covered,
++                 "nested": nested, "parent_table_ref": f"docx_t{position[id(parent)]}" if parent is not None else None,
++                 "complete": complete, "representation": "LINES_WITH_STRUCTURE", "source": "DOCX_XML",
++                 "line_block_ids": line_ids}
++        if complete:
++            tables.append(entry)
++        else:
++            partial.append({k: entry[k] for k in ("table_ref", "row_count", "column_count", "nested",
++                                                  "parent_table_ref")} | {"reason": "INCOMPLETE_STRUCTURE"})
++    return tables, partial
+diff --git a/tests/test_tk144_docx_tables.py b/tests/test_tk144_docx_tables.py
+new file mode 100644
+index 0000000..e372d59
+--- /dev/null
++++ b/tests/test_tk144_docx_tables.py
+@@ -0,0 +1,91 @@
++"""TK-144: DOCX 표를 structure["tables"]로 내어 표 검산이 DOCX에서도 동작하게 한다. 합성 문서만 쓴다."""
++import docx
++import pytest
++
++from packages.claim_engine.calculation import CalculationEngine
++from packages.document_engine.registry import parse_document
++
++
++def build(tmp_path, tables, name="t.docx"):
++    d = docx.Document()
++    d.add_paragraph("가. 손해 정리")
++    for rows in tables:
++        t = d.add_table(rows=len(rows), cols=len(rows[0]))
++        for r, row in enumerate(rows):
++            for c, value in enumerate(row):
++                if value is not None:
++                    t.cell(r, c).text = value
++        d.add_paragraph("표 뒤 문단")
++    path = tmp_path / name
++    d.save(path)
++    return path, d
++
++
++def parse(path):
++    return parse_document(str(path), document_id="d", filename=path.name, mime_type="", sha256="x")
++
++
++def mismatches(doc):
++    return [f for f in CalculationEngine().verify_document(doc) if f.type.value == "ARITHMETIC_MISMATCH"]
++
++
++SUM_WRONG = [["항목", "금액(원)"], ["수리비", "1,250,000"], ["대여료", "480,000"], ["재검수 비용", "270,000"],
++             ["합계", "2,100,000"]]
++SUM_RIGHT = [["항목", "금액(원)"], ["교체비", "320,000"], ["운임", "180,000"], ["인건비", "250,000"],
++             ["합계", "750,000"]]
++
++
++def test_docx_table_is_exposed_with_cells_and_line_blocks(tmp_path):
++    path, _ = build(tmp_path, [SUM_WRONG])
++    doc = parse(path)
++    [t] = doc.structure["tables"]
++    assert t["table_ref"] == "docx_t0" and t["cells"][4] == ["합계", "2,100,000"]
++    ids = {b.block_id for p in doc.pages for b in p.blocks if b.attributes.get("table_ref") == "docx_t0"}
++    assert set(t["line_block_ids"]) == ids and len(ids) == 10
++
++
++def test_wrong_table_total_is_found_once_and_right_total_is_not(tmp_path):
++    path, _ = build(tmp_path, [SUM_WRONG, SUM_RIGHT])
++    found = mismatches(parse(path))
++    refs = [(f.confidence_features or {}).get("table_ref") for f in found]
++    assert refs == ["docx_t0"]
++
++
++def test_merged_header_and_two_paragraph_cell_are_preserved_without_false_finding(tmp_path):
++    rows = [["구분", "비용(원)", None, "증빙"], [None, "직접비", "부대비", None],
++            ["복구", "900,000", "100,000", "명세서"], ["회수", "400,000", "100,000", "확인서"],
++            ["합계", "1,300,000", "200,000", "항목별 합산"]]
++    path, d = build(tmp_path, [rows])
++    t = d.tables[0]
++    t.cell(0, 1).merge(t.cell(0, 2))                  # 가로 병합
++    t.cell(0, 0).merge(t.cell(1, 0))                  # 세로 병합
++    t.cell(0, 3).merge(t.cell(1, 3))
++    t.cell(2, 3).add_paragraph("작업확인서")          # 한 칸 두 문단
++    d.save(path)
++    doc = parse(path)
++    [table] = doc.structure["tables"]
++    assert table["row_count"] == 5 and table["column_count"] == 4
++    assert {(m["row"], m["col"], m["row_span"], m["col_span"]) for m in table["merges"]} >= {(0, 1, 1, 2), (0, 0, 2, 1)}
++    assert table["cells"][2][3].split() == ["명세서", "작업확인서"]
++    assert mismatches(doc) == []
++
++
++def test_document_without_tables_is_unchanged(tmp_path):
++    d = docx.Document()
++    d.add_paragraph("첫째 문단이다.")
++    path = tmp_path / "plain.docx"
++    d.save(path)
++    doc = parse(path)
++    assert not doc.structure.get("tables") and not doc.structure.get("partial_tables")
++
++
++def test_table_structure_failure_keeps_body_text(tmp_path, monkeypatch):
++    import packages.document_engine.docx_parser as dp
++
++    def boom(*args, **kwargs):
++        raise ValueError("합성 실패")
++    monkeypatch.setattr(dp, "_docx_table_structures", boom)
++    path, _ = build(tmp_path, [SUM_WRONG])
++    doc = parse(path)
++    assert not doc.structure.get("tables") and any("표 구조 복원 실패" in w for w in doc.parse_warnings)
++    assert any(b.text == "1,250,000" for p in doc.pages for b in p.blocks)
