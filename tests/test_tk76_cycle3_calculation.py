@@ -194,3 +194,32 @@ def test_incompatible_units_not_flagged():
     engine = CalculationEngine()
     findings = engine.verify_document(doc)
     assert not [f for f in findings if f.type == FindingType.ARITHMETIC_MISMATCH]
+
+
+# --- 평가 측 보완(11-03, #214 1차 판정 F1~F8) 회귀 시험 — 합성 문장만 쓴다 ------------------------------------------
+def _mismatch(text):
+    return [f for f in CalculationEngine().verify_document(make_doc(text)) if f.type == FindingType.ARITHMETIC_MISMATCH]
+
+
+@pytest.mark.parametrize("text", [
+    "갑은 을에게 4,000,000원과 1,500,000원을 각 빌려주었고 그 뒤 남은 대여금은 900,000원이었다.",  # F1 나열
+    "매달 20,000원씩 5명에게 나누어 주었으며 통장 잔액은 70,000원이다.",                              # F2 씩·절 경계
+    "같은 법 제40조에서 정한 신청기간(통지받은 날부터 14일) 내인 2024. 5. 3. 신청하였다.",              # F5·F6 조문·기간·연도
+    "기존 재고 40개에 조정분 -6개를 더한 재고는 34개이다.",                                           # F3 음수 부호(올바름)
+])
+def test_controls_from_first_review_are_not_flagged(text):
+    assert _mismatch(text) == []
+
+
+def test_signed_operand_is_added_with_its_sign():
+    [f] = _mismatch("기존 재고 40개에 조정분 -6개를 더한 재고는 30개이다.")
+    assert "기재 수치" in f.title and "원" not in f.title                                       # F8 비금액 문구
+
+
+@pytest.mark.parametrize("text", [
+    "일당 92,000원으로 11일을 일하였고 그 곱은 1,100,000원이다.",                                       # 결과 명사 '곱은'
+    "8 곱하기 26,000은 218,000이다.",                                                                  # 연산 서술어 토큰
+    "진열대 6칸 × 칸당 15권 = 총 80권",                                                               # 단위당 수량
+])
+def test_explicit_operation_forms_are_checked(text):
+    assert len(_mismatch(text)) == 1
