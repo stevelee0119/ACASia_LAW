@@ -374,6 +374,24 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
         law["article_payload"] = mask_oc(payload)
         return _article_numbers(payload)
 
+    def get_thd_cmp(self, mst: str | int, *, knd: str = "2") -> Optional[Dict[str, Any]]:
+        """법제처 3단 비교(위임조문 knd=2 또는 인용조문 knd=1)를 조회한다 (TK-137)."""
+        if not mst or self.status() != AdapterStatus.READY:
+            return None
+        try:
+            response = self._http_get(
+                SERVICE_URL,
+                params={"OC": self.api_key, "target": "thdCmp", "type": "JSON", "MST": str(mst), "knd": knd},
+            )
+            if response.status_code >= 400:
+                return None
+            content = getattr(response, "content", None) or b""
+            if len(content) > 2.5 * 1024 * 1024:
+                return {"_limit_exceeded": True, "reason": "응답 크기 2.5MB 상한 초과"}
+            return response.json()
+        except Exception:
+            return None
+
     def search(self, query: str, **kwargs: Any) -> AdapterResponse:
         if kwargs.get("target") in ("expc", "interpretation"):
             return self.search_interpretation(query)

@@ -2831,6 +2831,14 @@ function renderFindings() {
         const verdict = (related.verdicts || []).find(v => v.citation_id === candidate.citation_id);
         section.append(node("p", `${candidate.raw_text} · 출처 조회: ${label(verdict?.status || "NOT_ASSESSED")} · 사건 당시 적용·주장 타당성: 별도 검토 필요`));
       }
+      for (const item of related.delegations || []) {
+        const titlePart = item.target_title ? `(${item.target_title})` : "";
+        section.append(node("p", `[위임] ${item.source_law} 제${item.source_article}조 → ${item.target_law} 제${item.target_article}조${titlePart} · 검토 자료`));
+      }
+      for (const item of related.explicit_references || []) {
+        const titlePart = item.target_title ? `(${item.target_title})` : "";
+        section.append(node("p", `[참조] ${item.source_law} 제${item.source_article}조 → ${item.target_law} 제${item.target_article}조${titlePart} · 검토 자료`));
+      }
       refContainer.append(section);
     }
   }
