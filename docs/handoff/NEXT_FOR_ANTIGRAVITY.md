@@ -660,9 +660,9 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 
 | 티켓 | 수정본(`docs/handoff/patches/`) | 티켓 문서 | PR | 상태 |
 |---|---|---|---|---|
-| TK-140 문서 파서 후속(A+B-1+B-2) | `TK-140_parser_followups_AB1_on_7b41c7d`, `TK-140_hwp_nested_tables_B2_on_AB1` | [TK-140](TK-140_document_parser_followups.md) | #217 `078f854` | **수용(11-03)** — diff=수정본, CI 성공. Steve 병합 대기 |
-| TK-141 발췌 입력 예산·해시 | `TK-141_input_budget_hash_on_7b41c7d` | [TK-141](TK-141_evidence_input_budget_hash.md) | #216 `7c37154` | **수용(11-03)** — diff=수정본, CI 성공. Steve 병합 대기 |
-| TK-142 ReDoS 시간 시험 안정화 | `TK-142_redos_timing_stability_on_7b41c7d` | [TK-142](TK-142_redos_timing_test_stability.md) | #215 `c1c5994` | **수용(11-03)** — diff=변경안, CI 재실행 후 성공(1회차 실패는 무관한 TK-56 시간 시험 → TK-147). Steve 병합 대기 |
+| TK-140 문서 파서 후속(A+B-1+B-2) | `TK-140_parser_followups_AB1_on_7b41c7d`, `TK-140_hwp_nested_tables_B2_on_AB1` | [TK-140](TK-140_document_parser_followups.md) | #217 `078f854` | **수용·Steve 병합 `ea2c81f`(11-03)** |
+| TK-141 발췌 입력 예산·해시 | `TK-141_input_budget_hash_on_7b41c7d` | [TK-141](TK-141_evidence_input_budget_hash.md) | #216 `7c37154` | **수용·Steve 병합 `7823cbf`(11-03)** |
+| TK-142 ReDoS 시간 시험 안정화 | `TK-142_redos_timing_stability_on_7b41c7d` | [TK-142](TK-142_redos_timing_test_stability.md) | #215 `c1c5994` | **수용·Steve 병합 `0d7051b`(11-03)**(1회차 CI 실패는 무관한 TK-56 시간 시험 → TK-147) |
 | TK-76 3주기 1항 PR1 보완(F1~F8) | `TK-76_cycle3_pr1_fix_on_0437219` | [TK-76 '#214 1차 판정'](TK-76_focus_types_generalization_cycle1.md) | #214 `0437219`→`a9f6ee3` | 1차 보완 이행(diff=수정본, CI·verify_all 통과). **2차 판정 보완 1회 더**: 새 탐침 양성 3차 5/9·4차 3/8(기준 2/3 미달), 5차 대조 오탐 1/8 → 2차 수정본 `TK-76_cycle3_pr1_fix2_on_a9f6ee3`(G1~G4) 지시 |
 | TK-143 짧은 약칭 추정 | `TK-143_short_abbreviation_on_7b41c7d`(2판) | [TK-143~146](TK-143_146_online_probe_fixes.md) | — | **전달 완료(11-03, 사용자)** |
 | TK-144 DOCX 표 구조 | `TK-144_docx_tables_on_7b41c7d` | 같음 | — | **전달 완료(11-03, 사용자)** |
