@@ -1,5 +1,5 @@
 diff --git a/packages/legal_engine/law_name_inference.py b/packages/legal_engine/law_name_inference.py
-index 5ec0008..61c7354 100644
+index 5ec0008..4c59c2c 100644
 --- a/packages/legal_engine/law_name_inference.py
 +++ b/packages/legal_engine/law_name_inference.py
 @@ -19,6 +19,17 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -46,12 +46,13 @@ index 5ec0008..61c7354 100644
          return 0
      abbreviation = compact(record.get("abbreviation"))
      target = abbreviation or compact(record.get("law_name"))
-@@ -67,16 +92,19 @@ def score(written: str, record: Dict[str, Any]) -> int:
+@@ -67,16 +92,20 @@ def score(written: str, record: Dict[str, Any]) -> int:
          return 0
      if target == q or not is_subsequence(q, target):
          return 0
-+    if min_stem == SHORT_STEM and len(stem(q)) == SHORT_STEM and not _initials_subsequence(stem(q), stem(target)):
-+        return 0                                        # 두 음절 줄임말은 말마디 첫 음절에서 나온다(TK-143)
++    if min_stem == SHORT_STEM and len(stem(q)) == SHORT_STEM and not (
++            _initials_subsequence(stem(q), stem(target)) or stem(target).startswith(stem(q))):
++        return 0                       # 두 음절 줄임말: 말마디 첫 음절이거나 정식명 첫 낱말 그대로(TK-143)
      base = 800 if abbreviation else 600
      return base - min(len(target) - len(q), 200 if not abbreviation else 100)
  
@@ -85,16 +86,16 @@ index c8c8e21..e1faa50 100644
      if len(compact) <= 10:
          return compact
 diff --git a/packages/legal_engine/source_review.py b/packages/legal_engine/source_review.py
-index d262a51..6711bfa 100644
+index d262a51..d4595ec 100644
 --- a/packages/legal_engine/source_review.py
 +++ b/packages/legal_engine/source_review.py
 @@ -510,6 +510,30 @@ def _law_absent(verdict, response, verifier=None):
          _ordinance_lookup(verdict, verifier, candidates)
          return
  
-+    # 2-2. 짧은 약칭 꼴(어간 3자 이하)이 공식 목록·약칭 추정으로 풀리지 않으면 부존재로 단정하지 않는다(TK-143).
-+    #      실무 줄임말(두세 음절 + 법)은 공식 목록에 없는 것이 정상이다. 가짜 법률일 수도 있으므로 사람이 확인한다.
-+    if _abbreviation_like(citation.law_name):
++    # 2-2. 짧은 약칭 꼴(어간 3자 이하)인데 약칭 추정이 후보 여럿·목록 상한·조회 실패로 결론을 내지 못했으면 부존재로
++    #      단정하지 않는다(TK-143). 공식 목록을 끝까지 읽고도 후보가 전혀 없으면(NO_CANDIDATE) 지금처럼 CRITICAL이다.
++    if _abbreviation_like(citation.law_name) and (verdict.review.get("law_alias") or {}).get("outcome") in UNDECIDED_INFERENCE:
 +        verdict.status = VerificationStatus.UNVERIFIED
 +        verdict.levels.update(existence="UNVERIFIED", article="UNVERIFIED", provision="UNVERIFIED")
 +        alias = verdict.review.get("law_alias") or {}
@@ -119,10 +120,13 @@ index d262a51..6711bfa 100644
      # 3. 일반 법령(법, 법률 등) 형태: 기존 CRITICAL 부존재 판정 유지 (대조군)
      verdict.findings.append(Finding.create(
          type=FindingType.STATUTE_NONEXISTENT, status=VerificationStatus.NOT_FOUND, severity=Severity.CRITICAL,
-@@ -528,6 +552,14 @@ def _law_absent(verdict, response, verifier=None):
+@@ -528,6 +552,17 @@ def _law_absent(verdict, response, verifier=None):
      ))
  
  
++UNDECIDED_INFERENCE = ("AMBIGUOUS", "INCOMPLETE", "LOOKUP_FAILED")
++
++
 +def _abbreviation_like(law_name: str) -> bool:
 +    """어간(끝의 법·시행령·시행규칙을 뗀 몸통)이 2~3자이고 공백 없는 이름 — 실무 줄임말 꼴(TK-143)."""
 +    from .law_name_inference import compact, stem
@@ -134,7 +138,7 @@ index d262a51..6711bfa 100644
  def _ordinance_lookup(verdict, verifier, law_candidates):
      """조례 인용: 자치법규 목록 조회 결과로 판정한다. 조회하지 못하면 부존재로 단정하지 않는다."""
      citation = verdict.citation
-@@ -885,7 +917,7 @@ def compared_label(citation) -> str:
+@@ -885,7 +920,7 @@ def compared_label(citation) -> str:
  
  
  INFERENCE_NOTES = {
@@ -185,10 +189,10 @@ index d524ecc..13246ff 100644
          sources, first, ambiguous = [], None, []
 diff --git a/tests/test_tk143_short_abbreviation.py b/tests/test_tk143_short_abbreviation.py
 new file mode 100644
-index 0000000..4850097
+index 0000000..fbf08a1
 --- /dev/null
 +++ b/tests/test_tk143_short_abbreviation.py
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,89 @@
 +"""TK-143: 두 음절 어간 비공식 약칭('XX법') 추정과, 풀리지 않는 짧은 약칭을 부존재로 단정하지 않기.
 +
 +합성 법령명만 쓴다(실제 법령·서면의 이름이 아니다). TK-130 시험의 목록 흉내를 그대로 쓴다.
@@ -227,10 +231,19 @@ index 0000000..4850097
 +    assert "NOT_FOUND_LAW" not in kinds(verdict)
 +
 +
-+def test_unresolved_short_abbreviation_is_unverified_not_nonexistent(monkeypatch, adapter):
++def test_short_name_with_no_candidate_in_complete_list_keeps_not_found_law(monkeypatch, adapter):
++    # 공식 목록을 끝까지 읽고도 후보가 없으면 부존재 가능성(CRITICAL)을 유지한다(보호 시험과 같은 정책).
 +    t130.install(monkeypatch, adapter, lambda params: [])
 +    verdict = t130.verify(adapter, t130.cite("가나법"))
-+    assert "NOT_FOUND_LAW" not in kinds(verdict) and "ABBREVIATION_UNRESOLVED" in kinds(verdict)
++    assert "NOT_FOUND_LAW" in kinds(verdict) and "ABBREVIATION_UNRESOLVED" not in kinds(verdict)
++
++
++def test_single_word_short_abbreviation_matching_two_laws_is_unverified(monkeypatch, adapter):
++    rows = [t130.row(name="시험보험법", law_id="000905", mst="905"),
++            t130.row(name="시험정책 기본법", law_id="000906", mst="906")]
++    t130.install(monkeypatch, adapter, lambda params: rows if params.get("gana") else [])
++    verdict = t130.verify(adapter, t130.cite("시험법"))
++    assert "NOT_FOUND_LAW" not in kinds(verdict)
 +    [f] = [f for f in verdict.findings if f.confidence_features.get("verdict_label") == "ABBREVIATION_UNRESOLVED"]
 +    assert str(f.severity) == "MEDIUM" and str(f.status) == "UNVERIFIED"
 +    from packages.legal_engine.spec_mapping import spec_source_verdict

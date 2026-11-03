@@ -4,15 +4,17 @@
 - 기준: Steve `7b41c7d`. 티켓마다 수정본 하나, 서로 다른 파일이라 각각·합쳐 적용 모두 된다(평가 측 확인).
 
 ## TK-143 (P1) 두 음절 비공식 약칭이 CRITICAL '존재하지 않는 법령'
-- 수정본 `patches/TK-143_short_abbreviation_on_7b41c7d.diff`(5개 파일 +168/−6)
+- 수정본 `patches/TK-143_short_abbreviation_on_7b41c7d.diff`(2판, 11-03)
 - 원인(`7b41c7d`)
   1. `source_adapters/official_legal.py` `infer_law_by_abbreviation` 190행: 어간(예 '노조')이 3자 미만이면 검색하지 않는다. 검색도 부분 문자열이라 '노조'는 '노동조합…'에 없다 → 'XX법' 꼴은 언제나 후보 없음.
   2. `legal_engine/source_review.py` `_law_absent` 3분기: 후보 없음·모호한 짧은 약칭도 STATUTE_NONEXISTENT CRITICAL.
   3. 약칭+시행령('근기법 시행령')은 별칭표(`normalize.LAW_ALIASES`)에 걸리지 않아 같은 CRITICAL.
 - 수정
-  1. 안전 장치 `_abbreviation_like`: 어간 2~3자·공백 없는 'XX법(시행령·시행규칙)'이 풀리지 않으면 LAW_CITATION_ERROR MEDIUM·UNVERIFIED `ABBREVIATION_UNRESOLVED`(후보 표시). 명세 판정 UNVERIFIABLE. 어간 4자 이상 미발견은 지금처럼 CRITICAL(가짜 법률 대조 유지).
+  1. 안전 장치 `_abbreviation_like`: 어간 2~3자·공백 없는 'XX법(시행령·시행규칙)'의 약칭 추정이 **결론을 내지 못하면**(후보 여럿 AMBIGUOUS·목록 상한 INCOMPLETE·조회 실패 LOOKUP_FAILED) LAW_CITATION_ERROR MEDIUM·UNVERIFIED `ABBREVIATION_UNRESOLVED`(후보 표시, 명세 판정 UNVERIFIABLE). 공식 목록을 끝까지 읽고도 후보가 없으면(NO_CANDIDATE)·추정을 하지 않았으면 지금처럼 CRITICAL — 보호 수용 시험 `tests/acceptance/test_reference_match_guard.py::test_short_statute_name_contained_in_a_reference_title_keeps_critical`(짧은 미등록 법령명 CRITICAL 유지)과 같은 정책.
+     - 2판 정정(11-03): 1판은 짧은 이름을 일괄로 낮춰 위 보호 수용 시험이 실패했다(합본 verify_all에서 발견). 시험은 고치지 않고 규칙을 좁혔다.
   2. `canonical_law_name`: 별칭 + 시행령·시행규칙 → 정식 모법명 + 종류.
-  3. 두 글자 어간: 첫 글자 초성의 현행 법령 사전식 목록(`target=law&gana=…`, 최대 20쪽)에서 글자 순서 일치(줄임말 글자는 정식명의 짝수 위치 = 말마디 첫 음절 근사)로 하나만 고른다. 모호·상한·실패는 1번으로.
+  3. 두 글자 어간: 첫 글자 초성의 현행 법령 사전식 목록(`target=law&gana=…`, 최대 20쪽)에서 글자 순서 일치로 하나만 고른다. 줄임말 글자는 정식명의 말마디 첫 음절(짝수 위치 근사)이거나 정식명이 그 두 글자로 시작해야 한다. 모호·상한·실패는 1번으로.
+     - 알려진 한계: 약칭 첫 글자가 정식명 첫 글자가 아닌 꼴('남녀…'를 뺀 줄임말 등)은 후보가 없어 CRITICAL로 남을 수 있다(첫 글자 규칙, TK-130 설계 유지).
   4. 새 시험 `tests/test_tk143_short_abbreviation.py` 8건(합성 법령명). 별칭표(닫힌 목록)는 늘리지 않는다(탐침 맞춤 방지).
 - 미검증: 사전식 검색(`gana`)의 실제 응답 범위·쪽수(OC 키 없음). 실패해도 1번 안전 장치로 CRITICAL은 나지 않는다.
 
