@@ -32,7 +32,7 @@ REPORTING_TAIL_RE = re.compile(
     r"[\s\"'“”‘’]*(?:(?:(?:이?라|다|하)고\s*)?(?:판시|판단|설시)(?:하였|했|한)(?:다|습니다)"
     r"|(?:(?:이?라|다|하)고\s*)(?:보았|밝혔|하였|했)(?:다|습니다))\s*\.?\s*$")
 CLAUSE_SPLIT_RE = re.compile(r"\s*[,，;]\s*|\s+(?:하며|이며)\s+")
-FINAL_NEGATION_RE = re.compile(r"않|아니|없|못|불요")
+FINAL_NEGATION_RE = re.compile(r"않|아니|없|못|불요|안\s*되|안\s*돼|안된")   # '…하여서는 안 된다'도 부정(TK-145)
 FINAL_WINDOW = 7  # 절 끝 서술어(압축 글자 수)만 보고 긍정·부정을 가린다. 앞의 종속절 부정("거치지 않은 채")은 보지 않는다
 NEGATION_RE = re.compile(r"않|아니|없|불요|못")
 ISSUE_RE = re.compile(r"(?P<issue>[^\[\]]+?)\s*여부\s*\(\s*(?P<principled>원칙적\s*)?(?P<direction>적극|소극)\s*\)")

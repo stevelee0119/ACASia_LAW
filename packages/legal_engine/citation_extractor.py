@@ -1304,6 +1304,21 @@ def _identity(citation: Citation) -> Tuple[Any, ...]:
     )
 
 
+_OCCURRENCE_QUOTE_RE = re.compile(r"[“\"]([^”\"]{6,400})[”\"]")
+_SENTENCE_BREAK_RE = re.compile(r"(?<=다)\.\s|\n\n")
+
+
+def _occurrence_quote(text: str, position: int) -> str:
+    """position이 든 문장(…다. 경계)의 첫 직접 인용문(공백 정리). 없으면 빈 문자열."""
+    left = 0
+    for m in _SENTENCE_BREAK_RE.finditer(text, 0, position):
+        left = m.end()
+    nxt = _SENTENCE_BREAK_RE.search(text, position)
+    right = nxt.start() + 1 if nxt else len(text)
+    m = _OCCURRENCE_QUOTE_RE.search(text, left, right)
+    return " ".join(m.group(1).split()) if m else ""
+
+
 def _cell_text(cell: str) -> str:
     """표 칸 안 줄바꿈을 한국어 줄바꿈 규칙으로 잇는다("선\n고 2018두47215" → "선고 2018두47215")."""
     lines = [line.strip() for line in str(cell or "").splitlines() if line.strip()]
@@ -1439,6 +1454,7 @@ def extract_citations(doc: NormalizedDocument) -> List[Citation]:
     reading = build_reading_text(doc)
     out: List[Citation] = []
     seen: set = set()
+    quotes_seen: dict = {}
     batch = _CitationBatch(reading)
 
     def select_body(citations):
@@ -1449,8 +1465,15 @@ def extract_citations(doc: NormalizedDocument) -> List[Citation]:
                 if block is not None:
                     citation.block_id, citation.page = block.block_id, block.page
             key = (_identity(citation), citation.block_id)
+            # 인용문 연결은 선택 뒤에 일어나므로, 그 인용이 든 문장의 첫 인용문을 직접 읽어 같은 인용인지 가린다(TK-145).
+            quote = _occurrence_quote(reading.text, citation.span[0]) if citation.span else ""
             if key not in seen:
                 seen.add(key)
+                quotes_seen[key] = {quote} if quote else set()
+                retained.append(citation)
+            elif quote and quote not in quotes_seen[key]:
+                # 같은 블록에서 같은 판례를 새로운 인용문으로 다시 인용하면 별도 인용으로 대조한다(TK-145).
+                quotes_seen[key].add(quote)
                 retained.append(citation)
         return retained
 
