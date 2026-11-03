@@ -65,6 +65,11 @@ class CitationVerdict:
     lookup: Dict[str, Any] = field(default_factory=dict)
 
 
+_OPPONENT_CLAIM_RE = re.compile(
+    r"(?:원고|피고|검사|상대방|청구인|피청구인|신청인|피신청인|항소인|피항소인|상고인|피상고인|채권자|채무자)(?:\s*측)?(?:은|는|이|가)\s"
+    r"[^.。]{0,200}?(?:주장|원용)(?:한다|하나|하지만|하였|했|하며|하는|함)")
+
+
 class LegalVerifier:
     def __init__(self, registry: Optional[SourceRegistry] = None, *, references: Any = None) -> None:
         self.registry = registry or SourceRegistry()
@@ -986,8 +991,9 @@ class LegalVerifier:
                         f"다수의견 {result['scores']['MAJORITY']:.2f}). 판결의 판시는 다수의견이다.",
                         result["dissent_excerpt"], {"closest": "DISSENT", "attribution_scores": result["scores"],
                                                     "defect_summary": "반대의견 취지를 판시로 요약"}))
-        if claim and holding.strip() and not any(f.confidence_features["verdict_label"] == "MISATTRIBUTED_OPINION"
-                                                 for f in out):
+        # 상대방 주장으로 밝힌 문장('원고는 … 원용하면서 … 주장한다')은 서면의 주장이 아니다(TK-145).
+        if claim and holding.strip() and not _OPPONENT_CLAIM_RE.search(claim) and not any(
+                f.confidence_features["verdict_label"] == "MISATTRIBUTED_OPINION" for f in out):
             conflict = direction_conflict(claim, holding) or summary_direction_conflict(claim, summary)
             if conflict:
                 principled = conflict["principled"]
