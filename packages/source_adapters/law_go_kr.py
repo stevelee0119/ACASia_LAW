@@ -192,6 +192,75 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
             "이름이 정확히 일치하는 법령이 없다" if records and not exact else "",
         )
 
+    # -- 자치법규(조례·규칙) ---------------------------------------------------
+    def search_ordinance(self, name: str) -> AdapterResponse:
+        """자치법규 목록(target=ordin)에서 이름으로 찾는다(TK-134). 법령 목록(target=law)에는 조례가 없다.
+
+        records: 이름이 정확히 같은 자치법규. 서면이 지자체 이름을 빼고 적은 경우 이름 끝이 같은 것을
+        'suffix' 일치로 함께 돌려준다(어느 지자체인지는 사람이 고른다).
+        """
+        status = self.status()
+        if status != AdapterStatus.READY:
+            return self._unavailable(name, status, "국가법령정보 OC가 없거나 네트워크가 비활성이다.")
+        try:
+            response = self._http_get(SEARCH_URL, params={"OC": self.api_key, "target": "ordin", "type": "JSON",
+                                                          "query": name, "display": 100})
+            if response.status_code >= 400:
+                return self._unavailable(name, AdapterStatus.ERROR, f"HTTP {response.status_code}")
+            payload = response.json()
+        except Exception as exc:
+            return self._transport_unavailable(name, exc)
+        if not _ordinance_payload_shape_ok(payload):
+            keys = ",".join(sorted(payload)[:5]) if isinstance(payload, dict) else type(payload).__name__
+            return self._unavailable(name, AdapterStatus.ERROR, f"ordin 응답 형식이 예상과 다름(최상위 {keys})")
+        records = _normalize_ordinance_payload(payload)
+        wanted = _compact_name(name)
+        exact = [dict(r, match="exact") for r in records if _compact_name(r["ordinance_name"]) == wanted]
+        suffix = [] if exact else [dict(r, match="suffix") for r in records
+                                   if _compact_name(r["ordinance_name"]).endswith(wanted)
+                                   and len(wanted) >= 6]
+        return AdapterResponse(
+            AdapterStatus.READY, exact or suffix,
+            self._record(name, AdapterStatus.READY, payload=mask_oc(payload), url=f"{SEARCH_URL}?target=ordin",
+                         used_fields=["자치법규명", "자치법규ID", "자치법규일련번호", "지자체기관명", "시행일자"]),
+            "" if exact or suffix else "EXACT_ORDINANCE_NOT_FOUND")
+
+    def fetch_ordinance_articles(self, ordinance: Dict[str, Any]) -> Optional[List[str]]:
+        """자치법규 본문(lawService.do?target=ordin)의 조문번호 목록. 확인하지 못하면 None."""
+        identifier = ordinance.get("ordinance_id") or ordinance.get("version_id")
+        if not identifier or self.status() != AdapterStatus.READY:
+            return None
+        key = "ID" if ordinance.get("ordinance_id") else "MST"
+        try:
+            response = self._http_get(SERVICE_URL, params={"OC": self.api_key, "target": "ordin", "type": "JSON",
+                                                           key: identifier})
+            if response.status_code >= 400:
+                return None
+            payload = response.json()
+        except Exception:
+            return None
+        # 자치법규 본문의 '조문여부'가 N(편·장·절)인 항목은 조가 아니다. 조만 센다.
+        numbers: List[str] = []
+
+        def walk(node: Any) -> None:
+            if isinstance(node, dict):
+                if str(node.get("조문여부", "Y")).upper() == "N":
+                    return                                  # 편·장·절 표제는 조가 아니다
+                if node.get("조문번호") not in (None, ""):
+                    number = _ordinance_article_number(node["조문번호"])
+                    branch = str(node.get("조문가지번호") or "").strip()
+                    if branch.isdigit() and int(branch) and "의" not in number:
+                        number = f"{number}의{int(branch)}"
+                    numbers.append(number)
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value)
+
+        walk(payload)
+        return numbers or None
+
     # -- 조문 실존 확인 -----------------------------------------------------
     def fetch_case(self, case: Dict[str, Any], *, constitutional: bool = False) -> AdapterResponse:
         target = "detc" if constitutional else "prec"
@@ -417,6 +486,64 @@ def _normalize_law_payload(payload: Any) -> List[Dict[str, Any]]:
             }
         )
     return out
+
+
+def _compact_name(name: Optional[str]) -> str:
+    return re.sub(r"[\s「」『』\"'“”‘’()（）·]", "", name or "")
+
+
+def _ordinance_items(payload: Any) -> List[Dict[str, Any]]:
+    """응답 구조에 기대지 않고 '자치법규명'을 가진 항목을 모은다(최상위 키 이름은 미검증)."""
+    found: List[Dict[str, Any]] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            if "자치법규명" in node:
+                found.append(node)
+                return
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(payload)
+    return found
+
+
+def _ordinance_payload_shape_ok(payload: Any) -> bool:
+    """목록 응답으로 볼 수 있는지: 사전이고, 결과가 0건이면 totalCnt류 숫자가 있거나 항목이 있다."""
+    if not isinstance(payload, dict) or not payload:
+        return False
+    if _ordinance_items(payload):
+        return True
+    text = str(payload)
+    return "totalCnt" in text or "자치법규" in text or "ordin" in text.lower()
+
+
+def _normalize_ordinance_payload(payload: Any) -> List[Dict[str, Any]]:
+    return [{
+        "ordinance_name": _first(item, "자치법규명"),
+        "ordinance_id": _first(item, "자치법규ID"),
+        "version_id": _first(item, "자치법규일련번호"),
+        "local_government": _first(item, "지자체기관명"),
+        "ordinance_kind": _first(item, "자치법규종류"),
+        "effective_from": _canon_date(_first(item, "시행일자", "") or ""),
+        "promulgation_date": _canon_date(_first(item, "공포일자", "") or ""),
+        "raw": mask_oc(item),
+    } for item in _ordinance_items(payload) if _first(item, "자치법규명")]
+
+
+def _ordinance_article_number(number: str) -> str:
+    """'000300'처럼 6자리(조 4자리+가지 2자리)로 오는 조문번호를 '3'·'3의2'로 바꾼다. 그 밖의 형식은 그대로 둔다.
+
+    자치법규 본문 응답의 조문번호 형식은 실제 응답으로 확인해야 한다(미검증). 두 형식을 모두 받는다.
+    """
+    digits = str(number).strip()
+    if re.fullmatch(r"\d{6}", digits):
+        base, branch = int(digits[:4]), int(digits[4:])
+        return f"{base}의{branch}" if branch else str(base)
+    return str(int(digits)) if digits.isdigit() else digits
 
 
 def _same_law_name(left: Optional[str], right: Optional[str]) -> bool:

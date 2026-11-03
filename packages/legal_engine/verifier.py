@@ -957,12 +957,24 @@ class LegalVerifier:
             quote_key = re.sub(r"[\s\"'“”‘’.,·]", "", citation.quoted_text or "")
             in_dissent = bool(quote_key) and any(quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", d) for d in dissents)
             in_majority = bool(quote_key) and quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", majority)
+            concurring = [c for p in parts for c in p["CONCURRING"]
+                          if quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", c)]
+            in_concurring = len(quote_key) >= 6 and bool(concurring)
             if in_dissent and not in_majority:
                 out.append(make("MISATTRIBUTED_OPINION", VerificationStatus.CONTRADICTED, EvidenceGrade.A,
                                 "반대의견의 문장을 판결의 판시로 인용",
                                 "직접 인용한 문장은 이 판결의 반대의견에만 있고 다수의견에는 없다. 반대의견은 판결의 "
                                 "판시(법원의 판단)가 아니다.", next(d for d in dissents), {"closest": "DISSENT",
                                 "defect_summary": "반대의견 문장을 판시로 인용"}))
+            elif in_concurring and not in_majority and "별개의견" not in re.sub(r"\s", "", citation.context or ""):
+                # 별개의견은 결론에는 동의하나 이유가 다르다. 서면이 별개의견이라고 밝히지 않고 인용하면 귀속 오류다.
+                # 인용 주변 문맥 밖에서 밝혔을 수 있으므로 SUSPICIOUS·B로 둔다(TK-135).
+                out.append(make("MISATTRIBUTED_OPINION", VerificationStatus.SUSPICIOUS, EvidenceGrade.B,
+                                "별개의견의 문장을 판결의 판시로 인용",
+                                "직접 인용한 문장은 이 판결의 별개의견에만 있고 다수의견에는 없다. 별개의견은 결론에 "
+                                "동의하더라도 판결의 판시(법원의 판단 이유)가 아니다. 인용 주변에 별개의견이라는 표시가 없다.",
+                                concurring[0],
+                                {"closest": "CONCURRING", "defect_summary": "별개의견 문장을 판시로 인용"}))
             elif dissents:
                 result = attribute_claim(citation.quoted_text or claim, full_text, summary)
                 if result["verdict"] == "MISATTRIBUTED_OPINION":
