@@ -20,7 +20,9 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 KIND_SUFFIXES = (("시행규칙", "시행규칙"), ("시행령", "시행령"))
 MIN_STEM = 3
 SHORT_STEM = 2          # 두 글자 어간('노조'·'산안')은 첫 글자 사전식 목록에서만 고른다(TK-143)
-_GANA = ("ga", "ga", "na", "da", "da", "ra", "ma", "ba", "ba", "sa", "sa", "a", "ja", "ja", "cha", "ka", "ta",
+# 법제처 lawSearch.do의 gana 값. ㅇ은 'ah'다('a'는 알 수 없는 값으로 처리되어 전체 목록 5,631건이 온다 — 11-03 평가 측
+# 실제 응답 확인, TK-148). 알 수 없는 값은 오류 없이 필터 없는 목록을 돌려주므로 값이 틀리면 늘 상한(INCOMPLETE)에 걸린다.
+_GANA = ("ga", "ga", "na", "da", "da", "ra", "ma", "ba", "ba", "sa", "sa", "ah", "ja", "ja", "cha", "ka", "ta",
          "pa", "ha")
 
 
