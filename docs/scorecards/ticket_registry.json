@@ -556,22 +556,22 @@
   "TK-143": {
    "status": "open",
    "kind": "new",
-   "note": "2026-11-03 0.17.0 온라인 탐침(docs/scorecards/online_probe_0170_20261103.md)에서 발견. 다음 릴리스 범위 후보(사용자 결정 필요). P1 두 음절 비공식 약칭(XX법) 추정 불가 — infer_law_by_abbreviation 검색어 3자 미만 생략·부분 문자열 검색 한계로 후보 없음 → 실재 법률 STATUTE_NONEXISTENT CRITICAL(탐침 5/5). 약칭+시행령·모호한 약칭도 CRITICAL. TK-130b(평가 측 수정본)의 탐침 범위 결함."
+   "note": "2026-11-03 0.17.0 온라인 탐침(docs/scorecards/online_probe_0170_20261103.md)에서 발견. 11-03 사용자 결정 '전부 이번 릴리스에 포함'. P1 두 음절 비공식 약칭(XX법) 추정 불가 — infer_law_by_abbreviation 검색어 3자 미만 생략·부분 문자열 검색 한계로 후보 없음 → 실재 법률 STATUTE_NONEXISTENT CRITICAL(탐침 5/5). 약칭+시행령·모호한 약칭도 CRITICAL. TK-130b(평가 측 수정본)의 탐침 범위 결함."
   },
   "TK-144": {
    "status": "open",
    "kind": "new",
-   "note": "2026-11-03 0.17.0 온라인 탐침(docs/scorecards/online_probe_0170_20261103.md)에서 발견. 다음 릴리스 범위 후보(사용자 결정 필요). P1 DOCX 표가 structure['tables']로 나오지 않아 표 합계·비율 검산이 DOCX에서 동작하지 않음(온라인 0/2, 평가 측 재현)."
+   "note": "2026-11-03 0.17.0 온라인 탐침(docs/scorecards/online_probe_0170_20261103.md)에서 발견. 11-03 사용자 결정 '전부 이번 릴리스에 포함'. P1 DOCX 표가 structure['tables']로 나오지 않아 표 합계·비율 검산이 DOCX에서 동작하지 않음(온라인 0/2, 평가 측 재현)."
   },
   "TK-145": {
    "status": "open",
    "kind": "new",
-   "note": "2026-11-03 0.17.0 온라인 탐침(docs/scorecards/online_probe_0170_20261103.md)에서 발견. 다음 릴리스 범위 후보(사용자 결정 필요). P2 같은 판례 반복 인용이 한 인용으로 병합 — 두 번째 인용문 미대조(지어낸 인용 놓침), 상대방 주장 문맥이 첫 인용에 붙어 판시 방향 반대 오탐."
+   "note": "2026-11-03 0.17.0 온라인 탐침(docs/scorecards/online_probe_0170_20261103.md)에서 발견. 11-03 사용자 결정 '전부 이번 릴리스에 포함'. P2 같은 판례 반복 인용이 한 인용으로 병합 — 두 번째 인용문 미대조(지어낸 인용 놓침), 상대방 주장 문맥이 첫 인용에 붙어 판시 방향 반대 오탐."
   },
   "TK-146": {
    "status": "open",
    "kind": "new",
-   "note": "2026-11-03 0.17.0 온라인 탐침(docs/scorecards/online_probe_0170_20261103.md)에서 발견. 다음 릴리스 범위 후보(사용자 결정 필요). P2 표 행 비율 오류를 행 단위로 진단하지 않고 열 합계 불일치로만 잡으며 비율 열을 '원'으로 표기."
+   "note": "2026-11-03 0.17.0 온라인 탐침(docs/scorecards/online_probe_0170_20261103.md)에서 발견. 11-03 사용자 결정 '전부 이번 릴리스에 포함'. P2 표 행 비율 오류를 행 단위로 진단하지 않고 열 합계 불일치로만 잡으며 비율 열을 '원'으로 표기."
   }
  },
  "updated_on": "2026-10-25"
