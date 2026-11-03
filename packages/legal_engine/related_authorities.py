@@ -205,7 +205,8 @@ def _extract_references(source_law: str, source_art: str, text: str,
     return refs
 
 
-def _discover_tk137_authorities(citations, verifier, case_date: Optional[str] = None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], str]:
+def _discover_tk137_authorities(citations, verifier, case_date: Optional[str] = None,
+                                verdicts: Optional[List[Dict[str, Any]]] = None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], str]:
     """공식 확인된 법률 조문 인용으로부터 깊이 1 위임 및 명시 참조를 탐색한다 (TK-137)."""
     adapter = getattr(verifier.registry, "law", None) if hasattr(verifier, "registry") else None
     if adapter is None or getattr(adapter, "name", "") != "law_go_kr":
@@ -214,6 +215,19 @@ def _discover_tk137_authorities(citations, verifier, case_date: Optional[str] = 
     # N3: allow_network False 또는 OC 없음 시 탐색 생략
     if not getattr(adapter.settings, "allow_network", True) or adapter.status() != AdapterStatus.READY:
         return [], [], "NETWORK_DISABLED"
+
+    # N3: 출처 장애·차단 상태이거나 예산 소진 시 조기 생략 (기존 파이프라인 복구 동작 보호)
+    try:
+        from packages.source_adapters.transport import _session, FAILURE_THRESHOLD
+        session = _session.get()
+        if session is not None:
+            adapter_name = getattr(adapter, "name", "law_go_kr")
+            if (session.failures.get(adapter_name, 0) >= FAILURE_THRESHOLD or
+                    adapter_name in getattr(session, "blocked", {}) or
+                    session.remaining() <= 0):
+                return [], [], "SOURCE_OUTAGE"
+    except Exception:
+        pass
 
     start_time = time.monotonic()
     total_budget = 15.0  # 문서 누계 시간 상한 15.0초 (N1)
@@ -224,8 +238,27 @@ def _discover_tk137_authorities(citations, verifier, case_date: Optional[str] = 
     mst_cache: Dict[str, Optional[str]] = {}
     overall_status = "COMPLETED"
 
-    # STATUTE 인용 추출
-    statute_cites = [c for c in citations if c.type == CitationType.STATUTE and c.law_name and c.article]
+    # 앞선 source_review 검증 결과(verdicts)가 주어진 경우 확인된 인용만 선별하고 기존 MST 캐시 적재 (N3)
+    verified_ids: Optional[Set[str]] = None
+    if verdicts is not None:
+        verified_ids = set()
+        for v in verdicts:
+            cid = v.get("citation_id")
+            st = v.get("status")
+            confirmed = v.get("identity_confirmed")
+            if st == "VERIFIED" or confirmed:
+                if cid:
+                    verified_ids.add(cid)
+                rec = v.get("official_record") or {}
+                if rec.get("version_id") and rec.get("law_name"):
+                    mst_cache[str(rec["law_name"]).strip()] = str(rec["version_id"])
+
+    # STATUTE 인용 추출 (확인된 조문 한정)
+    statute_cites = [
+        c for c in citations
+        if c.type == CitationType.STATUTE and c.law_name and c.article
+        and (verified_ids is None or c.citation_id in verified_ids)
+    ]
 
     for c in statute_cites:
         # N5: 문서당 전체 관련 근거 20건 상한
@@ -311,7 +344,7 @@ def _discover_tk137_authorities(citations, verifier, case_date: Optional[str] = 
     return all_delegations, all_explicit_refs, overall_status
 
 
-def review_related_authorities(doc, citations, verifier, *, case_date=None, quick=False):
+def review_related_authorities(doc, citations, verifier, *, case_date=None, quick=False, verdicts=None):
     """관련 법조문 및 위임/명시 참조 근거를 검토하여 단일 dict로 반환한다 (N2, N3)."""
     related = candidates(doc, citations)
 
@@ -331,7 +364,7 @@ def review_related_authorities(doc, citations, verifier, *, case_date=None, quic
 
     try:
         delegations, explicit_refs, delegation_status = _discover_tk137_authorities(
-            citations, verifier, case_date=case_date)
+            citations, verifier, case_date=case_date, verdicts=verdicts)
     except Exception:
         delegation_status = "ERROR"
 
