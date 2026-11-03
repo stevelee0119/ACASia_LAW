@@ -19,6 +19,17 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 KIND_SUFFIXES = (("시행규칙", "시행규칙"), ("시행령", "시행령"))
 MIN_STEM = 3
+SHORT_STEM = 2          # 두 글자 어간('노조'·'산안')은 첫 글자 사전식 목록에서만 고른다(TK-143)
+_GANA = ("ga", "ga", "na", "da", "da", "ra", "ma", "ba", "ba", "sa", "sa", "a", "ja", "ja", "cha", "ka", "ta",
+         "pa", "ha")
+
+
+def gana_code(name: str) -> Optional[str]:
+    """첫 글자의 초성을 법제처 사전식 검색 값(ga·na·da …)으로. 한글 음절이 아니면 None."""
+    c = compact(name)
+    if not c or not ("가" <= c[0] <= "힣"):
+        return None
+    return _GANA[(ord(c[0]) - 0xAC00) // 588]
 THRESHOLD = 500
 MARGIN = 100
 
@@ -57,9 +68,23 @@ def is_subsequence(query: str, target: str) -> bool:
     return True
 
 
-def score(written: str, record: Dict[str, Any]) -> int:
+def _initials_subsequence(query: str, target: str) -> bool:
+    """두 음절 줄임말의 각 글자가 정식명의 말마디 첫 음절(공백 없는 정식명에서 짝수 위치로 근사)에 순서대로 있는지.
+    한국어 법령명은 두 음절 낱말이 이어진 꼴이 대부분이라 줄임말 글자는 짝수 위치에 온다('노동조합' → 노·조)."""
+    at = 0
+    for ch in query:
+        i = target.find(ch, at)
+        while i >= 0 and i % 2:
+            i = target.find(ch, i + 1)
+        if i < 0:
+            return False
+        at = i + 1
+    return True
+
+
+def score(written: str, record: Dict[str, Any], *, min_stem: int = MIN_STEM) -> int:
     q = compact(written)
-    if len(stem(q)) < MIN_STEM:
+    if len(stem(q)) < min_stem:
         return 0
     abbreviation = compact(record.get("abbreviation"))
     target = abbreviation or compact(record.get("law_name"))
@@ -67,16 +92,20 @@ def score(written: str, record: Dict[str, Any]) -> int:
         return 0
     if target == q or not is_subsequence(q, target):
         return 0
+    if min_stem == SHORT_STEM and len(stem(q)) == SHORT_STEM and not (
+            _initials_subsequence(stem(q), stem(target)) or stem(target).startswith(stem(q))):
+        return 0                       # 두 음절 줄임말: 말마디 첫 음절이거나 정식명 첫 낱말 그대로(TK-143)
     base = 800 if abbreviation else 600
     return base - min(len(target) - len(q), 200 if not abbreviation else 100)
 
 
-def pick(written: str, records: Iterable[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+def pick(written: str, records: Iterable[Dict[str, Any]], *, min_stem: int = MIN_STEM
+         ) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
     """(우선 후보, 문턱을 넘은 후보 목록). 1위가 하나뿐이거나 2위보다 MARGIN 이상 앞설 때만 우선 후보를 정한다."""
     best: Dict[str, Dict[str, Any]] = {}
     for record in records:
         law_id = str(record.get("law_id") or "").lstrip("0")
-        value = score(written, record)
+        value = score(written, record, min_stem=min_stem)
         if not law_id or value < THRESHOLD:
             continue
         if law_id not in best or value > best[law_id]["score"]:
