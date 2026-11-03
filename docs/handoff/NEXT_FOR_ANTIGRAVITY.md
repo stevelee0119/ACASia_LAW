@@ -649,8 +649,8 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 |---|---|---|---|---|
 | TK-136 외부 AI 프롬프트 엄격성 | `patches/TK-136_external_prompt_strictness_on_892bbd8.diff` | [TK-136](TK-136_external_ai_prompt_strictness.md) | #211 `ea951b2` | **Steve 병합 `5007073`**(11-03) |
 | TK-135 판례 의견 귀속 | `patches/TK-135_opinion_attribution_on_892bbd8.diff`(2판) | [TK-135](TK-135_precedent_opinion_attribution.md) | #210 `1e1c637` | **Steve 병합 `46e0d72`**(11-03) |
-| TK-134 자치법규 조회 | `patches/TK-134_ordinance_lookup_on_892bbd8.diff`(2판) | [TK-134](TK-134_local_ordinance_lookup.md) | #212 `b3e6eae` | 보완 1건 — PR 본문의 '실제 응답' 정정(코드 변경 없음) |
-| TK-76 3주기 1항 EVI-INCONS | 설계 메모만(코드 금지) | [TK-76 '3주기 1항'](TK-76_focus_types_generalization_cycle1.md) | #213 `4616923` | 조건부 승인 — 보정 M1~M9 반영 보정본 먼저 |
+| TK-134 자치법규 조회 | `patches/TK-134_ordinance_lookup_on_892bbd8.diff`(2판) | [TK-134](TK-134_local_ordinance_lookup.md) | #212 `b3e6eae` | **수용**(11-03, 본문 정정 확인) · 병합 대기 |
+| TK-76 3주기 1항 EVI-INCONS | 설계 메모만(코드 금지) | [TK-76 '3주기 1항'](TK-76_focus_types_generalization_cycle1.md) | #213 `31bf218` | **메모 승인**(11-03, N1~N3은 PR1·PR2에서 반영) · 병합 대기 → PR1(A 산식) 착수 |
 
 - 세 수정본은 서로 겹치지 않는다(평가 측 확인: 각각·연달아 적용 모두 성공).
 - 한 PR에 한 티켓. 검토 요청은 필수 CI가 끝난 head SHA로 한다.
