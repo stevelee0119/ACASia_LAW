@@ -26,3 +26,9 @@
 - verify_all 전체 모드 종료 0: 수용 1,237·회귀 장부 2,357·전체 9,262·브라우저 197 통과(실패 0), 점수·회귀 게이트, 하드코딩·시험 수정·보호 경로·버전 정책 통과.
 - 고정 dev 82.6 / holdout 81.9 / 오탐 0 / A 0 — 변화 0.
 - 은퇴 5세트(`retired_compare.py --base 7b41c7d`): 53.3/46.8/53.4/45.8/29.5 → 같음, 오탐 0, 후퇴 없음.
+
+## PR 판정(11-03): #215 `c1c5994` 수용
+- diff = 변경안(평가 측 적용 사본과 diff 0). 다른 시험 수정 0.
+- CI: push 실행 전부 성공. PR 실행 1회차는 `테스트 (SQLite + 인프로세스 Worker)`에서 **무관한** `tests/test_tk56_structured_name_boundary.py::test_synthetic_field_collection_thousands_under_point_one_second`(0.73초 > 0.1초, 같은 줄의 시험 묶음이 90초 멈춘 실행기 지연 기록) 1건 실패 → 평가 측이 실패 작업만 재실행(코드 변경 없음) → 전부 성공.
+- 평가 측 재실행: `tests/test_pii_redos_linear.py` 14건 통과. 위 TK-56 시험은 **기준 코드 Steve `7b41c7d`에서도** 로컬 4회 중 1회 0.113초로 실패(PR head는 0.056~0.061초) → 기존 절대 시간 상한 시험의 흔들림. TK-147로 등록.
+- 다음: 사용자 Steve 병합.

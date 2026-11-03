@@ -660,10 +660,10 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 
 | 티켓 | 수정본(`docs/handoff/patches/`) | 티켓 문서 | PR | 상태 |
 |---|---|---|---|---|
-| TK-140 문서 파서 후속(A+B-1+B-2) | `TK-140_parser_followups_AB1_on_7b41c7d`, `TK-140_hwp_nested_tables_B2_on_AB1` | [TK-140](TK-140_document_parser_followups.md) | — | 지시문 제시(11-03). B-2·기존 시험 단언 변경 사용자 승인 |
-| TK-141 발췌 입력 예산·해시 | `TK-141_input_budget_hash_on_7b41c7d` | [TK-141](TK-141_evidence_input_budget_hash.md) | — | 지시문 제시(11-03) |
-| TK-142 ReDoS 시간 시험 안정화 | `TK-142_redos_timing_stability_on_7b41c7d` | [TK-142](TK-142_redos_timing_test_stability.md) | — | 지시문 제시(11-03) |
-| TK-76 3주기 1항 PR1 보완(F1~F8) | `TK-76_cycle3_pr1_fix_on_0437219` | [TK-76 '#214 1차 판정'](TK-76_focus_types_generalization_cycle1.md) | #214 `0437219` | 보완 지시 제시(11-03). 수용: 점수 게이트·은퇴 통과, 평가 측 3차 비공개 탐침 |
+| TK-140 문서 파서 후속(A+B-1+B-2) | `TK-140_parser_followups_AB1_on_7b41c7d`, `TK-140_hwp_nested_tables_B2_on_AB1` | [TK-140](TK-140_document_parser_followups.md) | #217 `078f854` | **수용(11-03)** — diff=수정본, CI 성공. Steve 병합 대기 |
+| TK-141 발췌 입력 예산·해시 | `TK-141_input_budget_hash_on_7b41c7d` | [TK-141](TK-141_evidence_input_budget_hash.md) | #216 `7c37154` | **수용(11-03)** — diff=수정본, CI 성공. Steve 병합 대기 |
+| TK-142 ReDoS 시간 시험 안정화 | `TK-142_redos_timing_stability_on_7b41c7d` | [TK-142](TK-142_redos_timing_test_stability.md) | #215 `c1c5994` | **수용(11-03)** — diff=변경안, CI 재실행 후 성공(1회차 실패는 무관한 TK-56 시간 시험 → TK-147). Steve 병합 대기 |
+| TK-76 3주기 1항 PR1 보완(F1~F8) | `TK-76_cycle3_pr1_fix_on_0437219` | [TK-76 '#214 1차 판정'](TK-76_focus_types_generalization_cycle1.md) | #214 `0437219`→`a9f6ee3` | 1차 보완 이행(diff=수정본, CI·verify_all 통과). **2차 판정 보완 1회 더**: 새 탐침 양성 3차 5/9·4차 3/8(기준 2/3 미달), 5차 대조 오탐 1/8 → 2차 수정본 `TK-76_cycle3_pr1_fix2_on_a9f6ee3`(G1~G4) 지시 |
 | TK-143 짧은 약칭 추정 | `TK-143_short_abbreviation_on_7b41c7d`(2판) | [TK-143~146](TK-143_146_online_probe_fixes.md) | — | **전달 완료(11-03, 사용자)** |
 | TK-144 DOCX 표 구조 | `TK-144_docx_tables_on_7b41c7d` | 같음 | — | **전달 완료(11-03, 사용자)** |
 | TK-145 같은 판례 반복 인용 | `TK-145_repeated_case_citation_on_7b41c7d` | 같음 | — | **전달 완료(11-03, 사용자)** |
@@ -671,6 +671,7 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 
 - TK-143~146 합본(2판) 평가 측 사전 검증: verify_all 전체 종료 0(시험 9,269·브라우저 197), 고정 82.6/81.9 FP0, 은퇴 5세트 변화 0(평가 측 재실행, `eb4d5ea` 기록).
 - 한 PR에 한 티켓. 검토: diff = 수정본, 필수 CI 성공, 2-2 규약 게이트.
+- 11-03 평가 세션 교대 뒤 판정: #215·#216·#217 수용, #214 2차 보완(원인·수정본·사전 검증은 [TK-76 '#214 2차 판정'](TK-76_focus_types_generalization_cycle1.md)).
 
 ## 2-2. 탐지 PR 공통 수용 규약 — 하드코딩 금지 (2026-10-24 사용자 지시 '평가기준을 엄격히 적용하되 하드코딩으로 충족하지 못하게 제한')
 10-24 검토(#175 `618130c`·#165 `94c645f`·#167 `af28269`/`0731277`)에서 세 PR이 같은 방식으로 실패했다. 은퇴 세트 항목만 정확히 오르고(EVI-DATE 7·EVI-OVR 5·EVI-INCONS 3) train 같은 유형은 0이다. 평가 측의 비공개 다른 표현 탐침도 0이다(#175 0/4·#165 0/2·#167 장소·서명자 규칙 0). 새 정규식은 고정 낱말 여러 개를 순서대로 이은 문장 틀이다. 그 낱말은 은퇴 항목 위치 소제목 낱말과 8~9개씩 겹친다. **아래 규약은 A-4·B-1·B-3과 이후 모든 탐지 PR에 적용한다. 하나라도 어기면 점수와 무관하게 불승인한다.**
