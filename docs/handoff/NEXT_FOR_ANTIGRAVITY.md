@@ -663,11 +663,11 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 | TK-140 문서 파서 후속(A+B-1+B-2) | `TK-140_parser_followups_AB1_on_7b41c7d`, `TK-140_hwp_nested_tables_B2_on_AB1` | [TK-140](TK-140_document_parser_followups.md) | #217 `078f854` | **수용·Steve 병합 `ea2c81f`(11-03)** |
 | TK-141 발췌 입력 예산·해시 | `TK-141_input_budget_hash_on_7b41c7d` | [TK-141](TK-141_evidence_input_budget_hash.md) | #216 `7c37154` | **수용·Steve 병합 `7823cbf`(11-03)** |
 | TK-142 ReDoS 시간 시험 안정화 | `TK-142_redos_timing_stability_on_7b41c7d` | [TK-142](TK-142_redos_timing_test_stability.md) | #215 `c1c5994` | **수용·Steve 병합 `0d7051b`(11-03)**(1회차 CI 실패는 무관한 TK-56 시간 시험 → TK-147) |
-| TK-76 3주기 1항 PR1 보완(F1~F8·G1~G4) | `TK-76_cycle3_pr1_fix_on_0437219`, `TK-76_cycle3_pr1_fix2_on_a9f6ee3` | [TK-76 '#214 1~3차 판정'](TK-76_focus_types_generalization_cycle1.md) | #214 `0437219`→`a9f6ee3`→`4074ebb` | **3차 판정 수용(11-03)** — diff=2차 수정본, CI 성공, 새 6차 탐침 8/9·대조 0/12. Steve 병합 대기 |
-| TK-143 짧은 약칭 추정 | `TK-143_short_abbreviation_on_7b41c7d`(2판) | [TK-143~146](TK-143_146_online_probe_fixes.md) | #218 `235db42` | **수용(11-03)** — diff=수정본, CI 성공. Steve 병합 대기 |
-| TK-144 DOCX 표 구조 | `TK-144_docx_tables_on_7b41c7d` | 같음 | #219 `b0c017c` | **수용(11-03)** — diff=수정본, CI 성공. Steve 병합 대기 |
-| TK-145 같은 판례 반복 인용 | `TK-145_repeated_case_citation_on_7b41c7d` | 같음 | #220 `9656317` | **수용(11-03)** — diff=수정본, CI 성공. Steve 병합 대기 |
-| TK-146 표 비율 행 진단 | `TK-146_table_percentage_on_7b41c7d` | 같음 | #221 `a484deb` | **수용(11-03)** — diff=수정본, CI 성공. Steve 병합 대기 |
+| TK-76 3주기 1항 PR1 보완(F1~F8·G1~G4) | `TK-76_cycle3_pr1_fix_on_0437219`, `TK-76_cycle3_pr1_fix2_on_a9f6ee3` | [TK-76 '#214 1~3차 판정'](TK-76_focus_types_generalization_cycle1.md) | #214 `0437219`→`a9f6ee3`→`4074ebb` | **3차 판정 수용·Steve 병합 `9cb9a96`(11-03)** — 새 6차 탐침 8/9·대조 0/12 |
+| TK-143 짧은 약칭 추정 | `TK-143_short_abbreviation_on_7b41c7d`(2판) | [TK-143~146](TK-143_146_online_probe_fixes.md) | #218 `235db42` | **수용·Steve 병합 `831b325`(11-03)** |
+| TK-144 DOCX 표 구조 | `TK-144_docx_tables_on_7b41c7d` | 같음 | #219 `b0c017c` | **수용·Steve 병합 `631b509`(11-03)** |
+| TK-145 같은 판례 반복 인용 | `TK-145_repeated_case_citation_on_7b41c7d` | 같음 | #220 `9656317` | **수용·Steve 병합 `269432b`(11-03)** |
+| TK-146 표 비율 행 진단 | `TK-146_table_percentage_on_7b41c7d` | 같음 | #221 `a484deb` | **수용·Steve 병합 `cf57cb7`(11-03)** |
 
 - TK-143~146 합본(2판) 평가 측 사전 검증: verify_all 전체 종료 0(시험 9,269·브라우저 197), 고정 82.6/81.9 FP0, 은퇴 5세트 변화 0(평가 측 재실행, `eb4d5ea` 기록).
 - 한 PR에 한 티켓. 검토: diff = 수정본, 필수 CI 성공, 2-2 규약 게이트.
