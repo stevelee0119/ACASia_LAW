@@ -1079,6 +1079,7 @@ class VerificationPipeline:
                       external_ai_policy=context.external_ai_policy,
                       mask=mask_for_models,
                       semantic_reviews=result.engine_data.get("semantic_reviews", []),
+                      related_authorities=result.engine_data.get("related_authorities"),
                   )
               )
               result.findings.extend(arg_validity.findings)

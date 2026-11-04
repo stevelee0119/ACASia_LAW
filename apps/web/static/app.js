@@ -2844,6 +2844,21 @@ function renderFindings() {
         const titlePart = item.target_title ? `(${item.target_title})` : "";
         section.append(node("p", `[참조] ${item.source_law} ${articleLabel(item.source_article)} → ${item.target_law} ${articleLabel(item.target_article)}${titlePart} · 검토 자료`));
       }
+      if (related.precedents && related.precedents.length > 0) {
+        // 질의(인용 조문)마다 검색 범위가 다르다 — 질의별로 한 번씩 적는다(평가 측 보완 K1)
+        const scopes = [];
+        for (const p of related.precedents) {
+          const s = p.search_query && p.search_scope ? `${p.search_query}: ${p.search_scope}` : (p.search_scope || "");
+          if (s && !scopes.includes(s)) scopes.push(s);
+        }
+        const scopeDesc = scopes.length ? `${scopes.join(" · ")} — ` : "";
+        section.append(node("p", `[관련 판례] ${scopeDesc}권위 순 정렬 ${related.precedents.length}건 · 검토 자료`));
+        for (const p of related.precedents) {
+          const kindPart = p.case_kind ? `, ${p.case_kind}` : "";
+          const namePart = p.case_name ? ` \"${p.case_name}\"` : "";
+          section.append(node("p", `· ${p.case_number} (${p.court}, ${p.decision_date}${kindPart})${namePart} (사건 당시 적용·주장 타당성은 별도 검토)`));
+        }
+      }
       refContainer.append(section);
     }
   }

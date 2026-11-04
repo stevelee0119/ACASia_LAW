@@ -50,7 +50,8 @@ _CLAIM_REFERENCE = _object({"source_id": str, "text": str, "page": int}, optiona
 _ARGUMENT_ITEM = _object({
     "item_id": int, "page": int, "cited_case": str, "확인 상태": str,
     "surrounding_context_and_claim": str, "원문 대조(어절 단위, 원문 기준)": str,
-}, optional=("원문 대조(어절 단위, 원문 기준)",))
+    "관련 권위 판례(참고)": str,  # TK-138 관련 판례 목록(공식 조회 결과, 평가 측 보완 D3)
+}, optional=("원문 대조(어절 단위, 원문 기준)", "관련 권위 판례(참고)"))
 _SHAPES = MappingProxyType({
     "ai_document_v1": _object({
         "document_filename": str, "metadata_ai_hint": bool,
