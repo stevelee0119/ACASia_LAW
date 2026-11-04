@@ -145,6 +145,74 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
         return first if first is not None else self._unavailable(
             case_number, AdapterStatus.ERROR, "조회를 수행하지 못했다")
 
+    def search_cases_by_query(
+        self,
+        query: str,
+        *,
+        org: Optional[str] = "400201",
+        display: int = 100,
+        page: int = 1,
+    ) -> AdapterResponse:
+        """조문 본문 검색을 통해 관련 판례 목록을 조회한다 (lawSearch.do?target=prec&search=2).
+
+        대법원 한정 질의(org="400201")를 기본 적용하며, 수신 건수와 전체 건수 메타를 반환한다(U1).
+        """
+        status = self.status()
+        if status != AdapterStatus.READY:
+            return self._unavailable(
+                query,
+                status,
+                "국가법령정보 OC가 없거나 네트워크가 비활성이다. 판례 검색을 생략한다.",
+            )
+
+        params: Dict[str, Any] = {
+            "OC": self.api_key,
+            "target": "prec",
+            "type": "JSON",
+            "search": 2,          # 본문 검색
+            "query": query.strip(),
+            "display": display,
+            "page": page,
+        }
+        if org:
+            params["org"] = str(org).strip()
+
+        try:
+            response = self._http_get(SEARCH_URL, params=params)
+            if response.status_code == 429:
+                return self._unavailable(query, AdapterStatus.RATE_LIMITED, "요청 한도 초과")
+            if response.status_code >= 400:
+                return self._unavailable(query, AdapterStatus.ERROR, f"HTTP {response.status_code}")
+            payload = response.json()
+        except Exception as exc:
+            return self._transport_unavailable(query, exc)
+
+        if not _case_payload_shape_ok(payload):
+            keys = list(payload)[:5] if isinstance(payload, dict) else type(payload).__name__
+            return self._unavailable(query, AdapterStatus.ERROR, f"prec 응답 형식이 예상과 다름(최상위 {keys})")
+
+        listed = _normalize_case_payload(payload)
+        total = _total_count(payload, len(listed))
+        source_rec = self._record(
+            query,
+            AdapterStatus.READY,
+            payload=mask_oc(payload),
+            result_id=query,
+            url=SEARCH_URL,
+            used_fields=["사건번호", "법원명", "선고일자", "판결유형", "사건명", "판례일련번호", "totalCnt"],
+        )
+        source_rec.attributes = {
+            "total_count": total,
+            "returned_count": len(listed),
+            "org": org,
+        }
+        return AdapterResponse(
+            AdapterStatus.READY,
+            listed,
+            source_rec,
+            f"관련 판례 본문검색 {total}건 중 {len(listed)}건 수신(org={org})",
+        )
+
     # -- 법령 -------------------------------------------------------------
     def search_law(self, law_name: str, *, article: Optional[str] = None, as_of: Optional[str] = None) -> AdapterResponse:
         """법령 조문을 조회한다. as_of가 있으면 그 시점 시행 version을 확인한다(제9.4장)."""

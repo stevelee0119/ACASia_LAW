@@ -248,6 +248,7 @@ async def verify_argument_validity(
     external_ai_policy: ExternalAIPolicy = ExternalAIPolicy.MASKED,
     mask: Optional[Callable[[str], str]] = None,
     semantic_reviews: Optional[List[Dict[str, Any]]] = None,
+    related_authorities: Optional[Dict[str, Any]] = None,
 ) -> ArgumentValidityResult:
     """허위 판례 인용 및 법률 주장에 대한 타당성 종합 검토를 수행하고 대조표를 생성한다."""
     result = ArgumentValidityResult()
@@ -462,7 +463,8 @@ async def verify_argument_validity(
                        and router.has_available_provider(policy=external_ai_policy))
     cases_for_ai = [item for item in unverified_cases if item.get("basis") != "OFFICIAL_CONFIRMED"]
     if can_use_llm and cases_for_ai:
-        await _attach_ai_opinions(result, cases_for_ai, router, external_ai_policy, mask)
+        await _attach_ai_opinions(result, cases_for_ai, router, external_ai_policy, mask,
+                                  related_authorities=related_authorities)
 
     if result.rows:
         counts = {basis: sum(r.basis == basis for r in result.rows)
@@ -585,8 +587,10 @@ async def _retry_truncated_singly(router: Any, replies: List[Any], batch: List[D
 
 async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: List[Dict[str, Any]],
                               router: Any, policy: ExternalAIPolicy,
-                              mask: Optional[Callable[[str], str]]) -> None:
+                              mask: Optional[Callable[[str], str]],
+                              *, related_authorities: Optional[Dict[str, Any]] = None) -> None:
     """사용 가능한 모델 모두에게 묻고, 항목별 의견과 일치 여부를 행에 붙인다."""
+    from packages.legal_engine.normalize import canonical_case_number, extract_all_case_numbers
     from packages.llm_router.providers import _extract_json
 
     from packages.llm_router.router import failure_summary
@@ -595,6 +599,27 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
     from packages.common.source_trace import render_argument_context
     from packages.llm_router.excerpt_source import bind_argument_excerpts
     excerpt_pieces = {}
+
+    # TK-138 관련 권위 판례 제공 목록 및 사건번호 집합 구성 (P4, P6, U3)
+    precedents = (related_authorities or {}).get("precedents", [])
+    provided_case_numbers = set()
+    for p in precedents:
+        cno = p.get("case_number")
+        if cno:
+            canon = canonical_case_number(str(cno))
+            if canon:
+                provided_case_numbers.add(canon)
+            else:
+                provided_case_numbers.add(str(cno).replace(" ", ""))
+
+    precedent_context_str = ""
+    if precedents:
+        prec_lines = []
+        for p in precedents[:3]:
+            kind_str = f" {p['case_kind']}" if p.get("case_kind") else ""
+            summary_str = f": {p['summary'][:150]}" if p.get("summary") else ""
+            prec_lines.append(f"- {p['case_number']} ({p['court']}{kind_str}){summary_str}")
+        precedent_context_str = "\n".join(prec_lines)
 
     def context_for(index, item):
         rendered, piece = render_argument_context(hide, item['context'])
@@ -606,6 +631,7 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
         "cited_case": hide(item["citation"].raw_text),
         "확인 상태": _BASIS_LABEL.get(item.get("basis", "UNCONFIRMED"), _BASIS_LABEL["UNCONFIRMED"]),
         "surrounding_context_and_claim": context_for(index, item),
+        **({"관련 권위 판례(참고)": hide(precedent_context_str)} if precedent_context_str else {}),
         **({"원문 대조(어절 단위, 원문 기준)": hide(item["quote_diff"])} if item.get("quote_diff") else {}),
     } for index, item in enumerate(unverified_cases, 1)]
     # 한 번에 모두 물으면 인용이 많을 때 응답이 출력 한도에서 잘린다. 한국어 JSON은
@@ -646,13 +672,38 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
                 item_id = int(row.get("item_id"))
             except (TypeError, ValueError):
                 continue
+            claim_text = str(row.get("claim_text") or "")[:400]
+            reasoning = str(row.get("legal_reasoning") or "")[:800]
+            check = str(row.get("recommended_check") or "")[:400]
+
+            # P6, U3: 모델 응답 내 사건번호 추출 및 제공 목록 대조
+            resp_text = f"{claim_text} {reasoning} {check}"
+            extracted_tuples = extract_all_case_numbers(resp_text)
+            resp_cases = {f"{y}{c}{s}" for y, c, s in extracted_tuples}
+
+            # 서면 내 원래 인용된 사건번호는 제공 판례 외에도 서면 자체 사건번호이므로 제외
+            item_match = next((it for it in unverified_cases if it.get("citation")), None)
+            orig_case = canonical_case_number(item_match["citation"].raw_text) if item_match else None
+
+            unprovided = {c for c in resp_cases if c not in provided_case_numbers and c != orig_case}
+
+            filtered_out_unprovided = False
+            if unprovided:
+                filtered_out_unprovided = True
+                verdict_val = "판단 불가"  # 비인가 판례 인용 시 타당성 판단 근거에서 배제 (P6)
+                reasoning = f"[UNVERIFIED_INVENTED_IN_RESPONSE] 비인가 사건번호({', '.join(sorted(unprovided))}) 인용 배제. {reasoning}"
+            else:
+                verdict_val = str(row.get("validity_verdict") or "판단 불가")[:40]
+
             opinions_by_item.setdefault(item_id, []).append({
                 "provider": provider,
                 "model": getattr(execution, "model", ""),
-                "claim_text": str(row.get("claim_text") or "")[:400],
-                "verdict": str(row.get("validity_verdict") or "판단 불가")[:40],
-                "reasoning": str(row.get("legal_reasoning") or "")[:800],
-                "check": str(row.get("recommended_check") or "")[:400],
+                "claim_text": claim_text,
+                "verdict": verdict_val,
+                "legal_reasoning": reasoning,
+                "check": check,
+                "filtered_out_unprovided": filtered_out_unprovided,
+                "unprovided_case_numbers": sorted(unprovided) if unprovided else [],
             })
 
     agree = disagree = 0
