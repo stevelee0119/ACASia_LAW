@@ -273,3 +273,4 @@ Antigravity. 전달: [NEXT_FOR_ANTIGRAVITY](NEXT_FOR_ANTIGRAVITY.md). train 전�
 - 2-2 다: 귀속표는 세트 득점 0 확인. 3.1의 탐침 수치는 평가 측 사전 검증값을 옮긴 것(구현 측 측정 아님). 3.3 train 원인표(4건)는 train 원본이 이 평가 환경에 없어 평가 측 미검증.
 - 남은 미탐(후속): 단위 '대' 수량 산식, EVI-INCONS C(문서 안 같은 회신의 발신 시각 — 설계 메모 필요).
 ```
+- **Steve 병합 `90cc681`**(11-05, 사용자 지시 '#233 병합', 평가 측이 expectedHeadSha로 실행). 남은 EVI-INCONS: C(발신 시각, 메모 필요)·단위 '대'.
