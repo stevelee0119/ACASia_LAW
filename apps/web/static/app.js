@@ -2831,6 +2831,19 @@ function renderFindings() {
         const verdict = (related.verdicts || []).find(v => v.citation_id === candidate.citation_id);
         section.append(node("p", `${candidate.raw_text} · 출처 조회: ${label(verdict?.status || "NOT_ASSESSED")} · 사건 당시 적용·주장 타당성: 별도 검토 필요`));
       }
+      // 조 번호 표기: '7의2' → '제7조의2'(평가 측 보완 R2)
+      const articleLabel = (a) => {
+        const m = String(a ?? "").match(/^(\d+)(?:의(\d+))?$/);
+        return m ? `제${m[1]}조${m[2] && m[2] !== "0" ? `의${m[2]}` : ""}` : `제${a}조`;
+      };
+      for (const item of related.delegations || []) {
+        const titlePart = item.target_title ? `(${item.target_title})` : "";
+        section.append(node("p", `[위임] ${item.source_law} ${articleLabel(item.source_article)} → ${item.target_law} ${articleLabel(item.target_article)}${titlePart} · 검토 자료`));
+      }
+      for (const item of related.explicit_references || []) {
+        const titlePart = item.target_title ? `(${item.target_title})` : "";
+        section.append(node("p", `[참조] ${item.source_law} ${articleLabel(item.source_article)} → ${item.target_law} ${articleLabel(item.target_article)}${titlePart} · 검토 자료`));
+      }
       refContainer.append(section);
     }
   }

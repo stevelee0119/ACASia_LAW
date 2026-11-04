@@ -920,8 +920,10 @@ class VerificationPipeline:
         with manifest.stage("related_authorities", [], inputs=0, unit="추가 검토 근거",
                             document_id=doc.document_id) as stage:
             try:
+                verdicts = result.engine_data.get("legal_verdicts") or []
                 related, records = review_related_authorities(doc, citations, self.legal,
-                    case_date=context.case_date, quick=context.profile == VerificationProfile.QUICK)
+                    case_date=context.case_date, quick=context.profile == VerificationProfile.QUICK,
+                    verdicts=verdicts)
                 if related:
                     result.engine_data["related_authorities"] = related
                     result.source_records.extend(records)
