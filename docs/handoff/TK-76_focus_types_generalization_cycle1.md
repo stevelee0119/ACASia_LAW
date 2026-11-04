@@ -274,3 +274,10 @@ Antigravity. 전달: [NEXT_FOR_ANTIGRAVITY](NEXT_FOR_ANTIGRAVITY.md). train 전�
 - 남은 미탐(후속): 단위 '대' 수량 산식, EVI-INCONS C(문서 안 같은 회신의 발신 시각 — 설계 메모 필요).
 ```
 - **Steve 병합 `90cc681`**(11-05, 사용자 지시 '#233 병합', 평가 측이 expectedHeadSha로 실행). 남은 EVI-INCONS: C(발신 시각, 메모 필요)·단위 '대'.
+
+### 3주기 남은 유형 착수 — EVI-FORM 설계 메모 요청 (11-05, 기준 Steve `90cc681`, 사용자 'TK-76 남은 유형의 착수를 claude 제안대로 시행')
+- 순서: EVI-FORM → EVI-NUM(TK-73 조율) → EVI-DATE → EVI-COPY → EVI-LOGIC 잔여 → EVI-INCONS C. 근거: Steve `90cc681` 은퇴 5세트 유형별 손실(오프라인 집계) FORM 9.3·NUM 7.8·DATE 6.0·COPY 6.0·LOGIC 3.7.
+- 진단(평가 측 재실행): 기존 4개 축은 낱말 일치라 새 비공개 탐침 4세트(양성 34·대조 38) 기준 3/34·오탐 0/38. train은 이 환경에 원본이 없어 미측정.
+- 법 근거는 법제처 현행 원문으로 확인(민사소송법 277·355①·358, 민사소송규칙 105①③④·106②·107②·109 3호·5호). 모두 SUSPICIOUS·B.
+- 평가 측 시안(G1 번역문 미첨부·G2 입증방법 부호 불일치·G3 서명/작성일 칸 공란·G4 형식 요소 부재 자인 + 증명 주장): 독립 4차 1/8→5/8·0/10(2/3 미달), 은퇴·고정 변화 0·오탐 0, 관련 20개 파일 654건 통과. 남은 꼴: 어미·술어 활용형 열거, 형식 요소 낱말 열거, 서증명 핵심어 추출. G5(일부 쪽 제출)는 미검증.
+- 시안 증분: [patches/TK-76_cycle3_form_prototype_on_90cc681.diff](patches/TK-76_cycle3_form_prototype_on_90cc681.diff). 요청 전문: NEXT 2-17.
