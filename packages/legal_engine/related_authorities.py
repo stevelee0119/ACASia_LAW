@@ -29,6 +29,10 @@ _ART_CHAIN_RE = re.compile(r"^\s*(?:,|ㆍ|·|및|또는|와|과|부터|내지)\s
 _REF_TAIL_RE = re.compile(r"\s*(?:에\s*(?:따라|의하여|따른|의한|규정된)|(?:을|를)\s*준용하)")
 
 
+TK139_MAX_SECONDS = 10.0       # TK-139 처분기준 대조 단계 상한(문서 15초 예산과 별도, 사용자 결정 11-04)
+TK139_MIN_CALL_SECONDS = 3.0   # 외부 호출 전 최소 잔여
+
+
 class AuthorityBudget:
     """TK-137 및 TK-138이 공유하는 통합 시간 예산 관리 객체 (U4, P7).
 
@@ -623,8 +627,162 @@ def _discover_tk138_precedents(
     return sorted_precedents, precedent_status
 
 
+def _discover_tk139_disposition_criteria(
+    doc,
+    citations,
+    verifier,
+    *,
+    case_date: Optional[str] = None,
+    verdicts: Optional[List[Dict[str, Any]]] = None,
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    """서면 내 행정처분 주장과 처분기준 별표를 대조한다 (TK-139)."""
+    text = getattr(doc, "visible_text", "") or ""
+    if not text or "영업정지" not in text:
+        return None, "NO_DISPOSITION_MENTIONED"
+
+    adapter = getattr(verifier.registry, "law", None) if hasattr(verifier, "registry") else None
+    if adapter is None or getattr(adapter, "name", "") != "law_go_kr":
+        return None, "ADAPTER_UNAVAILABLE"
+
+    if not getattr(adapter.settings, "allow_network", True) or adapter.status() != AdapterStatus.READY:
+        return None, "NETWORK_DISABLED"
+
+    # TK-139 시간 상한(사용자 결정 11-04 'TK-139 별도 상한'): 문서 15초 예산과 별도로 10초, 외부 호출 전 잔여 3초 이상
+    tk139_deadline = time.monotonic() + TK139_MAX_SECONDS
+
+    def _budget_left() -> bool:
+        return tk139_deadline - time.monotonic() >= TK139_MIN_CALL_SECONDS
+
+    budget_out = {"status": "UNVERIFIED (시간 예산 소진)", "comparison_result": "UNVERIFIED", "advisory_only": True}
+
+    # G3: 처분 기준일 미확정 시 즉시 UNVERIFIED (Q7)
+    if not case_date:
+        return {
+            "status": "UNVERIFIED (처분 기준일 미확정)",
+            "comparison_result": "UNVERIFIED",
+            "advisory_only": True,
+        }, "CRITERIA_DATE_NOT_DETERMINED"
+
+    # 서면에서 인용된 시행규칙 또는 관련 법령 선별
+    target_law: Optional[str] = None
+    target_mst: Optional[str] = None
+
+    if verdicts:
+        for v in verdicts:
+            rec = v.get("official_record") or {}
+            lname = str(rec.get("law_name") or "")
+            if "시행규칙" in lname and rec.get("version_id"):
+                target_law = lname
+                target_mst = str(rec["version_id"])
+                break
+
+    if not target_law:
+        for c in citations:
+            if c.type == CitationType.STATUTE and c.law_name and "시행규칙" in c.law_name:
+                target_law = c.law_name.strip()
+                break
+
+    if not target_law:
+        m_rule = re.search(r"([가-힣]+법\s*시행규칙)", text)
+        if m_rule:
+            target_law = m_rule.group(1).strip()
+
+    if not target_law:
+        return None, "NO_ENFORCEMENT_RULE_FOUND"
+
+    if not target_mst and hasattr(adapter, "resolve_statute"):
+        if not _budget_left():
+            return budget_out, "BUDGET_EXHAUSTED"
+        try:
+            resolved = adapter.resolve_statute(target_law, as_of=case_date)
+            records = getattr(resolved, "records", []) or []
+            if records:
+                target_mst = str(records[0].get("version_id") or "")
+        except Exception:
+            target_mst = None
+
+    if not target_mst:
+        return {
+            "status": "UNVERIFIED (법령 MST 조회 실패)",
+            "comparison_result": "UNVERIFIED",
+            "advisory_only": True,
+        }, "MST_LOOKUP_FAILED"
+
+    appendices = []
+    if hasattr(adapter, "get_law_appendices"):
+        if not _budget_left():
+            return budget_out, "BUDGET_EXHAUSTED"
+        try:
+            appendices = adapter.get_law_appendices(target_mst)
+        except Exception:
+            appendices = []
+
+    if not appendices:
+        return {
+            "status": "UNVERIFIED (별표 목록 조회 실패)",
+            "comparison_result": "UNVERIFIED",
+            "advisory_only": True,
+        }, "NO_APPENDICES"
+
+    chosen_appendix: Optional[Dict[str, Any]] = None
+    m_byl = re.search(r"\[?\s*별표\s*(\d+)\s*\]?", text)
+    if m_byl:
+        byl_num = m_byl.group(1)
+        for a in appendices:
+            if (a.get("number") or "").lstrip("0") == byl_num.lstrip("0") and not (a.get("branch_number") or "").strip("0"):  # '0023' = '23'(평가 측 보완 J8)
+                chosen_appendix = a
+                break
+
+    if not chosen_appendix:
+        for a in appendices:
+            title = a.get("title", "")
+            if "행정처분" in title or "처분의 기준" in title:
+                chosen_appendix = a
+                break
+
+    if not chosen_appendix or not chosen_appendix.get("file_link"):
+        return {
+            "status": "UNVERIFIED (행정처분기준 별표 서식 미확인)",
+            "comparison_result": "UNVERIFIED",
+            "advisory_only": True,
+        }, "CRITERIA_APPENDIX_NOT_FOUND"
+
+    hwp_bytes = None
+    if hasattr(adapter, "download_appendix_hwp"):
+        if not _budget_left():
+            return budget_out, "BUDGET_EXHAUSTED"
+        try:
+            hwp_bytes = adapter.download_appendix_hwp(chosen_appendix["file_link"])
+        except Exception:
+            hwp_bytes = None
+
+    if not hwp_bytes:
+        return {
+            "status": "UNVERIFIED (별표 HWP 다운로드 실패)",
+            "comparison_result": "UNVERIFIED",
+            "advisory_only": True,
+        }, "HWP_DOWNLOAD_FAILED"
+
+    from .disposition_criteria import verify_disposition_criteria
+
+    appendix_no = (chosen_appendix.get("number") or "").lstrip("0")
+    branch_no = (chosen_appendix.get("branch_number") or "").lstrip("0")
+    result = verify_disposition_criteria(
+        text,
+        hwp_bytes,
+        case_date=case_date,
+        law_name=target_law,
+        table_title=chosen_appendix.get("title", ""),
+        mst=target_mst,
+        appendix_plain_text=chosen_appendix.get("content_text", ""),
+    )
+    if appendix_no:
+        result["appendix_label"] = f"[별표 {appendix_no}{'의' + branch_no if branch_no else ''}]"
+    return result, result.get("status", "COMPLETED")
+
+
 def review_related_authorities(doc, citations, verifier, *, case_date=None, quick=False, verdicts=None):
-    """관련 법조문, 위임/명시 참조 근거, 관련 권위 판례를 검토하여 단일 dict로 반환한다 (N2, N3, P8)."""
+    """관련 법조문, 위임/명시 참조 근거, 관련 권위 판례, 처분기준 별표를 검토하여 단일 dict로 반환한다 (N2, N3, P8, Q6)."""
     related = candidates(doc, citations)
 
     # N3: QUICK 프로필이거나 네트워크 불가 시 기존 동작 유지
@@ -659,14 +817,24 @@ def review_related_authorities(doc, citations, verifier, *, case_date=None, quic
     except Exception:
         precedent_status = "ERROR"
 
-    # 국가계약법 쟁점도 없고 TK-137, TK-138 결과도 없는 경우 (N3 충족)
-    if not related and not delegations and not explicit_refs and not precedents:
+    # TK-139 처분기준 별표 대조 (Q6)
+    disp_criteria: Optional[Dict[str, Any]] = None
+    disp_status = "NOT_ASSESSED"
+
+    try:
+        disp_criteria, disp_status = _discover_tk139_disposition_criteria(
+            doc, citations, verifier, case_date=case_date, verdicts=verdicts)
+    except Exception:
+        disp_status = "ERROR"
+
+    # 국가계약법 쟁점도 없고 TK-137·138·139 결과도 없는 경우 (N3 충족)
+    if not related and not delegations and not explicit_refs and not precedents and not disp_criteria:
         return None, []
 
     records = []
     verdicts = []
     candidates_list = []
-    note = "관련 법령 및 위임·명시 참조 조문, 관련 권위 판례 검토"
+    note = "관련 법령 및 위임·명시 참조 조문, 관련 권위 판례, 행정처분기준 검토"
 
     if related:
         note = ("국가계약법 제15조 제3항의 지급지연 이자와 지체상금 상계는 납품대금 원금 상계와 구별한다. "
@@ -676,7 +844,7 @@ def review_related_authorities(doc, citations, verifier, *, case_date=None, quic
         verdicts = verified.data.get("verdicts", [])
         candidates_list = [c.to_dict() for c in related]
 
-    # N2, P8: 기존 키·값 보존 + TK-137 / TK-138 확장 키 병합
+    # N2, P8, Q6: 기존 키·값 보존 + TK-137 / TK-138 / TK-139 확장 키 병합
     out = {
         "origin": "DISCOVERED_AUTHORITY",
         "status": "SOURCE_REVIEW_ONLY",
@@ -692,12 +860,35 @@ def review_related_authorities(doc, citations, verifier, *, case_date=None, quic
         "explicit_references": explicit_refs,
         "precedent_status": precedent_status,
         "precedents": precedents,
+        "disposition_criteria": disp_criteria,
     }
     return out, records
 
 
+_RESULT_LABEL = {"MATCHED": "일치", "DISCREPANCY_DETECTED": "불일치(확인 필요)"}
+
+
+def disposition_line(crit: Dict[str, Any], sep: str = " · ") -> str:
+    """처분기준 대조 한 줄(화면·보고서 같은 문구): 법령 [별표 N] · 업종 · N차 위반: 별표 … / 서면 … → 결과 · 감경 · 검토 자료."""
+    m_row = crit.get("matched_row") or {}
+    c_claim = crit.get("document_claim") or {}
+    raw_map = m_row.get("criteria_raw") or {}
+    order = c_claim.get("claimed_order")
+    crit_val = raw_map.get(order) or raw_map.get(str(order)) or ""   # JSON 저장 뒤 키는 문자열(J10)
+    industry = re.split(r"\s+영\s*제\d+조", str(m_row.get("industry") or ""))[0].strip()
+    parts = [f"[처분기준 검토] {crit.get('law_name', '')} {crit.get('appendix_label', '')}".rstrip()]
+    if industry:
+        parts.append(industry)
+    parts.append(f"{order}차 위반 '{m_row.get('violation_text', '')}': 별표 {crit_val} / 서면 {c_claim.get('raw_disposition', '')}"
+                 f" → {_RESULT_LABEL.get(crit.get('comparison_result', ''), '확인 필요')}")
+    if crit.get("discretionary_notes"):
+        parts.append(str(crit["discretionary_notes"]))
+    parts.append("검토 자료")
+    return sep.join(parts)
+
+
 def report_lines(documents):
-    """보고서 및 요약에 출력할 관련 근거 라인을 생성한다 (N6, P8, U1, U5)."""
+    """보고서 및 요약에 출력할 관련 근거 라인을 생성한다 (N6, P8, U1, U5, Q6)."""
     lines = []
     for doc in documents:
         review = doc.engine_data.get("related_authorities")
@@ -735,4 +926,9 @@ def report_lines(documents):
                 name_part = f" \"{p['case_name']}\"" if p.get("case_name") else ""
                 lines.append(f"  · {p['case_number']} ({p['court']}, {p['decision_date']}{kind_part}){name_part} "
                              f"(사건 당시 적용·주장 타당성은 별도 검토)")
+
+        # TK-139: 처분기준 별표 대조 라인 출력(문구: 사용자 결정 11-04 '권고안 적용')
+        crit = review.get("disposition_criteria")
+        if crit and isinstance(crit, dict) and crit.get("status") == "COMPLETED":
+            lines.append(disposition_line(crit, sep=" / "))
     return lines

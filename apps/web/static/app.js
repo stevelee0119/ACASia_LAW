@@ -2859,6 +2859,23 @@ function renderFindings() {
           section.append(node("p", `· ${p.case_number} (${p.court}, ${p.decision_date}${kindPart})${namePart} (사건 당시 적용·주장 타당성은 별도 검토)`));
         }
       }
+      if (related.disposition_criteria && related.disposition_criteria.status === "COMPLETED") {
+        // 문구: 사용자 결정 11-04 '권고안 적용' — 보고서 disposition_line과 같은 구성
+        const crit = related.disposition_criteria;
+        const mRow = crit.matched_row || {};
+        const cClaim = crit.document_claim || {};
+        const order = cClaim.claimed_order;
+        const raw = mRow.criteria_raw || {};
+        const critVal = raw[order] || raw[String(order)] || "";
+        const industry = String(mRow.industry || "").split(/\s+영\s*제\d+조/)[0].trim();
+        const resultLabel = { MATCHED: "일치", DISCREPANCY_DETECTED: "불일치(확인 필요)" }[crit.comparison_result] || "확인 필요";
+        const parts = [`[처분기준 검토] ${crit.law_name || ""} ${crit.appendix_label || ""}`.trim()];
+        if (industry) parts.push(industry);
+        parts.push(`${order}차 위반 '${mRow.violation_text || ""}': 별표 ${critVal} / 서면 ${cClaim.raw_disposition || ""} → ${resultLabel}`);
+        if (crit.discretionary_notes) parts.push(crit.discretionary_notes);
+        parts.push("검토 자료");
+        section.append(node("p", parts.join(" · ")));
+      }
       refContainer.append(section);
     }
   }
