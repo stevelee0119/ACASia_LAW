@@ -694,14 +694,14 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 | TK-138 관련 판례·권위 가중 | #227 `c8cf902`→`5b45176` | **보정본 승인·Steve 병합 `ce4eea8`(11-04)** — 구현 PR에서 U1~U5 | [메모 판정](requests/MEMO_REVIEW_20261104_TK138_139_76OVR.md) |
 | TK-139 처분기준 별표 1유형 | #228 `b81a52c`→`12af4b3` | **보정본 승인·Steve 병합 `c2ba9d2`(11-04)** — 구현 PR에서 W1~W5 | 같음 |
 | TK-76 3주기 PR3 EVI-OVR | #229 `56738c7`→`2699f18` | **재작성본 조건부 승인·Steve 병합 `7533efd`(11-04)** — 구현 PR에서 V1~V4. EVI-INCONS 후속(S1·N월분)은 별도 | 같음 |
-| TK-137 구현 | #226 `4ba891a`→`857ce01` | **수용(11-04)** — diff=수정본, CI 성공, 사용자 화면 확인. Steve 병합 대기 | [TK-137 6절](TK-137_related_basis_memo_request.md) |
+| TK-137 구현 | #226 `4ba891a`→`857ce01` | **수용·Steve 병합 `996ba14`(11-04)** | [TK-137 6절](TK-137_related_basis_memo_request.md) |
 
 ## 2-14. 구현 지시 — TK-138·TK-139·TK-76 PR3 EVI-OVR (11-04, 사용자 지시 'TK-138·TK-139·TK-76 PR3 구현 지시')
 
 | 티켓 | 근거 메모(Steve) | 착수 기준 | 구현 조건 | 상태 |
 |---|---|---|---|---|
-| TK-138 관련 판례·권위 가중 | `requests/TK-138_related_precedents_design_memo.md`(`ce4eea8`) | **#226 Steve 병합 뒤 그 SHA**(U4: TK-137 예산 조정 포함) | U1~U5([판정서](requests/MEMO_REVIEW_20261104_TK138_139_76OVR.md)) | 지시문 제시(11-04) |
-| TK-139 처분기준 별표 1유형 | `requests/TK-139_disposition_criteria_design_memo.md`(`c2ba9d2`) | **#226 Steve 병합 뒤 그 SHA**(같은 `related_authorities.py` 확장) | W1~W5 | 지시문 제시(11-04) |
+| TK-138 관련 판례·권위 가중 | `requests/TK-138_related_precedents_design_memo.md`(`ce4eea8`) | **Steve `996ba14`**(#226 병합, U4: TK-137 예산 조정 포함) | U1~U5([판정서](requests/MEMO_REVIEW_20261104_TK138_139_76OVR.md)) | 지시문 제시(11-04) |
+| TK-139 처분기준 별표 1유형 | `requests/TK-139_disposition_criteria_design_memo.md`(`c2ba9d2`) | **Steve `996ba14`**(#226 병합, 같은 `related_authorities.py` 확장) | W1~W5 | 지시문 제시(11-04) |
 | TK-76 3주기 PR3 EVI-OVR | `requests/TK-76_cycle3_evi_ovr_design_memo.md`(`7533efd`) | Steve `7533efd`(지금) | V1~V4. V3 정정: 새 낱말은 '배달증명'·'계약체결'·'약정성립'·'체결되었'·'성립되었' 5개뿐(공문·세금계산서·확인증은 기존 사전), 기존 '확정적으로' 유지 | 지시문 제시(11-04) |
 
 - 평가 측 기준선(Steve `7533efd`, 평가 측 재실행): EVI-OVR 관련 시험 18개 파일 599건, HWP 시험 4개 파일 61건, 판례·무리한 주장 관련 47개 파일 1,924건 통과(5 건너뜀).
