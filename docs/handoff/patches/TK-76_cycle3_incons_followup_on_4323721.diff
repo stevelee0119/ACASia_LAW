@@ -1,0 +1,116 @@
+diff --git a/packages/claim_engine/calculation.py b/packages/claim_engine/calculation.py
+index 9db386f..6254909 100644
+--- a/packages/claim_engine/calculation.py
++++ b/packages/claim_engine/calculation.py
+@@ -147,9 +147,12 @@ _TOTAL_MARK_RE = re.compile(r"(?:^|\s)(?:총|전체|모두|합계|합산)")
+ # 절 경계: 연결 어미(-고·-며·-으나·-지만·-는데) 뒤 공백이나 쉼표가 결과 앞에 있으면 다른 절이다(메모 M4)
+ _CLAUSE_BREAK_RE = re.compile(r"[가-힣](?:고|며|으나|지만|는데)(?:\s|,)|,")
+ # 피연산자 절 경계: 연결 어미(-고·-며·-으나·-지만·-는데·-므로·-어서·-아서) 뒤, 또는 수 사이가 아닌 쉼표 뒤(평가 측 2차 보완 G2)
+-_OPERAND_CLAUSE_BREAK_RE = re.compile(r"[가-힣](?:고|며|으나|지만|는데|므로|어서|아서)(?=[\s,])|,(?!\d)")
++# 쉼표 뒤 공백을 건너 숫자가 오면('A원, N월분 B원') 나열이지 절 경계가 아니다(평가 측 보완 N3)
++_OPERAND_CLAUSE_BREAK_RE = re.compile(r"[가-힣](?:고|며|으나|지만|는데|므로|어서|아서)(?=[\s,])|,(?! ?\d)")
+ # 차수·순번 표지('1차 120명'의 '1차')는 피연산자가 아니라 이름표다(평가 측 2차 보완 G3)
+ _ORDINAL_UNITS = ("차", "번째", "회차", "순위")
++# 기간 몫 이름표: 수 + 달력 기간(월·분기·반기·년·연) + '분'. 'N개월분'(기간의 양)·'N일분'은 수량이므로 넣지 않는다(평가 측 보완 N1)
++_PERIOD_LABEL_RE = re.compile(r"(?:월|분기|반기|년|연)분")
+ 
+ # M7: 정당한 차이 가드 정규식
+ TAX_DEDUCTION_GUARD_RE = re.compile(r"(?:부가(?:가치)?세|공급가액|세액|VAT|원천징수|지연손해금|할인)")
+@@ -307,6 +310,8 @@ def row_cell_final_amount(text: str, *, block_id: Optional[str] = None, page: Op
+ def unit_is_ordinal_label(m: "re.Match", text: str) -> bool:
+     """'1차 120명'·'2회차 지급 30만 원'의 차수·순번(1차·2회차)은 이름표다. 바로 뒤가 연산 기호일 때만 수로 본다(평가 측 2차 보완 G3)."""
+     up = m.group("unit_part") or ""
++    if _PERIOD_LABEL_RE.match(up):
++        return True  # 'N월분'·'N분기분'·'N년분'처럼 어느 기간 몫인지 가리키는 이름표(평가 측 보완 N1)
+     return up in _ORDINAL_UNITS and not re.match(r"\s*[×*xX✕✖\u2a2f+＋\-−=]", text[m.end():])
+ 
+ 
+@@ -817,6 +822,9 @@ class CalculationEngine:
+         section_before = [a for a in before if a.start >= section_start]
+         if not after or len(section_before) < 2:
+             return []
++        # 뺄셈·곱셈 서술('…에서 …을 빼면 실지급액은 …')은 합계가 아니다 — 산식 검산(_verify_prose_formulas)이 맡는다(평가 측 보완 N2)
++        if re.search(f"{_SUB_PRED}|{_MUL_PRED}", text[section_start:total_match.start()]):
++            return []
+         stated = after[0]
+         check = check_sum(section_before, stated)
+         if check.matches:
+diff --git a/packages/claim_engine/cross_document_entities.py b/packages/claim_engine/cross_document_entities.py
+index d6601e5..d07f024 100644
+--- a/packages/claim_engine/cross_document_entities.py
++++ b/packages/claim_engine/cross_document_entities.py
+@@ -316,6 +316,8 @@ _ANCHOR_RE = re.compile(
+     r"(?:(?P<unique>이\s*사건|본건)\s*(?:(?P<target>[가-힣]{1,8}?)(?:의\s*|\s+))?|"
+     r"(?P<party>갑|을|병)\s*(?:제\s*)?(?P<no>\d{1,3})\s*호\s*증(?:의\s*(?P<sub>\d{1,3}))?(?:\s*[(（][^)）]{1,20}[)）]|\s+[가-힣]{2,10}(?=의))?"
+     r"(?:의\s*|\s+))(?:기재\s*)?(?P<attr>[가-힣]{1,4}?(?:일자|일|금)|[가-힣]{0,4}?(?:금액|대금|수량|면적|인원))"
++    # 속성 끝 경계: 한글이 더 이어지면('입금'+'일') 더 긴 속성으로 되짚는다(평가 측 보완 S1)
++    r"(?=\s|[은는이가을를의에도과와으로:：]|$)"
+     r"\s*(?:은|는|이|가|을|를|:|：)?\s*(?:모두\s*|각\s*)?")
+ _ANCHOR_DATE_RE = re.compile(r"(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})")
+ # 단위 뒤의 조사·서술 어미(였다·입니다·임 등)는 단위가 아니다(#224 2판)
+diff --git a/tests/test_tk76_followup_s1_n.py b/tests/test_tk76_followup_s1_n.py
+new file mode 100644
+index 0000000..0a07d9a
+--- /dev/null
++++ b/tests/test_tk76_followup_s1_n.py
+@@ -0,0 +1,60 @@
++# -*- coding: utf-8 -*-
++"""TK-76 3주기 EVI-INCONS 후속: S1(문서 간 앵커 속성 경계)·N1~N3(산식 이름표·뺄셈 합계·나열 쉼표) 평가 측 시험.
++
++문장은 평가 측 비공개 탐침과 다른 합성 낱말로 짓는다(2-2).
++"""
++from __future__ import annotations
++
++from packages.claim_engine.calculation import CalculationEngine, _extract_formula_tokens
++from packages.claim_engine.cross_document_entities import verify_cross_document_entities
++from packages.common.enums import FindingType
++from packages.common.schemas import Block, NormalizedDocument, Page
++
++
++def _doc(i, text):
++    d = NormalizedDocument(document_id=f"d{i}", filename=f"d{i}.pdf", mime_type="application/pdf", sha256=str(i) * 64)
++    p = Page(page_number=1, width=595.0, height=842.0)
++    p.blocks.append(Block(block_id=f"b{i}0", page=1, text="사건 2024가합10001 대여금"))
++    p.blocks.append(Block(block_id=f"b{i}1", page=1, text=text))
++    d.pages.append(p)
++    return d
++
++
++def _anchored(t1, t2):
++    fs = verify_cross_document_entities([_doc(1, t1), _doc(2, t2)])
++    return [f for f in fs if (f.confidence_features or {}).get("rule_id") == "XDOC.ANCHORED_ATTRIBUTE"]
++
++
++def _calc(text):
++    d = NormalizedDocument(document_id="c", filename="c.pdf", mime_type="application/pdf", sha256="0" * 64)
++    p = Page(page_number=1, width=595.0, height=842.0)
++    p.blocks.append(Block(block_id="b1", page=1, text=text, bbox=(50.0, 50.0, 500.0, 100.0), block_type="paragraph",
++                          source_layer="visible_text"))
++    d.pages.append(p)
++    return [f for f in CalculationEngine().verify_document(d) if f.type == FindingType.ARITHMETIC_MISMATCH]
++
++
++def test_s1_longer_attribute_after_money_suffix():
++    # '…금' 뒤에 한글이 이어지면('…금일', '…금액') 더 긴 속성으로 읽는다
++    assert _anchored("갑 제21호증의 지급금일은 2020. 2. 3.이다.", "갑 제21호증의 지급금일은 2020. 3. 2.이다.")
++    assert _anchored("갑 제22호증의 반납금액은 금 1,100,000원이다.", "갑 제22호증의 반납금액은 금 1,010,000원이다.")
++    assert not _anchored("갑 제21호증의 지급금일은 2020. 2. 3.이다.", "갑 제23호증의 지급금일은 2020. 3. 2.이다.")
++
++
++def test_n1_period_label_is_not_operand():
++    toks = [t["raw"].strip() for t in _extract_formula_tokens("물량: 2월분 300개 + 3월분 200개 = 500개")]
++    assert "2월분" not in toks and "3월분" not in toks
++    assert _calc("물량: 2월분 300개 + 3월분 200개 = 600개")
++    assert not _calc("물량: 2월분 300개 + 3월분 200개 = 500개")
++    # 기간의 양('2개월분')은 수량이므로 이름표가 아니다
++    assert any(t["raw"].strip().startswith("2개월분") for t in _extract_formula_tokens("2개월분 사용료 1,000,000원"))
++
++
++def test_n2_subtraction_sentence_is_not_a_sum_total():
++    assert not _calc("보수 3,000,000원에서 수수료 200,000원을 빼면 실지급액은 2,800,000원이다.")
++    assert _calc("보수 3,000,000원에서 수수료 200,000원을 빼면 실지급액은 2,700,000원이다.")
++
++
++def test_n3_comma_list_is_not_clause_break():
++    assert not _calc("사용료는 5월분 100,000원, 6월분 120,000원, 7월분 130,000원으로 합계 350,000원이다.")
++    assert _calc("사용료는 5월분 100,000원, 6월분 120,000원, 7월분 130,000원으로 합계 360,000원이다.")
