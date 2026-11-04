@@ -660,6 +660,23 @@ COMPLETION_PREDICATE_RE = re.compile(
     r"납부(?:하|하여|하였|했|한|해|합)[가-힣]*|송금(?:하|하여|하였|했|한|해|합)[가-힣]*|냈[가-힣]*|낸)"
 )
 
+# 평가 측 보완 F2: 일반 동사 '받다'는 목적어가 금전(…금·…대금·…비·채무·돈·N원)일 때만 완료 술어로 센다
+# (금전이 아닌 목적어의 '받다'는 변제·완료 단정이 아니다)
+
+
+def _completion_structure_found(text: str) -> bool:
+    for m in COMPLETION_PREDICATE_RE.finditer(text):
+        tok = m.group(0)
+        if not (tok.startswith("받았") or tok == "받은"):
+            return True
+        before = text[: m.start()].rstrip()
+        m_obj = re.search(r"(?P<obj>[가-힣\d,]+?)(?:을|를)?\s*(?:(?:모두|전부|전액|이미|다)\s*)*$", before)
+        obj = m_obj.group("obj") if m_obj else ""
+        if re.search(r"(?:\d[\d,]*\s*원|돈|[가-힣]{0,8}(?:대금|금|비|채무)|차임|원리금)$", obj):
+            return True
+    return False
+
+
 # V1, X1, BB1: 수량 전칭 정규식 (금전·채무·완료 대상 N과 전칭의 양방향 어순 결합 및 조사 허용)
 # N: …대금|…금|…비|…채무|차임|원리금|공사|용역|업무
 _AMOUNT_NOUN_PAT = r"(?:[가-힣]{0,10}(?:대금|금|비|채무)|차임|원리금|공사|용역|업무)"
@@ -718,11 +735,14 @@ def _match_predicate_word(pw: str, text: str, cat: Optional[str] = None) -> bool
     V1: CLAIM_PREDICATE_CATEGORIES의 낱말은 결론 절의 서술어 자리(마지막 서술)에서만 센다.
     '변제를 최고하였다', '확정판결', '승인 여부를 묻는' 등 명사구 언급은 세지 않는다.
     """
-    if cat == "전칭_전기간":
-        pat = rf"(?:^|[\s,.\(]|[은는이가을를의로에와과도])(?P<word>{re.escape(pw)})(?:[\s,.\)]|[은는이가을를의로에와과도]|$)"
-        return bool(re.search(pat, text))
+    if cat in ("전칭_전기간", "내심의상태"):
+        # 전칭·내심 낱말은 부사(…로)나 동사 연결(…하여)로 쓰여도 단정이다. 뒤에 명사 수식(_NOUN_FOLLOWERS_PAT)이 오는 일치만 뺀다(평가 측 보완 F1)
+        pat = rf"(?:^|[\s,.\(]|[은는이가을를의로에와과도])(?P<word>{re.escape(pw)})(?=[\s,.\)]|[은는이가을를의로에와과도]|하|적|$)"
+        return any(not re.match(rf"^\s*{_NOUN_FOLLOWERS_PAT}", text[m.end("word"):]) for m in re.finditer(pat, text))
 
-    matches = list(re.finditer(rf"(?:^|[\s,.\(]|[은는이가을를의로에와과도])(?P<word>{re.escape(pw)})", text))
+    # 평가 측 보완 F3: 합성 술어 명사('계약체결'·'약정성립')는 앞에 종류 명사가 붙어도 같은 술어다
+    left = r"(?:^|[\s,.\(]|[은는이가을를의로에와과도]|[가-힣])" if (cat == "상대방의사표시" and len(pw) >= 4 and not pw.endswith("었")) else r"(?:^|[\s,.\(]|[은는이가을를의로에와과도])"
+    matches = list(re.finditer(rf"{left}(?P<word>{re.escape(pw)})", text))
     if not matches:
         return False
 
@@ -757,7 +777,7 @@ def _match_predicate_word(pw: str, text: str, cat: Optional[str] = None) -> bool
             return True
 
         # 주격 조사 + 완료 동사 연쇄 (시공완료가 모두 마쳐진바, 변제가 이루어진바 등)
-        if re.match(r"^\s*[이가은는]\s*(?:모두|전부|이미|다)?\s*(?:마쳐|끝마쳐|끝내|완료|이루|끝나|이행|종료)(?:지|졌|진|었|았|했|한|된|다|는|은|고|며|면|음|기)", tail):
+        if re.match(r"^\s*[이가은는]\s*(?:모두|전부|이미|다)?\s*(?:마쳐|끝마쳐|끝내|완료|이루어|이루|끝나|이행|종료)(?:지|졌|진|었|았|했|한|된|다|는|은|고|며|면|음|기)", tail):
             return True
 
         # 4. 절 종결 위치 명사 종결
@@ -1203,7 +1223,7 @@ def check_evidence_overreach(
 
             # 3) 완료_확정: 낱말 경계 일치 또는 완료 술어 구조('지급을 마친', '갚았다', '치른', '받은', '납부한', '송금한' 등) (V1, BB2)
             has_comp = any(_match_predicate_word(pw, scope_text, "완료_확정") for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"])
-            if not has_comp and COMPLETION_PREDICATE_RE.search(scope_text):
+            if not has_comp and _completion_structure_found(scope_text):
                 has_comp = True
 
             # BB2: 금전 전칭 중 (가) 특정 금액 명사인 경우, N이 '완료_확정' 술어의 목적어(N(을|를)? … 술어 같은 절)일 때만 '완료_확정'으로 봄
@@ -1246,7 +1266,8 @@ def check_evidence_overreach(
                         matched_pred_cats.append("상대방의사표시")
                     elif not sender and opp_subj:
                         matched_pred_cats.append("상대방의사표시")
-                    elif not opp_subj and sender:
+                    elif not opp_subj and sender and re.search(r"(?<![가-힣])상대방(?:\s*측)?[이가은는]", scope_text[:opp_pos] if opp_pos is not None else scope_text):
+                        # 평가 측 보완 F4: 주체가 생략된 절은 작성자(발신인) 측 행위로 읽혀 제외(S2 유지). 주체가 '상대방'으로 명시된 때만 센다
                         matched_pred_cats.append("상대방의사표시")
                 else:
                     matched_pred_cats.append("상대방의사표시")

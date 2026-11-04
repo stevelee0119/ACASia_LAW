@@ -366,3 +366,99 @@ def test_three_variants_robustness(variant_type, body_text, exhibit_line):
     doc = _make_doc(f"변형 {variant_type}", body_text, "입증방법", exhibit_line)
     findings = [f for f in check_evidence_overreach(doc) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
     assert len(findings) >= 1, f"3대 변형 검출 실패: {variant_type} - {body_text}"
+
+
+# ==============================================================================
+# 9. 평가 측 보완 F1~F4 단위 시험 (양성·대조, 평가 측 탐침 문장 배제)
+# ==============================================================================
+
+def test_f1_inner_intent_adverb_positive_and_negative():
+    """F1: 내심의상태 부사/동사 연결 꼴 검출(양성) 및 명사 수식(여부 등) 배제(대조) 검증."""
+    # 양성: 부사 꼴('악의로')로 다른 행위를 꾸미는 경우
+    doc_pos = _make_doc(
+        "F1 양성",
+        "상해진단서(갑 제1호증)에 의하여 피고가 악의로 손해를 가하였음이 명백합니다.",
+        "입증방법",
+        "1. 갑 제1호증 상해진단서",
+    )
+    f_pos = [f for f in check_evidence_overreach(doc_pos) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_pos) == 1, "F1 내심 부사 꼴 양성 검출 실패"
+
+    # 대조: 명사 수식(_NOUN_FOLLOWERS_PAT)으로 '악의 여부'를 논하는 경우
+    doc_neg = _make_doc(
+        "F1 대조",
+        "상해진단서(갑 제1호증)만으로는 피고의 악의 여부를 단정할 수 없습니다.",
+        "입증방법",
+        "1. 갑 제1호증 상해진단서",
+    )
+    f_neg = [f for f in check_evidence_overreach(doc_neg) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_neg) == 0, "F1 명사 수식 대조 오탐 발생"
+
+
+def test_f2_receive_predicate_money_object_positive_and_negative():
+    """F2: 일반 동사 '받다'의 목적어가 금전일 때만 완료 술어로 인정(양성), 비금전 목적어 배제(대조)."""
+    # 양성: 목적어가 금전('물품대금을 모두 받았다')
+    doc_pos = _make_doc(
+        "F2 양성",
+        "통고서(갑 제1호증)에 의하여 원고가 미지급 물품대금을 모두 받았음이 확인됩니다.",
+        "입증방법",
+        "1. 갑 제1호증 통고서 (발신인: 피고)",
+    )
+    f_pos = [f for f in check_evidence_overreach(doc_pos) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_pos) == 1, "F2 금전 목적어 수령 양성 검출 실패"
+
+    # 대조: 목적어가 비금전('정밀 검진을 받았다')인 경우 완료 술어로 세지 않음
+    doc_neg = _make_doc(
+        "F2 대조",
+        "진단서(갑 제1호증)를 통해 원고가 종합병원에서 정밀 검진을 받았음이 증명됩니다.",
+        "입증방법",
+        "1. 갑 제1호증 진단서",
+    )
+    f_neg = [f for f in check_evidence_overreach(doc_neg) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_neg) == 0, "F2 비금전 목적어 수령 대조 오탐 발생"
+
+
+def test_f3_composite_predicate_prefix_and_chain():
+    """F3: 합성 술어 앞 수식 명사 허용(양성1) 및 '이루어지다' 연쇄 완료 인정(양성2)."""
+    # 양성 1: 앞 수식 명사 결합('임대차계약체결')
+    doc_pos1 = _make_doc(
+        "F3 양성1",
+        "최고서(갑 제1호증)에 의하여 피고와 사이에 본건 임대차계약체결 사실이 증명됩니다.",
+        "입증방법",
+        "1. 갑 제1호증 최고서 (발신인: 원고)",
+    )
+    f_pos1 = [f for f in check_evidence_overreach(doc_pos1) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_pos1) == 1, "F3 앞 수식 명사 결합 계약체결 양성 검출 실패"
+
+    # 양성 2: '이루어지다' 연쇄('변제가 이루어졌음')
+    doc_pos2 = _make_doc(
+        "F3 양성2",
+        "견적서(갑 제2호증)에 의하여 본건 변제가 이루어졌음이 입증됩니다.",
+        "입증방법",
+        "1. 갑 제2호증 견적서",
+    )
+    f_pos2 = [f for f in check_evidence_overreach(doc_pos2) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_pos2) == 1, "F3 '이루어지다' 연쇄 완료 양성 검출 실패"
+
+
+def test_f4_omitted_subject_not_counted_as_opponent_intent():
+    """F4: 주체 생략 절을 상대방의사표시로 세지 않음(대조), '상대방' 주체 명시 시 인정(양성)."""
+    # 대조: 주체 생략 절은 작성자(발신인) 본인의 조건부 승인/통지이므로 상대방의사표시 배제
+    doc_neg = _make_doc(
+        "F4 대조",
+        "최고서(갑 제1호증)를 보내어 본건 분할변제안에 대하여 승인하였습니다.",
+        "입증방법",
+        "1. 갑 제1호증 최고서 (발신인: 원고)",
+    )
+    f_neg = [f for f in check_evidence_overreach(doc_neg) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_neg) == 0, "F4 주체 생략 절 작성자 행위 대조 오탐 발생"
+
+    # 양성: 주체로 '상대방이' 또는 '상대방 측이'가 명시된 경우
+    doc_pos = _make_doc(
+        "F4 양성",
+        "최고서(갑 제1호증)에 의하여 상대방 측이 본건 화해안을 승인하였음이 인정됩니다.",
+        "입증방법",
+        "1. 갑 제1호증 최고서 (발신인: 원고)",
+    )
+    f_pos = [f for f in check_evidence_overreach(doc_pos) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert len(f_pos) == 1, "F4 상대방 주체 명시 양성 검출 실패"
