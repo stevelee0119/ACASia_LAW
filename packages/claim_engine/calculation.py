@@ -147,9 +147,12 @@ _TOTAL_MARK_RE = re.compile(r"(?:^|\s)(?:총|전체|모두|합계|합산)")
 # 절 경계: 연결 어미(-고·-며·-으나·-지만·-는데) 뒤 공백이나 쉼표가 결과 앞에 있으면 다른 절이다(메모 M4)
 _CLAUSE_BREAK_RE = re.compile(r"[가-힣](?:고|며|으나|지만|는데)(?:\s|,)|,")
 # 피연산자 절 경계: 연결 어미(-고·-며·-으나·-지만·-는데·-므로·-어서·-아서) 뒤, 또는 수 사이가 아닌 쉼표 뒤(평가 측 2차 보완 G2)
-_OPERAND_CLAUSE_BREAK_RE = re.compile(r"[가-힣](?:고|며|으나|지만|는데|므로|어서|아서)(?=[\s,])|,(?!\d)")
+# 쉼표 뒤 공백을 건너 숫자가 오면('A원, N월분 B원') 나열이지 절 경계가 아니다(평가 측 보완 N3)
+_OPERAND_CLAUSE_BREAK_RE = re.compile(r"[가-힣](?:고|며|으나|지만|는데|므로|어서|아서)(?=[\s,])|,(?! ?\d)")
 # 차수·순번 표지('1차 120명'의 '1차')는 피연산자가 아니라 이름표다(평가 측 2차 보완 G3)
 _ORDINAL_UNITS = ("차", "번째", "회차", "순위")
+# 기간 몫 이름표: 수 + 달력 기간(월·분기·반기·년·연) + '분'. 'N개월분'(기간의 양)·'N일분'은 수량이므로 넣지 않는다(평가 측 보완 N1)
+_PERIOD_LABEL_RE = re.compile(r"(?:월|분기|반기|년|연)분")
 
 # M7: 정당한 차이 가드 정규식
 TAX_DEDUCTION_GUARD_RE = re.compile(r"(?:부가(?:가치)?세|공급가액|세액|VAT|원천징수|지연손해금|할인)")
@@ -307,6 +310,8 @@ def row_cell_final_amount(text: str, *, block_id: Optional[str] = None, page: Op
 def unit_is_ordinal_label(m: "re.Match", text: str) -> bool:
     """'1차 120명'·'2회차 지급 30만 원'의 차수·순번(1차·2회차)은 이름표다. 바로 뒤가 연산 기호일 때만 수로 본다(평가 측 2차 보완 G3)."""
     up = m.group("unit_part") or ""
+    if _PERIOD_LABEL_RE.match(up):
+        return True  # 'N월분'·'N분기분'·'N년분'처럼 어느 기간 몫인지 가리키는 이름표(평가 측 보완 N1)
     return up in _ORDINAL_UNITS and not re.match(r"\s*[×*xX✕✖\u2a2f+＋\-−=]", text[m.end():])
 
 
@@ -816,6 +821,9 @@ class CalculationEngine:
         section_start = (last_break + 2) if last_break != -1 else 0
         section_before = [a for a in before if a.start >= section_start]
         if not after or len(section_before) < 2:
+            return []
+        # 뺄셈·곱셈 서술('…에서 …을 빼면 실지급액은 …')은 합계가 아니다 — 산식 검산(_verify_prose_formulas)이 맡는다(평가 측 보완 N2)
+        if re.search(f"{_SUB_PRED}|{_MUL_PRED}", text[section_start:total_match.start()]):
             return []
         stated = after[0]
         check = check_sum(section_before, stated)
