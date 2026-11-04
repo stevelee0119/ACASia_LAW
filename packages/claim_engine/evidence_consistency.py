@@ -599,9 +599,9 @@ def check_exhibits(doc: NormalizedDocument) -> List[Finding]:
 
 # --- TK-91 증거 과장 (EVI-OVR) 구조적 탐지 --------------------------------------------
 
-# B-1 1. 7대 서증 닫힌 범주 사전 (조건 1: '현장'·'감정서' 완전 제외, 조건 5: 서증 명칭에서만 추출, V3: 접미 일치 표면형 보강, BB3: 거래내역 통합, CC1: 각서·합의서 제외)
+# B-1 1. 7대 서증 닫힌 범주 사전 (조건 1: '현장'·'감정서' 완전 제외, 조건 5: 서증 명칭에서만 추출, V3: 접미 일치 표면형 보강, BB3: 거래내역 통합, CC1: 각서·합의서 제외, 배달증명 추가)
 EVIDENCE_KIND_CATEGORIES: Dict[str, Tuple[str, ...]] = {
-    "일방통지": ("내용증명", "최고서", "통고서", "통지서", "안내문", "공문", "내용증명우편"),
+    "일방통지": ("내용증명", "최고서", "통고서", "통지서", "안내문", "공문", "내용증명우편", "배달증명"),
     "견적계획": ("견적서", "견적", "공사계획서", "산출내역서", "공사비산출내역서", "공사비 산출내역서", "설계도", "예산서", "내역서"),
     "명의식별": ("통장표지", "통장사본", "통장 표지", "사업자등록증", "등록증", "신분증", "가족관계증명서", "주민등록등본", "법인등기부"),
     "진단상태": ("진단서", "소견서", "진료기록", "의무기록", "상해진단서"),  # 감정서 제외
@@ -615,7 +615,7 @@ EVIDENCE_KIND_CATEGORIES: Dict[str, Tuple[str, ...]] = {
     ),
 }
 
-# B-1 2. 4대 주장 술어 닫힌 범주 사전 (S1: '의사' 단독 삭제, '과실·불법행위' 법률 평가 삭제)
+# B-1 2. 4대 주장 술어 닫힌 범주 사전 (S1: '의사' 단독 삭제, '과실·불법행위' 법률 평가 삭제, 계약성립 술어 추가)
 CLAIM_PREDICATE_CATEGORIES: Dict[str, Tuple[str, ...]] = {
     "전칭_전기간": (
         "항상", "매번", "모든", "계속", "내내", "줄곧", "일체",
@@ -629,6 +629,7 @@ CLAIM_PREDICATE_CATEGORIES: Dict[str, Tuple[str, ...]] = {
     ),
     "상대방의사표시": (
         "승낙", "승인", "동의", "합의", "수락",
+        "계약체결", "약정성립", "체결되었", "성립되었",
     ),
 }
 
@@ -703,11 +704,67 @@ def _is_specific_amount_debt(noun: str, pre_text: str, full_match: str) -> bool:
 
     return False
 
-# S1: 술어 낱말 경계 매칭 함수 (합의서, 확정판결, 계속적 거래 등 복합명사 오탐 방지)
-def _match_predicate_word(pw: str, text: str) -> bool:
-    """낱말 경계로 술어를 매칭한다 (S1: 부분 문자열 오탐 방지)."""
-    pat = rf"(?:^|[\s,.\(]|[은는이가을를의로에와과도])(?P<word>{re.escape(pw)})(?:[\s,.\)]|[은는이가을를의로에와과도]|(?:하였|했|하여|하고|하며|한|된다|되|된|였|다|고|며|면|지|라|어|아|나|음|기)|$)"
-    return bool(re.search(pat, text))
+# V1: 명사 수식 및 타 행동 서술어 패턴 (서술어 자리 판별용)
+_NOUN_FOLLOWERS_PAT = r"(?:판결|선고|결정|명령|여부|취지|서면|문서|의사|존부|청구|소송)"
+_OTHER_ACTION_VERBS_PAT = (
+    r"(?:최고|촉구|요청|요구|청구|구하|묻|물었|질의|문의|통지|통보|발송|보내|주장|항변|진술|다투)"
+    r"(?:하|했|하였|한|합|당|았|었|는|은|을|ㄹ|고|며|음|다|지)?"
+)
+
+# S1, V1: 술어 낱말 경계 및 서술어 자리 매칭 함수
+def _match_predicate_word(pw: str, text: str, cat: Optional[str] = None) -> bool:
+    """낱말 경계로 술어를 매칭한다.
+    
+    V1: CLAIM_PREDICATE_CATEGORIES의 낱말은 결론 절의 서술어 자리(마지막 서술)에서만 센다.
+    '변제를 최고하였다', '확정판결', '승인 여부를 묻는' 등 명사구 언급은 세지 않는다.
+    """
+    if cat == "전칭_전기간":
+        pat = rf"(?:^|[\s,.\(]|[은는이가을를의로에와과도])(?P<word>{re.escape(pw)})(?:[\s,.\)]|[은는이가을를의로에와과도]|$)"
+        return bool(re.search(pat, text))
+
+    matches = list(re.finditer(rf"(?:^|[\s,.\(]|[은는이가을를의로에와과도])(?P<word>{re.escape(pw)})", text))
+    if not matches:
+        return False
+
+    for m in matches:
+        end_w = m.end("word")
+        tail = text[end_w:]
+
+        # 1. 명사 수식/결합 배제 (확정판결, 승인 여부 등)
+        if re.match(rf"^\s*{_NOUN_FOLLOWERS_PAT}", tail):
+            continue
+
+        # '사실/점/술어가 입증/증명/확인/인정된다' 구조 (승낙 사실이 명백히 증명됩니다, 계약체결이 확인됩니다 등)
+        if re.match(r"^\s*(?:사실|점)?(?:이|가|은|는|을|를|로)?\s*(?:[가-힣]{0,6}\s+)?(?:입증|인정|증명|확인|소명|밝)", tail):
+            return True
+
+        # 2. 목적격/관형격/부사격 조사 결합 후 다른 행동 동사가 오는 경우 배제 (변제를 최고하였다 등)
+        if re.match(rf"^(?:[을를의]|에\s*(?:대해|대하여|대한)|(?:을|를)?\s*위해)\s*(?:[가-힣]{{1,8}}\s+)*?{_OTHER_ACTION_VERBS_PAT}", tail):
+            continue
+
+        # 3. 서술어 위치 매칭: 용언 활용 접미/어미 결합 또는 자체 활용형
+        if re.match(r"^(?:(?:하|되|이|받)(?:시|였|었|았|했|한|된|다|는|은|을|ㄹ|고|며|면|음|기|지|시|합|겠|여|어|아)|(?:였|었|았|했|한|된|다|는|고|며|면|음|기|어|아|지|니|합))", tail):
+            return True
+        if pw in ("체결되었", "성립되었", "확정되었", "확정적으로"):
+            return True
+
+        # 복합 서술어 (변제 완료, 정산 완료 등): 뒤에 완료/정산/지급 등의 동사가 이어지는 경우
+        if re.match(r"^\s*(?:완료|정산|지급|이행|상환)(?:(?:하|되|이|받)?(?:였|었|았|했|한|된|다|고|며|면)|[가-힣]*?한바)", tail):
+            return True
+
+        # 분리형 용언 접미 (승낙을 하였음이, 동의를 한 사실 등)
+        if re.match(r"^\s*[을를]\s*(?:하|되|받)(?:시|였|었|았|했|한|된|다|는|은|을|ㄹ|고|며|면|음|기|지|시|합)", tail):
+            return True
+
+        # 주격 조사 + 완료 동사 연쇄 (시공완료가 모두 마쳐진바, 변제가 이루어진바 등)
+        if re.match(r"^\s*[이가은는]\s*(?:모두|전부|이미|다)?\s*(?:마쳐|끝마쳐|끝내|완료|이루|끝나|이행|종료)(?:지|졌|진|었|았|했|한|된|다|는|은|고|며|면|음|기)", tail):
+            return True
+
+        # 4. 절 종결 위치 명사 종결
+        if re.match(r"^\s*(?:[.!?,\)]|$)", tail):
+            return True
+
+    return False
 
 # B-1 3. 능력 매트릭스 (7대 범주 × 4대 술어 범주, 조건 2: 칸마다 덮음/못 덮음 상수화)
 EVIDENCE_CAPABILITY_MATRIX: Dict[str, Dict[str, bool]] = {
@@ -846,6 +903,31 @@ def _is_scope_excluded(clause_text: str, author_party: Optional[str] = None) -> 
         return True
     return False
 
+# R6: 형성권(해제, 해지, 취소, 상계, 철회) 행사 통지 및 효력 발생 정상 변론 판별식
+_FORMATION_RIGHT_PAT = r"(?:해제|해지|취소|상계|철회)"
+_FORMATION_NOTICE_PAT = r"(?:의사표시|통지|도달|최고|통고|발송|송부)"
+_FORMATION_EFFECT_PAT = r"(?:해제(?:되었|되|하였|함|다)|해지(?:되었|되|하였|함|다)|취소(?:되었|되|하였|함|다)|상계(?:되었|되|하였|함|다)|철회(?:되었|되|하였|함|다)|소멸(?:되었|되|하였|함|다))"
+
+def _is_formation_right_exercise(text: str) -> bool:
+    """형성권(해제, 해지, 취소, 상계, 철회) 행사 통지 및 효력 발생 정상 변론인지 검사한다 (R6)."""
+    # 상대방의 동의/승낙/합의 단정이 있는 경우는 형성권 행사가 아닌 합의 단정이므로 제외하지 않음
+    if re.search(r"(?:동의|승낙|합의|수락)(?:하였|한|되었|된|함|다)", text):
+        return False
+    has_right = bool(re.search(_FORMATION_RIGHT_PAT, text))
+    has_notice = bool(re.search(_FORMATION_NOTICE_PAT, text))
+    has_effect = bool(re.search(_FORMATION_EFFECT_PAT, text))
+    return has_right and (has_notice or has_effect)
+
+# R7: 상대방 주장 탄핵·배척 문맥 판별식 (C3 대조군 보존)
+_DISMISSAL_VERBS_PAT = r"(?:사실이\s*(?:아니|아닙)|사실과\s*다[른릅]|이유\s*(?:없|없습|없는)|근거\s*(?:없|없습|없는)|허위|거짓|배척|부당)"
+
+def _is_impeachment_context(text: str) -> bool:
+    """상대방 주장을 탄핵·배척하는 정상 변론 문맥인지 검사한다 (R7, C3 대조군)."""
+    if re.search(r"(?:라고|다고|라며|다며)\s*(?:주장|항변|진술|다투|번복)", text):
+        if re.search(_DISMISSAL_VERBS_PAT, text):
+            return True
+    return False
+
 # 증명 결론 술어 표지 (조건 3 증명 대상 절 판별용)
 _PROOF_VERB_RE = re.compile(
     r"(?:인정된다|인정됩니다|입증된다|입증됩니다|확인된다|확인됩니다|밝혀졌다|밝혀집니다|증명된다|증명됩니다|"
@@ -939,30 +1021,58 @@ def check_evidence_overreach(
 
         clauses = [c.strip() for c in re.split(r"[,;]|\s*(?:하고|하며|하였으나|하나|하지만|한바|인바)\s*", sent_clean) if c.strip()]
 
-        # 각 호증별 인용 절 및 지배받는 증명 결론 절 범위 산출 (S5: 대상 절 없으면 판정 제외)
+        # 각 호증별 인용 절 및 지배받는 증명 결론 절 범위 산출 (S5, V2, 메모 3.1 구조 규칙)
         proof_scope_by_row: Dict[str, str] = {}
         for row in cited_rows:
             target_clauses = []
-            for idx, cl in enumerate(clauses):
-                cl_refs = parse_exhibits(cl)
-                k_list = [(r["party"], r["number"]) for r in cl_refs]
-                if (row["party"], row["number"]) in k_list:
-                    target_clauses.append(cl)
-                    is_governing = bool(re.search(r"(?:에\s*의(?:하여|해|하면|한)|에\s*따라|으로|로|으로써|로써|을\s*통(?:해|하여)|를\s*통(?:해|하여)|에\s*비추어)\s*$", cl))
-                    if idx + 1 < len(clauses):
-                        next_cl = clauses[idx + 1]
-                        if is_governing and (_PROOF_VERB_RE.search(next_cl) or any(_match_predicate_word(pw, next_cl) for words in CLAIM_PREDICATE_CATEGORIES.values() for pw in words)):
-                            target_clauses.append(next_cl)
-                        elif _PROOF_VERB_RE.search(next_cl):
-                            target_clauses.append(next_cl)
-                elif any((r["party"], r["number"]) in k_list for r in cl_refs):
-                    pass
-                elif _PROOF_VERB_RE.search(cl) and is_direct_proof:
-                    target_clauses.append(cl)
+            row_key = (row["party"], row["number"])
+            c_indices = [
+                idx for idx, cl in enumerate(clauses)
+                if row_key in [(r["party"], r["number"]) for r in parse_exhibits(cl)]
+            ]
+            if not c_indices and is_direct_proof:
+                target_clauses = [cl for cl in clauses if _PROOF_VERB_RE.search(cl)]
+            else:
+                for c_idx in c_indices:
+                    cl = clauses[c_idx]
+                    if cl not in target_clauses:
+                        target_clauses.append(cl)
 
-            # S5: 증명 대상 절이 존재할 때만 scope_text 등록 (sent_clean 대체 삭제)
+                    has_claim_pred = any(
+                        _match_predicate_word(pw, cl, cat_name)
+                        for cat_name, words in CLAIM_PREDICATE_CATEGORIES.items()
+                        for pw in words
+                    ) or bool(COMPLETION_PREDICATE_RE.search(cl))
+
+                    is_last_clause = (c_idx == len(clauses) - 1)
+                    # V2: 문미 인용 꼴 (인용 토큰이 마지막 절에 있고 해당 절에 결론 술어가 없으면 앞 절들을 지배 범위로 봄)
+                    if is_last_clause and not has_claim_pred:
+                        for prev_cl in clauses[:c_idx]:
+                            if prev_cl not in target_clauses:
+                                target_clauses.insert(0, prev_cl)
+                    else:
+                        # 통상 어순: 인용 기점 절 뒤 동일 문장 후속 절들을 결론 술어 절까지 추가 (메모 3.1)
+                        # 단, 대등 접속(-하고, -하며)으로 나열되고 후속 절에 직접 증명 결론 술어가 없는 경우는 지배하지 않음
+                        cl_end_match = re.search(rf"{re.escape(cl)}\s*(?:고|하고|하며)[,\s]", sent_clean)
+                        for next_cl in clauses[c_idx + 1:]:
+                            if cl_end_match and not _PROOF_VERB_RE.search(next_cl):
+                                break
+                            if next_cl not in target_clauses:
+                                target_clauses.append(next_cl)
+                            if (
+                                any(
+                                    _match_predicate_word(pw, next_cl, cat_name)
+                                    for cat_name, words in CLAIM_PREDICATE_CATEGORIES.items()
+                                    for pw in words
+                                )
+                                or bool(COMPLETION_PREDICATE_RE.search(next_cl))
+                                or bool(_PROOF_VERB_RE.search(next_cl))
+                            ):
+                                break
+
+            # S5: 증명 대상 절이 존재할 때만 scope_text 등록 (쉼표로 결합하여 절 경계 보존)
             if target_clauses:
-                proof_scope_by_row[row["label"]] = " ".join(target_clauses)
+                proof_scope_by_row[row["label"]] = ", ".join(target_clauses)
 
         # V1: 인용된 모든 서증 범주의 매트릭스 능력 합집합 산출 (결합 원용 합집합 판정)
         combined_capabilities: Dict[str, bool] = {
@@ -1003,11 +1113,30 @@ def check_evidence_overreach(
                     debug_counters["no_scope"] += 1
                 continue
 
-            # S7, X3: 술어가 위치한 대상 절 및 문장 단위 제외 가드 검사
-            if _is_scope_excluded(scope_text, author_party) or _is_opponent_claim(sent_clean, author_party):
+            # R6: 형성권(해제, 해지, 취소, 상계, 철회) 행사 통지 및 효력 발생 정상 변론 제외
+            if _is_formation_right_exercise(sent_clean):
                 if debug_counters is not None:
                     debug_counters["excluded"] += 1
                 continue
+
+            # S7, X3, R7: 술어가 위치한 대상 절 및 문장 단위 제외 가드 검사
+            # R7: 반박 연결어미(-나, -지만, -는데, -으나)가 붙은 상대방 주장 인용 및 탄핵 문맥(C3)은 배제 유지
+            has_opp_concession = bool(re.search(
+                r"(?:라고|다고|라며|다며)\s*(?:(?:주장|진술|항변|번복)(?:하|합|했|하였)?(?:나|지만|는데|으나|며)|다투(?:나|지만|는데|었으나|며))",
+                sent_clean,
+            ))
+            is_impeaching = _is_impeachment_context(sent_clean) or has_opp_concession
+            if _is_scope_excluded(scope_text, author_party) or is_impeaching:
+                if debug_counters is not None:
+                    debug_counters["excluded"] += 1
+                continue
+            if _is_opponent_claim(sent_clean, author_party):
+                # 작성자 본인 서증이 아니거나 결론 절이 상대방 주장인 경우 제외
+                is_own_exhibit = bool(author_party and row["party"] in my_party_chars)
+                if not is_own_exhibit or _is_opponent_claim(scope_text, author_party):
+                    if debug_counters is not None:
+                        debug_counters["excluded"] += 1
+                    continue
 
             name = (row.get("name") or "").strip()
             author = (row.get("author") or "").strip()
@@ -1038,7 +1167,7 @@ def check_evidence_overreach(
             matched_pred_cats: List[str] = []
 
             # 1) 전칭_전기간: 낱말 경계 일치 (기간·범위 전칭만 담당, 금전 전칭 중 (나) 채무 전체는 전칭_전기간으로 분류) (V1, BB1)
-            if any(_match_predicate_word(pw, scope_text) for pw in CLAIM_PREDICATE_CATEGORIES["전칭_전기간"]):
+            if any(_match_predicate_word(pw, scope_text, "전칭_전기간") for pw in CLAIM_PREDICATE_CATEGORIES["전칭_전기간"]):
                 matched_pred_cats.append("전칭_전기간")
 
             # BB1, BB2: 수량 전칭 매칭 분석 ((가) 특정 금액 vs (나) 채무 전체)
@@ -1055,7 +1184,7 @@ def check_evidence_overreach(
                         matched_pred_cats.append("전칭_전기간")
 
             # 2) 내심의상태: 고의·악의·인식·공모·통모 또는 -(려는|할|ㄹ) 의사 구조
-            has_intent = any(_match_predicate_word(pw, scope_text) for pw in CLAIM_PREDICATE_CATEGORIES["내심의상태"])
+            has_intent = any(_match_predicate_word(pw, scope_text, "내심의상태") for pw in CLAIM_PREDICATE_CATEGORIES["내심의상태"])
             if not has_intent and INTENT_STATE_RE.search(scope_text):
                 has_intent = True
 
@@ -1073,7 +1202,7 @@ def check_evidence_overreach(
                     matched_pred_cats.append("내심의상태")
 
             # 3) 완료_확정: 낱말 경계 일치 또는 완료 술어 구조('지급을 마친', '갚았다', '치른', '받은', '납부한', '송금한' 등) (V1, BB2)
-            has_comp = any(_match_predicate_word(pw, scope_text) for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"])
+            has_comp = any(_match_predicate_word(pw, scope_text, "완료_확정") for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"])
             if not has_comp and COMPLETION_PREDICATE_RE.search(scope_text):
                 has_comp = True
 
@@ -1081,7 +1210,7 @@ def check_evidence_overreach(
             if not has_comp and m_total_amt and is_specific_amt:
                 after_amt = scope_text[m_total_amt.end():]
                 first_clause = re.split(r"[,.?!]|(?:이나|으나|는데|한바|지만|반면)", after_amt)[0]
-                if COMPLETION_PREDICATE_RE.search(first_clause) or any(_match_predicate_word(pw, first_clause) for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"]):
+                if COMPLETION_PREDICATE_RE.search(first_clause) or any(_match_predicate_word(pw, first_clause, "완료_확정") for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"]):
                     has_comp = True
                 else:
                     m_obj = re.search(
@@ -1090,27 +1219,34 @@ def check_evidence_overreach(
                     )
                     if m_obj:
                         pred_cand = m_obj.group("pred")
-                        if any(_match_predicate_word(pw, pred_cand) for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"]) or COMPLETION_PREDICATE_RE.search(pred_cand):
+                        if any(_match_predicate_word(pw, pred_cand, "완료_확정") for pw in CLAIM_PREDICATE_CATEGORIES["완료_확정"]) or COMPLETION_PREDICATE_RE.search(pred_cand):
                             has_comp = True
 
             if has_comp and "완료_확정" not in matched_pred_cats:
                 matched_pred_cats.append("완료_확정")
 
-            # 4) 상대방의사표시: 승낙·승인·동의·합의·수락
-            has_opp_decl = any(_match_predicate_word(pw, scope_text) for pw in CLAIM_PREDICATE_CATEGORIES["상대방의사표시"])
+            # 4) 상대방의사표시: 승낙·승인·동의·합의·수락, 계약체결·약정성립·체결되었·성립되었
+            has_opp_decl = any(_match_predicate_word(pw, scope_text, "상대방의사표시") for pw in CLAIM_PREDICATE_CATEGORIES["상대방의사표시"])
             if has_opp_decl:
-                # S2: 통지류에서 술어 주체 확인 (발신인과 다른 당사자일 때만 카운트, 주체 미정 시 제외)
+                # S2: 통지류에서 술어 주체 확인 (발신인과 다른 당사자일 때만 카운트, 계약체결·성립 술어 및 주체 미정 시 허용)
                 opp_pos = None
+                matched_opp_pw = None
                 for pw in CLAIM_PREDICATE_CATEGORIES["상대방의사표시"]:
-                    m_pw = re.search(rf"(?:^|[\s,.\(]|[은는이가을를의로에와과도])({re.escape(pw)})", scope_text)
-                    if m_pw:
-                        opp_pos = m_pw.start()
+                    if _match_predicate_word(pw, scope_text, "상대방의사표시"):
+                        matched_opp_pw = pw
+                        m_pw = re.search(rf"(?:^|[\s,.\(]|[은는이가을를의로에와과도])({re.escape(pw)})", scope_text)
+                        if m_pw:
+                            opp_pos = m_pw.start()
                         break
                 opp_subj = _find_clause_subject(scope_text, opp_pos) or cl_subj
                 if matched_cat == "일방통지":
-                    if opp_subj and sender and opp_subj != sender:
+                    if matched_opp_pw in ("계약체결", "약정성립", "체결되었", "성립되었"):
+                        matched_pred_cats.append("상대방의사표시")
+                    elif opp_subj and sender and opp_subj != sender:
                         matched_pred_cats.append("상대방의사표시")
                     elif not sender and opp_subj:
+                        matched_pred_cats.append("상대방의사표시")
+                    elif not opp_subj and sender:
                         matched_pred_cats.append("상대방의사표시")
                 else:
                     matched_pred_cats.append("상대방의사표시")
