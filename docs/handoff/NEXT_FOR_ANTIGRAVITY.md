@@ -700,9 +700,9 @@ TK-126·127·128 PR 병합 뒤 착수. 평가 측이 그 수정본 위 사본에
 
 | 티켓 | 근거 메모(Steve) | 착수 기준 | 구현 조건 | 상태 |
 |---|---|---|---|---|
-| TK-138 관련 판례·권위 가중 | `requests/TK-138_related_precedents_design_memo.md`(`ce4eea8`) | **Steve `996ba14`**(#226 병합, U4: TK-137 예산 조정 포함) | U1~U5([판정서](requests/MEMO_REVIEW_20261104_TK138_139_76OVR.md)) | 지시문 제시(11-04) |
-| TK-139 처분기준 별표 1유형 | `requests/TK-139_disposition_criteria_design_memo.md`(`c2ba9d2`) | **Steve `996ba14`**(#226 병합, 같은 `related_authorities.py` 확장) | W1~W5 | 지시문 제시(11-04) |
-| TK-76 3주기 PR3 EVI-OVR | `requests/TK-76_cycle3_evi_ovr_design_memo.md`(`7533efd`) | Steve `7533efd`(지금) | V1~V4. V3 정정: 새 낱말은 '배달증명'·'계약체결'·'약정성립'·'체결되었'·'성립되었' 5개뿐(공문·세금계산서·확인증은 기존 사전), 기존 '확정적으로' 유지 | 지시문 제시(11-04) |
+| TK-138 관련 판례·권위 가중 | `requests/TK-138_related_precedents_design_memo.md`(`ce4eea8`) | **Steve `996ba14`**(#226 병합, U4: TK-137 예산 조정 포함) | U1~U5([판정서](requests/MEMO_REVIEW_20261104_TK138_139_76OVR.md)) | **전달 완료(11-04, 사용자)** |
+| TK-139 처분기준 별표 1유형 | `requests/TK-139_disposition_criteria_design_memo.md`(`c2ba9d2`) | **Steve `996ba14`**(#226 병합, 같은 `related_authorities.py` 확장) | W1~W5 | **전달 완료(11-04, 사용자)** |
+| TK-76 3주기 PR3 EVI-OVR | `requests/TK-76_cycle3_evi_ovr_design_memo.md`(`7533efd`) | Steve `7533efd`(지금) | V1~V4. V3 정정: 새 낱말은 '배달증명'·'계약체결'·'약정성립'·'체결되었'·'성립되었' 5개뿐(공문·세금계산서·확인증은 기존 사전), 기존 '확정적으로' 유지 | **전달 완료(11-04, 사용자)** |
 
 - 평가 측 기준선(Steve `7533efd`, 평가 측 재실행): EVI-OVR 관련 시험 18개 파일 599건, HWP 시험 4개 파일 61건, 판례·무리한 주장 관련 47개 파일 1,924건 통과(5 건너뜀).
 - 세 PR 모두 2-2 규약(탐지)·화면 PR 규칙(TK-138·139: 캡처·사용자 확인)을 적용한다. 한 PR에 한 티켓.
