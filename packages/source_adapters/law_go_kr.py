@@ -460,6 +460,82 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
         except Exception:
             return None
 
+    def get_law_appendices(self, mst: str | int) -> List[Dict[str, Any]]:
+        """법령 상세 조회(lawService.do?target=law&MST={mst})로부터 별표 목록을 추출한다 (TK-139, Q2)."""
+        if not mst or self.status() != AdapterStatus.READY:
+            return []
+        try:
+            response = self._http_get(
+                SERVICE_URL,
+                params={"OC": self.api_key, "target": "law", "type": "JSON", "MST": str(mst)},
+            )
+            if response.status_code >= 400:
+                return []
+            payload = response.json()
+        except Exception:
+            return []
+
+        if not isinstance(payload, dict):
+            return []
+        law_node = payload.get("법령") or payload.get("Law") or payload
+        if not isinstance(law_node, dict):
+            return []
+        byl_node = law_node.get("별표") or {}
+        if not isinstance(byl_node, dict):
+            return []
+        unit_node = byl_node.get("별표단위") or []
+        units = unit_node if isinstance(unit_node, list) else [unit_node]
+
+        out: List[Dict[str, Any]] = []
+        for u in units:
+            if not isinstance(u, dict):
+                continue
+            out.append({
+                "title": str(u.get("별표제목") or "").strip(),
+                "number": str(u.get("별표번호") or "").strip(),
+                "branch_number": str(u.get("별표가지번호") or "").strip(),
+                "kind": str(u.get("별표구분") or "").strip(),
+                "content_text": str(u.get("별표내용") or "").strip(),
+                "key": str(u.get("별표키") or "").strip(),
+                "hwp_filename": str(u.get("별표HWP파일명") or "").strip(),
+                "file_link": str(u.get("별표서식파일링크") or "").strip(),
+                "pdf_link": str(u.get("별표서식PDF파일링크") or "").strip(),
+            })
+        return out
+
+    def download_appendix_hwp(self, file_link: str) -> Optional[bytes]:
+        """별표 HWP 서식 파일을 안전하게 다운로드한다 (W4, Q3).
+
+        - 도메인은 반드시 'www.law.go.kr' 고정 (SSRF 원칙).
+        - 파일 크기 상한: 2.0MB.
+        - 타임아웃: 5.0초.
+        """
+        if not file_link or self.status() != AdapterStatus.READY:
+            return None
+
+        link = file_link.strip()
+        if link.startswith("http://") or link.startswith("https://"):
+            from urllib.parse import urlparse
+            parsed = urlparse(link)
+            if parsed.hostname != "www.law.go.kr":
+                return None
+            url = f"https://www.law.go.kr{parsed.path}{'?' + parsed.query if parsed.query else ''}"
+        elif link.startswith("/"):
+            url = f"https://www.law.go.kr{link}"
+        else:
+            url = f"https://www.law.go.kr/{link}"
+
+        try:
+            response = self._http_get(url, timeout=5.0)
+            if response.status_code != 200:
+                return None
+            content = getattr(response, "content", None) or b""
+            if len(content) > 2.0 * 1024 * 1024:
+                return None
+            return content
+        except Exception:
+            return None
+
     def search(self, query: str, **kwargs: Any) -> AdapterResponse:
         if kwargs.get("target") in ("expc", "interpretation"):
             return self.search_interpretation(query)
