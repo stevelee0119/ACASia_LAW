@@ -540,6 +540,7 @@ def _discover_tk138_precedents(
 
     precedents_map: Dict[str, Dict[str, Any]] = {}
     precedent_status = "COMPLETED"
+    detail_calls = 0  # 본문 상세 조회는 문서당 최대 3건(메모 2.5, 평가 측 보완 H7)
 
     for query in top_queries:
         # P7: 목록 검색 전 잔여 예산 확인 (>= 5.0초)
@@ -587,7 +588,8 @@ def _discover_tk138_precedents(
 
             # P1: 목록 메타에 요지가 없고 source_id가 있으면 최상위 건에 한해 본문 상세 조회 시도
             if not summary and source_id and hasattr(adapter, "fetch_case"):
-                if budget.tk138_can_fetch_detail(3.0):
+                if detail_calls < 3 and budget.tk138_can_fetch_detail(3.0):
+                    detail_calls += 1
                     try:
                         detail_resp = adapter.fetch_case(item)
                         if detail_resp.status == AdapterStatus.READY and detail_resp.records:

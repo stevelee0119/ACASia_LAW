@@ -2844,11 +2844,15 @@ function renderFindings() {
         const titlePart = item.target_title ? `(${item.target_title})` : "";
         section.append(node("p", `[참조] ${item.source_law} ${articleLabel(item.source_article)} → ${item.target_law} ${articleLabel(item.target_article)}${titlePart} · 검토 자료`));
       }
-      for (const p of related.precedents || []) {
-        const kindPart = p.case_kind ? `, ${p.case_kind}` : "";
-        const namePart = p.case_name ? ` \"${p.case_name}\"` : "";
-        const scopePart = p.search_scope ? ` (${p.search_scope})` : "";
-        section.append(node("p", `[관련 판례] ${p.case_number} (${p.court}, ${p.decision_date}${kindPart})${namePart} · 검토 자료 (사건 당시 적용·주장 타당성은 별도 검토)${scopePart}`));
+      if (related.precedents && related.precedents.length > 0) {
+        const firstScope = related.precedents[0].search_scope || "";
+        const scopeDesc = firstScope ? `${firstScope} ` : "";
+        section.append(node("p", `[관련 판례] ${scopeDesc}권위 순 정렬 상위 ${related.precedents.length}건 · 검토 자료`));
+        for (const p of related.precedents) {
+          const kindPart = p.case_kind ? `, ${p.case_kind}` : "";
+          const namePart = p.case_name ? ` \"${p.case_name}\"` : "";
+          section.append(node("p", `· ${p.case_number} (${p.court}, ${p.decision_date}${kindPart})${namePart} (사건 당시 적용·주장 타당성은 별도 검토)`));
+        }
       }
       refContainer.append(section);
     }

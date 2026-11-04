@@ -234,7 +234,8 @@ class TestTK138RelatedPrecedents(unittest.TestCase):
         op = opinions[0]
         self.assertTrue(op.get("filtered_out_unprovided"))
         self.assertEqual(op.get("verdict"), "판단 불가")
-        self.assertIn("[UNVERIFIED_INVENTED_IN_RESPONSE]", op.get("legal_reasoning"))
+        self.assertIn("[UNVERIFIED_INVENTED_IN_RESPONSE]", op.get("reasoning"))
+        self.assertNotIn("2099다99999", op.get("reasoning"))
         self.assertIn("2099다99999", op.get("unprovided_case_numbers"))
 
     def test_u4_authority_budget_sharing_and_guards(self):
@@ -441,6 +442,104 @@ class TestTK138RelatedPrecedents(unittest.TestCase):
         self.assertEqual(status, "BUDGET_EXHAUSTED")
         self.assertEqual(precedents, [])
         adapter.search_cases_by_query.assert_not_called()
+
+
+class TestTK138EvaluatorSupplement(unittest.TestCase):
+    """평가 측 보완 H1~H5·H7 시험(11-04)."""
+
+    def _rows(self, n):
+        res = ArgumentValidityResult()
+        for i in range(1, n + 1):
+            res.rows.append(HallucinationTableRow(
+                item_id=i, location="1p", claim_text="주장", cited_authority=f"대법원 201{i}다1{i}{i}{i} 판결",
+                authority_exists=False, ai_generation_basis="UNCONFIRMED", validity_verdict="검토필요",
+                legal_reasoning="", recommended_counteraction="", basis="UNCONFIRMED"))
+        cases = [{"item_id": i, "context": "주장 맥락",
+                  "citation": Citation.create(CitationType.CASE, f"대법원 201{i}다1{i}{i}{i} 판결")} for i in range(1, n + 1)]
+        return res, cases
+
+    def _router(self, rows):
+        router = MagicMock()
+        reply = MagicMock()
+        reply.used = True
+        reply.parsed = {"overall_summary": "요약", "rows": rows}
+        reply.executions = [MagicMock(provider="openai", model="m")]
+        router.consult_all = unittest.mock.AsyncMock(return_value=[reply])
+        return router
+
+    def test_h1_request_with_precedents_passes_input_contract(self):
+        import asyncio
+        from packages.llm_router.input_contracts import valid_input_contract
+        from packages.llm_router.privacy import inspect_request
+        res, cases = self._rows(1)
+        router = self._router([])
+        related = {"precedents": [{"case_number": "2016다248998", "court": "대법원", "case_kind": "전원합의체 판결", "summary": "요지"}]}
+        asyncio.run(_attach_ai_opinions(res, cases, router, 0, None, related_authorities=related))
+        request = router.consult_all.call_args.args[1]
+        self.assertIn("관련 권위 판례(참고)", request.user)
+        self.assertTrue(valid_input_contract(request))
+        self.assertEqual(inspect_request(request)["status"], "PASSED")
+
+    def test_h2_h3_opinion_keeps_reasoning_key_and_item_own_case(self):
+        import asyncio
+        from packages.legal_engine.reasoning_format import reasoning_sections
+        res, cases = self._rows(2)
+        router = self._router([
+            {"item_id": 1, "claim_text": "a", "validity_verdict": "타당", "legal_reasoning": "대법원 2011다1111 판결 취지", "recommended_check": "c"},
+            {"item_id": 2, "claim_text": "b", "validity_verdict": "타당", "legal_reasoning": "대법원 2012다1222 판결 취지", "recommended_check": "c"},
+        ])
+        related = {"precedents": [{"case_number": "2016다248998", "court": "대법원"}]}
+        asyncio.run(_attach_ai_opinions(res, cases, router, 0, None, related_authorities=related))
+        for row in res.rows:
+            op = row.ai_opinions[0]
+            self.assertEqual(op["verdict"], "타당")
+            self.assertFalse(op["filtered_out_unprovided"])
+            self.assertTrue(reasoning_sections("검토", "AI", row.ai_opinions)["opinions"][0]["reasoning"])
+
+    def test_h4_no_filter_without_provided_list(self):
+        import asyncio
+        res, cases = self._rows(1)
+        router = self._router([{"item_id": 1, "claim_text": "a", "validity_verdict": "타당",
+                                "legal_reasoning": "대법원 2016다248998 판결 취지", "recommended_check": "c"}])
+        asyncio.run(_attach_ai_opinions(res, cases, router, 0, None, related_authorities=None))
+        op = res.rows[0].ai_opinions[0]
+        self.assertEqual(op["verdict"], "타당")
+        self.assertFalse(op["filtered_out_unprovided"])
+
+    def test_h5_unprovided_number_removed_from_shown_text(self):
+        import asyncio
+        res, cases = self._rows(1)
+        router = self._router([{"item_id": 1, "claim_text": "a", "validity_verdict": "타당",
+                                "legal_reasoning": "2016다248998 판결과 2099다 99999 판결 취지", "recommended_check": "c"}])
+        related = {"precedents": [{"case_number": "2016다248998", "court": "대법원"}]}
+        asyncio.run(_attach_ai_opinions(res, cases, router, 0, None, related_authorities=related))
+        op = res.rows[0].ai_opinions[0]
+        self.assertEqual(op["verdict"], "판단 불가")
+        self.assertIn("2016다248998", op["reasoning"])
+        self.assertNotIn("99999", op["reasoning"])
+        self.assertEqual(op["unprovided_case_numbers"], ["2099다99999"])
+
+    def test_h7_detail_fetch_capped_per_document(self):
+        adapter = MagicMock()
+        adapter.name = "law_go_kr"
+        adapter.settings.allow_network = True
+        adapter.status.return_value = AdapterStatus.READY
+        def search(query, **kw):
+            base = 1 if "23" in query else 5
+            items = [{"case_number": f"20{base + i:02d}다{i + 1}", "court": "대법원", "decision_date": "2020-01-01",
+                      "case_kind": "판결", "source_id": f"{base}{i}", "summary": ""} for i in range(3)]
+            resp = MagicMock(status=AdapterStatus.READY, records=items)
+            resp.source_record.attributes = {"total_count": 3, "returned_count": 3}
+            return resp
+        adapter.search_cases_by_query.side_effect = search
+        adapter.fetch_case.return_value = MagicMock(status=AdapterStatus.READY, records=[{"summary": "요지"}])
+        verifier = MagicMock()
+        verifier.registry.law = adapter
+        cits = [Citation.create(CitationType.STATUTE, "근로기준법 제23조", law_name="근로기준법", article="23"),
+                Citation.create(CitationType.STATUTE, "민법 제750조", law_name="민법", article="750")]
+        precedents, status = _discover_tk138_precedents(cits, verifier)
+        self.assertEqual(len(precedents), 6)
+        self.assertEqual(adapter.fetch_case.call_count, 3)
 
 
 if __name__ == "__main__":

@@ -676,31 +676,36 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
             reasoning = str(row.get("legal_reasoning") or "")[:800]
             check = str(row.get("recommended_check") or "")[:400]
 
-            # P6, U3: 모델 응답 내 사건번호 추출 및 제공 목록 대조
-            resp_text = f"{claim_text} {reasoning} {check}"
-            extracted_tuples = extract_all_case_numbers(resp_text)
-            resp_cases = {f"{y}{c}{s}" for y, c, s in extracted_tuples}
-
-            # 서면 내 원래 인용된 사건번호는 제공 판례 외에도 서면 자체 사건번호이므로 제외
-            item_match = next((it for it in unverified_cases if it.get("citation")), None)
-            orig_case = canonical_case_number(item_match["citation"].raw_text) if item_match else None
-
-            unprovided = {c for c in resp_cases if c not in provided_case_numbers and c != orig_case}
-
-            filtered_out_unprovided = False
+            verdict_val = str(row.get("validity_verdict") or "판단 불가")[:40]
+            unprovided: set = set()
+            # P6, U3: 관련 판례 목록을 모델에 준 때만 응답의 사건번호를 그 목록과 대조한다(평가 측 보완 D4).
+            # 서면이 그 항목에서 인용한 사건번호는 제외한다(항목별, 평가 측 보완 D2).
+            if provided_case_numbers:
+                own = (unverified_cases[item_id - 1] if 0 < item_id <= len(unverified_cases) else {}).get("citation")
+                own_cases = {f"{y}{c}{n}" for y, c, n in extract_all_case_numbers(getattr(own, "raw_text", "") or "")}
+                for text in (claim_text, reasoning, check):
+                    for y, c, n in extract_all_case_numbers(text):
+                        key = f"{y}{c}{n}"
+                        if key not in provided_case_numbers and key not in own_cases:
+                            unprovided.add(key)
+            filtered_out_unprovided = bool(unprovided)
             if unprovided:
-                filtered_out_unprovided = True
                 verdict_val = "판단 불가"  # 비인가 판례 인용 시 타당성 판단 근거에서 배제 (P6)
-                reasoning = f"[UNVERIFIED_INVENTED_IN_RESPONSE] 비인가 사건번호({', '.join(sorted(unprovided))}) 인용 배제. {reasoning}"
-            else:
-                verdict_val = str(row.get("validity_verdict") or "판단 불가")[:40]
+                # 화면·보고서에 목록 밖 사건번호를 그대로 보이지 않는다(제거, 평가 측 보완 D5)
+                def _strip(text: str) -> str:
+                    for y, c, n in extract_all_case_numbers(text):
+                        if f"{y}{c}{n}" in unprovided:
+                            text = re.sub(rf"{y}\s*{c}\s*0*{n}(?!\d)", "[제공 목록 밖 사건번호 제거]", text)
+                    return text
+                claim_text, reasoning, check = _strip(claim_text), _strip(reasoning), _strip(check)
+                reasoning = f"[UNVERIFIED_INVENTED_IN_RESPONSE] 제공 목록 밖 사건번호 {len(unprovided)}건 인용 배제. {reasoning}"
 
             opinions_by_item.setdefault(item_id, []).append({
                 "provider": provider,
                 "model": getattr(execution, "model", ""),
                 "claim_text": claim_text,
                 "verdict": verdict_val,
-                "legal_reasoning": reasoning,
+                "reasoning": reasoning,  # 기존 키 유지(화면·보고서가 읽는 키, 평가 측 보완 D1)
                 "check": check,
                 "filtered_out_unprovided": filtered_out_unprovided,
                 "unprovided_case_numbers": sorted(unprovided) if unprovided else [],
