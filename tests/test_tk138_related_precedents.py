@@ -302,8 +302,9 @@ class TestTK138RelatedPrecedents(unittest.TestCase):
 
         lines = report_lines([doc])
         matched = [l for l in lines if "[관련 판례]" in l]
-        self.assertEqual(len(matched), 1)
-        line = matched[0]
+        self.assertEqual(len(matched), 1)  # 머리 줄 1개(범위 1회), 판례는 그 아래 줄(평가 측 보완 K1)
+        start = lines.index(matched[0])
+        line = " ".join(lines[start:start + 2])
         self.assertIn("2016다248998", line)
         self.assertIn("전원합의체 판결", line)
         self.assertIn("통상임금 산정 및 신의칙", line)
@@ -540,6 +541,24 @@ class TestTK138EvaluatorSupplement(unittest.TestCase):
         precedents, status = _discover_tk138_precedents(cits, verifier)
         self.assertEqual(len(precedents), 6)
         self.assertEqual(adapter.fetch_case.call_count, 3)
+
+
+class TestTK138ScopeHeaderK1(unittest.TestCase):
+    def test_k1_scope_per_query_in_header(self):
+        from types import SimpleNamespace
+        precedents = [
+            {"case_number": "2010다1", "court": "대법원", "decision_date": "2020-01-01", "search_query": "가법 제1조",
+             "search_scope": "검색 300건 중 100건 (대법원 한정)"},
+            {"case_number": "2011다2", "court": "대법원", "decision_date": "2021-01-01", "search_query": "나법 제2조",
+             "search_scope": "검색 50건 중 50건 (대법원 한정)"},
+        ]
+        doc = SimpleNamespace(filename="a.pdf", engine_data={"related_authorities": {"status": "SOURCE_REVIEW_ONLY", "precedents": precedents}})
+        lines = report_lines([doc])
+        header = [l for l in lines if l.startswith("[관련 판례]")]
+        self.assertEqual(len(header), 1)
+        self.assertIn("가법 제1조: 검색 300건 중 100건", header[0])
+        self.assertIn("나법 제2조: 검색 50건 중 50건", header[0])
+        self.assertIn("2건", header[0])
 
 
 if __name__ == "__main__":

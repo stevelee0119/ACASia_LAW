@@ -720,10 +720,19 @@ def report_lines(documents):
             lines.append(f"[참조] {r['source_law']} {article_label(r['source_article'])} → {r['target_law']} "
                          f"{article_label(r['target_article'])}{title_part} / 검토 자료")
         # TK-138: 관련 판례 라인 출력 (P8, U1, U5)
-        for p in review.get("precedents", []):
-            kind_part = f", {p['case_kind']}" if p.get("case_kind") else ""
-            name_part = f" \"{p['case_name']}\"" if p.get("case_name") else ""
-            scope_part = f" / {p['search_scope']}" if p.get("search_scope") else ""
-            lines.append(f"[관련 판례] {p['case_number']} ({p['court']}, {p['decision_date']}{kind_part}){name_part} / "
-                         f"검토 자료 (사건 당시 적용·주장 타당성은 별도 검토){scope_part}")
+        precedents = review.get("precedents", []) or []
+        if precedents:
+            # 화면과 같은 구조: 질의별 검색 범위를 머리 줄에 한 번, 판례는 그 아래 줄마다(평가 측 보완 K1)
+            scopes: List[str] = []
+            for p in precedents:
+                s = f"{p['search_query']}: {p['search_scope']}" if p.get("search_query") and p.get("search_scope") else (p.get("search_scope") or "")
+                if s and s not in scopes:
+                    scopes.append(s)
+            scope_desc = f"{' · '.join(scopes)} — " if scopes else ""
+            lines.append(f"[관련 판례] {scope_desc}권위 순 정렬 {len(precedents)}건 / 검토 자료")
+            for p in precedents:
+                kind_part = f", {p['case_kind']}" if p.get("case_kind") else ""
+                name_part = f" \"{p['case_name']}\"" if p.get("case_name") else ""
+                lines.append(f"  · {p['case_number']} ({p['court']}, {p['decision_date']}{kind_part}){name_part} "
+                             f"(사건 당시 적용·주장 타당성은 별도 검토)")
     return lines
