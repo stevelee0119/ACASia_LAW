@@ -214,10 +214,10 @@ def test_positive_3_explicit_references_5_steps():
     ref_tuples = [(r["target_law"], r["target_article"]) for r in refs]
     # 1. 앞말 법령명: 민법 제750조
     assert ("민법", "750") in ref_tuples
-    # 2. 같은 법: 근로기준법 제10조
-    assert ("근로기준법", "10") in ref_tuples
-    # 3. 같은 법 시행령: 근로기준법 시행령 제3조
-    assert ("근로기준법 시행령", "3") in ref_tuples
+    # 2. 같은 법: 바로 앞에 이름이 나온 법(민법) 제10조(평가 측 보완 R5 — 법령 본문의 '같은 법'은 앞의 다른 법)
+    assert ("민법", "10") in ref_tuples
+    # 3. 같은 법 시행령: 앞의 법(민법)의 시행령 제3조
+    assert ("민법 시행령", "3") in ref_tuples
     # 4. 수식어 없는 단독 조번호: 인용 법령(근로기준법) 제12조
     assert ("근로기준법", "12") in ref_tuples
     # 5. 같은 조 제2항은 제외됨
@@ -498,3 +498,77 @@ def test_n6_report_lines_and_quick_mode():
     res_quick, _ = review_related_authorities(doc, [cit], None, quick=True)
     # 국가계약법 쟁점이 없는 일반 조문은 quick 모드 시 즉시 None 반환
     assert res_quick is None
+
+
+# --- 평가 측 보완(#226 1차 판정 R1~R5) 회귀 시험 — 합성 조문만 쓴다 -----------------------------------------------
+def _ref_pairs(text, source_law="합성기본법"):
+    return [(r["target_law"], r["target_article"]) for r in _extract_references(source_law, "5", text, {})]
+
+
+def test_r1_enumerated_articles_inherit_the_named_law():
+    text = "「합성보험법」 제13조 및 제15조에 따른 자료와 「합성농업법」 제34조, 제35조 및 제43조에 따른 허가"
+    pairs = _ref_pairs(text)
+    assert ("합성보험법", "15") in pairs and ("합성농업법", "43") in pairs
+    assert not any(law == "합성기본법" for law, _ in pairs)
+
+
+def test_r1_new_item_after_other_law_falls_back_to_source_law():
+    text = "1. 「합성보험법」 제13조에 따른 급여 2. 제43조에 따른 보상"
+    assert ("합성기본법", "43") in _ref_pairs(text)
+
+
+def test_r5_same_law_points_back_to_the_last_named_law_and_this_law_to_source():
+    text = "「합성산림법」 제14조에 따른 허가, 같은 법 제15조의2에 따른 신고, 이 법 제20조에 따른 승인"
+    pairs = _ref_pairs(text)
+    assert ("합성산림법", "15의2") in pairs and ("합성기본법", "20") in pairs
+    assert _ref_pairs("같은 법 제9조에 따른 절차") == [("합성기본법", "9")]   # 앞에 다른 법이 없으면 인용한 법
+
+
+def test_r2_article_label_uses_statute_notation():
+    from packages.legal_engine.related_authorities import article_label
+    assert [article_label(x) for x in ("7", "7의2", "11의10")] == ["제7조", "제7조의2", "제11조의10"]
+    doc = MockDoc(engine_data={"related_authorities": {"status": "SOURCE_REVIEW_ONLY", "note": "", "candidates": [],
+        "delegations": [{"source_law": "합성기본법", "source_article": "11의2", "target_law": "합성기본법 시행령",
+                         "target_article": "7의2", "target_title": ""}], "explicit_references": []}})
+    assert any("합성기본법 제11조의2 → 합성기본법 시행령 제7조의2" in line for line in report_lines([doc]))
+
+
+def test_r3_budget_exhaustion_keeps_processing_cached_citations():
+    adapter = MagicMock()
+    adapter.name = "law_go_kr"
+    adapter.settings.allow_network = True
+    adapter.status.return_value = AdapterStatus.READY
+    adapter.resolve_statute.return_value = MagicMock(records=[{"version_id": "9001", "law_name": "합성기본법"}])
+    adapter.get_thd_cmp.return_value = {"LspttnThdCmpLawXService": {"기본정보": {"삼단비교존재여부": "Y"},
+        "위임조문삼단비교": {"법률조문": [
+            {"조번호": "0002", "조가지번호": "00", "조제목": "제2조", "조내용": "",
+             "시행령조문": {"법령명": "합성기본법 시행령", "조번호": "0002", "조가지번호": "00", "조제목": "가", "조내용": ""}},
+            {"조번호": "0004", "조가지번호": "00", "조제목": "제4조", "조내용": "",
+             "시행령조문": {"법령명": "합성기본법 시행령", "조번호": "0003", "조가지번호": "00", "조제목": "나", "조내용": ""}}]}}}
+    verifier = _create_mock_verifier(adapter)
+    cits = [Citation.create(CitationType.STATUTE, "합성기본법 제2조", law_name="합성기본법", article="2"),
+            Citation.create(CitationType.STATUTE, "다른합성법 제1조", law_name="다른합성법", article="1"),
+            Citation.create(CitationType.STATUTE, "합성기본법 제4조", law_name="합성기본법", article="4")]
+    # 첫 법령 조회·3단 비교 뒤 예산이 바닥난다. 다른 법은 건너뛰고, 이미 받은 합성기본법 제4조는 처리한다.
+    with patch("time.monotonic", side_effect=[0.0, 0.0, 0.0] + [99.0] * 20):
+        dels, refs, status = _discover_tk137_authorities(cits, verifier)
+    assert status == "LIMIT_EXCEEDED"
+    assert {(d["source_article"], d["target_article"]) for d in dels} == {("2", "2"), ("4", "3")}
+
+
+def test_r4_official_record_is_linked_by_citation_id_for_abbreviated_names():
+    adapter = MagicMock()
+    adapter.name = "law_go_kr"
+    adapter.settings.allow_network = True
+    adapter.status.return_value = AdapterStatus.READY
+    adapter.get_thd_cmp.return_value = {"LspttnThdCmpLawXService": {"기본정보": {"삼단비교존재여부": "Y"},
+        "위임조문삼단비교": {"법률조문": [{"조번호": "0003", "조가지번호": "00", "조제목": "", "조내용": "",
+            "시행령조문": {"법령명": "합성정식법 시행령", "조번호": "0005", "조가지번호": "00", "조제목": "", "조내용": ""}}]}}}
+    verifier = _create_mock_verifier(adapter)
+    cit = Citation.create(CitationType.STATUTE, "합정법 제3조", law_name="합정법", article="3")
+    verdicts = [{"citation_id": cit.citation_id, "status": "VERIFIED", "identity_confirmed": True,
+                 "official_record": {"law_name": "합성정식법", "version_id": "7777"}}]
+    dels, _, _ = _discover_tk137_authorities([cit], verifier, verdicts=verdicts)
+    adapter.resolve_statute.assert_not_called()
+    adapter.get_thd_cmp.assert_called_once_with("7777", knd="2")
+    assert dels and dels[0]["source_law"] == "합성정식법"

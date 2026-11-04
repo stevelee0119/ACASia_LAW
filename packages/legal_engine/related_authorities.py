@@ -19,6 +19,24 @@ EXPLICIT_REF_RE = re.compile(
 )
 
 
+# 조 번호 토큰. 앞에 법령 표지(「법령명」·○○법(시행령)·같은 법(시행령)·이 법·같은 조)가 붙을 수 있다.
+_ART_TOKEN_RE = re.compile(
+    r"(?:(?P<named_law>「[^」]+」|[가-힣]+법(?:\s*시행령)?)|(?P<same_law>같은\s*법(?:\s*시행령)?|이\s*법)|(?P<same_art>같은\s*조))?"
+    r"\s*제\s*(?P<art>\d+)조(?:의(?P<branch>\d+))?(?:\s*제\s*\d+항)?(?:\s*제\s*\d+호)?")
+# 앞 조 번호와 이어진 나열('제13조 및 제15조', '제34조, 제35조', '제14조와 제15조', '제1조부터 제3조까지')
+_ART_CHAIN_RE = re.compile(r"^\s*(?:,|ㆍ|·|및|또는|와|과|부터|내지)\s*$")
+# 참조로 볼 서술(이 서술이 바로 뒤에 붙은 조 번호만 참조로 낸다)
+_REF_TAIL_RE = re.compile(r"\s*(?:에\s*(?:따라|의하여|따른|의한|규정된)|(?:을|를)\s*준용하)")
+
+
+def article_label(article: Any) -> str:
+    """조 번호를 법령 표기로 쓴다: '7' → '제7조', '7의2' → '제7조의2'(평가 측 보완 R2)."""
+    main_num, sub_num = _norm_art_key(article)
+    if not main_num:
+        return f"제{article}조"
+    return f"제{main_num}조의{sub_num}" if sub_num else f"제{main_num}조"
+
+
 def _norm_art_key(art_str: Any) -> Tuple[int, int]:
     """조문 번호를 (본조번호, 가지번호) 정수로 정규화한다."""
     if art_str is None:
@@ -149,27 +167,41 @@ def _extract_references(source_law: str, source_art: str, text: str,
     seen: Set[Tuple[str, str]] = set()
     src_key = _norm_art_key(source_art)
 
-    for m in EXPLICIT_REF_RE.finditer(text):
+    # 조 번호를 순서대로 읽으며 법을 정한다. 나열로 이어진 번호는 앞 번호의 법을 이어받는다(평가 측 보완 R1:
+    # '「고용보험법」 제13조 및 제15조에 따른'의 제15조는 고용보험법이다).
+    # '같은 법'은 바로 앞에 이름이 나온 다른 법을 가리킨다('「산지관리법」 제14조 … 같은 법 제15조의2' → 산지관리법).
+    # 앞에 이름이 나온 법이 없을 때만 인용한 법이다. '이 법'은 언제나 인용한 법이다(평가 측 보완 R5).
+    prev_end, prev_law, prev_same_art = None, None, False
+    last_named: Optional[str] = None
+    tokens = []
+    for m in _ART_TOKEN_RE.finditer(text):
         gd = m.groupdict()
-        if gd.get("same_art"):
+        if gd.get("named_law"):
+            law = re.sub(r"[「」]", "", gd["named_law"]).strip()
+            last_named = re.sub(r"\s*시행령$", "", law)
+            same_art = False
+        elif gd.get("same_law"):
+            marker = gd["same_law"]
+            base = (last_named or source_law) if marker.startswith("같은") else source_law
+            law = f"{base} 시행령" if "시행령" in marker else base
+            same_art = False
+        elif gd.get("same_art"):
+            law, same_art = source_law, True
+        elif prev_end is not None and _ART_CHAIN_RE.match(text[prev_end:m.start()]):
+            law, same_art = prev_law, prev_same_art
+        else:
+            law, same_art = source_law, False
+        tokens.append((m, law, same_art))
+        prev_end, prev_law, prev_same_art = m.end(), law, same_art
+
+    for m, law, same_art in tokens:
+        if not _REF_TAIL_RE.match(text, m.end()):
+            continue
+        gd = m.groupdict()
+        if same_art:
             # 4단계: '같은 조'는 동일 조문 내부 참조이므로 외부 탐색 대상에서 제외
             continue
-
-        named = gd.get("named_law")
-        same_law = gd.get("same_law")
-
-        if named:
-            # 1단계: 명시 법령
-            target_law = re.sub(r"[「」]", "", named).strip()
-        elif same_law:
-            # 2, 3단계: '같은 법 시행령' 또는 '같은 법 / 이 법'
-            if "시행령" in same_law:
-                target_law = f"{source_law} 시행령"
-            else:
-                target_law = source_law
-        else:
-            # 5단계: 수식어가 없는 경우 인용 법령을 기본값으로 간주
-            target_law = source_law
+        target_law = law
 
         main_num = int(gd["art"])
         sub_num = int(gd["branch"]) if gd.get("branch") else 0
@@ -240,6 +272,7 @@ def _discover_tk137_authorities(citations, verifier, case_date: Optional[str] = 
 
     # 앞선 source_review 검증 결과(verdicts)가 주어진 경우 확인된 인용만 선별하고 기존 MST 캐시 적재 (N3)
     verified_ids: Optional[Set[str]] = None
+    official_by_cid: Dict[str, Tuple[str, str]] = {}
     if verdicts is not None:
         verified_ids = set()
         for v in verdicts:
@@ -252,6 +285,9 @@ def _discover_tk137_authorities(citations, verifier, case_date: Optional[str] = 
                 rec = v.get("official_record") or {}
                 if rec.get("version_id") and rec.get("law_name"):
                     mst_cache[str(rec["law_name"]).strip()] = str(rec["version_id"])
+                    if cid:
+                        # 인용 ID → (공식 법령명, 판정이 고른 판의 MST). 약칭으로 인용해도 다시 조회하지 않는다(평가 측 보완 R4)
+                        official_by_cid[cid] = (str(rec["law_name"]).strip(), str(rec["version_id"]))
 
     # STATUTE 인용 추출 (확인된 조문 한정)
     statute_cites = [
@@ -267,15 +303,19 @@ def _discover_tk137_authorities(citations, verifier, case_date: Optional[str] = 
             break
 
         law_name = c.law_name.strip()
+        if c.citation_id in official_by_cid:
+            law_name, official_mst = official_by_cid[c.citation_id]
+            mst_cache.setdefault(law_name, official_mst)
         art_key = _norm_art_key(c.article)
         art_str = str(c.article).strip()
 
         # 법령 MST 획득 (단일 법령 1회 조회 및 캐시)
         if law_name not in mst_cache:
-            # N1: 새 외부 호출 전 남은 시간 예산 확인
+            # N1: 새 외부 호출 전 남은 시간 예산 확인. 예산이 없으면 이 인용만 건너뛰고, 이미 받은 응답으로
+            # 처리할 수 있는 뒤 인용은 계속 처리한다(평가 측 보완 R3)
             if time.monotonic() - start_time >= total_budget:
                 overall_status = "LIMIT_EXCEEDED"
-                break
+                continue
             try:
                 resolved = adapter.resolve_statute(law_name, as_of=case_date)
                 records = getattr(resolved, "records", []) or []
@@ -292,7 +332,7 @@ def _discover_tk137_authorities(citations, verifier, case_date: Optional[str] = 
         if mst not in thd_cmp_cache:
             if time.monotonic() - start_time >= total_budget:
                 overall_status = "LIMIT_EXCEEDED"
-                break
+                continue
             try:
                 payload = adapter.get_thd_cmp(mst, knd="2")
                 parsed_articles, status_str = _parse_thd_cmp(payload)
@@ -420,8 +460,10 @@ def report_lines(documents):
         # N6: 위임 및 명시 참조 라인 출력
         for d in review.get("delegations", []):
             title_part = f"({d['target_title']})" if d.get("target_title") else ""
-            lines.append(f"[위임] {d['source_law']} 제{d['source_article']}조 → {d['target_law']} 제{d['target_article']}조{title_part} / 검토 자료")
+            lines.append(f"[위임] {d['source_law']} {article_label(d['source_article'])} → {d['target_law']} "
+                         f"{article_label(d['target_article'])}{title_part} / 검토 자료")
         for r in review.get("explicit_references", []):
             title_part = f"({r['target_title']})" if r.get("target_title") else ""
-            lines.append(f"[참조] {r['source_law']} 제{r['source_article']}조 → {r['target_law']} 제{r['target_article']}조{title_part} / 검토 자료")
+            lines.append(f"[참조] {r['source_law']} {article_label(r['source_article'])} → {r['target_law']} "
+                         f"{article_label(r['target_article'])}{title_part} / 검토 자료")
     return lines
