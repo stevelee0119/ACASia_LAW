@@ -1,8 +1,8 @@
 diff --git a/packages/claim_engine/evidence_consistency.py b/packages/claim_engine/evidence_consistency.py
-index 83e6aa0..e499ff3 100644
+index 83e6aa0..96f12a3 100644
 --- a/packages/claim_engine/evidence_consistency.py
 +++ b/packages/claim_engine/evidence_consistency.py
-@@ -2534,6 +2534,145 @@ def check_evidence_form_defects(
+@@ -2534,6 +2534,166 @@ def check_evidence_form_defects(
      return out
  
  
@@ -20,7 +20,19 @@ index 83e6aa0..e499ff3 100644
 +    h = len(_HANGUL_CH.findall(name))
 +    lat = len(_LATIN_CH.findall(name))
 +    cjk = len(_CJK_CH.findall(name))
-+    return (lat >= 8 and lat > 2 * h) or (cjk >= 3 and h == 0)
++    if lat >= 8 and lat > 2 * h:
++        return True
++    # 한자만으로 된 이름은 국한문 국내 문서일 수 있다: 가나가 있거나 KS X 1001(EUC-KR) 한자 집합 밖 글자가 있을 때만 외국 문자로 본다.
++    if h == 0 and cjk >= 3:
++        for ch in name:
++            if "\u3040" <= ch <= "\u30ff":
++                return True
++            if "\u4e00" <= ch <= "\u9fff":
++                try:
++                    ch.encode("euc-kr")
++                except UnicodeEncodeError:
++                    return True
++    return False
 +
 +
 +_SIGN_BLANK_LINE_RE = re.compile(
@@ -145,14 +157,24 @@ index 83e6aa0..e499ff3 100644
 +    return out
 +
 +
++def _form_findings(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]) -> List[Finding]:
++    """기존 4개 축 판정은 그대로 두고, 기존 축이 이미 낸 호증에는 새 구조 규칙을 내지 않는다(1호증 1건, 새 규칙이 양보)."""
++    old = check_evidence_form_defects(doc, exhibits)
++    taken = {(f.confidence_features or {}).get("exhibit") for f in old} - {None}
++    new = [f for f in check_evidence_form_structure(doc, exhibits)
++           if (f.confidence_features or {}).get("exhibit") not in taken]
++    return old + new
++
++
  def check_document(doc: NormalizedDocument) -> List[Finding]:
      exhibits = exhibit_rows(doc)
      from .internal_inconsistency import check_internal_inconsistency
-@@ -2543,6 +2682,7 @@ def check_document(doc: NormalizedDocument) -> List[Finding]:
+@@ -2542,7 +2702,7 @@ def check_document(doc: NormalizedDocument) -> List[Finding]:
+         check_exhibits(doc)
          + check_statements(doc, exhibits)
          + check_evidence_numbering_mismatches(doc, exhibits)
-         + check_evidence_form_defects(doc, exhibits)
-+        + check_evidence_form_structure(doc, exhibits)
+-        + check_evidence_form_defects(doc, exhibits)
++        + _form_findings(doc, exhibits)
          + check_internal_inconsistency(doc)
      )
  
