@@ -2540,12 +2540,22 @@ _LATIN_CH = re.compile(r"[A-Za-z]")
 _CJK_CH = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]")
 _TRANSLATION_RE = re.compile(r"번\s{0,3}역")
 _TRAIL_DATE_RE = re.compile(r" ?(?:\d{4}|20○○) ?\.[\s\d○.]*$")
+_NAME_PAREN_RE = re.compile(r"[(（][^()（）]{0,200}[)）]")
+
+
+def _is_address_token(tok: str) -> bool:
+    """주소·도메인·전자우편 표기(점·@로 이은 영숫자 덩어리, 한글 없음)는 문서의 언어가 아니다. 정규식 없이 본다(ReDoS 방지)."""
+    core = tok.strip(".,;:")
+    return ("." in core or "@" in core) and any(c.isascii() and c.isalpha() for c in core) and not _HANGUL_CH.search(core)
 
 
 def _foreign_script_name(name: str) -> bool:
     """서증명이 국어 아닌 문자로 되어 있는가(규칙 106조 2항). 한글 글자 수와 외국 문자 수만 본다."""
     norm = " ".join((name or "").split())
     norm = _TRAIL_DATE_RE.sub("", norm)
+    # 괄호 속 부연(약어 풀이·발행처 등)은 서증명 본체가 아니므로 비율에서 뺀다. 괄호 밖이 비면 원래 이름으로 본다.
+    outside = " ".join(t for t in _NAME_PAREN_RE.sub(" ", norm).split() if not _is_address_token(t))
+    norm = outside or norm
     h = len(_HANGUL_CH.findall(norm))
     lat = len(_LATIN_CH.findall(norm))
     cjk = len(_CJK_CH.findall(norm))
@@ -2565,16 +2575,17 @@ def _foreign_script_name(name: str) -> bool:
 
 
 # 빈칸(밑줄 묶음·공백 두 칸 이상)을 먼저 표지 하나로 접고(선형), 접힌 줄을 단일 수량자 정규식으로 본다(ReDoS 방지)
-_BLANK_RUN_RE = re.compile(r"_+|\s{2,}")
+_BLANK_RUN_RE = re.compile(r"[_\s]+")
 _SIGN_BLANK_LINE_RE = re.compile(
     r"(?:성 ?명|확 ?인 ?자|진 ?술 ?인|작 ?성 ?자|서 ?명 ?인|명 ?의 ?인)(?: ?성 ?명)? ?[:：]? ?□? ?"
     r"\( ?(?:서 ?명|인|날 ?인|서 ?명 ?(?:또는|및) ?날 ?인|기 ?명 ?날 ?인) ?\) ?$"
 )
-_DATE_BLANK_LINE_RE = re.compile(r"^ ?(?:\d{4}|20○○) ?년? ?\.? ?□ ?\.? ?월? ?□ ?\.? ?일? ?\.? ?$")
+_DATE_BLANK_LINE_RE = re.compile(r"^ ?(?:\d{4}|20○○|(?:19|20) ?□) ?년? ?\.? ?□ ?\.? ?월? ?□ ?\.? ?일? ?\.? ?$")
 
 
 def _fold_blanks(line: str) -> str:
-    return _BLANK_RUN_RE.sub("□", line.strip())
+    """밑줄이 섞이거나 두 칸 이상인 빈칸 덩어리(연속된 것 전체)를 '□' 하나로 접는다. 한 칸 띄어쓰기는 그대로 둔다."""
+    return _BLANK_RUN_RE.sub(lambda m: "□" if ("_" in m.group(0) or len(m.group(0)) >= 2) else " ", line.strip())
 
 
 _STATEMENT_TITLE_RE = re.compile(r"^(?:사 ?실 ?)?(?:확 ?인 ?서|진 ?술 ?서|각 ?서|경 ?위 ?서)$")
@@ -2633,10 +2644,29 @@ def _form_section_rows(blocks, exhibits):
     return rows + list(seen.values())
 
 
+_APPLICANT_SIGN_RE = re.compile(r"^(?:위 ?)?(채 ?권 ?자|신 ?청 ?인|채 ?무 ?자|피 ?신 ?청 ?인)(?: |$)")
+
+
+def _form_author(doc: NormalizedDocument, exhibits, blocks):
+    """공용 _detect_author_party 결과를 먼저 쓰고, 정하지 못하면 끝 15블록의 신청 사건 서명 줄로만 정한다(새 검사 안에서만)."""
+    author_party, my_party_chars = _detect_author_party(doc, exhibits)
+    if author_party:
+        return author_party, my_party_chars
+    for b in reversed(blocks[-15:]):
+        for ln in reversed((b.text or "").splitlines()):
+            m = _APPLICANT_SIGN_RE.match(" ".join(ln.split()))
+            if m:
+                side = m.group(1).replace(" ", "")
+                if side in ("채권자", "신청인"):
+                    return "원고", {"갑", "소갑"}
+                return "피고", {"을", "소을"}
+    return author_party, my_party_chars
+
+
 def check_evidence_form_structure(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]] = ()) -> List[Finding]:
     out: List[Finding] = []
-    author_party, my_party_chars = _detect_author_party(doc, exhibits)
     blocks = [b for b in doc.body_blocks() if b.block_type != "running_head"]
+    author_party, my_party_chars = _form_author(doc, exhibits, blocks)
     rows = _form_section_rows(blocks, exhibits)
     full = "\n".join((b.text or "") for b in blocks)
     # G1 번역문 미첨부(법 277조, 규칙 106조 2항·109조 3호)
@@ -2714,8 +2744,17 @@ def _form_findings(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]) 
     """기존 4개 축 판정은 그대로 두고, 기존 축이 이미 낸 호증에는 새 구조 규칙을 내지 않는다(1호증 1건, 새 규칙이 양보)."""
     old = check_evidence_form_defects(doc, exhibits)
     taken = {(f.confidence_features or {}).get("exhibit") for f in old} - {None}
-    new = [f for f in check_evidence_form_structure(doc, exhibits)
-           if (f.confidence_features or {}).get("exhibit") not in taken]
+    structure = check_evidence_form_structure(doc, exhibits)
+    g4 = {(f.confidence_features or {}).get("exhibit") for f in structure
+          if (f.confidence_features or {}).get("defect_code") == "FORM_ELEMENT_ADMITTED"}
+    new = []
+    for f in structure:
+        ex = (f.confidence_features or {}).get("exhibit")
+        if ex in taken:
+            continue
+        if ex and (f.confidence_features or {}).get("defect_code") == "TRANSLATION_MISSING" and ex.split("의 ")[0] in g4:
+            continue
+        new.append(f)
     return old + new
 
 

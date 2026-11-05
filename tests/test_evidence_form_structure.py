@@ -358,6 +358,8 @@ class TestEviFormVariationsAndDedup(unittest.TestCase):
             E._FORM_SECTION_HEAD_RE,
             E._FORM_LIST_LINE_RE,
             E._CORE_STRIP_RE,
+            E._NAME_PAREN_RE,
+            E._APPLICANT_SIGN_RE,
         ]
         for s in adv_inputs:
             start = time.perf_counter()
@@ -369,6 +371,123 @@ class TestEviFormVariationsAndDedup(unittest.TestCase):
                 rx.search(norm)
             elapsed = time.perf_counter() - start
             self.assertLess(elapsed, 1.0, f"Slow regex on input prefix {s[:20]!r}: {elapsed:.3f}s")
+
+
+class TestEviFormD1ToD5Supplement(unittest.TestCase):
+    """D1~D5 보완 사항 각각에 대한 양성·대조 시험 (순수 창작 합성예)."""
+
+    def test_d1_parenthetical_abbreviation_positive_and_control(self):
+        # D1 양성: 본체 서증명이 영문이고 괄호 속에 국문 부연이 있는 경우 -> 번역문 미첨부 검출
+        pos = (
+            "소 장\n원고 김철수\n"
+            "입증방법\n1. 갑 제1호증 Non-Disclosure Agreement (비밀유지협약)\n"
+            "2024. 5. 1.\n원고 김철수 (인)"
+        )
+        self.assertEqual(len(_by_rule(_run_structure(pos), "EVI.TRANSLATION_MISSING")), 1)
+
+        # D1 대조: 국문 서증명 안의 반각·전각 괄호 속 영문 원어 약어 풀이 -> 외국 문서 오탐 제외
+        ctrl1 = (
+            "소 장\n원고 김철수\n"
+            "입증방법\n1. 갑 제1호증 MOU(Memorandum of Understanding) 체결 내역서\n"
+            "2. 갑 제2호증 CRM（Customer Relationship Management） 고객 응대 기록\n"
+            "2024. 5. 1.\n원고 김철수 (인)"
+        )
+        self.assertEqual(_by_rule(_run_structure(ctrl1), "EVI.TRANSLATION_MISSING"), [])
+
+    def test_d2_address_domain_email_positive_and_control(self):
+        # D2 양성: 도메인이 일부 포함되었더라도 나머지 본체가 영문 계약서 명칭인 경우 -> 번역문 미첨부 검출
+        pos = (
+            "소 장\n원고 김철수\n"
+            "입증방법\n1. 갑 제1호증 Cloud Hosting Service Level Agreement\n"
+            "2024. 5. 1.\n원고 김철수 (인)"
+        )
+        self.assertEqual(len(_by_rule(_run_structure(pos), "EVI.TRANSLATION_MISSING")), 1)
+
+        # D2 대조: 웹사이트 도메인이나 전자우편 주소가 포함된 국문 서증명 -> 외국 문서 오탐 제외
+        ctrl = (
+            "소 장\n원고 김철수\n"
+            "입증방법\n1. 갑 제1호증 portal.koreatrade-center.or.kr 공고문 캡처\n"
+            "2. 갑 제2호증 support-team@koreatrade-center.co.kr 발송 내역\n"
+            "2024. 5. 1.\n원고 김철수 (인)"
+        )
+        self.assertEqual(_by_rule(_run_structure(ctrl), "EVI.TRANSLATION_MISSING"), [])
+
+    def test_d3_applicant_sign_line_positive_and_control(self):
+        # D3 양성: 당사자 표시 없이 말미 서명 줄에만 '위 채권자 ○○○ (인)'이 있는 신청서에서 소갑 외국어 서증 제출 -> G1 검출
+        doc_pos = NormalizedDocument(
+            document_id="d3_pos", filename="d3_pos.pdf", mime_type="application/pdf", sha256="c" * 64
+        )
+        page_pos = Page(page_number=1, width=595.0, height=842.0)
+        for i, line in enumerate([
+            "가처분신청서",
+            "신 청 이 유",
+            "채무자는 해외 공급계약을 위반하였습니다(소갑 제1호증).",
+            "소 명 방 법",
+            "1. 소갑 제1호증 International Supply and License Contract",
+            "2024. 5. 1.",
+            "위 채권자 ○○○ (인)",
+        ]):
+            page_pos.blocks.append(Block(block_id=f"b{i}", page=1, text=line))
+        doc_pos.pages.append(page_pos)
+        res_pos = check_evidence_form_structure(doc_pos, exhibit_rows(doc_pos))
+        self.assertEqual(len(_by_rule(res_pos, "EVI.TRANSLATION_MISSING")), 1)
+
+        # D3 대조: 말미 서명 줄이 '위 채무자 ○○○ (인)'인 답변/이의서에서 소을 국문 서증 제출 -> 부호 불일치(G2) 및 번역문(G1) 미검출
+        doc_ctrl = NormalizedDocument(
+            document_id="d3_ctrl", filename="d3_ctrl.pdf", mime_type="application/pdf", sha256="d" * 64
+        )
+        page_ctrl = Page(page_number=1, width=595.0, height=842.0)
+        for i, line in enumerate([
+            "가처분이의신청서",
+            "이 의 이 유",
+            "채권자의 소갑 제1호증 주장은 부당합니다.",
+            "소 명 방 법",
+            "1. 소을 제1호증 대금정산 내역서",
+            "2024. 5. 10.",
+            "위 채무자 ○○○ (인)",
+        ]):
+            page_ctrl.blocks.append(Block(block_id=f"b{i}", page=1, text=line))
+        doc_ctrl.pages.append(page_ctrl)
+        res_ctrl = check_evidence_form_structure(doc_ctrl, exhibit_rows(doc_ctrl))
+        self.assertEqual(_by_rule(res_ctrl, "EVI.PARTY_MARK_MISMATCH"), [])
+        self.assertEqual(_by_rule(res_ctrl, "EVI.TRANSLATION_MISSING"), [])
+
+    def test_d4_same_exhibit_g4_suppresses_g1_positive_and_control(self):
+        # D4 양성(우선순위 작동): 같은 호증(갑 제1호증)에 G4(형식 요소 불능 자인)와 G1(번역문 미첨부)이 모두 해당할 때 _form_findings는 G4 1건만 반환
+        text_same = (
+            "소 장\n원고 김철수\n"
+            "갑 제1호증 Commercial Invoice and Packing List는 작성일자를 알아볼 수 없으나, 물품 공급 사실은 증명됩니다.\n"
+            "입증방법\n1. 갑 제1호증 Commercial Invoice and Packing List\n"
+            "2024. 5. 1.\n원고 김철수 (인)"
+        )
+        doc_same = _make_doc(text_same)
+        f_same = _form_findings(doc_same, exhibit_rows(doc_same))
+        self.assertEqual(len(_by_rule(f_same, "EVI.FORM_ELEMENT_ADMITTED")), 1)
+        self.assertEqual(len(_by_rule(f_same, "EVI.TRANSLATION_MISSING")), 0)
+
+        # D4 대조(서로 다른 호증): 갑 제1호증은 G4, 갑 제2호증은 G1일 때 각각 독립 검출
+        text_diff = (
+            "소 장\n원고 김철수\n"
+            "갑 제1호증 영수증은 서명을 확인할 수 없으나, 대금 지급 사실은 증명됩니다.\n"
+            "입증방법\n1. 갑 제1호증 영수증\n2. 갑 제2호증 Commercial Invoice and Packing List\n"
+            "2024. 5. 1.\n원고 김철수 (인)"
+        )
+        doc_diff = _make_doc(text_diff)
+        f_diff = _form_findings(doc_diff, exhibit_rows(doc_diff))
+        self.assertEqual(len(_by_rule(f_diff, "EVI.FORM_ELEMENT_ADMITTED")), 1)
+        self.assertEqual(len(_by_rule(f_diff, "EVI.TRANSLATION_MISSING")), 1)
+
+    def test_d5_mixed_blanks_and_partial_year_positive_and_control(self):
+        # D5 양성: 공백과 밑줄이 섞인 서명 칸('  ____  ') 및 앞 두 자리만 적힌 연도('20   .   .   .') -> G3 검출
+        pos1 = "진 술 서\n위와 같이 목격하였음을 진술합니다.\n20   년   월   일\n진술인 성명 :   ____   (서명)"
+        self.assertEqual(len(_by_rule(_run_structure(pos1), "EVI.SIGNATURE_DATE_BLANK")), 1)
+
+        pos2 = "확 인 서\n위 사실을 확인합니다.\n19   .   .   .\n확인자 : 정약용 (인)"
+        self.assertEqual(len(_by_rule(_run_structure(pos2), "EVI.SIGNATURE_DATE_BLANK")), 1)
+
+        # D5 대조: 한 칸 띄어쓰기로 정상 작성된 연월일 및 성명 -> G3 미검출
+        ctrl = "진 술 서\n위와 같이 진술합니다.\n2024 년 5 월 12 일\n진술인 성명 : 정약용 (서명)"
+        self.assertEqual(_by_rule(_run_structure(ctrl), "EVI.SIGNATURE_DATE_BLANK"), [])
 
 
 if __name__ == "__main__":
