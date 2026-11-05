@@ -965,7 +965,7 @@ J15 [CodeQL py/redos, 평가 측 지시 결함] 인용구·형식어 정규식�
 | TK-140~148 | 문서 처리·성능·화면 등 9건 | Steve 병합(11-03~04) |
 | TK-76 3주기 EVI-INCONS | A 산식(#214)·B 문서 간(#224) 병합 / 후속 S1·N1~N3 **#233 `b827a2f` 수용·Steve 병합 `90cc681`(11-05)** / C 발신 시각(메모 필요) | 진행 중 |
 | TK-76 3주기 EVI-OVR | #230 병합 `349a30b` | 완료(후속 미탐 4꼴은 다음 주기) |
-| TK-76 3주기 EVI-FORM·EVI-NUM·EVI-DATE·EVI-COPY 잔여, EVI-LOGIC 잔여 | 유형마다 설계 메모 → 구현(순서: FORM → NUM → DATE → COPY → LOGIC → INCONS C) | **EVI-FORM 메모 #234 Steve 병합 `00e668a`(11-06), 구현 #235 보완 1회(2-17-3절)**, 나머지 미착수 |
+| TK-76 3주기 EVI-FORM·EVI-NUM·EVI-DATE·EVI-COPY 잔여, EVI-LOGIC 잔여 | 유형마다 설계 메모 → 구현(순서: FORM → NUM → DATE → COPY → LOGIC → INCONS C) | **EVI-FORM 메모 #234 Steve 병합 `00e668a`, 구현 #235 `3446dda` 수용(11-06, 2-17-4절) — 병합 대기**, 다음 EVI-NUM(TK-73 조율), 나머지 미착수 |
 
 ```
 [평가 측 구현 지시 — TK-76 3주기 EVI-INCONS 후속 PR(S1·N1~N3), 기준 Steve 4323721, 11-05]
