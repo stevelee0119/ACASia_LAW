@@ -1,0 +1,203 @@
+diff --git a/packages/claim_engine/evidence_consistency.py b/packages/claim_engine/evidence_consistency.py
+index 1399b5d..53c59b9 100644
+--- a/packages/claim_engine/evidence_consistency.py
++++ b/packages/claim_engine/evidence_consistency.py
+@@ -2540,12 +2540,22 @@ _LATIN_CH = re.compile(r"[A-Za-z]")
+ _CJK_CH = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]")
+ _TRANSLATION_RE = re.compile(r"번\s{0,3}역")
+ _TRAIL_DATE_RE = re.compile(r" ?(?:\d{4}|20○○) ?\.[\s\d○.]*$")
++_NAME_PAREN_RE = re.compile(r"[(（][^()（）]{0,200}[)）]")
++
++
++def _is_address_token(tok: str) -> bool:
++    """주소·도메인·전자우편 표기(점·@로 이은 영숫자 덩어리, 한글 없음)는 문서의 언어가 아니다. 정규식 없이 본다(ReDoS 방지)."""
++    core = tok.strip(".,;:")
++    return ("." in core or "@" in core) and any(c.isascii() and c.isalpha() for c in core) and not _HANGUL_CH.search(core)
+ 
+ 
+ def _foreign_script_name(name: str) -> bool:
+     """서증명이 국어 아닌 문자로 되어 있는가(규칙 106조 2항). 한글 글자 수와 외국 문자 수만 본다."""
+     norm = " ".join((name or "").split())
+     norm = _TRAIL_DATE_RE.sub("", norm)
++    # 괄호 속 부연(약어 풀이·발행처 등)은 서증명 본체가 아니므로 비율에서 뺀다. 괄호 밖이 비면 원래 이름으로 본다.
++    outside = " ".join(t for t in _NAME_PAREN_RE.sub(" ", norm).split() if not _is_address_token(t))
++    norm = outside or norm
+     h = len(_HANGUL_CH.findall(norm))
+     lat = len(_LATIN_CH.findall(norm))
+     cjk = len(_CJK_CH.findall(norm))
+@@ -2565,16 +2575,17 @@ def _foreign_script_name(name: str) -> bool:
+ 
+ 
+ # 빈칸(밑줄 묶음·공백 두 칸 이상)을 먼저 표지 하나로 접고(선형), 접힌 줄을 단일 수량자 정규식으로 본다(ReDoS 방지)
+-_BLANK_RUN_RE = re.compile(r"_+|\s{2,}")
++_BLANK_RUN_RE = re.compile(r"[_\s]+")
+ _SIGN_BLANK_LINE_RE = re.compile(
+     r"(?:성 ?명|확 ?인 ?자|진 ?술 ?인|작 ?성 ?자|서 ?명 ?인|명 ?의 ?인)(?: ?성 ?명)? ?[:：]? ?□? ?"
+     r"\( ?(?:서 ?명|인|날 ?인|서 ?명 ?(?:또는|및) ?날 ?인|기 ?명 ?날 ?인) ?\) ?$"
+ )
+-_DATE_BLANK_LINE_RE = re.compile(r"^ ?(?:\d{4}|20○○) ?년? ?\.? ?□ ?\.? ?월? ?□ ?\.? ?일? ?\.? ?$")
++_DATE_BLANK_LINE_RE = re.compile(r"^ ?(?:\d{4}|20○○|(?:19|20) ?□) ?년? ?\.? ?□ ?\.? ?월? ?□ ?\.? ?일? ?\.? ?$")
+ 
+ 
+ def _fold_blanks(line: str) -> str:
+-    return _BLANK_RUN_RE.sub("□", line.strip())
++    """밑줄이 섞이거나 두 칸 이상인 빈칸 덩어리(연속된 것 전체)를 '□' 하나로 접는다. 한 칸 띄어쓰기는 그대로 둔다."""
++    return _BLANK_RUN_RE.sub(lambda m: "□" if ("_" in m.group(0) or len(m.group(0)) >= 2) else " ", line.strip())
+ 
+ 
+ _STATEMENT_TITLE_RE = re.compile(r"^(?:사 ?실 ?)?(?:확 ?인 ?서|진 ?술 ?서|각 ?서|경 ?위 ?서)$")
+@@ -2633,10 +2644,29 @@ def _form_section_rows(blocks, exhibits):
+     return rows + list(seen.values())
+ 
+ 
++_APPLICANT_SIGN_RE = re.compile(r"^(?:위 ?)?(채 ?권 ?자|신 ?청 ?인|채 ?무 ?자|피 ?신 ?청 ?인)(?: |$)")
++
++
++def _form_author(doc: NormalizedDocument, exhibits, blocks):
++    """공용 _detect_author_party 결과를 먼저 쓰고, 정하지 못하면 끝 15블록의 신청 사건 서명 줄로만 정한다(새 검사 안에서만)."""
++    author_party, my_party_chars = _detect_author_party(doc, exhibits)
++    if author_party:
++        return author_party, my_party_chars
++    for b in reversed(blocks[-15:]):
++        for ln in reversed((b.text or "").splitlines()):
++            m = _APPLICANT_SIGN_RE.match(" ".join(ln.split()))
++            if m:
++                side = m.group(1).replace(" ", "")
++                if side in ("채권자", "신청인"):
++                    return "원고", {"갑", "소갑"}
++                return "피고", {"을", "소을"}
++    return author_party, my_party_chars
++
++
+ def check_evidence_form_structure(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]] = ()) -> List[Finding]:
+     out: List[Finding] = []
+-    author_party, my_party_chars = _detect_author_party(doc, exhibits)
+     blocks = [b for b in doc.body_blocks() if b.block_type != "running_head"]
++    author_party, my_party_chars = _form_author(doc, exhibits, blocks)
+     rows = _form_section_rows(blocks, exhibits)
+     full = "\n".join((b.text or "") for b in blocks)
+     # G1 번역문 미첨부(법 277조, 규칙 106조 2항·109조 3호)
+@@ -2714,8 +2744,17 @@ def _form_findings(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]])
+     """기존 4개 축 판정은 그대로 두고, 기존 축이 이미 낸 호증에는 새 구조 규칙을 내지 않는다(1호증 1건, 새 규칙이 양보)."""
+     old = check_evidence_form_defects(doc, exhibits)
+     taken = {(f.confidence_features or {}).get("exhibit") for f in old} - {None}
+-    new = [f for f in check_evidence_form_structure(doc, exhibits)
+-           if (f.confidence_features or {}).get("exhibit") not in taken]
++    structure = check_evidence_form_structure(doc, exhibits)
++    g4 = {(f.confidence_features or {}).get("exhibit") for f in structure
++          if (f.confidence_features or {}).get("defect_code") == "FORM_ELEMENT_ADMITTED"}
++    new = []
++    for f in structure:
++        ex = (f.confidence_features or {}).get("exhibit")
++        if ex in taken:
++            continue
++        if ex and (f.confidence_features or {}).get("defect_code") == "TRANSLATION_MISSING" and ex.split("의 ")[0] in g4:
++            continue
++        new.append(f)
+     return old + new
+ 
+ 
+diff --git a/tests/test_tk76_form_eval_supplement.py b/tests/test_tk76_form_eval_supplement.py
+new file mode 100644
+index 0000000..9789dcb
+--- /dev/null
++++ b/tests/test_tk76_form_eval_supplement.py
+@@ -0,0 +1,98 @@
++# -*- coding: utf-8 -*-
++"""TK-76 3주기 EVI-FORM #235 평가 측 보완 시험(D1~D5). 평가 측 비공개 탐침과 다른 낱말로 새로 지은 합성예다."""
++from __future__ import annotations
++
++import time
++import unittest
++
++from packages.claim_engine.evidence_consistency import _fold_blanks, _foreign_script_name, check_document
++from packages.common.enums import FindingType
++from packages.common.schemas import Block, NormalizedDocument, Page
++
++
++def _doc(lines):
++    doc = NormalizedDocument(document_id="d", filename="d.pdf", mime_type="application/pdf", sha256="b" * 64)
++    page = Page(page_number=1, width=595.0, height=842.0)
++    for i, t in enumerate(lines):
++        page.blocks.append(Block(block_id=f"b{i}", page=1, text=t, block_type="paragraph", source_layer="visible_text"))
++    doc.pages.append(page)
++    return doc
++
++
++def _codes(lines):
++    return [(f.confidence_features or {}).get("defect_code") for f in check_document(_doc(lines))
++            if f.type == FindingType.EVIDENCE_FORM_DEFECT]
++
++
++def _brief(body, rows, sign="원고 소송대리인 변호사 ○○○"):
++    return ["준 비 서 면", "원고 하○○", "피고 주식회사 늘봄"] + body + ["입 증 방 법"] + rows + ["20○○. ○. ○.", sign]
++
++
++class TestD1ParenAbbreviation(unittest.TestCase):
++    """괄호 속 약어 풀이는 서증명 본체가 아니다."""
++
++    def test_korean_name_with_english_expansion_is_not_foreign(self):
++        self.assertFalse(_foreign_script_name("ERP(Enterprise Resource Planning) 매출 조회 화면"))
++        self.assertNotIn("TRANSLATION_MISSING", _codes(_brief(["매출은 조회 화면으로 확인됩니다(갑 제1호증)."],
++                                                              ["1. 갑 제1호증 ERP(Enterprise Resource Planning) 매출 조회 화면"])))
++
++    def test_foreign_name_with_parenthetical_note_still_foreign(self):
++        self.assertTrue(_foreign_script_name("Bill of Lading (선하증권)"))
++
++
++class TestD2AddressToken(unittest.TestCase):
++    def test_domain_and_email_are_not_language(self):
++        self.assertFalse(_foreign_script_name("www.neulbom-shop.co.kr 주문 내역 출력물"))
++        self.assertFalse(_foreign_script_name("order@neulbom-shop.com 수신 메일"))
++
++    def test_address_check_is_linear(self):
++        start = time.time()
++        _foreign_script_name("a." * 20000 + "!")
++        _foreign_script_name("a" * 40000 + ".")
++        self.assertLess(time.time() - start, 1.0)
++
++
++class TestD3ApplicantSignLine(unittest.TestCase):
++    """공용 판별이 작성 측을 못 정하면 신청 사건 서명 줄(채권자·신청인 / 채무자·피신청인)로 정한다."""
++
++    def test_creditor_sign_line_makes_sogap_own(self):
++        lines = ["부동산가압류 신청서", "채권자 노○○", "채무자 주식회사 늘봄", "신 청 이 유",
++                 "채무자는 싱가포르 법인과 거래하였습니다(소갑 제1호증).", "소 명 방 법",
++                 "1. 소갑 제1호증 Master Purchase Agreement and Schedules", "20○○. ○. ○.", "채권자 노○○ (인)"]
++        self.assertIn("TRANSLATION_MISSING", _codes(lines))
++
++    def test_debtor_sign_line_does_not_flag_creditor_marks_as_own(self):
++        lines = ["이의신청서", "채권자 노○○", "채무자 주식회사 늘봄", "이 의 이 유",
++                 "채권자가 낸 소갑 제1호증은 사실과 다릅니다.", "소 명 방 법",
++                 "1. 소을 제1호증 Payment Confirmation from Overseas Bank", "20○○. ○. ○.", "채무자 주식회사 늘봄 대표이사 ○○○"]
++        codes = _codes(lines)
++        self.assertNotIn("PARTY_MARK_MISMATCH", codes)
++
++
++class TestD4OneFindingPerExhibit(unittest.TestCase):
++    def test_g4_wins_over_g1_on_same_exhibit(self):
++        lines = _brief(["갑 제2호증 Delivery Note and Receipt는 받은 사람의 서명을 확인할 수 없으나, 인도 사실이 증명됩니다."],
++                       ["1. 갑 제2호증 Delivery Note and Receipt"])
++        codes = _codes(lines)
++        self.assertIn("FORM_ELEMENT_ADMITTED", codes)
++        self.assertNotIn("TRANSLATION_MISSING", codes)
++
++
++class TestD5FoldConsecutiveBlanks(unittest.TestCase):
++    def test_spaces_and_underscores_fold_to_one_mark(self):
++        self.assertEqual(_fold_blanks("작성자 :   ____   (인)"), "작성자 :□(인)")
++        self.assertEqual(_fold_blanks("20  년   월   일"), "20□년□월□일")
++
++    def test_mixed_blank_sign_line_and_partial_year(self):
++        lines = ["경 위 서", "본인은 위 매장에서 근무하며 사고를 목격하였습니다.", "위 내용은 사실입니다.",
++                 "20  년   월   일", "작성자 :   ____   (인)"]
++        self.assertIn("SIGNATURE_DATE_BLANK", _codes(lines))
++
++    def test_fold_is_linear(self):
++        start = time.time()
++        _fold_blanks("성명 :" + " _" * 20000 + "x")
++        self.assertLess(time.time() - start, 1.0)
++
++
++if __name__ == "__main__":
++    unittest.main()
