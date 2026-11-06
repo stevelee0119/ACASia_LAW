@@ -369,6 +369,49 @@ class TestTK139BudgetJ11(unittest.TestCase):
         adapter.resolve_statute.assert_not_called()
 
 
+class TestTK139ParenJ14(unittest.TestCase):
+    def test_j14_parenthetical_remark_does_not_pull_to_shorter_sibling_row(self):
+        """괄호 속 부연('(…을 포함한다)') 때문에 더 짧은 다른 행('시설기준을 위반한 경우')에 붙지 않는다."""
+        cells = [
+            ["Ⅱ. 개별기준 1. 갑종접객업 영 제21조제8호의 갑종접객업을 말한다.", "", "", "", ""],
+            ["위반사항", "근거 법령", "행정처분기준", "", ""],
+            ["", "", "1차 위반", "2차 위반", "3차 위반"],
+            ["사. 급수시설기준을 위반한 경우(수질검사결과 부적합 판정을 받은 경우를 포함한다)", "법 제1조", "시설개수명령", "영업정지 1개월", "영업정지 3개월"],
+            ["1) 시설기준을 위반한 경우", "법 제2조", "시설개수명령", "영업정지 15일", "영업정지 1개월"],
+        ]
+        table = {"cells": cells, "row_count": len(cells), "column_count": 5,
+                 "merges": [{"row": 0, "col": 0, "row_span": 1, "col_span": 5}, {"row": 1, "col": 2, "row_span": 1, "col_span": 3},
+                            {"row": 1, "col": 0, "row_span": 2, "col_span": 1}, {"row": 1, "col": 1, "row_span": 2, "col_span": 1}],
+                 "covered": [[0, 1], [0, 2], [0, 3], [0, 4], [1, 3], [1, 4], [2, 0], [2, 1]]}
+        with patch("packages.document_engine.hwp_parser._extract_hwp_table_structures", return_value=([table], [], None)):
+            res = verify_disposition_criteria(
+                "원고는 갑종접객업 영업자이다. 피고는 원고가 급수시설기준을 위반하였다는 이유로 3차 위반으로 영업정지 2개월 처분을 하였다.",
+                b"HWP", case_date="2026-10-01")
+        self.assertEqual(res["matched_row"]["row_idx"], 3, res["status"])
+        self.assertEqual(res["comparison_result"], "DISCREPANCY_DETECTED")
+
+
+class TestTK139RedosJ15(unittest.TestCase):
+    def test_j15_normalizers_linear_on_adversarial_input(self):
+        """CodeQL py/redos(인용구 정규식)·형식어 정규식의 긴 반복 입력에서 처리 시간이 입력 길이에 비례한다."""
+        import time
+        from packages.legal_engine import disposition_criteria as D
+        inputs = ["제1조" + " ," * 20000 + "x", "제1조" + " 및 제2조" * 20000 + " 가",
+                  " " * 20000 + "x", "(" * 20000 + "가", "가" * 20000 + "법 제1조"]
+        for text in inputs:
+            start = time.perf_counter()
+            D._strip_cite(text)
+            D._row_core(text)
+            D._strip_tail(text)
+            self.assertLess(time.perf_counter() - start, 2.0)
+
+    def test_j15_cite_prefix_still_removed(self):
+        from packages.legal_engine import disposition_criteria as D
+        self.assertEqual(D._strip_cite("법 제49조제1항 단서에 따른 갑을 등록하지 아니한 경우"), "갑을 등록하지 아니한 경우")
+        self.assertEqual(D._strip_cite("가나법 제3조 및 제4조에 따른 을 위반"), "을 위반")
+        self.assertEqual(D._strip_cite("영업자가 아닌 자에 따른 처리"), "영업자가 아닌 자에 따른 처리")
+
+
 class TestTK139ReportRoundTrip(unittest.TestCase):
     def test_j10_report_line_after_json_round_trip(self):
         import json

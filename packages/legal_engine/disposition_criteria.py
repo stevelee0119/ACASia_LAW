@@ -76,23 +76,32 @@ def _reason_clause(sentence: str, raw_disposition: str) -> str:
     return _strip_tail(re.sub(r"(?:하였|했|였|하|았|었)?$", "", span.strip()).strip())
 
 
-_TAIL_RE = re.compile(r"\s*(?:하는\s*)?(?:행위를\s*)?(?:한|하는|된)?\s*(?:것|경우)?(?:로서)?$")
+_TAIL_RE = re.compile(r" ?(?:하는 ?)?(?:행위를 ?)?(?:한|하는|된)? ?(?:것|경우)?(?:로서)?$")  # 공백을 한 칸으로 줄인 뒤 적용(J15: 인접 공백 반복 제거)
 
 
-_CITE_PREFIX_RE = re.compile(
-    r"^(?:「[^」]+」\s*|[가-힣]*법(?:\s*시행령|\s*시행규칙)?\s*|영\s*|규칙\s*)?제\d+조(?:의\d+)?(?:제\d+항)?(?:제\d+호)?(?:[가-하]목)?"
-    r"(?:\s*(?:및|또는|ㆍ|·|,)\s*(?:제\d+조(?:의\d+)?)?(?:제?\d+[항호])?(?:[가-하]목)?)*(?:\s*(?:단서|본문|전단|후단))?\s*(?:에\s*따른|에\s*의한|에\s*규정된)\s*")
+# 조문 인용구 판별(평가 측 보완 J13, CodeQL py/redos 대응 J15): 중첩 반복 없는 단일 토큰 정규식으로
+# '…에 따른' 앞부분이 인용 토큰만으로 이루어졌는지 지워 보고 확인한다(정규식 역추적이 입력 길이에 비례).
+_CITE_END_RE = re.compile(r"에 ?(?:따른|의한|규정된)")
+_CITE_TOKEN_RE = re.compile(
+    r"「[^」]{1,60}」|[가-힣]{0,20}법|시행령|시행규칙|영|규칙|제\d{1,4}조(?:의\d{1,3})?|제?\d{1,3}[항호]|[가-하]목"
+    r"|단서|본문|전단|후단|및|또는|[ㆍ·, ]")
+_PAREN_RE = re.compile(r"\([^()]{0,200}\)")
 
 
 def _strip_cite(text: str) -> str:
-    """위반 서술 앞의 조문 인용구('법 제N조제M항에 따른')를 뗀다(양쪽 같은 규칙, 평가 측 보완 J13)."""
-    out = _CITE_PREFIX_RE.sub("", text.strip()).strip()
+    """위반 서술 앞의 조문 인용구('법 제N조제M항에 따른')와 괄호 속 부연('(…을 포함한다)')을 뗀다(양쪽 같은 규칙, 평가 측 보완 J13·J14·J15)."""
+    out = " ".join(_PAREN_RE.sub("", text).split())
+    m = _CITE_END_RE.search(out, 0, 120)
+    if m:
+        head = out[:m.start()]
+        if "제" in head and re.search(r"제\d", head) and not _CITE_TOKEN_RE.sub("", head):
+            out = out[m.end():].strip()
     return out or text
 
 
 def _strip_tail(text: str) -> str:
     """위반 서술 끝의 형식어('…하는 행위를 한 경우'·'…한 것')를 뗀다(양쪽 같은 규칙, 평가 측 보완 J5)."""
-    out = _TAIL_RE.sub("", text).strip()
+    out = _TAIL_RE.sub("", " ".join(text.split())).strip()
     return out or text
 
 
