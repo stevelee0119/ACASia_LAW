@@ -2534,6 +2534,230 @@ def check_evidence_form_defects(
     return out
 
 
+# --- TK-76 3주기 EVI-FORM 구조 규칙(평가 측 시안 + M3·M6·C1·C2) -------------------
+_HANGUL_CH = re.compile(r"[가-힣]")
+_LATIN_CH = re.compile(r"[A-Za-z]")
+_CJK_CH = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]")
+_TRANSLATION_RE = re.compile(r"번\s{0,3}역")
+_TRAIL_DATE_RE = re.compile(r" ?(?:\d{4}|20○○) ?\.[\s\d○.]*$")
+_NAME_PAREN_RE = re.compile(r"[(（][^()（）]{0,200}[)）]")
+
+
+def _is_address_token(tok: str) -> bool:
+    """주소·도메인·전자우편 표기(점·@로 이은 영숫자 덩어리, 한글 없음)는 문서의 언어가 아니다. 정규식 없이 본다(ReDoS 방지)."""
+    core = tok.strip(".,;:")
+    return ("." in core or "@" in core) and any(c.isascii() and c.isalpha() for c in core) and not _HANGUL_CH.search(core)
+
+
+def _foreign_script_name(name: str) -> bool:
+    """서증명이 국어 아닌 문자로 되어 있는가(규칙 106조 2항). 한글 글자 수와 외국 문자 수만 본다."""
+    norm = " ".join((name or "").split())
+    norm = _TRAIL_DATE_RE.sub("", norm)
+    # 괄호 속 부연(약어 풀이·발행처 등)은 서증명 본체가 아니므로 비율에서 뺀다. 괄호 밖이 비면 원래 이름으로 본다.
+    outside = " ".join(t for t in _NAME_PAREN_RE.sub(" ", norm).split() if not _is_address_token(t))
+    norm = outside or norm
+    h = len(_HANGUL_CH.findall(norm))
+    lat = len(_LATIN_CH.findall(norm))
+    cjk = len(_CJK_CH.findall(norm))
+    if lat >= 8 and lat > 2 * h:
+        return True
+    # 한자만으로 된 이름은 국한문 국내 문서일 수 있다: 가나가 있거나 KS X 1001(EUC-KR) 한자 집합 밖 글자가 있을 때만 외국 문자로 본다.
+    if h == 0 and cjk >= 3:
+        for ch in norm:
+            if "\u3040" <= ch <= "\u30ff":
+                return True
+            if "\u4e00" <= ch <= "\u9fff":
+                try:
+                    ch.encode("euc-kr")
+                except UnicodeEncodeError:
+                    return True
+    return False
+
+
+# 빈칸(밑줄 묶음·공백 두 칸 이상)을 먼저 표지 하나로 접고(선형), 접힌 줄을 단일 수량자 정규식으로 본다(ReDoS 방지)
+_BLANK_RUN_RE = re.compile(r"[_\s]+")
+_SIGN_BLANK_LINE_RE = re.compile(
+    r"(?:성 ?명|확 ?인 ?자|진 ?술 ?인|작 ?성 ?자|서 ?명 ?인|명 ?의 ?인)(?: ?성 ?명)? ?[:：]? ?□? ?"
+    r"\( ?(?:서 ?명|인|날 ?인|서 ?명 ?(?:또는|및) ?날 ?인|기 ?명 ?날 ?인) ?\) ?$"
+)
+_DATE_BLANK_LINE_RE = re.compile(r"^ ?(?:\d{4}|20○○|(?:19|20) ?□) ?년? ?\.? ?□ ?\.? ?월? ?□ ?\.? ?일? ?\.? ?$")
+
+
+def _fold_blanks(line: str) -> str:
+    """밑줄이 섞이거나 두 칸 이상인 빈칸 덩어리(연속된 것 전체)를 '□' 하나로 접는다. 한 칸 띄어쓰기는 그대로 둔다."""
+    return _BLANK_RUN_RE.sub(lambda m: "□" if ("_" in m.group(0) or len(m.group(0)) >= 2) else " ", line.strip())
+
+
+_STATEMENT_TITLE_RE = re.compile(r"^(?:사 ?실 ?)?(?:확 ?인 ?서|진 ?술 ?서|각 ?서|경 ?위 ?서)$")
+
+# 서증 형식 요소(법 355조·358조, 규칙 105조 1항·3항)와 그 요소의 부재·불능 자인
+# ㄹ 받침 음절(관형형 '-ㄹ' 꼴: 알·할·읽을·찾을 …) — 유니코드 조합 규칙으로 만든다(낱말 목록 아님)
+_RIEUL_FINAL = "".join(chr(c) for c in range(0xAC00, 0xD7A4) if (c - 0xAC00) % 28 == 8)
+_FORM_ELEMENT_RE = re.compile(
+    r"(?:작성자|작성인|명의인|서명자|확인자|진술인|누가 ?(?:작성|썼|만들)|(?:작성|확인|진술|서명|날인)(?:한|하는|할) ?사람(?:의)? ?(?:이름|성명)?|작성일|날짜|일자|언제 ?(?:작성|썼|만들)|"
+    r"서명|날인|도장|인영|무인|지장|원본|원래 ?(?:문서|서류)|정본|실물)"
+)
+# 판독성 요소: 기재 대상 명사는 지각 동사(판독·식별·해독·알아보·읽)와 함께일 때만 형식 요소로 본다
+_LEGIBILITY_RE = re.compile(r"(?:글씨|글자|숫자|금액|기재 ?내용)[^,.]{0,15}?(?:판독|식별|해독|알아보|읽)")
+_INABILITY_RE = re.compile(
+    r"(?:[" + _RIEUL_FINAL + r"] ?수 ?(?:가 |는 )?없"
+    r"|[가-힣]기 ?(?:가 |는 )?(?:어렵|어려|힘들|힘드|곤란)"
+    r"|(?:판독|식별|확인|해독)(?:이|은|도)? ?(?:곤란|불가|어렵|어려|힘들|힘드)"
+    r"|남아 ?있지 ?(?:않|아니)|(?:가지고|갖고|보관하고|소지하고) ?있지 ?(?:않|못|아니)|잃어버|분실|없어(?:졌|져|지)|사라(?:졌|져)|(?:되어|적혀|찍혀) ?있지 ?(?:않|아니)|"
+    r"(?:이|가) ?없(?:고|으며|으나|지만|는데|어))"
+)
+_CONCESSIVE_RE = re.compile(r"(?:[가-힣]나|지만|더라도|는데도|음에도)[\s,]")
+_PROOF_CLAIM_RE = re.compile(r"(?:증명|입증|보여 ?(?:줍|준|주)|분명|명백|확인됩니다|드러납|알 ?수 ?있습)")
+
+
+_FORM_SECTION_HEAD_RE = re.compile(r"^(?:입 ?증|증 ?거|소 ?명) ?방 ?법$|^증 ?거 ?목 ?록$|^첨 ?부 ?서 ?류$")
+_FORM_LIST_LINE_RE = re.compile(r"^(?:\d{1,2} ?[.)] ?)?((?:갑|을|병|소갑|소을) ?제? ?(\d+) ?호증)")
+_CORE_STRIP_RE = re.compile(r"\([^()]{0,200}\)|사본|원본|출력본|출력물|캡처|사진|\s|(?:19|20)\d{2}[^\n]*$|20○○[^\n]*$")
+
+
+def _form_section_rows(blocks, exhibits):
+    """입증방법·증거방법·증거목록 머리 뒤 목록 줄의 호증 행만 고른다(공용 exhibit_rows 결과는 바꾸지 않고 복사본에서 거른다)."""
+    rows = [r for r in exhibits if r.get("in_section")]
+    lines = [ln for b in blocks for ln in (b.text or "").splitlines()]
+    head = max((i for i, ln in enumerate(lines) if _FORM_SECTION_HEAD_RE.match(" ".join(ln.split()))), default=None)
+    if head is None:
+        return rows
+    keys = set()
+    so_rows = []
+    for ln in lines[head + 1:]:
+        norm_ln = " ".join(ln.split())
+        m = _FORM_LIST_LINE_RE.match(norm_ln)
+        if m:
+            p_str = re.sub(r"\s|제|\d|호증", "", m.group(1))
+            num = int(m.group(2))
+            keys.add((p_str, num))
+            if p_str in ("소갑", "소을"):
+                so_rows.append({"party": p_str, "number": num, "name": norm_ln[m.end():].strip(), "branches": [], "in_section": True, "from_lines": True})
+    extra = [r for r in exhibits if not r.get("in_section") and (r.get("party"), r.get("number")) in keys
+             and r.get("from_lines") and not any(x is not r and x.get("party") == r.get("party") and x.get("number") == r.get("number") and x.get("in_section") for x in exhibits)]
+    # 본문 서술에서 뽑힌 같은 번호 행은 빼고, 목록 줄에서 온 마지막 행만 남긴다
+    seen = {}
+    for r in extra:
+        seen[(r.get("party"), r.get("number"), tuple(r.get("branches") or []))] = r
+    for r in so_rows:
+        seen[(r["party"], r["number"], ())] = r
+    return rows + list(seen.values())
+
+
+_APPLICANT_SIGN_RE = re.compile(r"^(?:위 ?)?(채 ?권 ?자|신 ?청 ?인|채 ?무 ?자|피 ?신 ?청 ?인)(?: |$)")
+
+
+def _form_author(doc: NormalizedDocument, exhibits, blocks):
+    """공용 _detect_author_party 결과를 먼저 쓰고, 정하지 못하면 끝 15블록의 신청 사건 서명 줄로만 정한다(새 검사 안에서만)."""
+    author_party, my_party_chars = _detect_author_party(doc, exhibits)
+    if author_party:
+        return author_party, my_party_chars
+    for b in reversed(blocks[-15:]):
+        for ln in reversed((b.text or "").splitlines()):
+            m = _APPLICANT_SIGN_RE.match(" ".join(ln.split()))
+            if m:
+                side = m.group(1).replace(" ", "")
+                if side in ("채권자", "신청인"):
+                    return "원고", {"갑", "소갑"}
+                return "피고", {"을", "소을"}
+    return author_party, my_party_chars
+
+
+def check_evidence_form_structure(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]] = ()) -> List[Finding]:
+    out: List[Finding] = []
+    blocks = [b for b in doc.body_blocks() if b.block_type != "running_head"]
+    author_party, my_party_chars = _form_author(doc, exhibits, blocks)
+    rows = _form_section_rows(blocks, exhibits)
+    full = "\n".join((b.text or "") for b in blocks)
+    # G1 번역문 미첨부(법 277조, 규칙 106조 2항·109조 3호)
+    for r in rows:
+        if r.get("party") not in my_party_chars:
+            continue
+        name = r.get("name") or ""
+        if not _foreign_script_name(name) or _TRANSLATION_RE.search(name):
+            continue
+        siblings = [x for x in exhibits if x.get("party") == r.get("party") and x.get("number") == r.get("number") and x is not r]
+        if any(_TRANSLATION_RE.search(x.get("name") or "") for x in siblings) or _TRANSLATION_RE.search(full):
+            continue
+        lbl = f"{r.get('party')} 제{r.get('number')}호증" + (f"의 {r['branches'][0]}" if r.get("branches") else "")
+        out.append(_finding(doc, FindingType.EVIDENCE_FORM_DEFECT, EvidenceGrade.B, Severity.MEDIUM,
+                            f"서증 형식 결함: 외국어 문서 번역문 미첨부 — {lbl}",
+                            "국어 아닌 문자로 된 서증에 번역문이 붙어 있지 않다(민사소송법 제277조, 민사소송규칙 제106조 제2항).",
+                            f"{lbl} {name}"[:250], status=VerificationStatus.SUSPICIOUS,
+                            features={"rule_id": "EVI.TRANSLATION_MISSING", "defect_code": "TRANSLATION_MISSING", "exhibit": lbl}))
+    # G2 자기 입증방법의 부호 불일치(규칙 107조 2항)
+    if author_party in ("원고", "피고") and rows:
+        parties = {r.get("party") for r in rows}
+        other = {"을", "소을"} if author_party == "원고" else {"갑", "소갑"}
+        if parties and parties <= other:
+            out.append(_finding(doc, FindingType.EVIDENCE_FORM_DEFECT, EvidenceGrade.B, Severity.MEDIUM,
+                                f"서증 형식 결함: {author_party} 서면 입증방법에 상대방 부호",
+                                f"{author_party}가 낸 서면의 입증방법 서증이 모두 상대방 부호로 적혀 있다(민사소송규칙 제107조 제2항).",
+                                "; ".join(f"{r.get('party')} 제{r.get('number')}호증" for r in rows)[:250],
+                                status=VerificationStatus.SUSPICIOUS,
+                                features={"rule_id": "EVI.PARTY_MARK_MISMATCH", "defect_code": "PARTY_MARK_MISMATCH"}))
+    # G3 진술·확인 문서의 서명·작성일 공란(법 358조, 규칙 105조 1항)
+    lines = [ln for b in blocks for ln in (b.text or "").splitlines()]
+    if any(_STATEMENT_TITLE_RE.match(" ".join(ln.split())) for ln in lines[:5]):
+        blank = [ln.strip() for ln in lines if _SIGN_BLANK_LINE_RE.search(_fold_blanks(ln)) or _DATE_BLANK_LINE_RE.match(_fold_blanks(ln))]
+        if blank:
+            out.append(_finding(doc, FindingType.EVIDENCE_FORM_DEFECT, EvidenceGrade.B, Severity.MEDIUM,
+                                "서증 형식 결함: 진술·확인 문서의 작성자 서명 또는 작성일 공란",
+                                "작성 명의인의 서명·날인 또는 작성일 칸이 비어 있어 진정성립 추정(민사소송법 제358조)을 받지 못한다.",
+                                " / ".join(blank)[:250], status=VerificationStatus.SUSPICIOUS,
+                                features={"rule_id": "EVI.SIGNATURE_DATE_BLANK", "defect_code": "SIGNATURE_DATE_BLANK"}))
+    # G4 형식 요소 부재·불능 자인 + 증명 주장(양보 구조)
+    text = build_reading_text(doc, blocks).text
+    for start, end in sentence_bounds(text):
+        sent = text[start:end]
+        refs = parse_exhibits(sent)
+        if not refs or not any(x.get("party") in my_party_chars for x in refs):
+            continue
+        if _EVI_FORM_OPPONENT_CHALLENGE_RE.search(sent):
+            continue
+        c = _CONCESSIVE_RE.search(sent)
+        if not c:
+            continue
+        pre, post = sent[:c.end()], sent[c.end():]
+        pre_norm = " ".join(pre.split())
+        post_norm = " ".join(post.split())
+        mine = [x for x in refs if x.get("party") in my_party_chars]
+        owned = any(EXHIBIT_LABEL_RE.search(pre) and x.get("party") in pre for x in mine)
+        if not owned:
+            for x in mine:
+                row = next((r for r in exhibits if r.get("party") == x.get("party") and r.get("number") == x.get("number") and r.get("in_section")), None)
+                core = _CORE_STRIP_RE.sub("", (row or {}).get("name") or "")
+                if len(core) >= 2 and core in re.sub(r"\s", "", pre):
+                    owned = True
+        if owned and (_FORM_ELEMENT_RE.search(pre_norm) or _LEGIBILITY_RE.search(pre_norm)) and _INABILITY_RE.search(pre_norm) and _PROOF_CLAIM_RE.search(post_norm):
+            lbl = next(x for x in refs if x.get("party") in my_party_chars)
+            l = f"{lbl.get('party')} 제{lbl.get('number')}호증"
+            out.append(_finding(doc, FindingType.EVIDENCE_FORM_DEFECT, EvidenceGrade.B, Severity.MEDIUM,
+                                f"서증 형식 결함: 형식 요소 부재를 자인하며 증명력 주장 — {l}",
+                                f"{l}의 작성 명의·작성일·원본·판독 가능성 가운데 하나가 없거나 불능임을 스스로 밝히면서 그 서증으로 증명된다고 한다.",
+                                sent.strip()[:250], status=VerificationStatus.SUSPICIOUS,
+                                features={"rule_id": "EVI.FORM_ELEMENT_ADMITTED", "defect_code": "FORM_ELEMENT_ADMITTED", "exhibit": l}))
+    return out
+
+
+def _form_findings(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]) -> List[Finding]:
+    """기존 4개 축 판정은 그대로 두고, 기존 축이 이미 낸 호증에는 새 구조 규칙을 내지 않는다(1호증 1건, 새 규칙이 양보)."""
+    old = check_evidence_form_defects(doc, exhibits)
+    taken = {(f.confidence_features or {}).get("exhibit") for f in old} - {None}
+    structure = check_evidence_form_structure(doc, exhibits)
+    g4 = {(f.confidence_features or {}).get("exhibit") for f in structure
+          if (f.confidence_features or {}).get("defect_code") == "FORM_ELEMENT_ADMITTED"}
+    new = []
+    for f in structure:
+        ex = (f.confidence_features or {}).get("exhibit")
+        if ex in taken:
+            continue
+        if ex and (f.confidence_features or {}).get("defect_code") == "TRANSLATION_MISSING" and ex.split("의 ")[0] in g4:
+            continue
+        new.append(f)
+    return old + new
+
+
 def check_document(doc: NormalizedDocument) -> List[Finding]:
     exhibits = exhibit_rows(doc)
     from .internal_inconsistency import check_internal_inconsistency
@@ -2542,7 +2766,7 @@ def check_document(doc: NormalizedDocument) -> List[Finding]:
         check_exhibits(doc)
         + check_statements(doc, exhibits)
         + check_evidence_numbering_mismatches(doc, exhibits)
-        + check_evidence_form_defects(doc, exhibits)
+        + _form_findings(doc, exhibits)
         + check_internal_inconsistency(doc)
     )
 
