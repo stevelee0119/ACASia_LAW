@@ -638,7 +638,14 @@ CLAIM_PREDICATE_CATEGORIES: Dict[str, Tuple[str, ...]] = {
 # S1: 내심의 의사 구조 정규식 (단독 '의사'가 아닌 주관적 의도 표현만 포착)
 INTENT_STATE_RE = re.compile(
     r"(?:려는|할|ㄹ)\s*의사(?:로|를\s*가지고|가\s*있었)|"
-    r"(?:가해|가해자|가해\s*행위|가해\s*사실|가한\s*사실)"
+    r"(?:가해|가해자|가해\s*행위|가해\s*사실|가한\s*사실)|"
+    # 평가 측 OVR 잔여 O4: 'X임을/X음을/X라는 사실을 (이미·처음부터) 알고 있었다·알았다·알면서' — 상대방의 앎(인식) 단정
+    r"(?<![가-힣])(?:[가-힣]{1,15}?(?:임|음)|사실|점|것)을\s*(?:[가-힣]{1,5}\s+)?(?:알(?:고\s*있|았)(?!었?(?:는지|는가|던가|던지|다면|더라도|으면|을지))|알면서|알고서)"
+)
+
+# 평가 측 OVR 잔여 O5: 전칭 부정('단 한 번도·한 차례도·전혀 … 한 적이/일이/바가 없다')은 전 기간 단정이다
+UNIVERSAL_NEGATION_RE = re.compile(
+    r"(?:(?:단\s*)?한\s*(?:번|차례)도|전혀|결코)\s*[^.!?]{0,30}?(?:적|일|바|사실)(?:이|가|은|는|도)?\s*없"
 )
 
 # V2, BB2: 완료 술어 구조 정규식 (어간 + 어미/피동 결합, 대상 명사구와 결합, 지급 행위 어간 '치르·받·납부·송금' 포함)
@@ -659,7 +666,9 @@ COMPLETION_PREDICATE_RE = re.compile(
     rf"(?:[을를이가]|의)?\s*(?:(?:모두|전부|전액|이미|다)(?:[을를이가은는의]|으로|로)?\s*)*"
     rf"(?:{_COMPLETION_VERB_STEMS}(?:(?:지|졌)[가-힣]*|[가-힣]*)|(?:지급|변제|수령|정산|상환|결제)(?:하|하여|하였|했|한|해|합|받)[가-힣]*))|"
     r"(?<![가-힣])(?:갚[가-힣]+|치르(?:었[가-힣]*|어[가-힣]*|고|면|다)|치렀[가-힣]*|치른|치러[가-힣]*|받았[가-힣]*|받은|"
-    r"납부(?:하|하여|하였|했|한|해|합)[가-힣]*|송금(?:하|하여|하였|했|한|해|합)[가-힣]*|냈[가-힣]*|낸)"
+    r"납부(?:하|하여|하였|했|한|해|합)[가-힣]*|송금(?:하|하여|하였|했|한|해|합)[가-힣]*|냈[가-힣]*|낸|"
+    # 평가 측 OVR 잔여 O3: 맨 '이행하였다/이행했다/이행한'도 완료 단정(의문·가정 어미는 제외)
+    r"이행(?:하였|했)(?!는지|는가|다면|더라도|으면)[가-힣]*|이행한(?=\s|$))"
 )
 
 # 평가 측 보완 F2: 일반 동사 '받다'는 목적어가 금전(…금·…대금·…비·채무·돈·N원)일 때만 완료 술어로 센다
@@ -986,10 +995,35 @@ def _detect_exhibit_sender(row: Dict[str, Any], label: str, sent_clean: str) -> 
 def _find_clause_subject(cl_text: str, pred_pos: Optional[int] = None) -> Optional[str]:
     """절 안에서 술어 직전의 주체 당사자(원고, 피고 등)를 추출한다 (S2: 관형절 주체 오인 방지)."""
     sub_text = cl_text[:pred_pos] if pred_pos is not None else cl_text
+    # 평가 측 OVR 잔여 O1: 주격(은·는·이·가)을 소유격(의)보다 먼저 본다('피고가 원고의 청구에 동의'의 주체는 피고).
+    # 당사자 뒤 동격 명사 한 어절('피고 회사가', '원고 측은')도 주체로 받는다
+    nominative = list(re.finditer(
+        r"(?P<p>원고|피고|신청인|피신청인|채권자|채무자)(?:\s*측|\s+[가-힣]{1,4}?)?(?:은|는|이|가)(?![가-힣])", sub_text))
+    if nominative:
+        return nominative[-1].group("p")
     matches = list(re.finditer(r"(?P<p>원고|피고|신청인|피신청인|채권자|채무자)(?:[은는이가의]|측[은는이가의])", sub_text))
     if matches:
         return matches[-1].group("p")
     return None
+
+
+_SO_EXHIBIT_LINE_RE = re.compile(
+    r"^\s*(?:\d{1,2}\s*[.)]\s*|[-*•·]\s*)?소(?P<party>갑|을)\s*제?\s*(?P<num>\d+)\s*호증(?P<rest>[^\n]*)$", re.M)
+
+
+def _ovr_so_exhibit_rows(text: str, rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """'소갑/소을 제N호증 …' 목록 줄을 EVI-OVR 전용 보충 행으로 읽는다(이미 같은 키 행이 있으면 건너뜀)."""
+    have = {(r.get("party"), r.get("number")) for r in rows}
+    extra: List[Dict[str, Any]] = []
+    for m in _SO_EXHIBIT_LINE_RE.finditer(text):
+        key = (m.group("party"), int(m.group("num")))
+        if key in have:
+            continue
+        have.add(key)
+        extra.append({"id": f"소{key[0]} 제{key[1]}호증", "party": key[0], "number": key[1], "branches": [],
+                      "branch": None, "label": f"{key[0]} 제{key[1]}호증", "name": m.group("rest").strip(),
+                      "date": "", "author": "", "purpose": "", "from_lines": True, "in_section": True})
+    return extra
 
 
 def check_evidence_overreach(
@@ -1009,6 +1043,10 @@ def check_evidence_overreach(
 
     # 서면 제출 당사자(원고/피고 등) 판별
     author_party, my_party_chars = _detect_author_party(doc, rows)
+
+    # 평가 측 OVR 잔여 O2: 공용 호증 문법은 '소갑/소을 제N호증' 목록 줄을 행으로 만들지 않는다(줄 첫머리 위치 1).
+    # 공용 입력(exhibit_rows)은 바꾸지 않고, 이 검사 안에서만 목록 줄을 보충 행으로 읽는다(본문 인용은 '갑/을'로 풀리므로 같은 키)
+    rows = rows + _ovr_so_exhibit_rows(text, rows)
 
     # 호증별 행 인덱싱 (party, number) -> row
     row_by_key = {}
@@ -1190,6 +1228,8 @@ def check_evidence_overreach(
 
             # 1) 전칭_전기간: 낱말 경계 일치 (기간·범위 전칭만 담당, 금전 전칭 중 (나) 채무 전체는 전칭_전기간으로 분류) (V1, BB1)
             if any(_match_predicate_word(pw, scope_text, "전칭_전기간") for pw in CLAIM_PREDICATE_CATEGORIES["전칭_전기간"]):
+                matched_pred_cats.append("전칭_전기간")
+            elif UNIVERSAL_NEGATION_RE.search(scope_text):
                 matched_pred_cats.append("전칭_전기간")
 
             # BB1, BB2: 수량 전칭 매칭 분석 ((가) 특정 금액 vs (나) 채무 전체)
