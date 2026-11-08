@@ -1190,6 +1190,8 @@ SAME_EVENT_NOUNS: Tuple[str, ...] = (
     "회신", "답변", "통지", "통보", "고지", "발송", "송부", "송달", "전달",
     "해지", "해제", "취소", "철회", "결의", "의결", "처분", "결정", "명령", "징계", "해고",
     "신청", "청구", "체결", "합의", "약정", "보고", "신고",
+    # 평가 측 후속 I2(사용자 결정 11-09): 같은 사건을 전달 수단 명사로 적은 꼴 — 알림 단계(NOTIFY_SEND)로 본다
+    "문자메시지", "이메일", "전자우편", "메일", "문자", "서신", "편지", "팩스",
 )
 _EVENT_NOUN_ALT = "|".join(SAME_EVENT_NOUNS)
 
@@ -1297,6 +1299,8 @@ _DEFAULT_NOUN_STAGE: Dict[str, str] = {
     "명령": "DECIDE", "징계": "DECIDE", "해고": "DECIDE", "체결": "DECIDE",
     "합의": "DECIDE", "약정": "DECIDE",
     "신청": "SUBMIT_FILE", "청구": "SUBMIT_FILE", "신고": "SUBMIT_FILE",
+    "문자메시지": "NOTIFY_SEND", "이메일": "NOTIFY_SEND", "전자우편": "NOTIFY_SEND", "메일": "NOTIFY_SEND",
+    "문자": "NOTIFY_SEND", "서신": "NOTIFY_SEND", "편지": "NOTIFY_SEND", "팩스": "NOTIFY_SEND",
 }
 
 _CONTENT_EXCLUDE_WORDS = frozenset({
@@ -1331,6 +1335,9 @@ class _SameEventSlot:
     page: int
 
 
+_PRONOUN_SYLLABLES = frozenset("그저나너내누뭐걔얘쟤")
+
+
 def _clean_content_prefix(raw_content: Optional[str]) -> Optional[str]:
     if not raw_content:
         return None
@@ -1338,7 +1345,10 @@ def _clean_content_prefix(raw_content: Optional[str]) -> Optional[str]:
     if not tokens:
         return None
     tok = tokens[-1]
-    if re.search(r"(?:은|는|이|가|을|를|에|에서|에게|으로|로|와|과|의|도|만|부터|까지|한|된|할|던|차례|번|날|일|시|분|경)$", tok):
+    # 평가 측 후속 T2: '이의·항의·사과·제도·불만'처럼 끝 음절이 조사(과·의·도·만)와 같은 두 글자 명사는
+    # 조사로 보지 않는다(첫 글자가 대명사·지시어인 '그의·나도·그만' 등은 그대로 조사로 본다)
+    two_syllable_noun = bool(re.fullmatch(r"[가-힣][과의도만]", tok)) and tok[0] not in _PRONOUN_SYLLABLES
+    if not two_syllable_noun and re.search(r"(?:은|는|이|가|을|를|에|에서|에게|으로|로|와|과|의|도|만|부터|까지|한|된|할|던|차례|번|날|일|시|분|경)$", tok):
         return None
     clean = re.sub(r"\s+", "", tok)
     # 평가 측 보완 D1: 날짜·번호 조각('21.', '3)')이 내용 수식으로 남지 않게 한글 2~12자 어절만 받는다
@@ -1374,6 +1384,14 @@ def _determine_stage_role(clause: str, h_start: int, h_end: int, is_dated_doc: b
     return _DEFAULT_NOUN_STAGE.get(head_raw, "NOTIFY_SEND")
 
 
+_MEDIUM_NOUNS = frozenset({"문자메시지", "이메일", "전자우편", "메일", "문자", "서신", "편지", "팩스"})
+
+
+def _is_medium_instrument(head: str, after: str) -> bool:
+    """평가 측 후속 I2: 전달 수단 명사가 '팩스로·메일로'처럼 수단(-으로/-로)으로 쓰이면 사건이 아니다."""
+    return head in _MEDIUM_NOUNS and bool(re.match(r"^(?:으로|로)(?:써|서)?(?![가-힣])", after))
+
+
 def _extract_event_from_clause(
     clause: str,
     sent_last_noun_event: Optional[Tuple[Optional[str], str, bool, bool]] = None,
@@ -1382,7 +1400,10 @@ def _extract_event_from_clause(
     # 1. 지시어 결속 명사구 우선 (_ANAPHORA_EVENT_RE)
     for m in _ANAPHORA_EVENT_RE.finditer(clause):
         after = clause[m.end():]
-        if _NON_ARGUMENT_SUFFIX_RE.match(after):
+        # 평가 측 후속 I1: '[날짜]에 [동사]한 위 [사건 명사]에 대하여 …'처럼 관형절에 그 사건의 날짜가 있으면 수식어 자리여도 결속한다
+        if _NON_ARGUMENT_SUFFIX_RE.match(after) and not _has_dated_relative_clause(clause[:m.start()]):
+            continue
+        if _is_medium_instrument(m.group("head"), after):
             continue
         content = _clean_content_prefix(m.group("content"))
         return (content, m.group("head"), None, m.start(), m.end(), True, True)
@@ -1397,6 +1418,8 @@ def _extract_event_from_clause(
     for m in candidates:
         after = clause[m.end():]
         if _NON_ARGUMENT_SUFFIX_RE.match(after):
+            continue
+        if _is_medium_instrument(m.group("head"), after):
             continue
         if re.match(r"^(?:하|했|하였|한|하고|하여|되|되었|된|함|하면서|하며)", after):
             verbal_candidates.append(m)
@@ -1429,6 +1452,16 @@ def _extract_event_from_clause(
 _RELATIVE_EVENT_VERB_RE = re.compile(
     r"(?P<verb>[가-힣]{0,6}(?:한|된|보낸|낸|받은))(?!\s+(?:차례|번|회|건|명|가지)(?:\s|$))\s+(?:(?:위|그|해당|이\s*사건|본건|동)\s+)?(?:[가-힣]{2,12}\s+)?$"
 )
+
+
+def _has_dated_relative_clause(prefix: str) -> bool:
+    """prefix가 '[날짜·시각] … [동사]한/된/보낸 ' 꼴로 끝나는지(관형절 안에 날짜·시각이 있는지) 본다."""
+    m_rel = _RELATIVE_EVENT_VERB_RE.search(prefix + " ")
+    if not m_rel:
+        return False
+    head = prefix[:m_rel.start()]
+    return bool(_FULL_DATE_RE.search(head) or TIME_RE.search(head) or _SAME_MONTH_DAY_RE.search(head)
+                or _MONTH_DAY_RE.search(head) or _RELATIVE_DATE_RE.search(head))
 
 
 def _relative_verb_stage(verb: str, head_noun: Optional[str]) -> str:
