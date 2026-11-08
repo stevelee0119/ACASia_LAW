@@ -1425,6 +1425,21 @@ def _extract_event_from_clause(
     return None
 
 
+# 평가 측 보완 D3: 사건 명사(지시어·내용 수식 포함) 바로 앞 관형절 동사
+_RELATIVE_EVENT_VERB_RE = re.compile(
+    r"(?P<verb>[가-힣]{0,6}(?:한|된|보낸|낸|받은))(?!\s+(?:차례|번|회|건|명|가지)(?:\s|$))\s+(?:(?:위|그|해당|이\s*사건|본건|동)\s+)?(?:[가-힣]{2,12}\s+)?$"
+)
+
+
+def _relative_verb_stage(verb: str, head_noun: Optional[str]) -> str:
+    """관형절 동사로 단계를 정한다. 기능동사('한'·'된')뿐이면 머리 명사의 기본 단계."""
+    for stage_name, pat in _STAGE_PREDICATE_PATTERNS:
+        m = pat.search(verb)
+        if m and not re.fullmatch(r"[가-힣]{2}", m.group(0)):
+            return stage_name
+    return _DEFAULT_NOUN_STAGE.get((head_noun or "").rstrip("서"), "NOTIFY_SEND")
+
+
 def _check_same_event_datetime_inconsistency(
     doc: NormalizedDocument,
     reading: Any,
@@ -1502,8 +1517,19 @@ def _check_same_event_datetime_inconsistency(
             content_prefix, head_noun, alt_head_noun, h_start, h_end, is_anaphora, is_noun_arg = ev_info
 
             # 2.4(4): 사건 명사 뒤 본 서술어가 부정·미래이면 제외
+            # 평가 측 보완 D3: 관형절 꼴('[날짜·시각] [동사]한/된/보낸 (위·그) [사건 명사]…') — 사건 서술어는 명사 앞 관형절 동사다.
+            # 관형절 안에 날짜·시각이 있을 때만 이 꼴로 보고, 날짜·시각·단계는 관형절에서, 부정 검사는 하지 않는다(주절은 다른 내용)
+            rel_cut: Optional[int] = None
+            m_rel = _RELATIVE_EVENT_VERB_RE.search(clause[:h_start])
+            if m_rel:
+                rel_head = clause[:m_rel.start()]
+                if (_FULL_DATE_RE.search(rel_head) or TIME_RE.search(rel_head) or _SAME_MONTH_DAY_RE.search(rel_head)
+                        or _MONTH_DAY_RE.search(rel_head) or _RELATIVE_DATE_RE.search(rel_head)):
+                    rel_cut = m_rel.end()
+            dt_text = clause[:rel_cut] if rel_cut is not None else clause
+
             pred_tail = clause[h_end:]
-            if _CLAUSE_NEGATION_FUTURE_RE.search(pred_tail):
+            if rel_cut is None and _CLAUSE_NEGATION_FUTURE_RE.search(pred_tail):
                 continue
 
             # 주체(actor) 결정: 사건 명사 직전 소유격('원고의 회신') -> 절 내부 주격 -> 문장 주어 승계
@@ -1528,32 +1554,32 @@ def _check_same_event_datetime_inconsistency(
             raw_date = ""
             is_dated_doc = False
 
-            m_fd = _FULL_DATE_RE.search(clause)
+            m_fd = _FULL_DATE_RE.search(dt_text)
             if m_fd:
                 last_year = int(m_fd.group("y"))
                 last_month = int(m_fd.group("m"))
                 d_val = (last_year, last_month, int(m_fd.group("d")))
                 raw_date = m_fd.group(0).strip()
-                if re.match(r"^\s*자(?:\s|[가-힣.,;)]|$)", clause[m_fd.end():]):
+                if re.match(r"^\s*자(?:\s|[가-힣.,;)]|$)", dt_text[m_fd.end():]):
                     is_dated_doc = True
             else:
-                m_smd = _SAME_MONTH_DAY_RE.search(clause)
+                m_smd = _SAME_MONTH_DAY_RE.search(dt_text)
                 if m_smd and last_month > 0:
                     d_val = (last_year, last_month, int(m_smd.group("d")))
                     raw_date = m_smd.group(0).strip()
-                    if re.match(r"^\s*자(?:\s|[가-힣.,;)]|$)", clause[m_smd.end():]):
+                    if re.match(r"^\s*자(?:\s|[가-힣.,;)]|$)", dt_text[m_smd.end():]):
                         is_dated_doc = True
                 else:
-                    m_md = _MONTH_DAY_RE.search(clause)
+                    m_md = _MONTH_DAY_RE.search(dt_text)
                     if m_md:
                         last_month = int(m_md.group("m"))
                         d_val = (last_year, last_month, int(m_md.group("d")))
                         raw_date = m_md.group(0).strip()
-                        if re.match(r"^\s*자(?:\s|[가-힣.,;)]|$)", clause[m_md.end():]):
+                        if re.match(r"^\s*자(?:\s|[가-힣.,;)]|$)", dt_text[m_md.end():]):
                             is_dated_doc = True
-                    elif _RELATIVE_DATE_RE.search(clause):
+                    elif _RELATIVE_DATE_RE.search(dt_text):
                         d_val = sentence_last_date or block_last_date or prev_block_last_date
-                        raw_date = _RELATIVE_DATE_RE.search(clause).group(0) if d_val else ""
+                        raw_date = _RELATIVE_DATE_RE.search(dt_text).group(0) if d_val else ""
 
             if d_val and not is_dated_doc:
                 sentence_last_date = d_val
@@ -1563,21 +1589,22 @@ def _check_same_event_datetime_inconsistency(
             time_minutes: Optional[int] = None
             raw_time = ""
             is_approx_time = False
-            m_time = TIME_RE.search(clause)
+            m_time = TIME_RE.search(dt_text)
             if m_time:
                 parsed_t = _parse_time_match(m_time)
                 if parsed_t is not None:
                     raw_time, time_minutes = parsed_t
-                    if re.match(r"^\s*(?:경|무렵|쯤|전후)", clause[m_time.end():]):
+                    if re.match(r"^\s*(?:경|무렵|쯤|전후)", dt_text[m_time.end():]):
                         is_approx_time = True
-                        raw_time = raw_time + re.match(r"^\s*(?:경|무렵|쯤|전후)", clause[m_time.end():]).group(0)
+                        raw_time = raw_time + re.match(r"^\s*(?:경|무렵|쯤|전후)", dt_text[m_time.end():]).group(0)
                     # 시각만 있고 날짜가 생략된 절은 같은 문장/단락의 직전 날짜 승계
                     if d_val is None:
                         d_val = sentence_last_date or block_last_date
                         if d_val:
                             raw_date = f"{d_val[0]}. {d_val[1]}. {d_val[2]}."
 
-            stage_role = _determine_stage_role(clause, h_start, h_end, is_dated_doc, head_noun)
+            stage_role = (_relative_verb_stage(m_rel.group("verb"), head_noun) if rel_cut is not None and not is_dated_doc
+                          else _determine_stage_role(clause, h_start, h_end, is_dated_doc, head_noun))
             is_uniq = bool(_UNIQUENESS_MARKER_RE.search(clause))
             if is_noun_arg:
                 sent_last_noun_event = (content_prefix, head_noun, is_uniq, is_anaphora)
