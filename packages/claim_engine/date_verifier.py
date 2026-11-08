@@ -42,6 +42,15 @@ DAYS_ELAPSED_RE = re.compile(
     r"(?P<to_y>\d{4})[.\s년/-]+(?P<to_m>\d{1,2})[.\s월/-]+(?P<to_d>\d{1,2})[일\s.]*"
 )
 
+# T1: 'A부터 B까지 N일(간|동안)' — 양 끝을 넣어 세는 기간 일수(민법 제157조 초일 불산입 여부에 따라 1일 차이 허용)
+DAYS_RANGE_RE = re.compile(
+    r"(?P<from_y>\d{4})[.\s년/-]+(?P<from_m>\d{1,2})[.\s월/-]+(?P<from_d>\d{1,2})[일.]?\s?(?:부터|에서)\s?"
+    r"(?P<to_y>\d{4})[.\s년/-]+(?P<to_m>\d{1,2})[.\s월/-]+(?P<to_d>\d{1,2})[일.]?\s?까지\s?"
+    r"(?:(?:총|모두|합계)\s?)?(?P<days>\d{1,4})\s?일\s?(?:간|동안|에\s?걸쳐)"
+)
+
+_DAY_COUNT_BASIS_RE = re.compile(r"영업일|근무일|평일|공휴일|휴일|주말|근로일|출근일|실근무|제외")
+
 # 소제목/목차 번호 패턴 (한국 법률 서면의 일반적인 번호·기호 체계)
 # 1. , 가. , (1) , (가) , 1) , [소제목] , 【소제목】 , <소제목> , 제1조 등
 HEADING_LINE_RE = re.compile(
@@ -1472,6 +1481,37 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             ],
                         )
                     )
+
+        # 3-1. 기간 일수(양 끝 포함) 검증 (T1)
+        for m in DAYS_RANGE_RE.finditer(text):
+            fd = _parse_valid_date(int(m.group("from_y")), int(m.group("from_m")), int(m.group("from_d")))
+            td = _parse_valid_date(int(m.group("to_y")), int(m.group("to_m")), int(m.group("to_d")))
+            stated = int(m.group("days"))
+            if not fd or not td or td < fd:
+                continue
+            # 셈법이 다른 일수(영업일·근무일·평일·휴일 제외 등)는 달력 일수와 비교하지 않는다
+            around = text[max(0, m.start() - 20):min(len(text), m.end() + 15)]
+            if _DAY_COUNT_BASIS_RE.search(around):
+                continue
+            inclusive = (td - fd).days + 1
+            if abs(inclusive - stated) > 1:
+                findings.append(
+                    Finding.create(
+                        type=FindingType.TIMELINE_CONTRADICTION,
+                        status=VerificationStatus.CONTRADICTED,
+                        severity=Severity.MEDIUM,
+                        evidence_grade=EvidenceGrade.A,
+                        title=f"기간 일수 계산 오류: 기재 {stated}일 → 실제 {inclusive}일({fd}~{td}, 양 끝 포함)",
+                        detail=f"{fd}부터 {td}까지는 양 끝을 넣어 {inclusive}일(초일을 빼면 {inclusive - 1}일)인데 본문에는 {stated}일로 적혀 있다.",
+                        confidence=1.0,
+                        confidence_features={"deterministic_rule": True, "rule_id": "claim_engine.date_verifier:DAYS_RANGE_MISMATCH",
+                                             "from_date": str(fd), "to_date": str(td), "stated_days": stated, "inclusive_days": inclusive},
+                        document_id=doc.document_id, block_id=block.block_id, page=block.page, engine=ENGINE_NAME,
+                        tags=["TIMELINE", "DAYS", "CALCULATION"],
+                        evidence=[Evidence.create(description="기간 일수 기재", grade=EvidenceGrade.A, document_id=doc.document_id,
+                                                  block_id=block.block_id, page=block.page, excerpt=m.group(0), supports=True)],
+                    )
+                )
 
         # 3. 경과 일수 계산 검증 (DAYS)
         # 예: "기준일로부터 N일이 지난 날짜" → 두 날짜의 실제 일수와 N을 비교한다
