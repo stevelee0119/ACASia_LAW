@@ -1,0 +1,52 @@
+"""TK-76 EVI-INCONS C 보완 D1 — 결과 제목·내용 수식에 날짜·번호 조각이 남지 않는다(평가 측 공개 합성 문장)."""
+from __future__ import annotations
+
+import re
+
+from packages.claim_engine.internal_inconsistency import check_internal_inconsistency
+from packages.common.schemas import Block, NormalizedDocument, Page
+
+
+def _titles(lines):
+    blocks = [Block(block_id=f"b{i}", text=t, page=1, visible=True, source_layer="visible_text") for i, t in enumerate(lines)]
+    doc = NormalizedDocument(document_id="d", filename="d.pdf", mime_type="application/pdf", sha256="0" * 64,
+                             pages=[Page(page_number=1, blocks=blocks, width=595.0, height=842.0)])
+    return [f.title for f in check_internal_inconsistency(doc)
+            if (f.confidence_features or {}).get("rule_id") == "EVI.INCONS_SAME_EVENT_DATETIME"]
+
+
+def test_title_has_no_date_fragment():
+    titles = _titles([
+        "피고는 원고에게 2024. 5. 7. 유일한 이행최고서를 발송하였습니다.",
+        "피고가 2024. 5. 13. 발송한 위 이행최고서에는 14일의 이행기간이 적혀 있었습니다.",
+    ])
+    assert titles, "같은 사건 두 날짜 모순을 내야 한다"
+    for t in titles:
+        inside = re.search(r"동일 사건\(([^)]*)\)", t)
+        assert inside, t
+        assert not re.search(r"\d", inside.group(1)), t
+
+
+def test_stage_consistent_for_light_verb_and_content_prefix():
+    # 평가 측 보완 D2: '…를 하였다'(기능동사)와 내용 수식('해제 통지')이 있어도 같은 사건은 같은 단계로 본다
+    t1 = _titles(["원고는 2024. 6. 3. 단 한 차례 이의 신청을 하였습니다.", "원고는 2024. 6. 17. 위 신청을 하였습니다."])
+    t2 = _titles(["피고는 2024. 9. 2. 단 한 차례 계약 해지 통지를 하였습니다.", "피고는 2024. 9. 12. 위 해지 통지를 하였습니다."])
+    assert t1 and t2
+
+
+def test_stage_still_separates_decide_and_notify():
+    assert not _titles(["피고는 2024. 9. 2. 원고에 대한 출입 정지 결정을 하였고, 2024. 9. 5. 위 결정을 원고에게 통지하였습니다."])
+
+
+def test_relative_clause_date_binds_to_event():
+    # 평가 측 보완 D3: '[날짜·시각]에 [동사]한 (위·그) [사건 명사]…' — 관형절 날짜·시각이 그 사건의 값이다
+    assert _titles(["피고는 2024. 2. 5. 오전 10시에 유일한 답변을 원고에게 송부하였습니다.",
+                    "피고가 같은 날 오후 4시에 송부한 위 답변에는 서명이 없었습니다."])
+    assert _titles(["원고는 2024. 10. 1. 단 한 차례 해지 통지를 발송하였습니다.",
+                    "원고가 2024. 10. 8. 발송한 그 해지 통지는 피고에게 같은 달 10일 도달하였습니다."])
+
+
+def test_relative_clause_without_date_is_not_relative_mode():
+    # 관형절에 날짜가 없으면 주절의 날짜·서술어로 본다('작성한 위 통지서를 [날짜] 발송' — 작성·발송은 다른 단계)
+    assert not _titles(["원고는 2024. 10. 1. 단 한 차례 해지 통지서를 작성하였고, 원고가 작성한 위 해지 통지서를 2024. 10. 3. 발송하였습니다."])
+    assert not _titles(["원고는 2024. 10. 1. 유일한 회신을 보냈고, 피고가 2024. 10. 6. 보낸 회신에는 아무 내용이 없었습니다."])
