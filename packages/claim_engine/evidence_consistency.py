@@ -2790,6 +2790,68 @@ def _form_findings(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]) 
     return old + new
 
 
+# --- TK-76 3주기 EVI-LOGIC 잔여(평가 측 시안) -------------------------------------
+# L1: 앞 문장이 진술인 자신의 다른 장소 체재를 밝히고(시간 표지 포함), 바로 다음 문장이 같은 때 직접 지각을 주장
+_L1_STAY_RE = re.compile(r"(?:에|에서)\s?(?:[가-힣0-9]+\s){0,4}?(?:있었|머물렀|지냈|중이었)(?:습니다|다|음)")
+_L1_TIME_RE = re.compile(r"같은\s?(?:시각|시간)|그\s?(?:시간|시각|때)|당시|하루\s?종일|내내|동시에")
+_L1_MOVE_RE = re.compile(r"올라와|내려와|돌아와|돌아왔|이동|도착|떠나|떠났|다가\s|뒤에|이후|나중에")
+# L2: 한 번의 관찰을 근거로 늘 그렇다고 단정
+_L2_SINGLE_RE = re.compile(r"(?:단|딱|겨우)?\s?(?:한\s?번|한\s?차례|1\s?회|일\s?회)(?!\s?(?:도|시|의\s?경우|경우|마다|이상|이내))")
+_L2_PAST_RE = re.compile(r"(?:었|았|였|했|(?:사실|적|일)이?\s?있)")
+_L2_CAUSE_RE = re.compile(r"(?:으므로|므로|으니|니까|기\s?때문에|따라서|그러므로)")
+_L2_ALWAYS_RE = re.compile(r"매번|항상|늘\s|언제나|매일|상습|번번이|습관적")
+# L2·L3 공통 제외: 상대방 주장을 인용해 반박하는 문장('…다는 피고의 주장은 근거가 없다')
+_LOGIC_REBUT_RE = re.compile(r"(?:다는|라는|다고|라고)\s?(?:[가-힣]+\s){0,3}?[가-힣]*(?:주장|지적|의견|말|항변)|근거가\s?없|이유\s?(?:가\s?)?없|부당|받아들일\s?수\s?없|오해")
+# L3: 답·이의가 없었다는 이유로 동의·승낙을 추론(대법원 1999. 1. 29. 선고 98다48903 판결: 상법 제53조가 적용될 경우가 아니면 회답 의무가 없다)
+_L3_SILENCE_RE = re.compile(r"(?:답|회신|응답|대답|이의|반대|의견)(?:을|를|도)?\s?(?:하지\s?않|안\s?하|보내지\s?않|제기하지\s?않|없(?!이))|침묵")
+# 침묵이 아니라 행동으로 드러난 묵시 동의(이의 없이 지급·수령·이행 등)는 제외
+_L3_CONDUCT_RE = re.compile(r"없이\s?(?:[가-힣0-9]+\s){0,4}?[가-힣]*(?:지급|수령|이행|사용|받아|받았|서명|날인|계속|납부|인도|입금)")
+_L3_CONSENT_RE = re.compile(r"(?:동의|승낙|수락|합의|승인)(?:한|하였|했|를\s?한|한\s?것)")
+_L3_EXCUSE_RE = re.compile(r"약정|간주|본다고|보기로|상법\s?제53조|낙부\s?통지|상시\s?거래|볼\s?수\s?(?:는\s?)?없|아니")
+
+
+def check_reasoning_structure(doc: NormalizedDocument) -> List[Finding]:
+    out: List[Finding] = []
+    reading = build_reading_text(doc, [b for b in doc.body_blocks() if b.block_type != "running_head"])
+    text = reading.text
+    bounds = list(sentence_bounds(text))
+    prev = ""
+    for start, end in bounds:
+        sent = text[start:end]
+        if not sent.strip():
+            continue
+        shown = " ".join(sent.split())[:250]
+        # L1
+        if prev and _L1_STAY_RE.search(prev) and _L1_TIME_RE.search(prev + " " + sent[:30]) and not _L1_MOVE_RE.search(prev + sent) \
+                and not _MEDIATED_RE.search(sent) and _PERC_RE.search(sent) and _DIRECT_RE.search(sent) and not perception_conflict(sent):
+            out.append(_finding(doc, FindingType.STATEMENT_BEYOND_PERCEPTION, EvidenceGrade.C, Severity.MEDIUM,
+                                "지각할 수 없던 조건과 직접 지각 주장이 함께 있다: 앞 문장의 다른 장소 체재와 같은 때의 직접 목격",
+                                "앞 문장에서 같은 때 다른 장소에 있었다고 하면서 다음 문장에서 직접 지각했다고 진술한다. 진술의 신빙성은 사람이 판단한다.",
+                                (" ".join(prev.split()) + " / " + shown)[:250], status=VerificationStatus.SUSPICIOUS,
+                                features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION_STRUCTURE", "pattern": "ELSEWHERE_PREV_SENTENCE"}))
+        # L2
+        c = _L2_CAUSE_RE.search(sent)
+        if c and _L2_SINGLE_RE.search(sent[:c.start()]) and _L2_PAST_RE.search(sent[:c.start()]) \
+                and _L2_ALWAYS_RE.search(sent[c.end():]) and not _L2_ALWAYS_RE.search(sent[:c.start()]) \
+                and not _LOGIC_REBUT_RE.search(sent[c.end():]):
+            out.append(_finding(doc, FindingType.REASONING_GAP, EvidenceGrade.C, Severity.LOW,
+                                "논리 비약: 한 번의 사실을 근거로 늘 그렇다고 단정한다",
+                                "한 차례 있었던 일을 근거로 반복·상습을 단정한다. 반복 사실의 근거가 따로 있는지 사람이 확인한다.",
+                                shown, status=VerificationStatus.SUSPICIOUS,
+                                features={"human_review": True, "rule_id": "EVI.SINGLE_TO_ALWAYS"}))
+        # L3
+        c = _L2_CAUSE_RE.search(sent)
+        if c and _L3_SILENCE_RE.search(sent[:c.start()]) and _L3_CONSENT_RE.search(sent[c.end():]) and not _L3_EXCUSE_RE.search(sent) \
+                and not _L3_CONDUCT_RE.search(sent[:c.start()]) and not _LOGIC_REBUT_RE.search(sent[c.end():]):
+            out.append(_finding(doc, FindingType.REASONING_GAP, EvidenceGrade.C, Severity.LOW,
+                                "논리 비약: 답·이의가 없었다는 이유만으로 동의·승낙을 추론한다",
+                                "청약의 상대방에게는 원칙적으로 회답 의무가 없어 침묵만으로 승낙이 되지 않는다(대법원 1999. 1. 29. 선고 98다48903 판결, 상법 제53조가 적용되는 경우는 예외). 간주 약정 등 근거가 있는지 사람이 확인한다.",
+                                shown, status=VerificationStatus.SUSPICIOUS,
+                                features={"human_review": True, "rule_id": "EVI.SILENCE_AS_CONSENT"}))
+        prev = sent
+    return out
+
+
 def check_document(doc: NormalizedDocument) -> List[Finding]:
     exhibits = exhibit_rows(doc)
     from .internal_inconsistency import check_internal_inconsistency
@@ -2800,6 +2862,7 @@ def check_document(doc: NormalizedDocument) -> List[Finding]:
         + check_evidence_numbering_mismatches(doc, exhibits)
         + _form_findings(doc, exhibits)
         + check_internal_inconsistency(doc)
+        + check_reasoning_structure(doc)
     )
 
 
