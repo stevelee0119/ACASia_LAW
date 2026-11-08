@@ -1745,11 +1745,12 @@ def _check_same_event_datetime_inconsistency(
                 v2_str = slot_b.raw_time
                 conflict_label = "시각"
 
-            target_display = (
-                f"{slot_a.content_prefix or slot_b.content_prefix} {slot_a.head_noun}".strip()
-                if (slot_a.content_prefix or slot_b.content_prefix)
-                else slot_a.head_noun
-            )
+            # 평가 측 후속 T1: 내용 수식과 머리 명사는 같은 슬롯에서 함께 가져온다(다른 슬롯끼리 섞으면 '징계 징계'처럼 겹친다)
+            disp_slot = slot_a if slot_a.content_prefix else (slot_b if slot_b.content_prefix else slot_a)
+            if disp_slot.content_prefix and disp_slot.content_prefix != disp_slot.head_noun:
+                target_display = f"{disp_slot.content_prefix} {disp_slot.head_noun}"
+            else:
+                target_display = disp_slot.head_noun
             bind_reason = "유일성 표지" if has_uniq_binding else "지시어 결속"
             title = f"문서 내 동일 사건({target_display}) {conflict_label} 진술 모순: {v1_str} ↔ {v2_str}"
             detail = (
