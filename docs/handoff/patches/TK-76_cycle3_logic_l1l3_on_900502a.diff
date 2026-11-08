@@ -1,0 +1,148 @@
+diff --git a/packages/claim_engine/evidence_consistency.py b/packages/claim_engine/evidence_consistency.py
+index c027d72..4feeda5 100644
+--- a/packages/claim_engine/evidence_consistency.py
++++ b/packages/claim_engine/evidence_consistency.py
+@@ -2790,6 +2790,68 @@ def _form_findings(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]])
+     return old + new
+ 
+ 
++# --- TK-76 3주기 EVI-LOGIC 잔여(평가 측 시안) -------------------------------------
++# L1: 앞 문장이 진술인 자신의 다른 장소 체재를 밝히고(시간 표지 포함), 바로 다음 문장이 같은 때 직접 지각을 주장
++_L1_STAY_RE = re.compile(r"(?:에|에서)\s?(?:[가-힣0-9]+\s){0,4}?(?:있었|머물렀|지냈|중이었)(?:습니다|다|음)")
++_L1_TIME_RE = re.compile(r"같은\s?(?:시각|시간)|그\s?(?:시간|시각|때)|당시|하루\s?종일|내내|동시에")
++_L1_MOVE_RE = re.compile(r"올라와|내려와|돌아와|돌아왔|이동|도착|떠나|떠났|다가\s|뒤에|이후|나중에")
++# L2: 한 번의 관찰을 근거로 늘 그렇다고 단정
++_L2_SINGLE_RE = re.compile(r"(?:단|딱|겨우)?\s?(?:한\s?번|한\s?차례|1\s?회|일\s?회)(?!\s?(?:도|시|의\s?경우|경우|마다|이상|이내))")
++_L2_PAST_RE = re.compile(r"(?:었|았|였|했|(?:사실|적|일)이?\s?있)")
++_L2_CAUSE_RE = re.compile(r"(?:으므로|므로|으니|니까|기\s?때문에|따라서|그러므로)")
++_L2_ALWAYS_RE = re.compile(r"매번|항상|늘\s|언제나|매일|상습|번번이|습관적")
++# L2·L3 공통 제외: 상대방 주장을 인용해 반박하는 문장('…다는 피고의 주장은 근거가 없다')
++_LOGIC_REBUT_RE = re.compile(r"(?:다는|라는|다고|라고)\s?(?:[가-힣]+\s){0,3}?[가-힣]*(?:주장|지적|의견|말|항변)|근거가\s?없|이유\s?(?:가\s?)?없|부당|받아들일\s?수\s?없|오해")
++# L3: 답·이의가 없었다는 이유로 동의·승낙을 추론(대법원 1999. 1. 29. 선고 98다48903 판결: 상법 제53조가 적용될 경우가 아니면 회답 의무가 없다)
++_L3_SILENCE_RE = re.compile(r"(?:답|회신|응답|대답|이의|반대|의견)(?:을|를|도)?\s?(?:하지\s?않|안\s?하|보내지\s?않|제기하지\s?않|없(?!이))|침묵")
++# 침묵이 아니라 행동으로 드러난 묵시 동의(이의 없이 지급·수령·이행 등)는 제외
++_L3_CONDUCT_RE = re.compile(r"없이\s?(?:[가-힣0-9]+\s){0,4}?[가-힣]*(?:지급|수령|이행|사용|받아|받았|서명|날인|계속|납부|인도|입금)")
++_L3_CONSENT_RE = re.compile(r"(?:동의|승낙|수락|합의|승인)(?:한|하였|했|를\s?한|한\s?것)")
++_L3_EXCUSE_RE = re.compile(r"약정|간주|본다고|보기로|상법\s?제53조|낙부\s?통지|상시\s?거래|볼\s?수\s?(?:는\s?)?없|아니")
++
++
++def check_reasoning_structure(doc: NormalizedDocument) -> List[Finding]:
++    out: List[Finding] = []
++    reading = build_reading_text(doc, [b for b in doc.body_blocks() if b.block_type != "running_head"])
++    text = reading.text
++    bounds = list(sentence_bounds(text))
++    prev = ""
++    for start, end in bounds:
++        sent = text[start:end]
++        if not sent.strip():
++            continue
++        shown = " ".join(sent.split())[:250]
++        # L1
++        if prev and _L1_STAY_RE.search(prev) and _L1_TIME_RE.search(prev + " " + sent[:30]) and not _L1_MOVE_RE.search(prev + sent) \
++                and not _MEDIATED_RE.search(sent) and _PERC_RE.search(sent) and _DIRECT_RE.search(sent) and not perception_conflict(sent):
++            out.append(_finding(doc, FindingType.STATEMENT_BEYOND_PERCEPTION, EvidenceGrade.C, Severity.MEDIUM,
++                                "지각할 수 없던 조건과 직접 지각 주장이 함께 있다: 앞 문장의 다른 장소 체재와 같은 때의 직접 목격",
++                                "앞 문장에서 같은 때 다른 장소에 있었다고 하면서 다음 문장에서 직접 지각했다고 진술한다. 진술의 신빙성은 사람이 판단한다.",
++                                (" ".join(prev.split()) + " / " + shown)[:250], status=VerificationStatus.SUSPICIOUS,
++                                features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION_STRUCTURE", "pattern": "ELSEWHERE_PREV_SENTENCE"}))
++        # L2
++        c = _L2_CAUSE_RE.search(sent)
++        if c and _L2_SINGLE_RE.search(sent[:c.start()]) and _L2_PAST_RE.search(sent[:c.start()]) \
++                and _L2_ALWAYS_RE.search(sent[c.end():]) and not _L2_ALWAYS_RE.search(sent[:c.start()]) \
++                and not _LOGIC_REBUT_RE.search(sent[c.end():]):
++            out.append(_finding(doc, FindingType.REASONING_GAP, EvidenceGrade.C, Severity.LOW,
++                                "논리 비약: 한 번의 사실을 근거로 늘 그렇다고 단정한다",
++                                "한 차례 있었던 일을 근거로 반복·상습을 단정한다. 반복 사실의 근거가 따로 있는지 사람이 확인한다.",
++                                shown, status=VerificationStatus.SUSPICIOUS,
++                                features={"human_review": True, "rule_id": "EVI.SINGLE_TO_ALWAYS"}))
++        # L3
++        c = _L2_CAUSE_RE.search(sent)
++        if c and _L3_SILENCE_RE.search(sent[:c.start()]) and _L3_CONSENT_RE.search(sent[c.end():]) and not _L3_EXCUSE_RE.search(sent) \
++                and not _L3_CONDUCT_RE.search(sent[:c.start()]) and not _LOGIC_REBUT_RE.search(sent[c.end():]):
++            out.append(_finding(doc, FindingType.REASONING_GAP, EvidenceGrade.C, Severity.LOW,
++                                "논리 비약: 답·이의가 없었다는 이유만으로 동의·승낙을 추론한다",
++                                "청약의 상대방에게는 원칙적으로 회답 의무가 없어 침묵만으로 승낙이 되지 않는다(대법원 1999. 1. 29. 선고 98다48903 판결, 상법 제53조가 적용되는 경우는 예외). 간주 약정 등 근거가 있는지 사람이 확인한다.",
++                                shown, status=VerificationStatus.SUSPICIOUS,
++                                features={"human_review": True, "rule_id": "EVI.SILENCE_AS_CONSENT"}))
++        prev = sent
++    return out
++
++
+ def check_document(doc: NormalizedDocument) -> List[Finding]:
+     exhibits = exhibit_rows(doc)
+     from .internal_inconsistency import check_internal_inconsistency
+@@ -2800,6 +2862,7 @@ def check_document(doc: NormalizedDocument) -> List[Finding]:
+         + check_evidence_numbering_mismatches(doc, exhibits)
+         + _form_findings(doc, exhibits)
+         + check_internal_inconsistency(doc)
++        + check_reasoning_structure(doc)
+     )
+ 
+ 
+diff --git a/tests/test_tk76_logic_eval.py b/tests/test_tk76_logic_eval.py
+new file mode 100644
+index 0000000..2a444bf
+--- /dev/null
++++ b/tests/test_tk76_logic_eval.py
+@@ -0,0 +1,61 @@
++# -*- coding: utf-8 -*-
++"""TK-76 3주기 EVI-LOGIC 잔여 평가 측 시험(L1~L3). 평가 측 비공개 탐침과 다른 낱말로 새로 지은 합성예다."""
++from __future__ import annotations
++
++import time
++import unittest
++
++from packages.claim_engine.evidence_consistency import check_reasoning_structure
++from packages.common.schemas import Block, NormalizedDocument, Page
++
++
++def _doc(lines):
++    doc = NormalizedDocument(document_id="l", filename="l.pdf", mime_type="application/pdf", sha256="e" * 64)
++    page = Page(page_number=1, width=595.0, height=842.0)
++    for k, t in enumerate(lines):
++        page.blocks.append(Block(block_id=f"b{k}", page=1, text=t, block_type="paragraph", source_layer="visible_text"))
++    doc.pages.append(page)
++    return doc
++
++
++def _rules(lines):
++    return [(f.confidence_features or {}).get("rule_id") for f in check_reasoning_structure(_doc(lines))]
++
++
++class TestL1PreviousSentenceElsewhere(unittest.TestCase):
++    def test_elsewhere_then_direct_sight(self):
++        self.assertIn("EVI.BEYOND_PERCEPTION_STRUCTURE", _rules(
++            ["그 시간에 저는 목포항 여객터미널 대합실에 있었습니다.", "저는 피고가 창고 열쇠를 숨기는 것을 똑똑히 보았습니다."]))
++
++    def test_moved_before_seeing(self):
++        self.assertEqual(_rules(["오전에 저는 목포항 여객터미널에 있었습니다.", "오후에 창고로 돌아와 피고가 열쇠를 숨기는 것을 직접 보았습니다."]), [])
++
++
++class TestL2SingleToAlways(unittest.TestCase):
++    def test_single_observation_to_habit(self):
++        self.assertIn("EVI.SINGLE_TO_ALWAYS", _rules(["피고는 한 차례 정산서를 늦게 낸 적이 있으므로 피고는 언제나 정산을 미루는 사람입니다."]))
++
++    def test_never_and_rule_text_and_rebuttal(self):
++        self.assertEqual(_rules(["원고는 한 번도 결근한 적이 없으므로 항상 성실하였습니다."]), [])
++        self.assertEqual(_rules(["규정은 1회 위반 시 경고로 정하므로 매번 횟수를 따져야 합니다."]), [])
++        self.assertEqual(_rules(["피고가 한 번 늦었으므로 늘 늦는다는 원고의 주장은 근거가 없습니다."]), [])
++
++
++class TestL3SilenceAsConsent(unittest.TestCase):
++    def test_silence_to_consent(self):
++        self.assertIn("EVI.SILENCE_AS_CONSENT", _rules(["피고는 원고의 임대료 인상 통지에 회신하지 않았으므로 인상에 동의한 것입니다."]))
++
++    def test_deemed_clause_conduct_and_commercial(self):
++        self.assertEqual(_rules(["임대차계약은 통지 후 10일 안에 이의가 없으면 동의한 것으로 본다고 정하였고 피고는 회신하지 않았으므로 인상에 합의가 되었습니다."]), [])
++        self.assertEqual(_rules(["피고는 이의 없이 인상된 임대료를 석 달 동안 입금하였으므로 인상에 동의한 것입니다."]), [])
++        self.assertEqual(_rules(["피고는 상시 거래관계에 있는 상인으로서 낙부통지를 하지 않았으므로 상법 제53조에 따라 승낙한 것으로 봅니다."]), [])
++
++    def test_linear_time(self):
++        start = time.time()
++        check_reasoning_structure(_doc(["한 번 " * 5000 + "있으므로 " + "항상 " * 5000 + "."]))
++        check_reasoning_structure(_doc(["에서 " + "가나 " * 8000 + "있었습니다.", "직접 " * 5000 + "보았습니다."]))
++        self.assertLess(time.time() - start, 2.0)
++
++
++if __name__ == "__main__":
++    unittest.main()
