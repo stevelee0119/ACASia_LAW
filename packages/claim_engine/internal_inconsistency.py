@@ -1347,7 +1347,8 @@ def _clean_content_prefix(raw_content: Optional[str]) -> Optional[str]:
     return clean
 
 
-def _determine_stage_role(clause: str, h_start: int, h_end: int, is_dated_doc: bool) -> str:
+def _determine_stage_role(clause: str, h_start: int, h_end: int, is_dated_doc: bool,
+                          head_noun: Optional[str] = None) -> str:
     if is_dated_doc:
         return "DATED"
     after_text = clause[h_end:]
@@ -1361,12 +1362,15 @@ def _determine_stage_role(clause: str, h_start: int, h_end: int, is_dated_doc: b
     if best_stage:
         return best_stage
 
+    # 평가 측 보완 D2: 앞 25자에서는 서술어 꼴(어간+활용, '보내·받' 등)만 단계로 본다.
+    # 맨 명사('해제 통지'의 '해제'처럼 내용 수식)는 단계 서술어가 아니다
     before_window = clause[max(0, h_start - 25):h_start]
     for stage_name, pat in _STAGE_PREDICATE_PATTERNS:
-        if pat.search(before_window):
+        if any(not re.fullmatch(r"[가-힣]{2}", mm.group(0)) for mm in pat.finditer(before_window)):
             return stage_name
 
-    head_raw = clause[h_start:h_end].rstrip("서")
+    # 평가 측 보완 D2: 기본 단계는 머리 명사로 찾는다(지시어 구간 '위 청구'·'위 해제 통지' 전체가 아니라)
+    head_raw = (head_noun or clause[h_start:h_end]).rstrip("서")
     return _DEFAULT_NOUN_STAGE.get(head_raw, "NOTIFY_SEND")
 
 
@@ -1573,7 +1577,7 @@ def _check_same_event_datetime_inconsistency(
                         if d_val:
                             raw_date = f"{d_val[0]}. {d_val[1]}. {d_val[2]}."
 
-            stage_role = _determine_stage_role(clause, h_start, h_end, is_dated_doc)
+            stage_role = _determine_stage_role(clause, h_start, h_end, is_dated_doc, head_noun)
             is_uniq = bool(_UNIQUENESS_MARKER_RE.search(clause))
             if is_noun_arg:
                 sent_last_noun_event = (content_prefix, head_noun, is_uniq, is_anaphora)

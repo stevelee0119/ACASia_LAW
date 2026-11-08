@@ -25,3 +25,14 @@ def test_title_has_no_date_fragment():
         inside = re.search(r"동일 사건\(([^)]*)\)", t)
         assert inside, t
         assert not re.search(r"\d", inside.group(1)), t
+
+
+def test_stage_consistent_for_light_verb_and_content_prefix():
+    # 평가 측 보완 D2: '…를 하였다'(기능동사)와 내용 수식('해제 통지')이 있어도 같은 사건은 같은 단계로 본다
+    t1 = _titles(["원고는 2024. 6. 3. 단 한 차례 이의 신청을 하였습니다.", "원고는 2024. 6. 17. 위 신청을 하였습니다."])
+    t2 = _titles(["피고는 2024. 9. 2. 단 한 차례 계약 해지 통지를 하였습니다.", "피고는 2024. 9. 12. 위 해지 통지를 하였습니다."])
+    assert t1 and t2
+
+
+def test_stage_still_separates_decide_and_notify():
+    assert not _titles(["피고는 2024. 9. 2. 원고에 대한 출입 정지 결정을 하였고, 2024. 9. 5. 위 결정을 원고에게 통지하였습니다."])
