@@ -142,6 +142,8 @@ COPY_SIMILARITY = 0.9
 # 서증 형식 결함(EVI-FORM) 구조 기반 검출 정규식 (4대 축 및 정상 실무 보호)
 # 서증 형식 결함(EVI-FORM) 구조 기반 검출 정규식 (4대 축 및 정상 실무 보호)
 # 정상 실무 보호 1: 추후 제출/보완 예정(입증 계획) 및 기일 지참 서술문은 결함 제외
+# 추후 제출 예고(E1): '추후·향후·다음 기일에 … 제출하겠다/낼 예정' 또는 '제출할 예정'
+_FUTURE_SUBMISSION_RE = re.compile(r"(?:추후|향후|다음 ?기일에|나중에|보완하여)[^.\n]{0,30}?(?:제출하겠|내겠|제출할|낼 ?예정|제출 ?예정)|제출할 ?예정|제출하겠습니다")
 _NORMAL_FUTURE_SUBMISSION_RE = re.compile(
     r"(?:제출|보완|신청|제시|지참)\s*(?:할\s*)?예정(?:입니다|임|이며|이고|할\s*계획|에\s*있)"
 )
@@ -1610,8 +1612,38 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
                                 ", ".join(f"{party} 제{n}호증" for n in sorted(target_nums)),
                                 features={"party": party, "missing": gaps}))
     text = build_reading_text(doc).text
-    mentioned = exhibit_keys(text)
+    # 목록 밖 인용에서 뺄 것(E1): 목록이 N번부터 시작하면 그보다 작은 번호(앞 서면에서 낸 호증),
+    # 같은 문장에 앞서 제출·추후 제출 표지가 있는 인용.
+    sec_min: Dict[str, int] = {}
+    for r in rows:
+        if r.get("in_section", not r.get("from_lines", False)):
+            sec_min[r["party"]] = min(sec_min.get(r["party"], r["number"]), r["number"])
+    mentioned = set()
+    branch_mentions = set()
+    for s_start, s_end in sentence_bounds(text):
+        sent = text[s_start:s_end]
+        refs = parse_exhibits(sent)
+        if not refs:
+            continue
+        excused = bool(_PRIOR_SUBMISSION_RE.search(sent) or _FUTURE_SUBMISSION_RE.search(sent))
+        for ref in refs:
+            p, n = ref["party"], ref["number"]
+            if excused or (p in sec_min and sec_min[p] > 1 and n < sec_min[p]):
+                continue
+            mentioned.add((p, n))
+            for b in ref.get("branches") or []:
+                branch_mentions.add((p, n, b))
     missing = sorted((p, n) for p, n in mentioned if p in listed and n not in listed[p])
+    # E2: 가지번호까지 적은 인용이 목록의 같은 호증 가지번호 최댓값보다 크다(중간 결번은 위 가지번호 결번 판정이 맡는다)
+    branch_missing = sorted((p, n, b) for p, n, b in branch_mentions
+                            if (p, n) in branches and b > max(branches[(p, n)]))
+    if branch_missing:
+        labels = ", ".join(f"{p} 제{n}호증의 {b}" for p, n, b in branch_missing)
+        out.append(_finding(doc, FindingType.EVIDENCE_LIST_MISMATCH, EvidenceGrade.B, Severity.MEDIUM,
+                            f"본문이 언급한 가지번호가 증거 목록에 없다: {labels}",
+                            "본문에서 입증 근거로 든 가지번호 호증이 증거 목록의 같은 호증 가지번호에 없다.", labels,
+                            features={"rule_id": "EVI.BRANCH_REFERENCE_MISSING", "defect_code": "BRANCH_REFERENCE_MISSING",
+                                      "missing_from_list": [f"{p} 제{n}호증의 {b}" for p, n, b in branch_missing]}))
     if missing:
         labels = ", ".join(f"{p} 제{n}호증" for p, n in missing)
         out.append(_finding(doc, FindingType.EVIDENCE_LIST_MISMATCH, EvidenceGrade.B, Severity.MEDIUM,
@@ -2027,7 +2059,7 @@ def check_evidence_numbering_mismatches(
         for list_key, (l_name, l_norm) in list_name_by_key.items():
             if body_key != list_key and body_key[0] == list_key[0] and len(l_norm) >= 4:
                 chars = [re.escape(c) for c in l_norm]
-                name_pat = r"^\s*" + r"\s*".join(chars) + r"(?:에서|으로|부터|까지|[이가은는을를의에로와과도만등])?(?=[\s.,;:~!?]|$)"
+                name_pat = r"^\s*" + r"\s*".join(chars) + r"(?:에서|으로|부터|까지|[이가은는을를의에로와과도만등])?(?=[\s.,;:~!?)）\]]|$)"
                 if re.match(name_pat, rest):
                     list_lbl = f"{list_key[0]} 제{list_key[1]}호증"
                     dup = any(
