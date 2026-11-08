@@ -965,7 +965,7 @@ J15 [CodeQL py/redos, 평가 측 지시 결함] 인용구·형식어 정규식�
 | TK-140~148 | 문서 처리·성능·화면 등 9건 | Steve 병합(11-03~04) |
 | TK-76 3주기 EVI-INCONS | A 산식(#214)·B 문서 간(#224) 병합 / 후속 S1·N1~N3 **#233 `b827a2f` 수용·Steve 병합 `90cc681`(11-05)** / C 발신 시각(메모 필요) | 진행 중 |
 | TK-76 3주기 EVI-OVR | #230 병합 `349a30b` | 잔여 5꼴 이번 릴리스 포함(11-08 사용자 결정) — 구현 지시 2-24절 |
-| TK-76 3주기 EVI-FORM·EVI-NUM·EVI-DATE·EVI-COPY 잔여, EVI-LOGIC 잔여 | 유형마다 설계 메모 → 구현(순서: FORM → NUM → DATE → COPY → LOGIC → INCONS C) | **EVI-FORM 메모 #234 Steve 병합 `00e668a`, 구현 #235 Steve 병합 `13641e0`(11-06)**, **EVI-NUM #236 Steve 병합 `77b8d07`(11-08)**, **EVI-DATE: T1 병합 `c977c0b`·T2·T3 메모 병합 `900502a`, T2·T3 #239 Steve 병합 `bb46bce`(11-08), T2 대상 맞추기 후속 #243 수용(2-19-5절)** · **EVI-COPY C1 #240 Steve 병합 `2969d8c`(11-08)** · **EVI-LOGIC 잔여 L1~L3 #241 수용(11-08, 2-21-1절)** · **EVI-INCONS C 메모 #242 Steve 병합 `a89311c`, 구현 요청(2-22-3절, 조건 C1)** · **산식 후속 #244 Steve 병합 `a836bba`(11-09)** · **EVI-OVR 잔여 #245 수용(2-24-2절)** · **EVI-INCONS C #246 보완 1회 더 D2(2-22-5절)** |
+| TK-76 3주기 EVI-FORM·EVI-NUM·EVI-DATE·EVI-COPY 잔여, EVI-LOGIC 잔여 | 유형마다 설계 메모 → 구현(순서: FORM → NUM → DATE → COPY → LOGIC → INCONS C) | **EVI-FORM 메모 #234 Steve 병합 `00e668a`, 구현 #235 Steve 병합 `13641e0`(11-06)**, **EVI-NUM #236 Steve 병합 `77b8d07`(11-08)**, **EVI-DATE: T1 병합 `c977c0b`·T2·T3 메모 병합 `900502a`, T2·T3 #239 Steve 병합 `bb46bce`(11-08), T2 대상 맞추기 후속 #243 수용(2-19-5절)** · **EVI-COPY C1 #240 Steve 병합 `2969d8c`(11-08)** · **EVI-LOGIC 잔여 L1~L3 #241 수용(11-08, 2-21-1절)** · **EVI-INCONS C 메모 #242 Steve 병합 `a89311c`, 구현 요청(2-22-3절, 조건 C1)** · **산식 후속 #244 Steve 병합 `a836bba`(11-09)** · **EVI-OVR 잔여 #245 Steve 병합 `a356d76`(11-09)** · **EVI-INCONS C #246 보완 1회 더 D2(2-22-5절)** |
 
 ```
 [평가 측 구현 지시 — TK-76 3주기 EVI-INCONS 후속 PR(S1·N1~N3), 기준 Steve 4323721, 11-05]
