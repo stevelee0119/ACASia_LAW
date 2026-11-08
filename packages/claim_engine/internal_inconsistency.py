@@ -1341,7 +1341,8 @@ def _clean_content_prefix(raw_content: Optional[str]) -> Optional[str]:
     if re.search(r"(?:은|는|이|가|을|를|에|에서|에게|으로|로|와|과|의|도|만|부터|까지|한|된|할|던|차례|번|날|일|시|분|경)$", tok):
         return None
     clean = re.sub(r"\s+", "", tok)
-    if len(clean) < 2 or clean in _CONTENT_EXCLUDE_WORDS:
+    # 평가 측 보완 D1: 날짜·번호 조각('21.', '3)')이 내용 수식으로 남지 않게 한글 2~12자 어절만 받는다
+    if not re.fullmatch(r"[가-힣]{2,12}", clean) or clean in _CONTENT_EXCLUDE_WORDS:
         return None
     return clean
 
