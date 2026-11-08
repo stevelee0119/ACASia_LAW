@@ -1,0 +1,67 @@
+diff --git a/packages/claim_engine/internal_inconsistency.py b/packages/claim_engine/internal_inconsistency.py
+index e61b78b..6b690ab 100644
+--- a/packages/claim_engine/internal_inconsistency.py
++++ b/packages/claim_engine/internal_inconsistency.py
+@@ -1745,11 +1745,12 @@ def _check_same_event_datetime_inconsistency(
+                 v2_str = slot_b.raw_time
+                 conflict_label = "시각"
+ 
+-            target_display = (
+-                f"{slot_a.content_prefix or slot_b.content_prefix} {slot_a.head_noun}".strip()
+-                if (slot_a.content_prefix or slot_b.content_prefix)
+-                else slot_a.head_noun
+-            )
++            # 평가 측 후속 T1: 내용 수식과 머리 명사는 같은 슬롯에서 함께 가져온다(다른 슬롯끼리 섞으면 '징계 징계'처럼 겹친다)
++            disp_slot = slot_a if slot_a.content_prefix else (slot_b if slot_b.content_prefix else slot_a)
++            if disp_slot.content_prefix and disp_slot.content_prefix != disp_slot.head_noun:
++                target_display = f"{disp_slot.content_prefix} {disp_slot.head_noun}"
++            else:
++                target_display = disp_slot.head_noun
+             bind_reason = "유일성 표지" if has_uniq_binding else "지시어 결속"
+             title = f"문서 내 동일 사건({target_display}) {conflict_label} 진술 모순: {v1_str} ↔ {v2_str}"
+             detail = (
+diff --git a/tests/test_tk76_incons_c_title_dup_eval.py b/tests/test_tk76_incons_c_title_dup_eval.py
+new file mode 100644
+index 0000000..b9ebe34
+--- /dev/null
++++ b/tests/test_tk76_incons_c_title_dup_eval.py
+@@ -0,0 +1,39 @@
++"""TK-76 EVI-INCONS C 후속 T1 — 결과 제목의 대상 표시에 같은 낱말이 겹치지 않는다(평가 측 공개 합성 문장)."""
++from __future__ import annotations
++
++import re
++
++from packages.claim_engine.internal_inconsistency import check_internal_inconsistency
++from packages.common.schemas import Block, NormalizedDocument, Page
++
++
++def _titles(lines):
++    blocks = [Block(block_id=f"b{i}", text=t, page=1, visible=True, source_layer="visible_text") for i, t in enumerate(lines)]
++    doc = NormalizedDocument(document_id="d", filename="d.pdf", mime_type="application/pdf", sha256="0" * 64,
++                             pages=[Page(page_number=1, blocks=blocks, width=595.0, height=842.0)])
++    return [f.title for f in check_internal_inconsistency(doc)
++            if (f.confidence_features or {}).get("rule_id") == "EVI.INCONS_SAME_EVENT_DATETIME"]
++
++
++def _target(title):
++    m = re.search(r"동일 사건\(([^)]*)\)", title)
++    return m.group(1) if m else ""
++
++
++def test_no_repeated_word_when_head_nouns_differ():
++    titles = _titles([
++        "위원회는 2024. 3. 4. 처음이자 마지막으로 원고에 대한 해고를 의결하였습니다.",
++        "위원회가 2024. 3. 18. 한 위 해고 의결은 정관상 정족수를 채우지 못하였습니다.",
++    ])
++    assert titles
++    for t in titles:
++        words = _target(t).split()
++        assert len(words) == len(set(words)), t
++
++
++def test_content_and_head_from_same_slot():
++    titles = _titles([
++        "원고는 2024. 5. 2. 단 한 차례 해지 통지를 발송하였습니다.",
++        "원고는 2024. 5. 9. 위 해지 통지를 발송하였습니다.",
++    ])
++    assert titles and all(_target(t) == "해지 통지" for t in titles), titles

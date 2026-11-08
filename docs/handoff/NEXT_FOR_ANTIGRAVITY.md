@@ -965,7 +965,7 @@ J15 [CodeQL py/redos, 평가 측 지시 결함] 인용구·형식어 정규식�
 | TK-140~148 | 문서 처리·성능·화면 등 9건 | Steve 병합(11-03~04) |
 | TK-76 3주기 EVI-INCONS | A 산식(#214)·B 문서 간(#224) 병합 / 후속 S1·N1~N3 **#233 `b827a2f` 수용·Steve 병합 `90cc681`(11-05)** / C 발신 시각(메모 필요) | 진행 중 |
 | TK-76 3주기 EVI-OVR | #230 병합 `349a30b` | 잔여 5꼴 이번 릴리스 포함(11-08 사용자 결정) — 구현 지시 2-24절 |
-| TK-76 3주기 EVI-FORM·EVI-NUM·EVI-DATE·EVI-COPY 잔여, EVI-LOGIC 잔여 | 유형마다 설계 메모 → 구현(순서: FORM → NUM → DATE → COPY → LOGIC → INCONS C) | **EVI-FORM 메모 #234 Steve 병합 `00e668a`, 구현 #235 Steve 병합 `13641e0`(11-06)**, **EVI-NUM #236 Steve 병합 `77b8d07`(11-08)**, **EVI-DATE: T1 병합 `c977c0b`·T2·T3 메모 병합 `900502a`, T2·T3 #239 Steve 병합 `bb46bce`(11-08), T2 대상 맞추기 후속 #243 수용(2-19-5절)** · **EVI-COPY C1 #240 Steve 병합 `2969d8c`(11-08)** · **EVI-LOGIC 잔여 L1~L3 #241 수용(11-08, 2-21-1절)** · **EVI-INCONS C 메모 #242 Steve 병합 `a89311c`, 구현 요청(2-22-3절, 조건 C1)** · **산식 후속 #244 Steve 병합 `a836bba`(11-09)** · **EVI-OVR 잔여 #245 Steve 병합 `a356d76`(11-09)** · **EVI-INCONS C #246 수용(D1~D3, 2-22-7절)** |
+| TK-76 3주기 EVI-FORM·EVI-NUM·EVI-DATE·EVI-COPY 잔여, EVI-LOGIC 잔여 | 유형마다 설계 메모 → 구현(순서: FORM → NUM → DATE → COPY → LOGIC → INCONS C) | **EVI-FORM 메모 #234 Steve 병합 `00e668a`, 구현 #235 Steve 병합 `13641e0`(11-06)**, **EVI-NUM #236 Steve 병합 `77b8d07`(11-08)**, **EVI-DATE: T1 병합 `c977c0b`·T2·T3 메모 병합 `900502a`, T2·T3 #239 Steve 병합 `bb46bce`(11-08), T2 대상 맞추기 후속 #243 수용(2-19-5절)** · **EVI-COPY C1 #240 Steve 병합 `2969d8c`(11-08)** · **EVI-LOGIC 잔여 L1~L3 #241 수용(11-08, 2-21-1절)** · **EVI-INCONS C 메모 #242 Steve 병합 `a89311c`, 구현 요청(2-22-3절, 조건 C1)** · **산식 후속 #244 Steve 병합 `a836bba`(11-09)** · **EVI-OVR 잔여 #245 Steve 병합 `a356d76`(11-09)** · **EVI-INCONS C #246 Steve 병합 `3d54f77`(11-09), 후속 T1 제목 겹침 지시(2-25절)** |
 
 ```
 [평가 측 구현 지시 — TK-76 3주기 EVI-INCONS 후속 PR(S1·N1~N3), 기준 Steve 4323721, 11-05]
@@ -3054,5 +3054,30 @@ D3 [미탐] 관형절 속 날짜 꼴 — internal_inconsistency.py _check_same_e
 - 2-2 다: 귀속표 '세트 득점 0', train '미측정'.
 - 후속(작음, 수용을 막지 않음): 두 슬롯의 머리 명사가 다를 때('[명사 A]를 [동사 B]하였다' ↔ '위 [명사 A] [명사 B]는') 결과 제목이 '동일 사건(A A)'처럼 낱말이 겹친다 — 1750행 부근 target_display가 한 슬롯의 내용 수식과 다른 슬롯의 머리 명사를 섞는다. 내용 수식이 있는 슬롯의 (내용, 머리)를 함께 쓰면 고쳐진다.
 - 남은 한계(범위 밖): 사건 명사 뒤가 '-에 대하여·-에 대한'인 꼴(메모 2.1(3)), 법률행위 범주 밖 전달 수단 명사.
+```
+
+- **#246 Steve 병합 `3d54f77`**(11-09, 사용자 지시 '#246 병합', 평가 측이 expectedHeadSha `dc4e6c1`로 실행). Steve `packages/`·`tests/` = 평가 측 병합 시험본(1,607건 통과). TK-76 3주기 구현 PR 모두 병합.
+
+## 2-25. EVI-INCONS C 후속 T1 — 결과 제목 낱말 겹침 (릴리스 전 수정) (11-09, 사용자 '제목 낱말 겹침 후속 처리 릴리스 전 수정')
+
+- 평가 측 사본 `60d292e`(기준 `3d54f77`) 사전 검증. 증분: [patches/TK-76_cycle3_incons_c_title_t1_on_3d54f77.diff](patches/TK-76_cycle3_incons_c_title_t1_on_3d54f77.diff).
+
+```
+[평가 측 구현 지시 — TK-76 3주기 EVI-INCONS C 후속 T1(결과 제목 낱말 겹침), 기준 Steve 3d54f77(#246 병합), 11-09]
+
+목적: 릴리스 전 마무리(사용자 결정 11-09 '릴리스 전 수정'). 한 줄짜리 표시 결함. 한 PR로 낸다. 설계 메모 불요(평가 측 사본으로 사전 검증 완료).
+
+T1 [표시 결함] 결과 제목의 대상 표시에 같은 낱말이 겹침 — packages/claim_engine/internal_inconsistency.py 1748~1752행 target_display
+- 원인: 내용 수식은 slot_a 또는 slot_b 중 있는 쪽에서, 머리 명사는 늘 slot_a에서 가져와 섞는다. 첫 문장의 목적어가 사건 명사('…에 대한 [사건 명사 A]를 [동사 B]하였다' → 머리 A)이고 둘째 문장이 '위 [A] [B 명사]'(내용 A·머리 B)이면 제목이 '동일 사건(A A)'가 된다(평가 측 재현: '…해고를 의결하였다' ↔ '…한 위 해고 의결은' → '동일 사건(해고 해고)').
+- 고칠 것: 내용 수식이 있는 슬롯을 골라(disp_slot = slot_a if slot_a.content_prefix else (slot_b if slot_b.content_prefix else slot_a)) 그 슬롯의 (내용 수식, 머리 명사)를 함께 쓴다. 내용 수식이 머리 명사와 같으면 머리 명사만 쓴다.
+- 판정 로직(결속·단계·비교)은 바꾸지 않는다.
+
+평가 측 사전 검증(사본 60d292e, 기준 3d54f77)
+- 평가 측 시험 tests/test_tk76_incons_c_title_dup_eval.py 2건 — Steve에서 1건 실패('해고 해고'), 사본에서 통과('해고 의결'·'해지 통지'). 관련 시험(internal_inconsistency·check_document 관련) 307건 통과. EVI-INCONS C 비공개 탐침 1~5차 결과 변화 없음(3/3·2/3·3/3·3/4·4/4, 대조 오탐 0) — 제목만 바뀜.
+- 증분: docs/handoff/patches/TK-76_cycle3_incons_c_title_t1_on_3d54f77.diff — 제품 1파일(+6/−5), 평가 측 시험 1파일 2건.
+
+제출물·수용 기준
+- 증분 그대로 적용해도 되고 같은 구조로 다시 써도 된다. 2-2 다: 귀속표 '세트 득점 0'(표시만 바뀜), train '미측정'.
+- 수용: CI 전부 성공, 평가 측 시험 통과, 탐침 결과 변화 없음. 수용·병합 뒤 그 Steve SHA를 릴리스 후보로 평가 측 verify_all 전체 1회.
 ```
 
