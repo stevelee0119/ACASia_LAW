@@ -3086,6 +3086,28 @@ def _document_title_kind(doc: NormalizedDocument, reading_text: Optional[str] = 
     return DOC_KIND_OTHER, None
 
 
+
+_EOJEOL_RE = re.compile(r"[가-힣A-Za-z0-9]+")
+
+
+def _stem_seq(sentence: str) -> List[str]:
+    """어절마다 앞 두 글자(세 글자 이상 어절) 또는 어절 그대로(두 글자)를 어간 근사로 쓴다."""
+    return [t[:2] if len(t) >= 3 else t for t in _EOJEOL_RE.findall(sentence) if len(t) >= 2]
+
+
+def _lcs_len(a: List[str], b: List[str]) -> int:
+    """최장 공통 부분열 길이(동적 계획, 문장 단위라 길이가 작다)."""
+    if len(a) > 200 or len(b) > 200:
+        a, b = a[:200], b[:200]
+    prev = [0] * (len(b) + 1)
+    for x in a:
+        cur = [0]
+        for j, y in enumerate(b):
+            cur.append(prev[j] + 1 if x == y else max(prev[j + 1], cur[j]))
+        prev = cur
+    return prev[-1]
+
+
 def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Finding]:
     """진술서 대필 의심 및 서증 원본(사실경위서) 통복제 결함을 탐지한다.
 
@@ -3158,6 +3180,35 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                         continue
 
                     pairs.setdefault(other_id, []).append((sentence, other_sentence, round(overlap, 2)))
+
+        # C1: 진술 문서가 다른 서면 문장을 어미·조사만 바꿔 옮긴 경우 — 어절 어간(앞 두 글자) 순서열의 최장 공통 부분열 비율로 본다.
+        # 같은 사건을 자기 말로 쓴 진술과 가르려고, 긴 문장(어간 8개 이상) 두 쌍 이상이 같은 상대 문서에 모일 때만 낸다.
+        if owner_kind == DOC_KIND_STATEMENT:
+            stem_cache: Dict[str, List[str]] = {}
+            own = [(sent, _stem_seq(sent)) for sent, _ in prepared[owner.document_id]
+                   if start is None or texts[owner.document_id].find(sent, start) != -1]
+            for other in docs:
+                if other.document_id == owner.document_id:
+                    continue
+                found = {a for a, _, _ in pairs.get(other.document_id, [])}
+                extra = []
+                for sent, seq in own:
+                    if sent in found or len(seq) < 8:
+                        continue
+                    for o_sent, _ in prepared[other.document_id]:
+                        o_seq = stem_cache.setdefault(o_sent, _stem_seq(o_sent))
+                        if len(o_seq) < 8:
+                            continue
+                        floor = min(len(seq), len(o_seq))
+                        # 최장 공통 부분열은 공통 어간 수를 넘지 못하므로, 집합 겹침이 모자라면 계산하지 않는다
+                        if sum(min(seq.count(t), o_seq.count(t)) for t in set(seq) & set(o_seq)) < 0.85 * floor:
+                            continue
+                        ratio = _lcs_len(seq, o_seq) / floor
+                        if ratio >= 0.85:
+                            extra.append((sent, o_sent, round(ratio, 2)))
+                            break
+                if len(extra) + len(pairs.get(other.document_id, [])) >= 2 and extra:
+                    pairs.setdefault(other.document_id, []).extend(extra)
 
         for other_id, matched in pairs.items():
             other = by_id[other_id]
