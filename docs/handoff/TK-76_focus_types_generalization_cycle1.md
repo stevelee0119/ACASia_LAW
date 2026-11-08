@@ -311,3 +311,4 @@ Antigravity. 전달: [NEXT_FOR_ANTIGRAVITY](NEXT_FOR_ANTIGRAVITY.md). train 전�
 ### 3주기 EVI-NUM — #236 판정: 수용 (11-08, head `3b1c6a7`)
 - 제품 코드 = 평가 측 사본 `d32f874`(diff 0), 평가 측 시험 7건 + 구현 측 변형 5건. CI 전부 성공(인용).
 - 평가 측 재실행: verify_all 전체 종료 0(전체 9,476·브라우저 197), 새 3차 탐침 기준 4/6·오탐 4/8 → 6/6·0/8, 1~3차 합 20/20·0/24, 관련 24개 파일 699건. 은퇴·고정 변화 0(같은 제품 코드 사본).
+- **#236 Steve 병합 `77b8d07`**(11-08, 사용자 지시 '#236 병합', 평가 측이 expectedHeadSha로 실행). EVI-NUM 완료. 다음: EVI-DATE.
