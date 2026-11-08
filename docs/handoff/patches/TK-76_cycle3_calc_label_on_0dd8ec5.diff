@@ -1,0 +1,124 @@
+diff --git a/packages/claim_engine/calculation.py b/packages/claim_engine/calculation.py
+index 6254909..2af49d7 100644
+--- a/packages/claim_engine/calculation.py
++++ b/packages/claim_engine/calculation.py
+@@ -146,11 +146,16 @@ _OP_RESULT_NOUN_RE = re.compile(r"(?:^|\s)(?:그\s*)?(?P<noun>곱|합|차)(?:은
+ _TOTAL_MARK_RE = re.compile(r"(?:^|\s)(?:총|전체|모두|합계|합산)")
+ # 절 경계: 연결 어미(-고·-며·-으나·-지만·-는데) 뒤 공백이나 쉼표가 결과 앞에 있으면 다른 절이다(메모 M4)
+ _CLAUSE_BREAK_RE = re.compile(r"[가-힣](?:고|며|으나|지만|는데)(?:\s|,)|,")
++# 연산 서술어('더하면'·'빼면' 등) 뒤 결과 이름표 구간에서는 용언 어간 뒤 연결 어미만 절 경계로 본다.
++# '출고·입고·신고·광고·재고·원고' 같은 '고'로 끝나는 명사를 연결 어미 '-고'로 읽지 않기 위해서다(평가 측 진단, '대' 수량 산식 미탐)
++_VERBAL_CLAUSE_BREAK_RE = re.compile(r"(?:하|되|했|됐|였|었|았|있|없|않|이)(?:고|며|으나|지만|는데)(?:\s|,)|,")
+ # 피연산자 절 경계: 연결 어미(-고·-며·-으나·-지만·-는데·-므로·-어서·-아서) 뒤, 또는 수 사이가 아닌 쉼표 뒤(평가 측 2차 보완 G2)
+ # 쉼표 뒤 공백을 건너 숫자가 오면('A원, N월분 B원') 나열이지 절 경계가 아니다(평가 측 보완 N3)
+ _OPERAND_CLAUSE_BREAK_RE = re.compile(r"[가-힣](?:고|며|으나|지만|는데|므로|어서|아서)(?=[\s,])|,(?! ?\d)")
+ # 차수·순번 표지('1차 120명'의 '1차')는 피연산자가 아니라 이름표다(평가 측 2차 보완 G3)
+ _ORDINAL_UNITS = ("차", "번째", "회차", "순위")
++# 달력 시점 이름표 단위와 그 값 범위(평가 측 '대' 수량 산식 후속): N월(1~12)·N분기(1~4)·N반기(1~2)
++_CALENDAR_LABEL_RANGE = {"월": (1, 12), "분기": (1, 4), "반기": (1, 2)}
+ # 기간 몫 이름표: 수 + 달력 기간(월·분기·반기·년·연) + '분'. 'N개월분'(기간의 양)·'N일분'은 수량이므로 넣지 않는다(평가 측 보완 N1)
+ _PERIOD_LABEL_RE = re.compile(r"(?:월|분기|반기|년|연)분")
+ 
+@@ -312,6 +317,15 @@ def unit_is_ordinal_label(m: "re.Match", text: str) -> bool:
+     up = m.group("unit_part") or ""
+     if _PERIOD_LABEL_RE.match(up):
+         return True  # 'N월분'·'N분기분'·'N년분'처럼 어느 기간 몫인지 가리키는 이름표(평가 측 보완 N1)
++    # 달력 시점('1월 접수 37건'의 '1월', '3분기 매출'의 '3분기')은 수량이 아니라 이름표다. 'N개월'(기간의 양)은 '개월'이라 해당 없음
++    if up in _CALENDAR_LABEL_RANGE and not re.match(r"\s*[×*xX✕✖\u2a2f+＋\-−=]", text[m.end():]):
++        lo, hi = _CALENDAR_LABEL_RANGE[up]
++        try:
++            v = int(re.sub(r"[^\d]", "", m.group(0).split(up)[0]) or -1)
++        except ValueError:
++            v = -1
++        if lo <= v <= hi:
++            return True
+     return up in _ORDINAL_UNITS and not re.match(r"\s*[×*xX✕✖\u2a2f+＋\-−=]", text[m.end():])
+ 
+ 
+@@ -527,6 +541,15 @@ def _check_statement_formula(text: str) -> Optional[dict]:
+     res_token = tokens[-1]
+     cs = _operand_clause_start(text, tokens[:-1], res_token["start"])
+     ops = [t for t in tokens[:-1] if t["start"] >= cs]
++    # 연산 서술어('더하면'·'빼면' 등) 뒤, 결과 앞의 수('1분기 신고 건수는'의 '1분기')는 결과 이름표의 일부이지 피연산자가 아니다
++    # 피연산자 사이에 오는 '곱하기' 같은 중위 서술어는 제외하고, 그 앞에 피연산자가 2개 이상 남을 때만 거른다(기존 중위 산식 보존)
++    if ops:
++        pred_in = [m for m in _OP_PREDICATE_RE.finditer(text, ops[0]["start"], res_token["start"])
++                   if not m.group(0).endswith("기")]
++        if pred_in:
++            before = [t for t in ops if t["start"] < pred_in[-1].start()]
++            if len(before) >= 2:
++                ops = before
+     if len(ops) < 2:
+         return None
+     between_all = text[ops[0]["start"]:res_token["end"]]
+@@ -542,7 +565,13 @@ def _check_statement_formula(text: str) -> Optional[dict]:
+     if not (_OP_PREDICATE_RE.search(text[ops[0]["start"]:res_token["start"]]) or _TOTAL_MARK_RE.search(after_ops)
+             or result_noun):
+         return None
+-    if _CLAUSE_BREAK_RE.search(after_ops) and not result_noun:
++    pred_matches = list(_OP_PREDICATE_RE.finditer(after_ops))
++    if pred_matches:
++        pred_end = pred_matches[-1].end()
++        clause_break = _CLAUSE_BREAK_RE.search(after_ops[:pred_end]) or _VERBAL_CLAUSE_BREAK_RE.search(after_ops[pred_end:])
++    else:
++        clause_break = _CLAUSE_BREAK_RE.search(after_ops)
++    if clause_break and not result_noun:
+         return None
+     computed, op_type = _evaluate_formula_operands(ops, text, after_ops)
+     if computed is None or op_type is None:
+diff --git a/tests/test_tk76_calc_label_eval.py b/tests/test_tk76_calc_label_eval.py
+new file mode 100644
+index 0000000..269fc02
+--- /dev/null
++++ b/tests/test_tk76_calc_label_eval.py
+@@ -0,0 +1,50 @@
++"""TK-76 3주기 EVI-INCONS 산식 후속 — 결과 이름표·달력 시점 이름표 평가 측 시험(공개 합성 문장, 평가 측 비공개 탐침 문장 아님).
++
++- Q1: 연산 서술어 뒤 결과 이름표의 '고'로 끝나는 명사('출고·입고·신고·광고·재고·원고')를 연결 어미 '-고'로 읽지 않는다.
++- Q2: 연산 서술어 뒤, 결과 앞의 수('2분기 처리 건수는'의 '2분기')는 피연산자가 아니다.
++- Q3: 달력 시점('N월'·'N분기'·'N반기')은 이름표다. 'N개월'은 기간의 양이라 해당 없음.
++"""
++from __future__ import annotations
++
++import pytest
++
++from packages.claim_engine.calculation import CalculationEngine
++from packages.common.enums import FindingType
++from packages.common.schemas import Block, NormalizedDocument, Page
++
++
++def _hits(text: str):
++    block = Block(block_id="b1", text=text, page=1, visible=True, source_layer="visible_text")
++    doc = NormalizedDocument(document_id="d", filename="d.pdf", mime_type="application/pdf", sha256="0" * 64,
++                             pages=[Page(page_number=1, blocks=[block], width=595.0, height=842.0)])
++    return [f for f in CalculationEngine().verify_document(doc) if f.type == FindingType.ARITHMETIC_MISMATCH]
++
++
++@pytest.mark.parametrize("text", [
++    # Q1
++    "북문 반입 63대와 남문 반입 71대를 더하면 금일 입고 대수는 124대이다.",
++    "견적 1,200,000원과 추가 견적 450,000원을 합하면 광고 집행 금액은 1,750,000원이다.",
++    "가지점 18명과 나지점 23명을 합하면 원고 소속 인원은 31명이다.",
++    # Q2
++    "접수 140건과 이관 95건을 합하면 2분기 처리 건수는 245건이다.",
++    # Q3
++    "3월 판매 410개와 4월 판매 385개를 합하면 785개이다.",
++    "1분기 수주 26건과 2분기 수주 31건을 더하면 47건이다.",
++])
++def test_positive(text):
++    assert len(_hits(text)) == 1
++
++
++@pytest.mark.parametrize("text", [
++    # 맞게 계산한 문장
++    "북문 반입 63대와 남문 반입 71대를 더하면 금일 입고 대수는 134대이다.",
++    "접수 140건과 이관 95건을 합하면 2분기 처리 건수는 235건이다.",
++    "3월 판매 410개와 4월 판매 385개를 합하면 795개이다.",
++    # 연결 어미·쉼표 절 경계는 그대로
++    "북문 반입 63대와 남문 반입 71대를 더하였고 남은 대수는 50대이다.",
++    "견적 1,200,000원과 추가 견적 450,000원을 합하면, 별도로 청구한 광고 비용은 900,000원이다.",
++    # 'N개월'은 기간의 양(이름표 아님) — 기존 곱셈 산식 그대로
++    "월 250,000원씩 4개월이면 1,000,000원이다.",
++])
++def test_negative(text):
++    assert _hits(text) == []
