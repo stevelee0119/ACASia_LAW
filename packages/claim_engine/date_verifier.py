@@ -195,10 +195,10 @@ EVENT_KIND_SURFACE_FORMS: Dict[str, Tuple[str, ...]] = {
     "처분": (
         "과징금부과처분", "영업정지처분", "직위해제처분", "거부처분", "불승인처분", "불허가처분",
         "기각결정", "각하결정", "인용결정", "승인처분", "인가처분",
-        "처분", "결정", "명령", "판정", "의결",
-        "처분하", "결정하", "명령하", "판정하", "의결하",
-        "처분했", "결정했", "명령했", "판정했", "의결했",
-        "처분한", "결정한", "명령한", "판정한", "의결한",
+        "처분", "결정", "명령", "판정", "의결", "결의",
+        "처분하", "결정하", "명령하", "판정하", "의결하", "결의하",
+        "처분했", "결정했", "명령했", "판정했", "의결했", "결의했",
+        "처분한", "결정한", "명령한", "판정한", "의결한", "결의한",
         "처분된", "결정된", "내려진", "발령", "발령된", "명령된",
         "처분되어", "결정되어", "발령되어",
     ),
@@ -973,6 +973,8 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
     last_clause_date_raw: str = ""
     last_date_clause_idx: int = -10
     last_clause_had_time: bool = False
+    # F4: 사건 낱말 없이 날짜만 있는 절(예: '…일 ○○ 결과에 기초하여')의 날짜를 같은 문장 다음 절 사건에 넘긴다
+    orphan_date: Optional[Tuple[datetime.date, str]] = None
     next_clause_has_anaphora = False
     period_counter = 0
     prev_delim = ""
@@ -1094,6 +1096,9 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
         is_same_day = bool(RELATIVE_SAME_DAY_RE.search(clause_text))
 
         # T2: 같은 날('같은 날', '당일', '동일자', '그날') 또는 한 문장 내 연속 시각 절의 날짜 물려받기
+        if not date_entries and orphan_date is not None:
+            date_entries.append((0, 0, orphan_date[0], orphan_date[1]))
+        orphan_date = None
         if date_entries:
             last_clause_date_obj = date_entries[-1][2]
             last_clause_date_raw = date_entries[-1][3]
@@ -1154,6 +1159,13 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
         if not filtered_events:
             if "." in delim_str:
                 last_clause_had_time = False
+            elif (
+                date_entries
+                and "\n" not in delim_str and "," not in delim_str and ";" not in delim_str
+                # '…일자 ○○(문서)'처럼 날짜가 문서의 작성일을 가리키면 넘기지 않는다
+                and not re.match(r"\s?자(?:\s|$)", clause_text[date_entries[-1][1]:])
+            ):
+                orphan_date = (date_entries[-1][2], date_entries[-1][3])
             prev_delim = delim_str
             continue
 
@@ -1446,6 +1458,67 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
             slots = [s for s in slots if not (s_start <= s.span_in_block[0] < s_end)]
 
     return slots
+
+
+
+# F1·F2: 처분 → 통지 대상 맞추기 보조 — 대상 문자열과 사건 표면형의 접두 명사에서 사건 낱말을 떼어 핵심 명사로 비교한다
+_ORDINAL_RE = re.compile(r"(\d+)\s?차(?!량|선|원|례)")
+_DISP_EVENT_TAIL_RE = re.compile(r"(?:처분|결정|의결|결의|명령|판정|통지서|통지|통보|고지|발송|송부)+$")
+_NOTICE_OBJECT_RE = re.compile(r"^(?:을|를)\s?(?:[가-힣0-9]+\s){0,2}?(?:원고|피고|신청인|피신청인|상대방)?(?:에게)?\s?(?:[가-힣0-9]+\s){0,1}?(?:통지|통보|발송|송부|송달|고지)")
+
+
+def _disp_cores(slot, extra: str = "") -> set:
+    cores = set()
+    for raw in (slot.target or "", slot.surface_form or "", extra):
+        core = _DISP_EVENT_TAIL_RE.sub("", re.sub(r"\s", "", raw))
+        if len(core) >= 2:
+            cores.add(core)
+    return cores
+
+
+def _disposition_notice_target_match(cause_slot, effect_slot, effect_target: str = "") -> bool:
+    """처분 대상과 통지 대상이 같은 핵심 명사(2자 이상)를 한쪽이 다른 쪽에 담는지 본다. 통지 쪽은 지시어나 같은 핵심 명사가 있어야 한다."""
+    a, b = _disp_cores(cause_slot), _disp_cores(effect_slot, effect_target)
+    # 차수(1차·2차)가 서로 다르면 다른 처분이다
+    oc = set(_ORDINAL_RE.findall(cause_slot.clause_text or ""))
+    oe = set(_ORDINAL_RE.findall(effect_slot.clause_text or ""))
+    if oc and oe and not (oc & oe):
+        return False
+
+    def bigrams(t):
+        t = re.sub(r"\d+", "", t)
+        return {t[i:i + 2] for i in range(len(t) - 1)}
+
+    for x in a:
+        for y in b:
+            if x in y or y in x:
+                return True
+            bx, by = bigrams(x), bigrams(y)
+            if bx and by and len(bx & by) / min(len(bx), len(by)) >= 0.6:
+                return True
+    return False
+
+
+_PRECEDING_NP_RE = re.compile(r"((?:[가-힣0-9]{2,}\s?){1,2})$")
+
+
+def _preceding_np_target(slot) -> str:
+    """F6: '○○ 통지는'처럼 대상 표지 없이 사건 낱말 바로 앞 명사로만 대상을 적은 꼴의 대상을 얻는다."""
+    text = slot.clause_text or ""
+    i = text.find(slot.surface_form or "\0")
+    if i <= 0:
+        return ""
+    m = _PRECEDING_NP_RE.search(text[:i].rstrip()[-40:])
+    if not m:
+        return ""
+    core = re.sub(r"\s", "", m.group(1))
+    return "" if re.search(r"(?:은|는|이|가|을|를|에게|에서|으로|로|와|과)$", core) else core
+
+
+def _is_notice_object(slot) -> bool:
+    text = slot.clause_text or ""
+    i = text.find(slot.surface_form or "\0")
+    return i >= 0 and bool(_NOTICE_OBJECT_RE.match(text[i + len(slot.surface_form):]))
 
 
 def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
@@ -2071,6 +2144,13 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                         c_target = cause_slot.target or ""
                         e_target = effect_slot.target or ""
 
+                        # F6: 처분 → 통지 규칙에서 통지 쪽 대상이 비면 사건 낱말 바로 앞 명사를 대상으로 쓴다
+                        # (대상이 '통지서'처럼 사건 낱말뿐인 경우 포함)
+                        e_extra = ""
+                        if rule["rule_id"] == "DISPOSITION_BEFORE_NOTICE" and c_target and not _DISP_EVENT_TAIL_RE.sub("", re.sub(r"\s", "", e_target)):
+                            e_extra = _preceding_np_target(effect_slot)
+                            e_target = e_target or e_extra
+
                         # Z1: 대상이 빈 슬롯끼리는 비교하지 않는다
                         if not c_target or not e_target:
                             continue
@@ -2095,8 +2175,14 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             right_has_anaphora=effect_slot.has_anaphora,
                         )
 
+                        if not matched_target and rule["rule_id"] == "DISPOSITION_BEFORE_NOTICE":
+                            matched_target = _disposition_notice_target_match(cause_slot, effect_slot, e_extra)
                         if not matched_target:
                             continue
+
+                    # F3: 통지 절의 목적어로 쓰인 처분 명사(예: '그 ○○처분을 통지')는 처분 사건이 아니다
+                    if rule["rule_id"] == "DISPOSITION_BEFORE_NOTICE" and _is_notice_object(cause_slot):
+                        continue
 
                     # AA5: 사후 불복/소송/심판 청구가 과거 결정을 대상으로 삼는 정상 회고 서술은 문장 안의 쌍 단위로 역전 판정에서 제외
                     if rule["rule_id"] in ("TARGET_BOUND_DISPOSITION", "RECEIPT_BEFORE_AMENDMENT"):
