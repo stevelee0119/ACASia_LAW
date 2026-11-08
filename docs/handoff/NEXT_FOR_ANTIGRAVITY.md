@@ -965,7 +965,7 @@ J15 [CodeQL py/redos, 평가 측 지시 결함] 인용구·형식어 정규식�
 | TK-140~148 | 문서 처리·성능·화면 등 9건 | Steve 병합(11-03~04) |
 | TK-76 3주기 EVI-INCONS | A 산식(#214)·B 문서 간(#224) 병합 / 후속 S1·N1~N3 **#233 `b827a2f` 수용·Steve 병합 `90cc681`(11-05)** / C 발신 시각(메모 필요) | 진행 중 |
 | TK-76 3주기 EVI-OVR | #230 병합 `349a30b` | 완료(후속 미탐 4꼴은 다음 주기) |
-| TK-76 3주기 EVI-FORM·EVI-NUM·EVI-DATE·EVI-COPY 잔여, EVI-LOGIC 잔여 | 유형마다 설계 메모 → 구현(순서: FORM → NUM → DATE → COPY → LOGIC → INCONS C) | **EVI-FORM 메모 #234 Steve 병합 `00e668a`, 구현 #235 Steve 병합 `13641e0`(11-06)**, **EVI-NUM #236 Steve 병합 `77b8d07`(11-08)**, **EVI-DATE: PR-A #237 수용·PR-B 메모 #238 조건부 승인(11-08, 2-19-1절) — 병합 대기**, 나머지 미착수 |
+| TK-76 3주기 EVI-FORM·EVI-NUM·EVI-DATE·EVI-COPY 잔여, EVI-LOGIC 잔여 | 유형마다 설계 메모 → 구현(순서: FORM → NUM → DATE → COPY → LOGIC → INCONS C) | **EVI-FORM 메모 #234 Steve 병합 `00e668a`, 구현 #235 Steve 병합 `13641e0`(11-06)**, **EVI-NUM #236 Steve 병합 `77b8d07`(11-08)**, **EVI-DATE: #237(T1) Steve 병합 `c977c0b`·#238(T2·T3 메모) Steve 병합 `900502a`(11-08) — T2·T3 구현 PR 대기(D1~D3)**, 나머지 미착수 |
 
 ```
 [평가 측 구현 지시 — TK-76 3주기 EVI-INCONS 후속 PR(S1·N1~N3), 기준 Steve 4323721, 11-05]
@@ -2549,3 +2549,4 @@ D3 [T3 인과 결합 범위] 3.2(2) 구문 꼴 A — '절 안에 날짜 d_Y와 �
 제출물·수용 기준(구현 PR)
 - 메모 6절 + D1~D3. 평가 측이 판정 때 새로 짓는 비공개 탐침 양성 2/3 이상·대조 오탐 0(시간 길이 서술·법령 인용 '…에 따라' 대조 포함), 은퇴·고정 하락 0·오탐 0, verify_all 전체, 기존 A-4 시험·날짜 관련 시험 통과, 신규 정규식 2만 자 선형 시간 시험.
 ```
+- #237 Steve 병합 `c977c0b`, #238 Steve 병합 `900502a`(11-08, 사용자 지시 '#237,238 병합', 평가 측이 expectedHeadSha `0f002e9`·`f69642a`로 실행). 다음: T2·T3 구현 PR(D1~D3 포함), EVI-COPY 착수 가능.
