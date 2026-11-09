@@ -225,8 +225,9 @@ EVENT_PREDICATE_MAP = {
     "사고": re.compile(r"(?:발생(?:하|했|하였|한|하고|하여|자마자)?|일어나|일어난|일어났|났|난)"),
     "화재": re.compile(r"(?:발생(?:하|했|하였|한|하고|하여|자마자)?|일어나|일어난|일어났|났|난)"),
     "계약": re.compile(r"(?:체결(?:하|했|하였|한|하고|하여)?|맺(?:었|은|고)?)"),
-    "해지": re.compile(r"(?:해지(?:하|했|하였|한|하고|하여|되었|된|되)?)"),
-    "해제": re.compile(r"(?:해제(?:하|했|하였|한|하고|하여|되었|된|되)?)"),
+    # 평가 측 후속 I6: 접미가 선택이면 명사로만 쓰인 '해지·해제'('해지 예고 결정')도 사건 서술로 읽힌다 — 서술 접미 필수
+    "해지": re.compile(r"(?:해지(?:하|했|하였|한|하고|하여|되었|된|되))"),
+    "해제": re.compile(r"(?:해제(?:하|했|하였|한|하고|하여|되었|된|되))"),
 }
 
 # Y6, Q1, QQ1: 수량 속성 정규식 - 단위는 구조로 추출 (메모 129 준수, 닫힌 단위 목록 열거 금지, 과·와·도·만 허용)
@@ -1208,6 +1209,16 @@ _ANAPHORA_EVENT_RE = re.compile(
     r"(?P<head>" + _EVENT_NOUN_ALT + r")(?P<doc>서)?(?!\s*(?:" + _EVENT_NOUN_ALT + r"))"
 )
 
+# 평가 측 후속 I5: 지시어 명사구가 '[사건 명사] [명사 1어절] [사건 명사]'로 이어지면 마지막 사건 명사가 머리다
+# ('위 해지 예고 통지' → 머리 '통지', 보조 머리 '해지', 내용 '예고' — 일반 경로의 '마지막 사건 명사' 규칙과 맞춘다)
+_ANAPHORA_EXT_RE = re.compile(
+    r"\s+(?P<mid>[가-힣]{2,12})\s+(?P<head2>" + _EVENT_NOUN_ALT + r")(?!\s*(?:" + _EVENT_NOUN_ALT + r"))"
+)
+# 지시어가 앞 사건을 가리키고 뒤 명사는 다른 사건인 꼴('위 해고 이후 신청')을 막는 시간·관계 명사
+_ANAPHORA_EXT_BLOCK = frozenset({
+    "이후", "이전", "직후", "직전", "당시", "무렵", "관련", "이외", "대신", "과정", "도중", "전후", "결과", "다음", "뒤",
+})
+
 # 일반 사건 명사(비지시어) 추출 — 복합 사건 명사에서 뒤이어 사건 명사가 오지 않는 마지막 사건 명사를 머리로 선택
 _GENERAL_EVENT_RE = re.compile(
     r"(?<![가-힣0-9])(?P<head>" + _EVENT_NOUN_ALT + r")(?P<doc>서)?(?!\s*(?:" + _EVENT_NOUN_ALT + r"))"
@@ -1253,7 +1264,9 @@ _SAME_EVENT_EXCEPTION_RE = re.compile(
 _CLAUSE_NEGATION_FUTURE_RE = re.compile(
     r"(?:하지\s*않|안\s*하|못하|없었|사실이\s*없|바\s*없|적\s*없|일\s*없|아니다|아니었|"
     r"보내지\s*않|발송하지\s*않|통지하지\s*않|회신하지\s*않|"
-    r"예정|계획|할\s*것|하고자)"
+    r"예정|계획|할\s*것|하고자|"
+    # 평가 측 후속 I7: 가정('-였다면·-라면·-더라도')·의문('-였는지·-는가')·비현실('-할 이유·필요')도 단정이 아니다
+    r"다면|라면|더라도|더라면|는지|은지|었는지|였는지|는가|을까|(?:할|될)\s*(?:이유|필요|리))"
 )
 _CLAUSE_DEADLINE_RE = re.compile(
     r"(?:부터\s*[^.,;]{0,30}?까지|이내에|기한|까지\s*(?:회신|답변|통지|통보|제출|발송))"
@@ -1399,19 +1412,33 @@ def _extract_event_from_clause(
     """절에서 (content_prefix, head_noun, alt_head_noun, start, end, is_anaphora, is_noun_arg)를 추출한다."""
     # 1. 지시어 결속 명사구 우선 (_ANAPHORA_EVENT_RE)
     for m in _ANAPHORA_EVENT_RE.finditer(clause):
-        after = clause[m.end():]
+        head = m.group("head")
+        end = m.end()
+        raw_content = m.group("content")
+        alt_head = None
+        if not m.group("doc"):
+            ext = _ANAPHORA_EXT_RE.match(clause, end)
+            if ext and ext.group("mid") not in SAME_EVENT_NOUNS and ext.group("mid") not in _ANAPHORA_EXT_BLOCK \
+                    and _clean_content_prefix(ext.group("mid")) is not None:
+                alt_head, head, end, raw_content = head, ext.group("head2"), ext.end(), ext.group("mid")
+        after = clause[end:]
         # 평가 측 후속 I1: '[날짜]에 [동사]한 위 [사건 명사]에 대하여 …'처럼 관형절에 그 사건의 날짜가 있으면 수식어 자리여도 결속한다
         if _NON_ARGUMENT_SUFFIX_RE.match(after) and not _has_dated_relative_clause(clause[:m.start()]):
             continue
-        if _is_medium_instrument(m.group("head"), after):
+        if _is_medium_instrument(head, after):
             continue
-        raw_content = m.group("content")
         # 평가 측 후속 I4: 지시어 뒤 내용 수식이 두 어절('위 [명사] [명사] [사건 명사]')이면 앞 어절도 명사여야 한다
         # ('위 원고에게 보낸 통지'처럼 지시어가 다른 명사를 꾸미는 꼴은 결속하지 않는다)
         if raw_content and len(raw_content.split()) == 2 and _clean_content_prefix(raw_content.split()[0]) is None:
             continue
+        # 평가 측 후속 I5: 머리 명사는 명사구의 마지막 사건 명사(일반 경로와 같은 규칙). 내용 수식의 마지막 어절이
+        # 사건 명사이면('위 직위 해제 결의') 그것을 보조 머리로 두고, 내용 수식은 그 앞 어절로 한다
+        if raw_content and alt_head is None:
+            toks = raw_content.split()
+            if len(toks) == 2 and toks[-1] in SAME_EVENT_NOUNS:
+                alt_head, raw_content = toks[-1], toks[0]
         content = _clean_content_prefix(raw_content)
-        return (content, m.group("head"), None, m.start(), m.end(), True, True)
+        return (content, head, alt_head, m.start(), end, True, True)
 
     # 2. 비지시어 사건 명사구 (명사 논항 자리 우선, 서술어 접미 자리 차순위)
     candidates = list(_GENERAL_EVENT_RE.finditer(clause))

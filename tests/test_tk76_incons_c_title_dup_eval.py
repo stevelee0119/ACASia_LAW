@@ -135,3 +135,68 @@ def test_i4_control_demonstrative_modifies_other_noun():
         "피고는 2024. 12. 16. 위 원고에게 보낸 통지와 별도로 인사 발령을 하였습니다.",
     ])
     assert not titles, titles
+
+
+# --- 평가 측 후속 I5: 복합 명사구의 머리 명사를 일반 경로와 지시어 경로에서 같게 고른다(마지막 사건 명사) ---
+
+def test_i5_compound_noun_phrase_with_mid_noun_binds():
+    titles = _titles([
+        "피고는 2024. 10. 1. 단 한 차례 원고에게 계약 해지 예정 통지를 하였습니다.",
+        "피고는 2024. 10. 15. 위 해지 예정 통지를 하였습니다.",
+    ])
+    assert titles and all(_target(t) == "예정 통지" for t in titles), titles
+
+
+def test_i5_medium_noun_after_event_noun_binds():
+    titles = _titles([
+        "원고는 2024. 10. 1. 오전 10시 단 한 번 피고에게 합의 권유 메일을 보냈습니다.",
+        "원고가 위 합의 권유 메일을 보낸 시각은 같은 날 오후 4시입니다.",
+    ])
+    assert titles, titles
+
+
+def test_i5_control_relational_noun_not_extended():
+    # '위 해고 이후 신청' — 지시어는 '해고'를 가리키고 '신청'은 다른 사건이다
+    from packages.claim_engine.internal_inconsistency import _extract_event_from_clause
+    r = _extract_event_from_clause("위 해고 이후 신청을 하였습니다")
+    assert r is not None and r[1] == "해고", r
+
+
+# --- 평가 측 후속 I6: EVI.INCONS_INTERNAL_DATE — 명사로만 쓰인 '해지·해제'는 사건 서술이 아니다 ---
+
+def test_i6_control_haeji_as_noun_modifier_not_event():
+    from packages.claim_engine.internal_inconsistency import check_internal_inconsistency
+    from packages.common.schemas import Block, NormalizedDocument, Page
+    lines = ["피고는 2024. 11. 4. 해지 예정 안내를 결정하였고, 2024. 11. 7. 위 해지 예정 안내 결정을 원고에게 전하였습니다."]
+    blocks = [Block(block_id=f"b{i}", text=t, page=1, visible=True, source_layer="visible_text") for i, t in enumerate(lines)]
+    doc = NormalizedDocument(document_id="d", filename="d.pdf", mime_type="application/pdf", sha256="0" * 64,
+                             pages=[Page(page_number=1, blocks=blocks, width=595.0, height=842.0)])
+    rids = [(f.confidence_features or {}).get("rule_id") for f in check_internal_inconsistency(doc)]
+    assert "EVI.INCONS_INTERNAL_DATE" not in rids, rids
+
+
+def test_i6_haeji_verbal_still_detected():
+    from packages.claim_engine.internal_inconsistency import check_internal_inconsistency
+    from packages.common.schemas import Block, NormalizedDocument, Page
+    lines = ["원고는 2024. 3. 2. 이 사건 계약을 해지하였습니다.", "원고는 2024. 3. 9. 이 사건 계약을 해지하였습니다."]
+    blocks = [Block(block_id=f"b{i}", text=t, page=1, visible=True, source_layer="visible_text") for i, t in enumerate(lines)]
+    doc = NormalizedDocument(document_id="d", filename="d.pdf", mime_type="application/pdf", sha256="0" * 64,
+                             pages=[Page(page_number=1, blocks=blocks, width=595.0, height=842.0)])
+    rids = [(f.confidence_features or {}).get("rule_id") for f in check_internal_inconsistency(doc)]
+    assert "EVI.INCONS_INTERNAL_DATE" in rids, rids
+
+
+# --- 평가 측 후속 I7: 가정('-였다면')·의문('-였는지')은 단정 진술이 아니다 ---
+
+def test_i7_control_conditional_not_assertion():
+    titles = _titles([
+        "원고가 2024. 8. 1. 단 한 차례 정직 통지를 송부하였다면, 2024. 8. 20. 위 정직 통지를 다시 송부할 이유가 없습니다.",
+    ])
+    assert not titles, titles
+
+
+def test_i7_control_interrogative_not_assertion():
+    titles = _titles([
+        "원고가 2024. 8. 1. 정직 통지를 송부하였는지, 아니면 2024. 8. 20. 위 정직 통지를 송부하였는지 기록상 불분명합니다.",
+    ])
+    assert not titles, titles
