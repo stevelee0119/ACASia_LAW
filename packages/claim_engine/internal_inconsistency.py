@@ -1204,7 +1204,7 @@ _UNIQUENESS_MARKER_RE = re.compile(
 # N4, N7, C1: 지시어 결속 정규식 — 앞 경계 (?<![가-힣0-9]), 게으른 내용 수식 선택 (??), 문서 접미 (?P<doc>서)?
 _ANAPHORA_EVENT_RE = re.compile(
     r"(?<![가-힣0-9])(?P<det>위|그|해당|이\s*사건|본건|동)\s+"
-    r"(?:(?P<content>[가-힣]{2,12}?)\s*)??"
+    r"(?:(?P<content>[가-힣]{2,12}?(?:\s+[가-힣]{2,12}?)??)\s*)??"
     r"(?P<head>" + _EVENT_NOUN_ALT + r")(?P<doc>서)?(?!\s*(?:" + _EVENT_NOUN_ALT + r"))"
 )
 
@@ -1285,7 +1285,7 @@ _STAGE_PREDICATE_PATTERNS: Tuple[Tuple[str, re.Pattern], ...] = (
     ("DRAFT", re.compile(r"(?:작성|기안|결재|마련|준비)(?:하|했|하였|한|하고|하여|되|되었|된)?")),
     ("ARRIVE_RECEIVE", re.compile(r"(?:도달|도착|수령|송달|수신|입수|접수)(?:하|했|하였|한|하고|하여|되|되었|된)?|(?:받았|받아|받은)")),
     ("EFFECTIVE", re.compile(r"(?:시행|발효|효력\s*발생|적용)(?:하|했|하였|한|하고|하여|되|되었|된)?")),
-    ("NOTIFY_SEND", re.compile(r"(?:통지|통보|고지|발송|발신|송부|송달|전달|전송|회신|답변|교부)(?:하|했|하였|한|하고|하여|되|되었|된|함|하면서|하며)?|(?:보내|보냈|보낸|보내고|보내며)")),
+    ("NOTIFY_SEND", re.compile(r"(?:통지|통보|고지|발송|발신|송부|송달|전달|전송|회신|답변|교부)(?:하|했|하였|한|하고|하여|되|되었|된|함|하면서|하며)?|(?:보내|보냈|보낸|보내고|보내며)|(?<![가-힣])(?:알리|알렸|알린|알려(?!지))|(?<![가-힣])(?:전했|전한|전하고|전하여|전하였|전해)")),
     ("DECIDE", re.compile(r"(?:처분|결정|결의|의결|해지|해제|취소|철회|체결|합의|약정|명령|징계|해고)(?:하|했|하였|한|하고|하여|되|되었|된|함)?|(?:내렸|내린|내리고)")),
     ("SUBMIT_FILE", re.compile(r"(?:제출|신청|청구|신고|제기)(?:하|했|하였|한|하고|하여|되|되었|된)?")),
 )
@@ -1405,7 +1405,12 @@ def _extract_event_from_clause(
             continue
         if _is_medium_instrument(m.group("head"), after):
             continue
-        content = _clean_content_prefix(m.group("content"))
+        raw_content = m.group("content")
+        # 평가 측 후속 I4: 지시어 뒤 내용 수식이 두 어절('위 [명사] [명사] [사건 명사]')이면 앞 어절도 명사여야 한다
+        # ('위 원고에게 보낸 통지'처럼 지시어가 다른 명사를 꾸미는 꼴은 결속하지 않는다)
+        if raw_content and len(raw_content.split()) == 2 and _clean_content_prefix(raw_content.split()[0]) is None:
+            continue
+        content = _clean_content_prefix(raw_content)
         return (content, m.group("head"), None, m.start(), m.end(), True, True)
 
     # 2. 비지시어 사건 명사구 (명사 논항 자리 우선, 서술어 접미 자리 차순위)

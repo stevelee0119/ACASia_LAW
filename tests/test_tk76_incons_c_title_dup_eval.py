@@ -100,3 +100,38 @@ def test_t2_pronoun_genitive_not_content():
     assert _clean_content_prefix("그의") is None
     assert _clean_content_prefix("나도") is None
     assert _clean_content_prefix("이의") == "이의"
+
+
+# --- 평가 측 후속 I3: '알리다·전하다'는 알림 단계 서술어다(결정과 그 통지를 같은 단계로 묶지 않는다) ---
+
+def test_i3_control_decide_then_notify_by_allida():
+    titles = _titles([
+        "피고는 2024. 11. 4. 감봉 처분을 의결하였고, 2024. 11. 8. 위 감봉 처분을 원고에게 알렸습니다.",
+    ])
+    assert not titles, titles
+
+
+def test_i3_control_decide_then_notify_by_jeonhada():
+    titles = _titles([
+        "피고는 2024. 11. 4. 전보 결정을 하였고, 2024. 11. 6. 위 전보 결정을 원고에게 전하였습니다.",
+    ])
+    assert not titles, titles
+
+
+# --- 평가 측 후속 I4: 지시어 뒤 두 어절 내용 수식('위 [명사] [명사] [사건 명사]') ---
+
+def test_i4_two_word_content_after_demonstrative_binds():
+    titles = _titles([
+        "원고는 2024. 12. 2. 단 한 번 피고에게 자료 제출 요구 통지를 발송하였습니다.",
+        "원고가 2024. 12. 9. 발송한 위 제출 요구 통지에 대하여 피고는 답하지 않았습니다.",
+    ])
+    assert titles, titles
+
+
+def test_i4_control_demonstrative_modifies_other_noun():
+    # '위 원고에게 보낸 통지' — 지시어가 '원고'를 꾸민다(사건 결속 아님)
+    titles = _titles([
+        "피고는 2024. 12. 2. 원고에게 단 한 번 해고 통지를 하였습니다.",
+        "피고는 2024. 12. 16. 위 원고에게 보낸 통지와 별도로 인사 발령을 하였습니다.",
+    ])
+    assert not titles, titles
