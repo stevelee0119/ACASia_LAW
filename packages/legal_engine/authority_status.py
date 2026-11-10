@@ -2,8 +2,8 @@
 
 3단 체계 및 사건번호 구조 판정:
 1. 존재 확인 (VERIFIED): 공식 DB에서 일치 확인
-2. 부존재 확인 (CONFIRMED_NONEXISTENT): 대법원 판결/헌재결정/정식 법령 조문 중 검색 범위 내 확정 부존재 (CRITICAL)
-3. 확인 불가 (UNCONFIRMED_SOURCE_LIMIT): 하급심 판결, 약칭 법령, 최근 선고 미수록 등 출처 한계로 인한 미확인은 가짜 판례(FABRICATION)로 단정하지 않고 '확인 불가'로 명시 (MEDIUM)
+2. 부존재 확인 (CONFIRMED_NONEXISTENT): 전수 수록 attestation이 검증된 출처에서 명시적 부존재가 확인된 경우 (CRITICAL)
+3. 확인 불가 (UNCONFIRMED_SOURCE_LIMIT): 출처 한계 또는 미수록 가능성으로 인한 미확인은 가짜 판례(FABRICATION)로 단정하지 않고 '확인 불가'로 명시 (MEDIUM)
 4. 오기 의심 (SUSPICIOUS): 성립 불가능한 사건번호(연도, 부호, 번호 구조)
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ class LegalVerificationStatus(StrEnum):
     """법률 검증 3단 공용 판정 상태 열거형 (LV-03)."""
     VERIFIED = "VERIFIED"                                   # 확인됨: 공식 원문과 존재·서지·내용 일치
     CONTRADICTED = "CONTRADICTED"                           # 불일치/모순: 원문 또는 확립된 법리와 명백히 충돌
-    CONFIRMED_NONEXISTENT = "CONFIRMED_NONEXISTENT"         # 부존재 확인: 대법원 등 수록 범위 확실한 출처에서 부존재 확정 (CRITICAL)
+    CONFIRMED_NONEXISTENT = "CONFIRMED_NONEXISTENT"         # 부존재 확인: 전수 수록 attestation이 입증된 출처에서 부존재 확정 (CRITICAL)
     SUSPICIOUS = "SUSPICIOUS"                               # 존재의심/오기: 성립 불가능한 사건번호/조문 표기
     CONTEXT_CAUTION = "CONTEXT_CAUTION"                     # 맥락주의: 판례는 실재하나 취지 왜곡(변경된 판례, 반대의견 오인 등)
     UNCONFIRMED_SOURCE_LIMIT = "UNCONFIRMED_SOURCE_LIMIT"   # 확인 불가: 하급심·약칭 등 출처 미수록 가능성 (가짜 판례 단정 금지)
@@ -89,9 +89,17 @@ def make_authority_id(citation: Any) -> str:
 
 
 def is_covered_precedent_scope(citation: Any) -> bool:
-    """공식 공개 DB(국가법령정보/종합법률정보)가 체계적 전수 수록을 보장하는 범위인지 여부."""
-    tier = get_court_tier(citation)
-    return tier in ("SUPREME", "CONSTITUTIONAL")
+    """공식 공개 DB(국가법령정보/종합법률정보)가 체계적 전수 수록을 보장하는 범위인지 여부.
+
+    어댑터가 검증 가능한 coverage attestation(범위·시점·완전성·응답 근거)을
+    명시적으로 제공하지 않는 한, 법원 위계(대법원/헌재)만으로 전수 수록 보장(True)을
+    추론하지 않는다 (LV-03-R2).
+    """
+    attrs = getattr(citation, "attributes", None) or {}
+    attestation = attrs.get("coverage_attestation")
+    if isinstance(attestation, dict) and attestation.get("exhaustive") is True:
+        return True
+    return False
 
 
 def classify_authority_status(
