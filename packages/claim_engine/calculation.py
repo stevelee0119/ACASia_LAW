@@ -486,35 +486,68 @@ _PERSON_BASIS = ("인", "명", "사람")
 # '-당'으로 끝나지만 단가 기준이 아닌 낱말(수당·배당 등). 빠뜨려도 검산을 건너뛸 뿐이다(미탐 방향)
 _NOT_RATE_WORDS = frozenset({"수당", "배당", "해당", "상당", "할당", "충당", "정당", "부당", "담당", "식당", "강당"})
 _PER_TOKEN_RE = re.compile(r"\d[\d,]*\s?[가-힣]{1,4}당(?![가-힣])")
+# Q7: 분배형 곱셈에서 인원 앞, 인원~단가 사이, 단가 뒤~결과 앞의 한글/숫자 기간·주기 기준
+_DURATION_BASIS_RE = re.compile(
+    r"(?<![가-힣])(?:하루|이틀|사흘|나흘|닷새|엿새|이레|여드레|아흐레|열흘|보름"
+    r"|한\s*달|두\s*달|석\s*달|넉\s*달|반\s*년|일\s*년|일\s*주일"
+    r"|수\s*(?:일|개월|달|년|주|회)|몇\s*(?:일|달|주|년)"
+    r"|당일|단기|장기)(?:\s*(?:동안|간))?(?![가-힣])"
+)
+_DIGIT_DURATION_RE = re.compile(
+    r"(?<![\d.,])\d[\d,]*(?:\.\d+)?\s*(?:일|월|달|년|주|시간|회|번|기|차|분기|학기|개월)(?:\s*(?:동안|간))?(?![가-힣])"
+)
 
 
-def _other_rate_basis(ops: List[dict], text: str) -> bool:
-    """두 피연산자 사이에 앞 개수와 다른 기준의 단가 표지(시간당·1주당·매월 등)가 있는지."""
-    between = text[ops[0]["end"]:ops[1]["start"]]
-    count_phrase = text[ops[0]["start"]:ops[0]["end"]] + " " + between
-    if _PERIOD_BASIS_RE.search(between):
+def _check_segment_rate_basis(segment: str, ops: List[dict], is_between: bool = False) -> bool:
+    """주어진 텍스트 구간(인원 앞, 인원~단가 사이, 단가 뒤)에 앞 개수와 다른 단가/기간 표지가 있는지 검사한다."""
+    if not segment:
+        return False
+    if _PERIOD_BASIS_RE.search(segment):
         return True
-    # 개수와 단가 사이에 다른 수량('5일간'·'12개월' 등)이 있으면 인원 × 단가만으로 총액이 정해지지 않는다('1인당' 꼴 수는 제외)
-    if re.search(r"\d", _PER_TOKEN_RE.sub("", between)):
+    if _DURATION_BASIS_RE.search(segment):
         return True
-    for m in _PER_BASIS_RE.finditer(between):
-        if m.group(0) in _NOT_RATE_WORDS or any(m.group(0).endswith(w) for w in _NOT_RATE_WORDS):
+    if is_between:
+        # 개수와 단가 사이에 다른 수량('5일간'·'12개월' 등)이 있으면 인원 × 단가만으로 총액이 정해지지 않는다('1인당' 꼴 수는 제외)
+        if re.search(r"\d", _PER_TOKEN_RE.sub("", segment)):
+            return True
+    else:
+        if _DIGIT_DURATION_RE.search(_PER_TOKEN_RE.sub("", segment)):
+            return True
+
+    count_token = ops[0] if ops else {}
+    count_token_text = (count_token.get("unit") or "") + " " + count_token.get("raw", "")
+    for m in _PER_BASIS_RE.finditer(segment):
+        word = m.group(0)
+        if word in _NOT_RATE_WORDS or any(word.endswith(w) for w in _NOT_RATE_WORDS):
             continue
         base = m.group("base")
-        head = count_phrase[:count_phrase.find(m.group(0))]
-        if base in _PERSON_BASIS and re.search(r"\d\s?(?:명|인|사람)", head):
+        if base in _PERSON_BASIS and any(p in count_token_text for p in _PERSON_BASIS):
             continue
-        if base in head:
+        if base in count_token_text:
             continue
         return True
     return False
 
 
-def _evaluate_formula_operands(ops: List[dict], text: str, after_ops: str = "") -> Tuple[Optional[Decimal], Optional[str]]:
+def _other_rate_basis(ops: List[dict], text: str, after_ops: str = "", before_ops: str = "") -> bool:
+    """동일 절 내 피연산자 앞, 사이, 뒤에 앞 개수와 다른 기준의 단가/기간 표지(시간당·1주당·매월·사흘 동안 등)가 있는지."""
+    between = text[ops[0]["end"]:ops[1]["start"]]
+    if _check_segment_rate_basis(between, ops, is_between=True):
+        return True
+    if _check_segment_rate_basis(before_ops, ops, is_between=False):
+        return True
+    if _check_segment_rate_basis(after_ops, ops, is_between=False):
+        return True
+    return False
+
+
+def _evaluate_formula_operands(ops: List[dict], text: str, after_ops: str = "", cs: int = 0) -> Tuple[Optional[Decimal], Optional[str]]:
     """피연산자 리스트와 연산 서술어(after_ops)를 바탕으로 계산값과 연산 종류를 도출한다."""
     if len(ops) < 2:
         return None, None
-    
+
+    before_ops = text[cs:ops[0]["start"]] if cs <= ops[0]["start"] else ""
+
     # 2개 피연산자 뒤에 연산 서술어가 오는 서술형 산식 처리
     noun = _OP_RESULT_NOUN_RE.search(after_ops) if after_ops else None
     if len(ops) == 2 and noun:                         # '그 곱은/합은/차는' 결과 명사
@@ -525,14 +558,16 @@ def _evaluate_formula_operands(ops: List[dict], text: str, after_ops: str = "") 
             return ops[0]["val"] + ops[1]["val"], "+"
         return ops[0]["val"] - ops[1]["val"], "-"
     if len(ops) == 2 and after_ops:
-        # 평가 측 후속 Q5: 분배형 곱셈('N명 각 X원씩 … 합계', 'N곳에 각각 X원씩 … 모두')은 결과 앞 '합계·모두'가 있어도 곱이다.
+        # 평가 측 후속 Q5/Q7: 분배형 곱셈('N명 각 X원씩 … 합계', 'N곳에 각각 X원씩 … 모두')은 결과 앞 '합계·모두'가 있어도 곱이다.
         # 첫 피연산자(인원·개수)와 둘째(단가)의 단위가 다르고, '씩'이 둘째 피연산자에 붙거나 사이에 '각·각각'이 있을 때(덧셈 규칙보다 먼저 본다)
-        if _TOTAL_MARK_RE.search(after_ops) and ops[0].get("unit") != ops[1].get("unit") \
-                and not _other_rate_basis(ops, text) and (
+        if _TOTAL_MARK_RE.search(after_ops) and (
                 ops[1].get("josa") == "씩" or re.match(r"\s*씩", text[ops[1]["end"]:])
                 or (re.search(r"(?<![가-힣])각(?:각)?(?![가-힣])", text[ops[0]["end"]:ops[1]["start"]])
                     and re.search(r"씩", text[ops[1]["start"]:ops[1]["end"] + 2]))):
-            return ops[0]["val"] * ops[1]["val"], "*"
+            if ops[0].get("unit") != ops[1].get("unit"):
+                if _other_rate_basis(ops, text, after_ops=after_ops, before_ops=before_ops):
+                    return None, None
+                return ops[0]["val"] * ops[1]["val"], "*"
         if re.search(f"{_SUB_PRED}|제외하[면여]", after_ops):
             return ops[0]["val"] - ops[1]["val"], "-"
         if re.search(f"합계|{_ADD_PRED}|모두\\s*합하", after_ops):
@@ -540,6 +575,7 @@ def _evaluate_formula_operands(ops: List[dict], text: str, after_ops: str = "") 
         if re.search(f"{_MUL_PRED}|배한|\\b배로\\b|(?<=\\d)\\s*배", after_ops) or (
                 ops[0]["josa"] == "씩" and _TOTAL_MARK_RE.search(after_ops)):
             return ops[0]["val"] * ops[1]["val"], "*"
+
 
     total = ops[0]["val"]
     cursor = ops[0]["end"]
@@ -604,7 +640,7 @@ def _check_statement_formula(text: str) -> Optional[dict]:
             return None
             
         after_ops = text[ops[-1]["end"]:eq_pos]
-        computed, op_type = _evaluate_formula_operands(ops, text, after_ops)
+        computed, op_type = _evaluate_formula_operands(ops, text, after_ops, cs=cs)
         if computed is None or op_type is None:
             return None
         # 단위 일치 및 차원 호환성 검증
@@ -653,7 +689,7 @@ def _check_statement_formula(text: str) -> Optional[dict]:
         clause_break = _CLAUSE_BREAK_RE.search(after_ops)
     if clause_break and not result_noun:
         return None
-    computed, op_type = _evaluate_formula_operands(ops, text, after_ops)
+    computed, op_type = _evaluate_formula_operands(ops, text, after_ops, cs=cs)
     if computed is None or op_type is None:
         return None
     if not _units_ok(ops, res_token, op_type):
