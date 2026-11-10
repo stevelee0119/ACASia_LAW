@@ -460,8 +460,8 @@ class LegalVerifier:
             verdict.levels["level3"] = level3
             if level3 == "CONTRADICTED":
                 verdict.status = VerificationStatus.CONTRADICTED
-                is_fabricated_quote = ratio < 0.50
-                diff_cats = ["FABRICATED_QUOTE"] if is_fabricated_quote else (modified.get("diff_categories", []) if modified else [])
+                is_fabricated_quote = False
+                diff_cats = (modified.get("diff_categories", []) if modified else []) or ["CONTENT_MISMATCH"]
                 verdict.review["quote_diff_categories"] = diff_cats
                 features = {
                     "official_source_match": True,
@@ -469,20 +469,13 @@ class LegalVerifier:
                     "deterministic_rule": True,
                     "quote_similarity": round(ratio, 3),
                     "quote_diff_categories": diff_cats,
-                    "is_fabricated_quote": is_fabricated_quote,
+                    "is_fabricated_quote": False,
                     "defect_summary": f"직접 인용문 불일치(원문과 최대 유사도 {ratio:.2f})",
                 }
-                title = (
-                    f"공식 원문에 존재하지 않는 가공 인용문(CIT-FAB-Q): {citation.raw_text}"
-                    if is_fabricated_quote
-                    else f"직접 인용문이 공식 원문과 일치하지 않는다: {citation.raw_text}"
-                )
+                title = f"직접 인용문이 공식 원문과 일치하지 않는다: {citation.raw_text}"
                 detail = (
-                    f"공식 판결문 본문 전체에서 인용된 문구를 찾을 수 없습니다(유사도 {ratio:.2f}). "
-                    "원문에 없는 가공 인용문(CIT-FAB-Q)일 가능성이 높습니다."
-                    if is_fabricated_quote
-                    else f"문서의 인용문과 공식 판시사항·판결요지의 최대 유사도는 {ratio:.2f}이다. "
-                         "따옴표로 표시된 직접 인용은 원문과 일치해야 한다."
+                    f"문서의 인용문과 공식 판시사항·판결요지의 최대 유사도는 {ratio:.2f}이다. "
+                    "따옴표로 표시된 직접 인용은 원문과 일치해야 한다."
                 )
                 verdict.findings.append(
                     Finding.create(
@@ -500,7 +493,7 @@ class LegalVerifier:
                         span=citation.span,
                         engine=ENGINE_NAME,
                         source_record_ids=[r.source_record_id for r in verdict.source_records],
-                        tags=["LEGAL", "CASE", "QUOTE"] + (["FABRICATED_QUOTE"] if is_fabricated_quote else []),
+                        tags=["LEGAL", "CASE", "QUOTE"],
                         evidence=[
                             Evidence.create(
                                 description="문서의 인용문",
