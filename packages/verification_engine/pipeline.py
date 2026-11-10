@@ -76,7 +76,10 @@ from packages.claim_engine.fact_checks import check_periods
 from packages.claim_engine.fact_store import cross_document_facts
 from packages.claim_engine.calendar_dates import calendar_date_findings
 from packages.legal_engine.provision_form import provision_form_findings
-from packages.legal_engine.pleading_structure import pleading_structure_findings
+from packages.legal_engine.pleading_structure import (
+    check_cause_of_action_elements,
+    pleading_structure_findings,
+)
 from packages.claim_engine.korean_amount import words_digits_mismatches
 from packages.legal_engine.legal_rules import review_legal_rules
 from packages.claim_engine.cross_document_entities import verify_cross_document_entities
@@ -1027,6 +1030,8 @@ class VerificationPipeline:
                 result.findings.extend(review_legal_rules(doc))
                 # 청구 구조: 전제가 반대인 청구의 단순 병합 여부 확인 요청(대립쌍 표, v6 P11)
                 result.findings.extend(pleading_structure_findings(doc))
+                # 청구원인 요건사실 점검 (LV-06)
+                result.findings.extend(check_cause_of_action_elements(doc))
                 # 판례 취지·조문 인용문은 공식 원문 대조(verifier·source_review)와 의미 검토가 맡는다. 특정 사건번호·조문
                 # 원문을 코드에 넣어 두고 대조하던 정적 규칙(precedent_verifier)은 하드코딩이라 제거했다(v6 P0-2·3).
             except Exception as exc:  # pragma: no cover - 방어

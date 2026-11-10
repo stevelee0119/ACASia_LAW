@@ -29,6 +29,7 @@ from packages.legal_engine.authority_status import (
     is_covered_precedent_scope,
     make_authority_id,
 )
+from packages.legal_engine.actionable_guidance import generate_actionable_guidance
 from packages.legal_engine.normalize import case_number_possible
 from packages.legal_engine.reasoning_format import format_counteraction, format_reasoning, reasoning_sections
 from packages.llm_router import LLMRouter
@@ -80,7 +81,11 @@ def _fabrication_row(c: Any) -> "HallucinationTableRow":
     """사건번호가 성립할 수 없는 경우. 여기서는 단정해도 된다."""
     raw_claim = c.context[:1000] if c.context else f"{c.raw_text}에 기반한 법률적 주장"
     display_claim = raw_claim if len(raw_claim) <= 200 else (raw_claim[:197] + "...")
-    auth_id = make_authority_id(c)
+    guidance = generate_actionable_guidance(
+        basis="FABRICATION_SUSPECTED",
+        cited_authority=c.raw_text,
+        claim_text=display_claim,
+    )
     return HallucinationTableRow(
         location=f"{c.page or 1}면",
         claim_text=display_claim,
@@ -98,6 +103,7 @@ def _fabrication_row(c: Any) -> "HallucinationTableRow":
         evaluation_context=raw_claim,
         authority_id=auth_id,
         verification_status=LegalVerificationStatus.SUSPICIOUS.value,
+        actionable_guidance=guidance,
     )
 
 
@@ -163,6 +169,7 @@ class HallucinationTableRow:
     authority_id: str = ""
     verification_status: str = ""
     quote_diff_categories: List[str] = field(default_factory=list)
+    actionable_guidance: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         review = self.review_text or self.legal_reasoning
@@ -180,6 +187,7 @@ class HallucinationTableRow:
             "authority_id": self.authority_id,
             "verification_status": self.verification_status,
             "quote_diff_categories": list(self.quote_diff_categories),
+            "actionable_guidance": self.actionable_guidance,
             "cited_authority": self.cited_authority,
             "authority_exists": self.authority_exists,
             "ai_generation_basis": self.ai_generation_basis,
@@ -561,6 +569,14 @@ async def verify_argument_validity(
 
         linked_claim = item.get("evaluation_context") or _extract_linked_claim(c, doc, max_chars=1000)
         display_claim = linked_claim if len(linked_claim) <= 200 else (linked_claim[:197] + "...")
+        guidance = generate_actionable_guidance(
+            basis=basis,
+            cited_authority=c.raw_text,
+            claim_text=linked_claim,
+            distortion_type=item.get("distortion_type"),
+            grounded_evidence_quote=item.get("grounded_evidence_quote") or "",
+            quote_diff_categories=item.get("quote_diff_categories") or [],
+        )
 
         row = HallucinationTableRow(
             location=f"{c.page or 1}면",
@@ -576,6 +592,7 @@ async def verify_argument_validity(
             authority_id=item.get("authority_id") or make_authority_id(c),
             verification_status=item.get("auth_status") or auth_status,
             quote_diff_categories=item.get("quote_diff_categories") or [],
+            actionable_guidance=guidance,
         )
         row.item_id = index
         row.citation_id = c.citation_id
