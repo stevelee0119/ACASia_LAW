@@ -227,11 +227,24 @@ def _extract_linked_claim(citation: Citation, doc: NormalizedDocument, *, max_ch
         lines = [line.strip() for line in citation.context.split("\n") if line.strip()]
         target_line = ""
         target_idx = -1
-        for idx, line in enumerate(lines):
-            if (raw_text and raw_text in line) or (case_no and case_no in line):
-                target_line = line
-                target_idx = idx
-                break
+        # span이 제공된 경우 해당 span 위치의 줄을 정확히 특정 (반복 인용 시 개별 발생 바인딩)
+        if citation.span and 0 <= citation.span[0] < len(citation.context):
+            start_pos, end_pos = citation.span
+            line_start = citation.context.rfind("\n", 0, start_pos)
+            line_start = 0 if line_start == -1 else line_start + 1
+            line_end = citation.context.find("\n", end_pos)
+            line_end = len(citation.context) if line_end == -1 else line_end
+            candidate_line = citation.context[line_start:line_end].strip()
+            if candidate_line in lines:
+                target_line = candidate_line
+                target_idx = lines.index(candidate_line)
+
+        if not target_line:
+            for idx, line in enumerate(lines):
+                if (raw_text and raw_text in line) or (case_no and case_no in line):
+                    target_line = line
+                    target_idx = idx
+                    break
         if not target_line and lines:
             target_line = lines[-1]
             target_idx = len(lines) - 1
@@ -344,6 +357,8 @@ async def verify_argument_validity(
             else:
                 basis = "UNCONFIRMED"
 
+            linked_claim = _extract_linked_claim(citation, doc, max_chars=1000)
+            raw_context = linked_claim or citation.context or (doc.full_text[max(0, citation.span[0] - 200) : min(len(doc.full_text), citation.span[1] + 200)] if citation.span else "")
             unverified_cases.append({
                 "citation": citation,
                 "verdict": verdict,
@@ -351,7 +366,8 @@ async def verify_argument_validity(
                 "sem_status": sem_status,
                 "sem_review": sem_rev,
                 "quote_diff": (verdict.get("review") or {}).get("quote_diff"),
-                "context": citation.context or doc.full_text[max(0, citation.span[0] - 200) : min(len(doc.full_text), citation.span[1] + 200)] if citation.span else "",
+                "context": raw_context,
+                "evaluation_context": linked_claim,
             })
 
     # 2. 가짜 판례가 하나도 없고 주장도 없으면 기본 정상 반환
@@ -442,7 +458,7 @@ async def verify_argument_validity(
                  "조회해 볼 것. 어느 경로에서도 확인되지 않을 때 비로소 부존재를 다툴 수 있음.")
             )
 
-        linked_claim = _extract_linked_claim(c, doc, max_chars=1000)
+        linked_claim = item.get("evaluation_context") or _extract_linked_claim(c, doc, max_chars=1000)
         display_claim = linked_claim if len(linked_claim) <= 200 else (linked_claim[:197] + "...")
 
         row = HallucinationTableRow(
@@ -671,7 +687,8 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
         precedent_context_str = "\n".join(prec_lines)
 
     def context_for(index, item):
-        rendered, piece = render_argument_context(hide, item['context'])
+        raw_ctx = item.get("evaluation_context") or item.get("context") or ""
+        rendered, piece = render_argument_context(hide, raw_ctx)
         excerpt_pieces[index] = piece
         return rendered
     items = [{
