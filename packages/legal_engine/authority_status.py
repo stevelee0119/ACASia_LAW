@@ -91,24 +91,12 @@ def make_authority_id(citation: Any) -> str:
 def is_covered_precedent_scope(citation: Any) -> bool:
     """공식 공개 DB(국가법령정보/종합법률정보)가 체계적 전수 수록을 보장하는 범위인지 여부.
 
-    어댑터가 검증 가능한 coverage attestation(출처, 범위, 시점, 완결성)을
-    제공하고 신뢰할 수 있는 어댑터 서명이 있는 경우에만 True를 반환한다.
-    임의의 citation.attributes dict나 법원 위계만으로는 인정하지 않는다 (LV-03-R3).
+    현재 어댑터 수준에서 전수 수록 여부(exhaustive coverage)에 대한
+    서버측 검증 증명(attestation) 시스템이 부재하므로,
+    클라이언트가 주입한 coverage_attestation 속성을 신뢰하지 않고
+    일관되게 False(미확인)를 반환한다 (LV-03-R4).
     """
-    attrs = getattr(citation, "attributes", None) or {}
-    attestation = attrs.get("coverage_attestation")
-    if not isinstance(attestation, dict):
-        return False
-
-    if not attestation.get("exhaustive"):
-        return False
-    if not attestation.get("verified_adapter"):
-        return False
-    if attestation.get("source") not in ("scourt", "glaw", "law.go.kr"):
-        return False
-    if attestation.get("scope") not in ("precedent", "supreme_court"):
-        return False
-    return True
+    return False
 
 
 def classify_authority_status(
