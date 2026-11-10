@@ -281,3 +281,94 @@ def summary_direction_conflict(claim: str, summary: str) -> Optional[Dict[str, A
                       "claim_direction": "부정" if _clause_negated(clause) else "긍정", "principled": False,
                       "issue_similarity": round(similarity, 3), "clause": clause, "strong": True, "declarative": True})
     return max(found, key=lambda f: f["issue_similarity"]) if found else None
+
+
+# ---------------------------------------------------------------------------
+# LV-05: 판시 취지 및 명제 왜곡 탐지 (CIT-MIS) 결정적 3규칙 및 근거 문장 검증
+# ---------------------------------------------------------------------------
+
+CHANGED_PRECEDENT_RE = re.compile(
+    r"(?:이와\s*달리|종전에)\s*(?P<old_holding>[^.。\n]{5,180}?)"
+    r"(?:판시한|보았던|판단한)\s*(?:대법원\s*)?(?P<old_cases>[^.。\n]{4,140}?)"
+    r"(?:판결|결정)(?:\s*등)?은\s*이\s*(?:판결|결정)의\s*견해에\s*배치되는\s*범위\s*(?:내)?에서\s*"
+    r"(?:이를\s*)?변경(?:하기로\s*한다|한다)"
+)
+
+REVERSED_LOWER_COURT_RE = re.compile(
+    r"원심(?:은|이)\s*(?P<lower_holding>[^.。\n]{6,200}?)(?:라고|다고|으로)\s*(?:판단|판시)(?:하였다|하였으나|한\s*것).*?"
+    r"(?:이러한\s*원심의\s*판단에는|원심판결에는)[^.。\n]{0,120}?(?:법리를\s*오해|위법이\s*있)"
+    r"|(?P<lower_holding_alt>[^.。\n]{6,180}?)(?:라고|다고)\s*판단한\s*원심판결에는[^.。\n]{0,100}?(?:법리를\s*오해|위법)"
+)
+
+
+def extract_grounded_evidence_quote(claim: str, official_text: str) -> str:
+    """공식 판결 원문(판결요지·전문)에서 서면 주장과 가장 어휘 겹침이 높은 근거 문장을 추출한다."""
+    if not official_text or not claim:
+        return ""
+    sentences = [
+        s.strip()
+        for s in re.split(r"(?<=[다함음])\s*\.\s*|\n+", official_text)
+        if len(_compact(s)) >= 8
+    ]
+    if not sentences:
+        return official_text[:250].strip()
+    core = _claim_core(claim)
+    ranked = sorted(sentences, key=lambda s: _overlap(core, s), reverse=True)
+    return ranked[0][:300]
+
+
+def detect_changed_precedent_distortion(
+    claim: str,
+    full_text: str,
+    summary: str = "",
+    cited_case_number: str = "",
+) -> Optional[Dict[str, Any]]:
+    """전원합의체 판결 등에서 폐기·변경된 종전 판례의 법리를 현행 판시처럼 인용했는지 검사한다."""
+    combined = " ".join(part for part in (summary, full_text) if part)
+    if not combined or not claim:
+        return None
+    core = _claim_core(claim)
+    for m in CHANGED_PRECEDENT_RE.finditer(combined):
+        old_holding = (m.group("old_holding") or "").strip()
+        old_cases = (m.group("old_cases") or "").strip()
+        sentence = m.group(0).strip()
+        # 1) 인용한 사건번호 자체가 변경 대상 판례 목록에 들어 있거나
+        case_norm = re.sub(r"\s+", "", cited_case_number or "")
+        in_old_cases = bool(case_norm and len(case_norm) >= 6 and case_norm in re.sub(r"\s+", "", old_cases))
+        # 2) 서면 주장이 변경(폐기)된 종전 판시 구절과 높은 유사도를 보이는 경우
+        sim = _overlap(_positive(core), _positive(old_holding)) if old_holding else 0.0
+        if in_old_cases or (sim >= 0.45 and _clause_negated(core) == _clause_negated(old_holding)):
+            return {
+                "verdict": "CHANGED_PRECEDENT",
+                "old_holding": old_holding,
+                "old_cases": old_cases,
+                "similarity": round(sim, 3),
+                "grounded_evidence_quote": sentence[:300],
+            }
+    return None
+
+
+def detect_reversed_remand_confusion(
+    claim: str,
+    full_text: str,
+    summary: str = "",
+) -> Optional[Dict[str, Any]]:
+    """상고심(파기환송) 판결에서 배척된 원심의 판단을 대법원 판시인 것처럼 인용했는지 검사한다."""
+    combined = " ".join(part for part in (summary, full_text) if part)
+    if not combined or not claim:
+        return None
+    core = _claim_core(claim)
+    for m in REVERSED_LOWER_COURT_RE.finditer(combined):
+        lower_holding = (m.group("lower_holding") or m.group("lower_holding_alt") or "").strip()
+        if not lower_holding:
+            continue
+        sim = _overlap(_positive(core), _positive(lower_holding))
+        if sim >= 0.45 and _clause_negated(core) == _clause_negated(lower_holding):
+            return {
+                "verdict": "REVERSED_REMAND_CONFUSION",
+                "lower_holding": lower_holding,
+                "similarity": round(sim, 3),
+                "grounded_evidence_quote": m.group(0).strip()[:300],
+            }
+    return None
+
