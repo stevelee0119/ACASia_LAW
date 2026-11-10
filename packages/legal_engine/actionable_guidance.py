@@ -298,34 +298,34 @@ def generate_actionable_guidance(
             ],
         }
 
-    # 6) 미검증 상태 및 미확인 상태값 (UNVERIFIED / 알 수 없는 상태, 중립적 확인 요청)
-    if basis == "UNVERIFIED" or (basis not in ("CONTENT_MISMATCH", "MODIFIED_QUOTE") and not diff_cats):
+    # 6) 인용문 실질 차이 (Tier 6: CONTENT_MISMATCH / MODIFIED_QUOTE)
+    if basis in ("CONTENT_MISMATCH", "MODIFIED_QUOTE"):
         return {
-            "action_tier": "SOURCE_LIMIT_SUSPICIOUS",
-            "action_type": "SOURCE_VERIFICATION",
-            "action_title": "공식 출처 및 판례 원문 확인 안내",
-            "guidance_summary": (
-                f"{cited_authority}에 대해 공식 출처 확인 및 원문 대조가 완료되지 않았습니다. "
-                "공식 판례 DB 또는 판결문 사본을 통해 원문을 확인하십시오."
-            ),
+            "action_tier": "GENERAL",
+            "action_type": "QUOTE_REVIEW",
+            "action_title": "원문 대조 및 인용문 정정 안내",
+            "guidance_summary": f"{cited_authority}의 인용문이 공식 원문과 차이가 있습니다. 원문과 대조하여 정확한 자구로 정정하십시오.",
             "draft_motion_text": None,
             "official_portal_url": SCOURT_GLAW_URL,
             "recommended_steps": [
-                "1. 공식 판례 DB(대법원 종합법률정보)에서 원문 검색",
-                "2. 출처 미확인 시 상대방에게 사본 제출 또는 석명 요구",
+                "1. 공식 원문과 인용문 어절 비교 확인",
+                "2. 준비서면에서 정확한 판결요지 인용문으로 정정",
             ],
         }
 
-    # 7) 인용문 실질 차이 (Tier 7: CONTENT_MISMATCH / MODIFIED_QUOTE)
+    # 7) 미검증 상태 및 미확인 상태값 (Tier 7: UNVERIFIED / UNKNOWN / SUSPENDED 등, 중립적 확인 요청)
     return {
-        "action_tier": "GENERAL",
-        "action_type": "QUOTE_REVIEW",
-        "action_title": "원문 대조 및 인용문 정정 안내",
-        "guidance_summary": f"{cited_authority}의 인용문이 공식 원문과 차이가 있습니다. 원문과 대조하여 정확한 자구로 정정하십시오.",
+        "action_tier": "SOURCE_LIMIT_SUSPICIOUS",
+        "action_type": "SOURCE_VERIFICATION",
+        "action_title": "공식 출처 및 판례 원문 확인 안내",
+        "guidance_summary": (
+            f"{cited_authority}에 대해 공식 출처 확인 및 원문 대조가 완료되지 않았습니다. "
+            "공식 판례 DB 또는 판결문 사본을 통해 원문을 확인하십시오."
+        ),
         "draft_motion_text": None,
         "official_portal_url": SCOURT_GLAW_URL,
         "recommended_steps": [
-            "1. 공식 원문과 인용문 어절 비교 확인",
-            "2. 준비서면에서 정확한 판결요지 인용문으로 정정",
+            "1. 공식 판례 DB(대법원 종합법률정보)에서 원문 검색",
+            "2. 출처 미확인 시 상대방에게 사본 제출 또는 석명 요구",
         ],
     }
