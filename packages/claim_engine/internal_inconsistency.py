@@ -1261,12 +1261,41 @@ _SAME_EVENT_EXCEPTION_RE = re.compile(
     r"(?:기재하여|주장하여|진술하여|적어)\s*(?:앞뒤가\s*맞지\s*않|모순|신빙성이\s*없)|"
     r"앞뒤가\s*맞지\s*않)"
 )
+# 평가 측 후속 I9: 정정류 제외 낱말이 사건 명사구의 수식어로 쓰이면('정정 요청 메일'·'오기 정정 신청') 정정 진술이 아니다
+_CORRECTION_WORDS = frozenset({"오기", "착오", "오타", "정정", "수정"})
+_CORRECTION_AS_MODIFIER_RE = None  # 사건 명사 대안이 정의된 뒤 _correction_as_modifier_re()에서 만든다
+
+
+def _correction_as_modifier_re() -> "re.Pattern":
+    global _CORRECTION_AS_MODIFIER_RE
+    if _CORRECTION_AS_MODIFIER_RE is None:
+        _CORRECTION_AS_MODIFIER_RE = re.compile(
+            r"\s+(?:[가-힣]{2,12}\s+)?(?:" + _EVENT_NOUN_ALT + r")(?:서)?(?:을|를|은|는|이|가|에|의|과|와|도|만|으로|로|\s|$)"
+        )
+    return _CORRECTION_AS_MODIFIER_RE
+
+
+def _has_same_event_exception(sentence: str) -> bool:
+    for m in _SAME_EVENT_EXCEPTION_RE.finditer(sentence):
+        word = m.group(0)
+        if word in _CORRECTION_WORDS and (m.start() == 0 or not re.match(r"[가-힣]", sentence[m.start() - 1])) \
+                and _correction_as_modifier_re().match(sentence, m.end()):
+            continue
+        return True
+    return False
+
+
 _CLAUSE_NEGATION_FUTURE_RE = re.compile(
     r"(?:하지\s*않|안\s*하|못하|없었|사실이\s*없|바\s*없|적\s*없|일\s*없|아니다|아니었|"
     r"보내지\s*않|발송하지\s*않|통지하지\s*않|회신하지\s*않|"
     r"예정|계획|할\s*것|하고자|"
     # 평가 측 후속 I7: 가정('-였다면·-라면·-더라도')·의문('-였는지·-는가')·비현실('-할 이유·필요')도 단정이 아니다
-    r"다면|라면|더라도|더라면|는지|은지|었는지|였는지|는가|을까|(?:할|될)\s*(?:이유|필요|리))"
+    r"다면|라면|더라도|더라면|는지|은지|었는지|였는지|는가|을까|(?:할|될)\s*(?:이유|필요|리)|"
+    # 평가 측 후속 I8: 서법 축 전체 — 가정('-으면·-다 해도·-어도')·의문('-을지·-느냐')·선택('-거나·-든지')·
+    # 추측('-을 것·-을 수·-을 가능성·-듯·-겠')·당위('-었어야·-해야 했')·예정('-기로 하')
+    r"으면(?!서)|다\s*(?:해도|하여도)|(?:었|였|았|했)어도|을지|할지|될지|느냐|거나|든지|던지|"
+    r"(?:을|할|될)\s*(?:것|수|가능성|듯|터)|(?:한|은|는|된)\s*듯|겠|(?:었|였|았|했)어야|해야\s*(?:했|하였|한다|합니다)|"
+    r"기로\s*(?:하|했|약정|합의|결정))"
 )
 _CLAUSE_DEADLINE_RE = re.compile(
     r"(?:부터\s*[^.,;]{0,30}?까지|이내에|기한|까지\s*(?:회신|답변|통지|통보|제출|발송))"
@@ -1533,7 +1562,7 @@ def _check_same_event_datetime_inconsistency(
         # 2.4(1)~(3): 문장 단위 제외 가드 (오기 정정, 상대방 주장·탄핵, 주위적·예비적·가정적 주장)
         if (
             _LEGITIMATE_EXCEPTION_RE.search(sentence)
-            or _SAME_EVENT_EXCEPTION_RE.search(sentence)
+            or _has_same_event_exception(sentence)
             or _is_opponent_claim_sentence(sentence, author_party)
         ):
             continue

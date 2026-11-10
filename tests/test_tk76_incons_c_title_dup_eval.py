@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import re
 
+import pytest
+
 from packages.claim_engine.internal_inconsistency import check_internal_inconsistency
 from packages.common.schemas import Block, NormalizedDocument, Page
 
@@ -198,5 +200,38 @@ def test_i7_control_conditional_not_assertion():
 def test_i7_control_interrogative_not_assertion():
     titles = _titles([
         "원고가 2024. 8. 1. 정직 통지를 송부하였는지, 아니면 2024. 8. 20. 위 정직 통지를 송부하였는지 기록상 불분명합니다.",
+    ])
+    assert not titles, titles
+
+
+# --- 평가 측 후속 I8: 서법 축 전체(가정·의문·선택·추측·당위·예정)는 단정 진술이 아니다 ---
+
+@pytest.mark.parametrize("e1,e2", [
+    ("송부하였으면", "송부하였으면"),            # 가정
+    ("송부하였을지", "송부하였을지"),            # 의문
+    ("송부하였거나", "송부하였거나"),            # 선택
+    ("송부하였을 것으로 보이고", "송부하였을 가능성도 있습니다"),  # 추측
+    ("송부하였어야 했고", "송부하였어야 했습니다"),  # 당위
+    ("송부하기로 하였고", "송부하기로 하였습니다"),  # 예정
+])
+def test_i8_control_non_assertive_moods(e1, e2):
+    titles = _titles([f"피고가 2024. 9. 2. 감급 통지를 {e1}, 2024. 9. 16. 위 감급 통지를 {e2}."])
+    assert not titles, titles
+
+
+# --- 평가 측 후속 I9: 정정류 낱말이 사건 명사구의 수식어이면 정정 진술이 아니다 ---
+
+def test_i9_correction_word_as_noun_modifier_binds():
+    titles = _titles([
+        "원고는 2024. 9. 2. 단 한 차례 피고에게 등기 정정 신청을 하였습니다.",
+        "원고는 2024. 9. 23. 위 등기 정정 신청을 하였습니다.",
+    ])
+    assert titles, titles
+
+
+def test_i9_control_real_correction_statement_excluded():
+    titles = _titles([
+        "원고는 2024. 9. 2. 단 한 차례 피고에게 등기 정정 신청을 하였습니다.",
+        "위 신청일은 2024. 9. 23.로 정정합니다.",
     ])
     assert not titles, titles
