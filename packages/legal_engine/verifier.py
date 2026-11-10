@@ -461,8 +461,17 @@ class LegalVerifier:
             level3, ratio = self._compare_quote(citation.quoted_text, official_text)
             # 원문과 0.85 이상 비슷한 구간이 있으면 어절 단위로 무엇이 바뀌었는지 제시한다(전문 확보 시).
             modified = quote_changes(citation.quoted_text, official_text) if has_full_text else None
+            quote_cat = categorize_quote_diff(citation.quoted_text, official_text, has_full_text=has_full_text)
+            diff_cats = quote_cat.get("diff_categories") or (modified.get("diff_categories") if modified else [])
+            if diff_cats:
+                verdict.review["quote_diff_categories"] = diff_cats
+                verdict.review["quote_diff_status"] = quote_cat.get("status")
+
             if modified and level3 == "CONTRADICTED":
                 level3 = "MODIFIED"
+            elif level3 == "TRUNCATED" and diff_cats:
+                level3 = "MODIFIED"
+
             if not has_full_text:
                 level3 = "UNVERIFIED"
                 verdict.notes.append("공식 판결문 본문 미확보로 직접 인용 대조 불가 (요약본만 확보되어 본문 인용 대조 유보)")
@@ -531,8 +540,11 @@ class LegalVerifier:
                 verdict.findings.append(self._modified_quote_finding(citation, modified, official_text, verdict))
                 # AI 교차검토가 인용문이 아니라 원문 기준으로 평가하도록 차이를 판정에 싣는다.
                 verdict.review["quote_diff"] = render_quote_diff(modified)
-                verdict.review["quote_meaningful_change"] = modified["meaningful"]
-                verdict.review["quote_diff_categories"] = modified.get("diff_categories", [])
+                verdict.review["quote_diff_categories"] = modified.get("diff_categories") or diff_cats
+            elif diff_cats and level3 == "MODIFIED":
+                if verdict.status == VerificationStatus.VERIFIED:
+                    verdict.status = VerificationStatus.PARTIALLY_VERIFIED
+                verdict.review["quote_diff_categories"] = diff_cats
 
         # 다수의견·반대의견 귀속과 판시사항 결론 방향(v3 D3)
         opinion = self._opinion_findings(citation, official)
