@@ -103,8 +103,17 @@ def _items(section: str) -> List[str]:
     return [" ".join(part.split()) for part in ITEM_SPLIT_RE.split(section) if part and part.strip()]
 
 
+DRAFTING_LINE_RE = re.compile(
+    r"(?:^|\n)\s*(?P<y>(?:19|20)\d{2})\s*[.\-년]\s*(?P<m>\d{1,2})\s*[.\-월]\s*(?P<d>\d{1,2})\s*[.일]?\s*\n\s*(?:[가-힣\s]{0,20}?(?:원고|피고|신청인|피신청인|대\s*리\s*인|변호사|법무법인|담당변호사)|\(\s*인\s*\)|귀\s*중|서\s*명|날\s*인)"
+)
+
+
 def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
-    """문서 텍스트에서 실제 처분일, 통지일, 소제기일을 추출하여 동적으로 일수를 계산한다."""
+    """문서 텍스트에서 실제 처분일, 통지일, 소제기일을 추출하여 동적으로 일수를 계산한다.
+
+    소제기일 또는 서면 작성일이 없으면 임의의 미래 날짜나 오늘로 대체하지 않고
+    계산 보류로 명시한다 (LV-01 전제 보존).
+    """
     from datetime import date
     full_text = getattr(doc, "full_text", "") or ""
     scope_text = claim + "\n" + full_text
@@ -127,7 +136,7 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
     if m_disp:
         disp_date = parse_d(m_disp)
     else:
-        m_disp2 = re.search(DATE_RE.pattern + r"[^.\n]{0,25}?(?:처분|결정)을?\s*(?:받|하|내렸|고지)", scope_text)
+        m_disp2 = re.search(DATE_RE.pattern + r"[^.\n]{0,25}?(?:처분|결정)(?:을|를|이)?\s*(?:받|하|내렸|고지|있은)", scope_text)
         if m_disp2:
             disp_date = parse_d(m_disp2)
 
@@ -137,20 +146,44 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
     if m_notif:
         notif_date = parse_d(m_notif)
     else:
-        m_notif2 = re.search(DATE_RE.pattern + r"[^.\n]{0,25}?(?:통지|통보|송달)받", scope_text)
+        m_notif2 = re.search(DATE_RE.pattern + r"[^.\n]{0,25}?(?:통지|통보|송달)(?:을|를)?\s*받", scope_text)
         if m_notif2:
             notif_date = parse_d(m_notif2)
 
     # 3. 소제기일/작성일 탐지
-    from packages.claim_engine.evidence_consistency import document_date
-    filing_date = document_date(doc)
-    if not filing_date:
-        all_dates = [parse_d(m) for m in DATE_RE.finditer(full_text)]
-        valid_dates = [d for d in all_dates if d]
-        filing_date = max(valid_dates) if valid_dates else None
+    filing_date = None
+    m_file = re.search(r"(?:소\s*제기일|소장\s*(?:접수일|제출일)|심판\s*청구일|접수일)\s*[:：]?\s*" + DATE_RE.pattern, scope_text)
+    if m_file:
+        filing_date = parse_d(m_file)
+    else:
+        m_file2 = re.search(DATE_RE.pattern + r"[^.\n]{0,35}?(?:본\s*소를?\s*(?:제기|접수)|소장을?\s*(?:제출|접수)|심판을?\s*청구)", scope_text)
+        if m_file2:
+            filing_date = parse_d(m_file2)
 
     if not filing_date:
-        filing_date = date.today()
+        from packages.claim_engine.evidence_consistency import document_date
+        doc_date = document_date(doc)
+        if doc_date:
+            filing_date = doc_date
+        else:
+            m_draft = DRAFTING_LINE_RE.search(scope_text)
+            if m_draft:
+                filing_date = parse_d(m_draft)
+
+    # 소제기일이나 작성일이 없으면 임의의 날짜나 오늘로 폴백하지 않고 계산 보류 처리
+    if not filing_date:
+        known_bases = []
+        if disp_date:
+            known_bases.append(f"원처분일 {disp_date.year}. {disp_date.month}. {disp_date.day}.")
+        if notif_date:
+            known_bases.append(f"이의신청 통보일 {notif_date.year}. {notif_date.month}. {notif_date.day}.")
+        if known_bases:
+            joined = " / ".join(known_bases)
+            return (
+                " [제소기간 계산 보류] 소제기일(또는 서면 작성일)이 문서에 기재되지 않아 일수 계산이 보류되었습니다."
+                f" (확인된 기산점: {joined}) 소제기 시점이 기산점으로부터 90일 이내인지 직접 확인하십시오."
+            )
+        return ""
 
     parts = []
     if disp_date and filing_date and filing_date >= disp_date:
