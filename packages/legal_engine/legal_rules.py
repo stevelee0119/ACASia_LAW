@@ -150,54 +150,65 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
         if m_notif2:
             notif_date = parse_d(m_notif2)
 
-    # 3. 소제기일/작성일 탐지
+    # 3. 소제기일 탐지 (소제기일, 소장 접수일/제출일, 심판청구일)
+    # 접수일 단독(증명서 발급신청 접수일 등)이나 부정문, 예정문은 제외
+    filing_dates = set()
+    for m in re.finditer(r"(?<![가-힣])(?:소\s*제기일|소장\s*(?:접수일|제출일)|심판\s*청구일)\s*[:：]?\s*" + DATE_RE.pattern, scope_text):
+        d = parse_d(m)
+        if d:
+            filing_dates.add(d)
+    for m in re.finditer(DATE_RE.pattern + r"[^.\n]{0,35}?(?:본\s*소를?\s*(?:제기|접수)|소장을?\s*(?:제출|접수)|심판을?\s*청구)", scope_text):
+        ctx = scope_text[m.start():min(len(scope_text), m.end() + 20)]
+        if re.search(r"예정|않았|아니하|못하|않는|없는", ctx):
+            continue
+        d = parse_d(m)
+        if d:
+            filing_dates.add(d)
+
     filing_date = None
-    m_file = re.search(r"(?:소\s*제기일|소장\s*(?:접수일|제출일)|심판\s*청구일|접수일)\s*[:：]?\s*" + DATE_RE.pattern, scope_text)
-    if m_file:
-        filing_date = parse_d(m_file)
-    else:
-        m_file2 = re.search(DATE_RE.pattern + r"[^.\n]{0,35}?(?:본\s*소를?\s*(?:제기|접수)|소장을?\s*(?:제출|접수)|심판을?\s*청구)", scope_text)
-        if m_file2:
-            filing_date = parse_d(m_file2)
+    if len(filing_dates) == 1:
+        filing_date = next(iter(filing_dates))
+    elif len(filing_dates) > 1:
+        # 소제기일이 복수로 모순되거나 불명확하면 판단 보류
+        filing_date = None
 
-    if not filing_date:
-        from packages.claim_engine.evidence_consistency import document_date
-        doc_date = document_date(doc)
-        if doc_date:
-            filing_date = doc_date
-        else:
-            m_draft = DRAFTING_LINE_RE.search(scope_text)
-            if m_draft:
-                filing_date = parse_d(m_draft)
+    notif_label = "이의신청 통보일" if "이의" in scope_text else "통지일"
 
-    # 소제기일이나 작성일이 없으면 임의의 날짜나 오늘로 폴백하지 않고 계산 보류 처리
+    # 소제기일이 없으면 서면 작성일이나 오늘로 대체하지 않고 계산 보류 처리 (LV-01)
     if not filing_date:
         known_bases = []
         if disp_date:
             known_bases.append(f"원처분일 {disp_date.year}. {disp_date.month}. {disp_date.day}.")
         if notif_date:
-            known_bases.append(f"이의신청 통보일 {notif_date.year}. {notif_date.month}. {notif_date.day}.")
+            known_bases.append(f"{notif_label} {notif_date.year}. {notif_date.month}. {notif_date.day}.")
         if known_bases:
             joined = " / ".join(known_bases)
             return (
-                " [제소기간 계산 보류] 소제기일(또는 서면 작성일)이 문서에 기재되지 않아 일수 계산이 보류되었습니다."
+                " [제소기간 계산 보류] 소제기일이 문서에 명시되지 않거나 불명확하여 법적 만료일 판단이 보류되었습니다."
                 f" (확인된 기산점: {joined}) 소제기 시점이 기산점으로부터 90일 이내인지 직접 확인하십시오."
             )
         return ""
 
+    has_deadline_claim = bool(re.search(r"90\s*일|제소\s*기간|기간\s*(?:도과|만료|준수)", claim))
     parts = []
     if disp_date and filing_date and filing_date >= disp_date:
         days_from_disp = (filing_date - disp_date).days
-        over_str = f"90일 도과({days_from_disp}일 경과, 각하 위험)" if days_from_disp > 90 else f"90일 이내({days_from_disp}일 경과, 기간 준수)"
+        if has_deadline_claim:
+            over_str = f"90일 도과({days_from_disp}일 경과, 각하 위험)" if days_from_disp > 90 else f"90일 이내({days_from_disp}일 경과, 기간 준수)"
+        else:
+            over_str = f"{days_from_disp}일 경과"
         parts.append(f"원처분일({disp_date.year}. {disp_date.month}. {disp_date.day}.) 기준: {over_str}")
 
     if notif_date and filing_date and filing_date >= notif_date:
         days_from_notif = (filing_date - notif_date).days
-        within_str = f"90일 이내({days_from_notif}일 경과)" if days_from_notif <= 90 else f"90일 도과({days_from_notif}일 경과)"
-        parts.append(f"이의신청 통보일({notif_date.year}. {notif_date.month}. {notif_date.day}.) 기준: {within_str}")
+        if has_deadline_claim:
+            within_str = f"90일 이내({days_from_notif}일 경과)" if days_from_notif <= 90 else f"90일 도과({days_from_notif}일 경과)"
+        else:
+            within_str = f"{days_from_notif}일 경과"
+        parts.append(f"{notif_label}({notif_date.year}. {notif_date.month}. {notif_date.day}.) 기준: {within_str}")
 
     if parts:
-        return " [실제 일수 동적 계산] " + " / ".join(parts) + f" (소제기·작성일: {filing_date.year}. {filing_date.month}. {filing_date.day}.)"
+        return " [실제 일수 동적 계산] " + " / ".join(parts) + f" (소제기일: {filing_date.year}. {filing_date.month}. {filing_date.day}.)"
     return ""
 
 

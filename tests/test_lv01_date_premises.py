@@ -33,11 +33,11 @@ def test_lv01_positive_explicit_filing_date():
     assert "[실제 일수 동적 계산]" in result
     assert "원처분일(2024. 1. 15.) 기준: 90일 이내(86일 경과, 기간 준수)" in result
     assert "이의신청 통보일(2024. 2. 1.) 기준: 90일 이내(69일 경과)" in result
-    assert "소제기·작성일: 2024. 4. 10." in result
+    assert "소제기일: 2024. 4. 10." in result
 
 
 def test_lv01_positive_document_drafting_date_over_deadline():
-    """양성 2: 서면 말미 작성일자 기재 -> 90일 도과 정상 경고."""
+    """양성 2: 서면 말미 작성일자만 있고 소제기일 부재 -> 임의 만료 단정 방지 및 계산 보류."""
     claim = "이의신청 결과를 통보받아 제소기간 90일이 기산됩니다."
     text = (
         "청구원인\n"
@@ -48,10 +48,10 @@ def test_lv01_positive_document_drafting_date_over_deadline():
     )
     doc = _make_doc(text, "pos2")
     result = _calculate_dynamic_deadline(doc, claim)
-    assert "[실제 일수 동적 계산]" in result
-    assert "원처분일(2024. 1. 10.) 기준: 90일 도과(143일 경과, 각하 위험)" in result
-    assert "이의신청 통보일(2024. 1. 25.) 기준: 90일 도과(128일 경과)" in result
-    assert "소제기·작성일: 2024. 6. 1." in result
+    assert "[제소기간 계산 보류]" in result
+    assert "소제기일이 문서에 명시되지 않거나 불명확하여 법적 만료일 판단이 보류되었습니다" in result
+    assert "각하 위험" not in result
+    assert "기간 준수" not in result
 
 
 def test_lv01_positive_action_filing_phrase():
@@ -67,7 +67,7 @@ def test_lv01_positive_action_filing_phrase():
     assert "[실제 일수 동적 계산]" in result
     assert "원처분일(2024. 2. 1.) 기준: 90일 이내(64일 경과, 기간 준수)" in result
     assert "이의신청 통보일(2024. 2. 15.) 기준: 90일 이내(50일 경과)" in result
-    assert "소제기·작성일: 2024. 4. 5." in result
+    assert "소제기일: 2024. 4. 5." in result
 
 
 # --- 2. 대조군 3종 (소제기일/작성일 부재 시 계산 보류 처리, 임의 폴백 방지) ---
@@ -87,9 +87,9 @@ def test_lv01_contrast_scheduled_interview_date_not_used():
     assert "2024. 11. 15." not in result
     assert "90일 도과" not in result
     assert "[제소기간 계산 보류]" in result
-    assert "소제기일(또는 서면 작성일)이 문서에 기재되지 않아 일수 계산이 보류되었습니다" in result
+    assert "소제기일이 문서에 명시되지 않거나 불명확하여 법적 만료일 판단이 보류되었습니다" in result
     assert "원처분일 2024. 3. 1." in result
-    assert "이의신청 통보일 2024. 3. 20." in result
+    assert "2024. 3. 20." in result
 
 
 def test_lv01_contrast_no_other_dates_not_falling_back_to_notification():
