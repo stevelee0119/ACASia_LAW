@@ -586,7 +586,7 @@
     "TK-149": {
       "status": "directed",
       "kind": "new",
-      "note": "2026-11-10 B 묶음 사전 검증 중 발견: 공용 호증 문법(exhibits.py PARTY_RE)이 본문 '소을 제N호증'을 읽지 못하고, '소갑·소을' 목록 줄이 공용 행이 되지 않음. 사용자 11-10 '공용 호증 문법의 소을 인식 부분은 제안대로' → 별도 소형 TK. X1 '소을' 당사자, X2 label·span '소'부터, X3 결과 제목 '소' 표기, X4 EVI-FORM 자체 보충 행 중복 제거, X5 평가 측 #245 보호 시험 단언 1건 변경(사용자 승인 대기). 사본 1ec6773 전체 시험 11,115건 통과, 은퇴·고정 변화 0. 증분 patches/TK-149_so_eul_exhibit_grammar_on_3d54f77.diff · NEXT 2-30."
+      "note": "2026-11-10 B 묶음 사전 검증 중 발견: 공용 호증 문법(exhibits.py PARTY_RE)이 본문 '소을 제N호증'을 읽지 못하고, '소갑·소을' 목록 줄이 공용 행이 되지 않음. 사용자 11-10 '공용 호증 문법의 소을 인식 부분은 제안대로' → 별도 소형 TK. X1 '소을' 당사자, X2 label·span '소'부터, X3 결과 제목 '소' 표기, X4 EVI-FORM 자체 보충 행 중복 제거, X5 평가 측 #245 보호 시험 단언 1건 변경(사용자 승인 대기). 사본 1ec6773 전체 시험 11,115건 통과, 은퇴·고정 변화 0. 증분 patches/TK-149_so_eul_exhibit_grammar_on_3d54f77.diff · NEXT 2-30. · 11-10 사용자 '승인'(X5: tests/test_tk76_ovr_residual_eval.py::test_shared_exhibit_rows_unchanged_for_so_lines 단언 1건 변경 — == [] → [('갑', 3, '소갑 제3호증')], 시험 이름 유지)."
     }
   },
   "updated_on": "2026-11-10"
