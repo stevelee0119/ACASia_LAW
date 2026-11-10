@@ -200,7 +200,7 @@ def categorize_quote_diff(quote: str, official_text: Optional[str], *, has_full_
         }
 
     norm_off = normalize_quote(official_text)
-    compact_off, _ = _compact_with_map(norm_off)
+    compact_off, off_map = _compact_with_map(norm_off)
     needle = _compact(clean_quote)
     if not needle:
         return {
@@ -213,7 +213,7 @@ def categorize_quote_diff(quote: str, official_text: Optional[str], *, has_full_
             "defect_summary": "인용문 없음",
         }
 
-    _, _, max_ratio = _best_window(compact_off, needle)
+    w_start, w_end, max_ratio = _best_window(compact_off, needle)
 
     if max_ratio < 0.50:
         return {
@@ -226,7 +226,18 @@ def categorize_quote_diff(quote: str, official_text: Optional[str], *, has_full_
             "defect_summary": f"인용문 불일치(유사도 {max_ratio:.2f})",
         }
 
-    changes_result = quote_changes(clean_quote, official_text)
+    # 전체 문헌에서 인용문 대응 후보 구간(candidate_text)을 먼저 특정하여 무관한 타 문단의 숫자/어휘가 차이로 흡수되는 것 방지 (LV-04-R3)
+    if off_map and w_start < len(off_map):
+        o_start = off_map[w_start]
+        o_end = off_map[min(len(off_map) - 1, max(0, w_end - 1))] + 1
+        candidate_text = _word_span(norm_off, o_start, o_end)
+    else:
+        candidate_text = official_text
+
+    changes_result = quote_changes(clean_quote, candidate_text)
+    if not changes_result:
+        changes_result = quote_changes(clean_quote, official_text)
+
     if not changes_result:
         if max_ratio >= 0.995:
             return {
@@ -238,7 +249,7 @@ def categorize_quote_diff(quote: str, official_text: Optional[str], *, has_full_
                 "reason": "공식 원문과 완전 일치합니다.",
                 "defect_summary": "일치",
             }
-        substantive = _classify(official_text, clean_quote)
+        substantive = _classify(candidate_text, clean_quote)
         cats = [k for k, _ in substantive]
         labels = [lbl for _, lbl in substantive]
         if not cats:
