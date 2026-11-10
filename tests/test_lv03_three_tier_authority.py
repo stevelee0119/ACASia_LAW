@@ -43,7 +43,15 @@ def test_lv03_positive_supreme_court_confirmed_nonexistent():
     assert not is_covered_precedent_scope(c)
     # attestation이 명시된 경우에만 전수 수록 보장 인정
     c_attested = _make_citation(raw, "2021다88888", court="대법원")
-    c_attested.attributes = {"coverage_attestation": {"exhaustive": True}}
+    c_attested.attributes = {
+        "coverage_attestation": {
+            "exhaustive": True,
+            "verified_adapter": True,
+            "source": "scourt",
+            "scope": "supreme_court",
+            "checked_at": "2026-11-10",
+        }
+    }
     assert is_covered_precedent_scope(c_attested) is True
 
     # 공식 DB 미검색 (official_record=None, 형식 유효)

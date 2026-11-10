@@ -158,22 +158,47 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
 
     # 3. 소제기일 탐지 (소제기일, 소장 접수일/제출일)
     # 심판청구일이나 접수일 단독(증명서 발급신청 접수일 등), 부정문, 예정문, 조건문(경우 등)은 제외
+    # 서법 검사는 줄 바꿈(\n) 이전의 동일 문장/명제 범위로 한정한다 (LV-01-R3).
     filing_dates = set()
     for m in re.finditer(r"(?<![가-힣])(?:소\s*제기일|소장\s*(?:접수일|제출일))\s*[:：]?\s*" + DATE_RE.pattern, scope_text):
-        ctx = scope_text[m.start():min(len(scope_text), m.end() + 25)]
+        end_idx = min(len(scope_text), m.end() + 25)
+        nl = scope_text.find("\n", m.end())
+        if nl != -1:
+            end_idx = min(end_idx, nl)
+        ctx = scope_text[m.start():end_idx]
         if re.search(r"예정|않았|아니하|못하|않는|없는|경우|미정|가정|예약", ctx):
             continue
         d = parse_d(m)
         if d:
             filing_dates.add(d)
     for m in re.finditer(DATE_RE.pattern + r"[^.\n]{0,35}?(?:본\s*소를?\s*(?:제기|접수)|소장을?\s*(?:제출|접수))", scope_text):
-        ctx = scope_text[m.start():min(len(scope_text), m.end() + 35)]
+        end_idx = min(len(scope_text), m.end() + 35)
+        nl = scope_text.find("\n", m.end())
+        if nl != -1:
+            end_idx = min(end_idx, nl)
+        ctx = scope_text[m.start():end_idx]
         if re.search(r"예정|않았|아니하|못하|않는|없는|경우|미정|가정|한다면|하더라도", ctx):
             continue
         d = parse_d(m)
         if d:
             filing_dates.add(d)
 
+    # 동일 역할에 복수의 서로 다른 날짜 후보가 상충하면 임의 선택하지 않고 보류 (LV-01-R3)
+    if len(disp_dates) > 1 or len(notif_dates) > 1 or len(filing_dates) > 1:
+        conflicts = []
+        if len(disp_dates) > 1:
+            conflicts.append("원처분일 상충")
+        if len(notif_dates) > 1:
+            conflicts.append("통지일 상충")
+        if len(filing_dates) > 1:
+            conflicts.append("소제기일 상충")
+        return (
+            f" [제소기간 계산 보류] 문서 내 날짜 후보 상충({', '.join(conflicts)})으로 법적 만료일 판단이 보류되었습니다."
+            " 정확한 기산점 및 소제기일 확인 필요."
+        )
+
+    disp_date = next(iter(disp_dates)) if len(disp_dates) == 1 else None
+    notif_date = next(iter(notif_dates)) if len(notif_dates) == 1 else None
     filing_date = next(iter(filing_dates)) if len(filing_dates) == 1 else None
 
     notif_label = "이의신청 통보일" if "이의" in scope_text else "통지일"
