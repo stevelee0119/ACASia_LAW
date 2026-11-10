@@ -255,14 +255,16 @@ def _extract_linked_claim(citation: Citation, doc: NormalizedDocument, *, max_ch
     if reading_span and doc_text and len(reading_span) == 2:
         r0, r1 = reading_span
         if 0 <= r0 < r1 <= len(doc_text):
-            target_text = doc_text
-            span_start, span_end = r0, r1
+            r_text = doc_text[r0:r1]
+            if (raw_text and raw_text in r_text) or (case_no and case_no in r_text):
+                target_text = doc_text
+                span_start, span_end = r0, r1
 
     if not target_text and citation.span and doc_text:
         s0, s1 = citation.span
         if 0 <= s0 < s1 <= len(doc_text):
-            snippet = doc_text[max(0, s0 - 20):min(len(doc_text), s1 + 20)]
-            if (raw_text and raw_text in snippet) or (case_no and case_no in snippet):
+            s_text = doc_text[s0:s1]
+            if (raw_text and raw_text in s_text) or (case_no and case_no in s_text):
                 target_text = doc_text
                 span_start, span_end = s0, s1
 
@@ -299,6 +301,7 @@ def _extract_linked_claim(citation: Citation, doc: NormalizedDocument, *, max_ch
     rel_start = (span_start - line_start) if span_start != -1 else 0
 
     # 3. 문단 내 문장 분리 및 인용 속한 문장부터 단서/예외/후속 문장 보존
+    # 좌표계(rel_start)가 특정된 경우 첫 텍스트 일치로 덮어쓰지 않고 해당 위치의 출현을 우선한다 (LV-02-R3)
     sentences = [s.strip() for s in LEGAL_SENTENCE_SPLIT_RE.split(line) if s.strip()]
     cur = 0
     cit_idx = -1
@@ -308,9 +311,20 @@ def _extract_linked_claim(citation: Citation, doc: NormalizedDocument, *, max_ch
             s_pos = cur
         s_end_pos = s_pos + len(s)
         cur = s_end_pos
-        if s_pos <= rel_start < s_end_pos or (raw_text and raw_text in s) or (case_no and case_no in s):
-            cit_idx = idx
-            break
+        if span_start != -1:
+            if s_pos <= rel_start < s_end_pos:
+                cit_idx = idx
+                break
+        else:
+            if (raw_text and raw_text in s) or (case_no and case_no in s):
+                cit_idx = idx
+                break
+
+    if cit_idx == -1 and (raw_text or case_no):
+        for idx, s in enumerate(sentences):
+            if (raw_text and raw_text in s) or (case_no and case_no in s):
+                cit_idx = idx
+                break
 
     if cit_idx == -1:
         selected_sentences = sentences
