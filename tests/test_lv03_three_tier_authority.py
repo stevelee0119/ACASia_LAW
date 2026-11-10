@@ -40,7 +40,11 @@ def test_lv03_positive_supreme_court_confirmed_nonexistent():
     raw = "대법원 2021다88888 판결"
     c = _make_citation(raw, "2021다88888", court="대법원")
     assert get_court_tier(c) == "SUPREME"
-    assert is_covered_precedent_scope(c) is True
+    assert not is_covered_precedent_scope(c)
+    # attestation이 명시된 경우에만 전수 수록 보장 인정
+    c_attested = _make_citation(raw, "2021다88888", court="대법원")
+    c_attested.attributes = {"coverage_attestation": {"exhaustive": True}}
+    assert is_covered_precedent_scope(c_attested) is True
 
     # 공식 DB 미검색 (official_record=None, 형식 유효)
     info = classify_authority_status(c, official_record=None, format_valid=True)
@@ -128,3 +132,12 @@ def test_lv03_contrast_backwards_compatibility_basis_for():
     assert _basis_for(_MockCitation("2020다12345"), "CONTRADICTED") == "CONTENT_MISMATCH"
     # 3. 불가능한 미래 연도 -> FABRICATION_SUSPECTED
     assert _basis_for(_MockCitation("2099다99999"), "NOT_FOUND") == "FABRICATION_SUSPECTED"
+
+
+import pytest
+
+@pytest.mark.parametrize("court,number", [("대법원", "2021다67283"), ("헌법재판소", "2021헌바672"), ("서울중앙지방법원", "2021가단67283")])
+def test_lv03_court_level_does_not_attest_exhaustive_coverage(court: str, number: str):
+    c = _make_citation(f"{court} {number} 판결", number, court=court)
+    assert not is_covered_precedent_scope(c)
+

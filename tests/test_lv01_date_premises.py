@@ -31,8 +31,9 @@ def test_lv01_positive_explicit_filing_date():
     doc = _make_doc(text, "pos1")
     result = _calculate_dynamic_deadline(doc, claim)
     assert "[실제 일수 동적 계산]" in result
-    assert "원처분일(2024. 1. 15.) 기준: 90일 이내(86일 경과, 기간 준수)" in result
-    assert "이의신청 통보일(2024. 2. 1.) 기준: 90일 이내(69일 경과)" in result
+    assert "원처분일(2024. 1. 15.) 기준: 86일 경과" in result
+    assert "이의신청 통보일(2024. 2. 1.) 기준: 69일 경과" in result
+    assert "기간 준수" not in result and "각하 위험" not in result
     assert "소제기일: 2024. 4. 10." in result
 
 
@@ -65,8 +66,9 @@ def test_lv01_positive_action_filing_phrase():
     doc = _make_doc(text, "pos3")
     result = _calculate_dynamic_deadline(doc, claim)
     assert "[실제 일수 동적 계산]" in result
-    assert "원처분일(2024. 2. 1.) 기준: 90일 이내(64일 경과, 기간 준수)" in result
-    assert "이의신청 통보일(2024. 2. 15.) 기준: 90일 이내(50일 경과)" in result
+    assert "원처분일(2024. 2. 1.) 기준: 64일 경과" in result
+    assert "이의신청 통보일(2024. 2. 15.) 기준: 50일 경과" in result
+    assert "기간 준수" not in result and "각하 위험" not in result
     assert "소제기일: 2024. 4. 5." in result
 
 
@@ -122,3 +124,25 @@ def test_lv01_contrast_future_completion_date_not_used():
     assert "[제소기간 계산 보류]" in result
     assert "원처분일 2024. 4. 1." in result
     assert "이의신청 통보일 2024. 4. 20." in result
+
+
+# --- 3. 평가 에이전트 계약 점검 (주장 어휘 미확정 및 서법/사건역할 보류) ---
+
+import pytest
+
+
+@pytest.mark.parametrize("claim", ["제소기간을 검토한다.", "90일 기간을 주장한다.", "기간 준수 여부가 쟁점이다."])
+def test_lv01_claim_words_do_not_establish_legal_deadline(claim: str):
+    doc = _make_doc("원처분일: 2025. 3. 1.\n소제기일: 2025. 4. 9.", "claim_words")
+    result = _calculate_dynamic_deadline(doc, claim)
+    assert "39일" in result
+    assert "기간 준수" not in result and "각하 위험" not in result
+
+
+@pytest.mark.parametrize("tail", ["소제기일: 2025. 4. 9. 예정", "2025. 4. 9. 본 소를 제기할 경우", "심판청구일: 2025. 4. 9."])
+def test_lv01_event_role_and_modality_are_not_actual_filing(tail: str):
+    doc = _make_doc("원처분일: 2025. 3. 1.\n" + tail, "event_role")
+    result = _calculate_dynamic_deadline(doc, "제소기간 검토")
+    assert "보류" in result
+    assert "기간 준수" not in result and "각하 위험" not in result
+

@@ -143,3 +143,77 @@ def test_lv02_contrast_display_summary_vs_evaluation_context():
     # evaluation_context는 단서가 온전히 보존된 전문
     assert "다만 피고는 천재지변에 준하는 불가항력적 사유" in d["evaluation_context"]
     assert len(d["evaluation_context"]) > 200
+
+
+# --- 3. 평가 에이전트 계약 점검 (실제 extractor 좌표 분리 및 인접 예외 보존) ---
+
+import asyncio
+import json
+import pytest
+from packages.legal_engine.argument_validity_verifier import verify_argument_validity
+from packages.legal_engine.citation_extractor import extract_citations
+
+
+class _CaptureRouter:
+    def __init__(self):
+        self.requests = []
+
+    def has_available_provider(self, **kw):
+        return True
+
+    async def consult_all(self, role, request, **kw):
+        self.requests.append(request)
+        return []
+
+
+@pytest.mark.parametrize("prefix_count", [14, 18, 20])
+def test_lv02_real_extractor_coordinate_reaches_actual_model(prefix_count: int):
+    raw = "대법원 2021다67283 판결"
+    text = (
+        "사건 경위를 기록합니다. " * prefix_count
+        + "\n"
+        + raw
+        + "에 따라 책임이 인정됩니다.\n별도 쟁점은 관할입니다.\n"
+        + "추가 설명입니다. " * 25
+    )
+    doc = _make_doc(text)
+    citations = extract_citations(doc)
+    assert len(citations) == 1
+    c = citations[0]
+    router = _CaptureRouter()
+    out = asyncio.run(
+        verify_argument_validity(
+            doc,
+            [c],
+            [{"citation_id": c.citation_id, "status": "NOT_FOUND", "levels": {"level1": "NOT_FOUND"}}],
+            [],
+            router=router,
+        )
+    )
+    assert raw in out.rows[0].evaluation_context
+    sent = json.loads(router.requests[0].user)["items"][0]["surrounding_context_and_claim"]
+    assert raw in sent and "책임이 인정됩니다" in sent
+
+
+@pytest.mark.parametrize("repeat", [12, 18, 24])
+def test_lv02_extractor_window_must_not_silently_drop_adjacent_exception(repeat: int):
+    raw = "대법원 2021다67283 판결"
+    exception = "다만 서면 특약으로 채무가 면제된 경우는 제외합니다."
+    text = raw + "에 따라 " + "계약의 조건을 모두 확인하고 " * repeat + "책임을 검토합니다. " + exception
+    assert len(text) < 1000
+    doc = _make_doc(text)
+    cs = extract_citations(doc)
+    assert len(cs) == 1
+    router = _CaptureRouter()
+    out = asyncio.run(
+        verify_argument_validity(
+            doc,
+            cs,
+            [{"citation_id": cs[0].citation_id, "status": "NOT_FOUND", "levels": {"level1": "NOT_FOUND"}}],
+            [],
+            router=router,
+        )
+    )
+    sent = json.loads(router.requests[0].user)["items"][0]["surrounding_context_and_claim"]
+    assert exception in sent and exception in out.rows[0].evaluation_context
+

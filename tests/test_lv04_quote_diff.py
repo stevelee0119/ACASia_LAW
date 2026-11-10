@@ -65,16 +65,16 @@ def test_lv04_contrast_text_unavailable():
     assert res2["can_compare"] is False
 
 
-def test_lv04_contrast_fabricated_quote():
-    """대조군 2: 원문 어디에도 없는 지어낸 인용문 탐지 (FABRICATED_QUOTE, CIT-FAB-Q)."""
+def test_lv04_contrast_unaligned_low_overlap_quote():
+    """대조군 2: 원문과 유사도가 낮은 인용문이라도 허위 가공(FABRICATED_QUOTE)으로 자동 단정하지 않고 대조 불일치로 처리."""
     official = "민법 제750조의 불법행위에 기한 손해배상청구권에 있어서 고의 또는 과실의 입증책임은 원고에게 있다."
-    # 완전히 지어낸 인용문
-    fabricated = "상대방의 계약 위반은 신의성실의 원칙상 결코 용인될 수 없으므로 무조건 계약 해제권이 발생한다."
+    quote = "상대방의 계약 위반은 신의성실의 원칙상 결코 용인될 수 없으므로 무조건 계약 해제권이 발생한다."
 
-    res = categorize_quote_diff(fabricated, official, has_full_text=True)
-    assert res["status"] == "FABRICATED_QUOTE"
-    assert "FABRICATED_QUOTE" in res["diff_categories"]
-    assert "CIT-FAB-Q" in res["reason"]
+    res = categorize_quote_diff(quote, official, has_full_text=True)
+    assert res["status"] != "FABRICATED_QUOTE"
+    assert "FABRICATED_QUOTE" not in res["diff_categories"]
+    assert res["status"] == "UNALIGNED_QUOTE"
+    assert "CONTENT_MISMATCH" in res["diff_categories"]
     assert res["similarity"] < 0.50
 
 
@@ -91,3 +91,39 @@ def test_lv04_contrast_exact_match_and_minor_wording():
     spaced = "불법행위로  인한 손해배상청구권의  단기소멸시효 기산점은 피해자나 그 법정대리인이 손해 및 가해자를 안 날이다."
     res_spaced = categorize_quote_diff(spaced, official, has_full_text=True)
     assert res_spaced["status"] == "EXACT_MATCH"
+
+
+import pytest
+from packages.common.schemas import Citation
+from packages.legal_engine.verifier import LegalVerifier
+from packages.source_adapters import SourceRegistry
+from packages.source_adapters.base import AdapterResponse
+from packages.common.enums import AdapterStatus, CitationType
+
+
+class _MockLaw:
+    def __init__(self, records):
+        self.records = records
+
+    def search_case(self, *args, **kw):
+        return AdapterResponse(AdapterStatus.READY, self.records, None, "synthetic")
+
+
+def _make_mock_verifier(records):
+    registry = SourceRegistry()
+    registry.legal[0] = _MockLaw(records)
+    return LegalVerifier(registry)
+
+
+@pytest.mark.parametrize("quote", ["집행 절차의 단계별 송달 방법을 검토한다.", "관할 구역의 획정과 소송 비용의 부담을 확인한다.", "문서 보관 기간 및 신청서의 서식을 정한다."])
+def test_quote_low_overlap_is_not_proof_of_fabrication(quote: str):
+    full = "매수인은 계약상 대금지급 의무를 부담하며 이행 조건을 확인하여야 한다."
+    result = categorize_quote_diff(quote, full)
+    assert result["status"] != "FABRICATED_QUOTE"
+    assert "FABRICATED_QUOTE" not in result["diff_categories"]
+    c = Citation(citation_id="c", type=CitationType.CASE, raw_text="대법원 2021다67283 판결",
+                 court="대법원", case_number="2021다67283", canonical_case_number="2021다67283",
+                 page=1, quoted_text=quote)
+    v = _make_mock_verifier([dict(case_number="2021다67283", court="대법원", full_text=full)]).verify_case(c)
+    assert not any("FABRICATED_QUOTE" in f.tags for f in v.findings)
+
