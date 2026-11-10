@@ -2938,9 +2938,23 @@ def _l1_elsewhere_stay(prev: str, sent: str) -> bool:
     others = [m2 for m2 in _OTHER_SUBJECT_RE.finditer(before)
               if not (m2.group(0).rstrip().endswith("이") and m2.group(1) in _ADVERB_I)
               and not _FIRST_PERSON_RE.match(m2.group(0))]
+    # 소유격·지시 대명사가 붙은 한 음절 명사 주어('원고의 딸은', '제 형은', '그의 처는')도 다른 사람이다
+    if not others and _POSSESSED_SUBJECT_RE.search(before):
+        others = [True]
     return bool(_FIRST_PERSON_RE.search(before)) or not others
+
+
+_POSSESSED_SUBJECT_RE = re.compile(r"(?:[가-힣]+의|제|내|저의|그|저희|우리)\s+(?:[가-힣]+\s+)?[가-힣]{1,4}(?:은|는|이|가)\s")
 _L1_TIME_RE = re.compile(r"같은\s?(?:시각|시간)|그\s?(?:시간|시각|때)|당시|하루\s?종일|내내|동시에")
 _L1_MOVE_RE = re.compile(r"올라와|내려와|돌아와|돌아왔|이동|도착|떠나|떠났|다가\s|뒤에|이후|나중에")
+# 평가 측 후속 L5: 지각 문장이 다른 때를 밝히면('사흘 뒤·이틀 후·다음 날·이튿날·전날·그 후·며칠 뒤') 같은 때의 지각이 아니다
+_L1_OTHER_TIME_RE = re.compile(
+    r"(?:\d+|하루|이틀|사흘|나흘|닷새|엿새|이레|며칠|몇|한|두|세|일주일|열흘|보름)\s?(?:일|시간|분|주일?|달|개월|해|년)?\s?(?:뒤|후|전|만에)(?![가-힣])"
+    r"|다음\s?날|이튿날|익일|전날|그\s?(?:후|뒤|전|다음)(?![가-힣])|이후|이전|나중에|훗날|얼마\s?(?:뒤|후)")
+# 평가 측 후속 L6: 한 문장 안에서 체재 절이 연결어미로 이어지는 꼴('…에 있었는데, 그때 … 직접 보았다')
+_L1_INLINE_RE = re.compile(
+    r"(?P<stay>(?:에|에서)\s?(?:[가-힣0-9]+\s){0,4}?(?:있었|머물렀|지냈|중이었)|(?:출장|견학|여행|파견|체류|연수|유학)\s?중이었)"
+    r"(?P<conn>으므로|므로|는데|으나|지만|고|기에|어서|으며)\s?,?\s")
 # L2: 한 번의 관찰을 근거로 늘 그렇다고 단정
 _L2_SINGLE_RE = re.compile(r"(?:단|딱|겨우)?\s?(?:한\s?번|한\s?차례|1\s?회|일\s?회)(?!\s?(?:도|시|의\s?경우|경우|마다|이상|이내))")
 _L2_PAST_RE = re.compile(r"(?:었|았|였|했|(?:사실|적|일)이?\s?있)")
@@ -2968,13 +2982,28 @@ def check_reasoning_structure(doc: NormalizedDocument) -> List[Finding]:
             continue
         shown = " ".join(sent.split())[:250]
         # L1
-        if prev and _l1_elsewhere_stay(prev, sent) and _L1_TIME_RE.search(prev + " " + sent[:30]) and not _L1_MOVE_RE.search(prev + sent) \
-                and not _MEDIATED_RE.search(sent) and _PERC_RE.search(sent) and _DIRECT_RE.search(sent) and not perception_conflict(sent):
+        pair = None
+        if prev and not _L1_OTHER_TIME_RE.search(sent):
+            # 줄 나뉨: 앞 줄이 '체재 + 연결어미(,)'로 끝나면(PDF 줄바꿈) 그 체재 절을 앞 문장으로 본다
+            m_tail = _L1_INLINE_RE.search(prev.rstrip() + " ")
+            prev_n = (prev[:m_tail.start("conn")] + "습니다.") if (m_tail and not prev.rstrip()[m_tail.end() - 1:].strip()) else prev
+            pair = (prev_n, sent, "ELSEWHERE_PREV_SENTENCE")
+        m_in = _L1_INLINE_RE.search(sent)
+        if (pair is None or not _l1_elsewhere_stay(prev, sent)) and m_in:
+            rest = sent[m_in.end():]
+            if not _L1_OTHER_TIME_RE.search(rest):
+                pair = (sent[:m_in.start("conn")] + "습니다.", rest, "ELSEWHERE_IN_SENTENCE")
+        if pair and _l1_elsewhere_stay(pair[0], pair[1]) and _L1_TIME_RE.search(pair[0] + " " + pair[1][:30]) \
+                and not _L1_MOVE_RE.search(pair[0] + pair[1]) \
+                and not _MEDIATED_RE.search(pair[1]) and _PERC_RE.search(pair[1]) and _DIRECT_RE.search(pair[1]) and not perception_conflict(sent):
             out.append(_finding(doc, FindingType.STATEMENT_BEYOND_PERCEPTION, EvidenceGrade.C, Severity.MEDIUM,
-                                "지각할 수 없던 조건과 직접 지각 주장이 함께 있다: 앞 문장의 다른 장소 체재와 같은 때의 직접 목격",
-                                "앞 문장에서 같은 때 다른 장소에 있었다고 하면서 다음 문장에서 직접 지각했다고 진술한다. 진술의 신빙성은 사람이 판단한다.",
-                                (" ".join(prev.split()) + " / " + shown)[:250], status=VerificationStatus.SUSPICIOUS,
-                                features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION_STRUCTURE", "pattern": "ELSEWHERE_PREV_SENTENCE"}))
+                                "지각할 수 없던 조건과 직접 지각 주장이 함께 있다: "
+                                + ("앞 문장의" if pair[2] == "ELSEWHERE_PREV_SENTENCE" else "같은 문장 안의") + " 다른 장소 체재와 같은 때의 직접 목격",
+                                ("앞 문장에서 같은 때 다른 장소에 있었다고 하면서 다음 문장에서" if pair[2] == "ELSEWHERE_PREV_SENTENCE"
+                                 else "같은 문장에서 같은 때 다른 장소에 있었다고 하면서") + " 직접 지각했다고 진술한다. 진술의 신빙성은 사람이 판단한다.",
+                                ((" ".join(prev.split()) + " / " + shown) if pair[2] == "ELSEWHERE_PREV_SENTENCE" else shown)[:250],
+                                status=VerificationStatus.SUSPICIOUS,
+                                features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION_STRUCTURE", "pattern": pair[2]}))
         # L2
         c = _L2_CAUSE_RE.search(sent)
         if c and _L2_SINGLE_RE.search(sent[:c.start()]) and _L2_PAST_RE.search(sent[:c.start()]) \

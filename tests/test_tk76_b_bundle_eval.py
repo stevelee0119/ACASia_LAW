@@ -103,3 +103,28 @@ def test_o6_nominal_declaration():
 
 def test_o6_control_interrogative():
     assert not _overreach("피고의 승낙이 있었는지는 갑 제5호증 진술서만으로 알 수 없습니다.", "1. 갑 제5호증 진술서 (작성자: 원고)")
+
+
+# --- L5: 지각 문장이 다른 때를 밝히면 같은 때의 지각이 아니다 ---
+@pytest.mark.parametrize("later", ["나흘 뒤", "이튿날", "그 전날", "일주일 후"])
+def test_l5_control_other_time_in_perception_sentence(later):
+    assert not _perception(["그 시각 저는 목포 물류센터에 있었습니다.", f"{later} 피고가 원고의 차량을 긁는 장면을 직접 보았습니다."])
+
+
+# --- L6: 한 문장 안·줄 나뉨에서 체재 절이 연결어미로 이어지는 꼴 ---
+@pytest.mark.parametrize("lines", [
+    ["당시 저는 목포 물류센터에 있었는데, 그때 피고가 원고의 차량을 긁는 장면을 직접 보았습니다."],
+    ["그 시각 저는 강릉 연수 중이었으므로,", "같은 시간 피고가 원고의 차량을 긁는 장면을 똑똑히 보았습니다."],
+])
+def test_l6_in_sentence_or_line_split_stay(lines):
+    assert _perception(lines)
+
+
+def test_l6_control_in_sentence_colocated():
+    assert not _perception(["당시 저는 원고와 함께 목포 물류센터에 있었는데, 그때 피고가 원고의 차량을 긁는 장면을 직접 보았습니다."])
+
+
+# --- L4b: 소유격·대명사가 붙은 한 음절 명사 주어도 다른 사람이다 ---
+@pytest.mark.parametrize("who", ["원고의 딸은", "제 형은", "그의 처는"])
+def test_l4b_control_possessed_one_syllable_subject(who):
+    assert not _perception([f"그 시각 {who} 목포 물류센터에 있었습니다.", "그때 저는 피고가 원고의 차량을 긁는 장면을 직접 보았습니다."])
