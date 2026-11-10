@@ -454,7 +454,7 @@ class LegalVerifier:
             modified = quote_changes(citation.quoted_text, official_text) if has_full_text else None
             if modified and level3 == "CONTRADICTED":
                 level3 = "MODIFIED"
-            if not has_full_text and level3 in ("CONTRADICTED", "TRUNCATED"):
+            if not has_full_text:
                 level3 = "UNVERIFIED"
                 verdict.notes.append("공식 판결문 본문 미확보로 직접 인용 대조 불가 (요약본만 확보되어 본문 인용 대조 유보)")
             verdict.levels["level3"] = level3

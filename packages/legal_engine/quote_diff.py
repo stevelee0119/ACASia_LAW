@@ -190,13 +190,13 @@ def categorize_quote_diff(quote: str, official_text: Optional[str], *, has_full_
     clean_quote = normalize_quote(quote or "").strip()
     if not clean_quote:
         return {
-            "status": "EXACT_MATCH",
-            "can_compare": True,
-            "similarity": 1.0,
+            "status": "NO_QUOTE",
+            "can_compare": False,
+            "similarity": 0.0,
             "diff_categories": [],
             "category_labels": [],
-            "reason": "인용문이 비어 있습니다.",
-            "defect_summary": "정상",
+            "reason": "대조할 직접 인용문이 없습니다.",
+            "defect_summary": "인용문 없음",
         }
 
     norm_off = normalize_quote(official_text)
@@ -204,13 +204,13 @@ def categorize_quote_diff(quote: str, official_text: Optional[str], *, has_full_
     needle = _compact(clean_quote)
     if not needle:
         return {
-            "status": "EXACT_MATCH",
-            "can_compare": True,
-            "similarity": 1.0,
+            "status": "NO_QUOTE",
+            "can_compare": False,
+            "similarity": 0.0,
             "diff_categories": [],
             "category_labels": [],
-            "reason": "공백/기호 제외 일치",
-            "defect_summary": "정상",
+            "reason": "대조할 직접 인용문이 없거나 기호만 포함되어 있습니다.",
+            "defect_summary": "인용문 없음",
         }
 
     _, _, max_ratio = _best_window(compact_off, needle)
@@ -238,14 +238,28 @@ def categorize_quote_diff(quote: str, official_text: Optional[str], *, has_full_
                 "reason": "공식 원문과 완전 일치합니다.",
                 "defect_summary": "일치",
             }
+        substantive = _classify(official_text, clean_quote)
+        cats = [k for k, _ in substantive]
+        labels = [lbl for _, lbl in substantive]
+        if not cats:
+            if max_ratio < 0.85:
+                cats = ["CONTENT_MISMATCH"]
+                labels = ["내용 불일치"]
+            else:
+                cats = ["MINOR_WORDING"]
+                labels = ["단순 자구·어미 차이"]
         return {
             "status": "MODIFIED_QUOTE",
             "can_compare": True,
             "similarity": round(max_ratio, 3),
-            "diff_categories": ["MINOR_WORDING"],
-            "category_labels": ["단순 자구·어미 차이"],
-            "reason": f"공식 원문과 표현상의 경미한 차이(어미·조사)가 있습니다 (유사도 {max_ratio:.2f}).",
-            "defect_summary": "단순 자구 차이",
+            "diff_categories": cats,
+            "category_labels": labels,
+            "reason": (
+                f"공식 원문과 표현상의 차이가 있습니다 (유사도 {max_ratio:.2f})."
+                if "MINOR_WORDING" in cats
+                else f"공식 원문과 실질적 내용 차이가 있습니다 (유사도 {max_ratio:.2f}): {', '.join(labels)}."
+            ),
+            "defect_summary": "단순 자구 차이" if "MINOR_WORDING" in cats else f"인용문 내용 차이({', '.join(labels)})",
         }
 
     cats = list(changes_result.get("diff_categories") or [])
