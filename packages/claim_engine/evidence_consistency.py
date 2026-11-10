@@ -2791,6 +2791,10 @@ def _form_section_rows(blocks, exhibits):
         seen[(r.get("party"), r.get("number"), tuple(r.get("branches") or []))] = r
     for r in so_rows:
         seen[(r["party"], r["number"], ())] = r
+    # TK-149: 공용 행도 이제 '소갑·소을' 목록 줄을 행으로 만든다(당사자 키 '갑·을', 표기 '소…'). 이 검사의 자체 보충 행(당사자 '소갑·소을')과
+    # 같은 서증이 두 번 세이지 않도록, 자체 보충과 키가 겹치는 공용 '소' 행은 뺀다
+    so_keys = {(r["party"][-1], r["number"]) for r in so_rows}
+    rows = [r for r in rows if not (str(r.get("id") or "").startswith("소") and (r.get("party"), r.get("number")) in so_keys)]
     return rows + list(seen.values())
 
 
@@ -3027,18 +3031,33 @@ def check_reasoning_structure(doc: NormalizedDocument) -> List[Finding]:
     return out
 
 
+_SO_LABEL_FIX_RE = re.compile(r"(?<![가-힣])(갑|을)(\s?제\s?\d)")
+
+
+def _so_notation_display(doc: NormalizedDocument, findings: List[Finding]) -> List[Finding]:
+    """TK-149: 신청 사건 서면이 '소갑·소을'만 쓰면 결과 제목·설명의 호증 표기도 '소갑·소을'로 보인다(당사자 키는 '갑·을' 그대로).
+    맨 '갑·을' 인용이 함께 있으면 어느 쪽인지 알 수 없으므로 바꾸지 않는다."""
+    refs = [r for r in parse_exhibits(build_reading_text(doc).text) if r["party"] in ("갑", "을")]
+    if not refs or any(not r["label"].startswith("소") for r in refs):
+        return findings
+    for f in findings:
+        f.title = _SO_LABEL_FIX_RE.sub(r"소\1\2", f.title)
+        f.detail = _SO_LABEL_FIX_RE.sub(r"소\1\2", f.detail)
+    return findings
+
+
 def check_document(doc: NormalizedDocument) -> List[Finding]:
     exhibits = exhibit_rows(doc)
     from .internal_inconsistency import check_internal_inconsistency
 
-    return (
+    return _so_notation_display(doc, (
         check_exhibits(doc)
         + check_statements(doc, exhibits)
         + check_evidence_numbering_mismatches(doc, exhibits)
         + _form_findings(doc, exhibits)
         + check_internal_inconsistency(doc)
         + check_reasoning_structure(doc)
-    )
+    ))
 
 
 # --- 서면 간 문장 복사 -------------------------------------------------------------

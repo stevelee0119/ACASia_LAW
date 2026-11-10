@@ -51,8 +51,10 @@ def test_negative(body, ev):
 
 
 def test_shared_exhibit_rows_unchanged_for_so_lines():
-    # O2는 공용 입력을 바꾸지 않는다: exhibit_rows는 '소갑' 목록 줄을 여전히 행으로 만들지 않는다
-    assert exhibit_rows(_doc("본문", "1. 소갑 제3호증 내용증명 (발신인: 신청인)")) == []
+    # O2(11-09)는 공용 입력을 바꾸지 않았다. TK-149(11-10 사용자 결정 '공용 호증 문법의 소을 인식 부분은 제안대로')로
+    # 공용 exhibit_rows가 '소갑·소을' 목록 줄을 행으로 만든다(당사자 키 '갑·을', 원래 표기는 id). O2 보충 행과 키가 겹치지 않는다
+    rows = exhibit_rows(_doc("본문", "1. 소갑 제3호증 내용증명 (발신인: 신청인)"))
+    assert [(r["party"], r["number"], r["id"]) for r in rows] == [("갑", 3, "소갑 제3호증")]
 
 
 def test_variations_o1_to_o5_word_order_connectives_and_question_negation_controls():
