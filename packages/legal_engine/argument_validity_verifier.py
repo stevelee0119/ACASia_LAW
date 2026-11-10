@@ -233,93 +233,115 @@ PROVISO_EXCEPTION_RE = re.compile(
 def _extract_linked_claim(citation: Citation, doc: NormalizedDocument, *, max_chars: int = 1000) -> str:
     """인용 판례와 직접 연결된 법률적 주장 문장을 추출한다.
 
-    앞 문단의 무관한 내용이 잘려 들어가지 않도록 문장/문단 경계를 준수하며,
-    단서('다만'), 예외('특별한 사정이 없는 한'), 조건, 부정이 포함된 후속 문장을
-    보존하여 법리 왜곡을 방지한다 (LV-02).
+    좌표계 분리 및 원문 보존 (LV-02):
+    - reading_span: build_reading_text(doc) 기준
+    - citation.span: block 또는 document 기준
+    - citation.context: 발췌문 기준
+    인용 발생 위치를 정확히 특정하고, 문단 내 단서('다만'), 예외('특별한 사정이 없는 한'),
+    조건, 부정이 포함된 후속 문장을 최대 max_chars까지 누락 없이 보존한다.
     """
     raw_text = citation.raw_text or ""
     case_no = citation.case_number or citation.canonical_case_number or ""
 
-    # 0. citation.attributes에 이미 양질의 claim_text가 있는 경우 우선 고려
+    # 0. citation.attributes에 명시적 claim_text가 제공된 경우 우선 고려
     attr_claim = (citation.attributes or {}).get("claim_text")
     if attr_claim and isinstance(attr_claim, str) and len(attr_claim.strip()) >= 15:
         if (raw_text and raw_text in attr_claim) or (case_no and case_no in attr_claim):
             return attr_claim[:max_chars].strip()
 
-    # 1. context가 있을 때 줄바꿈 기준 인용구 속한 줄(문단) 우선 추출
-    if citation.context:
-        lines = [line.strip() for line in citation.context.split("\n") if line.strip()]
-        target_line = ""
-        target_idx = -1
-        # span이 제공된 경우 해당 span 위치의 줄을 정확히 특정 (반복 인용 시 개별 발생 바인딩)
-        if citation.span and 0 <= citation.span[0] < len(citation.context):
-            start_pos, end_pos = citation.span
-            line_start = citation.context.rfind("\n", 0, start_pos)
-            line_start = 0 if line_start == -1 else line_start + 1
-            line_end = citation.context.find("\n", end_pos)
-            line_end = len(citation.context) if line_end == -1 else line_end
-            candidate_line = citation.context[line_start:line_end].strip()
-            if candidate_line in lines:
-                target_line = candidate_line
-                target_idx = lines.index(candidate_line)
+    # 1. 대상 텍스트(target_text) 및 텍스트 내 인용 위치(span_start, span_end) 특정
+    target_text = ""
+    span_start, span_end = -1, -1
 
-        if not target_line:
-            for idx, line in enumerate(lines):
-                if (raw_text and raw_text in line) or (case_no and case_no in line):
-                    target_line = line
-                    target_idx = idx
-                    break
-        if not target_line and lines:
-            target_line = lines[-1]
-            target_idx = len(lines) - 1
+    doc_text = ""
+    if doc:
+        try:
+            from packages.document_engine.reading_text import build_reading_text
+            doc_text = build_reading_text(doc).text
+        except Exception:
+            doc_text = getattr(doc, "full_text", "") or ""
 
-        if target_line:
-            # 문단 내에서 문장 단위 분리 (날짜 속 마침표 분리 방지)
-            sentences = [s.strip() for s in LEGAL_SENTENCE_SPLIT_RE.split(target_line) if s.strip()]
-            matched_indices = [i for i, s in enumerate(sentences) if (raw_text and raw_text in s) or (case_no and case_no in s)]
-            if matched_indices:
-                first_m = matched_indices[0]
-                last_m = matched_indices[-1]
-                end_idx = last_m + 1
-                while end_idx < len(sentences) and PROVISO_EXCEPTION_RE.search(sentences[end_idx]):
-                    end_idx += 1
+    reading_span = (citation.attributes or {}).get("reading_span")
+    if reading_span and doc_text and len(reading_span) == 2:
+        r0, r1 = reading_span
+        if 0 <= r0 < r1 <= len(doc_text):
+            target_text = doc_text
+            span_start, span_end = r0, r1
 
-                selected = sentences[first_m:end_idx]
-                combined = " ".join(selected)
-                # target_line이 끝나고 다음 라인이 단서·예외로 시작하는 경우에도 결합
-                if end_idx == len(sentences) and target_idx != -1 and target_idx + 1 < len(lines):
-                    next_line = lines[target_idx + 1]
-                    if PROVISO_EXCEPTION_RE.search(next_line):
-                        combined = f"{combined} {next_line}"
-                if len(combined) <= max_chars:
-                    return combined.strip()
-                return combined[:max_chars].strip()
+    if not target_text and citation.span and doc_text:
+        s0, s1 = citation.span
+        if 0 <= s0 < s1 <= len(doc_text):
+            snippet = doc_text[max(0, s0 - 20):min(len(doc_text), s1 + 20)]
+            if (raw_text and raw_text in snippet) or (case_no and case_no in snippet):
+                target_text = doc_text
+                span_start, span_end = s0, s1
 
-            if target_idx != -1 and target_idx + 1 < len(lines):
-                next_line = lines[target_idx + 1]
-                if PROVISO_EXCEPTION_RE.search(next_line):
-                    combined = f"{target_line} {next_line}"
-                    return combined[:max_chars].strip()
-            return target_line[:max_chars].strip()
+    if not target_text and citation.context:
+        target_text = citation.context
+        if raw_text and raw_text in target_text:
+            span_start = target_text.find(raw_text)
+            span_end = span_start + len(raw_text)
+        elif case_no and case_no in target_text:
+            span_start = target_text.find(case_no)
+            span_end = span_start + len(case_no)
+        elif citation.span and 0 <= citation.span[0] < citation.span[1] <= len(target_text):
+            span_start, span_end = citation.span
 
-    # 2. span 정보 기반 전체 텍스트에서 해당 문단 영역 슬라이싱
-    full_text = getattr(doc, "full_text", "") or ""
-    if citation.span and full_text:
-        start, end = citation.span
-        prev_newline = full_text.rfind("\n", 0, start)
-        para_start = prev_newline + 1 if prev_newline != -1 else max(0, start - 150)
-        next_newline = full_text.find("\n", end)
-        para_end = next_newline if next_newline != -1 else min(len(full_text), end + 400)
-        para_text = full_text[para_start:para_end].strip()
-        if para_text:
-            if next_newline != -1 and next_newline + 1 < len(full_text):
-                after_newline = full_text.find("\n", next_newline + 1)
-                next_para = full_text[next_newline + 1:after_newline if after_newline != -1 else len(full_text)].strip()
-                if PROVISO_EXCEPTION_RE.search(next_para):
-                    para_text = f"{para_text} {next_para}"
-            return para_text[:max_chars].strip()
+    if not target_text and doc_text:
+        target_text = doc_text
+        if raw_text and raw_text in target_text:
+            span_start = target_text.find(raw_text)
+            span_end = span_start + len(raw_text)
+        elif case_no and case_no in target_text:
+            span_start = target_text.find(case_no)
+            span_end = span_start + len(case_no)
 
-    return f"{raw_text}에 기반한 법률적 주장"
+    if not target_text:
+        return f"{raw_text}에 기반한 법률적 주장"
+
+    # 2. 인용구가 속한 문단/줄 범위 탐색
+    line_start = target_text.rfind("\n", 0, span_start) if span_start != -1 else 0
+    line_start = 0 if line_start == -1 else line_start + 1
+    line_end = target_text.find("\n", span_end) if span_end != -1 else len(target_text)
+    line_end = len(target_text) if line_end == -1 else line_end
+    line = target_text[line_start:line_end]
+
+    rel_start = (span_start - line_start) if span_start != -1 else 0
+
+    # 3. 문단 내 문장 분리 및 인용 속한 문장부터 단서/예외/후속 문장 보존
+    sentences = [s.strip() for s in LEGAL_SENTENCE_SPLIT_RE.split(line) if s.strip()]
+    cur = 0
+    cit_idx = -1
+    for idx, s in enumerate(sentences):
+        s_pos = line.find(s, cur)
+        if s_pos == -1:
+            s_pos = cur
+        s_end_pos = s_pos + len(s)
+        cur = s_end_pos
+        if s_pos <= rel_start < s_end_pos or (raw_text and raw_text in s) or (case_no and case_no in s):
+            cit_idx = idx
+            break
+
+    if cit_idx == -1:
+        selected_sentences = sentences
+    else:
+        end_idx = cit_idx + 1
+        while end_idx < len(sentences) and PROVISO_EXCEPTION_RE.search(sentences[end_idx]):
+            end_idx += 1
+        selected_sentences = sentences[cit_idx:end_idx]
+
+    claim = " ".join(selected_sentences)
+
+    # 4. 다음 문단/줄이 단서나 예외로 이어지면 추가 결합
+    nxt_line_start = line_end + 1
+    if nxt_line_start < len(target_text):
+        nxt_line_end = target_text.find("\n", nxt_line_start)
+        nxt_line_end = len(target_text) if nxt_line_end == -1 else nxt_line_end
+        nxt_line = target_text[nxt_line_start:nxt_line_end].strip()
+        if PROVISO_EXCEPTION_RE.search(nxt_line):
+            claim = f"{claim} {nxt_line}"
+
+    return claim[:max_chars].strip() or f"{raw_text}에 기반한 법률적 주장"
 
 
 async def verify_argument_validity(

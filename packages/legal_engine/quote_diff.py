@@ -217,13 +217,13 @@ def categorize_quote_diff(quote: str, official_text: Optional[str], *, has_full_
 
     if max_ratio < 0.50:
         return {
-            "status": "FABRICATED_QUOTE",
+            "status": "UNALIGNED_QUOTE",
             "can_compare": True,
             "similarity": round(max_ratio, 3),
-            "diff_categories": ["FABRICATED_QUOTE"],
-            "category_labels": ["원문 부존재 허위 인용문 (CIT-FAB-Q)"],
-            "reason": f"공식 판결문 본문 전체에서 인용된 문구를 찾을 수 없습니다 (최대 유사도 {max_ratio:.2f}). 지어낸 인용문(CIT-FAB-Q)으로 판단됩니다.",
-            "defect_summary": f"허위 인용문(유사도 {max_ratio:.2f})",
+            "diff_categories": ["CONTENT_MISMATCH"],
+            "category_labels": ["원문 대조 불일치 (대응 구간 미확정)"],
+            "reason": f"공식 판결문 본문에서 직접 인용문과 일치하는 구간을 특정하지 못했습니다 (최대 유사도 {max_ratio:.2f}). 저유사도만으로 가공 인용을 단정하지 않고 원문 대조 필요로 처리합니다.",
+            "defect_summary": f"인용문 불일치(유사도 {max_ratio:.2f})",
         }
 
     changes_result = quote_changes(clean_quote, official_text)

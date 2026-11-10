@@ -152,5 +152,38 @@ class TestLV05HoldingDistortion(unittest.TestCase):
         self.assertIsNone(conflict)
 
 
+import pytest
+from packages.source_adapters import SourceRegistry
+from packages.source_adapters.base import AdapterResponse
+from packages.common.enums import AdapterStatus
+
+
+class _MockLaw:
+    def __init__(self, records):
+        self.records = records
+
+    def search_case(self, *args, **kw):
+        return AdapterResponse(AdapterStatus.READY, self.records, None, "synthetic")
+
+
+def _make_mock_verifier(records):
+    registry = SourceRegistry()
+    registry.legal[0] = _MockLaw(records)
+    return LegalVerifier(registry)
+
+
+@pytest.mark.parametrize("party,duty", [("매수인", "대금지급"), ("임차인", "차임지급"), ("수급인", "공사완성")])
+def test_lv05_explicit_lower_court_history_is_not_supreme_adoption(party: str, duty: str):
+    holding = f"{party}의 {duty} 의무가 계약 해제로 소멸하였"
+    full = f"원심은 {holding}다고 판단하였다. 그러나 이러한 원심의 판단에는 계약 해제 요건에 관한 법리를 오해하여 판결에 영향을 미친 위법이 있다."
+    claim = f"원심은 {holding}다고 판단하였다. 이 내용은 사건 경과의 설명이다."
+    c = Citation(citation_id="c", type=CitationType.CASE, raw_text="대법원 2021다67283 판결",
+                 court="대법원", case_number="2021다67283", canonical_case_number="2021다67283",
+                 page=1, attributes={"case_claim": claim}, context=claim)
+    result = _make_mock_verifier([dict(case_number=c.case_number, court="대법원", full_text=full)]).verify_citations([c])
+    assert not any(f.confidence_features.get("verdict_label") == "REVERSED_REMAND_CONFUSION" for f in result.findings)
+
+
 if __name__ == "__main__":
     unittest.main()
+

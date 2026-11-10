@@ -363,6 +363,12 @@ def detect_reversed_remand_confusion(
     # 원심 판단이 파기·배척되었다는 사실을 정확히 기술한 서술은 왜곡(오인)이 아니다
     if re.search(r"(?:배척|파기|취소)(?:되|되었|되였|하였|했|한|된|었)|배척된\s*원심|파기된\s*원심", claim):
         return None
+    # 사건 경과의 설명이거나 화자가 원심으로 한정되어 대법원 판시로 채택하지 않은 서술은 왜곡이 아니다
+    if re.search(r"(?:사건\s*경과|경위의?\s*설명|원심(?:의\s*판단|판결)?을?\s*소개)", claim):
+        return None
+    if re.search(r"^\s*(?:원심|1심|제1심|하급심|원심\s*법원)(?:은|는|이)\b", claim):
+        if not re.search(r"대법원(?:도|은)?\s*(?:이를?\s*)?(?:인정|수긍|채택|받아들|동일하게)", claim):
+            return None
     core = _claim_core(claim)
     for m in REVERSED_LOWER_COURT_RE.finditer(combined):
         lower_holding = (m.group("lower_holding") or m.group("lower_holding_alt") or "").strip()
