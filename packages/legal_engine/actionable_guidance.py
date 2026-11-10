@@ -225,7 +225,7 @@ def generate_actionable_guidance(
             ),
             "draft_motion_text": (
                 f"[판결서 사본 제출 요구서 안]\n"
-                f"상대방이 원용한 {cited_authority}는 공개 판례 DB에 전문이 수록되지 않은 판결입니다.\n"
+                f"상대방이 원용한 {cited_authority}는 공식 공개 판례 DB에서 확인되지 않는 판결입니다.\n"
                 f"상대방은 해당 판결서의 사본을 제출하여 판결 취지 및 사실관계를 입증하여 주시기 바랍니다."
             ),
             "official_portal_url": SCOURT_RULING_SEARCH_URL,
@@ -269,7 +269,7 @@ def generate_actionable_guidance(
             "action_type": "APPLICATION_CHECK",
             "action_title": "사안의 사실관계 및 특약 조건 직접 검토 안내",
             "guidance_summary": (
-                f"공식 판례 DB에서 {cited_authority}의 실재와 원문 일치가 확인되었습니다. "
+                f"공식 판례 DB에서 {cited_authority}의 실재가 확인되었습니다. "
                 "다만 본 사건의 구체적 계약 조항 및 사실관계에 유추적용될 수 있는지(사건 적용성) 직접 검토가 필요합니다."
             ),
             "draft_motion_text": None,
@@ -280,7 +280,43 @@ def generate_actionable_guidance(
             ],
         }
 
-    # 5) 일반 및 인용문 차이 (Tier 5: CONTENT_MISMATCH / GENERAL)
+    # 5) 사안 구별 (Tier 5: DISTINGUISHABLE)
+    if basis == "DISTINGUISHABLE":
+        return {
+            "action_tier": "DISTINGUISHABLE",
+            "action_type": "APPLICATION_CHECK",
+            "action_title": "사안 구별 및 법리 적용 범위 직접 검토 안내",
+            "guidance_summary": (
+                f"원용된 {cited_authority}는 본 사건과 사실관계나 쟁점이 구별(distinguishable)될 가능성이 있습니다. "
+                "해당 판례의 법리가 본 사건에 그대로 유추적용될 수 있는지 사실관계를 직접 대조하십시오."
+            ),
+            "draft_motion_text": None,
+            "official_portal_url": SCOURT_GLAW_URL,
+            "recommended_steps": [
+                "1. 판례의 구체적 사실관계와 본건 사실관계의 차이점 분석",
+                "2. 상대방 주장 법리의 적용 범위 한계 지적 준비",
+            ],
+        }
+
+    # 6) 미검증 상태 및 미확인 상태값 (UNVERIFIED / 알 수 없는 상태, 중립적 확인 요청)
+    if basis == "UNVERIFIED" or (basis not in ("CONTENT_MISMATCH", "MODIFIED_QUOTE") and not diff_cats):
+        return {
+            "action_tier": "SOURCE_LIMIT_SUSPICIOUS",
+            "action_type": "SOURCE_VERIFICATION",
+            "action_title": "공식 출처 및 판례 원문 확인 안내",
+            "guidance_summary": (
+                f"{cited_authority}에 대해 공식 출처 확인 및 원문 대조가 완료되지 않았습니다. "
+                "공식 판례 DB 또는 판결문 사본을 통해 원문을 확인하십시오."
+            ),
+            "draft_motion_text": None,
+            "official_portal_url": SCOURT_GLAW_URL,
+            "recommended_steps": [
+                "1. 공식 판례 DB(대법원 종합법률정보)에서 원문 검색",
+                "2. 출처 미확인 시 상대방에게 사본 제출 또는 석명 요구",
+            ],
+        }
+
+    # 7) 인용문 실질 차이 (Tier 7: CONTENT_MISMATCH / MODIFIED_QUOTE)
     return {
         "action_tier": "GENERAL",
         "action_type": "QUOTE_REVIEW",
