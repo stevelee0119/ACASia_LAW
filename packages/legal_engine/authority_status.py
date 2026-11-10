@@ -1,0 +1,155 @@
+"""LV-03: 판례·법령 존재 및 서지 판정의 3단 체계화 (Three-tier authority verification).
+
+3단 체계 및 사건번호 구조 판정:
+1. 존재 확인 (VERIFIED): 공식 DB에서 일치 확인
+2. 부존재 확인 (CONFIRMED_NONEXISTENT): 대법원 판결/헌재결정/정식 법령 조문 중 검색 범위 내 확정 부존재 (CRITICAL)
+3. 확인 불가 (UNCONFIRMED_SOURCE_LIMIT): 하급심 판결, 약칭 법령, 최근 선고 미수록 등 출처 한계로 인한 미확인은 가짜 판례(FABRICATION)로 단정하지 않고 '확인 불가'로 명시 (MEDIUM)
+4. 오기 의심 (SUSPICIOUS): 성립 불가능한 사건번호(연도, 부호, 번호 구조)
+"""
+from __future__ import annotations
+
+import re
+from typing import Any, Dict, List, Optional
+
+from packages.common.enums import CitationType, Severity, StrEnum, VerificationStatus
+from packages.legal_engine.citation_format import code_court_family, court_family
+from packages.legal_engine.normalize import split_case_number, SUPREME_COURT_CODES
+
+
+class LegalVerificationStatus(StrEnum):
+    """법률 검증 3단 공용 판정 상태 열거형 (LV-03)."""
+    VERIFIED = "VERIFIED"                                   # 확인됨: 공식 원문과 존재·서지·내용 일치
+    CONTRADICTED = "CONTRADICTED"                           # 불일치/모순: 원문 또는 확립된 법리와 명백히 충돌
+    CONFIRMED_NONEXISTENT = "CONFIRMED_NONEXISTENT"         # 부존재 확인: 대법원 등 수록 범위 확실한 출처에서 부존재 확정 (CRITICAL)
+    SUSPICIOUS = "SUSPICIOUS"                               # 존재의심/오기: 성립 불가능한 사건번호/조문 표기
+    CONTEXT_CAUTION = "CONTEXT_CAUTION"                     # 맥락주의: 판례는 실재하나 취지 왜곡(변경된 판례, 반대의견 오인 등)
+    UNCONFIRMED_SOURCE_LIMIT = "UNCONFIRMED_SOURCE_LIMIT"   # 확인 불가: 하급심·약칭 등 출처 미수록 가능성 (가짜 판례 단정 금지)
+    SUSPENDED = "SUSPENDED"                                 # 판단/계산 보류: 소제기일/기산점 등 필수 전제 결여
+    UNVERIFIED = "UNVERIFIED"                               # 미검증: 검증 미실시
+
+
+def get_court_tier(citation: Any) -> str:
+    """법원 위계 분류: SUPREME (대법원) / CONSTITUTIONAL (헌법재판소) / LOWER (하급법원) / UNKNOWN"""
+    court_str = getattr(citation, "court", "") or ""
+    cf = court_family(court_str)
+    if cf == "대법원":
+        return "SUPREME"
+    if cf == "헌법재판소":
+        return "CONSTITUTIONAL"
+
+    case_no = getattr(citation, "canonical_case_number", None) or getattr(citation, "case_number", None) or ""
+    parts = split_case_number(case_no)
+    if parts:
+        code = parts[1]
+        if code.startswith("헌"):
+            return "CONSTITUTIONAL"
+        ccf = code_court_family(code)
+        if ccf == "대법원" or code in SUPREME_COURT_CODES:
+            return "SUPREME"
+        if ccf == "헌법재판소":
+            return "CONSTITUTIONAL"
+        if ccf == "하급법원":
+            return "LOWER"
+
+    if cf == "하급법원":
+        return "LOWER"
+    return "UNKNOWN"
+
+
+def make_authority_id(citation: Any) -> str:
+    """공식/정규 기관 ID 생성 (KR_SC_{사건번호}, KR_CC_{사건번호}, KR_LOWER_{사건번호}, KR_ACT_{법령명}_{조문})."""
+    c_type = getattr(citation, "type", None)
+    case_no = getattr(citation, "canonical_case_number", None) or getattr(citation, "case_number", None) or ""
+
+    if c_type in (CitationType.CASE, CitationType.CONSTITUTIONAL) or case_no:
+        clean_case = re.sub(r"\s+", "", case_no)
+        tier = get_court_tier(citation)
+        if tier == "SUPREME":
+            return f"KR_SC_{clean_case}" if clean_case else "KR_SC_UNKNOWN"
+        elif tier == "CONSTITUTIONAL":
+            return f"KR_CC_{clean_case}" if clean_case else "KR_CC_UNKNOWN"
+        elif tier == "LOWER":
+            return f"KR_LOWER_{clean_case}" if clean_case else "KR_LOWER_UNKNOWN"
+        return f"KR_COURT_{clean_case}" if clean_case else "KR_COURT_UNKNOWN"
+
+    if c_type in (CitationType.STATUTE, CitationType.ADMIN_RULE):
+        law_name = getattr(citation, "law_name", "") or ""
+        article = getattr(citation, "article", "") or ""
+        clean_law = re.sub(r"[^\w가-힣]", "", law_name)
+        clean_art = re.sub(r"[^\w가-힣\d]", "", str(article))
+        base = f"KR_ACT_{clean_law}"
+        return f"{base}_{clean_art}".rstrip("_")
+
+    raw = getattr(citation, "raw_text", "") or "UNKNOWN"
+    clean_raw = re.sub(r"[^\w가-힣]", "", raw)[:20]
+    return f"KR_AUTH_{clean_raw}"
+
+
+def is_covered_precedent_scope(citation: Any) -> bool:
+    """공식 공개 DB(국가법령정보/종합법률정보)가 체계적 전수 수록을 보장하는 범위인지 여부."""
+    tier = get_court_tier(citation)
+    return tier in ("SUPREME", "CONSTITUTIONAL")
+
+
+def classify_authority_status(
+    citation: Any,
+    official_record: Optional[Dict[str, Any]],
+    format_valid: bool = True,
+) -> Dict[str, Any]:
+    """판례 또는 법령의 공식 확인 여부, 서지 형식 타당성, 법원 위계를 종합하여 3단 판정 정보를 도출한다."""
+    auth_id = make_authority_id(citation)
+    tier = get_court_tier(citation)
+    is_covered = is_covered_precedent_scope(citation)
+
+    # 1. 공식 원문 존재 확인 (VERIFIED)
+    if official_record:
+        return {
+            "status": LegalVerificationStatus.VERIFIED,
+            "tier": tier,
+            "authority_id": auth_id,
+            "severity": Severity.INFO,
+            "title": f"공식 원문 일치 확인: {getattr(citation, 'raw_text', '')}",
+            "reason": "공식 DB에서 일치하는 기록을 확인했습니다.",
+            "is_covered": is_covered,
+        }
+
+    # 2. 성립 불가능한 서지 형식 / 오기 의심 (SUSPICIOUS)
+    if not format_valid:
+        return {
+            "status": LegalVerificationStatus.SUSPICIOUS,
+            "tier": tier,
+            "authority_id": auth_id,
+            "severity": Severity.HIGH,
+            "title": f"성립할 수 없는 사건번호 형식(오기 의심): {getattr(citation, 'raw_text', '')}",
+            "reason": "사건번호의 접수연도 또는 사건부호가 형식상 실재할 수 없어 오기(誤記)로 판단됩니다.",
+            "is_covered": is_covered,
+        }
+
+    # 3. 하급심 판결 또는 출처 한계 (UNCONFIRMED_SOURCE_LIMIT)
+    if tier == "LOWER" or not is_covered:
+        return {
+            "status": LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT,
+            "tier": tier,
+            "authority_id": auth_id,
+            "severity": Severity.MEDIUM,
+            "title": f"공식 DB 미수록 하급심·미공개 판결(확인 불가): {getattr(citation, 'raw_text', '')}",
+            "reason": (
+                "하급심(지방법원/고등법원) 판결 및 미공개 결정은 대법원 판례 DB의 공개 수록 대상에서 제외될 수 있어, "
+                "공식 DB 미발견만으로 허위·가공 판례로 단정할 수 없습니다. 상대방에게 판결문 사본 제출을 요청하여 확인해야 합니다."
+            ),
+            "is_covered": False,
+        }
+
+    # 4. 수록 범위 확실한 대법원 판례 DB 내 부존재 (CONFIRMED_NONEXISTENT)
+    return {
+        "status": LegalVerificationStatus.CONFIRMED_NONEXISTENT,
+        "tier": tier,
+        "authority_id": auth_id,
+        "severity": Severity.CRITICAL,
+        "title": f"대법원 판례 DB 내 부존재 확인(가짜 판례 의심): {getattr(citation, 'raw_text', '')}",
+        "reason": (
+            "대법원 판례 공개 DB 검색 범위 내에서 일치하는 사건번호를 찾지 못했습니다. "
+            "실재하지 않는 판례를 인용하였거나 중대한 사건번호 오기일 가능성이 높으므로 원문 확인 및 석명이 필요합니다."
+        ),
+        "is_covered": True,
+    }
