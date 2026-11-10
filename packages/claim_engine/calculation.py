@@ -432,6 +432,40 @@ def _is_unit_compatible(op_units: List[Optional[str]], res_unit: Optional[str], 
     return True
 
 
+# 평가 측 후속 Q4: '1공장 생산 214대'의 '1공장', '3호점 매출 120만 원'의 '3호점'처럼 바로 뒤 수량을 꾸미는 '수+명사' 이름표는
+# 피연산자가 아니다. 뒤 수량과의 사이에 연결어(와·과·및·그리고·더하기·연산 기호·쉼표)가 없고, 이름표 단위는 결과 단위와 다르며
+# 뒤 수량의 단위는 결과 단위와 같을 때만 뺀다(명사 목록을 두지 않는 구조 규칙)
+_LABEL_LINK_BLOCK_RE = re.compile(r"와|과|및|그리고|더하기|빼기|곱하기|나누기|각|[+\-−×*xX✕✖=,·]")
+
+
+_SYMBOL_UNIT_RE = re.compile(r"\s*(㎡|㎏|㎞|㎝|㎜|㎖|ℓ|m²|kg|km|cm|mm|m|L|%)(?![A-Za-z])")
+
+
+def _eff_unit(tok: dict, text: str) -> Optional[str]:
+    """토큰 단위. 한글 단위가 없으면 수 바로 뒤의 기호 단위(㎡·kg 등)를 이 판정 안에서만 단위로 본다."""
+    if tok.get("unit"):
+        return tok["unit"]
+    m = _SYMBOL_UNIT_RE.match(text, tok["end"])
+    return m.group(1) if m else None
+
+
+def _drop_quantity_labels(ops: List[dict], res_token: dict, text: str) -> List[dict]:
+    ru = _eff_unit(res_token, text)
+    if not ru:
+        return ops
+    out: List[dict] = []
+    for i, t in enumerate(ops):
+        nxt = ops[i + 1] if i + 1 < len(ops) else None
+        gap = text[t["end"]:nxt["start"]] if nxt is not None else ""
+        if (nxt is not None and t.get("unit") and t["unit"] != ru and _eff_unit(nxt, text) == ru
+                and t.get("josa") in (None, "의", "에서", "에") and len(gap) <= 15
+                and not _LABEL_LINK_BLOCK_RE.search(gap)):
+            continue
+        out.append(t)
+    # 이름표를 빼고 피연산자가 2개 미만이면 이름표가 아니라 실제 피연산자(곱셈의 인원·횟수 등)로 본다
+    return out if len(out) >= 2 else ops
+
+
 def _units_ok(ops: List[dict], res_token: dict, op_type: str) -> bool:
     """단위당 수량('…당 N단위')이 있는 곱은 그 단위가 결과 단위다. 그 밖에는 기존 호환성 규칙."""
     per = [o for o in ops if o.get("per") and o.get("unit")]
@@ -455,6 +489,13 @@ def _evaluate_formula_operands(ops: List[dict], text: str, after_ops: str = "") 
             return ops[0]["val"] + ops[1]["val"], "+"
         return ops[0]["val"] - ops[1]["val"], "-"
     if len(ops) == 2 and after_ops:
+        # 평가 측 후속 Q5: 분배형 곱셈('N명 각 X원씩 … 합계', 'N곳에 각각 X원씩 … 모두')은 결과 앞 '합계·모두'가 있어도 곱이다.
+        # 첫 피연산자(인원·개수)와 둘째(단가)의 단위가 다르고, '씩'이 둘째 피연산자에 붙거나 사이에 '각·각각'이 있을 때(덧셈 규칙보다 먼저 본다)
+        if _TOTAL_MARK_RE.search(after_ops) and ops[0].get("unit") != ops[1].get("unit") and (
+                ops[1].get("josa") == "씩" or re.match(r"\s*씩", text[ops[1]["end"]:])
+                or (re.search(r"(?<![가-힣])각(?:각)?(?![가-힣])", text[ops[0]["end"]:ops[1]["start"]])
+                    and re.search(r"씩", text[ops[1]["start"]:ops[1]["end"] + 2]))):
+            return ops[0]["val"] * ops[1]["val"], "*"
         if re.search(f"{_SUB_PRED}|제외하[면여]", after_ops):
             return ops[0]["val"] - ops[1]["val"], "-"
         if re.search(f"합계|{_ADD_PRED}|모두\\s*합하", after_ops):
@@ -514,6 +555,7 @@ def _check_statement_formula(text: str) -> Optional[dict]:
         if not ops or not res or len(ops) < 2:
             return None
         res_token = res[0]
+        ops = _drop_quantity_labels(ops, res_token, text)
         
         # M4: 동일 절 및 글자 수 상한 검증 (연산부~결과부 70자 이내)
         between_all = text[ops[0]["start"]:res_token["end"]]
@@ -550,6 +592,7 @@ def _check_statement_formula(text: str) -> Optional[dict]:
             before = [t for t in ops if t["start"] < pred_in[-1].start()]
             if len(before) >= 2:
                 ops = before
+    ops = _drop_quantity_labels(ops, res_token, text)
     if len(ops) < 2:
         return None
     between_all = text[ops[0]["start"]:res_token["end"]]
