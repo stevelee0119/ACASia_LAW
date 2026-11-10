@@ -158,13 +158,17 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
 
     # 3. 소제기일 탐지 (소제기일, 소장 접수일/제출일)
     # 심판청구일이나 접수일 단독(증명서 발급신청 접수일 등), 부정문, 예정문, 조건문(경우 등)은 제외
-    # 서법 검사는 줄 바꿈(\n) 이전의 동일 문장/명제 범위로 한정한다 (LV-01-R3).
+    # 서법 검사는 줄 바꿈(\n) 및 문장 종결 기호 이전의 동일 명제 범위로 한정한다 (LV-01-R4).
     filing_dates = set()
     for m in re.finditer(r"(?<![가-힣])(?:소\s*제기일|소장\s*(?:접수일|제출일))\s*[:：]?\s*" + DATE_RE.pattern, scope_text):
-        end_idx = min(len(scope_text), m.end() + 25)
+        sent_end = len(scope_text)
         nl = scope_text.find("\n", m.end())
         if nl != -1:
-            end_idx = min(end_idx, nl)
+            sent_end = min(sent_end, nl)
+        dot_m = re.search(r"[.?!](?:\s|$)", scope_text[m.end():])
+        if dot_m:
+            sent_end = min(sent_end, m.end() + dot_m.end())
+        end_idx = min(sent_end, m.end() + 25)
         ctx = scope_text[m.start():end_idx]
         if re.search(r"예정|않았|아니하|못하|않는|없는|경우|미정|가정|예약", ctx):
             continue
@@ -172,10 +176,14 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
         if d:
             filing_dates.add(d)
     for m in re.finditer(DATE_RE.pattern + r"[^.\n]{0,35}?(?:본\s*소를?\s*(?:제기|접수)|소장을?\s*(?:제출|접수))", scope_text):
-        end_idx = min(len(scope_text), m.end() + 35)
+        sent_end = len(scope_text)
         nl = scope_text.find("\n", m.end())
         if nl != -1:
-            end_idx = min(end_idx, nl)
+            sent_end = min(sent_end, nl)
+        dot_m = re.search(r"[.?!](?:\s|$)", scope_text[m.end():])
+        if dot_m:
+            sent_end = min(sent_end, m.end() + dot_m.end())
+        end_idx = min(sent_end, m.end() + 35)
         ctx = scope_text[m.start():end_idx]
         if re.search(r"예정|않았|아니하|못하|않는|없는|경우|미정|가정|한다면|하더라도", ctx):
             continue

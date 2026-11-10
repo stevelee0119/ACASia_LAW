@@ -41,7 +41,7 @@ def test_lv03_positive_supreme_court_confirmed_nonexistent():
     c = _make_citation(raw, "2021다88888", court="대법원")
     assert get_court_tier(c) == "SUPREME"
     assert not is_covered_precedent_scope(c)
-    # attestation이 명시된 경우에만 전수 수록 보장 인정
+    # attestation이 임의 명시된 경우라도 서버 검증 증명이 없으므로 False 유지 (LV-03-R4)
     c_attested = _make_citation(raw, "2021다88888", court="대법원")
     c_attested.attributes = {
         "coverage_attestation": {
@@ -52,7 +52,7 @@ def test_lv03_positive_supreme_court_confirmed_nonexistent():
             "checked_at": "2026-11-10",
         }
     }
-    assert is_covered_precedent_scope(c_attested) is True
+    assert is_covered_precedent_scope(c_attested) is False
 
     # 공식 DB 미검색 (official_record=None, 형식 유효)
     info = classify_authority_status(c, official_record=None, format_valid=True)
