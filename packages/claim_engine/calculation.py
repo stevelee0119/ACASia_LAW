@@ -474,6 +474,42 @@ def _units_ok(ops: List[dict], res_token: dict, op_type: str) -> bool:
     return _is_unit_compatible([o["unit"] for o in ops], res_token["unit"], op_type)
 
 
+# 평가 측 후속 Q6: 분배형 곱셈은 단가의 기준이 앞의 개수와 같을 때만 성립한다. '10명에게 시간당 1만 원씩'·'3명에게 매월 10만 원씩'·
+# '5인에게 1주당 1천 원씩'은 시간·개월·주식 수가 더 있어야 총액이 정해지므로 인원 × 단가로 검산하지 않는다
+_PERIOD_BASIS_RE = re.compile(
+    r"(?<![가-힣])매\s?(?:월|달|년|주|일|회|번|분기|시간|학기|기)|마다"
+    r"|(?<![가-힣])(?:월|연|일|주|하루에?|한\s?달에?|일\s?년에?|시간에?)\s*(?:금\s*)?$"
+    # 기간 단위 급여·요금 명사(시급·일급·주급·월급·연봉·월세·월별·연간·월 차임 등)도 기간 기준 단가다
+    r"|(?<![가-힣])(?:시|일|주|월|연|년|분기|반기)\s?(?:급|세|별|간|차임|임료|회비|정액|부금|납)(?![가-힣])|연봉|(?:회|건|개|인|명)별(?![가-힣])")
+_PER_BASIS_RE = re.compile(r"(?P<base>[가-힣]{1,4})당(?![가-힣])")
+_PERSON_BASIS = ("인", "명", "사람")
+# '-당'으로 끝나지만 단가 기준이 아닌 낱말(수당·배당 등). 빠뜨려도 검산을 건너뛸 뿐이다(미탐 방향)
+_NOT_RATE_WORDS = frozenset({"수당", "배당", "해당", "상당", "할당", "충당", "정당", "부당", "담당", "식당", "강당"})
+_PER_TOKEN_RE = re.compile(r"\d[\d,]*\s?[가-힣]{1,4}당(?![가-힣])")
+
+
+def _other_rate_basis(ops: List[dict], text: str) -> bool:
+    """두 피연산자 사이에 앞 개수와 다른 기준의 단가 표지(시간당·1주당·매월 등)가 있는지."""
+    between = text[ops[0]["end"]:ops[1]["start"]]
+    count_phrase = text[ops[0]["start"]:ops[0]["end"]] + " " + between
+    if _PERIOD_BASIS_RE.search(between):
+        return True
+    # 개수와 단가 사이에 다른 수량('5일간'·'12개월' 등)이 있으면 인원 × 단가만으로 총액이 정해지지 않는다('1인당' 꼴 수는 제외)
+    if re.search(r"\d", _PER_TOKEN_RE.sub("", between)):
+        return True
+    for m in _PER_BASIS_RE.finditer(between):
+        if m.group(0) in _NOT_RATE_WORDS or any(m.group(0).endswith(w) for w in _NOT_RATE_WORDS):
+            continue
+        base = m.group("base")
+        head = count_phrase[:count_phrase.find(m.group(0))]
+        if base in _PERSON_BASIS and re.search(r"\d\s?(?:명|인|사람)", head):
+            continue
+        if base in head:
+            continue
+        return True
+    return False
+
+
 def _evaluate_formula_operands(ops: List[dict], text: str, after_ops: str = "") -> Tuple[Optional[Decimal], Optional[str]]:
     """피연산자 리스트와 연산 서술어(after_ops)를 바탕으로 계산값과 연산 종류를 도출한다."""
     if len(ops) < 2:
@@ -491,7 +527,8 @@ def _evaluate_formula_operands(ops: List[dict], text: str, after_ops: str = "") 
     if len(ops) == 2 and after_ops:
         # 평가 측 후속 Q5: 분배형 곱셈('N명 각 X원씩 … 합계', 'N곳에 각각 X원씩 … 모두')은 결과 앞 '합계·모두'가 있어도 곱이다.
         # 첫 피연산자(인원·개수)와 둘째(단가)의 단위가 다르고, '씩'이 둘째 피연산자에 붙거나 사이에 '각·각각'이 있을 때(덧셈 규칙보다 먼저 본다)
-        if _TOTAL_MARK_RE.search(after_ops) and ops[0].get("unit") != ops[1].get("unit") and (
+        if _TOTAL_MARK_RE.search(after_ops) and ops[0].get("unit") != ops[1].get("unit") \
+                and not _other_rate_basis(ops, text) and (
                 ops[1].get("josa") == "씩" or re.match(r"\s*씩", text[ops[1]["end"]:])
                 or (re.search(r"(?<![가-힣])각(?:각)?(?![가-힣])", text[ops[0]["end"]:ops[1]["start"]])
                     and re.search(r"씩", text[ops[1]["start"]:ops[1]["end"] + 2]))):

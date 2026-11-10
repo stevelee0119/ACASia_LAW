@@ -42,3 +42,23 @@ def test_q5_distributive_multiplication(text):
 ])
 def test_q5_control(text):
     assert _check_statement_formula(text) is None
+
+
+# --- Q6: 단가의 기준이 앞의 개수와 다르면(시간당·매월·1주당, 사이의 다른 수량) 인원 × 단가로 검산하지 않는다 ---
+@pytest.mark.parametrize("text", [
+    "강사 6명에게 시간당 30,000원씩 합계 1,440,000원을 지급하였다.",
+    "임차인 4명에게 매월 200,000원씩 합계 9,600,000원을 반환하였다.",
+    "주주 7인에게 1주당 500원씩 배당하여 합계 3,500,000원을 지급하였다.",
+    "일용직 5명에게 3일간 일당 120,000원씩 합계 1,800,000원을 지급하였다.",
+])
+def test_q6_control_other_rate_basis(text):
+    assert _check_statement_formula(text) is None
+
+
+@pytest.mark.parametrize("text", [
+    "수급 대상 11가구에 가구당 80,000원씩 지원하여 모두 900,000원을 집행하였다.",
+    "직원 6명에게 각 수당 70,000원씩 합계 430,000원을 지급하였다.",
+])
+def test_q6_matching_basis_or_non_rate_word_still_checked(text):
+    r = _check_statement_formula(text)
+    assert r is not None and r["stated"] != r["computed"], r
