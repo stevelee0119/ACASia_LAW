@@ -226,6 +226,7 @@ class LegalVerifier:
                 "notes": v.notes,
                 "official_record": v.official_record,
                 "review": v.review,
+                "findings": list(v.findings),
                 "source_record_ids": [r.source_record_id for r in v.source_records],
                 "source_lookup": v.lookup,
                 # 확인 완료 라벨과 사건 적용성(v3 D4). 형식 위반 등 뒤 단계가 판정을 바꾸면 라벨을 지운다.

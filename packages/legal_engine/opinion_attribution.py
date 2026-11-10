@@ -327,6 +327,9 @@ def detect_changed_precedent_distortion(
     combined = " ".join(part for part in (summary, full_text) if part)
     if not combined or not claim:
         return None
+    # 종전 판례가 변경·폐기되었다는 사실을 정확히 기술한 서술은 왜곡이 아니다
+    if re.search(r"(?:변경|폐기)(?:되|되었|된|하였|했)", claim):
+        return None
     core = _claim_core(claim)
     for m in CHANGED_PRECEDENT_RE.finditer(combined):
         old_holding = (m.group("old_holding") or "").strip()
@@ -356,6 +359,9 @@ def detect_reversed_remand_confusion(
     """상고심(파기환송) 판결에서 배척된 원심의 판단을 대법원 판시인 것처럼 인용했는지 검사한다."""
     combined = " ".join(part for part in (summary, full_text) if part)
     if not combined or not claim:
+        return None
+    # 원심 판단이 파기·배척되었다는 사실을 정확히 기술한 서술은 왜곡(오인)이 아니다
+    if re.search(r"(?:배척|파기|취소)(?:되|되었|되였|하였|했|한|된|었)|배척된\s*원심|파기된\s*원심", claim):
         return None
     core = _claim_core(claim)
     for m in REVERSED_LOWER_COURT_RE.finditer(combined):
