@@ -79,6 +79,7 @@ def _context_review(verdict, reviews, mask=None):
 
 def _fabrication_row(c: Any) -> "HallucinationTableRow":
     """사건번호가 성립할 수 없는 경우. 여기서는 단정해도 된다."""
+    auth_id = make_authority_id(c)
     raw_claim = c.context[:1000] if c.context else f"{c.raw_text}에 기반한 법률적 주장"
     display_claim = raw_claim if len(raw_claim) <= 200 else (raw_claim[:197] + "...")
     guidance = generate_actionable_guidance(

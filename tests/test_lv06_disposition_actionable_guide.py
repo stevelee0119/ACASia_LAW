@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import unittest
-from packages.common.enums import FindingType, VerificationStatus
+from packages.common.enums import FindingType, VerificationStatus, CitationType
 from packages.common.schemas import NormalizedDocument, Page, Block
 from packages.legal_engine.actionable_guidance import (
     check_cause_of_action_elements,
@@ -124,6 +124,51 @@ class TestLV06ActionableGuide(unittest.TestCase):
         self.assertIn("판결서 인터넷 열람", guidance["action_title"])
         self.assertIn("scourt.go.kr", guidance["official_portal_url"])
 
+    # 7. 보완 시험 1: 불가능 사건번호 행 생성 시 NameError 방지
+    def test_fabrication_row_does_not_raise_name_error(self):
+        from packages.common.schemas import Citation
+        from packages.legal_engine.argument_validity_verifier import _fabrication_row
+        c = Citation(
+            citation_id="c_fake",
+            type=CitationType.CASE,
+            raw_text="대법원 2099다67283 판결",
+            court="대법원",
+            case_number="2099다67283",
+            canonical_case_number="2099다67283",
+            page=1,
+            context="사건번호의 정정을 확인한다.",
+        )
+        row = _fabrication_row(c)
+        self.assertTrue(bool(row.authority_id))
+        self.assertEqual(row.verification_status, VerificationStatus.SUSPICIOUS.value)
+        self.assertNotEqual(row.actionable_guidance["action_tier"], "CONFIRMED_ERROR")
+
+    # 8. 보완 시험 2: UNCONFIRMED 상태가 원문 불일치로 오판되지 않고 출처 검증으로 분기
+    def test_unconfirmed_basis_routes_to_source_verification(self):
+        guidance = generate_actionable_guidance(
+            basis="UNCONFIRMED",
+            cited_authority="대법원 2021다67283 판결",
+            claim_text="해당 판결을 근거로 책임을 검토한다.",
+        )
+        self.assertEqual(guidance["action_tier"], "SOURCE_LIMIT_SUSPICIOUS")
+        self.assertEqual(guidance["action_type"], "SOURCE_VERIFICATION")
+        self.assertNotIn("원문과 차이가 있습니다", guidance["guidance_summary"])
+
+    # 9. 보완 시험 3: 비청구 또는 일반 조항은 요건사실 누락으로 오탐하지 않음
+    def test_cause_of_action_negation_and_general_clause_ignored(self):
+        nonclaim_text1 = "원고는 부당이득반환을 청구하지 않는다. 본건은 계약대금 청구이다."
+        doc1 = _make_doc(nonclaim_text1)
+        self.assertEqual(len(check_cause_of_action_elements(doc1)), 0)
+
+        nonclaim_text2 = "원고는 불법행위 손해배상을 청구하지 않는다. 본건은 약정금 청구이다."
+        doc2 = _make_doc(nonclaim_text2)
+        self.assertEqual(len(check_cause_of_action_elements(doc2)), 0)
+
+        general_clause_text = "이 계약은 장래 불이행 시 계약을 해제할 수 있다는 일반 조항을 둔다."
+        doc3 = _make_doc(general_clause_text)
+        self.assertEqual(len(check_cause_of_action_elements(doc3)), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+

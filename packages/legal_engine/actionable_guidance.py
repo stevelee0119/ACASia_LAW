@@ -73,7 +73,24 @@ def check_cause_of_action_elements(doc: NormalizedDocument) -> List[Finding]:
 
     findings: List[Finding] = []
     for rule in CAUSE_OF_ACTION_RULES:
-        if not rule["trigger"].search(text):
+        matches = list(rule["trigger"].finditer(text))
+        if not matches:
+            continue
+
+        active = False
+        for m in matches:
+            s0 = max(0, text.rfind("\n", 0, m.start()) + 1)
+            s1 = text.find("\n", m.end())
+            s1 = len(text) if s1 == -1 else s1
+            sentence = text[s0:s1]
+            if re.search(r"(?:청구|구|주장)(?:하지|하지는)?\s*(?:않|아니하|않는|않았)|배제한", sentence):
+                continue
+            if re.search(r"일반\s*조항|조항을?\s*둔다|조항에\s*불과|특약\s*조항", sentence):
+                continue
+            active = True
+            break
+
+        if not active:
             continue
 
         missing_elements: List[str] = []
@@ -145,14 +162,14 @@ def generate_actionable_guidance(
     """대조표 단일 행에 대해 확정오류/출처한계/왜곡 3단계 실무 조치(Actionable Guidance)를 생성한다."""
     diff_cats = quote_diff_categories or []
 
-    # 1) 확정 오류 (Tier 1: CONFIRMED_NONEXISTENT, FABRICATION_SUSPECTED, FABRICATED_QUOTE)
-    if basis in ("CONFIRMED_NONEXISTENT", "FABRICATION_SUSPECTED") or "FABRICATED_QUOTE" in diff_cats:
+    # 1) 확정 부존재 (Tier 1: CONFIRMED_NONEXISTENT)
+    if basis == "CONFIRMED_NONEXISTENT":
         return {
             "action_tier": "CONFIRMED_ERROR",
             "action_type": "CLARIFICATION_MOTION",
-            "action_title": "상대방 인용 판례 부존재에 따른 석명 촉구 신청서(안)",
+            "action_title": "판례 부존재 확인에 따른 석명 촉구 신청서(안)",
             "guidance_summary": (
-                f"공식 대법원 판례 DB에서 일치하는 사건번호를 찾을 수 없거나 성립할 수 없는 판례입니다. "
+                f"전수 수록 공인 DB에서 확인되지 않는 부존재 판례입니다({cited_authority}). "
                 "상대방에게 판결문 사본 제출 또는 사건번호 정정을 요구하는 석명신청을 진행할 수 있습니다."
             ),
             "draft_motion_text": (
@@ -169,20 +186,42 @@ def generate_actionable_guidance(
             "official_portal_url": SCOURT_GLAW_URL,
             "recommended_steps": [
                 "1. 대법원 종합법률정보(glaw.scourt.go.kr)에서 사건번호 재확인",
-                "2. 가공 판례일 가능성이 높으므로 재판부에 석명촉구신청서 제출",
+                "2. 부존재 확인 시 재판부에 석명촉구신청서 제출",
                 "3. 상대방의 출처 미제출 시 허위 주장으로 배척 요청",
             ],
         }
 
-    # 2) 출처 한계 및 의심 (Tier 2: UNCONFIRMED_SOURCE_LIMIT, SUSPICIOUS)
-    if basis in ("UNCONFIRMED_SOURCE_LIMIT", "SUSPICIOUS"):
+    # 2) 사건번호 형식 오기 의심 (FABRICATION_SUSPECTED / SUSPICIOUS)
+    if basis in ("FABRICATION_SUSPECTED", "SUSPICIOUS"):
+        return {
+            "action_tier": "SOURCE_LIMIT_SUSPICIOUS",
+            "action_type": "FORMAT_CORRECTION",
+            "action_title": "성립 불가능한 사건번호 형식(오기 의심) 확인 안내",
+            "guidance_summary": (
+                f"사건번호({cited_authority})의 접수연도 또는 사건부호가 형식상 실재할 수 없어 오기(誤記)로 의심됩니다. "
+                "정확한 사건번호를 확인하십시오."
+            ),
+            "draft_motion_text": (
+                f"[사건번호 정정 요청 안]\n"
+                f"원용된 {cited_authority}는 사건부호 또는 연도 체계상 오기(誤記)로 판단됩니다.\n"
+                f"정확한 사건번호를 확인하여 주시기 바랍니다."
+            ),
+            "official_portal_url": SCOURT_GLAW_URL,
+            "recommended_steps": [
+                "1. 대법원 종합법률정보에서 유사 사건번호 검색",
+                "2. 단순 오기인 경우 정확한 사건번호로 교체",
+            ],
+        }
+
+    # 3) 출처 한계 및 미확인 (Tier 2: UNCONFIRMED, UNCONFIRMED_SOURCE_LIMIT)
+    if basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT"):
         return {
             "action_tier": "SOURCE_LIMIT_SUSPICIOUS",
             "action_type": "SOURCE_VERIFICATION",
-            "action_title": "하급심 판결서 인터넷 열람 신청 또는 등본 제출 요청",
+            "action_title": "공식 출처 확인 및 판결서 인터넷 열람 안내",
             "guidance_summary": (
-                f"하급심 판결 또는 미공개 결정은 대법원 공개 판례 DB에 수록되지 않을 수 있습니다. "
-                "대한민국 법원 '판결서 인터넷 열람 서비스'를 통해 원문을 확인하거나 상대방에게 사본 제출을 요청하십시오."
+                f"공식 공개 판례 DB 검색 결과 {cited_authority}의 기록을 확인하지 못했습니다. "
+                "미공개 판결이거나 수록 범위 밖일 수 있으므로 공식 판결서 열람 또는 사본을 확인하십시오."
             ),
             "draft_motion_text": (
                 f"[판결서 사본 제출 요구서 안]\n"
