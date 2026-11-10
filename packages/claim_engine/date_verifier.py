@@ -816,9 +816,9 @@ def _has_own_object_marker(text: str) -> bool:
 
 # U1: 순서 연결어 정규식 및 헬퍼
 SUBSEQUENT_ORDER_RE = re.compile(r"(?:그\s*후|이후|그\s*뒤|뒤이어|다음에)")
-# 평가 측 후속 P1: 동사 길이 제한 없는 [가-힣]+는 긴 한글 연속(띄어쓰기 없는 입력)에서 시작 위치마다 끝까지 훑어 이차 시간이 든다.
-# 판정은 동사의 마지막 글자(어미·받침 ㄴ)만 보므로 길이를 10글자로 제한해도 결과가 같다
-CONJUGATED_ORDER_RE = re.compile(r"(?P<verb>[가-힣]{1,10})\s*(?P<conn>뒤|후|다음)|다가")
+# P1d: 기준 패턴의 탐욕적 연결어 선택 및 왼쪽 우선 탐색 의미를 보존한다.
+# 한글 run 시작점 또는 직전 일치 끝에서 .match()를 수행하여 긴 비공백 한글열의 이차 시간 재스캔을 방지한다.
+CONJUGATED_ORDER_RE = re.compile(r"(?P<verb>[가-힣]+)\s*(?P<conn>뒤|후|다음)|다가")
 
 
 def _has_jongseong_nieun(ch: str) -> bool:
@@ -832,15 +832,31 @@ def _has_narrative_order_connective(text: str) -> bool:
     """두 슬롯 사이 또는 절에 순서 연결어(-ㄴ 뒤|-ㄴ 후|-ㄴ 다음|-다가|이후|그 후)가 있는지 검사한다 (U1)."""
     if SUBSEQUENT_ORDER_RE.search(text):
         return True
-    for m in CONJUGATED_ORDER_RE.finditer(text):
-        if "다가" in m.group(0):
-            return True
-        verb = m.group("verb")
-        if verb:
-            if verb.endswith(("은", "는", "던", "후", "뒤", "다음")):
+    pos = 0
+    n = len(text)
+    while pos < n:
+        while pos < n and not ("가" <= text[pos] <= "힣"):
+            pos += 1
+        if pos >= n:
+            break
+        m = CONJUGATED_ORDER_RE.match(text, pos)
+        if m:
+            if "다가" in m.group(0):
                 return True
-            if _has_jongseong_nieun(verb[-1]):
+            verb = m.group("verb")
+            if verb:
+                if verb.endswith(("은", "는", "던", "후", "뒤", "다음")):
+                    return True
+                if _has_jongseong_nieun(verb[-1]):
+                    return True
+            pos = m.end()
+        else:
+            run_end = pos + 1
+            while run_end < n and "가" <= text[run_end] <= "힣":
+                run_end += 1
+            if text.find("다가", pos, run_end) != -1:
                 return True
+            pos = run_end
     return False
 
 
