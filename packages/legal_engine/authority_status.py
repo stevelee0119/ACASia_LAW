@@ -69,7 +69,10 @@ def make_authority_id(citation: Any) -> str:
         elif tier == "CONSTITUTIONAL":
             return f"KR_CC_{clean_case}" if clean_case else "KR_CC_UNKNOWN"
         elif tier == "LOWER":
-            return f"KR_LOWER_{clean_case}" if clean_case else "KR_LOWER_UNKNOWN"
+            court = getattr(citation, "court", "") or ""
+            clean_court = re.sub(r"[^\w가-힣]", "", court)
+            court_part = f"_{clean_court}" if clean_court else ""
+            return f"KR_LOWER{court_part}_{clean_case}" if clean_case else f"KR_LOWER{court_part}_UNKNOWN"
         return f"KR_COURT_{clean_case}" if clean_case else "KR_COURT_UNKNOWN"
 
     if c_type in (CitationType.STATUTE, CitationType.ADMIN_RULE):
@@ -125,31 +128,18 @@ def classify_authority_status(
             "is_covered": is_covered,
         }
 
-    # 3. 하급심 판결 또는 출처 한계 (UNCONFIRMED_SOURCE_LIMIT)
-    if tier == "LOWER" or not is_covered:
-        return {
-            "status": LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT,
-            "tier": tier,
-            "authority_id": auth_id,
-            "severity": Severity.MEDIUM,
-            "title": f"공식 DB 미수록 하급심·미공개 판결(확인 불가): {getattr(citation, 'raw_text', '')}",
-            "reason": (
-                "하급심(지방법원/고등법원) 판결 및 미공개 결정은 대법원 판례 DB의 공개 수록 대상에서 제외될 수 있어, "
-                "공식 DB 미발견만으로 허위·가공 판례로 단정할 수 없습니다. 상대방에게 판결문 사본 제출을 요청하여 확인해야 합니다."
-            ),
-            "is_covered": False,
-        }
-
-    # 4. 수록 범위 확실한 대법원 판례 DB 내 부존재 (CONFIRMED_NONEXISTENT)
+    # 3. 공식 DB 미발견 (출처 한계 - 단순 미발견을 가짜 판례로 단정 금지)
+    title = f"조회 범위 내에서 찾지 못한 판례 인용: {getattr(citation, 'raw_text', '')}"
+    reason = (
+        "미공개 판결이거나 DB 수록 범위 밖일 수 있으므로 '존재하지 않는 판례'라고 단정하지 않습니다. "
+        "상대방에게 판결문 사본 제출을 요청하거나 다른 공식 경로를 통해 확인해야 합니다."
+    )
     return {
-        "status": LegalVerificationStatus.CONFIRMED_NONEXISTENT,
+        "status": LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT,
         "tier": tier,
         "authority_id": auth_id,
-        "severity": Severity.CRITICAL,
-        "title": f"대법원 판례 DB 내 부존재 확인(가짜 판례 의심): {getattr(citation, 'raw_text', '')}",
-        "reason": (
-            "대법원 판례 공개 DB 검색 범위 내에서 일치하는 사건번호를 찾지 못했습니다. "
-            "실재하지 않는 판례를 인용하였거나 중대한 사건번호 오기일 가능성이 높으므로 원문 확인 및 석명이 필요합니다."
-        ),
-        "is_covered": True,
+        "severity": Severity.MEDIUM,
+        "title": title,
+        "reason": reason,
+        "is_covered": False,
     }

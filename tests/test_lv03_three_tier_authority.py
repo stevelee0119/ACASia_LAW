@@ -36,7 +36,7 @@ def _make_citation(raw_text: str, case_no: str, court: str = "", c_type: Citatio
 
 
 def test_lv03_positive_supreme_court_confirmed_nonexistent():
-    """양성 1: 대법원 판례 DB 검색 범위 내 부존재 확정 (CONFIRMED_NONEXISTENT, CRITICAL)."""
+    """양성 1: 대법원 판례라도 공식 DB 미발견만으로 부존재를 단정하지 않고 출처 한계로 분류 (UNCONFIRMED_SOURCE_LIMIT, MEDIUM)."""
     raw = "대법원 2021다88888 판결"
     c = _make_citation(raw, "2021다88888", court="대법원")
     assert get_court_tier(c) == "SUPREME"
@@ -44,15 +44,15 @@ def test_lv03_positive_supreme_court_confirmed_nonexistent():
 
     # 공식 DB 미검색 (official_record=None, 형식 유효)
     info = classify_authority_status(c, official_record=None, format_valid=True)
-    assert info["status"] == LegalVerificationStatus.CONFIRMED_NONEXISTENT
-    assert info["severity"] == Severity.CRITICAL
+    assert info["status"] == LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT
+    assert info["severity"] == Severity.MEDIUM
     assert info["tier"] == "SUPREME"
     assert info["authority_id"] == "KR_SC_2021다88888"
-    assert "대법원 판례 DB 내 부존재 확인" in info["title"]
+    assert "조회 범위 내에서 찾지 못한" in info["title"]
 
 
 def test_lv03_positive_lower_court_unconfirmed_source_limit():
-    """양성 2: 하급심 판결은 공식 DB 미발견 시 가짜 판례가 아닌 출처 한계 (UNCONFIRMED_SOURCE_LIMIT, MEDIUM)."""
+    """양성 2: 하급심 판결은 법원명을 포함한 식별자와 함께 출처 한계로 분류 (UNCONFIRMED_SOURCE_LIMIT, MEDIUM)."""
     raw = "서울고등법원 2020나55555 판결"
     c = _make_citation(raw, "2020나55555", court="서울고등법원")
     assert get_court_tier(c) == "LOWER"
@@ -62,9 +62,9 @@ def test_lv03_positive_lower_court_unconfirmed_source_limit():
     assert info["status"] == LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT
     assert info["severity"] == Severity.MEDIUM
     assert info["tier"] == "LOWER"
-    assert info["authority_id"] == "KR_LOWER_2020나55555"
-    assert "하급심·미공개 판결(확인 불가)" in info["title"]
-    assert "허위·가공 판례로 단정할 수 없습니다" in info["reason"]
+    assert info["authority_id"] == "KR_LOWER_서울고등법원_2020나55555"
+    assert "조회 범위 내에서 찾지 못한" in info["title"]
+    assert "존재하지 않는 판례'라고 단정하지 않습니다" in info["reason"]
 
 
 def test_lv03_positive_impossible_case_number_suspicious():

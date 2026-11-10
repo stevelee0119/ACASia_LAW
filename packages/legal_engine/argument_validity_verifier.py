@@ -377,12 +377,9 @@ async def verify_argument_validity(
             elif status == "CONTRADICTED":
                 basis = "CONTENT_MISMATCH"
                 auth_status = LegalVerificationStatus.CONTRADICTED.value
-            elif court_tier == "LOWER" or not is_cov:
-                basis = "UNCONFIRMED_SOURCE_LIMIT"
-                auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
             else:
-                basis = "CONFIRMED_NONEXISTENT"
-                auth_status = LegalVerificationStatus.CONFIRMED_NONEXISTENT.value
+                basis = "UNCONFIRMED"
+                auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
 
             linked_claim = _extract_linked_claim(citation, doc, max_chars=1000)
             raw_context = linked_claim or citation.context or (doc.full_text[max(0, citation.span[0] - 200) : min(len(doc.full_text), citation.span[1] + 200)] if citation.span else "")

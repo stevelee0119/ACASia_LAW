@@ -338,19 +338,17 @@ class LegalVerifier:
                 finding_status = VerificationStatus.SUSPICIOUS
                 severity = Severity.HIGH
                 tags = ["LEGAL", "CASE", "SUSPICIOUS_NUMBER"]
-            elif auth_status == LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT:
+                title = f"성립할 수 없는 사건번호 형식의 판례 인용: {citation.raw_text}"
+                reason = ("사건번호의 연도 또는 사건부호가 실재할 수 없는 값이어서 DB 수록 범위와 무관하게 "
+                          "그 표기로는 사건이 존재할 수 없다. 오기인지 원문 확인이 필요하다.")
+            else:
                 verdict.status = VerificationStatus.NOT_FOUND
                 finding_status = VerificationStatus.NOT_FOUND
                 severity = Severity.MEDIUM
                 tags = ["LEGAL", "CASE", "SOURCE_LIMIT"]
-            else:
-                verdict.status = VerificationStatus.NOT_FOUND
-                finding_status = VerificationStatus.NOT_FOUND
-                severity = Severity.CRITICAL
-                tags = ["LEGAL", "CASE", "CONFIRMED_NONEXISTENT", "FAKE_PRECEDENT"]
-
-            title = auth_info["title"]
-            reason = auth_info["reason"]
+                title = f"조회 범위 내에서 찾지 못한 판례 인용: {citation.raw_text}"
+                reason = ("미공개 판결이거나 DB 수록 범위 밖일 수 있으므로 '존재하지 않는 판례'라고 "
+                          "단정하지 않는다. 원문 확인이 필요하다.")
 
             verdict.findings.append(
                 Finding.create(
