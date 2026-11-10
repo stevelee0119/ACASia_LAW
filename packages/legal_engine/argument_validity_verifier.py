@@ -220,6 +220,16 @@ PROVISO_EXCEPTION_RE = re.compile(
 )
 
 
+def _is_valid_coord_pair(coord: Any) -> bool:
+    """좌표 쌍([start, end] 또는 (start, end))이 유효한 양의 정수 범위인지 엄격히 검증한다."""
+    if not isinstance(coord, (list, tuple)) or len(coord) != 2:
+        return False
+    a, b = coord
+    if type(a) is not int or type(b) is not int:
+        return False
+    return 0 <= a < b
+
+
 def _extract_linked_claim(citation: Citation, doc: NormalizedDocument, *, max_chars: int = 1000) -> str:
     """인용 판례와 직접 연결된 법률적 주장 문장을 추출한다.
 
@@ -252,17 +262,17 @@ def _extract_linked_claim(citation: Citation, doc: NormalizedDocument, *, max_ch
             doc_text = getattr(doc, "full_text", "") or ""
 
     reading_span = (citation.attributes or {}).get("reading_span")
-    if reading_span and doc_text and len(reading_span) == 2:
+    if doc_text and _is_valid_coord_pair(reading_span):
         r0, r1 = reading_span
-        if 0 <= r0 < r1 <= len(doc_text):
+        if r1 <= len(doc_text):
             r_text = doc_text[r0:r1]
             if (raw_text and raw_text in r_text) or (case_no and case_no in r_text):
                 target_text = doc_text
                 span_start, span_end = r0, r1
 
-    if not target_text and citation.span and doc_text:
+    if not target_text and doc_text and _is_valid_coord_pair(citation.span):
         s0, s1 = citation.span
-        if 0 <= s0 < s1 <= len(doc_text):
+        if s1 <= len(doc_text):
             s_text = doc_text[s0:s1]
             if (raw_text and raw_text in s_text) or (case_no and case_no in s_text):
                 target_text = doc_text
@@ -276,7 +286,7 @@ def _extract_linked_claim(citation: Citation, doc: NormalizedDocument, *, max_ch
         elif case_no and case_no in target_text:
             span_start = target_text.find(case_no)
             span_end = span_start + len(case_no)
-        elif citation.span and 0 <= citation.span[0] < citation.span[1] <= len(target_text):
+        elif _is_valid_coord_pair(citation.span) and citation.span[1] <= len(target_text):
             span_start, span_end = citation.span
 
     if not target_text and doc_text:
@@ -418,7 +428,12 @@ async def verify_argument_validity(
                 auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
 
             linked_claim = _extract_linked_claim(citation, doc, max_chars=1000)
-            raw_context = linked_claim or citation.context or (doc.full_text[max(0, citation.span[0] - 200) : min(len(doc.full_text), citation.span[1] + 200)] if citation.span else "")
+            doc_full = getattr(doc, "full_text", "") or ""
+            span_ctx = ""
+            if _is_valid_coord_pair(citation.span) and doc_full:
+                s0, s1 = citation.span
+                span_ctx = doc_full[max(0, s0 - 200) : min(len(doc_full), s1 + 200)]
+            raw_context = linked_claim or citation.context or span_ctx
             unverified_cases.append({
                 "citation": citation,
                 "verdict": verdict,
