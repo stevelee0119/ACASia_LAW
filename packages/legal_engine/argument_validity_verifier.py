@@ -162,6 +162,7 @@ class HallucinationTableRow:
     evaluation_context: str = ""
     authority_id: str = ""
     verification_status: str = ""
+    quote_diff_categories: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         review = self.review_text or self.legal_reasoning
@@ -178,6 +179,7 @@ class HallucinationTableRow:
             "evaluation_context": self.evaluation_context or self.claim_text,
             "authority_id": self.authority_id,
             "verification_status": self.verification_status,
+            "quote_diff_categories": list(self.quote_diff_categories),
             "cited_authority": self.cited_authority,
             "authority_exists": self.authority_exists,
             "ai_generation_basis": self.ai_generation_basis,
@@ -392,6 +394,7 @@ async def verify_argument_validity(
                 "sem_status": sem_status,
                 "sem_review": sem_rev,
                 "quote_diff": (verdict.get("review") or {}).get("quote_diff"),
+                "quote_diff_categories": (verdict.get("review") or {}).get("quote_diff_categories") or [],
                 "context": raw_context,
                 "evaluation_context": linked_claim,
             })
@@ -530,6 +533,7 @@ async def verify_argument_validity(
             evaluation_context=linked_claim,
             authority_id=item.get("authority_id") or make_authority_id(c),
             verification_status=item.get("auth_status") or auth_status,
+            quote_diff_categories=item.get("quote_diff_categories") or [],
         )
         row.item_id = index
         row.citation_id = c.citation_id
