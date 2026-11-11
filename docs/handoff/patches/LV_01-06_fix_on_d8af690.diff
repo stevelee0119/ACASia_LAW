@@ -1,0 +1,297 @@
+diff --git a/packages/legal_engine/actionable_guidance.py b/packages/legal_engine/actionable_guidance.py
+index 61b3e16..431d1f6 100644
+--- a/packages/legal_engine/actionable_guidance.py
++++ b/packages/legal_engine/actionable_guidance.py
+@@ -46,7 +46,7 @@ CAUSE_OF_ACTION_RULES = [
+         "trigger": re.compile(r"채무불이행(?:으로?\s*인한)?\s*손해배상|채무불이행\s*(?:책임|성립)|민법\s*제?390조"),
+         "elements": [
+             ("채무불이행(이행지체·불능)", re.compile(r"채무불이행|이행지체|이행불능|불완전이행|이행하지\s*아니|지체하")),
+-            ("귀책사유", re.compile(r"귀책사유|고의|과실|책임\s*있는\s*사유")),
++            # 귀책사유는 청구원인 요건사실이 아니다. 민법 제390조 단서에 따라 채무자가 귀책사유 없음을 주장·증명한다(항변).
+             ("손해 발생", re.compile(r"손해(?:가|를|의)?\s*(?:발생|입|받|상당)")),
+             ("인과관계", re.compile(r"인과관계|이로\s*인하")),
+         ],
+@@ -250,7 +250,7 @@ def generate_actionable_guidance(
+             "action_type": "HOLDING_CORRECTION",
+             "action_title": title,
+             "guidance_summary": (
+-                f"인용된 {cited_authority}의 판결 취지가 왜곡되었습니다. "
++                f"인용된 {cited_authority}의 판결 취지가 왜곡되었을 가능성이 있습니다(규칙 판정, 원문 확인 필요). "
+                 + (f"공식 원문 근거: '{grounded_evidence_quote}'. " if grounded_evidence_quote else "")
+                 + "대법원 다수의견의 확립된 판시 법리에 맞추어 주장을 수정하거나 대체 선례를 원용하십시오."
+             ),
+diff --git a/packages/legal_engine/citation_extractor.py b/packages/legal_engine/citation_extractor.py
+index c1059aa..bc40d6a 100644
+--- a/packages/legal_engine/citation_extractor.py
++++ b/packages/legal_engine/citation_extractor.py
+@@ -605,7 +605,7 @@ def extract_from_text(
+                     canonical_case_number=number, court=m.group("authority"),
+                     decision_date=canonical_date(m.groupdict().get("date") or ""),
+                     quoted_text=quote_near(m.end()),
+-                    context=text[max(0, m.start() - 120) : min(len(text), m.end() + 1000)],
++                    context=text[max(0, m.start() - 120):m.end() + 200],
+                 ))
+                 consumed.append((m.start(), m.end()))
+             consumed.seal_pattern()
+@@ -627,7 +627,7 @@ def extract_from_text(
+                 canonical_case_number=canonical_case_number(m.group("case_no")),
+                 case_kind=m.group("kind") or "결정",
+                 quoted_text=quote_near(m.end()),
+-                context=text[max(0, m.start() - 120) : min(len(text), m.end() + 1000)],
++                context=text[max(0, m.start() - 120) : m.end() + 120],
+                 attributes=_merged_attributes(m.group("case_no"), m.group("merged")),
+             )
+         )
+@@ -654,7 +654,7 @@ def extract_from_text(
+                 canonical_case_number=canonical_case_number(case_no),
+                 case_kind=(m.group("kind") or "판결").replace("선고", "판결"),
+                 quoted_text=quote_near(m.end()),
+-                context=text[max(0, m.start() - 120) : min(len(text), m.end() + 1000)],
++                context=text[max(0, m.start() - 120) : m.end() + 200],
+             )
+         )
+         if m.group("case_name"):
+@@ -680,7 +680,7 @@ def extract_from_text(
+                 canonical_case_number=canonical_case_number(case_no),
+                 case_kind=m.group("kind"),
+                 quoted_text=quote_near(m.end()),
+-                context=text[max(0, m.start() - 120) : min(len(text), m.end() + 1000)],
++                context=text[max(0, m.start() - 120) : m.end() + 200],
+             )
+         )
+         consumed.append((m.start(), m.end()))
+diff --git a/packages/legal_engine/legal_rules.py b/packages/legal_engine/legal_rules.py
+index b810fb4..a1976a0 100644
+--- a/packages/legal_engine/legal_rules.py
++++ b/packages/legal_engine/legal_rules.py
+@@ -132,7 +132,7 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
+ 
+     # 1. 처분일 탐지
+     disp_dates = set()
+-    for m in re.finditer(r"(?:처분일|원처분일|처분을\s*안\s*날|처분(?:이)?\s*있은\s*날)\s*[:：]?\s*" + DATE_RE.pattern, scope_text):
++    for m in re.finditer(r"(?:처분일|원처분일|처분(?:이)?\s*있은\s*날)\s*[:：]?\s*" + DATE_RE.pattern, scope_text):
+         d = parse_d(m)
+         if d:
+             disp_dates.add(d)
+@@ -156,6 +156,13 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
+                 notif_dates.add(d)
+     notif_date = next(iter(notif_dates)) if len(notif_dates) == 1 else None
+ 
++    # 2-1. 처분이 있음을 안 날(행정소송법 제20조 제1항의 기산점) — 처분이 있은 날(같은 조 제2항)과 다른 역할이다
++    aware_dates = set()
++    for m in re.finditer(r"처분(?:이\s*있음|\s*등이\s*있음)?을\s*안\s*날\s*[:：]?\s*" + DATE_RE.pattern, scope_text):
++        d = parse_d(m)
++        if d:
++            aware_dates.add(d)
++
+     # 3. 소제기일 탐지 (소제기일, 소장 접수일/제출일)
+     # 심판청구일이나 접수일 단독(증명서 발급신청 접수일 등), 부정문, 예정문, 조건문(경우 등)은 제외
+     # 서법 검사는 줄 바꿈(\n) 및 문장 종결 기호 이전의 동일 명제 범위로 한정한다 (LV-01-R4).
+@@ -175,7 +182,7 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
+         d = parse_d(m)
+         if d:
+             filing_dates.add(d)
+-    for m in re.finditer(DATE_RE.pattern + r"[^.\n]{0,35}?(?:본\s*소를?\s*(?:제기|접수)|소장을?\s*(?:제출|접수))", scope_text):
++    for m in re.finditer(DATE_RE.pattern + r"[^.\n]{0,35}?(?:(?:본|이\s*사건)\s*소를?\s*(?:제기|접수)|소장을?\s*(?:제출|접수))", scope_text):
+         sent_end = len(scope_text)
+         nl = scope_text.find("\n", m.end())
+         if nl != -1:
+@@ -192,8 +199,10 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
+             filing_dates.add(d)
+ 
+     # 동일 역할에 복수의 서로 다른 날짜 후보가 상충하면 임의 선택하지 않고 보류 (LV-01-R3)
+-    if len(disp_dates) > 1 or len(notif_dates) > 1 or len(filing_dates) > 1:
++    if len(disp_dates) > 1 or len(notif_dates) > 1 or len(filing_dates) > 1 or len(aware_dates) > 1:
+         conflicts = []
++        if len(aware_dates) > 1:
++            conflicts.append("처분을 안 날 상충")
+         if len(disp_dates) > 1:
+             conflicts.append("원처분일 상충")
+         if len(notif_dates) > 1:
+@@ -208,14 +217,17 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
+     disp_date = next(iter(disp_dates)) if len(disp_dates) == 1 else None
+     notif_date = next(iter(notif_dates)) if len(notif_dates) == 1 else None
+     filing_date = next(iter(filing_dates)) if len(filing_dates) == 1 else None
++    aware_date = next(iter(aware_dates)) if len(aware_dates) == 1 else None
+ 
+-    notif_label = "이의신청 통보일" if "이의" in scope_text else "통지일"
++    notif_label = ("재결서 송달일" if re.search(r"재결서", scope_text) else "이의신청 통보일" if "이의" in scope_text else "통지일")
+ 
+     # 소제기일이 없거나 불명확하면 서면 작성일이나 오늘로 대체하지 않고 계산 보류 처리 (LV-01)
+     if not filing_date:
+         known_bases = []
+         if disp_date:
+             known_bases.append(f"원처분일 {disp_date.year}. {disp_date.month}. {disp_date.day}.")
++        if aware_date:
++            known_bases.append(f"처분을 안 날 {aware_date.year}. {aware_date.month}. {aware_date.day}.")
+         if notif_date:
+             known_bases.append(f"{notif_label} {notif_date.year}. {notif_date.month}. {notif_date.day}.")
+         if known_bases:
+@@ -231,6 +243,9 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
+         days_from_disp = (filing_date - disp_date).days
+         parts.append(f"원처분일({disp_date.year}. {disp_date.month}. {disp_date.day}.) 기준: {days_from_disp}일 경과")
+ 
++    if aware_date and filing_date and filing_date >= aware_date:
++        parts.append(f"처분을 안 날({aware_date.year}. {aware_date.month}. {aware_date.day}.) 기준: {(filing_date - aware_date).days}일 경과")
++
+     if notif_date and filing_date and filing_date >= notif_date:
+         days_from_notif = (filing_date - notif_date).days
+         parts.append(f"{notif_label}({notif_date.year}. {notif_date.month}. {notif_date.day}.) 기준: {days_from_notif}일 경과")
+diff --git a/packages/legal_engine/opinion_attribution.py b/packages/legal_engine/opinion_attribution.py
+index bbb367e..fed386a 100644
+--- a/packages/legal_engine/opinion_attribution.py
++++ b/packages/legal_engine/opinion_attribution.py
+@@ -289,18 +289,26 @@ def summary_direction_conflict(claim: str, summary: str) -> Optional[Dict[str, A
+ 
+ CHANGED_PRECEDENT_RE = re.compile(
+     r"(?:이와\s*달리|종전에)\s*(?P<old_holding>[^.。\n]{5,180}?)"
+-    r"(?:판시한|보았던|판단한)\s*(?:대법원\s*)?(?P<old_cases>[^.。\n]{4,140}?)"
++    r"(?:판시한|보았던|판단한)\s*(?:대법원\s*)?(?P<old_cases>(?:[^.。\n]|\.(?=\s*\d|\s*선고)){4,200}?)"
+     r"(?:판결|결정)(?:\s*등)?은\s*이\s*(?:판결|결정)의\s*견해에\s*배치되는\s*범위\s*(?:내)?에서\s*"
+     r"(?:이를\s*)?변경(?:하기로\s*한다|한다)"
+ )
+ 
+ REVERSED_LOWER_COURT_RE = re.compile(
+-    r"원심(?:은|이)\s*(?P<lower_holding>[^.。\n]{6,200}?)(?:라고|다고|으로)\s*(?:판단|판시)(?:하였다|하였으나|한\s*것).*?"
++    r"원심(?:은|이)\s*(?P<lower_holding>[^.。\n]{6,200}?)(?:라고|다고|으로)\s*(?:판단|판시)(?:하였다|하였으나|한\s*것)[^\n]{0,400}?"
+     r"(?:이러한\s*원심의\s*판단에는|원심판결에는)[^.。\n]{0,120}?(?:법리를\s*오해|위법이\s*있)"
+     r"|(?P<lower_holding_alt>[^.。\n]{6,180}?)(?:라고|다고)\s*판단한\s*원심판결에는[^.。\n]{0,100}?(?:법리를\s*오해|위법)"
+ )
+ 
+ 
++_TAIL_CITATION_PAREN_RE = re.compile(r"\s*\([^()]{0,120}(?:판결|결정|선고|참조)[^()]{0,40}\)\s*[.。]?\s*$")
++
++
++def _reported_core(claim: str) -> str:
++    """끝의 괄호 인용 표시('(대법원 … 판결)')를 떼고 전달 표현('…다고 판단하였다')을 뗀 주장 부분."""
++    return _claim_core(_TAIL_CITATION_PAREN_RE.sub("", claim or ""))
++
++
+ def extract_grounded_evidence_quote(claim: str, official_text: str) -> str:
+     """공식 판결 원문(판결요지·전문)에서 서면 주장과 가장 어휘 겹침이 높은 근거 문장을 추출한다."""
+     if not official_text or not claim:
+@@ -330,7 +338,7 @@ def detect_changed_precedent_distortion(
+     # 종전 판례가 변경·폐기되었다는 사실을 정확히 기술한 서술은 왜곡이 아니다
+     if re.search(r"(?:변경|폐기)(?:되|되었|된|하였|했)", claim):
+         return None
+-    core = _claim_core(claim)
++    core = _reported_core(claim)
+     for m in CHANGED_PRECEDENT_RE.finditer(combined):
+         old_holding = (m.group("old_holding") or "").strip()
+         old_cases = (m.group("old_cases") or "").strip()
+@@ -340,7 +348,12 @@ def detect_changed_precedent_distortion(
+         in_old_cases = bool(case_norm and len(case_norm) >= 6 and case_norm in re.sub(r"\s+", "", old_cases))
+         # 2) 서면 주장이 변경(폐기)된 종전 판시 구절과 높은 유사도를 보이는 경우
+         sim = _overlap(_positive(core), _positive(old_holding)) if old_holding else 0.0
+-        if in_old_cases or (sim >= 0.45 and _clause_negated(core) == _clause_negated(old_holding)):
++        # 새 판결(변경한 판결)의 다른 문장 — 바뀐 법리 자체 — 에 더 가까우면 새 판시를 정확히 인용한 것이다
++        others = [x for x in re.split(r"(?<=[다함음])\s*\.\s*|\n+", combined.replace(sentence, " ")) if len(_compact(x)) >= 8]
++        # 'A가 아니라 B' 꼴의 새 판시는 부정된 A 부분을 빼고 견준다
++        others = [re.sub(r"(?<=[는은])\s+[^,.]{1,40}?(?:이|가)\s*아니라\s*", " ", x) for x in others]
++        sim_new = max((_overlap(_positive(core), _positive(x)) for x in others), default=0.0)
++        if in_old_cases or (sim >= 0.45 and sim > sim_new and _clause_negated(core) == _clause_negated(old_holding)):
+             return {
+                 "verdict": "CHANGED_PRECEDENT",
+                 "old_holding": old_holding,
+@@ -407,7 +420,7 @@ def detect_reversed_remand_confusion(
+ 
+     # 채택 문장이 분리된 경우 해당 문장 우선 검토, 아니면 전체 claim
+     target_claim = " ".join(adoption_sentences) if adoption_sentences else claim
+-    core = _claim_core(target_claim)
++    core = _reported_core(target_claim)
+     for m in REVERSED_LOWER_COURT_RE.finditer(combined):
+         lower_holding = (m.group("lower_holding") or m.group("lower_holding_alt") or "").strip()
+         if not lower_holding:
+diff --git a/packages/legal_engine/quote_diff.py b/packages/legal_engine/quote_diff.py
+index 96af040..006a9cf 100644
+--- a/packages/legal_engine/quote_diff.py
++++ b/packages/legal_engine/quote_diff.py
+@@ -20,7 +20,7 @@ from packages.common.textutil import normalize_quote
+ 
+ MEANINGFUL_CHANGES = [
+     ("DEGREE", "정도 부사", re.compile(r"현저|상당|명백|중대|매우|극히|다소|약간|전혀|반드시|항상|언제나|오로지|오직|특히")),
+-    ("NEGATION", "부정어 삽입/탈락", re.compile(r"아니(?:한다|된다|하다)?|않(?:는다|다)?|못(?:한다|하다)?|없(?:다|는)?|불가|금지|배제")),
++    ("NEGATION", "부정어 삽입/탈락", re.compile(r"아니|않|못|없|불가|금지|배제")),
+     ("MODALITY", "양태(가능·의무)", re.compile(r"수있|하여야|해야|하도록|하여서는|할것|하지아니할")),
+     ("PARTY_SWAP", "주어·객체 바뀜", re.compile(r"원고|피고(?:인)?|처분청|행정청|당사자|채권자|채무자|신청인|피신청인|매도인|매수인|임대인|임차인")),
+     ("PROVISION_QUALIFIER", "조문 한정어", re.compile(r"단서|본문|전단|후단|제\d+항|제\d+호|각호")),
+@@ -86,10 +86,16 @@ def _minor(original: str, quoted: str) -> bool:
+     return bool(a and b) and common >= 2 and max(len(a), len(b)) - common <= 2
+ 
+ 
+-def _classify(original: str, quoted: str) -> List[Tuple[str, str]]:
++# 창 전체 비교(어절 대조가 성립하지 않을 만큼 다른 인용)에서는 부정의 활용형까지 본다. 어절 대조에서는 어간만 본다
++# ('없다'→'없는 것이다'는 부정이 그대로다).
++_NEGATION_SURFACE_RE = re.compile(r"아니(?:한다|된다|하다)?|않(?:는다|다)?|못(?:한다|하다)?|없(?:다|는)?|불가|금지|배제")
++
++
++def _classify(original: str, quoted: str, surface: bool = False) -> List[Tuple[str, str]]:
+     a, b = _compact(original), _compact(quoted)
+     return [(kind, label) for kind, label, pattern in MEANINGFUL_CHANGES
+-            if set(pattern.findall(a)) != set(pattern.findall(b))]
++            if set((_NEGATION_SURFACE_RE if surface and kind == "NEGATION" else pattern).findall(a))
++            != set((_NEGATION_SURFACE_RE if surface and kind == "NEGATION" else pattern).findall(b))]
+ 
+ 
+ def _segment_ops(quote: str, official: str) -> Optional[Tuple[float, List[Dict[str, Any]]]]:
+@@ -102,6 +108,11 @@ def _segment_ops(quote: str, official: str) -> Optional[Tuple[float, List[Dict[s
+     if ratio >= 1.0:
+         return ratio, []
+     segment = _word_span(norm_off, index[start], index[end - 1] + 1)
++    seg_at = norm_off.find(segment, max(0, index[start] - len(segment)))
++    seg_at = seg_at if seg_at >= 0 else index[start]
++    # 창 바로 앞뒤의 원문 어절(창 정렬이 끝 어절을 빼먹은 경우 맞대어 볼 상대)
++    prev_word = (norm_off[:seg_at].split() or [""])[-1]
++    next_word = (norm_off[seg_at + len(segment):].split() or [""])[0]
+     original, quoted = segment.split(), normalize_quote(quote).split()
+     keys_o, keys_q = [_compact(w) for w in original], [_compact(w) for w in quoted]
+     ops: List[Dict[str, Any]] = []
+@@ -113,6 +124,16 @@ def _segment_ops(quote: str, official: str) -> Optional[Tuple[float, List[Dict[s
+         o_text, q_text = " ".join(original[i1:i2]), " ".join(quoted[j1:j2])
+         if _compact(o_text) == _compact(q_text):
+             continue  # 띄어쓰기만 다름
++        if is_boundary and op in ("insert", "delete"):
++            # 창 정렬이 원문 끝 어절을 빼거나 넣은 자리다. 인용문에 더해진 어절은 바로 옆 원문 어절과 맞대어 본다
++            # ('원고가'를 뺀 창 + 인용 '원고는' → '원고가'↔'원고는'). 원문에서만 빠진 끝 어절은 인용 범위 절단이다.
++            if op == "delete":
++                continue
++            at_start = i1 == 0 and j1 == 0
++            neighbor = (before or prev_word) if at_start else (after or next_word)
++            if not neighbor or _compact(neighbor) == _compact(q_text):
++                continue
++            o_text, op = neighbor, "replace"
+         kinds = _classify(o_text, q_text)
+         if is_boundary and not kinds:
+             continue  # 구간 끝의 단순 인용 범위 절단은 무시하되, 의미 변경(부정·주어 등)은 유지
+@@ -238,6 +259,20 @@ def categorize_quote_diff(quote: str, official_text: Optional[str], *, has_full_
+     if not changes_result:
+         changes_result = quote_changes(clean_quote, official_text)
+ 
++    if not changes_result and ELLIPSIS_RE.search(clean_quote):
++        segs = [x for x in ELLIPSIS_RE.split(clean_quote) if len(_compact(x)) >= MIN_SEGMENT]
++        found = [_segment_ops(x, official_text) for x in segs]
++        if segs and all(f is not None and not f[1] for f in found):
++            return {
++                "status": "EXACT_MATCH",
++                "can_compare": True,
++                "similarity": round(min(f[0] for f in found), 3),
++                "diff_categories": [],
++                "category_labels": [],
++                "reason": "생략 표시로 나눈 구간이 모두 공식 원문과 일치합니다.",
++                "defect_summary": "일치(생략 인용)",
++            }
++
+     if not changes_result:
+         if max_ratio >= 0.995:
+             return {
+@@ -249,7 +284,9 @@ def categorize_quote_diff(quote: str, official_text: Optional[str], *, has_full_
+                 "reason": "공식 원문과 완전 일치합니다.",
+                 "defect_summary": "일치",
+             }
+-        substantive = _classify(candidate_text, clean_quote)
++        # 어절 대조에서 의미 변경이 없었으면(유사도 0.85 이상) 창 전체를 다시 분류하지 않는다(창 밖 어절이 변경으로 잡힌다).
++        # 어절 대조가 성립하지 않을 만큼 다른 인용(0.85 미만)만 창 전체로 분류한다
++        substantive = _classify(candidate_text, clean_quote, surface=True) if max_ratio < 0.85 else []
+         cats = [k for k, _ in substantive]
+         labels = [lbl for _, lbl in substantive]
+         if not cats:
