@@ -17,14 +17,14 @@
 
 ## 2. LV-01 ~ LV-06 의존 관계 및 구현 범위 표
 
-| LV ID | 구현 범위 | 대상 파일 | 선행 PR | 의존 관계 | 미확인 가정 및 영향 범위 | 자체 시험 상태 | 병합 대기 조건 |
+| LV ID | 구현 범위 | 대상 파일 | Draft PR | 의존 관계 | 미확인 가정 및 영향 범위 | 자체 시험 상태 | 병합 대기 조건 |
 |---|---|---|---|---|---|---|---|
-| **LV-01** | **날짜 역할 및 기산점·제소기간 계산 전제 보존**<br>- 날짜 추출 시 역할 메타데이터 보존<br>- 소제기일 부재 시 `max(valid_dates)`/`today` 폴백 차단<br>- 기산점/소제기일 결여 시 '계산 보류' 명시 | `packages/legal_engine/legal_rules.py`<br>`packages/legal_engine/reference_dates.py` | 없음 | 독립 (공용 날짜 역할 스키마 제공) | **가정**: 본문 내 면담 예정일 등 장래 일정은 소제기일로 전용하지 않음.<br>**영향**: 행정소송 제소기간 부당 도과 경고 대폭 제거. | 공개 합성 양성 3건·대조 3건 작성 예정 | CI 통과, 평가 측 독립 평가 |
-| **LV-02** | **주장 문맥 보존 및 평가 발췌-표시 분리**<br>- `_extract_linked_claim` 200자 강제 절단 해소<br>- 단서('다만')·예외·조건·부정어 문맥 보존<br>- 평가 컨텍스트와 UI 표시 요약 분리<br>- 마스킹 오프셋 역추적 매핑 | `packages/legal_engine/argument_validity_verifier.py`<br>`packages/common/schemas.py` | 없음 | LV-01과 병렬 가능, LV-04~06의 입력 문맥 | **가정**: 평가 컨텍스트는 문장 경계 기준 최대 1,000자까지 확장.<br>**영향**: 예외 조항 탈락으로 인한 법리 오인 방지. | 공개 합성 시험 작성 예정 | CI 통과, 평가 측 검토 |
-| **LV-03** | **판례·법령 존재 및 서지 판정 3단 체계화**<br>- 3단화: 확인됨 / 부존재 확인 / 확인 불가<br>- 수록 범위 확실한 출처만 부존재 확정<br>- 사건번호 구조(연도·부호·일자) 결정적 검사<br>- 법령 약칭·개정 이력 정규화 | `packages/legal_engine/citation_extractor.py`<br>`packages/legal_engine/citation_format.py`<br>`packages/legal_engine/source_review.py`<br>`packages/legal_engine/verifier.py` | LV-01 | LV-01 날짜 정규화 및 공용 열거형 활용 | **가정**: 하급심 판례 및 비공식 약칭은 공식 DB 미수록 가능성 인정.<br>**영향**: 실재 판례/법령의 부존재 단정 CRITICAL 오탐 0 달성. | 사건번호 유효/무효, 법령 정규화 합성 시험 | CI 통과, 평가 측 독립 평가 |
-| **LV-04** | **인용문 진위 정렬 및 차이 유형 구조화 (CIT-FAB-Q)**<br>- 공식 원문과 서면 인용문 근사 정렬<br>- 차이 5종 분류(부정어, 주어·객체, 수치, 단서 탈락, 자구)<br>- 본문 미확보 시 '인용 대조 불가' 명시 | `packages/legal_engine/quote_diff.py`<br>`packages/legal_engine/quotation.py`<br>`packages/legal_engine/provision_content.py` | LV-03 | LV-03 판례/법령 본문 확보 결과에 의존 | **가정**: 요지만 확보되고 본문이 없으면 일치 단정을 유보함.<br>**영향**: 지어낸 인용문(CIT-FAB-Q 0.0) 정확 탐지. | 차이 유형별 공개 합성 시험 작성 예정 | CI 통과, 평가 측 검토 |
-| **LV-05** | **판시 취지 및 명제 왜곡 탐지 (CIT-MIS)**<br>- 판결요지 요건·효과·예외 명제 분리 대조<br>- 결정적 왜곡 3규칙(변경된 판례, 파기환송 원심 판단 오인, 반대의견 오인)<br>- 원문 근거 문장 검증(grounded evidence quote) | `packages/legal_engine/semantic_consensus.py`<br>`packages/legal_engine/opinion_attribution.py`<br>`packages/legal_engine/statute_ranges.py` | LV-02, LV-03, LV-04 | LV-02 문맥 보존 및 LV-03/04 서지/원문 정렬 활용 | **가정**: 전원합의체 변경 문구 사전 및 결정적 신호로 1차 탐지.<br>**영향**: 판시 취지 왜곡(CIT-MIS 0.0) 해소. | 판례 변경/원심/반대의견 오인 합성 시험 | CI 통과, 평가 측 독립 평가 |
-| **LV-06** | **청구원인 요건사실 점검 및 실무 조치 안내**<br>- 청구원인별(민법 750, 741, 390 등) 요건사실 주장 누락 점검<br>- 확정오류/의심/확인불가 3분 조치 가이드(정정 후보, 확인 URL, 석명 신청 안)<br>- 로컬 미러 캐시 및 관측성 강화 | `packages/legal_engine/disposition_criteria.py`<br>`packages/legal_engine/pleading_structure.py`<br>`apps/web/static/app.js` (UI 연동) | LV-01~LV-05 | 전체 LV 결과를 종합하여 요건 점검 및 실무 조치 표출 | **가정**: 본 진단은 변호사의 최종 판단을 대체하지 않는 보조 도구임.<br>**영향**: 검토 시간 단축 및 실무 활용도 극대화. | 요건 누락 및 실무 가이드 합성 시험 | CI 통과, 평가 측 독립 평가 |
+| **LV-01** | **날짜 역할 및 기산점·제소기간 계산 전제 보존**<br>- 날짜 추출 시 역할 메타데이터 보존<br>- 소제기일 부재 시 `max(valid_dates)`/`today` 폴백 차단<br>- 기산점/소제기일 결여 시 '계산 보류' 명시 | `packages/legal_engine/legal_rules.py`<br>`packages/legal_engine/reference_dates.py` | [PR #252](https://github.com/stevelee0119/ACASia_LAW/pull/252) | 독립 (공용 날짜 역할 스키마 제공) | **가정**: 본문 내 면담 예정일 등 장래 일정은 소제기일로 전용하지 않음.<br>**영향**: 행정소송 제소기간 부당 도과 경고 대폭 제거. | 공개 합성 6건 통과 (`test_lv01`) | CI 통과, 평가 측 독립 평가 |
+| **LV-02** | **주장 문맥 보존 및 평가 발췌-표시 분리**<br>- `_extract_linked_claim` 200자 강제 절단 해소<br>- 단서('다만')·예외·조건·부정어 문맥 보존<br>- 평가 컨텍스트와 UI 표시 요약 분리<br>- 마스킹 오프셋 역추적 매핑 | `packages/legal_engine/argument_validity_verifier.py`<br>`packages/common/schemas.py` | [PR #253](https://github.com/stevelee0119/ACASia_LAW/pull/253) | LV-01과 병렬 가능, LV-04~06의 입력 문맥 | **가정**: 평가 컨텍스트는 문장 경계 기준 최대 1,000자까지 확장.<br>**영향**: 예외 조항 탈락으로 인한 법리 오인 방지. | 공개 합성 6건 통과 (`test_lv02`) | CI 통과, 평가 측 검토 |
+| **LV-03** | **판례·법령 존재 및 서지 판정 3단 체계화**<br>- 3단화: 확인됨 / 부존재 확인 / 확인 불가<br>- 수록 범위 확실한 출처만 부존재 확정<br>- 사건번호 구조(연도·부호·일자) 결정적 검사<br>- 법령 약칭·개정 이력 정규화 | `packages/legal_engine/citation_extractor.py`<br>`packages/legal_engine/citation_format.py`<br>`packages/legal_engine/source_review.py`<br>`packages/legal_engine/verifier.py` | [PR #254](https://github.com/stevelee0119/ACASia_LAW/pull/254) | LV-01 날짜 정규화 및 공용 열거형 활용 | **가정**: 하급심 판례 및 비공식 약칭은 공식 DB 미수록 가능성 인정.<br>**영향**: 실재 판례/법령의 부존재 단정 CRITICAL 오탐 0 달성. | 공개 합성 6건 통과 (`test_lv03`) | CI 통과, 평가 측 독립 평가 |
+| **LV-04** | **인용문 진위 정렬 및 차이 유형 구조화 (CIT-FAB-Q)**<br>- 공식 원문과 서면 인용문 근사 정렬<br>- 차이 5종 분류(부정어, 주어·객체, 수치, 단서 탈락, 자구)<br>- 본문 미확보 시 '인용 대조 불가' 명시 | `packages/legal_engine/quote_diff.py`<br>`packages/legal_engine/quotation.py`<br>`packages/legal_engine/provision_content.py` | [PR #255](https://github.com/stevelee0119/ACASia_LAW/pull/255) | LV-03 판례/법령 본문 확보 결과에 의존 | **가정**: 요지만 확보되고 본문이 없으면 일치 단정을 유보함.<br>**영향**: 지어낸 인용문(CIT-FAB-Q 0.0) 정확 탐지. | 공개 합성 6건 통과 (`test_lv04`) | CI 통과, 평가 측 검토 |
+| **LV-05** | **판시 취지 및 명제 왜곡 탐지 (CIT-MIS)**<br>- 판결요지 요건·효과·예외 명제 분리 대조<br>- 결정적 왜곡 3규칙(변경된 판례, 파기환송 원심 판단 오인, 반대의견 오인)<br>- 원문 근거 문장 검증(grounded evidence quote) | `packages/legal_engine/semantic_consensus.py`<br>`packages/legal_engine/opinion_attribution.py`<br>`packages/legal_engine/statute_ranges.py` | [PR #256](https://github.com/stevelee0119/ACASia_LAW/pull/256) | LV-02 문맥 보존 및 LV-03/04 서지/원문 정렬 활용 | **가정**: 전원합의체 변경 문구 사전 및 결정적 신호로 1차 탐지.<br>**영향**: 판시 취지 왜곡(CIT-MIS 0.0) 해소. | 공개 합성 6건 통과 (`test_lv05`) | CI 통과, 평가 측 독립 평가 |
+| **LV-06** | **청구원인 요건사실 점검 및 실무 조치 안내**<br>- 청구원인별(민법 750, 741, 390 등) 요건사실 주장 누락 점검<br>- 확정오류/의심/확인불가 3분 조치 가이드(정정 후보, 확인 URL, 석명 신청 안)<br>- 로컬 미러 캐시 및 관측성 강화 | `packages/legal_engine/actionable_guidance.py`<br>`packages/legal_engine/pleading_structure.py`<br>`packages/verification_engine/pipeline.py` | [PR #257](https://github.com/stevelee0119/ACASia_LAW/pull/257) | 전체 LV 결과를 종합하여 요건 점검 및 실무 조치 표출 | **가정**: 본 진단은 변호사의 최종 판단을 대체하지 않는 보조 도구임.<br>**영향**: 검토 시간 단축 및 실무 활용도 극대화. | 공개 합성 6건 통과 (`test_lv06`) | CI 통과, 평가 측 독립 평가 |
 
 ---
 
@@ -93,3 +93,50 @@ class DatePremiseStatus(StrEnum):
    - 대규모 외부 전송이나 유료 법률 DB API 계약 확장은 별도 제안으로 분리한다.
 2. **독립 평가 권한 존중**:
    - 구현 측의 자체 단위/합성 시험 통과는 제품 수용이나 독립 평가 통과를 의미하지 않으며, 최종 병합 및 배포는 평가 측 및 사용자의 절차에 따른다.
+
+---
+
+## 5. 인용 대조 생산자-소비자 상태 매트릭스 (Producer-Consumer State Matrix, Round 5 최종)
+
+공식 DB 원문 대조 결과가 판례 존재 여부(VERIFIED)와 혼동되어 `OFFICIAL_CONFIRMED`로 덮어씌워지거나, 미검증/요약전용/미정렬 상태가 확정 오류 및 부적절한 조치로 왜곡되는 현상을 방지하기 위해, 생산자(`LegalVerifier`, `quote_diff.py`)와 소비자(`verify_argument_validity` 및 대조표·조치 안내) 간의 상태 전이 및 표시 규약을 아래와 같이 명확히 구분한다:
+
+| 공식기록 유무 | 인용 대조 상태 (`quote_diff_status`) | 유사도 구간 및 차이 유형 (`diff_categories`) | Row Basis | Verification Status | 제목 / 검토 요약 | 조치 유형 (`action_type`) 및 권고 요약 | Finding 생성 여부 |
+|---|---|---|---|---|---|---|---|
+| **기록 있음** | `EXACT_MATCH` | 유사도 >= 0.995 (차이 없음) | `OFFICIAL_CONFIRMED` | `VERIFIED` | 공식 원문 일치 (사건 적용성 직접 검토 필요) | `APPLICATION_CHECK`: 사안 사실관계 및 특약 조건 직접 검토 | 생성 안 함 |
+| **기록 있음** | `MODIFIED_QUOTE` | 0.50 <= 유사도 < 0.995, 실질 변경 (`NEGATION`, `PARTY_SWAP`, `PROVISO_OMISSION`, `NUMERIC` 등) | `CONTENT_MISMATCH` | `CONTRADICTED` | 인용문 변형 (원문과 어절 차이) | `QUOTE_REVIEW`: 공식 원문과 대조하여 정확한 자구로 정정 | 생성 (`LEGAL_ARGUMENT_INVALID`, MEDIUM) |
+| **기록 있음** | `MODIFIED_QUOTE` | 유사도 >= 0.85, 일반 표현 (`MINOR_WORDING`) | `CONTENT_MISMATCH` | `CONTRADICTED` | 인용문 단순 자구 차이 (원문 대조 필요) | `QUOTE_REVIEW`: 판결요지 인용문과 어절 대조 확인 | 생성 (`LEGAL_ARGUMENT_INVALID`, MEDIUM) |
+| **기록 있음** | `MODIFIED_QUOTE` | 0.50 <= 유사도 < 0.85, 내용 차이 (`CONTENT_MISMATCH`) | `CONTENT_MISMATCH` | `CONTRADICTED` | 인용 내용 불일치 (원문 대조 필요) | `QUOTE_REVIEW`: 공식 판결문 원문과 인용 대조 확인 | 생성 (`LEGAL_ARGUMENT_INVALID`, MEDIUM) |
+| **기록 있음** | `UNALIGNED_QUOTE` | 유사도 < 0.50 (대응 구간 미확정, `CONTENT_MISMATCH`) | `CONTENT_MISMATCH` | `CONTRADICTED` | 인용문 불일치 (원문 대응 구간 미확정) | `SOURCE_VERIFICATION`: 원문 검색 및 정확한 판례 문맥 대조 | 생성 (`LEGAL_ARGUMENT_INVALID`, MEDIUM) |
+| **기록 있음** | 미대조 (본문 미확보 / 요약본만 확보) | level3 `UNVERIFIED`, 차이 없음 | `UNCONFIRMED` | `UNCONFIRMED_SOURCE_LIMIT` | 출처 한계 확인 불가 (판결문 사본 확인 필요) | `SOURCE_VERIFICATION`: 판결문 사본 확인 및 출처 조회 | 생성 안 함 (보류 행 분리) |
+| **기록 없음** | 미대조 (성립 불가 사건번호) | 무관 | `FABRICATION_SUSPECTED` | `SUSPICIOUS` | 성립 불가 사건번호 (오기 의심) | `FORMAT_CORRECTION` / `SOURCE_VERIFICATION`: 사건번호 정정 요청 석명 신청 | 생성 (`FABRICATION_SUSPECTED`, HIGH) |
+| **기록 없음** | 미대조 (공식 DB 미발견) | 무관 | `UNCONFIRMED` | `UNCONFIRMED_SOURCE_LIMIT` | 공식 DB 미확인 (원문 확인 필요) | `SOURCE_VERIFICATION`: 사본 제출 요구 및 열람 신청 | 미확인 분리 (단순 미수록은 부존재 단정 금지) |
+| **무관** | 미검증 / 보류 (`UNKNOWN`, `SUSPENDED`) | 잔존 categories 무관 (증거 미성립) | `UNCONFIRMED` / `SUSPENDED` | `UNVERIFIED` / `SUSPENDED` | 검증 미실시 또는 전제 결여 보류 | `SOURCE_VERIFICATION`: 전제 요건 확인 및 공식 출처 대조 | 생성 안 함 (확정 승격 차단) |
+
+### 상태 계약 보완 세부 원칙 (SC1, SC2, SC3 및 독립 의미 증거 보존):
+1. **SC1 (미검증 상태의 잔존 차이 정보 격리)**:
+   - 생산자 status가 `UNKNOWN`, `SUSPENDED`, `UNVERIFIED`이거나 `level3` / `quote_diff_status`가 `UNVERIFIED`인 경우, review 내 잔존 `quote_diff_categories`가 존재하더라도 `is_quote_mismatch`로 판정하지 않고 확정 승격을 차단한다.
+   - 별도 확정 근거 없는 `LEGAL_ARGUMENT_INVALID` finding 생성을 차단한다.
+2. **SC2 (요약 전용 기록의 원문 일치 오승격 차단)**:
+   - 공식 기록(`official_record`)이 존재하더라도 `full_text`가 확보되지 않아 `level3 == "UNVERIFIED"`인 요약 전용 건은 `OFFICIAL_CONFIRMED`("공식 원문 일치")로 승격하지 않는다.
+   - `basis = "UNCONFIRMED"`, `verification_status = "UNCONFIRMED_SOURCE_LIMIT"`로 처리하며, 제목은 "출처 한계 확인 불가 (판결문 사본 확인 필요)"로 안내하고 `action_type = "SOURCE_VERIFICATION"`을 부여한다.
+   - 공식 기록이 실재하므로 오류 finding(`LEGAL_ARGUMENT_INVALID`)을 생성하지 않고 보류 행으로 분리한다.
+3. **SC3 (미정렬 인용의 원문 확인 조치 끝단 보존)**:
+   - `quote_diff_status == "UNALIGNED_QUOTE"`(유사도 < 0.50)인 경우, 단순 자구 수정(`QUOTE_REVIEW`)이 아닌 원문 검색 및 문맥 대조(`SOURCE_VERIFICATION`) 조치 유형을 `generate_actionable_guidance` 및 `HallucinationTableRow`에 끝단까지 보존한다.
+4. **독립 의미 증거 보존 (CONTRADICTION / DISTINGUISHABLE)**:
+   - 인용문 대조의 보류(`level3 == "UNVERIFIED"`, `is_summary_only` 등)가 존재하더라도, 판시 취지 왜곡(`REVERSED_REMAND_CONFUSION`, `CHANGED_PRECEDENT`, `MISATTRIBUTED_OPINION` 등) 또는 검증된 의미 적용 차이(`DISTINGUISHABLE`) 등 독립적으로 확인된 의미 증거는 `is_summary_only`에 의해 `UNCONFIRMED`로 덮어씌워지지 않고 해당 `basis`(`CONTRADICTION`, `DISTINGUISHABLE`)로 우선 유지된다.
+   - 이러한 독립 의미 증거 행은 `summary_only` 여부와 무관하게 오류 finding(`LEGAL_ARGUMENT_INVALID`) 및 모순 집계, 참고 검토 경로(`cases_for_ai`)가 정상 보존된다.
+
+---
+
+## 6. 원문 요구(ORIGINAL_LV_REQUIREMENTS.md) 대응 및 완료 범위 분리 현황
+
+본 LV-01~LV-06 PR 체인의 구현은 평가 에이전트의 공개 합성 계약 및 회귀 기준을 충족하는 단계적 정비이며, 전체 원문 요구의 수용 완료와 구별하여 관리한다:
+
+| 원문 단계 | 기구현 및 확인 범위 | 미구현 / 후속 과제 범위 | 미검증 범위 |
+|---|---|---|---|
+| **LV-01** | 실제 날짜 대체 차단, 소제기일/기산점 결여 시 `SUSPENDED` 처리, 동일 행 내 문장 경계(`[.?!]`) 분리 | 역할 메타데이터 완전 구조화(JSON schema 확정), 복합 사건/처분 식별자 1:1 결합, 가정 시나리오 구분 | 화면/UI, PDF/DOCX 보고서 출력 일치 여부 |
+| **LV-02** | 반복 인용 앵커 분리, 좌표 타입 가드(`_is_valid_coord_pair`), 평가 문맥(`evaluation_context`) 1000자 보존 | 1000자 초과 시 문단 예산 정책, 전송 구간 마스킹 매핑의 온전한 보존 모델 | 대규모 복합 서면 실사 및 모델 교차 인용 검증 |
+| **LV-03** | 미발견!=허위 분리, 검증 증명 없는 클라이언트 전수수록 거부(`covered=False`), 3단 판정 체계화 | 서버 서명 기반 Adapter Coverage Attestation 시스템, 구 버전 payload 마이그레이션 | 외부 법률 DB 실시간 연동 및 동적 수록 범위 갱신 |
+| **LV-04** | 어절 단위 quote diff, 차이 5종 분류, `quote_meaningful_change` 직렬화 보존, verifier level3 연계 | 원문 요구인 trace/replay(검증 기록/고정 응답 재생), 변조·누락 격리 시험 | 상용 외부 모델 간 응답 재생 및 캐시 격리 |
+| **LV-05** | 전원합의체 변경 판례, 파기환송 원심 판단 오인, 반대의견 오인 탐지, 내포절 수식과 주절 술어 분리 | Reranker 및 전문 명제 대조 파이프라인의 코퍼스/질의/예산 비교 채택 | 비공개 실사 사건 판결문 대상의 종합 구문/의미 분석 |
+| **LV-06** | 알 수 없는 상태의 중립 안내, 인용 차이 발생 시 `QUOTE_REVIEW` 연계 및 `OFFICIAL_CONFIRMED` 오승격 차단 | 제한 사건군 요건사실 완전 데이터베이스, 다툼/누락 사실의 주장-증거 체인 매핑 | 변호사 실무 검토 및 UI/보고서 상의 긴 문구 레이아웃 |

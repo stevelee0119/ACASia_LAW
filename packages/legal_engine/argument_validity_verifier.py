@@ -29,6 +29,7 @@ from packages.legal_engine.authority_status import (
     is_covered_precedent_scope,
     make_authority_id,
 )
+from packages.legal_engine.actionable_guidance import generate_actionable_guidance
 from packages.legal_engine.normalize import case_number_possible
 from packages.legal_engine.reasoning_format import format_counteraction, format_reasoning, reasoning_sections
 from packages.llm_router import LLMRouter
@@ -78,9 +79,14 @@ def _context_review(verdict, reviews, mask=None):
 
 def _fabrication_row(c: Any) -> "HallucinationTableRow":
     """사건번호가 성립할 수 없는 경우. 여기서는 단정해도 된다."""
+    auth_id = make_authority_id(c)
     raw_claim = c.context[:1000] if c.context else f"{c.raw_text}에 기반한 법률적 주장"
     display_claim = raw_claim if len(raw_claim) <= 200 else (raw_claim[:197] + "...")
-    auth_id = make_authority_id(c)
+    guidance = generate_actionable_guidance(
+        basis="FABRICATION_SUSPECTED",
+        cited_authority=c.raw_text,
+        claim_text=display_claim,
+    )
     return HallucinationTableRow(
         location=f"{c.page or 1}면",
         claim_text=display_claim,
@@ -98,6 +104,7 @@ def _fabrication_row(c: Any) -> "HallucinationTableRow":
         evaluation_context=raw_claim,
         authority_id=auth_id,
         verification_status=LegalVerificationStatus.SUSPICIOUS.value,
+        actionable_guidance=guidance,
     )
 
 
@@ -163,6 +170,8 @@ class HallucinationTableRow:
     authority_id: str = ""
     verification_status: str = ""
     quote_diff_categories: List[str] = field(default_factory=list)
+    quote_diff_status: Optional[str] = None
+    actionable_guidance: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         review = self.review_text or self.legal_reasoning
@@ -180,6 +189,8 @@ class HallucinationTableRow:
             "authority_id": self.authority_id,
             "verification_status": self.verification_status,
             "quote_diff_categories": list(self.quote_diff_categories),
+            "quote_diff_status": self.quote_diff_status,
+            "actionable_guidance": self.actionable_guidance,
             "cited_authority": self.cited_authority,
             "authority_exists": self.authority_exists,
             "ai_generation_basis": self.ai_generation_basis,
@@ -391,18 +402,51 @@ async def verify_argument_validity(
         sem_rev = sem_by_cid.get(cid)
         sem_status = str(sem_rev.get("status", "")) if sem_rev and sem_rev.get("source_quotes_validated") else ""
 
-        # 판례가 공식 소스에서 발견되지 않았거나(NOT_FOUND), 심각한 불일치가 있거나,
-        # 시맨틱 검토에서 판례 취지 왜곡(CONTRADICTED) 또는 사실관계 적용 차이(DISTINGUISHABLE)가 확인된 경우
-        is_unverified = (status in ("NOT_FOUND", "CONTRADICTED") or levels.get("level1") == "NOT_FOUND"
+        q_status = (verdict.get("review") or {}).get("quote_diff_status")
+        q_cats = (verdict.get("review") or {}).get("quote_diff_categories") or []
+        level3 = str(levels.get("level3", ""))
+        level1 = str(levels.get("level1", ""))
+
+        # 1. 미검증/보류 상태 판정 (SC1)
+        is_quote_unverified = (
+            status in ("UNKNOWN", "SUSPENDED", "UNVERIFIED")
+            or level1 in ("UNKNOWN", "SUSPENDED", "UNVERIFIED")
+            or level3 in ("UNVERIFIED", "UNKNOWN", "SUSPENDED")
+            or q_status in ("UNVERIFIED", "UNKNOWN", "SUSPENDED")
+        )
+
+        # 2. 인용문 불일치(MODIFIED_QUOTE / UNALIGNED_QUOTE) 판정
+        is_quote_mismatch = (
+            not is_quote_unverified
+            and (
+                level3 in ("CONTRADICTED", "MODIFIED")
+                or q_status in ("MODIFIED_QUOTE", "UNALIGNED_QUOTE")
+                or (bool(q_cats) and level3 not in ("", "VERIFIED", "EXACT_MATCH"))
+            )
+        )
+
+        # 3. 요약 전용 / 본문 미확보 판정 (SC2)
+        has_official = bool(verdict.get("official_record"))
+        has_full_text = bool((verdict.get("official_record") or {}).get("full_text"))
+        is_summary_only = has_official and not has_full_text
+
+        # 4. 부존재 / 미확인 상태
+        is_unverified = (status in ("NOT_FOUND", "CONTRADICTED") or level1 == "NOT_FOUND"
                          or levels.get("number_format") == "IMPOSSIBLE")
         is_semantic_issue = sem_status in ("CONTRADICTED", "DISTINGUISHABLE")
-        # 공식 DB에서 원문이 일치 확인된 판례도 대조표에 포함(사건 적용성은 직접 검토 안내)
+
+        # 5. 공식 DB 원문 일치 판정 (본문 대조 완료 및 일치 필수)
         is_official_confirmed = (
             citation.type in (CitationType.CASE, CitationType.CONSTITUTIONAL)
             and status in ("VERIFIED", "PARTIALLY_VERIFIED")
             and not is_unverified
             and not is_semantic_issue
-            and bool(verdict.get("official_record"))
+            and not is_quote_mismatch
+            and not is_quote_unverified
+            and not is_summary_only
+            and has_full_text
+            and level3 in ("VERIFIED", "EXACT_MATCH")
+            and has_official
         )
 
         v_findings = verdict.get("findings", []) if isinstance(verdict, dict) else getattr(verdict, "findings", [])
@@ -422,15 +466,12 @@ async def verify_argument_validity(
             distortion_label = feats.get("verdict_label")
             grounded_evidence_quote = feats.get("grounded_evidence_quote") or ""
 
-        if is_unverified or is_semantic_issue or is_official_confirmed:
+        if is_unverified or is_semantic_issue or is_official_confirmed or is_quote_mismatch or is_summary_only:
             auth_id = make_authority_id(citation)
             court_tier = get_court_tier(citation)
             is_cov = is_covered_precedent_scope(citation)
 
-            if is_official_confirmed:
-                basis = "OFFICIAL_CONFIRMED"
-                auth_status = LegalVerificationStatus.VERIFIED.value
-            elif not case_number_possible(citation.canonical_case_number or citation.case_number or ""):
+            if not case_number_possible(citation.canonical_case_number or citation.case_number or ""):
                 basis = "FABRICATION_SUSPECTED"
                 auth_status = LegalVerificationStatus.SUSPICIOUS.value
             elif distortion_finding or sem_status == "CONTRADICTED":
@@ -439,6 +480,15 @@ async def verify_argument_validity(
             elif sem_status == "DISTINGUISHABLE":
                 basis = "DISTINGUISHABLE"
                 auth_status = LegalVerificationStatus.CONTEXT_CAUTION.value
+            elif is_quote_mismatch:
+                basis = "CONTENT_MISMATCH"
+                auth_status = LegalVerificationStatus.CONTRADICTED.value
+            elif is_official_confirmed:
+                basis = "OFFICIAL_CONFIRMED"
+                auth_status = LegalVerificationStatus.VERIFIED.value
+            elif is_summary_only:
+                basis = "UNCONFIRMED"
+                auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
             elif status == "CONTRADICTED":
                 basis = "CONTENT_MISMATCH"
                 auth_status = LegalVerificationStatus.CONTRADICTED.value
@@ -464,7 +514,12 @@ async def verify_argument_validity(
                 "distortion_type": distortion_label,
                 "grounded_evidence_quote": grounded_evidence_quote,
                 "quote_diff": (verdict.get("review") or {}).get("quote_diff"),
-                "quote_diff_categories": (verdict.get("review") or {}).get("quote_diff_categories") or [],
+                "quote_diff_categories": q_cats,
+                "quote_diff_status": q_status,
+                "quote_level3": level3,
+                "is_quote_unverified": is_quote_unverified,
+                "is_summary_only": is_summary_only,
+                "has_full_text": has_full_text,
                 "context": raw_context,
                 "evaluation_context": linked_claim,
             })
@@ -550,6 +605,16 @@ async def verify_argument_validity(
                 f"구체적 사실관계에 타당하게 적용되는지(사건 적용성)는 AI 작성 여부 판단과 별개로 검토자가 직접 검토해야 합니다."
             )
             counteraction = "공식 판례의 원문 취지와 당해 사건의 계약 조건(손해배상액 예정 vs 위약벌 법리 등)을 직접 비교 검토할 것."
+        elif (basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and has_official
+              and (item.get("is_summary_only") or item.get("quote_level3") == "UNVERIFIED")):
+            ai_basis = "공식 DB에서 요약본만 확보되어 판결문 본문 원문과의 직접 인용 대조가 유보됨 (판결문 사본 확인 필요)"
+            verdict_text = "출처 한계 확인 불가 (판결문 사본 확인 필요)"
+            legal_reason = (
+                f"공식 판례 DB에서 {c.raw_text}의 요약 기록은 확인되었으나, 공식 판결 전문(본문)이 확보되지 않아 "
+                f"직접 인용문의 원문 일치 여부는 사본 확인 전까지 확정되지 않습니다."
+            )
+            counteraction = "상대방에게 판결문 사본 제출을 요청하거나 법원 판결서 열람 서비스를 통해 인용 부분의 원문 일치 여부를 대조할 것."
+            auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
         elif mismatch:
             ai_basis = (
                 "공식 기록은 조회되었으나 인용된 내용이 공식 기록과 일치하지 않음. "
@@ -612,6 +677,15 @@ async def verify_argument_validity(
 
         linked_claim = item.get("evaluation_context") or _extract_linked_claim(c, doc, max_chars=1000)
         display_claim = linked_claim if len(linked_claim) <= 200 else (linked_claim[:197] + "...")
+        guidance = generate_actionable_guidance(
+            basis=basis,
+            cited_authority=c.raw_text,
+            claim_text=linked_claim,
+            distortion_type=item.get("distortion_type"),
+            grounded_evidence_quote=item.get("grounded_evidence_quote") or "",
+            quote_diff_categories=item.get("quote_diff_categories") or [],
+            quote_diff_status=item.get("quote_diff_status"),
+        )
 
         row = HallucinationTableRow(
             location=f"{c.page or 1}면",
@@ -627,6 +701,8 @@ async def verify_argument_validity(
             authority_id=item.get("authority_id") or make_authority_id(c),
             verification_status=item.get("auth_status") or auth_status,
             quote_diff_categories=item.get("quote_diff_categories") or [],
+            quote_diff_status=item.get("quote_diff_status"),
+            actionable_guidance=guidance,
         )
         row.item_id = index
         row.citation_id = c.citation_id
@@ -640,8 +716,8 @@ async def verify_argument_validity(
             "citation_id": c.citation_id,
             "official_source_match": has_official,
             "error_category": ("CITATION_CONTRADICTION" if contradiction
-                               else "APPLICATION_DIFFERENCE" if distinguishable
-                               else "LEGAL_CITATION_ERROR" if mismatch else "UNSUPPORTED_LEGAL_BASIS"),
+                                else "APPLICATION_DIFFERENCE" if distinguishable
+                                else "LEGAL_CITATION_ERROR" if mismatch else "UNSUPPORTED_LEGAL_BASIS"),
             "semantic_status": sem_status,
         }
         finding_status = VerificationStatus.CONTRADICTED if contradiction else VerificationStatus.UNVERIFIED
@@ -658,7 +734,12 @@ async def verify_argument_validity(
             else ["SOURCE_UNCONFIRMED"]
         )
 
-        if basis != "OFFICIAL_CONFIRMED":
+        is_pending_row = (
+            basis == "OFFICIAL_CONFIRMED"
+            or (basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and (has_official or item.get("is_quote_unverified")))
+        )
+
+        if not is_pending_row:
             result.findings.append(
                 Finding.create(
                     type=FindingType.LEGAL_ARGUMENT_INVALID,
@@ -681,7 +762,11 @@ async def verify_argument_validity(
     can_use_llm = bool(router and external_ai_policy != ExternalAIPolicy.LOCAL_ONLY
                        and hasattr(router, "consult_all")
                        and router.has_available_provider(policy=external_ai_policy))
-    cases_for_ai = [item for item in unverified_cases if item.get("basis") != "OFFICIAL_CONFIRMED"]
+    cases_for_ai = [
+        item for item in unverified_cases
+        if item.get("basis") != "OFFICIAL_CONFIRMED"
+        and not (item.get("basis") in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and bool(item["verdict"].get("official_record")))
+    ]
     if can_use_llm and cases_for_ai:
         await _attach_ai_opinions(result, cases_for_ai, router, external_ai_policy, mask,
                                   related_authorities=related_authorities)
