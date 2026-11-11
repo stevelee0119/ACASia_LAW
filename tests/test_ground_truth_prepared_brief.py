@@ -101,7 +101,9 @@ def test_precedent_and_regulation_existence(monkeypatch):
     assert real_case is not None
     assert "2020다268807" in real_case["case_number"]
 
-    # 2-3. 가상 판례 (대법원 2023다284109 판결) 부존재 검증 및 CRITICAL / FAKE_PRECEDENT 부여
+    # 2-3. 가상 판례 (대법원 2023다284109 판결) 미발견 검증
+    # X6(사용자 11-11 승인, LV-03·P1): 형식이 맞는데 조회 범위에서 찾지 못한 판례는 '부존재 확정'이 아니라 '확인 불가(출처 한계)'다.
+    # 부존재 확정(CRITICAL)은 수록 범위가 검증된 출처에서만 낸다.
     fake_case = mirror.find_case("2023다284109")
     assert fake_case is None
 
@@ -131,8 +133,9 @@ def test_precedent_and_regulation_existence(monkeypatch):
     v_case = verifier.verify_case(fake_citation)
     assert v_case.status == VerificationStatus.NOT_FOUND
     fake_finding = next(f for f in v_case.findings if f.type == FindingType.CASE_NOT_FOUND)
-    assert fake_finding.severity == Severity.CRITICAL
-    assert "FAKE_PRECEDENT" in fake_finding.tags
+    assert fake_finding.severity == Severity.MEDIUM
+    assert "SOURCE_LIMIT" in fake_finding.tags and "FAKE_PRECEDENT" not in fake_finding.tags
+    assert v_case.levels.get("authority_status") == "UNCONFIRMED_SOURCE_LIMIT"
 
     # 2-4. 가상 고시 (개인정보보호위원회 고시 제2025-12호) 부존재 검증
     fake_reg_citation = Citation(

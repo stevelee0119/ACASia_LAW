@@ -1,0 +1,87 @@
+diff --git a/tests/test_pii_redos_linear.py b/tests/test_pii_redos_linear.py
+index 44f033f..a06a832 100644
+--- a/tests/test_pii_redos_linear.py
++++ b/tests/test_pii_redos_linear.py
+@@ -3,11 +3,14 @@
+ 
+ TK-128의 가림 API(`POST /projects/{id}/external-ai/prompt-texts`)와 TK-129 보고서 요청이 사용자 입력을
+ 그대로 `detect()`에 넘긴다. 고치기 전에는 라벨 뒤 공백 200자에 9~13초, '처방' 뒤 공백 2,000자에 48초가 걸렸다.
+-절대 시간은 실행기 부하에 흔들리므로 길이 4배의 시간 비(선형이면 약 4, 제곱이면 약 16)와 넉넉한 상한을 함께 본다.
++절대 시간은 실행기 부하에 흔들리므로 증가 지수(선형 약 1, 제곱 약 2)와 넉넉한 상한을 함께 본다.
++TK-142(2026-11-03 사용자 결정): 두 점 비율(2,000자 대 8,000자 < 8)이 CI에서 한 점 잡음으로 흔들려(9.3)
++같은 엄격도(지수 < 1.5)를 네 길이·교차 측정·최소자승 기울기로 잰다.
+ """
+ from __future__ import annotations
+ 
+ import gc
++import math
+ from time import perf_counter
+ 
+ import pytest
+@@ -18,25 +21,57 @@ LABELS = ["", "사업자번호", "계좌번호", "주민등록번호", "법인
+           "2020년 3월 2", "처방", "복용약", "진단", "의뢰인 홍길동 상병"]
+ 
+ 
+-def _best(text: str) -> float:
+-    best = float("inf")
++SIZES = (2000, 4000, 8000, 16000)
++ROUNDS = 5
++# 길이 4배에 시간 비 8 = 증가 지수 log(8)/log(4) = 1.5. 선형이면 약 1, 제곱이면 약 2다(TK-142: 같은 엄격도를 두 점 대신 네 점으로 잰다).
++MAX_EXPONENT = 1.5
++
++
++def _timings(func, texts) -> list:
++    """길이별 최솟값. 길이를 번갈아 재서(교차 측정) 실행기 부하가 한 길이에만 몰리지 않게 한다."""
++    best = [float("inf")] * len(texts)
+     gc.collect()
+     gc.disable()
+     try:
+-        for _ in range(3):
+-            started = perf_counter()
+-            detect(text)
+-            best = min(best, perf_counter() - started)
++        for _ in range(ROUNDS):
++            for i, text in enumerate(texts):
++                started = perf_counter()
++                func(text)
++                best[i] = min(best[i], perf_counter() - started)
+     finally:
+         gc.enable()
+     return best
+ 
+ 
++def _growth_exponent(sizes, timings) -> float:
++    """log(시간)-log(길이) 최소자승 기울기. 한 점의 잡음이 비율 하나를 크게 흔드는 것을 막는다."""
++    xs = [math.log(n) for n in sizes]
++    ys = [math.log(max(t, 1e-6)) for t in timings]
++    mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
++    return sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sum((x - mx) ** 2 for x in xs)
++
++
+ @pytest.mark.parametrize("label", LABELS)
+ def test_label_followed_by_long_whitespace_is_linear(label):
+-    short, long = _best(label + " " * 2000), _best(label + " " * 8000)
+-    assert long < 2.0, (label, long)
+-    assert long / max(short, 1e-3) < 8, (label, short, long)
++    timings = _timings(detect, [label + " " * n for n in SIZES])
++    assert timings[SIZES.index(8000)] < 2.0, (label, timings)   # 기존 절대 상한(8,000자 2초) 유지
++    exponent = _growth_exponent(SIZES, timings)
++    assert exponent < MAX_EXPONENT, (label, round(exponent, 3), timings)
++
++
++def test_growth_measure_flags_quadratic_work():
++    """측정 방법 자체의 시험: 제곱 시간 작업은 지수 1.5를 넘고, 선형 작업은 넘지 않아야 한다."""
++    def quadratic(text):
++        n = len(text) // 40
++        return sum(1 for i in range(n) for _ in range(i))
++
++    def linear(text):
++        return sum(1 for _ in range(len(text) * 4))
++
++    sizes = (1000, 2000, 4000, 8000)
++    texts = [" " * n for n in sizes]
++    assert _growth_exponent(sizes, _timings(quadratic, texts)) > MAX_EXPONENT
++    assert _growth_exponent(sizes, _timings(linear, texts)) < MAX_EXPONENT
+ 
+ 
+ def test_rewritten_patterns_keep_known_detections():

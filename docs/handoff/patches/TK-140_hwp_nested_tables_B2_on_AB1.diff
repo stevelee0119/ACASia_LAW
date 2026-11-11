@@ -1,0 +1,194 @@
+diff --git a/packages/document_engine/hwp_parser.py b/packages/document_engine/hwp_parser.py
+index aab6dc9..3a21b42 100644
+--- a/packages/document_engine/hwp_parser.py
++++ b/packages/document_engine/hwp_parser.py
+@@ -517,61 +517,75 @@ def _extract_hwp_table_structures(raw: bytes, warnings: List[str]
+     for section, data in enumerate(_section_streams(raw)):
+         found, paragraph_owners = _section_table_structures(data, warnings, budget)
+         for index, table in enumerate(found):
+-            table["ref"] = ref = f"hwp_s{section}t{index}"
++            table["ref"] = f"hwp_s{section}t{index}"
++        for table in found:
++            ref = table["ref"]
++            parent_ref = table["parent"]["ref"] if table.get("parent") is not None else None
+             if not table["complete"]:
+                 partial.append({"table_ref": ref, "row_count": table["row_count"],
+-                                "column_count": table["column_count"], "reason": "INCOMPLETE_STRUCTURE"})
++                                "column_count": table["column_count"], "reason": "INCOMPLETE_STRUCTURE",
++                                "nested": table["nested"], "parent_table_ref": parent_ref})
+                 continue
+             grid = table["cells"]
+             tables.append({"table_ref": ref, "page": 1, "table_index": len(tables), "cells": grid,
+                            "header": grid[0], "title": None, "row_count": len(grid),
+                            "column_count": len(grid[0]), "merges": table["merges"], "covered": table["covered"],
+-                           "complete": True, "representation": "LINES_WITH_STRUCTURE",
+-                           "source": "HWP_RECORDS", "line_block_ids": []})
++                           "complete": True, "nested": table["nested"], "parent_table_ref": parent_ref,
++                           "representation": "LINES_WITH_STRUCTURE", "source": "HWP_RECORDS", "line_block_ids": []})
+         owners.extend((text, t["ref"] if t is not None and t["complete"] else None) for text, t in paragraph_owners)
+     return tables, partial, owners
+ 
+ 
++MAX_HWP_TABLE_DEPTH = 8
++
++
+ def _section_table_structures(data: bytes, warnings: List[str], budget: Dict[str, int]
+                               ) -> Tuple[List[Dict[str, Any]], List[Tuple[str, Optional[Dict[str, Any]]]]]:
+-    out: List[Dict[str, Any]] = []
++    """표를 열린 순서대로 만든다. 셀 안의 표(중첩 표)는 따로 열어 안쪽 표로 만들고, 그 안 문단은 안쪽 표에만
++    배정한다(TK-140). 바깥 표의 칸에는 안쪽 표 글자가 섞이지 않는다."""
++    out: List[Dict[str, Any]] = []                         # 열린 순서(바깥 표가 안쪽 표보다 앞)
+     owners: List[Tuple[str, Optional[Dict[str, Any]]]] = []   # 비어 있지 않은 문단마다 (글자, 속한 표 또는 None)
+-    table: Optional[Dict[str, Any]] = None
+-    owner: Optional[List[List[Optional[Tuple[int, int]]]]] = None
+-    table_level = cell_level = -1
+-    cell: Optional[Tuple[int, int]] = None
+-
+-    def close() -> None:
+-        if table is not None:
+-            out.append(table)
++    stack: List[Dict[str, Any]] = []                       # 열린 표: 바깥 → 안쪽
+ 
+     for tag, level, body in _records(data):
+-        if table is not None and level < table_level:      # 표 제어보다 바깥 수준의 레코드가 나오면 표가 끝났다
+-            close()
+-            table, owner, cell = None, None, None
++        while stack and level < stack[-1]["_level"]:       # 표 제어보다 바깥 수준의 레코드가 나오면 그 표가 끝났다
++            stack.pop()
++        top = stack[-1] if stack else None
+         if tag == HWPTAG_TABLE and len(body) >= 8:
+-            if table is not None:                            # 표 안의 표: 글자가 바깥 칸에 섞이므로 불완전
+-                if table["complete"]:
+-                    warnings.append("HWP 표 안에 표가 있어 바깥 표를 불완전한 표로 두었다")
+-                table["complete"] = False
++            in_cell = top is not None and top["_cell"] is not None and level > top["_cell_level"]
++            if top is not None and not in_cell:            # 셀 밖에 걸친 표 제어: 구조를 알 수 없어 바깥 표를 불완전으로
++                if top["complete"]:
++                    warnings.append("HWP 표 안의 표 위치를 셀에 대응하지 못해 바깥 표를 불완전한 표로 두었다")
++                top["complete"] = False
++                continue
++            if len(stack) >= MAX_HWP_TABLE_DEPTH:
++                if top["complete"]:
++                    warnings.append("HWP 표 중첩 깊이가 상한을 넘어 바깥 표를 불완전한 표로 두었다")
++                top["complete"] = False
+                 continue
+             rows, cols = struct.unpack_from("<HH", body, 4)
+             if not (0 < rows <= MAX_HWP_TABLE_ROWS and 0 < cols <= MAX_HWP_TABLE_COLS) or \
+                     budget["cells"] + rows * cols > MAX_HWP_DOC_CELLS:
+                 warnings.append(f"HWP 표 크기({rows}×{cols})가 상한을 넘어 표 구조를 만들지 않았다")
++                if top is not None:
++                    top["complete"] = False                # 안쪽 표를 못 만들면 그 글자가 바깥 칸에 남지 않게 바깥도 불완전
+                 continue
+             budget["cells"] += rows * cols
+             table = {"cells": [["" for _ in range(cols)] for _ in range(rows)], "merges": [], "covered": [],
+-                     "complete": True, "row_count": rows, "column_count": cols}
+-            owner = [[None] * cols for _ in range(rows)]
+-            table_level = level
+-        elif tag == HWPTAG_LIST_HEADER and table is not None and level in (table_level, table_level + 1):
+-            cell, cell_level = None, level
++                     "complete": True, "row_count": rows, "column_count": cols,
++                     "nested": top is not None, "parent": top,
++                     "_level": level, "_cell": None, "_cell_level": -1,
++                     "_owner": [[None] * cols for _ in range(rows)]}
++            out.append(table)
++            stack.append(table)
++        elif tag == HWPTAG_LIST_HEADER and top is not None and level in (top["_level"], top["_level"] + 1):
++            table = top
++            table["_cell"], table["_cell_level"] = None, level
+             if len(body) < 16:
+                 table["complete"] = False
+                 continue
+             col, row, col_span, row_span = struct.unpack_from("<HHHH", body, 8)
+-            rows, cols = table["row_count"], table["column_count"]
++            rows, cols, owner = table["row_count"], table["column_count"], table["_owner"]
+             if col_span < 1 or row_span < 1 or row + row_span > rows or col + col_span > cols:
+                 if table["complete"]:
+                     warnings.append("HWP 표 셀 주소·병합 범위가 표 범위를 벗어나 불완전한 표로 두었다")
+@@ -588,19 +602,21 @@ def _section_table_structures(data: bytes, warnings: List[str], budget: Dict[str
+             if row_span > 1 or col_span > 1:
+                 table["merges"].append({"row": row, "col": col, "row_span": row_span, "col_span": col_span})
+                 table["covered"].extend([r, c] for r, c in area if (r, c) != (row, col))
+-            cell = (row, col)
++            table["_cell"] = (row, col)
+         elif tag == HWPTAG_PARA_TEXT:
+             text = _paragraph_text(body)
+             if not text:
+                 continue
+-            if table is not None and cell is not None and level > cell_level:
+-                row, col = cell
+-                grid = table["cells"]
++            if top is not None and top["_cell"] is not None and level > top["_cell_level"]:
++                row, col = top["_cell"]
++                grid = top["cells"]
+                 grid[row][col] = f"{grid[row][col]} {text}".strip() if grid[row][col] else text
+-                owners.append((text, table))
++                owners.append((text, top))
+             else:
+                 owners.append((text, None))
+-    close()
++    for table in out:
++        for key in ("_level", "_cell", "_cell_level", "_owner"):
++            table.pop(key, None)
+     return out, owners
+ 
+ 
+diff --git a/tests/test_tk133_hwp_tables.py b/tests/test_tk133_hwp_tables.py
+index 40635b6..1508dfa 100644
+--- a/tests/test_tk133_hwp_tables.py
++++ b/tests/test_tk133_hwp_tables.py
+@@ -148,7 +148,11 @@ def test_nested_table_makes_outer_partial(monkeypatch, tmp_path):
+     inner = tbl(1, 2, level=4) + cell(0, 0, "내부", level=5) + cell(1, 0, "7일", level=5)
+     body = tbl(1, 2) + cell(0, 0, "바깥") + rec(LIST_HEADER, struct.pack("<hIHHHHH", 1, 0, 0, 1, 0, 1, 1), 2) + inner
+     doc = parse(monkeypatch, tmp_path, body)
+-    assert not doc.structure.get("tables") and doc.structure["partial_tables"]
++    # TK-140(사용자 승인 필요): 안쪽 표를 따로 만들고 그 글자를 안쪽 표에만 배정하므로 바깥 표에 섞이지 않는다.
++    # 이름의 '바깥 표 불완전'은 옛 동작이다. 바깥 칸에 안쪽 글자가 섞이지 않는 것을 대신 단언한다.
++    tables = doc.structure["tables"]
++    assert [t["table_ref"] for t in tables] == ["hwp_s0t0", "hwp_s0t1"] and not doc.structure.get("partial_tables")
++    assert tables[0]["cells"] == [["바깥", ""]] and tables[1]["cells"] == [["내부", "7일"]]
+ 
+ 
+ def test_partial_total_table_creates_no_table_finding(monkeypatch, tmp_path):
+diff --git a/tests/test_tk140_parser_followups.py b/tests/test_tk140_parser_followups.py
+index a577aa9..729632a 100644
+--- a/tests/test_tk140_parser_followups.py
++++ b/tests/test_tk140_parser_followups.py
+@@ -89,3 +89,38 @@ def test_aligned_paragraphs_still_link_cells(monkeypatch, tmp_path):
+     doc = hw.parse(monkeypatch, tmp_path, hw.sum_table("4,200,000원"))
+     [table] = doc.structure["tables"]
+     assert len(table["line_block_ids"]) == 8
++
++
++# --- B-2. 구형 HWP 중첩 표(사용자 승인 필요: 기존 test_nested_table_makes_outer_partial 단언 변경) ----------------------
++def nested_doc(monkeypatch, tmp_path, inner_rows=1, inner_cols=2, inner_cells=None):
++    inner_cells = inner_cells or [hw.cell(0, 0, "내부", level=5), hw.cell(1, 0, "7일", level=5)]
++    inner = hw.tbl(inner_rows, inner_cols, level=4) + b"".join(inner_cells)
++    body = (hw.tbl(1, 2) + hw.cell(0, 0, "바깥")
++            + hw.rec(hw.LIST_HEADER, hw.struct.pack("<hIHHHHH", 1, 0, 0, 1, 0, 1, 1), 2) + inner + hw.text("표 뒤"))
++    return hw.parse(monkeypatch, tmp_path, body)
++
++
++def test_nested_table_gives_inner_table_and_outer_keeps_only_its_own_text(monkeypatch, tmp_path):
++    doc = nested_doc(monkeypatch, tmp_path)
++    outer, inner = doc.structure["tables"]
++    assert outer["cells"] == [["바깥", ""]] and outer["nested"] is False
++    assert inner["cells"] == [["내부", "7일"]] and inner["nested"] is True
++    assert inner["parent_table_ref"] == outer["table_ref"] == "hwp_s0t0"
++    by_id = {b.block_id: b for p in doc.pages for b in p.blocks}
++    assert [by_id[i].text for i in inner["line_block_ids"]] == ["내부", "7일"]
++
++
++def test_wrong_total_inside_inner_table_is_found_once(monkeypatch, tmp_path):
++    cells = [hw.cell(0, 0, "항목", level=5), hw.cell(1, 0, "금액", level=5),
++             hw.cell(0, 1, "치료비", level=5), hw.cell(1, 1, "1,200,000원", level=5),
++             hw.cell(0, 2, "위자료", level=5), hw.cell(1, 2, "3,000,000원", level=5),
++             hw.cell(0, 3, "합계", level=5), hw.cell(1, 3, "4,700,000원", level=5)]
++    doc = nested_doc(monkeypatch, tmp_path, inner_rows=4, inner_cols=2, inner_cells=cells)
++    found = hw.arithmetic(doc)
++    assert len([f for f in found if (f.confidence_features or {}).get("table_ref") == "hwp_s0t1"]) == 1
++
++
++def test_inner_table_that_cannot_be_built_makes_outer_partial(monkeypatch, tmp_path):
++    doc = nested_doc(monkeypatch, tmp_path, inner_rows=2001, inner_cols=2)
++    assert not doc.structure.get("tables")
++    assert [t["table_ref"] for t in doc.structure["partial_tables"]] == ["hwp_s0t0"]

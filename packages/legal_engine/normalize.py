@@ -333,6 +333,11 @@ def canonical_law_name(raw: str) -> str:
     compact = name.replace(" ", "")
     if compact in LAW_ALIASES:
         return LAW_ALIASES[compact]
+    # 약칭 뒤에 하위 법령 종류가 붙은 꼴('근기법 시행령'): 모법 별칭을 풀고 종류를 붙인다(TK-143)
+    for kind in ("시행규칙", "시행령"):
+        base = compact[:-len(kind)]
+        if compact.endswith(kind) and base in LAW_ALIASES:
+            return f"{LAW_ALIASES[base]} {kind}"
     # 공백 없는 짧은 법령명은 압축형을 표준으로 본다 (예: "형사 소송법" -> "형사소송법")
     if len(compact) <= 10:
         return compact

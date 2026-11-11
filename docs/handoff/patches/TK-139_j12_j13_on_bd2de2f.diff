@@ -1,0 +1,206 @@
+diff --git a/packages/legal_engine/disposition_criteria.py b/packages/legal_engine/disposition_criteria.py
+index 0e19a75..316c51e 100644
+--- a/packages/legal_engine/disposition_criteria.py
++++ b/packages/legal_engine/disposition_criteria.py
+@@ -79,6 +79,17 @@ def _reason_clause(sentence: str, raw_disposition: str) -> str:
+ _TAIL_RE = re.compile(r"\s*(?:하는\s*)?(?:행위를\s*)?(?:한|하는|된)?\s*(?:것|경우)?(?:로서)?$")
+ 
+ 
++_CITE_PREFIX_RE = re.compile(
++    r"^(?:「[^」]+」\s*|[가-힣]*법(?:\s*시행령|\s*시행규칙)?\s*|영\s*|규칙\s*)?제\d+조(?:의\d+)?(?:제\d+항)?(?:제\d+호)?(?:[가-하]목)?"
++    r"(?:\s*(?:및|또는|ㆍ|·|,)\s*(?:제\d+조(?:의\d+)?)?(?:제?\d+[항호])?(?:[가-하]목)?)*(?:\s*(?:단서|본문|전단|후단))?\s*(?:에\s*따른|에\s*의한|에\s*규정된)\s*")
++
++
++def _strip_cite(text: str) -> str:
++    """위반 서술 앞의 조문 인용구('법 제N조제M항에 따른')를 뗀다(양쪽 같은 규칙, 평가 측 보완 J13)."""
++    out = _CITE_PREFIX_RE.sub("", text.strip()).strip()
++    return out or text
++
++
+ def _strip_tail(text: str) -> str:
+     """위반 서술 끝의 형식어('…하는 행위를 한 경우'·'…한 것')를 뗀다(양쪽 같은 규칙, 평가 측 보완 J5)."""
+     out = _TAIL_RE.sub("", text).strip()
+@@ -91,7 +102,7 @@ _ROW_ENUM_RE = re.compile(r"(?:^|\s)(?:\d+(?:의\d+)?\.|[가-하]\.|\d+\)|[가-
+ def _row_core(violation_text: str) -> str:
+     """별표 행 위반사항에서 상위 항목('1. 법 제N조를 위반한 경우')과 번호를 떼고 마지막 세목만 남긴다(평가 측 보완 J5)."""
+     parts = [p.strip() for p in _ROW_ENUM_RE.split(violation_text) if p and p.strip()]
+-    return _strip_tail(parts[-1] if parts else violation_text.strip())
++    return _strip_tail(_strip_cite(parts[-1] if parts else violation_text.strip()))
+ 
+ 
+ def extract_document_claim(text: str) -> Optional[Dict[str, Any]]:
+@@ -292,20 +303,25 @@ def parse_and_propagate_table(hwp_bytes: bytes) -> Tuple[Optional[List[Dict[str,
+         return None, False, "HEADER_COLUMNS_NOT_IDENTIFIED"
+ 
+     # 4. 행별 업종 절 식별 및 정규화 행 목록 생성 (W1)
++    # 업종 절 머리는 표 전체 폭을 덮는 병합 행이고 'N. ' 번호로 시작한다(평가 측 보완 J12).
++    # 위반사항 칸 문장 속 업종 낱말('…은 2. 식품판매업 등의 …에 따른다')로 절을 바꾸지 않는다.
++    full_width_rows = {r for r, c, rs, cs in merge_list if c == 0 and cs >= col_count}
+     structured_rows: List[Dict[str, Any]] = []
+-    current_industry: Optional[str] = None
++    current_section: Optional[str] = None
+ 
+     for r in range(row_count):
+         row = grid[r]
+-        row_text = " ".join(dict.fromkeys(x for x in row if x)).strip()
+-
+-        # 업종 절 소제목 행 탐지: 개별기준 대목차나 업종명이 포함된 행
+-        for ind_name, ind_pat in INDUSTRY_PATTERNS:
+-            if ind_pat.search(row_text):
+-                # '개별기준' 또는 번호 표기('1.', '2.', 'I.', 'II.')가 포함되어 업종 구분을 선언하는 행
+-                if any(k in row_text for k in ("개별기준", "업종", "1.", "2.", "3.", "4.", "Ⅰ", "Ⅱ", "Ⅲ")):
+-                    current_industry = ind_name
+-                    break
++        if r in full_width_rows:
++            head = re.sub(r"\s+", " ", (cells[r][0] or "")).strip()
++            if head.startswith("Ⅲ"):
++                current_section = None  # 개별기준 끝(과징금 제외 대상 등)
++                continue
++            m_sec = re.match(r"^(?:Ⅱ\.\s*개별기준\s*)?\d+\.\s+(\S.*)$", head)
++            if m_sec:
++                current_section = m_sec.group(1)
++            continue
++        if current_section is None:
++            continue
+ 
+         violation_text = row[violation_col].strip() if violation_col < col_count else ""
+         law_text = row[law_col].strip() if law_col < col_count else ""
+@@ -320,7 +336,7 @@ def parse_and_propagate_table(hwp_bytes: bytes) -> Tuple[Optional[List[Dict[str,
+ 
+         structured_rows.append({
+             "row_idx": r,
+-            "industry": current_industry,
++            "industry": current_section,
+             "violation_text": violation_text,
+             "law_text": law_text,
+             "criteria_raw": {1: c1_text, 2: c2_text, 3: c3_text},
+@@ -379,11 +395,17 @@ def verify_disposition_criteria(
+         return out
+     out["document_claim"] = claim
+ 
+-    # W1: 업종 특정 검증
++    # W1: 업종 특정 — 서면의 업종 낱말(시행령 제21조 영업 종류)과, 별표 절 머리에 나열된 영업 이름 중 서면에 나오는 것
+     doc_industry = claim.get("matched_industry")
+-    if not doc_industry:
++    pattern_hits = [name for name, pat in INDUSTRY_PATTERNS if pat.search(doc_text)]
++    if doc_industry is None and len(pattern_hits) >= 2:
++        # 서면에 업종이 둘 이상 나오고 처분 문장 주변에서도 하나로 좁혀지지 않으면 보류한다
+         out["status"] = "UNVERIFIED (서면의 영업 종류 특정 불가)"
+         return out
++    doc_names = {doc_industry} if doc_industry else set()
++    for name, pat in INDUSTRY_PATTERNS:
++        if name == doc_industry:
++            doc_names.update(m.group(0) for m in pat.finditer(doc_text))
+ 
+     # HWP 표 파싱 및 병합 전파 (W3, G4)
+     structured_rows, success, parse_msg = parse_and_propagate_table(appendix_hwp)
+@@ -392,7 +414,38 @@ def verify_disposition_criteria(
+         return out
+ 
+     # W1: 해당 업종 절 안의 행들만 후보군으로 수집
+-    industry_candidates = [r for r in structured_rows if r.get("industry") == doc_industry]
++    # 서면 업종 이름이 절 머리(영 제21조 각 호 나열)에 나오는 절이 정확히 하나일 때만 그 절 안에서 맞춘다(J12)
++    def _norm(t: str) -> str:
++        return re.sub(r"[\s·ㆍ]", "", t or "")
++    sections = list(dict.fromkeys(r["industry"] for r in structured_rows if r.get("industry")))
++
++    def _section_names(sec: str) -> List[str]:
++        # 절 머리의 '영 제21조제N호의 ○○업, 같은 조 제M호의 △△업 …' 나열과 절 제목('○○업 등')에서 영업 이름을 뽑는다
++        names = re.findall(r"의\s*([가-힣][가-힣·ㆍ\s]*?업)(?=[\s,(.]|및|을|를|이|은|$)", sec)
++        m_title = re.match(r"\s*([가-힣][가-힣·ㆍ\s]*?업)", sec)
++        if m_title:
++            names.append(m_title.group(1))
++        return [n for n in (_norm(x) for x in names) if n]
++
++    def _hits(sec: str) -> bool:
++        listed = _section_names(sec)
++        for n in (_norm(x) for x in doc_names):
++            if n and any(n == l or l in n or n in l for l in listed):
++                return True
++        return False
++
++    norm_doc = _norm(doc_text)
++    if doc_industry is None:
++        for sec in sections:
++            doc_names.update(n for n in _section_names(sec) if len(n) >= 4 and n in norm_doc)
++    if not doc_names:
++        out["status"] = "UNVERIFIED (서면의 영업 종류 특정 불가)"
++        return out
++    hit_sections = [sec for sec in sections if _hits(sec)]
++    if len(hit_sections) != 1:
++        out["status"] = "UNVERIFIED (별표에서 해당 업종 절 미확인)" if not hit_sections else "UNVERIFIED (업종 절 복수 해당)"
++        return out
++    industry_candidates = [r for r in structured_rows if r.get("industry") == hit_sections[0]]
+     if not industry_candidates:
+         # 업종 절을 찾지 못하면 다른 업종 행과 맞추지 않는다(W1, 평가 측 보완 J6)
+         out["status"] = "UNVERIFIED (별표에서 해당 업종 절 미확인)"
+@@ -402,7 +455,7 @@ def verify_disposition_criteria(
+     violation_clause = claim["violation_clause"]
+     scored_candidates = []
+     for r in industry_candidates:
+-        score = jaccard_similarity(violation_clause, _row_core(r["violation_text"]))
++        score = jaccard_similarity(_strip_cite(violation_clause), _row_core(r["violation_text"]))
+         scored_candidates.append((score, r))
+ 
+     scored_candidates.sort(key=lambda x: x[0], reverse=True)
+diff --git a/tests/test_tk139_disposition_criteria.py b/tests/test_tk139_disposition_criteria.py
+index 6d45877..6479e9d 100644
+--- a/tests/test_tk139_disposition_criteria.py
++++ b/tests/test_tk139_disposition_criteria.py
+@@ -69,8 +69,9 @@ class TestTK139DispositionCriteria(unittest.TestCase):
+             "row_count": 5,
+             "column_count": 5,
+             "cells": mock_cells,
+-            "merges": {(3, 0): (2, 1)},  # 3행 0열이 2행에 걸쳐 병합
+-            "covered": {(4, 0)},
++            # 실제 HWP 파서 꼴(평가 측 보완 J2·J12): 업종 절 머리(1행)는 표 전체 폭 병합, 3행 0열은 2행에 걸쳐 병합
++            "merges": [{"row": 1, "col": 0, "row_span": 1, "col_span": 5}, {"row": 3, "col": 0, "row_span": 2, "col_span": 1}],
++            "covered": [[1, 1], [1, 2], [1, 3], [1, 4], [4, 0]],
+             "complete": True,
+         }
+ 
+@@ -82,7 +83,7 @@ class TestTK139DispositionCriteria(unittest.TestCase):
+         self.assertEqual(status, "COMPLETED")
+         self.assertTrue(len(rows) >= 3)
+         # 3행(0-based idx 2)은 식품접객업 개별기준
+-        self.assertEqual(rows[0]["industry"], "식품접객업")
++        self.assertTrue(rows[0]["industry"].startswith("식품접객업"))
+         self.assertIn("유통기한 경과제품", rows[0]["violation_text"])
+         self.assertEqual(rows[0]["criteria_raw"][1], "영업정지 15일")
+ 
+@@ -312,6 +313,35 @@ if __name__ == "__main__":
+     unittest.main()
+ 
+ 
++class TestTK139SectionJ12(unittest.TestCase):
++    def test_j12_section_only_from_full_width_header_rows(self):
++        cells = [
++            ["Ⅱ. 개별기준 1. 갑종가공업 등 영 제21조제1호의 갑종가공업, 같은 조 제5호가목의 을종소분업", "", "", "", ""],
++            ["위반사항", "근거 법령", "행정처분기준", "", ""],
++            ["", "", "1차 위반", "2차 위반", "3차 위반"],
++            ["가. 갑 행위를 한 경우", "법 제1조", "영업정지 7일", "영업정지 15일", "영업정지 1개월"],
++            ["다. 을종소분업의 준수사항 위반은 2. 병종판매업 등의 제9호에 따른다.", "", "", "", ""],
++            ["라. 을 행위를 한 경우", "법 제2조", "영업정지 5일", "영업정지 10일", "영업정지 20일"],
++            ["2. 병종판매업 등 영 제21조제4호의 정종운반업 및 같은 조 제5호나목의 병종판매업을 말한다.", "", "", "", ""],
++            ["가. 을 행위를 한 경우", "법 제2조", "영업정지 1개월", "영업정지 2개월", "영업정지 3개월"],
++        ]
++        table = {"cells": cells, "row_count": len(cells), "column_count": 5,
++                 "merges": [{"row": 0, "col": 0, "row_span": 1, "col_span": 5}, {"row": 1, "col": 2, "row_span": 1, "col_span": 3},
++                            {"row": 1, "col": 0, "row_span": 2, "col_span": 1}, {"row": 1, "col": 1, "row_span": 2, "col_span": 1},
++                            {"row": 6, "col": 0, "row_span": 1, "col_span": 5}],
++                 "covered": [[0, 1], [0, 2], [0, 3], [0, 4], [1, 3], [1, 4], [2, 0], [2, 1], [6, 1], [6, 2], [6, 3], [6, 4]]}
++        with patch("packages.document_engine.hwp_parser._extract_hwp_table_structures", return_value=([table], [], None)):
++            rows, ok, msg = parse_and_propagate_table(b"HWP")
++            self.assertTrue(ok, msg)
++            eul = [r for r in rows if "을 행위" in r["violation_text"]]
++            self.assertTrue(eul[0]["industry"].startswith("갑종가공업"))   # 문장 속 '2. 병종판매업'으로 절이 바뀌지 않는다
++            self.assertTrue(eul[1]["industry"].startswith("병종판매업"))
++            res = verify_disposition_criteria(
++                "원고는 을종소분업 영업자이다. 피고는 원고가 을 행위를 하였다는 이유로 2차 위반으로 영업정지 10일 처분을 하였다.",
++                b"HWP", case_date="2026-10-01")
++        self.assertEqual(res["comparison_result"], "MATCHED", res["status"])
++
++
+ class TestTK139ReportRoundTrip(unittest.TestCase):
+     def test_j10_report_line_after_json_round_trip(self):
+         import json

@@ -32,6 +32,7 @@ _USED_FIELDS = {
 EXACT_LAW_NOT_FOUND = "EXACT_LAW_NOT_FOUND:"
 # TK-130 약칭 후보 탐색 전용 목록 쪽 상한(검색어당). 넘으면 후보를 고르지 않는다.
 INFERENCE_MAX_PAGES = 3
+GANA_MAX_PAGES = 20      # 두 글자 어간용 사전식 목록(현행 법령, 쪽당 100건) 상한(TK-143)
 
 
 class OfficialLegalMixin:
@@ -182,10 +183,26 @@ class OfficialLegalMixin:
         LOOKUP_FAILED / INCOMPLETE. 검색어는 최대 2개(어간, 앞 4자), 검색어마다 목록은
         INFERENCE_MAX_PAGES쪽(쪽당 100건)까지만 읽는다. 상한에 걸리면 INCOMPLETE이며 후보를 고르지 않는다.
         """
-        from packages.legal_engine.law_name_inference import pick, stem
+        from packages.legal_engine.law_name_inference import SHORT_STEM, gana_code, pick, stem
         from .law_go_kr import _normalize_law_payload
 
         body = stem(law_name)
+        if len(body) == SHORT_STEM and gana_code(body):
+            # 두 글자 어간은 부분 문자열 검색으로 찾을 수 없다('노조' ⊄ '노동조합…'). 첫 글자 초성의 현행 법령 사전식
+            # 목록에서 글자 순서 일치로 고른다(TK-143). 목록이 상한을 넘거나 실패하면 추정하지 않는다.
+            listed = self._legal_list(body, "law", "LawSearch", "law", max_pages=GANA_MAX_PAGES,
+                                      gana=gana_code(body), sort="lasc")
+            if not listed.ok or not listed.complete:
+                code = "INCOMPLETE" if "Pagination limit" in (listed.message or "") else "LOOKUP_FAILED"
+                return AdapterResponse(AdapterStatus.READY, [], listed.source_record, code,
+                                       listed.source_records or [], True)
+            chosen, ranked = pick(law_name, _normalize_law_payload({"LawSearch": {"law": listed.records}}),
+                                  min_stem=SHORT_STEM)
+            if chosen:
+                return AdapterResponse(AdapterStatus.READY, [chosen], listed.source_record, "FOUND",
+                                       listed.source_records or [], True)
+            return AdapterResponse(AdapterStatus.READY, ranked, listed.source_record,
+                                   "AMBIGUOUS" if ranked else "NO_CANDIDATE", listed.source_records or [], True)
         # 어간이 정식명 안에 이어 나오지 않을 수 있다("…예방 및 처벌…" ← "…처벌법"). 앞 4자로 한 번만 더 찾는다.
         queries = [q for q in dict.fromkeys([body, body[:4]]) if len(q) >= 3]
         sources, first, ambiguous = [], None, []

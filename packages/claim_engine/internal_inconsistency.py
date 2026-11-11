@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import List, Optional, Tuple, Dict, Any
 
+from packages.claim_engine.date_verifier import TIME_RE, _parse_time_match
 from packages.common.enums import EvidenceGrade, FindingType, Severity, VerificationStatus
 from packages.common.schemas import Evidence, Finding, NormalizedDocument
 from packages.document_engine.reading_text import build_reading_text, sentence_bounds
@@ -224,8 +225,9 @@ EVENT_PREDICATE_MAP = {
     "사고": re.compile(r"(?:발생(?:하|했|하였|한|하고|하여|자마자)?|일어나|일어난|일어났|났|난)"),
     "화재": re.compile(r"(?:발생(?:하|했|하였|한|하고|하여|자마자)?|일어나|일어난|일어났|났|난)"),
     "계약": re.compile(r"(?:체결(?:하|했|하였|한|하고|하여)?|맺(?:었|은|고)?)"),
-    "해지": re.compile(r"(?:해지(?:하|했|하였|한|하고|하여|되었|된|되)?)"),
-    "해제": re.compile(r"(?:해제(?:하|했|하였|한|하고|하여|되었|된|되)?)"),
+    # 평가 측 후속 I6: 접미가 선택이면 명사로만 쓰인 '해지·해제'('해지 예고 결정')도 사건 서술로 읽힌다 — 서술 접미 필수
+    "해지": re.compile(r"(?:해지(?:하|했|하였|한|하고|하여|되었|된|되))"),
+    "해제": re.compile(r"(?:해제(?:하|했|하였|한|하고|하여|되었|된|되))"),
 }
 
 # Y6, Q1, QQ1: 수량 속성 정규식 - 단위는 구조로 추출 (메모 129 준수, 닫힌 단위 목록 열거 금지, 과·와·도·만 허용)
@@ -1161,4 +1163,723 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                 ))
                 break
 
+    # (8) TK-76 3주기 EVI-INCONS C: 문서 안 같은 대상(단일 사건)의 두 날짜·시각 모순 (C등급 / SUSPICIOUS)
+    emitted_internal_date_kinds = {
+        f.confidence_features.get("target_key", "").replace("event_", "")
+        for f in findings
+        if f.confidence_features.get("rule_id") == "EVI.INCONS_INTERNAL_DATE"
+    }
+    for key, stmts in date_by_key.items():
+        if len(stmts) >= 2 and any(stmts[0].date_val != o.date_val for o in stmts[1:]):
+            emitted_internal_date_kinds.add(key.replace("event_", ""))
+
+    findings.extend(
+        _check_same_event_datetime_inconsistency(
+            doc=doc,
+            reading=reading,
+            author_party=author_party,
+            emitted_internal_date_kinds=emitted_internal_date_kinds,
+        )
+    )
+
     return findings
+
+
+# --- TK-76 3주기 EVI-INCONS 범주 C (문서 안 같은 대상의 두 날짜·시각 모순) ---
+
+SAME_EVENT_NOUNS: Tuple[str, ...] = (
+    "회신", "답변", "통지", "통보", "고지", "발송", "송부", "송달", "전달",
+    "해지", "해제", "취소", "철회", "결의", "의결", "처분", "결정", "명령", "징계", "해고",
+    "신청", "청구", "체결", "합의", "약정", "보고", "신고",
+    # 평가 측 후속 I2(사용자 결정 11-09): 같은 사건을 전달 수단 명사로 적은 꼴 — 알림 단계(NOTIFY_SEND)로 본다
+    "문자메시지", "이메일", "전자우편", "메일", "문자", "서신", "편지", "팩스",
+)
+_EVENT_NOUN_ALT = "|".join(SAME_EVENT_NOUNS)
+
+# N6: 유일성 표지 — 부정 보조사 '도'('단 한 번도') 제외
+_UNIQUENESS_MARKER_RE = re.compile(
+    r"(?:단\s*(?:한|1)\s*(?:차례|번|회)|(?:한|1)\s*(?:차례|번|회)만|유일한|유일하게|"
+    r"처음이자\s*마지막(?:으로)?|오직\s*(?:한|1)\s*(?:차례|번|회))(?!\s*도)"
+)
+
+# N4, N7, C1: 지시어 결속 정규식 — 앞 경계 (?<![가-힣0-9]), 게으른 내용 수식 선택 (??), 문서 접미 (?P<doc>서)?
+_ANAPHORA_EVENT_RE = re.compile(
+    r"(?<![가-힣0-9])(?P<det>위|그|해당|이\s*사건|본건|동)\s+"
+    r"(?:(?P<content>[가-힣]{2,12}?(?:\s+[가-힣]{2,12}?)??)\s*)??"
+    r"(?P<head>" + _EVENT_NOUN_ALT + r")(?P<doc>서)?(?!\s*(?:" + _EVENT_NOUN_ALT + r"))"
+)
+
+# 평가 측 후속 I5: 지시어 명사구가 '[사건 명사] [명사 1어절] [사건 명사]'로 이어지면 마지막 사건 명사가 머리다
+# ('위 해지 예고 통지' → 머리 '통지', 보조 머리 '해지', 내용 '예고' — 일반 경로의 '마지막 사건 명사' 규칙과 맞춘다)
+_ANAPHORA_EXT_RE = re.compile(
+    r"\s+(?P<mid>[가-힣]{2,12})\s+(?P<head2>" + _EVENT_NOUN_ALT + r")(?!\s*(?:" + _EVENT_NOUN_ALT + r"))"
+)
+# 지시어가 앞 사건을 가리키고 뒤 명사는 다른 사건인 꼴('위 해고 이후 신청')을 막는 시간·관계 명사
+_ANAPHORA_EXT_BLOCK = frozenset({
+    "이후", "이전", "직후", "직전", "당시", "무렵", "관련", "이외", "대신", "과정", "도중", "전후", "결과", "다음", "뒤",
+})
+
+# 일반 사건 명사(비지시어) 추출 — 복합 사건 명사에서 뒤이어 사건 명사가 오지 않는 마지막 사건 명사를 머리로 선택
+_GENERAL_EVENT_RE = re.compile(
+    r"(?<![가-힣0-9])(?P<head>" + _EVENT_NOUN_ALT + r")(?P<doc>서)?(?!\s*(?:" + _EVENT_NOUN_ALT + r"))"
+)
+
+# N3: 직접 논항 위치 제약 — 뒤에 수식·관형·선행수령 표지가 오면 해당 절의 날짜 대상에서 제외
+_NON_ARGUMENT_SUFFIX_RE = re.compile(
+    r"^\s*(?:"
+    r"에\s*(?:대한|대하여|관한|관하여|따른|따라|기한|기초한|의한|대해|관해)|"
+    r"의\s+[가-힣]+|"
+    r"(?:을|를)\s*(?:받은|받고|수령한|수령하고|접수한|접수하고|송달받은|송달받고)"
+    r")"
+)
+
+# N3: 행위 주체 추출 정규식 (주격 및 사건 명사 직접 수식 소유격)
+_CLAUSE_ACTOR_NOM_RE = re.compile(
+    r"(?<![가-힣])(?P<actor>원고|피고|신청인|피신청인|채권자|채무자|항소인|피항소인|상고인|피상고인|"
+    r"회사|법인|학교법인|이사회|징계위원회|위원회|조합|총회)"
+    r"(?:\s*측)?(?:은|는|이|가)(?![가-힣])"
+)
+_CLAUSE_ACTOR_GEN_RE = re.compile(
+    r"(?<![가-힣])(?P<actor>원고|피고|신청인|피신청인|채권자|채무자|항소인|피항소인|상고인|피상고인|"
+    r"회사|법인|학교법인|이사회|징계위원회|위원회|조합|총회)"
+    r"(?:\s*측)?의\s*$"
+)
+
+# 2.3(2): 차수·별건 수식어
+_ORDINAL_TAG_RE = re.compile(
+    r"(?:(?P<ord>제?\s*\d+\s*차(?!량|선|원|례)|첫\s*번째|두\s*번째|세\s*번째|초회)|"
+    r"(?P<sep>추가|재차|별도의|또\s*다른|종전|기존))"
+)
+_SEQUENCE_CHANGE_RE = re.compile(
+    r"(?:당초|처음에는|이후|변경|연장|갱신|수정|재발송|다시)"
+)
+
+# 2.4: 제외 규칙 (오기·정정, 상대방 서면 탄핵, 가정·예비적 주장, 부정·기한)
+_SAME_EVENT_EXCEPTION_RE = re.compile(
+    r"(?:오기|착오|오타|잘못\s*적|바로잡|정정|수정하|고친다|"
+    r"주위적(?:으로)?|예비적(?:으로)?|가정적(?:으로)?|설령|가사|백보를?\s*양보|가정하더라도|"
+    r"(?:기재하여|주장하여|진술하여|적어)\s*(?:앞뒤가\s*맞지\s*않|모순|신빙성이\s*없)|"
+    r"앞뒤가\s*맞지\s*않)"
+)
+# 평가 측 후속 I9: 정정류 제외 낱말이 사건 명사구의 수식어로 쓰이면('정정 요청 메일'·'오기 정정 신청') 정정 진술이 아니다
+_CORRECTION_WORDS = frozenset({"오기", "착오", "오타", "정정", "수정"})
+_CORRECTION_AS_MODIFIER_RE = None  # 사건 명사 대안이 정의된 뒤 _correction_as_modifier_re()에서 만든다
+
+
+def _correction_as_modifier_re() -> "re.Pattern":
+    global _CORRECTION_AS_MODIFIER_RE
+    if _CORRECTION_AS_MODIFIER_RE is None:
+        _CORRECTION_AS_MODIFIER_RE = re.compile(
+            r"\s+(?:[가-힣]{2,12}\s+)?(?:" + _EVENT_NOUN_ALT + r")(?:서)?(?:을|를|은|는|이|가|에|의|과|와|도|만|으로|로|\s|$)"
+        )
+    return _CORRECTION_AS_MODIFIER_RE
+
+
+def _has_same_event_exception(sentence: str) -> bool:
+    for m in _SAME_EVENT_EXCEPTION_RE.finditer(sentence):
+        word = m.group(0)
+        if word in _CORRECTION_WORDS and (m.start() == 0 or not re.match(r"[가-힣]", sentence[m.start() - 1])) \
+                and _correction_as_modifier_re().match(sentence, m.end()):
+            continue
+        return True
+    return False
+
+
+_CLAUSE_NEGATION_FUTURE_RE = re.compile(
+    r"(?:하지\s*않|안\s*하|못하|없었|사실이\s*없|바\s*없|적\s*없|일\s*없|아니다|아니었|"
+    r"보내지\s*않|발송하지\s*않|통지하지\s*않|회신하지\s*않|"
+    r"예정|계획|할\s*것|하고자|"
+    # 평가 측 후속 I7: 가정('-였다면·-라면·-더라도')·의문('-였는지·-는가')·비현실('-할 이유·필요')도 단정이 아니다
+    r"다면|라면|더라도|더라면|는지|은지|었는지|였는지|는가|을까|(?:할|될)\s*(?:이유|필요|리)|"
+    # 평가 측 후속 I8: 서법 축 전체 — 가정('-으면·-다 해도·-어도')·의문('-을지·-느냐')·선택('-거나·-든지')·
+    # 추측('-을 것·-을 수·-을 가능성·-듯·-겠')·당위('-었어야·-해야 했')·예정('-기로 하')
+    r"으면(?!서)|다\s*(?:해도|하여도)|(?:었|였|았|했)어도|을지|할지|될지|느냐|거나|든지|던지|"
+    r"(?:을|할|될)\s*(?:것|수|가능성|듯|터)|(?:한|은|는|된)\s*듯|겠|(?:었|였|았|했)어야|해야\s*(?:했|하였|한다|합니다)|"
+    r"기로\s*(?:하|했|약정|합의|결정))"
+)
+_CLAUSE_DEADLINE_RE = re.compile(
+    r"(?:부터\s*[^.,;]{0,30}?까지|이내에|기한|까지\s*(?:회신|답변|통지|통보|제출|발송))"
+)
+
+# 절 분리 (연결어미 -면서, -였으나, -는데, -고 등 포괄)
+_SAME_EVENT_CLAUSE_SPLIT_RE = re.compile(
+    r"(?<!\d),(?!\d)|;|"
+    r"(?<=[가-힣])(?:"
+    r"(?:하|되|있|없|었|였|겠|았|냈|졌|쳤|봤|왔|갔)(?:고|며|으나|나|지만|는데|는바|자|면서|여서|아서|어서|다가|면서도)|"
+    r"(?:한|된|받은|보낸)\s*(?:후|뒤|다음)(?:에)?|"
+    r"(?<!대)(?<!관)(?<!의)하여"
+    r")\s+"
+)
+
+# 날짜 추출 정규식 (연·월·일, 같은 달 D일, 월·일)
+_FULL_DATE_RE = re.compile(
+    r"(?<![\d.])(?P<y>\d{4})\s*(?:[-./년]\s*)(?P<m>\d{1,2})\s*(?:[-./월]\s*)(?P<d>\d{1,2})(?P<tail>\s*일|\s*\.)?"
+)
+_SAME_MONTH_DAY_RE = re.compile(
+    r"(?:같은\s*달|동월|그\s*달)\s*(?P<d>\d{1,2})\s*일"
+)
+_MONTH_DAY_RE = re.compile(
+    r"(?<![\d.년])(?P<m>\d{1,2})\s*월\s*(?P<d>\d{1,2})\s*일"
+)
+
+# N2, N5: 행위 단계(stage_role) 서술어 정규식
+_STAGE_PREDICATE_PATTERNS: Tuple[Tuple[str, re.Pattern], ...] = (
+    ("DRAFT", re.compile(r"(?:작성|기안|결재|마련|준비)(?:하|했|하였|한|하고|하여|되|되었|된)?")),
+    ("ARRIVE_RECEIVE", re.compile(r"(?:도달|도착|수령|송달|수신|입수|접수)(?:하|했|하였|한|하고|하여|되|되었|된)?|(?:받았|받아|받은)")),
+    ("EFFECTIVE", re.compile(r"(?:시행|발효|효력\s*발생|적용)(?:하|했|하였|한|하고|하여|되|되었|된)?")),
+    ("NOTIFY_SEND", re.compile(r"(?:통지|통보|고지|발송|발신|송부|송달|전달|전송|회신|답변|교부)(?:하|했|하였|한|하고|하여|되|되었|된|함|하면서|하며)?|(?:보내|보냈|보낸|보내고|보내며)|(?<![가-힣])(?:알리|알렸|알린|알려(?!지))|(?<![가-힣])(?:전했|전한|전하고|전하여|전하였|전해)")),
+    ("DECIDE", re.compile(r"(?:처분|결정|결의|의결|해지|해제|취소|철회|체결|합의|약정|명령|징계|해고)(?:하|했|하였|한|하고|하여|되|되었|된|함)?|(?:내렸|내린|내리고)")),
+    ("SUBMIT_FILE", re.compile(r"(?:제출|신청|청구|신고|제기)(?:하|했|하였|한|하고|하여|되|되었|된)?")),
+)
+
+_DEFAULT_NOUN_STAGE: Dict[str, str] = {
+    "회신": "NOTIFY_SEND", "답변": "NOTIFY_SEND", "통지": "NOTIFY_SEND", "통보": "NOTIFY_SEND",
+    "고지": "NOTIFY_SEND", "발송": "NOTIFY_SEND", "송부": "NOTIFY_SEND", "송달": "NOTIFY_SEND",
+    "전달": "NOTIFY_SEND", "보고": "NOTIFY_SEND",
+    "해지": "DECIDE", "해제": "DECIDE", "취소": "DECIDE", "철회": "DECIDE",
+    "결의": "DECIDE", "의결": "DECIDE", "처분": "DECIDE", "결정": "DECIDE",
+    "명령": "DECIDE", "징계": "DECIDE", "해고": "DECIDE", "체결": "DECIDE",
+    "합의": "DECIDE", "약정": "DECIDE",
+    "신청": "SUBMIT_FILE", "청구": "SUBMIT_FILE", "신고": "SUBMIT_FILE",
+    "문자메시지": "NOTIFY_SEND", "이메일": "NOTIFY_SEND", "전자우편": "NOTIFY_SEND", "메일": "NOTIFY_SEND",
+    "문자": "NOTIFY_SEND", "서신": "NOTIFY_SEND", "편지": "NOTIFY_SEND", "팩스": "NOTIFY_SEND",
+}
+
+_CONTENT_EXCLUDE_WORDS = frozenset({
+    "원고", "피고", "신청인", "피신청인", "채권자", "채무자", "상대방",
+    "차례", "단한번", "한번", "한차례", "유일한", "유일하게", "마지막",
+    "당일", "금일", "익일", "그날", "같은날", "동일", "당시", "실제로", "그러나", "그런데",
+    "오전", "오후", "새벽", "아침", "저녁",
+})
+
+
+@dataclass
+class _SameEventSlot:
+    actor: Optional[str]
+    content_prefix: Optional[str]
+    head_noun: str
+    alt_head_noun: Optional[str]
+    stage_role: str
+    ordinal_tag: Optional[str]
+    has_sep_modifier: bool
+    is_uniq: bool
+    is_anaphora: bool
+    has_seq_word: bool
+    date_val: Optional[Tuple[int, int, int]]
+    raw_date: str
+    time_minutes: Optional[int]
+    raw_time: str
+    is_approx_time: bool
+    clause: str
+    sentence: str
+    sent_idx: int
+    block_id: Optional[str]
+    page: int
+
+
+_PRONOUN_SYLLABLES = frozenset("그저나너내누뭐걔얘쟤")
+
+
+def _clean_content_prefix(raw_content: Optional[str]) -> Optional[str]:
+    if not raw_content:
+        return None
+    tokens = [t for t in raw_content.strip().split() if t]
+    if not tokens:
+        return None
+    tok = tokens[-1]
+    # 평가 측 후속 T2: '이의·항의·사과·제도·불만'처럼 끝 음절이 조사(과·의·도·만)와 같은 두 글자 명사는
+    # 조사로 보지 않는다(첫 글자가 대명사·지시어인 '그의·나도·그만' 등은 그대로 조사로 본다)
+    two_syllable_noun = bool(re.fullmatch(r"[가-힣][과의도만]", tok)) and tok[0] not in _PRONOUN_SYLLABLES
+    if not two_syllable_noun and re.search(r"(?:은|는|이|가|을|를|에|에서|에게|으로|로|와|과|의|도|만|부터|까지|한|된|할|던|차례|번|날|일|시|분|경)$", tok):
+        return None
+    clean = re.sub(r"\s+", "", tok)
+    # 평가 측 보완 D1: 날짜·번호 조각('21.', '3)')이 내용 수식으로 남지 않게 한글 2~12자 어절만 받는다
+    if not re.fullmatch(r"[가-힣]{2,12}", clean) or clean in _CONTENT_EXCLUDE_WORDS:
+        return None
+    return clean
+
+
+def _determine_stage_role(clause: str, h_start: int, h_end: int, is_dated_doc: bool,
+                          head_noun: Optional[str] = None) -> str:
+    if is_dated_doc:
+        return "DATED"
+    after_text = clause[h_end:]
+    best_stage: Optional[str] = None
+    best_pos = len(after_text) + 1
+    for stage_name, pat in _STAGE_PREDICATE_PATTERNS:
+        m = pat.search(after_text)
+        if m and m.start() < best_pos:
+            best_pos = m.start()
+            best_stage = stage_name
+    if best_stage:
+        return best_stage
+
+    # 평가 측 보완 D2: 앞 25자에서는 서술어 꼴(어간+활용, '보내·받' 등)만 단계로 본다.
+    # 맨 명사('해제 통지'의 '해제'처럼 내용 수식)는 단계 서술어가 아니다
+    before_window = clause[max(0, h_start - 25):h_start]
+    for stage_name, pat in _STAGE_PREDICATE_PATTERNS:
+        if any(not re.fullmatch(r"[가-힣]{2}", mm.group(0)) for mm in pat.finditer(before_window)):
+            return stage_name
+
+    # 평가 측 보완 D2: 기본 단계는 머리 명사로 찾는다(지시어 구간 '위 청구'·'위 해제 통지' 전체가 아니라)
+    head_raw = (head_noun or clause[h_start:h_end]).rstrip("서")
+    return _DEFAULT_NOUN_STAGE.get(head_raw, "NOTIFY_SEND")
+
+
+_MEDIUM_NOUNS = frozenset({"문자메시지", "이메일", "전자우편", "메일", "문자", "서신", "편지", "팩스"})
+
+
+def _is_medium_instrument(head: str, after: str) -> bool:
+    """평가 측 후속 I2: 전달 수단 명사가 '팩스로·메일로'처럼 수단(-으로/-로)으로 쓰이면 사건이 아니다."""
+    return head in _MEDIUM_NOUNS and bool(re.match(r"^(?:으로|로)(?:써|서)?(?![가-힣])", after))
+
+
+def _extract_event_from_clause(
+    clause: str,
+    sent_last_noun_event: Optional[Tuple[Optional[str], str, bool, bool]] = None,
+) -> Optional[Tuple[Optional[str], str, Optional[str], int, int, bool, bool]]:
+    """절에서 (content_prefix, head_noun, alt_head_noun, start, end, is_anaphora, is_noun_arg)를 추출한다."""
+    # 1. 지시어 결속 명사구 우선 (_ANAPHORA_EVENT_RE)
+    for m in _ANAPHORA_EVENT_RE.finditer(clause):
+        head = m.group("head")
+        end = m.end()
+        raw_content = m.group("content")
+        alt_head = None
+        if not m.group("doc"):
+            ext = _ANAPHORA_EXT_RE.match(clause, end)
+            if ext and ext.group("mid") not in SAME_EVENT_NOUNS and ext.group("mid") not in _ANAPHORA_EXT_BLOCK \
+                    and _clean_content_prefix(ext.group("mid")) is not None:
+                alt_head, head, end, raw_content = head, ext.group("head2"), ext.end(), ext.group("mid")
+        after = clause[end:]
+        # 평가 측 후속 I1: '[날짜]에 [동사]한 위 [사건 명사]에 대하여 …'처럼 관형절에 그 사건의 날짜가 있으면 수식어 자리여도 결속한다
+        if _NON_ARGUMENT_SUFFIX_RE.match(after) and not _has_dated_relative_clause(clause[:m.start()]):
+            continue
+        if _is_medium_instrument(head, after):
+            continue
+        # 평가 측 후속 I4: 지시어 뒤 내용 수식이 두 어절('위 [명사] [명사] [사건 명사]')이면 앞 어절도 명사여야 한다
+        # ('위 원고에게 보낸 통지'처럼 지시어가 다른 명사를 꾸미는 꼴은 결속하지 않는다)
+        if raw_content and len(raw_content.split()) == 2 and _clean_content_prefix(raw_content.split()[0]) is None:
+            continue
+        # 평가 측 후속 I5: 머리 명사는 명사구의 마지막 사건 명사(일반 경로와 같은 규칙). 내용 수식의 마지막 어절이
+        # 사건 명사이면('위 직위 해제 결의') 그것을 보조 머리로 두고, 내용 수식은 그 앞 어절로 한다
+        if raw_content and alt_head is None:
+            toks = raw_content.split()
+            if len(toks) == 2 and toks[-1] in SAME_EVENT_NOUNS:
+                alt_head, raw_content = toks[-1], toks[0]
+        content = _clean_content_prefix(raw_content)
+        return (content, head, alt_head, m.start(), end, True, True)
+
+    # 2. 비지시어 사건 명사구 (명사 논항 자리 우선, 서술어 접미 자리 차순위)
+    candidates = list(_GENERAL_EVENT_RE.finditer(clause))
+    if not candidates:
+        return None
+
+    noun_arg_candidates = []
+    verbal_candidates = []
+    for m in candidates:
+        after = clause[m.end():]
+        if _NON_ARGUMENT_SUFFIX_RE.match(after):
+            continue
+        if _is_medium_instrument(m.group("head"), after):
+            continue
+        if re.match(r"^(?:하|했|하였|한|하고|하여|되|되었|된|함|하면서|하며)", after):
+            verbal_candidates.append(m)
+        else:
+            noun_arg_candidates.append(m)
+
+    if noun_arg_candidates:
+        chosen = noun_arg_candidates[-1]
+        before_slice = clause[max(0, chosen.start() - 15):chosen.start()].strip()
+        content = _clean_content_prefix(before_slice)
+        alt_head = verbal_candidates[-1].group("head") if verbal_candidates else None
+        if alt_head in ("발송", "송부", "송달", "전달"):
+            alt_head = None
+        return (content, chosen.group("head"), alt_head, chosen.start(), chosen.end(), False, True)
+
+    if verbal_candidates:
+        chosen = verbal_candidates[-1]
+        # 같은 문장 앞 절에 명사 논항 사건('회신을', '위 통지를')이 있었고 현재 절에 별도 목적어가 없으면 앞 절의 사건 명사를 승계
+        if sent_last_noun_event and not re.search(r"[가-힣]{2,}(?:을|를)", clause[:chosen.start()]):
+            prev_content, prev_head, _, prev_anaphora = sent_last_noun_event
+            return (prev_content, prev_head, chosen.group("head"), chosen.start(), chosen.end(), prev_anaphora, False)
+        before_slice = clause[max(0, chosen.start() - 15):chosen.start()].strip()
+        content = _clean_content_prefix(before_slice)
+        return (content, chosen.group("head"), None, chosen.start(), chosen.end(), False, False)
+
+    return None
+
+
+# 평가 측 보완 D3: 사건 명사(지시어·내용 수식 포함) 바로 앞 관형절 동사
+_RELATIVE_EVENT_VERB_RE = re.compile(
+    r"(?P<verb>[가-힣]{0,6}(?:한|된|보낸|낸|받은))(?!\s+(?:차례|번|회|건|명|가지)(?:\s|$))\s+(?:(?:위|그|해당|이\s*사건|본건|동)\s+)?(?:[가-힣]{2,12}\s+)?$"
+)
+
+
+def _has_dated_relative_clause(prefix: str) -> bool:
+    """prefix가 '[날짜·시각] … [동사]한/된/보낸 ' 꼴로 끝나는지(관형절 안에 날짜·시각이 있는지) 본다."""
+    m_rel = _RELATIVE_EVENT_VERB_RE.search(prefix + " ")
+    if not m_rel:
+        return False
+    head = prefix[:m_rel.start()]
+    return bool(_FULL_DATE_RE.search(head) or TIME_RE.search(head) or _SAME_MONTH_DAY_RE.search(head)
+                or _MONTH_DAY_RE.search(head) or _RELATIVE_DATE_RE.search(head))
+
+
+def _relative_verb_stage(verb: str, head_noun: Optional[str]) -> str:
+    """관형절 동사로 단계를 정한다. 기능동사('한'·'된')뿐이면 머리 명사의 기본 단계."""
+    for stage_name, pat in _STAGE_PREDICATE_PATTERNS:
+        m = pat.search(verb)
+        if m and not re.fullmatch(r"[가-힣]{2}", m.group(0)):
+            return stage_name
+    return _DEFAULT_NOUN_STAGE.get((head_noun or "").rstrip("서"), "NOTIFY_SEND")
+
+
+def _check_same_event_datetime_inconsistency(
+    doc: NormalizedDocument,
+    reading: Any,
+    author_party: Optional[str],
+    emitted_internal_date_kinds: set,
+) -> List[Finding]:
+    """TK-76 3주기 EVI-INCONS C: 문서 안 같은 사건(유일성 표지·지시어 결속)의 두 날짜·시각 모순 탐지."""
+    findings: List[Finding] = []
+    text = reading.text
+
+    slots: List[_SameEventSlot] = []
+    # 문서 내 유일성 표지로 단일성이 선언된 (actor, head_noun, stage_role) 집합
+    uniq_declared: set = set()
+
+    current_block_id: Optional[str] = None
+    last_year: int = 0
+    last_month: int = 0
+    block_last_date: Optional[Tuple[int, int, int]] = None
+    prev_block_last_date: Optional[Tuple[int, int, int]] = None
+
+    for sent_idx, (start, end) in enumerate(sentence_bounds(text)):
+        sentence = text[start:end].strip()
+        if len(sentence) < 10:
+            continue
+
+        # 2.4(1)~(3): 문장 단위 제외 가드 (오기 정정, 상대방 주장·탄핵, 주위적·예비적·가정적 주장)
+        if (
+            _LEGITIMATE_EXCEPTION_RE.search(sentence)
+            or _has_same_event_exception(sentence)
+            or _is_opponent_claim_sentence(sentence, author_party)
+        ):
+            continue
+
+        page = 1
+        b_id: Optional[str] = None
+        blocks = reading.blocks_between(start, end)
+        if blocks:
+            b_obj = blocks[0]
+            page = getattr(b_obj, "page_no", 1) or getattr(b_obj, "page", 1) or 1
+            b_id = getattr(b_obj, "block_id", None)
+            if b_id != current_block_id:
+                current_block_id = b_id
+                prev_block_last_date = block_last_date
+                block_last_date = None
+
+        clauses = [c.strip() for c in _SAME_EVENT_CLAUSE_SPLIT_RE.split(sentence) if len(c.strip()) >= 3]
+        if not clauses:
+            clauses = [sentence]
+
+        # 문장 주어 추출
+        sentence_actor: Optional[str] = None
+        m_sent_actor = _CLAUSE_ACTOR_NOM_RE.search(sentence)
+        if m_sent_actor:
+            sentence_actor = m_sent_actor.group("actor")
+
+        sentence_last_date: Optional[Tuple[int, int, int]] = None
+        sent_has_seq = bool(_SEQUENCE_CHANGE_RE.search(sentence))
+        sent_last_noun_event: Optional[Tuple[Optional[str], str, bool, bool]] = None
+
+        for clause in clauses:
+            # 2.4(5): 절 내부 기한·범위 제외
+            if _CLAUSE_DEADLINE_RE.search(clause):
+                continue
+
+            ev_info = _extract_event_from_clause(clause, sent_last_noun_event)
+            if not ev_info:
+                # 사건 명사가 없더라도 날짜는 후속 절을 위해 갱신
+                m_fd = _FULL_DATE_RE.search(clause)
+                if m_fd:
+                    last_year, last_month = int(m_fd.group("y")), int(m_fd.group("m"))
+                    sentence_last_date = (last_year, last_month, int(m_fd.group("d")))
+                    block_last_date = sentence_last_date
+                continue
+
+            content_prefix, head_noun, alt_head_noun, h_start, h_end, is_anaphora, is_noun_arg = ev_info
+
+            # 2.4(4): 사건 명사 뒤 본 서술어가 부정·미래이면 제외
+            # 평가 측 보완 D3: 관형절 꼴('[날짜·시각] [동사]한/된/보낸 (위·그) [사건 명사]…') — 사건 서술어는 명사 앞 관형절 동사다.
+            # 관형절 안에 날짜·시각이 있을 때만 이 꼴로 보고, 날짜·시각·단계는 관형절에서, 부정 검사는 하지 않는다(주절은 다른 내용)
+            rel_cut: Optional[int] = None
+            m_rel = _RELATIVE_EVENT_VERB_RE.search(clause[:h_start])
+            if m_rel:
+                rel_head = clause[:m_rel.start()]
+                if (_FULL_DATE_RE.search(rel_head) or TIME_RE.search(rel_head) or _SAME_MONTH_DAY_RE.search(rel_head)
+                        or _MONTH_DAY_RE.search(rel_head) or _RELATIVE_DATE_RE.search(rel_head)):
+                    rel_cut = m_rel.end()
+            dt_text = clause[:rel_cut] if rel_cut is not None else clause
+
+            pred_tail = clause[h_end:]
+            if rel_cut is None and _CLAUSE_NEGATION_FUTURE_RE.search(pred_tail):
+                continue
+
+            # 주체(actor) 결정: 사건 명사 직전 소유격('원고의 회신') -> 절 내부 주격 -> 문장 주어 승계
+            clause_actor: Optional[str] = None
+            m_gen = _CLAUSE_ACTOR_GEN_RE.search(clause[:h_start])
+            if m_gen:
+                clause_actor = m_gen.group("actor")
+            else:
+                m_nom = _CLAUSE_ACTOR_NOM_RE.search(clause)
+                clause_actor = m_nom.group("actor") if m_nom else sentence_actor
+            if clause_actor and not sentence_actor:
+                sentence_actor = clause_actor
+
+            # 차수·별건 수식어 검사 (사건 명사 앞 20자 이내)
+            ord_window = clause[max(0, h_start - 20):h_start]
+            m_ord = _ORDINAL_TAG_RE.search(ord_window)
+            ordinal_tag = re.sub(r"\s+", "", m_ord.group("ord")) if (m_ord and m_ord.group("ord")) else None
+            has_sep_modifier = bool(m_ord and m_ord.group("sep"))
+
+            # 날짜 추출
+            d_val: Optional[Tuple[int, int, int]] = None
+            raw_date = ""
+            is_dated_doc = False
+
+            m_fd = _FULL_DATE_RE.search(dt_text)
+            if m_fd:
+                last_year = int(m_fd.group("y"))
+                last_month = int(m_fd.group("m"))
+                d_val = (last_year, last_month, int(m_fd.group("d")))
+                raw_date = m_fd.group(0).strip()
+                if re.match(r"^\s*자(?:\s|[가-힣.,;)]|$)", dt_text[m_fd.end():]):
+                    is_dated_doc = True
+            else:
+                m_smd = _SAME_MONTH_DAY_RE.search(dt_text)
+                if m_smd and last_month > 0:
+                    d_val = (last_year, last_month, int(m_smd.group("d")))
+                    raw_date = m_smd.group(0).strip()
+                    if re.match(r"^\s*자(?:\s|[가-힣.,;)]|$)", dt_text[m_smd.end():]):
+                        is_dated_doc = True
+                else:
+                    m_md = _MONTH_DAY_RE.search(dt_text)
+                    if m_md:
+                        last_month = int(m_md.group("m"))
+                        d_val = (last_year, last_month, int(m_md.group("d")))
+                        raw_date = m_md.group(0).strip()
+                        if re.match(r"^\s*자(?:\s|[가-힣.,;)]|$)", dt_text[m_md.end():]):
+                            is_dated_doc = True
+                    elif _RELATIVE_DATE_RE.search(dt_text):
+                        d_val = sentence_last_date or block_last_date or prev_block_last_date
+                        raw_date = _RELATIVE_DATE_RE.search(dt_text).group(0) if d_val else ""
+
+            if d_val and not is_dated_doc:
+                sentence_last_date = d_val
+                block_last_date = d_val
+
+            # 시각 추출 (date_verifier.TIME_RE 및 _parse_time_match 재사용)
+            time_minutes: Optional[int] = None
+            raw_time = ""
+            is_approx_time = False
+            m_time = TIME_RE.search(dt_text)
+            if m_time:
+                parsed_t = _parse_time_match(m_time)
+                if parsed_t is not None:
+                    raw_time, time_minutes = parsed_t
+                    if re.match(r"^\s*(?:경|무렵|쯤|전후)", dt_text[m_time.end():]):
+                        is_approx_time = True
+                        raw_time = raw_time + re.match(r"^\s*(?:경|무렵|쯤|전후)", dt_text[m_time.end():]).group(0)
+                    # 시각만 있고 날짜가 생략된 절은 같은 문장/단락의 직전 날짜 승계
+                    if d_val is None:
+                        d_val = sentence_last_date or block_last_date
+                        if d_val:
+                            raw_date = f"{d_val[0]}. {d_val[1]}. {d_val[2]}."
+
+            stage_role = (_relative_verb_stage(m_rel.group("verb"), head_noun) if rel_cut is not None and not is_dated_doc
+                          else _determine_stage_role(clause, h_start, h_end, is_dated_doc, head_noun))
+            is_uniq = bool(_UNIQUENESS_MARKER_RE.search(clause))
+            if is_noun_arg:
+                sent_last_noun_event = (content_prefix, head_noun, is_uniq, is_anaphora)
+
+            if is_uniq and stage_role != "DATED" and not has_sep_modifier and not ordinal_tag:
+                uniq_declared.add((clause_actor, head_noun, stage_role))
+                uniq_declared.add((None, head_noun, stage_role))
+                if alt_head_noun:
+                    uniq_declared.add((clause_actor, alt_head_noun, stage_role))
+                    uniq_declared.add((None, alt_head_noun, stage_role))
+
+            # 날짜와 시각이 모두 없는 절(예: '단 한 차례 회신을 보냈는데')은 유일성 선언만 기록하고 슬롯에서는 건너뜀
+            if d_val is None and time_minutes is None:
+                continue
+
+            slots.append(
+                _SameEventSlot(
+                    actor=clause_actor,
+                    content_prefix=content_prefix,
+                    head_noun=head_noun,
+                    alt_head_noun=alt_head_noun,
+                    stage_role=stage_role,
+                    ordinal_tag=ordinal_tag,
+                    has_sep_modifier=has_sep_modifier,
+                    is_uniq=is_uniq,
+                    is_anaphora=is_anaphora,
+                    has_seq_word=sent_has_seq,
+                    date_val=d_val,
+                    raw_date=raw_date,
+                    time_minutes=time_minutes,
+                    raw_time=raw_time,
+                    is_approx_time=is_approx_time,
+                    clause=clause,
+                    sentence=sentence,
+                    sent_idx=sent_idx,
+                    block_id=b_id,
+                    page=page,
+                )
+            )
+
+    # 슬롯 간 쌍 비교
+    emitted_pairs: set = set()
+    for i, slot_a in enumerate(slots):
+        if slot_a.stage_role == "DATED" or slot_a.has_sep_modifier:
+            continue
+        # N9: 기존 EVI.INCONS_INTERNAL_DATE가 이미 발화한 사건 종류에는 양보
+        if slot_a.head_noun in emitted_internal_date_kinds or (
+            slot_a.content_prefix and slot_a.content_prefix in emitted_internal_date_kinds
+        ):
+            continue
+
+        for j in range(i + 1, len(slots)):
+            slot_b = slots[j]
+            if slot_b.stage_role == "DATED" or slot_b.has_sep_modifier:
+                continue
+            if slot_a.stage_role != slot_b.stage_role:
+                continue
+            same_head = (
+                slot_a.head_noun == slot_b.head_noun
+                or (slot_a.alt_head_noun is not None and slot_a.alt_head_noun == slot_b.head_noun)
+                or (slot_b.alt_head_noun is not None and slot_a.head_noun == slot_b.alt_head_noun)
+            )
+            if not same_head:
+                continue
+
+            # N3: 주체가 양쪽 모두 명시되어 있고 서로 다르면 별건
+            if slot_a.actor and slot_b.actor and slot_a.actor != slot_b.actor:
+                continue
+
+            # N4: 내용 수식이 양쪽 모두 명시되어 있고 서로 포함 관계가 아니면 별건
+            if slot_a.content_prefix and slot_b.content_prefix:
+                if (
+                    slot_a.content_prefix != slot_b.content_prefix
+                    and slot_a.content_prefix not in slot_b.content_prefix
+                    and slot_b.content_prefix not in slot_a.content_prefix
+                ):
+                    continue
+
+            # 2.3(2): 차수 표지 비교
+            if slot_a.ordinal_tag and slot_b.ordinal_tag and slot_a.ordinal_tag != slot_b.ordinal_tag:
+                continue
+            if (slot_a.ordinal_tag or slot_b.ordinal_tag) and not slot_b.is_anaphora:
+                continue
+
+            # 결속 조건 확인: (A) 유일성 표지 결속 또는 (B) 지시어 결속
+            eff_actor = slot_a.actor or slot_b.actor
+            has_uniq_binding = (
+                slot_a.is_uniq
+                or slot_b.is_uniq
+                or (eff_actor, slot_a.head_noun, slot_a.stage_role) in uniq_declared
+                or (eff_actor is None and (None, slot_a.head_noun, slot_a.stage_role) in uniq_declared)
+            )
+            has_anaphora_binding = slot_b.is_anaphora and (
+                slot_a.block_id == slot_b.block_id or abs(slot_b.sent_idx - slot_a.sent_idx) <= 3
+            )
+            if not (has_uniq_binding or has_anaphora_binding):
+                continue
+
+            # 시점 변경어('당초·이후·변경·갱신' 등)가 있고 유일성 결속이 아니면 제외
+            if (slot_a.has_seq_word or slot_b.has_seq_word) and not has_uniq_binding:
+                continue
+
+            # 날짜·시각 모순 여부 판정
+            is_date_conflict = (
+                slot_a.date_val is not None
+                and slot_b.date_val is not None
+                and slot_a.date_val != slot_b.date_val
+            )
+            is_time_conflict = False
+            if (
+                not is_date_conflict
+                and slot_a.time_minutes is not None
+                and slot_b.time_minutes is not None
+                and slot_a.time_minutes != slot_b.time_minutes
+                and (slot_a.date_val == slot_b.date_val or slot_a.date_val is None or slot_b.date_val is None)
+            ):
+                diff_min = abs(slot_a.time_minutes - slot_b.time_minutes)
+                # N9: 근사 시각('경·무렵·쯤·전후')이면 60분 미만 차이는 허용
+                if (slot_a.is_approx_time or slot_b.is_approx_time) and diff_min < 60:
+                    is_time_conflict = False
+                else:
+                    is_time_conflict = True
+
+            if not (is_date_conflict or is_time_conflict):
+                continue
+
+            event_key = (eff_actor or "", slot_a.head_noun, slot_a.stage_role)
+            if event_key in emitted_pairs:
+                break
+            emitted_pairs.add(event_key)
+
+            if is_date_conflict:
+                v1_str = slot_a.raw_date or f"{slot_a.date_val[0]}. {slot_a.date_val[1]}. {slot_a.date_val[2]}."
+                v2_str = slot_b.raw_date or f"{slot_b.date_val[0]}. {slot_b.date_val[1]}. {slot_b.date_val[2]}."
+                conflict_label = "일자"
+            else:
+                v1_str = slot_a.raw_time
+                v2_str = slot_b.raw_time
+                conflict_label = "시각"
+
+            # 평가 측 후속 T1: 내용 수식과 머리 명사는 같은 슬롯에서 함께 가져온다(다른 슬롯끼리 섞으면 '징계 징계'처럼 겹친다)
+            disp_slot = slot_a if slot_a.content_prefix else (slot_b if slot_b.content_prefix else slot_a)
+            if disp_slot.content_prefix and disp_slot.content_prefix != disp_slot.head_noun:
+                target_display = f"{disp_slot.content_prefix} {disp_slot.head_noun}"
+            else:
+                target_display = disp_slot.head_noun
+            bind_reason = "유일성 표지" if has_uniq_binding else "지시어 결속"
+            title = f"문서 내 동일 사건({target_display}) {conflict_label} 진술 모순: {v1_str} ↔ {v2_str}"
+            detail = (
+                f"{bind_reason}로 특정된 동일한 '{target_display}' 사건에 대하여 "
+                f"문서 앞뒤에서 {conflict_label}을 '{v1_str}'과(와) '{v2_str}'(으)로 서로 다르게 진술하여 모순됩니다."
+            )
+            if slot_a.sentence == slot_b.sentence:
+                excerpt = f"[{slot_b.page}쪽] {slot_b.sentence[:240]}"
+            else:
+                excerpt = f"[{slot_a.page}쪽] {slot_a.clause[:120]} ↔ [{slot_b.page}쪽] {slot_b.clause[:120]}"
+
+            findings.append(
+                _make_incons_finding(
+                    doc=doc,
+                    kind=FindingType.FACT_CONTRADICTION,
+                    grade=EvidenceGrade.C,
+                    severity=Severity.MEDIUM,
+                    status=VerificationStatus.SUSPICIOUS,
+                    title=title,
+                    detail=detail,
+                    excerpt=excerpt,
+                    page=slot_b.page,
+                    features={
+                        "rule_id": "EVI.INCONS_SAME_EVENT_DATETIME",
+                        "inconsistency_type": "SAME_EVENT_DATETIME",
+                        "event_noun": slot_a.head_noun,
+                        "stage_role": slot_a.stage_role,
+                        "binding_type": "UNIQUENESS" if has_uniq_binding else "ANAPHORA",
+                        "first_value": v1_str,
+                        "second_value": v2_str,
+                        "statements": [slot_a.sentence[:200], slot_b.sentence[:200]],
+                    },
+                )
+            )
+            break
+
+    return findings
+

@@ -1,0 +1,162 @@
+diff --git a/packages/claim_engine/evidence_consistency.py b/packages/claim_engine/evidence_consistency.py
+index 88fb3a5..8b0c586 100644
+--- a/packages/claim_engine/evidence_consistency.py
++++ b/packages/claim_engine/evidence_consistency.py
+@@ -2713,6 +2713,10 @@ def _form_section_rows(blocks, exhibits):
+         seen[(r.get("party"), r.get("number"), tuple(r.get("branches") or []))] = r
+     for r in so_rows:
+         seen[(r["party"], r["number"], ())] = r
++    # TK-149: 공용 행도 이제 '소갑·소을' 목록 줄을 행으로 만든다(당사자 키 '갑·을', 표기 '소…'). 이 검사의 자체 보충 행(당사자 '소갑·소을')과
++    # 같은 서증이 두 번 세이지 않도록, 자체 보충과 키가 겹치는 공용 '소' 행은 뺀다
++    so_keys = {(r["party"][-1], r["number"]) for r in so_rows}
++    rows = [r for r in rows if not (str(r.get("id") or "").startswith("소") and (r.get("party"), r.get("number")) in so_keys)]
+     return rows + list(seen.values())
+ 
+ 
+@@ -2892,18 +2896,33 @@ def check_reasoning_structure(doc: NormalizedDocument) -> List[Finding]:
+     return out
+ 
+ 
++_SO_LABEL_FIX_RE = re.compile(r"(?<![가-힣])(갑|을)(\s?제\s?\d)")
++
++
++def _so_notation_display(doc: NormalizedDocument, findings: List[Finding]) -> List[Finding]:
++    """TK-149: 신청 사건 서면이 '소갑·소을'만 쓰면 결과 제목·설명의 호증 표기도 '소갑·소을'로 보인다(당사자 키는 '갑·을' 그대로).
++    맨 '갑·을' 인용이 함께 있으면 어느 쪽인지 알 수 없으므로 바꾸지 않는다."""
++    refs = [r for r in parse_exhibits(build_reading_text(doc).text) if r["party"] in ("갑", "을")]
++    if not refs or any(not r["label"].startswith("소") for r in refs):
++        return findings
++    for f in findings:
++        f.title = _SO_LABEL_FIX_RE.sub(r"소\1\2", f.title)
++        f.detail = _SO_LABEL_FIX_RE.sub(r"소\1\2", f.detail)
++    return findings
++
++
+ def check_document(doc: NormalizedDocument) -> List[Finding]:
+     exhibits = exhibit_rows(doc)
+     from .internal_inconsistency import check_internal_inconsistency
+ 
+-    return (
++    return _so_notation_display(doc, (
+         check_exhibits(doc)
+         + check_statements(doc, exhibits)
+         + check_evidence_numbering_mismatches(doc, exhibits)
+         + _form_findings(doc, exhibits)
+         + check_internal_inconsistency(doc)
+         + check_reasoning_structure(doc)
+-    )
++    ))
+ 
+ 
+ # --- 서면 간 문장 복사 -------------------------------------------------------------
+diff --git a/packages/claim_engine/exhibits.py b/packages/claim_engine/exhibits.py
+index 02a908f..4b8e77e 100644
+--- a/packages/claim_engine/exhibits.py
++++ b/packages/claim_engine/exhibits.py
+@@ -25,7 +25,10 @@ _SUB_PARTY = "가나다라마바사아자차카타파하"
+ # 갑·병·'피고인 증'은 조사로 쓰이지 않고 뒤에 '호증'이 반드시 오므로, 두 단 목록이 붙어 읽힌 '차용증갑 제2호증'처럼 앞에 한글이 있어도
+ # 읽는다. 을(목적격 조사)·증·검은 앞 글자가 한글이 아닐 때만 당사자로 본다('보증 제2호', '사실을 제3호' 구별).
+ # 소송 서증 부호: 갑·을·병·정(민사), 피고인증·검(형사), 수(신청), 행(행정), 고(고소), 설(설비/특허)
++# TK-149: 신청 사건의 '소을'은 '소' 뒤에 '을'이 붙어 위 규칙에 걸렸다('소갑'만 읽힘). '소' 앞이 한글이 아닐 때의 '소을'은
++# '을'로 읽는다('소갑' → '갑'과 같은 처리). 받침 없는 '소' 뒤 목적격 조사는 '를'이므로 조사 '을'과 겹치지 않는다.
+ PARTY_RE = re.compile(r"(?P<party>피고인\s*증|(?:갑|병)(?:\s?[" + _SUB_PARTY + r"](?=\s*(?:제\s*)?\d))?"
++                      r"|(?<=(?<![가-힣])소)을(?:\s?[" + _SUB_PARTY + r"](?=\s*(?:제\s*)?\d))?"
+                       r"|(?<![가-힣])(?:검\s*증|을(?:\s?[" + _SUB_PARTY + r"](?=\s*(?:제\s*)?\d))?|정|증|검|수|행|고|설))"
+                       r"(?=\s*(?:제\s*)?\d)")
+ NUM = r"\d{1,3}"
+@@ -37,6 +40,7 @@ BRANCH_RE = re.compile(rf"\s*의\s*(?P<first>{NUM})(?P<more>(?:(?:{SEP}|{RANGE})
+ CONTINUE_RE = re.compile(rf"{SEP}(?=제\s*{NUM}\s*호)")
+ LEAD_RE = re.compile(r"^[\s:.)\]\-]*(?:각\s+|각(?=[가-힣]))?")
+ CRIMINAL_PARTIES = {"증", "피고인증", "검증", "검"}
++_HANGUL_RE = re.compile(r"[가-힣]")
+ 
+ 
+ def _numbers(first: str, more: str) -> List[int]:
+@@ -63,6 +67,9 @@ def parse_exhibits(text: str) -> List[Dict[str, Any]]:
+         party = _party(party_match.group("party"))
+         pos = party_match.end()
+         start = party_match.start()
++        # TK-149: 신청 사건 부호 '소갑·소을'은 당사자 키를 '갑·을'로 두되, 표기(label)·위치(span)는 '소'부터 잡는다
++        if party in ("갑", "을") and start > 0 and clean[start - 1] == "소" and (start == 1 or not _HANGUL_RE.match(clean[start - 2])):
++            start -= 1
+         while True:
+             group = NUMBER_GROUP_RE.match(clean, pos)
+             if not group:
+diff --git a/tests/test_tk149_so_exhibits_eval.py b/tests/test_tk149_so_exhibits_eval.py
+new file mode 100644
+index 0000000..5bfb009
+--- /dev/null
++++ b/tests/test_tk149_so_exhibits_eval.py
+@@ -0,0 +1,55 @@
++"""TK-149 공용 호증 문법 — 신청 사건 부호 '소갑·소을' (평가 측 공개 합성 문장)."""
++from __future__ import annotations
++
++import pytest
++
++from packages.claim_engine.evidence_consistency import check_document, exhibit_rows
++from packages.claim_engine.exhibits import parse_exhibits
++from packages.common.schemas import Block, NormalizedDocument, Page
++
++
++def _doc(lines):
++    blocks = [Block(block_id=f"b{i}", text=t, page=1, visible=True, source_layer="visible_text") for i, t in enumerate(lines)]
++    return NormalizedDocument(document_id="d", filename="d.pdf", mime_type="application/pdf", sha256="0" * 64,
++                              pages=[Page(page_number=1, blocks=blocks, width=595.0, height=842.0)])
++
++
++@pytest.mark.parametrize("text,want", [
++    ("이는 소을 제5호증의 기재로 소명됩니다", [("을", 5)]),
++    ("(소을 제2, 3호증)", [("을", 2), ("을", 3)]),
++    ("소을제7호증의 1", [("을", 7)]),
++    ("소을 제1 내지 3호증", [("을", 1), ("을", 2), ("을", 3)]),
++    ("소갑 제4호증 및 소을 제6호증", [("갑", 4), ("을", 6)]),
++])
++def test_so_eul_citation_parsed(text, want):
++    got = [(r["party"], r["number"]) for r in parse_exhibits(text)]
++    assert got == want
++
++
++def test_so_label_keeps_prefix_and_party_key():
++    ref = parse_exhibits("소을 제5호증의 2")[0]
++    assert ref["party"] == "을" and ref["label"].startswith("소을") and ref["span"][0] == 0
++
++
++@pytest.mark.parametrize("text", ["사실을 제3호증으로 증명합니다", "대소을 제2호증", "같은 법 제2조 제3호"])
++def test_control_object_particle_not_party(text):
++    assert not [r for r in parse_exhibits(text) if r["party"] == "을"]
++
++
++@pytest.mark.parametrize("party", ["소갑", "소을"])
++def test_so_list_lines_become_rows(party):
++    rows = exhibit_rows(_doc(["소명방법", f"1. {party} 제1호증 확인서", f"2. {party} 제2호증 영수증"]))
++    assert [(r["party"], r["number"]) for r in rows] == [(party[-1], 1), (party[-1], 2)]
++
++
++def test_so_missing_from_list_detected_with_so_label():
++    lines = ["답변서", "신청인 주식회사 해솔", "피신청인 문○○", "1. 피신청인은 계약을 해지하였습니다(소을 제4호증 해지통지서).",
++             "소명방법", "1. 소을 제1호증 해지통지서", "2024. 10. 1.", "피신청인 대리인 변호사 ○○○"]
++    titles = [f.title for f in check_document(_doc(lines)) if (f.confidence_features or {}).get("rule_id") == "EVI.EVIDENCE_LIST_MISMATCH"]
++    assert titles and "소을 제4호증" in titles[0], titles
++
++
++def test_control_consistent_so_document_no_list_finding():
++    lines = ["가처분 신청서", "신청인 주식회사 해솔", "피신청인 문○○", "1. 신청인은 계약을 체결하였습니다(소갑 제1호증 계약서).",
++             "소명방법", "1. 소갑 제1호증 계약서", "2024. 10. 1.", "신청인 대리인 변호사 ○○○"]
++    assert not [f for f in check_document(_doc(lines)) if f.type.value == "EVIDENCE_LIST_MISMATCH"]
+diff --git a/tests/test_tk76_ovr_residual_eval.py b/tests/test_tk76_ovr_residual_eval.py
+index 19cac2b..8323afa 100644
+--- a/tests/test_tk76_ovr_residual_eval.py
++++ b/tests/test_tk76_ovr_residual_eval.py
+@@ -51,8 +51,10 @@ def test_negative(body, ev):
+ 
+ 
+ def test_shared_exhibit_rows_unchanged_for_so_lines():
+-    # O2는 공용 입력을 바꾸지 않는다: exhibit_rows는 '소갑' 목록 줄을 여전히 행으로 만들지 않는다
+-    assert exhibit_rows(_doc("본문", "1. 소갑 제3호증 내용증명 (발신인: 신청인)")) == []
++    # O2(11-09)는 공용 입력을 바꾸지 않았다. TK-149(11-10 사용자 결정 '공용 호증 문법의 소을 인식 부분은 제안대로')로
++    # 공용 exhibit_rows가 '소갑·소을' 목록 줄을 행으로 만든다(당사자 키 '갑·을', 원래 표기는 id). O2 보충 행과 키가 겹치지 않는다
++    rows = exhibit_rows(_doc("본문", "1. 소갑 제3호증 내용증명 (발신인: 신청인)"))
++    assert [(r["party"], r["number"], r["id"]) for r in rows] == [("갑", 3, "소갑 제3호증")]
+ 
+ 
+ def test_variations_o1_to_o5_word_order_connectives_and_question_negation_controls():

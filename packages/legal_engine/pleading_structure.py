@@ -18,6 +18,7 @@ from packages.common.schemas import Evidence, Finding, NormalizedDocument
 from packages.document_engine.reading_text import build_reading_text
 
 from .legal_rules import _items, _sections
+from .actionable_guidance import check_cause_of_action_elements
 
 ENGINE_NAME = "legal_engine.pleading_structure"
 PAIRS_PATH = Path(__file__).resolve().parents[2] / "config" / "legal_rules" / "pleading_premise_pairs.yaml"

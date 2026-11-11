@@ -1,0 +1,137 @@
+diff --git a/packages/claim_engine/evidence_consistency.py b/packages/claim_engine/evidence_consistency.py
+index 53c59b9..c027d72 100644
+--- a/packages/claim_engine/evidence_consistency.py
++++ b/packages/claim_engine/evidence_consistency.py
+@@ -142,6 +142,8 @@ COPY_SIMILARITY = 0.9
+ # 서증 형식 결함(EVI-FORM) 구조 기반 검출 정규식 (4대 축 및 정상 실무 보호)
+ # 서증 형식 결함(EVI-FORM) 구조 기반 검출 정규식 (4대 축 및 정상 실무 보호)
+ # 정상 실무 보호 1: 추후 제출/보완 예정(입증 계획) 및 기일 지참 서술문은 결함 제외
++# 추후 제출 예고(E1): '추후·향후·다음 기일에 … 제출하겠다/낼 예정' 또는 '제출할 예정'
++_FUTURE_SUBMISSION_RE = re.compile(r"(?:추후|향후|다음 ?기일에|나중에|보완하여)[^.\n]{0,30}?(?:제출하겠|내겠|제출할|낼 ?예정|제출 ?예정)|제출할 ?예정|제출하겠습니다")
+ _NORMAL_FUTURE_SUBMISSION_RE = re.compile(
+     r"(?:제출|보완|신청|제시|지참)\s*(?:할\s*)?예정(?:입니다|임|이며|이고|할\s*계획|에\s*있)"
+ )
+@@ -1610,8 +1612,38 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
+                                 ", ".join(f"{party} 제{n}호증" for n in sorted(target_nums)),
+                                 features={"party": party, "missing": gaps}))
+     text = build_reading_text(doc).text
+-    mentioned = exhibit_keys(text)
++    # 목록 밖 인용에서 뺄 것(E1): 목록이 N번부터 시작하면 그보다 작은 번호(앞 서면에서 낸 호증),
++    # 같은 문장에 앞서 제출·추후 제출 표지가 있는 인용.
++    sec_min: Dict[str, int] = {}
++    for r in rows:
++        if r.get("in_section", not r.get("from_lines", False)):
++            sec_min[r["party"]] = min(sec_min.get(r["party"], r["number"]), r["number"])
++    mentioned = set()
++    branch_mentions = set()
++    for s_start, s_end in sentence_bounds(text):
++        sent = text[s_start:s_end]
++        refs = parse_exhibits(sent)
++        if not refs:
++            continue
++        excused = bool(_PRIOR_SUBMISSION_RE.search(sent) or _FUTURE_SUBMISSION_RE.search(sent))
++        for ref in refs:
++            p, n = ref["party"], ref["number"]
++            if excused or (p in sec_min and sec_min[p] > 1 and n < sec_min[p]):
++                continue
++            mentioned.add((p, n))
++            for b in ref.get("branches") or []:
++                branch_mentions.add((p, n, b))
+     missing = sorted((p, n) for p, n in mentioned if p in listed and n not in listed[p])
++    # E2: 가지번호까지 적은 인용이 목록의 같은 호증 가지번호 최댓값보다 크다(중간 결번은 위 가지번호 결번 판정이 맡는다)
++    branch_missing = sorted((p, n, b) for p, n, b in branch_mentions
++                            if (p, n) in branches and b > max(branches[(p, n)]))
++    if branch_missing:
++        labels = ", ".join(f"{p} 제{n}호증의 {b}" for p, n, b in branch_missing)
++        out.append(_finding(doc, FindingType.EVIDENCE_LIST_MISMATCH, EvidenceGrade.B, Severity.MEDIUM,
++                            f"본문이 언급한 가지번호가 증거 목록에 없다: {labels}",
++                            "본문에서 입증 근거로 든 가지번호 호증이 증거 목록의 같은 호증 가지번호에 없다.", labels,
++                            features={"rule_id": "EVI.BRANCH_REFERENCE_MISSING", "defect_code": "BRANCH_REFERENCE_MISSING",
++                                      "missing_from_list": [f"{p} 제{n}호증의 {b}" for p, n, b in branch_missing]}))
+     if missing:
+         labels = ", ".join(f"{p} 제{n}호증" for p, n in missing)
+         out.append(_finding(doc, FindingType.EVIDENCE_LIST_MISMATCH, EvidenceGrade.B, Severity.MEDIUM,
+@@ -2027,7 +2059,7 @@ def check_evidence_numbering_mismatches(
+         for list_key, (l_name, l_norm) in list_name_by_key.items():
+             if body_key != list_key and body_key[0] == list_key[0] and len(l_norm) >= 4:
+                 chars = [re.escape(c) for c in l_norm]
+-                name_pat = r"^\s*" + r"\s*".join(chars) + r"(?:에서|으로|부터|까지|[이가은는을를의에로와과도만등])?(?=[\s.,;:~!?]|$)"
++                name_pat = r"^\s*" + r"\s*".join(chars) + r"(?:에서|으로|부터|까지|[이가은는을를의에로와과도만등])?(?=[\s.,;:~!?)）\]]|$)"
+                 if re.match(name_pat, rest):
+                     list_lbl = f"{list_key[0]} 제{list_key[1]}호증"
+                     dup = any(
+diff --git a/tests/test_tk76_num_eval.py b/tests/test_tk76_num_eval.py
+new file mode 100644
+index 0000000..0c153b6
+--- /dev/null
++++ b/tests/test_tk76_num_eval.py
+@@ -0,0 +1,69 @@
++# -*- coding: utf-8 -*-
++"""TK-76 3주기 EVI-NUM 평가 측 시험(E1~E3). 평가 측 비공개 탐침과 다른 낱말로 새로 지은 합성예다."""
++from __future__ import annotations
++
++import unittest
++
++from packages.claim_engine.evidence_consistency import check_document
++from packages.common.enums import FindingType
++from packages.common.schemas import Block, NormalizedDocument, Page
++
++_NUM = {FindingType.EVIDENCE_NUMBERING_GAP, FindingType.EVIDENCE_LIST_MISMATCH, FindingType.EVIDENCE_REFERENCE_MISSING}
++
++
++def _doc(lines):
++    doc = NormalizedDocument(document_id="n", filename="n.pdf", mime_type="application/pdf", sha256="c" * 64)
++    page = Page(page_number=1, width=595.0, height=842.0)
++    for i, t in enumerate(lines):
++        page.blocks.append(Block(block_id=f"b{i}", page=1, text=t, block_type="paragraph", source_layer="visible_text"))
++    doc.pages.append(page)
++    return doc
++
++
++def _num(body, rows):
++    lines = ["준 비 서 면", "원고 국○○", "피고 주식회사 솔길"] + body + ["입 증 방 법"] + rows + ["2025. 9. 30.", "원고 소송대리인 변호사 ○○○"]
++    return [f for f in check_document(_doc(lines)) if f.type in _NUM
++            and (f.confidence_features or {}).get("defect_code") != "EVIDENCE_NUMBER_DUPLICATE"]
++
++
++class TestE1PriorAndFutureCitations(unittest.TestCase):
++    def test_numbers_below_new_list_start_are_prior_submissions(self):
++        found = _num(["앞 서면 갑 제3호증 납품서에서 보듯 물품은 인도되었고, 대금 청구는 새 자료로 뒷받침됩니다(갑 제8호증)."],
++                     ["1. 갑 제8호증 미수금 원장", "2. 갑 제9호증 독촉장"])
++        self.assertEqual(found, [])
++
++    def test_future_submission_notice_is_not_missing(self):
++        found = _num(["물품 단가는 거래처 확인서를 받아 갑 제3호증으로 추후 제출하겠습니다. 인도 사실은 갑 제1호증으로 증명됩니다."],
++                     ["1. 갑 제1호증 납품서", "2. 갑 제2호증 세금계산서"])
++        self.assertEqual(found, [])
++
++    def test_genuine_missing_citation_still_found(self):
++        found = _num(["피고는 물품을 받고도 대금을 주지 않았습니다(갑 제3호증 미수금 원장)."],
++                     ["1. 갑 제1호증 납품서", "2. 갑 제2호증 세금계산서"])
++        self.assertTrue(any("갑 제3호증" in f.title for f in found))
++
++
++class TestE2BranchCitation(unittest.TestCase):
++    def test_branch_beyond_listed_branches(self):
++        found = _num(["물품 상태는 검수 사진으로 확인됩니다(갑 제4호증의 5)."], ["1. 갑 제4호증의 1 내지 4 각 검수사진"])
++        self.assertTrue(any((f.confidence_features or {}).get("defect_code") == "BRANCH_REFERENCE_MISSING" for f in found))
++
++    def test_branch_within_listed_range(self):
++        found = _num(["물품 상태는 검수 사진으로 확인됩니다(갑 제4호증의 3)."], ["1. 갑 제4호증의 1 내지 4 각 검수사진"])
++        self.assertEqual(found, [])
++
++
++class TestE3ParenBoundary(unittest.TestCase):
++    def test_body_name_in_parentheses_points_to_other_number(self):
++        found = _num(["당사자는 단가를 정하였습니다(갑 제1호증 단가합의서)."],
++                     ["1. 갑 제1호증 납품서", "2. 갑 제2호증 단가합의서"])
++        self.assertTrue(any((f.confidence_features or {}).get("defect_code") == "EXHIBIT_NUMBER_NAME_MISMATCH" for f in found))
++
++    def test_matching_name_in_parentheses(self):
++        found = _num(["당사자는 단가를 정하였습니다(갑 제2호증 단가합의서)."],
++                     ["1. 갑 제1호증 납품서", "2. 갑 제2호증 단가합의서"])
++        self.assertEqual(found, [])
++
++
++if __name__ == "__main__":
++    unittest.main()

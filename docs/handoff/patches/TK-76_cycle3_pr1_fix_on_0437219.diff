@@ -1,0 +1,230 @@
+diff --git a/packages/claim_engine/calculation.py b/packages/claim_engine/calculation.py
+index ff8ea13..e46b35c 100644
+--- a/packages/claim_engine/calculation.py
++++ b/packages/claim_engine/calculation.py
+@@ -129,6 +129,19 @@ UNIT_JOSA_RE = re.compile(
+     r"^(?P<unit>[가-힣]{1,4}?)(?P<josa>(?:만(?:[을이은는])?|이(?:다|며|고|라|면)|입니다|은|는|이|가|을|를|의|에(?:서)?|[으]?로|씩|[과와]|도))?(?=\s|[,.:;\]\)\>]|$)"
+ )
+ 
++# 평가 측 보완(F3·F5·F8): 날짜·법령 위치·조사만·연산 서술어
++_DATE_SPAN_RE = re.compile(r"\d{4}\s*(?:[.\-/]|년)\s*\d{1,2}\s*(?:[.\-/]|월)(?:\s*\d{1,2}\s*[.일]?)?|\d{4}\s*년|\d{4}\s*\.(?=\s|$)")
++_LEGAL_LOCATOR_RE = re.compile(r"^(?:조|항|호|목)(?:의|$|[^가-힣])|^조(?:가|는|에|를|의)")
++_JOSA_ONLY_RE = re.compile(r"(?:만(?:[을이은는])?|이(?:다|며|고|라|면)|입니다|은|는|이|가|을|를|의|에(?:서)?|[으]?로|씩|[과와]|도)")
++_OPERATION_WORD_RE = re.compile(r"^(?:곱하|곱한|합하|합한|더하|더한|빼|뺀|공제|차감)")
++# 연산 서술어(명시적 연산 표지)와 합계 표지. 결과를 잇는 절에 이 가운데 하나가 있어야 서술형 산식으로 본다(메모 M4·N3).
++_OP_PREDICATE_RE = re.compile(r"곱하[면여]|곱한|곱하기|합하[면여]|합산하[면여]|합한|합산한|더하[면여]|더한|공제하[면여]|공제한|차감하[면여]|차감한|뺀|빼면")
++# 연산 결과를 가리키는 명사('그 곱은'·'합은'·'차는')는 명시적 연산 표지다. 절 경계가 있어도 결과를 잇는다.
++_OP_RESULT_NOUN_RE = re.compile(r"(?:^|\s)(?:그\s*)?(?P<noun>곱|합|차)(?:은|는|이|가)(?=\s|$)")
++_TOTAL_MARK_RE = re.compile(r"(?:^|\s)(?:총|전체|모두|합계|합산)")
++# 절 경계: 연결 어미(-고·-며·-으나·-지만·-는데) 뒤 공백이나 쉼표가 결과 앞에 있으면 다른 절이다(메모 M4)
++_CLAUSE_BREAK_RE = re.compile(r"[가-힣](?:고|며|으나|지만|는데)(?:\s|,)|,")
++
+ # M7: 정당한 차이 가드 정규식
+ TAX_DEDUCTION_GUARD_RE = re.compile(r"(?:부가(?:가치)?세|공급가액|세액|VAT|원천징수|지연손해금|할인)")
+ APPROX_GUARD_RE = re.compile(r"(?:약|대략|가량|내외|이상|이하|미만|초과)")
+@@ -294,12 +307,19 @@ def _extract_formula_tokens(text: str) -> List[dict]:
+         josa = m_josa.group(0) if m_josa else None
+         tokens.append({"val": a.value, "unit": "원", "josa": josa, "start": a.start, "end": a.end, "raw": a.raw})
+     
++    # 날짜(연·월·일)와 연도는 피연산자가 아니다(평가 측 보완 F5).
++    date_spans = [(d.start(), d.end()) for d in _DATE_SPAN_RE.finditer(text)]
+     # 2. 금액 외 일반 수치 및 단위 명사 탐색 (M3: 단위 뒤 조사 분리)
+     for m in re.finditer(r"(?<![\d.,])(?P<num>\d[\d,]*(?:\.\d+)?)\s*(?P<unit_part>[가-힣]{1,6})?", text):
+         s, e = m.start(), m.end()
+         # 이미 parse_amounts에서 파싱된 범위는 중복 제외
+         if any(as_ <= s < ae or as_ < e <= ae for as_, ae in amt_spans):
+             continue
++        if any(ds <= s < de for ds, de in date_spans):
++            continue
++        # 법령 위치(제N조·항·호·목)의 번호는 피연산자가 아니다(평가 측 보완 F5)
++        if _LEGAL_LOCATOR_RE.match(m.group("unit_part") or "") or re.search(r"제\s*$", text[max(0, s - 2):s]):
++            continue
+         # M2: 날짜(YYYY-MM-DD), 사건번호(2023가합1234) 등 하이픈/문장부호 결합 식별자는 배제
+         context = text[max(0, s - 5):min(len(text), e + 10)]
+         if re.search(r"\d{4}-\d{2}-\d{2}|\d{4}\.\s*\d|\d+[가-힣]+\d+", context):
+@@ -309,9 +329,18 @@ def _extract_formula_tokens(text: str) -> List[dict]:
+             val = Decimal(num_str)
+         except InvalidOperation:
+             continue
++        # 앞에 붙은 음수 부호(공백·여는 괄호·문장 시작 뒤의 '-'/'−')는 값에 넣는다(평가 측 보완 F3)
++        if s >= 1 and text[s - 1] in "-−" and (s == 1 or text[s - 2] in " \t(:"):
++            val = -val
+         up = m.group("unit_part") or ""
+         m_uj = UNIT_JOSA_RE.match(up)
+-        if m_uj:
++        if _JOSA_ONLY_RE.fullmatch(up) or _OPERATION_WORD_RE.match(up):
++            # 수 뒤가 조사뿐이거나 연산 서술어(곱하기 등)면 단위가 없다(평가 측 보완 F8, 메모 N2).
++            # 연산 서술어는 토큰에 넣지 않는다(다음 피연산자와의 사이 글자에서 연산으로 읽히게).
++            unit, josa = None, (up if _JOSA_ONLY_RE.fullmatch(up) else None)
++            if _OPERATION_WORD_RE.match(up):
++                e = m.end("num")
++        elif m_uj:
+             unit = m_uj.group("unit") or None
+             josa = m_uj.group("josa")
+         elif up:
+@@ -320,7 +349,9 @@ def _extract_formula_tokens(text: str) -> List[dict]:
+         else:
+             unit = None
+             josa = None
+-        tokens.append({"val": val, "unit": unit, "josa": josa, "start": s, "end": e, "raw": m.group(0)})
++        # '단당·상자당'처럼 앞에 '…당'이 붙은 수는 단위당 수량이다. 곱의 단위는 이 수의 단위다(평가 측 보완).
++        per = bool(re.search(r"[가-힣]{1,4}당\s*$", text[max(0, s - 8):s]))
++        tokens.append({"val": val, "unit": unit, "josa": josa, "start": s, "end": e, "raw": text[s:e], "per": per})
+     
+     tokens.sort(key=lambda t: t["start"])
+     return tokens
+@@ -356,18 +387,35 @@ def _is_unit_compatible(op_units: List[Optional[str]], res_unit: Optional[str],
+     return True
+ 
+ 
++def _units_ok(ops: List[dict], res_token: dict, op_type: str) -> bool:
++    """단위당 수량('…당 N단위')이 있는 곱은 그 단위가 결과 단위다. 그 밖에는 기존 호환성 규칙."""
++    per = [o for o in ops if o.get("per") and o.get("unit")]
++    if op_type == "*" and per:
++        return res_token["unit"] == per[-1]["unit"]
++    return _is_unit_compatible([o["unit"] for o in ops], res_token["unit"], op_type)
++
++
+ def _evaluate_formula_operands(ops: List[dict], text: str, after_ops: str = "") -> Tuple[Optional[Decimal], Optional[str]]:
+     """피연산자 리스트와 연산 서술어(after_ops)를 바탕으로 계산값과 연산 종류를 도출한다."""
+     if len(ops) < 2:
+         return None, None
+     
+     # 2개 피연산자 뒤에 연산 서술어가 오는 서술형 산식 처리
++    noun = _OP_RESULT_NOUN_RE.search(after_ops) if after_ops else None
++    if len(ops) == 2 and noun:                         # '그 곱은/합은/차는' 결과 명사
++        kind = noun.group("noun")
++        if kind == "곱":
++            return ops[0]["val"] * ops[1]["val"], "*"
++        if kind == "합":
++            return ops[0]["val"] + ops[1]["val"], "+"
++        return ops[0]["val"] - ops[1]["val"], "-"
+     if len(ops) == 2 and after_ops:
+         if re.search(r"공제하[면여]|차감하[면여]|제외하[면여]|뺀|차감한", after_ops):
+             return ops[0]["val"] - ops[1]["val"], "-"
+         if re.search(r"합계|합하[면여]|합산하[면여]|합한|합산한|더한|모두\s*합하", after_ops):
+             return ops[0]["val"] + ops[1]["val"], "+"
+-        if re.search(r"곱하[면여]|곱한|곱하기|배한|\b배로\b|(?<=\d)\s*배", after_ops) or ops[0]["josa"] == "씩":
++        if re.search(r"곱하[면여]|곱한|곱하기|배한|\b배로\b|(?<=\d)\s*배", after_ops) or (
++                ops[0]["josa"] == "씩" and _TOTAL_MARK_RE.search(after_ops)):
+             return ops[0]["val"] * ops[1]["val"], "*"
+ 
+     total = ops[0]["val"]
+@@ -380,7 +428,8 @@ def _evaluate_formula_operands(ops: List[dict], text: str, after_ops: str = "")
+         raw_lead = op_token["raw"].lstrip()[:1]
+         
+         # 덧셈 연산자 판별 (직전 조사 '와/과', 명시적 '+' 기호, '와/과/더한/합한' 등 연결어)
+-        if raw_lead in ("+", "＋") or prev_josa in ("과", "와") or re.search(r"[+＋]|\b합하[면여]|\b합산하[면여]|\b합한|\b더한|\b와\b|\b과\b", between):
++        # '와/과' 나열은 연산이 아니다(평가 측 보완 F1). 기호나 연산 서술어가 있어야 덧셈이다.
++        if raw_lead in ("+", "＋") or re.search(r"[+＋]|합하[면여]|합산하[면여]|합한|더한|더하[면여]", between):
+             total += op_token["val"]
+             primary_op = primary_op or "+"
+         # 뺄셈 연산자 판별 (M2: 하이픈 앞뒤 공백 또는 단위 결합 가드)
+@@ -388,7 +437,9 @@ def _evaluate_formula_operands(ops: List[dict], text: str, after_ops: str = "")
+             total = total + op_token["val"] if op_token["val"] < 0 else total - op_token["val"]
+             primary_op = primary_op or "-"
+         # 곱셈 연산자 판별 (기호, 배수 서술어, 주기 단위, '씩' 조사)
+-        elif re.search(r"[×*xX✕✖\u2a2f]|\b곱하[면여]|\b곱한|\b곱하기|\b배한|\b배로\b|(?<=\d)\s*배", between) or op_token["unit"] in ("개월", "회", "일", "년", "배") or prev_josa == "씩":
++        # 단위(일·회·개월 등)만으로 곱셈을 추정하지 않는다(평가 측 보완 F6). '씩'은 결과 앞 합계 표지가 있을 때만.
++        elif re.search(r"[×*xX✕✖\u2a2f]|곱하[면여]|곱한|곱하기|배한|\b배로\b|(?<=\d)\s*배", between) or (
++                prev_josa == "씩" and _TOTAL_MARK_RE.search(after_ops)):
+             total *= op_token["val"]
+             primary_op = primary_op or "*"
+         elif op_token["val"] < 0:
+@@ -432,11 +483,12 @@ def _check_statement_formula(text: str) -> Optional[dict]:
+         if computed is None or op_type is None:
+             return None
+         # 단위 일치 및 차원 호환성 검증
+-        if not _is_unit_compatible([o["unit"] for o in ops], res_token["unit"], op_type):
++        if not _units_ok(ops, res_token, op_type):
+             return None
+         if abs(computed - res_token["val"]) > Decimal("0.01"):
+             formula_snippet = text[ops[0]["start"]:res_token["end"]].strip()
+-            return {"computed": computed, "stated": res_token["val"], "formula": formula_snippet}
++            return {"computed": computed, "stated": res_token["val"], "formula": formula_snippet,
++                    "unit": res_token["unit"]}
+         return None
+ 
+     # 2. 서술어로 연결된 산식 처리 (M4: 결과 연결 표지 엄격화)
+@@ -452,14 +504,22 @@ def _check_statement_formula(text: str) -> Optional[dict]:
+         return None
+ 
+     after_ops = text[ops[-1]["end"]:res_token["start"]]
++    # 서술형은 결과 앞에 연산 서술어나 합계 표지가 있고, 그 사이에 절 경계가 없을 때만 본다(평가 측 보완 F7, 메모 M4)
++    result_noun = _OP_RESULT_NOUN_RE.search(after_ops)
++    if not (_OP_PREDICATE_RE.search(text[ops[0]["start"]:res_token["start"]]) or _TOTAL_MARK_RE.search(after_ops)
++            or result_noun):
++        return None
++    if _CLAUSE_BREAK_RE.search(after_ops) and not result_noun:
++        return None
+     computed, op_type = _evaluate_formula_operands(ops, text, after_ops)
+     if computed is None or op_type is None:
+         return None
+-    if not _is_unit_compatible([o["unit"] for o in ops], res_token["unit"], op_type):
++    if not _units_ok(ops, res_token, op_type):
+         return None
+     if abs(computed - res_token["val"]) > Decimal("0.01"):
+         formula_snippet = text[ops[0]["start"]:res_token["end"]].strip()
+-        return {"computed": computed, "stated": res_token["val"], "formula": formula_snippet}
++        return {"computed": computed, "stated": res_token["val"], "formula": formula_snippet,
++                "unit": res_token["unit"]}
+     return None
+ 
+ 
+@@ -695,7 +755,7 @@ class CalculationEngine:
+                         continue
+                     seen_checks.add(key)
+                     check = CalculationCheck(
+-                        kind="FORMULA",
++                        kind="FORMULA" if result.get("unit") in (None, "원") else "QUANTITY_FORMULA",
+                         stated=result["stated"],
+                         computed=result["computed"],
+                         detail=f"산식 '{result['formula']}'의 계산값 {result['computed']:,} / 기재 {result['stated']:,}",
+@@ -910,7 +970,9 @@ class CalculationEngine:
+                     "rule_id": "CALC.FORMULA"}
+         return Finding.create(
+             type=FindingType.ARITHMETIC_MISMATCH, status=VerificationStatus.CONTRADICTED, severity=Severity.HIGH,
+-            evidence_grade=EvidenceGrade.A, title=f"산식의 계산 결과가 기재 금액과 다르다 (차이 {difference:,}원)",
++            evidence_grade=EvidenceGrade.A,
++            title=(f"산식의 계산 결과가 기재 금액과 다르다 (차이 {difference:,}원)" if check.kind != "QUANTITY_FORMULA"
++                   else f"산식의 계산 결과가 기재 수치와 다르다 (차이 {difference:,})"),
+             detail=f"{check.detail}. Python 계산엔진으로 검산한 결정론적 결과이다.",
+             confidence=confidence_score(features), confidence_features=features, document_id=doc.document_id,
+             block_id=block_id, page=page, engine=ENGINE_NAME, tags=["CALCULATION"],
+diff --git a/tests/test_tk76_cycle3_calculation.py b/tests/test_tk76_cycle3_calculation.py
+index ec0eaec..ea37a3c 100644
+--- a/tests/test_tk76_cycle3_calculation.py
++++ b/tests/test_tk76_cycle3_calculation.py
+@@ -194,3 +194,32 @@ def test_incompatible_units_not_flagged():
+     engine = CalculationEngine()
+     findings = engine.verify_document(doc)
+     assert not [f for f in findings if f.type == FindingType.ARITHMETIC_MISMATCH]
++
++
++# --- 평가 측 보완(11-03, #214 1차 판정 F1~F8) 회귀 시험 — 합성 문장만 쓴다 ------------------------------------------
++def _mismatch(text):
++    return [f for f in CalculationEngine().verify_document(make_doc(text)) if f.type == FindingType.ARITHMETIC_MISMATCH]
++
++
++@pytest.mark.parametrize("text", [
++    "갑은 을에게 4,000,000원과 1,500,000원을 각 빌려주었고 그 뒤 남은 대여금은 900,000원이었다.",  # F1 나열
++    "매달 20,000원씩 5명에게 나누어 주었으며 통장 잔액은 70,000원이다.",                              # F2 씩·절 경계
++    "같은 법 제40조에서 정한 신청기간(통지받은 날부터 14일) 내인 2024. 5. 3. 신청하였다.",              # F5·F6 조문·기간·연도
++    "기존 재고 40개에 조정분 -6개를 더한 재고는 34개이다.",                                           # F3 음수 부호(올바름)
++])
++def test_controls_from_first_review_are_not_flagged(text):
++    assert _mismatch(text) == []
++
++
++def test_signed_operand_is_added_with_its_sign():
++    [f] = _mismatch("기존 재고 40개에 조정분 -6개를 더한 재고는 30개이다.")
++    assert "기재 수치" in f.title and "원" not in f.title                                       # F8 비금액 문구
++
++
++@pytest.mark.parametrize("text", [
++    "일당 92,000원으로 11일을 일하였고 그 곱은 1,100,000원이다.",                                       # 결과 명사 '곱은'
++    "8 곱하기 26,000은 218,000이다.",                                                                  # 연산 서술어 토큰
++    "진열대 6칸 × 칸당 15권 = 총 80권",                                                               # 단위당 수량
++])
++def test_explicit_operation_forms_are_checked(text):
++    assert len(_mismatch(text)) == 1

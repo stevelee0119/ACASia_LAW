@@ -1,0 +1,62 @@
+diff --git a/packages/claim_engine/evidence_consistency.py b/packages/claim_engine/evidence_consistency.py
+index fe85fc1..88fb3a5 100644
+--- a/packages/claim_engine/evidence_consistency.py
++++ b/packages/claim_engine/evidence_consistency.py
+@@ -640,12 +640,12 @@ INTENT_STATE_RE = re.compile(
+     r"(?:려는|할|ㄹ)\s*의사(?:로|를\s*가지고|가\s*있었)|"
+     r"(?:가해|가해자|가해\s*행위|가해\s*사실|가한\s*사실)|"
+     # 평가 측 OVR 잔여 O4: 'X임을/X음을/X라는 사실을 (이미·처음부터) 알고 있었다·알았다·알면서' — 상대방의 앎(인식) 단정
+-    r"(?<![가-힣])(?:[가-힣]{1,15}?(?:임|음)|사실|점|것)을\s*(?:[가-힣]{1,5}\s+)?알(?:고\s*있|았|면서|고서)"
++    r"(?<![가-힣])(?:[가-힣]{1,15}?(?:임|음)|사실|점|것)을\s*(?:[가-힣]{1,5}\s+)?(?:알(?:고\s*있|았)(?!었?(?:는지|는가|던가|던지|다면|더라도|으면|을지))|알면서|알고서)"
+ )
+ 
+ # 평가 측 OVR 잔여 O5: 전칭 부정('단 한 번도·한 차례도·전혀 … 한 적이/일이/바가 없다')은 전 기간 단정이다
+ UNIVERSAL_NEGATION_RE = re.compile(
+-    r"(?:(?:단\s*)?한\s*(?:번|차례)도|전혀|결코)\s*[^.!?]{0,30}?(?:적|일|바|사실)(?:이|은|는)?\s*없"
++    r"(?:(?:단\s*)?한\s*(?:번|차례)도|전혀|결코)\s*[^.!?]{0,30}?(?:적|일|바|사실)(?:이|가|은|는|도)?\s*없"
+ )
+ 
+ # V2, BB2: 완료 술어 구조 정규식 (어간 + 어미/피동 결합, 대상 명사구와 결합, 지급 행위 어간 '치르·받·납부·송금' 포함)
+diff --git a/tests/test_tk76_ovr_followup_eval.py b/tests/test_tk76_ovr_followup_eval.py
+new file mode 100644
+index 0000000..cfc05dd
+--- /dev/null
++++ b/tests/test_tk76_ovr_followup_eval.py
+@@ -0,0 +1,37 @@
++"""TK-76 EVI-OVR 보완 — O4 의문·가정형 앎 제외, O5 전칭 부정 조사(가·도) 허용(평가 측 공개 합성 문장)."""
++from __future__ import annotations
++
++import pytest
++
++from packages.claim_engine.evidence_consistency import INTENT_STATE_RE, check_evidence_overreach
++from packages.common.enums import FindingType
++from packages.common.schemas import Block, NormalizedDocument, Page
++
++
++def _hit(body: str, ev: str) -> bool:
++    texts = ["청구원인", body, "입증방법", ev]
++    blocks = [Block(block_id=f"b{i}", text=t, page=1, visible=True, source_layer="visible_text") for i, t in enumerate(texts)]
++    doc = NormalizedDocument(document_id="d", filename="d.pdf", mime_type="application/pdf", sha256="0" * 64,
++                             pages=[Page(page_number=1, blocks=blocks, width=595.0, height=842.0)])
++    return any(f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH for f in check_evidence_overreach(doc))
++
++
++@pytest.mark.parametrize("text", ["임대인임을 알았는지는", "도난품임을 알고 있었는지", "결함임을 알았다면", "하자임을 알고 있었다면"])
++def test_question_or_condition_is_not_knowledge_assertion(text):
++    assert not INTENT_STATE_RE.search(text)
++
++
++@pytest.mark.parametrize("text", ["도난품임을 처음부터 알고 있었다", "그 사실을 알았다", "결함임을 알면서도"])
++def test_knowledge_assertion_still_matches(text):
++    assert INTENT_STATE_RE.search(text)
++
++
++def test_question_form_in_document_is_not_flagged():
++    assert not _hit("갑 제2호증 사진만으로 피고가 위 물건이 도난품임을 알았는지는 알 수 없습니다.", "1. 갑 제2호증 사진")
++
++
++@pytest.mark.parametrize("text", ["전혀 점검을 누락한 바가 없다", "한 번도 연체한 적이 없다", "결코 그런 일도 없었다"])
++def test_universal_negation_particles(text):
++    # O5 보완: '바가·일도'처럼 조사 '가·도'가 붙어도 전칭 부정이다
++    from packages.claim_engine.evidence_consistency import UNIVERSAL_NEGATION_RE
++    assert UNIVERSAL_NEGATION_RE.search(text)

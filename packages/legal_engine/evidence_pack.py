@@ -13,7 +13,7 @@ import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 SCHEMA_VERSION = "evidence-pack-v1"
-SELECTOR_VERSION = "tk131-1"
+SELECTOR_VERSION = "tk135-1"
 DEFAULT_BUDGET = 24000
 HEAD_CHARS = 3000
 TAIL_CHARS = 3000
@@ -122,7 +122,11 @@ def _merge(spans: List[Tuple[int, int, str]]) -> List[Tuple[int, int, str]]:
 
 
 def _pack(text: str, spans, coverage: str, reasons: List[str]) -> Dict[str, Any]:
+    from packages.legal_engine.opinion_attribution import opinion_ranges
+    ranges = opinion_ranges(text)
+    # 구간마다 겹치는 판결 의견 종류를 적는다. 반대·별개의견 구간은 판시가 아니다(TK-135).
     segments = [{"segment_id": f"S{i}", "original_start": s, "original_end": e, "selection_reason": r,
+                 "opinion_kinds": sorted({k for rs, re_, k in ranges if rs < e and re_ > s}) or ["MAJORITY"],
                  "text": text[s:e]} for i, (s, e, r) in enumerate(spans)]
     omitted, cursor = [], 0
     for seg in segments:

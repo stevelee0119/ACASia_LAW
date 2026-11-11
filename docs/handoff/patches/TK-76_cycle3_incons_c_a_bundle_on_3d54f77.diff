@@ -1,0 +1,223 @@
+diff --git a/packages/claim_engine/internal_inconsistency.py b/packages/claim_engine/internal_inconsistency.py
+index e61b78b..93c4187 100644
+--- a/packages/claim_engine/internal_inconsistency.py
++++ b/packages/claim_engine/internal_inconsistency.py
+@@ -1190,6 +1190,8 @@ SAME_EVENT_NOUNS: Tuple[str, ...] = (
+     "회신", "답변", "통지", "통보", "고지", "발송", "송부", "송달", "전달",
+     "해지", "해제", "취소", "철회", "결의", "의결", "처분", "결정", "명령", "징계", "해고",
+     "신청", "청구", "체결", "합의", "약정", "보고", "신고",
++    # 평가 측 후속 I2(사용자 결정 11-09): 같은 사건을 전달 수단 명사로 적은 꼴 — 알림 단계(NOTIFY_SEND)로 본다
++    "문자메시지", "이메일", "전자우편", "메일", "문자", "서신", "편지", "팩스",
+ )
+ _EVENT_NOUN_ALT = "|".join(SAME_EVENT_NOUNS)
+ 
+@@ -1297,6 +1299,8 @@ _DEFAULT_NOUN_STAGE: Dict[str, str] = {
+     "명령": "DECIDE", "징계": "DECIDE", "해고": "DECIDE", "체결": "DECIDE",
+     "합의": "DECIDE", "약정": "DECIDE",
+     "신청": "SUBMIT_FILE", "청구": "SUBMIT_FILE", "신고": "SUBMIT_FILE",
++    "문자메시지": "NOTIFY_SEND", "이메일": "NOTIFY_SEND", "전자우편": "NOTIFY_SEND", "메일": "NOTIFY_SEND",
++    "문자": "NOTIFY_SEND", "서신": "NOTIFY_SEND", "편지": "NOTIFY_SEND", "팩스": "NOTIFY_SEND",
+ }
+ 
+ _CONTENT_EXCLUDE_WORDS = frozenset({
+@@ -1331,6 +1335,9 @@ class _SameEventSlot:
+     page: int
+ 
+ 
++_PRONOUN_SYLLABLES = frozenset("그저나너내누뭐걔얘쟤")
++
++
+ def _clean_content_prefix(raw_content: Optional[str]) -> Optional[str]:
+     if not raw_content:
+         return None
+@@ -1338,7 +1345,10 @@ def _clean_content_prefix(raw_content: Optional[str]) -> Optional[str]:
+     if not tokens:
+         return None
+     tok = tokens[-1]
+-    if re.search(r"(?:은|는|이|가|을|를|에|에서|에게|으로|로|와|과|의|도|만|부터|까지|한|된|할|던|차례|번|날|일|시|분|경)$", tok):
++    # 평가 측 후속 T2: '이의·항의·사과·제도·불만'처럼 끝 음절이 조사(과·의·도·만)와 같은 두 글자 명사는
++    # 조사로 보지 않는다(첫 글자가 대명사·지시어인 '그의·나도·그만' 등은 그대로 조사로 본다)
++    two_syllable_noun = bool(re.fullmatch(r"[가-힣][과의도만]", tok)) and tok[0] not in _PRONOUN_SYLLABLES
++    if not two_syllable_noun and re.search(r"(?:은|는|이|가|을|를|에|에서|에게|으로|로|와|과|의|도|만|부터|까지|한|된|할|던|차례|번|날|일|시|분|경)$", tok):
+         return None
+     clean = re.sub(r"\s+", "", tok)
+     # 평가 측 보완 D1: 날짜·번호 조각('21.', '3)')이 내용 수식으로 남지 않게 한글 2~12자 어절만 받는다
+@@ -1374,6 +1384,14 @@ def _determine_stage_role(clause: str, h_start: int, h_end: int, is_dated_doc: b
+     return _DEFAULT_NOUN_STAGE.get(head_raw, "NOTIFY_SEND")
+ 
+ 
++_MEDIUM_NOUNS = frozenset({"문자메시지", "이메일", "전자우편", "메일", "문자", "서신", "편지", "팩스"})
++
++
++def _is_medium_instrument(head: str, after: str) -> bool:
++    """평가 측 후속 I2: 전달 수단 명사가 '팩스로·메일로'처럼 수단(-으로/-로)으로 쓰이면 사건이 아니다."""
++    return head in _MEDIUM_NOUNS and bool(re.match(r"^(?:으로|로)(?:써|서)?(?![가-힣])", after))
++
++
+ def _extract_event_from_clause(
+     clause: str,
+     sent_last_noun_event: Optional[Tuple[Optional[str], str, bool, bool]] = None,
+@@ -1382,7 +1400,10 @@ def _extract_event_from_clause(
+     # 1. 지시어 결속 명사구 우선 (_ANAPHORA_EVENT_RE)
+     for m in _ANAPHORA_EVENT_RE.finditer(clause):
+         after = clause[m.end():]
+-        if _NON_ARGUMENT_SUFFIX_RE.match(after):
++        # 평가 측 후속 I1: '[날짜]에 [동사]한 위 [사건 명사]에 대하여 …'처럼 관형절에 그 사건의 날짜가 있으면 수식어 자리여도 결속한다
++        if _NON_ARGUMENT_SUFFIX_RE.match(after) and not _has_dated_relative_clause(clause[:m.start()]):
++            continue
++        if _is_medium_instrument(m.group("head"), after):
+             continue
+         content = _clean_content_prefix(m.group("content"))
+         return (content, m.group("head"), None, m.start(), m.end(), True, True)
+@@ -1398,6 +1419,8 @@ def _extract_event_from_clause(
+         after = clause[m.end():]
+         if _NON_ARGUMENT_SUFFIX_RE.match(after):
+             continue
++        if _is_medium_instrument(m.group("head"), after):
++            continue
+         if re.match(r"^(?:하|했|하였|한|하고|하여|되|되었|된|함|하면서|하며)", after):
+             verbal_candidates.append(m)
+         else:
+@@ -1431,6 +1454,16 @@ _RELATIVE_EVENT_VERB_RE = re.compile(
+ )
+ 
+ 
++def _has_dated_relative_clause(prefix: str) -> bool:
++    """prefix가 '[날짜·시각] … [동사]한/된/보낸 ' 꼴로 끝나는지(관형절 안에 날짜·시각이 있는지) 본다."""
++    m_rel = _RELATIVE_EVENT_VERB_RE.search(prefix + " ")
++    if not m_rel:
++        return False
++    head = prefix[:m_rel.start()]
++    return bool(_FULL_DATE_RE.search(head) or TIME_RE.search(head) or _SAME_MONTH_DAY_RE.search(head)
++                or _MONTH_DAY_RE.search(head) or _RELATIVE_DATE_RE.search(head))
++
++
+ def _relative_verb_stage(verb: str, head_noun: Optional[str]) -> str:
+     """관형절 동사로 단계를 정한다. 기능동사('한'·'된')뿐이면 머리 명사의 기본 단계."""
+     for stage_name, pat in _STAGE_PREDICATE_PATTERNS:
+@@ -1745,11 +1778,12 @@ def _check_same_event_datetime_inconsistency(
+                 v2_str = slot_b.raw_time
+                 conflict_label = "시각"
+ 
+-            target_display = (
+-                f"{slot_a.content_prefix or slot_b.content_prefix} {slot_a.head_noun}".strip()
+-                if (slot_a.content_prefix or slot_b.content_prefix)
+-                else slot_a.head_noun
+-            )
++            # 평가 측 후속 T1: 내용 수식과 머리 명사는 같은 슬롯에서 함께 가져온다(다른 슬롯끼리 섞으면 '징계 징계'처럼 겹친다)
++            disp_slot = slot_a if slot_a.content_prefix else (slot_b if slot_b.content_prefix else slot_a)
++            if disp_slot.content_prefix and disp_slot.content_prefix != disp_slot.head_noun:
++                target_display = f"{disp_slot.content_prefix} {disp_slot.head_noun}"
++            else:
++                target_display = disp_slot.head_noun
+             bind_reason = "유일성 표지" if has_uniq_binding else "지시어 결속"
+             title = f"문서 내 동일 사건({target_display}) {conflict_label} 진술 모순: {v1_str} ↔ {v2_str}"
+             detail = (
+diff --git a/tests/test_tk76_incons_c_title_dup_eval.py b/tests/test_tk76_incons_c_title_dup_eval.py
+new file mode 100644
+index 0000000..bafdb82
+--- /dev/null
++++ b/tests/test_tk76_incons_c_title_dup_eval.py
+@@ -0,0 +1,102 @@
++"""TK-76 EVI-INCONS C 후속 T1 — 결과 제목의 대상 표시에 같은 낱말이 겹치지 않는다(평가 측 공개 합성 문장)."""
++from __future__ import annotations
++
++import re
++
++from packages.claim_engine.internal_inconsistency import check_internal_inconsistency
++from packages.common.schemas import Block, NormalizedDocument, Page
++
++
++def _titles(lines):
++    blocks = [Block(block_id=f"b{i}", text=t, page=1, visible=True, source_layer="visible_text") for i, t in enumerate(lines)]
++    doc = NormalizedDocument(document_id="d", filename="d.pdf", mime_type="application/pdf", sha256="0" * 64,
++                             pages=[Page(page_number=1, blocks=blocks, width=595.0, height=842.0)])
++    return [f.title for f in check_internal_inconsistency(doc)
++            if (f.confidence_features or {}).get("rule_id") == "EVI.INCONS_SAME_EVENT_DATETIME"]
++
++
++def _target(title):
++    m = re.search(r"동일 사건\(([^)]*)\)", title)
++    return m.group(1) if m else ""
++
++
++def test_no_repeated_word_when_head_nouns_differ():
++    titles = _titles([
++        "위원회는 2024. 3. 4. 처음이자 마지막으로 원고에 대한 해고를 의결하였습니다.",
++        "위원회가 2024. 3. 18. 한 위 해고 의결은 정관상 정족수를 채우지 못하였습니다.",
++    ])
++    assert titles
++    for t in titles:
++        words = _target(t).split()
++        assert len(words) == len(set(words)), t
++
++
++def test_content_and_head_from_same_slot():
++    titles = _titles([
++        "원고는 2024. 5. 2. 단 한 차례 해지 통지를 발송하였습니다.",
++        "원고는 2024. 5. 9. 위 해지 통지를 발송하였습니다.",
++    ])
++    assert titles and all(_target(t) == "해지 통지" for t in titles), titles
++
++
++# --- 평가 측 후속 I1: 관형절에 날짜가 있는 '위 [사건 명사]에 대하여' 꼴 ---
++
++def test_i1_dated_relative_clause_with_daehayeo_binds():
++    titles = _titles([
++        "원고는 2024. 6. 3. 단 한 차례 피고에게 손해배상 청구를 하였습니다.",
++        "원고가 2024. 6. 17. 한 위 손해배상 청구에 대하여 피고는 아무런 답변을 하지 않았습니다.",
++    ])
++    assert titles, titles
++
++
++def test_i1_control_no_relative_clause_daehayeo_not_bound():
++    # 관형절 날짜 없이 '위 청구에 대하여 [다른 날짜] 답변서 제출' — 다른 사건(답변서 제출)의 날짜다
++    titles = _titles([
++        "원고는 2024. 6. 3. 단 한 차례 피고에게 손해배상 청구를 하였습니다.",
++        "피고는 위 청구에 대하여 2024. 6. 17. 답변서를 제출하였습니다.",
++    ])
++    assert not titles, titles
++
++
++# --- 평가 측 후속 I2: 전달 수단 명사(메일·문자·팩스 등)로 적은 같은 사건 ---
++
++def test_i2_medium_noun_time_conflict():
++    titles = _titles([
++        "피고는 2024. 7. 1. 10:00 원고에게 단 한 번 해명 메일을 보냈습니다.",
++        "피고가 위 해명 메일을 보낸 시각은 2024. 7. 1. 15:30입니다.",
++    ])
++    assert titles, titles
++
++
++def test_i2_control_medium_as_instrument_not_event():
++    # '팩스로'는 수단이다 — 다른 날짜의 팩스 도착을 같은 사건으로 묶지 않는다
++    titles = _titles([
++        "원고는 2024. 8. 5. 피고에게 계약 해지 통지를 발송하였습니다.",
++        "원고는 2024. 8. 6. 같은 내용을 팩스로 다시 보냈습니다.",
++    ])
++    assert not titles, titles
++
++
++def test_i2_control_idiom_munja_geudaero():
++    titles = _titles([
++        "피고는 2024. 9. 2. 계약서 조항을 문자 그대로 해석하였습니다.",
++        "피고는 2024. 9. 9. 위 조항을 문자 그대로 다시 적용하였습니다.",
++    ])
++    assert not titles, titles
++
++
++# --- 평가 측 후속 T2: 끝 음절이 조사와 같은 두 글자 내용 수식('이의·항의·사과' 등)이 제목에서 빠지지 않는다 ---
++
++def test_t2_two_syllable_content_ending_like_particle_kept():
++    titles = _titles([
++        "원고는 2024. 10. 7. 단 한 차례 피고에게 항의 통지를 발송하였습니다.",
++        "원고는 2024. 10. 14. 위 항의 통지를 피고에게 발송하였습니다.",
++    ])
++    assert titles and all(_target(t) == "항의 통지" for t in titles), titles
++
++
++def test_t2_pronoun_genitive_not_content():
++    from packages.claim_engine.internal_inconsistency import _clean_content_prefix
++    assert _clean_content_prefix("그의") is None
++    assert _clean_content_prefix("나도") is None
++    assert _clean_content_prefix("이의") == "이의"

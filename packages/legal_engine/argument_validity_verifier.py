@@ -22,6 +22,14 @@ from packages.common.enums import (
     VerificationStatus,
 )
 from packages.common.schemas import Citation, Claim, Finding, NormalizedDocument
+from packages.legal_engine.authority_status import (
+    LegalVerificationStatus,
+    classify_authority_status,
+    get_court_tier,
+    is_covered_precedent_scope,
+    make_authority_id,
+)
+from packages.legal_engine.actionable_guidance import generate_actionable_guidance
 from packages.legal_engine.normalize import case_number_possible
 from packages.legal_engine.reasoning_format import format_counteraction, format_reasoning, reasoning_sections
 from packages.llm_router import LLMRouter
@@ -71,9 +79,17 @@ def _context_review(verdict, reviews, mask=None):
 
 def _fabrication_row(c: Any) -> "HallucinationTableRow":
     """사건번호가 성립할 수 없는 경우. 여기서는 단정해도 된다."""
+    auth_id = make_authority_id(c)
+    raw_claim = c.context[:1000] if c.context else f"{c.raw_text}에 기반한 법률적 주장"
+    display_claim = raw_claim if len(raw_claim) <= 200 else (raw_claim[:197] + "...")
+    guidance = generate_actionable_guidance(
+        basis="FABRICATION_SUSPECTED",
+        cited_authority=c.raw_text,
+        claim_text=display_claim,
+    )
     return HallucinationTableRow(
         location=f"{c.page or 1}면",
-        claim_text=c.context[:150] if c.context else f"{c.raw_text}에 기반한 법률적 주장",
+        claim_text=display_claim,
         cited_authority=c.raw_text,
         authority_exists=False,
         basis="FABRICATION_SUSPECTED",
@@ -85,6 +101,10 @@ def _fabrication_row(c: Any) -> "HallucinationTableRow":
         legal_reasoning=("실재할 수 없는 사건번호를 전제로 하고 있어 그 판례를 근거로 한 부분은 "
                          "법리적 타당성을 인정할 수 없습니다. 오기(誤記)인지 원문 확인이 필요합니다."),
         recommended_counteraction="상대방에게 판결문 사본 제출 또는 사건번호 정정 석명을 신청할 것.",
+        evaluation_context=raw_claim,
+        authority_id=auth_id,
+        verification_status=LegalVerificationStatus.SUSPICIOUS.value,
+        actionable_guidance=guidance,
     )
 
 
@@ -146,6 +166,12 @@ class HallucinationTableRow:
     ai_label: str = ""
     citation_id: str = ""
     context_review: Dict[str, Any] = field(default_factory=dict)
+    evaluation_context: str = ""
+    authority_id: str = ""
+    verification_status: str = ""
+    quote_diff_categories: List[str] = field(default_factory=list)
+    quote_diff_status: Optional[str] = None
+    actionable_guidance: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         review = self.review_text or self.legal_reasoning
@@ -159,6 +185,12 @@ class HallucinationTableRow:
             "reasoning_sections": reasoning_sections(review, self.ai_label, opinions),
             "location": self.location,
             "claim_text": self.claim_text,
+            "evaluation_context": self.evaluation_context or self.claim_text,
+            "authority_id": self.authority_id,
+            "verification_status": self.verification_status,
+            "quote_diff_categories": list(self.quote_diff_categories),
+            "quote_diff_status": self.quote_diff_status,
+            "actionable_guidance": self.actionable_guidance,
             "cited_authority": self.cited_authority,
             "authority_exists": self.authority_exists,
             "ai_generation_basis": self.ai_generation_basis,
@@ -195,47 +227,148 @@ class ArgumentValidityResult:
         }
 
 
-def _extract_linked_claim(citation: Citation, doc: NormalizedDocument) -> str:
+LEGAL_SENTENCE_SPLIT_RE = re.compile(r"(?<=[가-힣][.?!])\s+|(?<=[\"')\]][.?!])\s+")
+PROVISO_EXCEPTION_RE = re.compile(
+    r"^\s*(?:다만|단[, ]|그러나|하지만|특별한\s*사정이\s*없는\s*한|예외적으로|반면|이에\s*반하여|설령|가사)"
+)
+
+
+def _is_valid_coord_pair(coord: Any) -> bool:
+    """좌표 쌍([start, end] 또는 (start, end))이 유효한 양의 정수 범위인지 엄격히 검증한다."""
+    if not isinstance(coord, (list, tuple)) or len(coord) != 2:
+        return False
+    a, b = coord
+    if type(a) is not int or type(b) is not int:
+        return False
+    return 0 <= a < b
+
+
+def _extract_linked_claim(citation: Citation, doc: NormalizedDocument, *, max_chars: int = 1000) -> str:
     """인용 판례와 직접 연결된 법률적 주장 문장을 추출한다.
 
-    앞 문단의 인적사항이나 의료정보 등 무관한 내용이 잘려 들어가지 않도록
-    줄바꿈(\\n) 및 문장 경계를 엄격히 준수한다.
+    좌표계 분리 및 원문 보존 (LV-02):
+    - reading_span: build_reading_text(doc) 기준
+    - citation.span: block 또는 document 기준
+    - citation.context: 발췌문 기준
+    인용 발생 위치를 정확히 특정하고, 문단 내 단서('다만'), 예외('특별한 사정이 없는 한'),
+    조건, 부정이 포함된 후속 문장을 최대 max_chars까지 누락 없이 보존한다.
     """
     raw_text = citation.raw_text or ""
     case_no = citation.case_number or citation.canonical_case_number or ""
 
-    # 1. context가 있을 때 줄바꿈 기준 인용구 속한 줄(문단) 우선 추출
-    if citation.context:
-        lines = [line.strip() for line in citation.context.split("\n") if line.strip()]
-        target_line = ""
-        for line in lines:
-            if (raw_text and raw_text in line) or (case_no and case_no in line):
-                target_line = line
+    # 0. citation.attributes에 명시적 claim_text가 제공된 경우 우선 고려
+    attr_claim = (citation.attributes or {}).get("claim_text")
+    if attr_claim and isinstance(attr_claim, str) and len(attr_claim.strip()) >= 15:
+        if (raw_text and raw_text in attr_claim) or (case_no and case_no in attr_claim):
+            return attr_claim[:max_chars].strip()
+
+    # 1. 대상 텍스트(target_text) 및 텍스트 내 인용 위치(span_start, span_end) 특정
+    target_text = ""
+    span_start, span_end = -1, -1
+
+    doc_text = ""
+    if doc:
+        try:
+            from packages.document_engine.reading_text import build_reading_text
+            doc_text = build_reading_text(doc).text
+        except Exception:
+            doc_text = getattr(doc, "full_text", "") or ""
+
+    reading_span = (citation.attributes or {}).get("reading_span")
+    if doc_text and _is_valid_coord_pair(reading_span):
+        r0, r1 = reading_span
+        if r1 <= len(doc_text):
+            r_text = doc_text[r0:r1]
+            if (raw_text and raw_text in r_text) or (case_no and case_no in r_text):
+                target_text = doc_text
+                span_start, span_end = r0, r1
+
+    if not target_text and doc_text and _is_valid_coord_pair(citation.span):
+        s0, s1 = citation.span
+        if s1 <= len(doc_text):
+            s_text = doc_text[s0:s1]
+            if (raw_text and raw_text in s_text) or (case_no and case_no in s_text):
+                target_text = doc_text
+                span_start, span_end = s0, s1
+
+    if not target_text and citation.context:
+        target_text = citation.context
+        if raw_text and raw_text in target_text:
+            span_start = target_text.find(raw_text)
+            span_end = span_start + len(raw_text)
+        elif case_no and case_no in target_text:
+            span_start = target_text.find(case_no)
+            span_end = span_start + len(case_no)
+        elif _is_valid_coord_pair(citation.span) and citation.span[1] <= len(target_text):
+            span_start, span_end = citation.span
+
+    if not target_text and doc_text:
+        target_text = doc_text
+        if raw_text and raw_text in target_text:
+            span_start = target_text.find(raw_text)
+            span_end = span_start + len(raw_text)
+        elif case_no and case_no in target_text:
+            span_start = target_text.find(case_no)
+            span_end = span_start + len(case_no)
+
+    if not target_text:
+        return f"{raw_text}에 기반한 법률적 주장"
+
+    # 2. 인용구가 속한 문단/줄 범위 탐색
+    line_start = target_text.rfind("\n", 0, span_start) if span_start != -1 else 0
+    line_start = 0 if line_start == -1 else line_start + 1
+    line_end = target_text.find("\n", span_end) if span_end != -1 else len(target_text)
+    line_end = len(target_text) if line_end == -1 else line_end
+    line = target_text[line_start:line_end]
+
+    rel_start = (span_start - line_start) if span_start != -1 else 0
+
+    # 3. 문단 내 문장 분리 및 인용 속한 문장부터 단서/예외/후속 문장 보존
+    # 좌표계(rel_start)가 특정된 경우 첫 텍스트 일치로 덮어쓰지 않고 해당 위치의 출현을 우선한다 (LV-02-R3)
+    sentences = [s.strip() for s in LEGAL_SENTENCE_SPLIT_RE.split(line) if s.strip()]
+    cur = 0
+    cit_idx = -1
+    for idx, s in enumerate(sentences):
+        s_pos = line.find(s, cur)
+        if s_pos == -1:
+            s_pos = cur
+        s_end_pos = s_pos + len(s)
+        cur = s_end_pos
+        if span_start != -1:
+            if s_pos <= rel_start < s_end_pos:
+                cit_idx = idx
                 break
-        if not target_line and lines:
-            target_line = lines[-1]
+        else:
+            if (raw_text and raw_text in s) or (case_no and case_no in s):
+                cit_idx = idx
+                break
 
-        if target_line:
-            # 문단 내에서 문장 단위 분리
-            sentences = re.split(r"(?<=[.?!])\s+", target_line)
-            matched = [s for s in sentences if (raw_text and raw_text in s) or (case_no and case_no in s)]
-            if matched:
-                return " ".join(matched)[:200].strip()
-            return target_line[:200].strip()
+    if cit_idx == -1 and (raw_text or case_no):
+        for idx, s in enumerate(sentences):
+            if (raw_text and raw_text in s) or (case_no and case_no in s):
+                cit_idx = idx
+                break
 
-    # 2. span 정보 기반 전체 텍스트에서 해당 문단 영역 슬라이싱
-    full_text = getattr(doc, "full_text", "") or ""
-    if citation.span and full_text:
-        start, end = citation.span
-        prev_newline = full_text.rfind("\n", 0, start)
-        para_start = prev_newline + 1 if prev_newline != -1 else max(0, start - 150)
-        next_newline = full_text.find("\n", end)
-        para_end = next_newline if next_newline != -1 else min(len(full_text), end + 200)
-        para_text = full_text[para_start:para_end].strip()
-        if para_text:
-            return para_text[:200].strip()
+    if cit_idx == -1:
+        selected_sentences = sentences
+    else:
+        end_idx = cit_idx + 1
+        while end_idx < len(sentences) and PROVISO_EXCEPTION_RE.search(sentences[end_idx]):
+            end_idx += 1
+        selected_sentences = sentences[cit_idx:end_idx]
 
-    return f"{raw_text}에 기반한 법률적 주장"
+    claim = " ".join(selected_sentences)
+
+    # 4. 다음 문단/줄이 단서나 예외로 이어지면 추가 결합
+    nxt_line_start = line_end + 1
+    if nxt_line_start < len(target_text):
+        nxt_line_end = target_text.find("\n", nxt_line_start)
+        nxt_line_end = len(target_text) if nxt_line_end == -1 else nxt_line_end
+        nxt_line = target_text[nxt_line_start:nxt_line_end].strip()
+        if PROVISO_EXCEPTION_RE.search(nxt_line):
+            claim = f"{claim} {nxt_line}"
+
+    return claim[:max_chars].strip() or f"{raw_text}에 기반한 법률적 주장"
 
 
 async def verify_argument_validity(
@@ -248,6 +381,7 @@ async def verify_argument_validity(
     external_ai_policy: ExternalAIPolicy = ExternalAIPolicy.MASKED,
     mask: Optional[Callable[[str], str]] = None,
     semantic_reviews: Optional[List[Dict[str, Any]]] = None,
+    related_authorities: Optional[Dict[str, Any]] = None,
 ) -> ArgumentValidityResult:
     """허위 판례 인용 및 법률 주장에 대한 타당성 종합 검토를 수행하고 대조표를 생성한다."""
     result = ArgumentValidityResult()
@@ -268,42 +402,126 @@ async def verify_argument_validity(
         sem_rev = sem_by_cid.get(cid)
         sem_status = str(sem_rev.get("status", "")) if sem_rev and sem_rev.get("source_quotes_validated") else ""
 
-        # 판례가 공식 소스에서 발견되지 않았거나(NOT_FOUND), 심각한 불일치가 있거나,
-        # 시맨틱 검토에서 판례 취지 왜곡(CONTRADICTED) 또는 사실관계 적용 차이(DISTINGUISHABLE)가 확인된 경우
-        is_unverified = (status in ("NOT_FOUND", "CONTRADICTED") or levels.get("level1") == "NOT_FOUND"
+        q_status = (verdict.get("review") or {}).get("quote_diff_status")
+        q_cats = (verdict.get("review") or {}).get("quote_diff_categories") or []
+        level3 = str(levels.get("level3", ""))
+        level1 = str(levels.get("level1", ""))
+
+        # 1. 미검증/보류 상태 판정 (SC1)
+        is_quote_unverified = (
+            status in ("UNKNOWN", "SUSPENDED", "UNVERIFIED")
+            or level1 in ("UNKNOWN", "SUSPENDED", "UNVERIFIED")
+            or level3 in ("UNVERIFIED", "UNKNOWN", "SUSPENDED")
+            or q_status in ("UNVERIFIED", "UNKNOWN", "SUSPENDED")
+        )
+
+        # 2. 인용문 불일치(MODIFIED_QUOTE / UNALIGNED_QUOTE) 판정
+        is_quote_mismatch = (
+            not is_quote_unverified
+            and (
+                level3 in ("CONTRADICTED", "MODIFIED")
+                or q_status in ("MODIFIED_QUOTE", "UNALIGNED_QUOTE")
+                or (bool(q_cats) and level3 not in ("", "VERIFIED", "EXACT_MATCH"))
+            )
+        )
+
+        # 3. 요약 전용 / 본문 미확보 판정 (SC2)
+        has_official = bool(verdict.get("official_record"))
+        has_full_text = bool((verdict.get("official_record") or {}).get("full_text"))
+        is_summary_only = has_official and not has_full_text
+
+        # 4. 부존재 / 미확인 상태
+        is_unverified = (status in ("NOT_FOUND", "CONTRADICTED") or level1 == "NOT_FOUND"
                          or levels.get("number_format") == "IMPOSSIBLE")
         is_semantic_issue = sem_status in ("CONTRADICTED", "DISTINGUISHABLE")
-        # 공식 DB에서 원문이 일치 확인된 판례도 대조표에 포함(사건 적용성은 직접 검토 안내)
+
+        # 5. 공식 DB 원문 일치 판정 (본문 대조 완료 및 일치 필수)
         is_official_confirmed = (
             citation.type in (CitationType.CASE, CitationType.CONSTITUTIONAL)
             and status in ("VERIFIED", "PARTIALLY_VERIFIED")
             and not is_unverified
             and not is_semantic_issue
-            and bool(verdict.get("official_record"))
+            and not is_quote_mismatch
+            and not is_quote_unverified
+            and not is_summary_only
+            and has_full_text
+            and level3 in ("VERIFIED", "EXACT_MATCH")
+            and has_official
         )
 
-        if is_unverified or is_semantic_issue or is_official_confirmed:
-            if is_official_confirmed:
-                basis = "OFFICIAL_CONFIRMED"
-            elif not case_number_possible(citation.canonical_case_number or citation.case_number or ""):
+        v_findings = verdict.get("findings", []) if isinstance(verdict, dict) else getattr(verdict, "findings", [])
+        distortion_finding = next(
+            (
+                f for f in v_findings
+                if (getattr(f, "type", None) == FindingType.CASE_HOLDING_DISTORTION
+                    or (isinstance(f, dict) and f.get("type") == FindingType.CASE_HOLDING_DISTORTION)
+                    or "CIT-MIS" in (getattr(f, "tags", []) if not isinstance(f, dict) else (f.get("tags") or [])))
+            ),
+            None,
+        )
+        distortion_label = None
+        grounded_evidence_quote = ""
+        if distortion_finding:
+            feats = getattr(distortion_finding, "confidence_features", {}) if not isinstance(distortion_finding, dict) else (distortion_finding.get("confidence_features") or {})
+            distortion_label = feats.get("verdict_label")
+            grounded_evidence_quote = feats.get("grounded_evidence_quote") or ""
+
+        if is_unverified or is_semantic_issue or is_official_confirmed or is_quote_mismatch or is_summary_only:
+            auth_id = make_authority_id(citation)
+            court_tier = get_court_tier(citation)
+            is_cov = is_covered_precedent_scope(citation)
+
+            if not case_number_possible(citation.canonical_case_number or citation.case_number or ""):
                 basis = "FABRICATION_SUSPECTED"
-            elif sem_status == "CONTRADICTED":
+                auth_status = LegalVerificationStatus.SUSPICIOUS.value
+            elif distortion_finding or sem_status == "CONTRADICTED":
                 basis = "CONTRADICTION"
+                auth_status = LegalVerificationStatus.CONTRADICTED.value
             elif sem_status == "DISTINGUISHABLE":
                 basis = "DISTINGUISHABLE"
+                auth_status = LegalVerificationStatus.CONTEXT_CAUTION.value
+            elif is_quote_mismatch:
+                basis = "CONTENT_MISMATCH"
+                auth_status = LegalVerificationStatus.CONTRADICTED.value
+            elif is_official_confirmed:
+                basis = "OFFICIAL_CONFIRMED"
+                auth_status = LegalVerificationStatus.VERIFIED.value
+            elif is_summary_only:
+                basis = "UNCONFIRMED"
+                auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
             elif status == "CONTRADICTED":
                 basis = "CONTENT_MISMATCH"
+                auth_status = LegalVerificationStatus.CONTRADICTED.value
             else:
                 basis = "UNCONFIRMED"
+                auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
 
+            linked_claim = _extract_linked_claim(citation, doc, max_chars=1000)
+            doc_full = getattr(doc, "full_text", "") or ""
+            span_ctx = ""
+            if _is_valid_coord_pair(citation.span) and doc_full:
+                s0, s1 = citation.span
+                span_ctx = doc_full[max(0, s0 - 200) : min(len(doc_full), s1 + 200)]
+            raw_context = linked_claim or citation.context or span_ctx
             unverified_cases.append({
                 "citation": citation,
                 "verdict": verdict,
                 "basis": basis,
+                "auth_status": auth_status,
+                "authority_id": auth_id,
                 "sem_status": sem_status,
                 "sem_review": sem_rev,
+                "distortion_type": distortion_label,
+                "grounded_evidence_quote": grounded_evidence_quote,
                 "quote_diff": (verdict.get("review") or {}).get("quote_diff"),
-                "context": citation.context or doc.full_text[max(0, citation.span[0] - 200) : min(len(doc.full_text), citation.span[1] + 200)] if citation.span else "",
+                "quote_diff_categories": q_cats,
+                "quote_diff_status": q_status,
+                "quote_level3": level3,
+                "is_quote_unverified": is_quote_unverified,
+                "is_summary_only": is_summary_only,
+                "has_full_text": has_full_text,
+                "context": raw_context,
+                "evaluation_context": linked_claim,
             })
 
     # 2. 가짜 판례가 하나도 없고 주장도 없으면 기본 정상 반환
@@ -340,13 +558,36 @@ async def verify_argument_validity(
         noun = "법령" if statute else "판례"
 
         if contradiction:
-            ai_basis = ("공식 판결 전문의 핵심 법리·취지와 정반대로 인용됨 (결론 뒤집힘). "
-                        "단순 문구 차이가 아니라 판시사항의 부정·예외 요건을 반대로 왜곡하여 인용한 것으로 확인됨.")
-            verdict_text = "판례 취지 왜곡 (판시사항과 상반 / 부당)"
-            legal_reason = (sem_reason or
-                            "공식 판결 전문의 취지와 정반대되는 내용으로 인용되어, 해당 판례를 근거로 한 주장은 법리적 타당성을 인정하기 어렵습니다.")
-            counteraction = ("대법원 판결의 명시적 판시 취지와 정반대이므로 이를 근거로 한 주장은 철회하고, "
-                             "독자적인 적법 요건이나 다른 선례를 찾아 변론을 재구성해야 함.")
+            distortion_type = item.get("distortion_type")
+            grounded_quote = item.get("grounded_evidence_quote") or ""
+            if distortion_type == "CHANGED_PRECEDENT":
+                ai_basis = ("전원합의체 판결 등에 의해 이미 변경·폐기된 종전 판례의 법리를 현행 판시처럼 인용함(CIT-MIS). "
+                            + (f"원문 근거: {grounded_quote}. " if grounded_quote else ""))
+                verdict_text = "판례 취지 왜곡 (변경된 판례 인용 / CIT-MIS)"
+                legal_reason = (f"인용된 법리는 대법원 판결에 의해 명시적으로 변경된 종전 판례의 견해입니다. "
+                                f"현행 대법원 판례의 확립된 법리에 반하므로 주장의 법리적 타당성을 인정하기 어렵습니다.")
+                counteraction = "대법원 전원합의체 판결로 변경된 종전 판례이므로 이를 근거로 한 주장을 즉시 철회하고 현행 판례 법리에 맞춰 재구성할 것."
+            elif distortion_type == "REVERSED_REMAND_CONFUSION":
+                ai_basis = ("상고심(대법원)에서 파기·배척된 원심 법원의 판단을 대법원의 정당한 판시인 것처럼 오인하여 인용함(CIT-MIS). "
+                            + (f"원문 근거: {grounded_quote}. " if grounded_quote else ""))
+                verdict_text = "판례 취지 왜곡 (파기환송 원심 판단 오인 / CIT-MIS)"
+                legal_reason = (f"인용된 내용은 대법원 상고심에서 위법하여 파기된 원심 법원의 판단 구절입니다. "
+                                f"대법원의 판단과 상반되므로 법리적 근거로 원용할 수 없습니다.")
+                counteraction = "대법원에 의해 파기된 하급심 판단이므로 해당 인용을 삭제하고 대법원 파기환송 본 판결의 판시 취지에 따라 변론할 것."
+            elif distortion_type == "MISATTRIBUTED_OPINION":
+                ai_basis = ("대법원 판결의 소수의견(반대의견 또는 별개의견)을 법원의 다수의견 판시인 것처럼 인용함(CIT-MIS). "
+                            + (f"원문 근거: {grounded_quote}. " if grounded_quote else ""))
+                verdict_text = "판례 취지 왜곡 (반대·별개의견 오인 / CIT-MIS)"
+                legal_reason = (f"인용된 문장은 대법원 판결의 반대의견 또는 별개의견에 불과하여 재판의 다수의견(선례 구속력)이 아닙니다.")
+                counteraction = "법원의 다수의견이 아닌 반대의견이므로 이를 전제로 한 주장을 수정하고 대법원 다수의견의 판시 취지를 확인할 것."
+            else:
+                ai_basis = ("공식 판결 전문의 핵심 법리·취지와 정반대로 인용됨 (결론 뒤집힘). "
+                            "단순 문구 차이가 아니라 판시사항의 부정·예외 요건을 반대로 왜곡하여 인용한 것으로 확인됨.")
+                verdict_text = "판례 취지 왜곡 (판시사항과 상반 / 부당)"
+                legal_reason = (sem_reason or
+                                "공식 판결 전문의 취지와 정반대되는 내용으로 인용되어, 해당 판례를 근거로 한 주장은 법리적 타당성을 인정하기 어렵습니다.")
+                counteraction = ("대법원 판결의 명시적 판시 취지와 정반대이므로 이를 근거로 한 주장은 철회하고, "
+                                 "독자적인 적법 요건이나 다른 선례를 찾아 변론을 재구성해야 함.")
         elif distinguishable:
             ai_basis = ("사건 자체는 실재하나, 원 판결의 사실관계(처분 유형·적용 법령)와 본 사안 사이에 "
                         "중대한 차이가 있음. 허위 판례가 아니므로 부존재나 임의 생성으로 단정하지 않음.")
@@ -364,6 +605,16 @@ async def verify_argument_validity(
                 f"구체적 사실관계에 타당하게 적용되는지(사건 적용성)는 AI 작성 여부 판단과 별개로 검토자가 직접 검토해야 합니다."
             )
             counteraction = "공식 판례의 원문 취지와 당해 사건의 계약 조건(손해배상액 예정 vs 위약벌 법리 등)을 직접 비교 검토할 것."
+        elif (basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and has_official
+              and (item.get("is_summary_only") or item.get("quote_level3") == "UNVERIFIED")):
+            ai_basis = "공식 DB에서 요약본만 확보되어 판결문 본문 원문과의 직접 인용 대조가 유보됨 (판결문 사본 확인 필요)"
+            verdict_text = "출처 한계 확인 불가 (판결문 사본 확인 필요)"
+            legal_reason = (
+                f"공식 판례 DB에서 {c.raw_text}의 요약 기록은 확인되었으나, 공식 판결 전문(본문)이 확보되지 않아 "
+                f"직접 인용문의 원문 일치 여부는 사본 확인 전까지 확정되지 않습니다."
+            )
+            counteraction = "상대방에게 판결문 사본 제출을 요청하거나 법원 판결서 열람 서비스를 통해 인용 부분의 원문 일치 여부를 대조할 것."
+            auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
         elif mismatch:
             ai_basis = (
                 "공식 기록은 조회되었으나 인용된 내용이 공식 기록과 일치하지 않음. "
@@ -376,6 +627,29 @@ async def verify_argument_validity(
                             "원문 대조 전까지 근거가 확정되지 않습니다.")
             counteraction = ("공식 기록 원문과 인용 부분을 대조하고, 차이가 있으면 정확한 판시사항으로 "
                              "정정하거나 그 취지가 주장을 뒷받침하는지 다시 검토해야 함.")
+        elif basis == "UNCONFIRMED_SOURCE_LIMIT":
+            ai_basis = (
+                ("국가법령정보 법령 목록에서 같은 이름의 법령을 확인하지 못함. 자치법규 또는 행정규칙 약칭 "
+                 "가능성이 있으므로 이 사실만으로 부존재로 단정하지 않음.") if statute else
+                ("하급심 판결(지방법원/고등법원) 또는 미공개 결정은 공식 판례 DB의 공개 수록 대상에서 제외될 수 있어, "
+                 "공식 DB 미수록만으로 가짜 판례로 단정하지 않음.")
+            )
+            verdict_text = "출처 한계 확인 불가 (판결문 사본 제출 필요)"
+            legal_reason = (f"하급심 판례는 공식 DB에 전문이 수록되지 않을 수 있으므로, 판결문 사본을 확보하기 전까지는 "
+                            f"그 주장의 근거가 확정되지 않습니다. {noun}이(가) 실재하지 않는다는 뜻은 아닙니다.")
+            counteraction = "상대방에게 판결문 사본 제출을 요청하거나 법원 판결서 열람 서비스를 통해 확인 후 변론할 것."
+            auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
+        elif basis == "CONFIRMED_NONEXISTENT":
+            ai_basis = (
+                ("국가법령정보 법령 목록에서 해당 법령 및 조문 번호의 부존재가 확인됨.") if statute else
+                ("대법원 판례 공개 DB 검색 범위 내에서 일치하는 사건번호를 찾지 못함. "
+                 "실재하지 않는 판례이거나 중대한 사건번호 오기 가능성이 높음.")
+            )
+            verdict_text = "대법원 판례 부존재 (가짜 판례 의심)"
+            legal_reason = ("대법원 공식 판례 DB 검색 범위 내에서 일치하는 기록을 확인하지 못하였으므로, "
+                            "해당 판례를 근거로 한 주장은 법리적 타당성을 인정하기 어렵습니다.")
+            counteraction = "대법원 종합법률정보 등을 재확인하고, 단순 오기가 아닌 경우 허위 인용으로 반박하거나 석명을 요청할 것."
+            auth_status = LegalVerificationStatus.CONFIRMED_NONEXISTENT.value
         else:
             ai_basis = (
                 ("국가법령정보 법령 목록에서 같은 이름의 법령·조문을 확인하지 못함. 법령명 오기·약칭·폐지 "
@@ -393,12 +667,29 @@ async def verify_argument_validity(
                  "판결문 사본 또는 출처를 확인하고, 대법원 종합법률정보 등 다른 공식 경로에서도 "
                  "조회해 볼 것. 어느 경로에서도 확인되지 않을 때 비로소 부존재를 다툴 수 있음.")
             )
+            auth_status = (
+                LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
+                if (not statute and get_court_tier(c) == "LOWER")
+                else LegalVerificationStatus.CONFIRMED_NONEXISTENT.value
+                if not statute
+                else LegalVerificationStatus.UNVERIFIED.value
+            )
 
-        linked_claim = _extract_linked_claim(c, doc)
+        linked_claim = item.get("evaluation_context") or _extract_linked_claim(c, doc, max_chars=1000)
+        display_claim = linked_claim if len(linked_claim) <= 200 else (linked_claim[:197] + "...")
+        guidance = generate_actionable_guidance(
+            basis=basis,
+            cited_authority=c.raw_text,
+            claim_text=linked_claim,
+            distortion_type=item.get("distortion_type"),
+            grounded_evidence_quote=item.get("grounded_evidence_quote") or "",
+            quote_diff_categories=item.get("quote_diff_categories") or [],
+            quote_diff_status=item.get("quote_diff_status"),
+        )
 
         row = HallucinationTableRow(
             location=f"{c.page or 1}면",
-            claim_text=linked_claim,
+            claim_text=display_claim,
             cited_authority=c.raw_text,
             authority_exists=bool(item["verdict"].get("official_record")),
             basis=basis,
@@ -406,6 +697,12 @@ async def verify_argument_validity(
             validity_verdict=verdict_text,
             legal_reasoning=legal_reason,
             recommended_counteraction=counteraction,
+            evaluation_context=linked_claim,
+            authority_id=item.get("authority_id") or make_authority_id(c),
+            verification_status=item.get("auth_status") or auth_status,
+            quote_diff_categories=item.get("quote_diff_categories") or [],
+            quote_diff_status=item.get("quote_diff_status"),
+            actionable_guidance=guidance,
         )
         row.item_id = index
         row.citation_id = c.citation_id
@@ -419,8 +716,8 @@ async def verify_argument_validity(
             "citation_id": c.citation_id,
             "official_source_match": has_official,
             "error_category": ("CITATION_CONTRADICTION" if contradiction
-                               else "APPLICATION_DIFFERENCE" if distinguishable
-                               else "LEGAL_CITATION_ERROR" if mismatch else "UNSUPPORTED_LEGAL_BASIS"),
+                                else "APPLICATION_DIFFERENCE" if distinguishable
+                                else "LEGAL_CITATION_ERROR" if mismatch else "UNSUPPORTED_LEGAL_BASIS"),
             "semantic_status": sem_status,
         }
         finding_status = VerificationStatus.CONTRADICTED if contradiction else VerificationStatus.UNVERIFIED
@@ -437,7 +734,12 @@ async def verify_argument_validity(
             else ["SOURCE_UNCONFIRMED"]
         )
 
-        if basis != "OFFICIAL_CONFIRMED":
+        is_pending_row = (
+            basis == "OFFICIAL_CONFIRMED"
+            or (basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and (has_official or item.get("is_quote_unverified")))
+        )
+
+        if not is_pending_row:
             result.findings.append(
                 Finding.create(
                     type=FindingType.LEGAL_ARGUMENT_INVALID,
@@ -460,25 +762,33 @@ async def verify_argument_validity(
     can_use_llm = bool(router and external_ai_policy != ExternalAIPolicy.LOCAL_ONLY
                        and hasattr(router, "consult_all")
                        and router.has_available_provider(policy=external_ai_policy))
-    cases_for_ai = [item for item in unverified_cases if item.get("basis") != "OFFICIAL_CONFIRMED"]
+    cases_for_ai = [
+        item for item in unverified_cases
+        if item.get("basis") != "OFFICIAL_CONFIRMED"
+        and not (item.get("basis") in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and bool(item["verdict"].get("official_record")))
+    ]
     if can_use_llm and cases_for_ai:
-        await _attach_ai_opinions(result, cases_for_ai, router, external_ai_policy, mask)
+        await _attach_ai_opinions(result, cases_for_ai, router, external_ai_policy, mask,
+                                  related_authorities=related_authorities)
 
     if result.rows:
         counts = {basis: sum(r.basis == basis for r in result.rows)
-                  for basis in ("FABRICATION_SUSPECTED", "CONTRADICTION", "DISTINGUISHABLE", "CONTENT_MISMATCH", "UNCONFIRMED", "OFFICIAL_CONFIRMED")}
+                  for basis in ("FABRICATION_SUSPECTED", "CONTRADICTION", "DISTINGUISHABLE", "CONTENT_MISMATCH",
+                                "CONFIRMED_NONEXISTENT", "UNCONFIRMED_SOURCE_LIMIT", "UNCONFIRMED", "OFFICIAL_CONFIRMED")}
         parts = [
             f"성립할 수 없는 사건번호 {counts['FABRICATION_SUSPECTED']}건" if counts["FABRICATION_SUSPECTED"] else "",
             f"판례 취지 왜곡(상반 인용) {counts['CONTRADICTION']}건" if counts["CONTRADICTION"] else "",
             f"사실관계 및 적용 차이 {counts['DISTINGUISHABLE']}건" if counts["DISTINGUISHABLE"] else "",
             f"인용 내용이 공식 기록과 다른 판례 {counts['CONTENT_MISMATCH']}건" if counts["CONTENT_MISMATCH"] else "",
+            f"대법원 판례 DB 부존재 {counts['CONFIRMED_NONEXISTENT']}건" if counts.get("CONFIRMED_NONEXISTENT") else "",
+            f"하급심·출처한계 미확인 {counts['UNCONFIRMED_SOURCE_LIMIT']}건" if counts.get("UNCONFIRMED_SOURCE_LIMIT") else "",
             f"공식 DB에서 확인되지 않은 판례·법령 {counts['UNCONFIRMED']}건" if counts["UNCONFIRMED"] else "",
             f"공식 DB 확인 완료(사건 적용성 직접 검토 필요) 판례 {counts['OFFICIAL_CONFIRMED']}건" if counts.get("OFFICIAL_CONFIRMED") else "",
         ]
         summary = ", ".join(p for p in parts if p) + "에 대한 검토 내용이 포함되어 있습니다. "
-        if counts["UNCONFIRMED"]:
+        if counts["UNCONFIRMED"] or counts.get("UNCONFIRMED_SOURCE_LIMIT"):
             summary += "미확인은 부존재를 뜻하지 않으므로 원문 확인이 필요합니다."
-        elif counts["FABRICATION_SUSPECTED"] or counts["CONTRADICTION"] or counts["CONTENT_MISMATCH"]:
+        elif counts["FABRICATION_SUSPECTED"] or counts.get("CONFIRMED_NONEXISTENT") or counts["CONTRADICTION"] or counts["CONTENT_MISMATCH"]:
             summary += "원문 대조 및 법리 재검토가 필요합니다."
         else:
             summary += "공식 원문이 확인된 판례는 사안 적용성을 검토하십시오."
@@ -508,10 +818,13 @@ def summarize_argument_findings(findings, citation_summary: str) -> Dict[str, An
 
 _BASIS_LABEL = {
     "UNCONFIRMED": "공식 DB에서 같은 사건번호를 찾지 못함(공식 DB는 모든 재판을 수록하지 않으므로 부존재를 뜻하지 않음)",
+    "CONFIRMED_NONEXISTENT": "대법원 판례 DB 검색 범위 내 부존재 확인 (가짜 판례 의심)",
+    "UNCONFIRMED_SOURCE_LIMIT": "하급심 판결 또는 출처 한계로 인한 미확인 (가짜 판례 단정 금지)",
     "CONTENT_MISMATCH": "사건은 확인되나 인용 내용이 공식 기록과 다름",
     "FABRICATION_SUSPECTED": "사건번호 형식상 성립할 수 없음(있을 수 없는 연도 또는 사건부호)",
     "CONTRADICTION": "공식 판결 전문의 핵심 법리·취지와 정반대로 인용됨(취지 왜곡)",
     "DISTINGUISHABLE": "공식 판결 사안과 문서 사안의 사실관계·적용 요건이 상이함(적용 차이 / 전문가 검토 필요)",
+    "OFFICIAL_CONFIRMED": "공식 DB 확인 완료 (판례 실재 및 원문 일치)",
 }
 
 # 한 요청에 묻는 인용 수. 인용 1건에 Anthropic이 약 900토큰을 썼다(실측)는 전제로 4건씩 묻다가,
@@ -585,8 +898,10 @@ async def _retry_truncated_singly(router: Any, replies: List[Any], batch: List[D
 
 async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: List[Dict[str, Any]],
                               router: Any, policy: ExternalAIPolicy,
-                              mask: Optional[Callable[[str], str]]) -> None:
+                              mask: Optional[Callable[[str], str]],
+                              *, related_authorities: Optional[Dict[str, Any]] = None) -> None:
     """사용 가능한 모델 모두에게 묻고, 항목별 의견과 일치 여부를 행에 붙인다."""
+    from packages.legal_engine.normalize import canonical_case_number, extract_all_case_numbers
     from packages.llm_router.providers import _extract_json
 
     from packages.llm_router.router import failure_summary
@@ -596,8 +911,30 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
     from packages.llm_router.excerpt_source import bind_argument_excerpts
     excerpt_pieces = {}
 
+    # TK-138 관련 권위 판례 제공 목록 및 사건번호 집합 구성 (P4, P6, U3)
+    precedents = (related_authorities or {}).get("precedents", [])
+    provided_case_numbers = set()
+    for p in precedents:
+        cno = p.get("case_number")
+        if cno:
+            canon = canonical_case_number(str(cno))
+            if canon:
+                provided_case_numbers.add(canon)
+            else:
+                provided_case_numbers.add(str(cno).replace(" ", ""))
+
+    precedent_context_str = ""
+    if precedents:
+        prec_lines = []
+        for p in precedents[:3]:
+            kind_str = f" {p['case_kind']}" if p.get("case_kind") else ""
+            summary_str = f": {p['summary'][:150]}" if p.get("summary") else ""
+            prec_lines.append(f"- {p['case_number']} ({p['court']}{kind_str}){summary_str}")
+        precedent_context_str = "\n".join(prec_lines)
+
     def context_for(index, item):
-        rendered, piece = render_argument_context(hide, item['context'])
+        raw_ctx = item.get("evaluation_context") or item.get("context") or ""
+        rendered, piece = render_argument_context(hide, raw_ctx)
         excerpt_pieces[index] = piece
         return rendered
     items = [{
@@ -606,6 +943,7 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
         "cited_case": hide(item["citation"].raw_text),
         "확인 상태": _BASIS_LABEL.get(item.get("basis", "UNCONFIRMED"), _BASIS_LABEL["UNCONFIRMED"]),
         "surrounding_context_and_claim": context_for(index, item),
+        **({"관련 권위 판례(참고)": hide(precedent_context_str)} if precedent_context_str else {}),
         **({"원문 대조(어절 단위, 원문 기준)": hide(item["quote_diff"])} if item.get("quote_diff") else {}),
     } for index, item in enumerate(unverified_cases, 1)]
     # 한 번에 모두 물으면 인용이 많을 때 응답이 출력 한도에서 잘린다. 한국어 JSON은
@@ -646,13 +984,43 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
                 item_id = int(row.get("item_id"))
             except (TypeError, ValueError):
                 continue
+            claim_text = str(row.get("claim_text") or "")[:400]
+            reasoning = str(row.get("legal_reasoning") or "")[:800]
+            check = str(row.get("recommended_check") or "")[:400]
+
+            verdict_val = str(row.get("validity_verdict") or "판단 불가")[:40]
+            unprovided: set = set()
+            # P6, U3: 관련 판례 목록을 모델에 준 때만 응답의 사건번호를 그 목록과 대조한다(평가 측 보완 D4).
+            # 서면이 그 항목에서 인용한 사건번호는 제외한다(항목별, 평가 측 보완 D2).
+            if provided_case_numbers:
+                own = (unverified_cases[item_id - 1] if 0 < item_id <= len(unverified_cases) else {}).get("citation")
+                own_cases = {f"{y}{c}{n}" for y, c, n in extract_all_case_numbers(getattr(own, "raw_text", "") or "")}
+                for text in (claim_text, reasoning, check):
+                    for y, c, n in extract_all_case_numbers(text):
+                        key = f"{y}{c}{n}"
+                        if key not in provided_case_numbers and key not in own_cases:
+                            unprovided.add(key)
+            filtered_out_unprovided = bool(unprovided)
+            if unprovided:
+                verdict_val = "판단 불가"  # 비인가 판례 인용 시 타당성 판단 근거에서 배제 (P6)
+                # 화면·보고서에 목록 밖 사건번호를 그대로 보이지 않는다(제거, 평가 측 보완 D5)
+                def _strip(text: str) -> str:
+                    for y, c, n in extract_all_case_numbers(text):
+                        if f"{y}{c}{n}" in unprovided:
+                            text = re.sub(rf"{y}\s*{c}\s*0*{n}(?!\d)", "[제공 목록 밖 사건번호 제거]", text)
+                    return text
+                claim_text, reasoning, check = _strip(claim_text), _strip(reasoning), _strip(check)
+                reasoning = f"[UNVERIFIED_INVENTED_IN_RESPONSE] 제공 목록 밖 사건번호 {len(unprovided)}건 인용 배제. {reasoning}"
+
             opinions_by_item.setdefault(item_id, []).append({
                 "provider": provider,
                 "model": getattr(execution, "model", ""),
-                "claim_text": str(row.get("claim_text") or "")[:400],
-                "verdict": str(row.get("validity_verdict") or "판단 불가")[:40],
-                "reasoning": str(row.get("legal_reasoning") or "")[:800],
-                "check": str(row.get("recommended_check") or "")[:400],
+                "claim_text": claim_text,
+                "verdict": verdict_val,
+                "reasoning": reasoning,  # 기존 키 유지(화면·보고서가 읽는 키, 평가 측 보완 D1)
+                "check": check,
+                "filtered_out_unprovided": filtered_out_unprovided,
+                "unprovided_case_numbers": sorted(unprovided) if unprovided else [],
             })
 
     agree = disagree = 0

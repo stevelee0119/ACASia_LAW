@@ -303,4 +303,123 @@ def verify_cross_document_entities(docs: List[NormalizedDocument]) -> List[Findi
             by_doc = _group_by_doc(items)
             if _differs(by_doc):
                 findings.append(_xdoc_finding(key, by_doc))
+    findings.extend(_verify_anchored(docs, groups))
+    return findings
+
+
+# --- TK-76 3주기 1항 PR2: 앵커가 있는 대상·속성의 문서 간 대조(설계 메모 3.1·M6·M7, 승인 조건 N1) ---------------------
+# 같은 대상임을 문서 밖에서 확정하는 앵커가 있을 때만 비교한다. '위·해당·같은'은 각 문서 안의 앞말을 가리키므로 앵커가 아니다.
+#   1) 유일 소송물 표지: '이 사건 [대상]'·'본건 [대상]'
+#   2) 서증 번호: '갑 제N호증(의 M)'(괄호 안 문서명은 건너뜀)
+# 속성 낱말은 닫힌 목록이 아니라 꼴로 정한다: 1~4자 + 날짜 접미(일·일자)·금액 접미(금액·대금)·수량 접미(수량·면적·인원).
+_ANCHOR_RE = re.compile(
+    r"(?:(?P<unique>이\s*사건|본건)\s*(?:(?P<target>[가-힣]{1,8}?)(?:의\s*|\s+))?|"
+    r"(?P<party>갑|을|병)\s*(?:제\s*)?(?P<no>\d{1,3})\s*호\s*증(?:의\s*(?P<sub>\d{1,3}))?(?:\s*[(（][^)）]{1,20}[)）]|\s+[가-힣]{2,10}(?=의))?"
+    r"(?:의\s*|\s+))(?:기재\s*)?(?P<attr>[가-힣]{1,4}?(?:일자|일|금)|[가-힣]{0,4}?(?:금액|대금|수량|면적|인원))"
+    # 속성 끝 경계: 한글이 더 이어지면('입금'+'일') 더 긴 속성으로 되짚는다(평가 측 보완 S1)
+    r"(?=\s|[은는이가을를의에도과와으로:：]|$)"
+    r"\s*(?:은|는|이|가|을|를|:|：)?\s*(?:모두\s*|각\s*)?")
+_ANCHOR_DATE_RE = re.compile(r"(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})")
+# 단위 뒤의 조사·서술 어미(였다·입니다·임 등)는 단위가 아니다(#224 2판)
+_ANCHOR_QTY_RE = re.compile(r"(?P<num>\d[\d,]*(?:\.\d+)?)\s*(?P<unit>[가-힣㎡㎥]{1,4}?)(?=[은는이가을를의에과와도로였입임\s,.)]|$)")
+# 같은 대상이라도 값이 정당하게 달라지는 문맥(메모 M7): 정정·예비적 주장·기준 시점·가정·청구 변경·상대방 주장.
+# 상대방 주장은 '다투-'의 줄어든 꼴(다툰·다퉈·다툴)과 전달 인용('…라고 + 서술어')까지 본다(#224 2판).
+_ANCHOR_GUARD_RE = re.compile(r"착오|오기|정정|바로잡|예비적|주위적|기준(?:으로|일|시점|일자)?|가정|설령|만약|변경|확장|감축|"
+                              r"예정|연기|계획|주장|항변|다[투툰퉈툴]|(?:이)?라고\s+[가-힣]")
+# 청구 금액·청구 관련 속성은 청구 확장·감축으로 정당하게 바뀐다(fact_store가 따로 다룬다). '…기일'(변론·선고 기일 등 절차 일정)은 바뀌는 것이 정상이다
+_ANCHOR_SKIP_ATTR_RE = re.compile(r"청구")
+
+
+def _anchored_items(doc: NormalizedDocument) -> List[Dict[str, Any]]:
+    """앵커가 있는 (대상, 속성) 값 목록. 값을 읽지 못하거나 양태가 확정이 아니면 넣지 않는다."""
+    from .calculation import parse_amounts
+    from .fact_store import CONFIRMED, modality
+
+    text = _get_doc_text(doc)
+    out: List[Dict[str, Any]] = []
+    for m in _ANCHOR_RE.finditer(text):
+        # '…일자'와 '…일'은 같은 속성이다
+        attr = m.group("attr")[:-1] if m.group("attr").endswith("일자") else m.group("attr")
+        if attr in ENTITY_PATTERNS or _ANCHOR_SKIP_ATTR_RE.search(attr) or attr.endswith("기일"):
+            continue
+        if m.group("unique"):
+            target = m.group("target") or ""
+            anchor = ("UNIQUE", target)
+            label = f"이 사건 {target}".rstrip()
+        else:
+            anchor = ("EXHIBIT", f"{m.group('party')}{m.group('no')}-{m.group('sub') or ''}")
+            label = f"{m.group('party')} 제{m.group('no')}호증" + (f"의 {m.group('sub')}" if m.group("sub") else "")
+        tail = text[m.end():m.end() + 30]
+        if attr.endswith("일"):
+            dm = _ANCHOR_DATE_RE.match(tail)
+            if not dm:
+                continue
+            try:
+                value = date(int(dm.group(1)), int(dm.group(2)), int(dm.group(3))).isoformat()
+            except ValueError:
+                continue
+            raw, kind, vend = dm.group(0), "DATE", dm.end()
+        elif attr.endswith(("금액", "대금", "금")):
+            # 값은 속성 바로 뒤의 금액만 읽는다('…금 중 300만 원'처럼 부분 금액은 읽지 않는다)
+            amounts = [a for a in parse_amounts(tail) if a.start == 0 and a.raw.rstrip().endswith(("원", "원정"))]
+            if not amounts:
+                continue
+            value, raw, kind, vend = str(amounts[0].value), amounts[0].raw, "AMOUNT", amounts[0].end
+        else:
+            qm = _ANCHOR_QTY_RE.match(tail)
+            if not qm:
+                continue
+            value = (qm.group("num").replace(",", ""), qm.group("unit"))
+            raw, kind, vend = qm.group(0), "QUANTITY", qm.end()
+        left, right = _sentence_bounds(text, m.start(), m.end() + vend)
+        sentence = text[left:right]
+        if _ANCHOR_GUARD_RE.search(sentence) or modality(sentence, m.end() + vend - left) != CONFIRMED:
+            continue
+        out.append({"key": (anchor, attr), "label": label, "attr": attr, "kind": kind, "norm": value, "raw": raw.strip(),
+                    "context": text[max(0, m.start() - 20):min(len(text), m.end() + vend + 20)].replace("\n", " ").strip(),
+                    "document_id": doc.document_id, "filename": doc.filename or doc.document_id})
+    return out
+
+
+def _anchored_finding(label: str, attr: str, by_doc: Dict[str, List[Dict[str, Any]]]) -> Finding:
+    """앵커가 있는 같은 대상·속성의 문서 간 값 차이(설계 메모 4.1: CROSS_DOCUMENT_CONTRADICTION·SUSPICIOUS·B·HIGH)."""
+    details = " vs ".join(f"[{its[0]['filename']}] '{its[0]['raw']}'" for its in by_doc.values())
+    features: Dict[str, Any] = {"cross_document_inconsistency": True, "entity_type": attr, "defect_code": "XDOC",
+                                "rule_id": "XDOC.ANCHORED_ATTRIBUTE", "anchor": label,
+                                "documents": [its[0]["filename"] for its in by_doc.values()]}
+    evidence = [Evidence.create(description=f"{its[0]['filename']} 기재", grade=EvidenceGrade.B,
+                                document_id=its[0]["document_id"], excerpt=its[0]["context"][:300], supports=False)
+                for its in by_doc.values()]
+    return Finding.create(
+        type=FindingType.CROSS_DOCUMENT_CONTRADICTION, status=VerificationStatus.SUSPICIOUS, severity=Severity.HIGH,
+        evidence_grade=EvidenceGrade.B, advisory_only=False,
+        title=f"문서 간 기재 모순(XDOC): '{label}'의 '{attr}'가 문서마다 다르다",
+        detail=(f"같은 사건 문서들이 '{label}'의 '{attr}'를 서로 다르게 적었다: {details}. "
+                "정정·예비적 주장·기준 시점·가정·상대방 주장 문장은 비교에서 뺐다. 어느 쪽이 맞는지는 원본 증거로 확인해야 한다."),
+        confidence=confidence_score(features), confidence_features=features, document_id=next(iter(by_doc)),
+        engine=ENGINE_NAME, tags=["FACT", "CROSS_DOCUMENT", "XDOC", "ANCHORED", attr], evidence=evidence)
+
+
+def _verify_anchored(docs: List[NormalizedDocument], groups: List[List[str]]) -> List[Finding]:
+    """사건 묶음 안에서 앵커가 같은 (대상, 속성)을 문서마다 하나의 값으로 적었는데 값이 다르면 알린다."""
+    by_id = {d.document_id: d for d in docs}
+    findings: List[Finding] = []
+    for group in groups:
+        if len(group) < 2:
+            continue
+        items: Dict[tuple, List[Dict[str, Any]]] = defaultdict(list)
+        for doc_id in group:
+            for item in _anchored_items(by_id[doc_id]):
+                items[item["key"]].append(item)
+        for key, its in items.items():
+            by_doc = _group_by_doc(its)
+            if len(by_doc) < 2:
+                continue
+            # 한 문서 안에서 값이 둘 이상이면 어느 값이 그 문서의 주장인지 알 수 없다 — 비교하지 않는다
+            if any(len({i["norm"] for i in v}) != 1 for v in by_doc.values()):
+                continue
+            if its[0]["kind"] == "QUANTITY" and len({i["norm"][1] for i in its}) != 1:
+                continue
+            if _differs(by_doc):
+                findings.append(_anchored_finding(its[0]["label"], its[0]["attr"], by_doc))
     return findings
