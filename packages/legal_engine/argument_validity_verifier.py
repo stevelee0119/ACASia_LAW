@@ -405,6 +405,23 @@ async def verify_argument_validity(
             and bool(verdict.get("official_record"))
         )
 
+        v_findings = verdict.get("findings", []) if isinstance(verdict, dict) else getattr(verdict, "findings", [])
+        distortion_finding = next(
+            (
+                f for f in v_findings
+                if (getattr(f, "type", None) == FindingType.CASE_HOLDING_DISTORTION
+                    or (isinstance(f, dict) and f.get("type") == FindingType.CASE_HOLDING_DISTORTION)
+                    or "CIT-MIS" in (getattr(f, "tags", []) if not isinstance(f, dict) else (f.get("tags") or [])))
+            ),
+            None,
+        )
+        distortion_label = None
+        grounded_evidence_quote = ""
+        if distortion_finding:
+            feats = getattr(distortion_finding, "confidence_features", {}) if not isinstance(distortion_finding, dict) else (distortion_finding.get("confidence_features") or {})
+            distortion_label = feats.get("verdict_label")
+            grounded_evidence_quote = feats.get("grounded_evidence_quote") or ""
+
         if is_unverified or is_semantic_issue or is_official_confirmed:
             auth_id = make_authority_id(citation)
             court_tier = get_court_tier(citation)
@@ -416,7 +433,7 @@ async def verify_argument_validity(
             elif not case_number_possible(citation.canonical_case_number or citation.case_number or ""):
                 basis = "FABRICATION_SUSPECTED"
                 auth_status = LegalVerificationStatus.SUSPICIOUS.value
-            elif sem_status == "CONTRADICTED":
+            elif distortion_finding or sem_status == "CONTRADICTED":
                 basis = "CONTRADICTION"
                 auth_status = LegalVerificationStatus.CONTRADICTED.value
             elif sem_status == "DISTINGUISHABLE":
@@ -444,6 +461,8 @@ async def verify_argument_validity(
                 "authority_id": auth_id,
                 "sem_status": sem_status,
                 "sem_review": sem_rev,
+                "distortion_type": distortion_label,
+                "grounded_evidence_quote": grounded_evidence_quote,
                 "quote_diff": (verdict.get("review") or {}).get("quote_diff"),
                 "quote_diff_categories": (verdict.get("review") or {}).get("quote_diff_categories") or [],
                 "context": raw_context,
@@ -484,13 +503,36 @@ async def verify_argument_validity(
         noun = "법령" if statute else "판례"
 
         if contradiction:
-            ai_basis = ("공식 판결 전문의 핵심 법리·취지와 정반대로 인용됨 (결론 뒤집힘). "
-                        "단순 문구 차이가 아니라 판시사항의 부정·예외 요건을 반대로 왜곡하여 인용한 것으로 확인됨.")
-            verdict_text = "판례 취지 왜곡 (판시사항과 상반 / 부당)"
-            legal_reason = (sem_reason or
-                            "공식 판결 전문의 취지와 정반대되는 내용으로 인용되어, 해당 판례를 근거로 한 주장은 법리적 타당성을 인정하기 어렵습니다.")
-            counteraction = ("대법원 판결의 명시적 판시 취지와 정반대이므로 이를 근거로 한 주장은 철회하고, "
-                             "독자적인 적법 요건이나 다른 선례를 찾아 변론을 재구성해야 함.")
+            distortion_type = item.get("distortion_type")
+            grounded_quote = item.get("grounded_evidence_quote") or ""
+            if distortion_type == "CHANGED_PRECEDENT":
+                ai_basis = ("전원합의체 판결 등에 의해 이미 변경·폐기된 종전 판례의 법리를 현행 판시처럼 인용함(CIT-MIS). "
+                            + (f"원문 근거: {grounded_quote}. " if grounded_quote else ""))
+                verdict_text = "판례 취지 왜곡 (변경된 판례 인용 / CIT-MIS)"
+                legal_reason = (f"인용된 법리는 대법원 판결에 의해 명시적으로 변경된 종전 판례의 견해입니다. "
+                                f"현행 대법원 판례의 확립된 법리에 반하므로 주장의 법리적 타당성을 인정하기 어렵습니다.")
+                counteraction = "대법원 전원합의체 판결로 변경된 종전 판례이므로 이를 근거로 한 주장을 즉시 철회하고 현행 판례 법리에 맞춰 재구성할 것."
+            elif distortion_type == "REVERSED_REMAND_CONFUSION":
+                ai_basis = ("상고심(대법원)에서 파기·배척된 원심 법원의 판단을 대법원의 정당한 판시인 것처럼 오인하여 인용함(CIT-MIS). "
+                            + (f"원문 근거: {grounded_quote}. " if grounded_quote else ""))
+                verdict_text = "판례 취지 왜곡 (파기환송 원심 판단 오인 / CIT-MIS)"
+                legal_reason = (f"인용된 내용은 대법원 상고심에서 위법하여 파기된 원심 법원의 판단 구절입니다. "
+                                f"대법원의 판단과 상반되므로 법리적 근거로 원용할 수 없습니다.")
+                counteraction = "대법원에 의해 파기된 하급심 판단이므로 해당 인용을 삭제하고 대법원 파기환송 본 판결의 판시 취지에 따라 변론할 것."
+            elif distortion_type == "MISATTRIBUTED_OPINION":
+                ai_basis = ("대법원 판결의 소수의견(반대의견 또는 별개의견)을 법원의 다수의견 판시인 것처럼 인용함(CIT-MIS). "
+                            + (f"원문 근거: {grounded_quote}. " if grounded_quote else ""))
+                verdict_text = "판례 취지 왜곡 (반대·별개의견 오인 / CIT-MIS)"
+                legal_reason = (f"인용된 문장은 대법원 판결의 반대의견 또는 별개의견에 불과하여 재판의 다수의견(선례 구속력)이 아닙니다.")
+                counteraction = "법원의 다수의견이 아닌 반대의견이므로 이를 전제로 한 주장을 수정하고 대법원 다수의견의 판시 취지를 확인할 것."
+            else:
+                ai_basis = ("공식 판결 전문의 핵심 법리·취지와 정반대로 인용됨 (결론 뒤집힘). "
+                            "단순 문구 차이가 아니라 판시사항의 부정·예외 요건을 반대로 왜곡하여 인용한 것으로 확인됨.")
+                verdict_text = "판례 취지 왜곡 (판시사항과 상반 / 부당)"
+                legal_reason = (sem_reason or
+                                "공식 판결 전문의 취지와 정반대되는 내용으로 인용되어, 해당 판례를 근거로 한 주장은 법리적 타당성을 인정하기 어렵습니다.")
+                counteraction = ("대법원 판결의 명시적 판시 취지와 정반대이므로 이를 근거로 한 주장은 철회하고, "
+                                 "독자적인 적법 요건이나 다른 선례를 찾아 변론을 재구성해야 함.")
         elif distinguishable:
             ai_basis = ("사건 자체는 실재하나, 원 판결의 사실관계(처분 유형·적용 법령)와 본 사안 사이에 "
                         "중대한 차이가 있음. 허위 판례가 아니므로 부존재나 임의 생성으로 단정하지 않음.")

@@ -33,7 +33,15 @@ from .components import citation_components, component_summary, identity_confirm
 from .citation_format import code_court_family, court_family, format_violations
 from .authority_status import LegalVerificationStatus, classify_authority_status, make_authority_id, get_court_tier
 from .statute_ranges import check_statute_article_range
-from .opinion_attribution import attribute_claim, direction_conflict, split_opinions, summary_direction_conflict
+from .opinion_attribution import (
+    attribute_claim,
+    detect_changed_precedent_distortion,
+    detect_reversed_remand_confusion,
+    direction_conflict,
+    extract_grounded_evidence_quote,
+    split_opinions,
+    summary_direction_conflict,
+)
 from .verification_labels import citation_label
 from .quote_diff import categorize_quote_diff, quote_changes, quote_diff_summary, render_quote_diff
 from .normalize import canonical_article, case_number_possible, same_case_number, split_case_number
@@ -218,6 +226,10 @@ class LegalVerifier:
                 "notes": v.notes,
                 "official_record": v.official_record,
                 "review": v.review,
+                # 결과 데이터는 JSON 칸에 저장된다(PostgreSQL은 객체를 직렬화하지 못해 실행 전체가 실패한다). 뒤 단계(판시 왜곡 조치 안내)가
+                # 읽는 칸만 사전으로 싣는다.
+                "findings": [{"finding_id": f.finding_id, "type": str(f.type), "tags": list(f.tags or []),
+                              "confidence_features": dict(f.confidence_features or {})} for f in v.findings],
                 "source_record_ids": [r.source_record_id for r in v.source_records],
                 "source_lookup": v.lookup,
                 # 확인 완료 라벨과 사건 적용성(v3 D4). 형식 위반 등 뒤 단계가 판정을 바꾸면 라벨을 지운다.
@@ -993,19 +1005,55 @@ class LegalVerifier:
         out: List[Finding] = []
 
         def make(label, status, grade, title, detail, excerpt, extra):
+            grounded_quote = extra.get("grounded_evidence_quote") or excerpt or extract_grounded_evidence_quote(citation.quoted_text or claim, full_text or summary)
             features = {"deterministic_rule": True, "official_source_match": True, "verdict_label": label,
-                        "rule_id": f"OPINION.{label}", **extra}
+                        "rule_id": f"OPINION.{label}", "grounded_evidence_quote": grounded_quote[:300], **extra}
             return Finding.create(
                 type=FindingType.CASE_HOLDING_DISTORTION, status=status,
                 severity=Severity.HIGH if grade == EvidenceGrade.A else Severity.MEDIUM, evidence_grade=grade,
                 title=f"{title}: {citation.raw_text}", detail=detail, confidence=0.85 if grade == EvidenceGrade.A else 0.7,
                 confidence_features=features, document_id=citation.document_id, block_id=citation.block_id,
-                page=citation.page, span=citation.span, engine=ENGINE_NAME, tags=["LEGAL", "CASE", "OPINION", label],
+                page=citation.page, span=citation.span, engine=ENGINE_NAME, tags=["LEGAL", "CASE", "OPINION", label, "CIT-MIS"],
                 evidence=[Evidence.create(description="서면의 판결 요약·인용", grade=EvidenceGrade.B,
                                           document_id=citation.document_id, excerpt=(citation.quoted_text or claim)[:300],
                                           supports=False),
-                          Evidence.create(description="공식 판결 원문의 해당 부분", grade=EvidenceGrade.A,
-                                          excerpt=excerpt[:300])])
+                          Evidence.create(description="공식 판결 원문의 해당 부분 (근거 문장)", grade=EvidenceGrade.A,
+                                          excerpt=grounded_quote[:300])])
+
+        # LV-05: 변경된 종전 판례 인용 (CHANGED_PRECEDENT)
+        changed = detect_changed_precedent_distortion(
+            citation.quoted_text or claim, full_text, summary,
+            cited_case_number=citation.canonical_case_number or citation.case_number or ""
+        )
+        if changed:
+            out.append(make(
+                "CHANGED_PRECEDENT",
+                VerificationStatus.CONTRADICTED,
+                EvidenceGrade.A,
+                "폐기·변경된 종전 판례 취지 인용(CIT-MIS)",
+                f"인용된 취지는 전원합의체 판결 등에 의해 이미 변경·폐기된 종전 판례의 내용이다. "
+                f"원문 확인: {changed['grounded_evidence_quote']}",
+                changed["grounded_evidence_quote"],
+                {"verdict_label": "CHANGED_PRECEDENT", "defect_summary": "변경된 종전 판례 인용",
+                 "grounded_evidence_quote": changed["grounded_evidence_quote"]}
+            ))
+
+        # LV-05: 파기환송 원심 판단 오인 (REVERSED_REMAND_CONFUSION)
+        remand = detect_reversed_remand_confusion(
+            citation.quoted_text or claim, full_text, summary
+        )
+        if remand:
+            out.append(make(
+                "REVERSED_REMAND_CONFUSION",
+                VerificationStatus.CONTRADICTED,
+                EvidenceGrade.A,
+                "파기환송 판결의 원심 판단을 대법원 판시로 오인(CIT-MIS)",
+                f"인용된 내용은 상고심(대법원)에서 파기·배척된 원심 법원의 판단이다. 대법원의 판시가 아니다. "
+                f"원문 확인: {remand['grounded_evidence_quote']}",
+                remand["lower_holding"],
+                {"verdict_label": "REVERSED_REMAND_CONFUSION", "defect_summary": "파기환송 원심 판단 오인",
+                 "grounded_evidence_quote": remand["grounded_evidence_quote"]}
+            ))
 
         if full_text or summary:
             parts = [split_opinions(full_text), split_opinions(summary)]
