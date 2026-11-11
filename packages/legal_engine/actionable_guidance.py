@@ -158,6 +158,7 @@ def generate_actionable_guidance(
     distortion_type: Optional[str] = None,
     grounded_evidence_quote: str = "",
     quote_diff_categories: Optional[List[str]] = None,
+    quote_diff_status: Optional[str] = None,
 ) -> Dict[str, Any]:
     """대조표 단일 행에 대해 확정오류/출처한계/왜곡 3단계 실무 조치(Actionable Guidance)를 생성한다."""
     diff_cats = quote_diff_categories or []
@@ -300,6 +301,22 @@ def generate_actionable_guidance(
 
     # 6) 인용문 실질 차이 (Tier 6: CONTENT_MISMATCH / MODIFIED_QUOTE)
     if basis in ("CONTENT_MISMATCH", "MODIFIED_QUOTE"):
+        if quote_diff_status == "UNALIGNED_QUOTE":
+            return {
+                "action_tier": "SOURCE_LIMIT_SUSPICIOUS",
+                "action_type": "SOURCE_VERIFICATION",
+                "action_title": "공식 원문 검색 및 판례 문맥 대조 안내",
+                "guidance_summary": (
+                    f"{cited_authority}의 인용문이 공식 판례 원문과 대응 구간을 확인할 수 없을 정도로 불일치합니다. "
+                    "원문 검색 및 정확한 판례 문맥을 대조하십시오."
+                ),
+                "draft_motion_text": None,
+                "official_portal_url": SCOURT_GLAW_URL,
+                "recommended_steps": [
+                    "1. 공식 판례 DB(대법원 종합법률정보)에서 판결 전문 검색",
+                    "2. 인용 문맥의 실제 존재 여부 및 판결 취지 대조 확인",
+                ],
+            }
         return {
             "action_tier": "GENERAL",
             "action_type": "QUOTE_REVIEW",
