@@ -43,3 +43,4 @@
 - 평가 측 재실행(Steve `c89e191` + `105ce3f` 합본 `c000753`): 공개 시험 16건·L1 시험 등 58건 통과, 확인 탐침 12/12, 당사자 축 9/9, 평가 세트 문구 의심 없음, PostgreSQL 16 + pgvector로 tests/test_api.py 31건 통과. 은퇴 5세트 53.3/48.6/56.9/45.8/34.1·오탐 0, 고정 82.6/81.9/0 — 변화 0. SQLite 전체 11,444건 중 실패 1(`test_tk76_incons_c_eval.py::test_linear_time_on_20k_chars` 0.83초 > 0.5초) — 단독 재실행 합본·Steve 각 3회 모두 통과(0.04초), LV가 바꾸지 않은 모듈(internal_inconsistency.py diff 0) → 평가 측 환경 부하로 판단.
 - CI(인용): 점수 하락 게이트 두 벌·은퇴 세트 비교·CodeQL 성공, SQLite 한 벌 성공. PostgreSQL 두 벌·SQLite 한 벌은 조회 시점 실행 중.
 - 판정: **#252~#257 수용**(조건: 남은 CI 시험 벌 성공). 병합은 #257 하나(앞 PR 전부 포함) 또는 #252→#257 차례. 병합 뒤 릴리스 후보 SHA에서 평가 측 verify_all 전체 1회.
+- 11-12 CI 재확인(인용): #257 head `105ce3f` 시험 두 벌(SQLite·PostgreSQL 각 2회)·점수 하락 게이트·은퇴 세트 비교·CodeQL·OCR 전부 성공 → **#252~#257 수용 조건 충족**. PR이 초안(draft) 상태라 병합 전 '검토 준비'로 바꿔야 한다.
