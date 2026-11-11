@@ -531,6 +531,7 @@ class LegalVerifier:
                 verdict.findings.append(self._modified_quote_finding(citation, modified, official_text, verdict))
                 # AI 교차검토가 인용문이 아니라 원문 기준으로 평가하도록 차이를 판정에 싣는다.
                 verdict.review["quote_diff"] = render_quote_diff(modified)
+                verdict.review["quote_meaningful_change"] = modified["meaningful"]
                 verdict.review["quote_diff_categories"] = modified.get("diff_categories") or diff_cats
             elif diff_cats and level3 == "MODIFIED":
                 if verdict.status == VerificationStatus.VERIFIED:
