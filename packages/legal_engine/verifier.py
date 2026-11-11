@@ -35,7 +35,7 @@ from .authority_status import LegalVerificationStatus, classify_authority_status
 from .statute_ranges import check_statute_article_range
 from .opinion_attribution import attribute_claim, direction_conflict, split_opinions, summary_direction_conflict
 from .verification_labels import citation_label
-from .quote_diff import quote_changes, quote_diff_summary, render_quote_diff
+from .quote_diff import categorize_quote_diff, quote_changes, quote_diff_summary, render_quote_diff
 from .normalize import canonical_article, case_number_possible, same_case_number, split_case_number
 from .source_review import date_context, verify_admin_rule_source, verify_decision_source, verify_statute_source
 from .spec_mapping import spec_source_verdict
@@ -448,35 +448,52 @@ class LegalVerifier:
         # --- Level 3: 직접 인용문 대조 -----------------------------------
         if citation.quoted_text:
             official_text = " ".join(str(official.get(key) or "") for key in ("full_text", "holding", "summary"))
+            has_full_text = bool(official.get("full_text"))
             level3, ratio = self._compare_quote(citation.quoted_text, official_text)
             # 원문과 0.85 이상 비슷한 구간이 있으면 어절 단위로 무엇이 바뀌었는지 제시한다(전문 확보 시).
-            modified = quote_changes(citation.quoted_text, official_text) if official.get("full_text") else None
+            modified = quote_changes(citation.quoted_text, official_text) if has_full_text else None
+            quote_cat = categorize_quote_diff(citation.quoted_text, official_text, has_full_text=has_full_text)
+            diff_cats = quote_cat.get("diff_categories") or (modified.get("diff_categories") if modified else [])
+            if diff_cats:
+                verdict.review["quote_diff_categories"] = diff_cats
+                verdict.review["quote_diff_status"] = quote_cat.get("status")
+
             if modified and level3 == "CONTRADICTED":
                 level3 = "MODIFIED"
-            if level3 == "CONTRADICTED" and not official.get("full_text"):
+            elif level3 == "TRUNCATED" and diff_cats:
+                level3 = "MODIFIED"
+
+            if not has_full_text:
                 level3 = "UNVERIFIED"
-                verdict.notes.append("판례 전문을 확보하지 못해 직접 인용 불일치를 확정하지 않았다")
+                verdict.notes.append("공식 판결문 본문 미확보로 직접 인용 대조 불가 (요약본만 확보되어 본문 인용 대조 유보)")
             verdict.levels["level3"] = level3
             if level3 == "CONTRADICTED":
                 verdict.status = VerificationStatus.CONTRADICTED
+                is_fabricated_quote = False
+                diff_cats = (modified.get("diff_categories", []) if modified else []) or ["CONTENT_MISMATCH"]
+                verdict.review["quote_diff_categories"] = diff_cats
                 features = {
                     "official_source_match": True,
                     "quote_mismatch": True,
                     "deterministic_rule": True,
                     "quote_similarity": round(ratio, 3),
+                    "quote_diff_categories": diff_cats,
+                    "is_fabricated_quote": False,
                     "defect_summary": f"직접 인용문 불일치(원문과 최대 유사도 {ratio:.2f})",
                 }
+                title = f"직접 인용문이 공식 원문과 일치하지 않는다: {citation.raw_text}"
+                detail = (
+                    f"문서의 인용문과 공식 판시사항·판결요지의 최대 유사도는 {ratio:.2f}이다. "
+                    "따옴표로 표시된 직접 인용은 원문과 일치해야 한다."
+                )
                 verdict.findings.append(
                     Finding.create(
                         type=FindingType.CASE_QUOTE_MISMATCH,
                         status=VerificationStatus.CONTRADICTED,
                         severity=Severity.HIGH,
                         evidence_grade=EvidenceGrade.A,
-                        title=f"직접 인용문이 공식 원문과 일치하지 않는다: {citation.raw_text}",
-                        detail=(
-                            f"문서의 인용문과 공식 판시사항·판결요지의 최대 유사도는 {ratio:.2f}이다. "
-                            "따옴표로 표시된 직접 인용은 원문과 일치해야 한다."
-                        ),
+                        title=title,
+                        detail=detail,
                         confidence=confidence_score(features),
                         confidence_features=features,
                         document_id=citation.document_id,
@@ -515,6 +532,11 @@ class LegalVerifier:
                 # AI 교차검토가 인용문이 아니라 원문 기준으로 평가하도록 차이를 판정에 싣는다.
                 verdict.review["quote_diff"] = render_quote_diff(modified)
                 verdict.review["quote_meaningful_change"] = modified["meaningful"]
+                verdict.review["quote_diff_categories"] = modified.get("diff_categories") or diff_cats
+            elif diff_cats and level3 == "MODIFIED":
+                if verdict.status == VerificationStatus.VERIFIED:
+                    verdict.status = VerificationStatus.PARTIALLY_VERIFIED
+                verdict.review["quote_diff_categories"] = diff_cats
 
         # 다수의견·반대의견 귀속과 판시사항 결론 방향(v3 D3)
         opinion = self._opinion_findings(citation, official)
@@ -1055,6 +1077,7 @@ class LegalVerifier:
         features = {"deterministic_rule": True, "official_source_match": True, "quote_mismatch": True,
                     "verdict_label": "MODIFIED_QUOTE", "quote_similarity": modified["similarity"],
                     "quote_changes": modified["changes"], "quote_ops": modified["ops"],
+                    "quote_diff_categories": modified.get("diff_categories", []),
                     "meaningful_change": meaningful, "defect_summary": quote_diff_summary(modified),
                     "rule_id": "QUOTE.MEANINGFUL_CHANGE" if meaningful else "QUOTE.WORDING_CHANGE"}
         if meaningful:
