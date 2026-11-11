@@ -1,0 +1,167 @@
+diff --git a/packages/claim_engine/evidence_consistency.py b/packages/claim_engine/evidence_consistency.py
+index 4d24c63..1b65342 100644
+--- a/packages/claim_engine/evidence_consistency.py
++++ b/packages/claim_engine/evidence_consistency.py
+@@ -15,6 +15,7 @@
+ """
+ from __future__ import annotations
+ 
++import os
+ import re
+ from datetime import date
+ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+@@ -2974,8 +2975,16 @@ _L3_CONSENT_RE = re.compile(r"(?:동의|승낙|수락|합의|승인)(?:한|하
+ _L3_EXCUSE_RE = re.compile(r"약정|간주|본다고|보기로|상법\s?제53조|낙부\s?통지|상시\s?거래|볼\s?수\s?(?:는\s?)?없|아니")
+ 
+ 
++# TK-151(사용자 11-11 결정 D4): L1(앞 문장 다른 장소 체재 + 다음 문장 직접 지각, 문장 안 연결어미 꼴 포함)은 통상 목격 진술
++# ('당시 저는 편의점 앞에 있었습니다. 그때 … 직접 보았습니다')을 다른 장소 체재로 단정하는 오탐이 많아 재설계 전까지 기본으로 끈다.
++# 같은 문장 안 규칙(perception_conflict, 0.17.0 배포분)과 L2·L3는 그대로 돈다. 재설계·시험용으로만 켠다.
++def _l1_enabled() -> bool:
++    return os.environ.get("LV_ENABLE_PERCEPTION_STRUCTURE_L1", "0") == "1"
++
++
+ def check_reasoning_structure(doc: NormalizedDocument) -> List[Finding]:
+     out: List[Finding] = []
++    l1_on = _l1_enabled()
+     reading = build_reading_text(doc, [b for b in doc.body_blocks() if b.block_type != "running_head"])
+     text = reading.text
+     bounds = list(sentence_bounds(text))
+@@ -2987,12 +2996,12 @@ def check_reasoning_structure(doc: NormalizedDocument) -> List[Finding]:
+         shown = " ".join(sent.split())[:250]
+         # L1
+         pair = None
+-        if prev and not _L1_OTHER_TIME_RE.search(sent):
++        if l1_on and prev and not _L1_OTHER_TIME_RE.search(sent):
+             # 줄 나뉨: 앞 줄이 '체재 + 연결어미(,)'로 끝나면(PDF 줄바꿈) 그 체재 절을 앞 문장으로 본다
+             m_tail = _L1_INLINE_RE.search(prev.rstrip() + " ")
+             prev_n = (prev[:m_tail.start("conn")] + "습니다.") if (m_tail and not prev.rstrip()[m_tail.end() - 1:].strip()) else prev
+             pair = (prev_n, sent, "ELSEWHERE_PREV_SENTENCE")
+-        m_in = _L1_INLINE_RE.search(sent)
++        m_in = _L1_INLINE_RE.search(sent) if l1_on else None
+         if (pair is None or not _l1_elsewhere_stay(prev, sent)) and m_in:
+             rest = sent[m_in.end():]
+             if not _L1_OTHER_TIME_RE.search(rest):
+diff --git a/tests/test_tk76_b_bundle_eval.py b/tests/test_tk76_b_bundle_eval.py
+index 6840ded..380f303 100644
+--- a/tests/test_tk76_b_bundle_eval.py
++++ b/tests/test_tk76_b_bundle_eval.py
+@@ -14,6 +14,12 @@ def _doc(lines):
+                               pages=[Page(page_number=1, blocks=blocks, width=595.0, height=842.0)])
+ 
+ 
++@pytest.fixture
++def l1_on(monkeypatch):
++    # TK-151: L1은 기본으로 꺼져 있다(재설계 대기). L1 회귀 시험은 스위치를 켜고 본다.
++    monkeypatch.setenv("LV_ENABLE_PERCEPTION_STRUCTURE_L1", "1")
++
++
+ def _perception(lines):
+     d = _doc(["진 술 서", "진술인 오○○"] + lines + ["2024. 12. 2.", "진술인 오○○ (인)"])
+     return [f for f in check_document(d) if f.type == FindingType.STATEMENT_BEYOND_PERCEPTION]
+@@ -25,27 +31,27 @@ def _overreach(body, ev):
+ 
+ 
+ # --- L1a: '[인칭 대명사] 눈으로'도 직접 지각 표지 ---
+-def test_l1a_pronoun_eye_marker():
++def test_l1a_pronoun_eye_marker(l1_on):
+     assert _perception(["당시 저는 목포 물류센터에 있었습니다.", "그때 피고가 원고의 차량을 긁는 장면을 저의 눈으로 보았습니다."])
+ 
+ 
+ # --- L2: 장소 조사 없는 체재('[장소] [자리를 떠난 일] 중이었다') ---
+ @pytest.mark.parametrize("stay", ["강릉 연수 중이었습니다", "베트남 파견 중이었습니다", "제주 여행 중이었습니다"])
+-def test_l2_particleless_away_stay(stay):
++def test_l2_particleless_away_stay(stay, l1_on):
+     assert _perception([f"그 시각 저는 {stay}.", "그때 피고가 원고의 차량을 긁는 장면을 직접 보았습니다."])
+ 
+ 
+ # --- L3: 체재 장소가 곧 현장이거나 같은 자리이면 '다른 장소'가 아니다 ---
+ @pytest.mark.parametrize("stay", ["그 시각 저는 주차장 현장에 있었습니다.", "그 시각 저는 원고와 함께 휴게실에 있었습니다.",
+                                   "그 시각 저는 강릉 연수 중이었습니다."])
+-def test_l3_control_colocated(stay):
++def test_l3_control_colocated(stay, l1_on):
+     second = "그때 강릉 연수원 주차장에서 피고가 원고의 차량을 긁는 장면을 직접 보았습니다." if "연수" in stay \
+         else "그때 피고가 원고의 차량을 긁는 장면을 직접 보았습니다."
+     assert not _perception([stay, second])
+ 
+ 
+ # --- L4: 체재한 사람이 진술인이 아니면 해당 없음 ---
+-def test_l4_control_other_person_stay():
++def test_l4_control_other_person_stay(l1_on):
+     assert not _perception(["그 시각 제 배우자는 목포 물류센터에 있었습니다.", "그때 저는 피고가 원고의 차량을 긁는 장면을 직접 보았습니다."])
+ 
+ 
+@@ -107,7 +113,7 @@ def test_o6_control_interrogative():
+ 
+ # --- L5: 지각 문장이 다른 때를 밝히면 같은 때의 지각이 아니다 ---
+ @pytest.mark.parametrize("later", ["나흘 뒤", "이튿날", "그 전날", "일주일 후"])
+-def test_l5_control_other_time_in_perception_sentence(later):
++def test_l5_control_other_time_in_perception_sentence(later, l1_on):
+     assert not _perception(["그 시각 저는 목포 물류센터에 있었습니다.", f"{later} 피고가 원고의 차량을 긁는 장면을 직접 보았습니다."])
+ 
+ 
+@@ -116,15 +122,15 @@ def test_l5_control_other_time_in_perception_sentence(later):
+     ["당시 저는 목포 물류센터에 있었는데, 그때 피고가 원고의 차량을 긁는 장면을 직접 보았습니다."],
+     ["그 시각 저는 강릉 연수 중이었으므로,", "같은 시간 피고가 원고의 차량을 긁는 장면을 똑똑히 보았습니다."],
+ ])
+-def test_l6_in_sentence_or_line_split_stay(lines):
++def test_l6_in_sentence_or_line_split_stay(lines, l1_on):
+     assert _perception(lines)
+ 
+ 
+-def test_l6_control_in_sentence_colocated():
++def test_l6_control_in_sentence_colocated(l1_on):
+     assert not _perception(["당시 저는 원고와 함께 목포 물류센터에 있었는데, 그때 피고가 원고의 차량을 긁는 장면을 직접 보았습니다."])
+ 
+ 
+ # --- L4b: 소유격·대명사가 붙은 한 음절 명사 주어도 다른 사람이다 ---
+ @pytest.mark.parametrize("who", ["원고의 딸은", "제 형은", "그의 처는"])
+-def test_l4b_control_possessed_one_syllable_subject(who):
++def test_l4b_control_possessed_one_syllable_subject(who, l1_on):
+     assert not _perception([f"그 시각 {who} 목포 물류센터에 있었습니다.", "그때 저는 피고가 원고의 차량을 긁는 장면을 직접 보았습니다."])
+diff --git a/tests/test_tk76_logic_eval.py b/tests/test_tk76_logic_eval.py
+index 5e5c028..b1998f2 100644
+--- a/tests/test_tk76_logic_eval.py
++++ b/tests/test_tk76_logic_eval.py
+@@ -2,8 +2,10 @@
+ """TK-76 3주기 EVI-LOGIC 잔여 평가 측 시험(L1~L3). 평가 측 비공개 탐침과 다른 낱말로 새로 지은 합성예다."""
+ from __future__ import annotations
+ 
++import os
+ import time
+ import unittest
++from unittest import mock
+ 
+ from packages.claim_engine.evidence_consistency import check_reasoning_structure
+ from packages.common.schemas import Block, NormalizedDocument, Page
+@@ -23,6 +25,12 @@ def _rules(lines):
+ 
+ 
+ class TestL1PreviousSentenceElsewhere(unittest.TestCase):
++    # TK-151: L1은 기본으로 꺼져 있다(재설계 대기). 규칙 자체의 회귀는 스위치를 켜고 그대로 본다.
++    def setUp(self):
++        patcher = mock.patch.dict(os.environ, {"LV_ENABLE_PERCEPTION_STRUCTURE_L1": "1"})
++        patcher.start()
++        self.addCleanup(patcher.stop)
++
+     def test_elsewhere_then_direct_sight(self):
+         self.assertIn("EVI.BEYOND_PERCEPTION_STRUCTURE", _rules(
+             ["그 시간에 저는 목포항 여객터미널 대합실에 있었습니다.", "저는 피고가 창고 열쇠를 숨기는 것을 똑똑히 보았습니다."]))
+@@ -44,6 +52,17 @@ class TestL1PreviousSentenceElsewhere(unittest.TestCase):
+         self.assertEqual(_rules(["그때 저는 제주 공항 대합실에 머물렀습니다.", "저는 피고가 매장에서 소란을 피웠다고 동료에게 전해 들었습니다."]), [])
+ 
+ 
++class TestL1DisabledByDefault(unittest.TestCase):
++    """TK-151(사용자 11-11 결정 D4): 스위치가 없으면 L1 결과를 내지 않는다."""
++    def test_l1_off_by_default(self):
++        with mock.patch.dict(os.environ, {}, clear=False):
++            os.environ.pop("LV_ENABLE_PERCEPTION_STRUCTURE_L1", None)
++            self.assertNotIn("EVI.BEYOND_PERCEPTION_STRUCTURE", _rules(
++                ["그 시간에 저는 목포항 여객터미널 대합실에 있었습니다.", "저는 피고가 창고 열쇠를 숨기는 것을 똑똑히 보았습니다."]))
++            self.assertNotIn("EVI.BEYOND_PERCEPTION_STRUCTURE", _rules(
++                ["당시 저는 목포 물류센터에 있었는데, 그때 피고가 원고의 차량을 긁는 장면을 직접 보았습니다."]))
++
++
+ class TestL2SingleToAlways(unittest.TestCase):
+     def test_single_observation_to_habit(self):
+         self.assertIn("EVI.SINGLE_TO_ALWAYS", _rules(["피고는 한 차례 정산서를 늦게 낸 적이 있으므로 피고는 언제나 정산을 미루는 사람입니다."]))

@@ -68,7 +68,9 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
             verdict.findings.append(verifier._unverified_finding(citation, verdict.notes[-1], retried.source_record))
             return verdict
     inferred = None
-    if response.ok and (response.message or "").startswith("EXACT_LAW_NOT_FOUND:") and not alias:
+    if response.ok and (response.message or "").startswith("EXACT_LAW_NOT_FOUND:") and not alias \
+            and not _is_ordinance_form(citation.law_name):
+        # 자치법규 꼴은 국가 법령 약칭으로 추정하지 않는다. 자치법규 목록에서 따로 찾는다(TK-134).
         inferred, retried = _infer_abbreviation(verifier, verdict, citation, as_of, current_date)
         if inferred is not None and retried is None:
             # 후보는 골랐으나 그 법령의 연혁·전문 조회를 마치지 못했다: 부존재가 아니라 미확인이다.
@@ -347,6 +349,20 @@ def _is_statute_form(law_name: str) -> bool:
     return any(cleaned.endswith(s) for s in statute_suffixes)
 
 
+LOCAL_GOV_TOKEN_RE = re.compile(r"^[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도|시|군|구)(?:교육청)?$")
+
+
+def _is_ordinance_form(law_name: str) -> bool:
+    """자치법규(조례, 지자체 이름으로 시작하는 규칙) 형태인지. 법령 목록(target=law)에는 없는 규범이다(TK-134)."""
+    cleaned = re.sub(r"[「」『』]", "", law_name or "").strip()
+    compact = cleaned.replace(" ", "")
+    if compact.endswith("조례"):
+        return True
+    first = cleaned.split()[0] if cleaned.split() else ""
+    return compact.endswith("규칙") and not compact.endswith("시행규칙") and bool(LOCAL_GOV_TOKEN_RE.match(first)) \
+        and first != cleaned
+
+
 def _is_internal_or_admin_rule(law_name: str) -> bool:
     """법률·대통령령 등 일반 법령이 아닌 내부 규정·행정규칙·지침 형태인지 판정."""
     cleaned = re.sub(r"[「」『』\s]", "", law_name or "")
@@ -489,6 +505,35 @@ def _law_absent(verdict, response, verifier=None):
         ))
         return
 
+    # 2-1. 자치법규(조례 등) 형태: 법령 목록이 아니라 자치법규 목록에서 다시 찾는다(TK-134)
+    if _is_ordinance_form(citation.law_name):
+        _ordinance_lookup(verdict, verifier, candidates)
+        return
+
+    # 2-2. 짧은 약칭 꼴(어간 3자 이하)인데 약칭 추정이 후보 여럿·목록 상한·조회 실패로 결론을 내지 못했으면 부존재로
+    #      단정하지 않는다(TK-143). 공식 목록을 끝까지 읽고도 후보가 전혀 없으면(NO_CANDIDATE) 지금처럼 CRITICAL이다.
+    if _abbreviation_like(citation.law_name) and (verdict.review.get("law_alias") or {}).get("outcome") in UNDECIDED_INFERENCE:
+        verdict.status = VerificationStatus.UNVERIFIED
+        verdict.levels.update(existence="UNVERIFIED", article="UNVERIFIED", provision="UNVERIFIED")
+        alias = verdict.review.get("law_alias") or {}
+        verdict.notes.append(f"'{citation.law_name}'은(는) 약칭으로 보이나 정식 법령을 확인 불가 — 부존재로 단정하지 않는다")
+        verdict.findings.append(Finding.create(
+            type=FindingType.LAW_CITATION_ERROR, status=VerificationStatus.UNVERIFIED, severity=Severity.MEDIUM,
+            evidence_grade=EvidenceGrade.C,
+            title=f"약칭으로 보이나 정식 법령을 확정하지 못함: {citation.law_name}",
+            detail=("공식 법령 목록에 같은 이름이 없고, 약칭 추정으로도 정식 법령 하나를 고르지 못했다"
+                    + (f"(후보: {', '.join(alias.get('candidates') or [])})" if alias.get("candidates") else "")
+                    + ". 실무 줄임말일 수 있으므로 존재하지 않는 법령으로 단정하지 않는다. 정식 법령명을 서면에서 확인해야 한다."),
+            document_id=citation.document_id, block_id=citation.block_id, page=citation.page, span=citation.span,
+            engine="legal_engine", source_record_ids=ids, tags=["LEGAL", "STATUTE", "ABBREVIATION_UNRESOLVED"],
+            confidence_features={"verdict_label": "ABBREVIATION_UNRESOLVED", "law_name": citation.law_name,
+                                 "inference_outcome": alias.get("outcome"), "law_candidates": candidates},
+            evidence=[Evidence.create(description="법령 목록·약칭 추정 결과", grade=EvidenceGrade.C,
+                                      excerpt=", ".join(alias.get("candidates") or candidates) or "(후보 없음)",
+                                      source_record_ids=ids, supports=False)],
+        ))
+        return
+
     # 3. 일반 법령(법, 법률 등) 형태: 기존 CRITICAL 부존재 판정 유지 (대조군)
     verdict.findings.append(Finding.create(
         type=FindingType.STATUTE_NONEXISTENT, status=VerificationStatus.NOT_FOUND, severity=Severity.CRITICAL,
@@ -504,6 +549,99 @@ def _law_absent(verdict, response, verifier=None):
         evidence=[Evidence.create(description="법령 목록 조회 결과", grade=EvidenceGrade.B,
                                   excerpt=", ".join(candidates) or "(목록 없음)", source_record_ids=ids,
                                   supports=False)],
+    ))
+
+
+UNDECIDED_INFERENCE = ("AMBIGUOUS", "INCOMPLETE", "LOOKUP_FAILED")
+
+
+def _abbreviation_like(law_name: str) -> bool:
+    """어간(끝의 법·시행령·시행규칙을 뗀 몸통)이 2~3자이고 공백 없는 이름 — 실무 줄임말 꼴(TK-143)."""
+    from .law_name_inference import compact, stem
+
+    c = compact(law_name)
+    return c.endswith(("법", "법시행령", "법시행규칙")) and 2 <= len(stem(c)) <= 3 and " " not in (law_name or "").strip()
+
+
+def _ordinance_lookup(verdict, verifier, law_candidates):
+    """조례 인용: 자치법규 목록 조회 결과로 판정한다. 조회하지 못하면 부존재로 단정하지 않는다."""
+    citation = verdict.citation
+    adapter = getattr(getattr(verifier, "registry", None), "law", None)
+    search = getattr(adapter, "search_ordinance", None)
+    response = search(citation.law_name) if callable(search) else None
+    if response is not None:
+        verdict.source_records.extend(response.source_records or [response.source_record])
+    ids = [r.source_record_id for r in verdict.source_records if r is not None]
+    verdict.review["ordinance_lookup"] = {
+        "searched": bool(response is not None and response.ok),
+        "matches": [{k: r.get(k) for k in ("ordinance_name", "local_government", "ordinance_kind",
+                                           "effective_from", "match")} for r in (response.records if response else [])][:10]}
+    if response is None or not response.ok:
+        verdict.status = VerificationStatus.UNVERIFIED
+        verdict.levels.update(existence="UNVERIFIED", article="UNVERIFIED", provision="UNVERIFIED")
+        verdict.notes.append(f"「{citation.law_name}」은(는) 자치법규 형태라 법령 목록에 없는 것이 정상이다. "
+                             "자치법규 목록 조회를 완료하지 못해 존재 여부를 확인하지 못했다")
+        verdict.findings.append(verifier._unverified_finding(
+            citation, verdict.notes[-1], response.source_record if response is not None else None))
+        return
+    records = response.records
+    if records and all(r.get("match") == "exact" for r in records) and len(records) == 1:
+        record = records[0]
+        verdict.status = VerificationStatus.PARTIALLY_VERIFIED
+        verdict.official_record = record
+        verdict.levels.update(existence="VERIFIED", version="UNVERIFIED")  # 기존 판정 어휘를 쓴다(spec_mapping·components)
+        verdict.review["ordinance_lookup"]["source"] = "ORDINANCE_LIST"
+        verdict.notes.append(f"자치법규 목록에서 「{record.get('ordinance_name')}」({record.get('local_government') or '지자체 미상'}, "
+                             f"시행 {record.get('effective_from') or '미상'})을 확인했다")
+        if citation.article:
+            articles = adapter.fetch_ordinance_articles(record) if hasattr(adapter, "fetch_ordinance_articles") else None
+            wanted = re.sub(r"\s", "", str(citation.article))
+            if articles is None:
+                verdict.levels.update(article="UNVERIFIED", provision="UNVERIFIED")
+                verdict.notes.append("자치법규 본문을 받지 못해 조문은 대조하지 않았다")
+            elif wanted in articles:
+                verdict.levels.update(article="VERIFIED", provision="UNVERIFIED")
+                verdict.notes.append(f"제{citation.article}조가 현행 본문에 있다(조문 내용 대조는 하지 않았다)")
+            else:
+                verdict.status = VerificationStatus.NOT_FOUND
+                verdict.levels.update(article="NOT_FOUND_IN_SELECTED_VERSION", provision="NOT_FOUND_IN_SELECTED_VERSION")
+                verdict.findings.append(Finding.create(
+                    type=FindingType.LAW_CITATION_ERROR, status=VerificationStatus.NOT_FOUND, severity=Severity.HIGH,
+                    evidence_grade=EvidenceGrade.B,
+                    title=f"자치법규 현행 본문에 없는 조문: {citation.law_name} 제{citation.article}조",
+                    detail=(f"자치법규 목록에서 확인한 「{record.get('ordinance_name')}」의 현행 본문 조문 {len(articles)}개에 "
+                            f"제{citation.article}조가 없다. 개정 전 조문이었는지는 확인하지 않았다."),
+                    document_id=citation.document_id, block_id=citation.block_id, page=citation.page, span=citation.span,
+                    engine="legal_engine", source_record_ids=ids, tags=["LEGAL", "ORDINANCE", "ARTICLE_NOT_FOUND"],
+                    confidence_features={"verdict_label": "ORDINANCE_ARTICLE_NOT_FOUND", "law_name": citation.law_name,
+                                         "searched_articles": len(articles)},
+                    evidence=[Evidence.create(description="자치법규 본문 조문 목록", grade=EvidenceGrade.B,
+                                              excerpt=", ".join(articles[:30]), source_record_ids=ids, supports=False)]))
+        else:
+            verdict.levels.update(article="UNVERIFIED", provision="UNVERIFIED")
+        return
+    if records:
+        # 이름 끝만 같은 자치법규가 여럿(지자체 미기재) 또는 같은 이름이 여럿: 존재는 하나 어느 것인지 사람이 고른다.
+        verdict.status = VerificationStatus.PARTIALLY_VERIFIED
+        verdict.levels.update(existence="PARTIALLY_VERIFIED", article="UNVERIFIED", provision="UNVERIFIED")
+        verdict.review["ordinance_lookup"]["ambiguous"] = True
+        names = sorted({f"{r.get('ordinance_name')}({r.get('local_government') or '미상'})" for r in records})
+        verdict.notes.append(f"자치법규 목록에 이름이 맞는 규범이 {len(records)}건 있다: {', '.join(names[:5])}"
+                             + (" 외" if len(names) > 5 else "") + ". 어느 지자체 것인지 서면에서 확인해야 한다")
+        return
+    verdict.notes.append(f"자치법규 목록에서도 「{citation.law_name}」을(를) 찾지 못했다(조회 범위 내 미발견)")
+    verdict.findings.append(Finding.create(
+        type=FindingType.STATUTE_NONEXISTENT, status=VerificationStatus.NOT_FOUND, severity=Severity.HIGH,
+        evidence_grade=EvidenceGrade.B,
+        title=f"자치법규 목록에서 찾지 못한 조례: {citation.law_name}",
+        detail=("국가법령정보 자치법규 목록에서 같은 이름(지자체 이름을 뺀 이름 끝 일치 포함)의 자치법규를 찾지 못했다"
+                "(조회 범위 내 미발견, 부존재 확정 아님). 지자체명·조례명 오기, 폐지 여부를 원문으로 확인해야 한다."),
+        document_id=citation.document_id, block_id=citation.block_id, page=citation.page, span=citation.span,
+        engine="legal_engine", source_record_ids=ids, tags=["LEGAL", "ORDINANCE", "NOT_FOUND_ORDINANCE"],
+        confidence_features={"verdict_label": "NOT_FOUND_ORDINANCE", "absence_scope": "SEARCHED_SCOPE_ONLY",
+                             "law_candidates": law_candidates, "law_name": citation.law_name},
+        evidence=[Evidence.create(description="자치법규 목록 조회 결과", grade=EvidenceGrade.B,
+                                  excerpt="(일치 없음)", source_record_ids=ids, supports=False)],
     ))
 
 
@@ -782,7 +920,7 @@ def compared_label(citation) -> str:
 
 
 INFERENCE_NOTES = {
-    "NO_CANDIDATE": "공식 목록에서 글자 순서가 맞는 법령 후보를 찾지 못했다",
+    "NO_CANDIDATE": "공식 목록에 글자 순서가 맞는 법령 후보가 없다",
     "AMBIGUOUS": "글자 순서가 맞는 법령 후보가 여럿이고 점수 차이가 작아 추정을 보류했다",
     "LOOKUP_FAILED": "약칭 후보 목록 조회에 실패해 후보를 확인하지 못했다",
     "INCOMPLETE": "약칭 후보 목록이 탐색 상한을 넘어 추정을 보류했다",

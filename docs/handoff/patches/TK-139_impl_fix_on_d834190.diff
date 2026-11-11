@@ -1,0 +1,385 @@
+diff --git a/packages/legal_engine/disposition_criteria.py b/packages/legal_engine/disposition_criteria.py
+index 7215911..0e19a75 100644
+--- a/packages/legal_engine/disposition_criteria.py
++++ b/packages/legal_engine/disposition_criteria.py
+@@ -54,6 +54,45 @@ def jaccard_similarity(a: str, b: str) -> float:
+     union = len(set_a | set_b)
+     return round(inter / union, 4) if union > 0 else 0.0
+ 
++_REASON_RE = re.compile(r"(?:다는|였다는|했다는|라는|다고)?\s*(?:이유|사유|까닭)(?:로|에서)|(?:다|였다|했다)고\s*하여|(?:다|이라)며|함에\s*따라")
++_ACTOR_BOUNDARY_RE = re.compile(r"(?:^|\s)[가-힣]*(?:피고|행정청|처분청|청장|시장|군수|구청장)(?:은|는|이|가)\s+")
++_PARTY_SUBJECT_RE = re.compile(r"(?:^|\s)(?:원고|신청인|청구인)(?:가|는|은|이)\s+")
++
++
++def _reason_clause(sentence: str, raw_disposition: str) -> str:
++    pos = sentence.find(raw_disposition)
++    before = sentence[:pos] if pos >= 0 else sentence
++    # 처분 주체 절(…은/는) 뒤에서 시작해, 그 뒤 첫 '이유·사유' 연결어 앞까지가 위반 사실이다
++    actors = list(_ACTOR_BOUNDARY_RE.finditer(before))
++    start = actors[-1].end() if actors else 0
++    reason = _REASON_RE.search(before, start)
++    if not reason:
++        return ""
++    span = before[start:reason.start()]
++    hits = list(_PARTY_SUBJECT_RE.finditer(span))
++    if hits:
++        span = span[hits[-1].end():]
++    span = re.split(r"[,;]", span)[-1]
++    return _strip_tail(re.sub(r"(?:하였|했|였|하|았|었)?$", "", span.strip()).strip())
++
++
++_TAIL_RE = re.compile(r"\s*(?:하는\s*)?(?:행위를\s*)?(?:한|하는|된)?\s*(?:것|경우)?(?:로서)?$")
++
++
++def _strip_tail(text: str) -> str:
++    """위반 서술 끝의 형식어('…하는 행위를 한 경우'·'…한 것')를 뗀다(양쪽 같은 규칙, 평가 측 보완 J5)."""
++    out = _TAIL_RE.sub("", text).strip()
++    return out or text
++
++
++_ROW_ENUM_RE = re.compile(r"(?:^|\s)(?:\d+(?:의\d+)?\.|[가-하]\.|\d+\)|[가-하]\))\s")
++
++
++def _row_core(violation_text: str) -> str:
++    """별표 행 위반사항에서 상위 항목('1. 법 제N조를 위반한 경우')과 번호를 떼고 마지막 세목만 남긴다(평가 측 보완 J5)."""
++    parts = [p.strip() for p in _ROW_ENUM_RE.split(violation_text) if p and p.strip()]
++    return _strip_tail(parts[-1] if parts else violation_text.strip())
++
+ 
+ def extract_document_claim(text: str) -> Optional[Dict[str, Any]]:
+     """서면 텍스트에서 처분 문구, 위반 차수, 위반 사실 절 및 업종을 추출한다 (Q4, Q7, W1, W5)."""
+@@ -79,12 +118,15 @@ def extract_document_claim(text: str) -> Optional[Dict[str, Any]]:
+     matched_sent = next((s for s in sentences if raw_disposition in s), window).strip()
+ 
+     # 차수 추출: 처분 문장 또는 주변에서 '1차 위반', '첫 번째 위반', '2차 처분' 등
+-    claimed_order = 1
+-    ord_match = VIOLATION_ORDER_RE.search(matched_sent)
+-    if not ord_match:
+-        ord_match = VIOLATION_ORDER_RE.search(window)
++    # 차수는 처분 문장 안의 '[N]차' 꼴에서만 정한다. 없으면 None(평가 측 보완 J4: 1차로 가정하지 않는다)
++    claimed_order = None
++    ord_match = re.search(r"(?<![0-9가-힣])(?P<ord>[123])\s*차(?:\s*(?:위반|처분))?", matched_sent)
+     if ord_match:
+-        claimed_order = ORDER_MAP.get(ord_match.group("ord"), 1)
++        claimed_order = int(ord_match.group("ord"))
++    else:
++        m_word = re.search(r"(?<![가-힣])(?P<w>첫|두|세)\s*번째\s*(?:위반|처분)", matched_sent)
++        if m_word:
++            claimed_order = {"첫": 1, "두": 2, "세": 3}[m_word.group("w")]
+ 
+     # 업종 추출 (W1)
+     matched_industry: Optional[str] = None
+@@ -100,6 +142,9 @@ def extract_document_claim(text: str) -> Optional[Dict[str, Any]]:
+         if len(local_hits) == 1:
+             matched_industry = local_hits[0]
+ 
++    # 위반 사실 절(평가 측 보완 J5): 처분 문구 앞에서 마지막 '이유·사유' 연결어 앞 구간을 잡고,
++    # 그 구간에서 처분 주체 절(…은/는) 뒤·당사자 주격(원고가/원고는) 뒤만 남긴다. 날짜·차수·행정청 낱말이 섞이지 않게 한다.
++    reason_clause = _reason_clause(matched_sent, raw_disposition)
+     # 위반 사실 절 추출 (W5):
+     # 처분 문구 앞부분 분리
+     parts = matched_sent.split(raw_disposition)
+@@ -153,6 +198,8 @@ def extract_document_claim(text: str) -> Optional[Dict[str, Any]]:
+         target_clause,
+     ).strip()
+ 
++    if reason_clause:
++        target_clause = reason_clause
+     return {
+         "raw_disposition": raw_disposition,
+         "claimed_val": claimed_val,
+@@ -198,8 +245,16 @@ def parse_and_propagate_table(hwp_bytes: bytes) -> Tuple[Optional[List[Dict[str,
+     covered = table.get("covered") or set()
+     merges = table.get("merges") or {}
+ 
+-    # merges: {(r, c): (row_span, col_span), ...}
+-    for (r, c), (rspan, cspan) in merges.items():
++    # 실제 HWP 파서의 merges는 [{"row","col","row_span","col_span"}, ...] 목록이다(평가 측 보완 J2)
++    merge_list = []
++    if isinstance(merges, dict):
++        merge_list = [(r, c, rs, cs) for (r, c), (rs, cs) in merges.items()]
++    else:
++        for m in merges:
++            if isinstance(m, dict):
++                merge_list.append((int(m.get("row", 0)), int(m.get("col", 0)),
++                                   int(m.get("row_span", 1)), int(m.get("col_span", 1))))
++    for r, c, rspan, cspan in merge_list:
+         anchor_val = grid[r][c].strip()
+         if not anchor_val:
+             continue
+@@ -213,31 +268,28 @@ def parse_and_propagate_table(hwp_bytes: bytes) -> Tuple[Optional[List[Dict[str,
+                     if not grid[tr][tc]:
+                         grid[tr][tc] = anchor_val
+ 
+-    # 3. 열 역할 식별
+-    violation_col = 0
+-    law_col = 1
++    # 3. 열 역할 식별(평가 측 보완 J3): 전파 전 원본 칸에서, 덮인 칸을 빼고, 칸 전체가 머리글인 것만 본다.
++    #    병합된 일반기준 문단(한 칸이 5열을 덮음)에 든 '1차'·'위반' 낱말로 열을 정하지 않는다.
++    covered_set = {tuple(x) for x in covered}
++    violation_col, law_col = -1, -1
+     order_cols = {1: -1, 2: -1, 3: -1}
+-
+-    for r in range(min(4, row_count)):
+-        row = grid[r]
+-        for c, txt in enumerate(row):
+-            # '위반사항', '위반행위', '위반내용' 또는 '위반'이면서 차수('1차', '2차')가 없는 경우에만 위반 열로 지정
+-            if ("위반사항" in txt or "위반행위" in txt or "위반내용" in txt) and "차" not in txt:
+-                violation_col = c
+-            elif "위반" in txt and "차" not in txt and "기준" not in txt and "행정처분" not in txt:
+-                violation_col = c
+-            if "근거" in txt or "법령" in txt:
++    header_end = -1
++    for r in range(min(15, row_count)):
++        for c in range(col_count):
++            if (r, c) in covered_set:
++                continue
++            txt = re.sub(r"\s+", "", cells[r][c] or "")
++            if txt in ("위반사항", "위반행위", "위반내용"):
++                violation_col, header_end = c, max(header_end, r)
++            elif txt in ("근거법령", "근거법조문", "근거규정"):
+                 law_col = c
+-            if "1차" in txt:
+-                order_cols[1] = c
+-            elif "2차" in txt:
+-                order_cols[2] = c
+-            elif "3차" in txt:
+-                order_cols[3] = c
+-
+-    # 차수 열을 찾지 못한 경우 기본 열 추정 (보통 뒤쪽 3개 열)
+-    if order_cols[1] == -1 and col_count >= 5:
+-        order_cols = {1: col_count - 3, 2: col_count - 2, 3: col_count - 1}
++            else:
++                m_ord = re.fullmatch(r"([123])차(?:위반)?", txt)
++                if m_ord:
++                    order_cols[int(m_ord.group(1))] = c
++                    header_end = max(header_end, r)
++    if violation_col == -1 or -1 in order_cols.values():
++        return None, False, "HEADER_COLUMNS_NOT_IDENTIFIED"
+ 
+     # 4. 행별 업종 절 식별 및 정규화 행 목록 생성 (W1)
+     structured_rows: List[Dict[str, Any]] = []
+@@ -245,7 +297,7 @@ def parse_and_propagate_table(hwp_bytes: bytes) -> Tuple[Optional[List[Dict[str,
+ 
+     for r in range(row_count):
+         row = grid[r]
+-        row_text = " ".join(row).strip()
++        row_text = " ".join(dict.fromkeys(x for x in row if x)).strip()
+ 
+         # 업종 절 소제목 행 탐지: 개별기준 대목차나 업종명이 포함된 행
+         for ind_name, ind_pat in INDUSTRY_PATTERNS:
+@@ -258,8 +310,8 @@ def parse_and_propagate_table(hwp_bytes: bytes) -> Tuple[Optional[List[Dict[str,
+         violation_text = row[violation_col].strip() if violation_col < col_count else ""
+         law_text = row[law_col].strip() if law_col < col_count else ""
+ 
+-        # 위반 내용이 없거나 머리글 행이면 스킵
+-        if not violation_text or any(h in violation_text for h in ("위반사항", "위반내용", "위반행위", "개별기준", "행정처분기준")):
++        # 위반 내용이 없거나 머리글 행이면 스킵(머리글 이전 행 포함)
++        if r <= header_end or not violation_text or any(h in violation_text for h in ("위반사항", "위반내용", "위반행위", "개별기준", "행정처분기준")):
+             continue
+ 
+         c1_text = row[order_cols[1]].strip() if order_cols[1] != -1 and order_cols[1] < col_count else ""
+@@ -281,7 +333,8 @@ def parse_criteria_value_and_unit(criteria_str: str) -> Optional[Tuple[int, str]
+     """처분기준 셀 문자열에서 수치와 단위를 추출한다 (W2: 단위 환산 금지)."""
+     if not criteria_str:
+         return None
+-    m = re.search(r"(?P<val>\d+)\s*(?P<unit>일|월|개월)", criteria_str)
++    # 처분 종류가 서면과 같은 '영업정지'일 때만 수치를 읽는다('품목류 제조정지 1개월'·'시정명령'은 대조하지 않음, 평가 측 보완 J7)
++    m = re.search(r"영업정지\s*(?P<val>\d+)\s*(?P<unit>일|월|개월)", criteria_str)
+     if not m:
+         return None
+     val = int(m.group("val"))
+@@ -295,8 +348,8 @@ def verify_disposition_criteria(
+     appendix_hwp: bytes,
+     *,
+     case_date: Optional[str] = None,
+-    law_name: str = "식품위생법 시행규칙",
+-    table_title: str = "[별표 23] 행정처분의 기준(제89조 관련)",
++    law_name: str = "",
++    table_title: str = "",
+     mst: Optional[str] = None,
+     appendix_plain_text: Optional[str] = None,
+ ) -> Dict[str, Any]:
+@@ -341,14 +394,15 @@ def verify_disposition_criteria(
+     # W1: 해당 업종 절 안의 행들만 후보군으로 수집
+     industry_candidates = [r for r in structured_rows if r.get("industry") == doc_industry]
+     if not industry_candidates:
+-        # 업종 절 소제목이 없거나 매칭되지 않은 경우 전체 행에서 시도하되 점수 엄격 적용
+-        industry_candidates = structured_rows
++        # 업종 절을 찾지 못하면 다른 업종 행과 맞추지 않는다(W1, 평가 측 보완 J6)
++        out["status"] = "UNVERIFIED (별표에서 해당 업종 절 미확인)"
++        return out
+ 
+     # G1 & W5: 2-gram Jaccard 유사도 계산 및 유일성 검증
+     violation_clause = claim["violation_clause"]
+     scored_candidates = []
+     for r in industry_candidates:
+-        score = jaccard_similarity(violation_clause, r["violation_text"])
++        score = jaccard_similarity(violation_clause, _row_core(r["violation_text"]))
+         scored_candidates.append((score, r))
+ 
+     scored_candidates.sort(key=lambda x: x[0], reverse=True)
+@@ -381,7 +435,10 @@ def verify_disposition_criteria(
+ 
+     # W2: 처분기준 대조 및 단위 환산 금지
+     claimed_order = claim["claimed_order"]
+-    criteria_str = best_row["criteria_raw"].get(claimed_order, "")
++    if claimed_order is None:
++        out["status"] = "UNVERIFIED (서면의 위반 차수 미기재)"
++        return out
++    criteria_str = best_row["criteria_raw"].get(claimed_order) or best_row["criteria_raw"].get(str(claimed_order)) or ""
+     parsed_crit = parse_criteria_value_and_unit(criteria_str)
+ 
+     if not parsed_crit:
+diff --git a/packages/legal_engine/related_authorities.py b/packages/legal_engine/related_authorities.py
+index e32416f..38fb4e5 100644
+--- a/packages/legal_engine/related_authorities.py
++++ b/packages/legal_engine/related_authorities.py
+@@ -474,7 +474,7 @@ def _discover_tk139_disposition_criteria(
+     if m_byl:
+         byl_num = m_byl.group(1)
+         for a in appendices:
+-            if a.get("number") == byl_num:
++            if (a.get("number") or "").lstrip("0") == byl_num.lstrip("0") and not (a.get("branch_number") or "").strip("0"):  # '0023' = '23'(평가 측 보완 J8)
+                 chosen_appendix = a
+                 break
+ 
+@@ -621,7 +621,10 @@ def report_lines(documents):
+             c_claim = crit.get("document_claim") or {}
+             res = crit.get("comparison_result", "")
+             discretion = f" ({crit['discretionary_notes']})" if crit.get("discretionary_notes") else ""
+-            crit_val_str = m_row.get("criteria_raw", {}).get(c_claim.get("claimed_order", 1), "")
++            # 저장(JSON) 뒤에는 차수 키가 문자열이 된다 — 정수·문자열 키 모두 읽는다(평가 측 보완 J10)
++            raw_map = m_row.get("criteria_raw") or {}
++            order = c_claim.get("claimed_order")
++            crit_val_str = raw_map.get(order) or raw_map.get(str(order)) or ""
+             lines.append(
+                 f"[처분기준] {crit.get('law_name', '')} {crit.get('table_title', '')}: "
+                 f"{m_row.get('violation_text', '')} → "
+diff --git a/packages/source_adapters/base.py b/packages/source_adapters/base.py
+index a03eb24..aa76a80 100644
+--- a/packages/source_adapters/base.py
++++ b/packages/source_adapters/base.py
+@@ -106,15 +106,19 @@ class SourceAdapter(ABC):
+             message=message,
+         )
+ 
+-    def _http_get(self, url: str, *, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None):
+-        """제21.1장 SSRF 방어: 허용된 Adapter만 자신의 고정 도메인을 호출한다."""
++    def _http_get(self, url: str, *, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None,
++                  timeout: Optional[float] = None):
++        """제21.1장 SSRF 방어: 허용된 Adapter만 자신의 고정 도메인을 호출한다.
++
++        timeout은 설정값보다 짧게만 줄일 수 있다(별표 다운로드 5초 상한, 평가 측 보완 J1)."""
+         from .transport import source_get
+ 
++        limit = self.settings.http_timeout if timeout is None else min(float(timeout), float(self.settings.http_timeout))
+         return source_get(
+             self.name, url,
+             params=params,
+             headers=headers or {},
+-            timeout=self.settings.http_timeout,
++            timeout=limit,
+         )
+ 
+     def _transport_unavailable(self, query, exc):
+diff --git a/tests/test_tk139_disposition_criteria.py b/tests/test_tk139_disposition_criteria.py
+index ca7781f..6d45877 100644
+--- a/tests/test_tk139_disposition_criteria.py
++++ b/tests/test_tk139_disposition_criteria.py
+@@ -88,7 +88,7 @@ class TestTK139DispositionCriteria(unittest.TestCase):
+ 
+     def test_w2_unit_mismatch_no_conversion_unverified(self):
+         """W2 & G2: 단위 환산 금지 규칙 (개월->일수 환산 금지, 단위 상이 시 UNVERIFIED)."""
+-        doc_text = "원고는 일반음식점을 영위하며, 유통기한이 경과된 제품을 조리 목적으로 보관하여 영업정지 60일 처분을 받았다."
++        doc_text = "원고는 일반음식점을 영위하며, 유통기한이 경과된 제품을 조리 목적으로 보관하여 1차 위반으로 영업정지 60일 처분을 받았다."
+ 
+         mock_rows = [{
+             "row_idx": 2,
+@@ -240,5 +240,86 @@ class TestTK139DispositionCriteria(unittest.TestCase):
+         self.assertIn("검토 자료", line)
+ 
+ 
++class TestTK139EvaluatorSupplement(unittest.TestCase):
++    """평가 측 보완 J1~J8 시험(11-04). 표는 실제 HWP 파서 출력 꼴(merges 목록·covered 목록)로 만든다."""
++
++    def _table(self):
++        general = "Ⅰ. 일반기준 1. 위반행위가 1차·2차·3차로 나뉘면 해당 차수의 기준을 따른다"
++        cells = [
++            [general, "", "", "", ""],
++            ["Ⅱ. 개별기준 1. 식품접객업", "", "", "", ""],
++            ["위반사항", "근거 법령", "행정처분기준", "", ""],
++            ["", "", "1차 위반", "2차 위반", "3차 위반"],
++            ["1. 법 제44조를 위반한 경우 가. 손님에게 갑 행위를 한 경우", "법 제75조", "영업정지 7일", "영업정지 1개월", "영업정지 2개월"],
++            ["나. 손님에게 을 행위를 한 경우", "", "품목류 제조정지 1개월", "영업정지 1개월", "영업정지 3개월"],
++        ]
++        return {
++            "cells": cells, "row_count": len(cells), "column_count": 5,
++            "merges": [{"row": 0, "col": 0, "row_span": 1, "col_span": 5},
++                       {"row": 1, "col": 0, "row_span": 1, "col_span": 5},
++                       {"row": 2, "col": 2, "row_span": 1, "col_span": 3},
++                       {"row": 2, "col": 0, "row_span": 2, "col_span": 1},
++                       {"row": 2, "col": 1, "row_span": 2, "col_span": 1}],
++            "covered": [[0, 1], [0, 2], [0, 3], [0, 4], [1, 1], [1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 0], [3, 1]],
++        }
++
++    def _run(self, text, table=None):
++        with patch("packages.document_engine.hwp_parser._extract_hwp_table_structures",
++                   return_value=([table or self._table()], [], None)):
++            return verify_disposition_criteria(text, b"HWP", case_date="2026-10-01")
++
++    def test_j2_j3_real_parser_shape_and_order_columns(self):
++        with patch("packages.document_engine.hwp_parser._extract_hwp_table_structures",
++                   return_value=([self._table()], [], None)):
++            rows, ok, msg = parse_and_propagate_table(b"HWP")
++        self.assertTrue(ok, msg)
++        first = [r for r in rows if "갑 행위" in r["violation_text"]][0]
++        self.assertEqual(first["criteria_raw"], {1: "영업정지 7일", 2: "영업정지 1개월", 3: "영업정지 2개월"})
++        self.assertEqual(first["industry"], "식품접객업")
++
++    def test_j3_j5_match_and_discrepancy(self):
++        base = "원고는 일반음식점을 운영한다. 피고는 원고가 손님에게 갑 행위를 하였다는 이유로 1차 위반으로 영업정지 {}일 처분을 하였다."
++        self.assertEqual(self._run(base.format(7))["comparison_result"], "MATCHED")
++        self.assertEqual(self._run(base.format(15))["comparison_result"], "DISCREPANCY_DETECTED")
++
++    def test_j4_missing_order_is_unverified(self):
++        res = self._run("원고는 일반음식점을 운영한다. 피고는 원고가 손님에게 갑 행위를 하였다는 이유로 영업정지 1개월 처분을 하였다.")
++        self.assertEqual(res["comparison_result"], "UNVERIFIED")
++        self.assertIn("차수", res["status"])
++
++    def test_j6_no_industry_section_is_unverified(self):
++        res = self._run("원고는 식품소분·판매업을 한다. 피고는 원고가 손님에게 갑 행위를 하였다는 이유로 1차 위반으로 영업정지 7일 처분을 하였다.")
++        self.assertEqual(res["comparison_result"], "UNVERIFIED")
++
++    def test_j7_other_disposition_kind_is_unverified(self):
++        res = self._run("원고는 일반음식점을 운영한다. 피고는 원고가 손님에게 을 행위를 하였다는 이유로 1차 위반으로 영업정지 1개월 처분을 하였다.")
++        self.assertEqual(res["comparison_result"], "UNVERIFIED")
++
++    def test_j1_download_uses_real_http_get_signature(self):
++        import inspect
++        from packages.source_adapters.base import SourceAdapter
++        adapter = LawGoKrAdapter()
++        adapter.status = MagicMock(return_value=AdapterStatus.READY)
++        resp = MagicMock(status_code=200, content=b"HWP")
++        def fake(url, **kw):
++            inspect.signature(SourceAdapter._http_get).bind(adapter, url, **kw)
++            return resp
++        adapter._http_get = fake
++        self.assertEqual(adapter.download_appendix_hwp("/LSW/flDownload.do?flSeq=1"), b"HWP")
++
++
+ if __name__ == "__main__":
+     unittest.main()
++
++
++class TestTK139ReportRoundTrip(unittest.TestCase):
++    def test_j10_report_line_after_json_round_trip(self):
++        import json
++        from types import SimpleNamespace
++        crit = {"status": "COMPLETED", "law_name": "가법 시행규칙", "table_title": "행정처분 기준",
++                "matched_row": {"violation_text": "가. 갑 행위를 한 경우", "criteria_raw": {1: "영업정지 7일", 2: "영업정지 1개월", 3: ""}},
++                "document_claim": {"raw_disposition": "영업정지 15일", "claimed_order": 1},
++                "comparison_result": "DISCREPANCY_DETECTED", "discretionary_notes": ""}
++        ed = json.loads(json.dumps({"related_authorities": {"status": "SOURCE_REVIEW_ONLY", "disposition_criteria": crit}}))
++        lines = report_lines([SimpleNamespace(engine_data=ed, filename="a.pdf")])
++        self.assertTrue(any("기준 영업정지 7일" in line for line in lines))

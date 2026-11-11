@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 OPINION_KINDS = {"반대의견": "DISSENT", "별개의견": "CONCURRING", "보충의견": "SUPPLEMENTARY",
                  "반대보충의견": "DISSENT", "다수의견": "MAJORITY"}
@@ -32,7 +32,7 @@ REPORTING_TAIL_RE = re.compile(
     r"[\s\"'“”‘’]*(?:(?:(?:이?라|다|하)고\s*)?(?:판시|판단|설시)(?:하였|했|한)(?:다|습니다)"
     r"|(?:(?:이?라|다|하)고\s*)(?:보았|밝혔|하였|했)(?:다|습니다))\s*\.?\s*$")
 CLAUSE_SPLIT_RE = re.compile(r"\s*[,，;]\s*|\s+(?:하며|이며)\s+")
-FINAL_NEGATION_RE = re.compile(r"않|아니|없|못|불요")
+FINAL_NEGATION_RE = re.compile(r"않|아니|없|못|불요|안\s*되|안\s*돼|안된")   # '…하여서는 안 된다'도 부정(TK-145)
 FINAL_WINDOW = 7  # 절 끝 서술어(압축 글자 수)만 보고 긍정·부정을 가린다. 앞의 종속절 부정("거치지 않은 채")은 보지 않는다
 NEGATION_RE = re.compile(r"않|아니|없|불요|못")
 ISSUE_RE = re.compile(r"(?P<issue>[^\[\]]+?)\s*여부\s*\(\s*(?P<principled>원칙적\s*)?(?P<direction>적극|소극)\s*\)")
@@ -87,12 +87,17 @@ def _kind(match: re.Match) -> str:
     return kind
 
 
+def _markers(text: str) -> List[re.Match]:
+    """전문·판결요지의 의견 표지를 위치 순으로. split_opinions·opinion_ranges가 함께 쓴다."""
+    return sorted(list(FULL_MARKER_RE.finditer(text)) + list(SUMMARY_MARKER_RE.finditer(text)),
+                  key=lambda m: m.start())
+
+
 def split_opinions(text: str) -> Dict[str, Any]:
     """판결 전문·판결요지를 의견 구간으로 나눈다. {'MAJORITY': str, 'DISSENT': [...], ...}"""
     out: Dict[str, Any] = {"MAJORITY": "", "DISSENT": [], "CONCURRING": [], "SUPPLEMENTARY": []}
     text = text or ""
-    markers = sorted(list(FULL_MARKER_RE.finditer(text)) + list(SUMMARY_MARKER_RE.finditer(text)),
-                     key=lambda m: m.start())
+    markers = _markers(text)
     if not markers:
         out["MAJORITY"] = text
         return out
@@ -107,6 +112,37 @@ def split_opinions(text: str) -> Dict[str, Any]:
             out[kind].append(body)
     out["MAJORITY"] = " ".join(part.strip() for part in majority if part.strip())
     return out
+
+
+def opinion_ranges(text: str) -> List[Tuple[int, int, str]]:
+    """원문 위치 기준 의견 구간 [(시작, 끝, 종류)]. 표지가 없으면 전체가 다수의견이다(TK-135)."""
+    text = text or ""
+    markers = _markers(text)
+    if not markers:
+        return [(0, len(text), "MAJORITY")] if text else []
+    ranges = [(0, markers[0].start(), "MAJORITY")] if markers[0].start() > 0 else []
+    for index, marker in enumerate(markers):
+        end = markers[index + 1].start() if index + 1 < len(markers) else len(text)
+        kind = _kind(marker)
+        ranges.append((marker.start(), end, "MAJORITY" if kind == "SUPPLEMENTARY" else kind))
+    return ranges
+
+
+def quote_opinion(quote: str, text: str) -> Optional[str]:
+    """인용 문구가 판결의 어느 의견에 있는지. 다수의견(다수의견 보충의견 포함)에 있으면 MAJORITY,
+    반대의견·별개의견에만 있으면 그 종류, 어디에도 없거나 표지가 없으면 None(판단하지 않음)."""
+    key = _compact(quote)
+    if len(key) < 6:
+        return None
+    parts = split_opinions(text)
+    if not (parts["DISSENT"] or parts["CONCURRING"]):
+        return None
+    if key in _compact(parts["MAJORITY"]) or any(key in _compact(s) for s in parts["SUPPLEMENTARY"]):
+        return "MAJORITY"
+    for kind in ("DISSENT", "CONCURRING"):
+        if any(key in _compact(s) for s in parts[kind]):
+            return kind
+    return None
 
 
 def attribute_claim(claim: str, full_text: str, summary: str = "") -> Dict[str, Any]:
@@ -245,3 +281,157 @@ def summary_direction_conflict(claim: str, summary: str) -> Optional[Dict[str, A
                       "claim_direction": "부정" if _clause_negated(clause) else "긍정", "principled": False,
                       "issue_similarity": round(similarity, 3), "clause": clause, "strong": True, "declarative": True})
     return max(found, key=lambda f: f["issue_similarity"]) if found else None
+
+
+# ---------------------------------------------------------------------------
+# LV-05: 판시 취지 및 명제 왜곡 탐지 (CIT-MIS) 결정적 3규칙 및 근거 문장 검증
+# ---------------------------------------------------------------------------
+
+CHANGED_PRECEDENT_RE = re.compile(
+    r"(?:이와\s*달리|종전에)\s*(?P<old_holding>[^.。\n]{5,180}?)"
+    r"(?:판시한|보았던|판단한)\s*(?:대법원\s*)?(?P<old_cases>(?:[^.。\n]|\.(?=\s*\d|\s*선고)){4,200}?)"
+    r"(?:판결|결정)(?:\s*등)?은\s*이\s*(?:판결|결정)의\s*견해에\s*배치되는\s*범위\s*(?:내)?에서\s*"
+    r"(?:이를\s*)?변경(?:하기로\s*한다|한다)"
+)
+
+REVERSED_LOWER_COURT_RE = re.compile(
+    r"원심(?:은|이)\s*(?P<lower_holding>[^.。\n]{6,200}?)(?:라고|다고|으로)\s*(?:판단|판시)(?:하였다|하였으나|한\s*것)[^\n]{0,400}?"
+    r"(?:이러한\s*원심의\s*판단에는|원심판결에는)[^.。\n]{0,120}?(?:법리를\s*오해|위법이\s*있)"
+    r"|(?P<lower_holding_alt>[^.。\n]{6,180}?)(?:라고|다고)\s*판단한\s*원심판결에는[^.。\n]{0,100}?(?:법리를\s*오해|위법)"
+)
+
+
+_TAIL_CITATION_PAREN_RE = re.compile(r"\s*\([^()]{0,120}(?:판결|결정|선고|참조)[^()]{0,40}\)\s*[.。]?\s*$")
+
+
+def _reported_core(claim: str) -> str:
+    """끝의 괄호 인용 표시('(대법원 … 판결)')를 떼고 전달 표현('…다고 판단하였다')을 뗀 주장 부분."""
+    return _claim_core(_TAIL_CITATION_PAREN_RE.sub("", claim or ""))
+
+
+def extract_grounded_evidence_quote(claim: str, official_text: str) -> str:
+    """공식 판결 원문(판결요지·전문)에서 서면 주장과 가장 어휘 겹침이 높은 근거 문장을 추출한다."""
+    if not official_text or not claim:
+        return ""
+    sentences = [
+        s.strip()
+        for s in re.split(r"(?<=[다함음])\s*\.\s*|\n+", official_text)
+        if len(_compact(s)) >= 8
+    ]
+    if not sentences:
+        return official_text[:250].strip()
+    core = _claim_core(claim)
+    ranked = sorted(sentences, key=lambda s: _overlap(core, s), reverse=True)
+    return ranked[0][:300]
+
+
+def detect_changed_precedent_distortion(
+    claim: str,
+    full_text: str,
+    summary: str = "",
+    cited_case_number: str = "",
+) -> Optional[Dict[str, Any]]:
+    """전원합의체 판결 등에서 폐기·변경된 종전 판례의 법리를 현행 판시처럼 인용했는지 검사한다."""
+    combined = " ".join(part for part in (summary, full_text) if part)
+    if not combined or not claim:
+        return None
+    # 종전 판례가 변경·폐기되었다는 사실을 정확히 기술한 서술은 왜곡이 아니다
+    if re.search(r"(?:변경|폐기)(?:되|되었|된|하였|했)", claim):
+        return None
+    core = _reported_core(claim)
+    for m in CHANGED_PRECEDENT_RE.finditer(combined):
+        old_holding = (m.group("old_holding") or "").strip()
+        old_cases = (m.group("old_cases") or "").strip()
+        sentence = m.group(0).strip()
+        # 1) 인용한 사건번호 자체가 변경 대상 판례 목록에 들어 있거나
+        case_norm = re.sub(r"\s+", "", cited_case_number or "")
+        in_old_cases = bool(case_norm and len(case_norm) >= 6 and case_norm in re.sub(r"\s+", "", old_cases))
+        # 2) 서면 주장이 변경(폐기)된 종전 판시 구절과 높은 유사도를 보이는 경우
+        sim = _overlap(_positive(core), _positive(old_holding)) if old_holding else 0.0
+        # 새 판결(변경한 판결)의 다른 문장 — 바뀐 법리 자체 — 에 더 가까우면 새 판시를 정확히 인용한 것이다
+        others = [x for x in re.split(r"(?<=[다함음])\s*\.\s*|\n+", combined.replace(sentence, " ")) if len(_compact(x)) >= 8]
+        # 'A가 아니라 B' 꼴의 새 판시는 부정된 A 부분을 빼고 견준다
+        others = [re.sub(r"(?<=[는은])\s+[^,.]{1,40}?(?:이|가)\s*아니라\s*", " ", x) for x in others]
+        sim_new = max((_overlap(_positive(core), _positive(x)) for x in others), default=0.0)
+        if in_old_cases or (sim >= 0.45 and sim > sim_new and _clause_negated(core) == _clause_negated(old_holding)):
+            return {
+                "verdict": "CHANGED_PRECEDENT",
+                "old_holding": old_holding,
+                "old_cases": old_cases,
+                "similarity": round(sim, 3),
+                "grounded_evidence_quote": sentence[:300],
+            }
+    return None
+
+
+def _is_explicit_supreme_adoption(sentence: str) -> bool:
+    """대법원이 해당 법리/판단을 자신의 판시로 인정·채택·판단했다고 명시한 문장인지 검사 (LV-05-R5)."""
+    # 1) 대법원이 주어로 등장하고 채택/인정/판단 술어가 결합되어 있는지 확인
+    m = re.search(
+        r"대법원(?:은|이|도)?\b[^.\n]{0,120}?(?:인정|수긍|채택|받아들|선언|확인|보았|밝혔|판단하였|판시하였|판단했|판시했)(?:다|음|고|다고)",
+        sentence,
+    )
+    if not m:
+        if not re.search(
+            r"대법원(?:은|이|도)?\b[^.\n]{0,120}?(?:인정|수긍|채택|받아들|판단|판시|선언|확인|보았|밝혔)",
+            sentence,
+        ):
+            return False
+
+    # 2) 그러나 대법원의 주절 술어가 원심판결/판단을 파기·배척·취소하는 행위인 경우는 채택이 아님
+    #    예: '대법원은 [원심 판단]이라고 판단한 원심판결을 파기하였다'
+    if re.search(
+        r"(?:판단|판시|인정|인용|보)한\s*(?:원심판결|원심결정|하급심판결|원심)(?:을|은|에\s*대하여|에\s*대해)?\s*(?:파기|배척|취소)",
+        sentence,
+    ):
+        return False
+    if re.search(
+        r"대법원(?:은|이|도)?\b[^.\n]{0,120}?(?:원심판결|원심결정|하급심판결|원심의\s*판단|원심)(?:을|은|에\s*대하여|에\s*대해)?\s*(?:파기|배척|취소)(?:하였|했|한|함|다|환송)",
+        sentence,
+    ):
+        return False
+
+    return True
+
+
+def detect_reversed_remand_confusion(
+    claim: str,
+    full_text: str,
+    summary: str = "",
+) -> Optional[Dict[str, Any]]:
+    """상고심(파기환송) 판결에서 배척된 원심의 판단을 대법원 판시인 것처럼 인용했는지 검사한다."""
+    combined = " ".join(part for part in (summary, full_text) if part)
+    if not combined or not claim:
+        return None
+
+    sentences = [s.strip() for s in re.split(r"(?<=[.?!])\s+|\n+", claim) if s.strip()]
+    adoption_sentences = [s for s in sentences if _is_explicit_supreme_adoption(s)]
+    explicit_supreme_adoption = bool(adoption_sentences) or _is_explicit_supreme_adoption(claim)
+
+    if not explicit_supreme_adoption:
+        # 원심 판단이 파기·배척되었다는 사실을 정확히 기술한 서술은 왜곡(오인)이 아니다
+        if re.search(r"(?:배척|파기|취소)(?:되|되었|되였|하였|했|한|된|었)|배척된\s*원심|파기된\s*원심", claim):
+            return None
+        # 사건 경과의 설명이거나 화자가 원심으로 한정되어 대법원 판시로 채택하지 않은 서술은 왜곡이 아니다
+        if re.search(r"(?:사건\s*경과|경위의?\s*설명|원심(?:의\s*판단|판결)?을?\s*소개)", claim):
+            return None
+        if re.search(r"^\s*(?:원심|1심|제1심|하급심|원심\s*법원)(?:은|는|이)\b", claim):
+            return None
+
+    # 채택 문장이 분리된 경우 해당 문장 우선 검토, 아니면 전체 claim
+    target_claim = " ".join(adoption_sentences) if adoption_sentences else claim
+    core = _reported_core(target_claim)
+    for m in REVERSED_LOWER_COURT_RE.finditer(combined):
+        lower_holding = (m.group("lower_holding") or m.group("lower_holding_alt") or "").strip()
+        if not lower_holding:
+            continue
+        sim = _overlap(_positive(core), _positive(lower_holding))
+        if sim >= 0.45 and _clause_negated(core) == _clause_negated(lower_holding):
+            return {
+                "verdict": "REVERSED_REMAND_CONFUSION",
+                "lower_holding": lower_holding,
+                "similarity": round(sim, 3),
+                "grounded_evidence_quote": m.group(0).strip()[:300],
+            }
+    return None
+

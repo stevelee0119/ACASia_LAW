@@ -106,15 +106,19 @@ class SourceAdapter(ABC):
             message=message,
         )
 
-    def _http_get(self, url: str, *, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None):
-        """제21.1장 SSRF 방어: 허용된 Adapter만 자신의 고정 도메인을 호출한다."""
+    def _http_get(self, url: str, *, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None,
+                  timeout: Optional[float] = None):
+        """제21.1장 SSRF 방어: 허용된 Adapter만 자신의 고정 도메인을 호출한다.
+
+        timeout은 설정값보다 짧게만 줄일 수 있다(별표 다운로드 5초 상한, 평가 측 보완 J1)."""
         from .transport import source_get
 
+        limit = self.settings.http_timeout if timeout is None else min(float(timeout), float(self.settings.http_timeout))
         return source_get(
             self.name, url,
             params=params,
             headers=headers or {},
-            timeout=self.settings.http_timeout,
+            timeout=limit,
         )
 
     def _transport_unavailable(self, query, exc):

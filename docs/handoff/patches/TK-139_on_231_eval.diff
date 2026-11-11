@@ -1,0 +1,1322 @@
+diff --git a/apps/web/static/app.js b/apps/web/static/app.js
+index 3a683ee..ecd6f04 100644
+--- a/apps/web/static/app.js
++++ b/apps/web/static/app.js
+@@ -2859,6 +2859,23 @@ function renderFindings() {
+           section.append(node("p", `· ${p.case_number} (${p.court}, ${p.decision_date}${kindPart})${namePart} (사건 당시 적용·주장 타당성은 별도 검토)`));
+         }
+       }
++      if (related.disposition_criteria && related.disposition_criteria.status === "COMPLETED") {
++        // 문구: 사용자 결정 11-04 '권고안 적용' — 보고서 disposition_line과 같은 구성
++        const crit = related.disposition_criteria;
++        const mRow = crit.matched_row || {};
++        const cClaim = crit.document_claim || {};
++        const order = cClaim.claimed_order;
++        const raw = mRow.criteria_raw || {};
++        const critVal = raw[order] || raw[String(order)] || "";
++        const industry = String(mRow.industry || "").split(/\s+영\s*제\d+조/)[0].trim();
++        const resultLabel = { MATCHED: "일치", DISCREPANCY_DETECTED: "불일치(확인 필요)" }[crit.comparison_result] || "확인 필요";
++        const parts = [`[처분기준 검토] ${crit.law_name || ""} ${crit.appendix_label || ""}`.trim()];
++        if (industry) parts.push(industry);
++        parts.push(`${order}차 위반 '${mRow.violation_text || ""}': 별표 ${critVal} / 서면 ${cClaim.raw_disposition || ""} → ${resultLabel}`);
++        if (crit.discretionary_notes) parts.push(crit.discretionary_notes);
++        parts.push("검토 자료");
++        section.append(node("p", parts.join(" · ")));
++      }
+       refContainer.append(section);
+     }
+   }
+diff --git a/packages/legal_engine/disposition_criteria.py b/packages/legal_engine/disposition_criteria.py
+new file mode 100644
+index 0000000..316c51e
+--- /dev/null
++++ b/packages/legal_engine/disposition_criteria.py
+@@ -0,0 +1,523 @@
++# -*- coding: utf-8 -*-
++"""TK-139 처분기준 별표 대조 1유형 모듈 (W1~W5, G1~G4 엄수).
++
++- W1: 업종 절 일치 (서면의 영업 종류 결정론적 일치, 업종 절 안에서만 행 매칭)
++- W2: 단위 환산 금지 (개월->일수 환산 금지, 같은 단위끼리만 비교하고 다르면 UNVERIFIED)
++- W3: 병합 셀 전파 (파서의 merges·covered를 사용해 대분류·근거 법령을 하위 행으로 전파)
++- W4: www.law.go.kr 고정 도메인 다운로드, 크기 상한 2.0MB, 타임아웃 5.0초
++- W5: 서면의 처분 문구 포함 문장 내 위반 사실 절 대상 2-gram Jaccard >= 0.60, 격차 >= 0.20
++- G1~G4: 행 오연결 0, 단위/각주 누락 0, 구버전 혼동 0, 불완전 표 확정 판정 0
++- 결과 성격: 순수 검토 자료 (advisory_only: True, finding 승격 금지)
++"""
++from __future__ import annotations
++
++import re
++from typing import Any, Dict, List, Optional, Set, Tuple
++
++# 처분 문구 정규식: '영업정지 15일', '영업정지 2개월' 등
++DISPOSITION_RE = re.compile(r"영업정지\s*(?P<val>\d+)\s*(?P<unit>일|월|개월)")
++
++# 위반 차수 정규식: '1차 위반', '첫 번째 위반', '2차 처분' 등
++VIOLATION_ORDER_RE = re.compile(r"(?P<ord>[12345]|일|이|삼|첫|두|세)\s*(?:차|번째)\s*(?:위반|처분)?")
++
++ORDER_MAP = {
++    "1": 1, "일": 1, "첫": 1,
++    "2": 2, "이": 2, "두": 2,
++    "3": 3, "삼": 3, "세": 3,
++    "4": 4, "5": 5,
++}
++
++# 업종 키워드 분류 매핑 (W1)
++INDUSTRY_PATTERNS = [
++    ("식품제조·가공업", re.compile(r"식품제조[\s·]*가공업|식품제조업|제조가공업")),
++    ("식품접객업", re.compile(r"식품접객업|일반음식점|휴게음식점|단란주점|유흥주점|위탁급식|제과점")),
++    ("즉석판매제조·가공업", re.compile(r"즉석판매제조[\s·]*가공업|즉석판매")),
++    ("식품소분·판매업", re.compile(r"식품소분[\s·]*판매업|기타식품판매업|유통전문판매업")),
++]
++
++
++def char_2grams(text: str) -> Set[str]:
++    """문자열에서 공백과 문장부호를 제거하고 문자 단위 2-gram 집합을 반환한다 (Q5, W5)."""
++    cleaned = re.sub(r"[\s\.,·ㆍ「」\(\)\[\]\-~_]+", "", text)
++    if len(cleaned) < 2:
++        return {cleaned} if cleaned else set()
++    return {cleaned[i:i + 2] for i in range(len(cleaned) - 1)}
++
++
++def jaccard_similarity(a: str, b: str) -> float:
++    """두 문자열 간의 문자 단위 bigram Jaccard 유사도를 계산한다."""
++    set_a = char_2grams(a)
++    set_b = char_2grams(b)
++    if not set_a or not set_b:
++        return 0.0
++    inter = len(set_a & set_b)
++    union = len(set_a | set_b)
++    return round(inter / union, 4) if union > 0 else 0.0
++
++_REASON_RE = re.compile(r"(?:다는|였다는|했다는|라는|다고)?\s*(?:이유|사유|까닭)(?:로|에서)|(?:다|였다|했다)고\s*하여|(?:다|이라)며|함에\s*따라")
++_ACTOR_BOUNDARY_RE = re.compile(r"(?:^|\s)[가-힣]*(?:피고|행정청|처분청|청장|시장|군수|구청장)(?:은|는|이|가)\s+")
++_PARTY_SUBJECT_RE = re.compile(r"(?:^|\s)(?:원고|신청인|청구인)(?:가|는|은|이)\s+")
++
++
++def _reason_clause(sentence: str, raw_disposition: str) -> str:
++    pos = sentence.find(raw_disposition)
++    before = sentence[:pos] if pos >= 0 else sentence
++    # 처분 주체 절(…은/는) 뒤에서 시작해, 그 뒤 첫 '이유·사유' 연결어 앞까지가 위반 사실이다
++    actors = list(_ACTOR_BOUNDARY_RE.finditer(before))
++    start = actors[-1].end() if actors else 0
++    reason = _REASON_RE.search(before, start)
++    if not reason:
++        return ""
++    span = before[start:reason.start()]
++    hits = list(_PARTY_SUBJECT_RE.finditer(span))
++    if hits:
++        span = span[hits[-1].end():]
++    span = re.split(r"[,;]", span)[-1]
++    return _strip_tail(re.sub(r"(?:하였|했|였|하|았|었)?$", "", span.strip()).strip())
++
++
++_TAIL_RE = re.compile(r"\s*(?:하는\s*)?(?:행위를\s*)?(?:한|하는|된)?\s*(?:것|경우)?(?:로서)?$")
++
++
++_CITE_PREFIX_RE = re.compile(
++    r"^(?:「[^」]+」\s*|[가-힣]*법(?:\s*시행령|\s*시행규칙)?\s*|영\s*|규칙\s*)?제\d+조(?:의\d+)?(?:제\d+항)?(?:제\d+호)?(?:[가-하]목)?"
++    r"(?:\s*(?:및|또는|ㆍ|·|,)\s*(?:제\d+조(?:의\d+)?)?(?:제?\d+[항호])?(?:[가-하]목)?)*(?:\s*(?:단서|본문|전단|후단))?\s*(?:에\s*따른|에\s*의한|에\s*규정된)\s*")
++
++
++def _strip_cite(text: str) -> str:
++    """위반 서술 앞의 조문 인용구('법 제N조제M항에 따른')를 뗀다(양쪽 같은 규칙, 평가 측 보완 J13)."""
++    out = _CITE_PREFIX_RE.sub("", text.strip()).strip()
++    return out or text
++
++
++def _strip_tail(text: str) -> str:
++    """위반 서술 끝의 형식어('…하는 행위를 한 경우'·'…한 것')를 뗀다(양쪽 같은 규칙, 평가 측 보완 J5)."""
++    out = _TAIL_RE.sub("", text).strip()
++    return out or text
++
++
++_ROW_ENUM_RE = re.compile(r"(?:^|\s)(?:\d+(?:의\d+)?\.|[가-하]\.|\d+\)|[가-하]\))\s")
++
++
++def _row_core(violation_text: str) -> str:
++    """별표 행 위반사항에서 상위 항목('1. 법 제N조를 위반한 경우')과 번호를 떼고 마지막 세목만 남긴다(평가 측 보완 J5)."""
++    parts = [p.strip() for p in _ROW_ENUM_RE.split(violation_text) if p and p.strip()]
++    return _strip_tail(_strip_cite(parts[-1] if parts else violation_text.strip()))
++
++
++def extract_document_claim(text: str) -> Optional[Dict[str, Any]]:
++    """서면 텍스트에서 처분 문구, 위반 차수, 위반 사실 절 및 업종을 추출한다 (Q4, Q7, W1, W5)."""
++    if not text:
++        return None
++
++    disp_match = DISPOSITION_RE.search(text)
++    if not disp_match:
++        return None
++
++    claimed_val = int(disp_match.group("val"))
++    raw_unit = disp_match.group("unit")
++    claimed_unit = "월" if raw_unit in ("월", "개월") else "일"
++    raw_disposition = disp_match.group(0)
++
++    # 처분 문구가 포함된 문장 및 위반 사실 절 추출 (W5)
++    start_pos = max(0, disp_match.start() - 300)
++    end_pos = min(len(text), disp_match.end() + 150)
++    window = text[start_pos:end_pos]
++
++    # 날짜(2023. 5. 1.) 점에 의해 잘리지 않도록 안전한 문장 분할 (온점 뒤 공백+대문자/한글 또는 줄바꿈)
++    sentences = re.split(r"(?<=[가-힣\)\'\"\]])\.(?:\s+|$)|[\r\n]+", window)
++    matched_sent = next((s for s in sentences if raw_disposition in s), window).strip()
++
++    # 차수 추출: 처분 문장 또는 주변에서 '1차 위반', '첫 번째 위반', '2차 처분' 등
++    # 차수는 처분 문장 안의 '[N]차' 꼴에서만 정한다. 없으면 None(평가 측 보완 J4: 1차로 가정하지 않는다)
++    claimed_order = None
++    ord_match = re.search(r"(?<![0-9가-힣])(?P<ord>[123])\s*차(?:\s*(?:위반|처분))?", matched_sent)
++    if ord_match:
++        claimed_order = int(ord_match.group("ord"))
++    else:
++        m_word = re.search(r"(?<![가-힣])(?P<w>첫|두|세)\s*번째\s*(?:위반|처분)", matched_sent)
++        if m_word:
++            claimed_order = {"첫": 1, "두": 2, "세": 3}[m_word.group("w")]
++
++    # 업종 추출 (W1)
++    matched_industry: Optional[str] = None
++    industry_hits = []
++    for ind_name, ind_pat in INDUSTRY_PATTERNS:
++        if ind_pat.search(text):
++            industry_hits.append(ind_name)
++
++    if len(industry_hits) == 1:
++        matched_industry = industry_hits[0]
++    elif len(industry_hits) > 1:
++        local_hits = [name for name, pat in INDUSTRY_PATTERNS if pat.search(window)]
++        if len(local_hits) == 1:
++            matched_industry = local_hits[0]
++
++    # 위반 사실 절(평가 측 보완 J5): 처분 문구 앞에서 마지막 '이유·사유' 연결어 앞 구간을 잡고,
++    # 그 구간에서 처분 주체 절(…은/는) 뒤·당사자 주격(원고가/원고는) 뒤만 남긴다. 날짜·차수·행정청 낱말이 섞이지 않게 한다.
++    reason_clause = _reason_clause(matched_sent, raw_disposition)
++    # 위반 사실 절 추출 (W5):
++    # 처분 문구 앞부분 분리
++    parts = matched_sent.split(raw_disposition)
++    raw_before = parts[0].strip() if parts else matched_sent.strip()
++
++    # 1) 처분 문구 바로 앞의 날짜, 처분/위반 차수 및 행정청 수식어구 제거 (ReDoS 방지를 위해 단순 정규식 루프 처리)
++    cleaned_before = raw_before.rstrip()
++    for _ in range(5):
++        prev = cleaned_before
++        # 차수 수식구: '1차 위반에 따른', '2차 처분으로', '첫 번째 처분' 등
++        cleaned_before = re.sub(r"(?:[12345]|일|이|삼|첫|두|세)\s*(?:차|번째)?\s*(?:위반|처분)?(?:\s*(?:에\s*따른|으로|로))?\s*$", "", cleaned_before)
++        # 날짜 수식구: '2023. 5. 1.자', '2023-05-01자' 등
++        cleaned_before = re.sub(r"\d{4}[\.\s-]+\d{1,2}[\.\s-]+\d{1,2}\.?\s*(?:자)?\s*$", "", cleaned_before)
++        # 행정청 수식구: '피고로부터', '관할구청으로부터' 등
++        cleaned_before = re.sub(r"(?:피고|행정청|관할구청)(?:는|로부터|에게|은)?\s*$", "", cleaned_before)
++        cleaned_before = cleaned_before.rstrip()
++        if cleaned_before == prev:
++            break
++
++    # 2) 절(clause) 단위 분리: 쉼표(,)나 세미콜론(;) 기준으로 원고 지위/업종 절 분리
++    clauses = re.split(r"[,;]+", cleaned_before)
++    candidate_clauses = []
++    for cl in clauses:
++        cl_clean = cl.strip()
++        if not cl_clean:
++            continue
++        # 단순히 업종이나 원고 지위만 명시한 절('원고는 서울 마포구에서 일반음식점을 운영하는 자로서') 제외
++        is_just_identity = any(ind_pat.search(cl_clean) for _, ind_pat in INDUSTRY_PATTERNS) and (
++            "운영" in cl_clean or "영위" in cl_clean or "자로서" in cl_clean or cl_clean.startswith("원고는") or len(cl_clean) <= 15
++        )
++        if not is_just_identity:
++            candidate_clauses.append(cl_clean)
++
++    if candidate_clauses:
++        target_clause = candidate_clauses[-1]
++    else:
++        target_clause = cleaned_before or raw_before
++
++    # 3) 서두의 업종 수식어 제거 (예: '일반음식점에서', '식품접객업소에서')
++    for _, ind_pat in INDUSTRY_PATTERNS:
++        target_clause = re.sub(
++            r"^(?:원고(?:는|가)?\s*)?(?:" + ind_pat.pattern + r")(?:\s*(?:영업소|업소|매장))?(?:에서|을|를|의|은|는|에\s*대해|에\s*대하여)?\s*",
++            "",
++            target_clause,
++        ).strip()
++
++    # 4) 후미의 이유/원인 조사 및 어미 정돈 (예: '...보관하였다는 이유로' -> '...보관', '...위반으로' -> '...위반')
++    target_clause = re.sub(
++        r"(?:하였다는|했다는|하였다고\s*하여|했다는\s*이유로|하였다는\s*이유로|이유로|인하여|함에\s*따라|하여|으로|로)$",
++        "",
++        target_clause,
++    ).strip()
++
++    if reason_clause:
++        target_clause = reason_clause
++    return {
++        "raw_disposition": raw_disposition,
++        "claimed_val": claimed_val,
++        "claimed_unit": claimed_unit,
++        "claimed_order": claimed_order,
++        "violation_clause": target_clause,
++        "matched_industry": matched_industry,
++        "sentence": matched_sent.strip(),
++    }
++
++
++def parse_and_propagate_table(hwp_bytes: bytes) -> Tuple[Optional[List[Dict[str, Any]]], bool, str]:
++    """별표 HWP 바이너리를 파싱하고 병합 셀(merges·covered)을 전파하여 정규화된 행 목록을 생성한다 (W3, G4)."""
++    if not hwp_bytes:
++        return None, False, "EMPTY_HWP_BYTES"
++
++    from packages.document_engine.hwp_parser import _extract_hwp_table_structures
++
++    warnings: List[str] = []
++    try:
++        tables, partial, _ = _extract_hwp_table_structures(hwp_bytes, warnings)
++    except Exception as exc:
++        return None, False, f"HWP_PARSER_EXCEPTION: {type(exc).__name__}"
++
++    if not tables:
++        return None, False, "NO_COMPLETE_TABLES_FOUND"
++
++    # 가장 큰 표(행 수가 가장 많은 표)를 행정처분기준 표로 채택
++    tables.sort(key=lambda t: t.get("row_count", 0), reverse=True)
++    table = tables[0]
++
++    cells = table.get("cells") or []
++    if not cells or len(cells) < 3 or len(cells[0]) < 3:
++        return None, False, "TABLE_GRID_TOO_SMALL"
++
++    row_count = len(cells)
++    col_count = len(cells[0])
++
++    # 1. 2차원 복사본 생성
++    grid = [[cells[r][c] for c in range(col_count)] for r in range(row_count)]
++
++    # 2. merges와 covered를 반영하여 앵커 텍스트 전파 (W3)
++    covered = table.get("covered") or set()
++    merges = table.get("merges") or {}
++
++    # 실제 HWP 파서의 merges는 [{"row","col","row_span","col_span"}, ...] 목록이다(평가 측 보완 J2)
++    merge_list = []
++    if isinstance(merges, dict):
++        merge_list = [(r, c, rs, cs) for (r, c), (rs, cs) in merges.items()]
++    else:
++        for m in merges:
++            if isinstance(m, dict):
++                merge_list.append((int(m.get("row", 0)), int(m.get("col", 0)),
++                                   int(m.get("row_span", 1)), int(m.get("col_span", 1))))
++    for r, c, rspan, cspan in merge_list:
++        anchor_val = grid[r][c].strip()
++        if not anchor_val:
++            continue
++        for dr in range(rspan):
++            for dc in range(cspan):
++                if dr == 0 and dc == 0:
++                    continue
++                tr, tc = r + dr, c + dc
++                if tr < row_count and tc < col_count:
++                    # 덮인 칸에 앵커 텍스트 복제 전파
++                    if not grid[tr][tc]:
++                        grid[tr][tc] = anchor_val
++
++    # 3. 열 역할 식별(평가 측 보완 J3): 전파 전 원본 칸에서, 덮인 칸을 빼고, 칸 전체가 머리글인 것만 본다.
++    #    병합된 일반기준 문단(한 칸이 5열을 덮음)에 든 '1차'·'위반' 낱말로 열을 정하지 않는다.
++    covered_set = {tuple(x) for x in covered}
++    violation_col, law_col = -1, -1
++    order_cols = {1: -1, 2: -1, 3: -1}
++    header_end = -1
++    for r in range(min(15, row_count)):
++        for c in range(col_count):
++            if (r, c) in covered_set:
++                continue
++            txt = re.sub(r"\s+", "", cells[r][c] or "")
++            if txt in ("위반사항", "위반행위", "위반내용"):
++                violation_col, header_end = c, max(header_end, r)
++            elif txt in ("근거법령", "근거법조문", "근거규정"):
++                law_col = c
++            else:
++                m_ord = re.fullmatch(r"([123])차(?:위반)?", txt)
++                if m_ord:
++                    order_cols[int(m_ord.group(1))] = c
++                    header_end = max(header_end, r)
++    if violation_col == -1 or -1 in order_cols.values():
++        return None, False, "HEADER_COLUMNS_NOT_IDENTIFIED"
++
++    # 4. 행별 업종 절 식별 및 정규화 행 목록 생성 (W1)
++    # 업종 절 머리는 표 전체 폭을 덮는 병합 행이고 'N. ' 번호로 시작한다(평가 측 보완 J12).
++    # 위반사항 칸 문장 속 업종 낱말('…은 2. 식품판매업 등의 …에 따른다')로 절을 바꾸지 않는다.
++    full_width_rows = {r for r, c, rs, cs in merge_list if c == 0 and cs >= col_count}
++    structured_rows: List[Dict[str, Any]] = []
++    current_section: Optional[str] = None
++
++    for r in range(row_count):
++        row = grid[r]
++        if r in full_width_rows:
++            head = re.sub(r"\s+", " ", (cells[r][0] or "")).strip()
++            if head.startswith("Ⅲ"):
++                current_section = None  # 개별기준 끝(과징금 제외 대상 등)
++                continue
++            m_sec = re.match(r"^(?:Ⅱ\.\s*개별기준\s*)?\d+\.\s+(\S.*)$", head)
++            if m_sec:
++                current_section = m_sec.group(1)
++            continue
++        if current_section is None:
++            continue
++
++        violation_text = row[violation_col].strip() if violation_col < col_count else ""
++        law_text = row[law_col].strip() if law_col < col_count else ""
++
++        # 위반 내용이 없거나 머리글 행이면 스킵(머리글 이전 행 포함)
++        if r <= header_end or not violation_text or any(h in violation_text for h in ("위반사항", "위반내용", "위반행위", "개별기준", "행정처분기준")):
++            continue
++
++        c1_text = row[order_cols[1]].strip() if order_cols[1] != -1 and order_cols[1] < col_count else ""
++        c2_text = row[order_cols[2]].strip() if order_cols[2] != -1 and order_cols[2] < col_count else ""
++        c3_text = row[order_cols[3]].strip() if order_cols[3] != -1 and order_cols[3] < col_count else ""
++
++        structured_rows.append({
++            "row_idx": r,
++            "industry": current_section,
++            "violation_text": violation_text,
++            "law_text": law_text,
++            "criteria_raw": {1: c1_text, 2: c2_text, 3: c3_text},
++        })
++
++    return structured_rows, True, "COMPLETED"
++
++
++def parse_criteria_value_and_unit(criteria_str: str) -> Optional[Tuple[int, str]]:
++    """처분기준 셀 문자열에서 수치와 단위를 추출한다 (W2: 단위 환산 금지)."""
++    if not criteria_str:
++        return None
++    # 처분 종류가 서면과 같은 '영업정지'일 때만 수치를 읽는다('품목류 제조정지 1개월'·'시정명령'은 대조하지 않음, 평가 측 보완 J7)
++    m = re.search(r"영업정지\s*(?P<val>\d+)\s*(?P<unit>일|월|개월)", criteria_str)
++    if not m:
++        return None
++    val = int(m.group("val"))
++    raw_unit = m.group("unit")
++    unit = "월" if raw_unit in ("월", "개월") else "일"
++    return (val, unit)
++
++
++def verify_disposition_criteria(
++    doc_text: str,
++    appendix_hwp: bytes,
++    *,
++    case_date: Optional[str] = None,
++    law_name: str = "",
++    table_title: str = "",
++    mst: Optional[str] = None,
++    appendix_plain_text: Optional[str] = None,
++) -> Dict[str, Any]:
++    """처분기준 별표와 서면 주장을 대조하여 결과를 반환한다 (TK-139)."""
++    out: Dict[str, Any] = {
++        "status": "UNVERIFIED",
++        "law_name": law_name,
++        "table_title": table_title,
++        "version_mst": mst or "",
++        "effective_date": case_date or "",
++        "matched_row": None,
++        "document_claim": None,
++        "comparison_result": "UNVERIFIED",
++        "advisory_only": True,
++        "discretionary_notes": "",
++    }
++
++    # G3: 처분일/기준일 미확정 시 즉시 UNVERIFIED (구버전 혼동 원천 차단, Q7)
++    if not case_date:
++        out["status"] = "UNVERIFIED (처분 기준일 미확정)"
++        return out
++
++    # 서면 주장 추출
++    claim = extract_document_claim(doc_text)
++    if not claim:
++        out["status"] = "UNVERIFIED (서면 내 처분 문구 미검출)"
++        return out
++    out["document_claim"] = claim
++
++    # W1: 업종 특정 — 서면의 업종 낱말(시행령 제21조 영업 종류)과, 별표 절 머리에 나열된 영업 이름 중 서면에 나오는 것
++    doc_industry = claim.get("matched_industry")
++    pattern_hits = [name for name, pat in INDUSTRY_PATTERNS if pat.search(doc_text)]
++    if doc_industry is None and len(pattern_hits) >= 2:
++        # 서면에 업종이 둘 이상 나오고 처분 문장 주변에서도 하나로 좁혀지지 않으면 보류한다
++        out["status"] = "UNVERIFIED (서면의 영업 종류 특정 불가)"
++        return out
++    doc_names = {doc_industry} if doc_industry else set()
++    for name, pat in INDUSTRY_PATTERNS:
++        if name == doc_industry:
++            doc_names.update(m.group(0) for m in pat.finditer(doc_text))
++
++    # HWP 표 파싱 및 병합 전파 (W3, G4)
++    structured_rows, success, parse_msg = parse_and_propagate_table(appendix_hwp)
++    if not success or not structured_rows:
++        out["status"] = f"UNVERIFIED (별표 HWP 표 구조 파싱 불가: {parse_msg})"
++        return out
++
++    # W1: 해당 업종 절 안의 행들만 후보군으로 수집
++    # 서면 업종 이름이 절 머리(영 제21조 각 호 나열)에 나오는 절이 정확히 하나일 때만 그 절 안에서 맞춘다(J12)
++    def _norm(t: str) -> str:
++        return re.sub(r"[\s·ㆍ]", "", t or "")
++    sections = list(dict.fromkeys(r["industry"] for r in structured_rows if r.get("industry")))
++
++    def _section_names(sec: str) -> List[str]:
++        # 절 머리의 '영 제21조제N호의 ○○업, 같은 조 제M호의 △△업 …' 나열과 절 제목('○○업 등')에서 영업 이름을 뽑는다
++        names = re.findall(r"의\s*([가-힣][가-힣·ㆍ\s]*?업)(?=[\s,(.]|및|을|를|이|은|$)", sec)
++        m_title = re.match(r"\s*([가-힣][가-힣·ㆍ\s]*?업)", sec)
++        if m_title:
++            names.append(m_title.group(1))
++        return [n for n in (_norm(x) for x in names) if n]
++
++    def _hits(sec: str) -> bool:
++        listed = _section_names(sec)
++        for n in (_norm(x) for x in doc_names):
++            if n and any(n == l or l in n or n in l for l in listed):
++                return True
++        return False
++
++    norm_doc = _norm(doc_text)
++    if doc_industry is None:
++        for sec in sections:
++            doc_names.update(n for n in _section_names(sec) if len(n) >= 4 and n in norm_doc)
++    if not doc_names:
++        out["status"] = "UNVERIFIED (서면의 영업 종류 특정 불가)"
++        return out
++    hit_sections = [sec for sec in sections if _hits(sec)]
++    if len(hit_sections) != 1:
++        out["status"] = "UNVERIFIED (별표에서 해당 업종 절 미확인)" if not hit_sections else "UNVERIFIED (업종 절 복수 해당)"
++        return out
++    industry_candidates = [r for r in structured_rows if r.get("industry") == hit_sections[0]]
++    if not industry_candidates:
++        # 업종 절을 찾지 못하면 다른 업종 행과 맞추지 않는다(W1, 평가 측 보완 J6)
++        out["status"] = "UNVERIFIED (별표에서 해당 업종 절 미확인)"
++        return out
++
++    # G1 & W5: 2-gram Jaccard 유사도 계산 및 유일성 검증
++    violation_clause = claim["violation_clause"]
++    scored_candidates = []
++    for r in industry_candidates:
++        score = jaccard_similarity(_strip_cite(violation_clause), _row_core(r["violation_text"]))
++        scored_candidates.append((score, r))
++
++    scored_candidates.sort(key=lambda x: x[0], reverse=True)
++
++    if not scored_candidates:
++        out["status"] = "UNVERIFIED (후보 행 없음)"
++        return out
++
++    best_score, best_row = scored_candidates[0]
++    second_score = scored_candidates[1][0] if len(scored_candidates) > 1 else 0.0
++
++    # G1 & W5 가드: 최고 점수 >= 0.60 및 2위와의 격차 >= 0.20
++    if best_score < 0.60:
++        out["status"] = f"UNVERIFIED (적용 행 특정 불가: 최고 유사도 {best_score} < 0.60)"
++        return out
++    if (best_score - second_score) < 0.20:
++        out["status"] = f"UNVERIFIED (적용 행 특정 불가: 1·2위 유사도 격차 {round(best_score - second_score, 4)} < 0.20)"
++        return out
++
++    # 행 매칭 성공
++    matched_row_info = {
++        "row_idx": best_row["row_idx"],
++        "industry": best_row["industry"],
++        "violation_text": best_row["violation_text"],
++        "law_text": best_row["law_text"],
++        "jaccard_score": best_score,
++        "criteria_raw": best_row["criteria_raw"],
++    }
++    out["matched_row"] = matched_row_info
++
++    # W2: 처분기준 대조 및 단위 환산 금지
++    claimed_order = claim["claimed_order"]
++    if claimed_order is None:
++        out["status"] = "UNVERIFIED (서면의 위반 차수 미기재)"
++        return out
++    criteria_str = best_row["criteria_raw"].get(claimed_order) or best_row["criteria_raw"].get(str(claimed_order)) or ""
++    parsed_crit = parse_criteria_value_and_unit(criteria_str)
++
++    if not parsed_crit:
++        out["status"] = f"UNVERIFIED (별표 {claimed_order}차 처분기준 수치/단위 파싱 불가: '{criteria_str}')"
++        return out
++
++    crit_val, crit_unit = parsed_crit
++    claimed_val = claim["claimed_val"]
++    claimed_unit = claim["claimed_unit"]
++
++    # W2 단위 일치 검사: 단위가 다르면 환산하지 않고 UNVERIFIED
++    if crit_unit != claimed_unit:
++        out["status"] = f"UNVERIFIED (단위 상이 및 환산 금지: 별표는 '{crit_unit}', 서면은 '{claimed_unit}')"
++        out["comparison_result"] = "UNVERIFIED"
++        return out
++
++    # 단위가 같으므로 수치 비교
++    if claimed_val == crit_val:
++        out["comparison_result"] = "MATCHED"
++    else:
++        out["comparison_result"] = "DISCREPANCY_DETECTED"
++
++    # G2: 감경 재량 규정 확인 (일반기준 각주)
++    full_text = appendix_plain_text or ""
++    if "1/2" in full_text or "2분의 1" in full_text:
++        out["discretionary_notes"] = "동기·결과에 따라 1/2 범위에서 감경 가능(일반기준)"
++
++    out["status"] = "COMPLETED"
++    return out
+diff --git a/packages/legal_engine/related_authorities.py b/packages/legal_engine/related_authorities.py
+index 6453f5d..6c8f566 100644
+--- a/packages/legal_engine/related_authorities.py
++++ b/packages/legal_engine/related_authorities.py
+@@ -29,6 +29,10 @@ _ART_CHAIN_RE = re.compile(r"^\s*(?:,|ㆍ|·|및|또는|와|과|부터|내지)\s
+ _REF_TAIL_RE = re.compile(r"\s*(?:에\s*(?:따라|의하여|따른|의한|규정된)|(?:을|를)\s*준용하)")
+ 
+ 
++TK139_MAX_SECONDS = 10.0       # TK-139 처분기준 대조 단계 상한(문서 15초 예산과 별도, 사용자 결정 11-04)
++TK139_MIN_CALL_SECONDS = 3.0   # 외부 호출 전 최소 잔여
++
++
+ class AuthorityBudget:
+     """TK-137 및 TK-138이 공유하는 통합 시간 예산 관리 객체 (U4, P7).
+ 
+@@ -623,8 +627,162 @@ def _discover_tk138_precedents(
+     return sorted_precedents, precedent_status
+ 
+ 
++def _discover_tk139_disposition_criteria(
++    doc,
++    citations,
++    verifier,
++    *,
++    case_date: Optional[str] = None,
++    verdicts: Optional[List[Dict[str, Any]]] = None,
++) -> Tuple[Optional[Dict[str, Any]], str]:
++    """서면 내 행정처분 주장과 처분기준 별표를 대조한다 (TK-139)."""
++    text = getattr(doc, "visible_text", "") or ""
++    if not text or "영업정지" not in text:
++        return None, "NO_DISPOSITION_MENTIONED"
++
++    adapter = getattr(verifier.registry, "law", None) if hasattr(verifier, "registry") else None
++    if adapter is None or getattr(adapter, "name", "") != "law_go_kr":
++        return None, "ADAPTER_UNAVAILABLE"
++
++    if not getattr(adapter.settings, "allow_network", True) or adapter.status() != AdapterStatus.READY:
++        return None, "NETWORK_DISABLED"
++
++    # TK-139 시간 상한(사용자 결정 11-04 'TK-139 별도 상한'): 문서 15초 예산과 별도로 10초, 외부 호출 전 잔여 3초 이상
++    tk139_deadline = time.monotonic() + TK139_MAX_SECONDS
++
++    def _budget_left() -> bool:
++        return tk139_deadline - time.monotonic() >= TK139_MIN_CALL_SECONDS
++
++    budget_out = {"status": "UNVERIFIED (시간 예산 소진)", "comparison_result": "UNVERIFIED", "advisory_only": True}
++
++    # G3: 처분 기준일 미확정 시 즉시 UNVERIFIED (Q7)
++    if not case_date:
++        return {
++            "status": "UNVERIFIED (처분 기준일 미확정)",
++            "comparison_result": "UNVERIFIED",
++            "advisory_only": True,
++        }, "CRITERIA_DATE_NOT_DETERMINED"
++
++    # 서면에서 인용된 시행규칙 또는 관련 법령 선별
++    target_law: Optional[str] = None
++    target_mst: Optional[str] = None
++
++    if verdicts:
++        for v in verdicts:
++            rec = v.get("official_record") or {}
++            lname = str(rec.get("law_name") or "")
++            if "시행규칙" in lname and rec.get("version_id"):
++                target_law = lname
++                target_mst = str(rec["version_id"])
++                break
++
++    if not target_law:
++        for c in citations:
++            if c.type == CitationType.STATUTE and c.law_name and "시행규칙" in c.law_name:
++                target_law = c.law_name.strip()
++                break
++
++    if not target_law:
++        m_rule = re.search(r"([가-힣]+법\s*시행규칙)", text)
++        if m_rule:
++            target_law = m_rule.group(1).strip()
++
++    if not target_law:
++        return None, "NO_ENFORCEMENT_RULE_FOUND"
++
++    if not target_mst and hasattr(adapter, "resolve_statute"):
++        if not _budget_left():
++            return budget_out, "BUDGET_EXHAUSTED"
++        try:
++            resolved = adapter.resolve_statute(target_law, as_of=case_date)
++            records = getattr(resolved, "records", []) or []
++            if records:
++                target_mst = str(records[0].get("version_id") or "")
++        except Exception:
++            target_mst = None
++
++    if not target_mst:
++        return {
++            "status": "UNVERIFIED (법령 MST 조회 실패)",
++            "comparison_result": "UNVERIFIED",
++            "advisory_only": True,
++        }, "MST_LOOKUP_FAILED"
++
++    appendices = []
++    if hasattr(adapter, "get_law_appendices"):
++        if not _budget_left():
++            return budget_out, "BUDGET_EXHAUSTED"
++        try:
++            appendices = adapter.get_law_appendices(target_mst)
++        except Exception:
++            appendices = []
++
++    if not appendices:
++        return {
++            "status": "UNVERIFIED (별표 목록 조회 실패)",
++            "comparison_result": "UNVERIFIED",
++            "advisory_only": True,
++        }, "NO_APPENDICES"
++
++    chosen_appendix: Optional[Dict[str, Any]] = None
++    m_byl = re.search(r"\[?\s*별표\s*(\d+)\s*\]?", text)
++    if m_byl:
++        byl_num = m_byl.group(1)
++        for a in appendices:
++            if (a.get("number") or "").lstrip("0") == byl_num.lstrip("0") and not (a.get("branch_number") or "").strip("0"):  # '0023' = '23'(평가 측 보완 J8)
++                chosen_appendix = a
++                break
++
++    if not chosen_appendix:
++        for a in appendices:
++            title = a.get("title", "")
++            if "행정처분" in title or "처분의 기준" in title:
++                chosen_appendix = a
++                break
++
++    if not chosen_appendix or not chosen_appendix.get("file_link"):
++        return {
++            "status": "UNVERIFIED (행정처분기준 별표 서식 미확인)",
++            "comparison_result": "UNVERIFIED",
++            "advisory_only": True,
++        }, "CRITERIA_APPENDIX_NOT_FOUND"
++
++    hwp_bytes = None
++    if hasattr(adapter, "download_appendix_hwp"):
++        if not _budget_left():
++            return budget_out, "BUDGET_EXHAUSTED"
++        try:
++            hwp_bytes = adapter.download_appendix_hwp(chosen_appendix["file_link"])
++        except Exception:
++            hwp_bytes = None
++
++    if not hwp_bytes:
++        return {
++            "status": "UNVERIFIED (별표 HWP 다운로드 실패)",
++            "comparison_result": "UNVERIFIED",
++            "advisory_only": True,
++        }, "HWP_DOWNLOAD_FAILED"
++
++    from .disposition_criteria import verify_disposition_criteria
++
++    appendix_no = (chosen_appendix.get("number") or "").lstrip("0")
++    branch_no = (chosen_appendix.get("branch_number") or "").lstrip("0")
++    result = verify_disposition_criteria(
++        text,
++        hwp_bytes,
++        case_date=case_date,
++        law_name=target_law,
++        table_title=chosen_appendix.get("title", ""),
++        mst=target_mst,
++        appendix_plain_text=chosen_appendix.get("content_text", ""),
++    )
++    if appendix_no:
++        result["appendix_label"] = f"[별표 {appendix_no}{'의' + branch_no if branch_no else ''}]"
++    return result, result.get("status", "COMPLETED")
++
++
+ def review_related_authorities(doc, citations, verifier, *, case_date=None, quick=False, verdicts=None):
+-    """관련 법조문, 위임/명시 참조 근거, 관련 권위 판례를 검토하여 단일 dict로 반환한다 (N2, N3, P8)."""
++    """관련 법조문, 위임/명시 참조 근거, 관련 권위 판례, 처분기준 별표를 검토하여 단일 dict로 반환한다 (N2, N3, P8, Q6)."""
+     related = candidates(doc, citations)
+ 
+     # N3: QUICK 프로필이거나 네트워크 불가 시 기존 동작 유지
+@@ -659,14 +817,24 @@ def review_related_authorities(doc, citations, verifier, *, case_date=None, quic
+     except Exception:
+         precedent_status = "ERROR"
+ 
+-    # 국가계약법 쟁점도 없고 TK-137, TK-138 결과도 없는 경우 (N3 충족)
+-    if not related and not delegations and not explicit_refs and not precedents:
++    # TK-139 처분기준 별표 대조 (Q6)
++    disp_criteria: Optional[Dict[str, Any]] = None
++    disp_status = "NOT_ASSESSED"
++
++    try:
++        disp_criteria, disp_status = _discover_tk139_disposition_criteria(
++            doc, citations, verifier, case_date=case_date, verdicts=verdicts)
++    except Exception:
++        disp_status = "ERROR"
++
++    # 국가계약법 쟁점도 없고 TK-137·138·139 결과도 없는 경우 (N3 충족)
++    if not related and not delegations and not explicit_refs and not precedents and not disp_criteria:
+         return None, []
+ 
+     records = []
+     verdicts = []
+     candidates_list = []
+-    note = "관련 법령 및 위임·명시 참조 조문, 관련 권위 판례 검토"
++    note = "관련 법령 및 위임·명시 참조 조문, 관련 권위 판례, 행정처분기준 검토"
+ 
+     if related:
+         note = ("국가계약법 제15조 제3항의 지급지연 이자와 지체상금 상계는 납품대금 원금 상계와 구별한다. "
+@@ -676,7 +844,7 @@ def review_related_authorities(doc, citations, verifier, *, case_date=None, quic
+         verdicts = verified.data.get("verdicts", [])
+         candidates_list = [c.to_dict() for c in related]
+ 
+-    # N2, P8: 기존 키·값 보존 + TK-137 / TK-138 확장 키 병합
++    # N2, P8, Q6: 기존 키·값 보존 + TK-137 / TK-138 / TK-139 확장 키 병합
+     out = {
+         "origin": "DISCOVERED_AUTHORITY",
+         "status": "SOURCE_REVIEW_ONLY",
+@@ -692,12 +860,35 @@ def review_related_authorities(doc, citations, verifier, *, case_date=None, quic
+         "explicit_references": explicit_refs,
+         "precedent_status": precedent_status,
+         "precedents": precedents,
++        "disposition_criteria": disp_criteria,
+     }
+     return out, records
+ 
+ 
++_RESULT_LABEL = {"MATCHED": "일치", "DISCREPANCY_DETECTED": "불일치(확인 필요)"}
++
++
++def disposition_line(crit: Dict[str, Any], sep: str = " · ") -> str:
++    """처분기준 대조 한 줄(화면·보고서 같은 문구): 법령 [별표 N] · 업종 · N차 위반: 별표 … / 서면 … → 결과 · 감경 · 검토 자료."""
++    m_row = crit.get("matched_row") or {}
++    c_claim = crit.get("document_claim") or {}
++    raw_map = m_row.get("criteria_raw") or {}
++    order = c_claim.get("claimed_order")
++    crit_val = raw_map.get(order) or raw_map.get(str(order)) or ""   # JSON 저장 뒤 키는 문자열(J10)
++    industry = re.split(r"\s+영\s*제\d+조", str(m_row.get("industry") or ""))[0].strip()
++    parts = [f"[처분기준 검토] {crit.get('law_name', '')} {crit.get('appendix_label', '')}".rstrip()]
++    if industry:
++        parts.append(industry)
++    parts.append(f"{order}차 위반 '{m_row.get('violation_text', '')}': 별표 {crit_val} / 서면 {c_claim.get('raw_disposition', '')}"
++                 f" → {_RESULT_LABEL.get(crit.get('comparison_result', ''), '확인 필요')}")
++    if crit.get("discretionary_notes"):
++        parts.append(str(crit["discretionary_notes"]))
++    parts.append("검토 자료")
++    return sep.join(parts)
++
++
+ def report_lines(documents):
+-    """보고서 및 요약에 출력할 관련 근거 라인을 생성한다 (N6, P8, U1, U5)."""
++    """보고서 및 요약에 출력할 관련 근거 라인을 생성한다 (N6, P8, U1, U5, Q6)."""
+     lines = []
+     for doc in documents:
+         review = doc.engine_data.get("related_authorities")
+@@ -735,4 +926,9 @@ def report_lines(documents):
+                 name_part = f" \"{p['case_name']}\"" if p.get("case_name") else ""
+                 lines.append(f"  · {p['case_number']} ({p['court']}, {p['decision_date']}{kind_part}){name_part} "
+                              f"(사건 당시 적용·주장 타당성은 별도 검토)")
++
++        # TK-139: 처분기준 별표 대조 라인 출력(문구: 사용자 결정 11-04 '권고안 적용')
++        crit = review.get("disposition_criteria")
++        if crit and isinstance(crit, dict) and crit.get("status") == "COMPLETED":
++            lines.append(disposition_line(crit, sep=" / "))
+     return lines
+diff --git a/packages/source_adapters/base.py b/packages/source_adapters/base.py
+index a03eb24..aa76a80 100644
+--- a/packages/source_adapters/base.py
++++ b/packages/source_adapters/base.py
+@@ -106,15 +106,19 @@ class SourceAdapter(ABC):
+             message=message,
+         )
+ 
+-    def _http_get(self, url: str, *, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None):
+-        """제21.1장 SSRF 방어: 허용된 Adapter만 자신의 고정 도메인을 호출한다."""
++    def _http_get(self, url: str, *, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None,
++                  timeout: Optional[float] = None):
++        """제21.1장 SSRF 방어: 허용된 Adapter만 자신의 고정 도메인을 호출한다.
++
++        timeout은 설정값보다 짧게만 줄일 수 있다(별표 다운로드 5초 상한, 평가 측 보완 J1)."""
+         from .transport import source_get
+ 
++        limit = self.settings.http_timeout if timeout is None else min(float(timeout), float(self.settings.http_timeout))
+         return source_get(
+             self.name, url,
+             params=params,
+             headers=headers or {},
+-            timeout=self.settings.http_timeout,
++            timeout=limit,
+         )
+ 
+     def _transport_unavailable(self, query, exc):
+diff --git a/packages/source_adapters/law_go_kr.py b/packages/source_adapters/law_go_kr.py
+index 87f9167..bacf4f4 100644
+--- a/packages/source_adapters/law_go_kr.py
++++ b/packages/source_adapters/law_go_kr.py
+@@ -460,6 +460,82 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
+         except Exception:
+             return None
+ 
++    def get_law_appendices(self, mst: str | int) -> List[Dict[str, Any]]:
++        """법령 상세 조회(lawService.do?target=law&MST={mst})로부터 별표 목록을 추출한다 (TK-139, Q2)."""
++        if not mst or self.status() != AdapterStatus.READY:
++            return []
++        try:
++            response = self._http_get(
++                SERVICE_URL,
++                params={"OC": self.api_key, "target": "law", "type": "JSON", "MST": str(mst)},
++            )
++            if response.status_code >= 400:
++                return []
++            payload = response.json()
++        except Exception:
++            return []
++
++        if not isinstance(payload, dict):
++            return []
++        law_node = payload.get("법령") or payload.get("Law") or payload
++        if not isinstance(law_node, dict):
++            return []
++        byl_node = law_node.get("별표") or {}
++        if not isinstance(byl_node, dict):
++            return []
++        unit_node = byl_node.get("별표단위") or []
++        units = unit_node if isinstance(unit_node, list) else [unit_node]
++
++        out: List[Dict[str, Any]] = []
++        for u in units:
++            if not isinstance(u, dict):
++                continue
++            out.append({
++                "title": str(u.get("별표제목") or "").strip(),
++                "number": str(u.get("별표번호") or "").strip(),
++                "branch_number": str(u.get("별표가지번호") or "").strip(),
++                "kind": str(u.get("별표구분") or "").strip(),
++                "content_text": str(u.get("별표내용") or "").strip(),
++                "key": str(u.get("별표키") or "").strip(),
++                "hwp_filename": str(u.get("별표HWP파일명") or "").strip(),
++                "file_link": str(u.get("별표서식파일링크") or "").strip(),
++                "pdf_link": str(u.get("별표서식PDF파일링크") or "").strip(),
++            })
++        return out
++
++    def download_appendix_hwp(self, file_link: str) -> Optional[bytes]:
++        """별표 HWP 서식 파일을 안전하게 다운로드한다 (W4, Q3).
++
++        - 도메인은 반드시 'www.law.go.kr' 고정 (SSRF 원칙).
++        - 파일 크기 상한: 2.0MB.
++        - 타임아웃: 5.0초.
++        """
++        if not file_link or self.status() != AdapterStatus.READY:
++            return None
++
++        link = file_link.strip()
++        if link.startswith("http://") or link.startswith("https://"):
++            from urllib.parse import urlparse
++            parsed = urlparse(link)
++            if parsed.hostname != "www.law.go.kr":
++                return None
++            url = f"https://www.law.go.kr{parsed.path}{'?' + parsed.query if parsed.query else ''}"
++        elif link.startswith("/"):
++            url = f"https://www.law.go.kr{link}"
++        else:
++            url = f"https://www.law.go.kr/{link}"
++
++        try:
++            response = self._http_get(url, timeout=5.0)
++            if response.status_code != 200:
++                return None
++            content = getattr(response, "content", None) or b""
++            if len(content) > 2.0 * 1024 * 1024:
++                return None
++            return content
++        except Exception:
++            return None
++
+     def search(self, query: str, **kwargs: Any) -> AdapterResponse:
+         if kwargs.get("target") in ("expc", "interpretation"):
+             return self.search_interpretation(query)
+diff --git a/tests/test_tk139_disposition_criteria.py b/tests/test_tk139_disposition_criteria.py
+new file mode 100644
+index 0000000..1a1973b
+--- /dev/null
++++ b/tests/test_tk139_disposition_criteria.py
+@@ -0,0 +1,382 @@
++# -*- coding: utf-8 -*-
++"""TK-139 처분기준 별표 대조 1유형 단위/통합 테스트 (W1~W5, G1~G4 검증)."""
++from __future__ import annotations
++
++import unittest
++from unittest.mock import MagicMock, patch
++
++from packages.common.enums import AdapterStatus, CitationType
++from packages.common.schemas import Citation
++from packages.legal_engine.disposition_criteria import (
++    char_2grams,
++    extract_document_claim,
++    jaccard_similarity,
++    parse_and_propagate_table,
++    parse_criteria_value_and_unit,
++    verify_disposition_criteria,
++)
++from packages.legal_engine.related_authorities import (
++    _discover_tk139_disposition_criteria,
++    review_related_authorities,
++    report_lines,
++)
++from packages.source_adapters.law_go_kr import LawGoKrAdapter
++
++
++class TestTK139DispositionCriteria(unittest.TestCase):
++    """TK-139 처분기준 별표 대조 검증 테스트."""
++
++    def test_w5_jaccard_similarity_calculation(self):
++        """W5 & Q5: 문자 단위 2-gram Jaccard 유사도 계산 검증."""
++        s1 = "유통기한 경과제품 보관"
++        s2 = "유통기한이 경과된 제품을 보관한 경우"
++        score = jaccard_similarity(s1, s2)
++        self.assertGreaterEqual(score, 0.40)
++
++        # 완전 일치 시 1.0
++        self.assertEqual(jaccard_similarity("영업정지 1개월", "영업정지 1개월"), 1.0)
++        # 공백/특수문자 무시 검증
++        self.assertEqual(jaccard_similarity("유통기한·경과", "유통기한 경과"), 1.0)
++
++    def test_w1_and_w5_extract_document_claim_industry_and_clause(self):
++        """W1 & W5: 서면 주장 요소, 업종(일반음식점->식품접객업), 위반 사실 절 추출 검증."""
++        doc_text = (
++            "원고는 서울 마포구에서 일반음식점을 운영하는 자로서, "
++            "유통기한이 경과된 식재료를 조리 목적으로 보관하였다는 이유로 "
++            "피고로부터 2023. 5. 1.자 1차 위반에 따른 영업정지 2개월 처분을 받았습니다."
++        )
++        claim = extract_document_claim(doc_text)
++        self.assertIsNotNone(claim)
++        self.assertEqual(claim["raw_disposition"], "영업정지 2개월")
++        self.assertEqual(claim["claimed_val"], 2)
++        self.assertEqual(claim["claimed_unit"], "월")
++        self.assertEqual(claim["claimed_order"], 1)
++        self.assertEqual(claim["matched_industry"], "식품접객업")
++        self.assertIn("유통기한이 경과된 식재료", claim["violation_clause"])
++
++    def test_w3_table_merges_and_propagation(self):
++        """W3: 파서의 merges와 covered를 반영하여 대분류 및 병합 셀 전파 검증."""
++        # 모의 표 구조 (5행 5열)
++        mock_cells = [
++            ["위반사항", "근거 법령", "1차 위반", "2차 위반", "3차 위반"],
++            ["Ⅱ. 개별기준 1. 식품접객업", "", "", "", ""],
++            ["1. 유통기한 경과제품을 조리·판매 목적으로 보관한 경우", "법 제44조", "영업정지 15일", "영업정지 1개월", "영업정지 3개월"],
++            ["2. 위생모 미착용 등 개인위생 관리기준 위반", "법 제3조", "시정명령", "영업정지 7일", "영업정지 15일"],
++            ["가. 건강진단을 받지 아니한 경우", "", "과태료", "영업정지 5일", "영업정지 10일"],
++        ]
++        # merges: 4행 0열("가. 건강진단을 받지...")이 3행 0열("2. 위생모 미착용...")과 결합되어 있는 상황 모의
++        mock_table = {
++            "row_count": 5,
++            "column_count": 5,
++            "cells": mock_cells,
++            # 실제 HWP 파서 꼴(평가 측 보완 J2·J12): 업종 절 머리(1행)는 표 전체 폭 병합, 3행 0열은 2행에 걸쳐 병합
++            "merges": [{"row": 1, "col": 0, "row_span": 1, "col_span": 5}, {"row": 3, "col": 0, "row_span": 2, "col_span": 1}],
++            "covered": [[1, 1], [1, 2], [1, 3], [1, 4], [4, 0]],
++            "complete": True,
++        }
++
++        with patch("packages.document_engine.hwp_parser._extract_hwp_table_structures",
++                   return_value=([mock_table], [], [])):
++            rows, success, status = parse_and_propagate_table(b"MOCK_HWP_BYTES")
++
++        self.assertTrue(success)
++        self.assertEqual(status, "COMPLETED")
++        self.assertTrue(len(rows) >= 3)
++        # 3행(0-based idx 2)은 식품접객업 개별기준
++        self.assertTrue(rows[0]["industry"].startswith("식품접객업"))
++        self.assertIn("유통기한 경과제품", rows[0]["violation_text"])
++        self.assertEqual(rows[0]["criteria_raw"][1], "영업정지 15일")
++
++    def test_w2_unit_mismatch_no_conversion_unverified(self):
++        """W2 & G2: 단위 환산 금지 규칙 (개월->일수 환산 금지, 단위 상이 시 UNVERIFIED)."""
++        doc_text = "원고는 일반음식점을 영위하며, 유통기한이 경과된 제품을 조리 목적으로 보관하여 1차 위반으로 영업정지 60일 처분을 받았다."
++
++        mock_rows = [{
++            "row_idx": 2,
++            "industry": "식품접객업",
++            "violation_text": "유통기한이 경과된 제품을 조리 목적으로 보관한 경우",
++            "law_text": "법 제44조",
++            "criteria_raw": {1: "영업정지 2개월", 2: "영업정지 3개월", 3: "영업소 폐쇄"},
++        }]
++
++        with patch("packages.legal_engine.disposition_criteria.parse_and_propagate_table",
++                   return_value=(mock_rows, True, "COMPLETED")):
++            res = verify_disposition_criteria(
++                doc_text,
++                b"MOCK_HWP",
++                case_date="2023-05-01",
++                law_name="식품위생법 시행규칙",
++                table_title="[별표 23] 행정처분의 기준",
++                mst="289161",
++            )
++
++        # W2: 60일과 2개월을 30일 환산하여 같다고 보지 않고, 단위 상이로 UNVERIFIED 처리
++        self.assertIn("UNVERIFIED", res["status"])
++        self.assertIn("단위 상이 및 환산 금지", res["status"])
++        self.assertEqual(res["comparison_result"], "UNVERIFIED")
++
++    def test_w2_unit_match_comparison_discrepancy_and_match(self):
++        """W2: 같은 단위일 때 수치 비교 (MATCHED vs DISCREPANCY_DETECTED)."""
++        mock_rows = [{
++            "row_idx": 2,
++            "industry": "식품접객업",
++            "violation_text": "유통기한이 경과된 식재료를 조리 목적으로 보관한 경우",
++            "law_text": "법 제44조",
++            "criteria_raw": {1: "영업정지 15일", 2: "영업정지 1개월", 3: "영업정지 3개월"},
++        }]
++
++        # 1. 일치(MATCHED) 시나리오: 서면 15일 vs 별표 15일
++        doc_matched = "일반음식점에서 유통기한이 경과된 식재료를 조리 목적으로 보관하여 1차 영업정지 15일 처분을 받았다."
++        with patch("packages.legal_engine.disposition_criteria.parse_and_propagate_table",
++                   return_value=(mock_rows, True, "COMPLETED")):
++            res_m = verify_disposition_criteria(
++                doc_matched, b"MOCK_HWP", case_date="2023-05-01",
++                appendix_plain_text="위반 동기에 따라 1/2 범위에서 감경할 수 있다."
++            )
++        self.assertEqual(res_m["status"], "COMPLETED")
++        self.assertEqual(res_m["comparison_result"], "MATCHED")
++        self.assertIn("1/2", res_m["discretionary_notes"])
++
++        # 2. 불일치(DISCREPANCY_DETECTED) 시나리오: 서면 30일 vs 별표 15일
++        doc_disc = "일반음식점에서 유통기한이 경과된 식재료를 조리 목적으로 보관하여 1차 영업정지 30일 처분을 받았다."
++        with patch("packages.legal_engine.disposition_criteria.parse_and_propagate_table",
++                   return_value=(mock_rows, True, "COMPLETED")):
++            res_d = verify_disposition_criteria(doc_disc, b"MOCK_HWP", case_date="2023-05-01")
++        self.assertEqual(res_d["status"], "COMPLETED")
++        self.assertEqual(res_d["comparison_result"], "DISCREPANCY_DETECTED")
++        self.assertEqual(res_d["advisory_only"], True)
++
++    def test_g1_row_unverified_on_low_score_or_ambiguity(self):
++        """G1 & W5: 유사도 0.60 미만이거나 1·2위 격차 0.20 미만 시 UNVERIFIED 복귀."""
++        doc_text = "일반음식점에서 영업정지 15일 처분을 받았으나 위반 사실 기재가 불분명함."
++
++        # 1. 최고 유사도가 0.60 미만인 경우
++        mock_low_score_rows = [{
++            "row_idx": 1,
++            "industry": "식품접객업",
++            "violation_text": "원산지 거짓 표시 및 혼동 우려 표시",
++            "criteria_raw": {1: "영업정지 15일"},
++        }]
++        with patch("packages.legal_engine.disposition_criteria.parse_and_propagate_table",
++                   return_value=(mock_low_score_rows, True, "COMPLETED")):
++            res1 = verify_disposition_criteria(doc_text, b"MOCK_HWP", case_date="2023-05-01")
++        self.assertIn("UNVERIFIED", res1["status"])
++        self.assertIn("< 0.60", res1["status"])
++
++        # 2. 1위와 2위 후보가 0.20 이내로 경합하는 경우
++        doc_ambiguous = "일반음식점 시설기준 위반으로 영업정지 15일 처분을 받았다."
++        mock_competing_rows = [
++            {"row_idx": 1, "industry": "식품접객업", "violation_text": "시설기준 위반 가목", "criteria_raw": {1: "영업정지 15일"}},
++            {"row_idx": 2, "industry": "식품접객업", "violation_text": "시설기준 위반 나목", "criteria_raw": {1: "영업정지 15일"}},
++        ]
++        with patch("packages.legal_engine.disposition_criteria.parse_and_propagate_table",
++                   return_value=(mock_competing_rows, True, "COMPLETED")):
++            res2 = verify_disposition_criteria(doc_ambiguous, b"MOCK_HWP", case_date="2023-05-01")
++        self.assertIn("UNVERIFIED", res2["status"])
++        self.assertIn("1·2위 유사도 격차", res2["status"])
++
++    def test_g3_criteria_date_not_determined_guard(self):
++        """G3 & Q7: 처분일/기준일 미확정 시 UNVERIFIED 복귀 (구버전 혼동 원천 차단)."""
++        doc_text = "일반음식점 유통기한 경과제품 보관으로 영업정지 15일 처분을 받았다."
++        res = verify_disposition_criteria(doc_text, b"MOCK_HWP", case_date=None)
++        self.assertEqual(res["status"], "UNVERIFIED (처분 기준일 미확정)")
++
++    def test_w4_ssrf_and_domain_restriction(self):
++        """W4: 별표 다운로드 시 www.law.go.kr 고정 도메인 외 차단 및 크기 상한 검증."""
++        adapter = LawGoKrAdapter()
++        adapter.settings.law_go_kr_oc = "TEST_OC"
++        adapter.status = MagicMock(return_value=AdapterStatus.READY)
++
++        # 1. 비인가 도메인 차단
++        malicious_link = "http://evil.com/malicious.hwp"
++        self.assertIsNone(adapter.download_appendix_hwp(malicious_link))
++
++        # 2. www.law.go.kr 외 다른 공공기관 도메인도 차단 (SSRF 원칙)
++        other_gov_link = "https://korea.kr/download.hwp"
++        self.assertIsNone(adapter.download_appendix_hwp(other_gov_link))
++
++        # 3. www.law.go.kr 정상 상대경로는 허용 및 다운로드 수행
++        mock_resp = MagicMock(status_code=200, content=b"VALID_HWP_CONTENT")
++        adapter._http_get = MagicMock(return_value=mock_resp)
++        result_bytes = adapter.download_appendix_hwp("/LSW/flDownload.do?flSeq=12345")
++        self.assertEqual(result_bytes, b"VALID_HWP_CONTENT")
++        call_url = adapter._http_get.call_args[0][0]
++        self.assertTrue(call_url.startswith("https://www.law.go.kr/LSW/flDownload.do"))
++
++    def test_report_lines_disposition_criteria(self):
++        """Q6 & P8: report_lines에서 [처분기준] 라인 정상 렌더링 검증."""
++        doc = MagicMock()
++        doc.filename = "disposition_case.pdf"
++        doc.engine_data = {
++            "related_authorities": {
++                "status": "SOURCE_REVIEW_ONLY",
++                "disposition_criteria": {
++                    "status": "COMPLETED",
++                    "law_name": "식품위생법 시행규칙",
++                    "table_title": "행정처분의 기준(제89조 관련)",
++                    "appendix_label": "[별표 23]",
++                    "matched_row": {
++                        "industry": "식품접객업 영 제21조제8호의 식품접객업을 말한다.",
++                        "violation_text": "유통기한 경과제품 보관",
++                        "criteria_raw": {1: "영업정지 15일"},
++                    },
++                    "document_claim": {
++                        "raw_disposition": "영업정지 1개월",
++                        "claimed_order": 1,
++                    },
++                    "comparison_result": "DISCREPANCY_DETECTED",
++                    "discretionary_notes": "동기·결과에 따라 1/2 범위 감경 가능",
++                },
++            }
++        }
++
++        lines = report_lines([doc])
++        matched = [l for l in lines if "[처분기준 검토]" in l]
++        self.assertEqual(len(matched), 1)
++        line = matched[0]
++        self.assertIn("식품위생법 시행규칙 [별표 23]", line)
++        self.assertIn("식품접객업", line)
++        self.assertNotIn("영 제21조", line)
++        self.assertIn("1차 위반 '유통기한 경과제품 보관'", line)
++        self.assertIn("별표 영업정지 15일 / 서면 영업정지 1개월", line)
++        self.assertIn("불일치(확인 필요)", line)
++        self.assertNotIn("DISCREPANCY_DETECTED", line)
++        self.assertIn("1/2 범위 감경 가능", line)
++        self.assertIn("검토 자료", line)
++
++
++class TestTK139EvaluatorSupplement(unittest.TestCase):
++    """평가 측 보완 J1~J8 시험(11-04). 표는 실제 HWP 파서 출력 꼴(merges 목록·covered 목록)로 만든다."""
++
++    def _table(self):
++        general = "Ⅰ. 일반기준 1. 위반행위가 1차·2차·3차로 나뉘면 해당 차수의 기준을 따른다"
++        cells = [
++            [general, "", "", "", ""],
++            ["Ⅱ. 개별기준 1. 식품접객업", "", "", "", ""],
++            ["위반사항", "근거 법령", "행정처분기준", "", ""],
++            ["", "", "1차 위반", "2차 위반", "3차 위반"],
++            ["1. 법 제44조를 위반한 경우 가. 손님에게 갑 행위를 한 경우", "법 제75조", "영업정지 7일", "영업정지 1개월", "영업정지 2개월"],
++            ["나. 손님에게 을 행위를 한 경우", "", "품목류 제조정지 1개월", "영업정지 1개월", "영업정지 3개월"],
++        ]
++        return {
++            "cells": cells, "row_count": len(cells), "column_count": 5,
++            "merges": [{"row": 0, "col": 0, "row_span": 1, "col_span": 5},
++                       {"row": 1, "col": 0, "row_span": 1, "col_span": 5},
++                       {"row": 2, "col": 2, "row_span": 1, "col_span": 3},
++                       {"row": 2, "col": 0, "row_span": 2, "col_span": 1},
++                       {"row": 2, "col": 1, "row_span": 2, "col_span": 1}],
++            "covered": [[0, 1], [0, 2], [0, 3], [0, 4], [1, 1], [1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 0], [3, 1]],
++        }
++
++    def _run(self, text, table=None):
++        with patch("packages.document_engine.hwp_parser._extract_hwp_table_structures",
++                   return_value=([table or self._table()], [], None)):
++            return verify_disposition_criteria(text, b"HWP", case_date="2026-10-01")
++
++    def test_j2_j3_real_parser_shape_and_order_columns(self):
++        with patch("packages.document_engine.hwp_parser._extract_hwp_table_structures",
++                   return_value=([self._table()], [], None)):
++            rows, ok, msg = parse_and_propagate_table(b"HWP")
++        self.assertTrue(ok, msg)
++        first = [r for r in rows if "갑 행위" in r["violation_text"]][0]
++        self.assertEqual(first["criteria_raw"], {1: "영업정지 7일", 2: "영업정지 1개월", 3: "영업정지 2개월"})
++        self.assertEqual(first["industry"], "식품접객업")
++
++    def test_j3_j5_match_and_discrepancy(self):
++        base = "원고는 일반음식점을 운영한다. 피고는 원고가 손님에게 갑 행위를 하였다는 이유로 1차 위반으로 영업정지 {}일 처분을 하였다."
++        self.assertEqual(self._run(base.format(7))["comparison_result"], "MATCHED")
++        self.assertEqual(self._run(base.format(15))["comparison_result"], "DISCREPANCY_DETECTED")
++
++    def test_j4_missing_order_is_unverified(self):
++        res = self._run("원고는 일반음식점을 운영한다. 피고는 원고가 손님에게 갑 행위를 하였다는 이유로 영업정지 1개월 처분을 하였다.")
++        self.assertEqual(res["comparison_result"], "UNVERIFIED")
++        self.assertIn("차수", res["status"])
++
++    def test_j6_no_industry_section_is_unverified(self):
++        res = self._run("원고는 식품소분·판매업을 한다. 피고는 원고가 손님에게 갑 행위를 하였다는 이유로 1차 위반으로 영업정지 7일 처분을 하였다.")
++        self.assertEqual(res["comparison_result"], "UNVERIFIED")
++
++    def test_j7_other_disposition_kind_is_unverified(self):
++        res = self._run("원고는 일반음식점을 운영한다. 피고는 원고가 손님에게 을 행위를 하였다는 이유로 1차 위반으로 영업정지 1개월 처분을 하였다.")
++        self.assertEqual(res["comparison_result"], "UNVERIFIED")
++
++    def test_j1_download_uses_real_http_get_signature(self):
++        import inspect
++        from packages.source_adapters.base import SourceAdapter
++        adapter = LawGoKrAdapter()
++        adapter.status = MagicMock(return_value=AdapterStatus.READY)
++        resp = MagicMock(status_code=200, content=b"HWP")
++        def fake(url, **kw):
++            inspect.signature(SourceAdapter._http_get).bind(adapter, url, **kw)
++            return resp
++        adapter._http_get = fake
++        self.assertEqual(adapter.download_appendix_hwp("/LSW/flDownload.do?flSeq=1"), b"HWP")
++
++
++if __name__ == "__main__":
++    unittest.main()
++
++
++class TestTK139SectionJ12(unittest.TestCase):
++    def test_j12_section_only_from_full_width_header_rows(self):
++        cells = [
++            ["Ⅱ. 개별기준 1. 갑종가공업 등 영 제21조제1호의 갑종가공업, 같은 조 제5호가목의 을종소분업", "", "", "", ""],
++            ["위반사항", "근거 법령", "행정처분기준", "", ""],
++            ["", "", "1차 위반", "2차 위반", "3차 위반"],
++            ["가. 갑 행위를 한 경우", "법 제1조", "영업정지 7일", "영업정지 15일", "영업정지 1개월"],
++            ["다. 을종소분업의 준수사항 위반은 2. 병종판매업 등의 제9호에 따른다.", "", "", "", ""],
++            ["라. 을 행위를 한 경우", "법 제2조", "영업정지 5일", "영업정지 10일", "영업정지 20일"],
++            ["2. 병종판매업 등 영 제21조제4호의 정종운반업 및 같은 조 제5호나목의 병종판매업을 말한다.", "", "", "", ""],
++            ["가. 을 행위를 한 경우", "법 제2조", "영업정지 1개월", "영업정지 2개월", "영업정지 3개월"],
++        ]
++        table = {"cells": cells, "row_count": len(cells), "column_count": 5,
++                 "merges": [{"row": 0, "col": 0, "row_span": 1, "col_span": 5}, {"row": 1, "col": 2, "row_span": 1, "col_span": 3},
++                            {"row": 1, "col": 0, "row_span": 2, "col_span": 1}, {"row": 1, "col": 1, "row_span": 2, "col_span": 1},
++                            {"row": 6, "col": 0, "row_span": 1, "col_span": 5}],
++                 "covered": [[0, 1], [0, 2], [0, 3], [0, 4], [1, 3], [1, 4], [2, 0], [2, 1], [6, 1], [6, 2], [6, 3], [6, 4]]}
++        with patch("packages.document_engine.hwp_parser._extract_hwp_table_structures", return_value=([table], [], None)):
++            rows, ok, msg = parse_and_propagate_table(b"HWP")
++            self.assertTrue(ok, msg)
++            eul = [r for r in rows if "을 행위" in r["violation_text"]]
++            self.assertTrue(eul[0]["industry"].startswith("갑종가공업"))   # 문장 속 '2. 병종판매업'으로 절이 바뀌지 않는다
++            self.assertTrue(eul[1]["industry"].startswith("병종판매업"))
++            res = verify_disposition_criteria(
++                "원고는 을종소분업 영업자이다. 피고는 원고가 을 행위를 하였다는 이유로 2차 위반으로 영업정지 10일 처분을 하였다.",
++                b"HWP", case_date="2026-10-01")
++        self.assertEqual(res["comparison_result"], "MATCHED", res["status"])
++
++
++class TestTK139BudgetJ11(unittest.TestCase):
++    def test_j11_separate_budget_stops_before_external_call(self):
++        """사용자 결정(11-04): TK-139 별도 상한 10초, 외부 호출 전 잔여 3초 미만이면 '시간 예산 소진'."""
++        from packages.common.schemas import Block, NormalizedDocument, Page
++        from packages.legal_engine.related_authorities import _discover_tk139_disposition_criteria
++        adapter = MagicMock()
++        adapter.name = "law_go_kr"
++        adapter.settings.allow_network = True
++        adapter.status.return_value = AdapterStatus.READY
++        verifier = MagicMock()
++        verifier.registry.law = adapter
++        text = "원고는 일반음식점을 한다. 가법 시행규칙 [별표 1]에 따라 피고는 1차 위반으로 영업정지 7일 처분을 하였다."
++        doc = NormalizedDocument(document_id="d", filename="d.pdf", mime_type="application/pdf", sha256="0" * 64,
++                                 pages=[Page(page_number=1, blocks=[Block(block_id="b", text=text, page=1, visible=True,
++                                                                         source_layer="visible_text")])])
++        ticks = iter([100.0, 108.5, 108.5, 108.5])
++        with patch("packages.legal_engine.related_authorities.time.monotonic", side_effect=lambda: next(ticks)):
++            res, status = _discover_tk139_disposition_criteria(doc, [], verifier, case_date="2026-10-01")
++        self.assertEqual(status, "BUDGET_EXHAUSTED")
++        self.assertIn("시간 예산 소진", res["status"])
++        adapter.resolve_statute.assert_not_called()
++
++
++class TestTK139ReportRoundTrip(unittest.TestCase):
++    def test_j10_report_line_after_json_round_trip(self):
++        import json
++        from types import SimpleNamespace
++        crit = {"status": "COMPLETED", "law_name": "가법 시행규칙", "table_title": "행정처분 기준",
++                "matched_row": {"violation_text": "가. 갑 행위를 한 경우", "criteria_raw": {1: "영업정지 7일", 2: "영업정지 1개월", 3: ""}},
++                "document_claim": {"raw_disposition": "영업정지 15일", "claimed_order": 1},
++                "comparison_result": "DISCREPANCY_DETECTED", "discretionary_notes": ""}
++        ed = json.loads(json.dumps({"related_authorities": {"status": "SOURCE_REVIEW_ONLY", "disposition_criteria": crit}}))
++        lines = report_lines([SimpleNamespace(engine_data=ed, filename="a.pdf")])
++        self.assertTrue(any("별표 영업정지 7일" in line for line in lines))

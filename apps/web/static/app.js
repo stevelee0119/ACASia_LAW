@@ -388,7 +388,16 @@ ${itemsListText}
 위 각 판례/법령 항목에 대해 다음 내용을 일목요연하게 표 및 요약으로 답변해 주세요:
 1. 실재 여부: 실제 존재하는 판례/법령인가? (대법원/하급심 여부, 정확한 사건번호, 선고일자)
 2. 판시사항/조문 내용: 해당 판례의 공식 판결요지(판시사항) 또는 해당 법령 조항의 핵심 규정 내용
-3. 판례 대체/보강: 만약 위 사건번호가 존재하지 않는 가공(환각) 판례라면, 동일한 쟁점을 다룬 실제 대법원 판례 제시
+3. 판례 대체/보강: 위 사건번호가 존재하지 않는다고 확인된 경우에만, 동일한 쟁점을 다룬 실제 대법원 판례를 아래 엄격성 규칙 6번에 따라 제시
+
+[엄격성 규칙 — 반드시 지킬 것]
+1. 판례·법령은 귀하가 지금 조회한 데이터베이스에서 원문을 직접 확인한 것만 인용하십시오. 기억이나 추론으로 사건번호·선고일·조문을 만들지 마십시오.
+2. 인용할 때마다 법원명·선고일·사건번호(법령은 법령명·조문·시행일)를 모두 적으십시오. 하나라도 확인하지 못했으면 그 인용을 쓰지 말고 '확인 불가'라고 적으십시오.
+3. 큰따옴표("…")는 원문을 글자 그대로 옮긴 문장에만 쓰십시오. 요약·의역은 따옴표 없이 '요지'로 쓰십시오.
+4. 판례 문장을 옮길 때는 다수의견·별개의견·반대의견 가운데 어디에 있는 문장인지 적으십시오.
+5. '부존재'는 귀하의 데이터베이스에서 검색해 찾지 못한 경우에만 쓰고 검색한 방법(사건번호 검색, 키워드 등)을 함께 적으십시오. 수록 범위 밖이라 확인할 수 없으면 '불명'으로 적으십시오.
+6. 대체·보강 판례는 1~4번을 모두 지킨 판례만 최대 2건 제시하십시오. 조건을 지킬 수 없으면 제시하지 말고 '해당 없음'이라고 적으십시오.
+7. 확인한 사실과 귀하의 법적 의견을 문단으로 나누어 쓰십시오.
 
 [답변 형식]
 - 종합 검증 결과 요약 표 (번호 | 인용 식별자 | 실재 여부 | 공식 판결요지/조문 핵심 | 비고)
@@ -397,7 +406,7 @@ ${itemsListText}
 [결과 블록 — 답변 맨 끝에 반드시 아래 형식 그대로]
 항목마다 한 줄씩, 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
 <<<ACAS_RESULT
-${prefix}1 | 판정: 확인/부존재/불일치/불명 | 근거: 사건번호·선고일 또는 법령·조문 | 요지: 한두 문장
+${prefix}1 | 판정: 확인/부존재/불일치/불명 | 근거: 사건번호·선고일 또는 법령·조문(확인 방법) | 요지: 한두 문장
 ACAS_RESULT>>>`;
 }
 
@@ -409,7 +418,7 @@ function externalAnswerFormat(prefix) {
 [결과 블록 — 답변 맨 끝에 반드시 아래 형식 그대로]
 항목마다 한 줄씩, 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
 ${EXTERNAL_ANSWER_OPEN}
-${prefix}1 | 판정: 확인/부존재/불일치/불명 | 근거: 사건번호·선고일 또는 법령·조문 | 요지: 한두 문장
+${prefix}1 | 판정: 확인/부존재/불일치/불명 | 근거: 사건번호·선고일 또는 법령·조문(확인 방법) | 요지: 한두 문장
 ${EXTERNAL_ANSWER_CLOSE}`;
 }
 function parseExternalAnswers(text) {
@@ -569,7 +578,16 @@ ${list}
 [검토 요청 사항]
 1. 인용한 판례·법령의 실제 판시사항·조문 취지
 2. 주장이 그 취지와 부합하는지, 사실관계 차이로 적용이 어려운지
-3. 주장을 뒷받침하거나 반박하는 실제 대법원 판례
+3. 주장을 뒷받침하거나 반박하는 실제 대법원 판례(아래 엄격성 규칙 6번에 따라 제시)
+
+[엄격성 규칙 — 반드시 지킬 것]
+1. 판례·법령은 귀하가 지금 조회한 데이터베이스에서 원문을 직접 확인한 것만 인용하십시오. 기억이나 추론으로 사건번호·선고일·조문을 만들지 마십시오.
+2. 인용할 때마다 법원명·선고일·사건번호(법령은 법령명·조문·시행일)를 모두 적으십시오. 하나라도 확인하지 못했으면 그 인용을 쓰지 말고 '확인 불가'라고 적으십시오.
+3. 큰따옴표("…")는 원문을 글자 그대로 옮긴 문장에만 쓰십시오. 요약·의역은 따옴표 없이 '요지'로 쓰십시오.
+4. 판례 문장을 옮길 때는 다수의견·별개의견·반대의견 가운데 어디에 있는 문장인지 적으십시오.
+5. '부존재'는 귀하의 데이터베이스에서 검색해 찾지 못한 경우에만 쓰고 검색한 방법(사건번호 검색, 키워드 등)을 함께 적으십시오. 수록 범위 밖이라 확인할 수 없으면 '불명'으로 적으십시오.
+6. 대체·보강 판례는 1~4번을 모두 지킨 판례만 최대 2건 제시하십시오. 조건을 지킬 수 없으면 제시하지 말고 '해당 없음'이라고 적으십시오.
+7. 확인한 사실과 귀하의 법적 의견을 문단으로 나누어 쓰십시오.
 ${externalAnswerFormat("B")}`;
 }
 
@@ -2812,6 +2830,51 @@ function renderFindings() {
       for (const candidate of related.candidates || []) {
         const verdict = (related.verdicts || []).find(v => v.citation_id === candidate.citation_id);
         section.append(node("p", `${candidate.raw_text} · 출처 조회: ${label(verdict?.status || "NOT_ASSESSED")} · 사건 당시 적용·주장 타당성: 별도 검토 필요`));
+      }
+      // 조 번호 표기: '7의2' → '제7조의2'(평가 측 보완 R2)
+      const articleLabel = (a) => {
+        const m = String(a ?? "").match(/^(\d+)(?:의(\d+))?$/);
+        return m ? `제${m[1]}조${m[2] && m[2] !== "0" ? `의${m[2]}` : ""}` : `제${a}조`;
+      };
+      for (const item of related.delegations || []) {
+        const titlePart = item.target_title ? `(${item.target_title})` : "";
+        section.append(node("p", `[위임] ${item.source_law} ${articleLabel(item.source_article)} → ${item.target_law} ${articleLabel(item.target_article)}${titlePart} · 검토 자료`));
+      }
+      for (const item of related.explicit_references || []) {
+        const titlePart = item.target_title ? `(${item.target_title})` : "";
+        section.append(node("p", `[참조] ${item.source_law} ${articleLabel(item.source_article)} → ${item.target_law} ${articleLabel(item.target_article)}${titlePart} · 검토 자료`));
+      }
+      if (related.precedents && related.precedents.length > 0) {
+        // 질의(인용 조문)마다 검색 범위가 다르다 — 질의별로 한 번씩 적는다(평가 측 보완 K1)
+        const scopes = [];
+        for (const p of related.precedents) {
+          const s = p.search_query && p.search_scope ? `${p.search_query}: ${p.search_scope}` : (p.search_scope || "");
+          if (s && !scopes.includes(s)) scopes.push(s);
+        }
+        const scopeDesc = scopes.length ? `${scopes.join(" · ")} — ` : "";
+        section.append(node("p", `[관련 판례] ${scopeDesc}권위 순 정렬 ${related.precedents.length}건 · 검토 자료`));
+        for (const p of related.precedents) {
+          const kindPart = p.case_kind ? `, ${p.case_kind}` : "";
+          const namePart = p.case_name ? ` \"${p.case_name}\"` : "";
+          section.append(node("p", `· ${p.case_number} (${p.court}, ${p.decision_date}${kindPart})${namePart} (사건 당시 적용·주장 타당성은 별도 검토)`));
+        }
+      }
+      if (related.disposition_criteria && related.disposition_criteria.status === "COMPLETED") {
+        // 문구: 사용자 결정 11-04 '권고안 적용' — 보고서 disposition_line과 같은 구성
+        const crit = related.disposition_criteria;
+        const mRow = crit.matched_row || {};
+        const cClaim = crit.document_claim || {};
+        const order = cClaim.claimed_order;
+        const raw = mRow.criteria_raw || {};
+        const critVal = raw[order] || raw[String(order)] || "";
+        const industry = String(mRow.industry || "").split(/\s+영\s*제\d+조/)[0].trim();
+        const resultLabel = { MATCHED: "일치", DISCREPANCY_DETECTED: "불일치(확인 필요)" }[crit.comparison_result] || "확인 필요";
+        const parts = [`[처분기준 검토] ${crit.law_name || ""} ${crit.appendix_label || ""}`.trim()];
+        if (industry) parts.push(industry);
+        parts.push(`${order}차 위반 '${mRow.violation_text || ""}': 별표 ${critVal} / 서면 ${cClaim.raw_disposition || ""} → ${resultLabel}`);
+        if (crit.discretionary_notes) parts.push(crit.discretionary_notes);
+        parts.push("검토 자료");
+        section.append(node("p", parts.join(" · ")));
       }
       refContainer.append(section);
     }

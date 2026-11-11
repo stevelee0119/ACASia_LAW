@@ -111,6 +111,7 @@ class DocxParser(DocumentParser):
                         for paragraph in cell.iter(w("p")):
                             table_positions[paragraph] = {"table_ref": f"docx_t{table_index}",
                                 "row": row_index, "column": column_index}
+            paragraph_blocks: Dict[Any, str] = {}             # 표 칸 문단 → 블록 ID(TK-144)
 
             for para in root.iter(w("p")):
                 text = _para_text(para, include_deleted=False)
@@ -152,9 +153,12 @@ class DocxParser(DocumentParser):
                 for h in hidden_run_texts:
                     visible_text = visible_text.replace(h, "")
                 if visible_text.strip():
+                    block_id = new_id("B")
+                    if para in table_positions:
+                        paragraph_blocks[para] = block_id
                     page.blocks.append(
                         Block(
-                            block_id=new_id("B"),
+                            block_id=block_id,
                             text=visible_text.strip(),
                             page=1,
                             source_layer="visible_text",
@@ -178,6 +182,18 @@ class DocxParser(DocumentParser):
                         )
                     )
                     hidden_parts.append(h.strip())
+
+            # 표 구조(TK-144): 칸 문단은 이미 table 블록이다. 표 블록을 새로 만들지 않고 행·열 구조만 남긴다
+            # (HWP의 LINES_WITH_STRUCTURE와 같은 계약). 계산·사실·첨부 소비자는 structure["tables"]만 본다.
+            try:
+                tables, partial = _docx_table_structures(root, paragraph_blocks, doc.parse_warnings)
+            except Exception as exc:                       # 구조 복원 실패는 본문을 해치지 않는다
+                tables, partial = [], []
+                doc.parse_warnings.append(f"DOCX 표 구조 복원 실패(본문 텍스트는 유지): {exc}")
+            if tables:
+                doc.structure["tables"] = tables
+            if partial:
+                doc.structure["partial_tables"] = partial
 
             # 머리말/꼬리말/각주/미주/주석
             for entry_name, data in entries.items():
@@ -289,3 +305,83 @@ class DocxParser(DocumentParser):
                 page_height=p.height,
             )
         return doc
+
+
+# --- DOCX 표 구조(TK-144) -------------------------------------------------------------------------------------------
+DOCX_MAX_ROWS = 2000
+DOCX_MAX_COLS = 100
+DOCX_MAX_DOC_CELLS = 200_000
+
+
+def _docx_table_structures(root, paragraph_blocks, warnings):
+    """w:tbl을 행·열 표로 만든다. 가로 병합(gridSpan)·세로 병합(vMerge)은 앵커 칸에만 값을 두고 덮인 칸은 비운다.
+
+    칸 글자는 그 칸에 직접 딸린 문단만 모은다(안쪽 표 문단은 안쪽 표에). 주소를 맞출 수 없거나 상한을 넘으면
+    불완전한 표로 두고 소비자에 넘기지 않는다.
+    """
+    tables, partial, budget = [], [], 0
+    all_tables = list(root.iter(w("tbl")))
+    position = {id(t): i for i, t in enumerate(all_tables)}
+    for index, tbl in enumerate(all_tables):
+        ref = f"docx_t{index}"
+        rows = tbl.findall(w("tr"))
+        placed, complete, merges, covered = [], True, [], []
+        open_vmerge = {}                                  # 열 → 세로 병합 앵커 (행, 열)
+        width = 0
+        for r_i, tr in enumerate(rows):
+            col = 0
+            for tc in tr.findall(w("tc")):
+                pr = tc.find(w("tcPr"))
+                span_el = pr.find(w("gridSpan")) if pr is not None else None
+                vm_el = pr.find(w("vMerge")) if pr is not None else None
+                try:
+                    span = max(1, int(span_el.get(w("val")))) if span_el is not None else 1
+                except (TypeError, ValueError):
+                    span, complete = 1, False
+                vmerge = None if vm_el is None else (vm_el.get(w("val")) or "continue")
+                texts = [p for p in tc.iter(w("p"))
+                         if next((a for a in p.iterancestors() if local_name(a.tag) == "tc"), None) is tc]
+                block_ids = [paragraph_blocks[p] for p in texts if p in paragraph_blocks]
+                if vmerge == "continue" and col in open_vmerge:
+                    anchor = open_vmerge[col]
+                    covered.extend([r_i, c] for c in range(col, col + span))
+                    anchor["row_span"] += 1
+                    anchor["block_ids"].extend(block_ids)
+                else:
+                    cell = {"row": r_i, "col": col, "row_span": 1, "col_span": span, "paras": texts,
+                            "block_ids": block_ids}
+                    placed.append(cell)
+                    if vmerge == "restart":
+                        open_vmerge[col] = cell
+                    else:
+                        open_vmerge.pop(col, None)
+                    covered.extend([r_i, c] for c in range(col + 1, col + span))
+                col += span
+            width = max(width, col)
+        height = len(rows)
+        nested = any(local_name(a.tag) == "tbl" for a in tbl.iterancestors())
+        parent = next((a for a in tbl.iterancestors() if local_name(a.tag) == "tbl"), None)
+        if not (0 < height <= DOCX_MAX_ROWS and 0 < width <= DOCX_MAX_COLS) or budget + height * width > DOCX_MAX_DOC_CELLS:
+            warnings.append(f"{ref}: 표 크기 {height}x{width}가 상한을 넘거나 없어 표 구조를 만들지 않았다")
+            continue
+        budget += height * width
+        grid = [["" for _ in range(width)] for _ in range(height)]
+        line_ids = []
+        for cell in placed:
+            text = " ".join(_para_text(p, include_deleted=False).strip() for p in cell["paras"]
+                            if _para_text(p, include_deleted=False).strip())
+            grid[cell["row"]][cell["col"]] = text
+            line_ids.extend(cell["block_ids"])
+            if cell["row_span"] > 1 or cell["col_span"] > 1:
+                merges.append({k: cell[k] for k in ("row", "col", "row_span", "col_span")})
+        entry = {"table_ref": ref, "page": 1, "table_index": len(tables), "cells": grid, "header": grid[0],
+                 "title": None, "row_count": height, "column_count": width, "merges": merges, "covered": covered,
+                 "nested": nested, "parent_table_ref": f"docx_t{position[id(parent)]}" if parent is not None else None,
+                 "complete": complete, "representation": "LINES_WITH_STRUCTURE", "source": "DOCX_XML",
+                 "line_block_ids": line_ids}
+        if complete:
+            tables.append(entry)
+        else:
+            partial.append({k: entry[k] for k in ("table_ref", "row_count", "column_count", "nested",
+                                                  "parent_table_ref")} | {"reason": "INCOMPLETE_STRUCTURE"})
+    return tables, partial

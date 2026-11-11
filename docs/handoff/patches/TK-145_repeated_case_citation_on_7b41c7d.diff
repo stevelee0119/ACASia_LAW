@@ -1,0 +1,154 @@
+diff --git a/packages/legal_engine/citation_extractor.py b/packages/legal_engine/citation_extractor.py
+index 34e6f4a..bc40d6a 100644
+--- a/packages/legal_engine/citation_extractor.py
++++ b/packages/legal_engine/citation_extractor.py
+@@ -1304,6 +1304,21 @@ def _identity(citation: Citation) -> Tuple[Any, ...]:
+     )
+ 
+ 
++_OCCURRENCE_QUOTE_RE = re.compile(r"[“\"]([^”\"]{6,400})[”\"]")
++_SENTENCE_BREAK_RE = re.compile(r"(?<=다)\.\s|\n\n")
++
++
++def _occurrence_quote(text: str, position: int) -> str:
++    """position이 든 문장(…다. 경계)의 첫 직접 인용문(공백 정리). 없으면 빈 문자열."""
++    left = 0
++    for m in _SENTENCE_BREAK_RE.finditer(text, 0, position):
++        left = m.end()
++    nxt = _SENTENCE_BREAK_RE.search(text, position)
++    right = nxt.start() + 1 if nxt else len(text)
++    m = _OCCURRENCE_QUOTE_RE.search(text, left, right)
++    return " ".join(m.group(1).split()) if m else ""
++
++
+ def _cell_text(cell: str) -> str:
+     """표 칸 안 줄바꿈을 한국어 줄바꿈 규칙으로 잇는다("선\n고 2018두47215" → "선고 2018두47215")."""
+     lines = [line.strip() for line in str(cell or "").splitlines() if line.strip()]
+@@ -1439,6 +1454,7 @@ def extract_citations(doc: NormalizedDocument) -> List[Citation]:
+     reading = build_reading_text(doc)
+     out: List[Citation] = []
+     seen: set = set()
++    quotes_seen: dict = {}
+     batch = _CitationBatch(reading)
+ 
+     def select_body(citations):
+@@ -1449,8 +1465,15 @@ def extract_citations(doc: NormalizedDocument) -> List[Citation]:
+                 if block is not None:
+                     citation.block_id, citation.page = block.block_id, block.page
+             key = (_identity(citation), citation.block_id)
++            # 인용문 연결은 선택 뒤에 일어나므로, 그 인용이 든 문장의 첫 인용문을 직접 읽어 같은 인용인지 가린다(TK-145).
++            quote = _occurrence_quote(reading.text, citation.span[0]) if citation.span else ""
+             if key not in seen:
+                 seen.add(key)
++                quotes_seen[key] = {quote} if quote else set()
++                retained.append(citation)
++            elif quote and quote not in quotes_seen[key]:
++                # 같은 블록에서 같은 판례를 새로운 인용문으로 다시 인용하면 별도 인용으로 대조한다(TK-145).
++                quotes_seen[key].add(quote)
+                 retained.append(citation)
+         return retained
+ 
+diff --git a/packages/legal_engine/opinion_attribution.py b/packages/legal_engine/opinion_attribution.py
+index 640465a..af71308 100644
+--- a/packages/legal_engine/opinion_attribution.py
++++ b/packages/legal_engine/opinion_attribution.py
+@@ -32,7 +32,7 @@ REPORTING_TAIL_RE = re.compile(
+     r"[\s\"'“”‘’]*(?:(?:(?:이?라|다|하)고\s*)?(?:판시|판단|설시)(?:하였|했|한)(?:다|습니다)"
+     r"|(?:(?:이?라|다|하)고\s*)(?:보았|밝혔|하였|했)(?:다|습니다))\s*\.?\s*$")
+ CLAUSE_SPLIT_RE = re.compile(r"\s*[,，;]\s*|\s+(?:하며|이며)\s+")
+-FINAL_NEGATION_RE = re.compile(r"않|아니|없|못|불요")
++FINAL_NEGATION_RE = re.compile(r"않|아니|없|못|불요|안\s*되|안\s*돼|안된")   # '…하여서는 안 된다'도 부정(TK-145)
+ FINAL_WINDOW = 7  # 절 끝 서술어(압축 글자 수)만 보고 긍정·부정을 가린다. 앞의 종속절 부정("거치지 않은 채")은 보지 않는다
+ NEGATION_RE = re.compile(r"않|아니|없|불요|못")
+ ISSUE_RE = re.compile(r"(?P<issue>[^\[\]]+?)\s*여부\s*\(\s*(?P<principled>원칙적\s*)?(?P<direction>적극|소극)\s*\)")
+diff --git a/packages/legal_engine/verifier.py b/packages/legal_engine/verifier.py
+index b16e19a..7db3c4d 100644
+--- a/packages/legal_engine/verifier.py
++++ b/packages/legal_engine/verifier.py
+@@ -65,6 +65,11 @@ class CitationVerdict:
+     lookup: Dict[str, Any] = field(default_factory=dict)
+ 
+ 
++_OPPONENT_CLAIM_RE = re.compile(
++    r"(?:원고|피고|검사|상대방|청구인|피청구인|신청인|피신청인|항소인|피항소인|상고인|피상고인|채권자|채무자)(?:\s*측)?(?:은|는|이|가)\s"
++    r"[^.。]{0,200}?(?:주장|원용)(?:한다|하나|하지만|하였|했|하며|하는|함)")
++
++
+ class LegalVerifier:
+     def __init__(self, registry: Optional[SourceRegistry] = None, *, references: Any = None) -> None:
+         self.registry = registry or SourceRegistry()
+@@ -986,8 +991,9 @@ class LegalVerifier:
+                         f"다수의견 {result['scores']['MAJORITY']:.2f}). 판결의 판시는 다수의견이다.",
+                         result["dissent_excerpt"], {"closest": "DISSENT", "attribution_scores": result["scores"],
+                                                     "defect_summary": "반대의견 취지를 판시로 요약"}))
+-        if claim and holding.strip() and not any(f.confidence_features["verdict_label"] == "MISATTRIBUTED_OPINION"
+-                                                 for f in out):
++        # 상대방 주장으로 밝힌 문장('원고는 … 원용하면서 … 주장한다')은 서면의 주장이 아니다(TK-145).
++        if claim and holding.strip() and not _OPPONENT_CLAIM_RE.search(claim) and not any(
++                f.confidence_features["verdict_label"] == "MISATTRIBUTED_OPINION" for f in out):
+             conflict = direction_conflict(claim, holding) or summary_direction_conflict(claim, summary)
+             if conflict:
+                 principled = conflict["principled"]
+diff --git a/tests/test_tk145_repeated_case_citation.py b/tests/test_tk145_repeated_case_citation.py
+new file mode 100644
+index 0000000..7bed637
+--- /dev/null
++++ b/tests/test_tk145_repeated_case_citation.py
+@@ -0,0 +1,57 @@
++"""TK-145: 같은 판례를 같은 문단에서 다른 인용문으로 다시 인용하면 별도 인용으로 대조하고, '…하여서는 안 된다'를
++부정으로 읽으며, 상대방 주장으로 밝힌 문장은 판시 방향 대조에서 뺀다. 합성 문장만 쓴다."""
++from packages.common.enums import CitationType
++from packages.common.schemas import Block, Citation, NormalizedDocument, Page
++from packages.legal_engine.citation_extractor import extract_citations
++from packages.legal_engine.opinion_attribution import _clause_negated
++
++CASE = "대법원 2016. 3. 10. 선고 2015다12345 판결"
++TEXT = (f"{CASE}은 “계약 해제의 의사표시는 상대방에게 도달한 때 효력이 생긴다.”라고 판시하였다. "
++        "따라서 통지가 도달하기 전에는 해제의 효력이 없다. "
++        f"원고는 {CASE}이 “해제 통지는 발송한 때 언제나 효력이 생긴다.”라고 판시하였다고 원용하면서, "
++        "발송만으로 해제되었다고 주장한다.")
++
++
++def one_block(text):
++    p = Page(page_number=1)
++    p.blocks.append(Block(block_id="b0", text=text, page=1, source_layer="visible_text", block_type="paragraph",
++                          visible=True))
++    return NormalizedDocument(document_id="d", filename="x.pdf", mime_type="application/pdf", sha256="1" * 64,
++                              pages=[p], raw_layers={"raw_text": text})
++
++
++def test_second_quote_of_same_case_in_same_block_is_kept():
++    quotes = [c.quoted_text for c in extract_citations(one_block(TEXT))]
++    assert quotes == ["계약 해제의 의사표시는 상대방에게 도달한 때 효력이 생긴다.",
++                      "해제 통지는 발송한 때 언제나 효력이 생긴다."]
++
++
++def test_same_case_same_quote_repeated_is_still_one_citation():
++    text = (f"{CASE}은 “계약 해제의 의사표시는 상대방에게 도달한 때 효력이 생긴다.”라고 판시하였다. "
++            f"같은 취지로 {CASE}은 “계약 해제의 의사표시는 상대방에게 도달한 때 효력이 생긴다.”라고 하였다.")
++    assert len(extract_citations(one_block(text))) == 1
++
++
++def test_prohibitive_ending_is_negative():
++    assert _clause_negated("곧바로 그 요구를 협박이라고 단정하여서는 안 된다")
++    assert _clause_negated("이를 근거로 삼아서는 안된다")
++    assert not _clause_negated("곧바로 협박으로 보아야 한다")
++
++
++def _direction(claim, holding):
++    from packages.legal_engine.verifier import LegalVerifier
++    c = Citation.create(type=CitationType.CASE, raw_text=CASE, document_id="d")
++    c.attributes["case_claim"] = claim
++    return [f for f in LegalVerifier._opinion_findings(c, {"holding": holding})
++            if f.confidence_features["verdict_label"] == "HOLDING_DIRECTION_REVERSED"]
++
++
++HOLDING = "[1] 해제의 의사표시가 발송만으로 효력이 생기는지 여부(소극)"
++
++
++def test_opponent_claim_sentence_is_not_compared_with_holding():
++    assert _direction("원고는 이 판결을 원용하면서, 해제의 의사표시는 발송만으로 효력이 생긴다고 주장한다.", HOLDING) == []
++
++
++def test_document_own_reversed_claim_is_still_flagged():
++    assert _direction("해제의 의사표시는 발송만으로 효력이 생긴다고 판시하였다.", HOLDING)

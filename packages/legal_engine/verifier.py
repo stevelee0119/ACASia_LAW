@@ -31,10 +31,19 @@ from packages.source_adapters import SourceRegistry
 
 from .components import citation_components, component_summary, identity_confirmed
 from .citation_format import code_court_family, court_family, format_violations
+from .authority_status import LegalVerificationStatus, classify_authority_status, make_authority_id, get_court_tier
 from .statute_ranges import check_statute_article_range
-from .opinion_attribution import attribute_claim, direction_conflict, split_opinions, summary_direction_conflict
+from .opinion_attribution import (
+    attribute_claim,
+    detect_changed_precedent_distortion,
+    detect_reversed_remand_confusion,
+    direction_conflict,
+    extract_grounded_evidence_quote,
+    split_opinions,
+    summary_direction_conflict,
+)
 from .verification_labels import citation_label
-from .quote_diff import quote_changes, quote_diff_summary, render_quote_diff
+from .quote_diff import categorize_quote_diff, quote_changes, quote_diff_summary, render_quote_diff
 from .normalize import canonical_article, case_number_possible, same_case_number, split_case_number
 from .source_review import date_context, verify_admin_rule_source, verify_decision_source, verify_statute_source
 from .spec_mapping import spec_source_verdict
@@ -63,6 +72,11 @@ class CitationVerdict:
     notes: List[str] = field(default_factory=list)
     review: Dict[str, Any] = field(default_factory=dict)
     lookup: Dict[str, Any] = field(default_factory=dict)
+
+
+_OPPONENT_CLAIM_RE = re.compile(
+    r"(?:원고|피고|검사|상대방|청구인|피청구인|신청인|피신청인|항소인|피항소인|상고인|피상고인|채권자|채무자)(?:\s*측)?(?:은|는|이|가)\s"
+    r"[^.。]{0,200}?(?:주장|원용)(?:한다|하나|하지만|하였|했|하며|하는|함)")
 
 
 class LegalVerifier:
@@ -212,6 +226,10 @@ class LegalVerifier:
                 "notes": v.notes,
                 "official_record": v.official_record,
                 "review": v.review,
+                # 결과 데이터는 JSON 칸에 저장된다(PostgreSQL은 객체를 직렬화하지 못해 실행 전체가 실패한다). 뒤 단계(판시 왜곡 조치 안내)가
+                # 읽는 칸만 사전으로 싣는다.
+                "findings": [{"finding_id": f.finding_id, "type": str(f.type), "tags": list(f.tags or []),
+                              "confidence_features": dict(f.confidence_features or {})} for f in v.findings],
                 "source_record_ids": [r.source_record_id for r in v.source_records],
                 "source_lookup": v.lookup,
                 # 확인 완료 라벨과 사건 적용성(v3 D4). 형식 위반 등 뒤 단계가 판정을 바꾸면 라벨을 지운다.
@@ -301,28 +319,54 @@ class LegalVerifier:
             return verdict
 
         if official is None:
+            auth_info = classify_authority_status(citation, None, format_valid=format_valid)
+            auth_status = auth_info["status"]
+            tier = auth_info["tier"]
+            auth_id = auth_info["authority_id"]
+
             verdict.levels["level1"] = "NOT_FOUND"
-            verdict.status = VerificationStatus.NOT_FOUND
+            verdict.levels["authority_status"] = auth_status.value
+            verdict.levels["authority_id"] = auth_id
+            verdict.levels["authority_tier"] = tier
+
             # 사건번호를 함께 남긴다. 뒤 단계가 제목 문자열에서 되짚지 않아도
             # "확인 못 함"과 "성립할 수 없음"을 구분할 수 있어야 한다.
             searched = [{"adapter": r.adapter, "query": r.query} for r in verdict.source_records]
-            features = {"official_source_absent": True, "deterministic_rule": True, "source_count": 1,
-                        "case_number": case_number, "number_format_valid": format_valid,
-                        # 조회한 범위에서 찾지 못했다는 뜻이다. 실제 부존재 확정이 아니다.
-                        "absence_scope": "SEARCHED_SCOPE_ONLY", "searched": searched}
-            if format_valid:
-                title = f"조회 범위 내에서 찾지 못한 판례 인용: {citation.raw_text}"
-                reason = ("미공개 판결이거나 DB 수록 범위 밖일 수 있으므로 '존재하지 않는 판례'라고 "
-                          "단정하지 않는다. 원문 확인이 필요하다.")
-            else:
+            features = {
+                "official_source_absent": True,
+                "deterministic_rule": True,
+                "source_count": 1,
+                "case_number": case_number,
+                "number_format_valid": format_valid,
+                "absence_scope": "SEARCHED_SCOPE_ONLY",
+                "searched": searched,
+                "authority_status": auth_status.value,
+                "authority_id": auth_id,
+                "court_tier": tier,
+            }
+
+            if not format_valid:
+                verdict.status = VerificationStatus.SUSPICIOUS
+                finding_status = VerificationStatus.SUSPICIOUS
+                severity = Severity.HIGH
+                tags = ["LEGAL", "CASE", "SUSPICIOUS_NUMBER"]
                 title = f"성립할 수 없는 사건번호 형식의 판례 인용: {citation.raw_text}"
                 reason = ("사건번호의 연도 또는 사건부호가 실재할 수 없는 값이어서 DB 수록 범위와 무관하게 "
                           "그 표기로는 사건이 존재할 수 없다. 오기인지 원문 확인이 필요하다.")
+            else:
+                verdict.status = VerificationStatus.NOT_FOUND
+                finding_status = VerificationStatus.NOT_FOUND
+                severity = Severity.MEDIUM
+                tags = ["LEGAL", "CASE", "SOURCE_LIMIT"]
+                title = f"조회 범위 내에서 찾지 못한 판례 인용: {citation.raw_text}"
+                reason = ("미공개 판결이거나 DB 수록 범위 밖일 수 있으므로 '존재하지 않는 판례'라고 "
+                          "단정하지 않는다. 원문 확인이 필요하다.")
+
             verdict.findings.append(
                 Finding.create(
                     type=FindingType.CASE_NOT_FOUND,
-                    status=VerificationStatus.NOT_FOUND,
-                    severity=Severity.CRITICAL,
+                    status=finding_status,
+                    severity=severity,
                     evidence_grade=EvidenceGrade.B,
                     title=title,
                     detail=(
@@ -339,7 +383,7 @@ class LegalVerifier:
                     span=citation.span,
                     engine=ENGINE_NAME,
                     source_record_ids=[r.source_record_id for r in verdict.source_records],
-                    tags=["LEGAL", "CASE", "FAKE_PRECEDENT"],
+                    tags=tags,
                     evidence=[
                         Evidence.create(
                             description="공식 Source 조회 결과 없음",
@@ -355,6 +399,9 @@ class LegalVerifier:
             return verdict
 
         verdict.official_record = official
+        verdict.levels["authority_status"] = LegalVerificationStatus.VERIFIED.value
+        verdict.levels["authority_id"] = make_authority_id(citation)
+        verdict.levels["authority_tier"] = get_court_tier(citation)
         fetch_detail = getattr(self.registry.law, "fetch_case", None)
         if fetch_detail is not None and not official.get("full_text"):
             detail = fetch_detail(official, constitutional=citation.type == CitationType.CONSTITUTIONAL)
@@ -413,35 +460,52 @@ class LegalVerifier:
         # --- Level 3: 직접 인용문 대조 -----------------------------------
         if citation.quoted_text:
             official_text = " ".join(str(official.get(key) or "") for key in ("full_text", "holding", "summary"))
+            has_full_text = bool(official.get("full_text"))
             level3, ratio = self._compare_quote(citation.quoted_text, official_text)
             # 원문과 0.85 이상 비슷한 구간이 있으면 어절 단위로 무엇이 바뀌었는지 제시한다(전문 확보 시).
-            modified = quote_changes(citation.quoted_text, official_text) if official.get("full_text") else None
+            modified = quote_changes(citation.quoted_text, official_text) if has_full_text else None
+            quote_cat = categorize_quote_diff(citation.quoted_text, official_text, has_full_text=has_full_text)
+            diff_cats = quote_cat.get("diff_categories") or (modified.get("diff_categories") if modified else [])
+            if diff_cats:
+                verdict.review["quote_diff_categories"] = diff_cats
+                verdict.review["quote_diff_status"] = quote_cat.get("status")
+
             if modified and level3 == "CONTRADICTED":
                 level3 = "MODIFIED"
-            if level3 == "CONTRADICTED" and not official.get("full_text"):
+            elif level3 == "TRUNCATED" and diff_cats:
+                level3 = "MODIFIED"
+
+            if not has_full_text:
                 level3 = "UNVERIFIED"
-                verdict.notes.append("판례 전문을 확보하지 못해 직접 인용 불일치를 확정하지 않았다")
+                verdict.notes.append("공식 판결문 본문 미확보로 직접 인용 대조 불가 (요약본만 확보되어 본문 인용 대조 유보)")
             verdict.levels["level3"] = level3
             if level3 == "CONTRADICTED":
                 verdict.status = VerificationStatus.CONTRADICTED
+                is_fabricated_quote = False
+                diff_cats = (modified.get("diff_categories", []) if modified else []) or ["CONTENT_MISMATCH"]
+                verdict.review["quote_diff_categories"] = diff_cats
                 features = {
                     "official_source_match": True,
                     "quote_mismatch": True,
                     "deterministic_rule": True,
                     "quote_similarity": round(ratio, 3),
+                    "quote_diff_categories": diff_cats,
+                    "is_fabricated_quote": False,
                     "defect_summary": f"직접 인용문 불일치(원문과 최대 유사도 {ratio:.2f})",
                 }
+                title = f"직접 인용문이 공식 원문과 일치하지 않는다: {citation.raw_text}"
+                detail = (
+                    f"문서의 인용문과 공식 판시사항·판결요지의 최대 유사도는 {ratio:.2f}이다. "
+                    "따옴표로 표시된 직접 인용은 원문과 일치해야 한다."
+                )
                 verdict.findings.append(
                     Finding.create(
                         type=FindingType.CASE_QUOTE_MISMATCH,
                         status=VerificationStatus.CONTRADICTED,
                         severity=Severity.HIGH,
                         evidence_grade=EvidenceGrade.A,
-                        title=f"직접 인용문이 공식 원문과 일치하지 않는다: {citation.raw_text}",
-                        detail=(
-                            f"문서의 인용문과 공식 판시사항·판결요지의 최대 유사도는 {ratio:.2f}이다. "
-                            "따옴표로 표시된 직접 인용은 원문과 일치해야 한다."
-                        ),
+                        title=title,
+                        detail=detail,
                         confidence=confidence_score(features),
                         confidence_features=features,
                         document_id=citation.document_id,
@@ -480,6 +544,11 @@ class LegalVerifier:
                 # AI 교차검토가 인용문이 아니라 원문 기준으로 평가하도록 차이를 판정에 싣는다.
                 verdict.review["quote_diff"] = render_quote_diff(modified)
                 verdict.review["quote_meaningful_change"] = modified["meaningful"]
+                verdict.review["quote_diff_categories"] = modified.get("diff_categories") or diff_cats
+            elif diff_cats and level3 == "MODIFIED":
+                if verdict.status == VerificationStatus.VERIFIED:
+                    verdict.status = VerificationStatus.PARTIALLY_VERIFIED
+                verdict.review["quote_diff_categories"] = diff_cats
 
         # 다수의견·반대의견 귀속과 판시사항 결론 방향(v3 D3)
         opinion = self._opinion_findings(citation, official)
@@ -936,19 +1005,55 @@ class LegalVerifier:
         out: List[Finding] = []
 
         def make(label, status, grade, title, detail, excerpt, extra):
+            grounded_quote = extra.get("grounded_evidence_quote") or excerpt or extract_grounded_evidence_quote(citation.quoted_text or claim, full_text or summary)
             features = {"deterministic_rule": True, "official_source_match": True, "verdict_label": label,
-                        "rule_id": f"OPINION.{label}", **extra}
+                        "rule_id": f"OPINION.{label}", "grounded_evidence_quote": grounded_quote[:300], **extra}
             return Finding.create(
                 type=FindingType.CASE_HOLDING_DISTORTION, status=status,
                 severity=Severity.HIGH if grade == EvidenceGrade.A else Severity.MEDIUM, evidence_grade=grade,
                 title=f"{title}: {citation.raw_text}", detail=detail, confidence=0.85 if grade == EvidenceGrade.A else 0.7,
                 confidence_features=features, document_id=citation.document_id, block_id=citation.block_id,
-                page=citation.page, span=citation.span, engine=ENGINE_NAME, tags=["LEGAL", "CASE", "OPINION", label],
+                page=citation.page, span=citation.span, engine=ENGINE_NAME, tags=["LEGAL", "CASE", "OPINION", label, "CIT-MIS"],
                 evidence=[Evidence.create(description="서면의 판결 요약·인용", grade=EvidenceGrade.B,
                                           document_id=citation.document_id, excerpt=(citation.quoted_text or claim)[:300],
                                           supports=False),
-                          Evidence.create(description="공식 판결 원문의 해당 부분", grade=EvidenceGrade.A,
-                                          excerpt=excerpt[:300])])
+                          Evidence.create(description="공식 판결 원문의 해당 부분 (근거 문장)", grade=EvidenceGrade.A,
+                                          excerpt=grounded_quote[:300])])
+
+        # LV-05: 변경된 종전 판례 인용 (CHANGED_PRECEDENT)
+        changed = detect_changed_precedent_distortion(
+            citation.quoted_text or claim, full_text, summary,
+            cited_case_number=citation.canonical_case_number or citation.case_number or ""
+        )
+        if changed:
+            out.append(make(
+                "CHANGED_PRECEDENT",
+                VerificationStatus.CONTRADICTED,
+                EvidenceGrade.A,
+                "폐기·변경된 종전 판례 취지 인용(CIT-MIS)",
+                f"인용된 취지는 전원합의체 판결 등에 의해 이미 변경·폐기된 종전 판례의 내용이다. "
+                f"원문 확인: {changed['grounded_evidence_quote']}",
+                changed["grounded_evidence_quote"],
+                {"verdict_label": "CHANGED_PRECEDENT", "defect_summary": "변경된 종전 판례 인용",
+                 "grounded_evidence_quote": changed["grounded_evidence_quote"]}
+            ))
+
+        # LV-05: 파기환송 원심 판단 오인 (REVERSED_REMAND_CONFUSION)
+        remand = detect_reversed_remand_confusion(
+            citation.quoted_text or claim, full_text, summary
+        )
+        if remand:
+            out.append(make(
+                "REVERSED_REMAND_CONFUSION",
+                VerificationStatus.CONTRADICTED,
+                EvidenceGrade.A,
+                "파기환송 판결의 원심 판단을 대법원 판시로 오인(CIT-MIS)",
+                f"인용된 내용은 상고심(대법원)에서 파기·배척된 원심 법원의 판단이다. 대법원의 판시가 아니다. "
+                f"원문 확인: {remand['grounded_evidence_quote']}",
+                remand["lower_holding"],
+                {"verdict_label": "REVERSED_REMAND_CONFUSION", "defect_summary": "파기환송 원심 판단 오인",
+                 "grounded_evidence_quote": remand["grounded_evidence_quote"]}
+            ))
 
         if full_text or summary:
             parts = [split_opinions(full_text), split_opinions(summary)]
@@ -957,12 +1062,24 @@ class LegalVerifier:
             quote_key = re.sub(r"[\s\"'“”‘’.,·]", "", citation.quoted_text or "")
             in_dissent = bool(quote_key) and any(quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", d) for d in dissents)
             in_majority = bool(quote_key) and quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", majority)
+            concurring = [c for p in parts for c in p["CONCURRING"]
+                          if quote_key in re.sub(r"[\s\"'“”‘’.,·]", "", c)]
+            in_concurring = len(quote_key) >= 6 and bool(concurring)
             if in_dissent and not in_majority:
                 out.append(make("MISATTRIBUTED_OPINION", VerificationStatus.CONTRADICTED, EvidenceGrade.A,
                                 "반대의견의 문장을 판결의 판시로 인용",
                                 "직접 인용한 문장은 이 판결의 반대의견에만 있고 다수의견에는 없다. 반대의견은 판결의 "
                                 "판시(법원의 판단)가 아니다.", next(d for d in dissents), {"closest": "DISSENT",
                                 "defect_summary": "반대의견 문장을 판시로 인용"}))
+            elif in_concurring and not in_majority and "별개의견" not in re.sub(r"\s", "", citation.context or ""):
+                # 별개의견은 결론에는 동의하나 이유가 다르다. 서면이 별개의견이라고 밝히지 않고 인용하면 귀속 오류다.
+                # 인용 주변 문맥 밖에서 밝혔을 수 있으므로 SUSPICIOUS·B로 둔다(TK-135).
+                out.append(make("MISATTRIBUTED_OPINION", VerificationStatus.SUSPICIOUS, EvidenceGrade.B,
+                                "별개의견의 문장을 판결의 판시로 인용",
+                                "직접 인용한 문장은 이 판결의 별개의견에만 있고 다수의견에는 없다. 별개의견은 결론에 "
+                                "동의하더라도 판결의 판시(법원의 판단 이유)가 아니다. 인용 주변에 별개의견이라는 표시가 없다.",
+                                concurring[0],
+                                {"closest": "CONCURRING", "defect_summary": "별개의견 문장을 판시로 인용"}))
             elif dissents:
                 result = attribute_claim(citation.quoted_text or claim, full_text, summary)
                 if result["verdict"] == "MISATTRIBUTED_OPINION":
@@ -974,8 +1091,9 @@ class LegalVerifier:
                         f"다수의견 {result['scores']['MAJORITY']:.2f}). 판결의 판시는 다수의견이다.",
                         result["dissent_excerpt"], {"closest": "DISSENT", "attribution_scores": result["scores"],
                                                     "defect_summary": "반대의견 취지를 판시로 요약"}))
-        if claim and holding.strip() and not any(f.confidence_features["verdict_label"] == "MISATTRIBUTED_OPINION"
-                                                 for f in out):
+        # 상대방 주장으로 밝힌 문장('원고는 … 원용하면서 … 주장한다')은 서면의 주장이 아니다(TK-145).
+        if claim and holding.strip() and not _OPPONENT_CLAIM_RE.search(claim) and not any(
+                f.confidence_features["verdict_label"] == "MISATTRIBUTED_OPINION" for f in out):
             conflict = direction_conflict(claim, holding) or summary_direction_conflict(claim, summary)
             if conflict:
                 principled = conflict["principled"]
@@ -1007,6 +1125,7 @@ class LegalVerifier:
         features = {"deterministic_rule": True, "official_source_match": True, "quote_mismatch": True,
                     "verdict_label": "MODIFIED_QUOTE", "quote_similarity": modified["similarity"],
                     "quote_changes": modified["changes"], "quote_ops": modified["ops"],
+                    "quote_diff_categories": modified.get("diff_categories", []),
                     "meaningful_change": meaningful, "defect_summary": quote_diff_summary(modified),
                     "rule_id": "QUOTE.MEANINGFUL_CHANGE" if meaningful else "QUOTE.WORDING_CHANGE"}
         if meaningful:
