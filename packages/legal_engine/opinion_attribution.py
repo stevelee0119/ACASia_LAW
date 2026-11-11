@@ -351,6 +351,36 @@ def detect_changed_precedent_distortion(
     return None
 
 
+def _is_explicit_supreme_adoption(sentence: str) -> bool:
+    """대법원이 해당 법리/판단을 자신의 판시로 인정·채택·판단했다고 명시한 문장인지 검사 (LV-05-R5)."""
+    # 1) 대법원이 주어로 등장하고 채택/인정/판단 술어가 결합되어 있는지 확인
+    m = re.search(
+        r"대법원(?:은|이|도)?\b[^.\n]{0,120}?(?:인정|수긍|채택|받아들|선언|확인|보았|밝혔|판단하였|판시하였|판단했|판시했)(?:다|음|고|다고)",
+        sentence,
+    )
+    if not m:
+        if not re.search(
+            r"대법원(?:은|이|도)?\b[^.\n]{0,120}?(?:인정|수긍|채택|받아들|판단|판시|선언|확인|보았|밝혔)",
+            sentence,
+        ):
+            return False
+
+    # 2) 그러나 대법원의 주절 술어가 원심판결/판단을 파기·배척·취소하는 행위인 경우는 채택이 아님
+    #    예: '대법원은 [원심 판단]이라고 판단한 원심판결을 파기하였다'
+    if re.search(
+        r"(?:판단|판시|인정|인용|보)한\s*(?:원심판결|원심결정|하급심판결|원심)(?:을|은|에\s*대하여|에\s*대해)?\s*(?:파기|배척|취소)",
+        sentence,
+    ):
+        return False
+    if re.search(
+        r"대법원(?:은|이|도)?\b[^.\n]{0,120}?(?:원심판결|원심결정|하급심판결|원심의\s*판단|원심)(?:을|은|에\s*대하여|에\s*대해)?\s*(?:파기|배척|취소)(?:하였|했|한|함|다|환송)",
+        sentence,
+    ):
+        return False
+
+    return True
+
+
 def detect_reversed_remand_confusion(
     claim: str,
     full_text: str,
@@ -360,11 +390,10 @@ def detect_reversed_remand_confusion(
     combined = " ".join(part for part in (summary, full_text) if part)
     if not combined or not claim:
         return None
-    # 1. 대법원이 원심 판단을 채택/인정/판시했다고 명시적으로 허위 귀속한 경우:
-    #    별개 사건의 처분 취소나 단순 파기 언급이 있더라도 면제하지 않고 왜곡으로 판정한다 (LV-05-R4)
-    explicit_supreme_adoption = bool(
-        re.search(r"대법원(?:은|이|도)?\b[^.\n]{0,120}?(?:인정|수긍|채택|받아들|판단|판시|선언|확인|보았|밝혔)", claim)
-    )
+
+    sentences = [s.strip() for s in re.split(r"(?<=[.?!])\s+|\n+", claim) if s.strip()]
+    adoption_sentences = [s for s in sentences if _is_explicit_supreme_adoption(s)]
+    explicit_supreme_adoption = bool(adoption_sentences) or _is_explicit_supreme_adoption(claim)
 
     if not explicit_supreme_adoption:
         # 원심 판단이 파기·배척되었다는 사실을 정확히 기술한 서술은 왜곡(오인)이 아니다
@@ -375,7 +404,10 @@ def detect_reversed_remand_confusion(
             return None
         if re.search(r"^\s*(?:원심|1심|제1심|하급심|원심\s*법원)(?:은|는|이)\b", claim):
             return None
-    core = _claim_core(claim)
+
+    # 채택 문장이 분리된 경우 해당 문장 우선 검토, 아니면 전체 claim
+    target_claim = " ".join(adoption_sentences) if adoption_sentences else claim
+    core = _claim_core(target_claim)
     for m in REVERSED_LOWER_COURT_RE.finditer(combined):
         lower_holding = (m.group("lower_holding") or m.group("lower_holding_alt") or "").strip()
         if not lower_holding:
