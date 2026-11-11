@@ -1,2 +1,2 @@
 
-- 11-12 #260 버전 커밋 `d5bca4c` 판정: 평가 측 사본 증분과 diff 0, check_version_policy 위반 없음(0.17.0 → 0.18.0) → 수용(조건: 남은 CI 1건 성공).
+- 11-12 #260 CI 재확인(인용): SQLite·PostgreSQL 각 2벌·점수 하락 게이트 두 벌·은퇴 세트 비교·CodeQL·OCR 전부 성공, mergeable clean → 수용 조건 충족(병합 대기).
