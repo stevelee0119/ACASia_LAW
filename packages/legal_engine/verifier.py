@@ -31,6 +31,7 @@ from packages.source_adapters import SourceRegistry
 
 from .components import citation_components, component_summary, identity_confirmed
 from .citation_format import code_court_family, court_family, format_violations
+from .authority_status import LegalVerificationStatus, classify_authority_status, make_authority_id, get_court_tier
 from .statute_ranges import check_statute_article_range
 from .opinion_attribution import attribute_claim, direction_conflict, split_opinions, summary_direction_conflict
 from .verification_labels import citation_label
@@ -306,28 +307,54 @@ class LegalVerifier:
             return verdict
 
         if official is None:
+            auth_info = classify_authority_status(citation, None, format_valid=format_valid)
+            auth_status = auth_info["status"]
+            tier = auth_info["tier"]
+            auth_id = auth_info["authority_id"]
+
             verdict.levels["level1"] = "NOT_FOUND"
-            verdict.status = VerificationStatus.NOT_FOUND
+            verdict.levels["authority_status"] = auth_status.value
+            verdict.levels["authority_id"] = auth_id
+            verdict.levels["authority_tier"] = tier
+
             # 사건번호를 함께 남긴다. 뒤 단계가 제목 문자열에서 되짚지 않아도
             # "확인 못 함"과 "성립할 수 없음"을 구분할 수 있어야 한다.
             searched = [{"adapter": r.adapter, "query": r.query} for r in verdict.source_records]
-            features = {"official_source_absent": True, "deterministic_rule": True, "source_count": 1,
-                        "case_number": case_number, "number_format_valid": format_valid,
-                        # 조회한 범위에서 찾지 못했다는 뜻이다. 실제 부존재 확정이 아니다.
-                        "absence_scope": "SEARCHED_SCOPE_ONLY", "searched": searched}
-            if format_valid:
-                title = f"조회 범위 내에서 찾지 못한 판례 인용: {citation.raw_text}"
-                reason = ("미공개 판결이거나 DB 수록 범위 밖일 수 있으므로 '존재하지 않는 판례'라고 "
-                          "단정하지 않는다. 원문 확인이 필요하다.")
-            else:
+            features = {
+                "official_source_absent": True,
+                "deterministic_rule": True,
+                "source_count": 1,
+                "case_number": case_number,
+                "number_format_valid": format_valid,
+                "absence_scope": "SEARCHED_SCOPE_ONLY",
+                "searched": searched,
+                "authority_status": auth_status.value,
+                "authority_id": auth_id,
+                "court_tier": tier,
+            }
+
+            if not format_valid:
+                verdict.status = VerificationStatus.SUSPICIOUS
+                finding_status = VerificationStatus.SUSPICIOUS
+                severity = Severity.HIGH
+                tags = ["LEGAL", "CASE", "SUSPICIOUS_NUMBER"]
                 title = f"성립할 수 없는 사건번호 형식의 판례 인용: {citation.raw_text}"
                 reason = ("사건번호의 연도 또는 사건부호가 실재할 수 없는 값이어서 DB 수록 범위와 무관하게 "
                           "그 표기로는 사건이 존재할 수 없다. 오기인지 원문 확인이 필요하다.")
+            else:
+                verdict.status = VerificationStatus.NOT_FOUND
+                finding_status = VerificationStatus.NOT_FOUND
+                severity = Severity.MEDIUM
+                tags = ["LEGAL", "CASE", "SOURCE_LIMIT"]
+                title = f"조회 범위 내에서 찾지 못한 판례 인용: {citation.raw_text}"
+                reason = ("미공개 판결이거나 DB 수록 범위 밖일 수 있으므로 '존재하지 않는 판례'라고 "
+                          "단정하지 않는다. 원문 확인이 필요하다.")
+
             verdict.findings.append(
                 Finding.create(
                     type=FindingType.CASE_NOT_FOUND,
-                    status=VerificationStatus.NOT_FOUND,
-                    severity=Severity.CRITICAL,
+                    status=finding_status,
+                    severity=severity,
                     evidence_grade=EvidenceGrade.B,
                     title=title,
                     detail=(
@@ -344,7 +371,7 @@ class LegalVerifier:
                     span=citation.span,
                     engine=ENGINE_NAME,
                     source_record_ids=[r.source_record_id for r in verdict.source_records],
-                    tags=["LEGAL", "CASE", "FAKE_PRECEDENT"],
+                    tags=tags,
                     evidence=[
                         Evidence.create(
                             description="공식 Source 조회 결과 없음",
@@ -360,6 +387,9 @@ class LegalVerifier:
             return verdict
 
         verdict.official_record = official
+        verdict.levels["authority_status"] = LegalVerificationStatus.VERIFIED.value
+        verdict.levels["authority_id"] = make_authority_id(citation)
+        verdict.levels["authority_tier"] = get_court_tier(citation)
         fetch_detail = getattr(self.registry.law, "fetch_case", None)
         if fetch_detail is not None and not official.get("full_text"):
             detail = fetch_detail(official, constitutional=citation.type == CitationType.CONSTITUTIONAL)
