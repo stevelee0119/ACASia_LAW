@@ -46,7 +46,7 @@ CAUSE_OF_ACTION_RULES = [
         "trigger": re.compile(r"채무불이행(?:으로?\s*인한)?\s*손해배상|채무불이행\s*(?:책임|성립)|민법\s*제?390조"),
         "elements": [
             ("채무불이행(이행지체·불능)", re.compile(r"채무불이행|이행지체|이행불능|불완전이행|이행하지\s*아니|지체하")),
-            ("귀책사유", re.compile(r"귀책사유|고의|과실|책임\s*있는\s*사유")),
+            # 귀책사유는 청구원인 요건사실이 아니다. 민법 제390조 단서에 따라 채무자가 귀책사유 없음을 주장·증명한다(항변).
             ("손해 발생", re.compile(r"손해(?:가|를|의)?\s*(?:발생|입|받|상당)")),
             ("인과관계", re.compile(r"인과관계|이로\s*인하")),
         ],
@@ -250,7 +250,7 @@ def generate_actionable_guidance(
             "action_type": "HOLDING_CORRECTION",
             "action_title": title,
             "guidance_summary": (
-                f"인용된 {cited_authority}의 판결 취지가 왜곡되었습니다. "
+                f"인용된 {cited_authority}의 판결 취지가 왜곡되었을 가능성이 있습니다(규칙 판정, 원문 확인 필요). "
                 + (f"공식 원문 근거: '{grounded_evidence_quote}'. " if grounded_evidence_quote else "")
                 + "대법원 다수의견의 확립된 판시 법리에 맞추어 주장을 수정하거나 대체 선례를 원용하십시오."
             ),
