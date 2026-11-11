@@ -1,2 +1,2 @@
 
-- 11-12 #260 CI 재확인(인용): SQLite·PostgreSQL 각 2벌·점수 하락 게이트 두 벌·은퇴 세트 비교·CodeQL·OCR 전부 성공, mergeable clean → 수용 조건 충족(병합 대기).
+- 11-12 사용자 '#260병합' → Steve `18659a1`(expectedHeadSha `d5bca4c`, CI 전부 성공). 버전 0.18.0이 Steve에 들어감. 다음: 릴리스 PR(Steve → main).
