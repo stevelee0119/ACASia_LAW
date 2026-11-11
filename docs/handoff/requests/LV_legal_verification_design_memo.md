@@ -109,11 +109,10 @@ class DatePremiseStatus(StrEnum):
 | **기록 있음** | `UNALIGNED_QUOTE` | 유사도 < 0.50 (대응 구간 미확정, `CONTENT_MISMATCH`) | `CONTENT_MISMATCH` | `CONTRADICTED` | 인용문 불일치 (원문 대응 구간 미확정) | `SOURCE_VERIFICATION`: 원문 검색 및 정확한 판례 문맥 대조 | 생성 (`LEGAL_ARGUMENT_INVALID`, MEDIUM) |
 | **기록 있음** | 미대조 (본문 미확보 / 요약본만 확보) | level3 `UNVERIFIED`, 차이 없음 | `UNCONFIRMED` | `UNCONFIRMED_SOURCE_LIMIT` | 출처 한계 확인 불가 (판결문 사본 확인 필요) | `SOURCE_VERIFICATION`: 판결문 사본 확인 및 출처 조회 | 생성 안 함 (보류 행 분리) |
 | **기록 없음** | 미대조 (성립 불가 사건번호) | 무관 | `FABRICATION_SUSPECTED` | `SUSPICIOUS` | 성립 불가 사건번호 (오기 의심) | `FORMAT_CORRECTION` / `SOURCE_VERIFICATION`: 사건번호 정정 요청 석명 신청 | 생성 (`FABRICATION_SUSPECTED`, HIGH) |
-| **기록 없음** | 미대조 (공식 DB 미발견, 대법원) | 무관 | `CONFIRMED_NONEXISTENT` / `UNCONFIRMED` | `CONFIRMED_NONEXISTENT` | 대법원 판례 부존재 (가짜 판례 의심) | `CLARIFICATION_MOTION`: 석명 촉구 및 출처 확인 | 생성 (`LEGAL_ARGUMENT_INVALID`, MEDIUM) |
-| **기록 없음** | 미대조 (공식 DB 미발견, 하급심) | 무관 | `UNCONFIRMED` | `UNCONFIRMED_SOURCE_LIMIT` | 공식 DB 미확인 (원문 확인 필요) | `SOURCE_VERIFICATION`: 사본 제출 요구 및 열람 신청 | 생성 안 함/미확인 분리 |
+| **기록 없음** | 미대조 (공식 DB 미발견) | 무관 | `UNCONFIRMED` | `UNCONFIRMED_SOURCE_LIMIT` | 공식 DB 미확인 (원문 확인 필요) | `SOURCE_VERIFICATION`: 사본 제출 요구 및 열람 신청 | 미확인 분리 (단순 미수록은 부존재 단정 금지) |
 | **무관** | 미검증 / 보류 (`UNKNOWN`, `SUSPENDED`) | 잔존 categories 무관 (증거 미성립) | `UNCONFIRMED` / `SUSPENDED` | `UNVERIFIED` / `SUSPENDED` | 검증 미실시 또는 전제 결여 보류 | `SOURCE_VERIFICATION`: 전제 요건 확인 및 공식 출처 대조 | 생성 안 함 (확정 승격 차단) |
 
-### 상태 계약 보완 세부 원칙 (SC1, SC2, SC3):
+### 상태 계약 보완 세부 원칙 (SC1, SC2, SC3 및 독립 의미 증거 보존):
 1. **SC1 (미검증 상태의 잔존 차이 정보 격리)**:
    - 생산자 status가 `UNKNOWN`, `SUSPENDED`, `UNVERIFIED`이거나 `level3` / `quote_diff_status`가 `UNVERIFIED`인 경우, review 내 잔존 `quote_diff_categories`가 존재하더라도 `is_quote_mismatch`로 판정하지 않고 확정 승격을 차단한다.
    - 별도 확정 근거 없는 `LEGAL_ARGUMENT_INVALID` finding 생성을 차단한다.
@@ -123,6 +122,9 @@ class DatePremiseStatus(StrEnum):
    - 공식 기록이 실재하므로 오류 finding(`LEGAL_ARGUMENT_INVALID`)을 생성하지 않고 보류 행으로 분리한다.
 3. **SC3 (미정렬 인용의 원문 확인 조치 끝단 보존)**:
    - `quote_diff_status == "UNALIGNED_QUOTE"`(유사도 < 0.50)인 경우, 단순 자구 수정(`QUOTE_REVIEW`)이 아닌 원문 검색 및 문맥 대조(`SOURCE_VERIFICATION`) 조치 유형을 `generate_actionable_guidance` 및 `HallucinationTableRow`에 끝단까지 보존한다.
+4. **독립 의미 증거 보존 (CONTRADICTION / DISTINGUISHABLE)**:
+   - 인용문 대조의 보류(`level3 == "UNVERIFIED"`, `is_summary_only` 등)가 존재하더라도, 판시 취지 왜곡(`REVERSED_REMAND_CONFUSION`, `CHANGED_PRECEDENT`, `MISATTRIBUTED_OPINION` 등) 또는 검증된 의미 적용 차이(`DISTINGUISHABLE`) 등 독립적으로 확인된 의미 증거는 `is_summary_only`에 의해 `UNCONFIRMED`로 덮어씌워지지 않고 해당 `basis`(`CONTRADICTION`, `DISTINGUISHABLE`)로 우선 유지된다.
+   - 이러한 독립 의미 증거 행은 `summary_only` 여부와 무관하게 오류 finding(`LEGAL_ARGUMENT_INVALID`) 및 모순 집계, 참고 검토 경로(`cases_for_ai`)가 정상 보존된다.
 
 ---
 

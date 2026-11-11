@@ -428,7 +428,7 @@ async def verify_argument_validity(
         # 3. 요약 전용 / 본문 미확보 판정 (SC2)
         has_official = bool(verdict.get("official_record"))
         has_full_text = bool((verdict.get("official_record") or {}).get("full_text"))
-        is_summary_only = has_official and (level3 == "UNVERIFIED" or not has_full_text)
+        is_summary_only = has_official and not has_full_text
 
         # 4. 부존재 / 미확인 상태
         is_unverified = (status in ("NOT_FOUND", "CONTRADICTED") or level1 == "NOT_FOUND"
@@ -477,6 +477,9 @@ async def verify_argument_validity(
             elif distortion_finding or sem_status == "CONTRADICTED":
                 basis = "CONTRADICTION"
                 auth_status = LegalVerificationStatus.CONTRADICTED.value
+            elif sem_status == "DISTINGUISHABLE":
+                basis = "DISTINGUISHABLE"
+                auth_status = LegalVerificationStatus.CONTEXT_CAUTION.value
             elif is_quote_mismatch:
                 basis = "CONTENT_MISMATCH"
                 auth_status = LegalVerificationStatus.CONTRADICTED.value
@@ -486,9 +489,6 @@ async def verify_argument_validity(
             elif is_summary_only:
                 basis = "UNCONFIRMED"
                 auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
-            elif sem_status == "DISTINGUISHABLE":
-                basis = "DISTINGUISHABLE"
-                auth_status = LegalVerificationStatus.CONTEXT_CAUTION.value
             elif status == "CONTRADICTED":
                 basis = "CONTENT_MISMATCH"
                 auth_status = LegalVerificationStatus.CONTRADICTED.value
@@ -604,8 +604,8 @@ async def verify_argument_validity(
                 f"다만, 본 판례의 법리가 당해 사건의 계약 조건(예: 감액 청구 배제 특약의 유효성, 위약벌 인정 여부 등) 및 "
                 f"구체적 사실관계에 타당하게 적용되는지(사건 적용성)는 AI 작성 여부 판단과 별개로 검토자가 직접 검토해야 합니다."
             )
-            counteraction = "공식 판례의 원문 취지와 당해 사건의 계약 조건(손해배상액 예정 vs 위약벌 법리 등)을 직접 비교 검토할 것."
-        elif item.get("is_summary_only") or (has_official and item.get("quote_level3") == "UNVERIFIED"):
+        elif (basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and has_official
+              and (item.get("is_summary_only") or item.get("quote_level3") == "UNVERIFIED")):
             ai_basis = "공식 DB에서 요약본만 확보되어 판결문 본문 원문과의 직접 인용 대조가 유보됨 (판결문 사본 확인 필요)"
             verdict_text = "출처 한계 확인 불가 (판결문 사본 확인 필요)"
             legal_reason = (
@@ -735,10 +735,7 @@ async def verify_argument_validity(
 
         is_pending_row = (
             basis == "OFFICIAL_CONFIRMED"
-            or item.get("is_summary_only")
-            or (has_official and not (contradiction or distinguishable or mismatch))
-            or (basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and has_official)
-            or (basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and item.get("is_quote_unverified"))
+            or (basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and (has_official or item.get("is_quote_unverified")))
         )
 
         if not is_pending_row:
@@ -767,7 +764,6 @@ async def verify_argument_validity(
     cases_for_ai = [
         item for item in unverified_cases
         if item.get("basis") != "OFFICIAL_CONFIRMED"
-        and not item.get("is_summary_only")
         and not (item.get("basis") in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and bool(item["verdict"].get("official_record")))
     ]
     if can_use_llm and cases_for_ai:
