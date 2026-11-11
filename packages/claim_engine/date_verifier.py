@@ -712,6 +712,9 @@ TARGET_PRE_RE = re.compile(
     r"(?:\s*(?:기각|각하|인용|거부|불허|승인|취소|불승인|일체))?\s*$"
 )
 
+_TARGET_WINDOW = 400
+_POST_TARGET_TAIL_RE = re.compile(r"에\s*(?:대한|대하여|따른)\s*(?:것(?:이다|입니다)|처분|결정|명령)")
+
 # AA2 정정: 대상 명사구 창 끊기 토큰 규칙 및 지시어/호칭 규칙
 UNAMBIGUOUS_PARTICLES = (
     "은", "는", "을", "를", "에게", "에서", "으로", "와", "과", "에는", "에도"
@@ -813,6 +816,8 @@ def _has_own_object_marker(text: str) -> bool:
 
 # U1: 순서 연결어 정규식 및 헬퍼
 SUBSEQUENT_ORDER_RE = re.compile(r"(?:그\s*후|이후|그\s*뒤|뒤이어|다음에)")
+# P1d: 기준 패턴의 탐욕적 연결어 선택 및 왼쪽 우선 탐색 의미를 보존한다.
+# 한글 run 시작점 또는 직전 일치 끝에서 .match()를 수행하여 긴 비공백 한글열의 이차 시간 재스캔을 방지한다.
 CONJUGATED_ORDER_RE = re.compile(r"(?P<verb>[가-힣]+)\s*(?P<conn>뒤|후|다음)|다가")
 
 
@@ -827,15 +832,31 @@ def _has_narrative_order_connective(text: str) -> bool:
     """두 슬롯 사이 또는 절에 순서 연결어(-ㄴ 뒤|-ㄴ 후|-ㄴ 다음|-다가|이후|그 후)가 있는지 검사한다 (U1)."""
     if SUBSEQUENT_ORDER_RE.search(text):
         return True
-    for m in CONJUGATED_ORDER_RE.finditer(text):
-        if "다가" in m.group(0):
-            return True
-        verb = m.group("verb")
-        if verb:
-            if verb.endswith(("은", "는", "던", "후", "뒤", "다음")):
+    pos = 0
+    n = len(text)
+    while pos < n:
+        while pos < n and not ("가" <= text[pos] <= "힣"):
+            pos += 1
+        if pos >= n:
+            break
+        m = CONJUGATED_ORDER_RE.match(text, pos)
+        if m:
+            if "다가" in m.group(0):
                 return True
-            if _has_jongseong_nieun(verb[-1]):
+            verb = m.group("verb")
+            if verb:
+                if verb.endswith(("은", "는", "던", "후", "뒤", "다음")):
+                    return True
+                if _has_jongseong_nieun(verb[-1]):
+                    return True
+            pos = m.end()
+        else:
+            run_end = pos + 1
+            while run_end < n and "가" <= text[run_end] <= "힣":
+                run_end += 1
+            if text.find("다가", pos, run_end) != -1:
                 return True
+            pos = run_end
     return False
 
 
@@ -1224,9 +1245,11 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
 
             # 2) TARGET_PRE_RE 매칭 (Z2, AA2, AA3, AA4: 창 끊기, 지시어 독립 토큰, 기관 끝 고정)
             if not target:
-                m_target = TARGET_PRE_RE.search(pre_text)
+                # 평가 측 후속 P1: TARGET_PRE_RE는 끝(\s*$)에 붙는 꼴이라 일치 길이가 짧다(공백 제외 약 150자). 사건마다 절 앞부분 전체를
+                # 검색하면 한 절에 사건이 많을 때 이차 시간이 들므로 끝 _TARGET_WINDOW자 창에서만 찾는다(결과 같음)
+                m_target = TARGET_PRE_RE.search(pre_text[-_TARGET_WINDOW:])
                 if not m_target and kind in ("처분", "통지", "발송") and clause_text[e_end:e_end + 1] in ("을", "를"):
-                    m_target = TARGET_PRE_RE.search(clause_text[:e_end + 1])
+                    m_target = TARGET_PRE_RE.search(clause_text[:e_end + 1][-_TARGET_WINDOW:])
                 if m_target:
                     t_raw = _clean_target_candidate(m_target.group("target").strip())
                     if t_raw:
@@ -1255,7 +1278,8 @@ def _extract_clause_slots(block_text: str) -> List[EventSlot]:
                         last_topic_target = target
 
             # 2-2) 후행 텍스트가 '...에 대한 것입니다/처분입니다' 꼴인 경우, 대상 신청을 찾아 target으로 채택 (W3, AA2)
-            if not target:
+            if not target and _POST_TARGET_TAIL_RE.search(following_evt):
+                # 평가 측 후속 P1: 무거운 앞부분(대상 명사구) 없이 고정 꼴('…에 대한 것이다·처분')이 있을 때만 전체 정규식을 돌린다(결과 같음)
                 m_post = re.search(
                     r"(?P<post_target>(?:[그위해당동이]\s*)?(?:(?:\d+차|[A-Za-z])\s+)?(?:[가-힣0-9]{1,15}\s+){0,2}[가-힣0-9]{1,15})"
                     r"(?:에\s*(?:대한|대하여|따른))\s*(?:것(?:이다|입니다)|처분|결정|명령)",

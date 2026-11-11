@@ -289,16 +289,24 @@ def summary_direction_conflict(claim: str, summary: str) -> Optional[Dict[str, A
 
 CHANGED_PRECEDENT_RE = re.compile(
     r"(?:이와\s*달리|종전에)\s*(?P<old_holding>[^.。\n]{5,180}?)"
-    r"(?:판시한|보았던|판단한)\s*(?:대법원\s*)?(?P<old_cases>[^.。\n]{4,140}?)"
+    r"(?:판시한|보았던|판단한)\s*(?:대법원\s*)?(?P<old_cases>(?:[^.。\n]|\.(?=\s*\d|\s*선고)){4,200}?)"
     r"(?:판결|결정)(?:\s*등)?은\s*이\s*(?:판결|결정)의\s*견해에\s*배치되는\s*범위\s*(?:내)?에서\s*"
     r"(?:이를\s*)?변경(?:하기로\s*한다|한다)"
 )
 
 REVERSED_LOWER_COURT_RE = re.compile(
-    r"원심(?:은|이)\s*(?P<lower_holding>[^.。\n]{6,200}?)(?:라고|다고|으로)\s*(?:판단|판시)(?:하였다|하였으나|한\s*것).*?"
+    r"원심(?:은|이)\s*(?P<lower_holding>[^.。\n]{6,200}?)(?:라고|다고|으로)\s*(?:판단|판시)(?:하였다|하였으나|한\s*것)[^\n]{0,400}?"
     r"(?:이러한\s*원심의\s*판단에는|원심판결에는)[^.。\n]{0,120}?(?:법리를\s*오해|위법이\s*있)"
     r"|(?P<lower_holding_alt>[^.。\n]{6,180}?)(?:라고|다고)\s*판단한\s*원심판결에는[^.。\n]{0,100}?(?:법리를\s*오해|위법)"
 )
+
+
+_TAIL_CITATION_PAREN_RE = re.compile(r"\s*\([^()]{0,120}(?:판결|결정|선고|참조)[^()]{0,40}\)\s*[.。]?\s*$")
+
+
+def _reported_core(claim: str) -> str:
+    """끝의 괄호 인용 표시('(대법원 … 판결)')를 떼고 전달 표현('…다고 판단하였다')을 뗀 주장 부분."""
+    return _claim_core(_TAIL_CITATION_PAREN_RE.sub("", claim or ""))
 
 
 def extract_grounded_evidence_quote(claim: str, official_text: str) -> str:
@@ -330,7 +338,7 @@ def detect_changed_precedent_distortion(
     # 종전 판례가 변경·폐기되었다는 사실을 정확히 기술한 서술은 왜곡이 아니다
     if re.search(r"(?:변경|폐기)(?:되|되었|된|하였|했)", claim):
         return None
-    core = _claim_core(claim)
+    core = _reported_core(claim)
     for m in CHANGED_PRECEDENT_RE.finditer(combined):
         old_holding = (m.group("old_holding") or "").strip()
         old_cases = (m.group("old_cases") or "").strip()
@@ -340,7 +348,12 @@ def detect_changed_precedent_distortion(
         in_old_cases = bool(case_norm and len(case_norm) >= 6 and case_norm in re.sub(r"\s+", "", old_cases))
         # 2) 서면 주장이 변경(폐기)된 종전 판시 구절과 높은 유사도를 보이는 경우
         sim = _overlap(_positive(core), _positive(old_holding)) if old_holding else 0.0
-        if in_old_cases or (sim >= 0.45 and _clause_negated(core) == _clause_negated(old_holding)):
+        # 새 판결(변경한 판결)의 다른 문장 — 바뀐 법리 자체 — 에 더 가까우면 새 판시를 정확히 인용한 것이다
+        others = [x for x in re.split(r"(?<=[다함음])\s*\.\s*|\n+", combined.replace(sentence, " ")) if len(_compact(x)) >= 8]
+        # 'A가 아니라 B' 꼴의 새 판시는 부정된 A 부분을 빼고 견준다
+        others = [re.sub(r"(?<=[는은])\s+[^,.]{1,40}?(?:이|가)\s*아니라\s*", " ", x) for x in others]
+        sim_new = max((_overlap(_positive(core), _positive(x)) for x in others), default=0.0)
+        if in_old_cases or (sim >= 0.45 and sim > sim_new and _clause_negated(core) == _clause_negated(old_holding)):
             return {
                 "verdict": "CHANGED_PRECEDENT",
                 "old_holding": old_holding,
@@ -407,7 +420,7 @@ def detect_reversed_remand_confusion(
 
     # 채택 문장이 분리된 경우 해당 문장 우선 검토, 아니면 전체 claim
     target_claim = " ".join(adoption_sentences) if adoption_sentences else claim
-    core = _claim_core(target_claim)
+    core = _reported_core(target_claim)
     for m in REVERSED_LOWER_COURT_RE.finditer(combined):
         lower_holding = (m.group("lower_holding") or m.group("lower_holding_alt") or "").strip()
         if not lower_holding:
