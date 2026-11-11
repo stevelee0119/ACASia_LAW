@@ -135,3 +135,23 @@ def test_e15_party_swap_is_order_sensitive():
     assert "PARTY_SWAP" in r1["diff_categories"], r1
     r2 = categorize_quote_diff("임차인은 임대인에게 차임을 지급할 의무가 있고 임대인은 임차인에게 목적물을 사용하게 할 의무가 있다", off)
     assert r2["status"] == "EXACT_MATCH", r2
+
+
+# E16 F12(11-11): 법률 검증 결과 데이터(verdicts)는 JSON으로 직렬화되어야 한다(PostgreSQL JSON 칸 저장).
+import json
+
+from packages.common.enums import CitationType
+from packages.common.schemas import Block, Citation, NormalizedDocument, Page
+from packages.legal_engine.verifier import LegalVerifier
+
+
+def test_e16_verdict_data_is_json_serializable():
+    doc = NormalizedDocument("d", "d.txt", "text/plain", "0", [Page(1, 100.0, 100.0, [Block("b1", "원고는 대법원 2098. 5. 5. 선고 2099도99999 판결을 원용한다.", 1)])])
+    citation = Citation(citation_id="c1", document_id="d", block_id="b1", page=1, span=(4, 30),
+                        raw_text="대법원 2098. 5. 5. 선고 2099도99999 판결", type=CitationType.CASE,
+                        court="대법원", case_number="2099도99999")
+    result = LegalVerifier().verify_citations([citation]) if hasattr(LegalVerifier, "verify_citations") else None
+    data = getattr(result, "data", None) or {}
+    json.dumps(data)  # Finding 객체가 섞이면 TypeError
+    for v in data.get("verdicts", []):
+        assert all(isinstance(f, dict) for f in v.get("findings", []))

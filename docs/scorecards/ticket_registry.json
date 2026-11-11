@@ -591,7 +591,7 @@
     "LV-01~06": {
       "status": "directed",
       "kind": "new",
-      "note": "2026-11-10~11 구현 측이 평가 측 제안 P0~P3(사용자 11-10 수용)을 바탕으로 평가 측 부재 중 선행 구현한 연쇄 PR #252~#257(설계 메모 docs/handoff/requests/LV_legal_verification_design_memo.md). 11-11 1차 판정 보완 1회(F1~F9, 사본 dd951fb, patches/LV_01-06_fix_on_d8af690.diff, 공개 시험 patches/test_lv_eval_fix.py). X6(근거 시험 단언 변경) 사용자 승인 대기. NEXT 2-33. · 11-11 사용자 'X6 승인' — 증분 patches/X6_ground_truth_assertion_on_ea2ef8a.diff(구현 측이 #254 브랜치에 반영). · 11-11 2차: F1~F10·X6 반영(사본과 diff 0), 확인 탐침에서 F11(LV-04 당사자 맞바꿈) → #255 보완 1회(사본 9e9924a, patches/LV_F11_party_swap_on_b128126.diff)."
+      "note": "2026-11-10~11 구현 측이 평가 측 제안 P0~P3(사용자 11-10 수용)을 바탕으로 평가 측 부재 중 선행 구현한 연쇄 PR #252~#257(설계 메모 docs/handoff/requests/LV_legal_verification_design_memo.md). 11-11 1차 판정 보완 1회(F1~F9, 사본 dd951fb, patches/LV_01-06_fix_on_d8af690.diff, 공개 시험 patches/test_lv_eval_fix.py). X6(근거 시험 단언 변경) 사용자 승인 대기. NEXT 2-33. · 11-11 사용자 'X6 승인' — 증분 patches/X6_ground_truth_assertion_on_ea2ef8a.diff(구현 측이 #254 브랜치에 반영). · 11-11 2차: F1~F10·X6 반영(사본과 diff 0), 확인 탐침에서 F11(LV-04 당사자 맞바꿈) → #255 보완 1회(사본 9e9924a, patches/LV_F11_party_swap_on_b128126.diff). · 11-11 2차 보충: F12(결과 데이터 JSON 직렬화, PostgreSQL에서만 실패 — #256) 추가, 문구 의심 11건 허용 등록 22d3fd7. 증분 patches/LV_F11_F12_on_b128126.diff(사본 2fded7c)."
     },
     "TK-150": {
       "status": "directed",

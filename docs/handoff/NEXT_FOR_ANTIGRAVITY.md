@@ -1,41 +1,37 @@
 
 
-### 2-33-7. LV 보완본 2차 판정·TK-151(#258) 판정 (11-11, 평가 측 재실행)
-- 구현 측 보완 push(18:46~18:56 UTC): #252 `7b799f5`·#253 `862d9d6`·#254 `07af746`·#255 `3d02741`·#256 `606f114`·#257 `b128126`, #258 TK-151 `cfaebc4`. 각 브랜치에 Steve `649a162` 병합.
-- LV 범위 제품 코드 = 평가 측 사본 `7ddc7a9`(diff 0), X6·공개 시험 파일 동일. TK-151 = 사본 `97d241b`(diff 0).
-- 확인 탐침(보정 미사용)에서 LV-04 원래 결함 F11(당사자 맞바꿈 미탐) 발견 → #255 보완 1회. 증분 [patches/LV_F11_party_swap_on_b128126.diff](patches/LV_F11_party_swap_on_b128126.diff), 공개 시험 15건.
-- CI(인용): 조회 시점 두 PR 모두 실행 중(#257 은퇴 세트 비교 성공).
+### 2-33-8. LV 보완본 2차 보충 — CI 실패 2종 원인(F12 실제 결함, 문구 의심 허용 등록) (11-11, 평가 측 재실행)
+- PostgreSQL 벌 API 시험 2건 실패를 로컬 PostgreSQL 16 + pgvector로 재현: Finding 객체가 결과 데이터 JSON에 들어감(LV-05 4327e02) → F12. **1차 판정에서 '일시 실패'로 본 것은 평가 측 오판**.
+- 점수 하락 게이트 실패는 평가 세트 문구 의심 11건(설명·안내 문안) → 평가 측 허용 등록 커밋 `22d3fd7`(구현 측이 #252에 체리픽).
+- 증분 [patches/LV_F11_F12_on_b128126.diff](patches/LV_F11_F12_on_b128126.diff)(F11 단독 증분은 대체), 공개 시험 16건.
 
 ```
-[평가 측 판정 — LV-01~06 보완본(#252~#257, 끝 head b128126) 2차 + TK-151(#258, head cfaebc4), 11-11]
+[평가 측 판정 보충 — LV 보완본 2차(#252~#257, 끝 head b128126): CI 실패 2종 원인 확인, F12 추가 + 허용 문구 등록, 11-11]
 
-판정
-- #252~#257: F1~F10·X6은 평가 측 사본과 같다(legal_engine 등 LV 범위 diff 0, 공개 시험·X6 시험 파일 동일, 브랜치에 Steve 649a162 병합 확인).
-  다만 보정에 쓰지 않은 확인 탐침(AGENT_ROLES 2.1 (8)②)에서 LV-04 원래 결함 1건(F11)이 새로 드러났다 → #255 보완 1회(작음). F11 반영 뒤 연쇄 전체 수용 방향.
-- #258 TK-151: 평가 측 사본 97d241b와 diff 0 → 수용(조건: CI 전부 성공). LV와 파일이 겹치지 않아 병합 순서 무관.
+앞 코멘트(#255, F11)에 더해 아래를 함께 반영한다. 증분은 F11·F12를 합친 docs/handoff/patches/LV_F11_F12_on_b128126.diff로 교체했다(제품 2파일 + 공개 시험 16건).
 
-F11 [미탐] 인용문에서 두 당사자를 맞바꾸면(예: '채권자는 채무자에게'→'채무자는 채권자에게') PARTY_SWAP이 아니라 MINOR_WORDING이 된다
-- 위치: packages/legal_engine/quote_diff.py(b128126 기준) 25행 PARTY_SWAP 정규식, 94~98행 _classify.
-- 원인(재현): _classify가 각 유형의 일치를 집합(set)으로 견준다. 맞바꿈은 두 쪽 집합이 {채권자, 채무자}로 같아 변경이 없다고 본다. 이 결함은 LV-04 첫 구현부터 있었고
-  평가 측 1차 점검표(원고→피고 한쪽 치환만 넣음)의 빈칸이었다(점검표 빈칸 → 축 전체를 한 번에 고침, AGENT_ROLES 2.1 (2)). 또 역할 명사 어휘가 좁다(도급인·수급인 등 없음).
-- 고칠 것:
-  1. PARTY_SWAP 정규식을 긴 낱말 먼저 두는 목록으로 넓힌다:
-     주채무자|피상속인|피신청인|피청구인|피고인|원고|피고|처분청|행정청|당사자|채권자|채무자|신청인|청구인|상속인|매도인|매수인|임대인|임차인|도급인|수급인|위임인|수임인|
-     사용자|근로자|보증인|양도인|양수인|증여자|수증자|임치인|수치인|가해자|피해자|소유자|점유자
-     ('대주·차주'는 '대주주' 같은 낱말 안에서 잘려 맞으므로 넣지 않는다.)
-  2. _classify에서 PARTY_SWAP만 집합이 아니라 나온 순서(리스트)로 견준다(_ORDERED_KINDS = {"PARTY_SWAP"}). 다른 유형은 지금처럼 집합 비교.
-     NEGATION의 surface 인자 처리(F6)는 그대로.
-- 바꾸지 말 것: categorize_quote_diff의 흐름(F5~F7), MIN_SIMILARITY, 다른 유형 정규식.
-- 증분: docs/handoff/patches/LV_F11_party_swap_on_b128126.diff(제품 1파일 + 공개 시험 E15). #255 브랜치에 커밋하고 지금처럼 #256·#257로 병합 전파한다.
+1) CI '테스트 (PostgreSQL/pgvector + Celery 브로커)' 실패 2건 — 실제 결함(F12, #256 LV-05에서 들어옴, 커밋 4327e02)
+- 증상(CI 결과 인용): tests/test_api.py::test_vertical_slice_end_to_end(실행 상태 FAILED), ::test_run_listings_and_status_polls_never_read_the_stored_result(KeyError 'documents').
+  1차 판정 때 'CI 일시 실패'로 본 것은 평가 측 오판이었다 — SQLite에서는 통과하고 PostgreSQL에서만 난다.
+- 재현(평가 측, 로컬 PostgreSQL 16 + pgvector): Steve 649a162 통과, b128126 실패. verification_runs.errors = "Object of type Finding is not JSON serializable"(3회 재시도 모두).
+- 원인: packages/legal_engine/verifier.py 229행 result.data["verdicts"][*]["findings"] = list(v.findings) — Finding 객체가 결과 데이터(JSON 칸)에 그대로 들어간다.
+  PostgreSQL JSON 칸은 객체를 직렬화하지 못해 실행 전체가 실패한다.
+- 고칠 것(#256 브랜치): 그 줄을
+  [{"finding_id": f.finding_id, "type": str(f.type), "tags": list(f.tags or []), "confidence_features": dict(f.confidence_features or {})} for f in v.findings]
+  로 바꾼다. 읽는 쪽(argument_validity_verifier.py 452행 v_findings)은 이미 dict를 처리한다(type·tags·confidence_features). 다른 소비처 없음(평가 측 grep).
+- 공개 시험 E16(tests/test_lv_eval_fix.py): 결과 데이터 json.dumps 통과·findings가 dict인지. b128126에서 실패, 사본 통과.
 
-평가 측 재실행
-- 보완 head b128126: LV·계약·출력 계약·근거·사건 고유값 시험 21파일 583건 통과. 1차 축 탐침(날짜 역할 8·처분일 6·인용문 12·판시 왜곡 8칸) 사본과 같음. 원심 오인 7만 자 0.44초.
-- 확인 탐침(새로 지음, 보정 미사용) 12칸: d8af690 6/12 → b128126 11/12(당사자 맞바꿈 1칸 미탐) → F11 사본 9e9924a 12/12.
-- 당사자 축 점검표 9칸(맞바꿈 문장 처음·중간, 한쪽 치환, 다른 역할 명사 치환, 조사만 다름, 같은 순서 다른 낱말, 생략 인용, 정확 인용, 피고인↔피고): b128126 6/9 → 사본 9/9.
-- 공개 시험 15건(E15 추가): b128126에서 E15만 실패, 사본 15건 통과. 인용 대조를 쓰는 시험 39파일 1,048건 통과(사본).
-- 하드코딩·시험 약화·보호 경로 통과, 평가 세트 문구 '의심 없음'.
-- 사본 9e9924a(= b128126 + F11, Steve 649a162 포함) 전체 11,442건 통과(실패 0, 건너뜀 35). 은퇴 5세트 53.3/48.6/56.9/45.8/34.1·오탐 0, 고정 82.6/81.9/0 — 변화 0.
+2) CI '점수 하락 게이트' 실패 — 결함 아님(평가 세트 문구 의심 11건, 실패 시험 0건)
+- check_train_phrase_overlap.py --eval-sets가 결과 설명·안내 문안·주석의 일반 표현 11건을 '의심'으로 표시해 종료 코드 1. 평가 측이 위치를 하나씩 확인했다 — 모두 탐지 조건(정규식·판정 분기)이 아니다.
+- 평가 측 허용 등록 커밋: 평가 브랜치 evaluator/round8-promotion 22d3fd7(docs/scorecards/approved_eval_phrases.json만, 평가 측 저자).
+  #252 브랜치에 git cherry-pick 22d3fd7 하고 연쇄로 전파한다(평가 측 커밋은 그대로 옮기고 고치지 않는다). 평가 측 확인: 체리픽 뒤 '평가 세트 문구 의심 없음'.
+
+평가 측 재실행(사본 2fded7c = b128126 + F11 + F12)
+- 공개 시험 16건 통과(b128126에서 E15·E16 실패). PostgreSQL로 tests/test_api.py 31건 통과(b128126은 2건 실패).
+- SQLite 전체: F11 사본 9e9924a 11,442건 통과(F12는 그 위 한 줄 변경). PostgreSQL 16 + pgvector 전체: 사본 2fded7c 11,443건 통과(실패 0, 건너뜀 32).
+- 은퇴 5세트·고정 82.6/81.9/0 변화 0(9e9924a 기준).
 
 수용 기준
-- F11 반영(증분 그대로 또는 같은 구조) + 공개 시험 15건 통과 + CI 전부 성공 → #252~#257 연쇄 수용. 병합 순서는 #252 → #257 차례 또는 #257 하나(앞 PR 전부 포함).
+- F11(#255)·F12(#256)·허용 문구 체리픽(#252) 반영 후 연쇄 전파, 공개 시험 16건 통과, CI 전부 성공(두 시험 벌·점수 하락 게이트 포함) → #252~#257 연쇄 수용.
+- 평가 측 교훈(기록): CI의 PostgreSQL 벌에서만 나는 실패는 일시 실패로 넘기지 않고 로컬 PostgreSQL로 재현한다(AGENT_ROLES 2.1 (8)③ 보강).
 ```
