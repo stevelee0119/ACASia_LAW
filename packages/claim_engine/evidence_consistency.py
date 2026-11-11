@@ -58,7 +58,8 @@ CERTAINTY_RE = re.compile(r"확실|분명|틀림없|단언|명백|(?:음|것)이
 # 장면 낱말이 아니라 '접근 부정·닫힌 상태·부재·의식 없음·다른 장소 같은 시각·소리만' 구조와 지각 동사 범주로 본다.
 _PERC_RE = re.compile(r"(?:보았|봤|목격(?:하였|했|한)|읽었|들었|확인(?:하였|했)|직접\s*(?:본|들은|읽은))"
                       r"(?!\S{0,3}\s*(?:바|적|일)(?:는|은|가|이)?\s*없)")
-_DIRECT_RE = re.compile(r"직접|똑똑히|분명히|생생히|두\s*눈으로|귀로")
+# 평가 측 후속 L1a: '[인칭 대명사] (두) 눈으로'도 직접 지각 표지다
+_DIRECT_RE = re.compile(r"직접|똑똑히|분명히|생생히|두\s*눈으로|(?:제|내|저의|나의|본인의|이)\s*(?:두\s*)?눈으로|귀로")
 _MEDIATED_RE = re.compile(r"전해\s*들|(?:전화|통화|화상|영상|녹음|녹화|문자|메시지|사진|화면|카메라|CCTV|cctv)"
                           r"(?:으로|로|를\s*통해|을\s*통해)|보고(?:를)?\s*받|통해\s*(?:들|보|알)")
 # 부정 뒤 양보·연결 어미: 않/못 + (았·었·했·하였)? + 지만·으나·는데(도)·음에도, 또는 -고(서)·-은/한 채
@@ -648,7 +649,7 @@ UNIVERSAL_NEGATION_RE = re.compile(
     r"(?:(?:단\s*)?한\s*(?:번|차례)도|전혀|결코)\s*[^.!?]{0,30}?(?:적|일|바|사실)(?:이|가|은|는|도)?\s*없"
 )
 
-# V2, BB2: 완료 술어 구조 정규식 (어간 + 어미/피동 결합, 대상 명사구와 결합, 지급 행위 어간 '치르·받·납부·송금' 포함)
+# V2, BB2: 완료 술어 구조 정규식 (평가 측 후속 O4: 목적어에 _AMOUNT_NOUN_PAT과 같게 '차임·원리금'을 넣는다) (어간 + 어미/피동 결합, 대상 명사구와 결합, 지급 행위 어간 '치르·받·납부·송금' 포함)
 _COMPLETION_VERB_STEMS = (
     r"(?:마치|마쳤|마친|마쳐|"
     r"끝마치|끝마쳤|끝마친|끝마쳐|"
@@ -662,7 +663,7 @@ _COMPLETION_VERB_STEMS = (
 )
 
 COMPLETION_PREDICATE_RE = re.compile(
-    rf"(?:(?:지급|변제|납부|이행|시공|공사|인도|대금|채무|[가-힣]{{0,8}}(?:대금|금|비|채무))"
+    rf"(?:(?:지급|변제|납부|이행|시공|공사|인도|대금|채무|차임|원리금|[가-힣]{{0,8}}(?:대금|금|비|채무))"
     rf"(?:[을를이가]|의)?\s*(?:(?:모두|전부|전액|이미|다)(?:[을를이가은는의]|으로|로)?\s*)*"
     rf"(?:{_COMPLETION_VERB_STEMS}(?:(?:지|졌)[가-힣]*|[가-힣]*)|(?:지급|변제|수령|정산|상환|결제)(?:하|하여|하였|했|한|해|합|받)[가-힣]*))|"
     r"(?<![가-힣])(?:갚[가-힣]+|치르(?:었[가-힣]*|어[가-힣]*|고|면|다)|치렀[가-힣]*|치른|치러[가-힣]*|받았[가-힣]*|받은|"
@@ -789,6 +790,10 @@ def _match_predicate_word(pw: str, text: str, cat: Optional[str] = None) -> bool
 
         # 주격 조사 + 완료 동사 연쇄 (시공완료가 모두 마쳐진바, 변제가 이루어진바 등)
         if re.match(r"^\s*[이가은는]\s*(?:모두|전부|이미|다)?\s*(?:마쳐|끝마쳐|끝내|완료|이루어|이루|끝나|이행|종료)(?:지|졌|진|었|았|했|한|된|다|는|은|고|며|면|음|기)", tail):
+            return True
+
+        # 평가 측 후속 O6: 명사형 의사표시의 존재 단정('피고의 동의가 있었다') — 의문·가정 어미는 제외
+        if cat == "상대방의사표시" and re.match(r"^\s*[이가]\s*(?:있었|있다|있음|있는|있은|존재하였|존재했)(?!는지|는가|다면|더라도|으면|을지)", tail):
             return True
 
         # 4. 절 종결 위치 명사 종결
@@ -974,8 +979,9 @@ def _detect_exhibit_sender(row: Dict[str, Any], label: str, sent_clean: str) -> 
     author = (row.get("author") or "").strip()
     desc = f"{row.get('name', '')} {row.get('purpose', '')}".strip()
     if author:
-        for p in ("원고", "피고", "신청인", "피신청인", "채권자", "채무자"):
-            if p in author:
+        # 평가 측 후속 O3: '피신청인' 안의 '신청인'을 먼저 잡지 않도록 긴 낱말부터, 앞 글자가 한글이 아닐 때만 본다
+        for p in ("피신청인", "신청인", "원고", "피고", "채권자", "채무자"):
+            if re.search(rf"(?<![가-힣]){p}", author):
                 return p
     m_desc = re.search(r"(?:발신인|작성자|보낸\s*이|발송자)\s*[:：]?\s*(?P<p>원고|피고|신청인|피신청인|채권자|채무자)", desc)
     if m_desc:
@@ -1026,6 +1032,54 @@ def _ovr_so_exhibit_rows(text: str, rows: Sequence[Dict[str, Any]]) -> List[Dict
     return extra
 
 
+# 평가 측 후속 O1·O2 보조
+_OVR_SIDE_OF = {"원고": "갑", "신청인": "갑", "채권자": "갑", "피고": "을", "피신청인": "을", "채무자": "을"}
+_OVR_AMOUNT_RE = re.compile(r"(?<![\d,])(\d[\d,]*)\s*(만|억)?\s*원")
+
+
+def _ovr_amount(token: str, unit: Optional[str]) -> Optional[int]:
+    try:
+        v = int(token.replace(",", ""))
+    except ValueError:
+        return None
+    return v * (10000 if unit == "만" else 100000000 if unit == "억" else 1)
+
+
+def _ovr_row_category(row: Dict[str, Any]) -> Optional[str]:
+    name_clean = re.sub(r"\s+", "", (row.get("name") or ""))
+    for cat_name, cat_words in EVIDENCE_KIND_CATEGORIES.items():
+        for w in cat_words:
+            w_clean = re.sub(r"\s+", "", w)
+            if name_clean.endswith(w_clean) or w_clean in name_clean:
+                return cat_name
+    return None
+
+
+def _ovr_debt_amount(noun: str, text: str) -> Optional[int]:
+    """문서 안에서 '[채무 명사] … N원' 꼴로 적은 채무 금액(가장 큰 값)."""
+    best = None
+    for m in re.finditer(rf"{re.escape(noun)}(?:은|는|이|가|을|를|의)?\s*(?:합계\s*|총\s*)?(?:금\s*)?(\d[\d,]*)\s*(만|억)?\s*원", text):
+        v = _ovr_amount(m.group(1), m.group(2))
+        if v and (best is None or v > best):
+            best = v
+    return best
+
+
+_OVR_SO_CITE_RE = re.compile(r"(?<![가-힣])소(?P<party>갑|을)\s*제?\s*(?P<num>\d+)\s*호증")
+
+
+def _ovr_parse_exhibits(text: str) -> List[Dict[str, Any]]:
+    """평가 측 후속 O5: 공용 호증 문법은 본문의 '소을 제N호증'을 풀지 못한다(공용 입력은 바꾸지 않음) — 이 검사 안에서만 보충한다."""
+    refs = list(parse_exhibits(text))
+    have = {(r["party"], r["number"]) for r in refs}
+    for m in _OVR_SO_CITE_RE.finditer(text):
+        key = (m.group("party"), int(m.group("num")))
+        if key not in have:
+            refs.append({"party": key[0], "number": key[1]})
+            have.add(key)
+    return refs
+
+
 def check_evidence_overreach(
     doc: NormalizedDocument,
     exhibits: Optional[Sequence[Dict[str, Any]]] = None,
@@ -1061,7 +1115,7 @@ def check_evidence_overreach(
             continue
 
         # 서증 인용 확인 (조건 5: 증거목록 및 인용 괄호에서만 서증 추출)
-        refs = parse_exhibits(sent_clean)
+        refs = _ovr_parse_exhibits(sent_clean)
         if not refs:
             continue
 
@@ -1088,7 +1142,7 @@ def check_evidence_overreach(
             row_key = (row["party"], row["number"])
             c_indices = [
                 idx for idx, cl in enumerate(clauses)
-                if row_key in [(r["party"], r["number"]) for r in parse_exhibits(cl)]
+                if row_key in [(r["party"], r["number"]) for r in _ovr_parse_exhibits(cl)]
             ]
             if not c_indices and is_direct_proof:
                 target_clauses = [cl for cl in clauses if _PROOF_VERB_RE.search(cl)]
@@ -1312,7 +1366,31 @@ def check_evidence_overreach(
                         # 평가 측 보완 F4: 주체가 생략된 절은 작성자(발신인) 측 행위로 읽혀 제외(S2 유지). 주체가 '상대방'으로 명시된 때만 센다
                         matched_pred_cats.append("상대방의사표시")
                 else:
-                    matched_pred_cats.append("상대방의사표시")
+                    # 평가 측 후속 O2: 의사표시의 주체가 그 서증을 낸 쪽(갑·소갑 → 원고·신청인·채권자, 을·소을 → 피고·피신청인·채무자)이면
+                    # 자기 측 의사표시다 — '상대방' 의사표시 범주가 아니다. 쌍방('원고와 피고가 합의')·계약 성립 술어는 그대로 센다
+                    head_txt = scope_text[:opp_pos] if opp_pos is not None else scope_text
+                    mutual = re.search(_PARTY_NAME_PAT + r"(?:\s*측)?\s*(?:와|과|및)\s*" + _PARTY_NAME_PAT, head_txt)
+                    ex_side = (row.get("party") or "").replace("소", "")
+                    self_side = (opp_subj is not None and not mutual
+                                 and matched_opp_pw not in ("계약체결", "약정성립", "체결되었", "성립되었")
+                                 and _OVR_SIDE_OF.get(opp_subj) == ex_side)
+                    if not self_side:
+                        matched_pred_cats.append("상대방의사표시")
+
+            # 평가 측 후속 O1: '특정 채무 전부·전액 변제'를 영수·입금 서증만으로 증명한다면서, 서증 금액이 채무 금액보다 적거나
+            # 채무 금액이 문서에 없으면 '그 금액 한도'를 넘는 전액 단정이다(영수입금은 전칭을 못 덮음)
+            if ("완료_확정" in matched_pred_cats and m_total_amt and is_specific_amt and matched_cat == "영수입금"
+                    and all(_ovr_row_category(cr) == "영수입금" for cr in cited_rows)):
+                n_sum = 0
+                for cr in cited_rows:
+                    cr_desc = f"{cr.get('name', '')} {cr.get('purpose', '')}"
+                    for am in _OVR_AMOUNT_RE.finditer(cr_desc):
+                        n_sum += _ovr_amount(am.group(1), am.group(2)) or 0
+                if n_sum:
+                    noun_text = (m_total_amt.group("noun1") or m_total_amt.group("noun2") or m_total_amt.group("noun3") or "").strip()
+                    debt = _ovr_debt_amount(noun_text, text) if noun_text else None
+                    if (debt is None or n_sum < debt) and "전칭_전기간" not in matched_pred_cats:
+                        matched_pred_cats.append("전칭_전기간")
 
             if not matched_pred_cats:
                 if debug_counters is not None:
@@ -2713,6 +2791,10 @@ def _form_section_rows(blocks, exhibits):
         seen[(r.get("party"), r.get("number"), tuple(r.get("branches") or []))] = r
     for r in so_rows:
         seen[(r["party"], r["number"], ())] = r
+    # TK-149: 공용 행도 이제 '소갑·소을' 목록 줄을 행으로 만든다(당사자 키 '갑·을', 표기 '소…'). 이 검사의 자체 보충 행(당사자 '소갑·소을')과
+    # 같은 서증이 두 번 세이지 않도록, 자체 보충과 키가 겹치는 공용 '소' 행은 뺀다
+    so_keys = {(r["party"][-1], r["number"]) for r in so_rows}
+    rows = [r for r in rows if not (str(r.get("id") or "").startswith("소") and (r.get("party"), r.get("number")) in so_keys)]
     return rows + list(seen.values())
 
 
@@ -2832,9 +2914,51 @@ def _form_findings(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]) 
 
 # --- TK-76 3주기 EVI-LOGIC 잔여(평가 측 시안) -------------------------------------
 # L1: 앞 문장이 진술인 자신의 다른 장소 체재를 밝히고(시간 표지 포함), 바로 다음 문장이 같은 때 직접 지각을 주장
-_L1_STAY_RE = re.compile(r"(?:에|에서)\s?(?:[가-힣0-9]+\s){0,4}?(?:있었|머물렀|지냈|중이었)(?:습니다|다|음)")
+_L1_STAY_RE = re.compile(r"(?:에|에서)\s?(?:[가-힣0-9]+\s){0,4}?(?:있었|머물렀|지냈|중이었)(?:습니다|다|음)"
+                         # 평가 측 후속 L2: 장소 조사 없이 '[장소] [자리를 떠난 일] 중이었다'로 쓴 체재
+                         r"|(?:출장|견학|여행|파견|체류|연수|유학)\s?중이었(?:습니다|다|음)")
+# 평가 측 후속 L3: 체재 장소가 곧 현장이거나 같은 자리(함께·옆·그곳)이면 '다른 장소'가 아니다
+_L1_COLOC_RE = re.compile(r"현장|그\s?곳|거기|그\s?자리|같은\s?(?:곳|장소|공간|방|사무실|층|건물)|함께|같이|옆|곁|맞은\s?편|바로\s?앞")
+
+
+def _l1_elsewhere_stay(prev: str, sent: str) -> bool:
+    """앞 문장이 진술인 자신이 현장과 다른 곳에 있었다고 밝히는지(평가 측 후속 L2·L3·L4)."""
+    m = _L1_STAY_RE.search(prev)
+    if not m:
+        return False
+    head = prev[:m.end()]
+    # L3: 같은 자리 표지, 또는 체재 장소 낱말이 지각 문장에 다시 나오면 같은 곳
+    if _L1_COLOC_RE.search(head):
+        return False
+    words = {re.sub(r"(?:에서|에|의|은|는|이|가)$", "", w) for w in re.findall(r"[가-힣]{2,}", prev[max(0, m.start() - 20):m.end()])}
+    # 1인칭 주어·시간 낱말·체재 서술어는 장소 낱말이 아니다(조사를 뗀 꼴로 비교)
+    stop = {"저", "제", "나", "내", "본인", "진술인", "증인", "당시", "하루", "종일", "같은", "시간", "시각", "그날", "그때", "사건", "당일", "무렵"}
+    words = {w for w in words if w not in stop and not re.match(r"(?:있었|머물렀|지냈|중이었)", w)}
+    if any(len(w) >= 2 and w in sent for w in words):
+        return False
+    # L4: 체재한 사람이 진술인이어야 한다('제 동생은 … 에 있었다'는 진술인의 체재가 아니다)
+    # 체재 일치가 시간 명사('…시간에')부터 시작해 진술인 주어를 삼킬 수 있으므로 체재 서술어까지 본다
+    before = prev[:m.end()]
+    others = [m2 for m2 in _OTHER_SUBJECT_RE.finditer(before)
+              if not (m2.group(0).rstrip().endswith("이") and m2.group(1) in _ADVERB_I)
+              and not _FIRST_PERSON_RE.match(m2.group(0))]
+    # 소유격·지시 대명사가 붙은 한 음절 명사 주어('원고의 딸은', '제 형은', '그의 처는')도 다른 사람이다
+    if not others and _POSSESSED_SUBJECT_RE.search(before):
+        others = [True]
+    return bool(_FIRST_PERSON_RE.search(before)) or not others
+
+
+_POSSESSED_SUBJECT_RE = re.compile(r"(?:[가-힣]+의|제|내|저의|그|저희|우리)\s+(?:[가-힣]+\s+)?[가-힣]{1,4}(?:은|는|이|가)\s")
 _L1_TIME_RE = re.compile(r"같은\s?(?:시각|시간)|그\s?(?:시간|시각|때)|당시|하루\s?종일|내내|동시에")
 _L1_MOVE_RE = re.compile(r"올라와|내려와|돌아와|돌아왔|이동|도착|떠나|떠났|다가\s|뒤에|이후|나중에")
+# 평가 측 후속 L5: 지각 문장이 다른 때를 밝히면('사흘 뒤·이틀 후·다음 날·이튿날·전날·그 후·며칠 뒤') 같은 때의 지각이 아니다
+_L1_OTHER_TIME_RE = re.compile(
+    r"(?:\d+|하루|이틀|사흘|나흘|닷새|엿새|이레|며칠|몇|한|두|세|일주일|열흘|보름)\s?(?:일|시간|분|주일?|달|개월|해|년)?\s?(?:뒤|후|전|만에)(?![가-힣])"
+    r"|다음\s?날|이튿날|익일|전날|그\s?(?:후|뒤|전|다음)(?![가-힣])|이후|이전|나중에|훗날|얼마\s?(?:뒤|후)")
+# 평가 측 후속 L6: 한 문장 안에서 체재 절이 연결어미로 이어지는 꼴('…에 있었는데, 그때 … 직접 보았다')
+_L1_INLINE_RE = re.compile(
+    r"(?P<stay>(?:에|에서)\s?(?:[가-힣0-9]+\s){0,4}?(?:있었|머물렀|지냈|중이었)|(?:출장|견학|여행|파견|체류|연수|유학)\s?중이었)"
+    r"(?P<conn>으므로|므로|는데|으나|지만|고|기에|어서|으며)\s?,?\s")
 # L2: 한 번의 관찰을 근거로 늘 그렇다고 단정
 _L2_SINGLE_RE = re.compile(r"(?:단|딱|겨우)?\s?(?:한\s?번|한\s?차례|1\s?회|일\s?회)(?!\s?(?:도|시|의\s?경우|경우|마다|이상|이내))")
 _L2_PAST_RE = re.compile(r"(?:었|았|였|했|(?:사실|적|일)이?\s?있)")
@@ -2862,13 +2986,28 @@ def check_reasoning_structure(doc: NormalizedDocument) -> List[Finding]:
             continue
         shown = " ".join(sent.split())[:250]
         # L1
-        if prev and _L1_STAY_RE.search(prev) and _L1_TIME_RE.search(prev + " " + sent[:30]) and not _L1_MOVE_RE.search(prev + sent) \
-                and not _MEDIATED_RE.search(sent) and _PERC_RE.search(sent) and _DIRECT_RE.search(sent) and not perception_conflict(sent):
+        pair = None
+        if prev and not _L1_OTHER_TIME_RE.search(sent):
+            # 줄 나뉨: 앞 줄이 '체재 + 연결어미(,)'로 끝나면(PDF 줄바꿈) 그 체재 절을 앞 문장으로 본다
+            m_tail = _L1_INLINE_RE.search(prev.rstrip() + " ")
+            prev_n = (prev[:m_tail.start("conn")] + "습니다.") if (m_tail and not prev.rstrip()[m_tail.end() - 1:].strip()) else prev
+            pair = (prev_n, sent, "ELSEWHERE_PREV_SENTENCE")
+        m_in = _L1_INLINE_RE.search(sent)
+        if (pair is None or not _l1_elsewhere_stay(prev, sent)) and m_in:
+            rest = sent[m_in.end():]
+            if not _L1_OTHER_TIME_RE.search(rest):
+                pair = (sent[:m_in.start("conn")] + "습니다.", rest, "ELSEWHERE_IN_SENTENCE")
+        if pair and _l1_elsewhere_stay(pair[0], pair[1]) and _L1_TIME_RE.search(pair[0] + " " + pair[1][:30]) \
+                and not _L1_MOVE_RE.search(pair[0] + pair[1]) \
+                and not _MEDIATED_RE.search(pair[1]) and _PERC_RE.search(pair[1]) and _DIRECT_RE.search(pair[1]) and not perception_conflict(sent):
             out.append(_finding(doc, FindingType.STATEMENT_BEYOND_PERCEPTION, EvidenceGrade.C, Severity.MEDIUM,
-                                "지각할 수 없던 조건과 직접 지각 주장이 함께 있다: 앞 문장의 다른 장소 체재와 같은 때의 직접 목격",
-                                "앞 문장에서 같은 때 다른 장소에 있었다고 하면서 다음 문장에서 직접 지각했다고 진술한다. 진술의 신빙성은 사람이 판단한다.",
-                                (" ".join(prev.split()) + " / " + shown)[:250], status=VerificationStatus.SUSPICIOUS,
-                                features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION_STRUCTURE", "pattern": "ELSEWHERE_PREV_SENTENCE"}))
+                                "지각할 수 없던 조건과 직접 지각 주장이 함께 있다: "
+                                + ("앞 문장의" if pair[2] == "ELSEWHERE_PREV_SENTENCE" else "같은 문장 안의") + " 다른 장소 체재와 같은 때의 직접 목격",
+                                ("앞 문장에서 같은 때 다른 장소에 있었다고 하면서 다음 문장에서" if pair[2] == "ELSEWHERE_PREV_SENTENCE"
+                                 else "같은 문장에서 같은 때 다른 장소에 있었다고 하면서") + " 직접 지각했다고 진술한다. 진술의 신빙성은 사람이 판단한다.",
+                                ((" ".join(prev.split()) + " / " + shown) if pair[2] == "ELSEWHERE_PREV_SENTENCE" else shown)[:250],
+                                status=VerificationStatus.SUSPICIOUS,
+                                features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION_STRUCTURE", "pattern": pair[2]}))
         # L2
         c = _L2_CAUSE_RE.search(sent)
         if c and _L2_SINGLE_RE.search(sent[:c.start()]) and _L2_PAST_RE.search(sent[:c.start()]) \
@@ -2892,18 +3031,33 @@ def check_reasoning_structure(doc: NormalizedDocument) -> List[Finding]:
     return out
 
 
+_SO_LABEL_FIX_RE = re.compile(r"(?<![가-힣])(갑|을)(\s?제\s?\d)")
+
+
+def _so_notation_display(doc: NormalizedDocument, findings: List[Finding]) -> List[Finding]:
+    """TK-149: 신청 사건 서면이 '소갑·소을'만 쓰면 결과 제목·설명의 호증 표기도 '소갑·소을'로 보인다(당사자 키는 '갑·을' 그대로).
+    맨 '갑·을' 인용이 함께 있으면 어느 쪽인지 알 수 없으므로 바꾸지 않는다."""
+    refs = [r for r in parse_exhibits(build_reading_text(doc).text) if r["party"] in ("갑", "을")]
+    if not refs or any(not r["label"].startswith("소") for r in refs):
+        return findings
+    for f in findings:
+        f.title = _SO_LABEL_FIX_RE.sub(r"소\1\2", f.title)
+        f.detail = _SO_LABEL_FIX_RE.sub(r"소\1\2", f.detail)
+    return findings
+
+
 def check_document(doc: NormalizedDocument) -> List[Finding]:
     exhibits = exhibit_rows(doc)
     from .internal_inconsistency import check_internal_inconsistency
 
-    return (
+    return _so_notation_display(doc, (
         check_exhibits(doc)
         + check_statements(doc, exhibits)
         + check_evidence_numbering_mismatches(doc, exhibits)
         + _form_findings(doc, exhibits)
         + check_internal_inconsistency(doc)
         + check_reasoning_structure(doc)
-    )
+    ))
 
 
 # --- 서면 간 문장 복사 -------------------------------------------------------------
