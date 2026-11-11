@@ -3611,3 +3611,53 @@ F9 [법리 오류] 채무불이행 손해배상(민법 제390조)의 요건사�
 - 은퇴·고정 세트 기준 대비 하락 0. 은퇴 점수 상승이 있으면 평가 측 귀속 확인 전에는 득점으로 적지 않는다.
 - PR 본문 축별 자체 점검 표: F1(역할 3값: 있은 날·안 날·통지/송달), F5~F7(창 처음·끝 × 추가·삭제·치환, 생략 유무), F8(날짜 표기 유무 × 새/옛 법리, 원심 판단 긍정/부정 × 괄호 인용 유무).
 ```
+
+### 2-33-5. 사용자 결정 반영 (11-11)
+- **X6 승인**(사용자 11-11 'X6 승인'): `tests/test_ground_truth_prepared_brief.py::test_precedent_and_regulation_existence` 단언 3줄 변경 — CRITICAL·FAKE_PRECEDENT → MEDIUM·SOURCE_LIMIT(FAKE_PRECEDENT 없음)·levels.authority_status UNCONFIRMED_SOURCE_LIMIT. 시험 이름 유지, 삭제 없음. 평가 측 증분 [patches/X6_ground_truth_assertion_on_ea2ef8a.diff](patches/X6_ground_truth_assertion_on_ea2ef8a.diff): #254 head `ea2ef8a`·#257 head `d8af690`·평가 측 사본 `dd951fb`에 적용 가능, 적용 뒤 그 시험 통과(평가 측 재실행). 구현 측이 #254 브랜치에 그대로 넣고 연쇄로 전파한다(X5와 같은 방식).
+- **D4: L1 비활성화**(사용자 11-11 '권고대로 L1 비활성화') → **TK-151**. 아래 2-34 지시.
+- D3(TK-150 행정기본법 제36조 제4항)·D5(조치 안내의 서면 역할)는 결정 대기.
+
+## 2-34. TK-151 지각 구조 L1 기본 비활성화 구현 지시 (11-11, 사용자 결정 D4)
+- 평가 측 사본 `97d241b`(기준 Steve `649a162`) 사전 검증. 증분 [patches/TK-151_l1_off_on_649a162.diff](patches/TK-151_l1_off_on_649a162.diff).
+
+```
+[평가 측 구현 지시 — TK-151 지각 구조 L1 기본 비활성화, 기준 Steve 649a162, 11-11]
+
+목적: 사용자 결정 D4(11-11 '권고대로 L1 비활성화'). 0.18.0 배포 전에 EVI.BEYOND_PERCEPTION_STRUCTURE의 L1(앞 문장 다른 장소 체재 + 다음 문장 직접 지각,
+문장 안 연결어미 꼴 포함)을 기본으로 끈다. 규칙 코드는 지우지 않고 재설계 때 다시 켠다. 한 PR, 제품 1파일 packages/claim_engine/evidence_consistency.py + 시험 2파일.
+설계 메모 불요(평가 측 사본으로 사전 검증 완료).
+
+원인(평가 측 재실행): L1은 목격자가 자기 위치를 밝힌 통상 진술('당시 저는 [장소]에 있었습니다. 그때 … 직접 보았습니다')을 '다른 장소 체재'로 단정한다.
+보정에 쓰지 않은 확인 탐침 12차에서 Steve 649a162 대조 오탐 8/12. 평가 측 수정안 둘(사건 장소 근거 요구 6/12, 양보 연결 한정 2/12·양성 3/5)도 수용 수준이 아니다
+('에서'가 사건 장소인지 출처·조망 지점인지 규칙으로 못 가림). 재설계는 설계 메모로 따로 다룬다.
+
+고칠 것(줄 번호는 649a162 기준)
+1. 18행 import re 앞에 import os.
+2. check_reasoning_structure(2977행) 바로 앞에 다음 함수를 두고 주석으로 이유(TK-151, 사용자 결정 D4)를 적는다:
+   def _l1_enabled() -> bool: return os.environ.get("LV_ENABLE_PERCEPTION_STRUCTURE_L1", "0") == "1"
+   - 호출 때마다 읽는다(모듈 상수로 고정하지 않는다 — 시험이 monkeypatch로 켠다).
+3. 함수 첫머리에서 l1_on = _l1_enabled()를 한 번 구하고,
+   - 2990행 'if prev and not _L1_OTHER_TIME_RE.search(sent):' → 'if l1_on and prev and not …'
+   - 2995행 'm_in = _L1_INLINE_RE.search(sent)' → 'm_in = _L1_INLINE_RE.search(sent) if l1_on else None'
+   이렇게 하면 pair가 None으로 남아 L1 결과가 나오지 않고, 같은 루프의 L2·L3는 그대로 돈다.
+4. 바꾸지 말 것: perception_conflict(같은 문장 안 규칙, 0.17.0 배포분 — ELSEWHERE_SAME_TIME 포함), L1 보조 정규식·함수(_L1_*, _l1_elsewhere_stay),
+   L2·L3. 파이프라인·설정·화면은 건드리지 않는다.
+
+시험
+- tests/test_tk76_logic_eval.py: TestL1PreviousSentenceElsewhere에 setUp으로 mock.patch.dict(os.environ, {"LV_ENABLE_PERCEPTION_STRUCTURE_L1": "1"})를 걸어
+  기존 단언을 그대로 둔다(약화 없음). 새 클래스 TestL1DisabledByDefault 1건 — 스위치 없이 L1 양성 2꼴(앞 문장 체재·문장 안 '-는데')이 결과를 내지 않음.
+- tests/test_tk76_b_bundle_eval.py: pytest fixture l1_on(monkeypatch.setenv(…, "1"))을 두고 이름이 test_l로 시작하는 L 계열 시험 8개에만 인자로 준다
+  (O 계열 시험은 그대로).
+- 증분 docs/handoff/patches/TK-151_l1_off_on_649a162.diff를 그대로 적용해도 된다.
+
+평가 측 사전 검증(사본 97d241b, 평가 측 재실행)
+- 관련 시험 3파일(logic·B 묶음·perception_structure) 74건 통과. 시험 약화 점검 '삭제·표시 변경 없음', 하드코딩·보호 경로 통과.
+- 확인 탐침 11차 Steve 양성 4/4·대조 오탐 2/7 → 사본 1/4·0/7, 12차 Steve 5/5·8/12 → 1/5·0/12(남은 양성은 같은 문장 안 규칙 — 의도대로).
+- 은퇴 5세트 53.3/48.6/56.9/45.8/34.1·오탐 0, 고정 82.6/81.9/0 — 변화 0(L1은 세트 득점에 기여 없음).
+- 전체 시험 11,231건 통과(실패 0, 건너뜀 35).
+
+제출물·수용 기준
+- 귀속표 '세트 득점 0'. PR 본문에 사용자 결정 원문('D4는 권고대로 L1 비활성화')과 대응을 적는다.
+- 수용: CI 전부 성공, 위 시험 통과, 평가 측 확인 탐침 재실행 결과 위와 같음.
+- LV 연쇄(#252~#257)와 같은 파일을 건드리지 않으므로 병합 순서는 상관없다(평가 측 확인: LV는 legal_engine만 바꾼다).
+```
