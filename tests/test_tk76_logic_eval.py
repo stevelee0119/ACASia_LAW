@@ -2,8 +2,10 @@
 """TK-76 3주기 EVI-LOGIC 잔여 평가 측 시험(L1~L3). 평가 측 비공개 탐침과 다른 낱말로 새로 지은 합성예다."""
 from __future__ import annotations
 
+import os
 import time
 import unittest
+from unittest import mock
 
 from packages.claim_engine.evidence_consistency import check_reasoning_structure
 from packages.common.schemas import Block, NormalizedDocument, Page
@@ -23,6 +25,12 @@ def _rules(lines):
 
 
 class TestL1PreviousSentenceElsewhere(unittest.TestCase):
+    # TK-151: L1은 기본으로 꺼져 있다(재설계 대기). 규칙 자체의 회귀는 스위치를 켜고 그대로 본다.
+    def setUp(self):
+        patcher = mock.patch.dict(os.environ, {"LV_ENABLE_PERCEPTION_STRUCTURE_L1": "1"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_elsewhere_then_direct_sight(self):
         self.assertIn("EVI.BEYOND_PERCEPTION_STRUCTURE", _rules(
             ["그 시간에 저는 목포항 여객터미널 대합실에 있었습니다.", "저는 피고가 창고 열쇠를 숨기는 것을 똑똑히 보았습니다."]))
@@ -42,6 +50,17 @@ class TestL1PreviousSentenceElsewhere(unittest.TestCase):
         # 대조: 이동 표지('이동하여', '도착한 뒤에') 및 매개 지각('전해 들었다')
         self.assertEqual(_rules(["당시 저는 오전에 수원 지점에 있었습니다.", "그 뒤 본사로 이동하여 피고가 서류를 가져가는 것을 직접 보았습니다."]), [])
         self.assertEqual(_rules(["그때 저는 제주 공항 대합실에 머물렀습니다.", "저는 피고가 매장에서 소란을 피웠다고 동료에게 전해 들었습니다."]), [])
+
+
+class TestL1DisabledByDefault(unittest.TestCase):
+    """TK-151(사용자 11-11 결정 D4): 스위치가 없으면 L1 결과를 내지 않는다."""
+    def test_l1_off_by_default(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("LV_ENABLE_PERCEPTION_STRUCTURE_L1", None)
+            self.assertNotIn("EVI.BEYOND_PERCEPTION_STRUCTURE", _rules(
+                ["그 시간에 저는 목포항 여객터미널 대합실에 있었습니다.", "저는 피고가 창고 열쇠를 숨기는 것을 똑똑히 보았습니다."]))
+            self.assertNotIn("EVI.BEYOND_PERCEPTION_STRUCTURE", _rules(
+                ["당시 저는 목포 물류센터에 있었는데, 그때 피고가 원고의 차량을 긁는 장면을 직접 보았습니다."]))
 
 
 class TestL2SingleToAlways(unittest.TestCase):

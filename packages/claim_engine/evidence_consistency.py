@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 from datetime import date
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -2974,8 +2975,16 @@ _L3_CONSENT_RE = re.compile(r"(?:동의|승낙|수락|합의|승인)(?:한|하�
 _L3_EXCUSE_RE = re.compile(r"약정|간주|본다고|보기로|상법\s?제53조|낙부\s?통지|상시\s?거래|볼\s?수\s?(?:는\s?)?없|아니")
 
 
+# TK-151(사용자 11-11 결정 D4): L1(앞 문장 다른 장소 체재 + 다음 문장 직접 지각, 문장 안 연결어미 꼴 포함)은 통상 목격 진술
+# ('당시 저는 편의점 앞에 있었습니다. 그때 … 직접 보았습니다')을 다른 장소 체재로 단정하는 오탐이 많아 재설계 전까지 기본으로 끈다.
+# 같은 문장 안 규칙(perception_conflict, 0.17.0 배포분)과 L2·L3는 그대로 돈다. 재설계·시험용으로만 켠다.
+def _l1_enabled() -> bool:
+    return os.environ.get("LV_ENABLE_PERCEPTION_STRUCTURE_L1", "0") == "1"
+
+
 def check_reasoning_structure(doc: NormalizedDocument) -> List[Finding]:
     out: List[Finding] = []
+    l1_on = _l1_enabled()
     reading = build_reading_text(doc, [b for b in doc.body_blocks() if b.block_type != "running_head"])
     text = reading.text
     bounds = list(sentence_bounds(text))
@@ -2987,12 +2996,12 @@ def check_reasoning_structure(doc: NormalizedDocument) -> List[Finding]:
         shown = " ".join(sent.split())[:250]
         # L1
         pair = None
-        if prev and not _L1_OTHER_TIME_RE.search(sent):
+        if l1_on and prev and not _L1_OTHER_TIME_RE.search(sent):
             # 줄 나뉨: 앞 줄이 '체재 + 연결어미(,)'로 끝나면(PDF 줄바꿈) 그 체재 절을 앞 문장으로 본다
             m_tail = _L1_INLINE_RE.search(prev.rstrip() + " ")
             prev_n = (prev[:m_tail.start("conn")] + "습니다.") if (m_tail and not prev.rstrip()[m_tail.end() - 1:].strip()) else prev
             pair = (prev_n, sent, "ELSEWHERE_PREV_SENTENCE")
-        m_in = _L1_INLINE_RE.search(sent)
+        m_in = _L1_INLINE_RE.search(sent) if l1_on else None
         if (pair is None or not _l1_elsewhere_stay(prev, sent)) and m_in:
             rest = sent[m_in.end():]
             if not _L1_OTHER_TIME_RE.search(rest):
