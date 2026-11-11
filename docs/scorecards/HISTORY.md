@@ -1836,3 +1836,12 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
 - 11-11 LV 3차 판정: F11·F12·허용 등록 체리픽 반영, LV 범위 = 사본 `2fded7c`(diff 0). Steve `c89e191` 합본: 확인 탐침 12/12, PostgreSQL API 31건, 은퇴·고정 변화 0, SQLite 전체 실패 1(시간 시험, 단독 재실행 통과·LV 무관). **#252~#257 수용(조건: 남은 CI 성공)**. 보완 회차: 1차 F1~F9 → 결정 반영 F10·X6 → 2차 F11·F12(평가 측 확인 탐침·CI 재현) → 3차 수용.
 - 11-12 CI 재확인: #257 `105ce3f` CI 전부 성공(SQLite·PostgreSQL 각 2회 포함) → LV-01~06 수용 확정(병합 대기, 초안 상태 해제 필요).
 - 11-12 사용자 '#252~257 병합' → 평가 측이 각 head = 판정 SHA 확인, 초안 해제 뒤 #252→#257 차례 병합: Steve `a506de9`·`04c2f3d`·`3284a61`·`680f26a`·`3bc9f16`·`db7e81c`. 최종 Steve 트리 = 평가 측 검증 합본 `c000753` 트리(d7f5bca, 동일).
+
+### 2026-11-12 0.18.0 릴리스 후보 verify_all (평가 측 재실행, HEAD `db7e81c`, 기준 0.17.0 `deb387d`, 모드 full)
+- 범위: 0.17.0 이후 병합 PR #209~#258. 환경: Python 3.11.18, tesseract 5.3.4, 오프라인(LV_ALLOW_NETWORK=0).
+- 통과: environment·acceptance 1,239·regression_ledger 2,357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths(바뀐 보호 경로 16개 모두 평가 측 커밋 또는 승인)·version_policy·full_tests 9,973(실패 0).
+- browser_tests: 196 통과·1 실패(`tests/test_drive_rag_relevance.py::test_web_shows_drive_health_selection_and_duplicates`). 단독 3회·브라우저 묶음 전체(197건) 재실행 모두 통과. 같은 시험이 11-10 #248 CI에서도 30초 요소 캡처 시간 초과로 한 번 실패 후 재실행 통과 → 불안정 시험(제품 결함 아님)으로 판단, 후속 안정화 티켓 후보.
+- 고정 dev 82.6·holdout 81.9·FP 0(기준선 유지). 은퇴 세트(0.17.0 시점에 있던 4세트) 08 53.3→53.3, 08b 46.8→48.6, 09 53.4→56.9, 10 45.8→45.8, 오탐 0·A 0·인젝션 방어 유지(후퇴 없음). 20261025 세트는 0.17.0 이후 은퇴라 기준 비교 없음(현재 34.1·오탐 0).
+- PostgreSQL: LV 합본(트리 = db7e81c)에서 tests/test_api.py 31건 통과, LV 사본 전체 11,443건 통과(11-11). CI는 #257 두 벌 성공.
+- 측정 못 함: 온라인(공식 DB·AI 모델·Drive 대조), 봉인 세트 신규 출제분, train.
+- 판정: **릴리스 후보 수용 가능**(불안정 화면 시험 1건 재실행 통과 조건). 다음: 버전 커밋 0.18.0 → main 병합·배포(사용자 승인).
