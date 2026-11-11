@@ -10,7 +10,7 @@ import json
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from packages.common.enums import EvidenceGrade, FindingType, Severity, VerificationStatus
 from packages.common.schemas import Evidence, Finding, NormalizedDocument
@@ -132,7 +132,7 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
 
     # 1. 처분일 탐지
     disp_dates = set()
-    for m in re.finditer(r"(?:처분일|원처분일|처분을\s*안\s*날|처분(?:이)?\s*있은\s*날)\s*[:：]?\s*" + DATE_RE.pattern, scope_text):
+    for m in re.finditer(r"(?:처분일|원처분일|처분(?:이)?\s*있은\s*날)\s*[:：]?\s*" + DATE_RE.pattern, scope_text):
         d = parse_d(m)
         if d:
             disp_dates.add(d)
@@ -156,6 +156,13 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
                 notif_dates.add(d)
     notif_date = next(iter(notif_dates)) if len(notif_dates) == 1 else None
 
+    # 2-1. 처분이 있음을 안 날(행정소송법 제20조 제1항의 기산점) — 처분이 있은 날(같은 조 제2항)과 다른 역할이다
+    aware_dates = set()
+    for m in re.finditer(r"처분(?:이\s*있음|\s*등이\s*있음)?을\s*안\s*날\s*[:：]?\s*" + DATE_RE.pattern, scope_text):
+        d = parse_d(m)
+        if d:
+            aware_dates.add(d)
+
     # 3. 소제기일 탐지 (소제기일, 소장 접수일/제출일)
     # 심판청구일이나 접수일 단독(증명서 발급신청 접수일 등), 부정문, 예정문, 조건문(경우 등)은 제외
     # 서법 검사는 줄 바꿈(\n) 및 문장 종결 기호 이전의 동일 명제 범위로 한정한다 (LV-01-R4).
@@ -175,7 +182,7 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
         d = parse_d(m)
         if d:
             filing_dates.add(d)
-    for m in re.finditer(DATE_RE.pattern + r"[^.\n]{0,35}?(?:본\s*소를?\s*(?:제기|접수)|소장을?\s*(?:제출|접수))", scope_text):
+    for m in re.finditer(DATE_RE.pattern + r"[^.\n]{0,35}?(?:(?:본|이\s*사건)\s*소를?\s*(?:제기|접수)|소장을?\s*(?:제출|접수))", scope_text):
         sent_end = len(scope_text)
         nl = scope_text.find("\n", m.end())
         if nl != -1:
@@ -192,8 +199,10 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
             filing_dates.add(d)
 
     # 동일 역할에 복수의 서로 다른 날짜 후보가 상충하면 임의 선택하지 않고 보류 (LV-01-R3)
-    if len(disp_dates) > 1 or len(notif_dates) > 1 or len(filing_dates) > 1:
+    if len(disp_dates) > 1 or len(notif_dates) > 1 or len(filing_dates) > 1 or len(aware_dates) > 1:
         conflicts = []
+        if len(aware_dates) > 1:
+            conflicts.append("처분을 안 날 상충")
         if len(disp_dates) > 1:
             conflicts.append("원처분일 상충")
         if len(notif_dates) > 1:
@@ -208,14 +217,17 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
     disp_date = next(iter(disp_dates)) if len(disp_dates) == 1 else None
     notif_date = next(iter(notif_dates)) if len(notif_dates) == 1 else None
     filing_date = next(iter(filing_dates)) if len(filing_dates) == 1 else None
+    aware_date = next(iter(aware_dates)) if len(aware_dates) == 1 else None
 
-    notif_label = "이의신청 통보일" if "이의" in scope_text else "통지일"
+    notif_label = ("재결서 송달일" if re.search(r"재결서", scope_text) else "이의신청 통보일" if "이의" in scope_text else "통지일")
 
     # 소제기일이 없거나 불명확하면 서면 작성일이나 오늘로 대체하지 않고 계산 보류 처리 (LV-01)
     if not filing_date:
         known_bases = []
         if disp_date:
             known_bases.append(f"원처분일 {disp_date.year}. {disp_date.month}. {disp_date.day}.")
+        if aware_date:
+            known_bases.append(f"처분을 안 날 {aware_date.year}. {aware_date.month}. {aware_date.day}.")
         if notif_date:
             known_bases.append(f"{notif_label} {notif_date.year}. {notif_date.month}. {notif_date.day}.")
         if known_bases:
@@ -231,6 +243,9 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
         days_from_disp = (filing_date - disp_date).days
         parts.append(f"원처분일({disp_date.year}. {disp_date.month}. {disp_date.day}.) 기준: {days_from_disp}일 경과")
 
+    if aware_date and filing_date and filing_date >= aware_date:
+        parts.append(f"처분을 안 날({aware_date.year}. {aware_date.month}. {aware_date.day}.) 기준: {(filing_date - aware_date).days}일 경과")
+
     if notif_date and filing_date and filing_date >= notif_date:
         days_from_notif = (filing_date - notif_date).days
         parts.append(f"{notif_label}({notif_date.year}. {notif_date.month}. {notif_date.day}.) 기준: {days_from_notif}일 경과")
@@ -238,6 +253,37 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
     if parts:
         return " [실제 일수 동적 계산] " + " / ".join(parts) + f" (소제기일: {filing_date.year}. {filing_date.month}. {filing_date.day}.)"
     return ""
+
+
+# TK-150(사용자 11-11 결정 D3): 행정기본법 제36조 제4항은 이의신청 결과를 통지받은 날부터 90일 이내 행정심판·행정소송을 허용하고,
+# 부칙 제6조는 이를 부칙 제1조 단서 시행일(2023. 3. 24.) 이후 처분부터 적용한다. 같은 조 제8항 사항(공무원 징계, 국가인권위원회 진정,
+# 노동위원회 의결, 형사·행형·보안처분, 외국인 출입국·난민·귀화·국적회복, 과태료)에는 이 조가 적용되지 않는다.
+ADMIN_ACT_36_START = (2023, 3, 24)
+ADMIN_ACT_36_EXCLUDED_RE = re.compile(r"징계|국가인권위원회|노동위원회|형사|행형|보안처분|출입국|난민|귀화|국적\s*회복|과태료")
+
+
+def _admin_objection_premise(doc: NormalizedDocument, claim: str) -> Tuple[str, Optional[Any]]:
+    """이의신청 결과 통지일 기산 주장의 법적 전제: (EXCLUDED|PRE_2023|POST_2023|UNKNOWN, 처분일)."""
+    from datetime import date
+    from packages.claim_engine.evidence_consistency import DATE_RE
+    scope_text = claim + "\n" + (getattr(doc, "full_text", "") or "")
+    if ADMIN_ACT_36_EXCLUDED_RE.search(scope_text):
+        return "EXCLUDED", None
+    found = set()
+    patterns = (r"(?:처분일|원처분일|처분(?:이)?\s*있은\s*날)\s*[:：]?\s*" + DATE_RE.pattern,
+                DATE_RE.pattern + r"[^.\n]{0,25}?(?:처분|결정)(?:을|를|이)?\s*(?:받|하|내렸|고지|있은)")
+    for pattern in patterns:
+        for m in re.finditer(pattern, scope_text):
+            try:
+                found.add(date(int(m.group("y")), int(m.group("m")), int(m.group("d"))))
+            except ValueError:
+                continue
+        if found:
+            break
+    if len(found) != 1:
+        return "UNKNOWN", None
+    disp = next(iter(found))
+    return ("PRE_2023" if disp < date(*ADMIN_ACT_36_START) else "POST_2023"), disp
 
 
 def _finding(doc: NormalizedDocument, rule: Dict[str, Any], claim: str, sources: Dict[str, Any]) -> Finding:
@@ -256,16 +302,34 @@ def _finding(doc: NormalizedDocument, rule: Dict[str, Any], claim: str, sources:
                                         grade=EvidenceGrade.A, excerpt=str(source.get("text", ""))[:300]))
 
     explanation = rule.get("explanation", "")
+    verdict = rule["verdict"]
+    status_value = rule.get("status", "SUSPICIOUS")
     if rule.get("rule_id") == "ADMIN.DEADLINE_CALCULATION_SCENARIOS":
+        premise, disp = _admin_objection_premise(doc, claim)
+        features["admin_basic_act_36"] = premise
+        if premise in ("POST_2023", "UNKNOWN"):
+            # 처분일이 2023. 3. 24. 이후이거나 알 수 없으면 통지일 기산이 적법할 수 있다 — 단정하지 않고 확인 요청으로 낮춘다
+            grade, status_value = "C", "SUSPICIOUS"
+            verdict = "이의신청 통지일 기준 제소기간 기산 주장 — 처분일·적용 법령 확인 필요"
+            features.update({"verdict": verdict, "confidence": CONFIDENCE.get(grade, 0.5)})
+            if premise == "POST_2023":
+                explanation = (f"처분일({disp.year}. {disp.month}. {disp.day}.)이 2023. 3. 24. 이후이므로 행정기본법 제36조 제4항(부칙 제6조)에 따라 "
+                               "이의신청 결과를 통지받은 날부터 90일 이내에 행정심판 또는 행정소송을 제기할 수 있다. 다만 같은 조 제1항의 이의신청"
+                               "(처분을 받은 날부터 30일 이내)인지, 같은 조 제8항의 적용 제외 사항이거나 개별 법률에 다른 규정이 있는지 확인해야 한다.")
+            else:
+                # 판례 번호는 규칙 설정(rules.json)의 설명에만 둔다(제품 코드 사건 고유값 금지)
+                explanation = ("처분일을 문서에서 특정하지 못했다. 2023. 3. 24. 이후 처분이면 행정기본법 제36조 제4항(부칙 제6조)에 따라 "
+                               "이의신청 결과를 통지받은 날부터 90일 이내에 제소할 수 있다. 그 이전 처분이면 다음 설명이 적용된다. 처분일을 확인해야 한다. "
+                               + rule.get("explanation", ""))
         dynamic_calc = _calculate_dynamic_deadline(doc, claim)
         if dynamic_calc:
             explanation += dynamic_calc
 
     return Finding.create(
-        type=kind, status=VerificationStatus(rule.get("status", "SUSPICIOUS")),
+        type=kind, status=VerificationStatus(status_value),
         severity=Severity.HIGH if grade in ("A", "B") and not rule.get("human_review") else Severity.MEDIUM,
         evidence_grade=GRADES.get(grade, EvidenceGrade.C),
-        title=f"법리 검토: {rule['verdict']} — '{claim[:70]}'" + (" (사람 판단 필요)" if rule.get("human_review") else ""),
+        title=f"법리 검토: {verdict} — '{claim[:70]}'" + (" (사람 판단 필요)" if rule.get("human_review") else ""),
         detail=explanation + (" 근거: " + "; ".join(b["name"] for b in basis) if basis else "")
         + (f" 근거 조문({', '.join(rule['basis_pending'])})의 공식 원문은 아직 수집하지 않았으므로 원문 대조는 사람이 한다."
            if rule.get("basis_pending") else ""),
