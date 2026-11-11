@@ -93,3 +93,35 @@ class DatePremiseStatus(StrEnum):
    - 대규모 외부 전송이나 유료 법률 DB API 계약 확장은 별도 제안으로 분리한다.
 2. **독립 평가 권한 존중**:
    - 구현 측의 자체 단위/합성 시험 통과는 제품 수용이나 독립 평가 통과를 의미하지 않으며, 최종 병합 및 배포는 평가 측 및 사용자의 절차에 따른다.
+
+---
+
+## 5. 인용 대조 생산자-소비자 상태 매트릭스 (Producer-Consumer State Matrix, Round 5)
+
+공식 DB 원문 대조 결과가 판례 존재 여부(VERIFIED)와 혼동되어 `OFFICIAL_CONFIRMED`로 덮어씌워지는 현상을 방지하기 위해, 생산자(`LegalVerifier`)와 소비자(`verify_argument_validity` 및 대조표) 간의 상태 전이 및 표시 규약을 아래와 같이 명확히 구분한다:
+
+| 공식기록 유무 | 인용 대조 상태 (`quote_diff_status`) | 차이 유형 성격 (`diff_categories`) | Row Basis | Verification Status | 제목 / 검토 요약 | 조치 유형 (`action_type`) 및 권고 요약 |
+|---|---|---|---|---|---|---|
+| **기록 있음** | `EXACT_MATCH` (유사도 1.0) | 없음 | `OFFICIAL_CONFIRMED` | `VERIFIED` | 공식 원문 일치 (사건 적용성 직접 검토 필요) | `APPLICATION_CHECK`: 사안 사실관계 및 특약 조건 직접 검토 |
+| **기록 있음** | `MODIFIED_QUOTE` (유사도 >= 0.75) | 실질 변경 (`NEGATION`, `PARTY_SWAP`, `PROVISO_OMISSION` 등) | `CONTENT_MISMATCH` | `CONTRADICTED` | 인용문 변형 (원문과 어절 차이) | `QUOTE_REVIEW`: 공식 원문과 대조하여 정확한 자구로 정정 |
+| **기록 있음** | `MODIFIED_QUOTE` (유사도 >= 0.75) | 일반 표현 (`MINOR_WORDING`) | `CONTENT_MISMATCH` | `CONTRADICTED` | 인용문 단순 자구 차이 (원문 대조 필요) | `QUOTE_REVIEW`: 판결요지 인용문과 어절 대조 확인 |
+| **기록 있음** | `UNALIGNED_QUOTE` (유사도 < 0.50) | 불명 / `CONTENT_MISMATCH` | `CONTENT_MISMATCH` | `CONTRADICTED` | 인용문 불일치 (원문 대응 구간 미확정) | `SOURCE_VERIFICATION`: 원문 검색 및 정확한 판례 문맥 대조 |
+| **기록 있음** | 미대조 (요약본만 확보 / 본문 미확보) | 없음 | `UNCONFIRMED` | `UNCONFIRMED_SOURCE_LIMIT` | 출처 한계 확인 불가 (판결문 사본 확인 필요) | `SOURCE_VERIFICATION`: 판결문 사본 확인 및 출처 조회 |
+| **기록 없음** | 미대조 (성립 불가 사건번호) | 무관 | `FABRICATION_SUSPECTED` | `SUSPICIOUS` | 성립 불가 사건번호 (오기 의심) | `SOURCE_VERIFICATION`: 사건번호 정정 요청 석명 신청 |
+| **기록 없음** | 미대조 (공식 DB 미발견) | 무관 | `UNCONFIRMED` | `UNCONFIRMED_SOURCE_LIMIT` | 공식 DB 미확인 (원문 확인 필요) | `SOURCE_VERIFICATION`: 사본 제출 요구 및 열람 신청 |
+| **무관** | 미검증 / 보류 (`UNKNOWN`, `SUSPENDED`) | 무관 | `UNCONFIRMED` / `SUSPENDED` | `UNVERIFIED` / `SUSPENDED` | 검증 미실시 또는 전제 결여 보류 | `SOURCE_VERIFICATION`: 전제 요건 확인 및 공식 출처 대조 |
+
+---
+
+## 6. 원문 요구(ORIGINAL_LV_REQUIREMENTS.md) 대응 및 완료 범위 분리 현황
+
+본 LV-01~LV-06 PR 체인의 구현은 평가 에이전트의 공개 합성 계약 및 회귀 기준을 충족하는 단계적 정비이며, 전체 원문 요구의 수용 완료와 구별하여 관리한다:
+
+| 원문 단계 | 기구현 및 확인 범위 | 미구현 / 후속 과제 범위 | 미검증 범위 |
+|---|---|---|---|
+| **LV-01** | 실제 날짜 대체 차단, 소제기일/기산점 결여 시 `SUSPENDED` 처리, 동일 행 내 문장 경계(`[.?!]`) 분리 | 역할 메타데이터 완전 구조화(JSON schema 확정), 복합 사건/처분 식별자 1:1 결합, 가정 시나리오 구분 | 화면/UI, PDF/DOCX 보고서 출력 일치 여부 |
+| **LV-02** | 반복 인용 앵커 분리, 좌표 타입 가드(`_is_valid_coord_pair`), 평가 문맥(`evaluation_context`) 1000자 보존 | 1000자 초과 시 문단 예산 정책, 전송 구간 마스킹 매핑의 온전한 보존 모델 | 대규모 복합 서면 실사 및 모델 교차 인용 검증 |
+| **LV-03** | 미발견!=허위 분리, 검증 증명 없는 클라이언트 전수수록 거부(`covered=False`), 3단 판정 체계화 | 서버 서명 기반 Adapter Coverage Attestation 시스템, 구 버전 payload 마이그레이션 | 외부 법률 DB 실시간 연동 및 동적 수록 범위 갱신 |
+| **LV-04** | 어절 단위 quote diff, 차이 5종 분류, `quote_meaningful_change` 직렬화 보존, verifier level3 연계 | 원문 요구인 trace/replay(검증 기록/고정 응답 재생), 변조·누락 격리 시험 | 상용 외부 모델 간 응답 재생 및 캐시 격리 |
+| **LV-05** | 전원합의체 변경 판례, 파기환송 원심 판단 오인, 반대의견 오인 탐지, 내포절 수식과 주절 술어 분리 | Reranker 및 전문 명제 대조 파이프라인의 코퍼스/질의/예산 비교 채택 | 비공개 실사 사건 판결문 대상의 종합 구문/의미 분석 |
+| **LV-06** | 알 수 없는 상태의 중립 안내, 인용 차이 발생 시 `QUOTE_REVIEW` 연계 및 `OFFICIAL_CONFIRMED` 오승격 차단 | 제한 사건군 요건사실 완전 데이터베이스, 다툼/누락 사실의 주장-증거 체인 매핑 | 변호사 실무 검토 및 UI/보고서 상의 긴 문구 레이아웃 |

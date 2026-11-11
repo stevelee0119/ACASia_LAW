@@ -400,6 +400,11 @@ async def verify_argument_validity(
         sem_rev = sem_by_cid.get(cid)
         sem_status = str(sem_rev.get("status", "")) if sem_rev and sem_rev.get("source_quotes_validated") else ""
 
+        is_quote_mismatch = bool(
+            levels.get("level3") in ("CONTRADICTED", "MODIFIED")
+            or (verdict.get("review") or {}).get("quote_diff_categories")
+            or (verdict.get("review") or {}).get("quote_diff_status") == "MODIFIED_QUOTE"
+        )
         # 판례가 공식 소스에서 발견되지 않았거나(NOT_FOUND), 심각한 불일치가 있거나,
         # 시맨틱 검토에서 판례 취지 왜곡(CONTRADICTED) 또는 사실관계 적용 차이(DISTINGUISHABLE)가 확인된 경우
         is_unverified = (status in ("NOT_FOUND", "CONTRADICTED") or levels.get("level1") == "NOT_FOUND"
@@ -411,6 +416,7 @@ async def verify_argument_validity(
             and status in ("VERIFIED", "PARTIALLY_VERIFIED")
             and not is_unverified
             and not is_semantic_issue
+            and not is_quote_mismatch
             and bool(verdict.get("official_record"))
         )
 
@@ -431,20 +437,23 @@ async def verify_argument_validity(
             distortion_label = feats.get("verdict_label")
             grounded_evidence_quote = feats.get("grounded_evidence_quote") or ""
 
-        if is_unverified or is_semantic_issue or is_official_confirmed:
+        if is_unverified or is_semantic_issue or is_official_confirmed or is_quote_mismatch:
             auth_id = make_authority_id(citation)
             court_tier = get_court_tier(citation)
             is_cov = is_covered_precedent_scope(citation)
 
-            if is_official_confirmed:
-                basis = "OFFICIAL_CONFIRMED"
-                auth_status = LegalVerificationStatus.VERIFIED.value
-            elif not case_number_possible(citation.canonical_case_number or citation.case_number or ""):
+            if not case_number_possible(citation.canonical_case_number or citation.case_number or ""):
                 basis = "FABRICATION_SUSPECTED"
                 auth_status = LegalVerificationStatus.SUSPICIOUS.value
             elif distortion_finding or sem_status == "CONTRADICTED":
                 basis = "CONTRADICTION"
                 auth_status = LegalVerificationStatus.CONTRADICTED.value
+            elif is_quote_mismatch:
+                basis = "CONTENT_MISMATCH"
+                auth_status = LegalVerificationStatus.CONTRADICTED.value
+            elif is_official_confirmed:
+                basis = "OFFICIAL_CONFIRMED"
+                auth_status = LegalVerificationStatus.VERIFIED.value
             elif sem_status == "DISTINGUISHABLE":
                 basis = "DISTINGUISHABLE"
                 auth_status = LegalVerificationStatus.CONTEXT_CAUTION.value
