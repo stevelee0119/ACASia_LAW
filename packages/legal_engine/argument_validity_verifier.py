@@ -71,9 +71,11 @@ def _context_review(verdict, reviews, mask=None):
 
 def _fabrication_row(c: Any) -> "HallucinationTableRow":
     """사건번호가 성립할 수 없는 경우. 여기서는 단정해도 된다."""
+    raw_claim = c.context[:1000] if c.context else f"{c.raw_text}에 기반한 법률적 주장"
+    display_claim = raw_claim if len(raw_claim) <= 200 else (raw_claim[:197] + "...")
     return HallucinationTableRow(
         location=f"{c.page or 1}면",
-        claim_text=c.context[:150] if c.context else f"{c.raw_text}에 기반한 법률적 주장",
+        claim_text=display_claim,
         cited_authority=c.raw_text,
         authority_exists=False,
         basis="FABRICATION_SUSPECTED",
@@ -85,6 +87,7 @@ def _fabrication_row(c: Any) -> "HallucinationTableRow":
         legal_reasoning=("실재할 수 없는 사건번호를 전제로 하고 있어 그 판례를 근거로 한 부분은 "
                          "법리적 타당성을 인정할 수 없습니다. 오기(誤記)인지 원문 확인이 필요합니다."),
         recommended_counteraction="상대방에게 판결문 사본 제출 또는 사건번호 정정 석명을 신청할 것.",
+        evaluation_context=raw_claim,
     )
 
 
@@ -146,6 +149,7 @@ class HallucinationTableRow:
     ai_label: str = ""
     citation_id: str = ""
     context_review: Dict[str, Any] = field(default_factory=dict)
+    evaluation_context: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         review = self.review_text or self.legal_reasoning
@@ -159,6 +163,7 @@ class HallucinationTableRow:
             "reasoning_sections": reasoning_sections(review, self.ai_label, opinions),
             "location": self.location,
             "claim_text": self.claim_text,
+            "evaluation_context": self.evaluation_context or self.claim_text,
             "cited_authority": self.cited_authority,
             "authority_exists": self.authority_exists,
             "ai_generation_basis": self.ai_generation_basis,
@@ -195,47 +200,148 @@ class ArgumentValidityResult:
         }
 
 
-def _extract_linked_claim(citation: Citation, doc: NormalizedDocument) -> str:
+LEGAL_SENTENCE_SPLIT_RE = re.compile(r"(?<=[가-힣][.?!])\s+|(?<=[\"')\]][.?!])\s+")
+PROVISO_EXCEPTION_RE = re.compile(
+    r"^\s*(?:다만|단[, ]|그러나|하지만|특별한\s*사정이\s*없는\s*한|예외적으로|반면|이에\s*반하여|설령|가사)"
+)
+
+
+def _is_valid_coord_pair(coord: Any) -> bool:
+    """좌표 쌍([start, end] 또는 (start, end))이 유효한 양의 정수 범위인지 엄격히 검증한다."""
+    if not isinstance(coord, (list, tuple)) or len(coord) != 2:
+        return False
+    a, b = coord
+    if type(a) is not int or type(b) is not int:
+        return False
+    return 0 <= a < b
+
+
+def _extract_linked_claim(citation: Citation, doc: NormalizedDocument, *, max_chars: int = 1000) -> str:
     """인용 판례와 직접 연결된 법률적 주장 문장을 추출한다.
 
-    앞 문단의 인적사항이나 의료정보 등 무관한 내용이 잘려 들어가지 않도록
-    줄바꿈(\\n) 및 문장 경계를 엄격히 준수한다.
+    좌표계 분리 및 원문 보존 (LV-02):
+    - reading_span: build_reading_text(doc) 기준
+    - citation.span: block 또는 document 기준
+    - citation.context: 발췌문 기준
+    인용 발생 위치를 정확히 특정하고, 문단 내 단서('다만'), 예외('특별한 사정이 없는 한'),
+    조건, 부정이 포함된 후속 문장을 최대 max_chars까지 누락 없이 보존한다.
     """
     raw_text = citation.raw_text or ""
     case_no = citation.case_number or citation.canonical_case_number or ""
 
-    # 1. context가 있을 때 줄바꿈 기준 인용구 속한 줄(문단) 우선 추출
-    if citation.context:
-        lines = [line.strip() for line in citation.context.split("\n") if line.strip()]
-        target_line = ""
-        for line in lines:
-            if (raw_text and raw_text in line) or (case_no and case_no in line):
-                target_line = line
+    # 0. citation.attributes에 명시적 claim_text가 제공된 경우 우선 고려
+    attr_claim = (citation.attributes or {}).get("claim_text")
+    if attr_claim and isinstance(attr_claim, str) and len(attr_claim.strip()) >= 15:
+        if (raw_text and raw_text in attr_claim) or (case_no and case_no in attr_claim):
+            return attr_claim[:max_chars].strip()
+
+    # 1. 대상 텍스트(target_text) 및 텍스트 내 인용 위치(span_start, span_end) 특정
+    target_text = ""
+    span_start, span_end = -1, -1
+
+    doc_text = ""
+    if doc:
+        try:
+            from packages.document_engine.reading_text import build_reading_text
+            doc_text = build_reading_text(doc).text
+        except Exception:
+            doc_text = getattr(doc, "full_text", "") or ""
+
+    reading_span = (citation.attributes or {}).get("reading_span")
+    if doc_text and _is_valid_coord_pair(reading_span):
+        r0, r1 = reading_span
+        if r1 <= len(doc_text):
+            r_text = doc_text[r0:r1]
+            if (raw_text and raw_text in r_text) or (case_no and case_no in r_text):
+                target_text = doc_text
+                span_start, span_end = r0, r1
+
+    if not target_text and doc_text and _is_valid_coord_pair(citation.span):
+        s0, s1 = citation.span
+        if s1 <= len(doc_text):
+            s_text = doc_text[s0:s1]
+            if (raw_text and raw_text in s_text) or (case_no and case_no in s_text):
+                target_text = doc_text
+                span_start, span_end = s0, s1
+
+    if not target_text and citation.context:
+        target_text = citation.context
+        if raw_text and raw_text in target_text:
+            span_start = target_text.find(raw_text)
+            span_end = span_start + len(raw_text)
+        elif case_no and case_no in target_text:
+            span_start = target_text.find(case_no)
+            span_end = span_start + len(case_no)
+        elif _is_valid_coord_pair(citation.span) and citation.span[1] <= len(target_text):
+            span_start, span_end = citation.span
+
+    if not target_text and doc_text:
+        target_text = doc_text
+        if raw_text and raw_text in target_text:
+            span_start = target_text.find(raw_text)
+            span_end = span_start + len(raw_text)
+        elif case_no and case_no in target_text:
+            span_start = target_text.find(case_no)
+            span_end = span_start + len(case_no)
+
+    if not target_text:
+        return f"{raw_text}에 기반한 법률적 주장"
+
+    # 2. 인용구가 속한 문단/줄 범위 탐색
+    line_start = target_text.rfind("\n", 0, span_start) if span_start != -1 else 0
+    line_start = 0 if line_start == -1 else line_start + 1
+    line_end = target_text.find("\n", span_end) if span_end != -1 else len(target_text)
+    line_end = len(target_text) if line_end == -1 else line_end
+    line = target_text[line_start:line_end]
+
+    rel_start = (span_start - line_start) if span_start != -1 else 0
+
+    # 3. 문단 내 문장 분리 및 인용 속한 문장부터 단서/예외/후속 문장 보존
+    # 좌표계(rel_start)가 특정된 경우 첫 텍스트 일치로 덮어쓰지 않고 해당 위치의 출현을 우선한다 (LV-02-R3)
+    sentences = [s.strip() for s in LEGAL_SENTENCE_SPLIT_RE.split(line) if s.strip()]
+    cur = 0
+    cit_idx = -1
+    for idx, s in enumerate(sentences):
+        s_pos = line.find(s, cur)
+        if s_pos == -1:
+            s_pos = cur
+        s_end_pos = s_pos + len(s)
+        cur = s_end_pos
+        if span_start != -1:
+            if s_pos <= rel_start < s_end_pos:
+                cit_idx = idx
                 break
-        if not target_line and lines:
-            target_line = lines[-1]
+        else:
+            if (raw_text and raw_text in s) or (case_no and case_no in s):
+                cit_idx = idx
+                break
 
-        if target_line:
-            # 문단 내에서 문장 단위 분리
-            sentences = re.split(r"(?<=[.?!])\s+", target_line)
-            matched = [s for s in sentences if (raw_text and raw_text in s) or (case_no and case_no in s)]
-            if matched:
-                return " ".join(matched)[:200].strip()
-            return target_line[:200].strip()
+    if cit_idx == -1 and (raw_text or case_no):
+        for idx, s in enumerate(sentences):
+            if (raw_text and raw_text in s) or (case_no and case_no in s):
+                cit_idx = idx
+                break
 
-    # 2. span 정보 기반 전체 텍스트에서 해당 문단 영역 슬라이싱
-    full_text = getattr(doc, "full_text", "") or ""
-    if citation.span and full_text:
-        start, end = citation.span
-        prev_newline = full_text.rfind("\n", 0, start)
-        para_start = prev_newline + 1 if prev_newline != -1 else max(0, start - 150)
-        next_newline = full_text.find("\n", end)
-        para_end = next_newline if next_newline != -1 else min(len(full_text), end + 200)
-        para_text = full_text[para_start:para_end].strip()
-        if para_text:
-            return para_text[:200].strip()
+    if cit_idx == -1:
+        selected_sentences = sentences
+    else:
+        end_idx = cit_idx + 1
+        while end_idx < len(sentences) and PROVISO_EXCEPTION_RE.search(sentences[end_idx]):
+            end_idx += 1
+        selected_sentences = sentences[cit_idx:end_idx]
 
-    return f"{raw_text}에 기반한 법률적 주장"
+    claim = " ".join(selected_sentences)
+
+    # 4. 다음 문단/줄이 단서나 예외로 이어지면 추가 결합
+    nxt_line_start = line_end + 1
+    if nxt_line_start < len(target_text):
+        nxt_line_end = target_text.find("\n", nxt_line_start)
+        nxt_line_end = len(target_text) if nxt_line_end == -1 else nxt_line_end
+        nxt_line = target_text[nxt_line_start:nxt_line_end].strip()
+        if PROVISO_EXCEPTION_RE.search(nxt_line):
+            claim = f"{claim} {nxt_line}"
+
+    return claim[:max_chars].strip() or f"{raw_text}에 기반한 법률적 주장"
 
 
 async def verify_argument_validity(
@@ -297,6 +403,13 @@ async def verify_argument_validity(
             else:
                 basis = "UNCONFIRMED"
 
+            linked_claim = _extract_linked_claim(citation, doc, max_chars=1000)
+            doc_full = getattr(doc, "full_text", "") or ""
+            span_ctx = ""
+            if _is_valid_coord_pair(citation.span) and doc_full:
+                s0, s1 = citation.span
+                span_ctx = doc_full[max(0, s0 - 200) : min(len(doc_full), s1 + 200)]
+            raw_context = linked_claim or citation.context or span_ctx
             unverified_cases.append({
                 "citation": citation,
                 "verdict": verdict,
@@ -304,7 +417,8 @@ async def verify_argument_validity(
                 "sem_status": sem_status,
                 "sem_review": sem_rev,
                 "quote_diff": (verdict.get("review") or {}).get("quote_diff"),
-                "context": citation.context or doc.full_text[max(0, citation.span[0] - 200) : min(len(doc.full_text), citation.span[1] + 200)] if citation.span else "",
+                "context": raw_context,
+                "evaluation_context": linked_claim,
             })
 
     # 2. 가짜 판례가 하나도 없고 주장도 없으면 기본 정상 반환
@@ -395,11 +509,12 @@ async def verify_argument_validity(
                  "조회해 볼 것. 어느 경로에서도 확인되지 않을 때 비로소 부존재를 다툴 수 있음.")
             )
 
-        linked_claim = _extract_linked_claim(c, doc)
+        linked_claim = item.get("evaluation_context") or _extract_linked_claim(c, doc, max_chars=1000)
+        display_claim = linked_claim if len(linked_claim) <= 200 else (linked_claim[:197] + "...")
 
         row = HallucinationTableRow(
             location=f"{c.page or 1}면",
-            claim_text=linked_claim,
+            claim_text=display_claim,
             cited_authority=c.raw_text,
             authority_exists=bool(item["verdict"].get("official_record")),
             basis=basis,
@@ -407,6 +522,7 @@ async def verify_argument_validity(
             validity_verdict=verdict_text,
             legal_reasoning=legal_reason,
             recommended_counteraction=counteraction,
+            evaluation_context=linked_claim,
         )
         row.item_id = index
         row.citation_id = c.citation_id
@@ -622,7 +738,8 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
         precedent_context_str = "\n".join(prec_lines)
 
     def context_for(index, item):
-        rendered, piece = render_argument_context(hide, item['context'])
+        raw_ctx = item.get("evaluation_context") or item.get("context") or ""
+        rendered, piece = render_argument_context(hide, raw_ctx)
         excerpt_pieces[index] = piece
         return rendered
     items = [{
