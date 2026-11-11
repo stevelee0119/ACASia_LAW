@@ -1,0 +1,93 @@
+diff --git a/apps/web/static/app.js b/apps/web/static/app.js
+index 7079729..3a683ee 100644
+--- a/apps/web/static/app.js
++++ b/apps/web/static/app.js
+@@ -2845,9 +2845,14 @@ function renderFindings() {
+         section.append(node("p", `[참조] ${item.source_law} ${articleLabel(item.source_article)} → ${item.target_law} ${articleLabel(item.target_article)}${titlePart} · 검토 자료`));
+       }
+       if (related.precedents && related.precedents.length > 0) {
+-        const firstScope = related.precedents[0].search_scope || "";
+-        const scopeDesc = firstScope ? `${firstScope} ` : "";
+-        section.append(node("p", `[관련 판례] ${scopeDesc}권위 순 정렬 상위 ${related.precedents.length}건 · 검토 자료`));
++        // 질의(인용 조문)마다 검색 범위가 다르다 — 질의별로 한 번씩 적는다(평가 측 보완 K1)
++        const scopes = [];
++        for (const p of related.precedents) {
++          const s = p.search_query && p.search_scope ? `${p.search_query}: ${p.search_scope}` : (p.search_scope || "");
++          if (s && !scopes.includes(s)) scopes.push(s);
++        }
++        const scopeDesc = scopes.length ? `${scopes.join(" · ")} — ` : "";
++        section.append(node("p", `[관련 판례] ${scopeDesc}권위 순 정렬 ${related.precedents.length}건 · 검토 자료`));
+         for (const p of related.precedents) {
+           const kindPart = p.case_kind ? `, ${p.case_kind}` : "";
+           const namePart = p.case_name ? ` \"${p.case_name}\"` : "";
+diff --git a/packages/legal_engine/related_authorities.py b/packages/legal_engine/related_authorities.py
+index 5d5b99a..6453f5d 100644
+--- a/packages/legal_engine/related_authorities.py
++++ b/packages/legal_engine/related_authorities.py
+@@ -720,10 +720,19 @@ def report_lines(documents):
+             lines.append(f"[참조] {r['source_law']} {article_label(r['source_article'])} → {r['target_law']} "
+                          f"{article_label(r['target_article'])}{title_part} / 검토 자료")
+         # TK-138: 관련 판례 라인 출력 (P8, U1, U5)
+-        for p in review.get("precedents", []):
+-            kind_part = f", {p['case_kind']}" if p.get("case_kind") else ""
+-            name_part = f" \"{p['case_name']}\"" if p.get("case_name") else ""
+-            scope_part = f" / {p['search_scope']}" if p.get("search_scope") else ""
+-            lines.append(f"[관련 판례] {p['case_number']} ({p['court']}, {p['decision_date']}{kind_part}){name_part} / "
+-                         f"검토 자료 (사건 당시 적용·주장 타당성은 별도 검토){scope_part}")
++        precedents = review.get("precedents", []) or []
++        if precedents:
++            # 화면과 같은 구조: 질의별 검색 범위를 머리 줄에 한 번, 판례는 그 아래 줄마다(평가 측 보완 K1)
++            scopes: List[str] = []
++            for p in precedents:
++                s = f"{p['search_query']}: {p['search_scope']}" if p.get("search_query") and p.get("search_scope") else (p.get("search_scope") or "")
++                if s and s not in scopes:
++                    scopes.append(s)
++            scope_desc = f"{' · '.join(scopes)} — " if scopes else ""
++            lines.append(f"[관련 판례] {scope_desc}권위 순 정렬 {len(precedents)}건 / 검토 자료")
++            for p in precedents:
++                kind_part = f", {p['case_kind']}" if p.get("case_kind") else ""
++                name_part = f" \"{p['case_name']}\"" if p.get("case_name") else ""
++                lines.append(f"  · {p['case_number']} ({p['court']}, {p['decision_date']}{kind_part}){name_part} "
++                             f"(사건 당시 적용·주장 타당성은 별도 검토)")
+     return lines
+diff --git a/tests/test_tk138_related_precedents.py b/tests/test_tk138_related_precedents.py
+index 41c140f..cc4ea1b 100644
+--- a/tests/test_tk138_related_precedents.py
++++ b/tests/test_tk138_related_precedents.py
+@@ -302,8 +302,9 @@ class TestTK138RelatedPrecedents(unittest.TestCase):
+ 
+         lines = report_lines([doc])
+         matched = [l for l in lines if "[관련 판례]" in l]
+-        self.assertEqual(len(matched), 1)
+-        line = matched[0]
++        self.assertEqual(len(matched), 1)  # 머리 줄 1개(범위 1회), 판례는 그 아래 줄(평가 측 보완 K1)
++        start = lines.index(matched[0])
++        line = " ".join(lines[start:start + 2])
+         self.assertIn("2016다248998", line)
+         self.assertIn("전원합의체 판결", line)
+         self.assertIn("통상임금 산정 및 신의칙", line)
+@@ -542,6 +543,24 @@ class TestTK138EvaluatorSupplement(unittest.TestCase):
+         self.assertEqual(adapter.fetch_case.call_count, 3)
+ 
+ 
++class TestTK138ScopeHeaderK1(unittest.TestCase):
++    def test_k1_scope_per_query_in_header(self):
++        from types import SimpleNamespace
++        precedents = [
++            {"case_number": "2010다1", "court": "대법원", "decision_date": "2020-01-01", "search_query": "가법 제1조",
++             "search_scope": "검색 300건 중 100건 (대법원 한정)"},
++            {"case_number": "2011다2", "court": "대법원", "decision_date": "2021-01-01", "search_query": "나법 제2조",
++             "search_scope": "검색 50건 중 50건 (대법원 한정)"},
++        ]
++        doc = SimpleNamespace(filename="a.pdf", engine_data={"related_authorities": {"status": "SOURCE_REVIEW_ONLY", "precedents": precedents}})
++        lines = report_lines([doc])
++        header = [l for l in lines if l.startswith("[관련 판례]")]
++        self.assertEqual(len(header), 1)
++        self.assertIn("가법 제1조: 검색 300건 중 100건", header[0])
++        self.assertIn("나법 제2조: 검색 50건 중 50건", header[0])
++        self.assertIn("2건", header[0])
++
++
+ if __name__ == "__main__":
+     unittest.main()
+ 

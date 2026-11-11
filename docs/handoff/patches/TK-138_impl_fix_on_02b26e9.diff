@@ -1,0 +1,213 @@
+diff --git a/packages/legal_engine/argument_validity_verifier.py b/packages/legal_engine/argument_validity_verifier.py
+index 54ccfa3..f488fda 100644
+--- a/packages/legal_engine/argument_validity_verifier.py
++++ b/packages/legal_engine/argument_validity_verifier.py
+@@ -676,31 +676,36 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases:
+             reasoning = str(row.get("legal_reasoning") or "")[:800]
+             check = str(row.get("recommended_check") or "")[:400]
+ 
+-            # P6, U3: 모델 응답 내 사건번호 추출 및 제공 목록 대조
+-            resp_text = f"{claim_text} {reasoning} {check}"
+-            extracted_tuples = extract_all_case_numbers(resp_text)
+-            resp_cases = {f"{y}{c}{s}" for y, c, s in extracted_tuples}
+-
+-            # 서면 내 원래 인용된 사건번호는 제공 판례 외에도 서면 자체 사건번호이므로 제외
+-            item_match = next((it for it in unverified_cases if it.get("citation")), None)
+-            orig_case = canonical_case_number(item_match["citation"].raw_text) if item_match else None
+-
+-            unprovided = {c for c in resp_cases if c not in provided_case_numbers and c != orig_case}
+-
+-            filtered_out_unprovided = False
++            verdict_val = str(row.get("validity_verdict") or "판단 불가")[:40]
++            unprovided: set = set()
++            # P6, U3: 관련 판례 목록을 모델에 준 때만 응답의 사건번호를 그 목록과 대조한다(평가 측 보완 D4).
++            # 서면이 그 항목에서 인용한 사건번호는 제외한다(항목별, 평가 측 보완 D2).
++            if provided_case_numbers:
++                own = (unverified_cases[item_id - 1] if 0 < item_id <= len(unverified_cases) else {}).get("citation")
++                own_cases = {f"{y}{c}{n}" for y, c, n in extract_all_case_numbers(getattr(own, "raw_text", "") or "")}
++                for text in (claim_text, reasoning, check):
++                    for y, c, n in extract_all_case_numbers(text):
++                        key = f"{y}{c}{n}"
++                        if key not in provided_case_numbers and key not in own_cases:
++                            unprovided.add(key)
++            filtered_out_unprovided = bool(unprovided)
+             if unprovided:
+-                filtered_out_unprovided = True
+                 verdict_val = "판단 불가"  # 비인가 판례 인용 시 타당성 판단 근거에서 배제 (P6)
+-                reasoning = f"[UNVERIFIED_INVENTED_IN_RESPONSE] 비인가 사건번호({', '.join(sorted(unprovided))}) 인용 배제. {reasoning}"
+-            else:
+-                verdict_val = str(row.get("validity_verdict") or "판단 불가")[:40]
++                # 화면·보고서에 목록 밖 사건번호를 그대로 보이지 않는다(제거, 평가 측 보완 D5)
++                def _strip(text: str) -> str:
++                    for y, c, n in extract_all_case_numbers(text):
++                        if f"{y}{c}{n}" in unprovided:
++                            text = re.sub(rf"{y}\s*{c}\s*0*{n}(?!\d)", "[제공 목록 밖 사건번호 제거]", text)
++                    return text
++                claim_text, reasoning, check = _strip(claim_text), _strip(reasoning), _strip(check)
++                reasoning = f"[UNVERIFIED_INVENTED_IN_RESPONSE] 제공 목록 밖 사건번호 {len(unprovided)}건 인용 배제. {reasoning}"
+ 
+             opinions_by_item.setdefault(item_id, []).append({
+                 "provider": provider,
+                 "model": getattr(execution, "model", ""),
+                 "claim_text": claim_text,
+                 "verdict": verdict_val,
+-                "legal_reasoning": reasoning,
++                "reasoning": reasoning,  # 기존 키 유지(화면·보고서가 읽는 키, 평가 측 보완 D1)
+                 "check": check,
+                 "filtered_out_unprovided": filtered_out_unprovided,
+                 "unprovided_case_numbers": sorted(unprovided) if unprovided else [],
+diff --git a/packages/legal_engine/related_authorities.py b/packages/legal_engine/related_authorities.py
+index e9883ca..5d5b99a 100644
+--- a/packages/legal_engine/related_authorities.py
++++ b/packages/legal_engine/related_authorities.py
+@@ -540,6 +540,7 @@ def _discover_tk138_precedents(
+ 
+     precedents_map: Dict[str, Dict[str, Any]] = {}
+     precedent_status = "COMPLETED"
++    detail_calls = 0  # 본문 상세 조회는 문서당 최대 3건(메모 2.5, 평가 측 보완 H7)
+ 
+     for query in top_queries:
+         # P7: 목록 검색 전 잔여 예산 확인 (>= 5.0초)
+@@ -587,7 +588,8 @@ def _discover_tk138_precedents(
+ 
+             # P1: 목록 메타에 요지가 없고 source_id가 있으면 최상위 건에 한해 본문 상세 조회 시도
+             if not summary and source_id and hasattr(adapter, "fetch_case"):
+-                if budget.tk138_can_fetch_detail(3.0):
++                if detail_calls < 3 and budget.tk138_can_fetch_detail(3.0):
++                    detail_calls += 1
+                     try:
+                         detail_resp = adapter.fetch_case(item)
+                         if detail_resp.status == AdapterStatus.READY and detail_resp.records:
+diff --git a/packages/llm_router/input_contracts.py b/packages/llm_router/input_contracts.py
+index 7549511..c230540 100644
+--- a/packages/llm_router/input_contracts.py
++++ b/packages/llm_router/input_contracts.py
+@@ -50,7 +50,8 @@ _CLAIM_REFERENCE = _object({"source_id": str, "text": str, "page": int}, optiona
+ _ARGUMENT_ITEM = _object({
+     "item_id": int, "page": int, "cited_case": str, "확인 상태": str,
+     "surrounding_context_and_claim": str, "원문 대조(어절 단위, 원문 기준)": str,
+-}, optional=("원문 대조(어절 단위, 원문 기준)",))
++    "관련 권위 판례(참고)": str,  # TK-138 관련 판례 목록(공식 조회 결과, 평가 측 보완 D3)
++}, optional=("원문 대조(어절 단위, 원문 기준)", "관련 권위 판례(참고)"))
+ _SHAPES = MappingProxyType({
+     "ai_document_v1": _object({
+         "document_filename": str, "metadata_ai_hint": bool,
+diff --git a/tests/test_tk138_related_precedents.py b/tests/test_tk138_related_precedents.py
+index 2afdabd..41c140f 100644
+--- a/tests/test_tk138_related_precedents.py
++++ b/tests/test_tk138_related_precedents.py
+@@ -234,7 +234,8 @@ class TestTK138RelatedPrecedents(unittest.TestCase):
+         op = opinions[0]
+         self.assertTrue(op.get("filtered_out_unprovided"))
+         self.assertEqual(op.get("verdict"), "판단 불가")
+-        self.assertIn("[UNVERIFIED_INVENTED_IN_RESPONSE]", op.get("legal_reasoning"))
++        self.assertIn("[UNVERIFIED_INVENTED_IN_RESPONSE]", op.get("reasoning"))
++        self.assertNotIn("2099다99999", op.get("reasoning"))
+         self.assertIn("2099다99999", op.get("unprovided_case_numbers"))
+ 
+     def test_u4_authority_budget_sharing_and_guards(self):
+@@ -443,6 +444,104 @@ class TestTK138RelatedPrecedents(unittest.TestCase):
+         adapter.search_cases_by_query.assert_not_called()
+ 
+ 
++class TestTK138EvaluatorSupplement(unittest.TestCase):
++    """평가 측 보완 H1~H5·H7 시험(11-04)."""
++
++    def _rows(self, n):
++        res = ArgumentValidityResult()
++        for i in range(1, n + 1):
++            res.rows.append(HallucinationTableRow(
++                item_id=i, location="1p", claim_text="주장", cited_authority=f"대법원 201{i}다1{i}{i}{i} 판결",
++                authority_exists=False, ai_generation_basis="UNCONFIRMED", validity_verdict="검토필요",
++                legal_reasoning="", recommended_counteraction="", basis="UNCONFIRMED"))
++        cases = [{"item_id": i, "context": "주장 맥락",
++                  "citation": Citation.create(CitationType.CASE, f"대법원 201{i}다1{i}{i}{i} 판결")} for i in range(1, n + 1)]
++        return res, cases
++
++    def _router(self, rows):
++        router = MagicMock()
++        reply = MagicMock()
++        reply.used = True
++        reply.parsed = {"overall_summary": "요약", "rows": rows}
++        reply.executions = [MagicMock(provider="openai", model="m")]
++        router.consult_all = unittest.mock.AsyncMock(return_value=[reply])
++        return router
++
++    def test_h1_request_with_precedents_passes_input_contract(self):
++        import asyncio
++        from packages.llm_router.input_contracts import valid_input_contract
++        from packages.llm_router.privacy import inspect_request
++        res, cases = self._rows(1)
++        router = self._router([])
++        related = {"precedents": [{"case_number": "2016다248998", "court": "대법원", "case_kind": "전원합의체 판결", "summary": "요지"}]}
++        asyncio.run(_attach_ai_opinions(res, cases, router, 0, None, related_authorities=related))
++        request = router.consult_all.call_args.args[1]
++        self.assertIn("관련 권위 판례(참고)", request.user)
++        self.assertTrue(valid_input_contract(request))
++        self.assertEqual(inspect_request(request)["status"], "PASSED")
++
++    def test_h2_h3_opinion_keeps_reasoning_key_and_item_own_case(self):
++        import asyncio
++        from packages.legal_engine.reasoning_format import reasoning_sections
++        res, cases = self._rows(2)
++        router = self._router([
++            {"item_id": 1, "claim_text": "a", "validity_verdict": "타당", "legal_reasoning": "대법원 2011다1111 판결 취지", "recommended_check": "c"},
++            {"item_id": 2, "claim_text": "b", "validity_verdict": "타당", "legal_reasoning": "대법원 2012다1222 판결 취지", "recommended_check": "c"},
++        ])
++        related = {"precedents": [{"case_number": "2016다248998", "court": "대법원"}]}
++        asyncio.run(_attach_ai_opinions(res, cases, router, 0, None, related_authorities=related))
++        for row in res.rows:
++            op = row.ai_opinions[0]
++            self.assertEqual(op["verdict"], "타당")
++            self.assertFalse(op["filtered_out_unprovided"])
++            self.assertTrue(reasoning_sections("검토", "AI", row.ai_opinions)["opinions"][0]["reasoning"])
++
++    def test_h4_no_filter_without_provided_list(self):
++        import asyncio
++        res, cases = self._rows(1)
++        router = self._router([{"item_id": 1, "claim_text": "a", "validity_verdict": "타당",
++                                "legal_reasoning": "대법원 2016다248998 판결 취지", "recommended_check": "c"}])
++        asyncio.run(_attach_ai_opinions(res, cases, router, 0, None, related_authorities=None))
++        op = res.rows[0].ai_opinions[0]
++        self.assertEqual(op["verdict"], "타당")
++        self.assertFalse(op["filtered_out_unprovided"])
++
++    def test_h5_unprovided_number_removed_from_shown_text(self):
++        import asyncio
++        res, cases = self._rows(1)
++        router = self._router([{"item_id": 1, "claim_text": "a", "validity_verdict": "타당",
++                                "legal_reasoning": "2016다248998 판결과 2099다 99999 판결 취지", "recommended_check": "c"}])
++        related = {"precedents": [{"case_number": "2016다248998", "court": "대법원"}]}
++        asyncio.run(_attach_ai_opinions(res, cases, router, 0, None, related_authorities=related))
++        op = res.rows[0].ai_opinions[0]
++        self.assertEqual(op["verdict"], "판단 불가")
++        self.assertIn("2016다248998", op["reasoning"])
++        self.assertNotIn("99999", op["reasoning"])
++        self.assertEqual(op["unprovided_case_numbers"], ["2099다99999"])
++
++    def test_h7_detail_fetch_capped_per_document(self):
++        adapter = MagicMock()
++        adapter.name = "law_go_kr"
++        adapter.settings.allow_network = True
++        adapter.status.return_value = AdapterStatus.READY
++        def search(query, **kw):
++            base = 1 if "23" in query else 5
++            items = [{"case_number": f"20{base + i:02d}다{i + 1}", "court": "대법원", "decision_date": "2020-01-01",
++                      "case_kind": "판결", "source_id": f"{base}{i}", "summary": ""} for i in range(3)]
++            resp = MagicMock(status=AdapterStatus.READY, records=items)
++            resp.source_record.attributes = {"total_count": 3, "returned_count": 3}
++            return resp
++        adapter.search_cases_by_query.side_effect = search
++        adapter.fetch_case.return_value = MagicMock(status=AdapterStatus.READY, records=[{"summary": "요지"}])
++        verifier = MagicMock()
++        verifier.registry.law = adapter
++        cits = [Citation.create(CitationType.STATUTE, "근로기준법 제23조", law_name="근로기준법", article="23"),
++                Citation.create(CitationType.STATUTE, "민법 제750조", law_name="민법", article="750")]
++        precedents, status = _discover_tk138_precedents(cits, verifier)
++        self.assertEqual(len(precedents), 6)
++        self.assertEqual(adapter.fetch_case.call_count, 3)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+ 

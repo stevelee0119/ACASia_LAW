@@ -304,5 +304,39 @@
   },
   "decided_by": "claude-code (평가 측)",
   "decided_at": "2026-11-02"
+ },
+ {
+  "version": "0.18.0",
+  "from": "0.17.0",
+  "level": "minor",
+  "basis": [
+   "added",
+   "changed",
+   "fixed"
+  ],
+  "measured_commit": "db7e81c3724da05d5cbe82e1c793b242e2c1e127",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.11.18",
+   "tesseract": "5.3.4 kor (CI와 같음)",
+   "scoring": "고정 채점기 불변. 후보 Steve db7e81c에서 평가 측 verify_all 전체 모드(기준 0.17.0 main deb387d) 2회 — 1회차 브라우저 시험 1건 시간 초과(단독 3회·묶음 재실행 통과), 2회차 종료 0. 은퇴 세트는 0.17.0과 후보를 같은 세트 파일·같은 환경으로 함께 채점",
+   "track": "일반 경로(RELEASE_PROCEDURE 2절). 범위 #209~#258(구현 Antigravity, TK-134~148 일부 Codex 대행 포함). 봉인 시험은 사용자 결정(11-12 '봉인시험 미시행')으로 하지 않고, 배포 뒤 0.17.0 대 0.18.0 온라인 비교로 갈음(online_compare_0170_0180_plan.md)"
+  },
+  "evidence": {
+   "M1": "고정 dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 0.17.0과 같음. 합산 RER 0. score_gate 통과, regression_gate(기준 deb387d) 회귀 없음",
+   "M2": "봉인 시험 미실시(사용자 결정 11-12). 갈음: 배포 직후 case9 23항목(0.17.0 23/23)과 신기능 온라인 탐침 4종 47항목(0.17.0 기록 online_probe_0170_20261103.md)을 같은 조건으로 0.18.0에서 다시 재어 비교한다. 결과는 판정서 보충으로 적는다",
+   "M3": "은퇴 세트(0.17.0 시점 4세트, 같은 조건·평가 측 재실행) 0.17.0 → 후보: 08 53.3→53.3, 08b 46.8→48.6, 09 53.4→56.9, 10 45.8→45.8, 오탐 0·A 0·인젝션 방어 유지. 20261025는 0.17.0 이후 은퇴(후보 34.1·오탐 0). 오른 몫의 일반화 근거는 각 PR 판정의 평가 측 비공개 확인 탐침(보정 미사용)으로 둔다",
+   "M4": "added: LV-03 판례·법령 존재 3단 판정, LV-04 인용문 차이 유형(부정·당사자·수치·단서), LV-05 판시 왜곡 결정 규칙(변경된 판례·파기환송 원심 판단), LV-01 제소기간 계산 전제(날짜 역할·계산 보류)와 행정기본법 제36조 제4항 반영(TK-150), TK-134 자치법규 조회, TK-137 관련 근거 탐색, TK-138 관련 판례·권위 가중, TK-139 처분기준 별표 대조, TK-144 DOCX 표 구조, TK-76 3주기 EVI-INCONS·EVI-OVR·EVI-FORM·EVI-NUM·EVI-DATE·EVI-COPY·EVI-LOGIC 확장, TK-149 소갑·소을. changed: 형식은 맞는데 조회 범위에서 찾지 못한 판례를 CRITICAL에서 확인 불가(MEDIUM)로(LV-03, 사용자 P1·X6 승인), 지각 구조 L1 기본 비활성화(TK-151, 사용자 결정 D4), 외부 AI 검증 프롬프트 엄격성(TK-136), 판례 의견 귀속(TK-135). fixed: TK-143·148 두 음절 약칭 CRITICAL 오단정, TK-145 같은 판례 반복 인용 병합, TK-146 표 비율 진단, TK-140 파서 후속, TK-141 발췌 입력 한도, TK-142·147 시간 시험 흔들림, 각 TK-76 보완의 오탐 감소. LV-06 요건사실 점검은 기본 꺼짐(환경 변수)",
+   "P1": "verify_all 전체 모드 종료 0(db7e81c, 2회차): environment·acceptance 1239·regression_ledger 2357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths(바뀐 보호 경로 16개 모두 평가 측 커밋 또는 승인)·version_policy·full_tests 9973·browser_tests 197, 실제 실패 0",
+   "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
+   "P3": "hardcoding_diff 통과(기준 deb387d), 각 PR 평가 세트 문구 대조 통과(LV 문안 일반 표현 11건 허용 등록 22d3fd7)",
+   "P4": "#209~#258 같은 SHA 필수 CI 성공(인용), LV 최종 head 105ce3f CI SQLite·PostgreSQL 각 2회 성공, 평가 측 PostgreSQL 16 + pgvector 재실행 API 31건·LV 사본 전체 11,443건 통과",
+   "P5": "열린 신규 회귀 티켓 0(브라우저 화면 시험 test_web_shows_drive_health_selection_and_duplicates 시간 흔들림은 결함 아님 — 안정화 후속 후보)",
+   "P6": "이 판정서",
+   "unmeasured": "온라인 경로 전체(공식 DB 대조·모델 의견·Drive 대조·약칭 추정 실제 응답), 봉인 세트 새 출제분(사용자 결정으로 미실시), train. 판시 왜곡·행정기본법 제36조·처분기준 별표·관련 판례 탐색은 온라인 비교 세트에 해당 입력이 없어 측정 못 함"
+  },
+  "decided_by": "claude-code (평가 측)",
+  "decided_at": "2026-11-12"
  }
 ]
