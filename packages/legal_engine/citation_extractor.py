@@ -605,7 +605,7 @@ def extract_from_text(
                     canonical_case_number=number, court=m.group("authority"),
                     decision_date=canonical_date(m.groupdict().get("date") or ""),
                     quoted_text=quote_near(m.end()),
-                    context=text[max(0, m.start() - 120) : min(len(text), m.end() + 1000)],
+                    context=text[max(0, m.start() - 120):m.end() + 200],
                 ))
                 consumed.append((m.start(), m.end()))
             consumed.seal_pattern()
@@ -627,7 +627,7 @@ def extract_from_text(
                 canonical_case_number=canonical_case_number(m.group("case_no")),
                 case_kind=m.group("kind") or "결정",
                 quoted_text=quote_near(m.end()),
-                context=text[max(0, m.start() - 120) : min(len(text), m.end() + 1000)],
+                context=text[max(0, m.start() - 120) : m.end() + 120],
                 attributes=_merged_attributes(m.group("case_no"), m.group("merged")),
             )
         )
@@ -654,7 +654,7 @@ def extract_from_text(
                 canonical_case_number=canonical_case_number(case_no),
                 case_kind=(m.group("kind") or "판결").replace("선고", "판결"),
                 quoted_text=quote_near(m.end()),
-                context=text[max(0, m.start() - 120) : min(len(text), m.end() + 1000)],
+                context=text[max(0, m.start() - 120) : m.end() + 200],
             )
         )
         if m.group("case_name"):
@@ -680,7 +680,7 @@ def extract_from_text(
                 canonical_case_number=canonical_case_number(case_no),
                 case_kind=m.group("kind"),
                 quoted_text=quote_near(m.end()),
-                context=text[max(0, m.start() - 120) : min(len(text), m.end() + 1000)],
+                context=text[max(0, m.start() - 120) : m.end() + 200],
             )
         )
         consumed.append((m.start(), m.end()))

@@ -20,7 +20,7 @@ from packages.common.textutil import normalize_quote
 
 MEANINGFUL_CHANGES = [
     ("DEGREE", "정도 부사", re.compile(r"현저|상당|명백|중대|매우|극히|다소|약간|전혀|반드시|항상|언제나|오로지|오직|특히")),
-    ("NEGATION", "부정어 삽입/탈락", re.compile(r"아니(?:한다|된다|하다)?|않(?:는다|다)?|못(?:한다|하다)?|없(?:다|는)?|불가|금지|배제")),
+    ("NEGATION", "부정어 삽입/탈락", re.compile(r"아니|않|못|없|불가|금지|배제")),
     ("MODALITY", "양태(가능·의무)", re.compile(r"수있|하여야|해야|하도록|하여서는|할것|하지아니할")),
     ("PARTY_SWAP", "주어·객체 바뀜", re.compile(r"원고|피고(?:인)?|처분청|행정청|당사자|채권자|채무자|신청인|피신청인|매도인|매수인|임대인|임차인")),
     ("PROVISION_QUALIFIER", "조문 한정어", re.compile(r"단서|본문|전단|후단|제\d+항|제\d+호|각호")),
@@ -86,10 +86,16 @@ def _minor(original: str, quoted: str) -> bool:
     return bool(a and b) and common >= 2 and max(len(a), len(b)) - common <= 2
 
 
-def _classify(original: str, quoted: str) -> List[Tuple[str, str]]:
+# 창 전체 비교(어절 대조가 성립하지 않을 만큼 다른 인용)에서는 부정의 활용형까지 본다. 어절 대조에서는 어간만 본다
+# ('없다'→'없는 것이다'는 부정이 그대로다).
+_NEGATION_SURFACE_RE = re.compile(r"아니(?:한다|된다|하다)?|않(?:는다|다)?|못(?:한다|하다)?|없(?:다|는)?|불가|금지|배제")
+
+
+def _classify(original: str, quoted: str, surface: bool = False) -> List[Tuple[str, str]]:
     a, b = _compact(original), _compact(quoted)
     return [(kind, label) for kind, label, pattern in MEANINGFUL_CHANGES
-            if set(pattern.findall(a)) != set(pattern.findall(b))]
+            if set((_NEGATION_SURFACE_RE if surface and kind == "NEGATION" else pattern).findall(a))
+            != set((_NEGATION_SURFACE_RE if surface and kind == "NEGATION" else pattern).findall(b))]
 
 
 def _segment_ops(quote: str, official: str) -> Optional[Tuple[float, List[Dict[str, Any]]]]:
@@ -102,6 +108,11 @@ def _segment_ops(quote: str, official: str) -> Optional[Tuple[float, List[Dict[s
     if ratio >= 1.0:
         return ratio, []
     segment = _word_span(norm_off, index[start], index[end - 1] + 1)
+    seg_at = norm_off.find(segment, max(0, index[start] - len(segment)))
+    seg_at = seg_at if seg_at >= 0 else index[start]
+    # 창 바로 앞뒤의 원문 어절(창 정렬이 끝 어절을 빼먹은 경우 맞대어 볼 상대)
+    prev_word = (norm_off[:seg_at].split() or [""])[-1]
+    next_word = (norm_off[seg_at + len(segment):].split() or [""])[0]
     original, quoted = segment.split(), normalize_quote(quote).split()
     keys_o, keys_q = [_compact(w) for w in original], [_compact(w) for w in quoted]
     ops: List[Dict[str, Any]] = []
@@ -113,6 +124,16 @@ def _segment_ops(quote: str, official: str) -> Optional[Tuple[float, List[Dict[s
         o_text, q_text = " ".join(original[i1:i2]), " ".join(quoted[j1:j2])
         if _compact(o_text) == _compact(q_text):
             continue  # 띄어쓰기만 다름
+        if is_boundary and op in ("insert", "delete"):
+            # 창 정렬이 원문 끝 어절을 빼거나 넣은 자리다. 인용문에 더해진 어절은 바로 옆 원문 어절과 맞대어 본다
+            # ('원고가'를 뺀 창 + 인용 '원고는' → '원고가'↔'원고는'). 원문에서만 빠진 끝 어절은 인용 범위 절단이다.
+            if op == "delete":
+                continue
+            at_start = i1 == 0 and j1 == 0
+            neighbor = (before or prev_word) if at_start else (after or next_word)
+            if not neighbor or _compact(neighbor) == _compact(q_text):
+                continue
+            o_text, op = neighbor, "replace"
         kinds = _classify(o_text, q_text)
         if is_boundary and not kinds:
             continue  # 구간 끝의 단순 인용 범위 절단은 무시하되, 의미 변경(부정·주어 등)은 유지
@@ -238,6 +259,20 @@ def categorize_quote_diff(quote: str, official_text: Optional[str], *, has_full_
     if not changes_result:
         changes_result = quote_changes(clean_quote, official_text)
 
+    if not changes_result and ELLIPSIS_RE.search(clean_quote):
+        segs = [x for x in ELLIPSIS_RE.split(clean_quote) if len(_compact(x)) >= MIN_SEGMENT]
+        found = [_segment_ops(x, official_text) for x in segs]
+        if segs and all(f is not None and not f[1] for f in found):
+            return {
+                "status": "EXACT_MATCH",
+                "can_compare": True,
+                "similarity": round(min(f[0] for f in found), 3),
+                "diff_categories": [],
+                "category_labels": [],
+                "reason": "생략 표시로 나눈 구간이 모두 공식 원문과 일치합니다.",
+                "defect_summary": "일치(생략 인용)",
+            }
+
     if not changes_result:
         if max_ratio >= 0.995:
             return {
@@ -249,7 +284,9 @@ def categorize_quote_diff(quote: str, official_text: Optional[str], *, has_full_
                 "reason": "공식 원문과 완전 일치합니다.",
                 "defect_summary": "일치",
             }
-        substantive = _classify(candidate_text, clean_quote)
+        # 어절 대조에서 의미 변경이 없었으면(유사도 0.85 이상) 창 전체를 다시 분류하지 않는다(창 밖 어절이 변경으로 잡힌다).
+        # 어절 대조가 성립하지 않을 만큼 다른 인용(0.85 미만)만 창 전체로 분류한다
+        substantive = _classify(candidate_text, clean_quote, surface=True) if max_ratio < 0.85 else []
         cats = [k for k, _ in substantive]
         labels = [lbl for _, lbl in substantive]
         if not cats:

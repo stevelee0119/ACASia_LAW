@@ -25,7 +25,10 @@ _SUB_PARTY = "가나다라마바사아자차카타파하"
 # 갑·병·'피고인 증'은 조사로 쓰이지 않고 뒤에 '호증'이 반드시 오므로, 두 단 목록이 붙어 읽힌 '차용증갑 제2호증'처럼 앞에 한글이 있어도
 # 읽는다. 을(목적격 조사)·증·검은 앞 글자가 한글이 아닐 때만 당사자로 본다('보증 제2호', '사실을 제3호' 구별).
 # 소송 서증 부호: 갑·을·병·정(민사), 피고인증·검(형사), 수(신청), 행(행정), 고(고소), 설(설비/특허)
+# TK-149: 신청 사건의 '소을'은 '소' 뒤에 '을'이 붙어 위 규칙에 걸렸다('소갑'만 읽힘). '소' 앞이 한글이 아닐 때의 '소을'은
+# '을'로 읽는다('소갑' → '갑'과 같은 처리). 받침 없는 '소' 뒤 목적격 조사는 '를'이므로 조사 '을'과 겹치지 않는다.
 PARTY_RE = re.compile(r"(?P<party>피고인\s*증|(?:갑|병)(?:\s?[" + _SUB_PARTY + r"](?=\s*(?:제\s*)?\d))?"
+                      r"|(?<=(?<![가-힣])소)을(?:\s?[" + _SUB_PARTY + r"](?=\s*(?:제\s*)?\d))?"
                       r"|(?<![가-힣])(?:검\s*증|을(?:\s?[" + _SUB_PARTY + r"](?=\s*(?:제\s*)?\d))?|정|증|검|수|행|고|설))"
                       r"(?=\s*(?:제\s*)?\d)")
 NUM = r"\d{1,3}"
@@ -37,6 +40,7 @@ BRANCH_RE = re.compile(rf"\s*의\s*(?P<first>{NUM})(?P<more>(?:(?:{SEP}|{RANGE})
 CONTINUE_RE = re.compile(rf"{SEP}(?=제\s*{NUM}\s*호)")
 LEAD_RE = re.compile(r"^[\s:.)\]\-]*(?:각\s+|각(?=[가-힣]))?")
 CRIMINAL_PARTIES = {"증", "피고인증", "검증", "검"}
+_HANGUL_RE = re.compile(r"[가-힣]")
 
 
 def _numbers(first: str, more: str) -> List[int]:
@@ -63,6 +67,9 @@ def parse_exhibits(text: str) -> List[Dict[str, Any]]:
         party = _party(party_match.group("party"))
         pos = party_match.end()
         start = party_match.start()
+        # TK-149: 신청 사건 부호 '소갑·소을'은 당사자 키를 '갑·을'로 두되, 표기(label)·위치(span)는 '소'부터 잡는다
+        if party in ("갑", "을") and start > 0 and clean[start - 1] == "소" and (start == 1 or not _HANGUL_RE.match(clean[start - 2])):
+            start -= 1
         while True:
             group = NUMBER_GROUP_RE.match(clean, pos)
             if not group:
