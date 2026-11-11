@@ -22,7 +22,11 @@ MEANINGFUL_CHANGES = [
     ("DEGREE", "정도 부사", re.compile(r"현저|상당|명백|중대|매우|극히|다소|약간|전혀|반드시|항상|언제나|오로지|오직|특히")),
     ("NEGATION", "부정어 삽입/탈락", re.compile(r"아니|않|못|없|불가|금지|배제")),
     ("MODALITY", "양태(가능·의무)", re.compile(r"수있|하여야|해야|하도록|하여서는|할것|하지아니할")),
-    ("PARTY_SWAP", "주어·객체 바뀜", re.compile(r"원고|피고(?:인)?|처분청|행정청|당사자|채권자|채무자|신청인|피신청인|매도인|매수인|임대인|임차인")),
+    # 긴 낱말을 먼저 둔다('주채무자'·'피신청인'이 '채무자'·'신청인'으로 잘리지 않게)
+    ("PARTY_SWAP", "주어·객체 바뀜", re.compile(
+        r"주채무자|피상속인|피신청인|피청구인|피고인|원고|피고|처분청|행정청|당사자|채권자|채무자|신청인|청구인|상속인"
+        r"|매도인|매수인|임대인|임차인|도급인|수급인|위임인|수임인|사용자|근로자|보증인|양도인|양수인|증여자|수증자"
+        r"|임치인|수치인|가해자|피해자|소유자|점유자")),
     ("PROVISION_QUALIFIER", "조문 한정어", re.compile(r"단서|본문|전단|후단|제\d+항|제\d+호|각호")),
     ("PROVISO_OMISSION", "단서·예외 탈락", re.compile(r"다만|특별한\s*사정이\s*없는\s*한|예외|제외")),
     ("NUMERIC", "수치 불일치", re.compile(r"\d+")),
@@ -91,11 +95,19 @@ def _minor(original: str, quoted: str) -> bool:
 _NEGATION_SURFACE_RE = re.compile(r"아니(?:한다|된다|하다)?|않(?:는다|다)?|못(?:한다|하다)?|없(?:다|는)?|불가|금지|배제")
 
 
+# 당사자는 집합이 아니라 나온 순서로 견준다: '채권자는 채무자에게'→'채무자는 채권자에게'는 같은 낱말의 맞바꿈이다
+_ORDERED_KINDS = {"PARTY_SWAP"}
+
+
 def _classify(original: str, quoted: str, surface: bool = False) -> List[Tuple[str, str]]:
     a, b = _compact(original), _compact(quoted)
-    return [(kind, label) for kind, label, pattern in MEANINGFUL_CHANGES
-            if set((_NEGATION_SURFACE_RE if surface and kind == "NEGATION" else pattern).findall(a))
-            != set((_NEGATION_SURFACE_RE if surface and kind == "NEGATION" else pattern).findall(b))]
+    out = []
+    for kind, label, pattern in MEANINGFUL_CHANGES:
+        pat = _NEGATION_SURFACE_RE if surface and kind == "NEGATION" else pattern
+        found_a, found_b = pat.findall(a), pat.findall(b)
+        if (found_a != found_b) if kind in _ORDERED_KINDS else (set(found_a) != set(found_b)):
+            out.append((kind, label))
+    return out
 
 
 def _segment_ops(quote: str, official: str) -> Optional[Tuple[float, List[Dict[str, Any]]]]:
