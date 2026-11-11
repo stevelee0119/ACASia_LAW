@@ -226,7 +226,10 @@ class LegalVerifier:
                 "notes": v.notes,
                 "official_record": v.official_record,
                 "review": v.review,
-                "findings": list(v.findings),
+                # 결과 데이터는 JSON 칸에 저장된다(PostgreSQL은 객체를 직렬화하지 못해 실행 전체가 실패한다). 뒤 단계(판시 왜곡 조치 안내)가
+                # 읽는 칸만 사전으로 싣는다.
+                "findings": [{"finding_id": f.finding_id, "type": str(f.type), "tags": list(f.tags or []),
+                              "confidence_features": dict(f.confidence_features or {})} for f in v.findings],
                 "source_record_ids": [r.source_record_id for r in v.source_records],
                 "source_lookup": v.lookup,
                 # 확인 완료 라벨과 사건 적용성(v3 D4). 형식 위반 등 뒤 단계가 판정을 바꾸면 라벨을 지운다.
