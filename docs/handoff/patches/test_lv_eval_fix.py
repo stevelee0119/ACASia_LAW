@@ -103,3 +103,26 @@ def test_e10_reversed_remand_linear_time():
 def test_e11_fault_is_not_plaintiff_element_for_390():
     rule = next(r for r in CAUSE_OF_ACTION_RULES if "390" in r["trigger"].pattern)
     assert "귀책사유" not in [name for name, _ in rule["elements"]]
+
+
+# E12~E14 TK-150(F10): 행정기본법 제36조 제4항·부칙 제6조 — 2023. 3. 24. 이후 처분은 이의신청 결과 통지일부터 90일이 가능하다
+def _deadline_findings(text):
+    from packages.legal_engine.legal_rules import review_legal_rules
+    return [f for f in review_legal_rules(_doc(text))
+            if (f.confidence_features or {}).get("rule_id") == "ADMIN.DEADLINE_CALCULATION_SCENARIOS"]
+
+
+def test_e12_post_2023_disposition_is_not_contradicted():
+    fs = _deadline_findings("청 구 원 인\n원고는 2025. 2. 10. 시정명령 처분을 받고 이의신청을 하여 2025. 2. 27. 결과를 통보받았습니다. " + CLAIM + "\n")
+    assert fs and all(f.status.value == "SUSPICIOUS" and f.evidence_grade.value == "C" for f in fs)
+    assert "행정기본법 제36조 제4항" in fs[0].detail
+
+
+def test_e13_pre_2023_disposition_keeps_contradiction():
+    fs = _deadline_findings("청 구 원 인\n원고는 2021. 7. 5. 시정명령 처분을 받고 이의신청을 하여 2021. 7. 22. 결과를 통보받았습니다. " + CLAIM + "\n")
+    assert fs and fs[0].status.value == "CONTRADICTED" and fs[0].evidence_grade.value == "A"
+
+
+def test_e14_unknown_disposition_date_asks_for_confirmation():
+    fs = _deadline_findings("청 구 원 인\n원고는 시정명령 처분에 이의신청을 하여 결과를 통보받았습니다. " + CLAIM + "\n")
+    assert fs and fs[0].status.value == "SUSPICIOUS" and "처분일을 문서에서 특정하지 못했다" in fs[0].detail

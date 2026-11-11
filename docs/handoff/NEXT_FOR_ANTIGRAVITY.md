@@ -3615,7 +3615,7 @@ F9 [법리 오류] 채무불이행 손해배상(민법 제390조)의 요건사�
 ### 2-33-5. 사용자 결정 반영 (11-11)
 - **X6 승인**(사용자 11-11 'X6 승인'): `tests/test_ground_truth_prepared_brief.py::test_precedent_and_regulation_existence` 단언 3줄 변경 — CRITICAL·FAKE_PRECEDENT → MEDIUM·SOURCE_LIMIT(FAKE_PRECEDENT 없음)·levels.authority_status UNCONFIRMED_SOURCE_LIMIT. 시험 이름 유지, 삭제 없음. 평가 측 증분 [patches/X6_ground_truth_assertion_on_ea2ef8a.diff](patches/X6_ground_truth_assertion_on_ea2ef8a.diff): #254 head `ea2ef8a`·#257 head `d8af690`·평가 측 사본 `dd951fb`에 적용 가능, 적용 뒤 그 시험 통과(평가 측 재실행). 구현 측이 #254 브랜치에 그대로 넣고 연쇄로 전파한다(X5와 같은 방식).
 - **D4: L1 비활성화**(사용자 11-11 '권고대로 L1 비활성화') → **TK-151**. 아래 2-34 지시.
-- D3(TK-150 행정기본법 제36조 제4항)·D5(조치 안내의 서면 역할)는 결정 대기.
+- D3(TK-150)는 11-11 '제안대로 진행' → 2-33-6 F10. D5는 '보류'.
 
 ## 2-34. TK-151 지각 구조 L1 기본 비활성화 구현 지시 (11-11, 사용자 결정 D4)
 - 평가 측 사본 `97d241b`(기준 Steve `649a162`) 사전 검증. 증분 [patches/TK-151_l1_off_on_649a162.diff](patches/TK-151_l1_off_on_649a162.diff).
@@ -3660,4 +3660,46 @@ F9 [법리 오류] 채무불이행 손해배상(민법 제390조)의 요건사�
 - 귀속표 '세트 득점 0'. PR 본문에 사용자 결정 원문('D4는 권고대로 L1 비활성화')과 대응을 적는다.
 - 수용: CI 전부 성공, 위 시험 통과, 평가 측 확인 탐침 재실행 결과 위와 같음.
 - LV 연쇄(#252~#257)와 같은 파일을 건드리지 않으므로 병합 순서는 상관없다(평가 측 확인: LV는 legal_engine만 바꾼다).
+```
+
+### 2-33-6. D3 결정 반영 — F10(TK-150)을 #252 보완에 추가 (11-11, 사용자 'D3는 제안대로 진행, D5는 보류')
+- D5(조치 안내의 서면 역할)는 보류 — LV-06 문안은 이번 회차에 바꾸지 않는다(F9만).
+- TK-150은 같은 파일·같은 함수 영역(legal_rules.py)이라 별도 PR 대신 #252 보완 F10으로 넣는다. 평가 측 사본 `7ddc7a9`(= `dd951fb` + X6 + F10).
+- 증분 [patches/LV_01-06_fix_on_d8af690.diff](patches/LV_01-06_fix_on_d8af690.diff)를 F10까지 포함해 갱신(제품 5파일 +136/−22), 공개 시험 [patches/test_lv_eval_fix.py](patches/test_lv_eval_fix.py) 14건으로 갱신.
+
+```
+[평가 측 보완 지시 추가 — F10(TK-150) → #252(LV-01), 사용자 결정 D3, 11-11]
+
+F10 [법리 오류·A등급 오탐] ADMIN.DEADLINE_CALCULATION_SCENARIOS가 이의신청 결과 통지일 기산 주장을 일률로 CONTRADICTED·A로 판정한다
+- 위치: packages/legal_engine/legal_rules.py _finding(d8af690 243행), 규칙 정의 config/legal_rules/rules.json(설정은 바꾸지 않는다).
+- 근거: 행정기본법 제36조 제4항 — 이의신청 결과를 통지받은 날(통지기간 내 통지가 없으면 그 기간 만료일 다음 날)부터 90일 이내 행정심판·행정소송 제기 가능.
+  부칙 제6조 — 제36조는 부칙 제1조 단서 시행일(2023. 3. 24.) 이후에 하는 처분부터 적용. 같은 조 제8항 — 공무원 징계, 국가인권위원회 진정 결정, 노동위원회 의결,
+  형사·행형·보안처분, 외국인 출입국·난민인정·귀화·국적회복, 과태료에는 적용하지 않는다. 규칙 설명의 대법원 2014. 4. 24. 선고 2013두10809 판결은 그 이전 법리다.
+  재현(평가 측): Steve 649a162·d8af690 모두 2024년 처분 서면에서 A등급 CONTRADICTED.
+- 고칠 것:
+  1. typing import에 Optional, Tuple을 더한다.
+  2. _finding 바로 앞에 ADMIN_ACT_36_START = (2023, 3, 24), ADMIN_ACT_36_EXCLUDED_RE = r"징계|국가인권위원회|노동위원회|형사|행형|보안처분|출입국|난민|귀화|국적\s*회복|과태료"
+     (제8항 각 호), 함수 _admin_objection_premise(doc, claim) -> (전제, 처분일)를 둔다:
+     scope_text = claim + "\n" + doc.full_text. 제8항 낱말이 있으면 ("EXCLUDED", None).
+     처분일은 F1 뒤의 처분일 정규식(처분일·원처분일·처분이 있은 날 + DATE_RE, 없으면 DATE_RE + 0~25자 + 처분·결정 + 받·하·내렸·고지·있은)으로 모은다.
+     서로 다른 날짜가 정확히 하나가 아니면 ("UNKNOWN", None), 하나면 2023. 3. 24. 전 "PRE_2023", 그 날 이후(당일 포함) "POST_2023".
+  3. _finding에서 verdict = rule["verdict"], status_value = rule.get("status", "SUSPICIOUS")를 지역 변수로 두고, 이 규칙이면 전제를 구해
+     features["admin_basic_act_36"]에 적는다. POST_2023·UNKNOWN이면 grade "C", status SUSPICIOUS, verdict
+     "이의신청 통지일 기준 제소기간 기산 주장 — 처분일·적용 법령 확인 필요", features의 verdict·confidence도 같이 바꾸고 설명을 바꾼다:
+     · POST_2023: 처분일(Y. M. D.)이 2023. 3. 24. 이후 → 행정기본법 제36조 제4항(부칙 제6조)에 따라 통지받은 날부터 90일 가능. 같은 조 제1항 이의신청(처분을 받은 날부터 30일)인지,
+       제8항 적용 제외·개별 법률 특례인지 확인 필요.
+     · UNKNOWN: 처분일을 문서에서 특정하지 못했다 → 2023. 3. 24. 이후면 통지일부터 90일 가능, 그 이전이면 '다음 설명이 적용된다' + 규칙의 기존 설명(rule["explanation"])을 잇는다.
+       판례 번호를 파이썬 코드에 직접 쓰지 않는다(tests/acceptance/test_no_case_literals.py — 평가 측 첫 시안이 이 시험에 걸려 고쳤다).
+     PRE_2023·EXCLUDED는 지금 판정(CONTRADICTED·A, 기존 설명) 그대로. 동적 일수 계산(_calculate_dynamic_deadline) 덧붙임은 네 경우 모두 그대로.
+  4. Finding.create의 status·title은 지역 변수(status_value·verdict)를 쓴다. 다른 규칙의 결과는 바뀌지 않는다.
+- 바꾸지 말 것: rules.json(다른 경로가 같은 규칙 정의를 읽는다), 다른 규칙의 _finding 경로.
+
+평가 측 사전 검증(사본 7ddc7a9, 평가 측 재실행)
+- 처분일 축 탐침 6칸(2024 처분·2022 처분·처분일 불명·적용 제외(과태료) 2024·경계 2023. 3. 24.·경계 2023. 3. 23.): Steve·d8af690 전부 CONTRADICTED·A →
+  사본 SUSPICIOUS·C / CONTRADICTED·A / SUSPICIOUS·C / CONTRADICTED·A / SUSPICIOUS·C / CONTRADICTED·A(설계대로).
+- 공개 시험 tests/test_lv_eval_fix.py 14건(E12~E14 추가): d8af690에서 12건 실패(E8·E13은 대조 — 양쪽 통과), 사본 14건 통과.
+- 이 규칙을 쓰는 기존 시험(test_efficacy_round2·test_efficacy_improvements)과 LV 시험·근거 시험 156건 통과.
+- 하드코딩·보호 경로 통과. 평가 세트 문구 의심 2건('행정기본법 제', '통지받은 날부터')은 설명 문안의 법령명·조문 문구다(판정 규칙 아님).
+- Steve 649a162 + 사본(첫 시안 4444669) 합본: 전체 11,427건 중 실패 1(사건 고유값 시험 — 설명에 판례 번호를 코드로 넣음) → 설명을 규칙 설정으로 돌린 7ddc7a9에서 그 시험 포함 관련 105건 통과
+  (설명 문자열 한 곳만 바뀌어 전체는 다시 돌리지 않음). 은퇴 5세트·고정 82.6/81.9/0 변화 0. X6 적용으로 근거 시험 통과.
 ```

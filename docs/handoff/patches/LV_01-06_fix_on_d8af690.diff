@@ -61,9 +61,18 @@ index c1059aa..bc40d6a 100644
          )
          consumed.append((m.start(), m.end()))
 diff --git a/packages/legal_engine/legal_rules.py b/packages/legal_engine/legal_rules.py
-index b810fb4..a1976a0 100644
+index b810fb4..e727d67 100644
 --- a/packages/legal_engine/legal_rules.py
 +++ b/packages/legal_engine/legal_rules.py
+@@ -10,7 +10,7 @@ import json
+ import re
+ from functools import lru_cache
+ from pathlib import Path
+-from typing import Any, Dict, List
++from typing import Any, Dict, List, Optional, Tuple
+ 
+ from packages.common.enums import EvidenceGrade, FindingType, Severity, VerificationStatus
+ from packages.common.schemas import Evidence, Finding, NormalizedDocument
 @@ -132,7 +132,7 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
  
      # 1. 처분일 탐지
@@ -137,6 +146,81 @@ index b810fb4..a1976a0 100644
      if notif_date and filing_date and filing_date >= notif_date:
          days_from_notif = (filing_date - notif_date).days
          parts.append(f"{notif_label}({notif_date.year}. {notif_date.month}. {notif_date.day}.) 기준: {days_from_notif}일 경과")
+@@ -240,6 +255,37 @@ def _calculate_dynamic_deadline(doc: NormalizedDocument, claim: str) -> str:
+     return ""
+ 
+ 
++# TK-150(사용자 11-11 결정 D3): 행정기본법 제36조 제4항은 이의신청 결과를 통지받은 날부터 90일 이내 행정심판·행정소송을 허용하고,
++# 부칙 제6조는 이를 부칙 제1조 단서 시행일(2023. 3. 24.) 이후 처분부터 적용한다. 같은 조 제8항 사항(공무원 징계, 국가인권위원회 진정,
++# 노동위원회 의결, 형사·행형·보안처분, 외국인 출입국·난민·귀화·국적회복, 과태료)에는 이 조가 적용되지 않는다.
++ADMIN_ACT_36_START = (2023, 3, 24)
++ADMIN_ACT_36_EXCLUDED_RE = re.compile(r"징계|국가인권위원회|노동위원회|형사|행형|보안처분|출입국|난민|귀화|국적\s*회복|과태료")
++
++
++def _admin_objection_premise(doc: NormalizedDocument, claim: str) -> Tuple[str, Optional[Any]]:
++    """이의신청 결과 통지일 기산 주장의 법적 전제: (EXCLUDED|PRE_2023|POST_2023|UNKNOWN, 처분일)."""
++    from datetime import date
++    from packages.claim_engine.evidence_consistency import DATE_RE
++    scope_text = claim + "\n" + (getattr(doc, "full_text", "") or "")
++    if ADMIN_ACT_36_EXCLUDED_RE.search(scope_text):
++        return "EXCLUDED", None
++    found = set()
++    patterns = (r"(?:처분일|원처분일|처분(?:이)?\s*있은\s*날)\s*[:：]?\s*" + DATE_RE.pattern,
++                DATE_RE.pattern + r"[^.\n]{0,25}?(?:처분|결정)(?:을|를|이)?\s*(?:받|하|내렸|고지|있은)")
++    for pattern in patterns:
++        for m in re.finditer(pattern, scope_text):
++            try:
++                found.add(date(int(m.group("y")), int(m.group("m")), int(m.group("d"))))
++            except ValueError:
++                continue
++        if found:
++            break
++    if len(found) != 1:
++        return "UNKNOWN", None
++    disp = next(iter(found))
++    return ("PRE_2023" if disp < date(*ADMIN_ACT_36_START) else "POST_2023"), disp
++
++
+ def _finding(doc: NormalizedDocument, rule: Dict[str, Any], claim: str, sources: Dict[str, Any]) -> Finding:
+     basis = [{"name": name, **sources.get(name, {})} for name in rule.get("basis") or []]
+     grade = rule.get("grade", "C")
+@@ -256,16 +302,34 @@ def _finding(doc: NormalizedDocument, rule: Dict[str, Any], claim: str, sources:
+                                         grade=EvidenceGrade.A, excerpt=str(source.get("text", ""))[:300]))
+ 
+     explanation = rule.get("explanation", "")
++    verdict = rule["verdict"]
++    status_value = rule.get("status", "SUSPICIOUS")
+     if rule.get("rule_id") == "ADMIN.DEADLINE_CALCULATION_SCENARIOS":
++        premise, disp = _admin_objection_premise(doc, claim)
++        features["admin_basic_act_36"] = premise
++        if premise in ("POST_2023", "UNKNOWN"):
++            # 처분일이 2023. 3. 24. 이후이거나 알 수 없으면 통지일 기산이 적법할 수 있다 — 단정하지 않고 확인 요청으로 낮춘다
++            grade, status_value = "C", "SUSPICIOUS"
++            verdict = "이의신청 통지일 기준 제소기간 기산 주장 — 처분일·적용 법령 확인 필요"
++            features.update({"verdict": verdict, "confidence": CONFIDENCE.get(grade, 0.5)})
++            if premise == "POST_2023":
++                explanation = (f"처분일({disp.year}. {disp.month}. {disp.day}.)이 2023. 3. 24. 이후이므로 행정기본법 제36조 제4항(부칙 제6조)에 따라 "
++                               "이의신청 결과를 통지받은 날부터 90일 이내에 행정심판 또는 행정소송을 제기할 수 있다. 다만 같은 조 제1항의 이의신청"
++                               "(처분을 받은 날부터 30일 이내)인지, 같은 조 제8항의 적용 제외 사항이거나 개별 법률에 다른 규정이 있는지 확인해야 한다.")
++            else:
++                # 판례 번호는 규칙 설정(rules.json)의 설명에만 둔다(제품 코드 사건 고유값 금지)
++                explanation = ("처분일을 문서에서 특정하지 못했다. 2023. 3. 24. 이후 처분이면 행정기본법 제36조 제4항(부칙 제6조)에 따라 "
++                               "이의신청 결과를 통지받은 날부터 90일 이내에 제소할 수 있다. 그 이전 처분이면 다음 설명이 적용된다. 처분일을 확인해야 한다. "
++                               + rule.get("explanation", ""))
+         dynamic_calc = _calculate_dynamic_deadline(doc, claim)
+         if dynamic_calc:
+             explanation += dynamic_calc
+ 
+     return Finding.create(
+-        type=kind, status=VerificationStatus(rule.get("status", "SUSPICIOUS")),
++        type=kind, status=VerificationStatus(status_value),
+         severity=Severity.HIGH if grade in ("A", "B") and not rule.get("human_review") else Severity.MEDIUM,
+         evidence_grade=GRADES.get(grade, EvidenceGrade.C),
+-        title=f"법리 검토: {rule['verdict']} — '{claim[:70]}'" + (" (사람 판단 필요)" if rule.get("human_review") else ""),
++        title=f"법리 검토: {verdict} — '{claim[:70]}'" + (" (사람 판단 필요)" if rule.get("human_review") else ""),
+         detail=explanation + (" 근거: " + "; ".join(b["name"] for b in basis) if basis else "")
+         + (f" 근거 조문({', '.join(rule['basis_pending'])})의 공식 원문은 아직 수집하지 않았으므로 원문 대조는 사람이 한다."
+            if rule.get("basis_pending") else ""),
 diff --git a/packages/legal_engine/opinion_attribution.py b/packages/legal_engine/opinion_attribution.py
 index bbb367e..fed386a 100644
 --- a/packages/legal_engine/opinion_attribution.py
