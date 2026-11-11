@@ -599,9 +599,9 @@
       "note": "2026-11-11 LV-01 판정 중 발견: config/legal_rules/rules.json ADMIN.DEADLINE_CALCULATION_SCENARIOS가 이의신청 결과 통지일 기산 주장을 일률로 CONTRADICTED·A로 본다. 행정기본법 제36조 제4항·부칙 제6조(2023. 3. 24. 이후 처분 적용)와 충돌. 제안: 처분일이 그 이후이거나 불명이면 확인 필요(SUSPICIOUS·C). 사용자 결정 D3 대기. NEXT 2-33-3. · 11-11 사용자 'D3는 제안대로 진행' → #252 보완 F10(사본 7ddc7a9, NEXT 2-33-6). D5(조치 안내 서면 역할)는 보류."
     },
     "TK-151": {
-      "status": "accepted_pending_ci",
+      "status": "merged",
       "kind": "new",
-      "note": "2026-11-11 사용자 결정 D4 'L1 비활성화'. EVI.BEYOND_PERCEPTION_STRUCTURE L1(앞 문장 다른 장소 체재 + 다음 문장 직접 지각, 문장 안 연결어미 꼴)을 환경 변수 LV_ENABLE_PERCEPTION_STRUCTURE_L1 기본 꺼짐으로. 같은 문장 안 규칙(0.17.0 배포)·L2·L3 유지. 사본 97d241b(기준 649a162) 전체 11,231건 통과, 확인 탐침 12차 대조 오탐 8/12 → 0/12, 은퇴·고정 변화 0. 증분 patches/TK-151_l1_off_on_649a162.diff · NEXT 2-34. 재설계는 설계 메모로 별도. · 11-11 #258 cfaebc4 = 사본(diff 0) 수용(조건: CI 성공)."
+      "note": "2026-11-11 사용자 결정 D4 'L1 비활성화'. EVI.BEYOND_PERCEPTION_STRUCTURE L1(앞 문장 다른 장소 체재 + 다음 문장 직접 지각, 문장 안 연결어미 꼴)을 환경 변수 LV_ENABLE_PERCEPTION_STRUCTURE_L1 기본 꺼짐으로. 같은 문장 안 규칙(0.17.0 배포)·L2·L3 유지. 사본 97d241b(기준 649a162) 전체 11,231건 통과, 확인 탐침 12차 대조 오탐 8/12 → 0/12, 은퇴·고정 변화 0. 증분 patches/TK-151_l1_off_on_649a162.diff · NEXT 2-34. 재설계는 설계 메모로 별도. · 11-11 #258 cfaebc4 = 사본(diff 0) 수용(조건: CI 성공). · 11-11 사용자 '#258 병합' → Steve c89e191(평가 측이 판정 head cfaebc4 확인 뒤 병합)."
     }
   },
   "updated_on": "2026-11-11"
