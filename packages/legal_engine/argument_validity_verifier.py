@@ -604,6 +604,7 @@ async def verify_argument_validity(
                 f"다만, 본 판례의 법리가 당해 사건의 계약 조건(예: 감액 청구 배제 특약의 유효성, 위약벌 인정 여부 등) 및 "
                 f"구체적 사실관계에 타당하게 적용되는지(사건 적용성)는 AI 작성 여부 판단과 별개로 검토자가 직접 검토해야 합니다."
             )
+            counteraction = "공식 판례의 원문 취지와 당해 사건의 계약 조건(손해배상액 예정 vs 위약벌 법리 등)을 직접 비교 검토할 것."
         elif (basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and has_official
               and (item.get("is_summary_only") or item.get("quote_level3") == "UNVERIFIED")):
             ai_basis = "공식 DB에서 요약본만 확보되어 판결문 본문 원문과의 직접 인용 대조가 유보됨 (판결문 사본 확인 필요)"
