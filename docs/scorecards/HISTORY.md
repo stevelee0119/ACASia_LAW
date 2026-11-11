@@ -1,2 +1,2 @@
 
-- 11-12 사용자 '평가 PR 생성, 병합' → #259 생성(CI 전부 성공) → 병합 `84000fc`(expectedHeadSha `77b1ee3`). 0.18.0 버전 커밋 증분을 평가 측 사본에서 만들어 check_version_policy 통과 확인(NEXT 2-35).
+- 11-12 #260 버전 커밋 `d5bca4c` 판정: 평가 측 사본 증분과 diff 0, check_version_policy 위반 없음(0.17.0 → 0.18.0) → 수용(조건: 남은 CI 1건 성공).
