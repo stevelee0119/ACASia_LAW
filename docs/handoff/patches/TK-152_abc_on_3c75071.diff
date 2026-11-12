@@ -1,0 +1,170 @@
+diff --git a/packages/legal_engine/law_name_inference.py b/packages/legal_engine/law_name_inference.py
+index 5bfe2f9..a007845 100644
+--- a/packages/legal_engine/law_name_inference.py
++++ b/packages/legal_engine/law_name_inference.py
+@@ -84,19 +84,44 @@ def _initials_subsequence(query: str, target: str) -> bool:
+     return True
+ 
+ 
++def _short_score(q: str, record: Dict[str, Any]) -> int:
++    """두 음절 어간 줄임말의 점수(TK-152). 대조 대상은 지금처럼 공식 약칭(없으면 정식명)이고, 점수는 둘에 같은 기준을 쓴다.
++
++    정렬 등급: 어간이 대상 어간의 맨 앞에 그대로 이어 나옴(1000) > 둘째 글자가 둘째 말마디 첫 음절(850)
++    > 그 밖의 말마디 첫 음절 정렬(700). 같은 등급이면 짧은 대상이 앞선다. 약칭이라고 가산하지 않는다
++    (약칭 가산 때문에 글자가 떨어져 맞는 다른 법률의 약칭이 정식명 첫 두 말마디가 맞는 법률을 앞섰다).
++    법률(…법)로 적힌 이름은 이름이 '법'·'법률'로 끝나는 대상만 본다('…에 관한 규칙' 등 제외).
++    """
++    qs, kind = stem(q), law_kind(q)
++    target = compact(record.get("abbreviation")) or compact(record.get("law_name"))
++    if not target or target == q or law_kind(target) != kind or target[0] != q[0]:
++        return 0
++    if kind == "법률" and not re.search(r"(법|법률)$", target):
++        return 0
++    ts = stem(target)
++    if ts.startswith(qs):
++        tier = 1000
++    elif len(ts) > 2 and ts[2] == qs[1]:
++        tier = 850
++    elif _initials_subsequence(qs, ts):
++        tier = 700
++    else:
++        return 0
++    return tier - min(len(ts) - len(qs), 100)
++
++
+ def score(written: str, record: Dict[str, Any], *, min_stem: int = MIN_STEM) -> int:
+     q = compact(written)
+     if len(stem(q)) < min_stem:
+         return 0
++    if min_stem == SHORT_STEM and len(stem(q)) == SHORT_STEM:
++        return _short_score(q, record)
+     abbreviation = compact(record.get("abbreviation"))
+     target = abbreviation or compact(record.get("law_name"))
+     if not target or law_kind(target) != law_kind(q) or target[0] != q[0]:
+         return 0
+     if target == q or not is_subsequence(q, target):
+         return 0
+-    if min_stem == SHORT_STEM and len(stem(q)) == SHORT_STEM and not (
+-            _initials_subsequence(stem(q), stem(target)) or stem(target).startswith(stem(q))):
+-        return 0                       # 두 음절 줄임말: 말마디 첫 음절이거나 정식명 첫 낱말 그대로(TK-143)
+     base = 800 if abbreviation else 600
+     return base - min(len(target) - len(q), 200 if not abbreviation else 100)
+ 
+diff --git a/packages/legal_engine/source_review.py b/packages/legal_engine/source_review.py
+index d4595ec..740e741 100644
+--- a/packages/legal_engine/source_review.py
++++ b/packages/legal_engine/source_review.py
+@@ -112,7 +112,8 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
+     if provision["status"] == "NOT_FOUND":
+         if inferred is not None:
+             # 추정 법령에 인용 조문이 없으면 추정을 버리고 원래 판정(법령 목록 미발견)으로 돌아간다.
+-            verdict.review["law_alias"].update(found=False, outcome="ARTICLE_NOT_IN_CANDIDATE")
++            verdict.review["law_alias"].update(found=False, outcome="ARTICLE_NOT_IN_CANDIDATE",
++                                               candidates=[inferred["candidate"]["law_name"]])
+             verdict.notes.append("추정 후보 법령의 조회 버전에 인용 조문이 없어 추정을 버리고 원래 판정을 유지한다")
+             verdict.official_record = None
+             verdict.levels.update(existence="NOT_FOUND", version="UNVERIFIED")
+@@ -521,7 +522,10 @@ def _law_absent(verdict, response, verifier=None):
+             type=FindingType.LAW_CITATION_ERROR, status=VerificationStatus.UNVERIFIED, severity=Severity.MEDIUM,
+             evidence_grade=EvidenceGrade.C,
+             title=f"약칭으로 보이나 정식 법령을 확정하지 못함: {citation.law_name}",
+-            detail=("공식 법령 목록에 같은 이름이 없고, 약칭 추정으로도 정식 법령 하나를 고르지 못했다"
++            detail=("공식 법령 목록에 같은 이름이 없고, "
++                    + ("약칭 추정 후보 법령의 조회 버전에 인용 조문이 없어 그 후보로 확정하지 못했다"
++                       if alias.get("outcome") == "ARTICLE_NOT_IN_CANDIDATE"
++                       else "약칭 추정으로도 정식 법령 하나를 고르지 못했다")
+                     + (f"(후보: {', '.join(alias.get('candidates') or [])})" if alias.get("candidates") else "")
+                     + ". 실무 줄임말일 수 있으므로 존재하지 않는 법령으로 단정하지 않는다. 정식 법령명을 서면에서 확인해야 한다."),
+             document_id=citation.document_id, block_id=citation.block_id, page=citation.page, span=citation.span,
+@@ -552,7 +556,8 @@ def _law_absent(verdict, response, verifier=None):
+     ))
+ 
+ 
+-UNDECIDED_INFERENCE = ("AMBIGUOUS", "INCOMPLETE", "LOOKUP_FAILED")
++# 추정 후보에 인용 조문이 없으면 추정이 틀렸을 수 있다 — 후보를 버린 뒤 부존재로 단정하지 않는다(TK-152).
++UNDECIDED_INFERENCE = ("AMBIGUOUS", "INCOMPLETE", "LOOKUP_FAILED", "ARTICLE_NOT_IN_CANDIDATE")
+ 
+ 
+ def _abbreviation_like(law_name: str) -> bool:
+@@ -924,6 +929,7 @@ INFERENCE_NOTES = {
+     "AMBIGUOUS": "글자 순서가 맞는 법령 후보가 여럿이고 점수 차이가 작아 추정을 보류했다",
+     "LOOKUP_FAILED": "약칭 후보 목록 조회에 실패해 후보를 확인하지 못했다",
+     "INCOMPLETE": "약칭 후보 목록이 탐색 상한을 넘어 추정을 보류했다",
++    "ARTICLE_NOT_IN_CANDIDATE": "추정 후보 법령의 조회 버전에 인용 조문이 없다",
+ }
+ 
+ 
+diff --git a/tests/test_tk152_short_abbreviation_ranking.py b/tests/test_tk152_short_abbreviation_ranking.py
+new file mode 100644
+index 0000000..ee77851
+--- /dev/null
++++ b/tests/test_tk152_short_abbreviation_ranking.py
+@@ -0,0 +1,68 @@
++"""TK-152: 두 음절 어간 약칭의 후보 순위와, 추정 후보에 인용 조문이 없을 때의 판정.
++
++합성 법령명만 쓴다(실제 법령·서면의 이름이 아니다). TK-130 시험의 목록·본문 흉내를 그대로 쓴다.
++"""
++import test_tk130_abbreviation_inference as t130
++from test_tk130_abbreviation_inference import adapter  # noqa: F401  (fixture 재사용)
++from packages.legal_engine.law_name_inference import SHORT_STEM, pick
++from packages.source_adapters.law_go_kr import _normalize_law_payload
++
++
++def records(*rows):
++    return _normalize_law_payload({"LawSearch": {"law": list(rows)}})
++
++
++def chosen_name(written, *rows):
++    chosen, _ = pick(written, records(*rows), min_stem=SHORT_STEM)
++    return chosen and chosen["law_name"]
++
++
++def kinds(verdict):
++    return {f.confidence_features.get("verdict_label") for f in verdict.findings}
++
++
++def test_official_abbreviation_bonus_does_not_beat_first_two_word_initials():
++    # 공식 약칭이 있다는 이유만으로, 글자가 떨어져 맞는 약칭(셋째 말마디 이후)이 첫 두 말마디가 맞는 정식명을 앞서지 않는다.
++    right = t130.row(name="시험안전관리법", law_id="000911", mst="911")
++    wrong = t130.row(name="시험전환에 따른 고용안정 지원법", law_id="000912", mst="912", 법령약칭명="시험전환고용안정법")
++    assert chosen_name("시안법", right, wrong) == "시험안전관리법"
++
++
++def test_contiguous_prefix_of_official_abbreviation_wins():
++    right = t130.row(name="시험재해보상보험법", law_id="000913", mst="913", 법령약칭명="시재보험법")
++    other = t130.row(name="시험재산 정보의 관리에 관한 법률", law_id="000914", mst="914", 법령약칭명="시업재산정보법")
++    assert chosen_name("시재법", right, other) == "시험재해보상보험법"
++
++
++def test_rules_and_other_non_statute_names_are_not_candidates_for_a_statute():
++    statute = t130.row(name="시험안전보건법", law_id="000915", mst="915")
++    rule = t130.row(name="시험안전기준에 관한 규칙", law_id="000916", mst="916")
++    assert chosen_name("시안법", statute, rule) == "시험안전보건법"
++
++
++def test_same_grade_candidates_stay_ambiguous():
++    a = t130.row(name="시험보험법", law_id="000917", mst="917")
++    b = t130.row(name="시험정책 기본법", law_id="000918", mst="918")
++    chosen, ranked = pick("시험법", records(a, b), min_stem=SHORT_STEM)
++    assert chosen is None and len(ranked) == 2
++
++
++def test_candidate_without_cited_article_is_unverified_not_critical(monkeypatch, adapter):
++    # 우선 후보는 골랐으나 그 법령 조회 버전에 인용 조문이 없으면 추정이 틀렸을 수 있다 → 부존재로 단정하지 않는다.
++    rows = [t130.row()]
++    t130.install(monkeypatch, adapter, lambda params: rows if params.get("gana") else t130.by_stem(rows)(params),
++                 article="6")
++    verdict = t130.verify(adapter, t130.cite("시재법", article="99"))
++    assert verdict.review["law_alias"]["outcome"] == "ARTICLE_NOT_IN_CANDIDATE"
++    assert "NOT_FOUND_LAW" not in kinds(verdict)
++    [f] = [f for f in verdict.findings if f.confidence_features.get("verdict_label") == "ABBREVIATION_UNRESOLVED"]
++    assert str(f.severity) == "MEDIUM" and str(f.status) == "UNVERIFIED"
++    assert "인용 조문이 없어" in f.detail and t130.FULL in f.detail
++
++
++def test_long_stem_candidate_without_article_keeps_existing_result(monkeypatch, adapter):
++    # 어간 4자 이상(약칭 꼴 아님)은 기존 판정 유지(TK-130 대조).
++    rows = [t130.row(법령약칭명="시험재해처벌법")]
++    t130.install(monkeypatch, adapter, t130.by_stem(rows), article="6")
++    verdict = t130.verify(adapter, t130.cite("시험재해법", article="99"))
++    assert "NOT_FOUND_LAW" in kinds(verdict)

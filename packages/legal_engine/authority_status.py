@@ -99,6 +99,29 @@ def is_covered_precedent_scope(citation: Any) -> bool:
     return False
 
 
+# 대법원 전원합의체 판결은 법원도서관 분류상 A급(전원합의체 및 대법원판례집 수록 대상)으로 판례공보에 실리고
+# 종합법률정보에 등록된다(법원도서관 조사심의관, '판례공보와 종합법률정보', 2017. 8. 4.). 공보 게재(월 2회)·DB 등록·
+# 국가법령정보 연계 지연을 넉넉히 두고, 그보다 오래된 전원합의체 판결을 찾지 못하면 '부존재 의심'(HIGH)으로 올린다
+# (TK-154). 국가법령정보 판례 DB가 공보 판결 전부를 담는다는 공식 증명은 없으므로 부존재 확정(CRITICAL)은 아니다.
+ENBANC_PUBLICATION_LAG_DAYS = 180
+
+
+def enbanc_absence_suspected(citation: Any, current_date: Optional[str]) -> bool:
+    """서면이 '전원합의체'라고 밝힌 대법원 판결이고, 선고일이 기준일보다 공개 지연 기간 이상 앞서는가."""
+    from datetime import date, timedelta
+    from packages.source_adapters.legal_history import legal_date
+
+    if get_court_tier(citation) != "SUPREME":
+        return False
+    label = (getattr(citation, "case_kind", "") or "") + " " + (getattr(citation, "raw_text", "") or "")
+    if not re.search(r"전원\s*합의체", label):
+        return False
+    decided, current = legal_date(getattr(citation, "decision_date", None)), legal_date(current_date)
+    if not decided or not current:
+        return False
+    return date.fromisoformat(decided) <= date.fromisoformat(current) - timedelta(days=ENBANC_PUBLICATION_LAG_DAYS)
+
+
 def classify_authority_status(
     citation: Any,
     official_record: Optional[Dict[str, Any]],
