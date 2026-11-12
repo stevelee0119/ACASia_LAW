@@ -112,7 +112,9 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
     if provision["status"] == "NOT_FOUND":
         if inferred is not None:
             # 추정 법령에 인용 조문이 없으면 추정을 버리고 원래 판정(법령 목록 미발견)으로 돌아간다.
-            verdict.review["law_alias"].update(found=False, outcome="ARTICLE_NOT_IN_CANDIDATE")
+            verdict.review["law_alias"].update(
+                found=False, outcome="ARTICLE_NOT_IN_CANDIDATE",
+                candidates=[inferred["candidate"]["law_name"]])
             verdict.notes.append("추정 후보 법령의 조회 버전에 인용 조문이 없어 추정을 버리고 원래 판정을 유지한다")
             verdict.official_record = None
             verdict.levels.update(existence="NOT_FOUND", version="UNVERIFIED")
@@ -512,18 +514,27 @@ def _law_absent(verdict, response, verifier=None):
 
     # 2-2. 짧은 약칭 꼴(어간 3자 이하)인데 약칭 추정이 후보 여럿·목록 상한·조회 실패로 결론을 내지 못했으면 부존재로
     #      단정하지 않는다(TK-143). 공식 목록을 끝까지 읽고도 후보가 전혀 없으면(NO_CANDIDATE) 지금처럼 CRITICAL이다.
-    if _abbreviation_like(citation.law_name) and (verdict.review.get("law_alias") or {}).get("outcome") in UNDECIDED_INFERENCE:
+    alias = verdict.review.get("law_alias") or {}
+    if _abbreviation_like(citation.law_name) and _undecided_inference(citation.law_name, alias):
         verdict.status = VerificationStatus.UNVERIFIED
         verdict.levels.update(existence="UNVERIFIED", article="UNVERIFIED", provision="UNVERIFIED")
-        alias = verdict.review.get("law_alias") or {}
         verdict.notes.append(f"'{citation.law_name}'은(는) 약칭으로 보이나 정식 법령을 확인 불가 — 부존재로 단정하지 않는다")
+        cand_str = f"(후보: {', '.join(alias.get('candidates') or [])})" if alias.get("candidates") else ""
+        if alias.get("outcome") == "ARTICLE_NOT_IN_CANDIDATE":
+            detail = (f"약칭 추정 후보 법령의 조회 버전에 인용 조문이 없어 그 후보로 확정하지 못했다{cand_str}"
+                      ". 실무 줄임말일 수 있으므로 존재하지 않는 법령으로 단정하지 않는다. 정식 법령명을 서면에서 확인해야 한다.")
+        elif alias.get("outcome") == "NO_CANDIDATE":
+            detail = ("첫 글자 목록에 글자 순서가 맞는 후보가 없으나, 앞 낱말을 생략한 공식 약칭일 수 있다"
+                      ". 실무 줄임말일 수 있으므로 존재하지 않는 법령으로 단정하지 않는다. 정식 법령명을 서면에서 확인해야 한다.")
+        else:
+            detail = ("공식 법령 목록에 같은 이름이 없고, 약칭 추정으로도 정식 법령 하나를 고르지 못했다"
+                      + cand_str
+                      + ". 실무 줄임말일 수 있으므로 존재하지 않는 법령으로 단정하지 않는다. 정식 법령명을 서면에서 확인해야 한다.")
         verdict.findings.append(Finding.create(
             type=FindingType.LAW_CITATION_ERROR, status=VerificationStatus.UNVERIFIED, severity=Severity.MEDIUM,
             evidence_grade=EvidenceGrade.C,
             title=f"약칭으로 보이나 정식 법령을 확정하지 못함: {citation.law_name}",
-            detail=("공식 법령 목록에 같은 이름이 없고, 약칭 추정으로도 정식 법령 하나를 고르지 못했다"
-                    + (f"(후보: {', '.join(alias.get('candidates') or [])})" if alias.get("candidates") else "")
-                    + ". 실무 줄임말일 수 있으므로 존재하지 않는 법령으로 단정하지 않는다. 정식 법령명을 서면에서 확인해야 한다."),
+            detail=detail,
             document_id=citation.document_id, block_id=citation.block_id, page=citation.page, span=citation.span,
             engine="legal_engine", source_record_ids=ids, tags=["LEGAL", "STATUTE", "ABBREVIATION_UNRESOLVED"],
             confidence_features={"verdict_label": "ABBREVIATION_UNRESOLVED", "law_name": citation.law_name,
@@ -552,7 +563,19 @@ def _law_absent(verdict, response, verifier=None):
     ))
 
 
-UNDECIDED_INFERENCE = ("AMBIGUOUS", "INCOMPLETE", "LOOKUP_FAILED")
+UNDECIDED_INFERENCE = ("AMBIGUOUS", "INCOMPLETE", "LOOKUP_FAILED", "ARTICLE_NOT_IN_CANDIDATE")
+
+
+def _undecided_inference(law_name: str, alias: Dict[str, Any]) -> bool:
+    """약칭 추정이 결론을 내지 못했는지(TK-143, TK-152). 두 음절 어간의 NO_CANDIDATE는 미결로 본다."""
+    from .law_name_inference import compact, stem
+
+    outcome = alias.get("outcome")
+    if outcome in UNDECIDED_INFERENCE:
+        return True
+    if outcome == "NO_CANDIDATE" and len(stem(compact(law_name))) == 2:
+        return True
+    return False
 
 
 def _abbreviation_like(law_name: str) -> bool:
@@ -924,6 +947,7 @@ INFERENCE_NOTES = {
     "AMBIGUOUS": "글자 순서가 맞는 법령 후보가 여럿이고 점수 차이가 작아 추정을 보류했다",
     "LOOKUP_FAILED": "약칭 후보 목록 조회에 실패해 후보를 확인하지 못했다",
     "INCOMPLETE": "약칭 후보 목록이 탐색 상한을 넘어 추정을 보류했다",
+    "ARTICLE_NOT_IN_CANDIDATE": "약칭 추정 후보 법령의 조회 버전에 인용 조문이 없어 그 후보로 확정하지 못했다",
 }
 
 

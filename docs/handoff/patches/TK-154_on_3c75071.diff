@@ -1,0 +1,177 @@
+diff --git a/packages/legal_engine/authority_status.py b/packages/legal_engine/authority_status.py
+index 8d93eb9..0dafe3f 100644
+--- a/packages/legal_engine/authority_status.py
++++ b/packages/legal_engine/authority_status.py
+@@ -99,6 +99,29 @@ def is_covered_precedent_scope(citation: Any) -> bool:
+     return False
+ 
+ 
++# 대법원 전원합의체 판결은 법원도서관 분류상 A급(전원합의체 및 대법원판례집 수록 대상)으로 판례공보에 실리고
++# 종합법률정보에 등록된다(법원도서관 조사심의관, '판례공보와 종합법률정보', 2017. 8. 4.). 공보 게재(월 2회)·DB 등록·
++# 국가법령정보 연계 지연을 넉넉히 두고, 그보다 오래된 전원합의체 판결을 찾지 못하면 '부존재 의심'(HIGH)으로 올린다
++# (TK-154). 국가법령정보 판례 DB가 공보 판결 전부를 담는다는 공식 증명은 없으므로 부존재 확정(CRITICAL)은 아니다.
++ENBANC_PUBLICATION_LAG_DAYS = 180
++
++
++def enbanc_absence_suspected(citation: Any, current_date: Optional[str]) -> bool:
++    """서면이 '전원합의체'라고 밝힌 대법원 판결이고, 선고일이 기준일보다 공개 지연 기간 이상 앞서는가."""
++    from datetime import date, timedelta
++    from packages.source_adapters.legal_history import legal_date
++
++    if get_court_tier(citation) != "SUPREME":
++        return False
++    label = (getattr(citation, "case_kind", "") or "") + " " + (getattr(citation, "raw_text", "") or "")
++    if not re.search(r"전원\s*합의체", label):
++        return False
++    decided, current = legal_date(getattr(citation, "decision_date", None)), legal_date(current_date)
++    if not decided or not current:
++        return False
++    return date.fromisoformat(decided) <= date.fromisoformat(current) - timedelta(days=ENBANC_PUBLICATION_LAG_DAYS)
++
++
+ def classify_authority_status(
+     citation: Any,
+     official_record: Optional[Dict[str, Any]],
+diff --git a/packages/legal_engine/verifier.py b/packages/legal_engine/verifier.py
+index 19c9697..4ead43e 100644
+--- a/packages/legal_engine/verifier.py
++++ b/packages/legal_engine/verifier.py
+@@ -31,7 +31,8 @@ from packages.source_adapters import SourceRegistry
+ 
+ from .components import citation_components, component_summary, identity_confirmed
+ from .citation_format import code_court_family, court_family, format_violations
+-from .authority_status import LegalVerificationStatus, classify_authority_status, make_authority_id, get_court_tier
++from .authority_status import (ENBANC_PUBLICATION_LAG_DAYS, LegalVerificationStatus, classify_authority_status,
++                               enbanc_absence_suspected, get_court_tier, make_authority_id)
+ from .statute_ranges import check_statute_article_range
+ from .opinion_attribution import (
+     attribute_claim,
+@@ -47,7 +48,7 @@ from .quote_diff import categorize_quote_diff, quote_changes, quote_diff_summary
+ from .normalize import canonical_article, case_number_possible, same_case_number, split_case_number
+ from .source_review import date_context, verify_admin_rule_source, verify_decision_source, verify_statute_source
+ from .spec_mapping import spec_source_verdict
+-from packages.source_adapters.legal_history import legal_date
++from packages.source_adapters.legal_history import legal_date, today_korea
+ from packages.source_adapters.transport import source_lookup_trace, source_recovery
+ 
+ ENGINE_NAME = "legal_engine"
+@@ -98,7 +99,7 @@ class LegalVerifier:
+ 
+         def verify(citation):
+             if citation.type in (CitationType.CASE, CitationType.CONSTITUTIONAL):
+-                verdict = self.verify_case(citation)
++                verdict = self.verify_case(citation, current_date=current_date)
+             elif citation.type == CitationType.STATUTE:
+                 verdict = self.verify_statute(citation, as_of=case_date,
+                                               incident_date=incident_date, current_date=current_date)
+@@ -247,7 +248,7 @@ class LegalVerifier:
+         return result
+ 
+     # -- 판례 -------------------------------------------------------------
+-    def verify_case(self, citation: Citation) -> CitationVerdict:
++    def verify_case(self, citation: Citation, current_date: Optional[str] = None) -> CitationVerdict:
+         verdict = CitationVerdict(citation, VerificationStatus.UNVERIFIED)
+         case_number = citation.canonical_case_number or citation.case_number
+         if not case_number:
+@@ -353,6 +354,21 @@ class LegalVerifier:
+                 title = f"성립할 수 없는 사건번호 형식의 판례 인용: {citation.raw_text}"
+                 reason = ("사건번호의 연도 또는 사건부호가 실재할 수 없는 값이어서 DB 수록 범위와 무관하게 "
+                           "그 표기로는 사건이 존재할 수 없다. 오기인지 원문 확인이 필요하다.")
++            elif enbanc_absence_suspected(citation, current_date or today_korea()):
++                # 공보 게재 대상인 전원합의체 판결을 공개 지연 기간이 지나도록 찾지 못했다(TK-154). 부존재 확정은 아니다.
++                verdict.status = VerificationStatus.NOT_FOUND
++                finding_status = VerificationStatus.NOT_FOUND
++                severity = Severity.HIGH
++                tags = ["LEGAL", "CASE", "ENBANC_NOT_FOUND"]
++                title = f"공개 대상인 대법원 전원합의체 판결을 조회 범위에서 찾지 못함(부존재 의심): {citation.raw_text}"
++                reason = ("대법원 전원합의체 판결은 판례공보 게재·종합법률정보 등록 대상인데, 선고 후 "
++                          f"{ENBANC_PUBLICATION_LAG_DAYS}일이 지나도록 조회한 공식 DB에서 찾지 못했다. 사건번호·선고일 "
++                          "오기이거나 실재하지 않는 판결일 가능성이 높다. 조회 DB의 전수 수록이 증명된 것은 아니므로 "
++                          "부존재로 확정하지 않으며, 판결문 사본이나 대법원 종합법률정보로 확인해야 한다.")
++                auth_status = LegalVerificationStatus.SUSPICIOUS
++                verdict.levels["authority_status"] = auth_status.value
++                features.update(authority_status=auth_status.value, suspicion_basis="ENBANC_PUBLICATION_EXPECTED",
++                                publication_lag_days=ENBANC_PUBLICATION_LAG_DAYS)
+             else:
+                 verdict.status = VerificationStatus.NOT_FOUND
+                 finding_status = VerificationStatus.NOT_FOUND
+diff --git a/tests/test_tk154_enbanc_not_found.py b/tests/test_tk154_enbanc_not_found.py
+new file mode 100644
+index 0000000..7ce0227
+--- /dev/null
++++ b/tests/test_tk154_enbanc_not_found.py
+@@ -0,0 +1,74 @@
++"""TK-154: 조회 범위에서 찾지 못한 대법원 전원합의체 판결은 '부존재 의심'(HIGH), 그 밖은 LV-03 '확인 불가'(MEDIUM).
++
++사건번호·날짜는 합성이다(실제 판결·서면의 값이 아니다).
++"""
++import pytest
++
++from packages.common.enums import AdapterStatus, CitationType, FindingType, Severity, VerificationStatus
++from packages.common.schemas import Citation
++from packages.legal_engine.authority_status import ENBANC_PUBLICATION_LAG_DAYS, enbanc_absence_suspected
++from packages.legal_engine.verifier import LegalVerifier
++from packages.source_adapters import SourceRegistry
++from packages.source_adapters.base import AdapterResponse
++
++CURRENT = "2026-11-12"
++
++
++class _Law:
++    def __init__(self, status=AdapterStatus.READY):
++        self.status = status
++
++    def search_case(self, *args, **kw):
++        return AdapterResponse(self.status, [], None, "synthetic")
++
++
++def _verify(citation, status=AdapterStatus.READY, current=CURRENT):
++    registry = SourceRegistry()
++    registry.legal[0] = _Law(status)
++    return LegalVerifier(registry).verify_case(citation, current_date=current)
++
++
++def _citation(raw, number="2019다12345", court="대법원", kind="전원합의체 판결", decided="2020-03-02"):
++    return Citation(citation_id="c", type=CitationType.CASE, raw_text=raw, court=court, case_number=number,
++                    canonical_case_number=number, case_kind=kind, decision_date=decided, page=1)
++
++
++def _not_found(verdict):
++    [f] = [f for f in verdict.findings if f.type == FindingType.CASE_NOT_FOUND]
++    return f
++
++
++def test_old_enbanc_judgment_not_found_is_high_suspicion_not_critical():
++    v = _verify(_citation("대법원 2020. 3. 2. 선고 2019다12345 전원합의체 판결"))
++    f = _not_found(v)
++    assert f.severity == Severity.HIGH and f.status == VerificationStatus.NOT_FOUND
++    assert "ENBANC_NOT_FOUND" in f.tags and "SOURCE_LIMIT" not in f.tags and "FAKE_PRECEDENT" not in f.tags
++    assert f.confidence_features["suspicion_basis"] == "ENBANC_PUBLICATION_EXPECTED"
++    assert v.levels["authority_status"] == "SUSPICIOUS"
++    assert "확정하지 않" in f.detail
++
++
++@pytest.mark.parametrize("citation", [
++    _citation("대법원 2020. 3. 2. 선고 2019다12345 판결", kind="판결"),                     # 전원합의체 표기 없음
++    _citation("대법원 2026. 10. 2. 선고 2019다12345 전원합의체 판결", decided="2026-10-02"),  # 공개 지연 기간 안
++    _citation("대법원 2019다12345 전원합의체 판결", decided=None),                           # 선고일 없음
++    _citation("서울고등법원 2020. 3. 2. 선고 2019나12345 전원합의체 판결", number="2019나12345",
++              court="서울고등법원"),                                                         # 하급심
++])
++def test_other_not_found_cases_keep_lv03_source_limit_medium(citation):
++    f = _not_found(_verify(citation))
++    assert f.severity == Severity.MEDIUM and "SOURCE_LIMIT" in f.tags
++
++
++def test_lookup_failure_is_not_a_not_found_verdict():
++    v = _verify(_citation("대법원 2020. 3. 2. 선고 2019다12345 전원합의체 판결"), status=AdapterStatus.ERROR)
++    # 조회 실패는 '미확인'이다(기존 동작). 부존재 의심으로 올리지 않는다.
++    assert all(f.status == VerificationStatus.UNVERIFIED for f in v.findings)
++    assert not [f for f in v.findings if f.severity in (Severity.HIGH, Severity.CRITICAL) or "ENBANC_NOT_FOUND" in f.tags]
++
++
++def test_lag_boundary():
++    c = _citation("대법원 전원합의체 판결", decided="2026-05-16")
++    assert ENBANC_PUBLICATION_LAG_DAYS == 180
++    assert enbanc_absence_suspected(c, "2026-11-12") is True
++    assert enbanc_absence_suspected(c, "2026-11-11") is False
