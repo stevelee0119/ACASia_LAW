@@ -338,5 +338,38 @@
   },
   "decided_by": "claude-code (평가 측)",
   "decided_at": "2026-11-12"
+ },
+ {
+  "version": "0.19.0",
+  "from": "0.18.0",
+  "level": "minor",
+  "basis": [
+   "changed",
+   "fixed"
+  ],
+  "measured_commit": "9406d9cdca88bfd84119a495488c87deb4a79091",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.11.18",
+   "tesseract": "5.3.4 kor (CI와 같음)",
+   "scoring": "고정 채점기 불변. 후보 Steve 9406d9c에서 평가 측 verify_all 전체 모드(기준 0.18.0 main 3c75071) 1회 종료 0. 은퇴 세트는 0.18.0과 후보를 같은 세트 파일·같은 환경으로 함께 채점",
+   "track": "일반 경로(RELEASE_PROCEDURE 2절). 범위 #264(TK-152)·#265(TK-153)·#266(TK-154), 구현 Antigravity. 봉인 시험은 사용자 결정(11-12 '봉인시험 미시행')으로 하지 않고, 배포 뒤 0.18.0 대 0.19.0 온라인 비교로 갈음(이번 변경은 모두 공식 DB 응답 경로라 오프라인 봉인 시험으로 효과를 재지 못함)"
+  },
+  "evidence": {
+   "M1": "고정 dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 0.18.0과 같음. 합산 RER 0. score_gate 통과, regression_gate(기준 3c75071) 회귀 없음",
+   "M2": "봉인 시험 미실시(사용자 결정 11-12). 갈음: 배포 직후 case9 23항목(0.18.0 22/23 — EX-1 회귀)과 온라인 탐침 4종 47항목(0.18.0 38/47, online_compare_0170_0180_20261112.md)을 같은 조건으로 0.19.0에서 다시 재어 비교한다. 결과는 판정서 보충으로 적는다",
+   "M3": "은퇴 세트(같은 조건·평가 측 재실행) 0.18.0 → 후보: 08 53.3→53.3, 08b 48.6→48.6, 09 56.9→56.9, 10 45.8→45.8, 20261025 34.1→34.1(Steve 기준), 오탐 0·A 0·인젝션 방어 유지",
+   "M4": "changed: 서면이 '전원합의체'라고 밝힌 대법원 판결을 선고 180일 뒤에도 공식 DB에서 찾지 못하면 '부존재 의심'(HIGH·NOT_FOUND, authority_status SUSPICIOUS — CRITICAL·부존재 확정은 쓰지 않음)(TK-154, 사용자 'EX-1 둘 다 처리'). 두 음절 어간 약칭이 첫 글자 목록에서 후보 0건이면 CRITICAL 대신 미결 MEDIUM(TK-152 (d), 사용자 X7 승인). fixed: 두 음절 약칭 추정 순위(약칭 가산·연속 정렬)와 추정 후보에 인용 조문이 없을 때 CRITICAL로 떨어지던 결함(TK-152), 공식 판결 전문의 번호 붙은 의견 머리말·쟁점 한정 판결요지 표지 미인식으로 결정적 의견 귀속 검사가 작동하지 않던 결함(TK-153)",
+   "P1": "verify_all 전체 모드 종료 0(9406d9c): environment·acceptance 1239·regression_ledger 2357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths(바뀐 보호 경로 16개 모두 평가 측 커밋 또는 승인)·version_policy·full_tests 9997·browser_tests 197, 실제 실패 0",
+   "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
+   "P3": "hardcoding_diff 통과(기준 3c75071), 각 PR 평가 세트 문구 대조 통과(점수 하락 게이트 CI 성공)",
+   "P4": "#264·#265·#266 같은 SHA 필수 CI 성공(인용), 평가 측 사본·합본 재실행(합본 전체 11,422건, 관련 296건) 실패 0, 구현 PR 제품 코드 = 평가 측 사본 diff 0",
+   "P5": "열린 신규 회귀 티켓 0(case9 EX-1 회귀는 TK-154로 대응 — 온라인 확인 대기)",
+   "P6": "이 판정서",
+   "unmeasured": "온라인 경로 전체(이번 변경 3건 모두: 약칭 추정 실제 목록 응답, 판결 의견 귀속의 AI 검토 단계 변화, 전원합의체 미발견 판정과 국가법령정보 판례 DB 수록률·180일 값 적정성), 봉인 세트 새 출제분(사용자 결정으로 미실시), train"
+  },
+  "decided_by": "claude-code (평가 측)",
+  "decided_at": "2026-11-12"
  }
 ]

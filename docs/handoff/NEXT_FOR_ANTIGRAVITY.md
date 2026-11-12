@@ -3955,3 +3955,34 @@ F11 [미탐] 인용문에서 두 당사자를 맞바꾸면(예: '채권자는 �
  - PR 1개(제품: authority_status.py·verifier.py, 시험: 새 파일 1개). 기존 시험 단언 변경 없음. case9 명세(보호 경로) 변경 없음.
  - 수용 기준: 4절 시험 통과, 필수 CI 성공, 은퇴·고정 세트 변화 0(오탐 증가 0), 배포 후 온라인 case9 23/23 확인(사용자 실행).
 ```
+- 11-12 사용자 '평가pr 생성 병합' → #262 생성(head `b5f60bb`, CI 전부 성공 — 인용) → 병합 Steve `e6ffe84`(expectedHeadSha 확인). Steve의 NEXT 잘림(48줄) 복원 반영. 지시 NEXT 2-36 전달 가능, X7 결정 대기.
+
+### 2-36-4. 사용자 결정 X7 승인 (11-12)
+- 사용자 원문: "X7 결정: 두 음절 약칭이 후보 0건일 때 CRITICAL 대신 MEDIUM으로 승인"
+- TK-152는 F3(C4)까지 한 PR로 구현한다(평가 측 사본 `df6fc3c` = `37d1bce` + (d)). 보호 시험 `tests/test_tk143_short_abbreviation.py::test_short_name_with_no_candidate_in_complete_list_keeps_not_found_law`의 단언 변경(입력 '가나다법'으로 CRITICAL 유지 확인) + 새 시험 `test_two_syllable_name_with_no_candidate_is_unverified`(두 음절 '가나법' → ABBREVIATION_UNRESOLVED·MEDIUM)는 승인된 변경이다. 시험 이름은 유지한다. 증분 [patches/TK-152_d_X7_on_37d1bce.diff](patches/TK-152_d_X7_on_37d1bce.diff).
+- 수용 기준 추가: 어간 3자 약칭 꼴 후보 0건과 어간 4자 이상(지어낸 법률명)은 CRITICAL 유지.
+
+### 2-36-5. #263(TK-152) 판정 — 내용 수용, 대상 브랜치 정정(보완 1건) (11-12, head `49f97b9`)
+- 제품 = 사본 `df6fc3c`와 같은 구조(더 보수적 차이 2: is_subsequence 유지·정식명 '…법/법률' 끝 확인). 실제 목록 응답 재현 15꼴 사본과 같음, 새 시험 10건 변별(3c75071 실패 6·통과 4), 관련 45건 통과, 하드코딩 통과, 은퇴 5세트·고정 82.6/81.9/0 변화 0(기준 Steve `e6ffe84`, 평가 측 재실행). CI 전부 성공(인용).
+- 보완: PR이 main 대상·main `3c75071`에서 분기 → Steve에서 새 브랜치 + `git cherry-pick 49f97b9`(충돌 없음)로 Steve 대상 PR을 다시 내고 #263은 닫는다. 대상만 바꾸면 Steve의 sealed_20261025 등이 지워지는 diff가 생긴다. 평가 측 지시 표기 결함('기준: main 3c75071' = 사본 기준 코드, 제품 코드는 Steve와 같음) — TK-153·154도 Steve `e6ffe84` 기준. PR 코멘트로 전달.
+- 11-12 #264(TK-152, Steve 대상, head `9768bc8`) **수용**: 3fbf56f = #263 49f97b9 cherry-pick, 9768bc8 = X7 승인 시험 추가(test_tk143). 제품 = 평가 측 판정본 diff 0, 관련 46건 통과, CI 전부 성공(인용). #263 닫힘. 병합 대기(사용자).
+- 11-12 사용자 '#264 병합' → Steve `d8b1b2a`(expectedHeadSha `9768bc8`, CI 전부 성공). TK-152 병합. 남은 것: TK-153·154 PR.
+- 11-12 #265(TK-153, head `6e9c8f3`)·#266(TK-154, head `86d8d04`) **수용**: 제품·시험 = 사본 ff77e27·6125e4a diff 0, 합본(Steve `d8b1b2a` + 두 PR, 충돌 없음) 관련 296건 통과, B-C3 결정적 검출(A), 하드코딩 통과, 은퇴 5세트·고정 변화 0(평가 측 재실행). CI 전부 성공(인용). 병합 대기(사용자). 병합 뒤 릴리스 후보 verify_all.
+- 11-12 사용자 '#255,256 병합'(#255·#256은 11-11 병합 완료 — #265·#266으로 해석) → #265 병합 Steve `4118677`(expectedHeadSha `6e9c8f3`), #266 병합 Steve `9406d9c`(expectedHeadSha `86d8d04`). Steve 제품·시험 = 평가 합본 `8e1294c` diff 0. 다음: 릴리스 후보 verify_all 전체.
+- 11-12 0.19.0 릴리스 후보 Steve `9406d9c`(TK-152·153·154) verify_all 전체 모드(기준 0.18.0 main `3c75071`, 평가 측 재실행) **종료 0**: environment·acceptance 1,239·regression_ledger 2,357·score_gate·regression_gate(회귀 없음)·hardcoding_diff·test_edits·protected_paths(16개 승인)·version_policy·full_tests 9,997·browser_tests 197, 실제 실패 0. 은퇴 4세트(main 기준) 53.3/48.6/56.9/45.8·20261025 34.1·고정 82.6/81.9/0 — 0.18.0과 같음. 다음: 0.19.0 판정(봉인 시험 여부 사용자 결정).
+
+## 2-37. 0.19.0 판정·버전 커밋 지시 (11-12, 사용자 '봉인시험 미시행, 평가 PR 생성 병합')
+- 판정서: `docs/scorecards/version_verdicts.json` 0.19.0(minor, changed·fixed, measured_commit `9406d9c`). 봉인 시험은 사용자 결정으로 미실시, 배포 뒤 0.18.0 대 0.19.0 온라인 비교로 갈음.
+- 평가 측 사본으로 만들어 점검: check_version_policy '위반 없음(상향 1건 0.18.0 → 0.19.0)', `scripts/update_readme.py` 생성 결과와 README 일치, 버전·README 관련 시험 통과. 증분 [patches/v0.19.0_version_commit_on_9406d9c.diff](patches/v0.19.0_version_commit_on_9406d9c.diff).
+
+```
+[0.19.0 버전 커밋 — 구현 지시]  기준: 이 평가 PR이 Steve에 병합된 뒤의 Steve 최신
+- 판정서: docs/scorecards/version_verdicts.json 0.19.0(minor, changed·fixed, 9406d9c 기준). 평가 측 판정 없이 버전을 올리지 않는다.
+- 커밋 1개, PR 1개(Steve_ACASiaLAW 대상). 바꿀 파일 5개 — 평가 측 증분 docs/handoff/patches/v0.19.0_version_commit_on_9406d9c.diff를 그대로 적용한다(git apply).
+  · packages/common/config.py: Settings.version "0.18.0" → "0.19.0"(주석 포함)
+  · docs/releases.json: 0.19.0 항목 추가(판정 요약·TK-154·153·152 변경 3줄)
+  · docs/release_highlights.json: "0.19" 요약 4줄
+  · README.md·docs/RELEASE_HISTORY.md: scripts/update_readme.py 생성 결과(증분과 같음)
+- 확인: python scripts/check_version_policy.py --base <Steve 최신> → '위반 없음(상향 1건 0.18.0 → 0.19.0)', python scripts/update_readme.py 실행 뒤 변경 없음, tests/test_update_readme.py·tests/test_v4_run_manifest.py 통과.
+- 수용 기준: 평가 측 증분과 diff 0, 필수 CI 성공. 그 밖의 파일은 바꾸지 않는다.
+```
