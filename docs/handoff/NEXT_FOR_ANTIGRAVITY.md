@@ -3961,3 +3961,7 @@ F11 [미탐] 인용문에서 두 당사자를 맞바꾸면(예: '채권자는 �
 - 사용자 원문: "X7 결정: 두 음절 약칭이 후보 0건일 때 CRITICAL 대신 MEDIUM으로 승인"
 - TK-152는 F3(C4)까지 한 PR로 구현한다(평가 측 사본 `df6fc3c` = `37d1bce` + (d)). 보호 시험 `tests/test_tk143_short_abbreviation.py::test_short_name_with_no_candidate_in_complete_list_keeps_not_found_law`의 단언 변경(입력 '가나다법'으로 CRITICAL 유지 확인) + 새 시험 `test_two_syllable_name_with_no_candidate_is_unverified`(두 음절 '가나법' → ABBREVIATION_UNRESOLVED·MEDIUM)는 승인된 변경이다. 시험 이름은 유지한다. 증분 [patches/TK-152_d_X7_on_37d1bce.diff](patches/TK-152_d_X7_on_37d1bce.diff).
 - 수용 기준 추가: 어간 3자 약칭 꼴 후보 0건과 어간 4자 이상(지어낸 법률명)은 CRITICAL 유지.
+
+### 2-36-5. #263(TK-152) 판정 — 내용 수용, 대상 브랜치 정정(보완 1건) (11-12, head `49f97b9`)
+- 제품 = 사본 `df6fc3c`와 같은 구조(더 보수적 차이 2: is_subsequence 유지·정식명 '…법/법률' 끝 확인). 실제 목록 응답 재현 15꼴 사본과 같음, 새 시험 10건 변별(3c75071 실패 6·통과 4), 관련 45건 통과, 하드코딩 통과, 은퇴 5세트·고정 82.6/81.9/0 변화 0(기준 Steve `e6ffe84`, 평가 측 재실행). CI 전부 성공(인용).
+- 보완: PR이 main 대상·main `3c75071`에서 분기 → Steve에서 새 브랜치 + `git cherry-pick 49f97b9`(충돌 없음)로 Steve 대상 PR을 다시 내고 #263은 닫는다. 대상만 바꾸면 Steve의 sealed_20261025 등이 지워지는 diff가 생긴다. 평가 측 지시 표기 결함('기준: main 3c75071' = 사본 기준 코드, 제품 코드는 Steve와 같음) — TK-153·154도 Steve `e6ffe84` 기준. PR 코멘트로 전달.
