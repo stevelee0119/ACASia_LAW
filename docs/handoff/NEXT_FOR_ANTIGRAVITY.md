@@ -3970,3 +3970,19 @@ F11 [미탐] 인용문에서 두 당사자를 맞바꾸면(예: '채권자는 �
 - 11-12 #265(TK-153, head `6e9c8f3`)·#266(TK-154, head `86d8d04`) **수용**: 제품·시험 = 사본 ff77e27·6125e4a diff 0, 합본(Steve `d8b1b2a` + 두 PR, 충돌 없음) 관련 296건 통과, B-C3 결정적 검출(A), 하드코딩 통과, 은퇴 5세트·고정 변화 0(평가 측 재실행). CI 전부 성공(인용). 병합 대기(사용자). 병합 뒤 릴리스 후보 verify_all.
 - 11-12 사용자 '#255,256 병합'(#255·#256은 11-11 병합 완료 — #265·#266으로 해석) → #265 병합 Steve `4118677`(expectedHeadSha `6e9c8f3`), #266 병합 Steve `9406d9c`(expectedHeadSha `86d8d04`). Steve 제품·시험 = 평가 합본 `8e1294c` diff 0. 다음: 릴리스 후보 verify_all 전체.
 - 11-12 0.19.0 릴리스 후보 Steve `9406d9c`(TK-152·153·154) verify_all 전체 모드(기준 0.18.0 main `3c75071`, 평가 측 재실행) **종료 0**: environment·acceptance 1,239·regression_ledger 2,357·score_gate·regression_gate(회귀 없음)·hardcoding_diff·test_edits·protected_paths(16개 승인)·version_policy·full_tests 9,997·browser_tests 197, 실제 실패 0. 은퇴 4세트(main 기준) 53.3/48.6/56.9/45.8·20261025 34.1·고정 82.6/81.9/0 — 0.18.0과 같음. 다음: 0.19.0 판정(봉인 시험 여부 사용자 결정).
+
+## 2-37. 0.19.0 판정·버전 커밋 지시 (11-12, 사용자 '봉인시험 미시행, 평가 PR 생성 병합')
+- 판정서: `docs/scorecards/version_verdicts.json` 0.19.0(minor, changed·fixed, measured_commit `9406d9c`). 봉인 시험은 사용자 결정으로 미실시, 배포 뒤 0.18.0 대 0.19.0 온라인 비교로 갈음.
+- 평가 측 사본으로 만들어 점검: check_version_policy '위반 없음(상향 1건 0.18.0 → 0.19.0)', `scripts/update_readme.py` 생성 결과와 README 일치, 버전·README 관련 시험 통과. 증분 [patches/v0.19.0_version_commit_on_9406d9c.diff](patches/v0.19.0_version_commit_on_9406d9c.diff).
+
+```
+[0.19.0 버전 커밋 — 구현 지시]  기준: 이 평가 PR이 Steve에 병합된 뒤의 Steve 최신
+- 판정서: docs/scorecards/version_verdicts.json 0.19.0(minor, changed·fixed, 9406d9c 기준). 평가 측 판정 없이 버전을 올리지 않는다.
+- 커밋 1개, PR 1개(Steve_ACASiaLAW 대상). 바꿀 파일 5개 — 평가 측 증분 docs/handoff/patches/v0.19.0_version_commit_on_9406d9c.diff를 그대로 적용한다(git apply).
+  · packages/common/config.py: Settings.version "0.18.0" → "0.19.0"(주석 포함)
+  · docs/releases.json: 0.19.0 항목 추가(판정 요약·TK-154·153·152 변경 3줄)
+  · docs/release_highlights.json: "0.19" 요약 4줄
+  · README.md·docs/RELEASE_HISTORY.md: scripts/update_readme.py 생성 결과(증분과 같음)
+- 확인: python scripts/check_version_policy.py --base <Steve 최신> → '위반 없음(상향 1건 0.18.0 → 0.19.0)', python scripts/update_readme.py 실행 뒤 변경 없음, tests/test_update_readme.py·tests/test_v4_run_manifest.py 통과.
+- 수용 기준: 평가 측 증분과 diff 0, 필수 CI 성공. 그 밖의 파일은 바꾸지 않는다.
+```
