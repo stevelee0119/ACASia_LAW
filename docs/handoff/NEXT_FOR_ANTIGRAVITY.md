@@ -3800,3 +3800,158 @@ F11 [미탐] 인용문에서 두 당사자를 맞바꾸면(예: '채권자는 �
 - 11-12 사용자 '태그 완료' → 원격 `refs/tags/v.0.18.0` = `3c75071c9baba295e713d912d3e4876fdf585955`(main #261 병합 커밋, 경량 태그 — v.0.13.1과 같은 형식) 확인. 0.18.0 릴리스 주기의 남은 일: 0.17.0 대 0.18.0 온라인 비교.
 - 11-12 0.17.0 대 0.18.0 온라인 비교 1차(정답지 대조 전): case9 22/23 — EX-1 회귀(LV-03 X6 정책으로 미발견 대법원 판례 MEDIUM), 나머지 22항목 통과. 탐침: D docx·hwpx·hwp 표 합계·비율 진단 개선(TK-144·146), B 반복 인용 보존(TK-145), A CRITICAL 오단정 감소(잔여 가능), C 0.17.0과 같은 꼴. 기록 `online_compare_0170_0180_20261112.md`. 사용자 결정 필요(EX-1)·정답지 요청.
 - 11-12 0.17.0 대 0.18.0 온라인 비교 2차(정답지 대조) 38/47(0.17.0 25/45). 새 결함 TK-152(P1, 두 음절 약칭 추정)·TK-153(P2, 판결 의견 표지 꼴) — 지시문은 사용자 승인 뒤 사본 사전 검증을 거쳐 낸다. case9 EX-1(LV-03 X6 정책) 처리 사용자 결정 대기. 기록 `docs/scorecards/online_compare_0170_0180_20261112.md` 5절.
+
+## 2-36. 0.18.0 온라인 비교 후속 — TK-152·153·154 구현 지시 (11-12, 사용자 'EX-1 처리 결정: 둘다 처리', 'TK-152,153 지시문 작성 승인')
+- 구현 주체: Antigravity(다음 릴리스). PR 3개, 서로 독립(같은 파일을 고치지 않음 — 합본 사본에서 충돌 없음 확인).
+- 사전 검증(평가 측 재실행): 사본 TK-152 `37d1bce`·`df6fc3c`, TK-153 `ff77e27`, TK-154 `6125e4a`(모두 main `3c75071` 기준), 합본 전체 11,422건 통과·실패 0, 은퇴 4세트·고정 세트 변화 0.
+- 사용자 결정 대기 X7: TK-152 (d)(두 음절 어간 후보 0건을 미결 MEDIUM으로 — 보호 시험 단언 1건 변경). 승인 전에는 (a)~(c)만 구현한다.
+- case9 명세(EX-1)는 바꾸지 않는다: TK-154가 현 기대(HIGH 이상)를 충족할 것으로 본다. 배포 후 온라인 case9로 확인한다(미검증).
+- 증분: [patches/TK-152_abc_on_3c75071.diff](patches/TK-152_abc_on_3c75071.diff)·[patches/TK-152_d_X7_on_37d1bce.diff](patches/TK-152_d_X7_on_37d1bce.diff)·[patches/TK-153_on_3c75071.diff](patches/TK-153_on_3c75071.diff)·[patches/TK-154_on_3c75071.diff](patches/TK-154_on_3c75071.diff)
+
+### 2-36-1. TK-152
+```
+[TK-152(P1) 두 음절 어간 약칭 추정 — 구현 지시]  기준: main 3c75071(0.18.0)  평가 측 사본: 37d1bce((a)~(c)), df6fc3c((d) 포함)
+
+1. 문제
+- 0.18.0 온라인 탐침 A(비공식 약칭 6건)에서 실재 법률 2건이 아직 '법령 목록에서 찾지 못한 법령'(STATUTE_NONEXISTENT·CRITICAL)으로 나온다.
+- 1건은 정식명을 확정하지 못했다(MEDIUM). 오단정은 아니지만 정식명을 놓친 것이다.
+
+2. 원인(파일·줄은 3c75071 기준, 운영 결과 JSON에 담긴 실제 목록 응답으로 평가 측 재현)
+ C1. packages/legal_engine/law_name_inference.py 100~101행 score(): 공식 약칭 대조는 기본점 800, 정식명 대조는 600이다(정식명은 공식 약칭이 없는 법률일 때만 씀).
+     → 글자가 떨어져 맞는 다른 법률의 공식 약칭(둘째 글자가 넷째 말마디)이 794점이다. 첫 두 말마디가 그대로 맞는 정답 법률의 정식명은 596점이다. 차이 198점(MARGIN 100 이상)으로 틀린 후보가 우선 후보가 된다.
+ C2. packages/legal_engine/source_review.py 112~119행: 우선 후보 법령에 인용 조문이 없으면 outcome을 ARTICLE_NOT_IN_CANDIDATE로 두고 _law_absent로 돌아간다.
+     → 555행 UNDECIDED_INFERENCE에 이 값이 없어 513행 '약칭 꼴 미결(MEDIUM)' 분기를 건너뛰고, 537행 일반 분기 CRITICAL('비슷한 이름의 법령도 없다')이 된다. C1의 틀린 후보가 이 경로로 CRITICAL을 만든다.
+ C3. score()에 '어간이 대상 어간 맨 앞에 그대로 이어 나옴'에 대한 가산이 없다.
+     → 정답 공식 약칭(어간이 그대로 앞에 이어짐) 798점과 다른 법령 약칭(둘째 글자가 둘째 말마디) 796점이 동점 처리돼 AMBIGUOUS(MEDIUM)가 된다.
+ C4. 93행 첫 글자 규칙과 사전식 목록(official_legal.py 193행, 첫 글자 초성)의 한계: 공식 약칭이 앞 낱말을 생략한 꼴이면 그 법률이 다른 초성 목록에 있어 후보가 0건(NO_CANDIDATE)이 된다.
+     → TK-143 정책상 NO_CANDIDATE는 CRITICAL이다.
+
+3. 고칠 것
+ F1(C1·C3). 두 음절 어간일 때(min_stem == SHORT_STEM이고 어간 2자) score()가 새 함수 _short_score()를 쓴다. 3자 이상 어간의 점수·규칙은 그대로 둔다(TK-130 시험 유지).
+     - 대조 대상은 지금처럼 공식 약칭, 없으면 정식명이다. 약칭이라고 가산하지 않는다.
+     - 대상의 법령 종류가 같고 첫 글자가 같아야 한다. '…법'으로 적힌 이름이면 대상 이름이 '법'·'법률'로 끝나야 한다('…에 관한 규칙' 제외).
+     - 등급: 어간이 대상 어간 맨 앞에 그대로 이어 나옴 1000, 둘째 글자가 대상 어간 셋째 글자(둘째 말마디 첫 음절) 850, 그 밖의 말마디 첫 음절 정렬(_initials_subsequence) 700, 해당 없음 0.
+     - 점수 = 등급 − min(대상 어간 길이 − 2, 100). THRESHOLD 500·MARGIN 100은 그대로다.
+     - 기존 '두 음절은 말마디 첫 음절이거나 정식명 첫 낱말 그대로'(96~99행) 조건은 _short_score가 대신하므로 지운다.
+ F2(C2). UNDECIDED_INFERENCE에 "ARTICLE_NOT_IN_CANDIDATE"를 넣는다.
+     - 115행에서 outcome을 둘 때 candidates=[후보 법령명]도 함께 둔다.
+     - 513행 MEDIUM 결과의 detail은 이 outcome이면 '약칭 추정 후보 법령의 조회 버전에 인용 조문이 없어 그 후보로 확정하지 못했다(후보: …)'로 적는다.
+     - INFERENCE_NOTES에 같은 뜻의 항목을 넣는다.
+     - 어간 4자 이상(약칭 꼴 아님)은 지금처럼 원래 판정을 유지한다.
+ F3(C4) — 사용자 결정 X7 승인 시에만. 두 음절 어간(약칭 꼴)이 NO_CANDIDATE면 미결로 본다.
+     - 513행 조건을 _undecided_inference(law_name, alias)로 바꾼다. 이 함수는 outcome이 UNDECIDED_INFERENCE이거나, NO_CANDIDATE이면서 어간이 2자일 때 참이다.
+     - detail은 '첫 글자 목록에 글자 순서가 맞는 후보가 없으나, 앞 낱말을 생략한 공식 약칭일 수 있다'로 적는다.
+     - 어간 3자 약칭 꼴의 NO_CANDIDATE와 4자 이상(지어낸 법률명)은 CRITICAL을 유지한다.
+     - 보호 시험 단언 변경 1건이 필요하다: tests/test_tk143_short_abbreviation.py의 test_short_name_with_no_candidate_in_complete_list_keeps_not_found_law. 입력을 '가나다법'(3자, CRITICAL 유지)으로 바꾸고, 두 음절 '가나법'은 새 시험에서 ABBREVIATION_UNRESOLVED(MEDIUM)로 단언한다. 이 변경은 평가 측이 사용자 승인으로 반영한다.
+
+4. 확인 시험(새 파일 tests/test_tk152_short_abbreviation_ranking.py — 합성 법령명, TK-130 시험의 목록·본문 흉내 재사용)
+ - 약칭 가산이 첫 두 말마디 정식명을 이기지 못함(C1), 공식 약칭 맨 앞 이어짐이 이김(C3), 법률로 적힌 이름에 규칙이 후보로 오지 않음, 같은 등급 둘은 AMBIGUOUS 유지.
+ - 우선 후보에 인용 조문이 없으면 ARTICLE_NOT_IN_CANDIDATE → ABBREVIATION_UNRESOLVED·MEDIUM·UNVERIFIED, detail에 후보명(C2). 어간 4자 이상은 NOT_FOUND_LAW 유지.
+ - 고치기 전 코드(3c75071)에서는 C1·C3·C2 시험 3건이 실패하고 대조 3건은 통과해야 한다(평가 측 확인).
+ - 기존 시험 유지: test_tk130_abbreviation_inference·test_tk143_short_abbreviation(F3을 넣으면 위 1건만 변경).
+
+5. 평가 측 사전 검증(평가 측 재실행)
+ - 실제 목록 응답(ㄱ 1,433건·ㄴ 220건·ㅅ 712건) 재현 — 탐침 A의 두 음절 약칭 6꼴:
+   양성 4건(C1·C3 대상 포함)이 정답 법률로 추정됨. 고치기 전에는 1건 정답, 1건 틀린 법률, 1건 동점, 1건 정답이었다.
+   모호 대조(A-C3)는 AMBIGUOUS 유지. C4 꼴 1건은 후보 0건(F3 없이는 CRITICAL, F3 적용 시 MEDIUM).
+ - 추가 점검 13꼴(실재·가공 섞음): 고치기 전에 엉뚱한 법률 1개를 고르던 일반 낱말 꼴 2개가 AMBIGUOUS로 바뀜. 고치기 전 AMBIGUOUS였던 실재 약칭 꼴 2개가 정답 법률로 추정됨. 나머지는 고치기 전과 같은 결론(AMBIGUOUS 또는 후보 0).
+ - 관련 시험 42건 통과(F3 포함, 단언 변경 1건 반영). 은퇴 4세트(main 기준)·고정 세트: 은퇴 4세트 53.3/48.6/56.9/45.8·오탐 0, 고정 dev 82.6·holdout 81.9·오탐 0 — 단독 사본·합본 모두 변화 0. 단 오프라인 측정은 공식 DB를 조회하지 않으므로 이 변경 경로를 직접 재지 못한다. 전체 시험: 합본 사본(3c75071 + TK-152 (a)~(d)·TK-153·TK-154, SQLite, LV_ALLOW_NETWORK=0) 전체 11,422건 통과·실패 0(화면 시험 포함, 건너뜀 11·예상 실패 24)
+ - 미검증: 추정 법령의 조문 본문 대조(A-P3·P4의 인용 조문 존재는 정답지·공식 링크로 확인. 운영 본문 응답은 이번 결과에 없어 끝까지 재현하지 못함). 3자 어간·4자 이상 어간은 이번 변경 범위 밖.
+
+6. 제출물·수용 기준
+ - PR 1개(제품: law_name_inference.py·source_review.py, 시험: 새 파일 1개, F3 승인 시 test_tk143 단언 1건 — 평가 측이 반영).
+ - 수용 기준: 4절 시험 통과, 필수 CI 성공, 은퇴·고정 세트 득점 하락·오탐 증가 0, 하드코딩 점검 통과(실재 법령명·약칭을 제품 코드에 넣지 않음 — 목록 응답만으로 판정).
+```
+
+### 2-36-2. TK-153
+```
+[TK-153(P2) 판결 의견 머리말 꼴 인식 — 구현 지시]  기준: main 3c75071(0.18.0)  평가 측 사본: ff77e27
+
+1. 문제
+- 전원합의체 판결의 반대의견 문장을 '다수의견'으로 귀속한 인용을 결정적 의견 귀속 검사(v3 D3·TK-135)가 잡지 못한다. 0.17.0·0.18.0 온라인 탐침에서 같은 결과였고, 이번에는 AI 의미 검토만 잡았다(모델 의견이라 실행마다 달라질 수 있음).
+- 평가 측 재현(운영 결과 JSON에 담긴 공식 판결 응답 4건): 의견 표지가 전문에서 인식된 판결은 1/4뿐이다. 나머지 3건은 전문 전체가 다수의견으로 분류됐다. 그래서 근거 발췌 구간의 opinion_kinds도 반대의견 구간을 MAJORITY로 적는다.
+
+2. 원인(파일·줄은 3c75071 기준)
+ C1. packages/legal_engine/opinion_attribution.py 24~26행 FULL_MARKER_RE는 '…의 반대의견은 다음과 같다' 꼴만 인식한다. 공식 전문은 '8. 피고인 1에 대한 ○○의 점에 관한 대법관 갑, 대법관 을의 반대의견   (본문)'처럼 번호 붙은 머리말만 두고 본문을 바로 잇는 꼴이 많다. '9. 대법관 갑의 별개의견', '13. 다수의견에 대한 대법관 갑의 보충의견'도 같은 꼴이다.
+     → law_go_kr.fetch_case가 <br/>를 공백으로 바꾸므로(law_go_kr.py 367행) 줄 끝으로는 머리말을 가릴 수 없다.
+ C2. 27~29행 SUMMARY_MARKER_RE는 괄호 첫머리가 '대법관'(또는 '…에 대한')일 때만 인식한다. 판결요지의 '[피고인 갑에 대한 ○○의 점에 관한 대법관 을의 반대의견]'(쟁점 한정 첫머리)은 놓친다.
+ C3. 82행 _kind는 대상 의견('반대의견에 대한')을 머리말 첫머리(target 그룹)에서만 읽는다. '대법관 갑의 반대의견에 대한 대법관 을의 보충의견'처럼 이름 사이에 있으면 보충의견(다수 쪽)으로 잘못 센다(새 머리말 꼴에서 생기는 문제).
+
+3. 고칠 것(평가 측 사본 ff77e27과 같은 구조 — 그대로 옮겨도 된다)
+ F1. HEADING_MARKER_RE를 새로 만든다. 조건은 다음과 같다.
+     - 번호로 시작: (?<![\d.])\d{1,2}\s*\.\s+
+     - 선택 첫머리: '(다수의견|반대의견|별개의견)에 대한'(target 그룹) 또는 마침표·대괄호 없는 150자 이내의 '…에 관한/에 대한' 쟁점 한정(뒤에 '대법관'이 와야 함)
+     - '대법관 …의' + kind(반대보충의견|반대의견|별개의견|보충의견)
+     - kind 바로 뒤가 공백(?=\s)이어야 한다. 그래야 '…의 반대의견이 있는 외에는', '…의 별개의견, …', '…의 반대의견에 대하여'(문장 속 언급)를 제외한다.
+ F2. SUMMARY_MARKER_RE의 target 뒤에 선택 그룹 '[^\[\]]{1,150}?에\s*관한\s*(?=대법관)'을 넣는다.
+ F3. _kind에서 target 그룹이 비었으면 매치 전체에서 '(다수의견|반대의견|별개의견)에 대한'을 찾아 target으로 쓴다.
+ F4. _markers가 FULL·SUMMARY·HEADING 세 정규식의 매치를 위치 순으로 합친다. split_opinions·opinion_ranges·quote_opinion·evidence_pack은 그대로 둔다. 모두 _markers를 쓰므로 함께 고쳐진다.
+
+4. 확인 시험(새 파일 tests/test_tk153_opinion_heading.py — 판결 문장은 합성)
+ - 번호 머리말 4꼴(쟁점 한정 반대의견, 번호만 있는 별개의견, '반대의견에 대한 … 보충의견', '다수의견에 대한 … 보충의견')을 split_opinions·opinion_ranges가 각 의견으로 나눈다.
+ - 문장 속 언급 4꼴(…이 있는 외에는 / 쉼표 나열 / '…에 대하여 본다' / 판례 인용 날짜 뒤 번호)은 머리말이 아니다.
+ - 쟁점 한정 판결요지 괄호가 반대의견 표지로 인식된다.
+ - LegalVerifier._opinion_findings: 번호 머리말 아래 반대의견 문장을 다수의견으로 인용하면 MISATTRIBUTED_OPINION·CONTRADICTED·A. 다수의견·다수의견 보충의견 문장은 결과 없음.
+ - 고치기 전 코드(3c75071)에서는 이 파일의 6건 중 4건이 실패하고 2건(문장 속 언급·다수의견 무결과)은 통과해야 한다(평가 측 확인).
+ - 기존 시험 유지: test_v3_d3_opinion·test_tk135_opinion_evidence·test_lv05_holding_distortion·test_v4_p5_legal_rules·test_evidence_rag_review·test_lv_eval_fix·test_tk145_repeated_case_citation.
+
+5. 평가 측 사전 검증(사본 ff77e27, 평가 측 재실행)
+ - 공식 판결 응답 6건(전원합의체 4건·일반 2건)의 표지: 고치기 전 전문 표지 인식 1/4 → 4/4. 머리말 위치는 정답지의 다수의견 끝 위치와 일치(문자 수 셈 방식 차이 150자 안). 일반 판결 2건은 표지 0(변화 없음).
+ - 탐침 B 7항목 귀속: B-C3(반대의견을 다수의견으로 귀속)이 결정적으로 MISATTRIBUTED(A). 양성 4건·나머지 대조 2건 오탐 0.
+ - 관련 시험 87건 통과, 새 시험 6건 통과. 은퇴 4세트(main 기준) 53.3/48.6/56.9/45.8·오탐 0 변화 0, 고정 dev 82.6·holdout 81.9·오탐 0 변화 0. 전체 시험: 합본 사본(3c75071 + TK-152 (a)~(d)·TK-153·TK-154, SQLite, LV_ALLOW_NETWORK=0) 전체 11,422건 통과·실패 0(화면 시험 포함, 건너뜀 11·예상 실패 24). TK-153 단독 전체 시험은 세 사본 동시 실행 부하 중 OCR 시간 시험 1건이 일시 실패해 중단(그 시험은 단독 재실행에서 main·사본 모두 통과)
+ - 미검증: AI 의미 검토 단계의 변화(근거 발췌 구간 opinion_kinds가 바뀌면 TK-135 '반대·별개의견 구간만 근거인 지지 판단 불채택'이 더 자주 작동할 수 있음 — 모델 호출이 필요해 오프라인으로 재지 못함).
+
+6. 제출물·수용 기준
+ - PR 1개(제품: opinion_attribution.py만, 시험: 새 파일 1개). 기존 시험 단언 변경 없음.
+ - 수용 기준: 위 4절 시험 통과, 필수 CI 성공, 은퇴·고정 세트 변화 0(오탐 증가 0), 하드코딩 점검 통과(시험 판결 문장·이름을 제품 코드에 넣지 않음).
+```
+
+### 2-36-3. TK-154
+```
+[TK-154(P1) 미발견 대법원 전원합의체 판결 '부존재 의심'(HIGH) — 구현 지시]  기준: main 3c75071(0.18.0)  평가 측 사본: 6125e4a
+사용자 원문(2026-11-12): "EX-1 처리 결정: 둘다 처리" — (나) 규칙 보정 새 티켓 + (다) 그 결과에 맞춰 명세 정리.
+
+1. 문제
+- 0.18.0 온라인 case9 EX-1(서면이 인용한 대법원 전원합의체 판결, 사건번호 형식은 유효, 공식 DB에 없음)이 MEDIUM '조회 범위 내에서 찾지 못한 판례'로만 나와 회귀했다(0.17.0 CRITICAL → 0.18.0 MEDIUM, 명세 기대 HIGH 이상).
+- LV-03(사용자 승인 X6)은 미발견 판례를 일률로 '확인 불가'(MEDIUM)로 둔다. 그래서 지어낸 대법원 판례도 MEDIUM으로만 알린다.
+
+2. 원인과 근거(파일·줄은 3c75071 기준)
+ C1. packages/legal_engine/verifier.py 354~361행: 형식이 유효한 미발견 판례는 법원·판결 종류와 무관하게 severity MEDIUM, tags SOURCE_LIMIT이다. authority_status.py 91~99행 is_covered_precedent_scope는 늘 False다(전수 수록 증명 없음 — LV-03-R4, 유지).
+ C2. 공개 범위 근거: 법원도서관 조사심의관 '판례공보와 종합법률정보'(2017. 8. 4., https://www.scourt.go.kr/portal/gongbo/PeoplePopupView.work?gubun=24&seqNum=1827)
+     - 판결 등급 'A급은 전원합의체 및 대법원판례집에 실을 만한 매우 중요한 판결', 'A급과 C급으로 분류된 판결은 판례공보에 싣고'
+     - 공보 게시는 매월 1일·15일, 종합법률정보 등록은 게시 며칠 후
+     → 전원합의체 판결은 공보 게재·공개 DB 등록 대상이다.
+     → 다만 시스템이 조회하는 국가법령정보 판례 DB가 공보 판결 전부를 담는다는 공식 증명은 찾지 못했다. 그래서 확정(CRITICAL)이 아니라 의심(HIGH)이다.
+
+3. 고칠 것(평가 측 사본 6125e4a와 같은 구조)
+ F1. authority_status.py에 ENBANC_PUBLICATION_LAG_DAYS = 180(공보 월 2회 게재·DB 등록·국가법령정보 연계 지연을 넉넉히 둔 값)과 enbanc_absence_suspected(citation, current_date)를 둔다. 아래가 모두 참일 때만 참이다.
+     - get_court_tier == SUPREME
+     - case_kind 또는 raw_text에 '전원합의체'(서면 스스로의 표기)
+     - decision_date와 current_date가 유효하고, 선고일 ≤ 기준일 − 180일
+ F2. verifier.py:
+     - verify_case(self, citation, current_date=None). verify_citations(101행)가 current_date를 넘긴다. None이면 today_korea().
+     - 미발견·형식 유효 분기(354행 else 앞)에 elif enbanc_absence_suspected(...)를 넣는다. 결과:
+       · status NOT_FOUND, severity HIGH, tags ["LEGAL","CASE","ENBANC_NOT_FOUND"](SOURCE_LIMIT·FAKE_PRECEDENT 없음)
+       · 제목 '공개 대상인 대법원 전원합의체 판결을 조회 범위에서 찾지 못함(부존재 의심): …'
+       · 설명: 공보 게재 대상, 180일 경과, 오기 또는 실재하지 않을 가능성이 높음, 전수 수록 미증명이라 확정하지 않음, 사본·종합법률정보로 확인
+       · levels·features의 authority_status는 SUSPICIOUS('존재의심'), features에 suspicion_basis="ENBANC_PUBLICATION_EXPECTED"·publication_lag_days
+     - CONFIRMED_NONEXISTENT·CRITICAL은 쓰지 않는다(X6 유지).
+ F3. 조회 실패(READY 아님)·헌재 사건번호·하급심·전원합의체 표기 없음·선고일 없음·180일 이내는 지금 동작 그대로다.
+
+4. 확인 시험(새 파일 tests/test_tk154_enbanc_not_found.py — 사건번호·날짜 합성)
+ - 180일 지난 전원합의체 미발견: HIGH·NOT_FOUND·ENBANC_NOT_FOUND, SUSPICIOUS, '확정하지 않' 문구
+ - 전원합의체 표기 없음·180일 이내·선고일 없음·하급심: MEDIUM·SOURCE_LIMIT 유지
+ - 조회 실패: 모든 결과 UNVERIFIED, HIGH 이상 없음
+ - 경계: 선고일 + 180일 당일 참, 하루 전 거짓
+ - 기존 시험 유지(단언 변경 없음): test_lv03_three_tier_authority·test_lv_contract_review_eval·test_ground_truth_prepared_brief·test_legal_engine·test_lv_round2/3/4_contract_eval·test_lv04_quote_diff
+
+5. 평가 측 사전 검증(평가 측 재실행)
+ - case9 EX-1과 같은 서지(대법원·전원합의체 표기·선고 2023년, 기준일 2026-11-12)를 빈 조회 결과로 돌리면 CASE_NOT_FOUND HIGH. case9 명세 EX-1(CASE_NOT_FOUND, HIGH 이상)을 바꾸지 않고 충족할 것으로 본다.
+ - 온라인 재측정은 미검증이다. 배포 후 사용자 실행이 필요하다.
+ - 관련 시험 통과, 새 시험 7건 통과. 은퇴 4세트(main 기준)·고정 세트: 은퇴 4세트 53.3/48.6/56.9/45.8·오탐 0, 고정 dev 82.6·holdout 81.9·오탐 0 — 단독 사본·합본 모두 변화 0. 단 오프라인 측정은 공식 DB를 조회하지 않으므로 이 변경 경로를 직접 재지 못한다. 전체 시험: 합본 사본(3c75071 + TK-152 (a)~(d)·TK-153·TK-154, SQLite, LV_ALLOW_NETWORK=0) 전체 11,422건 통과·실패 0(화면 시험 포함, 건너뜀 11·예상 실패 24)
+ - 미검증: 국가법령정보 판례 DB의 전원합의체 수록률(표본 대조 필요 — 운영 조회 키가 있어야 함), 180일 값의 적정성(공보 게재 후 국가법령정보 반영 지연 실측 없음).
+
+6. 제출물·수용 기준
+ - PR 1개(제품: authority_status.py·verifier.py, 시험: 새 파일 1개). 기존 시험 단언 변경 없음. case9 명세(보호 경로) 변경 없음.
+ - 수용 기준: 4절 시험 통과, 필수 CI 성공, 은퇴·고정 세트 변화 0(오탐 증가 0), 배포 후 온라인 case9 23/23 확인(사용자 실행).
+```
