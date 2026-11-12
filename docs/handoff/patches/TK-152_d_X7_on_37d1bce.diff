@@ -1,0 +1,64 @@
+diff --git a/packages/legal_engine/source_review.py b/packages/legal_engine/source_review.py
+index 740e741..c72e115 100644
+--- a/packages/legal_engine/source_review.py
++++ b/packages/legal_engine/source_review.py
+@@ -513,7 +513,7 @@ def _law_absent(verdict, response, verifier=None):
+ 
+     # 2-2. 짧은 약칭 꼴(어간 3자 이하)인데 약칭 추정이 후보 여럿·목록 상한·조회 실패로 결론을 내지 못했으면 부존재로
+     #      단정하지 않는다(TK-143). 공식 목록을 끝까지 읽고도 후보가 전혀 없으면(NO_CANDIDATE) 지금처럼 CRITICAL이다.
+-    if _abbreviation_like(citation.law_name) and (verdict.review.get("law_alias") or {}).get("outcome") in UNDECIDED_INFERENCE:
++    if _abbreviation_like(citation.law_name) and _undecided_inference(citation.law_name, verdict.review.get("law_alias")):
+         verdict.status = VerificationStatus.UNVERIFIED
+         verdict.levels.update(existence="UNVERIFIED", article="UNVERIFIED", provision="UNVERIFIED")
+         alias = verdict.review.get("law_alias") or {}
+@@ -525,6 +525,8 @@ def _law_absent(verdict, response, verifier=None):
+             detail=("공식 법령 목록에 같은 이름이 없고, "
+                     + ("약칭 추정 후보 법령의 조회 버전에 인용 조문이 없어 그 후보로 확정하지 못했다"
+                        if alias.get("outcome") == "ARTICLE_NOT_IN_CANDIDATE"
++                       else "첫 글자 목록에 글자 순서가 맞는 후보가 없으나, 앞 낱말을 생략한 공식 약칭일 수 있다"
++                       if alias.get("outcome") == "NO_CANDIDATE"
+                        else "약칭 추정으로도 정식 법령 하나를 고르지 못했다")
+                     + (f"(후보: {', '.join(alias.get('candidates') or [])})" if alias.get("candidates") else "")
+                     + ". 실무 줄임말일 수 있으므로 존재하지 않는 법령으로 단정하지 않는다. 정식 법령명을 서면에서 확인해야 한다."),
+@@ -560,6 +562,15 @@ def _law_absent(verdict, response, verifier=None):
+ UNDECIDED_INFERENCE = ("AMBIGUOUS", "INCOMPLETE", "LOOKUP_FAILED", "ARTICLE_NOT_IN_CANDIDATE")
+ 
+ 
++def _undecided_inference(law_name: str, alias) -> bool:
++    """약칭 추정이 결론을 내지 못했는지. 두 음절 어간은 후보 0건도 미결이다(TK-152 (d)): 공식 약칭이 앞 낱말을 생략한
++    꼴이면 첫 글자 초성 목록에 들어 있지 않아, 그 목록에 후보가 없다는 것이 부존재 근거가 되지 못한다."""
++    from .law_name_inference import SHORT_STEM, compact, stem
++
++    outcome = (alias or {}).get("outcome")
++    return outcome in UNDECIDED_INFERENCE or (outcome == "NO_CANDIDATE" and len(stem(compact(law_name))) == SHORT_STEM)
++
++
+ def _abbreviation_like(law_name: str) -> bool:
+     """어간(끝의 법·시행령·시행규칙을 뗀 몸통)이 2~3자이고 공백 없는 이름 — 실무 줄임말 꼴(TK-143)."""
+     from .law_name_inference import compact, stem
+diff --git a/tests/test_tk143_short_abbreviation.py b/tests/test_tk143_short_abbreviation.py
+index 07e9cd1..fdf5dd4 100644
+--- a/tests/test_tk143_short_abbreviation.py
++++ b/tests/test_tk143_short_abbreviation.py
+@@ -37,12 +37,19 @@ def test_two_syllable_stem_is_resolved_from_dictionary_list(monkeypatch, adapter
+ 
+ 
+ def test_short_name_with_no_candidate_in_complete_list_keeps_not_found_law(monkeypatch, adapter):
+-    # 공식 목록을 끝까지 읽고도 후보가 없으면 부존재 가능성(CRITICAL)을 유지한다(보호 시험과 같은 정책).
++    # 어간 3자 약칭 꼴은 공식 목록을 끝까지 읽고도 후보가 없으면 부존재 가능성(CRITICAL)을 유지한다.
+     t130.install(monkeypatch, adapter, lambda params: [])
+-    verdict = t130.verify(adapter, t130.cite("가나법"))
++    verdict = t130.verify(adapter, t130.cite("가나다법"))
+     assert "NOT_FOUND_LAW" in kinds(verdict) and "ABBREVIATION_UNRESOLVED" not in kinds(verdict)
+ 
+ 
++def test_two_syllable_name_with_no_candidate_is_unverified(monkeypatch, adapter):
++    # TK-152 (d): 두 음절 어간은 첫 글자 목록에 후보가 없어도 앞 낱말을 생략한 공식 약칭일 수 있다(사용자 승인 X7).
++    t130.install(monkeypatch, adapter, lambda params: [])
++    verdict = t130.verify(adapter, t130.cite("가나법"))
++    assert "NOT_FOUND_LAW" not in kinds(verdict) and "ABBREVIATION_UNRESOLVED" in kinds(verdict)
++
++
+ def test_single_word_short_abbreviation_matching_two_laws_is_unverified(monkeypatch, adapter):
+     rows = [t130.row(name="시험보험법", law_id="000905", mst="905"),
+             t130.row(name="시험정책 기본법", law_id="000906", mst="906")]
