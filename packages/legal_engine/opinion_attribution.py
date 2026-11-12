@@ -25,8 +25,18 @@ FULL_MARKER_RE = re.compile(
     r"(?:\d+\s*\.\s*)?(?P<target>(?:다수의견|반대의견|별개의견)에\s*대한\s*)?(?:대법관\s*[^.\n]{1,80}?의\s*)?"
     r"(?P<kind>반대보충의견|반대의견|별개의견|보충의견)은\s*다음과\s*같다\s*\.?")
 SUMMARY_MARKER_RE = re.compile(
-    r"\[\s*(?P<target>(?:다수의견|반대의견|별개의견)에\s*대한\s*)?(?:대법관\s*[^\]]{1,80}?의\s*)?"
+    r"\[\s*(?P<target>(?:다수의견|반대의견|별개의견)에\s*대한\s*)?"
+    r"(?:[^\[\]]{1,150}?에\s*관한\s*(?=대법관))?"          # 쟁점 한정 첫머리 '[피고인 …의 점에 관한 대법관 …](TK-153)
+    r"(?:대법관\s*[^\]]{1,80}?의\s*)?"
     r"(?P<kind>다수의견|반대보충의견|반대의견|별개의견|보충의견)\s*\]")
+# 전문의 번호 붙은 의견 머리말(TK-153). 공식 전문은 '다음과 같다' 없이 '8. …의 점에 관한 대법관 …의 반대의견'처럼
+# 머리말만 두고 바로 본문을 잇는 꼴이 많다(<br/>은 공백으로 바뀌어 줄 끝으로 가릴 수 없다). 번호로 시작하고 의견 종류
+# 바로 뒤가 공백(조사·쉼표 없음)이어야 머리말이다 — '…의 반대의견이 있는 외에는', '…의 별개의견, …'은 문장 속 언급이다.
+HEADING_MARKER_RE = re.compile(
+    r"(?<![\d.])\d{1,2}\s*\.\s+"
+    r"(?:(?P<target>(?:다수의견|반대의견|별개의견)에\s*대한\s*)|[^.\[\]]{1,150}?(?:에\s*관한|에\s*대한)\s+(?=대법관))?"
+    r"대법관\s*[^.\[\]]{1,80}?의\s*(?P<kind>반대보충의견|반대의견|별개의견|보충의견)(?=\s)")
+TARGET_IN_MARKER_RE = re.compile(r"(?:다수의견|반대의견|별개의견)에\s*대한")
 DROP_RE = re.compile(r"[\s\"'“”‘’.,·「」『』()\[\]<>《》~\-]")
 REPORTING_TAIL_RE = re.compile(
     r"[\s\"'“”‘’]*(?:(?:(?:이?라|다|하)고\s*)?(?:판시|판단|설시)(?:하였|했|한)(?:다|습니다)"
@@ -82,6 +92,9 @@ def _containment(claim: str, section: str) -> float:
 def _kind(match: re.Match) -> str:
     kind = OPINION_KINDS[match.group("kind").replace(" ", "")]
     target = (match.group("target") or "").replace(" ", "")
+    if not target:  # '…의 반대의견에 대한 대법관 …의 보충의견'처럼 대상 의견이 이름 사이에 있는 머리말(TK-153)
+        inner = TARGET_IN_MARKER_RE.search(match.group(0))
+        target = inner.group(0).replace(" ", "") if inner else ""
     if kind == "SUPPLEMENTARY" and target.startswith("반대의견"):
         return "DISSENT"  # 반대의견에 대한 보충의견은 반대의견 쪽 논거다
     return kind
@@ -89,7 +102,8 @@ def _kind(match: re.Match) -> str:
 
 def _markers(text: str) -> List[re.Match]:
     """전문·판결요지의 의견 표지를 위치 순으로. split_opinions·opinion_ranges가 함께 쓴다."""
-    return sorted(list(FULL_MARKER_RE.finditer(text)) + list(SUMMARY_MARKER_RE.finditer(text)),
+    return sorted(list(FULL_MARKER_RE.finditer(text)) + list(SUMMARY_MARKER_RE.finditer(text))
+                  + list(HEADING_MARKER_RE.finditer(text)),
                   key=lambda m: m.start())
 
 
