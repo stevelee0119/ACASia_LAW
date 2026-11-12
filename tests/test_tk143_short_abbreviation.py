@@ -43,6 +43,15 @@ def test_short_name_with_no_candidate_in_complete_list_keeps_not_found_law(monke
     assert "NOT_FOUND_LAW" in kinds(verdict) and "ABBREVIATION_UNRESOLVED" not in kinds(verdict)
 
 
+def test_two_syllable_name_with_no_candidate_is_unverified(monkeypatch, adapter):
+    # 두 음절 약칭은 앞 낱말을 생략한 공식 약칭일 수 있어 후보가 0건이어도 미결로 본다(TK-152, X7 승인).
+    t130.install(monkeypatch, adapter, lambda params: [])
+    verdict = t130.verify(adapter, t130.cite("가나법"))
+    assert "ABBREVIATION_UNRESOLVED" in kinds(verdict) and "NOT_FOUND_LAW" not in kinds(verdict)
+    [f] = [f for f in verdict.findings if f.confidence_features.get("verdict_label") == "ABBREVIATION_UNRESOLVED"]
+    assert str(f.severity) == "MEDIUM" and str(f.status) == "UNVERIFIED"
+
+
 def test_single_word_short_abbreviation_matching_two_laws_is_unverified(monkeypatch, adapter):
     rows = [t130.row(name="시험보험법", law_id="000905", mst="905"),
             t130.row(name="시험정책 기본법", law_id="000906", mst="906")]
