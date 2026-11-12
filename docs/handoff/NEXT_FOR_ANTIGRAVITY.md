@@ -3956,3 +3956,8 @@ F11 [미탐] 인용문에서 두 당사자를 맞바꾸면(예: '채권자는 �
  - 수용 기준: 4절 시험 통과, 필수 CI 성공, 은퇴·고정 세트 변화 0(오탐 증가 0), 배포 후 온라인 case9 23/23 확인(사용자 실행).
 ```
 - 11-12 사용자 '평가pr 생성 병합' → #262 생성(head `b5f60bb`, CI 전부 성공 — 인용) → 병합 Steve `e6ffe84`(expectedHeadSha 확인). Steve의 NEXT 잘림(48줄) 복원 반영. 지시 NEXT 2-36 전달 가능, X7 결정 대기.
+
+### 2-36-4. 사용자 결정 X7 승인 (11-12)
+- 사용자 원문: "X7 결정: 두 음절 약칭이 후보 0건일 때 CRITICAL 대신 MEDIUM으로 승인"
+- TK-152는 F3(C4)까지 한 PR로 구현한다(평가 측 사본 `df6fc3c` = `37d1bce` + (d)). 보호 시험 `tests/test_tk143_short_abbreviation.py::test_short_name_with_no_candidate_in_complete_list_keeps_not_found_law`의 단언 변경(입력 '가나다법'으로 CRITICAL 유지 확인) + 새 시험 `test_two_syllable_name_with_no_candidate_is_unverified`(두 음절 '가나법' → ABBREVIATION_UNRESOLVED·MEDIUM)는 승인된 변경이다. 시험 이름은 유지한다. 증분 [patches/TK-152_d_X7_on_37d1bce.diff](patches/TK-152_d_X7_on_37d1bce.diff).
+- 수용 기준 추가: 어간 3자 약칭 꼴 후보 0건과 어간 4자 이상(지어낸 법률명)은 CRITICAL 유지.
