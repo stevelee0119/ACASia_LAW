@@ -3986,3 +3986,4 @@ F11 [미탐] 인용문에서 두 당사자를 맞바꾸면(예: '채권자는 �
 - 확인: python scripts/check_version_policy.py --base <Steve 최신> → '위반 없음(상향 1건 0.18.0 → 0.19.0)', python scripts/update_readme.py 실행 뒤 변경 없음, tests/test_update_readme.py·tests/test_v4_run_manifest.py 통과.
 - 수용 기준: 평가 측 증분과 diff 0, 필수 CI 성공. 그 밖의 파일은 바꾸지 않는다.
 ```
+- 11-12 #267(평가 PR, 0.19.0 판정서) CI 전부 성공(인용) → 병합 Steve `7375695`(expectedHeadSha `c48d8fc`). 버전 커밋 지시 NEXT 2-37 전달 가능(증분이 새 Steve에 그대로 적용됨 — 평가 측 확인).
