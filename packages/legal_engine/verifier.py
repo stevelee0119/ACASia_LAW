@@ -31,7 +31,8 @@ from packages.source_adapters import SourceRegistry
 
 from .components import citation_components, component_summary, identity_confirmed
 from .citation_format import code_court_family, court_family, format_violations
-from .authority_status import LegalVerificationStatus, classify_authority_status, make_authority_id, get_court_tier
+from .authority_status import (ENBANC_PUBLICATION_LAG_DAYS, LegalVerificationStatus, classify_authority_status,
+                               enbanc_absence_suspected, get_court_tier, make_authority_id)
 from .statute_ranges import check_statute_article_range
 from .opinion_attribution import (
     attribute_claim,
@@ -47,7 +48,7 @@ from .quote_diff import categorize_quote_diff, quote_changes, quote_diff_summary
 from .normalize import canonical_article, case_number_possible, same_case_number, split_case_number
 from .source_review import date_context, verify_admin_rule_source, verify_decision_source, verify_statute_source
 from .spec_mapping import spec_source_verdict
-from packages.source_adapters.legal_history import legal_date
+from packages.source_adapters.legal_history import legal_date, today_korea
 from packages.source_adapters.transport import source_lookup_trace, source_recovery
 
 ENGINE_NAME = "legal_engine"
@@ -98,7 +99,7 @@ class LegalVerifier:
 
         def verify(citation):
             if citation.type in (CitationType.CASE, CitationType.CONSTITUTIONAL):
-                verdict = self.verify_case(citation)
+                verdict = self.verify_case(citation, current_date=current_date)
             elif citation.type == CitationType.STATUTE:
                 verdict = self.verify_statute(citation, as_of=case_date,
                                               incident_date=incident_date, current_date=current_date)
@@ -247,7 +248,7 @@ class LegalVerifier:
         return result
 
     # -- 판례 -------------------------------------------------------------
-    def verify_case(self, citation: Citation) -> CitationVerdict:
+    def verify_case(self, citation: Citation, current_date: Optional[str] = None) -> CitationVerdict:
         verdict = CitationVerdict(citation, VerificationStatus.UNVERIFIED)
         case_number = citation.canonical_case_number or citation.case_number
         if not case_number:
@@ -353,6 +354,21 @@ class LegalVerifier:
                 title = f"성립할 수 없는 사건번호 형식의 판례 인용: {citation.raw_text}"
                 reason = ("사건번호의 연도 또는 사건부호가 실재할 수 없는 값이어서 DB 수록 범위와 무관하게 "
                           "그 표기로는 사건이 존재할 수 없다. 오기인지 원문 확인이 필요하다.")
+            elif enbanc_absence_suspected(citation, current_date or today_korea()):
+                # 공보 게재 대상인 전원합의체 판결을 공개 지연 기간이 지나도록 찾지 못했다(TK-154). 부존재 확정은 아니다.
+                verdict.status = VerificationStatus.NOT_FOUND
+                finding_status = VerificationStatus.NOT_FOUND
+                severity = Severity.HIGH
+                tags = ["LEGAL", "CASE", "ENBANC_NOT_FOUND"]
+                title = f"공개 대상인 대법원 전원합의체 판결을 조회 범위에서 찾지 못함(부존재 의심): {citation.raw_text}"
+                reason = ("대법원 전원합의체 판결은 판례공보 게재·종합법률정보 등록 대상인데, 선고 후 "
+                          f"{ENBANC_PUBLICATION_LAG_DAYS}일이 지나도록 조회한 공식 DB에서 찾지 못했다. 사건번호·선고일 "
+                          "오기이거나 실재하지 않는 판결일 가능성이 높다. 조회 DB의 전수 수록이 증명된 것은 아니므로 "
+                          "부존재로 확정하지 않으며, 판결문 사본이나 대법원 종합법률정보로 확인해야 한다.")
+                auth_status = LegalVerificationStatus.SUSPICIOUS
+                verdict.levels["authority_status"] = auth_status.value
+                features.update(authority_status=auth_status.value, suspicion_basis="ENBANC_PUBLICATION_EXPECTED",
+                                publication_lag_days=ENBANC_PUBLICATION_LAG_DAYS)
             else:
                 verdict.status = VerificationStatus.NOT_FOUND
                 finding_status = VerificationStatus.NOT_FOUND
