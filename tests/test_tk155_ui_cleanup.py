@@ -269,8 +269,9 @@ def test_reference_processing_record_has_no_codes_and_korean_time(browser):
     _serve(page, BASE_PROJECT)
     page.locator('.tabs button[data-tab="review"]').click()
     panel = page.locator('section[data-panel="review"]')
-    expect(panel.locator(".reference-section").first).to_be_attached()
+    expect(panel.locator(".reference-section").first).to_contain_text("주요 참고문헌 검토 결과")
     page.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    expect(panel.locator(".reference-section").first).to_be_visible()
     text = panel.locator(".reference-section").first.inner_text()
     assert _codes(text) == [], _codes(text)
     assert "조회 2026-11-13 10:00" in text  # ISO 시각 → 한국 시각
