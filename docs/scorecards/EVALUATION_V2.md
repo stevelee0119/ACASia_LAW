@@ -50,7 +50,7 @@ inventory는 개발 중 동결하고 새 버전에 재사용한다. 정답 라�
 
 관련 사건·상하급심·개정 서면·요약·변형은 하나의 case_family_id로 묶어 development/validation/test 중 한쪽에만 둔다. 합성/실제 라벨 자료를 합산하지 않는다. 평가 중 정답을 보고 수정한 자료는 독립 시험에서 은퇴시킨다. 원문/정답의 공개 여부는 기존 봉인 자산 규약을 유지한다.
 
-현재 exporter는 **identity와 literal quote**만 지원한다. 판례가 실재한다는 VERIFIED를 인용문 또는 주장 전체의 VERIFIED로 옮기지 않는다. 알려지지 않은 상태, 같은 차원의 VERIFIED와 결함 finding 충돌은 실패한다. 비용·시간을 측정하지 않았으면 null이다. 기존 quality 모듈의 precision/recall/F1, false VERIFIED, coverage, 사건군 신뢰구간을 그대로 사용한다. 새 실무 합격선은 위험 예산과 독립 validation 자료로 사전에 정한 뒤 TEST를 열어야 한다. 임의 80점이나 0건 관측만으로 안전을 인증하지 않는다.
+현재 exporter는 **identity와 literal quote**만 지원한다. 판례가 실재한다는 VERIFIED를 인용문 또는 주장 전체의 VERIFIED로 옮기지 않는다. 법령의 existence/article/content도 해당 차원으로 분리한다. 정답 error_types는 각각 `CITATION_IDENTITY_ERROR`, `QUOTE_CONTENT_ERROR`를 사용한다. 이 두 유형은 구성요소 오류의 큰 분류이며 상세 법리 오류 분류를 대체하지 않는다. `legal_verdicts.findings`의 축약 참조는 문서/프로젝트의 실제 finding과 연결한다. LAW_CITATION_ERROR처럼 내용 오류에도 쓰이는 유형을 식별 오류로 단정하지 않는다. 알려지지 않은 상태, 같은 차원의 VERIFIED와 명확한 결함 finding 충돌은 실패한다. 새 버전에서 inventory 밖에 생긴 인용은 manifest의 unbound_candidate_items로 따로 표시하며 정밀도 분모에서 조용히 지우지 않는다. 비용·시간을 측정하지 않았으면 null이다. 기존 quality 모듈의 precision/recall/F1, false VERIFIED, coverage, 사건군 신뢰구간을 그대로 사용한다. 새 실무 합격선은 위험 예산과 독립 validation 자료로 사전에 정한 뒤 TEST를 열어야 한다. 임의 80점이나 0건 관측만으로 안전을 인증하지 않는다.
 
 ## 5. 공개 벤치마크
 

@@ -104,6 +104,13 @@ def test_failed_base_and_empty_inventory_fail_closed():
     assert retired.compare({}, {})
 
 
+def test_retired_summary_contains_actual_counts():
+    row = {"overall": 10, "false_positives": 0, "a_grade_fp": 0, "injection_defended": None,
+           "regression_v2": {"hits": 1, "items": 5, "unadjudicated_alerts": 3}}
+    rendered = retired._row("synthetic", row, row)
+    assert "synthetic" in rendered and "1/5" in rendered and "미판정 3" in rendered
+
+
 def test_retired_inventory_refuses_missing_set(tmp_path):
     with pytest.raises(ValueError):
         retired.check_inventory(tmp_path)
@@ -168,6 +175,24 @@ def test_new_unlabeled_outputs_are_reported(tmp_path):
     payload["documents"][0]["citations"].append(extra)
     assert len(exporter.export(payload, index, "sha")) == 2
     assert exporter.unbound_count(payload, index) == 2
+
+
+def test_compact_finding_reference_is_resolved_before_conflict_check():
+    payload = product(); index = exporter.inventory(payload)
+    doc = payload["documents"][0]
+    doc["findings"] = [{"finding_id": "f", "type": "CASE_QUOTE_MISMATCH", "status": "CONTRADICTED"}]
+    verdict = doc["engine_data"]["legal_verdicts"][0]
+    verdict["levels"]["level3"] = "VERIFIED"
+    verdict["findings"] = [{"finding_id": "f", "type": "CASE_QUOTE_MISMATCH"}]
+    with pytest.raises(ValueError, match="conflicts"):
+        exporter.export(payload, index, "sha")
+
+
+def test_content_error_does_not_invalidate_statute_identity():
+    verdict = {"levels": {"existence": "VERIFIED", "article": "VERIFIED", "content": "CONTRADICTED"},
+               "findings": [{"type": "LAW_CITATION_ERROR", "status": "CONTRADICTED"}]}
+    assert exporter.decision(verdict, "identity") == ("VERIFIED", [])
+    assert exporter.decision(verdict, "quote") == ("CONTRADICTED", ["QUOTE_CONTENT_ERROR"])
 
 
 def test_retired_cache_changes_when_frozen_bytes_change(tmp_path, monkeypatch):

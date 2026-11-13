@@ -156,6 +156,7 @@ def _row(name: str, b: Optional[Dict], h: Optional[Dict]) -> str:
         v2 = x.get("regression_v2") or {}
         return (f"구 산식 {x['overall']} / 확인오탐 {x['false_positives']} / A {x['a_grade_fp']} / 기존 방어대리값 {inj}"
                 f" / v2 {v2.get('hits')}/{v2.get('items')} / 미판정 {v2.get('unadjudicated_alerts')}")
+    return f"  {name:<18} {cell(b)}  →  {cell(h)}"
 
 
 def check_inventory(tree):
@@ -166,7 +167,6 @@ def check_inventory(tree):
         if dataset_identity(tree / RETIRED / name) != expected:
             raise ValueError(f"{name}: 평가 자료 해시 불일치")
     return sorted(manifest)
-    return f"  {name:<18} {cell(b)}  →  {cell(h)}"
 
 
 def main() -> int:
@@ -210,7 +210,7 @@ def main() -> int:
                 save_cached_base(path, base)
         head = score_tree(ROOT, names, work / "head")
     source = "캐시" if cached is not None else "채점"
-    print(f"은퇴 세트 비교 — 기준 {base_sha[:7]}({source}) → 현재 (오프라인, 제품 파일 {len(changed)}개 변경, 세트 {len(names)}개)")
+    print(f"은퇴 세트 비교 — 기준 {base_sha[:7]}({source}) → 현재 (오프라인, 평가 관련 파일 {len(changed)}개 변경, 세트 {len(names)}개)")
     for name in names:
         print(_row(name, base.get(name), head.get(name)))
     problems = compare(base, head)

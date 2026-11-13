@@ -17,7 +17,8 @@ from scripts.evaluation_v2 import digest
 
 DIMENSIONS = {"identity", "quote"}
 ERROR_TYPES = {
-    "identity": {"CASE_CITATION_ERROR", "CASE_NOT_FOUND", "CASE_METADATA_MISMATCH", "LAW_CITATION_ERROR", "STATUTE_NONEXISTENT"},
+    # LAW_CITATION_ERROR also describes numeric/text errors; it is not an identity-only type.
+    "identity": {"CASE_CITATION_ERROR", "CASE_NOT_FOUND", "CASE_METADATA_MISMATCH", "STATUTE_NONEXISTENT"},
     "quote": {"CASE_QUOTE_MISMATCH", "QUOTE_MISMATCH", "STATUTE_TEXT_MISMATCH"},
 }
 
@@ -66,11 +67,14 @@ def decision(verdict, dimension):
         raise ValueError("Unknown product decision state; update the explicit mapping contract")
     errors = sorted({str(f.get("type")) for f in verdict.get("findings") or []
                      if str(f.get("type")) in ERROR_TYPES[dimension] and not f.get("advisory_only")
-                     and str(f.get("status")) not in {"UNVERIFIED", "VERIFIED", "SKIPPED"}})
+                     and str(f.get("status")) in {"CONTRADICTED", "INVALID", "INVALID_FORMAT", "NOT_FOUND", "SUSPICIOUS"}})
     normalized = mapping[status]
     if normalized == "VERIFIED" and errors:
         raise ValueError("VERIFIED conflicts with a defect finding in the same dimension")
-    return normalized, errors
+    # Gold annotations use the same explicit dimension taxonomy, not a generic finding type
+    # that may refer to another dimension. Detailed product findings stay in the source run.
+    labels = ["CITATION_IDENTITY_ERROR" if dimension == "identity" else "QUOTE_CONTENT_ERROR"] if normalized == "CONTRADICTED" else []
+    return normalized, labels
 
 
 def export(payload, index, system_version):
@@ -79,13 +83,17 @@ def export(payload, index, system_version):
     if index.get("schema") != 1 or not index.get("items"):
         raise ValueError("Nonempty versioned inventory required")
     candidates, document_hashes = {}, set()
+    full_findings = {f["finding_id"]: f for d in payload.get("documents", []) for f in d.get("findings", []) if f.get("finding_id")}
+    full_findings.update({f["finding_id"]: f for f in payload.get("project_findings", []) if f.get("finding_id")})
     for doc in payload.get("documents", []):
         document_hashes.add(doc.get("sha256"))
         verdicts = {}
         for v in (doc.get("engine_data") or {}).get("legal_verdicts") or []:
             if v["citation_id"] in verdicts:
                 raise ValueError("Duplicate verdict identity")
-            verdicts[v["citation_id"]] = v
+            # legal_verdicts contains compact references, not complete Finding objects.
+            verdicts[v["citation_id"]] = {**v, "findings": [
+                {**f, **full_findings.get(f.get("finding_id"), {})} for f in v.get("findings") or []]}
         for citation in doc.get("citations") or []:
             for dimension in DIMENSIONS:
                 key = digest(anchor(doc, citation, dimension))
@@ -144,6 +152,7 @@ def main(argv=None):
         if not a.make_inventory:
             metadata["unbound_candidate_items"] = unbound_count(payload, index)
             metadata["precision_scope"] = "bound inventory only; unbound candidates need independent labels"
+            metadata["error_type_taxonomy"] = ["CITATION_IDENTITY_ERROR", "QUOTE_CONTENT_ERROR"]
         a.out.with_suffix(a.out.suffix + ".manifest.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     except (ValueError, OSError, KeyError, TypeError) as exc:
         p.error(str(exc))
