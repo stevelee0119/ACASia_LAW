@@ -5232,3 +5232,111 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
    · 어댑터·정규화표(SUPPORTS→ENTAILMENT 등)를 제품 코드에 넣지 않는다. 평가 측 스크립트의 몫이다.
    · 벤치마크 원문·정답을 저장소에 넣지 않는다.
 ```
+
+
+## 2-43. #271·#276 판정 (11-13, 사용자 '#276, 271 판정준비 완료')
+- #271 head `87a5563`:
+  - 보완 3 사본(79c1671)과 diff 0이다(평가 측 재실행).
+  - CI 테스트 4개 작업 중 3개가 같은 화면 시험 1건으로 실패했다(CI 결과 인용). 1개(run 43513970921 SQLite)는 통과했다.
+  - 원인 2건을 평가 측 재실행으로 확인했다(지연 주입 27조합, 병합 트리 6/27 실패, 사본 27/27 통과):
+    - C1: 시험 동기화(닫힌 <details>의 innerText)
+    - C2: 제품(표시 표보다 결과가 먼저 상태에 들어가 영문 코드가 잠시 보임)
+  - 판정: **보완 4 필요**(아래 전달판). 보완 3 화면은 사용자 확인을 마쳤다. 보완 4는 정상 상태의 표시를 바꾸지 않는다.
+- #276: 2-43-2에 기록.
+
+### 2-43-1. #271 보완 4 지시(전달판)
+```
+[#271 TK-155 보완 4 — CI 화면 시험 간헐 실패(참고문헌 처리 기록) 원인 2건]  검토 SHA: 87a5563(#271 head)  평가 측 사본: c9e8183
+보완 패치: docs/handoff/patches/TK-155_supplement4_on_pr271_87a5563.diff
+ - 87a5563 → 사본 차이 전부: 제품 1파일(app.js 3줄) + 기존 PR 시험 파일 1개(이 PR이 새로 만든 파일)
+ - git apply 가능. Steve b94750b + #276 병합 트리에도 충돌 없이 적용됨.
+
+0. 관측(CI 결과 인용)
+ - 실패한 시험: tests/test_tk155_ui_cleanup.py::test_reference_processing_record_has_no_codes_and_korean_time
+ - 실패 메시지: AssertionError: assert '조회 2026-11-13 10:00' in ''
+ - 실패한 작업 3개(같은 시험만 실패, 나머지 11,546건 통과):
+   · run 43513977769 SQLite
+   · run 43513977769 PostgreSQL
+   · run 43513970921 PostgreSQL
+ - 통과한 작업 1개: run 43513970921 SQLite
+ - 결론: 결정적 실패가 아니라 경쟁 상태다.
+
+1. 원인(평가 측 재실행으로 확인, 줄 번호는 87a5563 기준)
+ C1. 시험 동기화 결함 — 닫힌 <details> 안의 innerText
+   - 참고문헌 처리 기록(.reference-section)은 접힌 <details class="reference-status-line"> 안에 그려진다.
+     · referenceStatusLine, app.js 2265~2277행
+   - 탭을 누르면 workflow.js activate(275~277행)가 'await refresh(); renderFindings();'로 한 번 더 그린다.
+   - 결과 적재(app.js 1948행 loadResults → 1963행 renderFindings)도 따로 그린다.
+     · 호출 경로 추적 결과, 한 번 열 때 .reference-section이 2번 생성된다.
+   - 시험은 '첫 요소 attach 확인 → details를 연다 → inner_text' 순서로 읽는다.
+     · 그 사이에 다시 그리기가 끼면 새 <details>는 닫혀 있다.
+     · Chromium에서 닫힌 <details> 안 요소의 innerText는 ''다(재현으로 확인).
+ C2. 제품 결함 — 표시 표보다 결과가 먼저 상태에 들어감
+   - loadResults(app.js 1957·1959행)는 state.result를 넣은 뒤에야 loadFindingCategories(코드→한글 표)를 기다린다.
+   - 그 사이 사용자가 탭을 누르면 표 없이 그려진다.
+     · 이때 displayTables()는 {}다(60행 '표를 받기 전에는 코드를 그대로 둔다').
+     · 그래서 INDEXED_PARTIAL·REFERENCE_PARTIALLY_READ·RELEVANT_REFERENCE_FOUND 같은 영문 코드가 잠시 화면에 나온다.
+   - 이는 TK-155 목표('화면에 영문 코드 없음')와 어긋난다. 표를 서버로 옮긴 #271이 생긴 창이다.
+ 재현(평가 측 재실행, 응답 지연 주입 27조합):
+   · 지연 대상: /finding-categories·/result·/issues 응답을 각각 0·300·900ms(issues는 0·150·600ms) 늦춘다.
+   · #271 병합 트리: 6/27 실패(빈 문자열 또는 영문 코드 노출)
+   · 사본: 27/27 통과
+
+2. 고칠 것(보완 패치와 같음)
+ F1. app.js loadResults:
+     - 'await loadFindingCategories(options);'를 state.result·state.findings 대입 앞으로 옮긴다.
+     - 옮긴 뒤 generation 확인을 한 번 더 한다.
+     - 결과·발견 목록 조회, workflowUI.refresh, 그리기 순서는 그대로 둔다.
+ F2. 실패한 시험을 '열림 상태와 무관한 읽기 + 자동 대기'로 바꾼다:
+     - expect(section).to_contain_text("조회 2026-11-13 10:00")로 마지막 그리기를 기다린다.
+     - 그 뒤 section.text_content()로 읽는다.
+     - details를 여는 page.evaluate는 뺀다.
+     - 기존 단언 4개(코드 없음·한국 시각·서비스 계정 등 문구·None 없음)는 모두 유지한다(assert 수 4 → 4).
+ F3. 회귀 시험 test_reference_record_shows_no_codes_while_display_tables_load를 추가한다:
+     - add_init_script로 /finding-categories 응답만 1.5초 늦춘다.
+     - 검토 탭을 누르고 600ms 뒤에 확인한다: 이 시점의 .reference-section에 코드가 0개여야 한다.
+     - 그 뒤 '일부 색인' 표시와 코드 0개를 확인한다.
+     - 이 시험은 87a5563 app.js에서 실패하고, F1 적용 뒤 통과한다(양·음성 대조 확인).
+ 하지 말 것:
+   - 시험에 wait_for_timeout만 늘려 맞추지 않는다.
+   - details 열림 상태를 강제로 유지하는 제품 변경은 이번 범위가 아니다(탭 전환 시 접히는 기존 동작 유지).
+
+3. 평가 측 사전 검증(평가 측 재실행, 사본 c9e8183, SQLite, LV_ALLOW_NETWORK=0)
+ - tests/test_tk155_ui_cleanup.py 34건 통과.
+ - 지연 주입 27조합 통과(병합 트리 6/27 실패와 대조).
+ - precheck_pr --quick(+ test_tk155_ui_cleanup·test_frontend_* 19파일): 종료 0
+   · 고정 82.6 / 81.9 / 오탐 0 변화 0
+   · 평가 세트 문구 대조 통과
+ - 게이트:
+   · check_test_edits: 기존 시험의 삭제·표시 변경 없음, assert 약화 경고 없음
+   · check_hardcoding_diff: 통과
+   · check_protected_paths: 변경 없음
+ - 화면: 정상 상태의 표시는 바뀌지 않는다(일시적 코드 노출만 없앰). 그래서 새 화면 확인은 요청하지 않는다.
+ - 미검증: CI 러너에서 반복 실행한 안정성(제출 뒤 CI 4개 작업 결과로 확인).
+
+4. 제출물·수용 기준
+ - 같은 PR(#271)에 커밋을 추가한다.
+ - 수용 기준:
+   · 필수 CI 4개 테스트 작업 모두 성공
+   · 위 두 시험 통과
+   · 고정·은퇴 세트 변화 0
+   · 보호 경로 변경 없음
+```
+
+## 2-44. 법률 벤치마크 도입안 재평가 r2 (11-13, 사용자 '영어권 … 채택할 필요가 없는것 아닐까? … KBL은 이용허락과 적합성을 확인한 범위에서 보조 평가로 검토', 첨부 지시문 '비상업적 연구')
+- 보고서: [../scorecards/benchmark_adoption_review_2026-11-13_r2.md](../scorecards/benchmark_adoption_review_2026-11-13_r2.md)(검토 SHA `b94750b`). r1의 영어권·KBL 판정과 계획(P0·P3~P5)을 대체한다.
+- 판정:
+  - 주 평가는 한국법 독립 평가(유지·보강).
+  - 영어권 자료 도입은 전부 제외한다. ContractNLI 조건부 채택과 시범 비용 승인 요청은 철회한다. 지표 정의만 방법으로 채택한다.
+  - KBL은 statute_number_and_content_matching_qa 하나만 보조 채택 후보다(조건 확인 대기, 시범 R3).
+    - 현재 고정 과제 statute_hallucination_qa는 제품 평가에서 제외한다(모델 단독, 기준시점 지난 정답).
+    - 나머지 과제는 제외한다.
+- **2-42-1 BM-1·BM-2 지시는 보내지 않는다.**
+  - BM-1은 라벨을 TK-160 3분류로 바꿔 사본 사전 검증 뒤 다시 지시한다.
+  - BM-2는 목적을 한국법 구성요소 시험으로 바꿔 함께 지시한다.
+- 평가 측 할 일:
+  - R0: 평가 PR — KBL 층을 제품 성적표에서 분리, 과제 교체, ContractNLI 계획 삭제(보호 경로, 사용자 승인)
+  - R1: 연구 기록·자산 manifest
+  - R2: 어댑터
+  - R3: 시범 실행(공식 DB 조회 환경)
+  - R4: 보조 채택 판단
