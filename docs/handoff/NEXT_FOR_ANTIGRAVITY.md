@@ -5111,3 +5111,11 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
   - verify_all 전체 모드 종료 0(평가 측 재실행): 전체 10,037·화면 197·수용 1,280·원장 2,357, 실패 0.
   - 코멘트: https://github.com/stevelee0119/ACASia_LAW/pull/275#issuecomment-6865635061
 - 병합은 사용자 승인 대기다.
+
+### 2-41-8. 사용자 '#274, 275 병합' (11-13)
+- 병합 결과:
+  - #274 → Steve `2708865`(expectedHeadSha `2044c36`)
+  - #275 → Steve `b94750b`(expectedHeadSha `258d8f0`)
+- 병합 뒤 확인(평가 측 재실행, `b94750b`):
+  - 두 PR의 새 시험과 보호 시험 test_ft_protected(T11 포함)가 통과했다.
+  - TK-159 보완 패치는 `b94750b`에 그대로 적용된다(git apply --check). TK-159 지시는 Steve 최신 위에서 진행하면 된다.
