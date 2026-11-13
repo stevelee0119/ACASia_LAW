@@ -5379,3 +5379,72 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
   - `tests/acceptance/test_evaluation_v2.py`의 KBL 시험 5건
   - `check_protected_paths.py`·CODEOWNERS 항목
 - 자체 조문 바꿔치기 세트(Z1)는 보류한다.
+
+## 2-47. 사용자 '#276병합' (11-13) → TK-160 지시
+- #276 병합: Steve `f594043`(머지 커밋, 평가 측이 사용자 지시로 실행, head 5175a0c 고정).
+- TK-160 패치를 f594043에 그대로 적용했다(2-41-5 패치와 바이트 동일). 사본 6f0efaa에서 precheck --quick 종료 0, 고정 82.6 / 81.9 / 오탐 0, 게이트 3종 통과.
+- 2-41-5를 대체하는 전달판:
+
+### 2-47-1. TK-160 지시(전달판, f594043 기준)
+```
+[TK-160 주장 판정 3분류(근거 일치·근거와 모순·근거 부족) + 근거 의무(B2)]  기준: Steve_ACASiaLAW f594043(#276 TK-159 병합 뒤)  평가 측 사본: 6f0efaa
+보완 패치: docs/handoff/patches/TK-160_claim_three_way_on_TK-159.diff
+ - f594043 → 사본 차이 전부: 제품 1파일 + 새 시험 1파일, git apply 가능(TK-159 사본 기준 패치와 바이트 동일)
+선행: TK-159 병합 — 충족(#276, f594043). 이 SHA에서 브랜치를 만든다.
+대상 릴리스: 0.20.0. 화면 표시(3분류 배지)는 #271 병합 뒤 TK-163과 함께 지시한다.
+
+0. 배경(계획 문서 3절 TK-160 — 외부 벤치마크는 쓰지 않는다(계획 6.15). 3분류는 제품 자체 판정 구분이다)
+ - '법률적으로 무리한 주장' 행은 basis(UNCONFIRMED·CONTENT_MISMATCH·CONTRADICTION·OFFICIAL_CONFIRMED·DISTINGUISHABLE·FABRICATION_SUSPECTED)와 판정 문구만 가진다.
+ - 이 행이 '근거가 주장과 어긋난다'는 것인지 '근거를 확인 못 했다'는 것인지가 같은 표·같은 무게로 보인다.
+ - 공식 원문 구간 없이 '불일치'로 읽히는 행도 생길 수 있다.
+
+1. 원인(줄 번호는 bf93d3c 기준 — f594043까지 이 파일은 바뀌지 않았다)
+ C1. packages/legal_engine/argument_validity_verifier.py 144행 HallucinationTableRow와 to_dict(178~208행)에 근거 상태와 연결된 3분류가 없다.
+ C2. 같은 파일 474~496행 basis 결정은 판정 상태(status)만 본다. 그래서 근거 구간(TK-159 evidence_basis)이 없어도 CONTENT_MISMATCH가 될 수 있다.
+     - 예: 형식 규칙 위반(법원 부호 불일치)이 status CONTRADICTED로 와서 CONTENT_MISMATCH가 된다. 고정 2세트에서 30행.
+
+2. 고칠 것(보완 패치와 같음 — 기존 basis·판정 문구·error_category는 바꾸지 않고 덧붙인다)
+ F1. CLAIM_VERDICTS("SUPPORTED","CONTRADICTED","INSUFFICIENT")와 한글 라벨(근거 일치·근거와 모순·근거 부족)을 둔다.
+ F2. classify_claim(basis, evidence_basis, grounded_quote) → (3분류, 낮춘 사유):
+     - evidence_basis.basis_status == RULE_BASED → INSUFFICIENT('인용 형식 오류로 근거를 확인할 수 없음')
+     - basis ∈ {CONTRADICTION, CONTENT_MISMATCH}:
+       · 공식 원문(source 있고 RULE_BASED·MISSING_BASIS 아님) + 근거 구간(passage 또는 판시 근거 발췌 grounded_evidence_quote)이 있으면 CONTRADICTED
+       · 아니면 INSUFFICIENT('공식 원문의 근거 구간이 없어 모순으로 단정하지 않음')
+     - basis == OFFICIAL_CONFIRMED: 공식 원문이면 SUPPORTED, 아니면 INSUFFICIENT(사유 명시)
+     - 그 밖(UNCONFIRMED·DISTINGUISHABLE·FABRICATION_SUSPECTED 등) → INSUFFICIENT
+ F3. HallucinationTableRow에 evidence_basis(dict)·grounded_evidence_quote(str) 칸을 더한다(@dataclass 바로 아래에 둔다).
+     - 행을 만드는 곳(705행 근처)에서 item["verdict"]["evidence_basis"]와 item["grounded_evidence_quote"]를 넘긴다.
+ F4. to_dict에 claim_verdict·claim_verdict_label·claim_verdict_note·claim_evidence(TK-159 근거)를 더한다.
+
+3. 확인 시험(새 tests/test_tk160_claim_three_way.py, 패치에 있음 — 합성 값)
+ - classify_claim 10꼴(원문 구간 있는 불일치 → 모순, 판시 근거 발췌 → 모순, 구간 없는 모순 → 근거 부족, 조회 실패·형식 규칙 → 근거 부족, 공식 확인 → 근거 일치 등)
+ - 근거 구간 없는 CONTRADICTED 0(다섯 꼴)
+ - to_dict: 3분류 칸이 실리고 기존 basis·validity_verdict는 그대로
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, SQLite, LV_ALLOW_NETWORK=0)
+ - 병합 뒤 재확인(사본 6f0efaa = f594043 + 패치): precheck_pr --quick(+ TK-159 시험·argument_validity_verifier를 쓰는 기존 시험 27파일) 종료 0, 고정 82.6 / 81.9 / 오탐 0, 평가 세트 문구 대조 통과, 게이트 3종 통과.
+ - 아래는 처음 사전 검증(사본 9855fbf = TK-159 사본 + 패치) 결과다.
+ - 새 시험 12건 통과.
+ - 고정 2세트 행 분포:
+   · CONTENT_MISMATCH 30 → 근거 부족(사유: 인용 형식 오류)
+   · UNCONFIRMED 12 → 근거 부족
+   · 모순·일치 0(오프라인은 공식 DB 미조회 조건이라 예상된 값)
+ - precheck_pr 전체 모드(기준 TK-159 사본, + 주장 표·보고서·화면 관련 시험): 종료 0
+   · 고정 82.6 / 81.9 / 오탐 0 변화 0
+   · 은퇴 5세트 후퇴 없음
+   · 평가 세트 문구 대조 통과
+ - 게이트: check_hardcoding_diff·check_test_edits·check_protected_paths 통과.
+ - 미검증:
+   · 공식 DB 조회 조건에서 모순·일치 분포(배포 뒤 case9·탐침 B 온라인 결과로 확인)
+   · 3분류 macro-F1(법률가 라벨, v1.0 단계 TK-166)
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW(f594043) 기준 새 PR 하나.
+   · 제품: argument_validity_verifier.py
+   · 시험: 새 시험 1파일
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공
+   · 고정·은퇴 세트 변화 0, 확인 오탐 0
+   · 근거 구간 없는 CONTRADICTED 0
+```
