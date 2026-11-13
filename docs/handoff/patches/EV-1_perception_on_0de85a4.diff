@@ -1,0 +1,118 @@
+diff --git a/packages/claim_engine/evidence_consistency.py b/packages/claim_engine/evidence_consistency.py
+index 1b65342..879d83b 100644
+--- a/packages/claim_engine/evidence_consistency.py
++++ b/packages/claim_engine/evidence_consistency.py
+@@ -60,20 +60,31 @@ CERTAINTY_RE = re.compile(r"확실|분명|틀림없|단언|명백|(?:음|것)이
+ _PERC_RE = re.compile(r"(?:보았|봤|목격(?:하였|했|한)|읽었|들었|확인(?:하였|했)|직접\s*(?:본|들은|읽은))"
+                       r"(?!\S{0,3}\s*(?:바|적|일)(?:는|은|가|이)?\s*없)")
+ # 평가 측 후속 L1a: '[인칭 대명사] (두) 눈으로'도 직접 지각 표지다
+-_DIRECT_RE = re.compile(r"직접|똑똑히|분명히|생생히|두\s*눈으로|(?:제|내|저의|나의|본인의|이)\s*(?:두\s*)?눈으로|귀로")
++_DIRECT_RE = re.compile(r"직접|똑똑히|분명히|생생히|육안으로|두\s*눈으로|(?:제|내|저의|나의|본인의|이)\s*(?:두\s*)?눈으로|귀로")
+ _MEDIATED_RE = re.compile(r"전해\s*들|(?:전화|통화|화상|영상|녹음|녹화|문자|메시지|사진|화면|카메라|CCTV|cctv)"
+                           r"(?:으로|로|를\s*통해|을\s*통해)|보고(?:를)?\s*받|통해\s*(?:들|보|알)")
+ # 부정 뒤 양보·연결 어미: 않/못 + (았·었·했·하였)? + 지만·으나·는데(도)·음에도, 또는 -고(서)·-은/한 채
+ _CONCESSIVE = r"(?:(?:았|었|했|하였)?(?:지만|으나|는데(?:도)?|음에도)|고(?:서)?|은\s*채|한\s*채)"
+ _ACCESS_NEG_RE = re.compile(r"(?:열|뜯|펼치|열어\s*보|뜯어\s*보|펼쳐\s*보|들여다보|살펴보|꺼내\s*보|개봉하|열람하)지(?:도|는)?\s*(?:않|못)"
+                             + _CONCESSIVE)
++# EV-1 R2: '열어 본·살펴본·개봉한 … 적(일)이 없' 경험 부정 꼴도 접근 부정이다
++_ACCESS_EXP_NEG_RE = re.compile(r"(?:(?<![가-힣])연|열어\s*본|뜯어\s*본|뜯은|펼쳐\s*본|들여다\s*본|살펴\s*본|꺼내\s*본|개봉한|열람한)"
++                                r"\s*(?:적|일)(?:이|은|도)?\s*(?:전혀\s*)?없(?:었)?(?:지만|으나|는데(?:도)?|음에도|고)")
+ _INSIDE_RE = re.compile(r"(?:^|[\s,])(?:그\s*)?(?:[가-힣]{1,8}의\s*)?(?:안|속|안쪽|내부)"
+                         r"(?:에|의|에서|에\s*있던|에\s*든|에\s*놓인)?\s")
+ _CLOSED_RE = re.compile(r"(?:닫힌|잠긴|잠겨\s*있던|봉인된|밀봉된|덮인|가려진|불투명한?)\s*(?:[가-힣]+\s*){0,2}?(?:안|속|내부)(?:의|에|에서)")
++# EV-1 R3: 닫힌 상태를 서술어·연결형으로 밝히거나('잠겨 있어') 안이 보이지 않았다고 한 뒤 그 안의 일을 눈으로 보았다는 꼴
++_HIDDEN_INSIDE_RE = re.compile(r"(?:(?:닫혀|잠겨|봉인되어|밀봉되어|가려져|덮여)\s*있(?:어|어서|었고|었으며|었지만|었으나|었는데(?:도)?|는데(?:도)?)"
++                               r"|(?:안|속|안쪽|내부)(?:이|가|은|는|도)?\s*(?:전혀\s*|조금도\s*)?(?:보이지|드러나지|들여다보이지)\s*(?:않|못))")
++_INSIDE_REF_RE = re.compile(r"(?:그\s*)?(?:안|속|안쪽|내부)(?:에서|의|에\s*있던|에\s*든)\s")
++_SEE_THROUGH_RE = re.compile(r"유리|(?<!불)투명한|틈(?:새)?\s*(?:로|으로|사이로)|창(?:문)?\s*너머")
++_VISUAL_PERC_RE = re.compile(r"보았|봤|목격(?:하였|했|한)|읽었|직접\s*본")
+ _OPENED_RE = re.compile(r"열(?:어|고)|개봉(?:하여|하고|한\s*뒤)|뜯(?:어|고)|꺼내")
+-_NEVER_THERE_RE = re.compile(r"(?:간|가\s*본|방문한|들어간|참석한)\s*(?:적|일)(?:은|이|도)?\s*(?:없|전혀\s*없)(?:었)?(?:지만|으나|는데|음에도)")
++_NEVER_THERE_RE = re.compile(r"(?:간|가\s*본|와\s*본|방문한|들어간|들어가\s*본|참석한|출입한|발을\s*(?:들인|디딘|들여놓은))\s*(?:적|일)(?:은|이|도)?\s*(?:없|전혀\s*없)(?:었)?(?:지만|으나|는데(?:도)?|음에도)")
+ _INCAP_RE = re.compile(r"잠든|잠들어\s*있|잠자(?:던|고\s*있)|자고\s*있|의식을\s*잃|의식이\s*없|정신을\s*잃|기절|"
+-                       r"깨어나지\s*(?:못|않)|깨지\s*(?:못|않)")
++                       r"깨어나지\s*(?:못|않)|깨지\s*(?:못|않)|의식이\s*돌아오지\s*(?:못|않)|의식을\s*되찾지\s*(?:못|않)|정신을\s*차리지\s*(?:못|않)")
++# EV-1 R5: 남의 말을 옮긴 것(…다고 들었다)은 직접 지각 주장이 아니다
++_REPORTED_RE = re.compile(r"(?:다|라)고\s*(?:[가-힣]+\s*){0,2}?(?:들었|들은|전해)")
+ _FIRST_PERSON_RE = re.compile(r"저는|제가|저도|본인은|진술인은|증인은|나는|내가")
+ # 다른 주어(…가·…이·…은·…는). '…이 아니라'(서술격)와 '-이'로 끝나는 부사(깊이·같이 등)는 주어가 아니다.
+ _OTHER_SUBJECT_RE = re.compile(r"([가-힣]{2,})(?:가|는|은|이)\s(?!아니)")
+@@ -81,11 +92,17 @@ _OTHER_SUBJECT_RE = re.compile(r"([가-힣]{2,})(?:가|는|은|이)\s(?!아니)"
+ _ADVERB_I = ("일찍", "곰곰", "틈틈", "깨끗", "번번", "나날", "다달")
+ _FORGET_RE = re.compile(r"기억(?:나지|하지)\s*(?:않|못)|알지\s*못")
+ _ELSEWHERE_RE = re.compile(r"(?:에|에서)\s*(?:[가-힣]+\s+){0,3}?(?:있었|머물렀|지냈)(?:으나|지만|는데)")
++# EV-1 R6: 머무름을 연결형('머물러·있으면서')으로 밝히고 뒤에서 양보로 잇는 꼴. 지각 장소(…에서)가 머문 곳과 달라야 한다
++_STAY_LINK_RE = re.compile(r"(?P<place>[가-힣]+)(?:에|에서)\s*(?:[가-힣]+\s+){0,2}?(?:머물러|머무르며|머물면서|있으면서|있었고|머물렀고|지내며)\s")
++_LATER_CONCESSIVE_RE = re.compile(r"(?:지만|으나|는데도|음에도)")
++_EVENT_PLACE_RE = re.compile(r"([가-힣]+)에서\s")
+ _SAME_TIME_RE = re.compile(r"(?:같은|그)\s*시각|동시에")
+ _HEARD_OBJECT_RE = re.compile(r"(?:대화|발언|말|내용)(?:을|를)")
+ _SOUND_ONLY_RE = re.compile(r"(?:(?:들은|들린|들었던)\s*(?:[가-힣]+\s*){0,2}?)?[가-힣]*(?:소리|음)"
+-                            r"(?:만으로|만\s*(?:듣고|들었(?:지만|으나|는데)|들은\s*채))")
+-_VISUAL_CLAIM_RE = re.compile(r"(?:직접|분명히|똑똑히)\s*(?:확인(?:하였|했)|보았|봤|읽었)")
++                            r"(?:만으로|만\s*(?:듣고|들었(?:지만|으나|는데)|들은\s*채|접했|들렸|들려\s*왔|전달되|났))")
++# EV-1 R7: 소리 뒤에 다가가거나 연 다음 눈으로 확인한 것은 모순이 아니다
++_THEN_LOOKED_RE = re.compile(r"이후|그\s*뒤|다음에|들어가|다가가|가\s*보니|문을\s*열|내다보")
++_VISUAL_CLAIM_RE = re.compile(r"(?:직접|분명히|똑똑히|육안으로|눈으로)\s*(?:[가-힣]+\s*)?(?:확인(?:하였|했)|보았|봤|읽었)")
+ _PERCEPTION_PATTERNS = {
+     "UNOPENED_INSIDE": "열지 않았다고 하면서 그 안의 내용을 지각했다고 한다",
+     "CLOSED_INSIDE": "닫힌 상태의 대상 안을 연 일 없이 직접 지각했다고 한다",
+@@ -101,6 +118,12 @@ def perception_conflict(sentence: str) -> Optional[str]:
+     if _MEDIATED_RE.search(sentence):
+         return None
+     m = _ACCESS_NEG_RE.search(sentence)
++    if m:
++        rest = sentence[m.end():]
++        inside = _INSIDE_RE.search(rest)
++        if inside and _PERC_RE.search(rest[inside.end():]):
++            return "UNOPENED_INSIDE"
++    m = _ACCESS_EXP_NEG_RE.search(sentence)
+     if m:
+         rest = sentence[m.end():]
+         inside = _INSIDE_RE.search(rest)
+@@ -111,6 +134,12 @@ def perception_conflict(sentence: str) -> Optional[str]:
+         rest = sentence[m.end():]
+         if _PERC_RE.search(rest) and _DIRECT_RE.search(rest):
+             return "CLOSED_INSIDE"
++    m = _HIDDEN_INSIDE_RE.search(sentence)
++    if m and not _OPENED_RE.search(sentence) and not _SEE_THROUGH_RE.search(sentence):
++        rest = sentence[m.end():]
++        inside = _INSIDE_REF_RE.search(rest)
++        if inside and _VISUAL_PERC_RE.search(rest[inside.end():]) and _DIRECT_RE.search(rest):
++            return "CLOSED_INSIDE"
+     m = _NEVER_THERE_RE.search(sentence)
+     if m and _DIRECT_RE.search(sentence[m.end():]) and _PERC_RE.search(sentence[m.end():]):
+         return "NEVER_PRESENT"
+@@ -120,7 +149,8 @@ def perception_conflict(sentence: str) -> Optional[str]:
+         others = [m2 for m2 in _OTHER_SUBJECT_RE.finditer(before)
+                   if not (m2.group(0).rstrip().endswith("이") and m2.group(1) in _ADVERB_I)]
+         own = bool(_FIRST_PERSON_RE.search(before)) or not others
+-        if own and not _FORGET_RE.search(sentence) and _PERC_RE.search(sentence[m.end():]):
++        if own and not _FORGET_RE.search(sentence) and not _REPORTED_RE.search(sentence[m.end():]) \
++                and _PERC_RE.search(sentence[m.end():]):
+             return "INCAPACITATED"
+     m = _ELSEWHERE_RE.search(sentence)
+     if m:
+@@ -128,9 +158,20 @@ def perception_conflict(sentence: str) -> Optional[str]:
+         same = _SAME_TIME_RE.search(rest)
+         if same and (_PERC_RE.search(rest[same.end():]) or _HEARD_OBJECT_RE.search(rest[same.end():])):
+             return "ELSEWHERE_SAME_TIME"
++    m = _STAY_LINK_RE.search(sentence)
++    if m:
++        rest = sentence[m.end():]
++        same = _SAME_TIME_RE.search(rest)
++        if same and _LATER_CONCESSIVE_RE.search(rest[:same.start()]):
++            after = rest[same.end():]
++            event = _EVENT_PLACE_RE.search(after)
++            if event and event.group(1) != m.group("place") and _PERC_RE.search(after) and _DIRECT_RE.search(after):
++                return "ELSEWHERE_SAME_TIME"
+     m = _SOUND_ONLY_RE.search(sentence)
+-    if m and _VISUAL_CLAIM_RE.search(sentence[m.end():]):
+-        return "SOUND_ONLY_VISUAL"
++    if m:
++        claim = _VISUAL_CLAIM_RE.search(sentence, m.end())
++        if claim and not _THEN_LOOKED_RE.search(sentence[m.end():claim.start()]):
++            return "SOUND_ONLY_VISUAL"
+     return None
+ # 진술인의 위치: 가까이 있었다는 표현과 떨어져 있었다는 표현
+ PROXIMITY_RE = re.compile(r"같은\s*테이블|바로\s*옆|옆\s*자리|함께\s*앉|맞은\s*편|곁에")
