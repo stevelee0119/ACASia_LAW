@@ -139,6 +139,28 @@ def contains_fuzzy_normalized(h: str, n: str, *, threshold: float = 0.9) -> Tupl
     return best >= threshold, best
 
 
+def locate_fuzzy_normalized(h: str, n: str) -> Tuple[float, int]:
+    """TK-159: contains_fuzzy_normalized와 같은 창 비교로 가장 비슷한 창의 (유사도, 시작 위치)를 낸다. 없으면 (0.0, -1)."""
+    if not n or not h:
+        return 0.0, -1
+    exact = h.find(n)
+    if exact >= 0:
+        return 1.0, exact
+    if len(n) > len(h):
+        return SequenceMatcher(None, h, n).ratio(), 0
+    best, where = 0.0, -1
+    step = max(1, len(n) // 4)
+    matcher = SequenceMatcher(None, "", n)
+    for i in range(0, len(h) - len(n) + 1, step):
+        matcher.set_seq1(h[i : i + len(n)])
+        if matcher.real_quick_ratio() <= best or matcher.quick_ratio() <= best:
+            continue
+        r = matcher.ratio()
+        if r > best:
+            best, where = r, i
+    return best, where
+
+
 # 문장 종결부호 앞이 숫자이면 "2024. 1. 15."와 같은 날짜이므로 분할하지 않는다.
 SENTENCE_SPLIT_RE = re.compile(r'(?<=[가-힣A-Za-z)\]"”\'’】」])\s*[.!?。]\s+|\n+')
 
