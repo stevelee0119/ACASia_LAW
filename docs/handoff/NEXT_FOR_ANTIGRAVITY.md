@@ -5368,3 +5368,14 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
   - acceptance 1,280, full 10,038, browser 197: 실패 0.
   - regression_ledger: 시간 예산 시험 1건이 평가 측 동시 부하로 실패했다. 이 PR은 `classify_claims` 경로를 바꾸지 않는다. 부하 없이 재실행하니 3회 통과, `tests/regression` 2,357건 통과.
 - 수용 코멘트를 게시했다. 병합은 사용자 승인으로 한다. 병합 뒤 TK-160 지시(2-41-5)를 낸다.
+
+## 2-46. 사용자 결정 — 추가 벤치마크 미적용 (11-13)
+- 사용자 원문: "추가 벤치마크는 필요성이 높지 않아보이니 미적용 하자."
+- 구현 측 지시 없음. BM-1·BM-2 지시는 내지 않는다(TK-166 때 다시 판단).
+- 평가 측 정리(Z0, 보호 경로 → 사용자 승인 뒤 평가 PR). 저장소에 남은 KBL 경로:
+  - `scripts/evaluate_kbl.py`
+  - `scripts/evaluation_dashboard.py`의 `--kbl-*` 인자·`public_benchmark` 층
+  - EVALUATION_V2 5절 'KBL을 한국법 우선 과제로 채택'
+  - `tests/acceptance/test_evaluation_v2.py`의 KBL 시험 5건
+  - `check_protected_paths.py`·CODEOWNERS 항목
+- 자체 조문 바꿔치기 세트(Z1)는 보류한다.
