@@ -25,6 +25,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts import evaluation_v2
+
 ROOT = Path(__file__).resolve().parents[1]
 DEV_SET = ROOT / "tests/fixtures/legal_verifier_testset"
 HOLDOUT_SET = ROOT / "tests/fixtures/holdout"
@@ -66,6 +69,10 @@ def run_set(evaluator, testset: Path, *, sealed: bool) -> Dict[str, Any]:
     report = evaluator.score(result, testset, db_available=False)
     documents = len(json.loads((testset / "ground_truth.json").read_text(encoding="utf-8"))["documents"])
     summary = summarize(report, documents=documents, sealed=sealed)
+    summary["regression_v2"] = evaluation_v2.score(result, testset, report)
+    if sealed:
+        # The source cohort differs, but no case IDs, tokens or excerpts leave this summary.
+        summary["regression_v2"]["scope"] = "SEALED_REGRESSION_PROXY"
     if sealed:
         detail_dir = testset / ".sealed_out"
         detail_dir.mkdir(exist_ok=True)
@@ -81,7 +88,7 @@ def tesseract_info() -> Dict[str, Any]:
     try:
         text = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=10).stdout
         version = (text.splitlines() or [""])[0].replace("tesseract", "").strip() or None
-        langs = subprocess.run([binary, "--list-langs"], capture_output=True, text=True, timeout=10).stdout.split()[4:]
+        langs = subprocess.run([binary, "--list-langs"], capture_output=True, text=True, timeout=10).stdout.splitlines()[1:]
     except (OSError, subprocess.SubprocessError):
         return {"version": None, "langs": []}
     return {"version": version, "langs": sorted(langs)}
@@ -115,6 +122,13 @@ def build(sets: Dict[str, Path], sealed_dir: Optional[Path]) -> Dict[str, Any]:
         "schema": SCHEMA, "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "git": git_info(), "version": settings.version, "rule_version": settings.rule_version,
         "environment": environment(), "sets": {},
+        "evaluation_policy": "legal-quality-v2",
+        "measurement_status": {
+            "legal_accuracy": {"status": "NOT_MEASURED", "value": None, "reason": "independent attorney labels and product predictions required"},
+            "public_benchmarks": {"status": "NOT_MEASURED", "value": None, "reason": "no benchmark prediction run supplied"},
+            "retrieval_quality": {"status": "NOT_MEASURED", "value": None, "reason": "official source/span labels required"},
+            "practice_utility": {"status": "NOT_MEASURED", "value": None, "reason": "independent review-time study required"},
+        },
     }
     try:
         for name, path in sets.items():
@@ -128,14 +142,20 @@ def build(sets: Dict[str, Path], sealed_dir: Optional[Path]) -> Dict[str, Any]:
 
 def render(card: Dict[str, Any]) -> str:
     env = card["environment"]
-    lines = [f"성적표 — {card['version']} (rule {card['rule_version']}) · {((card['git'] or {}).get('sha') or '?')[:7]}"
+    lines = [f"회귀 성적표 (실무 법률 정확도 아님) — {card['version']} (rule {card['rule_version']}) · {((card['git'] or {}).get('sha') or '?')[:7]}"
              + (" · 미커밋 변경 있음" if (card["git"] or {}).get("dirty") else ""),
              f"조건: 오프라인, OCR {env['tesseract'] or '없음'}, python {env['python']}", ""]
-    lines.append(f"{'세트':<10}{'종합':>7}{'재현율':>8}{'오탐':>6}{'A등급':>6}{'인젝션':>8}")
+    lines.append(f"{'세트':<10}{'구 산식':>7}{'부분점수율':>8}{'확인오탐':>6}{'A등급':>6}{'기존 방어대리값':>8}")
     for name, row in card["sets"].items():
         defended = {True: "방어", False: "실패", None: "-"}[row["injection_defended"]]
         lines.append(f"{name:<10}{row['overall']:>7}{row['weighted_recall']:>8}{row['false_positives']:>6}"
                      f"{row['a_grade_fp']:>6}{defended:>8}")
+        v2 = row.get("regression_v2")
+        if v2:
+            recall = f"{100*v2['recall']:.1f}%" if v2['recall'] is not None else "N/A"
+            lines.append(f"  v2 일대일 항목 재현율 {v2['hits']}/{v2['items']} ({recall}), "
+                         f"미판정 경고 {v2['unadjudicated_alerts']}, 참고 경고 {v2['advisory_findings']}")
+    lines.append("법률 정확도·전체 정밀도·공개 벤치마크·실무 효율: NOT_MEASURED (0점/통과가 아님)")
     return "\n".join(lines)
 
 

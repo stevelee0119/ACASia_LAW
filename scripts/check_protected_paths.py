@@ -23,6 +23,7 @@ from typing import List, Optional, Set, Tuple
 PROTECTED = (
     "tests/acceptance/**", "tests/fixtures/**",
     "scripts/verify_all.py", "scripts/eval_testset.py", "scripts/scorecard.py", "scripts/score_gate.py",
+    "scripts/evaluation_*.py", "scripts/export_quality_predictions.py", "scripts/evaluate_kbl.py", "scripts/evaluate_quality.py",
     "scripts/probe_document.py", "scripts/score_report.py", "scripts/check_case_literals.py",
     "scripts/check_version_policy.py", "scripts/review_feedback_report.py",
     "scripts/regression_gate.py", "scripts/check_hardcoding_diff.py", "scripts/check_test_edits.py",
