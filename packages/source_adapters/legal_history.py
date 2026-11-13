@@ -76,6 +76,50 @@ def provision_number(value: Any) -> str | None:
     return str(int(match[1])) + (f"의{int(match[2])}" if match[2] else "")
 
 
+BOUNDARY_ERROR = "Multiple versions share the requested effective boundary"
+# TK-158: 같은 시행일의 판들이 인용 조문 문언까지 서로 다를 때(확정 불가)
+BOUNDARY_TEXT_DIFFERS = "Multiple versions share the requested effective boundary and the cited provision differs"
+
+
+def boundary_versions(records: list[dict], as_of: str) -> list[dict]:
+    """TK-158: 기준일에 시행 중인 같은 시행일 판을 모두 고른다(select_version과 같은 검증 규칙).
+
+    법적 판단(어느 개정이 우선인지)은 하지 않는다. 호출하는 쪽이 인용 조문 문언을 비교해, 모두 같을 때만 확정한다.
+    """
+    when = legal_date(as_of)
+    unique: dict[tuple, dict] = {}
+    for row in records:
+        start = legal_date(row.get("effective_from"))
+        promulgated = legal_date(row.get("promulgation_date"))
+        mst = str(row.get("version_id") or "")
+        if not when or not start or not promulgated or not mst.isdigit():
+            raise ValueError("History contains missing or invalid version dates/identifiers")
+        key = (mst, start)
+        if key in unique and unique[key] != row:
+            raise ValueError("Conflicting duplicate historical version")
+        unique[key] = row
+    eligible = [r for r in unique.values() if r["effective_from"] <= when]
+    if not eligible:
+        raise ValueError("No effective version covers the requested date")
+    latest = max(r["effective_from"] for r in eligible)
+    choices = sorted((r for r in eligible if r["effective_from"] == latest), key=lambda r: int(r["version_id"]))
+    next_dates = [r["effective_from"] for r in unique.values() if r["effective_from"] > latest]
+    out = []
+    for row in choices:
+        if row["promulgation_date"] > when:
+            raise ValueError("Retroactive commencement requires legal review")
+        if "폐지" in str(row.get("amendment_type") or ""):
+            raise ValueError("Repeal boundary requires legal review")
+        chosen = dict(row)
+        chosen.update(requested_as_of=when, effective_until=min(next_dates) if next_dates else None,
+                      history_complete=True,
+                      version_history=[{k: r.get(k) for k in (
+                          "law_id", "version_id", "effective_from", "promulgation_date", "amendment_type"
+                      )} for r in sorted(unique.values(), key=lambda r: r["effective_from"])])
+        out.append(chosen)
+    return out
+
+
 def select_version(records: list[dict], as_of: str) -> dict:
     """Select a textual version only; never infer substantive applicability."""
     when = legal_date(as_of)
@@ -103,7 +147,7 @@ def select_version(records: list[dict], as_of: str) -> dict:
     latest = max(r["effective_from"] for r in eligible)
     choices = [r for r in eligible if r["effective_from"] == latest]
     if len(choices) != 1:
-        raise ValueError("Multiple versions share the requested effective boundary")
+        raise ValueError(BOUNDARY_ERROR)
     chosen = dict(choices[0])
     if chosen["promulgation_date"] > when:
         raise ValueError("Retroactive commencement requires legal review")

@@ -34,6 +34,8 @@ from packages.common.schemas import (
 
 # 사람 말(Human-Readable) 변환표 (19b 설계 2.5절 반영)
 HUMAN_READABLE_UNVERIFIED_REASONS: Dict[str, str] = {
+    "Multiple versions share the requested effective boundary and the cited provision differs":
+        "같은 날 시행된 개정판이 여럿이고 인용 조문 문언이 판마다 달라 어느 판인지 확인 필요",
     "Multiple versions share the requested effective boundary": "해당 조문의 시행일자 기준 복수 개정판이 존재하여 특정 판본 확인 필요",
     "NO_READABLE_DRIVE_REFERENCE": "판독 가능한 Drive 참고자료 문서 없음",
     "RELEVANT_REFERENCES_NOT_FULLY_READ": "참고자료 분량 초과로 일부 문서 미대조",
