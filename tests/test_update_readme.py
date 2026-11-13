@@ -71,3 +71,27 @@ def test_release_history_file_is_in_sync():
     module = _module()
     releases = module.load_releases(add_missing=False)
     assert module.history_text(releases) == (ROOT / "docs" / "RELEASE_HISTORY.md").read_text(encoding="utf-8")
+
+
+def test_readme_shows_performance_chart_with_benchmark_caption():
+    """README '버전별 성능 발전 추이'는 그래프와 그 아래 벤치마크 설명이다(2026-11-13 사용자 지시). 숫자는 CSV에서 온다."""
+    module = _module()
+    rows = module.load_performance()
+    block = module.render_performance(rows)
+    assert block.startswith(f"![버전별 성능 발전 추이]({module.CHART})")
+    assert block.index("![") < block.index("벤치마크 기준")                  # 설명은 그래프 아래
+    assert f"{rows[-1]['items']}항목" in block and f"{rows[0]['version']}~{rows[-1]['version']}" in block
+    assert "공개 벤치마크 아님" in block and "실무 법률 정확도" in block    # 무엇을 잰 값인지·아닌지
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert block in readme and "| 릴리스 | 기간 | 핵심 변경 |" not in readme
+    assert (ROOT / module.CHART).is_file()
+
+
+def test_performance_csv_has_one_measured_row_per_release():
+    module = _module()
+    rows = module.load_performance()
+    required = {"version", "sha", "measured_on", "items", "strict_recall", "strict_macro", "legal_items",
+                "legal_recall", "legacy_dev", "legacy_holdout", "legacy_retired_mean"}
+    assert rows and required <= set(rows[0])
+    assert len({r["version"] for r in rows}) == len(rows)
+    assert all(len(r["sha"]) == 40 and 0 <= float(r["strict_recall"]) <= 100 for r in rows)
