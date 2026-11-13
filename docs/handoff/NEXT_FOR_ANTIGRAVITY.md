@@ -4800,3 +4800,143 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - #271 head는 아직 `044dcee`이고, 보완 3 커밋은 없다.
 - 구현 측 보완 3 head가 사본 `79c1671`과 diff 0이고 필수 CI가 성공하면, 같은 화면이므로 이 확인으로 수용한다.
   - 차이가 있으면 최종 head로 다시 캡처해 확인을 받는다.
+
+## 2-41. 0.20.0 범위 확대 — 계획 TK-157~164 순차 진행 (11-13, 사용자 '#271 이후 구현할 사항들을 순서대로 진행해서 전체를 이번 릴리스에 반영, v1.0은 추후 재판단')
+- 순서·막힘: 계획 문서 6.11절(TK-157 → 158 → 159 → 160 → 164 → 163 → 162 → 161).
+- TK-161은 모델 호출이 필요해 오프라인 사전 검증이 불가하다. 사용자 결정이 필요하다.
+- 이번 절에서 낸 지시: TK-157a(서버 집계), TK-158. TK-157b(화면 묶음·집계 표시)는 #271 병합 뒤에 낸다.
+
+### 2-41-1. TK-157a 지시(전달판)
+- 패치: [patches/TK-157a_review_quality_on_bf93d3c.diff](patches/TK-157a_review_quality_on_bf93d3c.diff)
+
+```
+[TK-157a 검토 결정의 유형별 집계(정밀도 라벨 축적) — 서버 API]  기준 SHA: bf93d3c(Steve_ACASiaLAW)  평가 측 사본: 7c7456a
+보완 패치: docs/handoff/patches/TK-157a_review_quality_on_bf93d3c.diff
+ - bf93d3c → 사본 차이 전부: 제품 1파일 + 새 시험 1파일, git apply 가능
+대상 릴리스: 0.20.0
+화면 쪽(TK-157b: 같은 문서·같은 유형·같은 위치 경고 묶기, 집계 표시)은 #271 병합 뒤 따로 지시한다(app.js가 #271과 겹친다).
+
+0. 배경 — 평가 측 1단계 측정(평가 측 재실행, bf93d3c, 고정 2세트 + 은퇴 5세트 = 51문서, 문서·정답 열람 없이 채점기 출력의 유형·상태·등급·문서 키·위치만 집계)
+ - 정답지 밖 미판정 경고: 102건(#272 감사 수치 재현), 29문서에 분포.
+ - 상태별: CONTRADICTED 48, SUSPICIOUS 47, UNVERIFIED 7.
+ - 등급별: A 72, B 22, C 8.
+ - 유형별: 증거 목록·날짜·번호 계열 44, 보안·포렌식 계열 약 45, 법률 계열 6.
+ - 같은 문서·같은 유형 중복: 24건(14묶음). 그중 같은 위치(쪽·블록)는 많아야 17건.
+ - 결론:
+   · 묶기로 줄일 수 있는 것은 많아야 약 4분의 1이다.
+   · 나머지가 정답지 누락인지 실제 오탐인지는 라벨 없이는 가를 수 없다.
+   · 그래서 담당자 검토 결정(수용·오탐·조치 완료)을 유형별로 모아 정밀도를 쌓는 장치가 먼저다.
+
+1. 원인(줄 번호는 bf93d3c 기준)
+ C1. 담당자 결정은 이미 저장된다(apps/api/db.py 372행 FindingRow.review_status, apps/api/routers/verification.py 347행 PATCH /findings/{id}/review, workspace.py 264행 구조화 결정 동기화).
+     - 그러나 결정을 유형별로 모아 보는 경로가 없다.
+     - 그래서 '어느 경고 유형이 자주 오탐으로 판정되는가'를 잴 수 없다.
+
+2. 고칠 것(보완 패치와 같음)
+ F1. verification.py에 GET /api/review-quality를 더한다.
+     - filter_project_query로 보이는 사건(삭제 제외)만 센다.
+     - advisory_only 경고는 뺀다.
+     - FindingRow.type별 NEEDS_REVIEW·ACCEPTED·FALSE_POSITIVE·RESOLVED 개수, total, decided(=total−NEEDS_REVIEW)를 낸다.
+     - 비율:
+       · acceptance_rate=(ACCEPTED+RESOLVED)/decided, false_positive_rate=FALSE_POSITIVE/decided
+       · decided가 REVIEW_QUALITY_MIN_DECIDED(5) 미만이면 비율은 null이고 enough_samples=false다.
+     - 개수만 낸다: 문서 ID·제목·메모·작성자는 싣지 않는다.
+     - note에 '법률가 독립 라벨(정밀도 측정)을 대신하지 않는다'를 적는다.
+
+3. 확인 시험(새 tests/test_tk157_review_quality.py, 패치에 있음 — test_api의 로그인·업로드·실행 경로를 쓴다)
+ - 결정 하나 → 해당 유형 FALSE_POSITIVE +1, 표본 부족이면 비율 null, 응답에 메모·제목·문서 ID 없음.
+ - 최소 표본을 1로 바꾸면 비율이 나온다.
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본 7c7456a, SQLite, LV_ALLOW_NETWORK=0)
+ - 새 시험 2건 통과.
+ - precheck_pr 전체 모드(+ test_api·test_identity_security·test_operations_completion): 종료 0 — 고정·은퇴 변화 0, 회귀·수용·기능 시험 통과, 평가 세트 문구 대조 통과
+ - 게이트: check_hardcoding_diff 통과, check_test_edits '삭제·표시 변경 없음', check_protected_paths 변경 없음, 평가 세트 문구 대조 '의심 없음'.
+ - 미검증: PostgreSQL에서의 집계 질의(CI 'PostgreSQL/pgvector' 잡으로 확인).
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나.
+   · 제품: apps/api/routers/verification.py
+   · 시험: 새 시험 1파일
+ - 수용 기준: 3절 시험 통과, 필수 CI(PostgreSQL 포함) 성공, 고정·은퇴 세트 변화 0.
+```
+
+### 2-41-2. TK-158 지시(전달판)
+- 패치: [patches/TK-158_same_boundary_on_bf93d3c.diff](patches/TK-158_same_boundary_on_bf93d3c.diff)
+
+```
+[TK-158 기준일 법령 판 확정 — 같은 시행일에 개정판이 여럿일 때]  기준 SHA: bf93d3c(Steve_ACASiaLAW)  평가 측 사본: a5746ec
+보완 패치: docs/handoff/patches/TK-158_same_boundary_on_bf93d3c.diff
+ - bf93d3c → 사본 차이 전부: 제품 4파일 + 새 시험 1파일, git apply 가능
+대상 릴리스: 0.20.0(사용자 11-13 '#271 이후 계획 전부 이번 릴리스')
+
+0. 배경
+ - 0.19.0 온라인 case9의 '국가재정법 제96조'(기준일 2023-06-12)는 공식 원문을 찾고도 법령 존재·조문·본문·시간 적용이 모두 '확인하지 못함'이었다.
+ - 사유는 'Multiple versions share the requested effective boundary'였다. 같은 결과가 2회 나왔다(결과 JSON unverified_items·legal_verdicts[8]).
+
+1. 원인(줄 번호는 bf93d3c 기준)
+ C1. packages/source_adapters/legal_history.py 79행 select_version은 기준일에 시행 중인 판 가운데 시행일이 가장 늦은 판이 둘 이상이면 106행에서 ValueError를 낸다.
+ C2. packages/source_adapters/official_legal.py 224행 resolve_statute가 233행에서 이를 받고, 242행에서 그대로 ERROR로 돌린다.
+ C3. packages/legal_engine/source_review.py 50·55행 verify_statute_source가 ERROR를 받아 판정 전체를 미확인으로 남긴다.
+ C4. 같은 문제를 시간 적용 검토 경로는 이미 다룬다.
+     - packages/legal_engine/temporal_review.py 559행 select_versions가 같은 경계의 판을 모두 돌려준다.
+     - 보호 시험 tests/acceptance/test_ft_protected.py T11은 '같은 시행일 판들의 조문이 같으면 미확인으로 남기지 않는다'를 이미 요구한다.
+     - 주 경로(C2·C3)에만 이 원칙이 없다.
+
+2. 고칠 것(보완 패치와 같음)
+ F1. legal_history.py
+     - BOUNDARY_ERROR(기존 문장)와 BOUNDARY_TEXT_DIFFERS 상수를 둔다.
+     - boundary_versions(records, as_of)를 둔다: select_version과 같은 검증 규칙(식별·중복·소급·폐지)으로 같은 시행일 판을 모두 고른다. 판 번호(MST) 오름차순으로 결정적으로 정렬한다.
+     - select_version의 106행은 BOUNDARY_ERROR를 쓴다(문장은 같다).
+ F2. official_legal.py resolve_statute에 선택 인자 article=None을 더한다.
+     - BOUNDARY_ERROR이고 article이 있으면 _resolve_same_boundary로 간다.
+       · 같은 경계의 판마다 본문을 받는다(fetch_law_version).
+       · select_provision(본문, article)로 인용 조문 문언을 얻고, 공백을 지워 비교한다.
+       · 모두 VERIFIED이고 문언이 하나뿐이면 확정한다: 첫 판의 본문을 돌려주고 version_selection="SAME_PROVISION_AT_BOUNDARY"와 boundary_versions=[MST…]를 싣는다.
+       · 문언이 다르면 ERROR(BOUNDARY_TEXT_DIFFERS).
+       · 본문을 못 받았거나 조문이 없으면 ERROR(원래 사유).
+     - article이 없으면 지금과 같다.
+     - '나중에 공포된 판이 앞 판을 포함한다' 같은 추정은 법률 판단이므로 넣지 않는다. 부칙·경과규정 해석도 넣지 않는다.
+ F3. source_review.py: 50·55행 호출을 _resolve(verifier, law_name, citation, as_of, current_date)로 바꾼다.
+     - 어댑터의 resolve_statute가 article 인자를 받을 때만 citation.article을 넘긴다(inspect.signature). 받지 않는 시험용 가짜 어댑터는 예전대로 부른다.
+     - TypeError를 잡는 방식은 쓰지 않는다. 내부 오류를 가린다.
+ F4. packages/verification_engine/review_items.py 37행 앞에 BOUNDARY_TEXT_DIFFERS의 사람 말을 둔다: '같은 날 시행된 개정판이 여럿이고 인용 조문 문언이 판마다 달라 어느 판인지 확인 필요'.
+     - 긴 문장이 먼저 와야 부분 일치에서 짧은 문장보다 먼저 걸린다.
+
+3. 확인 시험(새 tests/test_tk158_same_boundary_versions.py, 패치에 있음 — 합성 연혁·본문, 네트워크 없음)
+ - 같은 문언 → 확정(SAME_PROVISION_AT_BOUNDARY, boundary_versions=["200","201"], 대표 판 200)
+ - 다른 조(제8조)만 판마다 다름 → 확정(인용 조문만 비교)
+ - 인용 조문 문언이 판마다 다름 → ERROR(BOUNDARY_TEXT_DIFFERS) + 사람 말
+ - article 없음 → 예전 ERROR 그대로
+ - 어느 판에도 없는 조문 → 확정하지 않음
+ - 연혁 순서를 뒤집어도 같은 결과
+ - 검증기 주 경로(verify_statute)에서:
+   · 같은 문언 → official_record에 version_selection이 실리고 BOUNDARY_ERROR 메모가 없음
+   · 다른 문언 → official_record 없음 + BOUNDARY_TEXT_DIFFERS 사유
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본 = bf93d3c + 패치, SQLite, LV_ALLOW_NETWORK=0)
+ - 새 시험 9건 통과.
+ - precheck_pr 전체 모드:
+   · 고정 82.6 / 81.9, 확인 오탐 0, v2 일대일 42/56·41/54 — 변화 0
+   · 은퇴 5세트 변화 0(후퇴 없음)
+   · 평가 세트 문구 대조 '의심 없음'
+   · 회귀·수용·기능 시험(법령·연혁·검토 항목·시간 적용 관련 시험 포함)에서 1건 실패: tests/regression/test_tk24_statutory_exclusion.py::…cold_budget(시간 예산 시험)
+     → 사본과 기준 bf93d3c 양쪽에서 단독 2회씩 통과. 평가 측 실행이 겹친 부하로 판단하며, 이 변경과 무관한 영역(주장 분류 시간)이다.
+ - 게이트: check_hardcoding_diff 통과, check_test_edits '삭제·표시 변경 없음', check_protected_paths 변경 없음.
+ - 미검증:
+   · case9 국가재정법 제96조의 실제 연혁에서 두 판의 제96조 문언이 같은지는 평가 환경에서 law.go.kr을 조회할 수 없어 확인하지 못했다.
+   · 배포 뒤 온라인 case9 재실행(사용자 실행)에서 그 행의 사유가 확정 또는 '판마다 다름'으로 바뀌는지 본다.
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나.
+   · 제품: legal_history.py, official_legal.py, source_review.py, review_items.py
+   · 시험: 새 시험 1파일
+   · 보호 시험(tests/acceptance/)은 바꾸지 않는다.
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공
+   · precheck_pr 평가 세트 문구 대조 통과
+   · 고정·은퇴 세트 변화 0, 확인 오탐 0
+   · 보호 시험 T11 통과
+ - 법률 판단 엔진 변경이므로 수용 SHA에서 평가 측이 verify_all 전체 모드를 한 번 돈다.
+```
