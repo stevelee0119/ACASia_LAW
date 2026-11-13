@@ -4349,3 +4349,85 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
  - 화면 PR 절차: 평가 측이 최종 head로 캡처(상단·AI·출처(참고문헌 처리 기록 펼침)·법리)와 Word·PDF 각 1부를 재현해 사용자께 보이고 **사용자 확인 뒤 수용**.
 ```
 
+### 2-38-6. 사용자 '#270 병합, 시험 단언 변경 4건 승인' (11-13)
+- #270 병합 → Steve `f19ec47`(expectedHeadSha `d6840e0`). TK-156 최종 수용 조건(온라인 case9 3회)은 0.20.0 배포 뒤.
+- #271 보완 1의 시험 단언 변경 4건 승인. 전달용 보완 지시(승인 반영판, 2-38-5를 대체):
+
+```
+[#271(TK-155) 보완 지시 1 — 범위 밖 3건 포함(사용자 결정) + 코드→한글 표 단일화]  평가한 SHA: 1f98dda  평가 측 사본: c4953f4(e57855f 기준)
+보완 패치: docs/handoff/patches/TK-155_supplement_on_pr271_1f98dda.diff (#271 head 1f98dda → 평가 측 사본 차이 전부, git apply 가능)
+
+0. 판정 요약(평가 측 재실행 + CI 결과 인용)
+ - 1차 지시 범위(원문 1~3·5~7, D1~D6)는 수용 가능: 평가 측 사본과 차이 없음(평가 세트 문구 회피 2건·시험 함수 이름 유지 포함 — 사본도 같게 고쳤다). 필수 CI 전부 성공(인용).
+ - 다만 PR을 낸 뒤 사용자 결정이 추가됐다. 원문: "2. 범위 밖 3건 이번 릴리스 포함 *향후에도 최초에 의도했던 기능 개선, 오류 보완 등은 해당 릴리스에 포함하는 것이 원칙". 그래서 이 PR에 아래 R1~R3을 더한다(같은 PR에서 화면 확인을 한 번에 받기 위해).
+
+1. 문제와 원인(줄 번호는 1f98dda 기준)
+ R1. 참고문헌(RAG) 처리 기록(출처 탭 표 위 '주요 참고문헌 검토 결과(RAG)')이 코드 그대로다.
+     - app.js referenceSection: 자료 상태(INDEXED_PARTIAL·PARSE_FAILED…)·사유(REFERENCE_PARTIALLY_READ·NAME_PATH_NOT_RELATED…)·선정 사유(RELEVANT_REFERENCE_FOUND)·검토 사유(EXACT_QUOTES_CHECKED_…)·검색 사유, 조회 시각 ISO('2026-11-13T01:00:11.45…+00:00'), 인증 방식 'service_account'.
+     - case9 실측: 이 기록에만 코드 70개.
+ R2. Word·PDF 보고서 본문이 코드 그대로다.
+     - case9 실측: Word 115개, PDF 138개(탐침 B 96/118, C 72/80).
+     - 출처 ① 'AI 진단' 칸 판정 코드(docx_report.py 'v = det.get("verdict")').
+     - 출처 ② 결과 유형 칸(FindingType 97종, PDF '유형').
+     - 출처 ③ 인용 상태 칸(CONTRADICTED·PARTIALLY_VERIFIED…).
+     - 출처 ④ rag_engine/review.py report_lines의 상태·사유·ISO 시각.
+     - 출처 ⑤ reference_opinions.py 관계(SUPPORTS·CONTRADICTS…).
+     - 출처 ⑥ 고정 문장('핵심 CRITICAL·HIGH', 'VERIFIED는', 'Severity 상한 MEDIUM…', '근거 문구 대조 True/False', terminology.REVIEW_NOTICE 'VERIFIED로').
+ R3. 계획 6-1 선택 항목: HIGH 배너를 없앴으므로 'AI 작성·보안 진단' 탭 버튼에 높음 이상 건수를 단다.
+ R4(구조). 화면 표(CODE_WORDS·FIELD_WORDS, finding_category_map의 16종 이름)를 보고서도 써야 한다. JS·Python에 같은 표를 두 벌 두면 어긋난다.
+     → 표를 Python 한 곳에 두고 화면은 API로 받는다. 보호 시험 F1 T4(app.js FindingType 이름 3개 이하)도 그대로 지킨다.
+
+2. 고칠 것(보완 패치와 같은 구조)
+ F1(R4). 새 모듈 packages/common/display_text.py
+     - FINDING_TYPE_NAMES(97종 전부. 모듈 끝 assert로 FindingType 전수 보장)
+     - CODE_WORDS(의도·분류·유니코드 신호·행 상태·참고문헌 처리 코드 — rag_engine이 실제로 내는 값)
+     - FIELD_WORDS(소문자 식별자)
+     - WORD_NAMES(밑줄 없는 단어: 심각도·상태·인용 종류·참고 의견 관계 — 화면 labels·REFERENCE_RELATIONS와 같은 말)
+     - 함수 readable(text)·word(value)·korean_time(value). readable은 app.js friendlyText와 같은 규칙이다.
+     - finding_category_map.py의 FINDING_TYPE_SCREEN_NAMES는 지운다.
+     - projects.py get_finding_categories에 names·code_words·field_words·word_names를 싣는다.
+     - app.js의 CODE_WORDS·FIELD_WORDS 상수를 지우고, friendlyText·refWord가 state.findingCategories 표를 쓴다.
+     - 유형 이름 4개는 평가 세트 문구 대조에 걸려 바꿨다: 사실관계 불일치·날짜 선후 불일치·프롬프트 속임수 의심·증거 날짜 선후 뒤바뀜.
+ F2(R1). app.js referenceSection
+     - 상태·사유·선정·검토·검색 사유: refWord / friendlyText
+     - 조회·수정 시각: koreanTime(한국 시각 'YYYY-MM-DD HH:MM')
+     - 인증 방식: CREDENTIAL_MODES(서비스 계정·API 키·주입된 인증·없음)
+     - AI 참고 의견·맥락 검토 문장·후보·출처 제목: friendlyText
+ F3(R2). 보고서
+     - docx_report.py: paragraph(raw=False)가 readable을 거친다. 표 칸은 word, 제목은 readable. 기술 부록(json_lines)은 raw=True.
+     - pdf_report.py: _escape가 word를 거친다(_appendix_blocks는 그대로). 인용 상태 칸은 word(status)+단계 설명. '근거 문구 대조 일치/불일치·미확인'. 고정 문장 한글화.
+     - rag_engine/review.py report_lines: word·korean_time 사용, read_pages None → 0.
+     - reference_opinions.py: 관계에 word.
+     - terminology.py REVIEW_NOTICE: "'확인됨'으로".
+     - JSON·CSV·엑셀 기술부록의 코드는 그대로 둔다(감사 추적용).
+ F5. 영문 낱말 치환(UNVERIFIED·QUARANTINED·UNCERTAIN·Source 등)은 앞뒤가 영문·숫자·밑줄이 아닐 때만 한다(app.js friendlyText, display_text.readable). 경계 없이 바꾸면 표에 없는 코드 안까지 바뀐다(사전 검증에서 'REFERENCE_QUARANTINED' → 'REFERENCE_안전 검토 필요' 깨짐 확인).
+ F4(R3). renderFindings
+     - 높음 이상 AI·보안 결과 수를 탭 버튼 data-high-count에 둔다.
+     - styles.css .tabs button[data-high-count]::after { content: "높음 이상 " attr(data-high-count) … }
+     - 버튼 글자(접근성 이름)는 그대로다. 기존 시험이 'AI 작성·보안 진단'으로 단언한다.
+
+3. 확인 시험
+ - tests/test_tk155_ui_cleanup.py 보강(패치 그대로):
+   · 참고문헌 처리 기록 코드 0·한국 시각·'서비스 계정'·'None' 없음
+   · 탭 버튼 '높음 이상 1'·버튼 글자 유지
+   · readable 규칙
+   · Word·PDF 본문 코드 0(운영과 같은 _RunView)
+   · API names 97종·code_words
+ - 기존 시험 단언 변경 4건(사용자 승인 완료 11-13 "시험 단언 변경 4건 승인" — 패치의 변경을 그대로 옮긴다, 되돌리지 않는다):
+   · test_drive_rag_relevance.py::test_web_shows_drive_health_selection_and_duplicates: '인증 api_key' → '인증 API 키'
+   · test_evidence_rag_review.py::test_reference_issues_are_listed_once_in_export: 'REFERENCE_PARTIALLY_READ' 1회 → '일부 쪽만 읽음' 1회 + 코드 없음
+   · test_report_completion.py 2건(test_cross_format_labels_appendix_and_docx_zip·test_summary_report_keeps_review_content_and_moves_the_full_record_to_json): 'UNVERIFIED' in text → _unverified_shown(text)(엑셀·JSON은 코드, Word·PDF는 한글 중 하나). FINAL·스냅숏 해시·출처 URL 단언은 그대로.
+ - 게이트(평가 측 재실행, 사본 c4953f4): 평가 세트 문구 대조 '의심 없음', check_test_edits '삭제·표시 변경 없음'(assert 감소 경고 1건 = 승인된 test_frontend_gate 변경), check_hardcoding_diff 통과, 보호 경로 변경 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행)
+ - 화면(운영 /api/finding-categories 함수 응답 그대로, case9·탐침 B·C·D, 네 탭 전체 innerText, 참고문헌 처리 기록 펼침): 영문 코드 꼴은 사용자 Drive 파일명 1건만 남음(고치기 전 출처 탭 85·87·69·69). 밑줄 없는 단어 코드(INDEXED 등) 11 → 0.
+ - 보고서 Word/PDF 코드 잔존: case9 115/138 → 2/2, B 96/118 → 2/2, C 72/80 → 2/2. 남은 2건은 Drive 파일명과 관리자 환경변수 이름(LV_KCI_KEY)이며, 남기는 근거는 TK-155 2절이다.
+ - 전체 시험·은퇴 세트: 사본 19f2293(e57855f + TK-155 전체·TK-156, SQLite, LV_ALLOW_NETWORK=0, 화면 시험 포함) 전체 11,449건 통과·실패 0(사본 19f2293. 그 뒤 F5 경계 수정 c4953f4는 관련 시험 14파일 재실행 통과)(건너뜀 11·예상 실패 24). 은퇴 5세트 53.3/48.6/56.9/45.8/34.1·오탐 0 → 같음(후퇴 없음), 고정 dev 82.6·holdout 81.9·오탐 0(precheck_pr 성적표)
+ - 미검증: 실제 운영 브라우저의 글꼴 차이, Word 프로그램에서 연 모양(텍스트 추출로만 확인).
+
+5. 제출물·수용 기준
+ - #271에 커밋 추가(보완 패치 적용). 대상 브랜치 Steve_ACASiaLAW 그대로. #270(TK-156)이 Steve에 병합됐으므로(f19ec47) 먼저 Steve를 병합 커밋으로 받아도 된다(겹치는 파일 없음 — 보완 패치는 router.py·test_efficient_llm_routing.py를 건드리지 않는다).
+ - 수용 기준: 3절 시험 통과, 필수 CI 성공, precheck_pr의 평가 세트 문구 대조 통과, 은퇴·고정 세트 변화 0.
+ - 화면 PR 절차: 평가 측이 최종 head로 캡처(상단·AI·출처(참고문헌 처리 기록 펼침)·법리)와 Word·PDF 각 1부를 재현해 사용자께 보이고 **사용자 확인 뒤 수용**.
+```
+
