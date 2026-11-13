@@ -639,7 +639,7 @@ index 6a3a216..b5178c6 100644
              lines.append("참고 의견 5건 한도에 도달했다. 전체 주장 검토 완료를 의미하지 않는다.")
          if review.get("unreviewed_drive_sources"):
 diff --git a/packages/report_engine/docx_report.py b/packages/report_engine/docx_report.py
-index 3116b3b..4bb1c09 100644
+index 3116b3b..b262caf 100644
 --- a/packages/report_engine/docx_report.py
 +++ b/packages/report_engine/docx_report.py
 @@ -7,6 +7,8 @@ import json
@@ -687,15 +687,7 @@ index 3116b3b..4bb1c09 100644
          paragraph(finding.detail)
      doc.add_heading("미검증 항목과 사용 불가 자료", 1)
      unverified = ([[i["target"] + (f" ({i['count']}건)" if i["count"] > 1 else ""), i["reason"]]
-@@ -226,6 +229,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
- 
-     doc.add_heading("3. 법률적으로 무리한 주장", 2)
-     if tier3_rows:
-+        paragraph(REPORT_NOTICE)  # D5: 이 표의 참고문헌 대조 칸에도 같은 안내를 표 위에 한 번
-         table(["위치", "문서 주장 / 인용", "법리 검토 결과 및 근거", "반박 근거 및 확인 필요 내용"],
-               tier3_rows, [1.0, 1.7, 1.6, 2.7])
-     else:
-@@ -260,7 +264,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
+@@ -260,7 +263,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
          paragraph(f"검토를 시작하지 않은 항목 {untouched}건은 목록에서 생략했습니다(전체 목록은 검증 상세 JSON).")
      doc.add_heading("쟁점과 주장 및 증거 관계", 1)
      for issue in snapshot.get("matrix", {}).get("issues", []):
@@ -704,7 +696,7 @@ index 3116b3b..4bb1c09 100644
          paragraph(f"요건사실: {issue.get('elements', [])}")
          paragraph(f"법적 근거: {issue.get('legal_basis', '')} / 기준일: {issue.get('reference_date')}")
      rows = []
-@@ -302,13 +306,13 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
+@@ -302,13 +305,13 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
      if manifest:
          payload["export_manifest"] = manifest
      for path, value in json_lines(payload):
@@ -721,7 +713,7 @@ index 3116b3b..4bb1c09 100644
      footer.text = xml_text(metadata.get("label", "DRAFT") + " | " + run_result.run_id)
      buffer = io.BytesIO()
 diff --git a/packages/report_engine/pdf_report.py b/packages/report_engine/pdf_report.py
-index 60e2946..b76cf79 100644
+index 60e2946..c67df1d 100644
 --- a/packages/report_engine/pdf_report.py
 +++ b/packages/report_engine/pdf_report.py
 @@ -1,7 +1,7 @@
@@ -790,15 +782,7 @@ index 60e2946..b76cf79 100644
                              f"\n· {c['label']}: {c['meaning']}" for c in verdict.get("components") or []),
                          "A" if verdict.get("official_record") else "U",
                      ]
-@@ -290,6 +294,7 @@ def build_report_pdf(
-     story.append(Spacer(1, 4))
-     story.append(Paragraph(_escape("3. 법률적으로 무리한 주장"), styles["h2"]))
-     if tier3_rows:
-+        story.append(Paragraph(_escape(REPORT_NOTICE), styles["small"]))  # D5: 표 위 안내 한 번
-         t3_table_rows = [["위치", "문서 주장 / 인용", "법리 검토 결과 및 근거", "반박 근거 및 확인 필요 내용"]]
-         story.append(table(t3_table_rows + tier3_rows, [60, 105, 110, 215]))
-     else:
-@@ -362,8 +367,8 @@ def build_report_pdf(
+@@ -362,8 +366,8 @@ def build_report_pdf(
      story.append(
          Paragraph(
              _escape(
@@ -809,7 +793,7 @@ index 60e2946..b76cf79 100644
              ),
              styles["body"],
          )
-@@ -423,7 +428,7 @@ def build_report_pdf(
+@@ -423,7 +427,7 @@ def build_report_pdf(
          ["검증 프로필", str(context.get("profile", "기록 없음"))],
          ["외부 AI 정책", str(context.get("external_ai_policy", "기록 없음"))],
          ["법령 기준일", str(context.get("case_date") or "미지정: 시행법 적합성 미검증")],
@@ -818,7 +802,7 @@ index 60e2946..b76cf79 100644
      level = detail_level(run_result)
      summary = level == SUMMARY
      if summary:
-@@ -438,7 +443,7 @@ def build_report_pdf(
+@@ -438,7 +442,7 @@ def build_report_pdf(
                  source = record.to_dict() if hasattr(record, "to_dict") else record
                  story.append(Paragraph(_escape(f"Source: {source.get('adapter')} / {source.get('retrieved_at')} / SHA-256 {source.get('response_hash')} / {source.get('url')}"), styles["small"]))
              for review in item.engine_data.get("semantic_reviews", []):
@@ -827,7 +811,7 @@ index 60e2946..b76cf79 100644
          executions = getattr(run_result, "model_executions", [])
          story.append(Paragraph(_escape(f"모델 호출 기록: {executions}" if executions else "실행된 모델 호출 없음. 의미·법리 적용 검토를 완료한 것으로 해석할 수 없음."), styles["small"]))
          story.append(Paragraph("실행에 저장된 검토 기록", styles["h2"]))
-@@ -520,7 +525,7 @@ def _summary_evidence(story, styles, table, run_result, findings) -> None:
+@@ -520,7 +524,7 @@ def _summary_evidence(story, styles, table, run_result, findings) -> None:
      for item in run_result.documents:
          for review in item.engine_data.get("semantic_reviews", []):
              story.append(Paragraph(_escape(f"AI 참고 의견 / {review.get('citation_id')} / 근거 문구 대조 "
@@ -837,29 +821,17 @@ index 60e2946..b76cf79 100644
      reviewed = [f for f in findings if f.to_dict().get("review_note") or
                  str(f.to_dict().get("review_status", "NEEDS_REVIEW")) != "NEEDS_REVIEW"]
 diff --git a/packages/report_engine/reference_opinions.py b/packages/report_engine/reference_opinions.py
-index 443b9cc..ba7ce18 100644
+index 443b9cc..70b4258 100644
 --- a/packages/report_engine/reference_opinions.py
 +++ b/packages/report_engine/reference_opinions.py
-@@ -1,8 +1,11 @@
+@@ -1,4 +1,5 @@
  """Drive opinions in the citation table; separate from external AI answers."""
--from packages.rag_engine.reference_binding import NOTICE, bind_observations, value
 +from packages.common.display_text import word  # V1.0.0: 관계 코드를 화면과 같은 말로
-+from packages.rag_engine.reference_binding import bind_observations, value
+ from packages.rag_engine.reference_binding import NOTICE, bind_observations, value
  
-+# V1.0.0 D5(사용자 결정 11-13): '구속력 없음'은 칸마다 되풀이하지 않고 표 위 안내에 한 번만 둔다(화면 범례와 같은 말).
-+LEGEND = "주요 참고문헌은 등록된 검증 자료입니다. 판례·법령과 달리 법적 구속력은 없습니다."
  REPORT_NOTICE = ("본 참고문헌 대조 의견은 사설 Google Drive 자료를 기반으로 한 보조 검토 의견이며, "
--                 "공식 판정·등급·점수 또는 공식 확인(OFFICIAL_CONFIRMED)이 아닙니다. " + NOTICE)
-+                 "공식 판정·등급·점수 또는 공식 확인(OFFICIAL_CONFIRMED)이 아닙니다. " + LEGEND)
- 
- 
- def reference_rows(document):
-@@ -28,10 +31,10 @@ def reference_rows(document):
- 
- 
- def basis_text(item):
--    parts = ["[참고문헌 대조] " + NOTICE]
-+    parts = ["[참고문헌 대조]"]  # D5: 구속력 안내는 표 위 REPORT_NOTICE에 한 번
+@@ -31,7 +32,7 @@ def basis_text(item):
+     parts = ["[참고문헌 대조] " + NOTICE]
      for observation in item.get("reference_observations", []):
          source = observation.get("source_detail") or {}
 -        parts.append(f"{source.get('title') or observation.get('source_id', '')} · {observation.get('relationship', '')}")
@@ -931,28 +903,8 @@ index b5c9f6e..8ea0537 100644
          texts[name + "_sheets"] = workbook.sheetnames
      assert "전체 기술 기록(실행 당시의 모든 필드)을 싣지 않았습니다" in texts["summary"]
      assert "검증근거" in texts["summary_sheets"] and "기술부록" not in texts["summary_sheets"]
-diff --git a/tests/test_tk127_stage2_drive_pipeline.py b/tests/test_tk127_stage2_drive_pipeline.py
-index 168b971..c20e357 100644
---- a/tests/test_tk127_stage2_drive_pipeline.py
-+++ b/tests/test_tk127_stage2_drive_pipeline.py
-@@ -115,8 +115,13 @@ def test_four_reports_retain_unofficial_reference_opinions(report_case, index):
-     pdf_text = "".join(p.extract_text() for p in PdfReader(io.BytesIO(blobs["pdf"])).pages)
-     docx = Document(io.BytesIO(blobs["docx"]))
-     cells = [c.text for table in docx.tables for row in table.rows for c in row.cells]
--    assert any(source_quote in c and "공식 확인 아님" in c for c in cells)
--    assert "공식 확인 아님" in pdf_text and source_quote.split()[0] in pdf_text
-+    # V1.0.0 D5(사용자 결정 11-13, 옛 TK-88·127 '칸마다 표시' 변경): 참고 의견 칸은 '[참고문헌 대조]' 표지로 구분하고,
-+    # '공식 확인 아님·구속력 없음' 안내는 표 위에 한 번 둔다. 엑셀 '공식 여부' 열 단언은 그대로.
-+    from packages.report_engine.reference_opinions import LEGEND
-+    assert any(source_quote in c and "[참고문헌 대조]" in c and "구속력 없음" not in c for c in cells)
-+    assert any(LEGEND in p.text for p in docx.paragraphs)
-+    flat_pdf = "".join(pdf_text.split())
-+    assert "".join(LEGEND.split()) in flat_pdf and "공식확인" in flat_pdf and source_quote.split()[0] in pdf_text
-     workbook = openpyxl.load_workbook(io.BytesIO(blobs["xlsx"]))
-     sheet = workbook["참고문헌대조"]
-     assert "공식 확인" in sheet.cell(1, 1).value
 diff --git a/tests/test_tk155_ui_cleanup.py b/tests/test_tk155_ui_cleanup.py
-index 8aa6ad3..932fa5e 100644
+index 8aa6ad3..da9f613 100644
 --- a/tests/test_tk155_ui_cleanup.py
 +++ b/tests/test_tk155_ui_cleanup.py
 @@ -15,8 +15,8 @@ import pytest
@@ -997,7 +949,7 @@ index 8aa6ad3..932fa5e 100644
  
      def respond(route):
          path = urlsplit(route.request.url).path
-@@ -237,6 +248,93 @@ def test_finding_categories_api_serves_screen_names():
+@@ -237,6 +248,81 @@ def test_finding_categories_api_serves_screen_names():
      from apps.api.main import app
      from packages.common.enums import ADVERSARIAL_FINDING_TYPES
  
@@ -1081,15 +1033,3 @@ index 8aa6ad3..932fa5e 100644
 +    assert _codes(text) == [], _codes(text)
 +    flat = re.sub(r"\s+", "", text)  # PDF는 줄바꿈 위치가 글자 사이에 올 수 있다
 +    assert "일부색인" in flat and "지시문의심으로보안격리" in flat  # 참고문헌 처리 기록이 한글로 실렸다
-+    # D5: '구속력 없음'은 표 칸마다 되풀이하지 않는다(안내는 표 위 한 번 — 합성 결과에는 참고문헌 대조 행이 없어 0)
-+    assert "구속력없음" not in flat
-+
-+
-+def test_report_reference_notice_is_a_legend_not_per_cell():
-+    from packages.report_engine.reference_opinions import LEGEND, REPORT_NOTICE, basis_text
-+
-+    item = {"reference_observations": [{"source_detail": {"title": "합성 규정"}, "relationship": "CONTRADICTS",
-+                                        "source_quote": "합성 조항", "explanation": "합성 설명"}]}
-+    text = basis_text(item)
-+    assert "구속력" not in text and text.startswith("[참고문헌 대조]") and "불부합" in text
-+    assert LEGEND in REPORT_NOTICE and "법적 구속력은 없습니다" in LEGEND
