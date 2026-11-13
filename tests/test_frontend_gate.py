@@ -19,7 +19,7 @@ GATE = {"release_gate": "BLOCK", "hallucination_risk": 72,
 
 
 @pytest.mark.parametrize("width,height", [(1440, 1000), (390, 1400)])
-def test_gate_reasons_are_not_rendered(width, height):
+def test_gate_reasons_are_shown_open_and_readable(width, height):
     static = ROOT / "apps/web/static"
     files = {f"/static/{p.relative_to(static).as_posix()}": p for p in static.rglob("*") if p.is_file()}
     files["/"] = ROOT / "apps/web/index.html"

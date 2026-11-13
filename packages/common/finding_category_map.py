@@ -224,7 +224,7 @@ def get_category_counts() -> Dict[str, int]:
 # V1.0.0 D6(2026-11-13): 인젝션 탐지 결과 제목은 FindingType 이름을 그대로 담는다(scanner._title_for).
 # 화면은 유형 이름을 직접 적지 않고(F1 T4) 이 표를 /api/finding-categories의 names로 받아 한글로 바꾼다.
 FINDING_TYPE_SCREEN_NAMES: Dict[FindingType, str] = {
-    FindingType.PROMPT_INJECTION_SUSPECTED: "프롬프트 인젝션 의심",
+    FindingType.PROMPT_INJECTION_SUSPECTED: "프롬프트 속임수 의심",
     FindingType.HIDDEN_INSTRUCTION: "숨은 지시문",
     FindingType.META_INSTRUCTION: "기계 지시문",
     FindingType.SYSTEM_OVERRIDE_ATTEMPT: "시스템 지시 무력화 시도",

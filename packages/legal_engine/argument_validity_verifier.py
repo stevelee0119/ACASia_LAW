@@ -661,8 +661,8 @@ async def verify_argument_validity(
                  "부존재나 임의 생성으로 단정하지 않음.")
             )
             verdict_text = "공식 DB 미확인 (원문 확인 필요)"
-            legal_reason = (f"공식 DB에서 확인하지 못한 {noun}{obj} 근거로 삼고 있어, 원문을 확인하기 전까지 "
-                            f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 존재하지 않는다는 뜻은 아닙니다.")
+            legal_reason = (f"공식 DB에서 찾지 못한 {noun}{obj} 근거로 삼고 있어, 원문을 확인하기 전까지 "
+                            f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 실재하지 않는다는 의미는 아닙니다.")
             counteraction = (
                 ("정식 법령명·약칭·시행 여부를 국가법령정보센터에서 다시 확인하고, 조문 원문과 대조할 것."
                  if statute else

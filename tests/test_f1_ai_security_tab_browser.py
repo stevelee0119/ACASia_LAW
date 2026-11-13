@@ -195,7 +195,7 @@ def f1_browser_page():
         browser.close()
 
 
-def test_ai_tab_renamed_and_notice_banner_removed(f1_browser_page):
+def test_ai_tab_renamed_and_notice_banner_visible(f1_browser_page):
     """AI 탭 버튼이 'AI 작성·보안 진단'이고, 다른 탭 안내 배너는 없다(V1.0.0 5-1, 사용자 승인으로 단언 변경)."""
     page = f1_browser_page
     page.goto("http://localhost/")
@@ -258,7 +258,7 @@ def test_review_tab_filters_out_ai_security_findings(f1_browser_page):
     expect(findings_container).not_to_contain_text("은닉 프롬프트 인젝션 의심")
 
 
-def test_high_security_alert_banner_removed(f1_browser_page):
+def test_high_security_alert_banner_visible_and_jumpable(f1_browser_page):
     """HIGH 이상 보안 항목 안내 배너는 없다. 상단 탭으로 이동한다(V1.0.0 6-1, 사용자 승인으로 단언 변경)."""
     page = f1_browser_page
     page.goto("http://localhost/")
