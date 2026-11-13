@@ -1,4 +1,5 @@
 """Drive opinions in the citation table; separate from external AI answers."""
+from packages.common.display_text import word  # V1.0.0: 관계 코드를 화면과 같은 말로
 from packages.rag_engine.reference_binding import NOTICE, bind_observations, value
 
 REPORT_NOTICE = ("본 참고문헌 대조 의견은 사설 Google Drive 자료를 기반으로 한 보조 검토 의견이며, "
@@ -31,7 +32,7 @@ def basis_text(item):
     parts = ["[참고문헌 대조] " + NOTICE]
     for observation in item.get("reference_observations", []):
         source = observation.get("source_detail") or {}
-        parts.append(f"{source.get('title') or observation.get('source_id', '')} · {observation.get('relationship', '')}")
+        parts.append(f"{source.get('title') or observation.get('source_id', '')} · {word(observation.get('relationship', ''))}")
         parts.append(observation.get("source_quote", ""))
         if observation.get("explanation"):
             parts.append(observation["explanation"])

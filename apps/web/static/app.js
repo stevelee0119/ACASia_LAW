@@ -53,20 +53,40 @@ const labels = {
 const label = (value) => labels[value] || value || "미지정";
 // V1.0.0 6-2·6-3·7-1·7-2·D6: 화면에 영문 코드를 그대로 쓰지 않는다.
 Object.assign(labels, {CITATION:"인용",FACT:"사실관계",TEMPORAL:"적용 시점",REFERENCE:"참고문헌",NOT_ASSESSED:"평가 안 함",NOT_CHECKED:"대조 안 함",NOT_MENTIONED:"참고자료 언급 없음",PENDING_REVIEW:"참고자료 지지 미확정",OFFICIAL_NOT_FOUND:"공식 DB 미확인",OFFICIAL_CONFIRMED:"공식 원문 확인",UNVERIFIED_SCOPE:"미확인 범위",NOT_IN_REFERENCE:"표준판례 목록에 없음",IN_REFERENCE:"표준판례 목록에 있음"});
-// 결과 유형 이름(FindingType)의 한글은 서버 배정표의 names로 받는다(F1 T4). 여기에는 의도·분류·신호 코드만 둔다.
-const CODE_WORDS = {INSTRUCTION_OVERRIDE:"지시 무시",ROLE_OVERRIDE:"역할 바꾸기",OUTPUT_MANIPULATION:"결과 조작",SYSTEM_SECRET_EXTRACTION:"시스템 정보 빼내기",TOOL_MANIPULATION:"도구 조작",PERSISTENT_INSTRUCTION:"지속 지시",DATA_EXFILTRATION:"정보 유출",UNSPECIFIED:"유형 미상",RETROACTIVE_APPLICATION_ERROR:"소급 적용 오류",INSTRUCTION_LIKE:"지시형 문구",PROMPT_INJECTION_LIKELY:"인젝션 의심",AI_PARTIAL_GENERATION:"일부 AI 작성",AI_FULL_GENERATION_LIKELY:"전체 AI 작성 의심",HUMAN_AUTHORED_LIKELY:"사람 작성 가능성",ZERO_WIDTH:"폭 0 문자",BIDI_CONTROL:"글자 방향 제어 문자",HOMOGLYPH:"닮은꼴 문자",TAG_CHARACTERS:"태그 문자",SEPARATED_INSTRUCTION:"쪼갠 지시문"};
+
+// V1.0.0: 코드 → 한글 표는 서버 하나(packages/common/display_text.py)가 기준이다. /api/finding-categories의
+// names(결과 유형 97종)·code_words(의도·분류·신호·행 상태·참고문헌 처리 코드)·field_words(소문자 식별자)를 쓴다.
+// Word·PDF 보고서도 같은 표로 바꾸므로 화면과 보고서의 말이 같다. 표를 받기 전에는 코드를 그대로 둔다.
+const displayTables = () => (typeof state !== "undefined" && state.findingCategories && !state.findingCategories.error) ? state.findingCategories : {};
+
+const CREDENTIAL_MODES = {service_account: "서비스 계정", api_key: "API 키", injected: "주입된 인증", none: "없음"};
+// 조회 시각(ISO)을 한국 시각 'YYYY-MM-DD HH:MM'으로 보인다. 읽을 수 없으면 원래 값.
+function koreanTime(value) {
+  const d = new Date(value);
+  if (!value || Number.isNaN(d.getTime())) return value || "미확인";
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {timeZone: "Asia/Seoul", year: "numeric", month: "2-digit",
+    day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false}).formatToParts(d).map(p => [p.type, p.value]));
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+}
+const refWord = code => displayTables().code_words?.[code] || friendlyText(code || "");
 // 엔진 문장 속 소문자 식별자(검사 층·필드 이름)를 화면에서 한글로 바꾼다. 층 이름은 LAYER_NAMES와 같다.
-const FIELD_WORDS = {visible_text:"본문",encoded_text:"인코딩된 문자열",hidden_text:"숨김 글자",ocr_layer:"OCR 인식 글자",form_field:"입력란",image_alt:"이미지 설명",ai_score:"점수","finding.confidence":"값",reference_date:"기준일"};
+
 Object.assign(labels, {PARSING:"문서 읽는 중",ADVERSARIAL_SCANNING:"검증 방해 문구 검사",EXTRACTING:"본문 추출 중",PII_PROCESSING:"개인정보 처리 중",VERIFYING:"인용 확인 중",CROSS_CHECKING:"자료 대조 중",AGGREGATING:"결과 정리 중",NOT_FOUND:"출처에서 미확인",SUSPICIOUS:"확인 필요",ERROR:"처리 오류"});
 function friendlyText(value) {
   let text = String(value || "");
   text = text.replaceAll("Creator와 Producer가", "작성 프로그램과 PDF 생성 프로그램이")
     .replaceAll("UNVERIFIED로", "미확인 상태로");
   text = text.replace(/\[RAG참고자료\]\s*/g, "").replace(/\s*\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)/g, "");
-  const typeNames = (typeof state !== "undefined" && state.findingCategories?.names) || {};
-  text = text.replace(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/g, code => typeNames[code] || CODE_WORDS[code] || labels[code] || code);
-  text = text.replace(/\bfinding\.confidence\b|\b[a-z]+_[a-z_]+\b/g, word => FIELD_WORDS[word] || word);
-  for (const [technical, simple] of [["UNVERIFIED","확인하지 못함"],["Source","출처"],["Creator","작성 프로그램"],["Producer","PDF 생성 프로그램"],["Author","작성자"],["QUARANTINED","안전 검토 필요"],["Python 계산엔진으로 검산한 결정론적 결과이다.","계산식에 따라 자동 검산한 결과입니다."]]) text = text.replaceAll(technical, simple);
+  const tables = displayTables();
+  const names = tables.names || {}, codeWords = tables.code_words || {}, fieldWords = tables.field_words || {};
+  text = text.replace(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/g, code => names[code] || codeWords[code] || labels[code] || code);
+  text = text.replace(/\bfinding\.confidence\b|\b[a-z]+_[a-z_]+\b/g, word => fieldWords[word] || word);
+  for (const [technical, simple] of [["UNVERIFIED","확인하지 못함"],["Source","출처"],["Creator","작성 프로그램"],["Producer","PDF 생성 프로그램"],["Author","작성자"],["QUARANTINED","안전 검토 필요"],["UNCERTAIN","판단 유보"],["Python 계산엔진으로 검산한 결정론적 결과이다.","계산식에 따라 자동 검산한 결과입니다."]]) {
+    // 영문 낱말은 다른 코드의 일부(예: REFERENCE_QUARANTINED)를 바꾸지 않도록 앞뒤가 영문·숫자·밑줄이 아닐 때만 바꾼다.
+    text = /^[A-Za-z]+$/.test(technical)
+      ? text.replace(new RegExp(`(?<![A-Za-z0-9_])${technical}(?![A-Za-z0-9_])`, "g"), simple)
+      : text.replaceAll(technical, simple);
+  }
   return text;
 }
 const terminal = (run) => run && ["COMPLETED", "PARTIAL_COMPLETED", "FAILED", "CANCELLED"].includes(run.state);
@@ -1271,11 +1291,11 @@ function referenceSection(docs) {
     NOT_RELEVANT: "관련 자료 없음 · Drive 자료 미활용",
     INCOMPLETE_COVERAGE: "관련 자료 검토 범위 미완결",
     RETRIEVED_ONLY: "검색 완료 · AI 대조 미실행", UNVERIFIED: "대조 미완료", SKIPPED: "대조 제외"};
-  section.append(node("h3", "주요 참고문헌 검토 결과(RAG)"), node("p", `${statuses[library.status] || library.status} · 색인 ${library.files_indexed || 0}/${library.files_seen || 0}건 · 조회 ${library.checked_at || "미확인"}`));
+  section.append(node("h3", "주요 참고문헌 검토 결과(RAG)"), node("p", `${statuses[library.status] || library.status} · 색인 ${library.files_indexed || 0}/${library.files_seen || 0}건 · 조회 ${koreanTime(library.checked_at)}`));
   section.append(node("p", "색인은 검색 가능한 텍스트 범위이며 책 전체에 대한 AI 검토를 뜻하지 않습니다. 실제 대조에 사용한 발췌문은 문서별 결과에 표시합니다.", "muted"));
   const health = library.health;
   if (health) {
-    section.append(node("p", `연결 점검 · 인증 ${health.credential_mode || "없음"} · 목록 조회 ${health.listing_succeeded ? "성공" : "실패"} · API 호출 ${health.http_calls}건(오류 ${health.http_errors}건) · 동기화 ${Math.round((health.sync_ms || 0) / 100) / 10}초`, "muted"));
+    section.append(node("p", `연결 점검 · 인증 ${CREDENTIAL_MODES[health.credential_mode] || health.credential_mode || "없음"} · 목록 조회 ${health.listing_succeeded ? "성공" : "실패"} · API 호출 ${health.http_calls}건(오류 ${health.http_errors}건) · 동기화 ${Math.round((health.sync_ms || 0) / 100) / 10}초`, "muted"));
   }
   if (library.duplicates?.length) {
     const details = node("details");
@@ -1300,7 +1320,7 @@ function referenceSection(docs) {
   if (generalIssues.length) {
     const details = node("details");
     details.append(node("summary", `공통·기타 제한 ${generalIssues.length}건`));
-    for (const issue of generalIssues) details.append(node("p", `${issue.name || issue.file_id || "Drive"}: ${issue.reason}`));
+    for (const issue of generalIssues) details.append(node("p", `${issue.name || issue.file_id || "Drive"}: ${friendlyText(issue.reason)}`));
     section.append(details);
   }
   if (library.inventory?.length) {
@@ -1311,7 +1331,7 @@ function referenceSection(docs) {
       const coverage = item.pages ? ` · 텍스트 색인 ${item.read_pages || 0}/${item.pages}쪽` : "";
       const missing = item.no_text_pages?.length ? ` · 텍스트 미추출 쪽: ${item.no_text_pages.join(", ")}` : "";
       const excluded = item.excluded_pages?.length ? ` · 보안 제외 쪽: ${item.excluded_pages.join(", ")}` : "";
-      details.append(node("p", `${[item.folder_path, item.name].filter(Boolean).join("/")} · ${item.status} · ${reasons.join(" · ")}${coverage}${missing}${excluded}${item.coverage_note ? " · " + item.coverage_note : ""}`, "muted"));
+      details.append(node("p", `${[item.folder_path, item.name].filter(Boolean).join("/")} · ${refWord(item.status)} · ${reasons.map(friendlyText).join(" · ")}${coverage}${missing}${excluded}${item.coverage_note ? " · " + item.coverage_note : ""}`, "muted"));
     }
     if (library.inventory.length > 100) details.append(node("p", "전체 자료별 처리 기록은 결과 JSON에 보존되어 있습니다.", "muted"));
     section.append(details);
@@ -1326,7 +1346,7 @@ function referenceSection(docs) {
       const pct = c.eligible_claims > 0 ? Math.round(((c.linked_claims || 0) / c.eligible_claims) * 100) : 0;
       details.append(node("p", `참고자료 대조율: 대조 대상 ${c.eligible_claims}건 중 ${c.linked_claims || 0}건 완료 (${pct}%)`, "coverage-text"));
     }
-    if (review.reason) details.append(node("p", review.reason, "muted"));
+    if (review.reason) details.append(node("p", friendlyText(review.reason).replace(/:/g, " — "), "muted"));
     if (typeof review.model_response_accepted === "boolean") {
       details.append(node("p", `모델 호출 ${review.model_executed ? "있음" : "없음"} · 응답 채택 ${review.model_response_accepted ? "성공" : "미완료"} · 근거 확인 의견 ${(review.observations || []).length}건 · 제외 의견 ${(review.rejected_observations || []).length}건`, "muted"));
       if (review.model_executed && !review.review_completed) details.append(node("p", "일부 입력 또는 모델 응답의 검토가 완료되지 않았습니다.", "warning-text"));
@@ -1338,31 +1358,31 @@ function referenceSection(docs) {
         details.append(node("p", "관련 후보 자료가 미처리 또는 일부만 읽힌 상태입니다. 관련 자료가 없다는 뜻이 아닙니다.", "warning-text"));
         details.append(node("p", `미처리 후보 ${(selection.unreviewed_candidates || []).length}건의 제한 사유는 위 자료별 처리 기록을 참조합니다.`, "muted"));
         for (const item of (selection.unreviewed_candidates || []).filter(i => !recordedIds.has(i.file_id)).slice(0, 50)) {
-          details.append(node("p", `${[item.folder_path, item.name].filter(Boolean).join("/")} · ${item.status} · ${item.reason}`, "muted"));
+          details.append(node("p", `${[item.folder_path, item.name].filter(Boolean).join("/")} · ${refWord(item.status)} · ${friendlyText(item.reason)}`, "muted"));
         }
         details.append(node("p", "미처리 자료는 다음 분석에서 재확인합니다. 자동 백그라운드 작업은 예약되지 않았습니다.", "muted"));
       }
-      details.append(node("p", `자료 선정: ${selection.decision === "USED" ? "관련 자료 사용" : "Drive 자료 미활용"} · 후보 ${selection.candidates_total || 0}개 중 ${selection.files_selected || 0}개 선정 (${selection.reason})`, "muted"));
+      details.append(node("p", `자료 선정: ${selection.decision === "USED" ? "관련 자료 사용" : "Drive 자료 미활용"} · 후보 ${selection.candidates_total || 0}개 중 ${selection.files_selected || 0}개 선정 (${friendlyText(selection.reason)})`, "muted"));
       for (const item of selection.priority_references || []) {
-        details.append(node("p", `분야 표준판례집: ${item.title} · ${item.searched ? "개별 본문 검색 완료" : "개별 검색 미실행: " + (item.search_reason || "기록 없음")} · ${item.selected ? "발췌 사용" : "발췌 미사용(관련성·발췌 한도 확인 필요)"}`, "muted"));
+        details.append(node("p", `분야 표준판례집: ${item.title} · ${item.searched ? "개별 본문 검색 완료" : "개별 검색 미실행: " + (item.search_reason ? refWord(item.search_reason) : "기록 없음")} · ${item.selected ? "발췌 사용" : "발췌 미사용(관련성·발췌 한도 확인 필요)"}`, "muted"));
       }
       for (const candidate of (selection.candidates || []).slice(0, 5)) {
-        details.append(node("p", `${candidate.selected ? "선정" : "제외"} · ${[candidate.folder_path, candidate.title].filter(Boolean).join("/")} · 본문 ${candidate.text_coverage} · 폴더·파일명 ${candidate.name_coverage} · 점수 ${candidate.file_score}`, "muted"));
+        details.append(node("p", `${candidate.selected ? "선정" : "제외"} · ${friendlyText([candidate.folder_path, candidate.title].filter(Boolean).join("/"))} · 본문 ${candidate.text_coverage} · 폴더·파일명 ${candidate.name_coverage} · 점수 ${candidate.file_score}`, "muted"));
       }
       if ((selection.candidates || []).length > 5) details.append(node("p", `나머지 ${selection.candidates.length - 5}개 후보는 결과 JSON에 기록되어 있습니다.`, "muted"));
     }
     for (const source of review.sources || []) {
-      const link = node("a", `${source.source_id}: ${source.title} · ${source.page_numbers_reliable === false ? "텍스트 구간 " + source.page + " (원본 쪽 미확인)" : source.page + "쪽"}`);
+      const link = node("a", `${source.source_id}: ${friendlyText(source.title)} · ${source.page_numbers_reliable === false ? "텍스트 구간 " + source.page + " (원본 쪽 미확인)" : source.page + "쪽"}`);
       if (/^[A-Za-z0-9_-]{10,200}$/.test(source.file_id || "")) {
         link.href = `https://drive.google.com/file/d/${source.file_id}/view`;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
       }
-      details.append(link, node("p", `수정 ${source.modified_time} · SHA-256 ${source.sha256}`, "muted"), node("blockquote", source.text));
+      details.append(link, node("p", `수정 ${koreanTime(source.modified_time)} · SHA-256 ${source.sha256}`, "muted"), node("blockquote", source.text));
     }
     for (const item of review.observations || []) {
       details.append(node("p", `문서: ${item.claim_quote}`), node("blockquote", `${item.source_id}: ${item.source_quote}`),
-        node("p", `AI 참고 의견: ${item.explanation}`));
+        node("p", `AI 참고 의견: ${friendlyText(item.explanation)}`));
     }
     for (const calc of review.contract_review?.calculations || []) {
       const values = calc.outputs || {};
@@ -2438,7 +2458,7 @@ function renderReviewRow(item, tier, findingsMap) {
   if (item.context_review?.reason) {
     const review = item.context_review;
     const context = node("div", null, "citation-context-review");
-    context.append(node("strong", "인용 취지·맥락 검토 (AI 참고 의견)"), node("p", review.reason || "판단 유보"));
+    context.append(node("strong", "인용 취지·맥락 검토 (AI 참고 의견)"), node("p", friendlyText(review.reason) || "판단 유보"));
     for (const opinion of review.opinions || []) {
       const stage = {primary: "1차 검토", critic: "독립 교차검토", grounder: "근거 대조"}[opinion.stage] || opinion.stage;
       context.append(node("p", `${stage}: ${opinion.rationale}`));
@@ -2683,6 +2703,19 @@ function renderFindings() {
     }
   }
   state.reviewTierCounts = tierCounts;
+  // V1.0.0 6-1(사용자 11-13 포함 결정): 없앤 HIGH 배너 대신 'AI 작성·보안 진단' 탭 버튼에 높음 이상 건수를 단다.
+  // 글자는 CSS ::after로 그려 버튼 이름(접근성 이름·기존 시험의 버튼 문구)은 바꾸지 않는다.
+  const aiTabButton = document.querySelector('.tabs button[data-tab="ai-verification"]');
+  if (aiTabButton) {
+    const highAi = (state.findings || []).filter(f => isAISecurityFinding(f) && ["HIGH", "CRITICAL"].includes(f.severity)).length;
+    if (highAi) {
+      aiTabButton.dataset.highCount = String(highAi);
+      aiTabButton.title = `높음 이상 AI 작성·보안 진단 항목 ${highAi}건`;
+    } else {
+      delete aiTabButton.dataset.highCount;
+      aiTabButton.removeAttribute("title");
+    }
+  }
   state.pendingByTier = pendingByTier;
   const legalMetric = $("metricLegalClaims");
   if (legalMetric && state.run) legalMetric.querySelector("strong").textContent = `${tierCounts[3]}건`;

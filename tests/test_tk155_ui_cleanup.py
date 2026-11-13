@@ -15,8 +15,8 @@ import pytest
 from playwright.sync_api import expect, sync_playwright
 from frontend_helpers import select_first_project
 
-from packages.common.finding_category_map import (CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, FINDING_TYPE_SCREEN_NAMES,
-                                                   get_category_counts)
+from packages.common.display_text import CODE_WORDS, FIELD_WORDS, FINDING_TYPE_NAMES, WORD_NAMES, readable, word
+from packages.common.finding_category_map import CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, get_category_counts
 
 ROOT = Path(__file__).resolve().parents[1]
 CODE_RE = re.compile(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\b[a-z]+_[a-z_]+\b")
@@ -66,8 +66,18 @@ RESULT = {"status": "PARTIAL_COMPLETED", "documents": [{
                            "reasons": ["AI 교차검증 다수 모델이 지적하여 AI_PARTIAL_GENERATION로 최종 확정함(다수결)"],
                            "signals": {"score_definition": "응답한 모델들이 낸 ai_score의 중앙값이다.",
                                        "confidence_definition": "계산한 finding.confidence이다."}},
-    "engine_data": {"adversarial": {"scanned_layers": ["encoded_text", "outline", "visible_text"], "adversarial_risk": "HIGH"}},
-}]}
+    "engine_data": {"adversarial": {"scanned_layers": ["encoded_text", "outline", "visible_text"], "adversarial_risk": "HIGH"},
+                    "rag": {"status": "ADVISORY_REVIEWED", "reason": "EXACT_QUOTES_CHECKED_NOT_ENTAILMENT_OR_LEGAL_VALIDITY",
+                            "selection": {"decision": "USED", "reason": "RELEVANT_REFERENCE_FOUND", "candidates_total": 2,
+                                          "files_selected": 1, "candidates": []}}},
+}], "run_manifest": {"reference_library": {
+    "status": "PARTIAL", "files_indexed": 1, "files_seen": 2, "checked_at": "2026-11-13T01:00:11.453487+00:00",
+    "health": {"credential_mode": "service_account", "listing_succeeded": True, "http_calls": 3, "http_errors": 0, "sync_ms": 900},
+    "issues": [{"file_id": "f2", "reason": "REFERENCE_QUARANTINED"}],
+    "inventory": [{"file_id": "f1", "folder_path": "합성폴더", "name": "합성자료1.pdf", "status": "INDEXED_PARTIAL",
+                   "reason": "REFERENCE_PARTIALLY_READ", "pages": 10, "read_pages": 9},
+                  {"file_id": "f2", "folder_path": "합성폴더", "name": "합성자료2.pdf", "status": "PARSE_FAILED",
+                   "reason": "REFERENCE_QUARANTINED", "pages": 5, "read_pages": None}]}}}
 
 GATE = {"release_gate": "BLOCK", "hallucination_risk": 72, "risk_index_note": "합성 지수 설명",
         "hard_block_reasons": ["CASE_NOT_FOUND: 합성 차단 사유"], "review_reasons": ["합성 검토 사유"]}
@@ -84,7 +94,8 @@ def _serve(page, project):
            "input_snapshot": {"scope_revision": 0}, "started_at": "2026-11-13T00:00:00"}
     cats = {"categories": {t.value: c.value for t, c in FINDING_CATEGORY_MAP.items()},
             "tabs": {t.value: CATEGORY_TO_TAB[c].value for t, c in FINDING_CATEGORY_MAP.items()},
-            "counts": get_category_counts(), "names": {t.value: n for t, n in FINDING_TYPE_SCREEN_NAMES.items()}}
+            "counts": get_category_counts(), "names": FINDING_TYPE_NAMES, "code_words": CODE_WORDS,
+            "field_words": FIELD_WORDS, "word_names": WORD_NAMES}
 
     def respond(route):
         path = urlsplit(route.request.url).path
@@ -237,6 +248,81 @@ def test_finding_categories_api_serves_screen_names():
     from apps.api.main import app
     from packages.common.enums import ADVERSARIAL_FINDING_TYPES
 
-    names = TestClient(app).get("/api/finding-categories").json()["names"]
-    assert set(names) == {t.value for t in ADVERSARIAL_FINDING_TYPES}
+    from packages.common.enums import FindingType
+
+    data = TestClient(app).get("/api/finding-categories").json()
+    names = data["names"]
+    assert set(names) == {t.value for t in FindingType}  # 97종 전부(목록 '유형별'·보고서 '유형' 칸)
+    assert {t.value for t in ADVERSARIAL_FINDING_TYPES} <= set(names)
     assert all(re.search(r"[가-힣]", n) for n in names.values())
+    assert data["code_words"]["REFERENCE_PARTIALLY_READ"] and data["field_words"]["visible_text"]
+
+
+def test_reference_processing_record_has_no_codes_and_korean_time(browser):
+    page = browser.new_page(viewport={"width": 1440, "height": 1000})
+    _serve(page, BASE_PROJECT)
+    page.locator('.tabs button[data-tab="review"]').click()
+    panel = page.locator('section[data-panel="review"]')
+    expect(panel.locator(".reference-section").first).to_be_attached()
+    page.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    text = panel.locator(".reference-section").first.inner_text()
+    assert _codes(text) == [], _codes(text)
+    assert "조회 2026-11-13 10:00" in text  # ISO 시각 → 한국 시각
+    assert "서비스 계정" in text and "일부 색인" in text and "지시문 의심으로 보안 격리" in text
+    assert "None" not in text
+
+
+def test_ai_tab_button_shows_high_count_without_changing_its_name(browser):
+    page = browser.new_page(viewport={"width": 1440, "height": 1000})
+    _serve(page, BASE_PROJECT)
+    button = page.locator('.tabs button[data-tab="ai-verification"]')
+    expect(button).to_have_attribute("data-high-count", "1")  # 합성 결과의 높음 이상 인젝션 1건
+    expect(button).to_have_text("AI 작성·보안 진단")
+    badge = button.evaluate("b => getComputedStyle(b, '::after').content")
+    assert "높음 이상 1" in badge
+
+
+def test_readable_mirrors_screen_rules():
+    assert readable("META_INSTRUCTION 후보: ROLE_OVERRIDE — 경로: visible_text") == "기계 지시문 후보: 역할 바꾸기 — 경로: 본문"
+    assert readable("소급 적용 주장 (RETROACTIVE_APPLICATION_ERROR)") == "소급 적용 주장"
+    assert readable("[RAG참고자료] 합성 규정") == "합성 규정"
+    assert readable("[PERSON_003]의 진술") == "[PERSON_003]의 진술"  # 개인정보 가림 토큰은 그대로
+    assert word("HIGH") == "높음" and word("INDEXED") == "색인 완료" and word("CONTRADICTS") == "불부합"
+    # 영문 낱말 치환은 다른 코드의 일부를 바꾸지 않는다('REFERENCE_안전 검토 필요' 같은 깨짐 방지)
+    assert readable("REFERENCE_FOO_QUARANTINED") == "REFERENCE_FOO_QUARANTINED"
+    assert readable("UNVERIFIED로 표시") == "미확인 상태로 표시" and readable("QUARANTINED") == "안전 검토 필요"
+
+
+@pytest.mark.parametrize("fmt", ["docx", "pdf"])
+def test_word_and_pdf_reports_have_no_codes(fmt):
+    from datetime import datetime
+    from apps.api.routers.reports import _DocumentView, _FindingView, _RunView
+
+    findings = []
+    for f in FINDINGS:
+        row = SimpleNamespace(id=f["id"], type=f["type"], status=f["status"], severity=f["severity"], evidence_grade="C",
+                              confidence=0.5, document_id="d1", block_id=None, page=3, title=f["title"], detail=f["detail"],
+                              engine=f["engine"], advisory_only=False, review_status="NEEDS_REVIEW", review_note="",
+                              tags=[], data={}, sealed_excerpt=None)
+        findings.append(_FindingView(row, [], False))
+    doc = _DocumentView(SimpleNamespace(id="d1", filename="합성서면.pdf", quarantined=False, rag_indexable=False, sha256="0"),
+                        findings, RESULT)
+    run = SimpleNamespace(id="r1", project_id="p1", state="PARTIAL_COMPLETED", verification_key="k",
+                          started_at=datetime(2026, 11, 13), finished_at=datetime(2026, 11, 13), scores={}, timeline=[],
+                          unavailable_sources=[], unverified_items=[], errors=[], input_snapshot={}, result_json=RESULT)
+    view = _RunView(run, findings, [doc])
+    if fmt == "docx":
+        from docx import Document
+        from packages.report_engine import build_report_docx
+
+        d = Document(io.BytesIO(build_report_docx(view, project={"name": "합성"}, manifest={})))
+        text = "\n".join([p.text for p in d.paragraphs] + [c.text for t in d.tables for r in t.rows for c in r.cells])
+    else:
+        pypdf = pytest.importorskip("pypdf")
+        from packages.report_engine.pdf_report import build_report_pdf
+
+        pdf = build_report_pdf(view, project={"name": "합성"}, manifest={})
+        text = "\n".join(p.extract_text() or "" for p in pypdf.PdfReader(io.BytesIO(pdf)).pages)
+    assert _codes(text) == [], _codes(text)
+    flat = re.sub(r"\s+", "", text)  # PDF는 줄바꿈 위치가 글자 사이에 올 수 있다
+    assert "일부색인" in flat and "지시문의심으로보안격리" in flat  # 참고문헌 처리 기록이 한글로 실렸다

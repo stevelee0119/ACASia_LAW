@@ -1911,3 +1911,6 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
 .finding-group-reasons { margin: 6px 0 0 20px; }
 .finding-group-reasons .reason-link { text-align: left; white-space: normal; }
 .model-skip-note { margin-top: 6px; }
+/* V1.0.0 6-1: AI 작성·보안 진단 탭 버튼의 높음 이상 건수 */
+.tabs button[data-high-count]::after { content: "높음 이상 " attr(data-high-count); margin-left: 6px; padding: 1px 6px; border-radius: 9px;
+  background: #fdecea; color: #b42318; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: nowrap; }

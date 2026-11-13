@@ -7,6 +7,8 @@ import json
 from packages.legal_engine.reasoning_format import row_cell_text, format_context_review
 from packages.common.privacy_notice import REPORT_HEADER_NOTICE
 from packages.common.terminology import EDITABLE_COPY_NOTICE, REVIEW_NOTICE
+from packages.common.display_text import readable, word
+
 from .snapshot import json_lines, technical_payload, xml_text
 from .summary import (FULL_RECORD_NOTE, SUMMARY, assessed_claims, detail_level, evidence_summary,
                       grouped_unverified, reviewed_workflow)
@@ -47,14 +49,15 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
     # 결과 XML은 같고 시간은 문단 수에 비례한다.
     section_properties = body.sectPr
 
-    def paragraph(value, style=None):
+    # V1.0.0: 사람이 읽는 본문은 코드를 한글로 바꾼다(packages/common/display_text). 기술 부록(raw=True)은 그대로.
+    def paragraph(value, style=None, raw=False):
         element = OxmlElement("w:p")
         if section_properties is not None:
             section_properties.addprevious(element)
         else:
             body.append(element)
         item = Paragraph(element, doc._body)
-        text = xml_text(value)
+        text = xml_text(value) if raw else readable(xml_text(value))
         if text:
             item.add_run(text)
         if style is not None:
@@ -74,7 +77,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
         for row in rows:
             cells = t.add_row().cells
             for cell, value in zip(cells, row):
-                cell.text = xml_text(value if not isinstance(value, (dict, list)) else json.dumps(value, ensure_ascii=False, default=str))
+                cell.text = word(xml_text(value if not isinstance(value, (dict, list)) else json.dumps(value, ensure_ascii=False, default=str)))
         for index, row in enumerate(t.rows):
             for cell, width in zip(row.cells, widths):
                 cell.width = Inches(width)
@@ -153,7 +156,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
               [1.4, 3.6, 1.3, 0.7])
         detailed = findings_in_order
     for finding in detailed:
-        doc.add_heading(xml_text(finding.title), 2)
+        doc.add_heading(readable(xml_text(finding.title)), 2)
         paragraph(finding.detail)
     doc.add_heading("미검증 항목과 사용 불가 자료", 1)
     unverified = ([[i["target"] + (f" ({i['count']}건)" if i["count"] > 1 else ""), i["reason"]]
@@ -260,7 +263,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
         paragraph(f"검토를 시작하지 않은 항목 {untouched}건은 목록에서 생략했습니다(전체 목록은 검증 상세 JSON).")
     doc.add_heading("쟁점과 주장 및 증거 관계", 1)
     for issue in snapshot.get("matrix", {}).get("issues", []):
-        doc.add_heading(xml_text(issue.get("title")), 2)
+        doc.add_heading(readable(xml_text(issue.get("title"))), 2)
         paragraph(f"요건사실: {issue.get('elements', [])}")
         paragraph(f"법적 근거: {issue.get('legal_basis', '')} / 기준일: {issue.get('reference_date')}")
     rows = []
@@ -302,13 +305,13 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
     if manifest:
         payload["export_manifest"] = manifest
     for path, value in json_lines(payload):
-        p = paragraph(path)
+        p = paragraph(path, raw=True)
         p.paragraph_format.keep_with_next = True
         for run in p.runs:
             run.bold = True
             run.font.size = Pt(9)
         for offset in range(0, max(1, len(value)), 3000):
-            paragraph(value[offset:offset + 3000])
+            paragraph(value[offset:offset + 3000], raw=True)
     footer = section.footer.paragraphs[0]
     footer.text = xml_text(metadata.get("label", "DRAFT") + " | " + run_result.run_id)
     buffer = io.BytesIO()
