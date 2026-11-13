@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from packages.common.confidence import score as confidence_score
 from packages.common.enums import (
@@ -140,6 +140,33 @@ def _basis_for(citation: Any, status: str) -> str:
     return "CONTENT_MISMATCH" if status == "CONTRADICTED" else "UNCONFIRMED"
 
 
+# TK-160(B2): 주장 판정 3분류(ContractNLI 꼴). 기존 basis·문구는 그대로 두고 덧붙인다.
+#   SUPPORTED    공식 원문이 확인되고 인용 근거가 일치(사건 적용성은 여전히 사람 검토)
+#   CONTRADICTED 공식 원문 근거 구간(TK-159 passage 또는 판시 근거 발췌)이 주장과 어긋남
+#   INSUFFICIENT 근거를 찾지 못했거나, 원문 근거 구간 없이 '모순'을 말하게 되는 경우
+CLAIM_VERDICTS = ("SUPPORTED", "CONTRADICTED", "INSUFFICIENT")
+CLAIM_VERDICT_LABELS = {"SUPPORTED": "근거 일치", "CONTRADICTED": "근거와 모순", "INSUFFICIENT": "근거 부족"}
+
+
+def classify_claim(basis: str, evidence_basis: Optional[Dict[str, Any]], grounded_quote: str = "") -> Tuple[str, str]:
+    """(3분류, 낮춘 사유). 근거 구간 없는 '모순'은 INSUFFICIENT로 낮춘다."""
+    evidence = evidence_basis or {}
+    official = bool(evidence.get("source")) and evidence.get("basis_status") not in ("RULE_BASED", "MISSING_BASIS")
+    located = bool(evidence.get("passage")) or bool((grounded_quote or "").strip())
+    if evidence.get("basis_status") == "RULE_BASED":
+        # 인용 자체가 형식 규칙에 어긋난다(성립 불가 번호·법원 부호 불일치 등). 주장의 근거를 확인할 수 없다.
+        return "INSUFFICIENT", "인용 형식 오류로 근거를 확인할 수 없음"
+    if basis in ("CONTRADICTION", "CONTENT_MISMATCH"):
+        if official and located:
+            return "CONTRADICTED", ""
+        return "INSUFFICIENT", "공식 원문의 근거 구간이 없어 모순으로 단정하지 않음"
+    if basis == "OFFICIAL_CONFIRMED":
+        if official:
+            return "SUPPORTED", ""
+        return "INSUFFICIENT", "공식 원문 식별자가 없어 일치로 단정하지 않음"
+    return "INSUFFICIENT", ""
+
+
 @dataclass
 class HallucinationTableRow:
     """AI 임의 생성 의심 내용 및 법률 주장 타당성 검토 대조표의 단일 행."""
@@ -172,6 +199,8 @@ class HallucinationTableRow:
     quote_diff_categories: List[str] = field(default_factory=list)
     quote_diff_status: Optional[str] = None
     actionable_guidance: Optional[Dict[str, Any]] = None
+    evidence_basis: Dict[str, Any] = field(default_factory=dict)  # TK-159 판정 근거
+    grounded_evidence_quote: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         review = self.review_text or self.legal_reasoning
@@ -205,7 +234,14 @@ class HallucinationTableRow:
                                else "LEGAL_CITATION_ERROR" if self.basis in ("FABRICATION_SUSPECTED", "CONTENT_MISMATCH")
                                else "UNSUPPORTED_LEGAL_BASIS"),
             "authorship_evidence": False,
+            # TK-160: 주장 판정 3분류와 그 근거(TK-159). 근거 없는 '모순'은 근거 부족으로 낮춘다.
+            **self._claim_fields(),
         }
+
+    def _claim_fields(self) -> Dict[str, Any]:
+        verdict, note = classify_claim(self.basis, self.evidence_basis, self.grounded_evidence_quote)
+        return {"claim_verdict": verdict, "claim_verdict_label": CLAIM_VERDICT_LABELS[verdict],
+                "claim_verdict_note": note, "claim_evidence": self.evidence_basis or None}
 
 
 @dataclass
@@ -703,6 +739,8 @@ async def verify_argument_validity(
             quote_diff_categories=item.get("quote_diff_categories") or [],
             quote_diff_status=item.get("quote_diff_status"),
             actionable_guidance=guidance,
+            evidence_basis=item["verdict"].get("evidence_basis") or {},
+            grounded_evidence_quote=item.get("grounded_evidence_quote") or "",
         )
         row.item_id = index
         row.citation_id = c.citation_id
