@@ -254,6 +254,29 @@ def test_dashboard_keeps_unknown_quality_unknown():
     assert dashboard.build(card)["regression"]["status"] == "FAILED"
 
 
+def test_dashboard_does_not_attach_another_products_kbl_score(tmp_path, monkeypatch):
+    base = json.loads((Path(dashboard.ROOT) / "docs/scorecards/regression_v2_baseline.json").read_text())
+    card = {"git": {"sha": "current"}, "sets": {k: {"regression_v2": v} for k, v in base["sets"].items()}}
+    monkeypatch.setattr(dashboard, "evaluate_kbl", lambda *a: {"status": "MEASURED", "system_version": "old"})
+    with pytest.raises(ValueError, match="different product SHA"):
+        dashboard.build(card, kbl_dataset=tmp_path, kbl_predictions=tmp_path)
+
+
+def test_dashboard_rejects_mismatched_labeled_prediction_version(tmp_path):
+    # Synthetic schema exercise of declared attorney provenance, not actual attorney labels.
+    label = {"item_id": "synthetic", "case_id": "synthetic", "case_family_id": "synthetic", "split": "TEST",
+             "origin": "ATTORNEY_LABELED", "input_text": "synthetic example", "gold_status": "CONTRADICTED",
+             "error_types": ["QUOTE_CONTENT_ERROR"], "annotation": {"reviewer_ids": ["mock1", "mock2"],
+             "qualifications_confirmed": True, "adjudicated": True, "rationale": "SYNTHETIC SCHEMA TEST"}}
+    pred = {"item_id": "synthetic", "run_id": "mock", "system_version": "old", "status": "CONTRADICTED", "error_types": ["QUOTE_CONTENT_ERROR"]}
+    labels=tmp_path/"labels.jsonl"; predictions=tmp_path/"predictions.jsonl"
+    labels.write_text(json.dumps(label)+"\n"); predictions.write_text(json.dumps(pred)+"\n")
+    base = json.loads((Path(dashboard.ROOT) / "docs/scorecards/regression_v2_baseline.json").read_text())
+    card = {"git": {"sha": "current"}, "sets": {k: {"regression_v2": v} for k, v in base["sets"].items()}}
+    with pytest.raises(ValueError, match="exact scorecard product SHA"):
+        dashboard.build(card, labels, predictions)
+
+
 def test_workflow_preserves_legacy_gate_and_adds_v2():
     import yaml
     workflow = yaml.safe_load((Path(dashboard.ROOT) / ".github/workflows/score-gate.yml").read_text())

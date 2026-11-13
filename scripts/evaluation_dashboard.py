@@ -41,6 +41,10 @@ def build(card, labels=None, predictions=None, origin=None, kbl_dataset=None, kb
         if len({(p.run_id, p.system_version) for p in pred}) > 1:
             raise ValueError("Do not pool different product runs or versions")
         quality = evaluate_quality(gold, pred, origin=origin, seed=7)
+        if quality["origin"] == "ATTORNEY_LABELED" and pred:
+            sha = (card.get("git") or {}).get("sha")
+            if not sha or {p.system_version for p in pred} != {sha}:
+                raise ValueError("Attorney-labeled predictions must belong to this exact scorecard product SHA")
         report["labeled_quality"] = {"status": "MEASURED" if pred else "NOT_MEASURED", "report": quality,
                                      "scope": "ONLY_THE_SUPPLIED_LABEL_COHORT_AND_DIMENSIONS"}
         manifest = Path(predictions).with_suffix(Path(predictions).suffix + ".manifest.json")
@@ -51,6 +55,9 @@ def build(card, labels=None, predictions=None, origin=None, kbl_dataset=None, kb
             report["labeled_quality"]["export_provenance"] = provenance
     if kbl_dataset is not None:
         report["public_benchmark"] = evaluate_kbl(kbl_dataset, kbl_predictions)
+        benchmark = report["public_benchmark"]
+        if benchmark["status"] == "MEASURED" and benchmark["system_version"] != (card.get("git") or {}).get("sha"):
+            raise ValueError("KBL predictions belong to a different product SHA")
     return report
 
 
