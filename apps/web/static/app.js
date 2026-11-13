@@ -2843,20 +2843,9 @@ function renderFindings() {
   for (const id of ["referenceStatus", "legalReferenceStatus"]) {
     const box = $(id);
     if (!box) continue;
-    const wasOpen = box.querySelector("details")?.open;
-    const openSummaries = new Set([...box.querySelectorAll("details[open] > summary")].map(s => s.textContent.trim()));
     box.replaceChildren();
     const line = referenceStatusLine(docs, unmatchedReferences.length, id === "referenceStatus");
-    if (line) {
-      if (wasOpen && line.matches("details")) line.open = true;
-      if (openSummaries.size) {
-        line.querySelectorAll("details").forEach(d => {
-          const sum = d.querySelector("summary")?.textContent.trim();
-          if (sum && openSummaries.has(sum)) d.open = true;
-        });
-      }
-      box.append(line);
-    }
+    if (line) box.append(line);
   }
 
   // 4. 하단 미확인 범위 및 RAG/추가 법조문 보존 (정보 손실 0 유지)
