@@ -15,7 +15,7 @@ import pytest
 from playwright.sync_api import expect, sync_playwright
 from frontend_helpers import select_first_project
 
-from packages.common.display_text import CODE_WORDS, FIELD_WORDS, FINDING_TYPE_NAMES, WORD_NAMES, readable, word
+from packages.common.display_text import CODE_WORDS, FIELD_WORDS, FINDING_TYPE_NAMES, PHRASES, WORD_NAMES, readable, word
 from packages.common.finding_category_map import CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, get_category_counts
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +39,12 @@ FINDINGS = [
     _finding("c1", "TEMPORAL_LAW_MISMATCH", "법령 적용 시점 검토: 「합성법」 제1조 — 시행일이 기준일 뒤인데 소급 적용 주장 (RETROACTIVE_APPLICATION_ERROR)",
              LONG_REASON, severity="HIGH"),
     _finding("c2", "CASE_NOT_FOUND", "공식 DB 미발견 판례", "합성 판례를 조회 범위에서 찾지 못했다.", severity="MEDIUM"),
+    # 보완 3: AI 탭 보안 진단에 엔진이 내는 '키=값'·유니코드 문자 이름·층 이름 꼴(합성)
+    _finding("uni1", "UNICODE_SMUGGLING", "Unicode 은닉 신호: ZERO_WIDTH — ZERO WIDTH NO-BREAK SPACE (BOM) (U+FEFF) 1회",
+             "xml 레이어. ZERO WIDTH NO-BREAK SPACE (BOM) (U+FEFF) 1회", severity="LOW", engine="adversarial_engine",
+             status="SUSPICIOUS"),
+    _finding("meta1", "AUTHORSHIP_METADATA_LEAK", "생성 소프트웨어 정보", "creator=합성도구", severity="INFO",
+             engine="forensics_engine", status="SUSPICIOUS"),
 ]
 
 REVIEW_ITEMS = [
@@ -95,7 +101,7 @@ def _serve(page, project):
     cats = {"categories": {t.value: c.value for t, c in FINDING_CATEGORY_MAP.items()},
             "tabs": {t.value: CATEGORY_TO_TAB[c].value for t, c in FINDING_CATEGORY_MAP.items()},
             "counts": get_category_counts(), "names": FINDING_TYPE_NAMES, "code_words": CODE_WORDS,
-            "field_words": FIELD_WORDS, "word_names": WORD_NAMES}
+            "field_words": FIELD_WORDS, "word_names": WORD_NAMES, "phrases": [list(p) for p in PHRASES]}
 
     def respond(route):
         path = urlsplit(route.request.url).path
@@ -338,3 +344,57 @@ def test_report_reference_notice_is_a_legend_not_per_cell():
     text = basis_text(item)
     assert "구속력" not in text and text.startswith("[참고문헌 대조]") and "불부합" in text
     assert LEGEND in REPORT_NOTICE and "법적 구속력은 없습니다" in LEGEND
+
+
+# --- 보완 3(사용자 11-13 'AI 탭에 남은 영문 표기 INSTRUCTION_LIKE 등은 한글 설명으로, 이해하기 쉽고 간결하게, TK-155 범위') ---
+LEFTOVER_RE = re.compile(r"[A-Za-z가-힣]+=|\[(?:openai|anthropic|gemini)\]|\bTool\b|Unicode|ZERO WIDTH|WORD JOINER|레이어|\.\. ")
+ENGINE_SENTENCES = [
+    "visible_text 위치에서 지시형 문자열이 관찰되었다. 분류=INSTRUCTION_LIKE, 점수=1.0, 보조신호=0개. "
+    "본 문자열은 자료로만 취급되며 시스템 지침이나 Tool 권한을 변경하지 않는다.",
+    "Unicode 은닉 신호: ZERO_WIDTH — ZERO WIDTH NO-BREAK SPACE (BOM) (U+FEFF) 1회",
+    "xml 레이어. ZERO WIDTH SPACE (U+200B) 2회, ZERO WIDTH JOINER (U+200D) 1회, WORD JOINER (U+2060) 1회",
+    "Unicode 은닉 신호: 폭 0 문자(zero-width) — ZERO WIDTH NON-JOINER (U+200C)",
+    "모델 간 판단 불일치: openai=AI_FULL_GENERATION_LIKELY, anthropic=UNCERTAIN, gemini=UNCERTAIN.",
+    "근거: [openai] 합성 근거 문장입니다.. 발췌: \"합성\"",
+    "근거: [anthropic] 합성 근거. 발췌: \"합성\"", "근거: [gemini] 합성 근거",
+    "Creator=합성도구, Producer=합성변환기", "작성자=합성도구", "creator=합성도구", "producer=합성변환기",
+    "metadata 레이어에서 관찰된 지시형 문자열", "hidden_text 레이어에서 관찰된 지시형 문자열",
+]
+
+
+@pytest.mark.parametrize("sentence", ENGINE_SENTENCES)
+def test_engine_phrases_read_as_short_korean(sentence):
+    shown = readable(sentence)
+    assert not LEFTOVER_RE.search(shown), shown
+    assert _codes(shown) == [], shown
+    assert readable(shown) == shown  # 두 번 적용해도 같다(화면은 한 문장에 여러 번 거칠 수 있다)
+
+
+def test_engine_phrase_examples_are_concise():
+    assert readable(ENGINE_SENTENCES[0]) == ("본문 위치에서 지시형 문자열이 관찰되었다. 분류: 지시형 문구, 점수 1.0, 보조 신호 0개. "
+                                             "이 문자열은 자료로만 다루며 시스템 지시나 도구 권한을 변경하지 않는다.")
+    assert readable(ENGINE_SENTENCES[1]) == "보이지 않는 문자: 폭 없는 공백 (U+FEFF) 1회"
+    assert readable(ENGINE_SENTENCES[4]).startswith("모델 간 판단 불일치: OpenAI ")
+    assert readable(ENGINE_SENTENCES[5]) == "근거: (OpenAI) 합성 근거 문장입니다. 발췌: \"합성\""
+    assert readable("[PERSON_003]의 진술") == "[PERSON_003]의 진술"  # 개인정보 가림 표지는 그대로
+
+
+def test_finding_categories_api_serves_phrases():
+    from fastapi.testclient import TestClient
+    from apps.api.main import app
+
+    assert TestClient(app).get("/api/finding-categories").json()["phrases"] == [list(p) for p in PHRASES]
+
+
+def test_ai_tab_security_items_have_no_english_leftovers(browser):
+    page = browser.new_page(viewport={"width": 1440, "height": 1000})
+    _serve(page, BASE_PROJECT)
+    page.locator('.tabs button[data-tab="ai-verification"]').click()
+    panel = page.locator('section[data-panel="ai-verification"]')
+    expect(panel).to_contain_text("보이지 않는 문자")  # 진단 목록이 그려질 때까지 기다린다
+    page.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
+    text = panel.inner_text()
+    assert "분류: 지시형 문구" in text and "보조 신호 0개" in text
+    assert "보이지 않는 문자" in text and "문서 내부 구조 층" in text and "작성 프로그램: 합성도구" in text
+    assert not LEFTOVER_RE.search(text), LEFTOVER_RE.findall(text)
+    assert "Base64" not in text  # 검사 항목 설명도 한글로

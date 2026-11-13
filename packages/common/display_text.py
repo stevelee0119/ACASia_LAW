@@ -299,7 +299,30 @@ def korean_time(value) -> str:
 # 화면 friendlyText와 같은 문장 단위 치환(순서 그대로).
 _PHRASES = (("UNVERIFIED", "확인하지 못함"), ("Source", "출처"), ("Creator", "작성 프로그램"), ("Producer", "PDF 생성 프로그램"),
             ("Author", "작성자"), ("QUARANTINED", "안전 검토 필요"), ("UNCERTAIN", "판단 유보"),
-            ("Python 계산엔진으로 검산한 결정론적 결과이다.", "계산식에 따라 자동 검산한 결과입니다."))
+            ("Python 계산엔진으로 검산한 결정론적 결과이다.", "계산식에 따라 자동 검산한 결과입니다."),
+            # TK-155 보완 3(사용자 11-13 'AI 탭에 남은 영문 표기 … 한글 설명으로, 이해하기 쉽고 간결하게'):
+            # 엔진 문장 속 '키=값'·모델 표지·유니코드 문자 이름·층 이름을 표시할 때만 바꾼다(결과 데이터는 그대로).
+            # 긴 문구를 먼저 둔다. 바꾼 결과에는 다시 걸리는 문구가 없다(두 번 적용해도 같다).
+            ("본 문자열은 자료로만 취급되며", "이 문자열은 자료로만 다루며"),
+            ("시스템 지침이나 Tool 권한을", "시스템 지시나 도구 권한을"),
+            ("Tool 권한", "도구 권한"),
+            ("Unicode 은닉 신호: 폭 0 문자(zero-width) — ", "보이지 않는 문자: "),
+            ("Unicode 은닉 신호: 폭 0 문자 — ", "보이지 않는 문자: "),
+            ("Unicode 은닉 신호", "보이지 않는 문자"), ("Unicode 신호", "보이지 않는 문자"),
+            ("ZERO WIDTH NO-BREAK SPACE (BOM)", "폭 없는 공백"), ("ZERO WIDTH NO-BREAK SPACE", "폭 없는 공백"),
+            ("ZERO WIDTH NON-JOINER", "폭 없는 글자 분리 문자"), ("ZERO WIDTH JOINER", "폭 없는 글자 결합 문자"),
+            ("ZERO WIDTH SPACE", "폭 없는 공백"), ("WORD JOINER", "폭 없는 단어 결합 문자"),
+            ("[openai] ", "(OpenAI) "), ("[anthropic] ", "(Anthropic) "), ("[gemini] ", "(Gemini) "),
+            ("openai=", "OpenAI "), ("anthropic=", "Anthropic "), ("gemini=", "Gemini "),
+            ("분류=", "분류: "), ("점수=", "점수 "), ("보조신호=", "보조 신호 "),
+            ("PDF 생성 프로그램=", "PDF 생성 프로그램: "), ("작성 프로그램=", "작성 프로그램: "), ("프로그램=", "프로그램: "),
+            ("작성자=", "작성자: "), ("creator=", "작성 프로그램: "), ("producer=", "PDF 생성 프로그램: "),
+            ("xml 레이어", "문서 내부 구조 층"), ("metadata 레이어", "문서 속성 층"), ("annotation 레이어", "주석 층"),
+            ("attachment 레이어", "첨부 파일 층"), ("outline 레이어", "북마크 층"), ("레이어", "층"),
+            (".. 발췌", ". 발췌"))
+
+# 화면(app.js friendlyText)이 /api/finding-categories의 'phrases'로 같은 표를 받아 쓴다(표 하나가 기준).
+PHRASES = _PHRASES
 
 _PAREN_CODE = re.compile(r"\s*\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)")
 _CODE = re.compile(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b")

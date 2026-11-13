@@ -40,7 +40,7 @@ from ..access import project_scoped
 from ..identity import (actor_id, apply_organization_policy, filter_project_query,
                         project_creation_defaults, require_project, project_role)
 
-from packages.common.display_text import CODE_WORDS, FIELD_WORDS, FINDING_TYPE_NAMES, WORD_NAMES
+from packages.common.display_text import CODE_WORDS, FIELD_WORDS, FINDING_TYPE_NAMES, PHRASES, WORD_NAMES
 from packages.common.finding_category_map import CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, get_category_counts
 
 router = APIRouter(tags=["projects"])
@@ -59,6 +59,7 @@ def get_finding_categories() -> dict:
         "code_words": CODE_WORDS,
         "field_words": FIELD_WORDS,
         "word_names": WORD_NAMES,
+        "phrases": [list(pair) for pair in PHRASES],  # TK-155 보완 3: 문장 단위 치환 표(보고서 readable과 같은 순서)
     }
 
 

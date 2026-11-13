@@ -81,7 +81,8 @@ function friendlyText(value) {
   const names = tables.names || {}, codeWords = tables.code_words || {}, fieldWords = tables.field_words || {};
   text = text.replace(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/g, code => names[code] || codeWords[code] || labels[code] || code);
   text = text.replace(/\bfinding\.confidence\b|\b[a-z]+_[a-z_]+\b/g, word => fieldWords[word] || word);
-  for (const [technical, simple] of [["UNVERIFIED","확인하지 못함"],["Source","출처"],["Creator","작성 프로그램"],["Producer","PDF 생성 프로그램"],["Author","작성자"],["QUARANTINED","안전 검토 필요"],["UNCERTAIN","판단 유보"],["Python 계산엔진으로 검산한 결정론적 결과이다.","계산식에 따라 자동 검산한 결과입니다."]]) {
+  // TK-155 보완 3: 문장 단위 치환 표는 서버(display_text.PHRASES)가 준다. 받지 못했을 때만 아래 기본 표를 쓴다.
+  for (const [technical, simple] of tables.phrases || [["UNVERIFIED","확인하지 못함"],["Source","출처"],["Creator","작성 프로그램"],["Producer","PDF 생성 프로그램"],["Author","작성자"],["QUARANTINED","안전 검토 필요"],["UNCERTAIN","판단 유보"],["Python 계산엔진으로 검산한 결정론적 결과이다.","계산식에 따라 자동 검산한 결과입니다."]]) {
     // 영문 낱말은 다른 코드의 일부(예: REFERENCE_QUARANTINED)를 바꾸지 않도록 앞뒤가 영문·숫자·밑줄이 아닐 때만 바꾼다.
     text = /^[A-Za-z]+$/.test(technical)
       ? text.replace(new RegExp(`(?<![A-Za-z0-9_])${technical}(?![A-Za-z0-9_])`, "g"), simple)
@@ -1188,7 +1189,7 @@ const LAYER_NAMES = {visible_text: "본문", ocr_layer: "OCR 인식 글자", hid
                      independent_ocr: "독립 OCR", page_labels: "쪽 번호 표시"};
 const RISK_NAMES = {CRITICAL: "매우 높음", HIGH: "높음", MEDIUM: "보통", LOW: "낮음", NONE: "없음"};
 const INJECTION_CHECKS = ["본문·숨김 글자의 지시형 문구(AI에게 판단을 바꾸라는 명령)", "문서 속성(메타데이터)의 지시문",
-  "보이지 않는 유니코드 문자", "Base64 등으로 감춘 문자열", "화면 글자와 내부 글자 층의 불일치", "이미지·OCR 층의 지시문"];
+  "보이지 않는 문자", "부호로 바꿔 감춘 문자열", "화면 글자와 내부 글자 층의 불일치", "이미지 속 글자의 지시문"];
 
 // 프롬프트 인젝션 판정 근거: 무엇을 검사했고, 무엇이 나왔고, 왜 그 결론인지 문서별로 보인다.
 function injectionCard(docs, hasQuarantine, findings) {
