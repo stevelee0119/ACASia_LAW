@@ -115,8 +115,13 @@ def test_four_reports_retain_unofficial_reference_opinions(report_case, index):
     pdf_text = "".join(p.extract_text() for p in PdfReader(io.BytesIO(blobs["pdf"])).pages)
     docx = Document(io.BytesIO(blobs["docx"]))
     cells = [c.text for table in docx.tables for row in table.rows for c in row.cells]
-    assert any(source_quote in c and "공식 확인 아님" in c for c in cells)
-    assert "공식 확인 아님" in pdf_text and source_quote.split()[0] in pdf_text
+    # V1.0.0 D5(사용자 결정 11-13, 옛 TK-88·127 '칸마다 표시' 변경): 참고 의견 칸은 '[참고문헌 대조]' 표지로 구분하고,
+    # '공식 확인 아님·구속력 없음' 안내는 표 위에 한 번 둔다. 엑셀 '공식 여부' 열 단언은 그대로.
+    from packages.report_engine.reference_opinions import LEGEND
+    assert any(source_quote in c and "[참고문헌 대조]" in c and "구속력 없음" not in c for c in cells)
+    assert any(LEGEND in p.text for p in docx.paragraphs)
+    flat_pdf = "".join(pdf_text.split())
+    assert "".join(LEGEND.split()) in flat_pdf and "공식확인" in flat_pdf and source_quote.split()[0] in pdf_text
     workbook = openpyxl.load_workbook(io.BytesIO(blobs["xlsx"]))
     sheet = workbook["참고문헌대조"]
     assert "공식 확인" in sheet.cell(1, 1).value

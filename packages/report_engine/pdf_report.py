@@ -294,6 +294,7 @@ def build_report_pdf(
     story.append(Spacer(1, 4))
     story.append(Paragraph(_escape("3. 법률적으로 무리한 주장"), styles["h2"]))
     if tier3_rows:
+        story.append(Paragraph(_escape(REPORT_NOTICE), styles["small"]))  # D5: 표 위 안내 한 번
         t3_table_rows = [["위치", "문서 주장 / 인용", "법리 검토 결과 및 근거", "반박 근거 및 확인 필요 내용"]]
         story.append(table(t3_table_rows + tier3_rows, [60, 105, 110, 215]))
     else:

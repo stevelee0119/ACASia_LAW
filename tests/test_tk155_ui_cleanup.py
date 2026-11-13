@@ -326,3 +326,15 @@ def test_word_and_pdf_reports_have_no_codes(fmt):
     assert _codes(text) == [], _codes(text)
     flat = re.sub(r"\s+", "", text)  # PDF는 줄바꿈 위치가 글자 사이에 올 수 있다
     assert "일부색인" in flat and "지시문의심으로보안격리" in flat  # 참고문헌 처리 기록이 한글로 실렸다
+    # D5: '구속력 없음'은 표 칸마다 되풀이하지 않는다(안내는 표 위 한 번 — 합성 결과에는 참고문헌 대조 행이 없어 0)
+    assert "구속력없음" not in flat
+
+
+def test_report_reference_notice_is_a_legend_not_per_cell():
+    from packages.report_engine.reference_opinions import LEGEND, REPORT_NOTICE, basis_text
+
+    item = {"reference_observations": [{"source_detail": {"title": "합성 규정"}, "relationship": "CONTRADICTS",
+                                        "source_quote": "합성 조항", "explanation": "합성 설명"}]}
+    text = basis_text(item)
+    assert "구속력" not in text and text.startswith("[참고문헌 대조]") and "불부합" in text
+    assert LEGEND in REPORT_NOTICE and "법적 구속력은 없습니다" in LEGEND

@@ -229,6 +229,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
 
     doc.add_heading("3. 법률적으로 무리한 주장", 2)
     if tier3_rows:
+        paragraph(REPORT_NOTICE)  # D5: 이 표의 참고문헌 대조 칸에도 같은 안내를 표 위에 한 번
         table(["위치", "문서 주장 / 인용", "법리 검토 결과 및 근거", "반박 근거 및 확인 필요 내용"],
               tier3_rows, [1.0, 1.7, 1.6, 2.7])
     else:

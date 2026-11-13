@@ -1,9 +1,11 @@
 """Drive opinions in the citation table; separate from external AI answers."""
 from packages.common.display_text import word  # V1.0.0: 관계 코드를 화면과 같은 말로
-from packages.rag_engine.reference_binding import NOTICE, bind_observations, value
+from packages.rag_engine.reference_binding import bind_observations, value
 
+# V1.0.0 D5(사용자 결정 11-13): '구속력 없음'은 칸마다 되풀이하지 않고 표 위 안내에 한 번만 둔다(화면 범례와 같은 말).
+LEGEND = "주요 참고문헌은 등록된 검증 자료입니다. 판례·법령과 달리 법적 구속력은 없습니다."
 REPORT_NOTICE = ("본 참고문헌 대조 의견은 사설 Google Drive 자료를 기반으로 한 보조 검토 의견이며, "
-                 "공식 판정·등급·점수 또는 공식 확인(OFFICIAL_CONFIRMED)이 아닙니다. " + NOTICE)
+                 "공식 판정·등급·점수 또는 공식 확인(OFFICIAL_CONFIRMED)이 아닙니다. " + LEGEND)
 
 
 def reference_rows(document):
@@ -29,7 +31,7 @@ def reference_rows(document):
 
 
 def basis_text(item):
-    parts = ["[참고문헌 대조] " + NOTICE]
+    parts = ["[참고문헌 대조]"]  # D5: 구속력 안내는 표 위 REPORT_NOTICE에 한 번
     for observation in item.get("reference_observations", []):
         source = observation.get("source_detail") or {}
         parts.append(f"{source.get('title') or observation.get('source_id', '')} · {word(observation.get('relationship', ''))}")
