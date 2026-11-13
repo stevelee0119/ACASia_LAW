@@ -4948,3 +4948,86 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
   3. 측정 근거로 TK-161 지시를 낸다.
   4. 후속판으로 배포한다.
 - 자세한 내용은 계획 문서 6.12절에 있다. 구현 측이 지금 할 일은 없다.
+
+### 2-41-4. TK-159 지시(전달판)
+- 패치: [patches/TK-159_evidence_basis_on_bf93d3c.diff](patches/TK-159_evidence_basis_on_bf93d3c.diff)
+
+```
+[TK-159 판정별 공식 원문 근거 구간(B1)]  기준 SHA: bf93d3c(Steve_ACASiaLAW)  평가 측 사본: 9eec3d9
+보완 패치: docs/handoff/patches/TK-159_evidence_basis_on_bf93d3c.diff
+ - bf93d3c → 사본 차이 전부: 제품 3파일(새 1) + 새 시험 1파일, git apply 가능
+대상 릴리스: 0.20.0. TK-158과 겹치는 파일이 없다(둘 다 bf93d3c 기준, 병합 순서 무관). TK-160·163·162가 이 결과를 쓴다.
+
+0. 배경(계획 문서 3절 TK-159, 근거 Stanford RegLab 환각 연구·LegalBench-RAG 근거 구간 평가)
+ - 판정은 서면 쪽 위치(citation.span)만 남긴다.
+ - 공식 원문 쪽에서 '어느 판결·어느 판·어느 구간을 근거로 했는지'와 '근거를 못 찾은 것(조회 실패)인지, 찾았는데 다른 것(판단)인지'가 결과 JSON에서 구분되지 않는다.
+
+1. 원인(줄 번호는 bf93d3c 기준)
+ C1. packages/legal_engine/verifier.py 213~243행 result.data["verdicts"] 사전에 근거 칸이 없다.
+     - official_record는 실리지만 그 모양이 경로마다 다르다(판례: source_id·holding·summary, 공식 법령: law_id·version_id, 내부 사본 법령: law_name·text).
+ C2. 같은 파일 Level 3 인용 대조(474~497행)는 공식 원문과의 유사도·판정만 남기고, 인용문이 원문의 어디와 맞았는지(구간)는 남기지 않는다.
+     - packages/common/textutil.py 105행 contains_fuzzy_normalized는 최고 유사도만 돌려준다.
+
+2. 고칠 것(보완 패치와 같음 — 판정·점수는 바꾸지 않는다)
+ F1. textutil.py에 locate_fuzzy_normalized(h, n) → (유사도, 시작 위치)를 더한다.
+     - contains_fuzzy_normalized와 같은 창 비교(len(n)//4 간격, quick_ratio 가지치기)를 쓴다.
+     - 정확히 포함되면 (1.0, find 위치)를 돌려준다.
+     - 기존 함수는 바꾸지 않는다.
+ F2. 새 packages/legal_engine/evidence_basis.py
+     - quote_span(인용문, 공식 원문):
+       · normalize_quote로 정규화한 문자열 기준의 [start, end), similarity를 낸다.
+       · 그 문자열의 SHA-256(text_sha256)과 길이, 발췌(최대 200자)를 함께 낸다. 원문 전문은 싣지 않는다.
+     - build_basis(verdict) → {basis_status, source, passage}
+       · source 종류:
+         - OFFICIAL_CASE: 판례 source_id·법원·선고일·사건번호·링크·객체 참조
+         - OFFICIAL_LAW: 법령 ID·판 번호(MST)·시행일·version_selection·링크·객체 참조
+         - MIRROR_LAW: 내부 사본 법령. 공식 응답과 구분한다
+         - DETERMINISTIC_RULE: 형식·범위 규칙
+       · passage: 판례는 review["quote_span"], 법령은 review["provision"](경로·문언 해시·발췌)
+       · basis_status:
+         - SOURCE_MATCHED / SOURCE_MISMATCHED / SOURCE_FOUND_NOT_DECIDED(원문 있음)
+         - LOOKUP_FAILED / NOT_FOUND / NO_SOURCE(원문 없음)
+         - RULE_BASED(공식 원문 없이 형식 규칙으로 정한 불일치. 예: 아직 오지 않은 연도의 사건번호)
+         - MISSING_BASIS(확인·불일치 판정인데 근거가 없는 경우. 드러내기만 하고 판정은 바꾸지 않는다)
+ F3. verifier.py
+     - Level 3 판정 직후(497행 뒤) quote_span을 review["quote_span"]에 남긴다. 필드 표시: 전문 있으면 full_text+holding+summary, 없으면 holding+summary.
+     - verdicts 사전에 "evidence_basis": build_basis(v)를 더한다(240행 뒤).
+
+3. 확인 시험(새 tests/test_tk159_evidence_basis.py, 패치에 있음 — 시험용 내부 Mirror의 가상 판례·법령, 합성 문장)
+ - 모든 판정에 알려진 basis_status가 있고 MISSING_BASIS 0
+ - 인용 일치 → SOURCE_MATCHED + 판례 식별자 + 정규화 구간·해시·발췌
+ - 조회 불가 → 원문 없음 상태(불일치로 보고하지 않음)
+ - 메타데이터 불일치 → SOURCE_MISMATCHED + 식별자
+ - 형식상 불가능한 사건번호 → RULE_BASED + 규칙 이름
+ - locate_fuzzy_normalized의 유사도 = contains_fuzzy_normalized 끝까지 훑은 최고값(3꼴)
+ - quote_span 해시 = 정규화 문자열 해시, 빈 입력 None
+ - 공식 법령(가짜 어댑터) → OFFICIAL_LAW + 판 번호·시행일 + 조문 해시·경로
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본 9eec3d9, SQLite, LV_ALLOW_NETWORK=0)
+ - 새 시험 10건 통과.
+ - 고정 2세트 판정 60건의 근거 상태:
+   · CONTRADICTED 15 → RULE_BASED(첫 판에서는 MISSING_BASIS로 나와 F2에 RULE_BASED를 넣었다)
+   · CONTRADICTED 2 → SOURCE_MISMATCHED
+   · PARTIALLY_VERIFIED 4 → SOURCE_MATCHED
+   · UNVERIFIED 39 → LOOKUP_FAILED
+   · MISSING_BASIS 0
+ - precheck_pr 전체 모드(+ 법률 엔진·LV·TK-150번대·시간 적용 시험): 종료 0
+   · 고정 82.6 / 81.9 / 오탐 0 변화 0
+   · 은퇴 5세트 후퇴 없음
+   · 평가 세트 문구 대조 통과
+ - 게이트: check_hardcoding_diff 통과, check_test_edits '삭제·표시 변경 없음', check_protected_paths 변경 없음.
+ - 미검증:
+   · 실제 공식 판결문 전문에서의 구간 정확도(온라인, 배포 뒤 case9·탐침 B의 결과 JSON으로 확인)
+   · 인용 대조 1회당 창 비교가 한 번 더 도는 비용(오프라인 전체 시험 시간 변화로 간접 확인만 했다)
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나.
+   · 제품: textutil.py, evidence_basis.py(새), verifier.py
+   · 시험: 새 시험 1파일
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공
+   · 고정·은퇴 세트 변화 0, 확인 오탐 0
+   · 성능 시험(test_regex_performance 등) 통과
+ - 법률 판단 엔진 변경이므로 수용 SHA에서 평가 측이 verify_all 전체 모드를 한 번 돈다.
+```
