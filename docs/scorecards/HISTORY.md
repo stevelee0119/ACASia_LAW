@@ -1871,3 +1871,8 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
 - 11-12 사용자 '#255,256 병합'(#255·#256은 11-11 병합 완료 — #265·#266으로 해석) → #265 병합 Steve `4118677`(expectedHeadSha `6e9c8f3`), #266 병합 Steve `9406d9c`(expectedHeadSha `86d8d04`). Steve 제품·시험 = 평가 합본 `8e1294c` diff 0. 다음: 릴리스 후보 verify_all 전체.
 - 11-12 0.19.0 릴리스 후보 Steve `9406d9c`(TK-152·153·154) verify_all 전체 모드(기준 0.18.0 main `3c75071`, 평가 측 재실행) **종료 0**: environment·acceptance 1,239·regression_ledger 2,357·score_gate·regression_gate(회귀 없음)·hardcoding_diff·test_edits·protected_paths(16개 승인)·version_policy·full_tests 9,997·browser_tests 197, 실제 실패 0. 은퇴 4세트(main 기준) 53.3/48.6/56.9/45.8·20261025 34.1·고정 82.6/81.9/0 — 0.18.0과 같음. 다음: 0.19.0 판정(봉인 시험 여부 사용자 결정).
 - 11-12 사용자 '봉인시험 미시행, 평가 PR 생성 병합' → 0.19.0 판정서(minor, changed·fixed) 작성, 버전 커밋 지시 NEXT 2-37(증분 v0.19.0_version_commit_on_9406d9c.diff), 배포 뒤 0.18.0 대 0.19.0 온라인 비교로 봉인 시험 갈음(case9·탐침 4종 47항목 같은 조건).
+
+
+## 2026-11-13 평가 v2 전환
+
+사용자 승인에 따라 [평가 v2 운영 규약](EVALUATION_V2.md), 일대일 이진 회귀 측정·유형별 하한, 실패/세트 누락 차단, 실제 인용 출력 export, 고정 revision KBL 채점, 미측정 구분 dashboard를 연결했다. [전환 전 감사](benchmark_audit_2026-11-13.md)의 10버전 비교는 과거 동일환경 측정 기록이며 실무 정확도가 아니다. 제품·기존 정답·기존 baseline은 유지한다. 검증 SHA·명령·결과는 quality_transition_validation_2026-11-13.md에 기록한다.

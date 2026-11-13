@@ -104,7 +104,7 @@ def test_retired_compare_failed_head_and_new_set():
     rc = _load("retired_compare")
     base = {"s1": _retired(29.6, 0, 0), "s2": None}
     head = {"s1": None, "s2": _retired(10.0, 0, 0), "s9": _retired(1.0, 5, 5)}
-    assert rc.compare(base, head) == ["s1: 후보 채점 실패"]
+    assert rc.compare(base, head) == ["은퇴 세트 목록 불일치/비어 있음", "s1: 후보 채점 실패", "s2: 기준 채점 실패"]
 
 
 

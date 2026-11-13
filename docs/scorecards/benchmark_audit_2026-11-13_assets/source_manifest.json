@@ -1,0 +1,128 @@
+[
+  {
+    "id": "legalbench",
+    "url": "https://raw.githubusercontent.com/HazyResearch/legalbench/main/README.md",
+    "status": 200,
+    "sha256": "5dd145fc044760c7b631b6e3db0f0c683a6676ad99eb1dff5779f258c94b32a1",
+    "bytes": 9863
+  },
+  {
+    "id": "lexglue",
+    "url": "https://raw.githubusercontent.com/coastalcph/lex-glue/main/README.md",
+    "status": 200,
+    "sha256": "d794cef432306453486b27e9aee7557f2ae0f83bb236589810915c756fe8d535",
+    "bytes": 20798
+  },
+  {
+    "id": "lawbench",
+    "url": "https://raw.githubusercontent.com/open-compass/LawBench/main/README.md",
+    "status": 200,
+    "sha256": "7febfea078bd3d5823f0ccb6c96feb625ca3e5fe9bb3fd9dfb50129608b351a4",
+    "bytes": 29240
+  },
+  {
+    "id": "lbox",
+    "url": "https://raw.githubusercontent.com/lbox-kr/lbox-open/main/README.md",
+    "status": 200,
+    "sha256": "6c2962d71b93dc225cdb4ae64cb0cf04dde1f83be20612fdf66546705e17ff2f",
+    "bytes": 29891
+  },
+  {
+    "id": "hf_lbox",
+    "url": "https://huggingface.co/api/datasets/lbox/lbox_open",
+    "status": 200,
+    "sha256": "b7241f236eb2b6b167f9c23e1a6ade986e65833d3656616258349e346e55df50",
+    "bytes": 5226
+  },
+  {
+    "id": "legalbench_paper",
+    "url": "https://arxiv.org/abs/2308.11462",
+    "status": 200,
+    "sha256": "5ed52505848fefc47aae50e8ddf71fbcd0f8b496f18f9523a63d0bff1b19b80f",
+    "bytes": 47273
+  },
+  {
+    "id": "lexglue_paper",
+    "url": "https://aclanthology.org/2022.acl-long.297/",
+    "status": 200,
+    "sha256": "876e4077501f4fb727592ddfc56ae8b0da220050eb0d75dd876126977421c8c2",
+    "bytes": 44497
+  },
+  {
+    "id": "legalbenchrag_paper",
+    "url": "https://arxiv.org/abs/2408.10343",
+    "status": 200,
+    "sha256": "de82ce2cf0baf3fa4a064952ce267176db07a9544772515d36ec00a05ce8c789",
+    "bytes": 42691
+  },
+  {
+    "id": "alce",
+    "url": "https://raw.githubusercontent.com/princeton-nlp/ALCE/main/README.md",
+    "status": 200,
+    "sha256": "cabf972df57b3c4e69bc981c889a0594f59ab60eff4430ba0cf73b08d4ba9096",
+    "bytes": 8124
+  },
+  {
+    "id": "legalbenchrag",
+    "url": "https://raw.githubusercontent.com/zeroentropy-ai/legalbenchrag/master/README.md",
+    "status": 200,
+    "sha256": "bb89ce40b68f0803b1bfdfb48ae176a5f29d3ed874bcb1cbbdf52ead0e0d9871",
+    "bytes": 5734
+  },
+  {
+    "id": "kbl",
+    "url": "https://raw.githubusercontent.com/lbox-kr/kbl/main/README.md",
+    "status": 200,
+    "sha256": "b23a95df4f2fee31186b9df6233e2d6081c21f39434f7b9e05717fb327ffa558",
+    "bytes": 3486
+  },
+  {
+    "id": "kbl_hallucination",
+    "url": "https://huggingface.co/datasets/lbox/kbl/resolve/695653ba87affa2c3113896013179c81fc16786a/knowledge/kbl_statute_hallucination_qa_v0.1.json",
+    "status": 200,
+    "sha256": "910048e2860251ea371aa5efc3037bb570bb53fe4685c702b1488418bf03639e",
+    "bytes": 47493
+  },
+  {
+    "id": "kbl_hf_readme",
+    "url": "https://huggingface.co/datasets/lbox/kbl/resolve/695653ba87affa2c3113896013179c81fc16786a/README.md",
+    "status": 200,
+    "sha256": "0e373317f17febd3a2ceebf41e89615a8d60207cf02ec1152297e2496139e9cf",
+    "bytes": 8062
+  },
+  {
+    "id": "hf_kbl",
+    "url": "https://huggingface.co/api/datasets/lbox/kbl",
+    "status": 200,
+    "sha256": "84c08687daf91ca27a614741287404c04a8116725c397e3bf277680cb4fce657",
+    "bytes": 12602
+  },
+  {
+    "id": "hf_kblrag",
+    "url": "https://huggingface.co/api/datasets/lbox/kbl-rag",
+    "status": 200,
+    "sha256": "babc0b6285c8f8737f3ece89dc41ca8cc8a9a6e8afe9a2ff4c86e40a4f8871cb",
+    "bytes": 2506
+  },
+  {
+    "id": "kblpaper",
+    "url": "https://arxiv.org/abs/2410.08731",
+    "status": 200,
+    "sha256": "c79def0f49cfa6f97164ae81077ebeb7fbb9668536d4ed02893d55d90af021f8",
+    "bytes": 42585
+  },
+  {
+    "id": "contractnli",
+    "url": "https://raw.githubusercontent.com/stanfordnlp/contract-nli/master/README.md",
+    "status": 200,
+    "sha256": "375a1024337b82d2331bc9ab63cda3044dc10e5019033eb66332a0fc4e626b52",
+    "bytes": 160
+  },
+  {
+    "id": "contractnli_site",
+    "url": "https://stanfordnlp.github.io/contract-nli/",
+    "status": 200,
+    "sha256": "c4ce154ae48ddb800cc32070d2019a2ad0dd05d115e81200b74536b84f3c80be",
+    "bytes": 21751
+  }
+]
