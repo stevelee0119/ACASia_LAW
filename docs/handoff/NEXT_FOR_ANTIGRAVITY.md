@@ -5448,3 +5448,19 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
    · 고정·은퇴 세트 변화 0, 확인 오탐 0
    · 근거 구간 없는 CONTRADICTED 0
 ```
+
+## 2-48. 사용자 'KBL 경로 정리 PR 생성' (11-13) → #277
+- 평가 PR: https://github.com/stevelee0119/ACASia_LAW/pull/277 (`evaluator/kbl-cleanup` b36e023 → Steve f594043).
+- 변경:
+  - evaluate_kbl.py를 삭제했다.
+  - dashboard·성적표의 public_benchmark를 NOT_APPLIED로 바꿨다.
+  - EVALUATION_V2 5절을 '미적용'으로 고쳤다.
+  - 보호 시험 KBL 5건(6사례)을 '미적용·입력 경로 없음' 시험 1건으로 바꿨다.
+  - 보호 경로 목록·CODEOWNERS·역할 문서를 정리했다.
+  - r1~r3 문서를 포함했다.
+- 평가 측 재실행:
+  - precheck --quick 종료 0, 고정 82.6 / 81.9 / 오탐 0.
+  - 수용 시험 1,275 통과(1,280 − 6 + 1).
+  - 대시보드 종료 0.
+  - 게이트 통과(모두 평가 측 커밋).
+- 구현 측 할 일 없음. 병합은 사용자 승인(보호 경로)으로 한다.
