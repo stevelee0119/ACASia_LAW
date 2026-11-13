@@ -1,0 +1,1362 @@
+diff --git a/apps/api/routers/projects.py b/apps/api/routers/projects.py
+index 295ab5a..e93c2a0 100644
+--- a/apps/api/routers/projects.py
++++ b/apps/api/routers/projects.py
+@@ -40,7 +40,7 @@ from ..access import project_scoped
+ from ..identity import (actor_id, apply_organization_policy, filter_project_query,
+                         project_creation_defaults, require_project, project_role)
+ 
+-from packages.common.finding_category_map import CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, get_category_counts
++from packages.common.finding_category_map import CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, FINDING_TYPE_SCREEN_NAMES, get_category_counts
+ 
+ router = APIRouter(tags=["projects"])
+ logger = logging.getLogger(__name__)
+@@ -53,6 +53,7 @@ def get_finding_categories() -> dict:
+         "categories": {ft.value: cat.value for ft, cat in FINDING_CATEGORY_MAP.items()},
+         "tabs": {ft.value: CATEGORY_TO_TAB[cat].value for ft, cat in FINDING_CATEGORY_MAP.items()},
+         "counts": get_category_counts(),
++        "names": {ft.value: name for ft, name in FINDING_TYPE_SCREEN_NAMES.items()},
+     }
+ 
+ 
+diff --git a/apps/web/index.html b/apps/web/index.html
+index 7e8b117..37a231b 100644
+--- a/apps/web/index.html
++++ b/apps/web/index.html
+@@ -4,15 +4,15 @@
+ <header class="topbar"><button class="icon mobile" id="menuButton" aria-label="프로젝트 목록" title="프로젝트 목록"><i data-lucide="menu"></i></button><a class="brand" href="/" aria-label="ACASia_LAW 홈"><span class="brand-emblem"><img src="/static/acas-law-emblem.jpg" alt="ACASia LAW" width="1280" height="640"></span><span class="brand-sub brand-title"><span class="brand-org">종합행정학교 법무교육단</span> <span class="brand-name">법률문서 검증시스템</span></span></a><span id="connection" class="connection">연결 확인 중</span><button id="settingsButton" class="icon" title="연결 상태" aria-label="연결 상태"><i data-lucide="settings"></i></button></header>
+ <div class="workspace"><aside id="sidebar"><div class="side-title"><h2>내 프로젝트</h2><button id="newProjectBtn" class="primary sidebar-create" title="새 프로젝트" aria-label="새 프로젝트"><i data-lucide="plus"></i><span>새프로젝트</span></button></div><input id="projectSearch" type="search" placeholder="프로젝트 검색" aria-label="프로젝트 검색"><nav id="projectList" aria-label="프로젝트"></nav><div class="side-footer"><i data-lucide="shield-check"></i><span id="policyLabel">외부 AI 전송 안 함</span></div></aside>
+ <main><section id="emptyState" class="empty" aria-label="ACASia_LAW"><div class="empty-brand"><img class="empty-emblem" src="/static/img/acas-law-square-transparent.png" alt="ACASia LAW" width="1254" height="1254"><img class="empty-lettering" src="/static/img/acas-lettering.png?v=20260927-2" alt="육군 종합행정학교, Army Consolidate Administrative School, SMART and HARMONY" width="2172" height="724"></div></section>
+-<section id="projectView" hidden><div class="project-heading"><div><span class="eyebrow">법률문서 검토</span><h1 id="projectTitle"></h1><p id="projectMeta" class="muted"></p></div><div class="actions"><button id="editProject" class="icon" title="프로젝트 편집" aria-label="프로젝트 편집"><i data-lucide="pencil"></i></button><button id="reportBtn" title="완료된 검증 결과로 검토 보고서를 생성합니다"><i data-lucide="file-down"></i>보고서 생성</button><button id="verifyBtn" class="primary"><i data-lucide="scan-search"></i>검증 시작</button></div></div>
++<section id="projectView" hidden><div class="project-heading"><div><h1 id="projectTitle"></h1><p id="projectMeta" class="muted"></p></div><div class="actions"><button id="editProject" class="icon" title="프로젝트 편집" aria-label="프로젝트 편집"><i data-lucide="pencil"></i></button><button id="reportBtn" title="완료된 검증 결과로 검토 보고서를 생성합니다"><i data-lucide="file-down"></i>보고서 생성</button><button id="verifyBtn" class="primary"><i data-lucide="scan-search"></i>검증 시작</button></div></div>
+ <div id="staleNotice" class="notice warning" hidden>검토 자료 또는 설정이 변경되었습니다. 기존 결과는 변경 전 자료 기준입니다.<button id="reverify">다시 검증</button></div>
+ <div id="progress" class="progress" hidden><div><span id="progressText"></span><span id="progressPercent"></span></div><progress id="progressBar" max="100" value="0"></progress><p id="progressNotice" class="progress-notice" role="status" hidden></p></div>
+ <div id="summary" class="summary"></div>
+ <nav class="tabs workspace-tabs" aria-label="검토 화면"><button data-tab="documents" class="active"><i data-lucide="files"></i>자료</button><button data-tab="ai-verification"><i data-lucide="shield-check"></i>AI 작성·보안 진단</button><button data-tab="review"><i data-lucide="search-x"></i>출처가 확인되지 않는 항목</button><button data-tab="legal-claims"><i data-lucide="scale"></i>법률적으로 무리한 주장</button><button data-tab="reports"><i data-lucide="file-chart-column"></i>보고서</button></nav>
+ <section data-panel="documents"><div class="toolbar"><h2>검토 자료 <span id="scopeCount" class="muted"></span></h2><div class="actions"><select id="scopeFilter" aria-label="검토 범위"><option value="all">전체 자료</option><option value="included">검토에 포함</option><option value="excluded">검토에서 제외</option></select><label class="button" for="fileInput" id="fileInputButton"><i data-lucide="upload"></i>파일 추가</label><input id="fileInput" type="file" multiple hidden></div></div><p class="privacy-notice-link-wrap"><button type="button" id="privacyNoticeRevisit" class="privacy-revisit-link" aria-haspopup="dialog"><i data-lucide="shield-check"></i>개인정보 안내 다시 보기</button></p><div id="bulkActions" class="toolbar" hidden><span id="selectedCount"></span><div class="actions"><button id="bulkExclude">선택 자료 제외</button><button id="bulkInclude">선택 자료 다시 포함</button></div></div><div id="dropArea" class="table-wrap"><table><thead><tr><th><input id="selectAll" type="checkbox" aria-label="표시된 자료 모두 선택"></th><th>파일명</th><th>증거번호 / 제출자</th><th>검토 범위</th><th>관리</th></tr></thead><tbody id="documentRows"></tbody></table><p id="documentEmpty" class="empty-small">등록된 자료가 없습니다.</p></div></section>
+-<section data-panel="ai-verification" hidden><div class="toolbar"><h2>AI 작성·보안 진단</h2></div><div id="aiTabNoticeBanner" class="info-banner"><span>판례 인용·법령 등 <strong><a href="#" data-jump-tab="review">출처가 확인되지 않는 항목</a></strong> 탭에서 확인하실 수 있습니다.</span></div><div id="aiSummaryCards" class="summary-cards"></div></section>
+-<section data-panel="review" hidden><div id="highSecurityAlertBanner" class="high-security-alert" hidden role="alert"><span id="highSecurityAlertText"></span> <a href="#" data-jump-tab="ai-verification" class="alert-link">AI 작성·보안 진단 탭에서 확인 &rarr;</a></div><div class="toolbar"><h2>출처가 확인되지 않는 항목</h2><div class="filters"><input id="findingSearch" type="search" placeholder="항목 검색" aria-label="항목 검색"><select id="severityFilter" aria-label="중요도"><option value="">모든 중요도</option><option value="CRITICAL">매우 높음</option><option value="HIGH">높음</option><option value="MEDIUM">보통</option><option value="LOW">낮음</option><option value="INFO">참고</option></select></div></div><section id="hallucinationSection" class="hallucination-section" aria-labelledby="hallucinationTitle"><h4 id="hallucinationTitle">판례·법령·주요참고문헌 인용 오류·미확인 검토 (AI 작성 여부 판단과 별개)</h4><p id="hallucinationSummary" class="muted"></p></section><div id="referenceStatus" class="reference-status"></div><div id="reviewTableActions" class="review-table-actions review-prompt-bar" hidden></div><div class="table-wrap"><table class="ai-table review-items-table" id="reviewTable"><thead><tr><th style="width:10%">위치</th><th style="width:25%">문서 주장 및 인용 내용</th><th style="width:25%">인용 오류·미확인 근거 및 주장 평가 (작성 주체 판단에 쓰지 않음)</th><th style="width:40%">확인이 필요한 내용</th></tr></thead><tbody id="aiVerificationRows"></tbody></table><p id="aiVerificationEmpty" class="empty-small">검증 결과가 없거나 표시할 확인 항목이 없습니다.</p></div><div id="findings" hidden></div><div id="unverifiedScopeContainer"></div><div id="reviewReferencesContainer" class="review-references-wrap"></div></section>
+-<section data-panel="legal-claims" hidden><div class="toolbar"><h2>법률적으로 무리한 주장</h2></div><section id="tier3Section" class="tier3-section" aria-labelledby="tier3Title"><p id="tier3Title" class="muted">출처는 확인되나 판례·법령 취지와 맞지 않거나 참고자료와 모순되는 주장입니다. 인용 자체가 확인되지 않는 항목은 '출처가 확인되지 않는 항목' 탭에 있습니다.</p><div id="legalReferenceStatus" class="reference-status"></div><div id="legalClaimsActions" class="review-table-actions review-prompt-bar" hidden></div><div class="table-wrap"><table class="tier3-table" id="tier3Table"><thead><tr><th style="width:10%">위치</th><th style="width:25%">문서 주장 및 인용 내용</th><th style="width:25%">법리 검토 결과 및 근거</th><th style="width:40%">확인이 필요한 내용</th></tr></thead><tbody id="tier3Rows"></tbody></table><p id="tier3Empty" class="empty-small">무리한 주장 또는 참고자료 모순 항목이 없습니다.</p></div></section></section>
++<section data-panel="ai-verification" hidden><div class="toolbar"><h2>AI 작성·보안 진단</h2></div><div id="aiSummaryCards" class="summary-cards"></div></section>
++<section data-panel="review" hidden><div class="toolbar"><h2>출처가 확인되지 않는 항목 <span id="reviewPendingBadge" class="pending-badge" hidden></span></h2><div class="filters"><select id="severityFilter" aria-label="중요도"><option value="">모든 중요도</option><option value="CRITICAL">매우 높음</option><option value="HIGH">높음</option><option value="MEDIUM">보통</option><option value="LOW">낮음</option><option value="INFO">참고</option></select></div></div><section id="hallucinationSection" class="hallucination-section" aria-labelledby="hallucinationTitle"><h4 id="hallucinationTitle">판례·법령·주요참고문헌 인용 오류·미확인 검토 (AI 작성 여부 판단과 별개)</h4><p id="hallucinationSummary" class="muted"></p></section><div id="referenceStatus" class="reference-status"></div><p class="reference-legend">주요 참고문헌은 등록된 검증 자료입니다. 판례·법령과 달리 법적 구속력은 없습니다.</p><div id="reviewTableActions" class="review-table-actions review-prompt-bar" hidden></div><div class="table-wrap"><table class="ai-table review-items-table" id="reviewTable"><thead><tr><th style="width:10%">위치</th><th style="width:25%">문서 주장 및 인용 내용</th><th style="width:25%">인용 오류·미확인 근거 및 주장 평가 (작성 주체 판단에 쓰지 않음)</th><th style="width:40%">확인이 필요한 내용</th></tr></thead><tbody id="aiVerificationRows"></tbody></table><p id="aiVerificationEmpty" class="empty-small">검증 결과가 없거나 표시할 확인 항목이 없습니다.</p></div><div id="findings" hidden></div><div id="unverifiedScopeContainer"></div><div id="reviewReferencesContainer" class="review-references-wrap"></div></section>
++<section data-panel="legal-claims" hidden><div class="toolbar"><h2>법률적으로 무리한 주장 <span id="legalPendingBadge" class="pending-badge" hidden></span></h2></div><section id="tier3Section" class="tier3-section" aria-labelledby="tier3Title"><p id="tier3Title" class="muted">출처는 확인되나 판례·법령 취지와 맞지 않거나 참고자료와 모순되는 주장입니다. 인용 자체가 확인되지 않는 항목은 '출처가 확인되지 않는 항목' 탭에 있습니다.</p><div id="legalReferenceStatus" class="reference-status"></div><p class="reference-legend">주요 참고문헌은 등록된 검증 자료입니다. 판례·법령과 달리 법적 구속력은 없습니다.</p><div id="legalClaimsActions" class="review-table-actions review-prompt-bar" hidden></div><div class="table-wrap"><table class="tier3-table" id="tier3Table"><thead><tr><th style="width:10%">위치</th><th style="width:25%">문서 주장 및 인용 내용</th><th style="width:25%">법리 검토 결과 및 근거</th><th style="width:40%">확인이 필요한 내용</th></tr></thead><tbody id="tier3Rows"></tbody></table><p id="tier3Empty" class="empty-small">무리한 주장 또는 참고자료 모순 항목이 없습니다.</p></div></section></section>
+ <section data-panel="reports" hidden><div class="toolbar"><h2>검토 보고서</h2></div><p class="report-privacy-notice" id="reportPrivacyNotice"><i data-lucide="shield-check"></i><span id="reportPrivacyNoticeText"></span></p><p id="reportScope" class="muted"></p><p class="muted report-hint">보고서는 화면 위쪽의 '보고서 생성' 버튼으로 만들고, 여기에서 내려받습니다.</p><div id="reportList"></div></section>
+ </section><footer class="site-footer"><small>© ACASia_LAW 법률문서 검증시스템. 본 프로그램은 저작권법에 의해 보호되며, 무단 복제·배포·개작을 금합니다.</small><small>개발 기여: 스티브, 아나스타샤, 스텔라, 에이미, 쏘니</small></footer></main></div>
+ <dialog id="projectDialog"><form id="projectForm"><div class="dialog-heading"><h2 id="projectDialogTitle">새 프로젝트</h2><button type="button" class="icon" data-close title="닫기" aria-label="닫기"><i data-lucide="x"></i></button></div><div class="form-grid"><label class="full">프로젝트명<input name="name" maxlength="300" required></label><label>사건번호<input name="case_number" placeholder="미입력"></label><label>법원<input name="court" placeholder="미입력"></label><label>적용법령 기준일<input name="incident_date" type="date"></label><label>검증 깊이<select name="verification_profile"><option value="STANDARD">표준 검토</option><option value="QUICK">빠른 검토</option><option value="DEEP_VERIFY">심층 검토</option></select></label><label class="full">외부 AI 전송<select name="external_ai_policy"><option value="LOCAL_ONLY">전송 안 함</option><option value="MASKED">개인정보 가림 후 전송</option><option value="ORIGINAL">원문 전송 허용</option></select></label><label class="full">당사자 (한 줄에 한 명)<textarea name="parties" rows="2"></textarea></label><label class="full">검토 쟁점 (한 줄에 하나)<textarea name="requested_issues" rows="3"></textarea></label><label class="full">업무 메모<textarea name="memo" rows="2"></textarea></label></div><p id="projectError" class="error" role="alert"></p><div class="dialog-footer"><button type="button" data-close>취소</button><button id="projectSubmit" class="primary" type="submit">생성</button></div></form></dialog>
+diff --git a/apps/web/static/app.js b/apps/web/static/app.js
+index ecd6f04..fd5db6c 100644
+--- a/apps/web/static/app.js
++++ b/apps/web/static/app.js
+@@ -51,11 +51,21 @@ const labels = {
+   CANCELLED: "취소됨"
+ };
+ const label = (value) => labels[value] || value || "미지정";
++// V1.0.0 6-2·6-3·7-1·7-2·D6: 화면에 영문 코드를 그대로 쓰지 않는다.
++Object.assign(labels, {CITATION:"인용",FACT:"사실관계",TEMPORAL:"적용 시점",REFERENCE:"참고문헌",NOT_ASSESSED:"평가 안 함",NOT_CHECKED:"대조 안 함",NOT_MENTIONED:"참고자료 언급 없음",PENDING_REVIEW:"참고자료 지지 미확정",OFFICIAL_NOT_FOUND:"공식 DB 미확인",OFFICIAL_CONFIRMED:"공식 원문 확인",UNVERIFIED_SCOPE:"미확인 범위",NOT_IN_REFERENCE:"표준판례 목록에 없음",IN_REFERENCE:"표준판례 목록에 있음"});
++// 결과 유형 이름(FindingType)의 한글은 서버 배정표의 names로 받는다(F1 T4). 여기에는 의도·분류·신호 코드만 둔다.
++const CODE_WORDS = {INSTRUCTION_OVERRIDE:"지시 무시",ROLE_OVERRIDE:"역할 바꾸기",OUTPUT_MANIPULATION:"결과 조작",SYSTEM_SECRET_EXTRACTION:"시스템 정보 빼내기",TOOL_MANIPULATION:"도구 조작",PERSISTENT_INSTRUCTION:"지속 지시",DATA_EXFILTRATION:"정보 유출",UNSPECIFIED:"유형 미상",RETROACTIVE_APPLICATION_ERROR:"소급 적용 오류",INSTRUCTION_LIKE:"지시형 문구",PROMPT_INJECTION_LIKELY:"인젝션 의심",AI_PARTIAL_GENERATION:"일부 AI 작성",AI_FULL_GENERATION_LIKELY:"전체 AI 작성 의심",HUMAN_AUTHORED_LIKELY:"사람 작성 가능성",ZERO_WIDTH:"폭 0 문자",BIDI_CONTROL:"글자 방향 제어 문자",HOMOGLYPH:"닮은꼴 문자",TAG_CHARACTERS:"태그 문자",SEPARATED_INSTRUCTION:"쪼갠 지시문"};
++// 엔진 문장 속 소문자 식별자(검사 층·필드 이름)를 화면에서 한글로 바꾼다. 층 이름은 LAYER_NAMES와 같다.
++const FIELD_WORDS = {visible_text:"본문",encoded_text:"인코딩된 문자열",hidden_text:"숨김 글자",ocr_layer:"OCR 인식 글자",form_field:"입력란",image_alt:"이미지 설명",ai_score:"점수","finding.confidence":"값",reference_date:"기준일"};
+ Object.assign(labels, {PARSING:"문서 읽는 중",ADVERSARIAL_SCANNING:"검증 방해 문구 검사",EXTRACTING:"본문 추출 중",PII_PROCESSING:"개인정보 처리 중",VERIFYING:"인용 확인 중",CROSS_CHECKING:"자료 대조 중",AGGREGATING:"결과 정리 중",NOT_FOUND:"출처에서 미확인",SUSPICIOUS:"확인 필요",ERROR:"처리 오류"});
+ function friendlyText(value) {
+   let text = String(value || "");
+   text = text.replaceAll("Creator와 Producer가", "작성 프로그램과 PDF 생성 프로그램이")
+     .replaceAll("UNVERIFIED로", "미확인 상태로");
++  text = text.replace(/\[RAG참고자료\]\s*/g, "").replace(/\s*\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)/g, "");
++  const typeNames = (typeof state !== "undefined" && state.findingCategories?.names) || {};
++  text = text.replace(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/g, code => typeNames[code] || CODE_WORDS[code] || labels[code] || code);
++  text = text.replace(/\bfinding\.confidence\b|\b[a-z]+_[a-z_]+\b/g, word => FIELD_WORDS[word] || word);
+   for (const [technical, simple] of [["UNVERIFIED","확인하지 못함"],["Source","출처"],["Creator","작성 프로그램"],["Producer","PDF 생성 프로그램"],["Author","작성자"],["QUARANTINED","안전 검토 필요"],["Python 계산엔진으로 검산한 결정론적 결과이다.","계산식에 따라 자동 검산한 결과입니다."]]) text = text.replaceAll(technical, simple);
+   return text;
+ }
+@@ -745,7 +755,7 @@ function renderProjects() {
+     const b = button(p.name, () => openProject(p.id), p.id === state.project?.id ? "active" : "");
+     b.dataset.projectId = p.id;
+     if (p.id === state.opening) b.setAttribute("aria-busy", "true");
+-    b.append(node("small", `${p.case_number||"사건번호 미지정"} · 자료 ${p.document_count}개`));
++    b.append(node("small", [p.case_number, `자료 ${p.document_count}개`].filter(Boolean).join(" · ")));
+     $("projectList").append(b);
+   }
+ }
+@@ -796,7 +806,9 @@ function renderProject() {
+   const p = state.project;
+   if (!p) return;
+   $("projectTitle").textContent = p.name;
+-  $("projectMeta").textContent = [p.case_number || "사건번호 미지정", p.court, p.incident_date ? `적용법령 기준 ${p.incident_date}` : "적용법령 기준일 미지정"].filter(Boolean).join(" · ");
++  const meta = [p.case_number, p.court, p.incident_date ? `적용법령 기준 ${p.incident_date}` : ""].filter(Boolean).join(" · ");
++  $("projectMeta").textContent = meta;
++  $("projectMeta").hidden = !meta;
+   $("policyLabel").textContent = label(p.external_ai_policy);
+   $("staleNotice").hidden = !state.run || state.run.input_snapshot?.scope_revision === p.scope_revision;
+   const busy = state.run && !terminal(state.run);
+@@ -1047,70 +1059,40 @@ function renderSummary() {
+     aiStatus = "AI 전체 작성 의심";
+   }
+ 
+-  const gate = state.run?.scores?.release_gate || null;
++  const sourceCount = fakeCaseCount + unconfirmedCount;
++  const legalCount = state.reviewTierCounts ? state.reviewTierCounts[3] : null;
+   const metrics = [
+-    ["검토에 포함", `${state.documents.filter(d=>d.included_in_verification).length} / ${state.documents.length}`],
+-    ["배포가능 상태", gate ? GATE_LABELS[gate.release_gate] || gate.release_gate : "—"],
+-    ["검증위험 지수", gate ? `${gate.hallucination_risk}점` : "—"],
+-    ["AI 작성 진단", state.run ? aiStatus : "—"],
+-    ["성립 불가 인용", state.run ? `${fakeCaseCount}건` : "—"],
+-    ["공식 DB 미확인 인용", state.run ? `${unconfirmedCount}건` : "—"],
+-    ["확인 전 항목", state.findings.filter(f => f.review_status === "NEEDS_REVIEW").length],
+-    ["진행 상태", state.run ? label(state.run.state) : "시작 전"]
++    ["AI 작성 진단", state.run ? aiStatus : "—", null],
++    ["출처 미확인 인용", state.run ? `${sourceCount}건` : "—", state.run && fakeCaseCount ? `사건번호 형식 오류 ${fakeCaseCount}건 포함` : null],
++    ["법률적으로 무리한 주장", state.run && legalCount != null ? `${legalCount}건` : "—", null],
+   ];
+-  // 숫자·상태만으로는 뜻을 알 수 없는 두 지표는 눌러서 세부 설명을 본다.
+-  const explainers = {"확인 전 항목": explainReviewPending, "진행 상태": explainRunStatus};
+-  for (const [title, value] of metrics) {
+-    const el = node("div", null, "metric");
++  const tabFor = {"AI 작성 진단": "ai-verification", "출처 미확인 인용": "review", "법률적으로 무리한 주장": "legal-claims"};
++  for (const [title, value, note] of metrics) {
++    const el = node("div", null, "metric metric-explain");
+     el.append(node("span", title), node("strong", value));
+-    if (title === "배포가능 상태" && gate) el.classList.add(`gate-${gate.release_gate.toLowerCase()}`);
+-    if (explainers[title] && state.run) {
+-      el.classList.add("metric-explain");
+-      el.setAttribute("role", "button");
+-      el.tabIndex = 0;
+-      el.setAttribute("aria-label", `${title} ${value} — 세부 설명 보기`);
+-      el.append(node("small", "눌러서 세부 보기", "metric-hint"));
+-      const open = action(explainers[title]);
+-      el.addEventListener("click", open);
+-      el.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(event); } });
+-    }
++    if (note) el.append(node("small", note, "metric-hint"));
++    el.setAttribute("role", "button");
++    el.tabIndex = 0;
++    el.setAttribute("aria-label", `${title} ${value} — 해당 탭으로 이동`);
++    const go = () => switchTab(tabFor[title]);
++    el.addEventListener("click", go);
++    el.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); go(); } });
++    if (title === "법률적으로 무리한 주장") el.id = "metricLegalClaims";
+     $("summary").append(el);
+   }
+-  if (gate) renderGateReasons(gate);
++  // 완료가 아닐 때만 실행 상태를 한 줄로 알린다(V1.0.0 D2). 진행 중은 진행 막대가 따로 보인다.
++  if (state.run && ["PARTIAL_COMPLETED", "FAILED", "CANCELLED"].includes(state.run.state)) {
++    const line = node("p", null, "run-status-line");
++    line.append(node("strong", `${label(state.run.state)}: `),
++      document.createTextNode(state.run.state === "PARTIAL_COMPLETED" ? "일부 항목을 확인하지 못했습니다. " : "검증이 끝나지 않았습니다. "));
++    line.append(button("사유 보기", action(explainRunStatus), "link-button small"));
++    $("summary").append(line);
++  }
+ }
+ 
+ // 제9.2장. 차단 사유와 사람 검토 사유를 상태값과 함께 보여준다.
+ // 상태값만 있으면 무엇을 고쳐야 하는지 알 수 없다.
+-const GATE_LABELS = {
+-  PASS: "배포 가능",
+-  PASS_WITH_WARNINGS: "경고 포함 배포 가능",
+-  HUMAN_REVIEW_REQUIRED: "사람 검토 필요",
+-  BLOCK: "배포 차단"
+-};
+-
+-// 사유는 접어 두지 않는다. 판정만 보이고 이유가 숨어 있으면 무엇을 고쳐야
+-// 하는지 한 번 더 눌러야 알 수 있다. 차단 사유와 검토 사유는 대응이 달라 나눈다.
+-function renderGateReasons(gate) {
+-  const groups = [
+-    ["배포 차단 사유", gate.hard_block_reasons || [], "gate-group-block"],
+-    ["사람 검토 사유", gate.review_reasons || [], "gate-group-review"]
+-  ].filter(([, reasons]) => reasons.length);
+-  if (!groups.length) return;
+-  const total = groups.reduce((sum, [, reasons]) => sum + reasons.length, 0);
+-  const section = node("section", null, `gate-reasons gate-${String(gate.release_gate).toLowerCase()}`);
+-  section.setAttribute("aria-label", "배포가능 판정 사유");
+-  section.append(node("h2", `${GATE_LABELS[gate.release_gate] || gate.release_gate} — 사유 ${total}건`));
+-  for (const [title, reasons, cls] of groups) {
+-    const group = node("div", null, `gate-group ${cls}`);
+-    group.append(node("h3", `${title} ${reasons.length}건`));
+-    const list = node("ol");
+-    for (const reason of reasons) list.append(node("li", friendlyText(reason)));
+-    group.append(list);
+-    section.append(group);
+-  }
+-  if (gate.risk_index_note) section.append(node("p", gate.risk_index_note, "gate-note"));
+-  $("summary").append(section);
+-}
++// V1.0.0 D3: 배포 판정(배포가능 상태·차단 사유·검증위험 지수)은 화면에 표시하지 않는다(결과 JSON에는 남는다).
+ 
+ const PROVIDER_NAMES = {openai: "OpenAI", anthropic: "Anthropic", gemini: "Gemini"};
+ 
+@@ -1162,6 +1144,12 @@ function modelOpinions(opinions, failures, failureModels = {}) {
+     block.append(list);
+     grid.append(block);
+   }
++  // V1.0.0 D4: 판별은 두 모델에 묻고 엇갈릴 때만 세 번째에 묻는다. 부르지 않은 모델은 사유를 적는다.
++  const asked = new Set([...opinions.map(o => o.provider), ...failures.map(([p]) => p)]);
++  if (opinions.length >= 2 && !asked.has("gemini")) {
++    const agreed = new Set(opinions.map(o => o.verdict)).size === 1;
++    box.append(node("p", agreed ? "Gemini: 두 모델 판정이 일치해 세 번째 의견은 묻지 않았습니다." : "Gemini: 이번 실행에서는 호출하지 않았습니다.", "muted model-skip-note"));
++  }
+   for (const [provider, why] of failures) {
+     const block = node("div", null, "model-opinion model-opinion-failed");
+     const head = node("div", null, "model-opinion-head");
+@@ -1173,7 +1161,11 @@ function modelOpinions(opinions, failures, failureModels = {}) {
+ }
+ 
+ const LAYER_NAMES = {visible_text: "본문", ocr_layer: "OCR 인식 글자", hidden_text: "숨김 글자", metadata: "문서 속성(메타데이터)",
+-                     annotation: "주석", comment: "메모", form_field: "입력란", image_alt: "이미지 설명"};
++                     annotation: "주석", comment: "메모", form_field: "입력란", image_alt: "이미지 설명",
++                     // V1.0.0 D6: 스캐너가 실제로 내는 층 이름(scanner.scanned_paths) 중 한글 이름이 없던 것
++                     encoded_text: "인코딩된 문자열", outline: "북마크(개요)", text: "본문", actual_text: "대체 글자",
++                     form_fields: "입력란", attachment: "첨부 파일", embedded_files: "내장 파일", image_ocr: "이미지 OCR",
++                     independent_ocr: "독립 OCR", page_labels: "쪽 번호 표시"};
+ const RISK_NAMES = {CRITICAL: "매우 높음", HIGH: "높음", MEDIUM: "보통", LOW: "낮음", NONE: "없음"};
+ const INJECTION_CHECKS = ["본문·숨김 글자의 지시형 문구(AI에게 판단을 바꾸라는 명령)", "문서 속성(메타데이터)의 지시문",
+   "보이지 않는 유니코드 문자", "Base64 등으로 감춘 문자열", "화면 글자와 내부 글자 층의 불일치", "이미지·OCR 층의 지시문"];
+@@ -1187,7 +1179,7 @@ function injectionCard(docs, hasQuarantine, findings) {
+     return card;
+   }
+   card.append(hasQuarantine
+-    ? node("p", "경고: AI 판단을 왜곡하려는 지시문이 탐지되어 해당 문서를 격리(QUARANTINED)했습니다. 격리된 문서는 AI 검토에 쓰지 않습니다.", "danger-text")
++    ? node("p", "프롬프트 인젝션 속임수 검증: AI 판단 왜곡 지시문 탐지 — 이 문서는 AI 검토에서 제외", "danger-text")
+     : node("p", "정상: 문서를 왜곡하려는 악의적 프롬프트 인젝션이 발견되지 않았습니다.", "safe-text"));
+   const basis = node("div", null, "injection-basis");
+   basis.append(node("h4", "판정 근거"));
+@@ -1203,7 +1195,7 @@ function injectionCard(docs, hasQuarantine, findings) {
+       const list = node("ul", null, "reason-list");
+       for (const f of found) {
+         const where = f.page ? `${f.page}면 · ` : "";
+-        list.append(node("li", `${where}${friendlyText(f.title || label(f.type))} (심각도 ${f.severity}) — ${friendlyText(f.detail || "")}`));
++        list.append(node("li", `${where}${friendlyText(f.title || label(f.type))} (심각도 ${label(f.severity)}) — ${friendlyText(f.detail || "")}`));
+       }
+       block.append(list);
+     } else {
+@@ -1409,16 +1401,17 @@ function countList(entries) {
+ }
+ 
+ // '확인 전 항목' = 시스템이 찾아낸 확인 항목 중 담당자가 아직 검토 결정을 하지 않은 것.
+-function explainReviewPending() {
+-  const pending = state.findings.filter(f => f.review_status === "NEEDS_REVIEW");
++// V1.0.0 D1: 탭 머리 '검토 결정 대기 n' 배지를 누르면 그 탭 행에 묶인 대기 항목만 설명한다(ids 없으면 전체).
++function explainReviewPending(ids = null, tabName = "") {
++  const pending = state.findings.filter(f => f.review_status === "NEEDS_REVIEW" && (!ids || ids.has(f.id || f.finding_id)));
+   const nature = f => f.advisory_only || ["INFO", "LOW"].includes(f.severity) ? "참고 신호(낮은 심각도·참고용)"
+     : ["UNVERIFIED", "ERROR", "SKIPPED"].includes(f.status) ? "시스템이 확인하지 못한 항목(원문 확인 필요)"
+     : "문제가 의심되는 항목(검토 후 조치 필요)";
+   const children = [
+-    node("p", "‘확인 전 항목’은 프로그램이 찾아낸 확인 항목 가운데 담당자가 아직 검토 결정(지적 수용·오탐·조치 완료)을 " +
+-      "내리지 않은 개수입니다. 법률 판단은 사람이 최종 결정한다는 원칙에 따라 모든 항목은 ‘확인 전’으로 시작합니다. " +
++    node("p", "‘검토 결정 대기’는 프로그램이 찾아낸 확인 항목 가운데 담당자가 아직 검토 결정(지적 수용·오탐·조치 완료)을 " +
++      "내리지 않은 개수입니다. 법률 판단은 사람이 최종 결정한다는 원칙에 따라 모든 항목은 ‘검토 결정 대기’로 시작합니다. " +
+       "따라서 이 숫자는 프로그램이 검사를 하지 못했다는 뜻이 아니라, 검사 결과를 사람이 아직 확인하지 않았다는 뜻입니다."),
+-    node("h3", `확인 전 ${pending.length}건 — 성격별`),
++    node("h3", `${tabName ? tabName + " · " : ""}검토 결정 대기 ${pending.length}건 — 성격별`),
+     countList(countBy(pending, nature)),
+     node("h3", "심각도별"),
+     countList(countBy(pending, f => label(f.severity))),
+@@ -1427,10 +1420,10 @@ function explainReviewPending() {
+   ];
+   const unverified = pending.filter(f => ["UNVERIFIED", "ERROR", "SKIPPED"].includes(f.status)).length;
+   if (unverified) children.push(node("p", `이 중 ${unverified}건은 프로그램이 공식 원문으로 확인하지 못한 항목입니다. ` +
+-    "원인과 대책은 ‘진행 상태’ 설명에서 확인할 수 있습니다.", "warning-text"));
++    "원인과 대책은 상단 안내의 ‘사유 보기’에서 확인할 수 있습니다.", "warning-text"));
+   children.push(node("p", "각 항목을 열어 ‘지적 수용’, ‘오탐’, ‘조치 완료’ 중 하나로 결정하면 이 숫자가 줄어듭니다.", "muted"));
+-  const view = explainDialog("확인 전 항목이란", children);
+-  children[children.length - 1].after(button("출처가 확인되지 않는 항목에서 보기", () => showPendingFindings(view), "primary"));
++  const view = explainDialog("검토 결정 대기란", children);
++  if (!ids) children[children.length - 1].after(button("출처가 확인되지 않는 항목에서 보기", () => showPendingFindings(view), "primary"));
+ }
+ 
+ function showPendingFindings(view) {
+@@ -2230,16 +2223,16 @@ function referenceObservationRow({doc, observation, observation_index}) {
+ }
+ function referenceObservationBlock(observations) {
+   const box = node("div", null, "reference-observations");
+-  box.append(node("strong", "주요 참고문헌 대조 (참고문헌·구속력 없음, 공식 확인 아님)"));
++  box.append(node("strong", "주요 참고문헌 대조"));
+   for (const o of observations) {
+     const [name, cls] = REFERENCE_RELATIONS[o.relationship] || [o.relationship || "대조 결과", "muted"];
+     const line = node("p", null, "reference-observation");
+     const source = o.source_detail || (typeof o.source === "object" ? o.source : null);
+     const where = source ? `${source.title || o.source_id}${source.page ? ` · ${source.page_numbers_reliable === false ? "텍스트 구간 " + source.page : source.page + "쪽"}` : ""}` : (o.source_id || "참고자료");
+-    line.append(node("span", name, `badge ${cls} small`), document.createTextNode(` ${where}`));
++    line.append(node("span", name, `badge ${cls} small`), document.createTextNode(` ${friendlyText(where)}`));
+     box.append(line);
+     const opinionKind = ["DETERMINISTIC_CITATION_COMPARISON", "DETERMINISTIC_PROVISION_COMPARISON"].includes(o.method) ? "규칙 대조 의견" : "AI 참고 의견";
+-    if (o.explanation) box.append(node("p", `${opinionKind}: ${o.explanation}`, "small"));
++    if (o.explanation) box.append(node("p", `${opinionKind}: ${friendlyText(o.explanation)}`, "small clamp"));
+     if (o.source_quote) {
+       const quote = node("details");
+       quote.append(node("summary", "참고문헌 발췌"), node("blockquote", o.source_quote));
+@@ -2345,7 +2338,7 @@ function renderReviewRow(item, tier, findingsMap) {
+     return f && ((f.confidence_features || {}).rule_id || "").includes("REFERENCE");
+   });
+   if (isRef) {
+-    tdLoc.append(node("span", "참고문헌(구속력 없음)", "badge warning small"));
++    tdLoc.append(node("span", "참고문헌", "badge warning small"));
+   }
+   if (item.reference_status === "NOT_CHECKED" || item.reference_status === "UNVERIFIED" || item.reference_status === "SKIPPED") {
+     tdLoc.append(node("span", "대조 안 함", "badge muted small"));
+@@ -2358,7 +2351,7 @@ function renderReviewRow(item, tier, findingsMap) {
+     tdClaim.append(node("strong", item.cited_authority));
+   }
+   if (item.claim_text) {
+-    tdClaim.append(node("p", friendlyText(item.claim_text), "claim-text"));
++    tdClaim.append(node("p", friendlyText(item.claim_text), "claim-text clamp"));
+   }
+   if (item.finding_ids && item.finding_ids.length > 0 && findingsMap) {
+     const firstFinding = findingsMap.get(item.finding_ids[0]);
+@@ -2430,14 +2423,15 @@ function renderReviewRow(item, tier, findingsMap) {
+   }
+   tdBasis.append(
+     node("span", label(item.severity), `badge ${item.severity}`),
+-    node("span", item.verdict_label || "확인 필요", `${verdictCls} validity-verdict`)
++    node("span", friendlyText(item.verdict_label) || "확인 필요", `${verdictCls} validity-verdict`)
+   );
+-  const basisText = item.ai_generation_basis || (item.official_status ? label(item.official_status) : "");
++  // V1.0.0 6-3·7-2: 판정 배지와 겹치는 상태 코드 줄은 쓰지 않는다. 설명 문장만 둔다.
++  const basisText = item.ai_generation_basis ? friendlyText(item.ai_generation_basis) : "";
+   if (basisText) {
+-    tdBasis.append(node("p", basisText, "basis-text"));
++    tdBasis.append(node("p", basisText, "basis-text clamp"));
+   }
+-  if (item.reference_case_match) {
+-    tdBasis.append(node("p", `표준판례 사건정보 대조: ${item.reference_case_match}`, "basis-text"));
++  if (item.reference_case_match && item.reference_case_match !== "NOT_IN_REFERENCE") {
++    tdBasis.append(node("p", `표준판례 사건정보: ${label(item.reference_case_match)}`, "basis-text"));
+   }
+   if (item.reference_observations?.length) tdBasis.append(referenceObservationBlock(item.reference_observations));
+   if (item.external_ai_answer) tdBasis.append(externalAnswerBlock(item.external_ai_answer));
+@@ -2466,23 +2460,25 @@ function renderReviewRow(item, tier, findingsMap) {
+   // 1) 대상
+   const targetText = item.cited_authority || (item.claim_text ? friendlyText(item.claim_text) : "") || (leadF ? friendlyText(leadF.title) : "");
+   if (targetText) {
+-    const targetLine = node("p", null, "summary-line summary-target");
++    const targetLine = node("p", null, "summary-line summary-target clamp");
+     targetLine.append(node("strong", "확인 대상: "), document.createTextNode(targetText));
+     summaryBox.append(targetLine);
+   }
+ 
+   // 2) 사유 축약
+   const rawReason = (item.reasoning_sections?.review || item.legal_reasoning || item.ai_generation_basis || (leadF ? leadF.detail : "") || item.verdict_label || "").trim();
+-  if (rawReason) {
+-    let shortReason = rawReason;
+-    const firstDot = rawReason.indexOf(". ");
+-    if (firstDot > 20 && firstDot < 120) {
+-      shortReason = rawReason.slice(0, firstDot + 1);
+-    } else if (rawReason.length > 100) {
+-      shortReason = rawReason.slice(0, 97) + " …";
+-    }
+-    const reasonLine = node("p", null, "summary-line summary-reason");
+-    reasonLine.append(node("strong", "의심 사유: "), document.createTextNode(shortReason));
++  // V1.0.0 7-5: 사유를 자르지 않으면서 '확인 대상'과 같은 글이 두 번 나오지 않게 한다(한쪽이 다른 쪽을 담으면 생략).
++  const squash = t => friendlyText(t).replace(/\s+/g, "").replace(/[.…]+$/, "");
++  const sameAsTarget = targetText && rawReason && (squash(targetText).includes(squash(rawReason)) || squash(rawReason).includes(squash(targetText)));
++  // 사유가 대상 글을 담고 더 길면 대상 줄을 사유 전문으로 바꿔 정보가 빠지지 않게 한다.
++  if (sameAsTarget && squash(rawReason).length > squash(targetText).length) {
++    const targetLine = summaryBox.querySelector(".summary-target");
++    if (targetLine) targetLine.lastChild.textContent = friendlyText(rawReason);
++  }
++  if (rawReason && !sameAsTarget) {
++    // V1.0.0 7-5: 문장을 자르지 않는다. 길면 4줄까지 보이고 '더보기'로 펼친다.
++    const reasonLine = node("p", null, "summary-line summary-reason clamp");
++    reasonLine.append(node("strong", "의심 사유: "), document.createTextNode(friendlyText(rawReason)));
+     summaryBox.append(reasonLine);
+   }
+ 
+@@ -2499,23 +2495,23 @@ function renderReviewRow(item, tier, findingsMap) {
+   return tr;
+ }
+ 
++// V1.0.0 6-7·7-6: 긴 셀 글은 4줄까지 보이고 같은 자리에서 '더보기'로 펼친다.
++function applyClamps(scope) {
++  for (const el of scope.querySelectorAll(".clamp:not([data-clamp-ready])")) {
++    el.dataset.clampReady = "1";
++    if (el.scrollHeight <= el.clientHeight + 2) continue;
++    const toggle = button("더보기", () => {
++      const open = el.classList.toggle("expanded");
++      toggle.textContent = open ? "접기" : "더보기";
++    }, "link-button small clamp-toggle");
++    el.after(toggle);
++  }
++}
++
+ function renderFindings() {
+-  const query = ($("findingSearch")?.value || "").toLowerCase();
+   const sevFilter = $("severityFilter")?.value || "";
+ 
+-  // D2: HIGH 이상 AI·보안 항목 존재 시 최상단 한 줄 고정 안내 배너 유지
+-  const highSecFindings = (state.findings || []).filter(f => isAISecurityFinding(f) && (f.severity === "HIGH" || f.severity === "CRITICAL"));
+-  const alertBanner = $("highSecurityAlertBanner");
+-  const alertText = $("highSecurityAlertText");
+-  if (alertBanner && alertText) {
+-    if (highSecFindings.length > 0) {
+-      alertText.textContent = `주의: HIGH 이상의 AI 작성·보안 진단 항목이 ${highSecFindings.length}건 있습니다.`;
+-      alertBanner.hidden = false;
+-    } else {
+-      alertBanner.hidden = true;
+-    }
+-  }
+-
++  // V1.0.0 6-1: HIGH 이상 AI·보안 항목 안내 배너는 없앤다(상단 탭으로 이동 가능).
+   const docs = state.result?.documents || [];
+   const findingsMap = new Map((state.findings || []).map(f => [f.id || f.finding_id, f]));
+ 
+@@ -2666,31 +2662,44 @@ function renderFindings() {
+   }
+   renderHallucinationSummary(hallucinationRows);
+ 
+-  // 2. 필터링 (검색어, 심각도)
++  // 2. 필터링 (심각도). V1.0.0 6-0: 항목 검색창은 없앴다.
+   const filteredItems = allReviewItems.filter(item => {
+     if (sevFilter && item.severity !== sevFilter) return false;
+ 
+-    if (query) {
+-      const texts = [
+-        item.claim_text,
+-        item.cited_authority,
+-        item.verdict_label,
+-        item.doc?.filename,
+-        item.counteraction,
+-      ];
+-      for (const fid of item.finding_ids || []) {
+-        const f = findingsMap.get(fid);
+-        if (f) texts.push(f.title, f.detail);
+-      }
+-      const match = texts.filter(Boolean).some(t => String(t).toLowerCase().includes(query));
+-      if (!match) return false;
+-    }
+     return true;
+   });
+ 
+   const rankMap = { CRITICAL: 5, HIGH: 4, MEDIUM: 3, LOW: 2, INFO: 1 };
+   filteredItems.sort((a, b) => (rankMap[b.severity] || 0) - (rankMap[a.severity] || 0));
+ 
++  // 상단 카드 '법률적으로 무리한 주장'·탭 머리 '검토 결정 대기'는 필터와 무관한 전체 기준으로 센다(V1.0.0 1-3·D1).
++  const tierCounts = {2: 0, 3: 0};
++  const pendingByTier = {2: new Set(), 3: new Set()};
++  for (const item of allReviewItems) {
++    const t = classifyReviewItemTier(item, findingsMap) === 2 ? 2 : 3;
++    tierCounts[t] += 1;
++    for (const fid of item.finding_ids || []) {
++      if (findingsMap.get(fid)?.review_status === "NEEDS_REVIEW") pendingByTier[t].add(fid);
++    }
++  }
++  state.reviewTierCounts = tierCounts;
++  state.pendingByTier = pendingByTier;
++  const legalMetric = $("metricLegalClaims");
++  if (legalMetric && state.run) legalMetric.querySelector("strong").textContent = `${tierCounts[3]}건`;
++  for (const [id, t] of [["reviewPendingBadge", 2], ["legalPendingBadge", 3]]) {
++    const badge = $(id);
++    if (!badge) continue;
++    badge.textContent = `검토 결정 대기 ${pendingByTier[t].size}`;
++    badge.hidden = !pendingByTier[t].size;
++    if (!badge.dataset.bound) {
++      badge.dataset.bound = "1";
++      badge.setAttribute("role", "button");
++      badge.tabIndex = 0;
++      badge.title = "담당자가 아직 검토 결정(지적 수용·오탐·조치 완료)을 하지 않은 항목 — 눌러서 설명 보기";
++      badge.addEventListener("click", action(() => explainReviewPending(state.pendingByTier?.[t], t === 2 ? "출처가 확인되지 않는 항목" : "법률적으로 무리한 주장")));
++    }
++  }
++
+   // 3. 2단(인용 오류·미확인) 및 3단(무리한 주장) 분리 렌더링 (TK-88)
+   const tier2Items = [];
+   const tier3Items = [];
+@@ -2736,6 +2745,8 @@ function renderFindings() {
+     }
+   }
+ 
++  requestAnimationFrame(() => applyClamps(document));
++
+ // TK-94: 미확인 판례/법령 정리된 표 하단부에 [📋 엘박스/AI 검증 프롬프트] 소형 버튼 단일 배치
+   const tableActions = $("reviewTableActions");
+   if (tableActions) {
+@@ -2808,12 +2819,21 @@ function renderFindings() {
+   if (unverifiedContainer) {
+     unverifiedContainer.replaceChildren();
+     if (state.run?.unverified_items?.length) {
+-      const details = node("details", null, "detail-section");
+-      details.append(node("summary", `미확인 범위 ${state.run.unverified_items.length}건`));
+-      for (const item of state.run.unverified_items) {
+-        details.append(node("p", friendlyText(`${item.raw_text || item.document_id || ""} ${item.page ? `· ${item.page}쪽` : ""}: ${item.reason || "확인하지 못함"}`)));
++      // V1.0.0 6-6: 경고색 카드에 종류별 건수를 먼저 보이고, 펼치면 목록.
++      const items = state.run.unverified_items;
++      const kinds = {citation: "인용", reference_library: "참고자료"};
++      const counts = {};
++      for (const it of items) { const k = kinds[it.kind] || "기타"; counts[k] = (counts[k] || 0) + 1; }
++      const card = node("details", null, "unverified-card");
++      const head = node("summary");
++      head.append(node("strong", `미확인 범위 ${items.length}건`), node("span", ` · ${Object.entries(counts).map(([k, n]) => `${k} ${n}`).join(" · ")}`, "unverified-counts"));
++      card.append(head);
++      const list = node("ol", null, "unverified-list");
++      for (const item of items) {
++        list.append(node("li", friendlyText(`${item.raw_text || item.document_id || ""}${item.page ? ` · ${item.page}쪽` : ""}: ${item.reason || "확인하지 못함"}`)));
+       }
+-      unverifiedContainer.append(details);
++      card.append(list);
++      unverifiedContainer.append(card);
+     }
+   }
+ 
+@@ -2919,7 +2939,7 @@ function renderAIVerification() {
+       );
+       const dist = Object.entries(res.signals?.verdict_distribution || {}).filter(([, n]) => n);
+       if (dist.length) item.append(node("p", `모델별 판단 분포: ${dist.map(([v, n]) => `${authorshipVerdict(v)[0]} ${n}`).join(", ")}`, "muted"));
+-      if (res.signals?.score_definition) item.append(node("p", `추정치: ${res.signals.score_definition} 신뢰도: ${res.signals.confidence_definition}`, "muted metric-definition"));
++      if (res.signals?.score_definition) item.append(node("p", friendlyText(`추정치: ${res.signals.score_definition} 신뢰도: ${res.signals.confidence_definition}`), "muted metric-definition"));
+       const coverage = res.signals?.coverage;
+       if (coverage) item.append(node("p", `작성 주체 검토 범위: ${coverage.inspected_chars || 0}/${coverage.total_chars || 0}자 · ${coverage.is_full_coverage ? "대상 본문 전체" : "일부 표본 또는 미실행"}. 직접 인용·문서 속 지시문은 작성 주체 근거에서 제외합니다.`, "muted"));
+       const opinions = res.signals?.llm_opinions || res.model_opinions || res.opinions || [];
+@@ -2927,7 +2947,7 @@ function renderAIVerification() {
+       const summary = (res.reasons || []).filter(r => !opinions.length || !/^\[[a-z]+\] /.test(r));
+       if (summary.length) {
+         const reasonList = node("ul", null, "reason-list");
+-        for (const r of summary) reasonList.append(node("li", r));
++        for (const r of summary) reasonList.append(node("li", friendlyText(r)));
+         item.append(reasonList);
+       }
+       if (opinions.length || failures.length) item.append(modelOpinions(opinions, failures, res.signals?.llm_failure_models || {}));
+@@ -2942,14 +2962,27 @@ function renderAIVerification() {
+   if (aiFindings.length > 0) {
+     card1.append(node("h4", "AI 작성 진단 세부 항목"));
+     const list = node("ul", null, "security-finding-list ai-finding-list");
++    // V1.0.0 5·5-2: 같은 제목의 항목은 제목을 한 번만 쓰고 근거를 번호 목록으로 묶는다.
++    const groups = new Map();
+     for (const f of aiFindings) {
++      const key = `${f.severity}|${f.title}`;
++      if (!groups.has(key)) groups.set(key, []);
++      groups.get(key).push(f);
++    }
++    for (const members of groups.values()) {
++      const f = members[0];
+       const item = node("li", null, "security-finding-item");
+-      const titleBtn = button(null, () => openFinding(f), "link-button");
+-      titleBtn.append(
+-        node("span", label(f.severity), `badge ${f.severity}`),
+-        node("strong", ` ${friendlyText(f.title)}`)
+-      );
+-      item.append(titleBtn, node("small", friendlyText(f.detail), "muted"));
++      const head = node("div", null, "finding-group-head");
++      head.append(node("span", label(f.severity), `badge ${f.severity}`), node("strong", ` ${friendlyText(f.title)}`));
++      if (members.length > 1) head.append(node("small", ` (${members.length}건)`, "muted"));
++      item.append(head);
++      const reasons = node("ol", null, "finding-group-reasons");
++      for (const m of members) {
++        const li = node("li");
++        li.append(button(friendlyText(m.detail) || "상세 보기", () => openFinding(m), "link-button reason-link"));
++        reasons.append(li);
++      }
++      item.append(reasons);
+       list.append(item);
+     }
+     card1.append(list);
+@@ -3254,7 +3287,7 @@ $("documentForm").onsubmit = action(async e => {
+   await refreshScope();
+ });
+ for (const id of ["verifyBtn", "reverify"]) $(id).onclick = action(verify);
+-for (const id of ["findingSearch", "severityFilter"]) $(id)?.addEventListener("input", renderFindings);
++$("severityFilter")?.addEventListener("input", renderFindings);
+ $("severityFilter")?.addEventListener("change", renderFindings);
+ $("reportBtn").onclick = action(createReport);
+ $("prevPage").onclick = action(async () => {
+diff --git a/apps/web/static/styles.css b/apps/web/static/styles.css
+index 45445ca..a943dba 100644
+--- a/apps/web/static/styles.css
++++ b/apps/web/static/styles.css
+@@ -356,7 +356,8 @@ main {
+ 
+ .summary {
+   display: grid;
+-  grid-template-columns: repeat(4, minmax(0, 1fr));
++  /* V1.0.0 W2: 요약 카드 3개(AI 작성 진단·출처 미확인 인용·법률적으로 무리한 주장) */
++  grid-template-columns: repeat(3, minmax(0, 1fr));
+   border-top: 1px solid var(--line);
+   border-bottom: 1px solid var(--line);
+   margin: 16px 0;
+@@ -965,11 +966,11 @@ table {
+   }
+ 
+   .summary {
+-    grid-template-columns: 1fr 1fr
++    grid-template-columns: 1fr
+   }
+ 
+-  /* 두 칸씩 줄을 이룬다. 오른쪽 칸은 세로선을 없애고 모든 줄을 구분한다. */
+-  .metric:nth-child(2n) {
++  /* 좁은 화면에서는 카드 3개를 한 줄씩 쌓는다. 세로선을 없애고 모든 줄을 구분한다. */
++  .metric {
+     border-right: 0
+   }
+ 
+@@ -1894,3 +1895,19 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
+ .reference-observations p, .external-ai-answer p {margin:4px 0; overflow-wrap:anywhere;}
+ .review-prompt-bar .external-ai-import-btn {font-size:15px; font-weight:600; padding:10px 18px; min-height:44px;}
+ .external-answer-preview-item {padding:8px 0; border-bottom:1px solid var(--line);}
++
++/* V1.0.0 표 가독성(6-2·6-6·6-7·7-1·7-5·7-6, D1·D5) */
++.review-items-table td .badge, .tier3-table td .badge { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
++.clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
++.clamp.expanded { display: block; -webkit-line-clamp: unset; overflow: visible; }
++.clamp-toggle { margin: 2px 0 6px; }
++.unverified-card { border: 1px solid #e0a43a; border-left: 4px solid #d18b12; background: #fff8ec; border-radius: 6px; padding: 10px 14px; margin: 12px 0; }
++.unverified-card summary { cursor: pointer; color: #7a4a00; }
++.unverified-card .unverified-counts { color: #7a4a00; }
++.unverified-list { margin: 8px 0 0 18px; line-height: 1.6; }
++.reference-legend { font-size: 12px; color: #5b6b66; margin: 4px 0 8px; }
++.pending-badge { font-size: 12px; font-weight: 600; color: #8a5a00; background: #fff1d6; border-radius: 10px; padding: 2px 8px; vertical-align: middle; }
++.run-status-line { grid-column: 1 / -1; margin: 6px 0 0; padding: 8px 12px; background: #fff8ec; border-left: 4px solid #d18b12; border-radius: 4px; }
++.finding-group-reasons { margin: 6px 0 0 20px; }
++.finding-group-reasons .reason-link { text-align: left; white-space: normal; }
++.model-skip-note { margin-top: 6px; }
+diff --git a/packages/common/finding_category_map.py b/packages/common/finding_category_map.py
+index 4652d3c..7c1ad36 100644
+--- a/packages/common/finding_category_map.py
++++ b/packages/common/finding_category_map.py
+@@ -219,3 +219,25 @@ def get_category_counts() -> Dict[str, int]:
+         cat_counts[cat.value] += 1
+         tab_counts[CATEGORY_TO_TAB[cat].value] += 1
+     return {**cat_counts, **tab_counts, "TOTAL": len(FINDING_CATEGORY_MAP)}
++
++
++# V1.0.0 D6(2026-11-13): 인젝션 탐지 결과 제목은 FindingType 이름을 그대로 담는다(scanner._title_for).
++# 화면은 유형 이름을 직접 적지 않고(F1 T4) 이 표를 /api/finding-categories의 names로 받아 한글로 바꾼다.
++FINDING_TYPE_SCREEN_NAMES: Dict[FindingType, str] = {
++    FindingType.PROMPT_INJECTION_SUSPECTED: "프롬프트 인젝션 의심",
++    FindingType.HIDDEN_INSTRUCTION: "숨은 지시문",
++    FindingType.META_INSTRUCTION: "기계 지시문",
++    FindingType.SYSTEM_OVERRIDE_ATTEMPT: "시스템 지시 무력화 시도",
++    FindingType.ROLE_OVERRIDE_ATTEMPT: "역할 바꾸기 시도",
++    FindingType.VERIFICATION_SUPPRESSION: "검증 회피",
++    FindingType.OUTPUT_MANIPULATION_ATTEMPT: "결과 조작 시도",
++    FindingType.ENCODED_INSTRUCTION: "인코딩된 지시문",
++    FindingType.OBFUSCATED_INSTRUCTION: "난독화한 지시문",
++    FindingType.UNICODE_SMUGGLING: "유니코드 은닉",
++    FindingType.OCR_LAYER_INJECTION: "OCR 층 인젝션",
++    FindingType.METADATA_INJECTION: "문서 속성 인젝션",
++    FindingType.MULTIMODAL_INJECTION: "이미지 인젝션",
++    FindingType.RAG_POISONING_SIGNAL: "참고자료 오염 신호",
++    FindingType.TOOL_MANIPULATION_ATTEMPT: "도구 조작 시도",
++    FindingType.DATA_EXFILTRATION_INSTRUCTION: "정보 유출 지시문",
++}
+diff --git a/packages/legal_engine/argument_validity_verifier.py b/packages/legal_engine/argument_validity_verifier.py
+index a5141c3..921bec7 100644
+--- a/packages/legal_engine/argument_validity_verifier.py
++++ b/packages/legal_engine/argument_validity_verifier.py
+@@ -556,6 +556,8 @@ async def verify_argument_validity(
+ 
+         statute = c.type in (CitationType.STATUTE, CitationType.ADMIN_RULE)
+         noun = "법령" if statute else "판례"
++        # 받침에 맞는 조사(V1.0.0 D6: '판례을(를)' 같은 조사 오류 제거). 법령은 받침 있음, 판례는 받침 없음.
++        obj, subj = ("을", "이") if statute else ("를", "가")
+ 
+         if contradiction:
+             distortion_type = item.get("distortion_type")
+@@ -636,7 +638,7 @@ async def verify_argument_validity(
+             )
+             verdict_text = "출처 한계 확인 불가 (판결문 사본 제출 필요)"
+             legal_reason = (f"하급심 판례는 공식 DB에 전문이 수록되지 않을 수 있으므로, 판결문 사본을 확보하기 전까지는 "
+-                            f"그 주장의 근거가 확정되지 않습니다. {noun}이(가) 실재하지 않는다는 뜻은 아닙니다.")
++                            f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 실재하지 않는다는 뜻은 아닙니다.")
+             counteraction = "상대방에게 판결문 사본 제출을 요청하거나 법원 판결서 열람 서비스를 통해 확인 후 변론할 것."
+             auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
+         elif basis == "CONFIRMED_NONEXISTENT":
+@@ -659,8 +661,8 @@ async def verify_argument_validity(
+                  "부존재나 임의 생성으로 단정하지 않음.")
+             )
+             verdict_text = "공식 DB 미확인 (원문 확인 필요)"
+-            legal_reason = (f"공식 DB에서 확인하지 못한 {noun}을(를) 근거로 삼고 있어, 원문을 확인하기 전까지 "
+-                            f"그 주장의 근거가 확정되지 않습니다. {noun}이(가) 존재하지 않는다는 뜻은 아닙니다.")
++            legal_reason = (f"공식 DB에서 확인하지 못한 {noun}{obj} 근거로 삼고 있어, 원문을 확인하기 전까지 "
++                            f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 존재하지 않는다는 뜻은 아닙니다.")
+             counteraction = (
+                 ("정식 법령명·약칭·시행 여부를 국가법령정보센터에서 다시 확인하고, 조문 원문과 대조할 것."
+                  if statute else
+diff --git a/packages/legal_engine/verifier.py b/packages/legal_engine/verifier.py
+index 4ead43e..dcf22a1 100644
+--- a/packages/legal_engine/verifier.py
++++ b/packages/legal_engine/verifier.py
+@@ -80,6 +80,16 @@ _OPPONENT_CLAIM_RE = re.compile(
+     r"[^.。]{0,200}?(?:주장|원용)(?:한다|하나|하지만|하였|했|하며|하는|함)")
+ 
+ 
++def _readable_source_message(message: str) -> str:
++    """조회 어댑터의 영문 오류 문장을 사람 말로 바꾼다(V1.0.0 D6). 모르는 문장은 그대로 둔다."""
++    from packages.verification_engine.review_items import HUMAN_READABLE_UNVERIFIED_REASONS
++    text = str(message or "")
++    for raw, readable in HUMAN_READABLE_UNVERIFIED_REASONS.items():
++        if raw in text:
++            text = text.replace(raw, readable + ".")
++    return text
++
++
+ class LegalVerifier:
+     def __init__(self, registry: Optional[SourceRegistry] = None, *, references: Any = None) -> None:
+         self.registry = registry or SourceRegistry()
+@@ -1234,7 +1244,7 @@ class LegalVerifier:
+         features = {"heuristic_only": False, "source_count": 0, "reason_code": reason,
+                     "retryable": reason in ("RATE_LIMITED", "SOURCE_TIMEOUT")}
+         explanation = ("공식 목록의 법령 식별자가 없거나 모호하여 정확한 법령을 선택하지 못했다. "
+-                       if reason == "IDENTITY_AMBIGUOUS" else "공식 Source 조회를 완료하지 못했다. ")
++                       if reason == "IDENTITY_AMBIGUOUS" else "공식 출처 조회를 완료하지 못했다. ")
+         # 학술/간행물 인용은 ACADEMIC_CITATION_ERROR, 판례는 CASE_NOT_FOUND, 그 외는 LAW_CITATION_ERROR
+         finding_type = (
+             FindingType.CASE_NOT_FOUND if citation.type == CitationType.CASE
+@@ -1258,7 +1268,7 @@ class LegalVerifier:
+             evidence_grade=EvidenceGrade.U,
+             title=f"검증하지 못한 인용: {citation.raw_text}",
+             detail=(
+-                f"{message} {explanation}이 항목은 미검증으로 남는다. "
++                f"{_readable_source_message(message)} {explanation}이 항목은 미검증으로 남는다. "
+                 "미검증은 오류가 없다는 의미가 아니다."
+             ),
+             confidence=confidence_score(features),
+diff --git a/packages/llm_router/router.py b/packages/llm_router/router.py
+index 263829a..5429217 100644
+--- a/packages/llm_router/router.py
++++ b/packages/llm_router/router.py
+@@ -358,8 +358,6 @@ class LLMRouter:
+             return list(await asyncio.gather(*(ask(name) for name in names)))
+ 
+         from .routing import (
+-            sampled,
+-            needs_additional_review,
+             conflicting,
+             complete_argument_reviews,
+             argument_escalation_item_ids,
+@@ -370,7 +368,9 @@ class LLMRouter:
+         if advisory and "openai" in names:
+             names = ["openai", *[n for n in names if n != "openai"]]
+         answers = []
+-        wanted = 1 if advisory else 2
++        # AI 작성 판별(advisory)도 늘 두 모델 의견을 받는다(V1.0.0 D4). 첫 모델 한 번의 응답이 두 번째 의견
++        # 호출 여부와 최종 판정을 가르던 변동(case9 같은 입력 2회 중 1회 유보)을 없앤다. 엇갈리면 세 번째를 부른다.
++        wanted = 2
+         for name in names:
+             current_request = request
+             successes = [a for a in answers if a.used]
+@@ -384,12 +384,6 @@ class LLMRouter:
+ 
+             answers.append(await ask(name, current_request))
+             successes = [a for a in answers if a.used]
+-            if advisory and len(successes) == 1:
+-                import json
+-                payload = json.loads(request.user)
+-                if (needs_additional_review(successes[0]) or payload.get("metadata_ai_hint")
+-                        or sampled(request, self.settings.llm_review_sample_percent)):
+-                    wanted = 2
+             if len(successes) >= wanted:
+                 if is_argument_review:
+                     # 법리 검토: 합의 완결되었거나 추가 에스컬레이션을 1회 마쳤으면 종료
+diff --git a/packages/report_engine/exporters.py b/packages/report_engine/exporters.py
+index 48e4199..585c73e 100644
+--- a/packages/report_engine/exporters.py
++++ b/packages/report_engine/exporters.py
+@@ -176,16 +176,8 @@ def to_xlsx(run_result: Any, *, reveal_sealed: bool = False) -> bytes:
+     summary.append(["생성시각", datetime.utcnow().isoformat()])
+     summary.append(["문서 수", len(run_result.documents)])
+     summary.append(["Finding 수", len(run_result.all_findings)])
+-    # 제9.2장 배포가능 상태. 보고서를 여는 사람이 가장 먼저 봐야 하는 값이다.
+-    gate = (run_result.scores or {}).get("release_gate") or {}
+-    if gate:
+-        append(summary, ["배포가능 상태", gate.get("release_gate")])
+-        append(summary, ["검증위험 지수", gate.get("hallucination_risk")])
+-        append(summary, ["지수 성격", gate.get("risk_index_note")])
+-        if gate.get("hard_block_reasons"):
+-            append(summary, ["차단 사유", "\n".join(gate["hard_block_reasons"])])
+-        if gate.get("review_reasons"):
+-            append(summary, ["사람 검토 사유", "\n".join(gate["review_reasons"])])
++    # V1.0.0 D3(사용자 결정 11-13): 배포가능 상태·검증위험 지수·차단 사유는 보고서 요약에 싣지 않는다.
++    # 같은 항목이 보고서의 인용·주장 표에 있고, 판정 데이터는 결과 JSON(scores.release_gate)에 남는다.
+     for key, value in getattr(run_result, "report_metadata", {}).items():
+         append(summary, [key, value])
+     append(summary, ["editable_copy_notice", EDITABLE_COPY_NOTICE])
+diff --git a/tests/test_efficient_llm_routing.py b/tests/test_efficient_llm_routing.py
+index fc2301b..29bc71f 100644
+--- a/tests/test_efficient_llm_routing.py
++++ b/tests/test_efficient_llm_routing.py
+@@ -176,7 +176,8 @@ def authorship_request(hint=False):
+ 
+ 
+ @pytest.mark.parametrize("verdict,hint,sample,count", [
+-    ("UNCERTAIN", False, 0, 1), ("HUMAN_AUTHORED_LIKELY", False, 0, 1),
++    # V1.0.0 D4(사용자 결정 11-13): 첫 의견이 유보·사람 작성이어도 두 번째 의견을 받는다(옛 단언 1 → 2).
++    ("UNCERTAIN", False, 0, 2), ("HUMAN_AUTHORED_LIKELY", False, 0, 2),
+     ("AI_PARTIAL_GENERATION", False, 0, 2), ("AI_FULL_GENERATION_LIKELY", False, 0, 2),
+     ("UNCERTAIN", True, 0, 2), ("UNCERTAIN", False, 100, 2),
+ ])
+@@ -259,3 +260,14 @@ def test_provider_cache_writes_require_explicit_opt_in(transport):
+     router.clear_result_cache()
+     assert asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request)).used
+     assert requests[-1][1]["cache_control"] == {"type": "ephemeral"}
++
++
++def test_authorship_disagreement_adds_third_provider(transport):
++    """V1.0.0 D4: 두 판별 의견이 엇갈리면 세 번째 공급자(Gemini)에 묻는다."""
++    router, requests, responses = transport
++    router.settings.llm_review_sample_percent = 0
++    responses["openai"] = {"verdict": "AI_PARTIAL_GENERATION"}
++    responses["anthropic"] = {"verdict": "UNCERTAIN"}
++    responses["gemini"] = {"verdict": "UNCERTAIN"}
++    answers = asyncio.run(router.consult_all(LLMRole.PRIMARY_REASONER, authorship_request(False)))
++    assert len(requests) == 3 and {e.provider for a in answers for e in a.executions} == {"openai", "anthropic", "gemini"}
+diff --git a/tests/test_f1_ai_security_tab_browser.py b/tests/test_f1_ai_security_tab_browser.py
+index 4362bf1..97f54a3 100644
+--- a/tests/test_f1_ai_security_tab_browser.py
++++ b/tests/test_f1_ai_security_tab_browser.py
+@@ -195,8 +195,8 @@ def f1_browser_page():
+         browser.close()
+ 
+ 
+-def test_ai_tab_renamed_and_notice_banner_visible(f1_browser_page):
+-    """AI 탭 버튼이 'AI 작성·보안 진단'으로 변경되고 안내 배너가 노출되어야 합니다."""
++def test_ai_tab_renamed_and_notice_banner_removed(f1_browser_page):
++    """AI 탭 버튼이 'AI 작성·보안 진단'이고, 다른 탭 안내 배너는 없다(V1.0.0 5-1, 사용자 승인으로 단언 변경)."""
+     page = f1_browser_page
+     page.goto("http://localhost/")
+     select_first_project(page)
+@@ -213,9 +213,8 @@ def test_ai_tab_renamed_and_notice_banner_visible(f1_browser_page):
+     expect(panel).to_be_visible()
+     expect(panel.locator("h2")).to_have_text("AI 작성·보안 진단")
+ 
+-    banner = panel.locator("#aiTabNoticeBanner")
+-    expect(banner).to_be_visible()
+-    expect(banner).to_contain_text("출처가 확인되지 않는 항목")
++    expect(panel.locator("#aiTabNoticeBanner")).to_have_count(0)
++    expect(panel).not_to_contain_text("탭에서 확인하실 수 있습니다")
+ 
+ 
+ def test_ai_tab_shows_security_card_and_no_citation_rows(f1_browser_page):
+@@ -259,26 +258,17 @@ def test_review_tab_filters_out_ai_security_findings(f1_browser_page):
+     expect(findings_container).not_to_contain_text("은닉 프롬프트 인젝션 의심")
+ 
+ 
+-def test_high_security_alert_banner_visible_and_jumpable(f1_browser_page):
+-    """HIGH 이상 보안 finding 존재 시 확인할 항목 상단에 고정 안내 배너가 뜨고 탭 전환되어야 합니다."""
++def test_high_security_alert_banner_removed(f1_browser_page):
++    """HIGH 이상 보안 항목 안내 배너는 없다. 상단 탭으로 이동한다(V1.0.0 6-1, 사용자 승인으로 단언 변경)."""
+     page = f1_browser_page
+     page.goto("http://localhost/")
+     select_first_project(page)
+ 
+     page.locator('.tabs button[data-tab="review"]').click()
+-
+-    # D2: HIGH 이상 보안 항목 상단 고정 안내 배너 확인
+-    alert_banner = page.locator("#highSecurityAlertBanner")
+-    expect(alert_banner).to_be_visible()
+-    expect(alert_banner).to_contain_text("HIGH 이상의 AI 작성·보안 진단 항목")
+-
+-    # 배너의 점프 링크 클릭
+-    jump_link = alert_banner.locator('[data-jump-tab="ai-verification"]')
+-    jump_link.click()
+-
+-    # AI 작성·보안 진단 탭으로 자동 전환 확인
++    expect(page.locator("#highSecurityAlertBanner")).to_have_count(0)
++    expect(page.locator('section[data-panel="review"]')).not_to_contain_text("HIGH 이상의 AI 작성·보안 진단 항목")
++    page.locator('.tabs button[data-tab="ai-verification"]').click()
+     expect(page.locator('section[data-panel="ai-verification"]')).to_be_visible()
+-    expect(page.locator('.tabs button[data-tab="ai-verification"]')).to_have_class(re.compile(r"\bactive\b"))
+ 
+ 
+ def test_temporary_citation_section_preserved_under_review(f1_browser_page):
+diff --git a/tests/test_f2_review_screen_browser.py b/tests/test_f2_review_screen_browser.py
+index 7c9a077..14c4316 100644
+--- a/tests/test_f2_review_screen_browser.py
++++ b/tests/test_f2_review_screen_browser.py
+@@ -13,6 +13,8 @@
+ """
+ from __future__ import annotations
+ 
++import re
++
+ import json
+ import os
+ from pathlib import Path
+@@ -449,7 +451,7 @@ def test_f2_review_summary_content_elements(f2_browser_page):
+ 
+ 
+ def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_page):
+-    """의심 사유는 100자 이내 2~3줄로 축약되고, 상세 법리 의견은 기본 접혀 있으며, 확인 방법은 권위명과 쪽/위치가 조합되어야 합니다 (TK-87)."""
++    """의심 사유는 자르지 않고 4줄 줄임+더보기로 보이고(V1.0.0 7-5), 상세 법리 의견은 기본 접혀 있으며, 확인 방법은 권위명과 쪽/위치가 조합되어야 합니다 (TK-87)."""
+     page = f2_browser_page
+     page.goto("http://localhost/")
+     select_first_project(page)
+@@ -465,12 +467,17 @@ def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_pag
+     expect(details).to_be_visible()
+     expect(details).not_to_have_attribute("open", "")
+ 
+-    # 2. 1번째 행 의심 사유 텍스트가 100자 상한으로 '…' 축약되어 노출되는지 검증
++    # 2. 의심 사유는 자르지 않는다. 4줄 줄임(.clamp)으로 보이고 넘치면 '더보기'로 펼친다
++    #    (V1.0.0 7-5, 사용자 승인으로 단언 변경: 옛 요구 '100자 '…' 축약').
+     reason_elem = box.locator(".summary-reason")
+     expect(reason_elem).to_be_visible()
+-    expect(reason_elem).to_contain_text("…")
+-    reason_text = reason_elem.inner_text()
+-    assert len(reason_text) <= 120, f"의심 사유 텍스트가 과도하게 길지 않아야 함: {len(reason_text)}자"
++    expect(reason_elem).to_have_class(re.compile(r"\bclamp\b"))
++    reason_text = reason_elem.text_content()
++    assert not reason_text.rstrip().endswith("…"), "의심 사유를 '…'로 자르지 않아야 함"
++    toggle = box.locator(".summary-reason + .clamp-toggle")
++    if toggle.count():
++        toggle.click()
++        expect(reason_elem).to_have_class(re.compile(r"\bexpanded\b"))
+ 
+     # 3. 2단 표의 2번째 행(counteraction 없는 위치 행: 헌법 제10조, 1쪽)의 확인 방법 텍스트 검증: '권위명 원문 대조 (N쪽)' 분기
+     box3 = rows.nth(1).locator(".review-summary-box")
+@@ -478,7 +485,7 @@ def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_pag
+ 
+ 
+ def test_f2_filters_search_severity_review_status(f2_browser_page):
+-    """검색어와 중요도 필터가 동작하고, 제거된 검토상태/진행상태/담당자 필터는 화면에 없어야 합니다 (TK-87)."""
++    """중요도 필터가 동작하고, 검색창(V1.0.0 6-0)과 제거된 검토상태/진행상태/담당자 필터는 화면에 없어야 합니다 (TK-87)."""
+     page = f2_browser_page
+     page.goto("http://localhost/")
+     select_first_project(page)
+@@ -497,13 +504,8 @@ def test_f2_filters_search_severity_review_status(f2_browser_page):
+     sev_select.select_option("")
+     expect(rows).to_have_count(2)
+ 
+-    # 2. 2단 표 검색어 필터: '2022다99999' 검색 -> 1개 행 노출
+-    search_input = panel.locator("#findingSearch")
+-    search_input.fill("2022다99999")
+-    expect(rows).to_have_count(1)
+-    expect(rows.first).to_contain_text("대법원 2022다99999 판결")
+-    search_input.fill("")
+-    expect(rows).to_have_count(2)
++    # 2. 항목 검색창은 없다(V1.0.0 6-0, 사용자 승인으로 단언 변경: 옛 요구 '검색어 필터 동작').
++    expect(panel.locator("#findingSearch")).to_have_count(0)
+ 
+     # 3단 표의 사실관계 항목('일자 선후 모순') 확인 (독립 탭)
+     page.locator('.tabs button[data-tab="legal-claims"]').click()
+diff --git a/tests/test_frontend_gate.py b/tests/test_frontend_gate.py
+index 81c55b5..878a042 100644
+--- a/tests/test_frontend_gate.py
++++ b/tests/test_frontend_gate.py
+@@ -1,4 +1,8 @@
+-"""배포가능 판정 사유는 누르지 않아도 보여야 한다."""
++"""배포가능 판정(배포 차단·사람 검토 사유·검증위험 지수)은 화면에 보이지 않는다.
++
++V1.0.0 명세 1-3-2·1-3-3·2·3과 사용자 결정 D3(2026-11-13)로 옛 요구('사유는 누르지 않아도 보여야 한다')를 바꾼
++단언이다(사용자 승인). 결과 데이터 scores.release_gate는 그대로 받으며 화면만 그리지 않는다.
++"""
+ import os
+ from pathlib import Path
+ from urllib.parse import urlsplit
+@@ -15,7 +19,7 @@ GATE = {"release_gate": "BLOCK", "hallucination_risk": 72,
+ 
+ 
+ @pytest.mark.parametrize("width,height", [(1440, 1000), (390, 1400)])
+-def test_gate_reasons_are_shown_open_and_readable(width, height):
++def test_gate_reasons_are_not_rendered(width, height):
+     static = ROOT / "apps/web/static"
+     files = {f"/static/{p.relative_to(static).as_posix()}": p for p in static.rglob("*") if p.is_file()}
+     files["/"] = ROOT / "apps/web/index.html"
+@@ -51,17 +55,12 @@ def test_gate_reasons_are_shown_open_and_readable(width, height):
+             page.route("**/*", respond)
+             page.goto("http://gate.test/")
+             select_first_project(page)
+-            reasons = page.get_by_role("region", name="배포가능 판정 사유")
+-            expect(reasons).to_contain_text("배포 차단 — 사유 6건")
+-            assert page.locator("#summary details").count() == 0, "접힌 상자에 숨기지 않는다"
+-            # 누르지 않은 상태에서 여섯 사유가 모두 화면에 있다.
+-            for reason in GATE["hard_block_reasons"][:2] + GATE["review_reasons"]:
+-                expect(reasons.get_by_text(reason, exact=True)).to_be_visible()
+-            expect(reasons.get_by_text("출처 미확인 판례가 핵심 주장의 근거")).to_be_visible()
+-            expect(reasons.locator(".gate-group-block h3")).to_have_text("배포 차단 사유 3건")
+-            expect(reasons.locator(".gate-group-review h3")).to_have_text("사람 검토 사유 3건")
+-            size = reasons.locator("li").first.evaluate("el => parseFloat(getComputedStyle(el).fontSize)")
+-            assert size >= 16
++            expect(page.locator("#summary .metric")).to_have_count(3)
++            expect(page.get_by_role("region", name="배포가능 판정 사유")).to_have_count(0)
++            summary = page.locator("#summary")
++            for text in ["배포 차단", "배포가능", "검증위험", "사람 검토 사유", GATE["risk_index_note"],
++                         *GATE["hard_block_reasons"], *GATE["review_reasons"]]:
++                expect(summary).not_to_contain_text(text)
+             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+             page.close()
+         finally:
+diff --git a/tests/test_frontend_metric_explain.py b/tests/test_frontend_metric_explain.py
+index 2ecab85..45cb5e4 100644
+--- a/tests/test_frontend_metric_explain.py
++++ b/tests/test_frontend_metric_explain.py
+@@ -1,4 +1,8 @@
+-"""'확인 전 항목'과 '진행 상태'를 누르면 뜻과 세부 내역·대책이 보여야 한다."""
++"""검토 결정 대기(탭 머리 배지)와 실행 상태 안내(사유 보기)를 누르면 뜻과 세부 내역·대책이 보여야 한다.
++
++V1.0.0 명세 1-3-5·1-3-6과 사용자 결정 D1·D2(2026-11-13)로 옛 요구(상단 카드 '확인 전 항목'·'진행 상태')를
++바꾼 단언이다(사용자 승인). 설명 대화상자의 내용 단언은 그대로 둔다.
++"""
+ import os
+ from pathlib import Path
+ from urllib.parse import urlsplit
+@@ -54,7 +58,9 @@ def test_pending_and_status_metrics_explain_themselves(width, height):
+         if path in replies:
+             return route.fulfill(json=replies[path])
+         if path.endswith("/result"):
+-            return route.fulfill(json={"documents": [{"document_id": "d1", "filename": "준비서면.pdf"}]})
++            return route.fulfill(json={"documents": [{"document_id": "d1", "filename": "준비서면.pdf", "review_items": [
++                {"item_id": "i1", "kind": "CITATION", "cited_authority": "대법원 2011모1839 결정", "claim_text": "대법원 2011모1839 결정",
++                 "severity": "HIGH", "finding_ids": ["f0", "f1"], "location": "1쪽"}]}]})
+         if path.endswith("/case-matrix"):
+             return route.fulfill(body="null", content_type="application/json")
+         return route.fulfill(json=[])
+@@ -71,21 +77,24 @@ def test_pending_and_status_metrics_explain_themselves(width, height):
+             page.route("**/*", respond)
+             page.goto("http://metrics.test/")
+             select_first_project(page)
+-            pending = page.locator(".metric-explain", has_text="확인 전 항목")
+-            expect(pending).to_contain_text("3")
++            expect(page.locator("#summary .metric")).to_have_count(3)
++            expect(page.locator(".metric-explain", has_text="확인 전 항목")).to_have_count(0)
++            expect(page.locator(".metric-explain", has_text="진행 상태")).to_have_count(0)
++            page.locator('.tabs button[data-tab="review"]').click()
++            pending = page.locator("#reviewPendingBadge")
++            expect(pending).to_have_text("검토 결정 대기 2")
+             pending.click()
+-            dialog = page.get_by_role("dialog", name="확인 전 항목이란")
++            dialog = page.get_by_role("dialog", name="검토 결정 대기란")
+             expect(dialog).to_contain_text("검사를 하지 못했다는 뜻이 아니라")
+             expect(dialog).to_contain_text("문제가 의심되는 항목(검토 후 조치 필요): 1건")
+             expect(dialog).to_contain_text("시스템이 확인하지 못한 항목(원문 확인 필요): 1건")
+-            expect(dialog).to_contain_text("참고 신호(낮은 심각도·참고용): 1건")
+-            dialog.get_by_role("button", name="출처가 확인되지 않는 항목에서 보기").click()
+-            expect(page.locator("[data-panel='review']")).to_be_visible()
+-            expect(page.locator("#reviewTable")).to_be_visible()
++            dialog.get_by_role("button", name="닫기").first.click() if dialog.get_by_role("button", name="닫기").count() else page.keyboard.press("Escape")
+ 
+             if width <= 700:
+                 page.evaluate("window.scrollTo(0, 0)")
+-            page.locator(".metric-explain", has_text="진행 상태").click()
++            line = page.locator(".run-status-line")
++            expect(line).to_contain_text("일부 미확인")
++            line.get_by_role("button", name="사유 보기").click()
+             status = page.get_by_role("dialog", name="진행 상태: 일부 미확인")
+             expect(status).to_contain_text("확인하지 못한 항목 3건 — 원인별")
+             expect(status.locator(".unverified-cause", has_text="외부 출처 연결 장애")).to_contain_text("대법원 2015모2524 결정")
+diff --git a/tests/test_frontend_summary_compact.py b/tests/test_frontend_summary_compact.py
+index 37e33a1..a2e6a79 100644
+--- a/tests/test_frontend_summary_compact.py
++++ b/tests/test_frontend_summary_compact.py
+@@ -1,5 +1,7 @@
+-"""요약표(검토에 포함·배포가능 상태·검증위험 지수·AI 작성 진단 …)는 작은 글씨·좁은 여백으로 낮게 보인다(0.9.9).
+-배포가능 판정 사유 목록은 종전처럼 크게 읽힌다(test_frontend_gate)."""
++"""요약표는 작은 글씨·좁은 여백으로 낮게 보인다(0.9.9).
++
++V1.0.0 명세 1-3(사용자 승인으로 단언 변경): 요약은 'AI 작성 진단'·'출처 미확인 인용'·'법률적으로 무리한 주장' 3칸이다.
++배포가능 상태·검증위험 지수 칸은 없다(배포 판정 화면 미표시는 test_frontend_gate)."""
+ import os
+ from pathlib import Path
+ from urllib.parse import urlsplit
+@@ -59,7 +61,7 @@ def test_summary_metrics_are_compact(width, height, max_cell, tmp_path):
+             page.goto("http://summary.test/")
+             select_first_project(page)
+             metrics_locator = page.locator("#summary .metric")
+-            expect(metrics_locator).to_have_count(8)
++            expect(metrics_locator).to_have_count(3)
+             sizes = metrics_locator.evaluate_all("""cells => cells.map(cell => {
+                 const strong = cell.querySelector('strong');
+                 const span = cell.querySelector('span');
+@@ -69,11 +71,13 @@ def test_summary_metrics_are_compact(width, height, max_cell, tmp_path):
+                     height: cell.getBoundingClientRect().height
+                 };
+             })""")
+-            assert len(sizes) == 8
++            assert len(sizes) == 3
+             assert all(0 < s["value"] <= 18.5 and 0 < s["title"] <= 12.5 for s in sizes), sizes
+             assert all(s["height"] <= max_cell for s in sizes), [round(s["height"]) for s in sizes]
+-            for title in ("배포가능 상태", "검증위험 지수", "AI 작성 진단"):
++            for title in ("AI 작성 진단", "출처 미확인 인용", "법률적으로 무리한 주장"):
+                 expect(page.locator(".metric", has_text=title)).to_be_visible()
++            for title in ("배포가능 상태", "검증위험 지수", "검토에 포함", "확인 전 항목", "진행 상태"):
++                expect(page.locator(".metric", has_text=title)).to_have_count(0)
+             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+             page.evaluate("switchTab('review')")
+             page.get_by_text("준비서면.pdf: 추가 관련 법조문 검토", exact=True).click()
+diff --git a/tests/test_tk155_ui_cleanup.py b/tests/test_tk155_ui_cleanup.py
+new file mode 100644
+index 0000000..8aa6ad3
+--- /dev/null
++++ b/tests/test_tk155_ui_cleanup.py
+@@ -0,0 +1,242 @@
++"""TK-155: V1.0.0 화면 정리(사용자 명세 2026-11-13, 결정 D1~D6) 회귀 시험.
++
++문장·사건번호·법령명은 모두 합성이다(실제 서면·판결의 값이 아니다). 엔진이 실제로 내는 코드 꼴만 흉내 낸다.
++"""
++from __future__ import annotations
++
++import io
++import os
++import re
++from pathlib import Path
++from types import SimpleNamespace
++from urllib.parse import urlsplit
++
++import pytest
++from playwright.sync_api import expect, sync_playwright
++from frontend_helpers import select_first_project
++
++from packages.common.finding_category_map import (CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, FINDING_TYPE_SCREEN_NAMES,
++                                                   get_category_counts)
++
++ROOT = Path(__file__).resolve().parents[1]
++CODE_RE = re.compile(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\b[a-z]+_[a-z_]+\b")
++LONG_REASON = ("합성 서면은 시행 전 개정 이력을 근거로 소급 적용을 주장한다. " * 12).strip()
++
++
++def _finding(fid, ftype, title, detail, severity="INFO", engine="legal_engine", review="NEEDS_REVIEW", status="UNVERIFIED"):
++    return {"id": fid, "finding_id": fid, "type": ftype, "finding_type": ftype, "title": title, "detail": detail,
++            "severity": severity, "status": status, "review_status": review, "engine": engine, "document_id": "d1",
++            "page": 3, "run_id": "r1", "project_id": "p1", "tags": [], "evidence": [], "sources": []}
++
++
++FINDINGS = [
++    *[_finding(f"ai{i}", "AI_AUTHORSHIP_LIKELY", "AI 작성 참고 신호 문구 (내용 오류 판정 아님)",
++               f"근거: 합성 신호 {i}. 발췌: \"합성 문장 {i}\"", engine="verification_engine.ai_document_detector")
++      for i in range(1, 5)],
++    _finding("inj1", "META_INSTRUCTION", "META_INSTRUCTION 후보: ROLE_OVERRIDE — 경로: 보이는 본문",
++             "visible_text 위치에서 지시형 문자열이 관찰되었다. 분류=INSTRUCTION_LIKE, 점수=1.0, 보조신호=0개.",
++             severity="HIGH", engine="adversarial_engine", status="SUSPICIOUS"),
++    _finding("c1", "TEMPORAL_LAW_MISMATCH", "법령 적용 시점 검토: 「합성법」 제1조 — 시행일이 기준일 뒤인데 소급 적용 주장 (RETROACTIVE_APPLICATION_ERROR)",
++             LONG_REASON, severity="HIGH"),
++    _finding("c2", "CASE_NOT_FOUND", "공식 DB 미발견 판례", "합성 판례를 조회 범위에서 찾지 못했다.", severity="MEDIUM"),
++]
++
++REVIEW_ITEMS = [
++    {"item_id": "i1", "kind": "TEMPORAL", "document_id": "d1", "location": {"page": 3, "display": "3쪽"},
++     "claim_text": "합성 개정 이력에 따른 소급 적용 주장", "cited_authority": "「합성법」 제1조",
++     "official_status": "OFFICIAL_NOT_FOUND", "reference_status": "NOT_IN_REFERENCE",
++     "verdict_label": FINDINGS[5]["title"], "severity": "HIGH", "finding_ids": ["c1"],
++     "ai_generation_basis": "[RAG참고자료] 합성 설명 (NOT_ASSESSED)", "legal_reasoning": LONG_REASON},
++    {"item_id": "i2", "kind": "CITATION", "document_id": "d1", "location": {"page": 4, "display": "4쪽"},
++     "claim_text": "합성 판례에 따른 청구", "cited_authority": "대법원 2019다12345 판결",
++     "official_status": "OFFICIAL_NOT_FOUND", "reference_status": "NOT_CHECKED", "verdict_label": "공식 DB 미확인",
++     "severity": "MEDIUM", "finding_ids": ["c2"], "ai_generation_basis": "조회 범위에서 찾지 못함 (OFFICIAL_NOT_FOUND)"},
++    {"item_id": "i3", "kind": "FACT", "document_id": "d1", "location": {"page": 5},
++     "claim_text": "합성 사실관계 주장", "cited_authority": None, "official_status": "NOT_ASSESSED",
++     "reference_status": "NOT_MENTIONED", "verdict_label": "참고문헌과 불부합", "severity": "MEDIUM", "finding_ids": [],
++     "ai_generation_basis": "[RAG참고자료] 합성 참고자료와 다르다", "legal_reasoning": LONG_REASON},
++]
++
++RESULT = {"status": "PARTIAL_COMPLETED", "documents": [{
++    "document_id": "d1", "id": "d1", "filename": "합성서면.pdf", "quarantined": False,
++    "findings": FINDINGS, "review_items": REVIEW_ITEMS,
++    "ai_hallucination_table": [{"basis": "UNCONFIRMED", "cited_authority": "대법원 2019다12345 판결"},
++                               {"basis": "FABRICATION_SUSPECTED", "cited_authority": "대법원 2099다1 판결"}],
++    "ai_detector_result": {"verdict": "AI_PARTIAL_GENERATION", "score": 0.6, "filename": "합성서면.pdf",
++                           "reasons": ["AI 교차검증 다수 모델이 지적하여 AI_PARTIAL_GENERATION로 최종 확정함(다수결)"],
++                           "signals": {"score_definition": "응답한 모델들이 낸 ai_score의 중앙값이다.",
++                                       "confidence_definition": "계산한 finding.confidence이다."}},
++    "engine_data": {"adversarial": {"scanned_layers": ["encoded_text", "outline", "visible_text"], "adversarial_risk": "HIGH"}},
++}]}
++
++GATE = {"release_gate": "BLOCK", "hallucination_risk": 72, "risk_index_note": "합성 지수 설명",
++        "hard_block_reasons": ["CASE_NOT_FOUND: 합성 차단 사유"], "review_reasons": ["합성 검토 사유"]}
++
++
++def _serve(page, project):
++    static = ROOT / "apps/web/static"
++    files = {f"/static/{p.relative_to(static).as_posix()}": p for p in static.rglob("*") if p.is_file()}
++    files["/"] = ROOT / "apps/web/index.html"
++    run = {"id": "r1", "project_id": "p1", "state": "PARTIAL_COMPLETED", "progress": 1, "stage_message": "",
++           "document_ids": ["d1"], "scores": {"release_gate": GATE}, "errors": [], "unavailable_sources": [],
++           "unverified_items": [{"kind": "citation", "raw_text": "「합성법」 제1조", "document_id": "d1", "reason": "합성"},
++                                {"kind": "reference_library", "document_id": "d1", "reason": "합성"}],
++           "input_snapshot": {"scope_revision": 0}, "started_at": "2026-11-13T00:00:00"}
++    cats = {"categories": {t.value: c.value for t, c in FINDING_CATEGORY_MAP.items()},
++            "tabs": {t.value: CATEGORY_TO_TAB[c].value for t, c in FINDING_CATEGORY_MAP.items()},
++            "counts": get_category_counts(), "names": {t.value: n for t, n in FINDING_TYPE_SCREEN_NAMES.items()}}
++
++    def respond(route):
++        path = urlsplit(route.request.url).path
++        if path in files:
++            return route.fulfill(path=str(files[path]))
++        replies = {"/api/health": {"status": "ok", "version": "0.20.0"},
++                   "/api/identity/me": {"user_id": "u", "role": "ADMIN", "authentication": "password"},
++                   "/api/verification-runs": {"active_count": 0, "runs": []}, "/api/projects": [project],
++                   "/api/projects/p1": project, "/api/projects/p1/runs": [run], "/api/projects/p1/findings": FINDINGS,
++                   "/api/finding-categories": cats}
++        if path in replies:
++            return route.fulfill(json=replies[path])
++        if path.endswith(("/result", "/results")):
++            return route.fulfill(json=RESULT)
++        if path.endswith("/case-matrix"):
++            return route.fulfill(body="null", content_type="application/json")
++        return route.fulfill(json=[])
++
++    page.route("**/*", respond)
++    page.goto("http://tk155.test/")
++    select_first_project(page)
++
++
++@pytest.fixture
++def browser():
++    options = {"headless": True}
++    if os.getenv("LV_TEST_BROWSER_CHANNEL"):
++        options["channel"] = os.environ["LV_TEST_BROWSER_CHANNEL"]
++    with sync_playwright() as playwright:
++        b = playwright.chromium.launch(**options)
++        yield b
++        b.close()
++
++
++BASE_PROJECT = {"id": "p1", "name": "합성 사건", "can_delete": True, "document_count": 1,
++                "external_ai_policy": "MASKED", "scope_revision": 0}
++
++
++def _codes(text):
++    return sorted(set(CODE_RE.findall(text)))
++
++
++def test_top_summary_three_cards_and_no_empty_meta(browser):
++    page = browser.new_page(viewport={"width": 1440, "height": 1000})
++    _serve(page, BASE_PROJECT)
++    expect(page.locator("#summary .metric")).to_have_count(3)
++    expect(page.locator(".metric", has_text="출처 미확인 인용")).to_contain_text("2건")
++    expect(page.locator(".metric", has_text="출처 미확인 인용")).to_contain_text("사건번호 형식 오류 1건 포함")
++    for gone in ("검토에 포함", "배포가능", "배포 가능", "검증위험", "확인 전 항목", "진행 상태", "합성 차단 사유", "합성 지수 설명"):
++        expect(page.locator("#summary")).not_to_contain_text(gone)
++    expect(page.locator(".run-status-line")).to_contain_text("일부 미확인")
++    expect(page.locator(".eyebrow")).to_have_count(0)
++    expect(page.locator("#projectMeta")).to_be_hidden()
++    expect(page.locator("#projectList")).not_to_contain_text("미지정")
++    assert _codes(page.locator("#summary").inner_text()) == []
++
++
++def test_project_meta_shows_only_entered_values(browser):
++    page = browser.new_page(viewport={"width": 1440, "height": 1000})
++    _serve(page, {**BASE_PROJECT, "case_number": "2026가합1", "incident_date": "2025-01-02"})
++    expect(page.locator("#projectMeta")).to_have_text("2026가합1 · 적용법령 기준 2025-01-02")
++
++
++def test_ai_tab_groups_signals_and_has_no_codes(browser):
++    page = browser.new_page(viewport={"width": 1440, "height": 1000})
++    _serve(page, BASE_PROJECT)
++    page.locator('.tabs button[data-tab="ai-verification"]').click()
++    panel = page.locator('section[data-panel="ai-verification"]')
++    group = panel.locator(".ai-finding-list > .security-finding-item", has_text="AI 작성 참고 신호 문구")
++    expect(group).to_have_count(1)
++    expect(group.locator("ol.finding-group-reasons > li")).to_have_count(4)
++    expect(group).to_contain_text("(4건)")
++    expect(panel).to_contain_text("프롬프트 인젝션 속임수 검증")
++    expect(panel.locator("#aiTabNoticeBanner")).to_have_count(0)
++    page.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
++    assert _codes(panel.locator("#aiSummaryCards").inner_text()) == []
++
++
++@pytest.mark.parametrize("tab,table", [("review", "#reviewTable"), ("legal-claims", "section[data-panel=legal-claims] table")])
++def test_tables_have_no_codes_and_badges_stay_in_cells(browser, tab, table):
++    page = browser.new_page(viewport={"width": 1440, "height": 1000})
++    _serve(page, BASE_PROJECT)
++    page.locator(f'.tabs button[data-tab="{tab}"]').click()
++    tbl = page.locator(table)
++    expect(tbl.locator("tbody tr").first).to_be_visible()
++    assert _codes(tbl.inner_text()) == []
++    assert "[RAG참고자료]" not in tbl.inner_text()
++    assert "구속력 없음" not in tbl.inner_text()
++    overflow = tbl.evaluate("""t => [...t.querySelectorAll('td .badge')].filter(b => {
++        const td = b.closest('td').getBoundingClientRect(), r = b.getBoundingClientRect();
++        return r.right > td.right + 1; }).length""")
++    assert overflow == 0
++    expect(page.locator(f'section[data-panel="{tab}"] .reference-legend')).to_contain_text("법적 구속력은 없습니다")
++
++
++def test_long_reason_is_not_cut_and_expands(browser):
++    page = browser.new_page(viewport={"width": 1440, "height": 1000})
++    _serve(page, BASE_PROJECT)
++    page.locator('.tabs button[data-tab="legal-claims"]').click()
++    panel = page.locator('section[data-panel="legal-claims"]')
++    expect(panel.locator(".summary-reason").first).to_be_visible()
++    expect(panel).not_to_contain_text("…")
++    assert LONG_REASON[-30:] in panel.text_content()  # 전문이 DOM에 있다
++    toggle = panel.locator(".clamp-toggle").first
++    expect(toggle).to_have_text("더보기")
++    toggle.click()
++    expect(toggle).to_have_text("접기")
++
++
++def test_search_box_and_security_banner_removed(browser):
++    page = browser.new_page(viewport={"width": 1440, "height": 1000})
++    _serve(page, BASE_PROJECT)
++    page.locator('.tabs button[data-tab="review"]').click()
++    expect(page.locator("#findingSearch")).to_have_count(0)
++    expect(page.locator("#highSecurityAlertBanner")).to_have_count(0)
++    card = page.locator("details.unverified-card")
++    expect(card).to_contain_text("미확인 범위 2건")
++    expect(card).to_contain_text("인용 1")
++    expect(card).to_contain_text("참고자료 1")
++
++
++def test_readable_source_message_and_particles():
++    from packages.legal_engine.verifier import _readable_source_message
++    from packages.verification_engine.review_items import HUMAN_READABLE_UNVERIFIED_REASONS
++    english, korean = next((k, v) for k, v in HUMAN_READABLE_UNVERIFIED_REASONS.items() if re.search(r"[A-Za-z]{4,} [a-z]", k))
++    assert _readable_source_message(english).rstrip(".") == korean
++    assert _readable_source_message("합성 메시지") == "합성 메시지"
++    source = (ROOT / "packages/legal_engine/argument_validity_verifier.py").read_text(encoding="utf-8")
++    assert "{noun}을(를)" not in source and "{noun}이(가)" not in source
++
++
++def test_xlsx_summary_has_no_release_gate_rows():
++    openpyxl = pytest.importorskip("openpyxl")
++    from packages.report_engine.exporters import to_xlsx
++    from datetime import datetime
++    from packages.common.enums import JobState
++    run = SimpleNamespace(run_id="r1", project_id="p1", verification_key="k", state=JobState.COMPLETED,
++                          started_at=datetime(2026, 11, 13), finished_at=datetime(2026, 11, 13), scores={"release_gate": GATE},
++                          timeline=[], unavailable_sources=[], unverified_items=[], errors=[], findings=[],
++                          project_findings=[], all_findings=[], model_executions=[], run_manifest={}, documents=[])
++    data = to_xlsx(run)
++    sheet = openpyxl.load_workbook(io.BytesIO(data)).worksheets[0]
++    labels = [row[0] for row in sheet.iter_rows(values_only=True) if row]
++    for gone in ("배포가능 상태", "검증위험 지수", "지수 성격", "차단 사유", "사람 검토 사유"):
++        assert gone not in labels
++
++
++def test_finding_categories_api_serves_screen_names():
++    from fastapi.testclient import TestClient
++    from apps.api.main import app
++    from packages.common.enums import ADVERSARIAL_FINDING_TYPES
++
++    names = TestClient(app).get("/api/finding-categories").json()["names"]
++    assert set(names) == {t.value for t in ADVERSARIAL_FINDING_TYPES}
++    assert all(re.search(r"[가-힣]", n) for n in names.values())
+diff --git a/tests/test_tk61_layout_browser.py b/tests/test_tk61_layout_browser.py
+index ed24379..1e042be 100644
+--- a/tests/test_tk61_layout_browser.py
++++ b/tests/test_tk61_layout_browser.py
+@@ -249,11 +249,18 @@ def test_tk61_security_finding_items_vertical_layout(tk61_browser_page):
+     page.locator('.tabs button[data-tab="ai-verification"]').click()
+ 
+     panel = page.locator('section[data-panel="ai-verification"]')
+-    items = panel.locator(".security-finding-item")
+-    expect(items.first).to_be_visible()
++    # V1.0.0 5·5-2(사용자 승인으로 단언 변경): AI 작성 진단 세부 항목은 같은 제목을 한 묶음으로 보이므로
++    # '제목 머리 위, 번호 근거 목록 아래' 배치를 따로 확인하고, 아래 반복은 보안·인젝션 항목에만 적용한다.
++    expect(panel.locator(".security-finding-item").first).to_be_visible()
++    groups = panel.locator(".ai-finding-list > .security-finding-item").all()
++    for group in groups:
++        head_box = group.locator("> .finding-group-head").bounding_box()
++        list_box = group.locator("> ol.finding-group-reasons").bounding_box()
++        assert head_box and list_box and list_box["y"] >= head_box["y"] + head_box["height"] - 2
++    items = panel.locator(".security-finding-item:not(.ai-finding-list > .security-finding-item)")
+ 
+     count = items.count()
+-    assert count >= 1, "세부 항목이 1개 이상 존재해야 합니다."
++    assert count + len(groups) >= 1, "세부 항목이 1개 이상 존재해야 합니다."
+ 
+     for i in range(count):
+         item = items.nth(i)
+diff --git a/tests/test_tk88_three_tier_review.py b/tests/test_tk88_three_tier_review.py
+index 0baaa83..0ccafd3 100644
+--- a/tests/test_tk88_three_tier_review.py
++++ b/tests/test_tk88_three_tier_review.py
+@@ -520,7 +520,10 @@ def test_frontend_app_js_classification_matches_specification():
+     assert "DISTORTION" in app_js
+     assert "성립 불가한 사건번호" in app_js  # 1번 행 2단 분기
+     assert "취지 왜곡" in app_js or "부당" in app_js  # 6번 행 3단 분기
+-    assert "참고문헌(구속력 없음)" in app_js  # 참고문헌 구속력 배제 배지
++    # V1.0.0 6-5·7-4·D5(사용자 승인으로 단언 변경): 셀마다 '구속력 없음'을 되풀이하지 않고 표 위 범례 한 줄로 둔다.
++    assert "참고문헌(구속력 없음)" not in app_js
++    with open("apps/web/index.html", "r", encoding="utf-8") as f:
++        assert "법적 구속력은 없습니다" in f.read()  # 표 위 범례
+     assert "대조 안 함" in app_js  # 미대조 배지
+     assert "법률적으로 무리한 주장 탭에서 확인 →" in app_js  # 2단->3단 상호 참조
+     assert "출처가 확인되지 않는 항목 탭에서 확인 →" in app_js  # 3단->2단 상호 참조

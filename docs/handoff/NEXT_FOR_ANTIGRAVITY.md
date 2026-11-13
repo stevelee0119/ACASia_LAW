@@ -3998,3 +3998,154 @@ F11 [미탐] 인용문에서 두 당사자를 맞바꾸면(예: '채권자는 �
 - 11-13 사용자 '프로그램 개선 소요 명세서 for V.1.0.0' 타당성 분석·개선 계획 제안 작성(docs/handoff/V1_0_0_UI_IMPROVEMENT_PLAN_20261113.md): 항목별 현행 코드 확인, 작업 묶음 W1~W5, 버전 경로(0.20.0 → 1.0.0 이정표 조건), 사용자 결정 D1~D5. 발견: 배포 차단 사유 문구 결함(공식 원문 확인 판례에 '조회 불가' 표기, gate.py 216~219행), 표 위치 칸 넘침 원인(배지 nowrap·영문 kind), 의심 사유 강제 절단.
 - 11-13 사용자 '세부설명은 case9 온라인 결과 화면 기준' → 계획 문서 5절 덧붙임: case9 3회분 대조(6-1 HIGH 2건 일치, 행 종류 영문 배지 16행, 표 영문 코드 8종, 의심 사유 16행 중 12행 잘림, 명세 예시 문구는 0.18.0 판), 명세 밖 같은 성격 3건(D6).
 - 11-13 사용자 'D1~D6 권고대로 진행' → V1.0.0 개선 계획 6절 기록. 다음: W1~W5 평가 측 사본 사전 검증 → 지시문.
+
+
+## 2-38. V1.0.0 개선(0.20.0) — TK-155 화면·보고서 정리, TK-156 AI 판별 두 모델 고정 구현 지시 (11-13, 사용자 'D1~D6 권고대로 진행')
+- 근거: [V1_0_0_UI_IMPROVEMENT_PLAN_20261113.md](V1_0_0_UI_IMPROVEMENT_PLAN_20261113.md)(원문 부록 A, 결정 6절). 평가 측 사본(e57855f 기준)에 먼저 적용해 사전 검증했다. 패치: `docs/handoff/patches/TK-155_156_v1ui_on_e57855f.diff`.
+- 사전 검증 요약(평가 측 재실행): 전체 시험 11,444 통과·실패 0, 은퇴 5세트·고정 세트 변화 0, case9·탐침 B·C·D 화면 영문 코드 0.
+- 사용자 승인 대기: 기존 시험 단언 변경(TK-155 8파일 13건, TK-156 1파일 2건). 승인 전에는 전달하지 않는다.
+- 두 PR 모두 Steve_ACASiaLAW 대상. TK-155는 화면 PR이라 캡처·원문 대응표를 사용자께 보이고 확인 뒤 수용한다.
+
+### 2-38-1. TK-155
+
+```
+[TK-155(P2) 화면·보고서 정리 — 「프로그램 개선 소요 명세서 for V.1.0.0」 1~3·5~7번 + D6 — 구현 지시]
+기준: Steve_ACASiaLAW e57855f(0.19.0)  평가 측 사본: v1ui(패치 docs/handoff/patches/TK-155_156_v1ui_on_e57855f.diff — router.py·test_efficient_llm_routing.py 부분은 TK-156)
+PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·removed). 화면 PR이라 **사용자 확인 뒤 수용**한다(CLAUDE.md 2026-10-25).
+
+0. 사용자 원문과 결정
+ 원문 전문은 docs/handoff/V1_0_0_UI_IMPROVEMENT_PLAN_20261113.md 부록 A에 그대로 있다(이 티켓의 원문). 결정(11-13 "D1~D6 권고대로 진행"):
+ D1 '확인 전 항목' → 탭 제목 옆 '검토 결정 대기 n'으로 이동 / D2 '진행 상태' → 카드 삭제, 완료가 아닐 때만 한 줄 안내(사유 보기)
+ D3 배포 판정 → 화면 패널·엑셀 요약 행 모두 삭제(결과 JSON scores.release_gate는 유지) / D5 참고문헌 표기 → 셀 반복 삭제, 표 위 범례 한 줄
+ D6 명세 밖 같은 성격 3건 포함: 인젝션 결과의 영문 코드, 영문 오류 문장, '을(를)' 조사
+
+1. 원문 문장별 대응표(수용 기준 — 줄 번호는 e57855f)
+ | 원문 | 현행 위치·원인 | 고칠 것 | 확인 |
+ | 1 '법률문서 검토' 삭제 | index.html 7행 span.eyebrow | 지운다 | 캡처 01 |
+ | 1-1 미지정 문구 삭제, 입력값만 표시 | app.js 799행 projectMeta('사건번호 미지정'·'적용법령 기준일 미지정'), 748행 사이드바 | 값 있는 것만 ' · '로 잇고, 하나도 없으면 projectMeta를 hidden. 사이드바는 [사건번호, '자료 n개'] | 캡처 01, 값 있는 프로젝트 캡처 |
+ | 1-3 8개 → 'AI 작성 진단'(현행 표기)·'출처 미확인 인용 n건'·'법률적으로 무리한 주장 n건' | app.js 1047~1116 renderSummary 8칸 | 3칸. 출처 미확인 = 기존 '성립 불가'+'공식 DB 미확인' 합(1029~1044행 계산 그대로), 성립 불가가 있으면 작은 글 '사건번호 형식 오류 n건 포함'. 무리한 주장 = '법률적으로 무리한 주장' 탭 행 수(renderFindings의 3단 분류 수, 필터와 무관). 카드를 누르면 그 탭으로 이동. styles.css 357행 .summary 4칸 → 3칸, 좁은 화면(967행) 1칸 | 캡처 01: 9건·9건이 각 탭 행 수와 같음 |
+ | 1-3-1 '검토에 포함' 삭제 | 1052행 | 지운다 | 캡처 01 |
+ | 1-3-2 '배포 가능 상태' 삭제 | 1053행 | 지운다(D3) | 캡처 01 |
+ | 1-3-3 '검증 위험 지수' 삭제 | 1054행 | 지운다 | 캡처 01 |
+ | 1-3-4 성립 불가·공식DB 미확인 통합 | 1056~1057행 | 위 '출처 미확인 인용' 1칸 | 캡처 01 |
+ | 1-3-5 '확인 전 항목' | 1058행 | D1: 카드 삭제. '출처가 확인되지 않는 항목'·'법률적으로 무리한 주장' 탭 h2 옆 배지 '검토 결정 대기 n'(그 탭 행에 묶인 결과 중 review_status NEEDS_REVIEW 수, 0이면 숨김). 배지를 누르면 기존 explainReviewPending 설명 | 캡처 03·04 |
+ | 1-3-6 '진행상태' 통합 | 1059행 | D2: 카드 삭제. 실행 상태가 PARTIAL_COMPLETED·FAILED·CANCELLED일 때만 카드 아래 한 줄 '<상태>: … [사유 보기]'(기존 explainRunStatus). 진행 중은 기존 진행 막대 | 캡처 01 |
+ | 2 배포차단 사유 중복이면 삭제 | 1093~1112 renderGateReasons, 사유 문장 gate.py 216~263 | D3: 화면 패널과 GATE_LABELS 삭제. packages/report_engine/exporters.py 179~188행 엑셀 요약의 배포가능 상태·검증위험 지수·지수 성격·차단 사유·사람 검토 사유 행 삭제. gate.py·결과 JSON은 그대로 | 캡처 01, 엑셀 요약 시트 |
+ | 2-1 (남길 경우) 쉬운 말 | — | D3로 해당 없음 | — |
+ | 3 '작성주체 확률이 아니라 …' 삭제 | gate.py 137행 → 화면 gate-note, 엑셀 '지수 성격' | 화면·엑셀에서 빠짐(위 2와 함께). gate.py 데이터는 유지 | 캡처 01, 엑셀 |
+ | 5·5-2 'AI 작성 참고 신호 문구' 제목 반복 → 한 번 + 번호 목록 | app.js AI_DIAGNOSIS 결과를 결과마다 카드로 그림(ai_document_detector.py 890행이 근거별로 같은 제목 생성) | 화면에서 같은 (중요도, 제목) 결과를 카드 하나로 묶고 제목 옆 '(n건)', 근거는 ol 번호 목록. 결과 데이터 구조는 그대로 | 캡처 02 '(4건)' + 1~4 |
+ | 5-1 안내문 삭제 | index.html 13행 #aiTabNoticeBanner | 지운다 | 캡처 02 |
+ | 5-3 인젝션 경고 간소화 | app.js 1190행 | '프롬프트 인젝션 속임수 검증: AI 판단 왜곡 지시문 탐지 — 이 문서는 AI 검토에서 제외' 한 줄(격리 결과 해석에 필요한 마지막 구절은 계획 1절 5-3 판단대로 유지) | 캡처 02 |
+ | 6-0 검색 삭제 | index.html 14행 #findingSearch, app.js renderFindings의 검색어 필터·3314행 이벤트 | 입력창과 검색어 필터 코드를 함께 지운다(중요도 필터는 유지) | 캡처 03 |
+ | 6-1 HIGH 이상 안내 배너 삭제 | index.html 14행 #highSecurityAlertBanner, app.js 2510~2520 | 요소와 그 갱신 코드를 함께 지운다 | 캡처 03 |
+ | 6-2·7-1 위치 칸 넘침 | styles.css 483~492 .badge white-space:nowrap(위치 칸 폭 10%), 행 종류 배지가 label()에 한글 이름이 없어 영문 코드 그대로(app.js 53행·2339~2341) | 표 셀 안 배지만 줄바꿈 허용(td .badge {white-space:normal; overflow-wrap:anywhere; max-width:100%}). labels에 CITATION '인용'·FACT '사실관계'·TEMPORAL '적용 시점'·REFERENCE '참고문헌' 추가 | 캡처 03·04: 배지가 칸 안 |
+ | 6-3·7-2 셀 속 영문 코드 삭제 | 화면이 코드를 그대로 쓰는 곳(2430~2445 상태 코드 줄, reference_case_match) + 엔진 문장 속 코드('(RETROACTIVE_APPLICATION_ERROR)' 등) | ① 판정 배지와 겹치는 상태 코드 줄은 그리지 않는다(설명 문장 ai_generation_basis만). ② friendlyText에서 괄호 속 코드 '(XXX_YYY)'를 지우고, 남은 대문자 코드는 '코드→한글' 표(labels + CODE_WORDS)로 바꾼다. ③ 셀에 쓰는 문장(claim_text·verdict_label·설명·where)은 모두 friendlyText를 거친다. 표에 넣을 코드: OFFICIAL_NOT_FOUND·OFFICIAL_CONFIRMED·NOT_ASSESSED·NOT_CHECKED·NOT_MENTIONED·PENDING_REVIEW·UNVERIFIED_SCOPE·NOT_IN_REFERENCE·IN_REFERENCE·RETROACTIVE_APPLICATION_ERROR(사본의 한글 이름 그대로 옮겨도 된다) | 5절 '코드 잔존' 결과 |
+ | 6-4·7-3 '[RAG참고자료]' 삭제 | 사실관계 행 설명 앞 접두 | friendlyText에서 '[RAG참고자료]' 접두를 지운다 | 캡처 04 |
+ | 6-5·7-4 '참고문헌·구속력 없음, 공식 확인 아님' 셀 반복 삭제 | app.js 2194·2233·2348행 | D5: 셀 상자 제목은 '주요 참고문헌 대조', 위치 배지는 '참고문헌'. 대신 두 탭 표 위(#referenceStatus·#legalReferenceStatus 뒤)에 범례 한 줄 '주요 참고문헌은 등록된 검증 자료입니다. 판례·법령과 달리 법적 구속력은 없습니다.' | 캡처 03·04 |
+ | 6-6 미확인 범위 가독성 | app.js 2806~2812 접힌 회색 글 | 경고색 테두리 카드(details.unverified-card): 요약줄에 '미확인 범위 n건 — 인용 a · 참고자료 b'(unverified_items.kind별: citation 인용, reference_library 참고자료, 그 밖 기타), 펼치면 지금 목록 | 캡처 03 |
+ | 6-7·7-6 긴 셀 3~5줄 + 세부 보기 | 셀 전문 표시 | 문서 주장·설명·근거 문장에 .clamp(4줄, -webkit-line-clamp:4). 넘치면 바로 아래 '더보기' 버튼 → 같은 자리에서 펼침/'접기'. 별도 링크 대신 제자리 펼침(계획 1절 6-7 판단). 인쇄·보고서는 전문 | 캡처 03·04 '더보기' |
+ | 7-5 '의심 사유' 잘림 | app.js 2476~2483: 첫 문장(20~120자) 또는 97자에서 자르고 '…' | 자르지 않고 .clamp + 더보기. 단 '확인 대상'과 같은 글이면(공백 무시, 한쪽이 다른 쪽을 포함) 한 번만 보이고, 사유가 더 길면 그 전문을 '확인 대상' 줄에 쓴다(정보 손실 0) | 캡처 04 |
+ | D6-1 인젝션 결과의 영문 코드 | 제목 'META_INSTRUCTION 후보: ROLE_OVERRIDE — 경로: …', 설명 '분류=INSTRUCTION_LIKE', 'visible_text 위치', '(심각도 HIGH)', 검사한 층 encoded_text·outline | ① 결과 유형 이름(META_INSTRUCTION·HIDDEN_INSTRUCTION 등 FindingType)은 app.js에 적지 않는다 — 보호 시험 tests/acceptance/test_f1_protected.py T4(app.js의 FindingType 이름 3개 이하)와 충돌한다(사전 검증에서 확인). packages/common/finding_category_map.py에 FINDING_TYPE_SCREEN_NAMES(ADVERSARIAL_FINDING_TYPES 16종 → 한글)를 두고 apps/api/routers/projects.py get_finding_categories 응답에 "names"로 싣는다. friendlyText는 state.findingCategories.names를 먼저 본다. ② 의도(ROLE_OVERRIDE 등 InjectionIntent)·분류(INSTRUCTION_LIKE·PROMPT_INJECTION_LIKELY)·유니코드 신호(ZERO_WIDTH 등 unicode_scan kind)는 app.js CODE_WORDS. ③ 소문자 층·필드 이름은 LAYER_NAMES 보강(scanner.scanned_paths가 내는 이름 전부)과 FIELD_WORDS. ④ 심각도는 label() | 캡처 02, API 시험 |
+ | D6-2 영문 오류 문장 | packages/legal_engine/verifier.py 1237행 '공식 Source 조회…', 1261행 message가 'Multiple versions share the requested effective boundary' 등 영문 그대로 | 모듈 함수 _readable_source_message(message): packages.verification_engine.review_items.HUMAN_READABLE_UNVERIFIED_REASONS로 아는 문장은 한국어로 바꾸고 모르는 것은 그대로. 1261행 detail에 사용. '공식 Source' → '공식 출처' | 시험 + 캡처 03 |
+ | D6-3 '을(를)'·'이(가)' | packages/legal_engine/argument_validity_verifier.py 639·662~663행 '{noun}을(를)'·'{noun}이(가)' | noun이 '법령'이면 을/이, '판례'면 를/가로 고른다 | 시험 |
+ | (부수) AI 판별 생략 사유(D4 화면 쪽) | app.js modelOpinions | 의견이 2개 이상이고 Gemini를 부르지 않았으면 'Gemini: 두 모델 판정이 일치해 세 번째 의견은 묻지 않았습니다.'(판정이 엇갈렸는데 없으면 '이번 실행에서는 호출하지 않았습니다.') | 캡처 02 |
+ | (부수) AI 탭 설명문의 필드 이름 | ai_document_detector.py 605~610 SCORE_DEFINITIONS 'ai_score'·'finding.confidence', 판정 근거 목록 'AI_PARTIAL_GENERATION로 최종 확정함' | 화면에서 friendlyText로 '점수'·'값'·'일부 AI 작성'. 엔진 문장은 바꾸지 않는다 | 캡처 02 |
+
+2. 범위 밖(이번에 하지 않음 — 사용자 판단 후보로 보고)
+ - '출처가 확인되지 않는 항목' 탭 아래 접힌 '주요 참고문헌 검토 결과(RAG)' 처리 기록: 자료별 상태 코드(INDEXED_PARTIAL·REFERENCE_PARTIALLY_READ·NOT_SELECTED_METADATA 등)와 ISO 시각이 그대로 보인다. 원문 6-3은 '표 중 … 셀'이라 범위 밖으로 두었다.
+ - Word·PDF 보고서의 'AI 진단' 칸이 판정 코드(AI_PARTIAL_GENERATION 등)를 그대로 쓴다(docx_report.py 183행). 원문은 화면 기준이라 범위 밖.
+ - 6-1 계획의 선택 항목('AI 작성·보안 진단' 탭 버튼에 HIGH 이상 건수)은 넣지 않았다.
+
+3. 기존 시험과의 충돌(평가 측이 사용자 승인으로 고칠 단언 — 구현 측은 사본 패치의 시험 변경을 그대로 옮긴다)
+ 사본에 적용한 뒤 관련 시험 58파일을 돌려 13건이 옛 요구 단언으로 실패했다(8파일). 모두 원문이 없애거나 바꾸라고 한 것을 확인하던 단언이다. 사본에서 아래처럼 고쳐 통과를 확인했다(평가 측 재실행). **사용자 승인 대상**이며, 승인 뒤 구현 측은 패치의 시험 변경을 그대로 옮긴다(되돌리지 않는다).
+ | 시험 | 옛 단언 | 새 단언(근거) |
+ | test_f1_ai_security_tab_browser.py — test_ai_tab_renamed_and_notice_banner_visible | #aiTabNoticeBanner 보임 | 이름을 …_removed로, 배너 0개(5-1) |
+ | 같은 파일 — test_high_security_alert_banner_visible_and_jumpable | HIGH 배너 보임·점프 | …_removed: 배너 0개, 탭 버튼으로 이동(6-1) |
+ | test_f2_review_screen_browser.py — …_reason_truncation_and_location_display | 의심 사유 '…' 포함·120자 이하 | '…'로 끝나지 않음, .clamp, 더보기 누르면 .expanded(7-5) |
+ | 같은 파일 — test_f2_filters_search_severity_review_status | #findingSearch 검색 동작 | #findingSearch 0개(6-0). 중요도 필터 단언 유지 |
+ | test_frontend_gate.py — test_gate_reasons_are_shown_open_and_readable(2) | '배포 차단 — 사유 6건' 패널 | …_not_rendered: 카드 3개, 배포 판정 문구·사유 없음(D3) |
+ | test_frontend_metric_explain.py — …_metrics_explain_themselves(2) | '확인 전 항목'·'진행 상태' 카드 클릭 | 카드 없음. 출처 탭 '검토 결정 대기 2' 배지 → '검토 결정 대기란' 대화상자(성격별 건수 단언 유지), 상단 안내 '사유 보기' → '진행 상태: 일부 미확인' 대화상자(원인별 단언 전부 유지)(D1·D2) |
+ | test_frontend_summary_compact.py(3) | .metric 8개, '배포가능 상태'·'검증위험 지수' 보임 | 3개, 세 제목 보임, 없앤 다섯 제목 0개(1-3). 크기 단언 유지 |
+ | test_tk61_layout_browser.py — test_tk61_security_finding_items_vertical_layout | 모든 .security-finding-item에 '> .link-button'·'> small' | AI 작성 진단 묶음은 '머리 위·번호 목록 아래'를 따로 확인, 위아래 배치 단언은 나머지 항목에 그대로(5-2) |
+ | test_tk88_three_tier_review.py — test_frontend_app_js_classification_matches_specification | app.js에 '참고문헌(구속력 없음)' | app.js에 없음 + index.html 범례 '법적 구속력은 없습니다'(D5) |
+ (TK-156의 test_efficient_llm_routing.py 단언 2건은 TK-156 지시에 적는다.)
+
+4. 새 시험(구현 측이 추가)
+ 새 파일 tests/test_tk155_ui_cleanup.py — 평가 측 사본에 작성해 통과 확인. 패치의 파일을 그대로 옮겨도 된다(문장·사건번호·법령명은 모두 합성).
+ - 화면(Playwright): 엔진이 내는 코드 꼴을 흉내 낸 합성 결과(TEMPORAL·CITATION·FACT 행, 같은 제목 AI 신호 4건, 인젝션 결과, release_gate)로
+   ① 상단 .metric 3개, 출처 미확인 '2건'+'사건번호 형식 오류 1건 포함', 없앤 문구·배포 판정 사유 없음, eyebrow 없음, 빈 projectMeta 숨김, 사이드바 '미지정' 없음, 상단 코드 0
+   ② 사건번호·기준일 입력 시 projectMeta = '2026가합1 · 적용법령 기준 2025-01-02'
+   ③ AI 탭: 'AI 작성 참고 신호 문구' 묶음 1개·번호 근거 4개·'(4건)', 인젝션 한 줄, 안내 배너 없음, 카드 안 코드 0
+   ④ 출처·법리 탭 표: 코드 0, '[RAG참고자료]'·'구속력 없음' 없음, 셀 밖으로 나간 배지 0, 표 위 범례 있음
+   ⑤ 긴 의심 사유: '…' 없음, 전문이 DOM에 있음, '더보기'↔'접기'
+   ⑥ 검색창·HIGH 배너 없음, 미확인 범위 카드 '미확인 범위 2건'·'인용 1'·'참고자료 1'
+ - API: /api/finding-categories의 names가 ADVERSARIAL_FINDING_TYPES 16종 전부를 한글로 담음(기존 categories·tabs·counts 단언은 그대로).
+ - 단위: _readable_source_message(영문 → 한국어, 모르는 문장 그대로), argument_validity_verifier.py에 '{noun}을(를)'·'{noun}이(가)' 없음, to_xlsx 요약 시트에 배포 판정 다섯 행 없음.
+ - 고치기 전 코드(e57855f)에서는 화면·단위 9건 중 8건이 실패하고 대조 1건(②)은 통과한다(평가 측 확인). API 시험은 names가 없어 실패한다.
+
+5. 평가 측 사전 검증(평가 측 재실행, 사본 v1ui = e57855f + TK-155·156, SQLite, LV_ALLOW_NETWORK=0)
+ - 화면: case9 0.19.0 온라인 결과(run_dfde0992367c475f)로 실제 진입점(index.html)을 그려 캡처(전·후 4장씩). 영문 코드 꼴(대문자 XXX_YYY·소문자 xxx_yyy) 잔존 수 — 상단 요약, AI 탭 카드, 출처 탭 표, 법리 탭 표의 innerText, 개인정보 가림 토큰 제외:
+   case9 전 4·18·12·8 → 후 0·0·0·0
+   탐침 B 전 3·9·16·3 → 후 0·0·0·0 / 탐침 C 전 0·6·0·1 → 후 0 / 탐침 D(docx) 전 0·2·0·2 → 후 0
+   (표 밖 범위 밖 RAG 처리 기록에는 남는다 — 2절)
+   사전 검증 중 고친 빈틈: 모델 의견 문장 속 'reference_date', 탐침 B의 유니코드 신호 'ZERO_WIDTH', 스캐너 층 이름 'encoded_text'·'outline'이 처음 적용본에서 남아 표에 추가했다. 모델 문장은 실행마다 다른 식별자를 담을 수 있으므로 4절 ① 화면 시험으로 회귀를 막는다.
+ - 카드 건수: 출처 미확인 9건 = 출처 탭 요약 '총 9건(공식 DB 미확인 9건)', 무리한 주장 9건 = 법리 탭 9행.
+ - 의심 사유: 법리 탭 9행 모두 전문 유지(잘림 0). 같은 글 중복 6행은 한 번만 표시, 그중 3행은 더 긴 사유 전문으로 대체.
+ - 관련 시험: 관련 시험 58파일(바뀐 문구·요소를 참조하는 시험 + 화면 시험) 첫 실행에서 13건 실패(전부 3절 옛 요구 단언) → 단언 변경 뒤 통과. 이어 전체 시험에서 보호 시험 test_f1_protected T4 1건 실패(app.js에 FindingType 이름 6개) → 1절 D6-1 ①처럼 서버 배정표로 옮겨 통과
+ - 전체 시험: 사본 전체(e57855f + TK-155·156, SQLite, LV_ALLOW_NETWORK=0, 화면 시험 포함) 11,444건 통과·실패 0(건너뜀 11·예상 실패 24)
+ - 은퇴·고정 세트: 은퇴 5세트(기준 e57855f, 제품 파일 9개 변경) 53.3/48.6/56.9/45.8/34.1·오탐 0 → 같음(후퇴 없음), 고정 dev 82.6·holdout 81.9·오탐 0(0.19.0과 같음). 단 오프라인 측정은 화면·AI 판별 경로를 재지 못한다
+ - 미검증: 실제 운영 화면(브라우저 종류·글꼴 차이)에서의 4줄 줄임 위치, Word·PDF 보고서 모양(엑셀 요약 행 삭제만 시험으로 확인).
+
+6. 제출물·수용 기준
+ - PR 1개(제품: apps/web/index.html·static/app.js·static/styles.css, apps/api/routers/projects.py, packages/common/finding_category_map.py, packages/report_engine/exporters.py, packages/legal_engine/verifier.py·argument_validity_verifier.py; 시험: 4절 새 시험 + 3절 단언 변경). 보호 시험(tests/acceptance/)은 바꾸지 않는다.
+ - 수용 기준: 4절 시험 통과, 필수 CI 성공, 은퇴·고정 세트 득점 하락·오탐 증가 0, 1절 대응표 각 행의 '확인' 충족.
+ - 화면 수용 절차: PR에 case9(또는 같은 꼴 합성 결과) 실제 진입점 캡처 4장(상단·AI·출처·법리, 긴 문구 펼침 포함)과 1절 대응표를 붙인다 → 평가 측이 같은 캡처를 재현해 사용자께 보이고 **사용자 확인 뒤 수용**.
+ - 배포 후 사용자 확인: 온라인 case9에서 1절 대응표 항목 재확인.
+```
+
+### 2-38-2. TK-156
+
+```
+[TK-156(P2) AI 작성 판별은 늘 두 모델 + 엇갈리면 Gemini — 구현 지시]  기준: Steve_ACASiaLAW e57855f(0.19.0)  평가 측 사본: v1ui(커밋 전 작업 사본, 패치 docs/handoff/patches/TK-155_156_v1ui_on_e57855f.diff 중 router.py·test_efficient_llm_routing.py 부분)
+PR 대상 브랜치: Steve_ACASiaLAW(main 아님). TK-155(화면)와 별도 PR로 낸다.
+
+0. 사용자 원문(2026-11-13, 「프로그램 개선 소요 명세서 for V.1.0.0」 4번)과 결정
+ 원문: "4. AI 작성,보안 진단 - gemini 평가가 제외된 이유 분석 빛 해결방안 제시"
+ 결정 D4(11-13 "D1~D6 권고대로 진행"): 판별은 항상 두 모델(OpenAI·Anthropic), 엇갈리면 Gemini. 호출하지 않은 모델은 화면에 생략 사유 표시(화면 쪽은 TK-155 W3에 포함).
+
+ 원문 대응표(수용 기준)
+ | 원문 | 대응 | 확인 |
+ | gemini 평가가 제외된 이유 분석 | C1·C2(아래) | 판정서에 원인 기재 |
+ | 해결방안 제시 | F1(두 모델 고정, 엇갈리면 세 번째), TK-155 W3 생략 사유 표시 | 4절 시험 + 온라인 반복 측정 |
+
+1. 문제
+- case9 0.19.0 온라인 결과에서 AI 작성 판별에 Gemini 의견이 없다. 사용자는 Gemini가 '제외'된 것으로 보았다.
+- 같은 case9를 같은 조건으로 두 번 돌렸을 때 첫 모델 점수가 0.55·0.68로 갈렸고, 2회 중 1회는 판정이 유보됐다(0.19.0 run_2ed19999b01d47c0·run_dfde0992367c475f).
+
+2. 원인(파일·줄은 e57855f 기준)
+ C1. packages/llm_router/router.py 371행 `wanted = 1 if advisory else 2`: AI 작성 판별(advisory)은 OpenAI 한 모델로 시작한다.
+ C2. 같은 파일 387~392행: 첫 응답이 needs_additional_review(AI 작성 긍정 등)이거나 metadata_ai_hint·표본 추출(llm_review_sample_percent)에 걸릴 때만 wanted=2로 올려 Anthropic을 부른다. 세 번째(Gemini)는 두 의견이 엇갈릴 때만 부른다(conflicting).
+     → Gemini 제외는 결함이 아니라 효율 라우팅 설계다. 그러나 첫 모델 한 번의 응답이 '두 번째 의견을 부를지'와 최종 판정을 함께 가른다. 그래서 실행마다 판정이 흔들린다(1절 실측).
+
+3. 고칠 것
+ F1. router.py consult_all: advisory도 `wanted = 2`로 둔다. 387~392행의 '첫 응답 보고 올리기' 블록과, 그 때문에만 쓰던 import(sampled·needs_additional_review)를 지운다. 두 의견이 엇갈리면 세 번째를 부르는 기존 conflicting 경로는 그대로 둔다.
+     - routing.py의 sampled·needs_additional_review 함수는 지우지 않는다(sampled는 test_efficient_llm_routing.py 163~164행이 직접 시험한다).
+     - 법리 검토(is_argument_review)·일반 검토 경로는 바꾸지 않는다.
+ F2. 비용: 판별 호출이 문서당 최소 1회 늘어난다(사용자 결정 D4에서 감수). LV_LLM_EFFICIENT_ROUTING 끄면 동작은 지금과 같다(세 모델 모두).
+
+4. 확인 시험
+ - tests/test_efficient_llm_routing.py: authorship 판별 parametrize의 ("UNCERTAIN", False, 0, 1)·("HUMAN_AUTHORED_LIKELY", False, 0, 1)을 기대 호출 수 2로 바꾼다. **이 두 단언은 옛 요구(단일 모델 시작)를 담은 시험이라 사용자 결정 D4로 평가 측이 바꾼 것이다(CLAUDE.md 2026-10-25 규칙).** 사본의 변경을 그대로 옮긴다.
+ - 새 시험 test_authorship_disagreement_adds_third_provider: openai AI_PARTIAL_GENERATION / anthropic UNCERTAIN → 요청 3건(세 번째 호출).
+ - 기존 시험 유지: tests/test_efficient_llm_routing.py 나머지, LLM 라우터·AI 판별 시험(test_ai_document_detector 등).
+
+5. 평가 측 사전 검증(평가 측 재실행, 사본 v1ui = e57855f + TK-155·156 변경, SQLite, LV_ALLOW_NETWORK=0)
+ - test_efficient_llm_routing.py 47건 통과(단언 변경 2건·새 시험 1건 포함).
+ - 관련·전체 시험 결과: 사본 전체(e57855f + TK-155·156, SQLite, LV_ALLOW_NETWORK=0, 화면 시험 포함) 11,444건 통과·실패 0(건너뜀 11·예상 실패 24)
+ - 은퇴·고정 세트: 은퇴 5세트(기준 e57855f, 제품 파일 9개 변경) 53.3/48.6/56.9/45.8/34.1·오탐 0 → 같음(후퇴 없음), 고정 dev 82.6·holdout 81.9·오탐 0(0.19.0과 같음). 단 오프라인 측정은 화면·AI 판별 경로를 재지 못한다
+ - 미검증: 실제 모델 호출에서의 판정 안정성(온라인 필요). 오프라인 측정은 AI 작성 판별을 재지 못한다.
+
+6. 제출물·수용 기준
+ - PR 1개(제품: router.py, 시험: test_efficient_llm_routing.py — 단언 2건 변경은 평가 측 승인분, 새 시험 1건).
+ - 수용 기준: 4절 시험 통과, 필수 CI 성공, 은퇴·고정 세트 변화 0.
+ - 배포 후 사용자 측정(수용 조건): 온라인 case9를 같은 조건으로 3회 이상 실행해 ① 매 실행 모델별 판정이 2개 이상, ② 엇갈린 실행에는 Gemini 의견이 있음, ③ 판정 유보 비율이 0.19.0(2회 중 1회)보다 늘지 않음을 확인한다.
+```
