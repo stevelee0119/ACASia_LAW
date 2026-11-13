@@ -4515,3 +4515,53 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
   - 상세 변경은 docs/RELEASE_HISTORY.md 링크
 - CI(인용): pull_request 실행 전부 성공. 같은 SHA push 실행의 1건(test_regex_performance_ratio_under_8, 시간 비 8.6>8)은 #272와 무관한 러너 시간 변동이다. 실패 작업만 재실행했다.
 
+### 2-38-10. 사용자 'TK-127 시험 단언 변경 승인' (11-13) — #271 보완 2 전달판(2-38-8을 대체)
+
+```
+[#271(TK-155) 보완 지시 2 — D5를 Word·PDF 보고서에도 적용]  평가한 SHA: a4e0131  평가 측 사본: f18acb1(e57855f 기준)
+보완 패치: docs/handoff/patches/TK-155_supplement2_on_pr271_a4e0131.diff (a4e0131 → 사본 차이 전부, 5파일, git apply 가능)
+
+0. 판정 요약
+ - 보완 1은 그대로 반영됐다: a4e0131 = 평가 측 사본 c4953f4(router 제외 diff 0). 필수 CI 전부 성공(CI 결과 인용).
+ - 평가 측이 보완 1을 낸 뒤 D1~D6 반영 여부를 코드로 대조하다가 D5 빈틈 1건을 찾았다. 평가 측 지시 누락이며 구현 측 결함이 아니다.
+
+1. 문제·원인(줄 번호는 a4e0131 기준)
+ C1. D5 결정 원문: '셀마다 반복 삭제, 표 위 범례 한 줄로 한 번만'. 화면에는 적용됐으나 Word·PDF 보고서에는 적용되지 않았다.
+     - 화면: 변경 전 출처 탭 38회·법리 탭 9회 → 0회(범례 1줄).
+     - 보고서: packages/report_engine/reference_opinions.py basis_text 첫 줄이 '[참고문헌 대조] ' + NOTICE('참고문헌·구속력 없음, 공식 확인 아님')다.
+     - 이 문장이 참고문헌 대조 칸마다 붙는다. case9 Word·PDF 각 26회.
+ C2. '3. 법률적으로 무리한 주장' 표에도 참고문헌 대조 칸이 있다. 그런데 표 위 안내(REPORT_NOTICE)는 '2.' 표 위에만 있다.
+     - docx_report.py 224행·pdf_report.py 288행 참조.
+
+2. 고칠 것(보완 패치와 같음)
+ F1. reference_opinions.py
+     - LEGEND = "주요 참고문헌은 등록된 검증 자료입니다. 판례·법령과 달리 법적 구속력은 없습니다."(화면 범례와 같은 말)
+     - REPORT_NOTICE 끝을 NOTICE → LEGEND로 바꾼다.
+     - basis_text 첫 줄은 '[참고문헌 대조]'만 둔다.
+     - NOTICE import는 지운다(rag_engine.reference_binding.NOTICE 자체와 엑셀 '공식 여부' 열은 그대로).
+ F2. docx_report.py·pdf_report.py: '3. 법률적으로 무리한 주장' 표 위에도 REPORT_NOTICE를 한 번 둔다(표가 있을 때만).
+
+3. 확인 시험
+ - tests/test_tk155_ui_cleanup.py:
+   · Word·PDF 본문에 '구속력 없음' 없음
+   · 새 시험 test_report_reference_notice_is_a_legend_not_per_cell(basis_text에 '구속력' 없음, '[참고문헌 대조]'로 시작, 관계 '불부합', LEGEND ⊂ REPORT_NOTICE)
+ - 기존 시험 단언 변경 1건(사용자 승인 완료 11-13 "TK-127 시험 단언 변경 승인" — 패치의 변경을 그대로 옮긴다, 되돌리지 않는다):
+   · tests/test_tk127_stage2_drive_pipeline.py::test_four_reports_retain_unofficial_reference_opinions(매개변수 3개)
+   · 옛 단언: Word 칸마다 '공식 확인 아님'
+   · 새 단언: 칸에 '[참고문헌 대조]' 표지·'구속력 없음' 없음 + Word 본문에 LEGEND + PDF에 LEGEND·'공식 확인'
+   · 엑셀 '공식 여부' 열 단언 3개는 그대로.
+   · 근거: D5가 옛 TK-88·127 '칸마다 표시' 결정을 바꾼 것(V1_0_0_UI_IMPROVEMENT_PLAN 1절 6-5).
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본 f18acb1)
+ - case9 Word/PDF 칸별 '구속력 없음' 26/26 → 0/0, 표 위 안내 1회. 탐침 B는 표 2개에 안내 2회.
+ - 관련 시험(보고서·참고문헌·TK-88·TK-127·TK-155 등) 통과.
+ - 게이트: 평가 세트 문구 대조 '의심 없음', check_test_edits '삭제·표시 변경 없음', check_hardcoding_diff 통과, 보호 경로 변경 없음.
+ - 전체 시험: 사본 f18acb1(e57855f + TK-155 전체(보완 1·2)·TK-156, SQLite, LV_ALLOW_NETWORK=0, 화면 시험 포함) 전체 11,450건 통과·실패 0(건너뜀 11·예상 실패 24). 첫 실행의 실패 2건은 평가 측이 측정 환경에 numpy를 들인 탓(numpy가 있으면 openpyxl이 그것을 쓰고 대형 판례표 격리 추출 시험이 실패) — 환경 복원 뒤 재실행에서 통과. 운영 의존성에는 numpy가 없다(requirements.txt, pgvector 0.5.1 의존 없음)
+ - 미검증: 보고서를 받는 쪽(상대방·법원)의 오해 가능성 — 표 위 안내로 대체한 효과는 사용자 판단 사항이다.
+
+5. 제출물·수용 기준
+ - #271에 커밋 추가(보완 패치 2 적용).
+ - 수용 기준: 3절 시험 통과, 필수 CI 성공, precheck_pr 평가 세트 문구 대조 통과, 은퇴·고정 세트 변화 0.
+ - 화면·보고서 수용 절차: 평가 측이 최종 head로 캡처와 Word·PDF를 재현해 사용자께 보이고 **사용자 확인 뒤 수용**.
+```
+
