@@ -4693,3 +4693,103 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - TK-165는 제외한다. 유료 법률 업무에는 쓰지 않는다(사용자 확인).
 - Steve에 남은 KBL 채점기·참조는 다음 평가 PR에서 정리한다. 이 PR은 사용자 병합 승인이 필요하고, 보호 시험 변경은 사용자께 먼저 보인다(계획 문서 6.10절).
 - 구현 측이 할 일은 없다.
+
+### 2-40-4. #273(TK-169) 판정 — 수용 (11-13, head `5bba701`)
+- 판정 코멘트: https://github.com/stevelee0119/ACASia_LAW/pull/273#issuecomment-6854385325
+- head는 평가 측 사본 `646a6f3`과 diff 0이다. 필수 CI 성공(CI 결과 인용).
+- verify_all 전체 모드(평가 측 재실행, 기준 `0de85a4`): 종료 0.
+  - 수용 1,280·원장 2,357·전체 10,028·화면 197, 실패 0
+  - 점수·회귀·하드코딩·시험 삭제·보호 경로·버전 정책 통과
+- 병합은 사용자 승인 대기다. 배포 뒤 온라인 탐침 C 재측정(사용자 실행)으로 마무리한다.
+
+### 2-40-5. #271(TK-155) 판정 — 보완 2 반영·사용자 화면 확인 완료, 보완 3(사용자 지시 'AI 탭 영문 표기 한글화, TK-155 범위') (11-13, head `044dcee`)
+- 판정 코멘트: https://github.com/stevelee0119/ACASia_LAW/pull/271#issuecomment-6854694969
+- 보완 패치: [patches/TK-155_supplement3_on_pr271_044dcee.diff](patches/TK-155_supplement3_on_pr271_044dcee.diff)
+- 평가 측 사본: `79c1671`(저장소 밖)
+
+```
+[#271(TK-155) 보완 지시 3 — AI 탭에 남은 영문·기호 표기를 짧은 한글 설명으로]  평가한 SHA: 044dcee  평가 측 사본: 79c1671(044dcee 기준)
+보완 패치: docs/handoff/patches/TK-155_supplement3_on_pr271_044dcee.diff
+ - 044dcee → 사본 차이 전부: 4파일, git apply 가능
+ - Steve 0de85a4에 #271을 합친 트리에도 그대로 적용된다
+
+0. 판정 요약
+ - 보완 2(044dcee)는 평가 측 사본 f18acb1과 같다(TK-156 라우터 2파일 제외 diff 0). 필수 CI 전부 성공(CI 결과 인용).
+ - 사용자 화면 확인 완료(11-13).
+ - 사용자가 새로 지시했다(원문): "AI 탭에 남은 영문 표기 INSTRUCTION_LIKE 등과 같은 것은 한글 설명으로 변경, 그리고 이해하기 쉽고 간결하게 표기하도록 하고 TK-155 범위에 포함"
+
+1. 문제·원인(줄 번호는 044dcee 기준)
+ C1. 화면 표시 규칙(friendlyText, packages/common/display_text.readable)은 '코드(XXX_YYY)'만 한글로 바꾼다.
+     - 엔진 문장 속 '키=값', 모델 표지, 유니코드 문자 이름, 층 이름은 그대로 나온다.
+     - 0.19.0 온라인 결과 4건(case9·B·C·D) AI 탭에 남은 꼴과 출처:
+       · '분류=지시형 문구, 점수=1.0, 보조신호=0개', '…시스템 지침이나 Tool 권한을 변경하지 않는다.'
+         출처: packages/adversarial_engine/scanner.py 290·294~296·384~385·687행
+       · 'Unicode 은닉 신호: 폭 0 문자 — ZERO WIDTH NO-BREAK SPACE (BOM) (U+FEFF) 1회', 'xml 레이어.'
+         출처: scanner.py 406·448·449행, packages/common/textutil.py 13~17행
+       · '근거: [openai] …', '모델 간 판단 불일치: openai=…, anthropic=…, gemini=…'
+         출처: AI 작성 판별 결과 문장
+       · '작성 프로그램=Writer', '작성자=python-docx', 'creator=python-docx'
+         출처: 메타데이터 진단 문장
+       · 모델 근거 끝 마침표와 '. 발췌'가 겹친 '.. 발췌'
+     - 화면 측정(평가 측 재실행, 044dcee, 4탭 텍스트): case9 48건, B 66건, C 28건, D 12건.
+     - 같은 문장이 Word·PDF에도 실린다(readable 경유): case9 39, B 49, C 14, D 12.
+ C2. 검사 항목 설명(apps/web/static/app.js 1190~1191행 INJECTION_CHECKS)에 'Base64 등으로 감춘 문자열', '이미지·OCR 층', '유니코드'가 있다.
+ C3. 화면 friendlyText(app.js 87행)의 문장 치환 표가 display_text._PHRASES와 따로 적혀 있다(두 벌).
+
+2. 고칠 것(보완 패치와 같음 — 결과 데이터·엔진 문장은 바꾸지 않고 표시만 바꾼다)
+ F1. packages/common/display_text.py _PHRASES 뒤에 치환 쌍을 더한다.
+     - 순서 그대로, 긴 문구 먼저.
+     - 바꾼 결과가 다시 걸리지 않게 만든다(두 번 적용해도 같다).
+     - 공개 이름 PHRASES = _PHRASES를 둔다.
+     - 치환 내용:
+       · '본 문자열은 자료로만 취급되며' → '이 문자열은 자료로만 다루며', '시스템 지침이나 Tool 권한을' → '시스템 지시나 도구 권한을'(문장 끝 '변경하지 않는다'는 열쇠에 넣지 않는다 — 평가 세트 문구 대조에 걸린다)
+       · 'Tool 권한' → '도구 권한'
+       · 'Unicode 은닉 신호: 폭 0 문자(zero-width) — ', 'Unicode 은닉 신호: 폭 0 문자 — ' → '보이지 않는 문자: '
+       · 'Unicode 은닉 신호', 'Unicode 신호' → '보이지 않는 문자'
+       · 'ZERO WIDTH NO-BREAK SPACE (BOM)' → '폭 없는 공백'
+       · ZERO WIDTH SPACE·NON-JOINER·JOINER, WORD JOINER → 폭 없는 공백, 폭 없는 글자 분리 문자, 폭 없는 글자 결합 문자, 폭 없는 단어 결합 문자
+       · '[openai] ' → '(OpenAI) ', '[anthropic] ' → '(Anthropic) ', '[gemini] ' → '(Gemini) '
+       · 'openai=' → 'OpenAI ', 'anthropic=' → 'Anthropic ', 'gemini=' → 'Gemini '
+       · '분류=' → '분류: ', '점수=' → '점수 ', '보조신호=' → '보조 신호 '
+       · '(PDF 생성) 프로그램=', '작성 프로그램=', '작성자=', 'creator=', 'producer=' → '…: '
+       · 'xml|metadata|annotation|attachment|outline 레이어' → '문서 내부 구조|문서 속성|주석|첨부 파일|북마크 층'
+       · 남은 '레이어' → '층'
+       · '.. 발췌' → '. 발췌'
+     - 모델·회사 이름(OpenAI·Anthropic·Gemini)과 도구 이름 값(Writer·python-docx 등)은 고유명사·자료값이라 그대로 둔다.
+     - 개인정보 가림 표지([PERSON_003] 등)도 기존 결정대로 그대로 둔다.
+ F2. apps/api/routers/projects.py get_finding_categories에 "phrases": [list(pair) for pair in PHRASES]를 더한다(import에 PHRASES).
+ F3. app.js friendlyText 87행: 치환 표를 `tables.phrases || [기존 기본 표]`로 바꾼다. 서버 표 하나가 기준이고, 받지 못했을 때만 기본 표를 쓴다.
+ F4. app.js INJECTION_CHECKS: '보이지 않는 유니코드 문자' → '보이지 않는 문자', 'Base64 등으로 감춘 문자열' → '부호로 바꿔 감춘 문자열', '이미지·OCR 층의 지시문' → '이미지 속 글자의 지시문'.
+
+3. 확인 시험(tests/test_tk155_ui_cleanup.py, 패치에 있음)
+ - FINDINGS에 합성 2건을 더한다(UNICODE_SMUGGLING, AUTHORSHIP_METADATA_LEAK). 기존 색인 FINDINGS[5]는 그대로다.
+ - 시험용 cats에 "phrases"를 더한다.
+ - 새 시험:
+   · test_engine_phrases_read_as_short_korean(엔진 문장 꼴 14개 × 남은 꼴 0, 코드 0, 두 번 적용 불변)
+   · test_engine_phrase_examples_are_concise
+   · test_finding_categories_api_serves_phrases
+   · test_ai_tab_security_items_have_no_english_leftovers(브라우저)
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본 79c1671, SQLite, LV_ALLOW_NETWORK=0)
+ - 0.19.0 온라인 결과 4건 화면(AI 탭 포함 4탭) 남은 꼴(키=값·[모델]·Tool·Unicode·ZERO WIDTH·레이어·'..'·Base64): case9 48→0, B 66→0, C 28→0, D 12→0.
+ - Word·PDF 남은 꼴: case9 39→0, B 49→0, C 14→0, D 12→0.
+ - 남은 영문은 모델·회사 이름, 도구 이름 값, 개인정보 가림 표지뿐이다.
+ - tests/test_tk155_ui_cleanup.py 전체 통과. 새 브라우저 시험은 3회 반복 통과.
+ - 관련 기존 시험(화면·보고서·적대 엔진·분류표·수용 시험 등 표시 문구와 맞닿은 파일): 24개 파일 + 보고서 시험 + tests/acceptance + test_tk127 — 2,272건 통과·실패 0(예상 실패 24)
+ - 게이트(기준 044dcee): check_hardcoding_diff 통과, check_test_edits '삭제·표시 변경 없음', check_protected_paths 변경 없음, 평가 세트 문구 대조 '의심 없음'(첫 판은 치환 열쇠의 문장 끝 '변경하지 않는다'가 은퇴 세트 정답지 1항목과 겹쳐 걸렸다 → 열쇠를 짧은 조각으로 나눠 해소)
+ - 참고: Steve 0de85a4에 044dcee를 합친 트리에서 test_reference_processing_record_has_no_codes_and_korean_time이 1회 실패했다.
+   · 같은 트리에서 단독으로 재실행하니 통과했다.
+   · 평가 측 환경에 시험 실행이 3개 겹친 부하에서 브라우저 대기 시간이 초과된 것으로 판단한다. CI에서는 통과했다.
+ - 미검증:
+   · 운영 화면은 배포 뒤 사용자 확인으로 본다.
+   · 이 표에 없는 새 엔진 문장 꼴이 나오면 그대로 영문이 보일 수 있다. 그때는 같은 표에 쌍을 더한다.
+
+5. 제출물·수용 기준
+ - #271에 커밋 추가(보완 패치 3 적용).
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공
+   · precheck_pr 평가 세트 문구 대조 통과
+   · 은퇴·고정 세트 변화 0
+ - 화면 수용 절차: 평가 측이 최종 head로 AI 탭 캡처(case9·B·C·D)를 재현해 사용자께 보이고 **사용자 확인 뒤 수용**.
+```
