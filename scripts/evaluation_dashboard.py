@@ -11,16 +11,20 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from packages.evaluation import LabelRecord, PredictionRecord, evaluate_quality, load_jsonl
 from scripts.evaluation_v2 import compare_sets
-from scripts.evaluate_kbl import evaluate as evaluate_kbl
 
 
 def unmeasured(reason):
     return {"status": "NOT_MEASURED", "value": None, "reason": reason}
 
 
-def build(card, labels=None, predictions=None, origin=None, kbl_dataset=None, kbl_predictions=None):
-    if (labels is None) != (predictions is None) or (kbl_dataset is None) != (kbl_predictions is None):
-        raise ValueError("Supply both labels and predictions, and both KBL dataset and predictions")
+# 외부 벤치마크(KBL·영어권)는 적용하지 않는다(사용자 결정 2026-11-13). 미측정과 구분해 '미적용'으로 남긴다.
+NOT_APPLIED_PUBLIC_BENCHMARK = {"status": "NOT_APPLIED", "value": None,
+                                "reason": "External benchmarks are not applied (user decision 2026-11-13, benchmark plan 6.15); own Korean-law evaluation only"}
+
+
+def build(card, labels=None, predictions=None, origin=None):
+    if (labels is None) != (predictions is None):
+        raise ValueError("Supply both labels and predictions")
     baseline = json.loads((ROOT / "docs/scorecards/regression_v2_baseline.json").read_text(encoding="utf-8"))
     current = {k: card.get("sets", {}).get(k, {}).get("regression_v2") for k in baseline["sets"]}
     failures = compare_sets(current, baseline["sets"])
@@ -28,7 +32,7 @@ def build(card, labels=None, predictions=None, origin=None, kbl_dataset=None, kb
               "environment": card.get("environment"), "legal_quality_approval": "NOT_ESTABLISHED",
               "regression": {"status": "FAILED" if failures else "MEASURED", "failures": failures, "sets": current},
               "labeled_quality": unmeasured("Independent labels and bound actual product predictions required"),
-              "public_benchmark": unmeasured("No KBL prediction run supplied"),
+              "public_benchmark": dict(NOT_APPLIED_PUBLIC_BENCHMARK),
               "retrieval": unmeasured("Official source-span relevance labels required"),
               "legal_argument_validity": unmeasured("Independent legal application labels and claim-level outputs required"),
               "practice_utility": unmeasured("Independent lawyer review-time study required")}
@@ -53,16 +57,11 @@ def build(card, labels=None, predictions=None, origin=None, kbl_dataset=None, kb
             if provenance.get("output_sha256") != hashlib.sha256(Path(predictions).read_bytes()).hexdigest():
                 raise ValueError("Prediction export hash differs from its manifest")
             report["labeled_quality"]["export_provenance"] = provenance
-    if kbl_dataset is not None:
-        report["public_benchmark"] = evaluate_kbl(kbl_dataset, kbl_predictions)
-        benchmark = report["public_benchmark"]
-        if benchmark["status"] == "MEASURED" and benchmark["system_version"] != (card.get("git") or {}).get("sha"):
-            raise ValueError("KBL predictions belong to a different product SHA")
     return report
 
 
 def render(report):
-    lines = ["# 평가 v2 — 다층 측정", "", "법률 품질 승인: NOT_ESTABLISHED. 미측정은 0점 또는 통과가 아닙니다.", "",
+    lines = ["# 평가 v2 — 다층 측정", "", "법률 품질 승인: NOT_ESTABLISHED. 미측정은 0점 또는 통과가 아닙니다. NOT_APPLIED는 적용하지 않기로 결정한 층입니다.", "",
              "| 평가 층 | 상태 |", "|---|---|"]
     for key in ("regression", "labeled_quality", "public_benchmark", "retrieval", "legal_argument_validity", "practice_utility"):
         lines.append(f"| {key} | {report[key]['status']} |")
@@ -80,13 +79,10 @@ def main(argv=None):
     p.add_argument("--labels", type=Path)
     p.add_argument("--predictions", type=Path)
     p.add_argument("--origin", choices=["SYNTHETIC", "ATTORNEY_LABELED"])
-    p.add_argument("--kbl-dataset", type=Path)
-    p.add_argument("--kbl-predictions", type=Path)
     p.add_argument("--out", type=Path, required=True)
     a = p.parse_args(argv)
     try:
-        report = build(json.loads(a.scorecard.read_text(encoding="utf-8")), a.labels, a.predictions,
-                       a.origin, a.kbl_dataset, a.kbl_predictions)
+        report = build(json.loads(a.scorecard.read_text(encoding="utf-8")), a.labels, a.predictions, a.origin)
         report["scorecard_sha256"] = hashlib.sha256(a.scorecard.read_bytes()).hexdigest()
         a.out.parent.mkdir(parents=True, exist_ok=True)
         a.out.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
