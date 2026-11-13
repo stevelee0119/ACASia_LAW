@@ -5119,3 +5119,116 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - 병합 뒤 확인(평가 측 재실행, `b94750b`):
   - 두 PR의 새 시험과 보호 시험 test_ft_protected(T11 포함)가 통과했다.
   - TK-159 보완 패치는 `b94750b`에 그대로 적용된다(git apply --check). TK-159 지시는 Steve 최신 위에서 진행하면 된다.
+
+## 2-42. 법률 벤치마크 도입안 독립 검토 (11-13, 사용자 첨부 지시문 '상업적 이용 가능 법률 벤치마크 도입안')
+- 보고서: [../scorecards/benchmark_adoption_review_2026-11-13.md](../scorecards/benchmark_adoption_review_2026-11-13.md)(검토 SHA `b94750b`).
+- 판정:
+  - 전체 '일부 채택'.
+  - ContractNLI 조건부 채택(구성요소 시험).
+  - LegalBench-RAG·CUAD·MAUD·LegalBench·Harvey LAB 보류.
+  - KBL 제외(사용자 결정).
+- 평가 측 할 일:
+  - P0: KBL 경로 정리, EVALUATION_V2 5절 개정, 허용 목록
+  - P1: 자산 고정
+  - P3: 어댑터
+  - P4: 시범 실행(사용자 비용 승인)
+  - P5: 전체 실행
+
+### 2-42-1. BM-1·BM-2 지시(전달판)
+- 패치: [patches/BM-1_2_nli_component_on_b94750b.diff](patches/BM-1_2_nli_component_on_b94750b.diff)
+
+```
+[BM-1·BM-2 공개 벤치마크(ContractNLI) 구성요소 시험 기반 — 채점기와 판정 진입점]  검토 SHA: b94750b(Steve_ACASiaLAW)  평가 측 사본: a28a66f
+보완 패치: docs/handoff/patches/BM-1_2_nli_component_on_b94750b.diff
+ - b94750b → 사본 차이 전부: 제품 3파일(새 1) + 새 시험 2파일, git apply 가능
+근거 문서: docs/scorecards/benchmark_adoption_review_2026-11-13.md(평가 측 도입안 검토, 판정 '일부 채택' — ContractNLI만 조건부 채택)
+대상 릴리스: 0.20.0(사용자 원칙: 최초 의도한 개선은 해당 릴리스에 포함)
+
+0. 배경과 범위
+ - ContractNLI(CC BY 4.0, 공식 사이트 원문 확인)는 '주장 하나가 문서에 의해 지지·모순·언급 없음인가 + 근거 구간'을 묻는다.
+   · 제품의 참고자료 대조 판정(packages/rag_engine/review.py, 지지·모순·맥락·근거 부족)과 과제 구조가 같다.
+ - 평가 측이 이 판정 구성요소를 영문 원형 그대로 재기 위해 필요한 제품 쪽 변경 두 가지를 이 PR로 넣는다.
+   · 어댑터·실행·보고는 평가 측이 한다(scripts/benchmarks/, 실행 manifest, 대시보드 층).
+ - 이 PR은 모델을 호출하지 않는다. 운영 동작(문서 전체 참고자료 대조)은 바꾸지 않는다.
+ - 이 결과는 '영문 계약 NLI 구성요소 성적'일 뿐이다. 한국법 인용 진위나 주장 타당성의 성적이 아니다.
+
+1. 관측한 부족·근본 원인(줄 번호는 b94750b 기준)
+ C1. 판정 진입점 부재:
+     - packages/rag_engine/review.py 257행 review_document가 문서 선정(library.select)·관련성 문턱·분할(_split_sources_into_batches)·재시도와 판정 요청 생성을 한 루프(442~448행)에 묶고 있다.
+     - 판정만 따로 부를 방법이 없다.
+     - 그래서 평가 어댑터가 프롬프트(RAG_REVIEW_SYSTEM_PROMPT)·스키마(ENVELOPE_SCHEMA)·근거 검증(162행 grounded_observations)을 복제해야 한다. 그러면 운영과 다른 판정을 재거나, 어댑터에 판단이 숨어든다.
+ C2. 채점기 부재:
+     - packages/evaluation/quality.py는 오류 유형 다중 라벨 지표(precision/recall/F1·false VERIFIED)만 있다.
+     - 3분류 혼동행렬·macro-F1·근거 문자 구간 지표가 없어 ContractNLI 공식 지표를 재현할 수 없다.
+     - 실행 실패(모델 오류·미지원)를 분모에 남기는 규칙도 이 과제에는 따로 정의되어 있지 않다.
+
+2. 변경할 계약·구조(보완 패치와 같음 — 구현 방식은 바꿔도 되나 아래 입력·출력 의미와 실패 처리는 그대로)
+ F1. BM-1 새 packages/evaluation/nli.py(+ __init__ 내보내기)
+     - NLILabel(item_id, benchmark_id, benchmark_revision, document_id, case_family_id, hypothesis_id, split, label∈{ENTAILMENT, CONTRADICTION, NOT_MENTIONED}, spans=[[start,end)…])
+       · NOT_MENTIONED에 구간이 있으면 거절한다.
+       · 구간은 비어 있지 않고, 정렬되어 있으며, 겹치지 않아야 한다.
+     - NLIPrediction(item_id, run_id, system_version, benchmark_revision, execution_status∈{OK, ERROR, UNSUPPORTED}, label, spans)
+       · OK만 label을 가진다. ERROR/UNSUPPORTED는 label이 없다.
+     - evaluate_nli(labels, predictions, split="TEST", bootstrap_samples, seed)
+       · 거절: 중복 라벨·중복 예측·모르는 ID, 벤치마크 revision 섞임, run·system_version 섞임, case_family_id 분할 누출, 빈 집단.
+       · 누락·ERROR·UNSUPPORTED는 'MISSING' 결과로 분모에 남긴다. NOT_MENTIONED로 바꾸지 않는다.
+       · 지표: 혼동행렬(정답 3 × 결과 4), 클래스별 P/R/F1, macro-F1(3클래스 모두 정의될 때만), accuracy, completeness.
+       · 근거 구간: 관계가 맞은 항목만 문자 단위로 비교한다. 관계가 틀리면 구간 재현 0이다.
+       · 불확실성: case_family_id 단위 부트스트랩 macro-F1 95% 구간.
+       · claim_scope="CLAIM_DOCUMENT_RELATION_ONLY"와 notice(한국법·인용 진위·주장 타당성이 아님, NOT_MENTIONED는 거짓·부존재가 아님)를 싣는다.
+     - 기존 quality.py·schemas.py는 바꾸지 않는다.
+ F2. BM-2 packages/rag_engine/review.py
+     - build_review_request(document, sources, *, korean_profile, reference_date, batch):
+       · 442~448행의 LLMRequest 생성과 with_review_context를 이 함수로 옮긴다.
+       · review_document는 이 함수를 부른다. 요청 내용(system·user JSON·schema·max_tokens·metadata·input_contract)은 바이트 단위로 같아야 한다.
+     - judge_claim_against_sources(claim_text, sources, router, *, policy, korean_profile=False, reference_date=None) → dict
+       · 같은 요청·같은 역할(LLMRole.PRIMARY_REASONER)·같은 근거 검증(grounded_observations)으로 한 번 판정한다.
+       · 문서 선정·관련성 문턱·분할·재시도·법률 판단은 하지 않는다.
+       · 반환 status:
+         - NO_PROVIDER(공급자 없음)
+         - MODEL_FAILED(사용 안 됨·격리)
+         - REJECTED(봉투 스키마 위반)
+         - OK(관측 0개 이상)
+       · 그 밖의 반환값: observations(근거 검증을 통과한 것만), rejected(거절 사유), executions(실행 기록).
+ 보존할 동작:
+  - review_document의 요청·분할·재시도·관측 채택·기록은 그대로다.
+  - grounded_observations의 거절 규칙(QUOTE_NOT_GROUNDED·INVALID_ITEM_SCHEMA·INVALID_ENVELOPE)은 그대로다.
+
+3. 시험(패치에 있음 — 합성 값, 가짜 라우터, 네트워크 없음)
+ - 새 tests/test_bm1_nli_scoring.py(14건):
+   · 양성: 완전 일치 → macro-F1·span F1 1.0
+   · 음성: 누락·ERROR·UNSUPPORTED가 분모에 남고 NOT_MENTIONED로 세지지 않음
+   · 경계: 관계가 틀리면 구간 재현 0, 부분 겹침 0.5/0.5
+   · 교차: 중복·모르는 ID·revision 섞임·버전 섞임·분할 누출 거절, 잘못된 정답 구간 3꼴 거절, OK/ERROR 라벨 규칙, 사건군 단위 구간·범위 고지
+ - 새 tests/test_bm2_component_entry.py(5건):
+   · 요청이 운영 상수(system·schema·input_contract)와 같음
+   · 근거 있는 관측 반환
+   · 근거 없는 인용 거절(QUOTE_NOT_GROUNDED)
+   · 관측 0개는 OK
+   · NO_PROVIDER·MODEL_FAILED(사용 안 됨·격리) 명시
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본 a28a66f = b94750b + 패치, SQLite, LV_ALLOW_NETWORK=0)
+ - 새 시험 19건 통과.
+ - precheck_pr 전체 모드(+ 참고자료 대조·평가 계약 관련 기존 시험): 종료 0
+   · 고정 82.6 / 81.9 / 오탐 0 변화 0
+   · 은퇴 5세트 후퇴 없음
+   · 평가 세트 문구 대조 통과
+ - 게이트: check_hardcoding_diff 통과, check_test_edits '삭제·표시 변경 없음', check_protected_paths 변경 없음.
+ - 미검증:
+   · 실제 모델로 ContractNLI 문항을 판정한 성능(평가 측 P4 시범 실행, 사용자 비용 승인 뒤)
+   · 영문 NDA 전문을 참고자료 하나로 넣을 때의 길이 한도(시범 실행에서 확인)
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나.
+   · 제품: packages/evaluation/nli.py(새)·__init__.py, packages/rag_engine/review.py
+   · 시험: 새 시험 2파일
+   · 보호 시험(tests/acceptance/)은 바꾸지 않는다.
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공
+   · 고정·은퇴 세트 변화 0, 확인 오탐 0
+   · review_document 관련 기존 시험(참고자료 대조·Drive RAG) 통과
+ - 하지 말 것:
+   · 어댑터·정규화표(SUPPORTS→ENTAILMENT 등)를 제품 코드에 넣지 않는다. 평가 측 스크립트의 몫이다.
+   · 벤치마크 원문·정답을 저장소에 넣지 않는다.
+```
