@@ -29,6 +29,7 @@ from packages.common.schemas import Citation, EngineResult, Evidence, Finding, S
 from packages.common.textutil import contains_fuzzy, normalize_quote, similarity
 from packages.source_adapters import SourceRegistry
 
+from .evidence_basis import build_basis, quote_span
 from .components import citation_components, component_summary, identity_confirmed
 from .citation_format import code_court_family, court_family, format_violations
 from .authority_status import (ENBANC_PUBLICATION_LAG_DAYS, LegalVerificationStatus, classify_authority_status,
@@ -238,6 +239,8 @@ class LegalVerifier:
                 if v.status == VerificationStatus.VERIFIED else None,
                 "applicability": (v.review or {}).get("applicability") or "APPLICABILITY_UNREVIEWED",
                 "advisories": (v.review or {}).get("advisories", []),
+                # TK-159: 근거로 쓴 공식 원문의 식별자·구간과 근거 상태
+                "evidence_basis": build_basis(v),
             }
             for v in verdicts
         ]
@@ -495,6 +498,11 @@ class LegalVerifier:
                 level3 = "UNVERIFIED"
                 verdict.notes.append("공식 판결문 본문 미확보로 직접 인용 대조 불가 (요약본만 확보되어 본문 인용 대조 유보)")
             verdict.levels["level3"] = level3
+            # TK-159: 인용 대조에 쓴 공식 원문 구간(정규화 기준)을 남긴다.
+            span = quote_span(citation.quoted_text, official_text)
+            if span is not None:
+                span["field"] = "full_text+holding+summary" if has_full_text else "holding+summary"
+                verdict.review["quote_span"] = span
             if level3 == "CONTRADICTED":
                 verdict.status = VerificationStatus.CONTRADICTED
                 is_fabricated_quote = False
