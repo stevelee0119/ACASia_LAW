@@ -5361,3 +5361,10 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
   - Z2: KBL 어댑터
   - Z3: 시범(온라인, 모델 호출 0)
   - Z4: 사전 결정 규칙으로 유지·종료 판단
+
+### 2-43-2. #276(TK-159) 판정: 수용 (11-13)
+- head `5175a0c`는 사본 9eec3d9와 diff 0이다(평가 측 재실행). CI 성공(인용).
+- verify_all 전체(기준 bf93d3c):
+  - acceptance 1,280, full 10,038, browser 197: 실패 0.
+  - regression_ledger: 시간 예산 시험 1건이 평가 측 동시 부하로 실패했다. 이 PR은 `classify_claims` 경로를 바꾸지 않는다. 부하 없이 재실행하니 3회 통과, `tests/regression` 2,357건 통과.
+- 수용 코멘트를 게시했다. 병합은 사용자 승인으로 한다. 병합 뒤 TK-160 지시(2-41-5)를 낸다.
