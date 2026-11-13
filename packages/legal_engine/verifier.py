@@ -80,6 +80,16 @@ _OPPONENT_CLAIM_RE = re.compile(
     r"[^.。]{0,200}?(?:주장|원용)(?:한다|하나|하지만|하였|했|하며|하는|함)")
 
 
+def _readable_source_message(message: str) -> str:
+    """조회 어댑터의 영문 오류 문장을 사람 말로 바꾼다(V1.0.0 D6). 모르는 문장은 그대로 둔다."""
+    from packages.verification_engine.review_items import HUMAN_READABLE_UNVERIFIED_REASONS
+    text = str(message or "")
+    for raw, readable in HUMAN_READABLE_UNVERIFIED_REASONS.items():
+        if raw in text:
+            text = text.replace(raw, readable + ".")
+    return text
+
+
 class LegalVerifier:
     def __init__(self, registry: Optional[SourceRegistry] = None, *, references: Any = None) -> None:
         self.registry = registry or SourceRegistry()
@@ -1234,7 +1244,7 @@ class LegalVerifier:
         features = {"heuristic_only": False, "source_count": 0, "reason_code": reason,
                     "retryable": reason in ("RATE_LIMITED", "SOURCE_TIMEOUT")}
         explanation = ("공식 목록의 법령 식별자가 없거나 모호하여 정확한 법령을 선택하지 못했다. "
-                       if reason == "IDENTITY_AMBIGUOUS" else "공식 Source 조회를 완료하지 못했다. ")
+                       if reason == "IDENTITY_AMBIGUOUS" else "공식 출처 조회를 완료하지 못했다. ")
         # 학술/간행물 인용은 ACADEMIC_CITATION_ERROR, 판례는 CASE_NOT_FOUND, 그 외는 LAW_CITATION_ERROR
         finding_type = (
             FindingType.CASE_NOT_FOUND if citation.type == CitationType.CASE
@@ -1258,7 +1268,7 @@ class LegalVerifier:
             evidence_grade=EvidenceGrade.U,
             title=f"검증하지 못한 인용: {citation.raw_text}",
             detail=(
-                f"{message} {explanation}이 항목은 미검증으로 남는다. "
+                f"{_readable_source_message(message)} {explanation}이 항목은 미검증으로 남는다. "
                 "미검증은 오류가 없다는 의미가 아니다."
             ),
             confidence=confidence_score(features),

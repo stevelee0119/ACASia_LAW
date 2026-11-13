@@ -556,6 +556,8 @@ async def verify_argument_validity(
 
         statute = c.type in (CitationType.STATUTE, CitationType.ADMIN_RULE)
         noun = "법령" if statute else "판례"
+        # 받침에 맞는 조사(V1.0.0 D6: '판례을(를)' 같은 조사 오류 제거). 법령은 받침 있음, 판례는 받침 없음.
+        obj, subj = ("을", "이") if statute else ("를", "가")
 
         if contradiction:
             distortion_type = item.get("distortion_type")
@@ -636,7 +638,7 @@ async def verify_argument_validity(
             )
             verdict_text = "출처 한계 확인 불가 (판결문 사본 제출 필요)"
             legal_reason = (f"하급심 판례는 공식 DB에 전문이 수록되지 않을 수 있으므로, 판결문 사본을 확보하기 전까지는 "
-                            f"그 주장의 근거가 확정되지 않습니다. {noun}이(가) 실재하지 않는다는 뜻은 아닙니다.")
+                            f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 실재하지 않는다는 뜻은 아닙니다.")
             counteraction = "상대방에게 판결문 사본 제출을 요청하거나 법원 판결서 열람 서비스를 통해 확인 후 변론할 것."
             auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
         elif basis == "CONFIRMED_NONEXISTENT":
@@ -659,8 +661,8 @@ async def verify_argument_validity(
                  "부존재나 임의 생성으로 단정하지 않음.")
             )
             verdict_text = "공식 DB 미확인 (원문 확인 필요)"
-            legal_reason = (f"공식 DB에서 확인하지 못한 {noun}을(를) 근거로 삼고 있어, 원문을 확인하기 전까지 "
-                            f"그 주장의 근거가 확정되지 않습니다. {noun}이(가) 존재하지 않는다는 뜻은 아닙니다.")
+            legal_reason = (f"공식 DB에서 확인하지 못한 {noun}{obj} 근거로 삼고 있어, 원문을 확인하기 전까지 "
+                            f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 존재하지 않는다는 뜻은 아닙니다.")
             counteraction = (
                 ("정식 법령명·약칭·시행 여부를 국가법령정보센터에서 다시 확인하고, 조문 원문과 대조할 것."
                  if statute else

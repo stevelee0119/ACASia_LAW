@@ -1,4 +1,8 @@
-"""배포가능 판정 사유는 누르지 않아도 보여야 한다."""
+"""배포가능 판정(배포 차단·사람 검토 사유·검증위험 지수)은 화면에 보이지 않는다.
+
+V1.0.0 명세 1-3-2·1-3-3·2·3과 사용자 결정 D3(2026-11-13)로 옛 요구('사유는 누르지 않아도 보여야 한다')를 바꾼
+단언이다(사용자 승인). 결과 데이터 scores.release_gate는 그대로 받으며 화면만 그리지 않는다.
+"""
 import os
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -15,7 +19,7 @@ GATE = {"release_gate": "BLOCK", "hallucination_risk": 72,
 
 
 @pytest.mark.parametrize("width,height", [(1440, 1000), (390, 1400)])
-def test_gate_reasons_are_shown_open_and_readable(width, height):
+def test_gate_reasons_are_not_rendered(width, height):
     static = ROOT / "apps/web/static"
     files = {f"/static/{p.relative_to(static).as_posix()}": p for p in static.rglob("*") if p.is_file()}
     files["/"] = ROOT / "apps/web/index.html"
@@ -51,17 +55,12 @@ def test_gate_reasons_are_shown_open_and_readable(width, height):
             page.route("**/*", respond)
             page.goto("http://gate.test/")
             select_first_project(page)
-            reasons = page.get_by_role("region", name="배포가능 판정 사유")
-            expect(reasons).to_contain_text("배포 차단 — 사유 6건")
-            assert page.locator("#summary details").count() == 0, "접힌 상자에 숨기지 않는다"
-            # 누르지 않은 상태에서 여섯 사유가 모두 화면에 있다.
-            for reason in GATE["hard_block_reasons"][:2] + GATE["review_reasons"]:
-                expect(reasons.get_by_text(reason, exact=True)).to_be_visible()
-            expect(reasons.get_by_text("출처 미확인 판례가 핵심 주장의 근거")).to_be_visible()
-            expect(reasons.locator(".gate-group-block h3")).to_have_text("배포 차단 사유 3건")
-            expect(reasons.locator(".gate-group-review h3")).to_have_text("사람 검토 사유 3건")
-            size = reasons.locator("li").first.evaluate("el => parseFloat(getComputedStyle(el).fontSize)")
-            assert size >= 16
+            expect(page.locator("#summary .metric")).to_have_count(3)
+            expect(page.get_by_role("region", name="배포가능 판정 사유")).to_have_count(0)
+            summary = page.locator("#summary")
+            for text in ["배포 차단", "배포가능", "검증위험", "사람 검토 사유", GATE["risk_index_note"],
+                         *GATE["hard_block_reasons"], *GATE["review_reasons"]]:
+                expect(summary).not_to_contain_text(text)
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.close()
         finally:

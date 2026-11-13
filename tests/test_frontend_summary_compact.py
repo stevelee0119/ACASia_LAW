@@ -1,5 +1,7 @@
-"""요약표(검토에 포함·배포가능 상태·검증위험 지수·AI 작성 진단 …)는 작은 글씨·좁은 여백으로 낮게 보인다(0.9.9).
-배포가능 판정 사유 목록은 종전처럼 크게 읽힌다(test_frontend_gate)."""
+"""요약표는 작은 글씨·좁은 여백으로 낮게 보인다(0.9.9).
+
+V1.0.0 명세 1-3(사용자 승인으로 단언 변경): 요약은 'AI 작성 진단'·'출처 미확인 인용'·'법률적으로 무리한 주장' 3칸이다.
+배포가능 상태·검증위험 지수 칸은 없다(배포 판정 화면 미표시는 test_frontend_gate)."""
 import os
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -59,7 +61,7 @@ def test_summary_metrics_are_compact(width, height, max_cell, tmp_path):
             page.goto("http://summary.test/")
             select_first_project(page)
             metrics_locator = page.locator("#summary .metric")
-            expect(metrics_locator).to_have_count(8)
+            expect(metrics_locator).to_have_count(3)
             sizes = metrics_locator.evaluate_all("""cells => cells.map(cell => {
                 const strong = cell.querySelector('strong');
                 const span = cell.querySelector('span');
@@ -69,11 +71,13 @@ def test_summary_metrics_are_compact(width, height, max_cell, tmp_path):
                     height: cell.getBoundingClientRect().height
                 };
             })""")
-            assert len(sizes) == 8
+            assert len(sizes) == 3
             assert all(0 < s["value"] <= 18.5 and 0 < s["title"] <= 12.5 for s in sizes), sizes
             assert all(s["height"] <= max_cell for s in sizes), [round(s["height"]) for s in sizes]
-            for title in ("배포가능 상태", "검증위험 지수", "AI 작성 진단"):
+            for title in ("AI 작성 진단", "출처 미확인 인용", "법률적으로 무리한 주장"):
                 expect(page.locator(".metric", has_text=title)).to_be_visible()
+            for title in ("배포가능 상태", "검증위험 지수", "검토에 포함", "확인 전 항목", "진행 상태"):
+                expect(page.locator(".metric", has_text=title)).to_have_count(0)
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.evaluate("switchTab('review')")
             page.get_by_text("준비서면.pdf: 추가 관련 법조문 검토", exact=True).click()
