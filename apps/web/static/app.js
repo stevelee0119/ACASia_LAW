@@ -748,12 +748,28 @@ function dateText(value) {
   return value ? new Date(/(Z|[+-]\d{2}:\d{2})$/i.test(value) ? value : `${value}Z`).toLocaleString("ko-KR") : "";
 }
 
+function syncMobileBottomNav(activeKey) {
+  const nav = $("mobileBottomNav");
+  if (!nav) return;
+  const mapped = ["ai-verification", "review", "legal-claims"].includes(activeKey) ? "review" : activeKey;
+  nav.querySelectorAll("[data-mobile-nav]").forEach(btn => {
+    const isCurrent = btn.dataset.mobileNav === mapped;
+    btn.classList.toggle("active", isCurrent);
+    btn.setAttribute("aria-current", isCurrent ? "page" : "false");
+  });
+}
+
 function switchTab(tab) {
   document.querySelectorAll("[data-tab]").forEach(el => {
     el.classList.toggle("active", el.dataset.tab === tab);
     el.setAttribute("aria-current", el.dataset.tab === tab ? "page" : "false");
   });
   document.querySelectorAll("[data-panel]").forEach(el => el.hidden = el.dataset.panel !== tab);
+  const overview = $("templateAOverview");
+  if (overview) overview.hidden = tab !== "documents";
+  const overviewBtn = $("overviewToggleBtn");
+  if (overviewBtn) overviewBtn.classList.toggle("active", tab === "documents");
+  syncMobileBottomNav(tab);
   workflowUI.activate(tab).catch(e => toast(e.message));
 }
 async function loadProjects() {
@@ -769,9 +785,13 @@ async function updateSidebarHeader() {
     if (sideTitleEl && me && me.email) {
       const affil = me.affiliation || "종합행정학교 법무교육단";
       const name = me.display_name || me.email.split("@")[0];
+      const msgRow = node("span", null, "user-proj-msg");
+      const badge = node("span", null, "user-proj-icon");
+      badge.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/><line x1="2" x2="22" y1="18" y2="18"/></svg>';
+      msgRow.append(badge, node("span", `${name}님의 프로젝트`));
       sideTitleEl.replaceChildren(
         node("span", affil, "user-affil"),
-        node("span", `${name}님의 프로젝트`, "user-proj-msg")
+        msgRow
       );
     }
   } catch (e) {
@@ -780,6 +800,13 @@ async function updateSidebarHeader() {
 }
 
 function renderProjects() {
+  const tools = document.querySelector("#sidebar .sidebar-tools");
+  const head = $("sidebarSectionHead");
+  if (tools && head && head.previousElementSibling !== tools) {
+    head.before(tools);
+  }
+  const countEl = $("sidebarProjectCount");
+  if (countEl) countEl.textContent = `(${state.projects.length})`;
   const query = $("projectSearch").value.toLowerCase();
   $("projectList").replaceChildren();
   for (const p of state.projects.filter(p => `${p.name} ${p.case_number||""}`.toLowerCase().includes(query))) {
@@ -837,6 +864,19 @@ function renderProject() {
   const p = state.project;
   if (!p) return;
   $("projectTitle").textContent = p.name;
+  const crumb = $("breadcrumbProjectName");
+  if (crumb) crumb.textContent = p.name;
+  const statusPill = $("projectStatusBadge");
+  if (statusPill) {
+    const busy = state.run && !terminal(state.run);
+    const st = !state.run ? ["검증 대기", "idle"]
+      : busy ? ["검증 진행 중", "running"]
+      : state.run.state === "COMPLETED" ? ["검증 완료", "completed"]
+      : state.run.state === "PARTIAL_COMPLETED" ? ["일부 미확인", "warning"]
+      : [label(state.run.state), "danger"];
+    statusPill.textContent = st[0];
+    statusPill.className = `project-status-pill status-${st[1]}`;
+  }
   const meta = [p.case_number, p.court, p.incident_date ? `적용법령 기준 ${p.incident_date}` : ""].filter(Boolean).join(" · ");
   $("projectMeta").textContent = meta;
   $("projectMeta").hidden = !meta;
@@ -860,6 +900,7 @@ function renderProject() {
   renderSummary();
   renderTimeline();
   operationsUI.renderJobControls();
+  decorateJobControls();
   projectTools.renderControls();
   syncPrivacyAck();
   $("reportScope").textContent = state.run ? `${dateText(state.run.started_at)} · 자료 ${state.run.document_ids.length}개 · ${label(state.run.state)}${$("staleNotice").hidden?"":" · 변경 전 자료 기준"}` : "검증 결과가 없습니다.";
@@ -867,6 +908,32 @@ function renderProject() {
   const reportReady = ["COMPLETED","PARTIAL_COMPLETED"].includes(state.run?.state);
   $("reportBtn").disabled = !reportReady;
   $("reportBtn").title = reportReady ? "완료된 검증 결과로 검토 보고서를 생성합니다" : "검증이 끝나면 보고서를 생성할 수 있습니다";
+}
+
+function decorateJobControls() {
+  const jc = $("jobControls");
+  if (!jc) return;
+  const activeTab = document.querySelector(".tabs button.active")?.dataset?.tab || "documents";
+  const overviewBtn = button("프로젝트 개요", () => {
+    const overview = $("templateAOverview");
+    if (overview) overview.hidden = false;
+    switchTab("documents");
+    window.scrollTo({top: 0, behavior: "smooth"});
+  }, `subnav-overview-btn${activeTab === "documents" ? " active" : ""}`);
+  overviewBtn.id = "overviewToggleBtn";
+  const homeIcon = node("i");
+  homeIcon.dataset.lucide = "home";
+  overviewBtn.prepend(homeIcon);
+  for (const btn of jc.querySelectorAll("button")) {
+    const txt = btn.textContent.trim();
+    if (txt === "검증 이력" && !btn.querySelector("i, svg")) {
+      const ic = node("i"); ic.dataset.lucide = "clock"; btn.prepend(ic);
+    } else if (txt === "작업 기록" && !btn.querySelector("i, svg")) {
+      const ic = node("i"); ic.dataset.lucide = "list-filter"; btn.prepend(ic);
+    }
+  }
+  jc.prepend(overviewBtn);
+  icons();
 }
 
 // 업로드 개인정보 안내 설정 상태 (하드코딩 대체 문구 배제, API 동적 로드 전용)
@@ -1066,6 +1133,24 @@ function handlePrivacyConfirm() {
 }
 
 
+const TEMPLATE_A_SVGS = {
+  layers: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M14 3.5L25 9.2L14 14.9L3 9.2L14 3.5Z" fill="#a7f3d0" stroke="#0d9488" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 14L14 19.7L25 14" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 18.8L14 24.5L25 18.8" stroke="#0f766e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  people: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><circle cx="10.5" cy="9.5" r="4" fill="#fde68a" stroke="#d97706" stroke-width="1.8"/><path d="M3.5 22.5C3.5 18.9 6.6 16.2 10.5 16.2C14.4 16.2 17.5 18.9 17.5 22.5" fill="#fef3c7" stroke="#d97706" stroke-width="1.8" stroke-linecap="round"/><circle cx="18.8" cy="10.5" r="3.2" fill="#fed7aa" stroke="#ea580c" stroke-width="1.7"/><path d="M18.5 16.5C21.7 16.7 24.3 19 24.5 22.2" stroke="#ea580c" stroke-width="1.7" stroke-linecap="round"/></svg>`,
+  shield: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M14 3.2L22.5 6.8V13.6C22.5 19.1 18.8 23.4 14 25C9.2 23.4 5.5 19.1 5.5 13.6V6.8L14 3.2Z" fill="#ccfbf1" stroke="#0d9488" stroke-width="1.8" stroke-linejoin="round"/><path d="M10.3 14.1L12.9 16.7L18.1 11.5" stroke="#0f766e" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  aiChip: `<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="#6366f1" stroke-width="1.8" stroke-linecap="round"><line x1="11" y1="2.5" x2="11" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/><line x1="21" y1="2.5" x2="21" y2="6.5"/><line x1="11" y1="25.5" x2="11" y2="29.5"/><line x1="16" y1="25.5" x2="16" y2="29.5"/><line x1="21" y1="25.5" x2="21" y2="29.5"/><line x1="2.5" y1="11" x2="6.5" y2="11"/><line x1="2.5" y1="16" x2="6.5" y2="16"/><line x1="2.5" y1="21" x2="6.5" y2="21"/><line x1="25.5" y1="11" x2="29.5" y2="11"/><line x1="25.5" y1="16" x2="29.5" y2="16"/><line x1="25.5" y1="21" x2="29.5" y2="21"/></g><rect x="6.5" y="6.5" width="19" height="19" rx="4" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.8"/><rect x="9.5" y="9.5" width="13" height="13" rx="2.2" fill="#ffffff" stroke="#818cf8" stroke-width="1.2" stroke-dasharray="2 1.5"/><text x="16" y="18.6" text-anchor="middle" fill="#4338ca" font-size="8.2" font-weight="800" font-family="Pretendard, sans-serif">AI</text></svg>`,
+  warningTriangle: `<svg viewBox="0 0 44 44" fill="none" aria-hidden="true"><defs><linearGradient id="warnGrad" x1="22" y1="4" x2="22" y2="39" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#fde047"/><stop offset="55%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/></linearGradient></defs><path d="M20.1 6.8C20.9 5.3 23.1 5.3 23.9 6.8L39.6 34.8C40.4 36.2 39.4 38 37.7 38H6.3C4.6 38 3.6 36.2 4.4 34.8L20.1 6.8Z" fill="url(#warnGrad)" stroke="#92400e" stroke-width="2"/><path d="M22 15.5V25.5" stroke="#451a03" stroke-width="3" stroke-linecap="round"/><circle cx="22" cy="31.2" r="1.9" fill="#451a03"/></svg>`,
+  gavelScales: `<svg viewBox="0 0 180 150" fill="none" aria-hidden="true"><circle cx="105" cy="64" r="52" fill="#fef3c7" fill-opacity="0.65"/><g stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"><line x1="105" y1="16" x2="105" y2="88"/><path d="M70 32C82 36 128 36 140 32"/><line x1="74" y1="33" x2="62" y2="60"/><line x1="74" y1="33" x2="86" y2="60"/><path d="M59 60C62 67 86 67 89 60H59Z" fill="#ffffff" fill-opacity="0.7"/><line x1="136" y1="33" x2="124" y2="60"/><line x1="136" y1="33" x2="148" y2="60"/><path d="M121 60C124 67 148 67 151 60H121Z" fill="#ffffff" fill-opacity="0.7"/><path d="M88 88H122"/></g><circle cx="64" cy="24" r="2" fill="#fbbf24"/><circle cx="148" cy="22" r="2.2" fill="#fbbf24"/><circle cx="156" cy="48" r="1.6" fill="#f59e0b"/><path d="M46 116L108 104L162 116L100 130L46 116Z" fill="#0f766e" stroke="#115e59" stroke-width="1.5"/><path d="M46 116V127L100 140L162 126V116" fill="#fef3c7" stroke="#0f766e" stroke-width="1.5"/><path d="M46 126L100 139L162 125" stroke="#d97706" stroke-width="1.2" opacity="0.6"/><ellipse cx="132" cy="117" rx="18" ry="6.5" fill="#92400e" stroke="#78350f" stroke-width="1.4"/><ellipse cx="132" cy="114.5" rx="15" ry="5" fill="#b45309"/><g transform="rotate(-28 96 86)"><rect x="64" y="83" width="56" height="8" rx="4" fill="#b45309" stroke="#78350f" stroke-width="1.3"/><rect x="106" y="72" width="18" height="30" rx="4" fill="#d97706" stroke="#78350f" stroke-width="1.4"/><rect x="112" y="72" width="6" height="30" fill="#fbbf24"/><ellipse cx="106" cy="87" rx="2.5" ry="15" fill="#f59e0b"/><ellipse cx="124" cy="87" rx="2.5" ry="15" fill="#b45309"/></g></svg>`,
+  reportDoc: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M7 3.5H16.8L22 8.7V23C22 23.8 21.3 24.5 20.5 24.5H7C6.2 24.5 5.5 23.8 5.5 23V5C5.5 4.2 6.2 3.5 7 3.5Z" fill="#d1fae5" stroke="#0d9488" stroke-width="1.8" stroke-linejoin="round"/><path d="M16.5 3.5V9H22" stroke="#0d9488" stroke-width="1.8" stroke-linejoin="round"/><line x1="9.5" y1="13.5" x2="18" y2="13.5" stroke="#0f766e" stroke-width="1.8" stroke-linecap="round"/><line x1="9.5" y1="17.2" x2="18" y2="17.2" stroke="#0f766e" stroke-width="1.8" stroke-linecap="round"/><line x1="9.5" y1="20.8" x2="14.5" y2="20.8" stroke="#0f766e" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  dbCylinder: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><ellipse cx="14" cy="6.8" rx="8.5" ry="3.3" fill="#bbf7d0" stroke="#16a34a" stroke-width="1.8"/><path d="M5.5 6.8V14C5.5 15.8 9.3 17.3 14 17.3C18.7 17.3 22.5 15.8 22.5 14V6.8" stroke="#16a34a" stroke-width="1.8"/><path d="M5.5 14V21.2C5.5 23 9.3 24.5 14 24.5C18.7 24.5 22.5 23 22.5 21.2V14" fill="#dcfce7" stroke="#16a34a" stroke-width="1.8"/></svg>`,
+  scaleJustice: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><line x1="14" y1="4" x2="14" y2="23.5" stroke="#7c3aed" stroke-width="1.9" stroke-linecap="round"/><path d="M6 8.2H22" stroke="#7c3aed" stroke-width="1.9" stroke-linecap="round"/><path d="M6.5 8.2L3.8 15.2H9.2L6.5 8.2Z" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.6" stroke-linejoin="round"/><path d="M21.5 8.2L18.8 15.2H24.2L21.5 8.2Z" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.6" stroke-linejoin="round"/><path d="M9.5 23.5H18.5" stroke="#6d28d9" stroke-width="2" stroke-linecap="round"/></svg>`
+};
+
+function svgEl(markup, cls = "kpi-svg-icon") {
+  const wrap = node("div", null, cls);
+  wrap.innerHTML = markup;
+  return wrap;
+}
+
 function renderSummary() {
   $("summary").replaceChildren();
   let aiStatus = "미분석";
@@ -1092,16 +1177,46 @@ function renderSummary() {
 
   const sourceCount = fakeCaseCount + unconfirmedCount;
   const legalCount = state.reviewTierCounts ? state.reviewTierCounts[3] : null;
+  const totalDocs = state.documents.length || state.project?.document_count || 0;
+  const includedDocs = state.documents.length ? state.documents.filter(d => d.included_in_verification).length : totalDocs;
+
+  // 1열(좌측): 검토 자료 현황 카드 (#overviewScopeCard)
+  const scopeCard = $("overviewScopeCard");
+  if (scopeCard) {
+    scopeCard.replaceChildren();
+    scopeCard.append(
+      svgEl(TEMPLATE_A_SVGS.layers, "metric-icon-box icon-mint"),
+      (() => {
+        const body = node("div", null, "metric-content");
+        body.append(
+          node("span", "검토 대상 자료", "scope-card-title"),
+          node("strong", `${includedDocs} / ${totalDocs}`, "scope-card-value"),
+          node("small", `성립 불가 인용 ${fakeCaseCount}건`, "metric-hint")
+        );
+        return body;
+      })()
+    );
+    scopeCard.onclick = () => switchTab("documents");
+  }
+
+  // 2~4열(#summary .metric 3칸 유지): 사람 아이콘 · 방패 아이콘 · AI 반도체 아이콘 배치
+  const aiHintState = !state.run ? "대기" : state.run.state === "PARTIAL_COMPLETED" ? "일부 미확인" : "완료";
   const metrics = [
-    ["AI 작성 진단", state.run ? aiStatus : "—", null],
-    ["출처 미확인 인용", state.run ? `${sourceCount}건` : "—", state.run && fakeCaseCount ? `사건번호 형식 오류 ${fakeCaseCount}건 포함` : null],
-    ["법률적으로 무리한 주장", state.run && legalCount != null ? `${legalCount}건` : "—", null],
+    ["출처 미확인 인용", state.run ? `${sourceCount}건` : "—", state.run && fakeCaseCount ? `사건번호 형식 오류 ${fakeCaseCount}건 포함` : `공식 DB 미확인 ${unconfirmedCount}건`, "people", "metric-amber"],
+    ["법률적으로 무리한 주장", state.run && legalCount != null ? `${legalCount}건` : "—", state.run && legalCount != null ? `법리 검토 대상 ${legalCount}건` : "검증 후 집계", "shield", "metric-sky"],
+    ["AI 작성 진단", state.run ? aiStatus : "—", `판정 · ${aiHintState}`, "aiChip", "metric-indigo"],
   ];
   const tabFor = {"AI 작성 진단": "ai-verification", "출처 미확인 인용": "review", "법률적으로 무리한 주장": "legal-claims"};
-  for (const [title, value, note] of metrics) {
-    const el = node("div", null, "metric metric-explain");
-    el.append(node("span", title), node("strong", value));
-    if (note) el.append(node("small", note, "metric-hint"));
+  for (const [title, value, note, iconKey, toneCls] of metrics) {
+    const el = node("div", null, `metric metric-explain ${toneCls}`);
+    const body = node("div", null, "metric-content");
+    body.append(node("span", title), node("strong", value));
+    if (note) {
+      const hint = node("small", note, "metric-hint");
+      if (iconKey === "aiChip") hint.classList.add("metric-hint-pill");
+      body.append(hint);
+    }
+    el.append(svgEl(TEMPLATE_A_SVGS[iconKey], `metric-icon-box icon-${iconKey}`), body);
     el.setAttribute("role", "button");
     el.tabIndex = 0;
     el.setAttribute("aria-label", `${title} ${value} — 해당 탭으로 이동`);
@@ -1119,6 +1234,202 @@ function renderSummary() {
     line.append(button("사유 보기", action(explainRunStatus), "link-button small"));
     $("summary").append(line);
   }
+  renderTemplateAOverview({aiStatus, fakeCaseCount, unconfirmedCount, sourceCount, legalCount: legalCount ?? 0, includedDocs, totalDocs});
+}
+
+function renderTemplateAOverview(stats) {
+  const root = $("templateAOverview");
+  if (!root) return;
+  root.replaceChildren();
+
+  // 1. 중앙 2열 대시보드 그리드 (좌: 사람 검토 필요 경고 패널 + 일러스트 / 우: 최근 작업 활동 타임라인)
+  const midGrid = node("div", null, "overview-mid-grid");
+
+  // 좌측 경고 패널
+  const warnCard = node("article", null, "overview-warning-card");
+  const reasons = [];
+  if (stats.sourceCount > 0 || (state.run?.unverified_items || []).length > 0) {
+    const cnt = stats.sourceCount || (state.run?.unverified_items || []).length;
+    reasons.push({
+      title: `공식 원문으로 확인하지 못한 항목 ${cnt}건`,
+      desc: "인용된 내용 중 공식 DB(법령·판례 등)에서 원문을 확인하지 못한 항목이 있습니다.",
+      tab: "review",
+    });
+  }
+  if (stats.legalCount > 0 || (state.findings || []).some(f => !isAISecurityFinding(f))) {
+    const cnt = stats.legalCount || (state.findings || []).filter(f => !isAISecurityFinding(f)).length;
+    reasons.push({
+      title: `법률적 주장 및 인용 적정성 사람 검토 ${cnt}건`,
+      desc: "제시된 법률 주장과 판례·법령 인용의 적정성에 대한 사람의 추가 검토가 필요합니다.",
+      tab: "legal-claims",
+    });
+  }
+  if (!reasons.length) {
+    reasons.push(
+      {
+        title: state.run ? "출처 및 판례·법령 원문 대조 확인" : `검토 대상 자료 ${stats.includedDocs}건 검증 대기`,
+        desc: state.run ? "검증 결과 탭에서 세부 판례·법령 인용 내역과 원문 대조 결과를 확인하세요." : "우측 상단의 ‘검증 시작’ 버튼을 눌러 자동 검증과 전문가 검토 항목을 생성하십시오.",
+        tab: "review",
+      },
+      {
+        title: "법률적 주장 타당성 및 AI 작성·보안 진단",
+        desc: "문서 내 법리 전개 타당성과 AI 작성 가능성·보안 진단 결과를 함께 검토할 수 있습니다.",
+        tab: "legal-claims",
+      }
+    );
+  }
+
+  const warnHead = node("div", null, "overview-warning-head");
+  const warnTitleBox = node("div", null, "overview-warning-titlebox");
+  const headline = state.run
+    ? `사람 검토 필요 — 사유 ${reasons.length}건`
+    : "검토 안내 — 주요 확인 항목";
+  warnTitleBox.append(
+    node("h3", headline),
+    node("p", "자동 검증에서 확인이 어려운 항목이 있습니다. 전문가의 검토가 필요합니다.")
+  );
+  warnHead.append(svgEl(TEMPLATE_A_SVGS.warningTriangle, "overview-warn-icon"), warnTitleBox);
+
+  const warnBody = node("div", null, "overview-warning-body");
+  const reasonList = node("div", null, "overview-reason-list");
+  reasons.slice(0, 2).forEach((r, idx) => {
+    const item = node("div", null, "overview-reason-item");
+    item.setAttribute("role", "button");
+    item.tabIndex = 0;
+    const num = node("span", String(idx + 1), "overview-reason-num");
+    const txt = node("div", null, "overview-reason-text");
+    txt.append(node("strong", r.title), node("p", r.desc));
+    item.append(num, txt);
+    item.onclick = () => switchTab(r.tab);
+    item.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); switchTab(r.tab); } };
+    reasonList.append(item);
+  });
+  warnBody.append(reasonList, svgEl(TEMPLATE_A_SVGS.gavelScales, "overview-warning-art"));
+  warnCard.append(warnHead, warnBody);
+
+  // 우측 최근 작업 활동 타임라인 카드
+  const actCard = node("article", null, "overview-activity-card");
+  const actHead = node("div", null, "overview-activity-head");
+  actHead.append(node("h3", "최근 작업 활동"));
+  const moreBtn = button("전체 보기 ›", () => {
+    const histBtn = [...($("jobControls")?.querySelectorAll("button") || [])].find(b => b.textContent.includes("검증 이력"));
+    if (histBtn) histBtn.click();
+  }, "overview-more-btn");
+  actHead.append(moreBtn);
+
+  const timeStr = state.run?.started_at ? dateText(state.run.started_at) : "방금 전";
+  const timeline = node("ul", null, "overview-timeline");
+  const steps = [
+    {
+      dotCls: "tl-dot-green",
+      icon: "check",
+      title: `자료 ${stats.totalDocs}건 업로드 완료`,
+      badge: null,
+      time: timeStr,
+    },
+    {
+      dotCls: "tl-dot-teal",
+      icon: "play",
+      title: state.run ? (terminal(state.run) ? "검증 분석 완료" : "검증 분석 진행 중") : "검증 분석 준비 완료",
+      badge: null,
+      time: timeStr,
+    },
+    {
+      dotCls: "tl-dot-indigo",
+      customSvg: TEMPLATE_A_SVGS.aiChip,
+      title: `AI 작성 진단 (${stats.aiStatus})`,
+      badge: stats.aiStatus === "미분석" ? ["대기", "tl-pill-amber"] : ["완료", "tl-pill-green"],
+      time: timeStr,
+    },
+    {
+      dotCls: "tl-dot-slate",
+      icon: "file-text",
+      title: "프로젝트 생성",
+      badge: null,
+      time: timeStr,
+    },
+  ];
+  for (const s of steps) {
+    const li = node("li", null, "overview-tl-row");
+    const marker = node("span", null, `overview-tl-marker ${s.dotCls}`);
+    const iconWrap = node("span", null, `overview-tl-icon ${s.dotCls}`);
+    if (s.customSvg) {
+      iconWrap.innerHTML = s.customSvg;
+    } else {
+      const ic = node("i");
+      ic.dataset.lucide = s.icon;
+      iconWrap.append(ic);
+    }
+    const labelBox = node("div", null, "overview-tl-label");
+    labelBox.append(node("strong", s.title));
+    if (s.badge) {
+      labelBox.append(node("span", s.badge[0], `overview-tl-pill ${s.badge[1]}`));
+    }
+    const timeEl = node("time", s.time, "overview-tl-time");
+    li.append(marker, iconWrap, labelBox, timeEl);
+    timeline.append(li);
+  }
+  actCard.append(actHead, timeline);
+  midGrid.append(warnCard, actCard);
+
+  // 2. 하단 핵심 기능 바로가기 4열 카드
+  const shortcutWrap = node("div", null, "overview-shortcuts-section");
+  const scHead = node("h3", null, "overview-shortcuts-heading");
+  const zapIcon = node("i");
+  zapIcon.dataset.lucide = "zap";
+  scHead.append(zapIcon, node("span", "핵심 기능 바로가기"));
+
+  const scGrid = node("div", null, "overview-shortcuts-grid");
+  const shortcuts = [
+    {
+      title: "보고서 생성",
+      desc: "검증 결과를 종합한 보고서를 생성합니다.",
+      svg: TEMPLATE_A_SVGS.reportDoc,
+      cls: "sc-card-mint",
+      tab: "reports",
+    },
+    {
+      title: "AI 작성 진단",
+      desc: "문서의 AI 작성 가능성을 분석합니다.",
+      svg: TEMPLATE_A_SVGS.aiChip,
+      cls: "sc-card-indigo",
+      tab: "ai-verification",
+    },
+    {
+      title: "출처(원문) 검증",
+      desc: "인용된 법령·판례·자료의 공식 원문을 확인합니다.",
+      svg: TEMPLATE_A_SVGS.dbCylinder,
+      cls: "sc-card-emerald",
+      tab: "review",
+    },
+    {
+      title: "법률주장 검토",
+      desc: "제시된 법률적 주장과 근거의 타당성을 검토합니다.",
+      svg: TEMPLATE_A_SVGS.scaleJustice,
+      cls: "sc-card-purple",
+      tab: "legal-claims",
+    },
+  ];
+  for (const sc of shortcuts) {
+    const card = node("div", null, `overview-sc-card ${sc.cls}`);
+    card.setAttribute("role", "button");
+    card.tabIndex = 0;
+    const top = node("div", null, "overview-sc-top");
+    top.append(svgEl(sc.svg, "overview-sc-icon"));
+    const body = node("div", null, "overview-sc-body");
+    body.append(node("strong", sc.title), node("p", sc.desc));
+    top.append(body);
+    const arrow = node("span", "→", "overview-sc-arrow");
+    card.append(top, arrow);
+    const go = () => switchTab(sc.tab);
+    card.onclick = go;
+    card.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
+    scGrid.append(card);
+  }
+  shortcutWrap.append(scHead, scGrid);
+
+  root.append(midGrid, shortcutWrap);
+  icons();
 }
 
 // 제9.2장. 차단 사유와 사람 검토 사유를 상태값과 함께 보여준다.
@@ -1576,19 +1887,24 @@ function renderDocuments() {
       else state.selected.delete(d.id);
       renderSelection();
     };
-    const td = node("td");
+    const td = node("td", null, "doc-col-check");
+    td.dataset.label = "선택";
     td.append(check);
-    const file = node("td");
+    const file = node("td", null, "doc-col-file");
+    file.dataset.label = "파일명";
     file.append(button(d.filename, () => openDocument(d), "file-name"), node("small", `${Math.max(1,Math.ceil(d.size_bytes/1024))} KB · ${d.document_kind||"문서"}${d.quarantined?" · 안전 검토 필요":""}`, "file-sub"));
-    const evidence = node("td");
+    const evidence = node("td", null, "doc-col-evidence");
+    evidence.dataset.label = "증거번호 / 제출자";
     evidence.append(node("div", d.evidence_number || "증거번호 미지정"), node("small", label(d.submitted_by), "file-sub"));
-    const scope = node("td");
+    const scope = node("td", null, "doc-col-scope");
+    scope.dataset.label = "검토 범위";
     scope.append(node("span", d.included_in_verification ? "검토에 포함" : "검토에서 제외", `badge ${d.included_in_verification?"":"excluded"}`));
     if (d.exclusion_reason) {
       const reason = node("small", d.exclusion_reason, "file-sub");
       scope.append(reason);
     }
-    const controls = node("td");
+    const controls = node("td", null, "doc-col-actions");
+    controls.dataset.label = "관리";
     const group = node("div", null, "actions");
     group.append(iconButton("pencil", "자료 정보 편집", () => editDocument(d)), iconButton(d.included_in_verification ? "circle-minus" : "circle-plus", d.included_in_verification ? "검토에서 제외" : "검토에 다시 포함", () => setScope([d.id], !d.included_in_verification)));
     controls.append(group);
@@ -2813,8 +3129,7 @@ function renderFindings() {
     }
   }
   state.pendingByTier = pendingByTier;
-  const legalMetric = $("metricLegalClaims");
-  if (legalMetric && state.run) legalMetric.querySelector("strong").textContent = `${tierCounts[3]}건`;
+  renderSummary();
   for (const [id, t] of [["reviewPendingBadge", 2], ["legalPendingBadge", 3]]) {
     const badge = $(id);
     if (!badge) continue;
@@ -3303,6 +3618,33 @@ async function createReport() {
 }
 document.querySelectorAll("[data-close]").forEach(el => el.onclick = () => el.closest("dialog").close());
 document.querySelectorAll("[data-tab]").forEach(el => el.onclick = () => switchTab(el.dataset.tab));
+document.querySelectorAll("[data-mobile-nav]").forEach(el => el.onclick = () => {
+  const navKey = el.dataset.mobileNav;
+  if (navKey === "home") {
+    const overview = $("templateAOverview");
+    if (overview) overview.hidden = false;
+    switchTab("documents");
+    syncMobileBottomNav("home");
+    window.scrollTo({top: 0, behavior: "smooth"});
+  } else if (navKey) {
+    switchTab(navKey);
+  }
+});
+document.querySelectorAll(".sidebar-menu [data-side-nav]").forEach(el => el.onclick = () => {
+  document.querySelectorAll(".sidebar-menu [data-side-nav]").forEach(b => b.classList.toggle("active", b === el));
+  const key = el.dataset.sideNav;
+  if (key === "projects") {
+    $("projectSearch")?.focus();
+  } else if (key === "history") {
+    const histBtn = [...document.querySelectorAll("#jobControls button")].find(b => b.textContent.includes("검증 이력"));
+    histBtn?.click();
+  } else if (key === "reports") {
+    if (!state.project) return toast("먼저 프로젝트를 선택하세요.");
+    switchTab("reports");
+  } else if (key === "settings") {
+    $("settingsButton")?.click();
+  }
+});
 document.addEventListener("click", e => {
   const jump = e.target.closest("[data-jump-tab]");
   if (jump) {
@@ -3310,8 +3652,23 @@ document.addEventListener("click", e => {
     const target = jump.getAttribute("data-jump-tab");
     if (target) switchTab(target);
   }
+  const sidebar = $("sidebar");
+  const menuBtn = $("menuButton");
+  if (sidebar && sidebar.classList.contains("open") && !sidebar.contains(e.target) && (!menuBtn || !menuBtn.contains(e.target))) {
+    sidebar.classList.remove("open");
+    if (menuBtn) menuBtn.setAttribute("aria-expanded", "false");
+  }
 });
-$("menuButton").onclick = () => $("sidebar").classList.toggle("open");
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && $("sidebar")?.classList.contains("open") && !document.querySelector("dialog[open]")) {
+    $("sidebar").classList.remove("open");
+    $("menuButton")?.setAttribute("aria-expanded", "false");
+  }
+});
+$("menuButton").onclick = () => {
+  const open = $("sidebar").classList.toggle("open");
+  $("menuButton").setAttribute("aria-expanded", String(open));
+};
 $("projectSearch").oninput = renderProjects;
 $("newProjectBtn").onclick = action(() => editProject(true));
 for (const id of ["editProject"]) $(id).onclick = action(() => editProject());
