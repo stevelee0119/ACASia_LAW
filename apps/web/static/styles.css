@@ -1939,3 +1939,8 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
   .compare-hunks .compare-official { border-top: 0; padding-top: 0; }
 }
 
+/* TK-157b: 경고 유형별 검토 결정 집계(연결 상태 창) */
+.review-quality-table { width: 100%; min-width: 0; border-collapse: collapse; font-size: 14px; }  /* 전역 table min-width(760px)를 풀어 창 폭에 맞춘다 */
+.review-quality-table th, .review-quality-table td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: right; }
+.review-quality-table th:first-child, .review-quality-table td:first-child { text-align: left; word-break: keep-all; overflow-wrap: anywhere; }
+.review-quality-table th:not(:first-child), .review-quality-table td:not(:first-child) { white-space: nowrap; }  /* '표본 부족'·'10 / 12'가 낱말 중간에서 갈리지 않게 */
