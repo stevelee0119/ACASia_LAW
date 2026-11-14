@@ -268,15 +268,34 @@ def test_reference_processing_record_has_no_codes_and_korean_time(browser):
     page = browser.new_page(viewport={"width": 1440, "height": 1000})
     _serve(page, BASE_PROJECT)
     page.locator('.tabs button[data-tab="review"]').click()
-    expect(page.locator("#reviewTable tbody tr").first).to_be_visible()
     panel = page.locator('section[data-panel="review"]')
-    page.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
-    expect(panel.locator(".reference-section").first).to_be_visible()
-    text = panel.locator(".reference-section").first.inner_text()
+    section = panel.locator(".reference-section").first
+    # 탭 전환·결과 적재가 각각 다시 그리며 <details>를 닫는다. 닫힌 <details> 안의 innerText는 빈 문자열이므로
+    # 열림 상태와 무관한 textContent로 읽고, 자동 대기 단언으로 마지막 그리기를 기다린다.
+    expect(section).to_contain_text("조회 2026-11-13 10:00")  # ISO 시각 → 한국 시각
+    text = section.text_content()
     assert _codes(text) == [], _codes(text)
-    assert "조회 2026-11-13 10:00" in text  # ISO 시각 → 한국 시각
+    assert "조회 2026-11-13 10:00" in text
     assert "서비스 계정" in text and "일부 색인" in text and "지시문 의심으로 보안 격리" in text
     assert "None" not in text
+
+
+def test_reference_record_shows_no_codes_while_display_tables_load(browser):
+    # 보완 4: 결과는 왔지만 코드→한글 표(/api/finding-categories)가 늦게 올 때 탭을 바꿔도 코드가 보이지 않는다.
+    page = browser.new_page(viewport={"width": 1440, "height": 1000})
+    page.add_init_script("""(() => { const original = window.fetch;
+      window.fetch = async (...args) => { const response = await original(...args);
+        if (String(args[0]).includes("/finding-categories")) await new Promise(done => setTimeout(done, 1500));
+        return response; }; })();""")
+    _serve(page, BASE_PROJECT)
+    page.locator('.tabs button[data-tab="review"]').click()
+    panel = page.locator('section[data-panel="review"]')
+    page.wait_for_timeout(600)  # 표가 오기 전 — 탭 전환 그리기는 이미 끝난 시점
+    early = panel.locator(".reference-section").all_text_contents()
+    assert all(_codes(t) == [] for t in early), [_codes(t) for t in early]
+    section = panel.locator(".reference-section").first
+    expect(section).to_contain_text("일부 색인")
+    assert _codes(section.text_content()) == []
 
 
 def test_ai_tab_button_shows_high_count_without_changing_its_name(browser):

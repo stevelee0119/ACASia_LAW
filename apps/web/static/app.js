@@ -1953,10 +1953,11 @@ async function loadResults(generation, options = {}) {
   }
   const result = await api(`/verification-runs/${state.run.id}/result`, options);
   const findings = await api(`/projects/${state.project.id}/findings?run_id=${state.run.id}`, options);
+  // TK-155 보완 4: 표시 표(코드→한글)를 받은 뒤에 결과를 상태에 넣는다. 그 사이 탭 전환으로 다시 그려도 코드가 보이지 않는다.
+  await loadFindingCategories(options);
   if (generation !== state.generation) return;
   state.result = result;
   state.findings = findings;
-  await loadFindingCategories(options);
   await workflowUI.refresh(options);
   if (generation !== state.generation) return;
   renderProject();
