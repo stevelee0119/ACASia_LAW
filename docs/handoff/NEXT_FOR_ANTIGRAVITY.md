@@ -6695,3 +6695,40 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - 측정 못 함: 봉인 시험(사용자 실행), AI 작성 판별·공식 DB·Drive 대조(오프라인), 실기기·온라인 화면. v2 기준 실무 법률 정확도·검색/주장 타당성·검토 효율은 미측정(합격으로 보지 않음).
 - 판정: 0.21.0 릴리스 후보 수용 가능. 릴리스 PR(main)·버전 표기·태그·배포는 사용자 승인.
 
+## 2-60. 0.21.0 판정: minor 수용, 릴리스 준비 (11-14, 사용자 '릴리스 준비 승인')
+- 후보 Steve 0653872(#290~#294) verify_all 전체(기준 0.20.0 main 034343f) 실패 0, 고정 82.6 / 81.9 / 오탐 0, 은퇴 5세트 0.20.0과 같음(2-59-13).
+- 판정서: docs/scorecards/version_verdicts.json 0.21.0(minor, changed·fixed·security). 평가 브랜치를 Steve 0653872와 통합(a76c4fa).
+- 봉인 시험: 사용자 결정 대기(0.20.0은 미시행·온라인 비교로 갈음).
+- 다음: 평가 PR(→ Steve) 병합(사용자) → 아래 버전 커밋 지시 전달 → 버전 커밋 PR 판정 → 릴리스 PR(Steve → main) → 배포.
+
+### 2-60-1. 0.21.0 버전 커밋 지시(전달판)
+```
+[0.21.0 버전 커밋]  기준: 평가 PR(evaluator/round8-promotion, 0.21.0 판정서 포함) 병합 뒤의 Steve_ACASiaLAW
+보완 패치: docs/handoff/patches/v0.21.0_version_commit_on_0653872.diff (git apply)
+
+0. 근거
+ - 판정서: docs/scorecards/version_verdicts.json 0.21.0(minor, 0.20.0 → 0.21.0, 분류 changed·fixed·security, measured_commit 0653872).
+ - 평가 측 판정 없이 버전을 올리지 않는다. 판정서는 평가 PR로 먼저 Steve에 들어간다(판정서 없이 버전을 올리면 check_version_policy가 실패한다).
+
+1. 고칠 것(커밋 1개, PR 1개, Steve_ACASiaLAW 대상) — 패치를 그대로 적용한다. 바꾸는 파일 4개:
+ · packages/common/config.py: Settings.version "0.20.0" → "0.21.0"(주석 포함)
+ · docs/releases.json: 0.21.0 항목(2026-11-14, 판정 요약·화면·검증 표시 정확도·보안, 포함 PR #290~#294)
+ · docs/release_highlights.json: "0.21" 요약 4줄
+ · docs/RELEASE_HISTORY.md: scripts/update_readme.py가 releases.json에서 만든 0.21.0 행
+ - README.md는 바뀌지 않는다. 코드·시험·보호 경로 변경 없음.
+ - 커밋 메시지 끝에 'Agent: implementer'.
+
+2. 확인
+ - python scripts/check_version_policy.py --base <평가 PR 병합 뒤 Steve> → '위반 없음(상향 1건 0.20.0 → 0.21.0)'
+ - python scripts/update_readme.py 실행 뒤 변경 없음
+ - tests/test_update_readme.py·tests/test_v4_run_manifest.py·tests/acceptance/test_version_policy_tool.py 통과
+
+3. 평가 측 사전 검증(평가 측 재실행, Steve 0653872 + 평가 브랜치 판정서 da7ecc2 트리에 패치 적용)
+ - check_version_policy: 위반 없음(0.20.0 → 0.21.0).
+ - update_readme 재실행 변경 없음, 위 시험 51건 통과.
+ - 패치는 Steve 0653872에 그대로 적용된다(git apply --check).
+
+4. 수용 기준
+ - 패치와 diff 0, 필수 CI 성공. 그 뒤 릴리스 PR(Steve → main, 기존 제외 목록 유지, 평가 측) → 병합·배포(사용자) → /api/health version 0.21.0 확인 → 태그(사용자) → 0.20.0 대 0.21.0 온라인 비교.
+```
+
