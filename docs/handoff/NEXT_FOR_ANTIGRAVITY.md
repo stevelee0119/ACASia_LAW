@@ -6098,3 +6098,9 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
   | 온라인 테스트 결과에 따른 회귀·오류 해소 | 0.20.0 배포 뒤 0.19.0 대 0.20.0 온라인 비교(case9·온라인 탐침), TK-161(AI 판별 3회 반복), TK-162·163 공식 DB 응답 확인 결과를 원인 유형별 티켓으로 정리 |
   | 프론트엔드 디자인 변경 | 화면 PR은 실제 진입점 캡처 + 원문 대응표로 사용자 확인 뒤 수용(CLAUDE.md 원문 대조 수용) |
 - 함께 정리할 후보(사용자 결정 전, 범위 밖일 수 있음): #282 참고 사항(바닥글·PDF·메일의 'ACASia_LAW 법률문서 검증시스템' 표기, 쓰지 않는 acas-lettering 자산), main의 기존 CodeQL 경고 24건(10월부터 열림).
+
+### 2-56-1. 0.21.0 범위 확정 추가(사용자 '후보 두가지도 포함', 11-14)
+- 0.21.0 범위에 다음 두 가지를 포함한다(사용자 결정).
+  1. #282 잔여: 바닥글(apps/web/index.html)·PDF 보고서(packages/report_engine/pdf_report.py)·안내 메일(packages/notification_engine/mailer.py)·API 설명(apps/api/main.py)의 'ACASia_LAW 법률문서 검증시스템' 표기 정리, 쓰지 않는 apps/web/static/img/acas-lettering.png와 styles.css .empty-lettering 규칙 제거. 새 표기는 프론트엔드 디자인 변경과 함께 사용자 확인으로 정한다.
+  2. main의 기존 CodeQL 경고 24건(Security → Code scanning, branch:main): 경로 주입 21건(packages/common/storage.py·apps/api/project_purge.py·scripts/export_security_alerts.py·scripts/ci_failed_tests.py·scripts/probe_document.py·scripts/inspect_boundary_signals.py), SSRF 1건(scripts/export_security_alerts.py), 비효율 정규식 2건(tests/test_probe_regex_complex…), 예외 정보 노출 1건(apps/api/main.py, Medium). 제품 코드분은 구현 측 티켓(사본 사전 검증 후 지시), 평가 도구·시험분은 평가 측이 고친다. 검증 방식은 #285에서 확인한 형태(정규화 경로 자체의 startswith 단일 검사, 검사 값은 지역 변수로)를 따른다.
+- 티켓 번호·지시문은 0.20.0 배포 뒤 온라인 비교 결과와 함께 낸다.
