@@ -5995,3 +5995,67 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - 수정 41459a3: 11파일을 Steve edcc270과 같게 되돌림(릴리스 트리 = Steve). 평가 측 재실행: 목록·해시 검증 5세트, retired_compare 후퇴 없음, 보호 경로·버전 정책 통과.
 - CodeQL(GitHub 기본 설정, main 대상 PR에서만 돎): 이 세션은 코드 스캐닝 경고 내용을 읽을 수 없다. 41459a3에서 다시 돈 결과를 본다. 계속 실패하면 사용자에게 경고 내용을 받아 판단한다.
 - 브랜치 정리 계획(2-55-5) 정정: sealed-retire-20261025 삭제는 그대로(같은 파일이 Steve·main에 들어감).
+
+### 2-55-7. #285 CodeQL 경고 10건(3파일) 처리 (11-14, 사용자 화면 제공·'코드로 막기' 선택)
+- 사용자가 준 경고(GitHub 코드 스캐닝, 모두 High, 'Only in Pull Request'):
+  - #133 py/polynomial-redos: packages/common/display_text.py 341행(제품, TK-155 보완 a4e0131에서 유입).
+  - #134 등 py/path-injection: scripts/evaluation_v2.py 22행, #142 scripts/retired_compare.py 53행 외(평가 도구, #272 f58f14c에서 유입). 사용자 확인: 3파일 10건.
+  - 저장소 자체 'CodeQL 새 경고 게이트'는 Steve PR에서만 돌아 이 경고들을 잡지 못했다(원인 미확인 — 질의 묶음 차이로 추정).
+- 평가 도구(평가 측 처리): scripts/path_guard.contained_path(실제 경로로 펴서 허용 폴더 접두 확인)를 evaluation_v2·retired_compare의 경로 지점에 적용. 새 시험 tests/test_path_guard.py. 기존 시험 단언 변경 없음. precheck --quick 종료 0(66건), retired_compare --no-cache 5세트 후퇴 없음.
+- 제품(구현 측 처리): TK-170 지시(아래). 같은 규칙의 app.js friendlyText도 함께(11-13 사용자 지시).
+- 미검증: CodeQL 재분석으로 10건이 닫히는지. 평가 PR·TK-170 PR 병합 뒤 #285에 Steve를 다시 병합해 CI로 확인한다.
+
+### 2-55-8. TK-170 지시(전달판)
+```
+[TK-170 괄호 속 코드 지우기의 길이 제곱 시간(CodeQL py/polynomial-redos #133, 릴리스 PR #285 차단)]  기준: Steve_ACASiaLAW edcc270  평가 측 사본: redos-fix-copy
+보완 패치: docs/handoff/patches/TK-170_redos_display_text_on_edcc270.diff (git apply)
+ - edcc270 → 사본 차이 전부: 제품 2파일(display_text.py·app.js) + 새 시험 1파일.
+ - 화면 표시 결과는 바뀌지 않는다(옛 규칙과 같은 출력, 4절). 화면 재확인 없음.
+대상 릴리스: 0.20.0(릴리스 PR #285의 CodeQL 실패 해소가 선행요건).
+
+0. 근거
+ - GitHub 코드 스캐닝 #133(High, py/polynomial-redos): packages/common/display_text.py 341행 `_PAREN_CODE.sub("", value)`. "'\t'이 많이 반복된 문자열에서 느려질 수 있음". 사용자 제공 화면(11-14).
+ - 11-13 사용자 지시 '처음 의도한 보완은 그 릴리스에 포함': 같은 규칙의 화면 코드(app.js friendlyText)도 함께 고친다.
+
+1. 원인(줄 번호는 edcc270 기준)
+ C1. display_text.py 327행 `_PAREN_CODE = re.compile(r"\s*\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)")`.
+     - 앞의 `\s*` 때문에 '(' 없는 긴 공백에서, re.sub가 공백 위치마다 `\s*`로 끝까지 먹은 뒤 '('에서 실패하고 다음 위치로 넘어간다 → 길이의 제곱 시간.
+     - 평가 측 재현: 탭 5,000자 0.021초, 20,000자 0.379초, 40,000자 1.450초.
+     - 이 함수(readable)는 서버가 사용자 서면에서 나온 문장을 보고서·화면 표시로 바꿀 때 쓴다.
+ C2. app.js 79행 friendlyText의 같은 정규식 `/\s*\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)/g`.
+     - 평가 측 재현(node): 탭 20,000자 211ms, 80,000자 3,884ms.
+
+2. 고칠 것(보완 패치와 같음)
+ F1. display_text.py:
+     - `_PAREN_CODE = re.compile(r"\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)")`: 앞 공백을 정규식에서 뺀다.
+     - 새 `_drop_paren_codes(value)`: finditer로 코드를 찾고, 코드 앞 조각을 rstrip()해 이어 붙인다(바로 앞 공백 제거 = 옛 `\s*`와 같음).
+     - readable(): `_PAREN_CODE.sub("", value)` → `_drop_paren_codes(value)`.
+ F2. app.js:
+     - friendlyText 바로 위에 `dropParenCodes(text)`: matchAll + slice(...).trimEnd()로 같은 처리.
+     - friendlyText: `.replace(/\s*\((...)\)/g, "")` → `dropParenCodes(...)`.
+
+3. 확인 시험(새 tests/test_display_text_linear_time.py 18건, 값은 합성)
+ - 16꼴(빈 문자열·탭·줄바꿈·전각 공백·NBSP·연속 코드·소문자·밑줄 없음·안쪽 공백·닫는 괄호 없음·가림 토큰 등)에서 서버 결과 = 옛 정규식 결과.
+ - 탭 200,000자: readable 1초 미만.
+ - 화면(Playwright): 같은 16꼴에서 dropParenCodes 결과 = 옛 정규식 결과, friendlyText(탭 200,000자) 1초 미만, 페이지 오류 0.
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본, SQLite, LV_ALLOW_NETWORK=0)
+ - 같은 결과:
+   · Python: 공백 문자 전체(isspace 기준 = re \s, 불일치 0)와 무작위 20만 건 비교에서 불일치 0.
+   · JS: U+0000~U+3000과 무작위 20만 건 비교에서 불일치 0.
+ - 시간: 탭 40,000자에서 Python 1.45초 → 0.0001초 미만, 80,000자에서 JS 3,884ms → 0ms.
+ - precheck_pr --quick(기준 edcc270): 종료 0.
+   · 함께 돌린 시험 38파일: Playwright 화면 시험 전부, display_text·readable 사용 시험, test_api, test_report_completion.
+   · 1,124건 실패 0. 고정 82.6 / 81.9 / 오탐 0. 평가 세트 문구 대조 통과.
+ - 게이트: check_hardcoding_diff·check_protected_paths 통과. node frontend_auth.test.cjs 20건 통과.
+ - 미검증: CodeQL 재분석으로 #133이 닫히는지(이 세션은 CodeQL을 실행할 수 없음). PR CI의 CodeQL 결과로 확인한다.
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나. 제품 2파일 + 새 시험 1파일, 보호 경로 변경 없음.
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공.
+   · 고정·은퇴 세트 변화 0, 탐지 diff 0(표시 결과 동일).
+   · 사본과 diff 0.
+ - 병합 뒤 평가 측이 릴리스 PR #285에 Steve를 다시 병합해 CodeQL 결과를 확인한다.
+```
