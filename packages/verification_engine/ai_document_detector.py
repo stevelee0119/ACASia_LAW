@@ -647,6 +647,10 @@ _ANCHOR_AMOUNT = re.compile(r"(?<![\d,])(\d{1,3}(?:,\d{3})+|\d{5,})(?=\s*원)")
 _ANCHOR_ARTICLE = re.compile(r"([가-힣]+법)\s*제\s*(\d+)\s*조")
 # 표지가 없는 문장 중에서도 모순을 주장하는 문장은 사람 확인으로 남긴다(예: '성명이 서로 다르다').
 _CONTRADICTION_WORDS = re.compile(r"다르|다름|다릅|혼재|상충|불일치|모순|어긋|맞지 않")
+# TK-173: 앞 문장을 되받아 풀이하는 문장('이는 … 모순일 뿐 … 근거가 아니다')은 새 지적이 아니라 앞 문장의 설명이다.
+_BACK_REFERENCE = re.compile(r"^(?:이는|이것은|이러한|이와\s*같은|이\s*점은|이\s*역시)\s")
+# TK-173: 금액 판정이 상세 값으로 기록한 기재값·계산값(제목에는 차액만 있는 경우가 있다).
+_VERDICT_AMOUNT_KEYS = ("stated", "computed", "difference", "stated_total", "computed_total")
 
 
 def value_anchors(text: str) -> set:
@@ -658,22 +662,46 @@ def value_anchors(text: str) -> set:
     return anchors
 
 
+def verdict_anchors(finding: Finding) -> set:
+    """결정론 판정의 값 표지(TK-173). 제목의 표지에 더해, 금액을 다루는 판정(제목·상세에 원 금액이 있는 판정)이면
+    그 판정이 기록한 기재값·계산값·차액도 금액 표지로 쓴다. 날짜·일수 등 금액이 아닌 판정의 숫자는 쓰지 않는다."""
+    from decimal import Decimal, InvalidOperation
+
+    anchors = value_anchors(finding.title)
+    if not any(a.startswith("A:") for a in anchors | value_anchors(finding.detail or "")):
+        return anchors
+    features = finding.confidence_features or {}
+    for key in _VERDICT_AMOUNT_KEYS:
+        raw = features.get(key)
+        if raw is None or isinstance(raw, bool):
+            continue
+        try:
+            amount = Decimal(str(raw).replace(",", ""))
+        except InvalidOperation:
+            continue
+        if amount.is_finite() and amount > 0:
+            anchors.add(f"A:{format(amount.normalize(), 'f')}")
+    return anchors
+
+
 def _remark_sentences(reason: str) -> List[str]:
     body = re.sub(r"^\[[^\]]+\]\s*", "", reason or "")
     return [s.strip() for s in re.split(r"(?<=[가-힣])\.\s+", body) if s.strip()]
 
 
 def _anchor_cover(remark: Finding, candidates: List[Finding]) -> tuple:
-    """지적 문장마다 값 표지를 결정론 판정 제목의 표지와 맞춘다. → (확인에 쓴 판정들, 확인하지 못한 문장들)
+    """지적 문장마다 값 표지를 결정론 판정의 표지(제목 + 금액 판정의 기재·계산값, TK-173)와 맞춘다. → (확인에 쓴 판정들, 확인하지 못한 문장들)
 
     한 문장의 표지가 모두 판정 제목들에서 확인되어야 그 문장이 확인된 것이다. 표지가 없는 문장은 모순을 주장하는
     문장일 때만 '확인하지 못함'으로 남기고, 설명 문장(예: '오기 가능성')은 판단 대상에서 뺀다."""
-    titles = [(f, value_anchors(f.title)) for f in candidates]
+    titles = [(f, verdict_anchors(f)) for f in candidates]
     used: List[Finding] = []
     unresolved: List[str] = []
     for sentence in _remark_sentences(remark.confidence_features.get("model_remark") or ""):
         anchors = value_anchors(sentence)
         if not anchors:
+            if _BACK_REFERENCE.match(sentence):
+                continue  # 앞 문장의 풀이: 앞 문장의 확인 결과를 따른다
             if _CONTRADICTION_WORDS.search(sentence):
                 unresolved.append(sentence)
             continue
