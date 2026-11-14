@@ -19,6 +19,11 @@ def test_paths_outside_the_allowed_folders_are_refused(outside):
         contained_path(outside)
 
 
+def test_the_allowed_folder_itself_is_refused(tmp_path):
+    with pytest.raises(ValueError):
+        contained_path(tmp_path, tmp_path)  # 허용 폴더 안의 경로만 받는다
+
+
 def test_prefix_lookalike_and_dotdot_escape_are_refused(tmp_path):
     inner = tmp_path / "data"
     inner.mkdir()
