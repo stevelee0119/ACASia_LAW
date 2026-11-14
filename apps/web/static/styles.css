@@ -3281,3 +3281,25 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
 .review-quality-table th:first-child, .review-quality-table td:first-child { text-align: left; word-break: keep-all; overflow-wrap: anywhere; }
 .review-quality-table th:not(:first-child), .review-quality-table td:not(:first-child) { white-space: nowrap; }  /* '표본 부족'·'10 / 12'가 낱말 중간에서 갈리지 않게 */
 
+
+
+/* TK-171 보완 S1: 넓은 화면 사이드바 접기·펼치기(메뉴 단추 하나로, 좁은 화면은 서랍) */
+@media (min-width: 701px) {
+  #menuButton.mobile { display: inline-flex; }
+  .workspace.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+  .workspace.sidebar-collapsed > aside { visibility: hidden; overflow: hidden; padding: 0; border: 0; min-width: 0; }
+}
+
+/* TK-171 보완 M1: 좁은 화면(700px 이하)에서는 4열 표를 행 단위 카드로 보인다(원문 8.4 C·D). 칸 이름은 data-label */
+@media (max-width: 700px) {
+  .review-items-table, .tier3-table { min-width: 0 !important; width: 100%; border: 0; }
+  .review-items-table thead, .tier3-table thead { display: none; }
+  .review-items-table tbody, .tier3-table tbody,
+  .review-items-table tr, .tier3-table tr,
+  .review-items-table td, .tier3-table td { display: block; width: 100% !important; box-sizing: border-box; }
+  .review-items-table tr, .tier3-table tr { border: 1px solid var(--color-border, #dfe6ec); border-radius: 12px; margin: 0 0 12px; padding: 4px 0; background: #fff; }
+  .review-items-table td, .tier3-table td { border: 0; padding: 8px 14px; }
+  .review-items-table td + td, .tier3-table td + td { border-top: 1px dashed var(--color-border, #dfe6ec); }
+  .review-items-table td[data-label]::before, .tier3-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--color-text-muted, #64748b); }
+  .table-wrap:has(.review-items-table), .table-wrap:has(.tier3-table) { overflow-x: visible; }
+}

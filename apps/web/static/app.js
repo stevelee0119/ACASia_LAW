@@ -748,6 +748,28 @@ function dateText(value) {
   return value ? new Date(/(Z|[+-]\d{2}:\d{2})$/i.test(value) ? value : `${value}Z`).toLocaleString("ko-KR") : "";
 }
 
+// TK-171 보완 M1: 표의 머리 칸 이름을 각 칸의 data-label로 붙인다. 좁은 화면에서는 CSS가 행을 카드로, 칸 이름을 소제목으로 보인다.
+function labelTableCells(tableId) {
+  const table = $(tableId);
+  if (!table) return;
+  const names = [...table.querySelectorAll("thead th")].map(th => th.textContent.trim());
+  for (const row of table.querySelectorAll("tbody tr")) {
+    [...row.children].forEach((cell, i) => { if (names[i] && !cell.dataset.label) cell.dataset.label = names[i]; });
+  }
+}
+
+// TK-171 보완 S1: 넓은 화면(701px 이상)에서는 같은 메뉴 단추로 사이드바를 접고 편다. 좁은 화면에서는 서랍을 연다.
+const SIDEBAR_KEY = "acas-sidebar-collapsed";
+function narrowScreen() { return window.matchMedia("(max-width: 700px)").matches; }
+function syncSidebarToggle() {
+  const btn = $("menuButton"), ws = document.querySelector(".workspace");
+  if (!btn || !ws) return;
+  const expanded = narrowScreen() ? $("sidebar").classList.contains("open") : !ws.classList.contains("sidebar-collapsed");
+  btn.setAttribute("aria-expanded", String(expanded));
+  btn.setAttribute("aria-label", narrowScreen() ? "프로젝트 목록" : expanded ? "사이드바 접기" : "사이드바 펼치기");
+  btn.title = btn.getAttribute("aria-label");
+}
+
 function syncMobileBottomNav(activeKey) {
   const nav = $("mobileBottomNav");
   if (!nav) return;
@@ -1191,7 +1213,7 @@ function renderSummary() {
         body.append(
           node("span", "검토 대상 자료", "scope-card-title"),
           node("strong", `${includedDocs} / ${totalDocs}`, "scope-card-value"),
-          node("small", `성립 불가 인용 ${fakeCaseCount}건`, "metric-hint")
+          node("small", `검토 포함 ${includedDocs}건 · 제외 ${totalDocs - includedDocs}건`, "metric-hint")
         );
         return body;
       })()
@@ -1202,7 +1224,7 @@ function renderSummary() {
   // 2~4열(#summary .metric 3칸 유지): 사람 아이콘 · 방패 아이콘 · AI 반도체 아이콘 배치
   const aiHintState = !state.run ? "대기" : state.run.state === "PARTIAL_COMPLETED" ? "일부 미확인" : "완료";
   const metrics = [
-    ["출처 미확인 인용", state.run ? `${sourceCount}건` : "—", state.run && fakeCaseCount ? `사건번호 형식 오류 ${fakeCaseCount}건 포함` : `공식 DB 미확인 ${unconfirmedCount}건`, "people", "metric-amber"],
+    ["출처 미확인 인용", state.run ? `${sourceCount}건` : "—", !state.run ? "검증 후 집계" : fakeCaseCount ? `사건번호 형식 오류 ${fakeCaseCount}건 포함` : `공식 DB 미확인 ${unconfirmedCount}건`, "people", "metric-amber"],
     ["법률적으로 무리한 주장", state.run && legalCount != null ? `${legalCount}건` : "—", state.run && legalCount != null ? `법리 검토 대상 ${legalCount}건` : "검증 후 집계", "shield", "metric-sky"],
     ["AI 작성 진단", state.run ? aiStatus : "—", `판정 · ${aiHintState}`, "aiChip", "metric-indigo"],
   ];
@@ -1248,22 +1270,30 @@ function renderTemplateAOverview(stats) {
   // 좌측 경고 패널
   const warnCard = node("article", null, "overview-warning-card");
   const reasons = [];
-  if (stats.sourceCount > 0 || (state.run?.unverified_items || []).length > 0) {
-    const cnt = stats.sourceCount || (state.run?.unverified_items || []).length;
+  // TK-171 보완 D4: 사유마다 그 지표의 값만 쓴다(출처 미확인 인용 · 자동 확인 미완료 · 법률적으로 무리한 주장을 섞지 않는다).
+  if (state.run && stats.sourceCount > 0) {
     reasons.push({
-      title: `공식 원문으로 확인하지 못한 항목 ${cnt}건`,
-      desc: "인용된 내용 중 공식 DB(법령·판례 등)에서 원문을 확인하지 못한 항목이 있습니다.",
+      title: `공식 원문으로 확인하지 못한 인용 ${stats.sourceCount}건`,
+      desc: "인용된 법령·판례 가운데 공식 DB에서 원문을 확인하지 못한 항목입니다. 존재하지 않는다는 뜻은 아닙니다.",
       tab: "review",
     });
   }
-  if (stats.legalCount > 0 || (state.findings || []).some(f => !isAISecurityFinding(f))) {
-    const cnt = stats.legalCount || (state.findings || []).filter(f => !isAISecurityFinding(f)).length;
+  const unverifiedCount = state.run ? (state.run.unverified_items || []).length : 0;
+  if (unverifiedCount > 0) {
     reasons.push({
-      title: `법률적 주장 및 인용 적정성 사람 검토 ${cnt}건`,
-      desc: "제시된 법률 주장과 판례·법령 인용의 적정성에 대한 사람의 추가 검토가 필요합니다.",
+      title: `자동 확인을 끝내지 못한 항목 ${unverifiedCount}건`,
+      desc: "조회 실패·범위 밖 등으로 자동 검증이 끝나지 않은 항목입니다. 사유는 검증 결과에서 확인합니다.",
+      tab: "review",
+    });
+  }
+  if (state.run && stats.legalCount > 0) {
+    reasons.push({
+      title: `법률적으로 무리한 주장 ${stats.legalCount}건`,
+      desc: "판례·법령 취지와 맞지 않거나 참고자료와 모순되는 주장입니다. 위법 판단이 아니라 검토 대상입니다.",
       tab: "legal-claims",
     });
   }
+  const needsReview = reasons.length > 0;
   if (!reasons.length) {
     reasons.push(
       {
@@ -1281,18 +1311,20 @@ function renderTemplateAOverview(stats) {
 
   const warnHead = node("div", null, "overview-warning-head");
   const warnTitleBox = node("div", null, "overview-warning-titlebox");
-  const headline = state.run
-    ? `사람 검토 필요 — 사유 ${reasons.length}건`
+  const headline = needsReview
+    ? `사람 검토 필요 — 사유 ${reasons.length}가지`
     : "검토 안내 — 주요 확인 항목";
   warnTitleBox.append(
     node("h3", headline),
-    node("p", "자동 검증에서 확인이 어려운 항목이 있습니다. 전문가의 검토가 필요합니다.")
+    node("p", needsReview ? "자동 검증에서 확인이 어려운 항목이 있습니다. 전문가의 검토가 필요합니다."
+      : state.run ? "자동 검증 기준으로 표시할 사람 검토 사유가 없습니다. 세부 결과는 각 탭에서 확인합니다."
+      : "아직 검증하지 않았습니다. 검증을 시작하면 사람 검토가 필요한 항목이 여기에 모입니다.")
   );
   warnHead.append(svgEl(TEMPLATE_A_SVGS.warningTriangle, "overview-warn-icon"), warnTitleBox);
 
   const warnBody = node("div", null, "overview-warning-body");
   const reasonList = node("div", null, "overview-reason-list");
-  reasons.slice(0, 2).forEach((r, idx) => {
+  reasons.slice(0, 3).forEach((r, idx) => {
     const item = node("div", null, "overview-reason-item");
     item.setAttribute("role", "button");
     item.tabIndex = 0;
@@ -1317,38 +1349,32 @@ function renderTemplateAOverview(stats) {
   }, "overview-more-btn");
   actHead.append(moreBtn);
 
-  const timeStr = state.run?.started_at ? dateText(state.run.started_at) : "방금 전";
+  // TK-171 보완 D1: 화면이 이미 받은 실제 기록만 쓴다. 시각이 없는 일은 지어내지 않는다.
   const timeline = node("ul", null, "overview-timeline");
-  const steps = [
-    {
-      dotCls: "tl-dot-green",
-      icon: "check",
-      title: `자료 ${stats.totalDocs}건 업로드 완료`,
-      badge: null,
-      time: timeStr,
-    },
-    {
-      dotCls: "tl-dot-teal",
-      icon: "play",
-      title: state.run ? (terminal(state.run) ? "검증 분석 완료" : "검증 분석 진행 중") : "검증 분석 준비 완료",
-      badge: null,
-      time: timeStr,
-    },
-    {
-      dotCls: "tl-dot-indigo",
-      customSvg: TEMPLATE_A_SVGS.aiChip,
-      title: `AI 작성 진단 (${stats.aiStatus})`,
-      badge: stats.aiStatus === "미분석" ? ["대기", "tl-pill-amber"] : ["완료", "tl-pill-green"],
-      time: timeStr,
-    },
-    {
-      dotCls: "tl-dot-slate",
-      icon: "file-text",
-      title: "프로젝트 생성",
-      badge: null,
-      time: timeStr,
-    },
-  ];
+  const events = [];
+  const at = v => (v ? new Date(/(Z|[+-]\d{2}:\d{2})$/i.test(v) ? v : `${v}Z`).getTime() : NaN);
+  const push = (time, ev) => { if (!Number.isNaN(at(time))) events.push({...ev, ts: at(time), time: dateText(time)}); };
+  push(state.project?.created_at, {dotCls: "tl-dot-slate", icon: "file-text", title: "프로젝트 생성", badge: null});
+  for (const d of state.documents || []) {
+    push(d.uploaded_at, {dotCls: "tl-dot-green", icon: "upload", title: `자료 업로드: ${d.filename}`,
+      badge: d.included_in_verification ? null : ["검토 제외", "tl-pill-amber"]});
+  }
+  if (state.run) {
+    push(state.run.started_at, {dotCls: "tl-dot-teal", icon: "play", title: "자동 검증 시작", badge: null});
+    if (terminal(state.run)) {
+      const ok = state.run.state === "COMPLETED";
+      push(state.run.finished_at, {dotCls: ok ? "tl-dot-green" : "tl-dot-indigo", icon: ok ? "check" : "alert-triangle",
+        title: "자동 검증 종료", badge: [label(state.run.state), ok ? "tl-pill-green" : "tl-pill-amber"]});
+    }
+  }
+  for (const r of state.reports || []) {
+    // 상태 이름은 서버가 준 보고서 표지(label)를 그대로 쓴다(초안·내부 검토용·확정을 화면에서 따로 정하지 않는다).
+    push(r.created_at, {dotCls: "tl-dot-indigo", icon: "file-down", title: "보고서 생성",
+      badge: [r.label || label(r.state || "DRAFT"), "tl-pill-amber"]});
+    push(r.finalized_at, {dotCls: "tl-dot-green", icon: "badge-check", title: "보고서 확정", badge: ["확정", "tl-pill-green"]});
+  }
+  const steps = events.sort((a, b) => b.ts - a.ts).slice(0, 5);
+  if (!steps.length) timeline.append(node("li", "기록된 작업이 없습니다.", "overview-tl-empty"));
   for (const s of steps) {
     const li = node("li", null, "overview-tl-row");
     const marker = node("span", null, `overview-tl-marker ${s.dotCls}`);
@@ -3189,6 +3215,8 @@ function renderFindings() {
     }
   }
 
+  labelTableCells("reviewTable");
+  labelTableCells("tier3Table");
   requestAnimationFrame(() => applyClamps(document));
 
 // TK-94: 미확인 판례/법령 정리된 표 하단부에 [📋 엘박스/AI 검증 프롬프트] 소형 버튼 단일 배치
@@ -3594,6 +3622,8 @@ async function loadReports() {
   const id = state.project.id;
   const reports = await api(`/projects/${id}/reports`);
   if (state.project?.id !== id) return;
+  state.reports = reports;  // TK-171 보완 D1: 최근 작업 활동의 보고서 생성 기록
+  if ($("templateAOverview")) renderSummary();
   $("reportList").replaceChildren();
   if (!reports.length) empty($("reportList"), "생성된 보고서가 없습니다.");
   for (const report of reports) {
@@ -3666,9 +3696,17 @@ document.addEventListener("keydown", e => {
   }
 });
 $("menuButton").onclick = () => {
-  const open = $("sidebar").classList.toggle("open");
-  $("menuButton").setAttribute("aria-expanded", String(open));
+  if (narrowScreen()) {
+    $("sidebar").classList.toggle("open");
+  } else {
+    const collapsed = document.querySelector(".workspace").classList.toggle("sidebar-collapsed");
+    try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0"); } catch (e) { /* 저장 불가 환경: 이번 화면에서만 적용 */ }
+  }
+  syncSidebarToggle();
 };
+try { if (localStorage.getItem(SIDEBAR_KEY) === "1") document.querySelector(".workspace").classList.add("sidebar-collapsed"); } catch (e) { /* 저장 불가 환경 */ }
+window.matchMedia("(max-width: 700px)").addEventListener("change", syncSidebarToggle);
+syncSidebarToggle();
 $("projectSearch").oninput = renderProjects;
 $("newProjectBtn").onclick = action(() => editProject(true));
 for (const id of ["editProject"]) $(id).onclick = action(() => editProject());
