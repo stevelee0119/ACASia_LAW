@@ -185,7 +185,8 @@ def main() -> int:
     parser.add_argument("--no-cache", action="store_true", help="기준 집계 캐시를 쓰지 않는다(CI에서는 항상 쓰지 않음)")
     parser.add_argument("--out", type=Path, default=ROOT / "artifacts/retired_comparison.json")
     args = parser.parse_args()
-    args.out = contained_path(args.out)  # 저장소·임시 폴더 안에만 쓴다
+    # 검사한 값은 지역 변수로만 쓴다. args 속성에 다시 넣으면 CodeQL이 args.out 읽기를 여전히 외부 입력으로 본다.
+    out = contained_path(args.out)  # 저장소·임시 폴더 안에만 쓴다
     use_cache = not args.no_cache and not os.environ.get("CI")
     base_sha = subprocess.run(["git", "rev-parse", args.base], cwd=ROOT, capture_output=True, text=True,
                               check=True).stdout.strip()
@@ -196,8 +197,8 @@ def main() -> int:
         print(f"[실패] {exc}", file=sys.stderr)
         return 1
     if not changed:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps({"status": "NOT_RUN_UNCHANGED", "sets": names,
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps({"status": "NOT_RUN_UNCHANGED", "sets": names,
                                       "reason": "no product/evaluator/dataset change"}), encoding="utf-8")
         print(f"은퇴 세트 목록 {len(names)}개 확인 — 평가 관련 변경 없음, 재실행 생략 (새 측정 아님)")
         return 0
@@ -225,8 +226,8 @@ def main() -> int:
     for name in names:
         print(_row(name, base.get(name), head.get(name)))
     problems = compare(base, head)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps({"status": "FAILED" if problems else "MEASURED", "base_sha": base_sha,
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({"status": "FAILED" if problems else "MEASURED", "base_sha": base_sha,
                                   "head_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                                   "evaluator_sha256": {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest()
                                                        for p in EVALUATION_PATHS if (ROOT / p).is_file()},

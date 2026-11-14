@@ -6084,3 +6084,8 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - 열린 11건 모두 py/path-injection, 평가 도구 2파일: evaluation_v2.py 24·32·34·78·79행(#138·#143~#146), retired_compare.py 61행(#141·#142)·199·200·228·229행(#147~#150). 닫힌 9건에는 원래 경고(#134 등)와 #133(TK-170)이 포함된 것으로 보인다(닫힌 목록은 미확인).
 - 11건 모두 contained_path(...)를 거친 바로 뒤의 접근 지점이다 → 첫 판(full == base or full.startswith(...))을 CodeQL이 검증으로 인정하지 않았음이 확인됨.
 - 수정 f7c6eb5: 정규화한 full 자체에 startswith 하나. 평가 PR로 Steve에 올린 뒤 #285에 반영해 CodeQL로 확인한다(이 세션은 CodeQL 실행 불가 — 미검증).
+
+### 2-55-14. #288 병합 뒤 #285 CodeQL: 11건 → 4건 (11-14 12:36 UTC, 사용자 화면)
+- #288 병합 Steve `2efd987`, release/0.20.0 = `a65a370`(Steve와 같음). GitHub CodeQL 새 경고 4건 남음(그 밖 CI 성공·진행, 인용).
+- 남은 4건(#147~#150): retired_compare.py 199·200·228·229행 '--out' 쓰기. 원인: `args.out = contained_path(args.out)`로 속성에 다시 넣어, CodeQL이 args.out 읽기를 외부 입력 객체의 속성으로 계속 봄.
+- 수정: 검사한 값을 지역 변수 out에만 담아 쓴다. 허용 폴더 밖 --out은 ValueError(평가 측 재실행 확인), 관련 시험 55건 통과.
