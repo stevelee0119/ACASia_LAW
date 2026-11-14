@@ -6573,3 +6573,8 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
    · 패치 적용분이 사본과 diff 0. 글꼴 파일은 2절 F-F1의 확인값과 같아야 한다.
  - 화면 변경이라 평가 측은 화면 시험 전부를 함께 돌리고, 최종 캡처를 사용자에게 다시 보인다.
 ```
+
+### 2-59-6. 사용자 승인: 기존 시험 5곳 수정 (11-14)
+- 사용자 원문: "B1(‘AegisLAW’ 문구)을 반영하면 옛 표기 ‘ACASia’를 확인하던 기존 시험 5곳 변경 승인"
+- 승인 대상: patches/TK-171_supplement_tests_on_0ae2eb1.diff(test_api.py 68·70행, test_frontend_emblem.py 105행, frontend_auth.test.cjs 100·208행 — 표기만 새 이름으로, 단언 개수 그대로). 2-59-5 지시의 '사용자 승인 뒤' 조건 충족 → 구현 측은 보완 패치와 함께 #290에 넣는다.
+- #294(평가 PR) head 16f94c3: CI 전부 성공(인용) — Node 24 액션(checkout v5·setup-python v6·upload-artifact v6·download-artifact v7·codeql-action v4)으로 테스트 3종·점수 하락 게이트·은퇴 세트 비교·CodeQL·산출물 업·다운로드가 모두 돌았다. CodeQL 게이트: 기준(Steve 025df31) 4건 → 병합본 2건, 새 0건. 앞선 점수 하락 게이트 실패(ci_failed_tests 요약 경로)는 2bd0521에서 고쳤다. 남은 2건의 내용은 SARIF 산출물을 내려받지 못해 미확인.
