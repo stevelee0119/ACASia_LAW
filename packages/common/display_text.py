@@ -324,9 +324,21 @@ _PHRASES = (("UNVERIFIED", "확인하지 못함"), ("Source", "출처"), ("Creat
 # 화면(app.js friendlyText)이 /api/finding-categories의 'phrases'로 같은 표를 받아 쓴다(표 하나가 기준).
 PHRASES = _PHRASES
 
-_PAREN_CODE = re.compile(r"\s*\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)")
+# 괄호 속 코드 '(XXX_YYY)'. 앞 공백은 정규식에 넣지 않는다: '\s*\(' 꼴은 '(' 없는 긴 공백에서
+# 위치마다 다시 시도해 길이의 제곱 시간이 든다(CodeQL py/polynomial-redos). 공백은 _drop_paren_codes가 지운다.
+_PAREN_CODE = re.compile(r"\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)")
 _CODE = re.compile(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b")
 _FIELD = re.compile(r"\bfinding\.confidence\b|\b[a-z]+_[a-z_]+\b")
+
+
+def _drop_paren_codes(value: str) -> str:
+    """괄호 속 코드와 그 바로 앞 공백을 지운다(옛 '\\s*\\(...\\)' 치환과 결과가 같고 선형 시간이다)."""
+    out, last = [], 0
+    for match in _PAREN_CODE.finditer(value):
+        out.append(value[last:match.start()].rstrip())
+        last = match.end()
+    out.append(value[last:])
+    return "".join(out)
 
 
 def readable(text) -> str:
@@ -338,7 +350,7 @@ def readable(text) -> str:
     value = str(text if text is not None else "")
     value = value.replace("Creator와 Producer가", "작성 프로그램과 PDF 생성 프로그램이").replace("UNVERIFIED로", "미확인 상태로")
     value = value.replace("[RAG참고자료] ", "").replace("[RAG참고자료]", "")
-    value = _PAREN_CODE.sub("", value)
+    value = _drop_paren_codes(value)
     value = _CODE.sub(lambda m: FINDING_TYPE_NAMES.get(m.group(0)) or CODE_WORDS.get(m.group(0)) or m.group(0), value)
     value = _FIELD.sub(lambda m: FIELD_WORDS.get(m.group(0), m.group(0)), value)
     for technical, simple in _PHRASES:
