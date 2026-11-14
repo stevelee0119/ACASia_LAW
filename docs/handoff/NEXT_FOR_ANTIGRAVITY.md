@@ -6128,3 +6128,7 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - #285 병합: main `034343f`(head bb5c73c 확인). 0.20.0이 main에 들어감. release/0.20.0은 병합 때 GitHub이 자동 삭제.
 - 브랜치 정리(2-55-5): 남은 3개(antigravity/lv-legal-verification-architecture cbc8385, sealed-retire-20261025 c58c683, tk152-short-abbreviation-ranking f91d984)를 평가 측이 `git push --delete`로 지우려 했으나 이 세션의 git 경로가 HTTP 403으로 거부했다(삭제 권한 없음). 커밋은 조사 때와 같아 삭제 판단은 유효하다. 사용자가 GitHub 화면 또는 자신의 PC에서 삭제한다.
 - 다음: 배포(사용자) → /api/health version 0.20.0·commit 034343f 확인 → 태그 v.0.20.0(사용자) → 0.19.0 대 0.20.0 온라인 비교 → 0.21.0.
+
+### 2-55-17. 0.20.0 배포 확인 (11-14, 사용자 '배포 완료' + /api/health 응답 제공)
+- /api/health(사용자 제공): status ok, app ACASia_LAW, version 0.20.0, commit `034343f16934515659674950f99837ccdcaf54a0`(= #285 병합 커밋, 원격 main과 같음), database ok → 0.20.0 운영 배포 확인.
+- 다음: 태그 v.0.20.0(사용자, 034343f에 경량 태그 — v.0.19.0과 같은 형식) → 0.19.0 대 0.20.0 온라인 비교(case9·온라인 탐침, TK-161 3회, TK-162·163 공식 DB 응답) → 0.21.0 착수(2-56).
