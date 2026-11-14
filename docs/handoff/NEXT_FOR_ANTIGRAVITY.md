@@ -6104,3 +6104,16 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
   1. #282 잔여: 바닥글(apps/web/index.html)·PDF 보고서(packages/report_engine/pdf_report.py)·안내 메일(packages/notification_engine/mailer.py)·API 설명(apps/api/main.py)의 'ACASia_LAW 법률문서 검증시스템' 표기 정리, 쓰지 않는 apps/web/static/img/acas-lettering.png와 styles.css .empty-lettering 규칙 제거. 새 표기는 프론트엔드 디자인 변경과 함께 사용자 확인으로 정한다.
   2. main의 기존 CodeQL 경고 24건(Security → Code scanning, branch:main): 경로 주입 21건(packages/common/storage.py·apps/api/project_purge.py·scripts/export_security_alerts.py·scripts/ci_failed_tests.py·scripts/probe_document.py·scripts/inspect_boundary_signals.py), SSRF 1건(scripts/export_security_alerts.py), 비효율 정규식 2건(tests/test_probe_regex_complex…), 예외 정보 노출 1건(apps/api/main.py, Medium). 제품 코드분은 구현 측 티켓(사본 사전 검증 후 지시), 평가 도구·시험분은 평가 측이 고친다. 검증 방식은 #285에서 확인한 형태(정규화 경로 자체의 startswith 단일 검사, 검사 값은 지역 변수로)를 따른다.
 - 티켓 번호·지시문은 0.20.0 배포 뒤 온라인 비교 결과와 함께 낸다.
+
+### 2-56-2. 0.21.0 범위 추가: CI 액션 Node 24 전환(사용자 '0.21.0 범위에 포함해서 기록해줘', 11-14)
+- 계기: CI마다 "Node.js 20 is deprecated … forced to run on Node.js 24" 경고. GitHub은 러너에서 Node 20을 2026-09-23에 제거했고 사용자 조치로 "Node24에서 도는 최신 액션 버전으로 워크플로 갱신"을 안내한다(https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/, 2026-08-25 갱신). 현재는 강제 실행으로 동작하며 CI 실패 원인은 아니다.
+- 바꿀 것(각 태그 action.yml의 runs.using 직접 확인, 11-14):
+  | 현재 | 사용 수 | 현재 using | Node 24 첫 메이저 |
+  |---|---|---|---|
+  | actions/checkout@v4 | 15 | node20 | v5 |
+  | actions/setup-python@v5 | 12 | node20 | v6 |
+  | actions/upload-artifact@v4 | 9 | node20 | v6(v5도 node20) |
+  | actions/download-artifact@v4 | 1 | node20 | v7(v5·v6도 node20) |
+  | github/codeql-action/init·analyze@v3 | 각 1 | node20 | v4 |
+- 처리: 평가 측 평가 PR 하나(.github/workflows는 보호 경로). 메이저 버전 변경이라 각 액션 변경 내역(산출물 업·다운로드 동작 등)을 확인하고, 같은 SHA CI 전 단계(테스트·점수 하락 게이트·은퇴 세트 비교·CodeQL·산출물 보존)가 그대로 도는지 확인한다. 변경 내역은 아직 읽지 않았다(미검증).
+- 시점: 0.20.0 배포 뒤(릴리스 후보 검증 중에는 워크플로를 바꾸지 않는다).
