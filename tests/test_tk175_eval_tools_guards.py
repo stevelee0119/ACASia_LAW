@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 
 import scripts.ci_failed_tests as ci_failed
@@ -52,10 +54,23 @@ def test_failed_test_list_skips_files_outside_the_allowed_folders(tmp_path):
     assert ci_failed.failures([str(inside), "/etc/hostname"]) == [("pytest.txt", "FAILED tests/x.py::t")]
 
 
-def test_step_summary_outside_the_runner_temp_is_skipped(tmp_path, monkeypatch, capsys):
+def test_step_summary_outside_the_temp_folders_is_skipped(tmp_path, monkeypatch, capsys):
     report = tmp_path / "pytest.txt"
     report.write_text("FAILED tests/x.py::t\n", encoding="utf-8")
+    outside = "/var/tk175-synthetic-elsewhere-summary.md"  # RUNNER_TEMP·시스템 임시 폴더 밖
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path / "runner"))
-    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(tmp_path / "elsewhere.md"))
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", outside)
     assert ci_failed.main([str(report)]) == 0
-    assert not (tmp_path / "elsewhere.md").exists() and "실패 시험 목록: 1건" in capsys.readouterr().out
+    assert not os.path.exists(outside) and "실패 시험 목록: 1건" in capsys.readouterr().out
+
+
+def test_step_summary_in_the_runner_temp_or_system_temp_is_written(tmp_path, monkeypatch):
+    report = tmp_path / "pytest.txt"
+    report.write_text("FAILED tests/x.py::t\n", encoding="utf-8")
+    runner = tmp_path / "runner"
+    runner.mkdir()
+    for summary in (runner / "step.md", tmp_path / "plain.md"):  # RUNNER_TEMP 안, 시스템 임시 폴더 안
+        monkeypatch.setenv("RUNNER_TEMP", str(runner))
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+        assert ci_failed.main([str(report)]) == 0
+        assert "실패 시험 1건" in summary.read_text(encoding="utf-8")

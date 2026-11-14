@@ -58,8 +58,10 @@ def main(argv: List[str]) -> int:
         print(f"::error title={_escape_property(name)}::{_escape(line[:300])}")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
-        try:  # TK-175: 작업 요약 파일은 러너 임시 폴더 안만(밖이면 요약만 건너뛴다. 종료 코드는 늘 0)
-            summary_path = contained_path(summary, os.environ.get("RUNNER_TEMP") or tempfile.gettempdir())
+        # TK-175: 작업 요약 파일은 러너 임시 폴더(RUNNER_TEMP)나 시스템 임시 폴더 안만(밖이면 요약만 건너뛴다. 종료 코드는 늘 0)
+        roots = [r for r in (os.environ.get("RUNNER_TEMP"), tempfile.gettempdir()) if r]
+        try:
+            summary_path = contained_path(summary, *roots)
         except ValueError:
             return 0
         with open(summary_path, "a", encoding="utf-8") as fh:
