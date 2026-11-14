@@ -5974,3 +5974,17 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - #284 병합: Steve `edcc270`(head c706567 확인). 버전 0.20.0이 Steve에 들어감.
 - 릴리스 PR 사전 준비(평가 측, 아직 push 안 함): main `5b878a1`에 Steve `edcc270`을 병합한 release/0.20.0 = `fcec772`. Steve와의 차이는 0.19.0과 같은 제외 11파일(sealed_20261025 9개 + approved_protected_changes.json·retired_sealed/README.md의 해당 항목)뿐이다. 충돌 없음.
 - 다음: 사용자 '릴리스 PR 생성' → push·PR → CI → 병합(사용자) → 배포 → /api/health 0.20.0 확인 → 태그.
+
+### 2-55-5. 릴리스 PR #285 생성·브랜치 정리 계획 (11-14, 사용자 '릴리스 PR 생성', '릴리스가 끝나면 계속 개선을 해나가야 하는 브랜치를 제외한 나머지는 삭제')
+- #285: release/0.20.0(`3fe6a50` = main 5b878a1 + Steve edcc270, 제외 11파일 0.19.0과 같음) → main. 버전 정책 위반 없음(평가 측 재실행). CI 진행 중.
+- 원격 브랜치 7개 조사(평가 측, 11-14):
+  | 브랜치 | 처리 | 근거 |
+  |---|---|---|
+  | main | 유지 | 배포 기준 |
+  | Steve_ACASiaLAW | 유지 | 구현 통합(계속 개선) |
+  | evaluator/round8-promotion | 유지 | 평가 측 작업 브랜치(계속 개선) |
+  | release/0.20.0 | 삭제(#285 병합 뒤) | main에 병합되면 소임 끝 |
+  | antigravity/lv-legal-verification-architecture | 삭제 | cbc8385가 Steve에 포함(Steve에 없는 커밋 0) |
+  | sealed-retire-20261025 | 삭제 | c58c683가 Steve에 포함(커밋 0) |
+  | tk152-short-abbreviation-ranking | 삭제 | main 기반 옛 갈래. 같은 변경이 #264(9768bc8, 5파일 +242/−12)로 Steve에 들어감. 4파일은 Steve와 같고 source_review.py는 뒤의 TK-158·163 변경만 다름 |
+- 열린 PR은 #285뿐이다. 삭제는 #285 병합 뒤 한 번에 한다.
