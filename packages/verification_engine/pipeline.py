@@ -491,7 +491,7 @@ class VerificationPipeline:
         manifest.environment = preflight(self.settings, self.registry, self.router)
 
         from packages.rag_engine.library import ReferenceLibrary
-        from packages.rag_engine.review import review_document
+        from packages.rag_engine.review import incomplete_reason, review_document
 
         references = ReferenceLibrary(self.settings, check=check or (lambda: None),
             notify=lambda done, total: emit(JobState.VERIFYING, f"Drive 참고자료 확인 {done}/{total}건", 0.85))
@@ -545,7 +545,7 @@ class VerificationPipeline:
                     if not review.get("review_completed", True) and review["status"] != "NOT_RELEVANT":
                         document_result.unverified_items.append({"kind": "reference_review",
                             "document_id": document_result.document_id,
-                            "reason": "Drive 참고자료 AI 대조 미완료: " + review.get("reason", "")})
+                            "reason": "Drive 참고자료 AI 대조 미완료: " + incomplete_reason(review)})
                     # TK-70: Drive 참고자료 '모순' 의견의 조건부 finding 승격 (D4 개정, 사용자 결정: 기본 켬)
                     from packages.common.config import get_settings
                     settings = get_settings()
