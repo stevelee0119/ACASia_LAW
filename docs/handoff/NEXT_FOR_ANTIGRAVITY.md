@@ -6581,3 +6581,84 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 
 ### 2-59-7. 사용자 "보완 지시문 전달 완료" (11-14)
 - TK-171 보완 지시(2-59-5, 시험 수정 5곳 승인 포함)가 구현 측에 전달됐다. 평가 측은 #290 보완 커밋의 검토 요청·CI 완료를 기다린다. 판정: 패치 적용분 사본과 diff 0, 글꼴 확인값, 화면 시험 전부, 최종 캡처 사용자 확인.
+
+### 2-59-8. 사용자 결정: 개요의 '최근 작업 활동'·'핵심 기능 바로가기' 제외 + 배치 안 A (11-14)
+- 사용자 원문: "핵심기능 바로 가기, 최근 작업 활동은 현재 프론트 엔드 상 없는 기능과 배치이므로 제외하자" / "핵심기능 바로 가기, 최근 작업활동 2개가 제외된만큼 적절하게 화면 구성을 다시 해야해."
+- 평가 측이 사본에 3안(현재·A 한 줄 띠·B KPI 2×2 + 패널)을 그려 1440·390 캡처로 제시, 사용자 'A 한 줄 띠' 선택.
+- #290 c011a7b(보완 1): 사본(c36ebb86)과 트리 동일, CI 완료(인용). 보완 2 지시(아래 전문)를 내고 구현 측 커밋을 기다린다.
+- 보완 2 지시 전문:
+
+```
+[TK-171 보완 2(#290 feat/v0.21.0) — 개요에서 '최근 작업 활동'·'핵심 기능 바로가기' 제외 + 사람 검토 패널 낮은 띠 배치(안 A)]  기준: feat/v0.21.0 c011a7b(TK-171 보완 1 반영, 평가 측 사본과 트리 동일)  평가 측 사본: TK-171 supplement 2 copy(0e723a96)
+보완 패치: docs/handoff/patches/TK-171_supplement2_on_c011a7b.diff (git apply, c011a7b에 바로 적용됨 — 평가 측 확인)
+ - 패치 범위: 제품 2파일(apps/web/static/app.js·styles.css) + 이 PR에서 만든 시험 1파일(tests/test_tk171_overview_real_data.py) 수정. index.html 등 그 밖의 파일 변경 없음.
+대상 릴리스: 0.21.0.
+
+0. 사용자 원문과 대응표
+ - 원문 1(11-14): "핵심기능 바로 가기, 최근 작업 활동은 현재 프론트 엔드 상 없는 기능과 배치이므로 제외하자"
+ - 원문 2(11-14): "핵심기능 바로 가기, 최근 작업활동 2개가 제외된만큼 적절하게 화면 구성을 다시 해야해."
+ - 원문 2에 대한 사용자 선택(11-14, 캡처 3안 비교): 'A 한 줄 띠'(KPI 4카드 그대로, 사람 검토 패널을 낮은 띠로 압축 — 왼쪽 제목, 오른쪽 사유 카드 가로 배치, 저울 그림 제거).
+   | 원문 | 고친 것 | 위치 |
+   |---|---|---|
+   | 핵심 기능 바로가기 제외 | 개요의 바로가기 4카드 영역을 만들지 않는다 | app.js renderTemplateAOverview |
+   | 최근 작업 활동 제외 | 개요의 활동 목록 카드를 만들지 않는다 | app.js renderTemplateAOverview |
+   | 화면 구성을 다시(안 A) | 사람 검토 패널을 개요 폭 전체의 낮은 띠로: 넓은 화면은 제목(왼쪽 290px) + 사유 카드 1~3개 가로, 1050px 이하는 제목 위·사유 아래, 700px 이하는 사유 세로. 저울 그림 제거 | app.js(그림), styles.css(.overview-warning-*·.overview-reason-list·미디어 쿼리) |
+ - 그대로 두는 것: KPI 4카드, 사람 검토 사유 문구·건수(보완 1의 D2~D4), 사유 클릭 시 탭 이동, 경고 삼각형 아이콘, 프로젝트 개요·검증 이력·작업 기록 단추, 5탭, 사이드바·모바일 동작, Pretendard, 브랜드 문구.
+
+1. 원인(줄 번호는 c011a7b 기준)
+ C1. app.js renderTemplateAOverview(1262행~)가 사람 검토 패널 오른쪽에 '최근 작업 활동' 카드(actCard), 아래에 '핵심 기능 바로가기' 4카드(shortcutWrap)를 만든다. 0ae2eb1에서 새로 생긴 화면 조각이며 사용자 결정으로 넣지 않는다.
+ C2. 활동 카드를 위해 보완 1에서 더한 보고서 목록 보관(loadReports의 state.reports·renderSummary 재호출)과 바로가기 전용 그림(TEMPLATE_A_SVGS의 reportDoc·dbCylinder·scaleJustice)이 쓰이지 않게 된다.
+ C3. 두 조각만 빼면(평가 측 사본에서 재현) 사람 검토 패널이 폭 전체로 늘어나되 높이는 그대로라 빈 공간이 크다.
+     - styles.css 953행 .overview-warning-card가 flex 세로 + justify-content: space-between이라 제목과 사유 사이가 벌어진다.
+     - 1008행 .overview-warning-body가 '사유 목록 + 168px 그림' 2열이고, 1076행 .overview-warning-art(168×132px, app.js 1339행 gavelScales)가 패널 높이를 정한다.
+     - 그 결과 1440px에서 5탭이 화면 위에서 593px에 놓인다(안 A는 477px).
+
+2. 고칠 것(보완 패치와 같음)
+ F1. renderTemplateAOverview:
+     - '우측 최근 작업 활동 타임라인 카드' 부분 전체(actCard·timeline·events 수집)와 '하단 핵심 기능 바로가기' 부분 전체(shortcutWrap)를 지운다.
+     - midGrid.append(warnCard); root.append(midGrid)만 남긴다.
+     - 1339행: warnBody.append(reasonList)만 한다(gavelScales 그림 제거). 머리 주석을 '사람 검토 패널: 개요 폭 전체의 낮은 띠'로 고친다.
+ F2. loadReports: state.reports 보관과 renderSummary 재호출 두 줄을 지운다(보완 1에서 더한 것).
+ F3. TEMPLATE_A_SVGS: reportDoc·dbCylinder·scaleJustice·gavelScales를 지운다(다른 곳에서 쓰지 않음). warningTriangle은 둔다.
+ F4. styles.css 정리:
+     - 지운 화면 조각만 쓰는 규칙을 지운다: .overview-activity-*, .overview-tl-*, .overview-timeline, .overview-shortcuts-*, .overview-sc-*, .overview-more-btn, .tl-dot-*, .tl-pill*, .sc-card-*, .overview-warning-art(미디어 쿼리 안 포함).
+     - 섞인 셀렉터(예: '.overview-warning-card, .overview-activity-card')는 남는 쪽만 둔다.
+     - .overview-mid-grid는 grid-template-columns: minmax(0, 1fr).
+     - 주의: '.overview-scope-kpi'(자료 KPI 카드)는 '.overview-sc'로 시작하지만 지우면 안 된다. 평가 측 사본 작성 중 접두 일치로 잘못 지웠다가 되돌렸다. 클래스 경계를 정확히 맞춘다.
+ F5. styles.css 띠 배치(안 A):
+     - .overview-warning-card: padding 14px 18px, flex-direction: row, align-items: center, gap 20px(justify-content: space-between 삭제).
+     - .overview-warning-head: margin-bottom 삭제, flex: 0 0 290px.
+     - .overview-warning-body: flex: 1; min-width: 0(2열 grid 삭제).
+     - .overview-reason-list: display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap 10px.
+     - @media(max-width:1050px)의 .overview-mid-grid 규칙 뒤: .overview-warning-card { flex-direction: column; align-items: stretch; gap: 12px } .overview-warning-head { flex: none }.
+     - @media(max-width:700px)의 .overview-warning-body(2열 해제)·.overview-warning-art 규칙을 지우고 .overview-reason-list { grid-template-columns: 1fr }로 바꾼다.
+
+3. 확인 시험(tests/test_tk171_overview_real_data.py 수정 — 이 PR에서 만든 시험이며 기존 저장소 시험이 아니다)
+ - 'test_activity_timeline_shows_only_recorded_events_newest_first'를 'test_overview_has_no_activity_timeline_or_shortcut_cards'로 바꾼다.
+   · 확인 내용: 개요에 '최근 작업 활동'·'핵심 기능 바로가기' 글자가 없고, 활동·바로가기 요소가 0개이며, 사람 검토 패널이 개요 폭을 다 쓴다.
+ - 새 'test_review_panel_is_a_low_band_with_reason_cards'(1440·390 두 폭, 검증 전 안내 사유 2개 상태):
+   · 저울 그림(.overview-warning-art) 0개.
+   · 1440: 사유 카드 2개가 같은 줄이고 제목 오른쪽에 있으며, 패널 높이 160px 미만.
+   · 390: 사유 카드가 세로로 쌓이고 제목 아래에 있다.
+   · 개요는 결과가 올 때마다 다시 그려지므로 wait_for_function으로 그 시점 요소를 잰다.
+ - 'test_before_verification_…': 활동 목록 확인 줄을 뺀다. 나머지('검증 후 집계'·'검토 안내'·0건 표시 없음)는 그대로다.
+ - 나머지 7건(자료 카드·브랜드·Pretendard 2건·사이드바 접기·좁은 화면 카드 3폭)은 그대로다. 합계 11건.
+ - 바꾼·새 시험은 고치기 전 트리에서 실패하고(활동·바로가기 시험은 0ae2eb1, 띠 시험은 그림이 있는 트리에서 2건 실패) 고친 트리에서 통과한다(평가 측 재실행).
+ - 저장소의 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본, SQLite, LV_ALLOW_NETWORK=0)
+ - test_tk171_overview_real_data 11건, test_tk172_favicon_cache_bust 3건 통과.
+ - precheck_pr --quick(기준 Steve 025df31): 종료 0. 화면 시험 34파일 + test_api 366건 실패 0, 고정 82.6 / 81.9 / 오탐 0, 점수 게이트·평가 세트 문구 대조(새 한글 조각 0) 통과
+ - CSS 중괄호 균형 716/716, 지운 규칙 목록 확인(F4 꼴만).
+ - 화면 캡처(1440·390, 합성 자료): 페이지 오류 0, 문서 가로 넘침 0. 1440에서 5탭 위치 593px → 477px. 390은 KPI 4카드 → 사람 검토(사유 세로) → 탭 순서(사용자에게 제시, 안 A 선택).
+ - 사유 3개(사유 카드 복제로 측정): 1440 한 줄·패널 높이 127px, 390 세로 3단.
+ - 미검증: iOS·Android 실기기.
+
+5. 제출물·수용 기준
+ - feat/v0.21.0에 이 패치를 한 커밋으로 올린다(PR #290 그대로).
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공.
+   · 고정·은퇴 세트 변화 0, 탐지 diff 0(화면만).
+   · 사본과 diff 0.
+   · 최종 화면 사용자 확인.
+```
