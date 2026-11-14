@@ -6172,3 +6172,34 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
   - 들어 있으면 평가 측은 따로 지시하지 않는다. 없으면 디자인 PR 병합 뒤 새 표기에 맞춰 낸다.
 - 0.21.0의 나머지(O1·O2, 기존 CodeQL 24건, CI Node 24)는 평가 측이 지시하거나 처리한다. 화면 파일(apps/web/)을 건드리지 않는 것부터 낸다.
 - O1·O2의 대상 파일은 packages/verification_engine/ai_document_detector.py·pipeline.py다. 디자인 PR과 겹치지 않는다.
+
+### 2-56-4. 프런트엔드 리디자인 지시서 원문 수령 + 탭 아이콘(옛 엠블럼) 보완 (11-14)
+- 원문(사용자 제공, 그대로): [requests/FE_template_A_redesign_20261114.md](requests/FE_template_A_redesign_20261114.md). 본 지시서 1건과 '제8장 대체'(모바일·태블릿 필수) 1건이다. 평가 측 번호는 **TK-171**(Codex 작성, Antigravity 구현)로 둔다. 판정 때 이 원문으로 문장별 대응표를 만든다.
+- 사용자 원문(11-14): "바닥글·PDF·메일·API 설명의 'ACASia_LAW 법률문서 검증시스템' 표기와, 쓰지 않는 acas-lettering 이미지 정리는 일부 반영이 되었는데, 홈페이지 상단의 제목란에는 아직 기존 엠블럼이 사용되고 있는 것 같은데 그 부분은 수정이 필요해. (cf.문구는 AegisLAW로 변경 반영)"
+- **TK-172 탭 아이콘 캐시** — 평가 측 확인(Steve `997687e` = 운영 0.20.0 제품 코드):
+  - 상단 헤더 그림은 이미 새 AegisLAW 배너다(`/static/acas-law-emblem.jpg`, #282에서 교체, 1440·390 캡처로 확인).
+  - 탭 아이콘 파일도 새 방패 엠블럼으로 바뀌었다(`img/favicon.ico` 48px, `img/emblem-192.png`).
+  - 그러나 #282가 **파일 내용만 바꾸고 주소는 그대로** 두었다(index.html 2행 `href="/static/img/favicon.ico"`·`emblem-192.png`). 브라우저는 탭 아이콘을 주소 기준으로 따로 오래 보관하고, 서버의 no-cache로는 다시 받지 않는다. 그래서 제목 'AegisLAW' 옆에 옛 엠블럼이 남는다.
+  - 사용자 화면은 직접 보지 못했으므로, 이 판단은 '추정(원인 후보 중 유력)'으로 적는다. 시크릿 창에서 새 아이콘이 보이면 확정이다.
+  - 고칠 것: 아이콘 세 줄의 주소에 판 표지를 붙여 새 주소로 만든다(`?v=aegislaw-20261114`). 파일 이름은 바꾸지 않는다(frontend_auth.test.cjs 211·214행이 주소 포함 여부를 본다).
+  - 사전 검증(평가 측 재실행, 사본 `997687e` + index.html 1줄):
+    · `node tests/frontend_auth.test.cjs` 20건 통과.
+    · `tests/test_frontend_emblem.py`·`tests/test_api.py` 34건 통과.
+    · TestClient에서 세 주소 모두 200, 원본과 같은 바이트.
+  - 미검증: 실제 브라우저 아이콘 보관소 갱신(사용자 브라우저).
+  - 리디자인(TK-171)이 index.html 머리를 크게 바꾸므로, 따로 PR을 내지 않고 TK-171 PR에 함께 넣게 한다.
+- TK-171 판정 때 미리 알릴 충돌·제약(평가 측 확인):
+  1. 옛 표기를 단언한 기존 시험:
+     · `tests/test_api.py` 68·70행: aria-label 'ACASia_LAW 홈', alt 'ACASia LAW'.
+     · `tests/test_frontend_emblem.py` 105행(링크 이름), 113·114행(기관명·시스템명 글자), 57행(배너 비율 1280/296).
+     · `tests/frontend_auth.test.cjs` 208행(index.html에 'ACASia_LAW'), 212행(배너 src 1개).
+     AegisLAW 표기로 바꾸면 깨진다. 구현 측은 단언을 지우거나 약하게 하지 말고 목록으로 보고한다. 평가 측이 사용자 승인으로 고친다(CLAUDE.md).
+  2. 보고서 JSON의 `product: "ACASia_LAW"`(`tests/test_improvements.py` 77행)는 데이터 계약이다. 화면 표기와 별개로 바꾸지 않는다(원문 7장).
+  3. 10-25 사용자 결정과 겹치는 부분 — 새 원문과 옛 결정 중 어느 쪽을 따를지 사용자 확인 필요:
+     · 상단 탭 다섯 개, 세부 탭 없음(TK-126 대응표 6).
+     · 활동 기록 탭 삭제(`tests/test_frontend_admin.py` 317행).
+     새 원문의 개요 화면 '최근 작업 활동'과 '검증 이력·작업 기록 탭'이 이 결정과 겹친다.
+  4. 헤더 '알림'은 현재 기능이 없다(화면 안내 팝업만 있음). 실제 기능 없이 단추만 만들지 않는다(원문 13장 5).
+  5. 보안 정책이 `default-src 'self'`다(`apps/api/main.py` 158행). Pretendard는 자체 호스팅만 동작하며, OFL 고지 파일을 함께 넣어야 한다.
+  6. 원문 8.7의 iOS Safari·Android 실기기 시험은 평가 측이 할 수 없다. Chromium 에뮬레이션 결과와 미검증을 구분해 적는다.
+  7. #282 잔여 중 PDF(`packages/report_engine/pdf_report.py`)·메일(`notification_engine/mailer.py`)·API 설명(`apps/api/main.py` 107행)은 화면 밖이다. TK-171이 고쳤는지 PR에서 확인하고, 안 고쳤으면 평가 측이 따로 지시한다.
