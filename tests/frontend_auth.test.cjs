@@ -97,7 +97,7 @@ test("password login is default, deduplicated, cookie based, and resolves univer
   assert.equal(h.ui.authenticate(), pending);
   const emblem = dialog.querySelector("img");
   assert.equal(emblem.src, "/static/acas-law-emblem.jpg");
-  assert.equal(emblem.alt, "ACASia LAW");
+  assert.equal(emblem.alt, "ACAS AegisLAW");
   assert.equal(emblem.parent.className, "brand-emblem");
   assert.equal(emblem.width, 1280); assert.equal(emblem.height, 640);
   assert.equal(dialog.querySelector("h2"), null);
@@ -205,7 +205,7 @@ test("merged page retains every workbench and no script persists authentication 
   const app = readFileSync(path.join(root, "apps/web/static/app.js"), "utf8");
   // TK-86: 저사용 계산 워크벤치 제거 후 유지되는 필수 워크벤치 스크립트 검증
   for (const file of ["workflow.js", "admin.js", "operations.js", "report-workbench.js"]) assert.ok(html.includes(file));
-  assert.ok(html.includes("ACASia_LAW"));
+  assert.ok(html.includes("AegisLAW") && !html.includes("ACASia"));
   assert.ok(html.includes("법률문서 검증시스템"));
   // 엠블럼은 상단바와 빈 상태 화면 양쪽에 있어야 한다.
   assert.ok(html.includes("/static/img/emblem-192.png"));

@@ -748,12 +748,50 @@ function dateText(value) {
   return value ? new Date(/(Z|[+-]\d{2}:\d{2})$/i.test(value) ? value : `${value}Z`).toLocaleString("ko-KR") : "";
 }
 
+// TK-171 보완 M1: 표의 머리 칸 이름을 각 칸의 data-label로 붙인다. 좁은 화면에서는 CSS가 행을 카드로, 칸 이름을 소제목으로 보인다.
+function labelTableCells(tableId) {
+  const table = $(tableId);
+  if (!table) return;
+  const names = [...table.querySelectorAll("thead th")].map(th => th.textContent.trim());
+  for (const row of table.querySelectorAll("tbody tr")) {
+    [...row.children].forEach((cell, i) => { if (names[i] && !cell.dataset.label) cell.dataset.label = names[i]; });
+  }
+}
+
+// TK-171 보완 S1: 넓은 화면(701px 이상)에서는 같은 메뉴 단추로 사이드바를 접고 편다. 좁은 화면에서는 서랍을 연다.
+const SIDEBAR_KEY = "acas-sidebar-collapsed";
+function narrowScreen() { return window.matchMedia("(max-width: 700px)").matches; }
+function syncSidebarToggle() {
+  const btn = $("menuButton"), ws = document.querySelector(".workspace");
+  if (!btn || !ws) return;
+  const expanded = narrowScreen() ? $("sidebar").classList.contains("open") : !ws.classList.contains("sidebar-collapsed");
+  btn.setAttribute("aria-expanded", String(expanded));
+  btn.setAttribute("aria-label", narrowScreen() ? "프로젝트 목록" : expanded ? "사이드바 접기" : "사이드바 펼치기");
+  btn.title = btn.getAttribute("aria-label");
+}
+
+function syncMobileBottomNav(activeKey) {
+  const nav = $("mobileBottomNav");
+  if (!nav) return;
+  const mapped = ["ai-verification", "review", "legal-claims"].includes(activeKey) ? "review" : activeKey;
+  nav.querySelectorAll("[data-mobile-nav]").forEach(btn => {
+    const isCurrent = btn.dataset.mobileNav === mapped;
+    btn.classList.toggle("active", isCurrent);
+    btn.setAttribute("aria-current", isCurrent ? "page" : "false");
+  });
+}
+
 function switchTab(tab) {
   document.querySelectorAll("[data-tab]").forEach(el => {
     el.classList.toggle("active", el.dataset.tab === tab);
     el.setAttribute("aria-current", el.dataset.tab === tab ? "page" : "false");
   });
   document.querySelectorAll("[data-panel]").forEach(el => el.hidden = el.dataset.panel !== tab);
+  const overview = $("templateAOverview");
+  if (overview) overview.hidden = tab !== "documents";
+  const overviewBtn = $("overviewToggleBtn");
+  if (overviewBtn) overviewBtn.classList.toggle("active", tab === "documents");
+  syncMobileBottomNav(tab);
   workflowUI.activate(tab).catch(e => toast(e.message));
 }
 async function loadProjects() {
@@ -769,9 +807,13 @@ async function updateSidebarHeader() {
     if (sideTitleEl && me && me.email) {
       const affil = me.affiliation || "종합행정학교 법무교육단";
       const name = me.display_name || me.email.split("@")[0];
+      const msgRow = node("span", null, "user-proj-msg");
+      const badge = node("span", null, "user-proj-icon");
+      badge.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/><line x1="2" x2="22" y1="18" y2="18"/></svg>';
+      msgRow.append(badge, node("span", `${name}님의 프로젝트`));
       sideTitleEl.replaceChildren(
         node("span", affil, "user-affil"),
-        node("span", `${name}님의 프로젝트`, "user-proj-msg")
+        msgRow
       );
     }
   } catch (e) {
@@ -780,6 +822,13 @@ async function updateSidebarHeader() {
 }
 
 function renderProjects() {
+  const tools = document.querySelector("#sidebar .sidebar-tools");
+  const head = $("sidebarSectionHead");
+  if (tools && head && head.previousElementSibling !== tools) {
+    head.before(tools);
+  }
+  const countEl = $("sidebarProjectCount");
+  if (countEl) countEl.textContent = `(${state.projects.length})`;
   const query = $("projectSearch").value.toLowerCase();
   $("projectList").replaceChildren();
   for (const p of state.projects.filter(p => `${p.name} ${p.case_number||""}`.toLowerCase().includes(query))) {
@@ -837,6 +886,19 @@ function renderProject() {
   const p = state.project;
   if (!p) return;
   $("projectTitle").textContent = p.name;
+  const crumb = $("breadcrumbProjectName");
+  if (crumb) crumb.textContent = p.name;
+  const statusPill = $("projectStatusBadge");
+  if (statusPill) {
+    const busy = state.run && !terminal(state.run);
+    const st = !state.run ? ["검증 대기", "idle"]
+      : busy ? ["검증 진행 중", "running"]
+      : state.run.state === "COMPLETED" ? ["검증 완료", "completed"]
+      : state.run.state === "PARTIAL_COMPLETED" ? ["일부 미확인", "warning"]
+      : [label(state.run.state), "danger"];
+    statusPill.textContent = st[0];
+    statusPill.className = `project-status-pill status-${st[1]}`;
+  }
   const meta = [p.case_number, p.court, p.incident_date ? `적용법령 기준 ${p.incident_date}` : ""].filter(Boolean).join(" · ");
   $("projectMeta").textContent = meta;
   $("projectMeta").hidden = !meta;
@@ -860,6 +922,7 @@ function renderProject() {
   renderSummary();
   renderTimeline();
   operationsUI.renderJobControls();
+  decorateJobControls();
   projectTools.renderControls();
   syncPrivacyAck();
   $("reportScope").textContent = state.run ? `${dateText(state.run.started_at)} · 자료 ${state.run.document_ids.length}개 · ${label(state.run.state)}${$("staleNotice").hidden?"":" · 변경 전 자료 기준"}` : "검증 결과가 없습니다.";
@@ -867,6 +930,32 @@ function renderProject() {
   const reportReady = ["COMPLETED","PARTIAL_COMPLETED"].includes(state.run?.state);
   $("reportBtn").disabled = !reportReady;
   $("reportBtn").title = reportReady ? "완료된 검증 결과로 검토 보고서를 생성합니다" : "검증이 끝나면 보고서를 생성할 수 있습니다";
+}
+
+function decorateJobControls() {
+  const jc = $("jobControls");
+  if (!jc) return;
+  const activeTab = document.querySelector(".tabs button.active")?.dataset?.tab || "documents";
+  const overviewBtn = button("프로젝트 개요", () => {
+    const overview = $("templateAOverview");
+    if (overview) overview.hidden = false;
+    switchTab("documents");
+    window.scrollTo({top: 0, behavior: "smooth"});
+  }, `subnav-overview-btn${activeTab === "documents" ? " active" : ""}`);
+  overviewBtn.id = "overviewToggleBtn";
+  const homeIcon = node("i");
+  homeIcon.dataset.lucide = "home";
+  overviewBtn.prepend(homeIcon);
+  for (const btn of jc.querySelectorAll("button")) {
+    const txt = btn.textContent.trim();
+    if (txt === "검증 이력" && !btn.querySelector("i, svg")) {
+      const ic = node("i"); ic.dataset.lucide = "clock"; btn.prepend(ic);
+    } else if (txt === "작업 기록" && !btn.querySelector("i, svg")) {
+      const ic = node("i"); ic.dataset.lucide = "list-filter"; btn.prepend(ic);
+    }
+  }
+  jc.prepend(overviewBtn);
+  icons();
 }
 
 // 업로드 개인정보 안내 설정 상태 (하드코딩 대체 문구 배제, API 동적 로드 전용)
@@ -1066,6 +1155,20 @@ function handlePrivacyConfirm() {
 }
 
 
+const TEMPLATE_A_SVGS = {
+  layers: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M14 3.5L25 9.2L14 14.9L3 9.2L14 3.5Z" fill="#a7f3d0" stroke="#0d9488" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 14L14 19.7L25 14" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 18.8L14 24.5L25 18.8" stroke="#0f766e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  people: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><circle cx="10.5" cy="9.5" r="4" fill="#fde68a" stroke="#d97706" stroke-width="1.8"/><path d="M3.5 22.5C3.5 18.9 6.6 16.2 10.5 16.2C14.4 16.2 17.5 18.9 17.5 22.5" fill="#fef3c7" stroke="#d97706" stroke-width="1.8" stroke-linecap="round"/><circle cx="18.8" cy="10.5" r="3.2" fill="#fed7aa" stroke="#ea580c" stroke-width="1.7"/><path d="M18.5 16.5C21.7 16.7 24.3 19 24.5 22.2" stroke="#ea580c" stroke-width="1.7" stroke-linecap="round"/></svg>`,
+  shield: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M14 3.2L22.5 6.8V13.6C22.5 19.1 18.8 23.4 14 25C9.2 23.4 5.5 19.1 5.5 13.6V6.8L14 3.2Z" fill="#ccfbf1" stroke="#0d9488" stroke-width="1.8" stroke-linejoin="round"/><path d="M10.3 14.1L12.9 16.7L18.1 11.5" stroke="#0f766e" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  aiChip: `<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="#6366f1" stroke-width="1.8" stroke-linecap="round"><line x1="11" y1="2.5" x2="11" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/><line x1="21" y1="2.5" x2="21" y2="6.5"/><line x1="11" y1="25.5" x2="11" y2="29.5"/><line x1="16" y1="25.5" x2="16" y2="29.5"/><line x1="21" y1="25.5" x2="21" y2="29.5"/><line x1="2.5" y1="11" x2="6.5" y2="11"/><line x1="2.5" y1="16" x2="6.5" y2="16"/><line x1="2.5" y1="21" x2="6.5" y2="21"/><line x1="25.5" y1="11" x2="29.5" y2="11"/><line x1="25.5" y1="16" x2="29.5" y2="16"/><line x1="25.5" y1="21" x2="29.5" y2="21"/></g><rect x="6.5" y="6.5" width="19" height="19" rx="4" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.8"/><rect x="9.5" y="9.5" width="13" height="13" rx="2.2" fill="#ffffff" stroke="#818cf8" stroke-width="1.2" stroke-dasharray="2 1.5"/><text x="16" y="18.6" text-anchor="middle" fill="#4338ca" font-size="8.2" font-weight="800" font-family="Pretendard, sans-serif">AI</text></svg>`,
+  warningTriangle: `<svg viewBox="0 0 44 44" fill="none" aria-hidden="true"><defs><linearGradient id="warnGrad" x1="22" y1="4" x2="22" y2="39" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#fde047"/><stop offset="55%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/></linearGradient></defs><path d="M20.1 6.8C20.9 5.3 23.1 5.3 23.9 6.8L39.6 34.8C40.4 36.2 39.4 38 37.7 38H6.3C4.6 38 3.6 36.2 4.4 34.8L20.1 6.8Z" fill="url(#warnGrad)" stroke="#92400e" stroke-width="2"/><path d="M22 15.5V25.5" stroke="#451a03" stroke-width="3" stroke-linecap="round"/><circle cx="22" cy="31.2" r="1.9" fill="#451a03"/></svg>`,
+};
+
+function svgEl(markup, cls = "kpi-svg-icon") {
+  const wrap = node("div", null, cls);
+  wrap.innerHTML = markup;
+  return wrap;
+}
+
 function renderSummary() {
   $("summary").replaceChildren();
   let aiStatus = "미분석";
@@ -1092,16 +1195,46 @@ function renderSummary() {
 
   const sourceCount = fakeCaseCount + unconfirmedCount;
   const legalCount = state.reviewTierCounts ? state.reviewTierCounts[3] : null;
+  const totalDocs = state.documents.length || state.project?.document_count || 0;
+  const includedDocs = state.documents.length ? state.documents.filter(d => d.included_in_verification).length : totalDocs;
+
+  // 1열(좌측): 검토 자료 현황 카드 (#overviewScopeCard)
+  const scopeCard = $("overviewScopeCard");
+  if (scopeCard) {
+    scopeCard.replaceChildren();
+    scopeCard.append(
+      svgEl(TEMPLATE_A_SVGS.layers, "metric-icon-box icon-mint"),
+      (() => {
+        const body = node("div", null, "metric-content");
+        body.append(
+          node("span", "검토 대상 자료", "scope-card-title"),
+          node("strong", `${includedDocs} / ${totalDocs}`, "scope-card-value"),
+          node("small", `검토 포함 ${includedDocs}건 · 제외 ${totalDocs - includedDocs}건`, "metric-hint")
+        );
+        return body;
+      })()
+    );
+    scopeCard.onclick = () => switchTab("documents");
+  }
+
+  // 2~4열(#summary .metric 3칸 유지): 사람 아이콘 · 방패 아이콘 · AI 반도체 아이콘 배치
+  const aiHintState = !state.run ? "대기" : state.run.state === "PARTIAL_COMPLETED" ? "일부 미확인" : "완료";
   const metrics = [
-    ["AI 작성 진단", state.run ? aiStatus : "—", null],
-    ["출처 미확인 인용", state.run ? `${sourceCount}건` : "—", state.run && fakeCaseCount ? `사건번호 형식 오류 ${fakeCaseCount}건 포함` : null],
-    ["법률적으로 무리한 주장", state.run && legalCount != null ? `${legalCount}건` : "—", null],
+    ["출처 미확인 인용", state.run ? `${sourceCount}건` : "—", !state.run ? "검증 후 집계" : fakeCaseCount ? `사건번호 형식 오류 ${fakeCaseCount}건 포함` : `공식 DB 미확인 ${unconfirmedCount}건`, "people", "metric-amber"],
+    ["법률적으로 무리한 주장", state.run && legalCount != null ? `${legalCount}건` : "—", state.run && legalCount != null ? `법리 검토 대상 ${legalCount}건` : "검증 후 집계", "shield", "metric-sky"],
+    ["AI 작성 진단", state.run ? aiStatus : "—", `판정 · ${aiHintState}`, "aiChip", "metric-indigo"],
   ];
   const tabFor = {"AI 작성 진단": "ai-verification", "출처 미확인 인용": "review", "법률적으로 무리한 주장": "legal-claims"};
-  for (const [title, value, note] of metrics) {
-    const el = node("div", null, "metric metric-explain");
-    el.append(node("span", title), node("strong", value));
-    if (note) el.append(node("small", note, "metric-hint"));
+  for (const [title, value, note, iconKey, toneCls] of metrics) {
+    const el = node("div", null, `metric metric-explain ${toneCls}`);
+    const body = node("div", null, "metric-content");
+    body.append(node("span", title), node("strong", value));
+    if (note) {
+      const hint = node("small", note, "metric-hint");
+      if (iconKey === "aiChip") hint.classList.add("metric-hint-pill");
+      body.append(hint);
+    }
+    el.append(svgEl(TEMPLATE_A_SVGS[iconKey], `metric-icon-box icon-${iconKey}`), body);
     el.setAttribute("role", "button");
     el.tabIndex = 0;
     el.setAttribute("aria-label", `${title} ${value} — 해당 탭으로 이동`);
@@ -1119,6 +1252,94 @@ function renderSummary() {
     line.append(button("사유 보기", action(explainRunStatus), "link-button small"));
     $("summary").append(line);
   }
+  renderTemplateAOverview({aiStatus, fakeCaseCount, unconfirmedCount, sourceCount, legalCount: legalCount ?? 0, includedDocs, totalDocs});
+}
+
+function renderTemplateAOverview(stats) {
+  const root = $("templateAOverview");
+  if (!root) return;
+  root.replaceChildren();
+
+  // 사람 검토 패널: 개요 폭 전체의 낮은 띠(왼쪽 제목, 오른쪽 사유 카드). 사용자 11-14 배치안 A.
+  const midGrid = node("div", null, "overview-mid-grid");
+
+  // 좌측 경고 패널
+  const warnCard = node("article", null, "overview-warning-card");
+  const reasons = [];
+  // TK-171 보완 D4: 사유마다 그 지표의 값만 쓴다(출처 미확인 인용 · 자동 확인 미완료 · 법률적으로 무리한 주장을 섞지 않는다).
+  if (state.run && stats.sourceCount > 0) {
+    reasons.push({
+      title: `공식 원문으로 확인하지 못한 인용 ${stats.sourceCount}건`,
+      desc: "인용된 법령·판례 가운데 공식 DB에서 원문을 확인하지 못한 항목입니다. 존재하지 않는다는 뜻은 아닙니다.",
+      tab: "review",
+    });
+  }
+  const unverifiedCount = state.run ? (state.run.unverified_items || []).length : 0;
+  if (unverifiedCount > 0) {
+    reasons.push({
+      title: `자동 확인을 끝내지 못한 항목 ${unverifiedCount}건`,
+      desc: "조회 실패·범위 밖 등으로 자동 검증이 끝나지 않은 항목입니다. 사유는 검증 결과에서 확인합니다.",
+      tab: "review",
+    });
+  }
+  if (state.run && stats.legalCount > 0) {
+    reasons.push({
+      title: `법률적으로 무리한 주장 ${stats.legalCount}건`,
+      desc: "판례·법령 취지와 맞지 않거나 참고자료와 모순되는 주장입니다. 위법 판단이 아니라 검토 대상입니다.",
+      tab: "legal-claims",
+    });
+  }
+  const needsReview = reasons.length > 0;
+  if (!reasons.length) {
+    reasons.push(
+      {
+        title: state.run ? "출처 및 판례·법령 원문 대조 확인" : `검토 대상 자료 ${stats.includedDocs}건 검증 대기`,
+        desc: state.run ? "검증 결과 탭에서 세부 판례·법령 인용 내역과 원문 대조 결과를 확인하세요." : "우측 상단의 ‘검증 시작’ 버튼을 눌러 자동 검증과 전문가 검토 항목을 생성하십시오.",
+        tab: "review",
+      },
+      {
+        title: "법률적 주장 타당성 및 AI 작성·보안 진단",
+        desc: "문서 내 법리 전개 타당성과 AI 작성 가능성·보안 진단 결과를 함께 검토할 수 있습니다.",
+        tab: "legal-claims",
+      }
+    );
+  }
+
+  const warnHead = node("div", null, "overview-warning-head");
+  const warnTitleBox = node("div", null, "overview-warning-titlebox");
+  const headline = needsReview
+    ? `사람 검토 필요 — 사유 ${reasons.length}가지`
+    : "검토 안내 — 주요 확인 항목";
+  warnTitleBox.append(
+    node("h3", headline),
+    node("p", needsReview ? "자동 검증에서 확인이 어려운 항목이 있습니다. 전문가의 검토가 필요합니다."
+      : state.run ? "자동 검증 기준으로 표시할 사람 검토 사유가 없습니다. 세부 결과는 각 탭에서 확인합니다."
+      : "아직 검증하지 않았습니다. 검증을 시작하면 사람 검토가 필요한 항목이 여기에 모입니다.")
+  );
+  warnHead.append(svgEl(TEMPLATE_A_SVGS.warningTriangle, "overview-warn-icon"), warnTitleBox);
+
+  const warnBody = node("div", null, "overview-warning-body");
+  const reasonList = node("div", null, "overview-reason-list");
+  reasons.slice(0, 3).forEach((r, idx) => {
+    const item = node("div", null, "overview-reason-item");
+    item.setAttribute("role", "button");
+    item.tabIndex = 0;
+    const num = node("span", String(idx + 1), "overview-reason-num");
+    const txt = node("div", null, "overview-reason-text");
+    txt.append(node("strong", r.title), node("p", r.desc));
+    item.append(num, txt);
+    item.onclick = () => switchTab(r.tab);
+    item.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); switchTab(r.tab); } };
+    reasonList.append(item);
+  });
+  warnBody.append(reasonList);
+  warnCard.append(warnHead, warnBody);
+
+  // 사용자 11-14: 최근 작업 활동·핵심 기능 바로가기는 현재 화면에 없는 기능·배치라 넣지 않는다(사람 검토 패널만).
+  midGrid.append(warnCard);
+
+  root.append(midGrid);
+  icons();
 }
 
 // 제9.2장. 차단 사유와 사람 검토 사유를 상태값과 함께 보여준다.
@@ -1576,19 +1797,24 @@ function renderDocuments() {
       else state.selected.delete(d.id);
       renderSelection();
     };
-    const td = node("td");
+    const td = node("td", null, "doc-col-check");
+    td.dataset.label = "선택";
     td.append(check);
-    const file = node("td");
+    const file = node("td", null, "doc-col-file");
+    file.dataset.label = "파일명";
     file.append(button(d.filename, () => openDocument(d), "file-name"), node("small", `${Math.max(1,Math.ceil(d.size_bytes/1024))} KB · ${d.document_kind||"문서"}${d.quarantined?" · 안전 검토 필요":""}`, "file-sub"));
-    const evidence = node("td");
+    const evidence = node("td", null, "doc-col-evidence");
+    evidence.dataset.label = "증거번호 / 제출자";
     evidence.append(node("div", d.evidence_number || "증거번호 미지정"), node("small", label(d.submitted_by), "file-sub"));
-    const scope = node("td");
+    const scope = node("td", null, "doc-col-scope");
+    scope.dataset.label = "검토 범위";
     scope.append(node("span", d.included_in_verification ? "검토에 포함" : "검토에서 제외", `badge ${d.included_in_verification?"":"excluded"}`));
     if (d.exclusion_reason) {
       const reason = node("small", d.exclusion_reason, "file-sub");
       scope.append(reason);
     }
-    const controls = node("td");
+    const controls = node("td", null, "doc-col-actions");
+    controls.dataset.label = "관리";
     const group = node("div", null, "actions");
     group.append(iconButton("pencil", "자료 정보 편집", () => editDocument(d)), iconButton(d.included_in_verification ? "circle-minus" : "circle-plus", d.included_in_verification ? "검토에서 제외" : "검토에 다시 포함", () => setScope([d.id], !d.included_in_verification)));
     controls.append(group);
@@ -2813,8 +3039,7 @@ function renderFindings() {
     }
   }
   state.pendingByTier = pendingByTier;
-  const legalMetric = $("metricLegalClaims");
-  if (legalMetric && state.run) legalMetric.querySelector("strong").textContent = `${tierCounts[3]}건`;
+  renderSummary();
   for (const [id, t] of [["reviewPendingBadge", 2], ["legalPendingBadge", 3]]) {
     const badge = $(id);
     if (!badge) continue;
@@ -2874,6 +3099,8 @@ function renderFindings() {
     }
   }
 
+  labelTableCells("reviewTable");
+  labelTableCells("tier3Table");
   requestAnimationFrame(() => applyClamps(document));
 
 // TK-94: 미확인 판례/법령 정리된 표 하단부에 [📋 엘박스/AI 검증 프롬프트] 소형 버튼 단일 배치
@@ -3303,6 +3530,33 @@ async function createReport() {
 }
 document.querySelectorAll("[data-close]").forEach(el => el.onclick = () => el.closest("dialog").close());
 document.querySelectorAll("[data-tab]").forEach(el => el.onclick = () => switchTab(el.dataset.tab));
+document.querySelectorAll("[data-mobile-nav]").forEach(el => el.onclick = () => {
+  const navKey = el.dataset.mobileNav;
+  if (navKey === "home") {
+    const overview = $("templateAOverview");
+    if (overview) overview.hidden = false;
+    switchTab("documents");
+    syncMobileBottomNav("home");
+    window.scrollTo({top: 0, behavior: "smooth"});
+  } else if (navKey) {
+    switchTab(navKey);
+  }
+});
+document.querySelectorAll(".sidebar-menu [data-side-nav]").forEach(el => el.onclick = () => {
+  document.querySelectorAll(".sidebar-menu [data-side-nav]").forEach(b => b.classList.toggle("active", b === el));
+  const key = el.dataset.sideNav;
+  if (key === "projects") {
+    $("projectSearch")?.focus();
+  } else if (key === "history") {
+    const histBtn = [...document.querySelectorAll("#jobControls button")].find(b => b.textContent.includes("검증 이력"));
+    histBtn?.click();
+  } else if (key === "reports") {
+    if (!state.project) return toast("먼저 프로젝트를 선택하세요.");
+    switchTab("reports");
+  } else if (key === "settings") {
+    $("settingsButton")?.click();
+  }
+});
 document.addEventListener("click", e => {
   const jump = e.target.closest("[data-jump-tab]");
   if (jump) {
@@ -3310,8 +3564,31 @@ document.addEventListener("click", e => {
     const target = jump.getAttribute("data-jump-tab");
     if (target) switchTab(target);
   }
+  const sidebar = $("sidebar");
+  const menuBtn = $("menuButton");
+  if (sidebar && sidebar.classList.contains("open") && !sidebar.contains(e.target) && (!menuBtn || !menuBtn.contains(e.target))) {
+    sidebar.classList.remove("open");
+    if (menuBtn) menuBtn.setAttribute("aria-expanded", "false");
+  }
 });
-$("menuButton").onclick = () => $("sidebar").classList.toggle("open");
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && $("sidebar")?.classList.contains("open") && !document.querySelector("dialog[open]")) {
+    $("sidebar").classList.remove("open");
+    $("menuButton")?.setAttribute("aria-expanded", "false");
+  }
+});
+$("menuButton").onclick = () => {
+  if (narrowScreen()) {
+    $("sidebar").classList.toggle("open");
+  } else {
+    const collapsed = document.querySelector(".workspace").classList.toggle("sidebar-collapsed");
+    try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0"); } catch (e) { /* 저장 불가 환경: 이번 화면에서만 적용 */ }
+  }
+  syncSidebarToggle();
+};
+try { if (localStorage.getItem(SIDEBAR_KEY) === "1") document.querySelector(".workspace").classList.add("sidebar-collapsed"); } catch (e) { /* 저장 불가 환경 */ }
+window.matchMedia("(max-width: 700px)").addEventListener("change", syncSidebarToggle);
+syncSidebarToggle();
 $("projectSearch").oninput = renderProjects;
 $("newProjectBtn").onclick = action(() => editProject(true));
 for (const id of ["editProject"]) $(id).onclick = action(() => editProject());

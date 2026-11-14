@@ -69,16 +69,28 @@ def _remove_tree(target: Path) -> int:
     return len(files)
 
 
+def resolve_within(root, *parts: str) -> str:
+    """root 아래의 실제 경로(심볼릭 링크 해소). 밖으로 나가면 ValueError(TK-175).
+
+    CodeQL이 경로 검사로 인정하는 꼴: 정규화한 경로 값 자체에 접두 검사 하나(startswith)를 하고, 검사한 값을 그대로 쓴다.
+    접두에는 구분자를 붙여 형제 폴더(예: originals2)를 막는다."""
+    base = os.path.realpath(os.fspath(root))
+    full = os.path.realpath(os.path.join(base, *parts))
+    if not full.startswith(os.path.join(base, "")):
+        raise ValueError("path traversal detected")
+    return full
+
+
 def _project_dirs(root: Path, project_id: str):
     # 보안(TK-35): match+$ 대신 fullmatch로 끝 줄바꿈 허용 방지
     if not PROJECT_ID_RE.fullmatch(project_id or ""):
         raise ValueError("invalid project id")
-    base = root.resolve()
     for area in ("originals", "derivatives"):
-        target = (base / area / project_id).resolve()
-        if target.parent != (base / area).resolve():
+        area_root = os.path.realpath(os.path.join(os.fspath(root), area))
+        target = resolve_within(area_root, project_id)
+        if os.path.dirname(target) != area_root:  # 프로젝트 폴더는 area 바로 아래 한 단계만
             raise ValueError("path traversal detected")
-        yield target
+        yield Path(target)
 
 
 class LocalObjectStorage(ObjectStorage):
@@ -91,11 +103,8 @@ class LocalObjectStorage(ObjectStorage):
 
     # -- 내부 -------------------------------------------------------------
     def _abs(self, storage_key: str) -> Path:
-        p = (self.root / storage_key).resolve()
-        # 보안(TK-35): 접두 문자열 비교 대신 경로 구성요소 단위(is_relative_to)로 형제 디렉터리 접근 차단
-        if not p.is_relative_to(self.root.resolve()):
-            raise ValueError("path traversal detected")  # 제21.1장
-        return p
+        # 보안(TK-35·TK-175): 구분자를 붙인 접두 검사로 형제 디렉터리 접근 차단(제21.1장)
+        return Path(resolve_within(self.root, storage_key))
 
     # -- 인터페이스 -------------------------------------------------------
     def put_original(self, key: str, data: bytes) -> str:
@@ -242,9 +251,8 @@ class EncryptedObjectStorage(ObjectStorage):
 
     def path(self, storage_key: str) -> Path:
         """파서가 요구하는 지역 경로. 평문을 임시로 풀어 놓는다."""
-        target = (self.cache_root / storage_key).resolve()
-        if not str(target).startswith(str(self.cache_root.resolve())):
-            raise ValueError("path traversal detected")
+        # TK-175: 구분자 없는 접두 비교는 형제 폴더(예: cache_root2)를 통과시켰다. 같은 검사 함수를 쓴다.
+        target = Path(resolve_within(self.cache_root, storage_key))
         if target.exists():
             return target
         target.parent.mkdir(parents=True, exist_ok=True)

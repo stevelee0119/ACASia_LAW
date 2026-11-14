@@ -65,9 +65,9 @@ def test_frontend_emblem_is_available_without_login(client):
     assert page.status_code == 200
     markup = html.fromstring(page.text)
     brand = markup.xpath("//a[@class='brand']")[0]
-    assert brand.get("aria-label") == "ACASia_LAW 홈"
+    assert brand.get("aria-label") == "AegisLAW 홈"
     emblem = brand.xpath(".//img")[0]
-    assert emblem.get("alt") == "ACASia LAW"
+    assert emblem.get("alt") == "ACAS AegisLAW"
     square = markup.xpath("//img[@class='empty-emblem']")[0]
     assert square.get("src") == "/static/img/acas-law-square-transparent.png"
     for element, size, fmt, mime in (
