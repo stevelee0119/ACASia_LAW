@@ -72,11 +72,21 @@ const refWord = code => displayTables().code_words?.[code] || friendlyText(code 
 // 엔진 문장 속 소문자 식별자(검사 층·필드 이름)를 화면에서 한글로 바꾼다. 층 이름은 LAYER_NAMES와 같다.
 
 Object.assign(labels, {PARSING:"문서 읽는 중",ADVERSARIAL_SCANNING:"검증 방해 문구 검사",EXTRACTING:"본문 추출 중",PII_PROCESSING:"개인정보 처리 중",VERIFYING:"인용 확인 중",CROSS_CHECKING:"자료 대조 중",AGGREGATING:"결과 정리 중",NOT_FOUND:"출처에서 미확인",SUSPICIOUS:"확인 필요",ERROR:"처리 오류"});
+// 괄호 속 코드 '(XXX_YYY)'와 바로 앞 공백을 지운다. 앞 공백을 정규식에 넣으면('\s*\(') '(' 없는 긴 공백에서
+// 길이의 제곱 시간이 든다(서버 display_text._drop_paren_codes와 같은 규칙).
+function dropParenCodes(text) {
+  let out = "", last = 0;
+  for (const match of text.matchAll(/\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)/g)) {
+    out += text.slice(last, match.index).trimEnd();
+    last = match.index + match[0].length;
+  }
+  return out + text.slice(last);
+}
 function friendlyText(value) {
   let text = String(value || "");
   text = text.replaceAll("Creator와 Producer가", "작성 프로그램과 PDF 생성 프로그램이")
     .replaceAll("UNVERIFIED로", "미확인 상태로");
-  text = text.replace(/\[RAG참고자료\]\s*/g, "").replace(/\s*\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)/g, "");
+  text = dropParenCodes(text.replace(/\[RAG참고자료\]\s*/g, ""));
   const tables = displayTables();
   const names = tables.names || {}, codeWords = tables.code_words || {}, fieldWords = tables.field_words || {};
   text = text.replace(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/g, code => names[code] || codeWords[code] || labels[code] || code);
