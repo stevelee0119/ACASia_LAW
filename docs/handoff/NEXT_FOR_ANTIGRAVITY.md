@@ -6732,3 +6732,77 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
  - 패치와 diff 0, 필수 CI 성공. 그 뒤 릴리스 PR(Steve → main, 기존 제외 목록 유지, 평가 측) → 병합·배포(사용자) → /api/health version 0.21.0 확인 → 태그(사용자) → 0.20.0 대 0.21.0 온라인 비교.
 ```
 
+## 2-61. 평가 체계 감사(11-14, 사용자 '봉인·온라인 평가가 모든 기능의 정상 구현·오류를 정밀 검증하는지 검증·보완')
+- 보고서: docs/scorecards/eval_coverage_audit_20261114.md. 커버리지 표: eval_coverage_20261114.json.
+- 실증 결함:
+  · F1 법리 규칙 단계 NameError(0.18.0~) → TK-177(아래, 사본 사전 검증 완료).
+  · F2 Drive 참고자료 동기화 매번 PARTIAL·판례표 격리 0행 → TK-178(조사 요청, 운영 환경 필요).
+  · F3 실연동 워크플로가 릴리스마다 건너뜀.
+  · F4 탐지 유형 35/97 미측정(16개는 시험도 없음).
+  · F5 봉인 채점의 유형 집계·개인정보 사각.
+  · F6 온라인 명세가 실행 상태를 안 봄.
+- 평가 측 보완(Agent: evaluator):
+  · scorecard 엔진 오류·유형별 집계.
+  · score_gate 엔진 오류 게이트(known_engine_errors.json, TK-177 등재).
+  · score_report run_health + online_pipeline_health 명세.
+  · eval_coverage.py, check_private_probe_overlap.py.
+  · 시험 23건.
+- 운영 실행 7건 재채점: 모두 H-ENGINE·H-REF 실패(F1·F2).
+- 비공개 탐침 95건 하드코딩 대조: 겹침 0.
+- 측정 조건 주의: 성적표를 같은 머신에서 동시에 두 번 돌리면 v2 미판정 경고가 1건씩 달라졌다(단독 실행은 기준선과 같음). 성적표는 단독으로 돌린다.
+- 사용자 결정 대기: U1 온라인 봉인 실행, U2 실연동 점검의 릴리스 절차 편입, U3 RAG 대조군, U4 봉인 출제 사양, U5 AI 판별 반복 측정.
+
+### 2-61-1. TK-177 지시(전달판)
+```
+[TK-177 법리 규칙 단계 NameError(0.18.0~0.21.0) — 모든 문서에서 단계가 예외로 중단, 화면에 코드 오류 문구 노출]  기준: Steve_ACASiaLAW 0653872(0.21.0 릴리스 후보)  평가 측 사본: TK-177 copy(98a7557)
+보완 패치: docs/handoff/patches/TK-177_on_0653872.diff (git apply)
+ - 0653872 → 사본 차이 전부: 제품 1파일(packages/verification_engine/pipeline.py, 1줄) + 새 시험 1파일.
+대상 릴리스: 0.21.0(사용자 결정에 따름 — 결함 수정이라 같은 릴리스 포함 권장).
+
+0. 근거
+ - 평가 체계 감사(docs/scorecards/eval_coverage_audit_20261114.md 3절 F1).
+ - 운영 실행 7건(0.18.0 case9, 0.19.0 case9 2회·탐침 B·C·D docx·D hwpx)의 run_manifest.engines.legal_rules.errors가 모두 '…: NameError'다.
+ - 오프라인 재현(평가 측 재실행, 0653872): 개발 문서 13건 중 12건에서 같은 오류.
+ - 문서 경고: "법리 규칙 검토 경고: name 'os' is not defined"
+
+1. 원인(줄 번호는 0653872 기준)
+ C1. packages/verification_engine/pipeline.py 13~15행 import에 os가 없다.
+     1055행 `if os.environ.get("LV_ENABLE_CAUSE_OF_ACTION_REVIEW", "0") == "1":`에서 NameError가 난다. 51a51ab(11-10, LV-06-R2)에서 들어왔다.
+ C2. 1048~1061행 legal_rules 단계가 예외를 잡아 stage.error와 경고만 남긴다.
+     - 앞서 실행된 review_legal_rules·pleading_structure_findings 결과는 이미 담겨 점수는 같았다.
+     - 단계 오류가 기록되고 화면 경고로 코드 오류 문구가 나간다. 요건사실 점검(플래그 켬)은 켜도 돌 수 없다.
+     - 어떤 시험도 엔진 오류 수를 보지 않아 CI·verify_all·고정·은퇴·온라인 case9가 모두 통과했다.
+
+2. 고칠 것(보완 패치와 같음)
+ F1. pipeline.py 13행 `import asyncio` 다음 줄에 `import os`를 더한다.
+ F2. 새 시험 tests/test_tk177_pipeline_engine_errors.py(3건, 합성 문서·parse_document 대역):
+     - legal_rules 단계 오류 0과 '법리 규칙 검토 경고' 없음. 플래그 끔·켬 두 경우를 본다.
+     - 오프라인 전 단계의 엔진 오류 0.
+ - 바꾸지 않는 것: 단계의 예외 처리 구조, 플래그 기본값(끔), 다른 단계.
+
+3. 확인 시험
+ - 새 시험 3건: 고치기 전 0653872에서 3건 실패, 고친 트리에서 3건 통과(평가 측 재실행).
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본, SQLite, LV_ALLOW_NETWORK=0)
+ - precheck_pr --quick(기준 0653872): 종료 0. 함께 돌린 시험 1,018건(새 시험 + 법리 규칙·청구 구조·요건사실·파이프라인 관련 29파일) 실패 0.
+ - 고정 82.6 / 81.9 / 오탐 0, 평가 세트 문구 대조(새 한글 조각 0) 통과.
+ - 개발 문서 13건 엔진 오류: 고치기 전 legal_rules:NameError 12건 → 고친 뒤 0건.
+ - 은퇴 5세트·새 성적표 엔진 오류 집계: 은퇴 5세트(retired_compare, 기준 0653872) 구 산식·확인 오탐·v2·미판정 모두 같음(후퇴 없음). 새 성적표(엔진 오류 집계): 0653872 dev·holdout 각 legal_rules:NameError 6건 → 고친 트리 0건, 종합·v2(42/56·41/54, 미판정 10·9) 같음. 개발 세트 finding 비교(findings_diff) 123 → 123, 바뀐 것 0.
+ - 미검증: 운영 실행 기록의 엔진 오류 0(배포 뒤 온라인 결과 JSON을 online_pipeline_health 명세로 확인).
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나. 제품 1파일 + 새 시험 1파일, 보호 경로 변경 없음.
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공.
+   · 고정·은퇴 세트 변화 0, 사본과 diff 0.
+   · 병합 뒤 평가 측이 known_engine_errors.json에서 TK-177 항목을 지운다(점수 하락 게이트가 엔진 오류 0을 강제).
+```
+
+### 2-61-2. TK-178 조사 요청(운영 환경 필요)
+- 증상: 운영 실행 7건 모두 reference_library PARTIAL, reference_sync 오류 '참고자료 전체 동기화·읽기를 완료하지 못함'.
+  · 0.19.0 case9: 35개 중 23개 색인, 격리 5·암호 1·부분 읽기 10.
+  · 판례표 후보 xlsx(발견 3,556행)가 REFERENCE_QUARANTINED로 색인 0행.
+- 필요: 사용자가 Render worker에서 python -m scripts.check_drive_references 결과(JSON, 파일 내용 제외)를 준다.
+- 평가 측이 격리 사유가 실제 위험(지시문·숨김 시트 등)인지 오판인지 판정하고, 오판이면 사본 사전 검증 뒤 지시한다.
+

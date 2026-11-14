@@ -9,6 +9,12 @@
 
 봉인 시험은 문서·정답을 저장소에 두지 않는다. 출력에는 종합·재현율·오탐 수만 싣고 문서별·항목별 값은 싣지 않는다.
 상세는 봉인 폴더 안 `.sealed_out/`에만 쓴다(사용자만 본다).
+
+2026-11-14 평가 체계 감사 보완(평가 측):
+- 결함 유형별 집계(per_type: 유형 코드 → 항목 수·재현율)를 모든 세트에 싣는다. 봉인 세트도 숫자만 싣는다(문서·문장 없음).
+  봉인 세트가 어느 결함 유형을 덮는지(0건 유형)를 사용자가 확인할 수 있게 하려는 것이다.
+- 엔진 오류(engine_errors: '단계:예외 종류' → 건수)를 싣는다. 단계가 예외를 삼켜도 실행 기록에는 남으므로,
+  점수는 같아도 단계가 깨진 회귀를 잡는다(0.18.0~0.21.0 legal_rules NameError가 이 방법으로만 드러났다, TK-177).
 """
 from __future__ import annotations
 
@@ -59,9 +65,24 @@ def summarize(report: Dict[str, Any], *, documents: int, sealed: bool) -> Dict[s
         "findings_without_document_id": report["findings_without_document_id"],
         "injection_defended": None if injection is None else bool(injection.get("defended")),
     }
+    out["per_type"] = {kind: {"items": int(v["items"]), "recall": v["recall"]}
+                       for kind, v in sorted((report.get("per_type") or {}).items())}
     if not sealed:
         out["per_document"] = {doc: value["recall"] for doc, value in report["per_document"].items()}
     return out
+
+
+def engine_errors(result: Dict[str, Any]) -> Dict[str, int]:
+    """실행 기록(run_manifest.engines[*].errors)의 오류를 '단계:예외 종류'별로 센다. 문서 식별자·메시지는 버린다."""
+    counts: Dict[str, int] = {}
+    for stage, entry in sorted(((result.get("run_manifest") or {}).get("engines") or {}).items()):
+        if not isinstance(entry, dict):
+            continue
+        for error in entry.get("errors") or []:
+            kind = str(error).rsplit(": ", 1)[-1].strip() or "unknown"
+            key = f"{stage}:{kind}"
+            counts[key] = counts.get(key, 0) + 1
+    return counts
 
 
 def run_set(evaluator, testset: Path, *, sealed: bool) -> Dict[str, Any]:
@@ -69,6 +90,7 @@ def run_set(evaluator, testset: Path, *, sealed: bool) -> Dict[str, Any]:
     report = evaluator.score(result, testset, db_available=False)
     documents = len(json.loads((testset / "ground_truth.json").read_text(encoding="utf-8"))["documents"])
     summary = summarize(report, documents=documents, sealed=sealed)
+    summary["engine_errors"] = engine_errors(result)
     summary["regression_v2"] = evaluation_v2.score(result, testset, report)
     if sealed:
         # The source cohort differs, but no case IDs, tokens or excerpts leave this summary.
@@ -155,6 +177,11 @@ def render(card: Dict[str, Any]) -> str:
             recall = f"{100*v2['recall']:.1f}%" if v2['recall'] is not None else "N/A"
             lines.append(f"  v2 일대일 항목 재현율 {v2['hits']}/{v2['items']} ({recall}), "
                          f"미판정 경고 {v2['unadjudicated_alerts']}, 참고 경고 {v2['advisory_findings']}")
+        errors = row.get("engine_errors") or {}
+        lines.append("  엔진 오류 " + (", ".join(f"{k} {v}건" for k, v in errors.items()) if errors else "0건"))
+        empty = [k for k, v in (row.get("per_type") or {}).items() if not v.get("items")]
+        if row.get("per_type"):
+            lines.append(f"  결함 유형 {len(row['per_type'])}종" + (f" (0건 유형: {', '.join(empty)})" if empty else ""))
     lines.append("법률 정확도·전체 정밀도·공개 벤치마크·실무 효율: NOT_MEASURED (0점/통과가 아님)")
     return "\n".join(lines)
 
