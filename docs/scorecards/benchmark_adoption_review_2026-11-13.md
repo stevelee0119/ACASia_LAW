@@ -140,3 +140,5 @@
    - 추천: 문서 10개(170호출) 시범 → 실측 비용·변동성 보고 → 전체 승인 여부를 다시 결정.
 2. **P0 평가 PR 병합 승인**: 보호 경로이고, KBL 시험 단언을 바꾸게 된다.
 3. 이 밖의 후보(LegalBench-RAG·CUAD·MAUD·LegalBench·Harvey LAB)는 보류다. 지금 결정할 것은 없다.
+EOF
+echo written

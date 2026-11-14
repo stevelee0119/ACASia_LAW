@@ -1,0 +1,410 @@
+diff --git a/packages/legal_engine/opinion_attribution.py b/packages/legal_engine/opinion_attribution.py
+index ba369ca..6d34c2e 100644
+--- a/packages/legal_engine/opinion_attribution.py
++++ b/packages/legal_engine/opinion_attribution.py
+@@ -305,7 +305,7 @@ CHANGED_PRECEDENT_RE = re.compile(
+     r"(?:이와\s*달리|종전에)\s*(?P<old_holding>[^.。\n]{5,180}?)"
+     r"(?:판시한|보았던|판단한)\s*(?:대법원\s*)?(?P<old_cases>(?:[^.。\n]|\.(?=\s*\d|\s*선고)){4,200}?)"
+     r"(?:판결|결정)(?:\s*등)?은\s*이\s*(?:판결|결정)의\s*견해에\s*배치되는\s*범위\s*(?:내)?에서\s*"
+-    r"(?:이를\s*)?변경(?:하기로\s*한다|한다)"
++    r"(?:이를\s*)?(?:모두\s*)?변경(?:하기로\s*한다|한다)"  # TK-162: 실제 판결에 흔한 '이를 모두 변경' 꼴
+ )
+ 
+ REVERSED_LOWER_COURT_RE = re.compile(
+diff --git a/packages/legal_engine/precedent_change.py b/packages/legal_engine/precedent_change.py
+new file mode 100644
+index 0000000..3d77ec9
+--- /dev/null
++++ b/packages/legal_engine/precedent_change.py
+@@ -0,0 +1,171 @@
++"""TK-162 판례 효력 확인: 서면이 인용한 대법원 판례가 뒤의 전원합의체 판결에서 변경 대상으로 적혔는지 역조회한다.
++
++- 대법원이 종전 판례를 변경하려면 전원합의체가 판단한다(법원조직법 제7조 제1항 제3호). 변경한 판결 이유에는
++  "… 판결 등은 이 판결의 견해에 배치되는 범위에서 (이를) (모두) 변경하기로 한다" 문장이 실린다.
++- 공식 원문으로 실재가 확인된 대법원 판례만 대상이다. 그 사건번호로 공식 판례 본문을 검색하고, 뒤에 선고된 판결의
++  전문에서 위 문장을 찾아 변경 대상 사건번호 목록에 인용 판례가 있는지 본다.
++- 찾으면 경고(사람 검토 필요)다. '배치되는 범위'가 서면의 주장과 겹치는지는 사람이 판단한다. 찾지 못한 것은
++  '변경되지 않았다'는 확인이 아니다(조회 범위·상한 안에서 찾지 못했을 뿐이다).
++- 인용 확인 엔진 밖, 처리 흐름(파이프라인)의 별도 단계 'precedent_change'에서 돈다. 인용 확인의 조회·재조회
++  흐름과 횟수에 끼지 않는다. 빠른 검토(QUICK)에서는 건너뛴다. 조회 상한을 둔다.
++- 사건번호를 제품 코드에 넣지 않는다(하드코딩 금지). 판정 근거는 공식 판결 원문의 문장이다.
++"""
++from __future__ import annotations
++
++import re
++from typing import Any, Dict, List, Optional
++
++from packages.common.enums import AdapterStatus, EvidenceGrade, FindingType, Severity, VerificationStatus
++from packages.common.schemas import Evidence, Finding
++
++from .authority_status import get_court_tier
++from .normalize import canonical_case_number, extract_all_case_numbers
++
++MAX_CITATIONS = 8        # 한 번의 인용 확인에서 역조회할 판례 수 상한
++MAX_FETCH_PER_CITATION = 3  # 판례마다 전문을 받아 볼 뒤 판결 수 상한
++SEARCH_DISPLAY = 20
++
++# 변경 문장의 끝. 앞부분(변경 대상 목록)은 문장 시작까지 거슬러 올라가 잡는다.
++OVERRULE_END_RE = re.compile(
++    r"견해에\s*배치되는\s*범위\s*(?:내)?에서\s*(?:이를\s*)?(?:모두\s*)?변경(?:하기로\s*한다|한다)")
++# 문장 끝: '다.'·'함.' 뒤 공백. 날짜 '2008. 2. 14.'의 마침표는 숫자 뒤라 끝으로 보지 않는다.
++SENTENCE_END_RE = re.compile(r"(?<=[다함음])\.\s")
++LOOKBACK = 1200
++
++
++def overruling_sentences(text: str) -> List[Dict[str, Any]]:
++    """판결 전문에서 판례 변경 문장과 그 안의 변경 대상 사건번호(정규형)를 뽑는다."""
++    out: List[Dict[str, Any]] = []
++    for m in OVERRULE_END_RE.finditer(text or ""):
++        window = text[max(0, m.start() - LOOKBACK):m.start()]
++        ends = list(SENTENCE_END_RE.finditer(window))
++        head = window[ends[-1].end():] if ends else window
++        sentence = re.sub(r"\s+", " ", head + m.group(0)).strip()
++        numbers = []
++        for year, code, serial in extract_all_case_numbers(sentence):
++            number = f"{year}{code}{serial}"
++            if number not in numbers:
++                numbers.append(number)
++        if numbers:
++            out.append({"sentence": sentence, "case_numbers": numbers})
++    return out
++
++
++def _later(candidate: Dict[str, Any], cited_date: Optional[str]) -> bool:
++    date = str(candidate.get("decision_date") or "")
++    return not cited_date or not date or date > cited_date
++
++
++def _korean_date(value: Any) -> str:
++    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", str(value or ""))
++    return f"{m.group(1)}. {int(m.group(2))}. {int(m.group(3))}." if m else str(value or "")
++
++
++def _finding(citation, change: Dict[str, Any]) -> Finding:
++    by = change["overruled_by"]
++    decided = f"{_korean_date(by.get('decision_date'))} 선고 " if by.get("decision_date") else ""
++    label = f"{by.get('court') or '대법원'} {decided}{by.get('case_number') or ''} {by.get('case_kind') or '판결'}".strip()
++    return Finding.create(
++        FindingType.CASE_HOLDING_DISTORTION, VerificationStatus.SUSPICIOUS, Severity.HIGH, EvidenceGrade.A,
++        f"뒤의 판결로 변경된 판례 인용 의심: {citation.raw_text}",
++        # 칸에는 핵심만 둔다(사용자 11-14 '핵심내용만 간략하게'). 변경 문장 전문은 근거(evidence)에 싣는다.
++        detail=(f"{label}이 이 판례를 변경 대상으로 적었습니다. 변경된 범위('이 판결의 견해에 배치되는 범위')가 "
++                f"서면의 주장과 겹치는지 확인하세요."),
++        confidence=0.85,
++        confidence_features={"citation_id": citation.citation_id, "rule_id": "TK162.PRECEDENT_OVERRULED",
++                             "verdict_label": "PRECEDENT_OVERRULED", "defect_summary": "뒤의 판결로 변경된 판례 인용",
++                             "grounded_evidence_quote": change["sentence"][:300], "overruled_by": by,
++                             "deterministic_rule": False},
++        document_id=citation.document_id, block_id=citation.block_id, page=citation.page, span=citation.span,
++        engine="legal_engine", tags=["LEGAL", "CASE", "PRECEDENT_OVERRULED"],
++        evidence=[Evidence.create(description="뒤에 선고된 판결의 판례 변경 문장(공식 원문)", grade=EvidenceGrade.A,
++                                  excerpt=change["sentence"][:300])])
++
++
++def check_precedent_change(adapter: Any, citation, official: Optional[Dict[str, Any]]) -> Dict[str, Any]:
++    """판례 하나를 역조회한다. 반환 status: OVERRULED · NOT_FOUND_IN_SCOPE · INCOMPLETE · LOOKUP_FAILED."""
++    official = official or {}
++    cited = canonical_case_number(official.get("case_number") or citation.canonical_case_number or citation.case_number or "")
++    cited_date = str(official.get("decision_date") or citation.decision_date or "") or None
++    response = adapter.search_cases_by_query(cited, org="400201", display=SEARCH_DISPLAY)
++    if response.status != AdapterStatus.READY:
++        return {"status": "LOOKUP_FAILED", "reason": str(response.status), "checked": 0}
++    candidates = [r for r in (response.records or [])
++                  if canonical_case_number(str(r.get("case_number") or "")) != cited and _later(r, cited_date)]
++    # 전원합의체 판결을 먼저(최근 것부터), 그다음 나머지 판결을 최근 것부터 본다.
++    enbanc = [r for r in candidates if str(r.get("case_kind") or "") == "전원합의체 판결"]
++    others = sorted((r for r in candidates if r not in enbanc), key=lambda r: str(r.get("decision_date") or ""), reverse=True)
++    ordered = sorted(enbanc, key=lambda r: str(r.get("decision_date") or ""), reverse=True) + others
++    checked = 0
++    for record in ordered[:MAX_FETCH_PER_CITATION]:
++        text = record.get("full_text")
++        if not text and hasattr(adapter, "fetch_case"):
++            detail = adapter.fetch_case(record)
++            if detail.status != AdapterStatus.READY or not detail.records:
++                continue
++            text = detail.records[0].get("full_text") or ""
++        checked += 1
++        for item in overruling_sentences(text or ""):
++            if cited in item["case_numbers"]:
++                by = {k: record.get(k) for k in ("court", "decision_date", "case_number", "case_kind", "source_id")}
++                by["detail_link"] = record.get("detail_link")
++                return {"status": "OVERRULED", "overruled_by": by, "sentence": item["sentence"], "checked": checked,
++                        "candidates": len(ordered)}
++    return {"status": "NOT_FOUND_IN_SCOPE" if len(ordered) <= MAX_FETCH_PER_CITATION else "INCOMPLETE",
++            "checked": checked, "candidates": len(ordered),
++            "note": "조회 범위·상한 안에서 변경 문장을 찾지 못했다. 변경되지 않았다는 확인은 아니다."}
++
++
++_CONFIRMED = {str(VerificationStatus.VERIFIED), str(VerificationStatus.PARTIALLY_VERIFIED)}
++
++
++def review_precedent_changes(legal: Any, citations: List[Any], verdicts: List[Dict[str, Any]]) -> Dict[str, Any]:
++    """파이프라인 단계: 인용 확인이 끝난 판정(engine_data.legal_verdicts) 가운데 공식 원문으로 확인된 대법원 판례를
++    역조회한다. 판정 사전의 review['precedent_change']에 결과를 적고, 경고는 돌려준다(호출 측이 결과에 더한다).
++    판정 status(실재 확인)는 바꾸지 않는다. 기준일별 판정에 같은 인용이 여러 번 있어도 조회·경고는 한 번이다."""
++    by_id = {c.citation_id: c for c in citations}
++    targets = []
++    for verdict in verdicts:
++        citation = by_id.get(verdict.get("citation_id"))
++        if citation is None or not verdict.get("official_record") or str(verdict.get("status")) not in _CONFIRMED \
++                or get_court_tier(citation) != "SUPREME":
++            continue
++        targets.append((verdict, citation))
++    summary: Dict[str, Any] = {"status": "NO_TARGET", "targets": 0, "looked_up": 0, "findings": []}
++    if not targets:
++        return summary
++    adapter = getattr(getattr(legal, "registry", None), "law", None)
++    ready = adapter is not None and hasattr(adapter, "search_cases_by_query") and \
++        (adapter.status() if hasattr(adapter, "status") else AdapterStatus.READY) == AdapterStatus.READY
++    seen: Dict[str, Dict[str, Any]] = {}
++    warned = set()
++    for verdict, citation in targets:
++        review = verdict.setdefault("review", {})
++        if review is None:
++            review = verdict["review"] = {}
++        if not ready:
++            review["precedent_change"] = {"status": "NOT_ASSESSED", "reason": "SOURCE_UNAVAILABLE"}
++            continue
++        key = canonical_case_number(citation.canonical_case_number or citation.case_number or "")
++        if key in seen:
++            change = seen[key]
++        elif len(seen) >= MAX_CITATIONS:
++            review["precedent_change"] = {"status": "NOT_ASSESSED", "reason": "LOOKUP_BUDGET"}
++            continue
++        else:
++            try:
++                change = check_precedent_change(adapter, citation, verdict.get("official_record"))
++            except Exception as exc:  # 조회 오류는 판정을 바꾸지 않는다
++                change = {"status": "LOOKUP_FAILED", "reason": type(exc).__name__, "checked": 0}
++            seen[key] = change
++        review["precedent_change"] = change
++        if change["status"] == "OVERRULED" and citation.citation_id not in warned:
++            warned.add(citation.citation_id)
++            finding = _finding(citation, change)
++            summary["findings"].append(finding)
++            verdict.setdefault("findings", []).append({
++                "finding_id": finding.finding_id, "type": str(finding.type), "tags": list(finding.tags),
++                "confidence_features": dict(finding.confidence_features)})
++    summary.update(targets=len({c.citation_id for _, c in targets}), looked_up=len(seen),
++                   status="SOURCE_UNAVAILABLE" if not ready else ("OVERRULED_FOUND" if summary["findings"] else "CHECKED"))
++    return summary
+diff --git a/packages/verification_engine/pipeline.py b/packages/verification_engine/pipeline.py
+index 4217723..8f7b5f4 100644
+--- a/packages/verification_engine/pipeline.py
++++ b/packages/verification_engine/pipeline.py
+@@ -939,6 +939,27 @@ class VerificationPipeline:
+                 result.engine_data["related_authorities"] = {
+                     "status": "UNVERIFIED", "reason": "RELATED_AUTHORITY_LOOKUP_FAILED", "advisory_only": True}
+                 result.unverified_items.append({"kind": "related_authority", "reason": "관련 법조문 추가 조회 미완료"})
++        # TK-162 판례 효력 확인: 공식 원문으로 확인된 대법원 판례가 뒤의 전원합의체 판결에서 변경 대상으로 적혔는지
++        # 역조회한다. 인용 확인 엔진 밖의 별도 단계라 인용 조회·재조회 횟수에 끼지 않는다. 빠른 검토에서는 건너뛴다.
++        from packages.legal_engine.precedent_change import review_precedent_changes
++        with manifest.stage("precedent_change", result.findings, inputs=0, unit="역조회한 판례",
++                            document_id=doc.document_id) as stage:
++            if context.profile == VerificationProfile.QUICK:
++                stage.skip_reason = "빠른 검토에서는 판례 변경 역조회를 하지 않음"
++            else:
++                try:
++                    change = review_precedent_changes(self.legal, citations,
++                                                      result.engine_data.get("legal_verdicts") or [])
++                    stage.inputs = change["looked_up"]
++                    if not change["targets"]:
++                        stage.skip_reason = "공식 원문으로 확인된 대법원 판례 인용이 없음"
++                    elif change["status"] == "SOURCE_UNAVAILABLE":
++                        stage.skip_reason = "공식 판례 검색을 쓸 수 없음"
++                    result.findings.extend(change["findings"])
++                    result.engine_data["precedent_change"] = {k: v for k, v in change.items() if k != "findings"}
++                except Exception as exc:
++                    stage.error = type(exc).__name__
++                    result.unverified_items.append({"kind": "precedent_change", "reason": "판례 변경 역조회 미완료"})
+         # 법령 적용 시점(행위시법): 시행 버전이 둘 이상인 조문에 대한 주장을 버전별로 대조한다(v4 P3)
+         with manifest.stage("temporal_review", result.findings, inputs=0, unit="검토한 조문 주장", document_id=document.document_id) as stage:
+             found = self._temporal_reviews(doc, citations, context)
+diff --git a/tests/test_tk162_precedent_change.py b/tests/test_tk162_precedent_change.py
+new file mode 100644
+index 0000000..49625b7
+--- /dev/null
++++ b/tests/test_tk162_precedent_change.py
+@@ -0,0 +1,182 @@
++"""TK-162 판례 효력 확인(뒤의 전원합의체 판결에 의한 판례 변경 역조회). 사건번호·문장은 모두 합성이다."""
++from __future__ import annotations
++
++import pytest
++
++from packages.common.enums import AdapterStatus, CitationType, FindingType, VerificationStatus
++from packages.common.schemas import Citation
++from packages.legal_engine.opinion_attribution import detect_changed_precedent_distortion
++from packages.legal_engine.precedent_change import (MAX_CITATIONS, MAX_FETCH_PER_CITATION, overruling_sentences,
++                                                    review_precedent_changes)
++from packages.legal_engine.verifier import LegalVerifier
++from packages.source_adapters.base import AdapterResponse
++
++FORMULA = {
++    "모두": "이와 달리 합성 쟁점에 관하여 반대 취지로 판시한 대법원 2091. 3. 14. 선고 2090다11111 판결, "
++            "대법원 2092. 5. 2. 선고 2091다22222 판결 등은 이 판결의 견해에 배치되는 범위에서 이를 모두 변경하기로 한다.",
++    "기본": "종전에 이와 달리 판단한 대법원 2091. 3. 14. 선고 2090다11111 판결은 이 판결의 견해에 배치되는 범위에서 이를 변경하기로 한다.",
++    "내에서": "이와 견해를 달리한 대법원 2090다11111 판결 등은 이 판결의 견해에 배치되는 범위 내에서 변경한다.",
++}
++
++
++@pytest.mark.parametrize("form", sorted(FORMULA))
++def test_overruling_sentence_forms_list_the_changed_cases(form):
++    text = "앞 문단의 합성 판시이다. " + FORMULA[form] + " 그러므로 상고를 기각한다."
++    [item] = overruling_sentences(text)
++    assert "2090다11111" in item["case_numbers"] and item["sentence"].startswith(("이와", "종전에"))
++
++
++@pytest.mark.parametrize("text", [
++    "원심판결을 파기하고, 사건을 원심법원에 환송한다.",                                # 변경 문장 없음
++    "종전 대법원 2090다11111 판결의 견해를 변경할 필요는 없다.",                       # 변경하지 않는다는 문장
++    "대법원 2090다11111 판결은 이 판결의 견해와 같은 취지이므로 이를 유지한다.",          # 유지
++])
++def test_non_overruling_sentences_are_ignored(text):
++    assert overruling_sentences(text) == []
++
++
++def test_lv05_detects_the_common_all_overruled_form():
++    claim = "합성 쟁점에 관하여 반대 취지로 보아야 한다"
++    found = detect_changed_precedent_distortion(claim, FORMULA["모두"], cited_case_number="2090다11111")
++    assert found and found["verdict"] == "CHANGED_PRECEDENT"
++
++
++# --- 역조회 -------------------------------------------------------------------------------------------
++class FakeLaw:
++    def __init__(self, records=None, status=AdapterStatus.READY, search_status=AdapterStatus.READY, details=None):
++        self.records, self._status, self.search_status = records or [], status, search_status
++        self.details = details or {}
++        self.searches, self.fetches = [], []
++
++    def status(self):
++        return self._status
++
++    def search_cases_by_query(self, query, **kw):
++        self.searches.append(query)
++        return AdapterResponse(self.search_status, list(self.records), None, "synthetic")
++
++    def fetch_case(self, record, **kw):
++        self.fetches.append(record["case_number"])
++        text = self.details.get(record["case_number"])
++        return AdapterResponse(AdapterStatus.READY, [{"full_text": text}] if text else [], None, "synthetic")
++
++
++class FakeLegal:
++    def __init__(self, law):
++        self.registry = type("R", (), {"law": law})()
++
++
++def _verdict(number="2090다11111", court="대법원", date="2091-03-14", status=VerificationStatus.VERIFIED, cid="c1"):
++    """파이프라인 engine_data.legal_verdicts의 판정 사전과 그 인용."""
++    citation = Citation(citation_id=cid, type=CitationType.CASE, raw_text=f"{court} {number} 판결", court=court,
++                        case_number=number, canonical_case_number=number, decision_date=date, page=1)
++    verdict = {"citation_id": cid, "type": "CASE", "status": str(status), "levels": {}, "review": {}, "findings": [],
++               "official_record": {"case_number": number, "decision_date": date, "court": court}}
++    return citation, verdict
++
++
++def _run(law, *pairs):
++    return review_precedent_changes(FakeLegal(law), [c for c, _ in pairs], [v for _, v in pairs])
++
++
++def _enbanc(number="2095다99999", date="2095-01-20", text=FORMULA["모두"], with_text=True):
++    return {"case_number": number, "decision_date": date, "court": "대법원", "case_kind": "전원합의체 판결",
++            "source_id": "9", "full_text": text if with_text else None}
++
++
++def test_overruled_precedent_gets_a_review_warning_with_official_sentence():
++    law = FakeLaw([_enbanc()])
++    pair = _verdict()
++    citation, verdict = pair
++    out = _run(law, pair)
++    change = verdict["review"]["precedent_change"]
++    assert change["status"] == "OVERRULED" and change["overruled_by"]["case_number"] == "2095다99999"
++    [finding] = out["findings"]
++    assert finding.type == FindingType.CASE_HOLDING_DISTORTION and finding.status == VerificationStatus.SUSPICIOUS
++    assert "PRECEDENT_OVERRULED" in finding.tags and "배치되는 범위" in finding.confidence_features["grounded_evidence_quote"]
++    assert finding.confidence_features["citation_id"] == citation.citation_id
++    assert verdict["status"] == str(VerificationStatus.VERIFIED)  # 실재 확인 판정은 바꾸지 않는다
++    assert finding.detail.startswith("대법원 2095. 1. 20. 선고 2095다99999 전원합의체 판결이") and len(finding.detail) < 120
++    assert finding.evidence[0].excerpt.endswith("변경하기로 한다")  # 변경 문장 전문은 근거에
++    assert [f["finding_id"] for f in verdict["findings"]] == [finding.finding_id]  # 판정 사전에도 연결
++    assert out["status"] == "OVERRULED_FOUND" and out["looked_up"] == 1
++
++
++def test_same_citation_in_several_dated_reviews_is_looked_up_and_warned_once():
++    law = FakeLaw([_enbanc()])
++    citation, first = _verdict()
++    second = {**first, "review": {}, "findings": []}  # 기준일별 판정 사본(같은 인용)
++    out = review_precedent_changes(FakeLegal(law), [citation], [first, second])
++    assert len(law.searches) == 1 and len(out["findings"]) == 1
++    assert second["review"]["precedent_change"]["status"] == "OVERRULED"
++
++
++@pytest.mark.parametrize("records", [
++    [_enbanc(text=FORMULA["모두"].replace("2090다11111", "2090다11112"))],  # 다른 사건이 변경됨
++    [_enbanc(date="2090-01-01")],                                              # 인용 판례보다 앞선 판결
++    [_enbanc(number="2090다11111")],                                           # 자기 자신
++    [{**_enbanc(), "full_text": "합성 판결 이유에는 변경 문장이 없다."}],
++])
++def test_no_warning_without_a_later_overruling_sentence_naming_the_cited_case(records):
++    pair = _verdict()
++    out = _run(FakeLaw(records), pair)
++    change = pair[1]["review"]["precedent_change"]
++    assert out["findings"] == [] and change["status"] in ("NOT_FOUND_IN_SCOPE", "INCOMPLETE")
++    assert "확인은 아니다" in change["note"]
++
++
++def test_lookup_failure_and_offline_source_do_not_warn():
++    failed = _verdict()
++    out = _run(FakeLaw(search_status=AdapterStatus.RATE_LIMITED), failed)
++    assert out["findings"] == [] and failed[1]["review"]["precedent_change"]["status"] == "LOOKUP_FAILED"
++    offline_law = FakeLaw([_enbanc()], status=AdapterStatus.DISABLED)
++    offline = _verdict()
++    out = _run(offline_law, offline)
++    assert out["findings"] == [] and offline[1]["review"]["precedent_change"]["reason"] == "SOURCE_UNAVAILABLE"
++    assert offline_law.searches == [] and out["status"] == "SOURCE_UNAVAILABLE"
++
++
++@pytest.mark.parametrize("pair", [
++    _verdict(court="서울고등법원", number="2090나11111"),          # 하급심
++    _verdict(status=VerificationStatus.NOT_FOUND),                 # 실재 미확인
++])
++def test_only_officially_confirmed_supreme_court_precedents_are_checked(pair):
++    law = FakeLaw([_enbanc()])
++    out = _run(law, pair)
++    assert law.searches == [] and "precedent_change" not in pair[1]["review"] and out["status"] == "NO_TARGET"
++
++
++def test_full_text_is_fetched_when_missing_and_fetches_are_capped():
++    records = [_enbanc(number=f"2095다{90000 + i}", date=f"2095-01-{10 + i:02d}", with_text=False) for i in range(6)]
++    details = {records[0]["case_number"]: "합성 판결 이유이다.", records[5]["case_number"]: FORMULA["기본"]}
++    law = FakeLaw(records, details=details)
++    pair = _verdict()
++    _run(law, pair)
++    assert pair[1]["review"]["precedent_change"]["status"] == "OVERRULED"  # 최근 판결(2095-01-15)부터 본다
++    assert len(law.fetches) <= MAX_FETCH_PER_CITATION
++
++
++def test_lookup_budget_and_same_case_dedup():
++    law = FakeLaw([])
++    pairs = [_verdict(number=f"2090다{20000 + i}", cid=f"c{i}") for i in range(MAX_CITATIONS + 2)]
++    pairs.append(_verdict(number="2090다20000", cid="dup"))
++    _run(law, *pairs)
++    assert len(law.searches) == MAX_CITATIONS
++    assert [v["review"]["precedent_change"].get("reason") for _, v in pairs[MAX_CITATIONS:MAX_CITATIONS + 2]] \
++        == ["LOOKUP_BUDGET"] * 2
++    assert pairs[-1][1]["review"]["precedent_change"]["status"] == pairs[0][1]["review"]["precedent_change"]["status"]
++
++
++def test_offline_registry_records_not_assessed_without_lookup(registry):
++    pair = _verdict()
++    out = review_precedent_changes(LegalVerifier(registry), [pair[0]], [pair[1]])
++    assert out["findings"] == [] and pair[1]["review"]["precedent_change"]["status"] == "NOT_ASSESSED"
++
++
++def test_pipeline_runs_the_stage_outside_citation_lookup(tmp_path):
++    """처리 흐름의 별도 단계로 기록되고(인용 확인 단계와 분리), 오프라인 합성 실행에서 경고를 내지 않는다."""
++    from scripts.audit.runner import run_synthetic
++    result = run_synthetic(tmp_path)["result"]
++    record = result.run_manifest["engines"]["precedent_change"]
++    assert record["input_unit"] == "역조회한 판례" and record["errors"] in ([], 0, None)
++    assert not any("PRECEDENT_OVERRULED" in (f.tags or []) for f in result.all_findings)

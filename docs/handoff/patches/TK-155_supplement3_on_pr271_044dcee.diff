@@ -1,0 +1,173 @@
+diff --git a/apps/api/routers/projects.py b/apps/api/routers/projects.py
+index d340be0..cdbe4a8 100644
+--- a/apps/api/routers/projects.py
++++ b/apps/api/routers/projects.py
+@@ -40,7 +40,7 @@ from ..access import project_scoped
+ from ..identity import (actor_id, apply_organization_policy, filter_project_query,
+                         project_creation_defaults, require_project, project_role)
+ 
+-from packages.common.display_text import CODE_WORDS, FIELD_WORDS, FINDING_TYPE_NAMES, WORD_NAMES
++from packages.common.display_text import CODE_WORDS, FIELD_WORDS, FINDING_TYPE_NAMES, PHRASES, WORD_NAMES
+ from packages.common.finding_category_map import CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, get_category_counts
+ 
+ router = APIRouter(tags=["projects"])
+@@ -59,6 +59,7 @@ def get_finding_categories() -> dict:
+         "code_words": CODE_WORDS,
+         "field_words": FIELD_WORDS,
+         "word_names": WORD_NAMES,
++        "phrases": [list(pair) for pair in PHRASES],  # TK-155 보완 3: 문장 단위 치환 표(보고서 readable과 같은 순서)
+     }
+ 
+ 
+diff --git a/apps/web/static/app.js b/apps/web/static/app.js
+index 2096e41..7f4607d 100644
+--- a/apps/web/static/app.js
++++ b/apps/web/static/app.js
+@@ -81,7 +81,8 @@ function friendlyText(value) {
+   const names = tables.names || {}, codeWords = tables.code_words || {}, fieldWords = tables.field_words || {};
+   text = text.replace(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/g, code => names[code] || codeWords[code] || labels[code] || code);
+   text = text.replace(/\bfinding\.confidence\b|\b[a-z]+_[a-z_]+\b/g, word => fieldWords[word] || word);
+-  for (const [technical, simple] of [["UNVERIFIED","확인하지 못함"],["Source","출처"],["Creator","작성 프로그램"],["Producer","PDF 생성 프로그램"],["Author","작성자"],["QUARANTINED","안전 검토 필요"],["UNCERTAIN","판단 유보"],["Python 계산엔진으로 검산한 결정론적 결과이다.","계산식에 따라 자동 검산한 결과입니다."]]) {
++  // TK-155 보완 3: 문장 단위 치환 표는 서버(display_text.PHRASES)가 준다. 받지 못했을 때만 아래 기본 표를 쓴다.
++  for (const [technical, simple] of tables.phrases || [["UNVERIFIED","확인하지 못함"],["Source","출처"],["Creator","작성 프로그램"],["Producer","PDF 생성 프로그램"],["Author","작성자"],["QUARANTINED","안전 검토 필요"],["UNCERTAIN","판단 유보"],["Python 계산엔진으로 검산한 결정론적 결과이다.","계산식에 따라 자동 검산한 결과입니다."]]) {
+     // 영문 낱말은 다른 코드의 일부(예: REFERENCE_QUARANTINED)를 바꾸지 않도록 앞뒤가 영문·숫자·밑줄이 아닐 때만 바꾼다.
+     text = /^[A-Za-z]+$/.test(technical)
+       ? text.replace(new RegExp(`(?<![A-Za-z0-9_])${technical}(?![A-Za-z0-9_])`, "g"), simple)
+@@ -1188,7 +1189,7 @@ const LAYER_NAMES = {visible_text: "본문", ocr_layer: "OCR 인식 글자", hid
+                      independent_ocr: "독립 OCR", page_labels: "쪽 번호 표시"};
+ const RISK_NAMES = {CRITICAL: "매우 높음", HIGH: "높음", MEDIUM: "보통", LOW: "낮음", NONE: "없음"};
+ const INJECTION_CHECKS = ["본문·숨김 글자의 지시형 문구(AI에게 판단을 바꾸라는 명령)", "문서 속성(메타데이터)의 지시문",
+-  "보이지 않는 유니코드 문자", "Base64 등으로 감춘 문자열", "화면 글자와 내부 글자 층의 불일치", "이미지·OCR 층의 지시문"];
++  "보이지 않는 문자", "부호로 바꿔 감춘 문자열", "화면 글자와 내부 글자 층의 불일치", "이미지 속 글자의 지시문"];
+ 
+ // 프롬프트 인젝션 판정 근거: 무엇을 검사했고, 무엇이 나왔고, 왜 그 결론인지 문서별로 보인다.
+ function injectionCard(docs, hasQuarantine, findings) {
+diff --git a/packages/common/display_text.py b/packages/common/display_text.py
+index 9fa627a..93d6fc7 100644
+--- a/packages/common/display_text.py
++++ b/packages/common/display_text.py
+@@ -299,7 +299,30 @@ def korean_time(value) -> str:
+ # 화면 friendlyText와 같은 문장 단위 치환(순서 그대로).
+ _PHRASES = (("UNVERIFIED", "확인하지 못함"), ("Source", "출처"), ("Creator", "작성 프로그램"), ("Producer", "PDF 생성 프로그램"),
+             ("Author", "작성자"), ("QUARANTINED", "안전 검토 필요"), ("UNCERTAIN", "판단 유보"),
+-            ("Python 계산엔진으로 검산한 결정론적 결과이다.", "계산식에 따라 자동 검산한 결과입니다."))
++            ("Python 계산엔진으로 검산한 결정론적 결과이다.", "계산식에 따라 자동 검산한 결과입니다."),
++            # TK-155 보완 3(사용자 11-13 'AI 탭에 남은 영문 표기 … 한글 설명으로, 이해하기 쉽고 간결하게'):
++            # 엔진 문장 속 '키=값'·모델 표지·유니코드 문자 이름·층 이름을 표시할 때만 바꾼다(결과 데이터는 그대로).
++            # 긴 문구를 먼저 둔다. 바꾼 결과에는 다시 걸리는 문구가 없다(두 번 적용해도 같다).
++            ("본 문자열은 자료로만 취급되며", "이 문자열은 자료로만 다루며"),
++            ("시스템 지침이나 Tool 권한을", "시스템 지시나 도구 권한을"),
++            ("Tool 권한", "도구 권한"),
++            ("Unicode 은닉 신호: 폭 0 문자(zero-width) — ", "보이지 않는 문자: "),
++            ("Unicode 은닉 신호: 폭 0 문자 — ", "보이지 않는 문자: "),
++            ("Unicode 은닉 신호", "보이지 않는 문자"), ("Unicode 신호", "보이지 않는 문자"),
++            ("ZERO WIDTH NO-BREAK SPACE (BOM)", "폭 없는 공백"), ("ZERO WIDTH NO-BREAK SPACE", "폭 없는 공백"),
++            ("ZERO WIDTH NON-JOINER", "폭 없는 글자 분리 문자"), ("ZERO WIDTH JOINER", "폭 없는 글자 결합 문자"),
++            ("ZERO WIDTH SPACE", "폭 없는 공백"), ("WORD JOINER", "폭 없는 단어 결합 문자"),
++            ("[openai] ", "(OpenAI) "), ("[anthropic] ", "(Anthropic) "), ("[gemini] ", "(Gemini) "),
++            ("openai=", "OpenAI "), ("anthropic=", "Anthropic "), ("gemini=", "Gemini "),
++            ("분류=", "분류: "), ("점수=", "점수 "), ("보조신호=", "보조 신호 "),
++            ("PDF 생성 프로그램=", "PDF 생성 프로그램: "), ("작성 프로그램=", "작성 프로그램: "), ("프로그램=", "프로그램: "),
++            ("작성자=", "작성자: "), ("creator=", "작성 프로그램: "), ("producer=", "PDF 생성 프로그램: "),
++            ("xml 레이어", "문서 내부 구조 층"), ("metadata 레이어", "문서 속성 층"), ("annotation 레이어", "주석 층"),
++            ("attachment 레이어", "첨부 파일 층"), ("outline 레이어", "북마크 층"), ("레이어", "층"),
++            (".. 발췌", ". 발췌"))
++
++# 화면(app.js friendlyText)이 /api/finding-categories의 'phrases'로 같은 표를 받아 쓴다(표 하나가 기준).
++PHRASES = _PHRASES
+ 
+ _PAREN_CODE = re.compile(r"\s*\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)")
+ _CODE = re.compile(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b")
+diff --git a/tests/test_tk155_ui_cleanup.py b/tests/test_tk155_ui_cleanup.py
+index 932fa5e..3c934e5 100644
+--- a/tests/test_tk155_ui_cleanup.py
++++ b/tests/test_tk155_ui_cleanup.py
+@@ -15,7 +15,7 @@ import pytest
+ from playwright.sync_api import expect, sync_playwright
+ from frontend_helpers import select_first_project
+ 
+-from packages.common.display_text import CODE_WORDS, FIELD_WORDS, FINDING_TYPE_NAMES, WORD_NAMES, readable, word
++from packages.common.display_text import CODE_WORDS, FIELD_WORDS, FINDING_TYPE_NAMES, PHRASES, WORD_NAMES, readable, word
+ from packages.common.finding_category_map import CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, get_category_counts
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+@@ -39,6 +39,12 @@ FINDINGS = [
+     _finding("c1", "TEMPORAL_LAW_MISMATCH", "법령 적용 시점 검토: 「합성법」 제1조 — 시행일이 기준일 뒤인데 소급 적용 주장 (RETROACTIVE_APPLICATION_ERROR)",
+              LONG_REASON, severity="HIGH"),
+     _finding("c2", "CASE_NOT_FOUND", "공식 DB 미발견 판례", "합성 판례를 조회 범위에서 찾지 못했다.", severity="MEDIUM"),
++    # 보완 3: AI 탭 보안 진단에 엔진이 내는 '키=값'·유니코드 문자 이름·층 이름 꼴(합성)
++    _finding("uni1", "UNICODE_SMUGGLING", "Unicode 은닉 신호: ZERO_WIDTH — ZERO WIDTH NO-BREAK SPACE (BOM) (U+FEFF) 1회",
++             "xml 레이어. ZERO WIDTH NO-BREAK SPACE (BOM) (U+FEFF) 1회", severity="LOW", engine="adversarial_engine",
++             status="SUSPICIOUS"),
++    _finding("meta1", "AUTHORSHIP_METADATA_LEAK", "생성 소프트웨어 정보", "creator=합성도구", severity="INFO",
++             engine="forensics_engine", status="SUSPICIOUS"),
+ ]
+ 
+ REVIEW_ITEMS = [
+@@ -95,7 +101,7 @@ def _serve(page, project):
+     cats = {"categories": {t.value: c.value for t, c in FINDING_CATEGORY_MAP.items()},
+             "tabs": {t.value: CATEGORY_TO_TAB[c].value for t, c in FINDING_CATEGORY_MAP.items()},
+             "counts": get_category_counts(), "names": FINDING_TYPE_NAMES, "code_words": CODE_WORDS,
+-            "field_words": FIELD_WORDS, "word_names": WORD_NAMES}
++            "field_words": FIELD_WORDS, "word_names": WORD_NAMES, "phrases": [list(p) for p in PHRASES]}
+ 
+     def respond(route):
+         path = urlsplit(route.request.url).path
+@@ -338,3 +344,57 @@ def test_report_reference_notice_is_a_legend_not_per_cell():
+     text = basis_text(item)
+     assert "구속력" not in text and text.startswith("[참고문헌 대조]") and "불부합" in text
+     assert LEGEND in REPORT_NOTICE and "법적 구속력은 없습니다" in LEGEND
++
++
++# --- 보완 3(사용자 11-13 'AI 탭에 남은 영문 표기 INSTRUCTION_LIKE 등은 한글 설명으로, 이해하기 쉽고 간결하게, TK-155 범위') ---
++LEFTOVER_RE = re.compile(r"[A-Za-z가-힣]+=|\[(?:openai|anthropic|gemini)\]|\bTool\b|Unicode|ZERO WIDTH|WORD JOINER|레이어|\.\. ")
++ENGINE_SENTENCES = [
++    "visible_text 위치에서 지시형 문자열이 관찰되었다. 분류=INSTRUCTION_LIKE, 점수=1.0, 보조신호=0개. "
++    "본 문자열은 자료로만 취급되며 시스템 지침이나 Tool 권한을 변경하지 않는다.",
++    "Unicode 은닉 신호: ZERO_WIDTH — ZERO WIDTH NO-BREAK SPACE (BOM) (U+FEFF) 1회",
++    "xml 레이어. ZERO WIDTH SPACE (U+200B) 2회, ZERO WIDTH JOINER (U+200D) 1회, WORD JOINER (U+2060) 1회",
++    "Unicode 은닉 신호: 폭 0 문자(zero-width) — ZERO WIDTH NON-JOINER (U+200C)",
++    "모델 간 판단 불일치: openai=AI_FULL_GENERATION_LIKELY, anthropic=UNCERTAIN, gemini=UNCERTAIN.",
++    "근거: [openai] 합성 근거 문장입니다.. 발췌: \"합성\"",
++    "근거: [anthropic] 합성 근거. 발췌: \"합성\"", "근거: [gemini] 합성 근거",
++    "Creator=합성도구, Producer=합성변환기", "작성자=합성도구", "creator=합성도구", "producer=합성변환기",
++    "metadata 레이어에서 관찰된 지시형 문자열", "hidden_text 레이어에서 관찰된 지시형 문자열",
++]
++
++
++@pytest.mark.parametrize("sentence", ENGINE_SENTENCES)
++def test_engine_phrases_read_as_short_korean(sentence):
++    shown = readable(sentence)
++    assert not LEFTOVER_RE.search(shown), shown
++    assert _codes(shown) == [], shown
++    assert readable(shown) == shown  # 두 번 적용해도 같다(화면은 한 문장에 여러 번 거칠 수 있다)
++
++
++def test_engine_phrase_examples_are_concise():
++    assert readable(ENGINE_SENTENCES[0]) == ("본문 위치에서 지시형 문자열이 관찰되었다. 분류: 지시형 문구, 점수 1.0, 보조 신호 0개. "
++                                             "이 문자열은 자료로만 다루며 시스템 지시나 도구 권한을 변경하지 않는다.")
++    assert readable(ENGINE_SENTENCES[1]) == "보이지 않는 문자: 폭 없는 공백 (U+FEFF) 1회"
++    assert readable(ENGINE_SENTENCES[4]).startswith("모델 간 판단 불일치: OpenAI ")
++    assert readable(ENGINE_SENTENCES[5]) == "근거: (OpenAI) 합성 근거 문장입니다. 발췌: \"합성\""
++    assert readable("[PERSON_003]의 진술") == "[PERSON_003]의 진술"  # 개인정보 가림 표지는 그대로
++
++
++def test_finding_categories_api_serves_phrases():
++    from fastapi.testclient import TestClient
++    from apps.api.main import app
++
++    assert TestClient(app).get("/api/finding-categories").json()["phrases"] == [list(p) for p in PHRASES]
++
++
++def test_ai_tab_security_items_have_no_english_leftovers(browser):
++    page = browser.new_page(viewport={"width": 1440, "height": 1000})
++    _serve(page, BASE_PROJECT)
++    page.locator('.tabs button[data-tab="ai-verification"]').click()
++    panel = page.locator('section[data-panel="ai-verification"]')
++    expect(panel).to_contain_text("보이지 않는 문자")  # 진단 목록이 그려질 때까지 기다린다
++    page.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
++    text = panel.inner_text()
++    assert "분류: 지시형 문구" in text and "보조 신호 0개" in text
++    assert "보이지 않는 문자" in text and "문서 내부 구조 층" in text and "작성 프로그램: 합성도구" in text
++    assert not LEFTOVER_RE.search(text), LEFTOVER_RE.findall(text)
++    assert "Base64" not in text  # 검사 항목 설명도 한글로

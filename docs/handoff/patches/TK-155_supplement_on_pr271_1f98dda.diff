@@ -1,0 +1,1035 @@
+diff --git a/apps/api/routers/projects.py b/apps/api/routers/projects.py
+index e93c2a0..d340be0 100644
+--- a/apps/api/routers/projects.py
++++ b/apps/api/routers/projects.py
+@@ -40,7 +40,8 @@ from ..access import project_scoped
+ from ..identity import (actor_id, apply_organization_policy, filter_project_query,
+                         project_creation_defaults, require_project, project_role)
+ 
+-from packages.common.finding_category_map import CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, FINDING_TYPE_SCREEN_NAMES, get_category_counts
++from packages.common.display_text import CODE_WORDS, FIELD_WORDS, FINDING_TYPE_NAMES, WORD_NAMES
++from packages.common.finding_category_map import CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, get_category_counts
+ 
+ router = APIRouter(tags=["projects"])
+ logger = logging.getLogger(__name__)
+@@ -53,7 +54,11 @@ def get_finding_categories() -> dict:
+         "categories": {ft.value: cat.value for ft, cat in FINDING_CATEGORY_MAP.items()},
+         "tabs": {ft.value: CATEGORY_TO_TAB[cat].value for ft, cat in FINDING_CATEGORY_MAP.items()},
+         "counts": get_category_counts(),
+-        "names": {ft.value: name for ft, name in FINDING_TYPE_SCREEN_NAMES.items()},
++        # V1.0.0: 화면이 코드를 한글로 바꿀 때 쓰는 표(packages/common/display_text.py 하나가 기준, 보고서와 같음)
++        "names": FINDING_TYPE_NAMES,
++        "code_words": CODE_WORDS,
++        "field_words": FIELD_WORDS,
++        "word_names": WORD_NAMES,
+     }
+ 
+ 
+diff --git a/apps/web/static/app.js b/apps/web/static/app.js
+index fd5db6c..2096e41 100644
+--- a/apps/web/static/app.js
++++ b/apps/web/static/app.js
+@@ -53,20 +53,40 @@ const labels = {
+ const label = (value) => labels[value] || value || "미지정";
+ // V1.0.0 6-2·6-3·7-1·7-2·D6: 화면에 영문 코드를 그대로 쓰지 않는다.
+ Object.assign(labels, {CITATION:"인용",FACT:"사실관계",TEMPORAL:"적용 시점",REFERENCE:"참고문헌",NOT_ASSESSED:"평가 안 함",NOT_CHECKED:"대조 안 함",NOT_MENTIONED:"참고자료 언급 없음",PENDING_REVIEW:"참고자료 지지 미확정",OFFICIAL_NOT_FOUND:"공식 DB 미확인",OFFICIAL_CONFIRMED:"공식 원문 확인",UNVERIFIED_SCOPE:"미확인 범위",NOT_IN_REFERENCE:"표준판례 목록에 없음",IN_REFERENCE:"표준판례 목록에 있음"});
+-// 결과 유형 이름(FindingType)의 한글은 서버 배정표의 names로 받는다(F1 T4). 여기에는 의도·분류·신호 코드만 둔다.
+-const CODE_WORDS = {INSTRUCTION_OVERRIDE:"지시 무시",ROLE_OVERRIDE:"역할 바꾸기",OUTPUT_MANIPULATION:"결과 조작",SYSTEM_SECRET_EXTRACTION:"시스템 정보 빼내기",TOOL_MANIPULATION:"도구 조작",PERSISTENT_INSTRUCTION:"지속 지시",DATA_EXFILTRATION:"정보 유출",UNSPECIFIED:"유형 미상",RETROACTIVE_APPLICATION_ERROR:"소급 적용 오류",INSTRUCTION_LIKE:"지시형 문구",PROMPT_INJECTION_LIKELY:"인젝션 의심",AI_PARTIAL_GENERATION:"일부 AI 작성",AI_FULL_GENERATION_LIKELY:"전체 AI 작성 의심",HUMAN_AUTHORED_LIKELY:"사람 작성 가능성",ZERO_WIDTH:"폭 0 문자",BIDI_CONTROL:"글자 방향 제어 문자",HOMOGLYPH:"닮은꼴 문자",TAG_CHARACTERS:"태그 문자",SEPARATED_INSTRUCTION:"쪼갠 지시문"};
++
++// V1.0.0: 코드 → 한글 표는 서버 하나(packages/common/display_text.py)가 기준이다. /api/finding-categories의
++// names(결과 유형 97종)·code_words(의도·분류·신호·행 상태·참고문헌 처리 코드)·field_words(소문자 식별자)를 쓴다.
++// Word·PDF 보고서도 같은 표로 바꾸므로 화면과 보고서의 말이 같다. 표를 받기 전에는 코드를 그대로 둔다.
++const displayTables = () => (typeof state !== "undefined" && state.findingCategories && !state.findingCategories.error) ? state.findingCategories : {};
++
++const CREDENTIAL_MODES = {service_account: "서비스 계정", api_key: "API 키", injected: "주입된 인증", none: "없음"};
++// 조회 시각(ISO)을 한국 시각 'YYYY-MM-DD HH:MM'으로 보인다. 읽을 수 없으면 원래 값.
++function koreanTime(value) {
++  const d = new Date(value);
++  if (!value || Number.isNaN(d.getTime())) return value || "미확인";
++  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {timeZone: "Asia/Seoul", year: "numeric", month: "2-digit",
++    day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false}).formatToParts(d).map(p => [p.type, p.value]));
++  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
++}
++const refWord = code => displayTables().code_words?.[code] || friendlyText(code || "");
+ // 엔진 문장 속 소문자 식별자(검사 층·필드 이름)를 화면에서 한글로 바꾼다. 층 이름은 LAYER_NAMES와 같다.
+-const FIELD_WORDS = {visible_text:"본문",encoded_text:"인코딩된 문자열",hidden_text:"숨김 글자",ocr_layer:"OCR 인식 글자",form_field:"입력란",image_alt:"이미지 설명",ai_score:"점수","finding.confidence":"값",reference_date:"기준일"};
++
+ Object.assign(labels, {PARSING:"문서 읽는 중",ADVERSARIAL_SCANNING:"검증 방해 문구 검사",EXTRACTING:"본문 추출 중",PII_PROCESSING:"개인정보 처리 중",VERIFYING:"인용 확인 중",CROSS_CHECKING:"자료 대조 중",AGGREGATING:"결과 정리 중",NOT_FOUND:"출처에서 미확인",SUSPICIOUS:"확인 필요",ERROR:"처리 오류"});
+ function friendlyText(value) {
+   let text = String(value || "");
+   text = text.replaceAll("Creator와 Producer가", "작성 프로그램과 PDF 생성 프로그램이")
+     .replaceAll("UNVERIFIED로", "미확인 상태로");
+   text = text.replace(/\[RAG참고자료\]\s*/g, "").replace(/\s*\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)/g, "");
+-  const typeNames = (typeof state !== "undefined" && state.findingCategories?.names) || {};
+-  text = text.replace(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/g, code => typeNames[code] || CODE_WORDS[code] || labels[code] || code);
+-  text = text.replace(/\bfinding\.confidence\b|\b[a-z]+_[a-z_]+\b/g, word => FIELD_WORDS[word] || word);
+-  for (const [technical, simple] of [["UNVERIFIED","확인하지 못함"],["Source","출처"],["Creator","작성 프로그램"],["Producer","PDF 생성 프로그램"],["Author","작성자"],["QUARANTINED","안전 검토 필요"],["Python 계산엔진으로 검산한 결정론적 결과이다.","계산식에 따라 자동 검산한 결과입니다."]]) text = text.replaceAll(technical, simple);
++  const tables = displayTables();
++  const names = tables.names || {}, codeWords = tables.code_words || {}, fieldWords = tables.field_words || {};
++  text = text.replace(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/g, code => names[code] || codeWords[code] || labels[code] || code);
++  text = text.replace(/\bfinding\.confidence\b|\b[a-z]+_[a-z_]+\b/g, word => fieldWords[word] || word);
++  for (const [technical, simple] of [["UNVERIFIED","확인하지 못함"],["Source","출처"],["Creator","작성 프로그램"],["Producer","PDF 생성 프로그램"],["Author","작성자"],["QUARANTINED","안전 검토 필요"],["UNCERTAIN","판단 유보"],["Python 계산엔진으로 검산한 결정론적 결과이다.","계산식에 따라 자동 검산한 결과입니다."]]) {
++    // 영문 낱말은 다른 코드의 일부(예: REFERENCE_QUARANTINED)를 바꾸지 않도록 앞뒤가 영문·숫자·밑줄이 아닐 때만 바꾼다.
++    text = /^[A-Za-z]+$/.test(technical)
++      ? text.replace(new RegExp(`(?<![A-Za-z0-9_])${technical}(?![A-Za-z0-9_])`, "g"), simple)
++      : text.replaceAll(technical, simple);
++  }
+   return text;
+ }
+ const terminal = (run) => run && ["COMPLETED", "PARTIAL_COMPLETED", "FAILED", "CANCELLED"].includes(run.state);
+@@ -1271,11 +1291,11 @@ function referenceSection(docs) {
+     NOT_RELEVANT: "관련 자료 없음 · Drive 자료 미활용",
+     INCOMPLETE_COVERAGE: "관련 자료 검토 범위 미완결",
+     RETRIEVED_ONLY: "검색 완료 · AI 대조 미실행", UNVERIFIED: "대조 미완료", SKIPPED: "대조 제외"};
+-  section.append(node("h3", "주요 참고문헌 검토 결과(RAG)"), node("p", `${statuses[library.status] || library.status} · 색인 ${library.files_indexed || 0}/${library.files_seen || 0}건 · 조회 ${library.checked_at || "미확인"}`));
++  section.append(node("h3", "주요 참고문헌 검토 결과(RAG)"), node("p", `${statuses[library.status] || library.status} · 색인 ${library.files_indexed || 0}/${library.files_seen || 0}건 · 조회 ${koreanTime(library.checked_at)}`));
+   section.append(node("p", "색인은 검색 가능한 텍스트 범위이며 책 전체에 대한 AI 검토를 뜻하지 않습니다. 실제 대조에 사용한 발췌문은 문서별 결과에 표시합니다.", "muted"));
+   const health = library.health;
+   if (health) {
+-    section.append(node("p", `연결 점검 · 인증 ${health.credential_mode || "없음"} · 목록 조회 ${health.listing_succeeded ? "성공" : "실패"} · API 호출 ${health.http_calls}건(오류 ${health.http_errors}건) · 동기화 ${Math.round((health.sync_ms || 0) / 100) / 10}초`, "muted"));
++    section.append(node("p", `연결 점검 · 인증 ${CREDENTIAL_MODES[health.credential_mode] || health.credential_mode || "없음"} · 목록 조회 ${health.listing_succeeded ? "성공" : "실패"} · API 호출 ${health.http_calls}건(오류 ${health.http_errors}건) · 동기화 ${Math.round((health.sync_ms || 0) / 100) / 10}초`, "muted"));
+   }
+   if (library.duplicates?.length) {
+     const details = node("details");
+@@ -1300,7 +1320,7 @@ function referenceSection(docs) {
+   if (generalIssues.length) {
+     const details = node("details");
+     details.append(node("summary", `공통·기타 제한 ${generalIssues.length}건`));
+-    for (const issue of generalIssues) details.append(node("p", `${issue.name || issue.file_id || "Drive"}: ${issue.reason}`));
++    for (const issue of generalIssues) details.append(node("p", `${issue.name || issue.file_id || "Drive"}: ${friendlyText(issue.reason)}`));
+     section.append(details);
+   }
+   if (library.inventory?.length) {
+@@ -1311,7 +1331,7 @@ function referenceSection(docs) {
+       const coverage = item.pages ? ` · 텍스트 색인 ${item.read_pages || 0}/${item.pages}쪽` : "";
+       const missing = item.no_text_pages?.length ? ` · 텍스트 미추출 쪽: ${item.no_text_pages.join(", ")}` : "";
+       const excluded = item.excluded_pages?.length ? ` · 보안 제외 쪽: ${item.excluded_pages.join(", ")}` : "";
+-      details.append(node("p", `${[item.folder_path, item.name].filter(Boolean).join("/")} · ${item.status} · ${reasons.join(" · ")}${coverage}${missing}${excluded}${item.coverage_note ? " · " + item.coverage_note : ""}`, "muted"));
++      details.append(node("p", `${[item.folder_path, item.name].filter(Boolean).join("/")} · ${refWord(item.status)} · ${reasons.map(friendlyText).join(" · ")}${coverage}${missing}${excluded}${item.coverage_note ? " · " + item.coverage_note : ""}`, "muted"));
+     }
+     if (library.inventory.length > 100) details.append(node("p", "전체 자료별 처리 기록은 결과 JSON에 보존되어 있습니다.", "muted"));
+     section.append(details);
+@@ -1326,7 +1346,7 @@ function referenceSection(docs) {
+       const pct = c.eligible_claims > 0 ? Math.round(((c.linked_claims || 0) / c.eligible_claims) * 100) : 0;
+       details.append(node("p", `참고자료 대조율: 대조 대상 ${c.eligible_claims}건 중 ${c.linked_claims || 0}건 완료 (${pct}%)`, "coverage-text"));
+     }
+-    if (review.reason) details.append(node("p", review.reason, "muted"));
++    if (review.reason) details.append(node("p", friendlyText(review.reason).replace(/:/g, " — "), "muted"));
+     if (typeof review.model_response_accepted === "boolean") {
+       details.append(node("p", `모델 호출 ${review.model_executed ? "있음" : "없음"} · 응답 채택 ${review.model_response_accepted ? "성공" : "미완료"} · 근거 확인 의견 ${(review.observations || []).length}건 · 제외 의견 ${(review.rejected_observations || []).length}건`, "muted"));
+       if (review.model_executed && !review.review_completed) details.append(node("p", "일부 입력 또는 모델 응답의 검토가 완료되지 않았습니다.", "warning-text"));
+@@ -1338,31 +1358,31 @@ function referenceSection(docs) {
+         details.append(node("p", "관련 후보 자료가 미처리 또는 일부만 읽힌 상태입니다. 관련 자료가 없다는 뜻이 아닙니다.", "warning-text"));
+         details.append(node("p", `미처리 후보 ${(selection.unreviewed_candidates || []).length}건의 제한 사유는 위 자료별 처리 기록을 참조합니다.`, "muted"));
+         for (const item of (selection.unreviewed_candidates || []).filter(i => !recordedIds.has(i.file_id)).slice(0, 50)) {
+-          details.append(node("p", `${[item.folder_path, item.name].filter(Boolean).join("/")} · ${item.status} · ${item.reason}`, "muted"));
++          details.append(node("p", `${[item.folder_path, item.name].filter(Boolean).join("/")} · ${refWord(item.status)} · ${friendlyText(item.reason)}`, "muted"));
+         }
+         details.append(node("p", "미처리 자료는 다음 분석에서 재확인합니다. 자동 백그라운드 작업은 예약되지 않았습니다.", "muted"));
+       }
+-      details.append(node("p", `자료 선정: ${selection.decision === "USED" ? "관련 자료 사용" : "Drive 자료 미활용"} · 후보 ${selection.candidates_total || 0}개 중 ${selection.files_selected || 0}개 선정 (${selection.reason})`, "muted"));
++      details.append(node("p", `자료 선정: ${selection.decision === "USED" ? "관련 자료 사용" : "Drive 자료 미활용"} · 후보 ${selection.candidates_total || 0}개 중 ${selection.files_selected || 0}개 선정 (${friendlyText(selection.reason)})`, "muted"));
+       for (const item of selection.priority_references || []) {
+-        details.append(node("p", `분야 표준판례집: ${item.title} · ${item.searched ? "개별 본문 검색 완료" : "개별 검색 미실행: " + (item.search_reason || "기록 없음")} · ${item.selected ? "발췌 사용" : "발췌 미사용(관련성·발췌 한도 확인 필요)"}`, "muted"));
++        details.append(node("p", `분야 표준판례집: ${item.title} · ${item.searched ? "개별 본문 검색 완료" : "개별 검색 미실행: " + (item.search_reason ? refWord(item.search_reason) : "기록 없음")} · ${item.selected ? "발췌 사용" : "발췌 미사용(관련성·발췌 한도 확인 필요)"}`, "muted"));
+       }
+       for (const candidate of (selection.candidates || []).slice(0, 5)) {
+-        details.append(node("p", `${candidate.selected ? "선정" : "제외"} · ${[candidate.folder_path, candidate.title].filter(Boolean).join("/")} · 본문 ${candidate.text_coverage} · 폴더·파일명 ${candidate.name_coverage} · 점수 ${candidate.file_score}`, "muted"));
++        details.append(node("p", `${candidate.selected ? "선정" : "제외"} · ${friendlyText([candidate.folder_path, candidate.title].filter(Boolean).join("/"))} · 본문 ${candidate.text_coverage} · 폴더·파일명 ${candidate.name_coverage} · 점수 ${candidate.file_score}`, "muted"));
+       }
+       if ((selection.candidates || []).length > 5) details.append(node("p", `나머지 ${selection.candidates.length - 5}개 후보는 결과 JSON에 기록되어 있습니다.`, "muted"));
+     }
+     for (const source of review.sources || []) {
+-      const link = node("a", `${source.source_id}: ${source.title} · ${source.page_numbers_reliable === false ? "텍스트 구간 " + source.page + " (원본 쪽 미확인)" : source.page + "쪽"}`);
++      const link = node("a", `${source.source_id}: ${friendlyText(source.title)} · ${source.page_numbers_reliable === false ? "텍스트 구간 " + source.page + " (원본 쪽 미확인)" : source.page + "쪽"}`);
+       if (/^[A-Za-z0-9_-]{10,200}$/.test(source.file_id || "")) {
+         link.href = `https://drive.google.com/file/d/${source.file_id}/view`;
+         link.target = "_blank";
+         link.rel = "noopener noreferrer";
+       }
+-      details.append(link, node("p", `수정 ${source.modified_time} · SHA-256 ${source.sha256}`, "muted"), node("blockquote", source.text));
++      details.append(link, node("p", `수정 ${koreanTime(source.modified_time)} · SHA-256 ${source.sha256}`, "muted"), node("blockquote", source.text));
+     }
+     for (const item of review.observations || []) {
+       details.append(node("p", `문서: ${item.claim_quote}`), node("blockquote", `${item.source_id}: ${item.source_quote}`),
+-        node("p", `AI 참고 의견: ${item.explanation}`));
++        node("p", `AI 참고 의견: ${friendlyText(item.explanation)}`));
+     }
+     for (const calc of review.contract_review?.calculations || []) {
+       const values = calc.outputs || {};
+@@ -2438,7 +2458,7 @@ function renderReviewRow(item, tier, findingsMap) {
+   if (item.context_review?.reason) {
+     const review = item.context_review;
+     const context = node("div", null, "citation-context-review");
+-    context.append(node("strong", "인용 취지·맥락 검토 (AI 참고 의견)"), node("p", review.reason || "판단 유보"));
++    context.append(node("strong", "인용 취지·맥락 검토 (AI 참고 의견)"), node("p", friendlyText(review.reason) || "판단 유보"));
+     for (const opinion of review.opinions || []) {
+       const stage = {primary: "1차 검토", critic: "독립 교차검토", grounder: "근거 대조"}[opinion.stage] || opinion.stage;
+       context.append(node("p", `${stage}: ${opinion.rationale}`));
+@@ -2683,6 +2703,19 @@ function renderFindings() {
+     }
+   }
+   state.reviewTierCounts = tierCounts;
++  // V1.0.0 6-1(사용자 11-13 포함 결정): 없앤 HIGH 배너 대신 'AI 작성·보안 진단' 탭 버튼에 높음 이상 건수를 단다.
++  // 글자는 CSS ::after로 그려 버튼 이름(접근성 이름·기존 시험의 버튼 문구)은 바꾸지 않는다.
++  const aiTabButton = document.querySelector('.tabs button[data-tab="ai-verification"]');
++  if (aiTabButton) {
++    const highAi = (state.findings || []).filter(f => isAISecurityFinding(f) && ["HIGH", "CRITICAL"].includes(f.severity)).length;
++    if (highAi) {
++      aiTabButton.dataset.highCount = String(highAi);
++      aiTabButton.title = `높음 이상 AI 작성·보안 진단 항목 ${highAi}건`;
++    } else {
++      delete aiTabButton.dataset.highCount;
++      aiTabButton.removeAttribute("title");
++    }
++  }
+   state.pendingByTier = pendingByTier;
+   const legalMetric = $("metricLegalClaims");
+   if (legalMetric && state.run) legalMetric.querySelector("strong").textContent = `${tierCounts[3]}건`;
+diff --git a/apps/web/static/styles.css b/apps/web/static/styles.css
+index a943dba..abfd1fc 100644
+--- a/apps/web/static/styles.css
++++ b/apps/web/static/styles.css
+@@ -1911,3 +1911,6 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
+ .finding-group-reasons { margin: 6px 0 0 20px; }
+ .finding-group-reasons .reason-link { text-align: left; white-space: normal; }
+ .model-skip-note { margin-top: 6px; }
++/* V1.0.0 6-1: AI 작성·보안 진단 탭 버튼의 높음 이상 건수 */
++.tabs button[data-high-count]::after { content: "높음 이상 " attr(data-high-count); margin-left: 6px; padding: 1px 6px; border-radius: 9px;
++  background: #fdecea; color: #b42318; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
+diff --git a/packages/common/display_text.py b/packages/common/display_text.py
+new file mode 100644
+index 0000000..9fa627a
+--- /dev/null
++++ b/packages/common/display_text.py
+@@ -0,0 +1,330 @@
++"""화면·보고서에 쓰는 코드 → 한글 표 (V1.0.0, 사용자 명세 2026-11-13 6-3·7-2·2-1, 결정 D6·범위 밖 3건 포함).
++
++결과 데이터(JSON·기술 부록·엑셀 기술부록)의 코드는 그대로 둔다. 사람이 읽는 화면·Word·PDF 본문만 바꾼다.
++화면은 /api/finding-categories 응답(names·code_words·field_words)으로 이 표를 받는다(app.js에 같은 표를 두지 않는다 — F1 T4).
++"""
++from __future__ import annotations
++
++import re
++from typing import Dict
++
++from packages.common.enums import FindingType
++
++# 결과 유형 97종의 한글 이름(목록·보고서 '유형' 칸, 인젝션 결과 제목 속 유형 이름).
++FINDING_TYPE_NAMES: Dict[str, str] = {
++    "CASE_NOT_FOUND": "판례 미발견",
++    "CASE_METADATA_MISMATCH": "판례 서지 불일치",
++    "CASE_QUOTE_MISMATCH": "판례 인용문 불일치",
++    "CASE_HOLDING_DISTORTION": "판시 취지 왜곡",
++    "CASE_CITATION_ERROR": "판례 인용 오류",
++    "LAW_CITATION_ERROR": "법령 인용 오류",
++    "TEMPORAL_LAW_MISMATCH": "법령 적용 시점 불일치",
++    "ACADEMIC_CITATION_ERROR": "학술 문헌 인용 오류",
++    "FACT_CONTRADICTION": "사실관계 불일치",
++    "CROSS_DOCUMENT_CONTRADICTION": "문서 간 모순",
++    "TIMELINE_CONTRADICTION": "날짜 선후 불일치",
++    "ARITHMETIC_MISMATCH": "계산 불일치",
++    "METADATA_ANOMALY": "문서 속성 이상",
++    "HIDDEN_TEXT_MISMATCH": "숨은 글자 불일치",
++    "OCR_LAYER_MISMATCH": "OCR 층 불일치",
++    "OCR_LOW_QUALITY": "글자 인식 품질 낮음",
++    "SIGNATURE_INVALID": "전자서명 무효",
++    "MODIFIED_AFTER_SIGNATURE": "서명 뒤 수정",
++    "PAGE_STRUCTURE_OUTLIER": "쪽 구조 이상",
++    "PROMPT_INJECTION_SUSPECTED": "프롬프트 속임수 의심",
++    "HIDDEN_INSTRUCTION": "숨은 지시문",
++    "META_INSTRUCTION": "기계 지시문",
++    "SYSTEM_OVERRIDE_ATTEMPT": "시스템 지시 무력화 시도",
++    "ROLE_OVERRIDE_ATTEMPT": "역할 바꾸기 시도",
++    "VERIFICATION_SUPPRESSION": "검증 회피",
++    "OUTPUT_MANIPULATION_ATTEMPT": "결과 조작 시도",
++    "ENCODED_INSTRUCTION": "인코딩된 지시문",
++    "OBFUSCATED_INSTRUCTION": "난독화한 지시문",
++    "UNICODE_SMUGGLING": "유니코드 은닉",
++    "OCR_LAYER_INJECTION": "OCR 층 인젝션",
++    "METADATA_INJECTION": "문서 속성 인젝션",
++    "MULTIMODAL_INJECTION": "이미지 인젝션",
++    "RAG_POISONING_SIGNAL": "참고자료 오염 신호",
++    "TOOL_MANIPULATION_ATTEMPT": "도구 조작 시도",
++    "DATA_EXFILTRATION_INSTRUCTION": "정보 유출 지시문",
++    "MODEL_OUTPUT_QUARANTINED": "모델 응답 격리",
++    "AI_AUTHORSHIP_LIKELY": "AI 작성 참고 신호",
++    "AI_FULL_GENERATION_SUSPECTED": "전체 AI 작성 의심",
++    "AI_HALLUCINATED_CONTENT": "AI 지어낸 내용 의심",
++    "LEGAL_ARGUMENT_INVALID": "법률 주장 부당",
++    "STYLE_SHIFT": "문체 급변",
++    "MODEL_ATTRIBUTION_SIGNAL": "생성 모델 흔적",
++    "RESIDUAL_TRACKED_CHANGE": "변경 추적 잔존",
++    "RESIDUAL_COMMENT": "메모 잔존",
++    "DELETED_TEXT_RECOVERABLE": "삭제 글자 복구 가능",
++    "PRIOR_VERSION_RECOVERABLE": "이전 판 복구 가능",
++    "REDACTION_FAILURE": "가림 처리 실패",
++    "HIDDEN_SHEET_OR_ROW": "숨긴 시트·행",
++    "CROPPED_IMAGE_RESIDUE": "잘린 이미지 잔존",
++    "TEMPLATE_RESIDUE": "서식 문구 잔존",
++    "SPECIMEN_DOCUMENT_DECLARED": "견본 문서 표시",
++    "INVALID_IDENTIFIER": "식별번호 형식 오류",
++    "PLACEHOLDER_IDENTIFIER": "임시 식별번호",
++    "AUTHORSHIP_METADATA_LEAK": "작성자 정보 노출",
++    "GEOLOCATION_METADATA_LEAK": "위치 정보 노출",
++    "STEGANOGRAPHIC_PAYLOAD": "이미지 속 숨은 자료",
++    "TRACKING_CANARY_DETECTED": "추적 표식 발견",
++    "DOCUMENT_FINGERPRINT_SUSPECTED": "문서 식별 표식 의심",
++    "COVERT_CHANNEL_SUSPECTED": "은닉 통로 의심",
++    "PRIVILEGE_EXPOSURE_RISK": "비밀유지 자료 노출 위험",
++    "OUTBOUND_LEAK_RISK": "외부 유출 위험",
++    "ISSUE_EVASION_SIGNAL": "쟁점 회피 신호",
++    "IMPLICIT_ADMISSION_SIGNAL": "묵시적 인정 신호",
++    "LIABILITY_HEDGING_SIGNAL": "책임 회피 표현 신호",
++    "COERCIVE_LANGUAGE_SIGNAL": "강압적 표현 신호",
++    "SELECTIVE_QUOTATION_SIGNAL": "선택적 인용 신호",
++    "CASE_RELEVANCE_WEAK": "판례 관련성 약함",
++    "STATUTE_NONEXISTENT": "법령 목록에 없음",
++    "STATUTE_TEXT_MISMATCH": "조문 내용 불일치",
++    "INTERNAL_CITATION_ERROR": "문서 안 참조 오류",
++    "QUOTE_MISMATCH": "인용문 불일치",
++    "FACT_UNSUPPORTED": "근거 없는 사실 주장",
++    "EVIDENCE_NOT_PROVIDED": "증거 미제출",
++    "EVIDENCE_REFERENCE_MISSING": "증거 표시 누락",
++    "HASH_FORMAT_INVALID": "해시값 형식 오류",
++    "HASH_MISMATCH": "해시값 불일치",
++    "EVIDENCE_DATE_INVALID": "증거 날짜 오류",
++    "EVIDENCE_TIMELINE_INVERSION": "증거 날짜 선후 뒤바뀜",
++    "EVIDENCE_NUMBERING_GAP": "증거 번호 누락",
++    "EVIDENCE_LIST_MISMATCH": "증거 목록 불일치",
++    "EVIDENCE_PERSON_INCONSISTENT": "증거 인물 불일치",
++    "EVIDENCE_FORM_DEFECT": "증거 형식 흠결",
++    "EVIDENCE_PURPOSE_MISMATCH": "입증 취지 불일치",
++    "STATEMENT_BEYOND_PERCEPTION": "지각 범위 밖 진술",
++    "CROSS_DOC_COPY": "다른 문서 복사",
++    "MODEL_FACT_REMARK": "모델 사실관계 의견",
++    "SOURCE_CONFLICT_IGNORED": "상충 자료 누락",
++    "CALCULATION_INVARIANT_VIOLATION": "계산 조건 위반",
++    "LEGAL_REQUIREMENT_OMITTED": "법률 요건 누락",
++    "OVERCLAIM": "과장된 주장",
++    "UNSUPPORTED_GENERALIZATION": "근거 없는 일반화",
++    "REASONING_GAP": "논리 비약",
++    "AUTHORITY_RANK_ERROR": "법원(法源) 위계 오류",
++    "DRAFT_ARTIFACT": "초안 흔적",
++    "UNCERTAINTY_NOT_DISCLOSED": "불확실성 미고지",
++    "UNSUPPORTED_FORMAT": "지원하지 않는 형식",
++    "PARSE_ERROR": "읽기 오류",
++}
++
++# 의도·분류·신호·행 상태·참고문헌 처리 코드. 엔진이 실제로 내는 값만 둔다.
++CODE_WORDS: Dict[str, str] = {
++    "INSTRUCTION_OVERRIDE": "지시 무시",
++    "ROLE_OVERRIDE": "역할 바꾸기",
++    "OUTPUT_MANIPULATION": "결과 조작",
++    "SYSTEM_SECRET_EXTRACTION": "시스템 정보 빼내기",
++    "TOOL_MANIPULATION": "도구 조작",
++    "PERSISTENT_INSTRUCTION": "지속 지시",
++    "DATA_EXFILTRATION": "정보 유출",
++    "UNSPECIFIED": "유형 미상",
++    "RETROACTIVE_APPLICATION_ERROR": "소급 적용 오류",
++    "INSTRUCTION_LIKE": "지시형 문구",
++    "PROMPT_INJECTION_LIKELY": "인젝션 의심",
++    "AI_PARTIAL_GENERATION": "일부 AI 작성",
++    "AI_FULL_GENERATION_LIKELY": "전체 AI 작성 의심",
++    "HUMAN_AUTHORED_LIKELY": "사람 작성 가능성",
++    "ZERO_WIDTH": "폭 0 문자",
++    "BIDI_CONTROL": "글자 방향 제어 문자",
++    "HOMOGLYPH": "닮은꼴 문자",
++    "TAG_CHARACTERS": "태그 문자",
++    "SEPARATED_INSTRUCTION": "쪼갠 지시문",
++    "INDEXED": "색인 완료",
++    "INDEXED_PARTIAL": "일부 색인",
++    "PARSE_FAILED": "읽기 실패",
++    "QUARANTINED": "보안 격리",
++    "NOT_SELECTED_METADATA": "후보 제외(폴더·파일명 기준)",
++    "DUPLICATE_REUSED": "같은 내용 사본(기존 색인 사용)",
++    "NOT_A_CASE_TABLE": "판례표 아님",
++    "SELECTED_PENDING": "선정·처리 대기",
++    "UNSUPPORTED_TYPE": "지원하지 않는 형식",
++    "UNAVAILABLE": "조회 불가",
++    "TEXT_INDEXED": "본문 색인",
++    "REFERENCE_PARTIALLY_READ": "일부 쪽만 읽음",
++    "REFERENCE_INSTRUCTION_PAGES_EXCLUDED": "지시문 의심 쪽 제외",
++    "REFERENCE_QUARANTINED": "지시문 의심으로 보안 격리",
++    "ENCRYPTED_REFERENCE": "암호화된 파일",
++    "REFERENCE_PARSE_FAILED": "본문 추출 실패",
++    "REFERENCE_PARSE_TIMEOUT": "본문 추출 시간 초과",
++    "REFERENCE_TEXT_LIMIT": "분량 한도 초과",
++    "REFERENCE_CASE_TABLE_PARTIAL": "판례표 일부만 읽음",
++    "REFERENCE_EMPTY": "본문 없음",
++    "REFERENCE_PROCESSING_FAILED": "처리 중 오류",
++    "REFERENCE_TRASHED": "휴지통에 있음",
++    "REFERENCE_MOVED": "등록 폴더 밖으로 이동됨",
++    "REFERENCE_DOWNLOAD_BLOCKED": "내려받기 금지 파일",
++    "REFERENCE_CHANGED_DURING_DOWNLOAD": "내려받는 중 파일 변경",
++    "REFERENCE_CHECKSUM_MISMATCH": "파일 검증값 불일치",
++    "UNSUPPORTED_REFERENCE_FORMAT": "지원하지 않는 형식",
++    "UNSUPPORTED_OR_UNSAFE_REFERENCE": "지원하지 않거나 안전하지 않은 파일",
++    "NAME_PATH_NOT_RELATED": "폴더·파일명이 서면과 관련 없음",
++    "NAME_PATH_MATCH": "폴더·파일명 일치",
++    "DRIVE_FULLTEXT_MATCH": "Drive 본문 검색 일치",
++    "TITLE_WORD_MATCH": "우선 자료 제목 일치",
++    "CANDIDATE_LIMIT": "후보 수 한도 초과",
++    "NOT_SELECTED": "후보 아님",
++    "NOT_PROCESSED": "미처리",
++    "SYNC_INTERRUPTED": "동기화 중단",
++    "FILES_DEFERRED": "다음 동기화로 미룸",
++    "DOWNLOAD_BUDGET_EXHAUSTED": "내려받기 용량 한도 도달",
++    "INDEX_FILE_BUDGET_EXHAUSTED": "색인 파일 수 한도 도달",
++    "SYNC_BUDGET_EXHAUSTED": "동기화 한도 도달",
++    "DOWNLOAD_NOT_ALLOWED": "내려받기 불가",
++    "DOWNLOAD_FAILED": "내려받기 실패",
++    "EXTRACT_FAILED": "추출 실패",
++    "EXTRACT_TIMEOUT": "추출 시간 초과",
++    "PARSE_TIMEOUT": "읽기 시간 초과",
++    "FILE_SIZE_LIMIT": "파일 크기 한도 초과",
++    "FILE_COUNT_LIMIT": "파일 수 한도 초과",
++    "FOLDER_LIMIT": "폴더 깊이·개수 한도 초과",
++    "INCOMPLETE_LISTING": "목록 조회 불완전",
++    "ROOT_FOLDER_UNAVAILABLE": "등록 폴더 접근 불가",
++    "MISSING_REVISION": "파일 판 정보 없음",
++    "INVALID_DRIVE_ID": "잘못된 Drive 식별자",
++    "INVALID_TOKEN_ENDPOINT": "인증 설정 오류",
++    "DRIVE_AUTH_FAILED": "Drive 인증 실패",
++    "DRIVE_CREDENTIALS_MISSING": "Drive 인증 정보 없음",
++    "DRIVE_FULLTEXT_FORBIDDEN": "Drive 본문 검색 권한 없음",
++    "DRIVE_HTTP_401": "Drive 인증 거부(401)",
++    "DRIVE_HTTP_403": "Drive 접근 거부(403)",
++    "DRIVE_HTTP_429": "Drive 요청 한도 초과(429)",
++    "DRIVE_NETWORK_ERROR": "Drive 연결 오류",
++    "CONNECT_FAILED": "연결 실패",
++    "READ_TIMEOUT": "응답 시간 초과",
++    "STREAM_INTERRUPTED": "전송 중단",
++    "REPEATED_PAGE_TOKEN": "목록 조회 반복 오류",
++    "NETWORK_DISABLED": "네트워크 사용 안 함",
++    "CACHE_BUSY": "색인 저장소 사용 중",
++    "SYNC_FAILED": "동기화 실패",
++    "RELEVANT_REFERENCE_FOUND": "관련 자료 있음",
++    "NO_CANDIDATE_CHUNK": "관련 발췌 후보 없음",
++    "BELOW_RELEVANCE_THRESHOLD": "관련도 기준 미달",
++    "NO_SHARED_KEY_TERMS": "공통 핵심어 없음",
++    "NO_ELIGIBLE_REFERENCE": "읽을 수 있는 자료 없음",
++    "NO_RELEVANT_DRIVE_REFERENCE": "관련 Drive 자료 없음",
++    "RELEVANT_REFERENCES_NOT_FULLY_READ": "참고자료 분량 초과로 일부 문서 미대조",
++    "NO_READABLE_DRIVE_REFERENCE": "판독 가능한 Drive 참고자료 문서 없음",
++    "REFERENCE_LIBRARY_UNAVAILABLE": "참고자료 라이브러리 색인 준비 미완료",
++    "MODEL_NOT_AVAILABLE_OR_QUICK_PROFILE": "빠른 검토 프로필 설정 또는 모델 가용성 부족",
++    "DOCUMENT_UNREADABLE": "서면 문서 텍스트 정규화 실패로 판독 불가",
++    "NO_TEXT_AFTER_REMOVING_INSTRUCTIONS": "지시문 제거 후 분석 대상 본문 텍스트 부족",
++    "EXACT_QUOTES_CHECKED_NOT_ENTAILMENT_OR_LEGAL_VALIDITY": "원문 발췌 일치만 확인(내용 함의·법적 타당성 판단 아님)",
++    "MODEL_RETURNED_NO_ADVICE_NOT_LEGAL_CLEARANCE": "모델 추가 의견 없음(적법성 확인 아님)",
++    "NO_GROUNDED_MODEL_ADVICE": "근거가 확인된 모델 의견 없음",
++    "MODEL_RESPONSE_REJECTED": "모델 응답 형식 불합격",
++    "MODEL_UNAVAILABLE": "모델 응답 없음",
++    "NOT_EXECUTED": "미실행",
++    "SEARCH_LIMIT": "검색 한도 초과",
++    "SEARCH_COMPLETED": "검색 완료",
++    "SECURITY_QUARANTINE": "보안 격리",
++    "HIDDEN_SHEET": "숨긴 시트",
++    "HIDDEN_ROW": "숨긴 행",
++    "WHITE_ON_WHITE": "흰 바탕 흰 글자",
++    "NOT_ASSESSED": "평가 안 함",
++    "NOT_CHECKED": "대조 안 함",
++    "NOT_MENTIONED": "참고자료 언급 없음",
++    "PENDING_REVIEW": "참고자료 지지 미확정",
++    "OFFICIAL_NOT_FOUND": "공식 DB 미확인",
++    "OFFICIAL_CONFIRMED": "공식 원문 확인",
++    "UNVERIFIED_SCOPE": "미확인 범위",
++    "NOT_IN_REFERENCE": "표준판례 목록에 없음",
++    "IN_REFERENCE": "표준판례 목록에 있음",
++    "PARTIALLY_VERIFIED": "일부 확인",
++    "NOT_FOUND": "출처에서 미확인",
++    "PARTIAL_COMPLETED": "일부 미확인",
++    "NOT_FOUND_IN_SEARCHED_SCOPE": "조회 범위에서 미발견",
++    "ADVISORY_REVIEWED": "근거 인용 대조 · AI 참고 의견",
++    "REVIEWED_NO_ADVICE": "AI 대조 응답 완료 · 추가 의견 없음(적법성 확인 아님)",
++    "RETRIEVED_ONLY": "검색 완료 · AI 대조 미실행",
++    "INCOMPLETE_COVERAGE": "관련 자료 검토 범위 미완결",
++    "NOT_RELEVANT": "관련 자료 없음 · Drive 자료 미활용",
++    "SOURCE_REVIEW_ONLY": "출처 검토만(직접 인용과 별도)",
++    "MISSING_KEY": "연결 키 미설정",
++}
++
++# 엔진 문장 속 소문자 식별자(검사 층·필드·출처 이름).
++FIELD_WORDS: Dict[str, str] = {
++    "visible_text": "본문",
++    "encoded_text": "인코딩된 문자열",
++    "hidden_text": "숨김 글자",
++    "ocr_layer": "OCR 인식 글자",
++    "form_field": "입력란",
++    "image_alt": "이미지 설명",
++    "ai_score": "점수",
++    "finding.confidence": "값",
++    "reference_date": "기준일",
++    "law_go_kr": "국가법령정보센터",
++    "reference_library": "참고자료 라이브러리",
++    "source_run_id": "원본 실행 번호",
++}
++
++# 보고서 칸에 단어 하나로 들어가는 값(밑줄이 없어 readable이 건드리지 않는 것). 화면 labels와 같은 말.
++WORD_NAMES: Dict[str, str] = {
++    "CRITICAL": "매우 높음", "HIGH": "높음", "MEDIUM": "보통", "LOW": "낮음", "INFO": "참고",
++    "UNCERTAIN": "판단 유보", "VERIFIED": "확인됨", "UNVERIFIED": "확인 불가", "CONTRADICTED": "불일치",
++    "SUSPICIOUS": "확인 필요", "SKIPPED": "미실행", "ERROR": "처리 오류", "COMPLETED": "검증 완료", "FAILED": "실행 실패",
++    "STATUTE": "법령", "CASE": "판례", "ACADEMIC": "학술 문헌",
++    # 참고문헌 라이브러리·검토 상태(화면 statuses와 같은 말)와 참고 의견 관계
++    "READY": "동기화 완료", "PARTIAL": "부분 처리·제한 있음",
++    # 참고 의견 관계는 화면 REFERENCE_RELATIONS와 같은 말
++    "SUPPORTS": "부합", "CONTRADICTS": "불부합", "CONTEXT": "맥락 참고", "INSUFFICIENT": "근거 부족", "MATCH": "일치",
++    "True": "예", "False": "아니오", "None": "기록 없음",
++}
++
++
++def word(value) -> str:
++    """단어 하나짜리 코드 값(심각도·상태·판정·인용 종류)을 한글로. 모르면 readable 규칙을 따른다."""
++    text = str(value if value is not None else "")
++    return WORD_NAMES.get(text) or CODE_WORDS.get(text) or readable(text)
++
++
++def korean_time(value) -> str:
++    """ISO 시각을 한국 시각 'YYYY-MM-DD HH:MM'으로. 읽을 수 없으면 원래 값(없으면 '기록 없음')."""
++    from datetime import datetime, timedelta, timezone
++
++    if not value:
++        return "기록 없음"
++    try:
++        moment = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
++    except ValueError:
++        return str(value)
++    if moment.tzinfo is None:
++        moment = moment.replace(tzinfo=timezone.utc)
++    return moment.astimezone(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M")
++
++
++# 화면 friendlyText와 같은 문장 단위 치환(순서 그대로).
++_PHRASES = (("UNVERIFIED", "확인하지 못함"), ("Source", "출처"), ("Creator", "작성 프로그램"), ("Producer", "PDF 생성 프로그램"),
++            ("Author", "작성자"), ("QUARANTINED", "안전 검토 필요"), ("UNCERTAIN", "판단 유보"),
++            ("Python 계산엔진으로 검산한 결정론적 결과이다.", "계산식에 따라 자동 검산한 결과입니다."))
++
++_PAREN_CODE = re.compile(r"\s*\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)")
++_CODE = re.compile(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b")
++_FIELD = re.compile(r"\bfinding\.confidence\b|\b[a-z]+_[a-z_]+\b")
++
++
++def readable(text) -> str:
++    """사람이 읽는 문장에서 코드를 한글로 바꾼다. 화면 app.js friendlyText와 같은 규칙이다.
++
++    - '[RAG참고자료] ' 접두와 괄호 속 코드 '(XXX_YYY)'는 지운다(같은 뜻의 한글이 이미 앞에 있다).
++    - 표에 있는 코드·식별자만 바꾸고, 모르는 것(개인정보 가림 토큰 [PERSON_003], 파일명 등)은 그대로 둔다.
++    """
++    value = str(text if text is not None else "")
++    value = value.replace("Creator와 Producer가", "작성 프로그램과 PDF 생성 프로그램이").replace("UNVERIFIED로", "미확인 상태로")
++    value = value.replace("[RAG참고자료] ", "").replace("[RAG참고자료]", "")
++    value = _PAREN_CODE.sub("", value)
++    value = _CODE.sub(lambda m: FINDING_TYPE_NAMES.get(m.group(0)) or CODE_WORDS.get(m.group(0)) or m.group(0), value)
++    value = _FIELD.sub(lambda m: FIELD_WORDS.get(m.group(0), m.group(0)), value)
++    for technical, simple in _PHRASES:
++        # 영문 낱말은 다른 코드의 일부(예: REFERENCE_QUARANTINED)를 바꾸지 않도록 경계에서만 바꾼다.
++        if technical.isascii() and technical.isalpha():
++            value = re.sub(rf"(?<![A-Za-z0-9_]){technical}(?![A-Za-z0-9_])", simple, value)
++        else:
++            value = value.replace(technical, simple)
++    return value
++
++
++assert set(FINDING_TYPE_NAMES) == set(FindingType.__members__), "FindingType 전부에 한글 이름이 있어야 한다"
+diff --git a/packages/common/finding_category_map.py b/packages/common/finding_category_map.py
+index 54be52e..4652d3c 100644
+--- a/packages/common/finding_category_map.py
++++ b/packages/common/finding_category_map.py
+@@ -219,25 +219,3 @@ def get_category_counts() -> Dict[str, int]:
+         cat_counts[cat.value] += 1
+         tab_counts[CATEGORY_TO_TAB[cat].value] += 1
+     return {**cat_counts, **tab_counts, "TOTAL": len(FINDING_CATEGORY_MAP)}
+-
+-
+-# V1.0.0 D6(2026-11-13): 인젝션 탐지 결과 제목은 FindingType 이름을 그대로 담는다(scanner._title_for).
+-# 화면은 유형 이름을 직접 적지 않고(F1 T4) 이 표를 /api/finding-categories의 names로 받아 한글로 바꾼다.
+-FINDING_TYPE_SCREEN_NAMES: Dict[FindingType, str] = {
+-    FindingType.PROMPT_INJECTION_SUSPECTED: "프롬프트 속임수 의심",
+-    FindingType.HIDDEN_INSTRUCTION: "숨은 지시문",
+-    FindingType.META_INSTRUCTION: "기계 지시문",
+-    FindingType.SYSTEM_OVERRIDE_ATTEMPT: "시스템 지시 무력화 시도",
+-    FindingType.ROLE_OVERRIDE_ATTEMPT: "역할 바꾸기 시도",
+-    FindingType.VERIFICATION_SUPPRESSION: "검증 회피",
+-    FindingType.OUTPUT_MANIPULATION_ATTEMPT: "결과 조작 시도",
+-    FindingType.ENCODED_INSTRUCTION: "인코딩된 지시문",
+-    FindingType.OBFUSCATED_INSTRUCTION: "난독화한 지시문",
+-    FindingType.UNICODE_SMUGGLING: "유니코드 은닉",
+-    FindingType.OCR_LAYER_INJECTION: "OCR 층 인젝션",
+-    FindingType.METADATA_INJECTION: "문서 속성 인젝션",
+-    FindingType.MULTIMODAL_INJECTION: "이미지 인젝션",
+-    FindingType.RAG_POISONING_SIGNAL: "참고자료 오염 신호",
+-    FindingType.TOOL_MANIPULATION_ATTEMPT: "도구 조작 시도",
+-    FindingType.DATA_EXFILTRATION_INSTRUCTION: "정보 유출 지시문",
+-}
+diff --git a/packages/common/terminology.py b/packages/common/terminology.py
+index 075ec86..4a8c300 100644
+--- a/packages/common/terminology.py
++++ b/packages/common/terminology.py
+@@ -85,4 +85,4 @@ EDITABLE_COPY_NOTICE = (
+     "편집 가능한 사본입니다. 편집 후 내용은 보관된 생성 산출물과 다를 수 있습니다. "
+     "원본 실행 ID와 스냅샷 SHA-256으로 생성 시점의 자료를 확인하세요."
+ )
+-REVIEW_NOTICE = "검토 확정은 사람의 검토 기록을 고정하며 시스템의 미검증 결과를 VERIFIED로 바꾸지 않습니다."
++REVIEW_NOTICE = "검토 확정은 사람의 검토 기록을 고정하며 시스템의 미검증 결과를 '확인됨'으로 바꾸지 않습니다."
+diff --git a/packages/rag_engine/review.py b/packages/rag_engine/review.py
+index 6a3a216..b5178c6 100644
+--- a/packages/rag_engine/review.py
++++ b/packages/rag_engine/review.py
+@@ -781,23 +781,25 @@ def review_document(result, library, router, context, pii):
+ 
+ 
+ def report_lines(run_result):
++    # V1.0.0: 보고서 본문용 문장이다. 상태·사유 코드와 시각은 사람이 읽는 말로 적는다(packages/common/display_text).
++    from packages.common.display_text import korean_time, word
+     library = (getattr(run_result, "run_manifest", {}) or {}).get("reference_library", {})
+     if not library or library.get("status") == "DISABLED":
+         return []
+-    lines = [f"주요 참고문헌 검토 결과(RAG): {library.get('status')} / 조회 {library.get('checked_at')} / "
++    lines = [f"주요 참고문헌 검토 결과(RAG): {word(library.get('status'))} / 조회 {korean_time(library.get('checked_at'))} / "
+              f"색인 {library.get('files_indexed', 0)}건 / 목록 {library.get('files_seen', 0)}건",
+              "색인은 검색 가능한 텍스트 범위이며 책 전체 AI 검토가 아니다. 구조화 판례는 주장별 행 발췌와 사건정보 대조 범위만 기록한다.",
+              "검색 기반 AI 참고 의견이며 공식 출처 확인, AI 작성 여부, 위조 여부 판정을 대체하지 않는다."]
+     recorded = {item.get("file_id") for item in library.get("inventory", []) if item.get("file_id")}
+     for issue in [i for i in library.get("issues", []) if not i.get("file_id") or i["file_id"] not in recorded][:20]:
+-        lines.append(f"공통·기타 제한: {issue.get('name', issue.get('file_id', 'Drive'))} / {issue.get('reason')}")
++        lines.append(f"공통·기타 제한: {issue.get('name', issue.get('file_id', 'Drive'))} / {word(issue.get('reason'))}")
+     for item in library.get("inventory", [])[:100]:
+         reasons = list(dict.fromkeys(filter(None, [item.get("reason"), *[
+             i.get("reason") for i in library.get("issues", []) if i.get("file_id") == item.get("file_id")]])))
+-        coverage = f" / 텍스트 색인 {item.get('read_pages', 0)}/{item['pages']}쪽" if item.get("pages") else ""
++        coverage = f" / 텍스트 색인 {item.get('read_pages') or 0}/{item['pages']}쪽" if item.get("pages") else ""
+         missing = f" / 텍스트 미추출 쪽 {item['no_text_pages']}" if item.get("no_text_pages") else ""
+         lines.append(f"자료별 처리: {item.get('folder_path', '')}/{item.get('name')} / "
+-                     f"{item.get('status')} / {' · '.join(reasons)}{coverage}{missing}")
++                     f"{word(item.get('status'))} / {' · '.join(word(r) for r in reasons)}{coverage}{missing}")
+     if len(library.get("inventory", [])) > 100:
+         lines.append("자료별 처리 기록은 앞 100건만 표시했다. 전체 기록은 결과 JSON에 보존되어 있다.")
+     for group in library.get("duplicates", [])[:20]:
+@@ -806,24 +808,24 @@ def report_lines(run_result):
+     for doc in run_result.documents:
+         review = doc.engine_data.get("rag", {})
+         used = "Drive 자료 활용" if review.get("drive_used") else "Drive 자료 미활용"
+-        lines.append(f"{doc.filename}: {review.get('status', '미실행')} / {used} / {review.get('reason', '')}")
++        lines.append(f"{doc.filename}: {word(review.get('status', '미실행'))} / {used} / {word(review.get('reason', '')).replace(':', ' — ')}")
+         if review.get("case_table_status"):
+-            lines.append(f"표준판례 표 상태: {review['case_table_status']}")
++            lines.append(f"표준판례 표 상태: {word(review['case_table_status'])}")
+         for cid, match in (review.get("reference_case_matches") or {}).items():
+-            lines.append(f"사건정보 대조({cid}): {match.get('status', 'NOT_CHECKED')} / "
++            lines.append(f"사건정보 대조({cid}): {word(match.get('status', 'NOT_CHECKED'))} / "
+                          f"{match.get('sheet', '')}!{match.get('source_cell_range', '')}")
+         for source in review.get("sources", []):
+             location = f"{source['page']}쪽" if source.get("page_numbers_reliable", True) else f"텍스트 구간 {source['page']}(원본 쪽 미확인)"
+             lines.append(f"{source['source_id']}: {source['title']} / {location} / "
+-                         f"수정 {source['modified_time']} / SHA-256 {source['sha256']} / {source['url']}")
++                         f"수정 {korean_time(source['modified_time'])} / SHA-256 {source['sha256']} / {source['url']}")
+         for item in review.get("observations", []):
+             kind = "규칙 대조 의견" if item.get("method") in {"DETERMINISTIC_PROVISION_COMPARISON", "DETERMINISTIC_CITATION_COMPARISON"} else "AI 참고 의견"
+             lines.append(f"문서: {item['claim_quote']}\n근거 {item['source_id']}: {item['source_quote']}\n"
+-                         f"{kind}({item['relationship']}): {item['explanation']}")
++                         f"{kind}({word(item['relationship'])}): {item['explanation']}")
+         for calc in review.get("contract_review", {}).get("calculations", []):
+             values = calc["outputs"]
+             lines.append(f"자료 기반 조건부 검산: {values['delay_days']}일 × {values['daily_penalty']}원 = "
+-                         f"{values['penalty']}원 / 기재 일수 일치: {calc['stated_days_match']} / {calc['note']}")
++                         f"{values['penalty']}원 / 기재 일수 일치: {word(calc['stated_days_match'])} / {calc['note']}")
+         if review.get("observation_limit_reached"):
+             lines.append("참고 의견 5건 한도에 도달했다. 전체 주장 검토 완료를 의미하지 않는다.")
+         if review.get("unreviewed_drive_sources"):
+diff --git a/packages/report_engine/docx_report.py b/packages/report_engine/docx_report.py
+index 3116b3b..b262caf 100644
+--- a/packages/report_engine/docx_report.py
++++ b/packages/report_engine/docx_report.py
+@@ -7,6 +7,8 @@ import json
+ from packages.legal_engine.reasoning_format import row_cell_text, format_context_review
+ from packages.common.privacy_notice import REPORT_HEADER_NOTICE
+ from packages.common.terminology import EDITABLE_COPY_NOTICE, REVIEW_NOTICE
++from packages.common.display_text import readable, word
++
+ from .snapshot import json_lines, technical_payload, xml_text
+ from .summary import (FULL_RECORD_NOTE, SUMMARY, assessed_claims, detail_level, evidence_summary,
+                       grouped_unverified, reviewed_workflow)
+@@ -47,14 +49,15 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
+     # 결과 XML은 같고 시간은 문단 수에 비례한다.
+     section_properties = body.sectPr
+ 
+-    def paragraph(value, style=None):
++    # V1.0.0: 사람이 읽는 본문은 코드를 한글로 바꾼다(packages/common/display_text). 기술 부록(raw=True)은 그대로.
++    def paragraph(value, style=None, raw=False):
+         element = OxmlElement("w:p")
+         if section_properties is not None:
+             section_properties.addprevious(element)
+         else:
+             body.append(element)
+         item = Paragraph(element, doc._body)
+-        text = xml_text(value)
++        text = xml_text(value) if raw else readable(xml_text(value))
+         if text:
+             item.add_run(text)
+         if style is not None:
+@@ -74,7 +77,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
+         for row in rows:
+             cells = t.add_row().cells
+             for cell, value in zip(cells, row):
+-                cell.text = xml_text(value if not isinstance(value, (dict, list)) else json.dumps(value, ensure_ascii=False, default=str))
++                cell.text = word(xml_text(value if not isinstance(value, (dict, list)) else json.dumps(value, ensure_ascii=False, default=str)))
+         for index, row in enumerate(t.rows):
+             for cell, width in zip(row.cells, widths):
+                 cell.width = Inches(width)
+@@ -153,7 +156,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
+               [1.4, 3.6, 1.3, 0.7])
+         detailed = findings_in_order
+     for finding in detailed:
+-        doc.add_heading(xml_text(finding.title), 2)
++        doc.add_heading(readable(xml_text(finding.title)), 2)
+         paragraph(finding.detail)
+     doc.add_heading("미검증 항목과 사용 불가 자료", 1)
+     unverified = ([[i["target"] + (f" ({i['count']}건)" if i["count"] > 1 else ""), i["reason"]]
+@@ -260,7 +263,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
+         paragraph(f"검토를 시작하지 않은 항목 {untouched}건은 목록에서 생략했습니다(전체 목록은 검증 상세 JSON).")
+     doc.add_heading("쟁점과 주장 및 증거 관계", 1)
+     for issue in snapshot.get("matrix", {}).get("issues", []):
+-        doc.add_heading(xml_text(issue.get("title")), 2)
++        doc.add_heading(readable(xml_text(issue.get("title"))), 2)
+         paragraph(f"요건사실: {issue.get('elements', [])}")
+         paragraph(f"법적 근거: {issue.get('legal_basis', '')} / 기준일: {issue.get('reference_date')}")
+     rows = []
+@@ -302,13 +305,13 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
+     if manifest:
+         payload["export_manifest"] = manifest
+     for path, value in json_lines(payload):
+-        p = paragraph(path)
++        p = paragraph(path, raw=True)
+         p.paragraph_format.keep_with_next = True
+         for run in p.runs:
+             run.bold = True
+             run.font.size = Pt(9)
+         for offset in range(0, max(1, len(value)), 3000):
+-            paragraph(value[offset:offset + 3000])
++            paragraph(value[offset:offset + 3000], raw=True)
+     footer = section.footer.paragraphs[0]
+     footer.text = xml_text(metadata.get("label", "DRAFT") + " | " + run_result.run_id)
+     buffer = io.BytesIO()
+diff --git a/packages/report_engine/pdf_report.py b/packages/report_engine/pdf_report.py
+index 60e2946..c67df1d 100644
+--- a/packages/report_engine/pdf_report.py
++++ b/packages/report_engine/pdf_report.py
+@@ -1,7 +1,7 @@
+ """제20.3장 검증보고서 PDF 및 Highlight PDF.
+ 
+ 보고서 구성:
+- 검증개요·대상문서·방법론 / 핵심 CRITICAL·HIGH / 판례·법령·유권해석·학술자료 검증표 /
++ 검증개요·대상문서·방법론 / 핵심 사항(심각도 매우 높음·높음) / 판례·법령·유권해석·학술자료 검증표 /
+  사실관계·논리·문서간 모순 / AI 작성 분석 / 문서 포렌식·전자서명 /
+  메타 지시어·Prompt Injection 결과 / 미검증 항목·사용하지 못한 Source /
+  방법론상 한계 / Chain of Custody Manifest
+@@ -74,6 +74,9 @@ GLYPH_FALLBACK = {
+ }
+ 
+ 
++from packages.common.display_text import word  # noqa: E402  V1.0.0 보고서 본문 코드 → 한글
++
++
+ def _sanitize(text: str) -> str:
+     if _register_font() != KOREAN_FONT:
+         return text
+@@ -83,8 +86,9 @@ def _sanitize(text: str) -> str:
+ 
+ 
+ def _escape(text: Any) -> str:
++    # V1.0.0: 사람이 읽는 본문 글은 코드를 한글로 바꾼다(packages/common/display_text). 기술 부록(_appendix_blocks)은 그대로.
+     return (
+-        _sanitize(xml_text(text))
++        _sanitize(word(xml_text(text)))
+         .replace("&", "&amp;")
+         .replace("<", "&lt;")
+         .replace(">", "&gt;")
+@@ -182,7 +186,7 @@ def build_report_pdf(
+     story.append(table(integrity, [110, 180, 90, 60, 40]))
+ 
+     # --- 2. 핵심 CRITICAL / HIGH -------------------------------------------
+-    story.append(Paragraph(_escape("2. 핵심 CRITICAL·HIGH 사항"), styles["h1"]))
++    story.append(Paragraph(_escape("2. 핵심 사항(심각도 매우 높음·높음)"), styles["h1"]))
+     critical = [f for f in main_findings if f.severity in (Severity.CRITICAL, Severity.HIGH)]
+     if critical:
+         rows = [["위험도", "유형", "등급", "확신도", "내용"]]
+@@ -193,7 +197,7 @@ def build_report_pdf(
+             )
+         story.append(table(rows, [50, 110, 34, 40, 256]))
+     else:
+-        story.append(Paragraph("CRITICAL·HIGH 등급 항목이 없다.", styles["body"]))
++        story.append(Paragraph("심각도 매우 높음·높음 항목이 없다.", styles["body"]))
+ 
+     # --- 3. 법률 인용 검증표 ------------------------------------------------
+     story.append(Paragraph(_escape("3. 판례·법령·유권해석·학술자료 검증표"), styles["h1"]))
+@@ -206,7 +210,7 @@ def build_report_pdf(
+             citation_rows.append([
+                 row["filename"], pages + (f"\n({row['count']}회)" if row["count"] > 1 else ""),
+                 citation.get("raw_text") or "", str(citation.get("type")),
+-                verdict.get("status", "UNVERIFIED") + component_line(verdict.get("components") or []),
++                word(verdict.get("status", "UNVERIFIED")) + component_line(verdict.get("components") or []),
+                 "A" if verdict.get("official_record") else "U"])
+     else:
+         for d in run_result.documents:
+@@ -219,7 +223,7 @@ def build_report_pdf(
+                         str(citation.get("page") or "-"),
+                         (citation.get("raw_text") or ""),
+                         str(citation.get("type")),
+-                        verdict.get("status", "UNVERIFIED") + "".join(
++                        word(verdict.get("status", "UNVERIFIED")) + "".join(
+                             f"\n· {c['label']}: {c['meaning']}" for c in verdict.get("components") or []),
+                         "A" if verdict.get("official_record") else "U",
+                     ]
+@@ -362,8 +366,8 @@ def build_report_pdf(
+     story.append(
+         Paragraph(
+             _escape(
+-                "아래 항목은 해석의 영역에 속하는 참고 신호이다. Severity 상한 MEDIUM, Evidence Grade D, "
+-                "Verification Status UNVERIFIED로 고정되며, 이 신호만으로 허위·고의·위법을 단정하지 않는다."
++                "아래 항목은 해석의 영역에 속하는 참고 신호이다. 심각도는 '보통'을 넘지 않고 근거 등급 D, "
++                "검증 상태 '확인 불가'로 고정되며, 이 신호만으로 허위·고의·위법을 단정하지 않는다."
+             ),
+             styles["body"],
+         )
+@@ -423,7 +427,7 @@ def build_report_pdf(
+         ["검증 프로필", str(context.get("profile", "기록 없음"))],
+         ["외부 AI 정책", str(context.get("external_ai_policy", "기록 없음"))],
+         ["법령 기준일", str(context.get("case_date") or "미지정: 시행법 적합성 미검증")],
+-        ["판정 한계", "VERIFIED는 해당 검사 단계의 확인 결과이며 문서 전체의 적법성 보증이 아니다. 신뢰도 지표는 통계적으로 보정된 확률이 아니다."]], [100, 390]))
++        ["판정 한계", "'확인됨'은 해당 검사 단계의 확인 결과이며 문서 전체의 적법성 보증이 아니다. 신뢰도 지표는 통계적으로 보정된 확률이 아니다."]], [100, 390]))
+     level = detail_level(run_result)
+     summary = level == SUMMARY
+     if summary:
+@@ -438,7 +442,7 @@ def build_report_pdf(
+                 source = record.to_dict() if hasattr(record, "to_dict") else record
+                 story.append(Paragraph(_escape(f"Source: {source.get('adapter')} / {source.get('retrieved_at')} / SHA-256 {source.get('response_hash')} / {source.get('url')}"), styles["small"]))
+             for review in item.engine_data.get("semantic_reviews", []):
+-                story.append(Paragraph(_escape(f"AI 참고 의견 / {review.get('citation_id')} / 근거 문구 대조 {review.get('source_quotes_validated', False)}: {review.get('reason')}"), styles["small"]))
++                story.append(Paragraph(_escape(f"AI 참고 의견 / {review.get('citation_id')} / 근거 문구 대조 {'일치' if review.get('source_quotes_validated') else '불일치·미확인'}: {review.get('reason')}"), styles["small"]))
+         executions = getattr(run_result, "model_executions", [])
+         story.append(Paragraph(_escape(f"모델 호출 기록: {executions}" if executions else "실행된 모델 호출 없음. 의미·법리 적용 검토를 완료한 것으로 해석할 수 없음."), styles["small"]))
+         story.append(Paragraph("실행에 저장된 검토 기록", styles["h2"]))
+@@ -520,7 +524,7 @@ def _summary_evidence(story, styles, table, run_result, findings) -> None:
+     for item in run_result.documents:
+         for review in item.engine_data.get("semantic_reviews", []):
+             story.append(Paragraph(_escape(f"AI 참고 의견 / {review.get('citation_id')} / 근거 문구 대조 "
+-                                           f"{review.get('source_quotes_validated', False)}: {review.get('reason')}"),
++                                           f"{'일치' if review.get('source_quotes_validated') else '불일치·미확인'}: {review.get('reason')}"),
+                                    styles["small"]))
+     reviewed = [f for f in findings if f.to_dict().get("review_note") or
+                 str(f.to_dict().get("review_status", "NEEDS_REVIEW")) != "NEEDS_REVIEW"]
+diff --git a/packages/report_engine/reference_opinions.py b/packages/report_engine/reference_opinions.py
+index 443b9cc..70b4258 100644
+--- a/packages/report_engine/reference_opinions.py
++++ b/packages/report_engine/reference_opinions.py
+@@ -1,4 +1,5 @@
+ """Drive opinions in the citation table; separate from external AI answers."""
++from packages.common.display_text import word  # V1.0.0: 관계 코드를 화면과 같은 말로
+ from packages.rag_engine.reference_binding import NOTICE, bind_observations, value
+ 
+ REPORT_NOTICE = ("본 참고문헌 대조 의견은 사설 Google Drive 자료를 기반으로 한 보조 검토 의견이며, "
+@@ -31,7 +32,7 @@ def basis_text(item):
+     parts = ["[참고문헌 대조] " + NOTICE]
+     for observation in item.get("reference_observations", []):
+         source = observation.get("source_detail") or {}
+-        parts.append(f"{source.get('title') or observation.get('source_id', '')} · {observation.get('relationship', '')}")
++        parts.append(f"{source.get('title') or observation.get('source_id', '')} · {word(observation.get('relationship', ''))}")
+         parts.append(observation.get("source_quote", ""))
+         if observation.get("explanation"):
+             parts.append(observation["explanation"])
+diff --git a/tests/test_drive_rag_relevance.py b/tests/test_drive_rag_relevance.py
+index 61c867f..b272faf 100644
+--- a/tests/test_drive_rag_relevance.py
++++ b/tests/test_drive_rag_relevance.py
+@@ -451,7 +451,8 @@ def test_web_shows_drive_health_selection_and_duplicates(tmp_path):
+             expect(section.locator("p", has_text="부분색인.pdf")).to_have_count(1)
+             expect(section).to_contain_text("텍스트 색인 29/30쪽")
+             expect(section).to_contain_text("텍스트 미추출 쪽: 2")
+-            expect(section).to_contain_text("인증 api_key · 목록 조회 성공 · API 호출 9건(오류 0건)")
++            # V1.0.0 R1(사용자 승인 11-13): 인증 방식 코드(api_key)는 한글로 보인다.
++            expect(section).to_contain_text("인증 API 키 · 목록 조회 성공 · API 호출 9건(오류 0건)")
+             expect(section).to_contain_text("중복 사본 1묶음")
+             link = section.locator("a", has_text="삭제 후보: 판례/행정법 표준판례.pdf의 사본")
+             expect(link).to_have_attribute("href", "https://drive.google.com/file/d/reference900001/view")
+diff --git a/tests/test_evidence_rag_review.py b/tests/test_evidence_rag_review.py
+index 001610d..b632b6c 100644
+--- a/tests/test_evidence_rag_review.py
++++ b/tests/test_evidence_rag_review.py
+@@ -146,7 +146,8 @@ def test_reference_issues_are_listed_once_in_export():
+                               "reason": "REFERENCE_PARTIALLY_READ", "pages": 30, "read_pages": 29, "no_text_pages": [2]}]}
+     lines = "\n".join(report_lines(SimpleNamespace(run_manifest={"reference_library": summary}, documents=[])))
+     assert "주요 참고문헌 검토 결과(RAG)" in lines
+-    assert lines.count("casebook.pdf") == 1 and lines.count("REFERENCE_PARTIALLY_READ") == 1
++    # V1.0.0 R2(사용자 승인 11-13): 보고서 본문 사유 코드는 한글(일부 쪽만 읽음)로 적는다. 한 번만 적는 단언은 그대로.
++    assert lines.count("casebook.pdf") == 1 and lines.count("일부 쪽만 읽음") == 1 and "REFERENCE_PARTIALLY_READ" not in lines
+     assert "29/30쪽" in lines and "[2]" in lines
+ 
+ 
+diff --git a/tests/test_report_completion.py b/tests/test_report_completion.py
+index b5c9f6e..8ea0537 100644
+--- a/tests/test_report_completion.py
++++ b/tests/test_report_completion.py
+@@ -247,6 +247,11 @@ def test_shareable_removes_notes_pages_sealed_and_pii(report_case):
+     assert case.client.post("/api/projects/p1/reports", json={"audience": "SHAREABLE", "formats": ["highlight"]}).status_code == 422
+ 
+ 
++def _unverified_shown(text):
++    """미검증 상태가 실렸는지: 엑셀·JSON은 코드, Word·PDF 본문은 한글(V1.0.0 display_text)."""
++    return any(word in text for word in ("UNVERIFIED", "확인 불가", "확인하지 못함", "미확인 상태"))
++
++
+ def test_cross_format_labels_appendix_and_docx_zip(report_case):
+     case = report_case
+     draft = create(case, ["pdf", "xlsx", "csv", "json", "manifest", "docx"])
+@@ -262,8 +267,9 @@ def test_cross_format_labels_appendix_and_docx_zip(report_case):
+     xlsx_text = "\n".join(str(c.value) for ws in workbook for row in ws for c in row if c.value is not None)
+     archive = zipfile.ZipFile(io.BytesIO(exports["docx"]))
+     word = archive.read("word/document.xml").decode()
++    # V1.0.0 R2(사용자 승인 11-13): Word·PDF 본문은 상태 코드를 한글로 적는다(엑셀·JSON 기술부록은 코드 그대로).
+     for text in (pdf_text, xlsx_text, word):
+-        assert "FINAL" in text and final["snapshot_hash"] in text and "UNVERIFIED" in text
++        assert "FINAL" in text and final["snapshot_hash"] in text and _unverified_shown(text)
+         assert "signature verification unavailable" in text and "full source note" in text
+         assert "official.example/full/source" in text
+         assert "DO_NOT_EXPORT_SEALED" not in text
+@@ -551,7 +557,7 @@ def test_summary_report_keeps_review_content_and_moves_the_full_record_to_json(r
+         sheet_text = "\n".join(str(c.value) for ws in workbook for row in ws for c in row if c.value is not None)
+         for text in (texts[name], word, sheet_text):
+             assert "signature verification unavailable" in text and "full source note" in text
+-            assert "official.example/full/source" in text and "UNVERIFIED" in text
++            assert "official.example/full/source" in text and _unverified_shown(text)
+         texts[name + "_sheets"] = workbook.sheetnames
+     assert "전체 기술 기록(실행 당시의 모든 필드)을 싣지 않았습니다" in texts["summary"]
+     assert "검증근거" in texts["summary_sheets"] and "기술부록" not in texts["summary_sheets"]
+diff --git a/tests/test_tk155_ui_cleanup.py b/tests/test_tk155_ui_cleanup.py
+index 8aa6ad3..da9f613 100644
+--- a/tests/test_tk155_ui_cleanup.py
++++ b/tests/test_tk155_ui_cleanup.py
+@@ -15,8 +15,8 @@ import pytest
+ from playwright.sync_api import expect, sync_playwright
+ from frontend_helpers import select_first_project
+ 
+-from packages.common.finding_category_map import (CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, FINDING_TYPE_SCREEN_NAMES,
+-                                                   get_category_counts)
++from packages.common.display_text import CODE_WORDS, FIELD_WORDS, FINDING_TYPE_NAMES, WORD_NAMES, readable, word
++from packages.common.finding_category_map import CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, get_category_counts
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ CODE_RE = re.compile(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\b[a-z]+_[a-z_]+\b")
+@@ -66,8 +66,18 @@ RESULT = {"status": "PARTIAL_COMPLETED", "documents": [{
+                            "reasons": ["AI 교차검증 다수 모델이 지적하여 AI_PARTIAL_GENERATION로 최종 확정함(다수결)"],
+                            "signals": {"score_definition": "응답한 모델들이 낸 ai_score의 중앙값이다.",
+                                        "confidence_definition": "계산한 finding.confidence이다."}},
+-    "engine_data": {"adversarial": {"scanned_layers": ["encoded_text", "outline", "visible_text"], "adversarial_risk": "HIGH"}},
+-}]}
++    "engine_data": {"adversarial": {"scanned_layers": ["encoded_text", "outline", "visible_text"], "adversarial_risk": "HIGH"},
++                    "rag": {"status": "ADVISORY_REVIEWED", "reason": "EXACT_QUOTES_CHECKED_NOT_ENTAILMENT_OR_LEGAL_VALIDITY",
++                            "selection": {"decision": "USED", "reason": "RELEVANT_REFERENCE_FOUND", "candidates_total": 2,
++                                          "files_selected": 1, "candidates": []}}},
++}], "run_manifest": {"reference_library": {
++    "status": "PARTIAL", "files_indexed": 1, "files_seen": 2, "checked_at": "2026-11-13T01:00:11.453487+00:00",
++    "health": {"credential_mode": "service_account", "listing_succeeded": True, "http_calls": 3, "http_errors": 0, "sync_ms": 900},
++    "issues": [{"file_id": "f2", "reason": "REFERENCE_QUARANTINED"}],
++    "inventory": [{"file_id": "f1", "folder_path": "합성폴더", "name": "합성자료1.pdf", "status": "INDEXED_PARTIAL",
++                   "reason": "REFERENCE_PARTIALLY_READ", "pages": 10, "read_pages": 9},
++                  {"file_id": "f2", "folder_path": "합성폴더", "name": "합성자료2.pdf", "status": "PARSE_FAILED",
++                   "reason": "REFERENCE_QUARANTINED", "pages": 5, "read_pages": None}]}}}
+ 
+ GATE = {"release_gate": "BLOCK", "hallucination_risk": 72, "risk_index_note": "합성 지수 설명",
+         "hard_block_reasons": ["CASE_NOT_FOUND: 합성 차단 사유"], "review_reasons": ["합성 검토 사유"]}
+@@ -84,7 +94,8 @@ def _serve(page, project):
+            "input_snapshot": {"scope_revision": 0}, "started_at": "2026-11-13T00:00:00"}
+     cats = {"categories": {t.value: c.value for t, c in FINDING_CATEGORY_MAP.items()},
+             "tabs": {t.value: CATEGORY_TO_TAB[c].value for t, c in FINDING_CATEGORY_MAP.items()},
+-            "counts": get_category_counts(), "names": {t.value: n for t, n in FINDING_TYPE_SCREEN_NAMES.items()}}
++            "counts": get_category_counts(), "names": FINDING_TYPE_NAMES, "code_words": CODE_WORDS,
++            "field_words": FIELD_WORDS, "word_names": WORD_NAMES}
+ 
+     def respond(route):
+         path = urlsplit(route.request.url).path
+@@ -237,6 +248,81 @@ def test_finding_categories_api_serves_screen_names():
+     from apps.api.main import app
+     from packages.common.enums import ADVERSARIAL_FINDING_TYPES
+ 
+-    names = TestClient(app).get("/api/finding-categories").json()["names"]
+-    assert set(names) == {t.value for t in ADVERSARIAL_FINDING_TYPES}
++    from packages.common.enums import FindingType
++
++    data = TestClient(app).get("/api/finding-categories").json()
++    names = data["names"]
++    assert set(names) == {t.value for t in FindingType}  # 97종 전부(목록 '유형별'·보고서 '유형' 칸)
++    assert {t.value for t in ADVERSARIAL_FINDING_TYPES} <= set(names)
+     assert all(re.search(r"[가-힣]", n) for n in names.values())
++    assert data["code_words"]["REFERENCE_PARTIALLY_READ"] and data["field_words"]["visible_text"]
++
++
++def test_reference_processing_record_has_no_codes_and_korean_time(browser):
++    page = browser.new_page(viewport={"width": 1440, "height": 1000})
++    _serve(page, BASE_PROJECT)
++    page.locator('.tabs button[data-tab="review"]').click()
++    panel = page.locator('section[data-panel="review"]')
++    expect(panel.locator(".reference-section").first).to_be_attached()
++    page.evaluate("document.querySelectorAll('details').forEach(d => d.open = true)")
++    text = panel.locator(".reference-section").first.inner_text()
++    assert _codes(text) == [], _codes(text)
++    assert "조회 2026-11-13 10:00" in text  # ISO 시각 → 한국 시각
++    assert "서비스 계정" in text and "일부 색인" in text and "지시문 의심으로 보안 격리" in text
++    assert "None" not in text
++
++
++def test_ai_tab_button_shows_high_count_without_changing_its_name(browser):
++    page = browser.new_page(viewport={"width": 1440, "height": 1000})
++    _serve(page, BASE_PROJECT)
++    button = page.locator('.tabs button[data-tab="ai-verification"]')
++    expect(button).to_have_attribute("data-high-count", "1")  # 합성 결과의 높음 이상 인젝션 1건
++    expect(button).to_have_text("AI 작성·보안 진단")
++    badge = button.evaluate("b => getComputedStyle(b, '::after').content")
++    assert "높음 이상 1" in badge
++
++
++def test_readable_mirrors_screen_rules():
++    assert readable("META_INSTRUCTION 후보: ROLE_OVERRIDE — 경로: visible_text") == "기계 지시문 후보: 역할 바꾸기 — 경로: 본문"
++    assert readable("소급 적용 주장 (RETROACTIVE_APPLICATION_ERROR)") == "소급 적용 주장"
++    assert readable("[RAG참고자료] 합성 규정") == "합성 규정"
++    assert readable("[PERSON_003]의 진술") == "[PERSON_003]의 진술"  # 개인정보 가림 토큰은 그대로
++    assert word("HIGH") == "높음" and word("INDEXED") == "색인 완료" and word("CONTRADICTS") == "불부합"
++    # 영문 낱말 치환은 다른 코드의 일부를 바꾸지 않는다('REFERENCE_안전 검토 필요' 같은 깨짐 방지)
++    assert readable("REFERENCE_FOO_QUARANTINED") == "REFERENCE_FOO_QUARANTINED"
++    assert readable("UNVERIFIED로 표시") == "미확인 상태로 표시" and readable("QUARANTINED") == "안전 검토 필요"
++
++
++@pytest.mark.parametrize("fmt", ["docx", "pdf"])
++def test_word_and_pdf_reports_have_no_codes(fmt):
++    from datetime import datetime
++    from apps.api.routers.reports import _DocumentView, _FindingView, _RunView
++
++    findings = []
++    for f in FINDINGS:
++        row = SimpleNamespace(id=f["id"], type=f["type"], status=f["status"], severity=f["severity"], evidence_grade="C",
++                              confidence=0.5, document_id="d1", block_id=None, page=3, title=f["title"], detail=f["detail"],
++                              engine=f["engine"], advisory_only=False, review_status="NEEDS_REVIEW", review_note="",
++                              tags=[], data={}, sealed_excerpt=None)
++        findings.append(_FindingView(row, [], False))
++    doc = _DocumentView(SimpleNamespace(id="d1", filename="합성서면.pdf", quarantined=False, rag_indexable=False, sha256="0"),
++                        findings, RESULT)
++    run = SimpleNamespace(id="r1", project_id="p1", state="PARTIAL_COMPLETED", verification_key="k",
++                          started_at=datetime(2026, 11, 13), finished_at=datetime(2026, 11, 13), scores={}, timeline=[],
++                          unavailable_sources=[], unverified_items=[], errors=[], input_snapshot={}, result_json=RESULT)
++    view = _RunView(run, findings, [doc])
++    if fmt == "docx":
++        from docx import Document
++        from packages.report_engine import build_report_docx
++
++        d = Document(io.BytesIO(build_report_docx(view, project={"name": "합성"}, manifest={})))
++        text = "\n".join([p.text for p in d.paragraphs] + [c.text for t in d.tables for r in t.rows for c in r.cells])
++    else:
++        pypdf = pytest.importorskip("pypdf")
++        from packages.report_engine.pdf_report import build_report_pdf
++
++        pdf = build_report_pdf(view, project={"name": "합성"}, manifest={})
++        text = "\n".join(p.extract_text() or "" for p in pypdf.PdfReader(io.BytesIO(pdf)).pages)
++    assert _codes(text) == [], _codes(text)
++    flat = re.sub(r"\s+", "", text)  # PDF는 줄바꿈 위치가 글자 사이에 올 수 있다
++    assert "일부색인" in flat and "지시문의심으로보안격리" in flat  # 참고문헌 처리 기록이 한글로 실렸다
