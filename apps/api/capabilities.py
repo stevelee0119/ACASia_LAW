@@ -124,7 +124,7 @@ def _worker_state() -> Dict[str, Any]:
                 "shares_api_process": mode == "inprocess"}
     except Exception as exc:  # pragma: no cover - 기동 순서에 따라 아직 없을 수 있다
         return {"mode": "unknown", "concurrency": None, "shares_api_process": None,
-                "error": f"{type(exc).__name__}: {exc}"}
+                "error": type(exc).__name__}  # TK-175: 예외 문구는 응답에 싣지 않는다(CodeQL py/stack-trace-exposure)
 
 
 def _llm_state() -> Dict[str, Any]:

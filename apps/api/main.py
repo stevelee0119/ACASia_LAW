@@ -179,7 +179,9 @@ def create_app() -> FastAPI:
     try:
         verify_storage_encryption_config()
     except StorageKeyConfigurationError as exc:
-        record_storage_encryption_error(str(exc))
+        # TK-175: 진단 응답에는 고정 문구와 예외 종류만 싣는다. 예외 원문(키 공급자 오류 문구)은 아래 서버 로그에만 남긴다.
+        record_storage_encryption_error("저장 시 암호화 키 설정을 확인할 수 없습니다"
+                                        f"({type(exc.__cause__ or exc).__name__}). 자세한 원인은 서버 로그를 보세요.")
         logging.getLogger(__name__).error(
             "저장 시 암호화 키 설정이 잘못되어 자료 업로드·조회가 거부됩니다. "
             "서비스는 기동하지만 이 설정을 고치기 전까지 사건자료를 다룰 수 없습니다. %s", exc)

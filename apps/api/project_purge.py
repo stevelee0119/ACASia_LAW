@@ -12,12 +12,13 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Dict, List
 
 from sqlalchemy import delete, func, or_, select
 
 from packages.common.config import data_dir
-from packages.common.storage import PROJECT_ID_RE, get_storage
+from packages.common.storage import PROJECT_ID_RE, get_storage, resolve_within
 
 from .db import Base
 
@@ -68,11 +69,11 @@ def purge_files(project_id: str) -> Dict[str, object]:
         result["file_errors"].append(f"원본·보고서 파일: {type(exc).__name__}")
     # 보안(TK-35): match+$ 대신 fullmatch로 끝 줄바꿈 허용 방지
     if PROJECT_ID_RE.fullmatch(project_id):
-        vault = data_dir() / "pii_vault" / f"{project_id}.vault"
         try:
-            if vault.exists():
-                vault.unlink()
-        except OSError as exc:
+            vault = resolve_within(data_dir() / "pii_vault", f"{project_id}.vault")  # TK-175: 보관소 폴더 밖 경로 차단
+            if os.path.exists(vault):
+                os.unlink(vault)
+        except (OSError, ValueError) as exc:
             logger.error("project_purge_vault_failed project=%r error_type=%s", _log_id(project_id), type(exc).__name__)
             result["file_errors"].append(f"가명 처리 보관소: {type(exc).__name__}")
     return result
