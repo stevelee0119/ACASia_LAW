@@ -1,4 +1,8 @@
-"""'확인 전 항목'과 '진행 상태'를 누르면 뜻과 세부 내역·대책이 보여야 한다."""
+"""검토 결정 대기(탭 머리 배지)와 실행 상태 안내(사유 보기)를 누르면 뜻과 세부 내역·대책이 보여야 한다.
+
+V1.0.0 명세 1-3-5·1-3-6과 사용자 결정 D1·D2(2026-11-13)로 옛 요구(상단 카드 '확인 전 항목'·'진행 상태')를
+바꾼 단언이다(사용자 승인). 설명 대화상자의 내용 단언은 그대로 둔다.
+"""
 import os
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -54,7 +58,9 @@ def test_pending_and_status_metrics_explain_themselves(width, height):
         if path in replies:
             return route.fulfill(json=replies[path])
         if path.endswith("/result"):
-            return route.fulfill(json={"documents": [{"document_id": "d1", "filename": "준비서면.pdf"}]})
+            return route.fulfill(json={"documents": [{"document_id": "d1", "filename": "준비서면.pdf", "review_items": [
+                {"item_id": "i1", "kind": "CITATION", "cited_authority": "대법원 2011모1839 결정", "claim_text": "대법원 2011모1839 결정",
+                 "severity": "HIGH", "finding_ids": ["f0", "f1"], "location": "1쪽"}]}]})
         if path.endswith("/case-matrix"):
             return route.fulfill(body="null", content_type="application/json")
         return route.fulfill(json=[])
@@ -71,21 +77,24 @@ def test_pending_and_status_metrics_explain_themselves(width, height):
             page.route("**/*", respond)
             page.goto("http://metrics.test/")
             select_first_project(page)
-            pending = page.locator(".metric-explain", has_text="확인 전 항목")
-            expect(pending).to_contain_text("3")
+            expect(page.locator("#summary .metric")).to_have_count(3)
+            expect(page.locator(".metric-explain", has_text="확인 전 항목")).to_have_count(0)
+            expect(page.locator(".metric-explain", has_text="진행 상태")).to_have_count(0)
+            page.locator('.tabs button[data-tab="review"]').click()
+            pending = page.locator("#reviewPendingBadge")
+            expect(pending).to_have_text("검토 결정 대기 2")
             pending.click()
-            dialog = page.get_by_role("dialog", name="확인 전 항목이란")
+            dialog = page.get_by_role("dialog", name="검토 결정 대기란")
             expect(dialog).to_contain_text("검사를 하지 못했다는 뜻이 아니라")
             expect(dialog).to_contain_text("문제가 의심되는 항목(검토 후 조치 필요): 1건")
             expect(dialog).to_contain_text("시스템이 확인하지 못한 항목(원문 확인 필요): 1건")
-            expect(dialog).to_contain_text("참고 신호(낮은 심각도·참고용): 1건")
-            dialog.get_by_role("button", name="출처가 확인되지 않는 항목에서 보기").click()
-            expect(page.locator("[data-panel='review']")).to_be_visible()
-            expect(page.locator("#reviewTable")).to_be_visible()
+            dialog.get_by_role("button", name="닫기").first.click() if dialog.get_by_role("button", name="닫기").count() else page.keyboard.press("Escape")
 
             if width <= 700:
                 page.evaluate("window.scrollTo(0, 0)")
-            page.locator(".metric-explain", has_text="진행 상태").click()
+            line = page.locator(".run-status-line")
+            expect(line).to_contain_text("일부 미확인")
+            line.get_by_role("button", name="사유 보기").click()
             status = page.get_by_role("dialog", name="진행 상태: 일부 미확인")
             expect(status).to_contain_text("확인하지 못한 항목 3건 — 원인별")
             expect(status.locator(".unverified-cause", has_text="외부 출처 연결 장애")).to_contain_text("대법원 2015모2524 결정")

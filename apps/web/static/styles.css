@@ -356,7 +356,8 @@ main {
 
 .summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* V1.0.0 W2: 요약 카드 3개(AI 작성 진단·출처 미확인 인용·법률적으로 무리한 주장) */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   margin: 16px 0;
@@ -965,11 +966,11 @@ table {
   }
 
   .summary {
-    grid-template-columns: 1fr 1fr
+    grid-template-columns: 1fr
   }
 
-  /* 두 칸씩 줄을 이룬다. 오른쪽 칸은 세로선을 없애고 모든 줄을 구분한다. */
-  .metric:nth-child(2n) {
+  /* 좁은 화면에서는 카드 3개를 한 줄씩 쌓는다. 세로선을 없애고 모든 줄을 구분한다. */
+  .metric {
     border-right: 0
   }
 
@@ -1894,3 +1895,22 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
 .reference-observations p, .external-ai-answer p {margin:4px 0; overflow-wrap:anywhere;}
 .review-prompt-bar .external-ai-import-btn {font-size:15px; font-weight:600; padding:10px 18px; min-height:44px;}
 .external-answer-preview-item {padding:8px 0; border-bottom:1px solid var(--line);}
+
+/* V1.0.0 표 가독성(6-2·6-6·6-7·7-1·7-5·7-6, D1·D5) */
+.review-items-table td .badge, .tier3-table td .badge { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.clamp.expanded { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.clamp-toggle { margin: 2px 0 6px; }
+.unverified-card { border: 1px solid #e0a43a; border-left: 4px solid #d18b12; background: #fff8ec; border-radius: 6px; padding: 10px 14px; margin: 12px 0; }
+.unverified-card summary { cursor: pointer; color: #7a4a00; }
+.unverified-card .unverified-counts { color: #7a4a00; }
+.unverified-list { margin: 8px 0 0 18px; line-height: 1.6; }
+.reference-legend { font-size: 12px; color: #5b6b66; margin: 4px 0 8px; }
+.pending-badge { font-size: 12px; font-weight: 600; color: #8a5a00; background: #fff1d6; border-radius: 10px; padding: 2px 8px; vertical-align: middle; }
+.run-status-line { grid-column: 1 / -1; margin: 6px 0 0; padding: 8px 12px; background: #fff8ec; border-left: 4px solid #d18b12; border-radius: 4px; }
+.finding-group-reasons { margin: 6px 0 0 20px; }
+.finding-group-reasons .reason-link { text-align: left; white-space: normal; }
+.model-skip-note { margin-top: 6px; }
+/* V1.0.0 6-1: AI 작성·보안 진단 탭 버튼의 높음 이상 건수 */
+.tabs button[data-high-count]::after { content: "높음 이상 " attr(data-high-count); margin-left: 6px; padding: 1px 6px; border-radius: 9px;
+  background: #fdecea; color: #b42318; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: nowrap; }

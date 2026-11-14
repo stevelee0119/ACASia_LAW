@@ -520,7 +520,10 @@ def test_frontend_app_js_classification_matches_specification():
     assert "DISTORTION" in app_js
     assert "성립 불가한 사건번호" in app_js  # 1번 행 2단 분기
     assert "취지 왜곡" in app_js or "부당" in app_js  # 6번 행 3단 분기
-    assert "참고문헌(구속력 없음)" in app_js  # 참고문헌 구속력 배제 배지
+    # V1.0.0 6-5·7-4·D5(사용자 승인으로 단언 변경): 셀마다 '구속력 없음'을 되풀이하지 않고 표 위 범례 한 줄로 둔다.
+    assert "참고문헌(구속력 없음)" not in app_js
+    with open("apps/web/index.html", "r", encoding="utf-8") as f:
+        assert "법적 구속력은 없습니다" in f.read()  # 표 위 범례
     assert "대조 안 함" in app_js  # 미대조 배지
     assert "법률적으로 무리한 주장 탭에서 확인 →" in app_js  # 2단->3단 상호 참조
     assert "출처가 확인되지 않는 항목 탭에서 확인 →" in app_js  # 3단->2단 상호 참조

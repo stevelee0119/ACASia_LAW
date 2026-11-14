@@ -451,7 +451,8 @@ def test_web_shows_drive_health_selection_and_duplicates(tmp_path):
             expect(section.locator("p", has_text="부분색인.pdf")).to_have_count(1)
             expect(section).to_contain_text("텍스트 색인 29/30쪽")
             expect(section).to_contain_text("텍스트 미추출 쪽: 2")
-            expect(section).to_contain_text("인증 api_key · 목록 조회 성공 · API 호출 9건(오류 0건)")
+            # V1.0.0 R1(사용자 승인 11-13): 인증 방식 코드(api_key)는 한글로 보인다.
+            expect(section).to_contain_text("인증 API 키 · 목록 조회 성공 · API 호출 9건(오류 0건)")
             expect(section).to_contain_text("중복 사본 1묶음")
             link = section.locator("a", has_text="삭제 후보: 판례/행정법 표준판례.pdf의 사본")
             expect(link).to_have_attribute("href", "https://drive.google.com/file/d/reference900001/view")
