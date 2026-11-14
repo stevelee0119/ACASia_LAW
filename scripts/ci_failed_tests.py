@@ -10,8 +10,12 @@ from __future__ import annotations
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import List, Tuple
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.path_guard import contained_path  # noqa: E402
 
 LINE = re.compile(r"^(FAILED|ERROR) (\S+)")
 LIMIT = 60
@@ -22,7 +26,10 @@ def failures(paths: List[str]) -> List[Tuple[str, str]]:
     out: List[Tuple[str, str]] = []
     seen = set()
     for p in paths:
-        path = Path(p)
+        try:
+            path = contained_path(p)  # TK-175: 저장소·임시 폴더 안의 pytest 출력만 읽는다
+        except ValueError:
+            continue
         if not path.is_file():
             continue
         for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -51,7 +58,11 @@ def main(argv: List[str]) -> int:
         print(f"::error title={_escape_property(name)}::{_escape(line[:300])}")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
-        with open(summary, "a", encoding="utf-8") as fh:
+        try:  # TK-175: 작업 요약 파일은 러너 임시 폴더 안만(밖이면 요약만 건너뛴다. 종료 코드는 늘 0)
+            summary_path = contained_path(summary, os.environ.get("RUNNER_TEMP") or tempfile.gettempdir())
+        except ValueError:
+            return 0
+        with open(summary_path, "a", encoding="utf-8") as fh:
             fh.write(f"### 실패 시험 {len(items)}건\n```\n")
             fh.writelines(f"[{name}] {line}\n" for name, line in items[:LIMIT])
             fh.write("```\n")

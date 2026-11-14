@@ -35,6 +35,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+try:  # 모듈로 읽을 때(시험)와 스크립트로 돌릴 때(sys.path[0] = scripts/) 모두
+    from scripts.path_guard import INPUT_ROOTS, contained_path
+except ImportError:  # pragma: no cover - 스크립트 실행 경로
+    from path_guard import INPUT_ROOTS, contained_path
+
 ROOT = Path(__file__).resolve().parents[1]
 LOG = ROOT / "docs" / "scorecards" / "first_touch_log.jsonl"
 KINDS = {"text_contains", "citation", "masked", "not_masked", "finding", "no_finding"}
@@ -161,7 +166,8 @@ def evaluate(spec: Dict[str, Any], obs: Dict[str, Any]) -> List[Dict[str, Any]]:
 def run_in_tree(spec: Dict[str, Any], tree: Path, *, text_input: bool, spec_dir: Path,
                 input_override: Optional[str] = None) -> Dict[str, Any]:
     source = spec["text_input"] if text_input else (input_override or spec["input"])
-    document = (spec_dir / source).resolve() if not Path(source).is_absolute() else Path(source)
+    # TK-175: 서면은 저장소·임시 폴더·사용자 홈(받은 서면) 안만 연다.
+    document = contained_path(source if Path(source).is_absolute() else spec_dir / source, *INPUT_ROOTS)
     suffix = document.suffix.lower()
     mime = {".txt": "text/plain",
             ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}.get(suffix, "application/pdf")

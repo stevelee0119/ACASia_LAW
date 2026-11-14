@@ -12,6 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 # 저장소와 임시 폴더(시험 tmp_path·기준 커밋 worktree)만 평가 자료·출력 위치로 쓴다.
 WORK_ROOTS = (ROOT, Path(tempfile.gettempdir()))
+# 평가 측이 받은 서면(사용자 업로드)을 탐침할 때: 저장소·임시 폴더에 더해 사용자 홈 아래(TK-175).
+INPUT_ROOTS = (*WORK_ROOTS, Path.home())
 # 한국어 OCR 모델(tessdata) 위치: 배포판 패키지·로컬 설치·저장소 안.
 TESSDATA_ROOTS = ("/usr/share", "/usr/local/share", "/opt", ROOT)
 

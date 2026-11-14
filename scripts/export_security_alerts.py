@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -28,7 +29,15 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from scripts.path_guard import contained_path  # noqa: E402
+
 API = "https://api.github.com"
+# TK-175(CodeQL py/partial-ssrf #124): 요청 주소에 넣는 값은 이 꼴만 받는다(re.fullmatch가 참인 분기에서만 쓴다).
+REPO_RE = re.compile(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}")
+REF_RE = re.compile(r"refs/(?:heads|tags|pull)/[A-Za-z0-9_./-]{1,200}")
+STATE_RE = re.compile(r"open|closed|dismissed|fixed")
 PER_PAGE = 100
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "error": 1, "warning": 2, "note": 3}
 
@@ -36,9 +45,17 @@ SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "error": 1, "
 def fetch_alerts(repo: str, token: str, state: str = "open", ref: str | None = None) -> list[dict[str, Any]]:
     """열린 코드 스캔 경고를 모두 가져온다(기본 브랜치 기준, ref를 주면 그 참조 — 예: refs/pull/66/merge).
     접근이 거부되면 사유를 담아 종료한다."""
+    if not REPO_RE.fullmatch(repo):
+        raise SystemExit(f"--repo는 OWNER/REPO 꼴이어야 한다: {repo!r}")
+    if not STATE_RE.fullmatch(state):
+        raise SystemExit(f"알 수 없는 경고 상태: {state!r}")
     alerts: list[dict[str, Any]] = []
     page = 1
-    ref_query = f"&ref={urllib.parse.quote(ref, safe='')}" if ref else ""
+    ref_query = ""
+    if ref:
+        if not REF_RE.fullmatch(ref):
+            raise SystemExit(f"--ref는 refs/heads|tags|pull/... 꼴이어야 한다: {ref!r}")
+        ref_query = "&ref=" + urllib.parse.quote(ref, safe="")
     while True:
         url = f"{API}/repos/{repo}/code-scanning/alerts?state={state}&per_page={PER_PAGE}&page={page}{ref_query}"
         request = urllib.request.Request(url, headers={
@@ -123,11 +140,11 @@ def main() -> int:
     parser.add_argument("--ref", help="경고를 읽을 참조(기본: 기본 브랜치). PR 경고는 refs/pull/<번호>/merge")
     args = parser.parse_args()
     if args.print_locations:
-        saved = json.loads(Path(args.print_locations).read_text(encoding="utf-8"))
+        saved = json.loads(contained_path(args.print_locations).read_text(encoding="utf-8"))
         print("\n".join(location_lines(saved)))
         return 0
     if args.from_file:
-        alerts = json.loads(Path(args.from_file).read_text(encoding="utf-8"))
+        alerts = json.loads(contained_path(args.from_file).read_text(encoding="utf-8"))
     else:
         repo = args.repo or os.environ.get("GITHUB_REPOSITORY")
         token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
@@ -135,7 +152,7 @@ def main() -> int:
             raise SystemExit("--repo(또는 GITHUB_REPOSITORY)와 GITHUB_TOKEN이 필요하다")
         alerts = fetch_alerts(repo, token, ref=args.ref or None)
     summary = summarise(alerts)
-    out = Path(args.out_dir)
+    out = contained_path(args.out_dir)  # TK-175: 출력 폴더는 저장소·임시 폴더 안만
     out.mkdir(parents=True, exist_ok=True)
     (out / "code_scanning_alerts.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "summary.md").write_text(markdown(summary), encoding="utf-8")
