@@ -30,6 +30,7 @@ from typing import Dict, List, Optional
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.evaluation_v2 import compare_sets, dataset_identity
+from scripts.path_guard import TESSDATA_ROOTS, contained_path
 RETIRED = "tests/fixtures/retired_sealed"
 PRODUCT_PATHS = ("packages", "apps", "workers", "config", "migrations", "docker")
 CACHE_DIR = ROOT / "artifacts" / "retired_cache"
@@ -47,9 +48,16 @@ def cache_file(base_sha: str, names: List[str]) -> Path:
     if binary:
         listing = subprocess.run([binary, "--list-langs"], capture_output=True, text=True, timeout=10).stdout
         match = re.search(r'in "([^"]+)"', listing)
-        folder = Path(os.environ.get("TESSDATA_PREFIX") or (match.group(1) if match else "/nonexistent"))
+        raw = os.environ.get("TESSDATA_PREFIX") or (match.group(1) if match else "/nonexistent")
+        try:
+            folder = contained_path(raw, *TESSDATA_ROOTS)
+        except ValueError:
+            folder = None  # 허용 위치 밖 tessdata는 읽지 않는다(캐시 열쇠에 UNTRUSTED_PATH로 남김)
         for lang in tess["langs"]:
-            model = folder / f"{lang}.traineddata"
+            if folder is None or not re.fullmatch(r"[A-Za-z0-9_]+", str(lang)):
+                language_models[lang] = "UNTRUSTED_PATH"
+                continue
+            model = contained_path(folder / f"{lang}.traineddata", folder)
             language_models[lang] = hashlib.sha256(model.read_bytes()).hexdigest() if model.exists() else "MISSING"
     key = json.dumps({"format": CACHE_FORMAT, "base": base_sha, "sets": names,
                       "datasets": {n: dataset_identity(ROOT / RETIRED / n) for n in names},
@@ -58,12 +66,13 @@ def cache_file(base_sha: str, names: List[str]) -> Path:
                       "dependencies": sorted((d.metadata.get("Name", ""), d.version) for d in importlib.metadata.distributions()),
                       "ocr": tess, "language_models": language_models,
                       "python": platform.python_version(), "platform": sys.platform}, sort_keys=True)
-    return CACHE_DIR / f"{base_sha[:12]}_{hashlib.sha256(key.encode()).hexdigest()[:12]}.json"
+    # 기준 SHA 조각이 이름에 들어가므로 캐시 폴더 밖으로 나가지 않게 묶는다.
+    return contained_path(CACHE_DIR / f"{base_sha[:12]}_{hashlib.sha256(key.encode()).hexdigest()[:12]}.json", CACHE_DIR)
 
 
 def load_cached_base(path: Path, names: List[str]) -> Optional[Dict[str, Optional[Dict]]]:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(contained_path(path, CACHE_DIR).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(data, dict) or sorted(data) != sorted(names) or any(v is None for v in data.values()):
@@ -74,6 +83,7 @@ def load_cached_base(path: Path, names: List[str]) -> Optional[Dict[str, Optiona
 def save_cached_base(path: Path, data: Dict[str, Optional[Dict]]) -> None:
     if any(v is None for v in data.values()):
         return
+    path = contained_path(path, CACHE_DIR)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
 
@@ -85,7 +95,7 @@ def product_changed(base: str) -> List[str]:
 
 
 def sets_in(tree: Path) -> List[str]:
-    folder = tree / RETIRED
+    folder = contained_path(Path(tree) / RETIRED)
     if not folder.is_dir():
         return []
     return sorted(p.name for p in folder.iterdir() if (p / "ground_truth.json").is_file())
@@ -164,7 +174,7 @@ def check_inventory(tree):
     if not manifest or set(sets_in(tree)) != set(manifest):
         raise ValueError("은퇴 세트 목록이 고정 manifest와 다릅니다")
     for name, expected in manifest.items():
-        if dataset_identity(tree / RETIRED / name) != expected:
+        if dataset_identity(contained_path(Path(tree) / RETIRED / name)) != expected:
             raise ValueError(f"{name}: 평가 자료 해시 불일치")
     return sorted(manifest)
 
@@ -175,6 +185,7 @@ def main() -> int:
     parser.add_argument("--no-cache", action="store_true", help="기준 집계 캐시를 쓰지 않는다(CI에서는 항상 쓰지 않음)")
     parser.add_argument("--out", type=Path, default=ROOT / "artifacts/retired_comparison.json")
     args = parser.parse_args()
+    args.out = contained_path(args.out)  # 저장소·임시 폴더 안에만 쓴다
     use_cache = not args.no_cache and not os.environ.get("CI")
     base_sha = subprocess.run(["git", "rev-parse", args.base], cwd=ROOT, capture_output=True, text=True,
                               check=True).stdout.strip()
