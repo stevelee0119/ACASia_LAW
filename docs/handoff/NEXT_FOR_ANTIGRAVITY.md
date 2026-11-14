@@ -6068,3 +6068,7 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - #287 head `ee48484` = 사본 redos-fix-copy(diff 0). 사본 precheck --quick 종료 0(1,124건), head에서 관련 52건·게이트 3종 통과(평가 측 재실행). CI 전부 성공(인용). 수용 코멘트 게시.
 - #286(평가 도구 경로 묶기) head `748daa3` CI 전부 성공(인용, CodeQL 분석 4건·새 경고 게이트 포함).
 - 다음: #286·#287 병합(사용자) → #285(release/0.20.0)에 Steve 재병합 → GitHub CodeQL 결과 확인.
+
+### 2-55-11. 사용자 '286,287병합' (11-14)
+- #286 병합 `4f7fc52`(head 748daa3), #287 병합 Steve `8aa2a55`(head ee48484).
+- 다음: release/0.20.0에 Steve 8aa2a55를 병합해 #285 CI(GitHub CodeQL 포함) 재실행. 릴리스 후보가 8aa2a55로 바뀌므로 verify_all 전체를 한 번 다시 돈다(릴리스 후보 SHA 규칙).
