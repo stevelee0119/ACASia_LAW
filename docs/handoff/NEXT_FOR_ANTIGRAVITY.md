@@ -6063,3 +6063,24 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 ### 2-55-9. 사용자 'TK-170 지시 전달 완료' (11-14)
 - TK-170(2-55-8)을 구현 측에 전달했다. 구현 PR이 오면 사본(redos-fix-copy)과 diff 0·CI로 판정한다.
 - 평가 PR #286(경로 묶기) CI 진행 중. 참고: GitHub 기본 'CodeQL' 결과 검사는 main 대상 PR에서만 돈다. #286·TK-170 PR에서는 저장소 자체 'CodeQL 새 경고 게이트'(python·js)만 돌고, 10건이 닫혔는지는 둘 병합 뒤 #285에 Steve를 다시 병합해 확인한다.
+
+### 2-55-10. #287(TK-170) 판정: 수용, #286 CI 성공 (11-14)
+- #287 head `ee48484` = 사본 redos-fix-copy(diff 0). 사본 precheck --quick 종료 0(1,124건), head에서 관련 52건·게이트 3종 통과(평가 측 재실행). CI 전부 성공(인용). 수용 코멘트 게시.
+- #286(평가 도구 경로 묶기) head `748daa3` CI 전부 성공(인용, CodeQL 분석 4건·새 경고 게이트 포함).
+- 다음: #286·#287 병합(사용자) → #285(release/0.20.0)에 Steve 재병합 → GitHub CodeQL 결과 확인.
+
+### 2-55-11. 사용자 '286,287병합' (11-14)
+- #286 병합 `4f7fc52`(head 748daa3), #287 병합 Steve `8aa2a55`(head ee48484).
+- 다음: release/0.20.0에 Steve 8aa2a55를 병합해 #285 CI(GitHub CodeQL 포함) 재실행. 릴리스 후보가 8aa2a55로 바뀌므로 verify_all 전체를 한 번 다시 돈다(릴리스 후보 SHA 규칙).
+
+### 2-55-12. #285 재실행 결과: GitHub CodeQL 새 경고 11건 (11-14 10:40 UTC 확인)
+- release/0.20.0 = Steve 8aa2a55(head 52c793d). CodeQL 외 CI 전부 성공(인용). GitHub 'CodeQL' 결과 검사는 새 High 경고 11건으로 실패(10건에서 늘어남).
+- 추정 원인(미검증): path_guard의 검사 조건이 'full == base or full.startswith(...)' 복합 조건이라 CodeQL이 경로 검증으로 인정하지 않았고, 검사 지점이 늘어 경고 수가 늘었다.
+- 평가 측 수정(평가 브랜치, 아직 Steve 미반영): 정규화한 경로 자체에 대한 startswith 하나로 검사, 허용 폴더 자신은 거부. 관련 시험 통과.
+- 경고 11건의 목록(규칙·파일·줄)은 이 세션에서 읽을 수 없어 사용자에게 요청했다.
+- verify_all(후보 52c793d)은 세션 재시작으로 끊겨 결과 없음 — 최종 후보에서 한 번 다시 돈다.
+
+### 2-55-13. #285 새 경고 11건 목록(사용자 화면, 11-14) 대조
+- 열린 11건 모두 py/path-injection, 평가 도구 2파일: evaluation_v2.py 24·32·34·78·79행(#138·#143~#146), retired_compare.py 61행(#141·#142)·199·200·228·229행(#147~#150). 닫힌 9건에는 원래 경고(#134 등)와 #133(TK-170)이 포함된 것으로 보인다(닫힌 목록은 미확인).
+- 11건 모두 contained_path(...)를 거친 바로 뒤의 접근 지점이다 → 첫 판(full == base or full.startswith(...))을 CodeQL이 검증으로 인정하지 않았음이 확인됨.
+- 수정 f7c6eb5: 정규화한 full 자체에 startswith 하나. 평가 PR로 Steve에 올린 뒤 #285에 반영해 CodeQL로 확인한다(이 세션은 CodeQL 실행 불가 — 미검증).
