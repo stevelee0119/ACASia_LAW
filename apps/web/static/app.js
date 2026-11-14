@@ -1161,10 +1161,6 @@ const TEMPLATE_A_SVGS = {
   shield: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M14 3.2L22.5 6.8V13.6C22.5 19.1 18.8 23.4 14 25C9.2 23.4 5.5 19.1 5.5 13.6V6.8L14 3.2Z" fill="#ccfbf1" stroke="#0d9488" stroke-width="1.8" stroke-linejoin="round"/><path d="M10.3 14.1L12.9 16.7L18.1 11.5" stroke="#0f766e" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   aiChip: `<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="#6366f1" stroke-width="1.8" stroke-linecap="round"><line x1="11" y1="2.5" x2="11" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/><line x1="21" y1="2.5" x2="21" y2="6.5"/><line x1="11" y1="25.5" x2="11" y2="29.5"/><line x1="16" y1="25.5" x2="16" y2="29.5"/><line x1="21" y1="25.5" x2="21" y2="29.5"/><line x1="2.5" y1="11" x2="6.5" y2="11"/><line x1="2.5" y1="16" x2="6.5" y2="16"/><line x1="2.5" y1="21" x2="6.5" y2="21"/><line x1="25.5" y1="11" x2="29.5" y2="11"/><line x1="25.5" y1="16" x2="29.5" y2="16"/><line x1="25.5" y1="21" x2="29.5" y2="21"/></g><rect x="6.5" y="6.5" width="19" height="19" rx="4" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.8"/><rect x="9.5" y="9.5" width="13" height="13" rx="2.2" fill="#ffffff" stroke="#818cf8" stroke-width="1.2" stroke-dasharray="2 1.5"/><text x="16" y="18.6" text-anchor="middle" fill="#4338ca" font-size="8.2" font-weight="800" font-family="Pretendard, sans-serif">AI</text></svg>`,
   warningTriangle: `<svg viewBox="0 0 44 44" fill="none" aria-hidden="true"><defs><linearGradient id="warnGrad" x1="22" y1="4" x2="22" y2="39" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#fde047"/><stop offset="55%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/></linearGradient></defs><path d="M20.1 6.8C20.9 5.3 23.1 5.3 23.9 6.8L39.6 34.8C40.4 36.2 39.4 38 37.7 38H6.3C4.6 38 3.6 36.2 4.4 34.8L20.1 6.8Z" fill="url(#warnGrad)" stroke="#92400e" stroke-width="2"/><path d="M22 15.5V25.5" stroke="#451a03" stroke-width="3" stroke-linecap="round"/><circle cx="22" cy="31.2" r="1.9" fill="#451a03"/></svg>`,
-  gavelScales: `<svg viewBox="0 0 180 150" fill="none" aria-hidden="true"><circle cx="105" cy="64" r="52" fill="#fef3c7" fill-opacity="0.65"/><g stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"><line x1="105" y1="16" x2="105" y2="88"/><path d="M70 32C82 36 128 36 140 32"/><line x1="74" y1="33" x2="62" y2="60"/><line x1="74" y1="33" x2="86" y2="60"/><path d="M59 60C62 67 86 67 89 60H59Z" fill="#ffffff" fill-opacity="0.7"/><line x1="136" y1="33" x2="124" y2="60"/><line x1="136" y1="33" x2="148" y2="60"/><path d="M121 60C124 67 148 67 151 60H121Z" fill="#ffffff" fill-opacity="0.7"/><path d="M88 88H122"/></g><circle cx="64" cy="24" r="2" fill="#fbbf24"/><circle cx="148" cy="22" r="2.2" fill="#fbbf24"/><circle cx="156" cy="48" r="1.6" fill="#f59e0b"/><path d="M46 116L108 104L162 116L100 130L46 116Z" fill="#0f766e" stroke="#115e59" stroke-width="1.5"/><path d="M46 116V127L100 140L162 126V116" fill="#fef3c7" stroke="#0f766e" stroke-width="1.5"/><path d="M46 126L100 139L162 125" stroke="#d97706" stroke-width="1.2" opacity="0.6"/><ellipse cx="132" cy="117" rx="18" ry="6.5" fill="#92400e" stroke="#78350f" stroke-width="1.4"/><ellipse cx="132" cy="114.5" rx="15" ry="5" fill="#b45309"/><g transform="rotate(-28 96 86)"><rect x="64" y="83" width="56" height="8" rx="4" fill="#b45309" stroke="#78350f" stroke-width="1.3"/><rect x="106" y="72" width="18" height="30" rx="4" fill="#d97706" stroke="#78350f" stroke-width="1.4"/><rect x="112" y="72" width="6" height="30" fill="#fbbf24"/><ellipse cx="106" cy="87" rx="2.5" ry="15" fill="#f59e0b"/><ellipse cx="124" cy="87" rx="2.5" ry="15" fill="#b45309"/></g></svg>`,
-  reportDoc: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M7 3.5H16.8L22 8.7V23C22 23.8 21.3 24.5 20.5 24.5H7C6.2 24.5 5.5 23.8 5.5 23V5C5.5 4.2 6.2 3.5 7 3.5Z" fill="#d1fae5" stroke="#0d9488" stroke-width="1.8" stroke-linejoin="round"/><path d="M16.5 3.5V9H22" stroke="#0d9488" stroke-width="1.8" stroke-linejoin="round"/><line x1="9.5" y1="13.5" x2="18" y2="13.5" stroke="#0f766e" stroke-width="1.8" stroke-linecap="round"/><line x1="9.5" y1="17.2" x2="18" y2="17.2" stroke="#0f766e" stroke-width="1.8" stroke-linecap="round"/><line x1="9.5" y1="20.8" x2="14.5" y2="20.8" stroke="#0f766e" stroke-width="1.8" stroke-linecap="round"/></svg>`,
-  dbCylinder: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><ellipse cx="14" cy="6.8" rx="8.5" ry="3.3" fill="#bbf7d0" stroke="#16a34a" stroke-width="1.8"/><path d="M5.5 6.8V14C5.5 15.8 9.3 17.3 14 17.3C18.7 17.3 22.5 15.8 22.5 14V6.8" stroke="#16a34a" stroke-width="1.8"/><path d="M5.5 14V21.2C5.5 23 9.3 24.5 14 24.5C18.7 24.5 22.5 23 22.5 21.2V14" fill="#dcfce7" stroke="#16a34a" stroke-width="1.8"/></svg>`,
-  scaleJustice: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><line x1="14" y1="4" x2="14" y2="23.5" stroke="#7c3aed" stroke-width="1.9" stroke-linecap="round"/><path d="M6 8.2H22" stroke="#7c3aed" stroke-width="1.9" stroke-linecap="round"/><path d="M6.5 8.2L3.8 15.2H9.2L6.5 8.2Z" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.6" stroke-linejoin="round"/><path d="M21.5 8.2L18.8 15.2H24.2L21.5 8.2Z" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.6" stroke-linejoin="round"/><path d="M9.5 23.5H18.5" stroke="#6d28d9" stroke-width="2" stroke-linecap="round"/></svg>`
 };
 
 function svgEl(markup, cls = "kpi-svg-icon") {
@@ -1264,7 +1260,7 @@ function renderTemplateAOverview(stats) {
   if (!root) return;
   root.replaceChildren();
 
-  // 1. 중앙 2열 대시보드 그리드 (좌: 사람 검토 필요 경고 패널 + 일러스트 / 우: 최근 작업 활동 타임라인)
+  // 사람 검토 패널: 개요 폭 전체의 낮은 띠(왼쪽 제목, 오른쪽 사유 카드). 사용자 11-14 배치안 A.
   const midGrid = node("div", null, "overview-mid-grid");
 
   // 좌측 경고 패널
@@ -1336,125 +1332,13 @@ function renderTemplateAOverview(stats) {
     item.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); switchTab(r.tab); } };
     reasonList.append(item);
   });
-  warnBody.append(reasonList, svgEl(TEMPLATE_A_SVGS.gavelScales, "overview-warning-art"));
+  warnBody.append(reasonList);
   warnCard.append(warnHead, warnBody);
 
-  // 우측 최근 작업 활동 타임라인 카드
-  const actCard = node("article", null, "overview-activity-card");
-  const actHead = node("div", null, "overview-activity-head");
-  actHead.append(node("h3", "최근 작업 활동"));
-  const moreBtn = button("전체 보기 ›", () => {
-    const histBtn = [...($("jobControls")?.querySelectorAll("button") || [])].find(b => b.textContent.includes("검증 이력"));
-    if (histBtn) histBtn.click();
-  }, "overview-more-btn");
-  actHead.append(moreBtn);
+  // 사용자 11-14: 최근 작업 활동·핵심 기능 바로가기는 현재 화면에 없는 기능·배치라 넣지 않는다(사람 검토 패널만).
+  midGrid.append(warnCard);
 
-  // TK-171 보완 D1: 화면이 이미 받은 실제 기록만 쓴다. 시각이 없는 일은 지어내지 않는다.
-  const timeline = node("ul", null, "overview-timeline");
-  const events = [];
-  const at = v => (v ? new Date(/(Z|[+-]\d{2}:\d{2})$/i.test(v) ? v : `${v}Z`).getTime() : NaN);
-  const push = (time, ev) => { if (!Number.isNaN(at(time))) events.push({...ev, ts: at(time), time: dateText(time)}); };
-  push(state.project?.created_at, {dotCls: "tl-dot-slate", icon: "file-text", title: "프로젝트 생성", badge: null});
-  for (const d of state.documents || []) {
-    push(d.uploaded_at, {dotCls: "tl-dot-green", icon: "upload", title: `자료 업로드: ${d.filename}`,
-      badge: d.included_in_verification ? null : ["검토 제외", "tl-pill-amber"]});
-  }
-  if (state.run) {
-    push(state.run.started_at, {dotCls: "tl-dot-teal", icon: "play", title: "자동 검증 시작", badge: null});
-    if (terminal(state.run)) {
-      const ok = state.run.state === "COMPLETED";
-      push(state.run.finished_at, {dotCls: ok ? "tl-dot-green" : "tl-dot-indigo", icon: ok ? "check" : "alert-triangle",
-        title: "자동 검증 종료", badge: [label(state.run.state), ok ? "tl-pill-green" : "tl-pill-amber"]});
-    }
-  }
-  for (const r of state.reports || []) {
-    // 상태 이름은 서버가 준 보고서 표지(label)를 그대로 쓴다(초안·내부 검토용·확정을 화면에서 따로 정하지 않는다).
-    push(r.created_at, {dotCls: "tl-dot-indigo", icon: "file-down", title: "보고서 생성",
-      badge: [r.label || label(r.state || "DRAFT"), "tl-pill-amber"]});
-    push(r.finalized_at, {dotCls: "tl-dot-green", icon: "badge-check", title: "보고서 확정", badge: ["확정", "tl-pill-green"]});
-  }
-  const steps = events.sort((a, b) => b.ts - a.ts).slice(0, 5);
-  if (!steps.length) timeline.append(node("li", "기록된 작업이 없습니다.", "overview-tl-empty"));
-  for (const s of steps) {
-    const li = node("li", null, "overview-tl-row");
-    const marker = node("span", null, `overview-tl-marker ${s.dotCls}`);
-    const iconWrap = node("span", null, `overview-tl-icon ${s.dotCls}`);
-    if (s.customSvg) {
-      iconWrap.innerHTML = s.customSvg;
-    } else {
-      const ic = node("i");
-      ic.dataset.lucide = s.icon;
-      iconWrap.append(ic);
-    }
-    const labelBox = node("div", null, "overview-tl-label");
-    labelBox.append(node("strong", s.title));
-    if (s.badge) {
-      labelBox.append(node("span", s.badge[0], `overview-tl-pill ${s.badge[1]}`));
-    }
-    const timeEl = node("time", s.time, "overview-tl-time");
-    li.append(marker, iconWrap, labelBox, timeEl);
-    timeline.append(li);
-  }
-  actCard.append(actHead, timeline);
-  midGrid.append(warnCard, actCard);
-
-  // 2. 하단 핵심 기능 바로가기 4열 카드
-  const shortcutWrap = node("div", null, "overview-shortcuts-section");
-  const scHead = node("h3", null, "overview-shortcuts-heading");
-  const zapIcon = node("i");
-  zapIcon.dataset.lucide = "zap";
-  scHead.append(zapIcon, node("span", "핵심 기능 바로가기"));
-
-  const scGrid = node("div", null, "overview-shortcuts-grid");
-  const shortcuts = [
-    {
-      title: "보고서 생성",
-      desc: "검증 결과를 종합한 보고서를 생성합니다.",
-      svg: TEMPLATE_A_SVGS.reportDoc,
-      cls: "sc-card-mint",
-      tab: "reports",
-    },
-    {
-      title: "AI 작성 진단",
-      desc: "문서의 AI 작성 가능성을 분석합니다.",
-      svg: TEMPLATE_A_SVGS.aiChip,
-      cls: "sc-card-indigo",
-      tab: "ai-verification",
-    },
-    {
-      title: "출처(원문) 검증",
-      desc: "인용된 법령·판례·자료의 공식 원문을 확인합니다.",
-      svg: TEMPLATE_A_SVGS.dbCylinder,
-      cls: "sc-card-emerald",
-      tab: "review",
-    },
-    {
-      title: "법률주장 검토",
-      desc: "제시된 법률적 주장과 근거의 타당성을 검토합니다.",
-      svg: TEMPLATE_A_SVGS.scaleJustice,
-      cls: "sc-card-purple",
-      tab: "legal-claims",
-    },
-  ];
-  for (const sc of shortcuts) {
-    const card = node("div", null, `overview-sc-card ${sc.cls}`);
-    card.setAttribute("role", "button");
-    card.tabIndex = 0;
-    const top = node("div", null, "overview-sc-top");
-    top.append(svgEl(sc.svg, "overview-sc-icon"));
-    const body = node("div", null, "overview-sc-body");
-    body.append(node("strong", sc.title), node("p", sc.desc));
-    top.append(body);
-    const arrow = node("span", "→", "overview-sc-arrow");
-    card.append(top, arrow);
-    const go = () => switchTab(sc.tab);
-    card.onclick = go;
-    card.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
-    scGrid.append(card);
-  }
-  shortcutWrap.append(scHead, scGrid);
-
-  root.append(midGrid, shortcutWrap);
+  root.append(midGrid);
   icons();
 }
 
@@ -3622,8 +3506,6 @@ async function loadReports() {
   const id = state.project.id;
   const reports = await api(`/projects/${id}/reports`);
   if (state.project?.id !== id) return;
-  state.reports = reports;  // TK-171 보완 D1: 최근 작업 활동의 보고서 생성 기록
-  if ($("templateAOverview")) renderSummary();
   $("reportList").replaceChildren();
   if (!reports.length) empty($("reportList"), "생성된 보고서가 없습니다.");
   for (const report of reports) {

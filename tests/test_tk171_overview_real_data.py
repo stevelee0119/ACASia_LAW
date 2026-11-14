@@ -1,4 +1,4 @@
-"""TK-171 보완: 개요 화면은 실제 기록·실제 값만 보이고(D1~D4), 브랜드·글꼴(B1·F1), 넓은 화면 사이드바 접기(S1),
+"""TK-171 보완: 개요 화면은 실제 값만 보이고(D2~D4, D1 최근 작업 활동은 사용자 11-14 결정으로 화면에서 뺐다), 브랜드·글꼴(B1·F1), 넓은 화면 사이드바 접기(S1),
 좁은 화면 표 카드화(M1)를 지킨다. 값은 모두 합성이다(서버는 Playwright route로 대신한다)."""
 from __future__ import annotations
 
@@ -84,20 +84,48 @@ def _open(browser, width, height, with_run=True):
     return page, errors
 
 
-def test_activity_timeline_shows_only_recorded_events_newest_first(browser):
+def test_overview_has_no_activity_timeline_or_shortcut_cards(browser):
+    """사용자 11-14: 최근 작업 활동·핵심 기능 바로가기는 현재 화면에 없는 기능·배치라 개요에 넣지 않는다."""
     page, errors = _open(browser, 1440, 900)
-    expect(page.locator(".overview-timeline")).to_contain_text("보고서 생성")  # 보고서 목록은 결과보다 늦게 온다
-    rows = page.locator(".overview-timeline .overview-tl-row")
-    expect(rows).to_have_count(5)
-    titles = rows.locator("strong").all_inner_texts()
-    assert titles == ["보고서 생성", "자동 검증 종료", "자동 검증 시작", "자료 업로드: 참고_합성.hwpx", "자료 업로드: 서면_합성.pdf"]
-    times = rows.locator("time").all_inner_texts()
-    assert len(set(times)) == 5 and "방금 전" not in " ".join(times)
-    expect(page.locator(".overview-timeline")).to_contain_text("초안 · 내부 검토용")
+    overview = page.locator("#templateAOverview")
+    expect(overview.locator(".overview-warning-card")).to_be_visible()
+    expect(overview).not_to_contain_text("최근 작업 활동")
+    expect(overview).not_to_contain_text("핵심 기능 바로가기")
+    expect(page.locator(".overview-timeline, .overview-activity-card, .overview-shortcuts-section, .overview-sc-card")).to_have_count(0)
+    # 개요는 결과가 올 때마다 다시 그려지므로, 그 시점의 요소를 새로 찾아 잰다. 사람 검토 패널이 개요 폭을 다 쓴다.
+    page.wait_for_function("""() => { const c = document.querySelector('#templateAOverview .overview-warning-card');
+        const g = document.querySelector('#templateAOverview .overview-mid-grid');
+        return c && g && c.getBoundingClientRect().width > 0
+            && Math.abs(c.getBoundingClientRect().width - g.getBoundingClientRect().width) < 2; }""")
     assert not errors
 
 
-def test_before_verification_nothing_is_shown_as_zero_and_no_events_are_invented(browser):
+@pytest.mark.parametrize("width", [1440, 390])
+def test_review_panel_is_a_low_band_with_reason_cards(browser, width):
+    """사용자 11-14 배치안 A: 두 패널을 뺀 자리에 사람 검토 패널을 낮은 띠로 둔다(저울 그림 없음).
+    넓은 화면은 제목 오른쪽에 사유 카드가 가로로, 좁은 화면은 세로로 쌓인다."""
+    page, errors = _open(browser, width, 900, with_run=False)
+    expect(page.locator("#templateAOverview .overview-reason-item")).to_have_count(2)
+    expect(page.locator(".overview-warning-art")).to_have_count(0)
+    # 개요는 결과가 올 때마다 다시 그려지므로, 그 시점의 요소를 새로 찾아 잰다.
+    layout = page.wait_for_function("""() => {
+        const card = document.querySelector('#templateAOverview .overview-warning-card');
+        const head = card && card.querySelector('.overview-warning-head');
+        const items = card ? [...card.querySelectorAll('.overview-reason-item')].map(e => e.getBoundingClientRect()) : [];
+        if (!card || items.length !== 2 || !items[0].width) return null;
+        const c = card.getBoundingClientRect(), h = head.getBoundingClientRect();
+        return {cardH: c.height, sameRow: Math.abs(items[0].top - items[1].top) < 2,
+                stacked: items[1].top >= items[0].bottom, besideHead: items[0].left >= h.right};
+    }""").json_value()
+    if width > 1050:
+        assert layout["sameRow"] and layout["besideHead"], layout
+        assert layout["cardH"] < 160, layout
+    else:
+        assert layout["stacked"] and not layout["besideHead"], layout
+    assert not errors
+
+
+def test_before_verification_nothing_is_shown_as_zero(browser):
     page, errors = _open(browser, 1440, 900, with_run=False)
     kpis = page.locator(".kpi-overview-row")
     expect(kpis).not_to_contain_text("성립 불가 인용")
@@ -105,8 +133,6 @@ def test_before_verification_nothing_is_shown_as_zero_and_no_events_are_invented
     expect(kpis).to_contain_text("검증 후 집계")
     expect(page.locator(".overview-warning-card")).to_contain_text("검토 안내")
     expect(page.locator(".overview-warning-card")).not_to_contain_text("사람 검토 필요")
-    titles = page.locator(".overview-timeline .overview-tl-row strong").all_inner_texts()
-    assert "자동 검증 시작" not in titles and "보고서 생성" not in titles and "프로젝트 생성" in titles
     assert not errors
 
 
