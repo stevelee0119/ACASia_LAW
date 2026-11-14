@@ -6137,3 +6137,16 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - 원격 태그 v.0.20.0 = `034343f16934515659674950f99837ccdcaf54a0`(배포 커밋) 확인.
 - 원격 브랜치: main, Steve_ACASiaLAW, evaluator/round8-promotion 3개만 남음(계속 개선 브랜치). 삭제 3개(antigravity/lv-legal-verification-architecture, sealed-retire-20261025, tk152-short-abbreviation-ranking)는 사용자가 처리, release/0.20.0은 병합 때 자동 삭제.
 - 0.20.0 주기(판정·버전 커밋·릴리스·배포·태그·브랜치 정리) 완료. 다음: 0.19.0 대 0.20.0 온라인 비교 → 0.21.0(2-56).
+
+## 2-57. 0.19.0 대 0.20.0 온라인 비교 1차 (11-14, 사용자 업로드 7건)
+- 문서: [online_compare_0190_0200_20261114.md](../scorecards/online_compare_0190_0200_20261114.md). 0.20.0 결과 7건 모두 커밋 `034343f`(배포·태그와 같음), PARTIAL_COMPLETED, 최상위 오류 0.
+- 결과(평가 측 채점, 같은 서면·정답지):
+  | 항목 | 0.19.0 | 0.20.0 |
+  |---|---|---|
+  | case9(score_report 규칙 2판) | 20/23(1차)·23/23(재실행) | 23/23(1차) |
+  | 탐침 A·B·C·D×3(47) | 40/47 | **47/47**(C 9/16 → 16/16, TK-169) |
+- TK-161(AI 판별 반복 안정성): 0.20.0 case9 1회차 — openai UNCERTAIN 0.38, anthropic AI_PARTIAL 0.55, gemini AI_FULL 0.92 → 다수결 AI_PARTIAL(AI-1·2·4 통과). TK-156(D4, 늘 두 모델 + 엇갈리면 세 번째)이 0.19.0 1차 실패의 구조 원인을 없앴음을 온라인에서 확인. 3회 중 1회 측정. 나머지 반복 결과(사용자 업로드 예정)로 변동 폭을 잰 뒤 TK-161 지시 여부를 정한다(2-41-3).
+- TK-162: B에서 실행(대상 6·역조회 5·13.1초·경고 0). 정답지에 판례 변경 항목이 없어 정확도는 미측정.
+- 0.21.0 후보(원인 확인, 지시는 사본 사전 검증 뒤):
+  - O1 모델 사실 지적이 결정론 판정과 연결되지 않음 — `ai_document_detector.py` 671행 `_anchor_cover`가 판정 제목에서만 값 표지를 뽑고(합계 판정의 기재·계산값은 confidence_features에만 있음), 649행 `_CONTRADICTION_WORDS`가 설명 문장('모순일 뿐 … 아니다')도 미확인으로 남긴다. D hwpx에서 같은 표 오류가 'MEDIUM 모델 지적 — 결정론 재계산으로 확인하지 못함'으로 한 번 더 표시됨(문구가 사실과 반대).
+  - O2 Drive 대조 미완료 사유 오표시 — `pipeline.py` 545~548행이 미완료 원인(버린 의견 1건 QUOTE_NOT_GROUNDED)이 아니라 상태 사유 코드(`rag_engine/review.py` 779행)를 붙인다.
