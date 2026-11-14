@@ -5922,3 +5922,41 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - 수용 코멘트 6873588968. 사용자 지시로 병합: Steve `2cc7ac2`(head 24bb57f 확인).
 - 0.20.0 릴리스 후보를 `2cc7ac2`로 바꿨다. verify_all 전체(기준 main 5b878a1)를 다시 돈다.
 - 정정(2-53-3): 0.19.0 뒤 Steve에 들어간 PR은 #270~#282다(TK-155~160·162·163·169, 평가 v2 전환, KBL 경로 정리, 엠블럼 교체).
+
+## 2-55. 0.20.0 판정: minor 수용 (11-14)
+- 후보 Steve `2cc7ac2`(#270~#282) verify_all 전체(기준 0.19.0 main 5b878a1, 평가 측 재실행) 실패 0: 수용 1,275·회귀 장부 2,357·전체 10,143·브라우저 197, 보호 경로 41개 모두 평가 측 또는 승인, version_policy 위반 없음.
+- 고정 82.6 / 81.9 / 오탐 0 / A 0, v2 42/56·41/54. 은퇴 5세트 0.19.0과 같음(후보 db410c4에서 측정, #282는 화면·이미지만).
+- 봉인 시험: 사용자 결정(11-14) 미시행, 배포 뒤 0.19.0 대 0.20.0 온라인 비교로 갈음.
+- 판정서: docs/scorecards/version_verdicts.json 0.20.0. 평가 브랜치를 Steve 2cc7ac2와 통합했다(3ae4168, 기록 문서 5개 충돌은 양쪽 보존).
+- 다음: 평가 PR(evaluator/round8-promotion → Steve, 사용자 승인 뒤 생성) → 버전 커밋 PR(구현 측, 아래 지시) → 릴리스 PR → 배포.
+
+### 2-55-1. 0.20.0 버전 커밋 지시(전달판)
+```
+[0.20.0 버전 커밋]  기준: 평가 PR(evaluator/round8-promotion 3ae4168, 0.20.0 판정서 포함) 병합 뒤의 Steve_ACASiaLAW
+보완 패치: docs/handoff/patches/v0.20.0_version_commit_on_2cc7ac2.diff (git apply)
+
+0. 근거
+ - 판정서: docs/scorecards/version_verdicts.json 0.20.0(minor, 0.19.0 → 0.20.0, 분류 added·changed·fixed, measured_commit 2cc7ac2).
+ - 평가 측 판정 없이 버전을 올리지 않는다. 판정서는 평가 PR로 먼저 Steve에 들어간다.
+ - 봉인 시험은 사용자 결정(11-14 '미시행, 온라인 비교로 갈음')으로 하지 않는다.
+
+1. 고칠 것(커밋 1개, PR 1개, Steve_ACASiaLAW 대상) — 패치를 그대로 적용한다. 바꾸는 파일 4개:
+ · packages/common/config.py: Settings.version "0.19.0" → "0.20.0"(주석 포함)
+ · docs/releases.json: 0.20.0 항목(2026-11-14, 판정 요약·판정 근거 표시·법률 검증·검토 운영·화면, 포함 PR #270~#282)
+ · docs/release_highlights.json: "0.20" 요약 4줄
+ · docs/RELEASE_HISTORY.md: scripts/update_readme.py가 releases.json에서 만든 0.20.0 행
+ - README.md는 바뀌지 않는다(성능 그래프는 version_performance.csv 기준, v0.20 점은 같은 방법 재측정 뒤 평가 측이 추가).
+ - 코드·시험·보호 경로 변경 없음.
+
+2. 확인
+ - python scripts/check_version_policy.py --base <평가 PR 병합 뒤 Steve> → '위반 없음(상향 1건 0.19.0 → 0.20.0)'
+ - python scripts/update_readme.py 실행 뒤 변경 없음
+ - tests/test_update_readme.py·tests/test_v4_run_manifest.py 통과
+
+3. 평가 측 사전 검증(평가 측 재실행, Steve 2cc7ac2 + 평가 브랜치 3ae4168 병합 트리에 패치 적용)
+ - check_version_policy: 위반 없음(0.19.0 → 0.20.0).
+ - update_readme 재실행 변경 없음, 위 시험 17건 통과.
+
+4. 수용 기준
+ - 패치와 diff 0, 필수 CI 성공. 그 뒤 릴리스 PR(Steve → main, 기존 제외 목록 유지) → 배포(사용자) → /api/health version 0.20.0 확인 → 태그(사용자) → 0.19.0 대 0.20.0 온라인 비교.
+```
