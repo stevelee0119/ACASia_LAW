@@ -1,0 +1,256 @@
+diff --git a/apps/api/capabilities.py b/apps/api/capabilities.py
+index 9820659d..d5be1c26 100644
+--- a/apps/api/capabilities.py
++++ b/apps/api/capabilities.py
+@@ -124,7 +124,7 @@ def _worker_state() -> Dict[str, Any]:
+                 "shares_api_process": mode == "inprocess"}
+     except Exception as exc:  # pragma: no cover - 기동 순서에 따라 아직 없을 수 있다
+         return {"mode": "unknown", "concurrency": None, "shares_api_process": None,
+-                "error": f"{type(exc).__name__}: {exc}"}
++                "error": type(exc).__name__}  # TK-175: 예외 문구는 응답에 싣지 않는다(CodeQL py/stack-trace-exposure)
+ 
+ 
+ def _llm_state() -> Dict[str, Any]:
+diff --git a/apps/api/main.py b/apps/api/main.py
+index 4af836e3..84e794ec 100644
+--- a/apps/api/main.py
++++ b/apps/api/main.py
+@@ -179,7 +179,9 @@ def create_app() -> FastAPI:
+     try:
+         verify_storage_encryption_config()
+     except StorageKeyConfigurationError as exc:
+-        record_storage_encryption_error(str(exc))
++        # TK-175: 진단 응답에는 고정 문구와 예외 종류만 싣는다. 예외 원문(키 공급자 오류 문구)은 아래 서버 로그에만 남긴다.
++        record_storage_encryption_error("저장 시 암호화 키 설정을 확인할 수 없습니다"
++                                        f"({type(exc.__cause__ or exc).__name__}). 자세한 원인은 서버 로그를 보세요.")
+         logging.getLogger(__name__).error(
+             "저장 시 암호화 키 설정이 잘못되어 자료 업로드·조회가 거부됩니다. "
+             "서비스는 기동하지만 이 설정을 고치기 전까지 사건자료를 다룰 수 없습니다. %s", exc)
+diff --git a/apps/api/project_purge.py b/apps/api/project_purge.py
+index b72f2378..29cee95f 100644
+--- a/apps/api/project_purge.py
++++ b/apps/api/project_purge.py
+@@ -12,12 +12,13 @@
+ from __future__ import annotations
+ 
+ import logging
++import os
+ from typing import Dict, List
+ 
+ from sqlalchemy import delete, func, or_, select
+ 
+ from packages.common.config import data_dir
+-from packages.common.storage import PROJECT_ID_RE, get_storage
++from packages.common.storage import PROJECT_ID_RE, get_storage, resolve_within
+ 
+ from .db import Base
+ 
+@@ -68,11 +69,11 @@ def purge_files(project_id: str) -> Dict[str, object]:
+         result["file_errors"].append(f"원본·보고서 파일: {type(exc).__name__}")
+     # 보안(TK-35): match+$ 대신 fullmatch로 끝 줄바꿈 허용 방지
+     if PROJECT_ID_RE.fullmatch(project_id):
+-        vault = data_dir() / "pii_vault" / f"{project_id}.vault"
+         try:
+-            if vault.exists():
+-                vault.unlink()
+-        except OSError as exc:
++            vault = resolve_within(data_dir() / "pii_vault", f"{project_id}.vault")  # TK-175: 보관소 폴더 밖 경로 차단
++            if os.path.exists(vault):
++                os.unlink(vault)
++        except (OSError, ValueError) as exc:
+             logger.error("project_purge_vault_failed project=%r error_type=%s", _log_id(project_id), type(exc).__name__)
+             result["file_errors"].append(f"가명 처리 보관소: {type(exc).__name__}")
+     return result
+diff --git a/packages/common/storage.py b/packages/common/storage.py
+index e24adec0..caeeaa80 100644
+--- a/packages/common/storage.py
++++ b/packages/common/storage.py
+@@ -69,16 +69,28 @@ def _remove_tree(target: Path) -> int:
+     return len(files)
+ 
+ 
++def resolve_within(root, *parts: str) -> str:
++    """root 아래의 실제 경로(심볼릭 링크 해소). 밖으로 나가면 ValueError(TK-175).
++
++    CodeQL이 경로 검사로 인정하는 꼴: 정규화한 경로 값 자체에 접두 검사 하나(startswith)를 하고, 검사한 값을 그대로 쓴다.
++    접두에는 구분자를 붙여 형제 폴더(예: originals2)를 막는다."""
++    base = os.path.realpath(os.fspath(root))
++    full = os.path.realpath(os.path.join(base, *parts))
++    if not full.startswith(os.path.join(base, "")):
++        raise ValueError("path traversal detected")
++    return full
++
++
+ def _project_dirs(root: Path, project_id: str):
+     # 보안(TK-35): match+$ 대신 fullmatch로 끝 줄바꿈 허용 방지
+     if not PROJECT_ID_RE.fullmatch(project_id or ""):
+         raise ValueError("invalid project id")
+-    base = root.resolve()
+     for area in ("originals", "derivatives"):
+-        target = (base / area / project_id).resolve()
+-        if target.parent != (base / area).resolve():
++        area_root = os.path.realpath(os.path.join(os.fspath(root), area))
++        target = resolve_within(area_root, project_id)
++        if os.path.dirname(target) != area_root:  # 프로젝트 폴더는 area 바로 아래 한 단계만
+             raise ValueError("path traversal detected")
+-        yield target
++        yield Path(target)
+ 
+ 
+ class LocalObjectStorage(ObjectStorage):
+@@ -91,11 +103,8 @@ class LocalObjectStorage(ObjectStorage):
+ 
+     # -- 내부 -------------------------------------------------------------
+     def _abs(self, storage_key: str) -> Path:
+-        p = (self.root / storage_key).resolve()
+-        # 보안(TK-35): 접두 문자열 비교 대신 경로 구성요소 단위(is_relative_to)로 형제 디렉터리 접근 차단
+-        if not p.is_relative_to(self.root.resolve()):
+-            raise ValueError("path traversal detected")  # 제21.1장
+-        return p
++        # 보안(TK-35·TK-175): 구분자를 붙인 접두 검사로 형제 디렉터리 접근 차단(제21.1장)
++        return Path(resolve_within(self.root, storage_key))
+ 
+     # -- 인터페이스 -------------------------------------------------------
+     def put_original(self, key: str, data: bytes) -> str:
+@@ -242,9 +251,8 @@ class EncryptedObjectStorage(ObjectStorage):
+ 
+     def path(self, storage_key: str) -> Path:
+         """파서가 요구하는 지역 경로. 평문을 임시로 풀어 놓는다."""
+-        target = (self.cache_root / storage_key).resolve()
+-        if not str(target).startswith(str(self.cache_root.resolve())):
+-            raise ValueError("path traversal detected")
++        # TK-175: 구분자 없는 접두 비교는 형제 폴더(예: cache_root2)를 통과시켰다. 같은 검사 함수를 쓴다.
++        target = Path(resolve_within(self.cache_root, storage_key))
+         if target.exists():
+             return target
+         target.parent.mkdir(parents=True, exist_ok=True)
+diff --git a/tests/test_tk175_path_and_exception_exposure.py b/tests/test_tk175_path_and_exception_exposure.py
+new file mode 100644
+index 00000000..5fba5fb1
+--- /dev/null
++++ b/tests/test_tk175_path_and_exception_exposure.py
+@@ -0,0 +1,124 @@
++"""TK-175: main의 기존 CodeQL 경고(제품 코드 11건) — 경로 주입(storage·project_purge)과 예외 문구 노출(진단 응답).
++
++경로 검사는 CodeQL이 인정하는 꼴(정규화한 경로 값 자체에 구분자 붙인 접두 검사 하나)로 바꾸고, 동작은 그대로 둔다.
++값은 모두 합성이다.
++"""
++from __future__ import annotations
++
++import os
++
++import pytest
++
++from packages.common.storage import (EncryptedObjectStorage, LocalObjectStorage, _project_dirs,
++                                     resolve_within)
++
++
++@pytest.mark.parametrize("parts", [("a.pdf",), ("prj_1", "a.pdf"), ("prj_1/sub/a.pdf",)])
++def test_paths_inside_the_root_are_returned_resolved(tmp_path, parts):
++    root = tmp_path / "store"
++    root.mkdir()
++    got = resolve_within(root, *parts)
++    assert got == os.path.realpath(os.path.join(root, *parts)) and got.startswith(os.path.join(os.path.realpath(root), ""))
++
++
++@pytest.mark.parametrize("key", ["../outside.pdf", "../store2/a.pdf", "/etc/passwd", "a/../../x", ""])
++def test_paths_escaping_the_root_or_naming_a_sibling_are_rejected(tmp_path, key):
++    (tmp_path / "store").mkdir()
++    (tmp_path / "store2").mkdir()
++    with pytest.raises(ValueError):
++        resolve_within(tmp_path / "store", key)
++
++
++def test_symlink_pointing_outside_is_rejected(tmp_path):
++    root = tmp_path / "store"
++    root.mkdir()
++    (tmp_path / "secret").mkdir()
++    os.symlink(tmp_path / "secret", root / "link")
++    with pytest.raises(ValueError):
++        resolve_within(root, "link/x.pdf")
++
++
++def test_local_storage_round_trip_and_traversal_refusal(tmp_path):
++    storage = LocalObjectStorage(root=tmp_path / "store")
++    key = storage.put_original("prj_1/a.pdf", b"case")
++    assert storage.get(key) == b"case" and storage.exists(key) and storage.path(key).is_file()
++    for bad in ("../x", "originals/../../store2/x"):
++        with pytest.raises(ValueError):
++            storage.get(bad)
++
++
++def test_project_dirs_are_exactly_one_level_under_each_area(tmp_path):
++    root = tmp_path / "store"
++    LocalObjectStorage(root=root)
++    dirs = list(_project_dirs(root, "prj_1"))
++    real = os.path.realpath(root)
++    assert [str(d) for d in dirs] == [os.path.join(real, "originals", "prj_1"), os.path.join(real, "derivatives", "prj_1")]
++    for bad in ("../x", "a/b", "prj\n", ""):
++        with pytest.raises(ValueError):
++            list(_project_dirs(root, bad))
++
++
++def test_encrypted_cache_rejects_a_sibling_of_the_cache_root(tmp_path, monkeypatch):
++    from packages.pii_engine.key_provider import default_key_provider
++
++    monkeypatch.setenv("LV_VAULT_KEY_PROVIDER", "env")
++    monkeypatch.setenv("LV_PSEUDONYM_SECRET", "tk175-synthetic-secret")
++    storage = EncryptedObjectStorage(LocalObjectStorage(root=tmp_path / "store"), key_provider=default_key_provider(),
++                                     cache_root=tmp_path / "cache")
++    key = storage.put_original("prj_1/a.pdf", b"case")
++    assert storage.path(key).read_bytes() == b"case"
++    (tmp_path / "cache2").mkdir()
++    with pytest.raises(ValueError):
++        storage.path("../cache2/x")
++
++
++def test_purge_removes_the_vault_file_of_a_valid_project(tmp_path, monkeypatch):
++    import apps.api.project_purge as purge
++
++    monkeypatch.setattr(purge, "data_dir", lambda: tmp_path)
++    monkeypatch.setattr(purge, "get_storage", lambda: LocalObjectStorage(root=tmp_path / "store"))
++    (tmp_path / "pii_vault").mkdir()
++    vault = tmp_path / "pii_vault" / "prj_1.vault"
++    vault.write_bytes(b"v")
++    other = tmp_path / "pii_vault" / "prj_2.vault"
++    other.write_bytes(b"v")
++    result = purge.purge_files("prj_1")
++    assert not vault.exists() and other.exists() and result["file_errors"] == []
++
++
++def test_worker_state_error_carries_only_the_exception_type(monkeypatch):
++    import apps.api.services as services
++    from apps.api.capabilities import _worker_state
++
++    def broken():
++        raise RuntimeError("synthetic-internal-detail /srv/secret")
++
++    monkeypatch.setattr(services, "get_runner", broken)
++    state = _worker_state()
++    assert state["error"] == "RuntimeError" and "secret" not in str(state)
++
++
++def test_startup_encryption_error_does_not_echo_the_exception_text(tmp_path, monkeypatch):
++    import apps.api.db as db
++    import apps.api.main as main_module
++    from packages.common.storage import StorageKeyConfigurationError, reset_storage, storage_encryption_error
++
++    def broken():
++        try:
++            raise ValueError("synthetic-key-material-AAAA")
++        except ValueError as exc:
++            raise StorageKeyConfigurationError(f"키 공급자를 만들 수 없습니다. (ValueError: {exc})") from exc
++
++    monkeypatch.setenv("LV_DATA_DIR", str(tmp_path))
++    monkeypatch.setenv("LV_DATABASE_URL", f"sqlite:///{tmp_path}/boot.db")
++    monkeypatch.setattr(main_module, "verify_storage_encryption_config", broken)
++    monkeypatch.setattr(db, "_engine", None)
++    monkeypatch.setattr(db, "_SessionLocal", None)
++    reset_storage()
++    try:
++        main_module.create_app()
++        message = storage_encryption_error()
++        assert message and "AAAA" not in message and "ValueError" in message and "서버 로그" in message
++    finally:
++        db._engine = db._SessionLocal = None
++        reset_storage()

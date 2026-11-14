@@ -6220,3 +6220,206 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
   3. 개요의 '최근 작업 활동'은 개요 안의 패널이다. 활동 기록 탭이나 세부 탭을 되살리지 않는다.
      · `tests/test_frontend_admin.py` 317행: `[data-panel="audit"]`·`[data-tab="audit"]`·`#openAudit`이 0개여야 한다.
      · 표시 자료는 기존 응답(작업 기록·검증 이력 등)만 쓴다. API를 새로 만들거나 바꾸지 않는다(원문 7장).
+
+## 2-58. 0.21.0 화면 무관 티켓 착수(사용자 승인 11-14 "화면과 무관한 0.21.0 티켓 지시 착수 승인")
+- 기준: Steve_ACASiaLAW `997687e`(= 운영 0.20.0 제품). 세 제품 패치는 겹치는 파일이 없고 함께 적용해도 충돌 없음(평가 측 확인).
+  | 티켓 | 내용 | 담당 | 패치·커밋 | 사전 검증(평가 측 재실행) |
+  |---|---|---|---|---|
+  | TK-173 | 모델 사실 지적 ↔ 결정론 판정 연결(O1) | 구현 측 | patches/TK-173_on_997687e.diff | 축 조합 144칸 전부 통과(고치기 전 15칸 실패), 온라인 D hwpx 지적 확인됨, precheck 전체 종료 0(3,819건·은퇴 5세트 후퇴 없음·고정 82.6/81.9/0) |
+  | TK-174 | Drive 대조 미완료 사유 정확화(O2) + 처리 사유 코드 10개 한글 이름 | 구현 측 | patches/TK-174_on_997687e.diff | precheck --quick 종료 0(235건·고정 82.6/81.9/0) |
+  | TK-175 | main 기존 CodeQL 24건 — 제품 11건(경로 주입 10·예외 노출 1, 같은 성격 1건 추가: 암호화 캐시 형제 폴더) | 구현 측 | patches/TK-175_on_997687e.diff | 새 시험 15건, precheck --quick 종료 0(244건·고정 82.6/81.9/0). CodeQL 재분석 미검증(PR CI) |
+  | TK-175 | 같은 24건 중 평가 도구·시험 13건(경로 주입 10·부분 SSRF 1·시험 정규식 2) | 평가 측 | 13175bf | 관련 시험 약 750건 + 새 시험 13건 통과, 게이트 3종 통과 |
+  | TK-176 | CI 액션 Node 24 전환(checkout v5·setup-python v6·upload-artifact v6·download-artifact v7·codeql-action v4) | 평가 측 | ba2b70b | 각 액션 공식 릴리스 노트 확인(입력 호환), YAML 10개 구문 확인. CI 실제 동작은 평가 PR CI로 확인(미검증) |
+- 지시문 전달판: 아래 2-58-1~3(사용자에게 코드 블록으로 제시).
+- TK-175 경고 위치 근거: 사용자 화면(Security → Code scanning, is:open branch:main, 24건, 11-14).
+
+### 2-58-1. TK-173 지시(전달판)
+```
+[TK-173 모델 사실 지적이 결정론 판정과 이어지지 않아 같은 오류가 'MEDIUM 재계산으로 확인하지 못함'으로 한 번 더 표시됨]  기준: Steve_ACASiaLAW 997687e(= 운영 0.20.0 제품)  평가 측 사본: TK-173 copy(14b13b3)
+보완 패치: docs/handoff/patches/TK-173_on_997687e.diff (git apply)
+ - 997687e → 사본 차이 전부: 제품 1파일(packages/verification_engine/ai_document_detector.py) + 새 시험 1파일.
+대상 릴리스: 0.21.0('온라인 테스트 결과에 따른 회귀·오류 해소', 사용자 11-14).
+
+0. 근거
+ - 0.20.0 온라인 탐침 D(hwpx, run_b2db0e693b5f4472, 커밋 034343f): 표1 합계 오류가 이미 HIGH 결정론 판정(ARITHMETIC_MISMATCH)으로 잡혔는데, 같은 오류를 짚은 모델(anthropic) 지적이 'MEDIUM 모델 지적 — 결정론 재계산으로 확인하지 못했으므로 사람이 원문을 확인한다'로 따로 남았다. 같은 오류가 두 번이고, 문구는 사실과 반대다.
+ - 평가 기록: docs/scorecards/online_compare_0190_0200_20261114.md 3절 O1, NEXT 2-57.
+
+1. 원인(줄 번호는 997687e 기준, 평가 측 재현)
+ C1. ai_document_detector.py 671행 `_anchor_cover`가 지적 문장의 값 표지(금액·날짜·조문)를 결정론 판정의 **제목**에서만 찾는다.
+     - 합계 판정 제목은 '합계가 세부 금액 합산값과 다르다 (차이 100,000원)'로 차액만 담는다. 기재 합계·계산 합계는 confidence_features의 stated·computed에만 있다(claim_engine/calculation.py가 기록).
+     - 그래서 지적 문장의 표지 {2,000,000원, 2,100,000원}이 어느 판정에서도 맞지 않아 UNCONFIRMED로 남았다.
+ C2. 지적의 둘째 문장 '이는 문서 내부 모순일 뿐 작성 주체의 근거가 아니다'는 값 표지가 없다. 그런데 649행 `_CONTRADICTION_WORDS`('모순')에 걸려 '확인하지 못한 문장'으로 남는다. C1만 고쳐도 PARTIAL로 남는다.
+     - 앞 문장을 되받아 풀이하는 문장('이는·이것은·이러한 …')은 새 지적이 아니다.
+
+2. 고칠 것(보완 패치와 같음)
+ F1. 새 함수 `verdict_anchors(finding)`를 둔다. 반환값은 판정의 값 표지다.
+     - 기본은 `value_anchors(finding.title)`.
+     - 금액 판정(제목 또는 상세에 원 금액 표지가 하나라도 있는 판정)이면 confidence_features의 stated·computed·difference·stated_total·computed_total 값도 금액 표지로 더한다. Decimal로 읽히고 0보다 큰 값만 더하며, 쉼표는 지운다.
+     - 날짜·일수 판정(원 금액 표지 없음)의 숫자는 금액으로 쓰지 않는다. 오확인을 막기 위해서다.
+ F2. `_anchor_cover` 671행: `value_anchors(f.title)` → `verdict_anchors(f)`.
+ F3. 표지 없는 문장이 `_BACK_REFERENCE = ^(?:이는|이것은|이러한|이와\s*같은|이\s*점은|이\s*역시)\s`로 시작하면 앞 문장의 풀이로 보고 건너뛴다(continue). 이 검사는 `_CONTRADICTION_WORDS` 검사보다 먼저 한다.
+     - 되받는 문장에 자기 값이 있으면 표지가 있으므로 F3 대상이 아니다. 평소처럼 대조한다.
+ - 바꾸지 않는 것:
+   · CONTRADICTED·같은 문서·rule_id·advisory 아님 조건(718행 candidates).
+   · 가정·선택적 주장 제외.
+   · '성명이 서로 다르다'처럼 독립된 모순 문장은 계속 사람 확인으로 남긴다(test_v4_review_model_reconcile.py의 PARTIAL 시험 그대로).
+
+3. 확인 시험(새 tests/test_tk173_remark_verdict_values.py 13건, 값은 합성)
+ - 금액 판정 표지에 기재·계산·차액이 들어가고, 날짜 판정 숫자는 금액이 되지 않는다.
+ - 금액 세 꼴(쉼표 원·만 원·금 …원)의 지적이 판정에 붙는다(확인 1, 남는 지적 0).
+ - 되받는 풀이 문장이 있어도 확인된다.
+ - 독립된 무표지 모순 문장은 PARTIAL로 남는다.
+ - 되받는 문장에 맞지 않는 값이 있으면 PARTIAL로 남는다.
+ - UNVERIFIED·SUSPICIOUS 판정, 가정 지적, 날짜 판정 숫자로는 확인되지 않는다.
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본, SQLite, LV_ALLOW_NETWORK=0)
+ - 축 조합 점검표(저장소 밖) 144칸, 전 칸 통과(고치기 전 997687e는 15칸 실패). 축은 다음과 같다.
+   · 판정 값 위치: 제목·상세 값·비금액 판정.
+   · 금액 꼴 3가지.
+   · 둘째 문장: 없음·되받는 풀이·독립 모순·되받는 문장의 다른 값.
+   · 단정·가정.
+   · 판정 상태: CONTRADICTED·UNVERIFIED.
+ - 온라인 결과 되살리기: 실제 판정·지적을 그대로 넣어 다시 대조했다.
+   · D hwpx 지적 1건: UNCONFIRMED → 확인(판정에 근거로 붙음).
+   · B(0.18.0·0.19.0)의 법리 지적 2건: 값 표지가 없어 그대로 사람 확인. 의도한 동작이다.
+ - precheck_pr 전체(기준 997687e): 종료 0.
+   · 회귀·수용·관련 시험 3,819건 실패 0.
+   · 은퇴 5세트 후퇴 없음(구 산식·확인오탐·v2 모두 같음).
+   · 고정 82.6 / 81.9 / 오탐 0.
+   · 평가 세트 문구 대조 통과.
+   · 관련 기존 시험 9파일 111건 통과(test_v4_review_model_reconcile·test_v3_j2_model_remarks·test_evidence_hardening·test_school_completeness·test_tk09_candidate_verifier·test_v4_p6_ai_aggregation·test_f2_review_items·test_finding_categories + 새 시험).
+ - 미검증: 실제 모델이 다른 표현(예: '본 모순은 …')으로 풀이할 때의 비율. 배포 뒤 온라인 비교로 확인한다.
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나. 제품 1파일 + 새 시험 1파일, 보호 경로 변경 없음.
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공.
+   · 고정·은퇴 세트 변화 0, 확인 오탐 0.
+   · 사본과 diff 0.
+ - 판정은 CI 결과 인용 + 평가 측 비공개 탐침 + diff 검토로 한다.
+```
+
+### 2-58-2. TK-174 지시(전달판)
+```
+[TK-174 Drive 참고자료 AI 대조 '미완료' 사유가 실제 원인과 다르게 표시됨 + 처리 사유 코드 10개 영문 노출]  기준: Steve_ACASiaLAW 997687e  평가 측 사본: TK-174 copy(384ca10)
+보완 패치: docs/handoff/patches/TK-174_on_997687e.diff (git apply)
+ - 997687e → 사본 차이 전부: 제품 3파일(packages/rag_engine/review.py·packages/verification_engine/pipeline.py·packages/common/display_text.py) + 새 시험 1파일.
+대상 릴리스: 0.21.0.
+
+0. 근거
+ - 0.20.0 온라인 case9(run_5581c59497ca479a, 커밋 034343f): 모델 의견 1건이 원문에 없는 발췌를 대서 버려졌다(QUOTE_NOT_GROUNDED, 안전 동작). 그런데 미확인 항목 사유는 'Drive 참고자료 AI 대조 미완료: 원문 발췌 일치만 확인(내용 함의·법적 타당성 판단 아님)'으로 나와 원인을 알 수 없었다.
+ - 평가 기록: online_compare_0190_0200_20261114.md 3절 O2, NEXT 2-57·2-57-1(2·3회차에는 버린 의견 0건 — 모델이 근거 없는 발췌를 낼 때만 드러난다).
+
+1. 원인(줄 번호는 997687e 기준)
+ C1. pipeline.py 545~548행: review_completed가 False면 미확인 항목을 만든다. 이때 사유로 review["reason"](상태 사유 코드)을 붙인다.
+     - review_completed가 False가 되는 조건은 rag_engine/review.py 762행의 두 가지다: 버린 모델 의견(rejected_observations)이 있거나, 서면이 길어 잘렸거나(document_truncated).
+     - 그런데 붙는 사유는 779행 상태 사유 'EXACT_QUOTES_CHECKED_NOT_ENTAILMENT_OR_LEGAL_VALIDITY'다. 실제 원인과 무관하다.
+ C2. 같은 성격의 표시 결함(평가 측 확인): rag_engine·pipeline이 실제로 내는 처리 사유 코드 가운데 10개는 display_text CODE_WORDS에 한글 이름이 없다. 화면·보고서에 영문 코드 그대로 나온다.
+     - 해당 코드: QUOTE_NOT_GROUNDED, INVALID_ITEM_SCHEMA, INVALID_ENVELOPE, REFERENCE_REVIEW_FAILED(pipeline 538행), NO_GROUNDED_COMPARISON, RELATED_AUTHORITY_LOOKUP_FAILED, CONTRACT_ID_NOT_UNAMBIGUOUSLY_LINKED, IDENTICAL_CONTENT, INVALID_CALCULATION_INPUTS, MISSING_OR_CONFLICTING_CALCULATION_INPUTS.
+     - 화면(app.js)도 /api 코드표(projects.py 59행 code_words)로 같은 표를 쓴다.
+
+2. 고칠 것(보완 패치와 같음)
+ F1. rag_engine/review.py에 `incomplete_reason(review) -> str`를 둔다(report_lines 바로 위).
+     - 버린 의견이 있으면: '모델 의견 N건을 근거 확인에서 제외(사유별 한글 이름 n건, …)'. 사유 이름은 display_text.word로 바꾼다.
+     - 잘렸으면: '서면이 길어 앞부분(검토 글자 수/전체 글자 수)만 대조'. 수를 모르면 '(일부)'로 적는다.
+     - 둘 다면 '; '로 잇는다. 둘 다 아니면 word(review["reason"])로 적는다(없으면 '사유 기록 없음').
+ F2. pipeline.py 494행 import에 incomplete_reason를 더한다. 548행 사유를 "Drive 참고자료 AI 대조 미완료: " + incomplete_reason(review)로 바꾼다.
+     - 미확인 항목에 새 키를 더하지 않는다(응답 형태 그대로).
+ F3. display_text.py CODE_WORDS 155행 'REFERENCE_PROCESSING_FAILED' 바로 뒤에 C2의 10개 한글 이름을 더한다(패치 문구 그대로).
+
+3. 확인 시험(새 tests/test_tk174_reference_incomplete_reason.py 7건, 값은 합성)
+ - 버린 의견의 사유별 건수.
+ - 잘림의 글자 수.
+ - 두 원인 함께.
+ - 다른 미완료 상태 3종의 사유가 한글(밑줄 코드 없음).
+ - 파이프라인 경로(VerificationPipeline.run, review_document 대역)의 미확인 항목 사유 문장.
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본, SQLite, LV_ALLOW_NETWORK=0)
+ - precheck_pr --quick(기준 997687e): 종료 0. 시험 235건 실패 0, 고정 82.6 / 81.9 / 오탐 0, 평가 세트 문구 대조 통과.
+   · 함께 돌린 시험: 새 시험, test_tk70_rag_contradiction_promotion, test_verification_completeness, test_tk84_reference_text_truncation, korean_law_profile/test_review_path, test_tk155_ui_cleanup, test_report_completion, test_display_text_linear_time, test_api.
+ - 처음 사본에서는 미확인 항목에 'status_code' 키를 더했다. 응답 형태가 바뀌므로 뺐다(F2 마지막 줄).
+ - 미검증: 실제 Drive 대조에서 잘림·버림이 함께 일어나는 경우의 화면 문구(배포 뒤 온라인 확인).
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나. 제품 3파일 + 새 시험 1파일, 보호 경로 변경 없음.
+ - 수용 기준: 3절 시험 통과, 필수 CI 성공, 고정·은퇴 세트 변화 0, 탐지 diff 0(표시 문구만), 사본과 diff 0.
+ - TK-173·TK-175와 겹치는 파일이 없다. 세 패치를 함께 적용해도 충돌하지 않는다(평가 측 확인).
+```
+
+### 2-58-3. TK-175 지시(전달판)
+```
+[TK-175 main의 기존 CodeQL 경고 중 제품 코드 11건: 경로 주입 10건(storage·project_purge) + 예외 문구 노출 1건(진단 응답)]  기준: Steve_ACASiaLAW 997687e  평가 측 사본: TK-175 copy(0f7d7b7)
+보완 패치: docs/handoff/patches/TK-175_on_997687e.diff (git apply)
+ - 997687e → 사본 차이 전부: 제품 4파일(packages/common/storage.py·apps/api/project_purge.py·apps/api/capabilities.py·apps/api/main.py) + 새 시험 1파일.
+대상 릴리스: 0.21.0(사용자 11-14 '후보 두가지도 포함' — main의 기존 CodeQL 24건).
+나머지 13건(평가 도구·시험)은 평가 측이 평가 PR로 고친다(evaluator/round8-promotion 13175bf). 이 PR에 넣지 않는다.
+
+0. 근거
+ - GitHub Security → Code scanning, is:open branch:main, 24건(사용자 화면 11-14). 이 PR의 대상은 아래 11건이다.
+   · #117 storage.py:68, #24 :78, #118 :94, #26 :104, #119 :107, #120 :108, #121 :111, #30 :130 — 경로 주입 High.
+   · #21 project_purge.py:73, #130 :74 — 경로 주입 High.
+   · #32 main.py:264 — 예외 정보 노출 Medium.
+ - #285에서 확인한 CodeQL 인정 꼴:
+   · 정규화한 경로 값 자체에 접두 검사 하나(startswith)를 하고, 검사한 값을 그대로 쓴다.
+   · 다른 값을 검사하거나 'or'로 묶으면 인정하지 않는다.
+   · Path.is_relative_to·부모 비교는 인정하지 않는다.
+
+1. 원인(줄 번호는 997687e 기준)
+ C1. storage.py 93~98행 `_abs`: (root/key).resolve() 뒤 is_relative_to로 검사한다. 안전한 검사지만 CodeQL은 이를 경로 검사로 보지 않는다.
+     그래서 put_original·put_derivative·get·path·exists의 모든 사용처(104·107·108·111·130행)가 경고다.
+ C2. storage.py 72~81행 `_project_dirs`: 부모 비교(target.parent != …)로 검사한다. 역시 인정되지 않는다. 78행과 _remove_tree의 rmtree(68행)가 경고다.
+ C3. project_purge.py 70~74행: PROJECT_ID_RE.fullmatch 뒤 data_dir()/pii_vault/{id}.vault를 exists·unlink한다. 정규식 검사는 경로 검사로 인정되지 않는다.
+ C4. capabilities.py 127행 `_worker_state`가 예외 원문을 그대로 담는다: "error": f"{type(exc).__name__}: {exc}".
+     main.py 182행은 기동 시 암호화 키 오류 원문 str(exc)를 기록한다. storage.py 310~316행이 키 공급자 예외 문구를 그대로 이어 붙이기 때문이다.
+     이 기록은 /api/diagnostics 응답의 capabilities.storage_encryption.error로 나간다(main.py 264행).
+     화면(app.js 3477~3490행)은 error 칸을 쓰지 않는다.
+ C5. 같은 성격(평가 측 확인, 경고 목록에는 없음): storage.py 246행 EncryptedObjectStorage.path가 구분자 없는 접두 비교 str(target).startswith(str(cache_root))를 쓴다.
+     그래서 형제 폴더(cache_root2/…)가 통과한다. 재현: path('../cache2/x')가 거부되지 않는다.
+
+2. 고칠 것(보완 패치와 같음)
+ F1. storage.py에 `resolve_within(root, *parts) -> str`를 둔다. 동작:
+     - base = realpath(root), full = realpath(join(base, *parts)).
+     - full.startswith(join(base, ""))가 아니면 ValueError("path traversal detected").
+     - 검사한 full을 그대로 돌려준다.
+ F2. `_abs`는 Path(resolve_within(self.root, storage_key))를 돌려준다.
+ F3. `_project_dirs`는 area_root = realpath(root/area)를 구하고 target = resolve_within(area_root, project_id)로 한다.
+     - 이어서 따로 하는 if로 dirname(target) == area_root를 확인한다(한 단계만 허용). 'or'로 묶지 않는다.
+     - Path(target)를 yield한다.
+ F4. EncryptedObjectStorage.path: 기존 접두 비교를 지우고 target = Path(resolve_within(self.cache_root, storage_key))로 한다(C5).
+ F5. project_purge.py: vault = resolve_within(data_dir()/"pii_vault", f"{project_id}.vault")로 구하고, os.path.exists·os.unlink로 지운다.
+     - except를 (OSError, ValueError)로 넓힌다.
+     - import os와 resolve_within import를 더한다.
+     - PROJECT_ID_RE.fullmatch 검사는 그대로 둔다.
+ F6. capabilities.py 127행의 error는 type(exc).__name__만 담는다.
+ F7. main.py 182행: 진단에 싣는 기록은 고정 문구로 한다.
+     - 문구: "저장 시 암호화 키 설정을 확인할 수 없습니다({원인 예외 종류}). 자세한 원인은 서버 로그를 보세요."
+     - 원인 예외 종류는 exc.__cause__가 있으면 그 종류, 없으면 exc의 종류다.
+     - 원문은 기존 logger.error에만 남긴다.
+     - 화면의 note(설정 방법 안내)는 그대로다.
+
+3. 확인 시험(새 tests/test_tk175_path_and_exception_exposure.py 15건, 값은 합성)
+ - resolve_within이 안쪽 경로 3꼴은 받고, 바깥·형제 폴더·절대 경로·빈 키·심볼릭 링크 탈출은 거부한다.
+ - LocalObjectStorage의 저장·읽기·존재 확인, 탈출 키 거부.
+ - _project_dirs: 두 영역 바로 아래 한 단계, 잘못된 id 4꼴 거부.
+ - 암호화 캐시: 형제 폴더 거부(C5).
+ - purge_files: 해당 프로젝트 보관소 파일만 지운다.
+ - _worker_state error는 예외 종류만 담는다.
+ - 기동 시 암호화 오류 기록에 예외 원문이 없다.
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본, SQLite, LV_ALLOW_NETWORK=0)
+ - 새 시험 15건 통과. 관련 기존 시험 9파일(test_storage_encryption·test_project_lifecycle·test_identity_security·test_release_gates·acceptance/test_security_round·acceptance/test_pinned_ledger_4da3910_additions·regression/test_ledger·test_api + 새 시험) 실패 0.
+ - precheck_pr --quick 결과: 종료 0(기준 997687e). 함께 돌린 시험 244건 실패 0(위 9파일 + test_report_completion), 고정 82.6 / 81.9 / 오탐 0, 평가 세트 문구 대조 통과.
+ - 미검증: CodeQL 재분석으로 11건이 닫히는지. 이 세션은 CodeQL을 돌릴 수 없으므로 PR CI의 codeql-pr 결과로 확인한다. 꼴은 #285에서 0건으로 확인된 path_guard.contained_path와 같다.
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나. 제품 4파일 + 새 시험 1파일, 보호 경로 변경 없음.
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공.
+   · codeql-pr 새 경고 0.
+   · 고정·은퇴 세트 변화 0.
+   · 사본과 diff 0.
+   · 병합 뒤 main 반영 때 Security 화면에서 11건이 닫힘(릴리스 PR에서 확인).
+```

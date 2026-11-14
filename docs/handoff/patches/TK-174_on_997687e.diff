@@ -1,0 +1,150 @@
+diff --git a/packages/common/display_text.py b/packages/common/display_text.py
+index f0822430..b7ebe8f8 100644
+--- a/packages/common/display_text.py
++++ b/packages/common/display_text.py
+@@ -153,6 +153,17 @@ CODE_WORDS: Dict[str, str] = {
+     "REFERENCE_CASE_TABLE_PARTIAL": "판례표 일부만 읽음",
+     "REFERENCE_EMPTY": "본문 없음",
+     "REFERENCE_PROCESSING_FAILED": "처리 중 오류",
++    # TK-174: Drive 대조·참고자료 처리 사유 가운데 한글 이름이 없던 코드(rag_engine·pipeline이 실제로 내는 값)
++    "QUOTE_NOT_GROUNDED": "인용 발췌가 원문에서 확인되지 않음",
++    "INVALID_ITEM_SCHEMA": "의견 항목 형식 오류",
++    "INVALID_ENVELOPE": "응답 전체 형식 오류",
++    "REFERENCE_REVIEW_FAILED": "참고자료 대조 중 오류",
++    "NO_GROUNDED_COMPARISON": "근거 발췌로 대조하지 못함",
++    "RELATED_AUTHORITY_LOOKUP_FAILED": "관련 법령·판례 조회 실패",
++    "CONTRACT_ID_NOT_UNAMBIGUOUSLY_LINKED": "계약 식별 번호를 한 자료로 특정하지 못함",
++    "IDENTICAL_CONTENT": "내용이 같은 파일(중복)",
++    "INVALID_CALCULATION_INPUTS": "계산 입력값 오류",
++    "MISSING_OR_CONFLICTING_CALCULATION_INPUTS": "계산 입력값 누락 또는 충돌",
+     "REFERENCE_TRASHED": "휴지통에 있음",
+     "REFERENCE_MOVED": "등록 폴더 밖으로 이동됨",
+     "REFERENCE_DOWNLOAD_BLOCKED": "내려받기 금지 파일",
+diff --git a/packages/rag_engine/review.py b/packages/rag_engine/review.py
+index b5178c60..c6923cc4 100644
+--- a/packages/rag_engine/review.py
++++ b/packages/rag_engine/review.py
+@@ -780,6 +780,26 @@ def review_document(result, library, router, context, pii):
+     return review
+ 
+ 
++# TK-174: Drive 대조가 끝나지 못한 실제 원인(review_completed=False의 두 조건)을 사람이 읽는 말로 적는다.
++def incomplete_reason(review) -> str:
++    """review_completed가 False인 까닭: 버린 모델 의견(사유별 건수)과 서면 잘림. 둘 다 아니면 상태 사유를 한글로."""
++    from collections import Counter
++
++    from packages.common.display_text import word
++    parts = []
++    rejected = review.get("rejected_observations") or []
++    if rejected:
++        counts = Counter(str(item.get("reason") or "") for item in rejected)
++        detail = ", ".join(f"{word(code or '사유 기록 없음')} {n}건" for code, n in counts.items())
++        parts.append(f"모델 의견 {len(rejected)}건을 근거 확인에서 제외({detail})")
++    if review.get("document_truncated"):
++        info = review.get("input") or {}
++        inspected, available = info.get("inspected_chars"), info.get("available_chars")
++        scope = f"{inspected:,}자/{available:,}자" if isinstance(inspected, int) and isinstance(available, int) else "일부"
++        parts.append(f"서면이 길어 앞부분({scope})만 대조")
++    return "; ".join(parts) or word(review.get("reason") or "사유 기록 없음")
++
++
+ def report_lines(run_result):
+     # V1.0.0: 보고서 본문용 문장이다. 상태·사유 코드와 시각은 사람이 읽는 말로 적는다(packages/common/display_text).
+     from packages.common.display_text import korean_time, word
+diff --git a/packages/verification_engine/pipeline.py b/packages/verification_engine/pipeline.py
+index 8f7b5f47..c7c46958 100644
+--- a/packages/verification_engine/pipeline.py
++++ b/packages/verification_engine/pipeline.py
+@@ -491,7 +491,7 @@ class VerificationPipeline:
+         manifest.environment = preflight(self.settings, self.registry, self.router)
+ 
+         from packages.rag_engine.library import ReferenceLibrary
+-        from packages.rag_engine.review import review_document
++        from packages.rag_engine.review import incomplete_reason, review_document
+ 
+         references = ReferenceLibrary(self.settings, check=check or (lambda: None),
+             notify=lambda done, total: emit(JobState.VERIFYING, f"Drive 참고자료 확인 {done}/{total}건", 0.85))
+@@ -545,7 +545,7 @@ class VerificationPipeline:
+                     if not review.get("review_completed", True) and review["status"] != "NOT_RELEVANT":
+                         document_result.unverified_items.append({"kind": "reference_review",
+                             "document_id": document_result.document_id,
+-                            "reason": "Drive 참고자료 AI 대조 미완료: " + review.get("reason", "")})
++                            "reason": "Drive 참고자료 AI 대조 미완료: " + incomplete_reason(review)})
+                     # TK-70: Drive 참고자료 '모순' 의견의 조건부 finding 승격 (D4 개정, 사용자 결정: 기본 켬)
+                     from packages.common.config import get_settings
+                     settings = get_settings()
+diff --git a/tests/test_tk174_reference_incomplete_reason.py b/tests/test_tk174_reference_incomplete_reason.py
+new file mode 100644
+index 00000000..ab271e57
+--- /dev/null
++++ b/tests/test_tk174_reference_incomplete_reason.py
+@@ -0,0 +1,69 @@
++"""TK-174: Drive 참고자료 AI 대조가 끝나지 못했을 때 미확인 항목 사유에 실제 원인을 적는다(0.20.0 온라인 case9 관찰 O2).
++
++온라인 실행에서 모델 의견 1건이 원문에 없는 발췌를 대서 버려졌는데(QUOTE_NOT_GROUNDED), 미확인 항목 사유는 상태 사유
++'원문 발췌 일치만 확인(…)'으로 나와 원인을 알 수 없었다. 문장·자료는 시험용 합성이다.
++"""
++from __future__ import annotations
++
++from dataclasses import replace
++from pathlib import Path
++
++import pytest
++
++from packages.common.config import get_settings
++from packages.common.storage import sha256_file
++from packages.rag_engine.library import ReferenceLibrary
++from packages.rag_engine.review import incomplete_reason
++from packages.verification_engine.pipeline import DocumentInput, ProjectContext, VerificationPipeline, VerificationProfile
++
++
++def test_rejected_opinions_are_counted_by_reason():
++    review = {"reason": "EXACT_QUOTES_CHECKED_NOT_ENTAILMENT_OR_LEGAL_VALIDITY", "document_truncated": False,
++              "rejected_observations": [{"index": 0, "reason": "QUOTE_NOT_GROUNDED"},
++                                        {"index": 3, "reason": "QUOTE_NOT_GROUNDED"},
++                                        {"index": 4, "reason": "INVALID_ITEM_SCHEMA"}]}
++    text = incomplete_reason(review)
++    assert text == "모델 의견 3건을 근거 확인에서 제외(인용 발췌가 원문에서 확인되지 않음 2건, 의견 항목 형식 오류 1건)"
++    assert "EXACT_QUOTES" not in text and "원문 발췌 일치만 확인" not in text
++
++
++def test_truncated_document_names_the_inspected_share():
++    review = {"reason": "EXACT_QUOTES_CHECKED_NOT_ENTAILMENT_OR_LEGAL_VALIDITY", "document_truncated": True,
++              "rejected_observations": [], "input": {"inspected_chars": 12000, "available_chars": 30500}}
++    assert incomplete_reason(review) == "서면이 길어 앞부분(12,000자/30,500자)만 대조"
++
++
++def test_both_causes_are_listed_together():
++    review = {"document_truncated": True, "rejected_observations": [{"reason": "INVALID_ENVELOPE"}], "input": {}}
++    assert incomplete_reason(review) == "모델 의견 1건을 근거 확인에서 제외(응답 전체 형식 오류 1건); 서면이 길어 앞부분(일부)만 대조"
++
++
++@pytest.mark.parametrize("reason", ["MODEL_NOT_AVAILABLE_OR_QUICK_PROFILE", "REFERENCE_REVIEW_FAILED", ""])
++def test_other_incomplete_states_keep_their_status_reason_in_korean_words(reason):
++    text = incomplete_reason({"reason": reason, "document_truncated": False, "rejected_observations": []})
++    assert text and "_" not in text
++
++
++def test_pipeline_unverified_item_names_the_dropped_opinion(tmp_path: Path, monkeypatch):
++    doc_path = tmp_path / "synthetic_brief.txt"
++    doc_path.write_text("원고는 가상 규정 제3조에 따라 위약금 전액을 청구한다.", encoding="utf-8")
++
++    def fake_sync(self, query=None):
++        self.summary.update(status="READY", files_seen=1, files_indexed=1, checked_at="2026-11-14T00:00:00Z", issues=[])
++
++    def fake_review_document(document_result, references, router, context, pii):
++        review = {"status": "ADVISORY_REVIEWED", "reason": "EXACT_QUOTES_CHECKED_NOT_ENTAILMENT_OR_LEGAL_VALIDITY",
++                  "sources": [], "observations": [], "rejected_observations": [{"index": 1, "reason": "QUOTE_NOT_GROUNDED"}],
++                  "model_executed": True, "review_completed": False, "document_truncated": False}
++        document_result.engine_data["rag"] = review
++        return review
++
++    monkeypatch.setattr(ReferenceLibrary, "sync", fake_sync)
++    monkeypatch.setattr("packages.rag_engine.review.review_document", fake_review_document)
++    pipeline = VerificationPipeline()
++    pipeline.settings = replace(get_settings(), rag_drive_folder_id="synthetic_folder", allow_network=False)
++    doc = DocumentInput("doc1", str(doc_path), doc_path.name, sha256=sha256_file(doc_path), mime_type="text/plain")
++    result = pipeline.run("tk174", ProjectContext("tk174", profile=VerificationProfile.QUICK), [doc])
++    [item] = [i for i in result.unverified_items if i.get("kind") == "reference_review"]
++    assert item["reason"] == ("Drive 참고자료 AI 대조 미완료: 모델 의견 1건을 근거 확인에서 제외"
++                              "(인용 발췌가 원문에서 확인되지 않음 1건)")
