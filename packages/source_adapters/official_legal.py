@@ -14,7 +14,8 @@ from urllib.parse import urlencode
 
 from packages.common.enums import AdapterStatus
 from .base import AdapterResponse, response_hash
-from .legal_history import body_text, legal_date, objects, parse_law_body, select_version, today_korea
+from .legal_history import (BOUNDARY_ERROR, BOUNDARY_TEXT_DIFFERS, body_text, boundary_versions, legal_date, objects,
+                             parse_law_body, select_provision, select_version, today_korea)
 
 _USED_FIELDS = {
     "eflaw": ["법령ID", "법령일련번호", "시행일자", "공포일자", "공포번호",
@@ -221,7 +222,7 @@ class OfficialLegalMixin:
         return AdapterResponse(AdapterStatus.READY, ambiguous, first,
                                "AMBIGUOUS" if ambiguous else "NO_CANDIDATE", sources, True)
 
-    def resolve_statute(self, law_name, *, as_of=None, current_date=None, law_id=None):
+    def resolve_statute(self, law_name, *, as_of=None, current_date=None, law_id=None, article=None):
         current = legal_date(current_date) if current_date is not None else today_korea()
         when = legal_date(as_of) if as_of is not None else current
         if not current or not when or when > current:
@@ -240,10 +241,46 @@ class OfficialLegalMixin:
             selected.update(review_as_of=as_of, current_as_of=current,
                             date_basis="EXPLICIT_REFERENCE" if as_of else "CURRENT_ONLY")
         except ValueError as exc:
+            if str(exc) == BOUNDARY_ERROR and article:
+                # TK-158: 같은 시행일 판이 여럿이면 인용 조문 문언을 판마다 받아 비교한다. 모두 같을 때만 확정한다.
+                return self._resolve_same_boundary(history, when, current, as_of, article)
             return AdapterResponse(AdapterStatus.ERROR, [], history.source_record, str(exc), history.source_records)
         detail = self.fetch_law_version(selected)
         detail.source_records = history.source_records + detail.source_records
         return detail
+
+    def _resolve_same_boundary(self, history, when, current, as_of, article):
+        try:
+            candidates = boundary_versions(history.records, when)
+        except ValueError as exc:
+            return AdapterResponse(AdapterStatus.ERROR, [], history.source_record, str(exc), history.source_records)
+        sources, details, texts = list(history.source_records or []), [], set()
+        for candidate in candidates:
+            detail = self.fetch_law_version(candidate)
+            sources += detail.source_records or []
+            if not detail.ok or not detail.records:
+                return AdapterResponse(AdapterStatus.ERROR, [], history.source_record,
+                                       detail.message or BOUNDARY_ERROR, sources)
+            provision = select_provision(detail.records[0], str(article))
+            if provision.get("status") != "VERIFIED":
+                return AdapterResponse(AdapterStatus.ERROR, [], history.source_record, BOUNDARY_ERROR, sources)
+            texts.add(re.sub(r"\s+", "", provision.get("text") or ""))
+            details.append(detail)
+        if len(texts) != 1:
+            return AdapterResponse(AdapterStatus.ERROR, [], history.source_record, BOUNDARY_TEXT_DIFFERS, sources)
+        chosen = details[0]
+        record = chosen.records[0]
+        record.update(version_selection="SAME_PROVISION_AT_BOUNDARY",
+                      boundary_versions=[c["version_id"] for c in candidates],
+                      review_as_of=as_of, current_as_of=current,
+                      date_basis="EXPLICIT_REFERENCE" if as_of else "CURRENT_ONLY")
+        try:
+            now = select_version(history.records, current)
+            record["current_version"] = {k: now[k] for k in ("version_id", "law_id", "effective_from", "promulgation_date")}
+        except ValueError:
+            record["current_version"] = None
+        chosen.source_records = sources
+        return chosen
 
     def fetch_law_version(self, selected):
         mst, effective = str(selected.get("version_id") or ""), legal_date(selected.get("effective_from"))

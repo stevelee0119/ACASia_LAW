@@ -13,6 +13,8 @@
 """
 from __future__ import annotations
 
+import re
+
 import json
 import os
 from pathlib import Path
@@ -449,7 +451,7 @@ def test_f2_review_summary_content_elements(f2_browser_page):
 
 
 def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_page):
-    """의심 사유는 100자 이내 2~3줄로 축약되고, 상세 법리 의견은 기본 접혀 있으며, 확인 방법은 권위명과 쪽/위치가 조합되어야 합니다 (TK-87)."""
+    """의심 사유는 자르지 않고 4줄 줄임+더보기로 보이고(V1.0.0 7-5), 상세 법리 의견은 기본 접혀 있으며, 확인 방법은 권위명과 쪽/위치가 조합되어야 합니다 (TK-87)."""
     page = f2_browser_page
     page.goto("http://localhost/")
     select_first_project(page)
@@ -465,12 +467,17 @@ def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_pag
     expect(details).to_be_visible()
     expect(details).not_to_have_attribute("open", "")
 
-    # 2. 1번째 행 의심 사유 텍스트가 100자 상한으로 '…' 축약되어 노출되는지 검증
+    # 2. 의심 사유는 자르지 않는다. 4줄 줄임(.clamp)으로 보이고 넘치면 '더보기'로 펼친다
+    #    (V1.0.0 7-5, 사용자 승인으로 단언 변경: 옛 요구 '100자 '…' 축약').
     reason_elem = box.locator(".summary-reason")
     expect(reason_elem).to_be_visible()
-    expect(reason_elem).to_contain_text("…")
-    reason_text = reason_elem.inner_text()
-    assert len(reason_text) <= 120, f"의심 사유 텍스트가 과도하게 길지 않아야 함: {len(reason_text)}자"
+    expect(reason_elem).to_have_class(re.compile(r"\bclamp\b"))
+    reason_text = reason_elem.text_content()
+    assert not reason_text.rstrip().endswith("…"), "의심 사유를 '…'로 자르지 않아야 함"
+    toggle = box.locator(".summary-reason + .clamp-toggle")
+    if toggle.count():
+        toggle.click()
+        expect(reason_elem).to_have_class(re.compile(r"\bexpanded\b"))
 
     # 3. 2단 표의 2번째 행(counteraction 없는 위치 행: 헌법 제10조, 1쪽)의 확인 방법 텍스트 검증: '권위명 원문 대조 (N쪽)' 분기
     box3 = rows.nth(1).locator(".review-summary-box")
@@ -478,7 +485,7 @@ def test_f2_review_summary_reason_truncation_and_location_display(f2_browser_pag
 
 
 def test_f2_filters_search_severity_review_status(f2_browser_page):
-    """검색어와 중요도 필터가 동작하고, 제거된 검토상태/진행상태/담당자 필터는 화면에 없어야 합니다 (TK-87)."""
+    """중요도 필터가 동작하고, 검색창(V1.0.0 6-0)과 제거된 검토상태/진행상태/담당자 필터는 화면에 없어야 합니다 (TK-87)."""
     page = f2_browser_page
     page.goto("http://localhost/")
     select_first_project(page)
@@ -497,13 +504,8 @@ def test_f2_filters_search_severity_review_status(f2_browser_page):
     sev_select.select_option("")
     expect(rows).to_have_count(2)
 
-    # 2. 2단 표 검색어 필터: '2022다99999' 검색 -> 1개 행 노출
-    search_input = panel.locator("#findingSearch")
-    search_input.fill("2022다99999")
-    expect(rows).to_have_count(1)
-    expect(rows.first).to_contain_text("대법원 2022다99999 판결")
-    search_input.fill("")
-    expect(rows).to_have_count(2)
+    # 2. 항목 검색창은 없다(V1.0.0 6-0, 사용자 승인으로 단언 변경: 옛 요구 '검색어 필터 동작').
+    expect(panel.locator("#findingSearch")).to_have_count(0)
 
     # 3단 표의 사실관계 항목('일자 선후 모순') 확인 (독립 탭)
     page.locator('.tabs button[data-tab="legal-claims"]').click()

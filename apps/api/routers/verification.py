@@ -28,7 +28,7 @@ from ..auth import (
     is_editor,
 )
 from ..db import User, Document, EvidenceRow, FindingRow, Project, VerificationRun, get_db, get_session_factory
-from ..identity import actor_id, current_principal, require_project, bind_analysis_session
+from ..identity import actor_id, current_principal, filter_project_query, require_project, bind_analysis_session
 from ..job_control import JobConflict, enqueue_run, execution_security, execution_settings_snapshot
 from ..workspace import CaseIssue, FindingWorkflow, as_dict
 from ..schemas import FindingOut, RevealRequest, ReviewRequest, RunOut, VerifyRequest
@@ -342,6 +342,35 @@ def get_finding(finding_id: str, user: User = Depends(current_user),
     row = accessible_finding(session, user, finding_id)
     require_project(session, row.project_id)
     return _finding_out(session, row)
+
+
+# TK-157(B4): 담당자 검토 결정을 경고 유형별로 모아 수용률·오탐률을 낸다(정밀도 라벨 축적).
+# 개수만 낸다 — 문서·제목·메모·작성자는 싣지 않는다. 보이는 사건(권한 범위)만 센다. 참고 경고(advisory)는 뺀다.
+REVIEW_QUALITY_MIN_DECIDED = 5
+
+
+@router.get("/review-quality")
+def review_quality(session: Session = Depends(get_db)) -> Dict[str, Any]:
+    query = filter_project_query(
+        select(FindingRow.type, FindingRow.review_status).where(FindingRow.advisory_only.isnot(True)),
+        session, FindingRow.project_id)
+    counts: Dict[str, Dict[str, int]] = {}
+    for kind, review in session.execute(query).all():
+        row = counts.setdefault(str(kind or "UNKNOWN"), {s.value: 0 for s in ReviewStatus})
+        key = str(review or ReviewStatus.NEEDS_REVIEW.value)
+        row[key if key in row else ReviewStatus.NEEDS_REVIEW.value] += 1
+    types = []
+    for kind, row in sorted(counts.items()):
+        total = sum(row.values())
+        decided = total - row[ReviewStatus.NEEDS_REVIEW.value]
+        accepted = row[ReviewStatus.ACCEPTED.value] + row[ReviewStatus.RESOLVED.value]
+        enough = decided >= REVIEW_QUALITY_MIN_DECIDED
+        types.append({"type": kind, "total": total, "decided": decided, **row,
+                      "acceptance_rate": round(accepted / decided, 3) if enough else None,
+                      "false_positive_rate": round(row[ReviewStatus.FALSE_POSITIVE.value] / decided, 3) if enough else None,
+                      "enough_samples": enough})
+    return {"types": types, "min_decided": REVIEW_QUALITY_MIN_DECIDED,
+            "note": "담당자 검토 결정의 개수다. 결정이 적은 유형은 비율을 내지 않는다. 법률가 독립 라벨(정밀도 측정)을 대신하지 않는다."}
 
 
 @router.patch("/findings/{finding_id}/review", response_model=FindingOut)

@@ -176,7 +176,8 @@ def authorship_request(hint=False):
 
 
 @pytest.mark.parametrize("verdict,hint,sample,count", [
-    ("UNCERTAIN", False, 0, 1), ("HUMAN_AUTHORED_LIKELY", False, 0, 1),
+    # V1.0.0 D4(사용자 결정 11-13): 첫 의견이 유보·사람 작성이어도 두 번째 의견을 받는다(옛 단언 1 → 2).
+    ("UNCERTAIN", False, 0, 2), ("HUMAN_AUTHORED_LIKELY", False, 0, 2),
     ("AI_PARTIAL_GENERATION", False, 0, 2), ("AI_FULL_GENERATION_LIKELY", False, 0, 2),
     ("UNCERTAIN", True, 0, 2), ("UNCERTAIN", False, 100, 2),
 ])
@@ -259,3 +260,14 @@ def test_provider_cache_writes_require_explicit_opt_in(transport):
     router.clear_result_cache()
     assert asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request)).used
     assert requests[-1][1]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_authorship_disagreement_adds_third_provider(transport):
+    """V1.0.0 D4: 두 판별 의견이 엇갈리면 세 번째 공급자(Gemini)에 묻는다."""
+    router, requests, responses = transport
+    router.settings.llm_review_sample_percent = 0
+    responses["openai"] = {"verdict": "AI_PARTIAL_GENERATION"}
+    responses["anthropic"] = {"verdict": "UNCERTAIN"}
+    responses["gemini"] = {"verdict": "UNCERTAIN"}
+    answers = asyncio.run(router.consult_all(LLMRole.PRIMARY_REASONER, authorship_request(False)))
+    assert len(requests) == 3 and {e.provider for a in answers for e in a.executions} == {"openai", "anthropic", "gemini"}

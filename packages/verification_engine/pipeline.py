@@ -939,6 +939,27 @@ class VerificationPipeline:
                 result.engine_data["related_authorities"] = {
                     "status": "UNVERIFIED", "reason": "RELATED_AUTHORITY_LOOKUP_FAILED", "advisory_only": True}
                 result.unverified_items.append({"kind": "related_authority", "reason": "관련 법조문 추가 조회 미완료"})
+        # TK-162 판례 효력 확인: 공식 원문으로 확인된 대법원 판례가 뒤의 전원합의체 판결에서 변경 대상으로 적혔는지
+        # 역조회한다. 인용 확인 엔진 밖의 별도 단계라 인용 조회·재조회 횟수에 끼지 않는다. 빠른 검토에서는 건너뛴다.
+        from packages.legal_engine.precedent_change import review_precedent_changes
+        with manifest.stage("precedent_change", result.findings, inputs=0, unit="역조회한 판례",
+                            document_id=doc.document_id) as stage:
+            if context.profile == VerificationProfile.QUICK:
+                stage.skip_reason = "빠른 검토에서는 판례 변경 역조회를 하지 않음"
+            else:
+                try:
+                    change = review_precedent_changes(self.legal, citations,
+                                                      result.engine_data.get("legal_verdicts") or [])
+                    stage.inputs = change["looked_up"]
+                    if not change["targets"]:
+                        stage.skip_reason = "공식 원문으로 확인된 대법원 판례 인용이 없음"
+                    elif change["status"] == "SOURCE_UNAVAILABLE":
+                        stage.skip_reason = "공식 판례 검색을 쓸 수 없음"
+                    result.findings.extend(change["findings"])
+                    result.engine_data["precedent_change"] = {k: v for k, v in change.items() if k != "findings"}
+                except Exception as exc:
+                    stage.error = type(exc).__name__
+                    result.unverified_items.append({"kind": "precedent_change", "reason": "판례 변경 역조회 미완료"})
         # 법령 적용 시점(행위시법): 시행 버전이 둘 이상인 조문에 대한 주장을 버전별로 대조한다(v4 P3)
         with manifest.stage("temporal_review", result.findings, inputs=0, unit="검토한 조문 주장", document_id=document.document_id) as stage:
             found = self._temporal_reviews(doc, citations, context)

@@ -146,7 +146,8 @@ def test_reference_issues_are_listed_once_in_export():
                               "reason": "REFERENCE_PARTIALLY_READ", "pages": 30, "read_pages": 29, "no_text_pages": [2]}]}
     lines = "\n".join(report_lines(SimpleNamespace(run_manifest={"reference_library": summary}, documents=[])))
     assert "주요 참고문헌 검토 결과(RAG)" in lines
-    assert lines.count("casebook.pdf") == 1 and lines.count("REFERENCE_PARTIALLY_READ") == 1
+    # V1.0.0 R2(사용자 승인 11-13): 보고서 본문 사유 코드는 한글(일부 쪽만 읽음)로 적는다. 한 번만 적는 단언은 그대로.
+    assert lines.count("casebook.pdf") == 1 and lines.count("일부 쪽만 읽음") == 1 and "REFERENCE_PARTIALLY_READ" not in lines
     assert "29/30쪽" in lines and "[2]" in lines
 
 

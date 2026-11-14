@@ -1,0 +1,396 @@
+{
+  "protocol": "regression-proxy-v2.0",
+  "source_product_sha": "e57855f28cde65f2f515c3d26f958370fa6251c8",
+  "purpose": "Regression floors, not legal accuracy acceptance thresholds",
+  "sets": {
+    "dev": {
+      "protocol": "regression-proxy-v2.0",
+      "scope": "REUSED_REGRESSION_PROXY",
+      "status": "MEASURED",
+      "dataset_sha256": "f72438d87cca09955ab6c26de49c58deab16925581efe0b315c59df2da2d5e74",
+      "documents": 6,
+      "items": 56,
+      "hits": 42,
+      "recall": 0.75,
+      "macro_recall": 0.7648604269293924,
+      "by_type": {
+        "AIGEN": {
+          "items": 7,
+          "hits": 5,
+          "recall": 0.7142857142857143
+        },
+        "CIT-FAB-Q": {
+          "items": 2,
+          "hits": 0,
+          "recall": 0.0
+        },
+        "CIT-META": {
+          "items": 3,
+          "hits": 1,
+          "recall": 0.3333333333333333
+        },
+        "CIT-MIS": {
+          "items": 1,
+          "hits": 0,
+          "recall": 0.0
+        },
+        "CIT-NX": {
+          "items": 5,
+          "hits": 4,
+          "recall": 0.8
+        },
+        "CIT-NX-DB": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "EVI-COPY": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "EVI-DATE": {
+          "items": 3,
+          "hits": 3,
+          "recall": 1.0
+        },
+        "EVI-FAKECIT": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "EVI-FORM": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "EVI-INCONS": {
+          "items": 2,
+          "hits": 2,
+          "recall": 1.0
+        },
+        "EVI-LOGIC": {
+          "items": 1,
+          "hits": 0,
+          "recall": 0.0
+        },
+        "EVI-NUM": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "EVI-OVR": {
+          "items": 1,
+          "hits": 0,
+          "recall": 0.0
+        },
+        "INJ-ANNOT": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-ATTACH": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-COVERED": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-INVISIBLE-TR3": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-META": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-OFFPAGE": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-TINY": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-VISIBLE": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-WHITE": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-ZWSP": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "LAW-MIS": {
+          "items": 3,
+          "hits": 1,
+          "recall": 0.3333333333333333
+        },
+        "LAW-NX": {
+          "items": 2,
+          "hits": 0,
+          "recall": 0.0
+        },
+        "OVR": {
+          "items": 8,
+          "hits": 8,
+          "recall": 1.0
+        },
+        "OVR / LAW-NX": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "SRC-UNV": {
+          "items": 2,
+          "hits": 2,
+          "recall": 1.0
+        }
+      },
+      "by_group": {
+        "authorship_signals": {
+          "items": 7,
+          "hits": 5,
+          "recall": 0.7142857142857143
+        },
+        "document_consistency": {
+          "items": 10,
+          "hits": 8,
+          "recall": 0.8
+        },
+        "legal": {
+          "items": 26,
+          "hits": 16,
+          "recall": 0.6153846153846154
+        },
+        "security_detection": {
+          "items": 10,
+          "hits": 10,
+          "recall": 1.0
+        },
+        "source_uncertainty": {
+          "items": 3,
+          "hits": 3,
+          "recall": 1.0
+        }
+      },
+      "known_false_positive_findings": 0,
+      "unadjudicated_alerts": 10,
+      "advisory_findings": 10,
+      "precision": null,
+      "legal_accuracy": null,
+      "injection_defense_success_rate": null,
+      "limitations": [
+        "lexical_matching_not_semantic_or_span_verified",
+        "reused_not_blind",
+        "unadjudicated_alerts_not_false_positives",
+        "no_official_db_or_llm"
+      ]
+    },
+    "holdout": {
+      "protocol": "regression-proxy-v2.0",
+      "scope": "REUSED_REGRESSION_PROXY",
+      "status": "MEASURED",
+      "dataset_sha256": "b19a1dd99c19a886c6feb476749e4819aeb6d76fa151b268599090bc3c24a6f7",
+      "documents": 6,
+      "items": 54,
+      "hits": 41,
+      "recall": 0.7592592592592593,
+      "macro_recall": 0.727891156462585,
+      "by_type": {
+        "AIGEN": {
+          "items": 7,
+          "hits": 5,
+          "recall": 0.7142857142857143
+        },
+        "CIT-FAB-Q": {
+          "items": 1,
+          "hits": 0,
+          "recall": 0.0
+        },
+        "CIT-META": {
+          "items": 3,
+          "hits": 1,
+          "recall": 0.3333333333333333
+        },
+        "CIT-NX": {
+          "items": 5,
+          "hits": 5,
+          "recall": 1.0
+        },
+        "CIT-NX-DB": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "EVI-COPY": {
+          "items": 1,
+          "hits": 0,
+          "recall": 0.0
+        },
+        "EVI-DATE": {
+          "items": 3,
+          "hits": 3,
+          "recall": 1.0
+        },
+        "EVI-FAKECIT": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "EVI-FORM": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "EVI-INCONS": {
+          "items": 2,
+          "hits": 2,
+          "recall": 1.0
+        },
+        "EVI-LOGIC": {
+          "items": 1,
+          "hits": 0,
+          "recall": 0.0
+        },
+        "EVI-NUM": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "EVI-OVR": {
+          "items": 1,
+          "hits": 0,
+          "recall": 0.0
+        },
+        "INJ-ANNOT": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-ATTACH": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-COVERED": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-INVISIBLE-TR3": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-META": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-OFFPAGE": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-TINY": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-VISIBLE": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-WHITE": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "INJ-ZWSP": {
+          "items": 1,
+          "hits": 1,
+          "recall": 1.0
+        },
+        "LAW-MIS": {
+          "items": 3,
+          "hits": 1,
+          "recall": 0.3333333333333333
+        },
+        "LAW-NX": {
+          "items": 2,
+          "hits": 0,
+          "recall": 0.0
+        },
+        "OVR": {
+          "items": 8,
+          "hits": 8,
+          "recall": 1.0
+        },
+        "OVR / LAW-NX": {
+          "items": 1,
+          "hits": 0,
+          "recall": 0.0
+        },
+        "SRC-UNV": {
+          "items": 2,
+          "hits": 2,
+          "recall": 1.0
+        }
+      },
+      "by_group": {
+        "authorship_signals": {
+          "items": 7,
+          "hits": 5,
+          "recall": 0.7142857142857143
+        },
+        "document_consistency": {
+          "items": 10,
+          "hits": 7,
+          "recall": 0.7
+        },
+        "legal": {
+          "items": 24,
+          "hits": 16,
+          "recall": 0.6666666666666666
+        },
+        "security_detection": {
+          "items": 10,
+          "hits": 10,
+          "recall": 1.0
+        },
+        "source_uncertainty": {
+          "items": 3,
+          "hits": 3,
+          "recall": 1.0
+        }
+      },
+      "known_false_positive_findings": 0,
+      "unadjudicated_alerts": 9,
+      "advisory_findings": 4,
+      "precision": null,
+      "legal_accuracy": null,
+      "injection_defense_success_rate": null,
+      "limitations": [
+        "lexical_matching_not_semantic_or_span_verified",
+        "reused_not_blind",
+        "unadjudicated_alerts_not_false_positives",
+        "no_official_db_or_llm"
+      ]
+    }
+  }
+}

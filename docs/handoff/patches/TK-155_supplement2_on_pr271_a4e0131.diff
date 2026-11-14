@@ -1,0 +1,91 @@
+diff --git a/packages/report_engine/docx_report.py b/packages/report_engine/docx_report.py
+index b262caf..4bb1c09 100644
+--- a/packages/report_engine/docx_report.py
++++ b/packages/report_engine/docx_report.py
+@@ -229,6 +229,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
+ 
+     doc.add_heading("3. 법률적으로 무리한 주장", 2)
+     if tier3_rows:
++        paragraph(REPORT_NOTICE)  # D5: 이 표의 참고문헌 대조 칸에도 같은 안내를 표 위에 한 번
+         table(["위치", "문서 주장 / 인용", "법리 검토 결과 및 근거", "반박 근거 및 확인 필요 내용"],
+               tier3_rows, [1.0, 1.7, 1.6, 2.7])
+     else:
+diff --git a/packages/report_engine/pdf_report.py b/packages/report_engine/pdf_report.py
+index c67df1d..b76cf79 100644
+--- a/packages/report_engine/pdf_report.py
++++ b/packages/report_engine/pdf_report.py
+@@ -294,6 +294,7 @@ def build_report_pdf(
+     story.append(Spacer(1, 4))
+     story.append(Paragraph(_escape("3. 법률적으로 무리한 주장"), styles["h2"]))
+     if tier3_rows:
++        story.append(Paragraph(_escape(REPORT_NOTICE), styles["small"]))  # D5: 표 위 안내 한 번
+         t3_table_rows = [["위치", "문서 주장 / 인용", "법리 검토 결과 및 근거", "반박 근거 및 확인 필요 내용"]]
+         story.append(table(t3_table_rows + tier3_rows, [60, 105, 110, 215]))
+     else:
+diff --git a/packages/report_engine/reference_opinions.py b/packages/report_engine/reference_opinions.py
+index 70b4258..ba7ce18 100644
+--- a/packages/report_engine/reference_opinions.py
++++ b/packages/report_engine/reference_opinions.py
+@@ -1,9 +1,11 @@
+ """Drive opinions in the citation table; separate from external AI answers."""
+ from packages.common.display_text import word  # V1.0.0: 관계 코드를 화면과 같은 말로
+-from packages.rag_engine.reference_binding import NOTICE, bind_observations, value
++from packages.rag_engine.reference_binding import bind_observations, value
+ 
++# V1.0.0 D5(사용자 결정 11-13): '구속력 없음'은 칸마다 되풀이하지 않고 표 위 안내에 한 번만 둔다(화면 범례와 같은 말).
++LEGEND = "주요 참고문헌은 등록된 검증 자료입니다. 판례·법령과 달리 법적 구속력은 없습니다."
+ REPORT_NOTICE = ("본 참고문헌 대조 의견은 사설 Google Drive 자료를 기반으로 한 보조 검토 의견이며, "
+-                 "공식 판정·등급·점수 또는 공식 확인(OFFICIAL_CONFIRMED)이 아닙니다. " + NOTICE)
++                 "공식 판정·등급·점수 또는 공식 확인(OFFICIAL_CONFIRMED)이 아닙니다. " + LEGEND)
+ 
+ 
+ def reference_rows(document):
+@@ -29,7 +31,7 @@ def reference_rows(document):
+ 
+ 
+ def basis_text(item):
+-    parts = ["[참고문헌 대조] " + NOTICE]
++    parts = ["[참고문헌 대조]"]  # D5: 구속력 안내는 표 위 REPORT_NOTICE에 한 번
+     for observation in item.get("reference_observations", []):
+         source = observation.get("source_detail") or {}
+         parts.append(f"{source.get('title') or observation.get('source_id', '')} · {word(observation.get('relationship', ''))}")
+diff --git a/tests/test_tk127_stage2_drive_pipeline.py b/tests/test_tk127_stage2_drive_pipeline.py
+index 168b971..c20e357 100644
+--- a/tests/test_tk127_stage2_drive_pipeline.py
++++ b/tests/test_tk127_stage2_drive_pipeline.py
+@@ -115,8 +115,13 @@ def test_four_reports_retain_unofficial_reference_opinions(report_case, index):
+     pdf_text = "".join(p.extract_text() for p in PdfReader(io.BytesIO(blobs["pdf"])).pages)
+     docx = Document(io.BytesIO(blobs["docx"]))
+     cells = [c.text for table in docx.tables for row in table.rows for c in row.cells]
+-    assert any(source_quote in c and "공식 확인 아님" in c for c in cells)
+-    assert "공식 확인 아님" in pdf_text and source_quote.split()[0] in pdf_text
++    # V1.0.0 D5(사용자 결정 11-13, 옛 TK-88·127 '칸마다 표시' 변경): 참고 의견 칸은 '[참고문헌 대조]' 표지로 구분하고,
++    # '공식 확인 아님·구속력 없음' 안내는 표 위에 한 번 둔다. 엑셀 '공식 여부' 열 단언은 그대로.
++    from packages.report_engine.reference_opinions import LEGEND
++    assert any(source_quote in c and "[참고문헌 대조]" in c and "구속력 없음" not in c for c in cells)
++    assert any(LEGEND in p.text for p in docx.paragraphs)
++    flat_pdf = "".join(pdf_text.split())
++    assert "".join(LEGEND.split()) in flat_pdf and "공식확인" in flat_pdf and source_quote.split()[0] in pdf_text
+     workbook = openpyxl.load_workbook(io.BytesIO(blobs["xlsx"]))
+     sheet = workbook["참고문헌대조"]
+     assert "공식 확인" in sheet.cell(1, 1).value
+diff --git a/tests/test_tk155_ui_cleanup.py b/tests/test_tk155_ui_cleanup.py
+index da9f613..932fa5e 100644
+--- a/tests/test_tk155_ui_cleanup.py
++++ b/tests/test_tk155_ui_cleanup.py
+@@ -326,3 +326,15 @@ def test_word_and_pdf_reports_have_no_codes(fmt):
+     assert _codes(text) == [], _codes(text)
+     flat = re.sub(r"\s+", "", text)  # PDF는 줄바꿈 위치가 글자 사이에 올 수 있다
+     assert "일부색인" in flat and "지시문의심으로보안격리" in flat  # 참고문헌 처리 기록이 한글로 실렸다
++    # D5: '구속력 없음'은 표 칸마다 되풀이하지 않는다(안내는 표 위 한 번 — 합성 결과에는 참고문헌 대조 행이 없어 0)
++    assert "구속력없음" not in flat
++
++
++def test_report_reference_notice_is_a_legend_not_per_cell():
++    from packages.report_engine.reference_opinions import LEGEND, REPORT_NOTICE, basis_text
++
++    item = {"reference_observations": [{"source_detail": {"title": "합성 규정"}, "relationship": "CONTRADICTS",
++                                        "source_quote": "합성 조항", "explanation": "합성 설명"}]}
++    text = basis_text(item)
++    assert "구속력" not in text and text.startswith("[참고문헌 대조]") and "불부합" in text
++    assert LEGEND in REPORT_NOTICE and "법적 구속력은 없습니다" in LEGEND

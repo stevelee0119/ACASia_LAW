@@ -29,6 +29,7 @@ from packages.common.schemas import Citation, EngineResult, Evidence, Finding, S
 from packages.common.textutil import contains_fuzzy, normalize_quote, similarity
 from packages.source_adapters import SourceRegistry
 
+from .evidence_basis import align_quote, build_basis, quote_span
 from .components import citation_components, component_summary, identity_confirmed
 from .citation_format import code_court_family, court_family, format_violations
 from .authority_status import (ENBANC_PUBLICATION_LAG_DAYS, LegalVerificationStatus, classify_authority_status,
@@ -78,6 +79,16 @@ class CitationVerdict:
 _OPPONENT_CLAIM_RE = re.compile(
     r"(?:원고|피고|검사|상대방|청구인|피청구인|신청인|피신청인|항소인|피항소인|상고인|피상고인|채권자|채무자)(?:\s*측)?(?:은|는|이|가)\s"
     r"[^.。]{0,200}?(?:주장|원용)(?:한다|하나|하지만|하였|했|하며|하는|함)")
+
+
+def _readable_source_message(message: str) -> str:
+    """조회 어댑터의 영문 오류 문장을 사람 말로 바꾼다(V1.0.0 D6). 모르는 문장은 그대로 둔다."""
+    from packages.verification_engine.review_items import HUMAN_READABLE_UNVERIFIED_REASONS
+    text = str(message or "")
+    for raw, readable in HUMAN_READABLE_UNVERIFIED_REASONS.items():
+        if raw in text:
+            text = text.replace(raw, readable + ".")
+    return text
 
 
 class LegalVerifier:
@@ -238,6 +249,8 @@ class LegalVerifier:
                 if v.status == VerificationStatus.VERIFIED else None,
                 "applicability": (v.review or {}).get("applicability") or "APPLICABILITY_UNREVIEWED",
                 "advisories": (v.review or {}).get("advisories", []),
+                # TK-159: 근거로 쓴 공식 원문의 식별자·구간과 근거 상태
+                "evidence_basis": build_basis(v),
             }
             for v in verdicts
         ]
@@ -495,6 +508,15 @@ class LegalVerifier:
                 level3 = "UNVERIFIED"
                 verdict.notes.append("공식 판결문 본문 미확보로 직접 인용 대조 불가 (요약본만 확보되어 본문 인용 대조 유보)")
             verdict.levels["level3"] = level3
+            # TK-159: 인용 대조에 쓴 공식 원문 구간(정규화 기준)을 남긴다.
+            span = quote_span(citation.quoted_text, official_text)
+            if span is not None:
+                span["field"] = "full_text+holding+summary" if has_full_text else "holding+summary"
+                verdict.review["quote_span"] = span
+                # TK-163: 화면 '원문 대조 보기'에 쓸 어절 정렬(전문 기준이라 발췌 200자에서 잘린 거짓 차이가 없다).
+                alignment = align_quote(citation.quoted_text, official_text)
+                if alignment is not None:
+                    verdict.review["quote_alignment"] = alignment
             if level3 == "CONTRADICTED":
                 verdict.status = VerificationStatus.CONTRADICTED
                 is_fabricated_quote = False
@@ -1234,7 +1256,7 @@ class LegalVerifier:
         features = {"heuristic_only": False, "source_count": 0, "reason_code": reason,
                     "retryable": reason in ("RATE_LIMITED", "SOURCE_TIMEOUT")}
         explanation = ("공식 목록의 법령 식별자가 없거나 모호하여 정확한 법령을 선택하지 못했다. "
-                       if reason == "IDENTITY_AMBIGUOUS" else "공식 Source 조회를 완료하지 못했다. ")
+                       if reason == "IDENTITY_AMBIGUOUS" else "공식 출처 조회를 완료하지 못했다. ")
         # 학술/간행물 인용은 ACADEMIC_CITATION_ERROR, 판례는 CASE_NOT_FOUND, 그 외는 LAW_CITATION_ERROR
         finding_type = (
             FindingType.CASE_NOT_FOUND if citation.type == CitationType.CASE
@@ -1258,7 +1280,7 @@ class LegalVerifier:
             evidence_grade=EvidenceGrade.U,
             title=f"검증하지 못한 인용: {citation.raw_text}",
             detail=(
-                f"{message} {explanation}이 항목은 미검증으로 남는다. "
+                f"{_readable_source_message(message)} {explanation}이 항목은 미검증으로 남는다. "
                 "미검증은 오류가 없다는 의미가 아니다."
             ),
             confidence=confidence_score(features),

@@ -1,0 +1,84 @@
+{
+  "implementation_sha": "09f1891524da8f92fbbb5568c5d781a853899ce3",
+  "related_tests": {
+    "sha": "b9ef32aa78ac8ad6ff9cbe692e739bd87613d328",
+    "passed": 135,
+    "skipped": 1,
+    "skip_reasons": [
+      "Playwright 브라우저 바이너리 없음: BrowserType.launch: Executable doesn't exist at /home/agent/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell\n╔════════════════════════════════════════════════════════════╗\n║ Looks like Playwright was just installed or updated.       ║\n║ Please run the following command to download new browsers: ║\n║                                                            ║\n║     playwright install                                     ║\n║                                                            ║\n║ <3 Playwright Team                                         ║\n╚════════════════════════════════════════════════════════════╝"
+    ]
+  },
+  "final_contract_tests": {
+    "passed": 41,
+    "scope": "overlaps related tests; not additive"
+  },
+  "fixed_sets": {
+    "dev": {
+      "legacy": 82.6,
+      "known_fp": 0,
+      "strict_hits": 42,
+      "items": 56,
+      "unadjudicated": 10
+    },
+    "holdout": {
+      "legacy": 81.9,
+      "known_fp": 0,
+      "strict_hits": 41,
+      "items": 54,
+      "unadjudicated": 9
+    }
+  },
+  "retired_replay": {
+    "measured_sha": "f58f14c5944ef8fd02451ae153ada33b69851346",
+    "status": "MEASURED",
+    "problems": [],
+    "sets": {
+      "sealed_20261008": {
+        "before": 53.3,
+        "after": 53.3,
+        "hits": 22,
+        "items": 46
+      },
+      "sealed_20261008b": {
+        "before": 48.6,
+        "after": 48.6,
+        "hits": 24,
+        "items": 54
+      },
+      "sealed_20261009": {
+        "before": 56.9,
+        "after": 56.9,
+        "hits": 31,
+        "items": 58
+      },
+      "sealed_20261010": {
+        "before": 45.8,
+        "after": 45.8,
+        "hits": 23,
+        "items": 53
+      },
+      "sealed_20261025": {
+        "before": 34.1,
+        "after": 34.1,
+        "hits": 12,
+        "items": 44
+      }
+    }
+  },
+  "historical_product_binding": {
+    "product_version": "0.10.0",
+    "legacy": 79.2,
+    "hits": 39,
+    "items": 54
+  },
+  "actual_prediction_export": {
+    "items": 47,
+    "unbound_candidates": 0,
+    "labels_supplied": false
+  },
+  "kbl": {
+    "pinned_dataset_items": 75,
+    "actual_inference": "NOT_MEASURED"
+  },
+  "product_and_gold_changed": false
+}
