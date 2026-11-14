@@ -6059,3 +6059,7 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
    · 사본과 diff 0.
  - 병합 뒤 평가 측이 릴리스 PR #285에 Steve를 다시 병합해 CodeQL 결과를 확인한다.
 ```
+
+### 2-55-9. 사용자 'TK-170 지시 전달 완료' (11-14)
+- TK-170(2-55-8)을 구현 측에 전달했다. 구현 PR이 오면 사본(redos-fix-copy)과 diff 0·CI로 판정한다.
+- 평가 PR #286(경로 묶기) CI 진행 중. 참고: GitHub 기본 'CodeQL' 결과 검사는 main 대상 PR에서만 돈다. #286·TK-170 PR에서는 저장소 자체 'CodeQL 새 경고 게이트'(python·js)만 돌고, 10건이 닫혔는지는 둘 병합 뒤 #285에 Steve를 다시 병합해 확인한다.
