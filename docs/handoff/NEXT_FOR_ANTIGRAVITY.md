@@ -6072,3 +6072,10 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 ### 2-55-11. 사용자 '286,287병합' (11-14)
 - #286 병합 `4f7fc52`(head 748daa3), #287 병합 Steve `8aa2a55`(head ee48484).
 - 다음: release/0.20.0에 Steve 8aa2a55를 병합해 #285 CI(GitHub CodeQL 포함) 재실행. 릴리스 후보가 8aa2a55로 바뀌므로 verify_all 전체를 한 번 다시 돈다(릴리스 후보 SHA 규칙).
+
+### 2-55-12. #285 재실행 결과: GitHub CodeQL 새 경고 11건 (11-14 10:40 UTC 확인)
+- release/0.20.0 = Steve 8aa2a55(head 52c793d). CodeQL 외 CI 전부 성공(인용). GitHub 'CodeQL' 결과 검사는 새 High 경고 11건으로 실패(10건에서 늘어남).
+- 추정 원인(미검증): path_guard의 검사 조건이 'full == base or full.startswith(...)' 복합 조건이라 CodeQL이 경로 검증으로 인정하지 않았고, 검사 지점이 늘어 경고 수가 늘었다.
+- 평가 측 수정(평가 브랜치, 아직 Steve 미반영): 정규화한 경로 자체에 대한 startswith 하나로 검사, 허용 폴더 자신은 거부. 관련 시험 통과.
+- 경고 11건의 목록(규칙·파일·줄)은 이 세션에서 읽을 수 없어 사용자에게 요청했다.
+- verify_all(후보 52c793d)은 세션 재시작으로 끊겨 결과 없음 — 최종 후보에서 한 번 다시 돈다.
