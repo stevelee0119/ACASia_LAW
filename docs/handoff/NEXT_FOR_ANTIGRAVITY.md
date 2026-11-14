@@ -5526,3 +5526,129 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
   - TK-164는 0.20.0에서 뺀다. 사본 작업은 하지 않았다.
   - TK-86 결정(탭 삭제, 보고서 timeline 제외)을 유지한다. 날짜 분석·날짜 모순 탐지와 결과 JSON의 timeline은 지금처럼 동작한다.
 - 남은 0.20.0 순서: TK-163(+TK-160 배지) → TK-162 → TK-157b, 배포 뒤 TK-161.
+
+## 2-51. TK-163(+TK-160 배지) 사전 검증·지시 (11-14, 사용자 'TK-163 사본 사전 검증 진행' → 화면 1차 확인 뒤 '핵심내용만 칸에서 간략하게 … 전문은 링크등으로' → '화면 확인 완료, TK-163 지시문 생성')
+- 사본 e41c26d:
+  - 새 시험 23건 통과.
+  - precheck 전체 모드 종료 0(관련 기존 시험 31파일, 은퇴 후퇴 없음).
+  - 고정 82.6 / 81.9 / 오탐 0.
+  - 게이트 3종 통과.
+- 화면은 사용자 확인 완료다(수정본 캡처 3장).
+- 확인 사항: 유사도 함수 autojunk 영향은 실제 문장에서 없음(인위적 반복 문장만 저하) → 결함 아님.
+
+### 2-51-1. TK-163 지시(전달판)
+```
+[TK-163 원문 대조 보기 + TK-160 주장 3분류 배지(화면·보고서)]  기준: Steve_ACASiaLAW 1e2c351(#278 병합 뒤)  평가 측 사본: e41c26d
+보완 패치: docs/handoff/patches/TK-163_source_compare_on_1e2c351.diff
+ - 1e2c351 → 사본 차이 전부: 제품 10파일 + 새 시험 1파일, git apply 가능
+ - 화면은 사용자 확인을 마쳤다(11-14, 수정본 캡처 3장). 사본과 diff 0이면 화면 재확인 없이 수용한다.
+대상 릴리스: 0.20.0.
+
+0. 요구 원문과 대응표
+ | 원문 | 고친 것 | 위치 |
+ |---|---|---|
+ | 계획 TK-163 "TK-159 근거 구간으로 서면 인용문과 공식 원문 구간을 나란히 보이고 차이를 강조(화면)" | 검토 표 3열의 접힌 '원문 대조 보기' 상자: 서면 인용 ↔ 공식 원문, 빠짐 취소선·더해짐 밑줄·바뀜 강조 | app.js sourceComparisonBlock, styles.css |
+ | 사용자 11-14 "핵심내용만 칸에서 간략하게 보여주고 전문은 링크등으로 볼수 있게 조정" | 칸에는 다른 곳만 앞뒤 2어절('…')로 3곳까지. 머리글은 한 번만 둔다. 전문은 접힌 '전문 대조 보기'와 '원문 열기' 링크로 본다 | evidence_basis._hunks, app.js |
+ | 계획 TK-163 "보고서에는 차이 요약" | Word·PDF 인용 표 칸에 '[원문 대조] 상태 · 출처 · 차이 요약' 한 줄 | reference_opinions.compare_text, docx/pdf_report |
+ | 계획 TK-163 "스캔 문서는 위치 신뢰도 표시" | 인용 블록이 OCR이면 상자 안 경고 문장, 보고서 줄 끝 '스캔 문서에서 읽은 인용' | review_items.build_source_comparison |
+ | 계획 TK-160 "화면·보고서에 3분류 표시" | 검토 표 3열 배지(근거 일치·근거와 모순·근거 부족, 낮춘 사유는 마우스 설명), 보고서 '[근거 판정] 라벨 — 사유' | app.js claimVerdictBadge, compare_text |
+
+1. 원인(줄 번호는 1e2c351 기준)
+ C1. 판정 근거(TK-159 evidence_basis)와 주장 3분류(TK-160)가 결과 JSON에만 있고 화면·보고서에 닿지 않는다.
+     - review_items.py build_document_review_items가 ReviewItem을 만들 때(300행) 이 둘을 싣지 않는다.
+     - ReviewItem(schemas.py 642행 근처)에도 칸이 없다.
+ C2. 근거 발췌(evidence_basis.passage.excerpt)는 200자에서 잘린다.
+     - 이 발췌로 다시 비교하면 긴 인용의 끝이 거짓으로 '더해짐'이 된다(평가 측 재현).
+     - 그래서 정렬은 공식 원문 전체를 가진 엔진에서 만든다:
+       · 판례: verifier.py 515행 quote_span 기록 직후
+       · 법령: source_review.py 169행 조항 대조 직후
+ C3. 보고서 인용 표(docx_report.py 211행, pdf_report.py 274행)는 참고문헌 대조 줄(row_basis)만 덧붙인다.
+
+2. 고칠 것(보완 패치와 같음 — 판정·점수·탐지는 바꾸지 않고 표시 자료만 더한다)
+ F1. packages/legal_engine/evidence_basis.py:
+     - align_quote(quoted, official_text, limit=600)를 추가한다.
+       · quote_span으로 위치를 찾는다. 원문 창은 인용보다 넉넉히 잡는다(+1/3+12자, 어절 경계).
+       · 끝 문장부호·여는 따옴표만 뗀 열쇠로 SequenceMatcher(autojunk=False)를 돌린다.
+       · 표지 4종: same · changed · added(인용에만) · removed(원문에만 = 인용에서 빠짐).
+     - 맥락 처리:
+       · 첫 일치 앞·마지막 일치 뒤의 원문 어절은 맥락이라 버린다.
+       · 인용이 어절 중간에서 시작·끝나면(인용 '경우' ↔ 원문 '경우에') 같은 어절로 본다.
+     - 실패 처리:
+       · 유사도 0.6 미만이면 None.
+       · 일치 어절이 없어도 None.
+       · 600자 초과는 truncated=True로 두고, 마지막 일치 뒤 다른 조각을 버린다.
+     - hunks(칸 요약)는 다른 조각마다 앞뒤 같은 어절 2개(HUNK_CONTEXT)를 붙이고 lead/tail(생략 '…') 표시를 둔다.
+       · 다른 곳 사이 같은 어절이 4개 이하(HUNK_MERGE_GAP)면 한 묶음이다.
+     - 반환: {quoted, official, hunks, similarity, truncated, changed, normalization}.
+ F2. verifier.py(판례)·source_review.py(법령): 인용문이 있으면 verdict.review["quote_alignment"] = align_quote(인용문, 공식 원문 전체).
+ F3. review_items.py:
+     - build_source_comparison(verdict_row, citation, norm_doc)는 {basis_status, status_label, source_label, detail_link, alignment, official_excerpt, location_confidence, summary}를 만든다.
+       · 근거 구간·정렬이 모두 없으면 None이다(규칙 판정·조회 실패에 빈 상자 금지).
+       · detail_link는 http(s)만 남긴다.
+       · 인용 블록 source_layer == "ocr_layer"이면 OCR로 적는다.
+       · summary는 엔진 quote_diff 문구가 있으면 그것을 쓴다. 없으면 '공식 원문과 다른 곳: 인용에서 빠짐 n곳(m어절) · 인용에 더해짐 … · 바뀜 k곳'.
+     - claim_verdict_of(row)는 표 행의 claim_verdict·label·note를 꺼낸다.
+     - ReviewItem에 source_comparison·claim_verdict 칸을 더하고 to_dict에 싣는다.
+ F4. app.js:
+     - claimVerdictBadge: SUCCESS/CRITICAL/MEDIUM 배지, title은 낮춘 사유.
+     - sourceComparisonBlock(<details> 접힘):
+       · 출처 이름과 '원문 열기'(target=_blank, rel=noopener noreferrer)
+       · OCR 경고
+       · 칸 요약: compare-hunks 격자, 머리글 '서면 인용 | 공식 원문' 한 번, 다른 곳마다 한 줄, 최대 3곳, 넘치면 '외 n곳은 전문 대조에서 확인하세요.'
+       · 같으면 '인용문이 공식 원문과 어절 단위로 같습니다.'
+       · 접힌 '전문 대조 보기' 안에 전체 어절 대조
+       · 정렬 없는 법령 발췌는 앞 60자만, 전문은 접힌 곳에 둔다.
+       · 차이 요약 줄과 표시 규칙 안내 1줄
+     - renderReviewRow의 기본 사유 문단 바로 뒤에 붙인다.
+ F5. styles.css:
+     - 두 칸 격자, keep-all(어절이 갈라지지 않게).
+     - 720px 이하는 한 칸으로 바꾸고, 머리글 대신 줄마다 '서면'·'원문' 이름을 붙인다.
+ F6. 보고서: reference_opinions.compare_text(document, row)를 docx·pdf 인용 표 칸에서 row_basis 뒤에 붙인다.
+
+3. 확인 시험(새 tests/test_tk163_source_compare.py 23건 — 합성 값, 시험용 내부 Mirror 가상 판례)
+ - 정렬:
+   · 빠짐·바뀜·더해짐·완전 일치
+   · 비교 불가 3꼴 None
+   · 600자 넘는 긴 인용의 거짓 꼬리 0
+   · 실제 verify 경로 review.quote_alignment
+   · 칸 요약(다른 곳만, 앞뒤 2어절, 같으면 빈 목록)
+ - 검토 항목:
+   · 상태·출처·요약
+   · 법령 발췌만
+   · 근거 없음·규칙 판정·조회 실패 → 상자 없음
+   · OCR·위험 링크 제거
+   · 3분류
+   · to_dict
+   · 묶음 수 요약
+ - 보고서: '[근거 판정]'·'[원문 대조]' 줄
+ - 화면(Playwright):
+   · 배지·상자 제목·요약 del·머리글 1번
+   · 전문 접힘→펼침
+   · 원문 링크 rel
+   · 영문 코드 0
+   · 5곳 다를 때 3곳+'외 2곳'
+   · 390px 한 칸
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본 e41c26d, SQLite, LV_ALLOW_NETWORK=0)
+ - 새 시험 23건 통과.
+ - precheck_pr 전체 모드: 종료 0.
+   · 함께 돌린 관련 기존 시험 31파일: review_items·보고서·TK-159·TK-155 화면 등, + TK-160·v3 D1 인용 차이 시험
+   · 고정 82.6 / 81.9 / 오탐 0 변화 0
+   · 은퇴 세트 후퇴 없음
+   · 회귀·수용·기능 시험 통과
+   · 평가 세트 문구 대조 통과
+ - 게이트: check_test_edits(삭제·표시 변경 없음)·check_hardcoding_diff(추가 352줄에 시험 입력 값 없음)·check_protected_paths(변경 없음).
+ - 확인 사항: 기존 유사도 함수(locate/contains_fuzzy_normalized)의 autojunk 영향을 실제 한국어 판결 문장 약 290자로 쟀다. 저하가 없었다. 같은 글자가 반복되는 인위적 문장에서만 저하된다 → 제품 결함 아님.
+ - 미검증:
+   · 공식 DB 실제 응답에서의 정렬 품질(배포 뒤 case9 온라인 결과로 확인)
+   · 스캔 문서 실물 표시(OCR 블록 합성 시험만)
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나. 제품 10파일 + 새 시험 1파일, 보호 경로 변경 없음.
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공
+   · 고정·은퇴 세트 변화 0, 확인 오탐 0
+   · 판정·탐지 diff 0(표시 자료만 추가)
+   · 사본과 diff 0
+```

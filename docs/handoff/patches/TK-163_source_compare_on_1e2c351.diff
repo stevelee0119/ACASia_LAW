@@ -1,0 +1,763 @@
+diff --git a/apps/web/static/app.js b/apps/web/static/app.js
+index 2846bd6..f25c2de 100644
+--- a/apps/web/static/app.js
++++ b/apps/web/static/app.js
+@@ -2337,6 +2337,86 @@ function classifyReviewItemTier(item, findingsMap) {
+   return 3;
+ }
+ 
++// TK-160·163: 주장 3분류 배지와 '원문 대조 보기'(서면 인용문 ↔ 공식 원문 구간, 어절 단위 표시).
++const CLAIM_BADGE_CLASS = {SUPPORTED: "SUCCESS", CONTRADICTED: "CRITICAL", INSUFFICIENT: "MEDIUM"};
++function claimVerdictBadge(verdict) {
++  if (!verdict || !verdict.label) return null;
++  const badge = node("span", verdict.label, `badge ${CLAIM_BADGE_CLASS[verdict.code] || "MEDIUM"} claim-verdict`);
++  if (verdict.note) badge.title = verdict.note;
++  return badge;
++}
++function compareTokens(tokens, side) {
++  const line = node("p", null, `compare-text compare-${side}`);
++  for (const [text, mark] of tokens || []) {
++    const tag = mark === "removed" ? "del" : mark === "added" ? "ins" : mark === "changed" ? "mark" : "span";
++    line.append(node(tag, text, mark === "same" ? null : `diff-${mark}`), document.createTextNode(" "));
++  }
++  return line;
++}
++const COMPARE_HUNK_LIMIT = 3;  // 칸에는 다른 곳 3곳까지만(사용자 요청 11-14: 핵심만 간략히, 전문은 따로)
++function compareSnippet(tokens, side, lead, tail) {
++  const line = compareTokens(tokens, side);
++  if (lead) line.prepend(document.createTextNode("… "));
++  if (tail) line.append(document.createTextNode("…"));
++  return line;
++}
++function compareGrid(quotedLine, officialLine) {
++  const grid = node("div", null, "compare-grid");
++  const quoted = node("div", null, "compare-side");
++  const official = node("div", null, "compare-side");
++  quoted.append(node("strong", "서면 인용"), quotedLine);
++  official.append(node("strong", "공식 원문"), officialLine);
++  grid.append(quoted, official);
++  return grid;
++}
++function sourceComparisonBlock(comparison) {
++  if (!comparison) return null;
++  const box = node("details", null, "source-compare");
++  box.append(node("summary", `원문 대조 보기 · ${comparison.status_label || "판정 근거 확인 필요"}`));
++  const meta = node("p", comparison.source_label || "공식 원문", "muted source-compare-meta");
++  if (comparison.detail_link) {
++    const link = node("a", "원문 열기");
++    link.href = comparison.detail_link;
++    link.target = "_blank";
++    link.rel = "noopener noreferrer";
++    meta.append(document.createTextNode(" · "), link);
++  }
++  box.append(meta);
++  if (comparison.location_confidence === "OCR") {
++    box.append(node("p", "스캔 문서에서 글자 인식으로 읽은 인용입니다. 위치와 글자를 원본에서 확인하세요.", "warning-text"));
++  }
++  const alignment = comparison.alignment;
++  const full = node("details", null, "compare-full");
++  full.append(node("summary", "전문 대조 보기"));
++  if (alignment) {
++    // 칸에는 다른 곳만 앞뒤 어절 조금과 함께 보인다. 전문은 접힌 '전문 대조 보기'와 '원문 열기'로 본다.
++    const hunks = alignment.hunks || [];
++    if (!hunks.length) box.append(node("p", "인용문이 공식 원문과 어절 단위로 같습니다.", "compare-same"));
++    if (hunks.length) {
++      // 머리글(서면 인용·공식 원문)은 한 번만 두고, 다른 곳마다 한 줄씩 나란히 보인다.
++      const table = node("div", null, "compare-grid compare-hunks");
++      table.append(node("strong", "서면 인용", "compare-head"), node("strong", "공식 원문", "compare-head"));
++      for (const hunk of hunks.slice(0, COMPARE_HUNK_LIMIT)) {
++        table.append(compareSnippet(hunk.quoted, "quoted", hunk.lead, hunk.tail),
++                     compareSnippet(hunk.official, "official", hunk.lead, hunk.tail));
++      }
++      box.append(table);
++    }
++    if (hunks.length > COMPARE_HUNK_LIMIT) box.append(node("p", `외 ${hunks.length - COMPARE_HUNK_LIMIT}곳은 전문 대조에서 확인하세요.`, "muted"));
++    full.append(compareGrid(compareTokens(alignment.quoted, "quoted"), compareTokens(alignment.official, "official")));
++    if (alignment.truncated) full.append(node("p", "긴 인용이라 앞부분만 맞대어 보입니다.", "muted"));
++  } else {
++    const excerpt = comparison.official_excerpt || "";
++    box.append(node("p", excerpt.length > 60 ? excerpt.slice(0, 60) + "…" : excerpt, "compare-text"));
++    box.append(node("p", "서면에 직접 인용문이 없어 공식 원문 발췌만 보입니다.", "muted"));
++    full.append(node("p", excerpt, "compare-text"));
++  }
++  box.append(full);
++  if (comparison.summary) box.append(node("p", friendlyText(comparison.summary), "muted"));
++  box.append(node("small", "빠짐은 취소선, 더해짐은 밑줄, 바뀜은 강조로 표시합니다. 어절 비교 결과이며 법적 의미의 차이는 직접 판단하세요.", "muted"));
++  return box;
++}
++
+ function renderReviewRow(item, tier, findingsMap) {
+   const tr = node("tr");
+   if (item.item_id) tr.id = `row_${item.item_id}`;
+@@ -2452,6 +2532,10 @@ function renderReviewRow(item, tier, findingsMap) {
+   if (basisText) {
+     tdBasis.append(node("p", basisText, "basis-text clamp"));
+   }
++  const claimBadge = claimVerdictBadge(item.claim_verdict);
++  if (claimBadge) tdBasis.append(claimBadge);
++  const comparisonBlock = sourceComparisonBlock(item.source_comparison);
++  if (comparisonBlock) tdBasis.append(comparisonBlock);
+   if (item.reference_case_match && item.reference_case_match !== "NOT_IN_REFERENCE") {
+     tdBasis.append(node("p", `표준판례 사건정보: ${label(item.reference_case_match)}`, "basis-text"));
+   }
+diff --git a/apps/web/static/styles.css b/apps/web/static/styles.css
+index abfd1fc..9c1fda7 100644
+--- a/apps/web/static/styles.css
++++ b/apps/web/static/styles.css
+@@ -1914,3 +1914,28 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
+ /* V1.0.0 6-1: AI 작성·보안 진단 탭 버튼의 높음 이상 건수 */
+ .tabs button[data-high-count]::after { content: "높음 이상 " attr(data-high-count); margin-left: 6px; padding: 1px 6px; border-radius: 9px;
+   background: #fdecea; color: #b42318; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
++
++/* TK-160·163: 주장 3분류 배지와 원문 대조 보기 */
++.claim-verdict { margin-left: 4px; }
++.source-compare { margin-top: 8px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
++.source-compare > summary { cursor: pointer; font-weight: 600; }
++.source-compare-meta { margin: 6px 0; overflow-wrap: anywhere; }
++.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
++.compare-full { margin-top: 6px; }
++.compare-full > summary { cursor: pointer; color: var(--accent, #0b6b61); }
++.compare-same { margin: 6px 0; }
++.compare-side { min-width: 0; }
++.compare-text { margin: 4px 0 0; line-height: 1.7; word-break: keep-all; overflow-wrap: anywhere; white-space: normal; }
++.compare-text del.diff-removed { background: #fde2e1; color: #8a1c14; }
++.compare-text ins.diff-added { background: #dff3e4; color: #12512b; text-decoration: underline; }
++.compare-text mark.diff-changed { background: #fff1b8; color: inherit; }
++.compare-hunks { row-gap: 4px; }
++.compare-hunks .compare-text { margin: 0; padding-top: 4px; border-top: 1px dashed var(--line); }
++@media (max-width: 720px) {
++  .compare-grid { grid-template-columns: 1fr; }
++  .compare-hunks .compare-head { display: none; }
++  .compare-hunks .compare-quoted::before { content: "서면 "; font-weight: 600; }
++  .compare-hunks .compare-official::before { content: "원문 "; font-weight: 600; }
++  .compare-hunks .compare-official { border-top: 0; padding-top: 0; }
++}
++
+diff --git a/packages/common/schemas.py b/packages/common/schemas.py
+index 438ff7b..a2e8b73 100644
+--- a/packages/common/schemas.py
++++ b/packages/common/schemas.py
+@@ -640,6 +640,8 @@ class ReviewItem:
+     counteraction: Optional[str] = None          # 권고 대응 방향
+     reference_case_match: Optional[str] = None   # 구조화 판례 사건정보 대조(지지 판정과 별개)
+     reference_observations: List[Dict[str, Any]] = field(default_factory=list)
++    source_comparison: Optional[Dict[str, Any]] = None  # TK-163 원문 대조 보기(공식 원문 구간·어절 정렬·위치 신뢰도)
++    claim_verdict: Optional[Dict[str, Any]] = None      # TK-160 주장 3분류 {code, label, note}
+ 
+     def to_dict(self) -> Dict[str, Any]:
+         """직렬화 사전 반환 (Enum은 문자열로 변환)."""
+@@ -665,5 +667,7 @@ class ReviewItem:
+             "advisory_only": self.advisory_only,
+             "reasoning_sections": self.reasoning_sections,
+             "counteraction": self.counteraction,
++            "source_comparison": self.source_comparison,
++            "claim_verdict": self.claim_verdict,
+         }
+ 
+diff --git a/packages/legal_engine/evidence_basis.py b/packages/legal_engine/evidence_basis.py
+index b866e8a..d984218 100644
+--- a/packages/legal_engine/evidence_basis.py
++++ b/packages/legal_engine/evidence_basis.py
+@@ -9,7 +9,8 @@
+ from __future__ import annotations
+ 
+ import hashlib
+-from typing import Any, Dict, Optional
++from difflib import SequenceMatcher
++from typing import Any, Dict, List, Optional
+ 
+ from packages.common.textutil import locate_fuzzy_normalized, normalize_quote
+ 
+@@ -34,6 +35,118 @@ def quote_span(quoted: str, official_text: str) -> Optional[Dict[str, Any]]:
+             "excerpt": haystack[start:end][:EXCERPT_LIMIT]}
+ 
+ 
++ALIGN_LIMIT = 600      # 원문 대조 보기에 싣는 정규화 문자 수 상한(인용문·원문 각각)
++ALIGN_MIN_SIMILARITY = 0.6  # 이보다 낮으면 같은 문장이라 보기 어렵다 — 나란히 보이지 않는다
++
++
++_EDGE_PUNCT = "\"'.,;:!?)]}」』〉》”’"
++
++
++def _key(token: str) -> str:
++    """어절 비교 열쇠: 끝 문장부호·닫는 따옴표만 뗀다(조사·어미 차이는 그대로 차이로 본다)."""
++    return token.rstrip(_EDGE_PUNCT).lstrip("\"'(「『〈《“‘") or token
++
++
++def align_quote(quoted: str, official_text: str, limit: int = ALIGN_LIMIT) -> Optional[Dict[str, Any]]:
++    """TK-163: 인용문과 공식 원문의 맞는 구간을 어절 단위로 맞대어 나란히 보일 자료를 만든다.
++
++    반환: {"quoted": [[어절, 표지]], "official": [[어절, 표지]], "similarity", "truncated", "changed"}
++    표지: same(같음) · changed(바뀜) · added(인용문에만 있음) · removed(원문에만 있음 — 인용에서 빠짐).
++    - 원문 창은 인용문 길이보다 넉넉히 잡고, 인용 범위 밖(첫 일치 앞·마지막 일치 뒤)의 원문 어절은 버린다.
++    - 인용이 어절 중간에서 시작·끝나는 경우(예: 인용 '경우' ↔ 원문 '경우에')는 같은 어절로 본다.
++    원문 구간을 찾지 못했거나 유사도가 낮으면 None(판정은 바꾸지 않는다, 표시 자료일 뿐이다).
++    """
++    span = quote_span(quoted, official_text)
++    if span is None or span["similarity"] < ALIGN_MIN_SIMILARITY:
++        return None
++    haystack, needle = normalize_quote(official_text or ""), normalize_quote(quoted or "")
++    start = span["start"]
++    end = min(len(haystack), span["end"] + len(needle) // 3 + 12)
++    while start > 0 and haystack[start - 1] != " ":
++        start -= 1
++    while end < len(haystack) and haystack[end] != " ":
++        end += 1
++    truncated = len(needle) > limit
++    a = needle[:limit].split()
++    b = haystack[start:end][:limit + len(needle[:limit]) // 3 + 12].split()
++    opcodes = SequenceMatcher(None, [_key(t) for t in a], [_key(t) for t in b], autojunk=False).get_opcodes()
++    equal = [i for i, op in enumerate(opcodes) if op[0] == "equal"]
++    if not equal:
++        return None
++    first, last = equal[0], equal[-1]
++    # 조각(segment)마다 양쪽 어절과 표지를 모은다. 전문 보기는 조각을 이어 붙이고, 칸 요약은 다른 조각만 고른다.
++    segments: List[Dict[str, List[List[str]]]] = []
++    for index, (tag, i1, i2, j1, j2) in enumerate(opcodes):
++        qa, ob = a[i1:i2], b[j1:j2]
++        if index < first or index > last:
++            # 인용 범위 밖의 원문 어절은 맥락일 뿐이다. 인용 끝 어절이 원문 어절의 앞부분이면 같은 어절로 본다.
++            if index == first - 1 and len(qa) == 1 and ob and _key(ob[-1]).endswith(_key(qa[0])):
++                segments.append({"quoted": [[qa[0], "same"]], "official": [[ob[-1], "same"]]})
++            elif index == last + 1 and len(qa) == 1 and ob and _key(ob[0]).startswith(_key(qa[0])):
++                segments.append({"quoted": [[qa[0], "same"]], "official": [[ob[0], "same"]]})
++            elif qa:
++                segments.append({"quoted": [[t, "added"] for t in qa], "official": []})
++            continue
++        if tag == "equal":
++            segments.append({"quoted": [[t, "same"] for t in qa], "official": [[t, "same"] for t in ob]})
++        elif tag == "delete":
++            segments.append({"quoted": [[t, "added"] for t in qa], "official": []})
++        elif tag == "insert":
++            segments.append({"quoted": [], "official": [[t, "removed"] for t in ob]})
++        else:
++            segments.append({"quoted": [[t, "changed"] for t in qa], "official": [[t, "changed"] for t in ob]})
++    if truncated:
++        while segments and any(m != "same" for _, m in segments[-1]["quoted"] + segments[-1]["official"]):
++            segments.pop()
++    quoted_tokens = [tok for seg in segments for tok in seg["quoted"]]
++    official_tokens = [tok for seg in segments for tok in seg["official"]]
++    changed = any(m != "same" for _, m in quoted_tokens + official_tokens)
++    return {"quoted": quoted_tokens, "official": official_tokens, "hunks": _hunks(segments),
++            "similarity": span["similarity"], "truncated": truncated, "changed": changed,
++            "normalization": "normalize_quote"}
++
++
++HUNK_CONTEXT = 2   # 칸 요약: 다른 곳 앞뒤로 보일 같은 어절 수
++HUNK_MERGE_GAP = 4  # 다른 곳 사이의 같은 어절이 이 이하면 한 묶음으로 보인다
++
++
++def _hunks(segments: List[Dict[str, List[List[str]]]]) -> List[Dict[str, Any]]:
++    """다른 곳만 앞뒤 어절 조금과 함께 묶는다(TK-163 사용자 요청 11-14 '핵심내용만 칸에서 간략하게')."""
++    is_diff = [any(m != "same" for _, m in seg["quoted"] + seg["official"]) for seg in segments]
++    hunks: List[Dict[str, Any]] = []
++    current: Optional[Dict[str, Any]] = None
++    for index, seg in enumerate(segments):
++        if not is_diff[index]:
++            continue
++        before = segments[index - 1] if index > 0 and not is_diff[index - 1] else None
++        if current is not None and before is not None and len(before["quoted"]) <= HUNK_MERGE_GAP \
++                and current.get("_end") == index - 2:
++            current["quoted"] += before["quoted"] + seg["quoted"]
++            current["official"] += before["official"] + seg["official"]
++        else:
++            if current is not None:
++                hunks.append(current)
++            lead_q = before["quoted"][-HUNK_CONTEXT:] if before else []
++            lead_o = before["official"][-HUNK_CONTEXT:] if before else []
++            current = {"quoted": list(lead_q) + seg["quoted"], "official": list(lead_o) + seg["official"],
++                       "lead": bool(before and len(before["quoted"]) > HUNK_CONTEXT)}
++        current["_end"] = index
++        after = segments[index + 1] if index + 1 < len(segments) and not is_diff[index + 1] else None
++        current["_after"] = after
++    if current is not None:
++        hunks.append(current)
++    out = []
++    for hunk in hunks:
++        after = hunk.pop("_after", None)
++        hunk.pop("_end", None)
++        if after:
++            hunk["quoted"] = hunk["quoted"] + after["quoted"][:HUNK_CONTEXT]
++            hunk["official"] = hunk["official"] + after["official"][:HUNK_CONTEXT]
++        hunk["tail"] = bool(after and len(after["quoted"]) > HUNK_CONTEXT)
++        out.append(hunk)
++    return out
++
++
+ def _source(official: Dict[str, Any], kind: str) -> Optional[Dict[str, Any]]:
+     if kind in ("CASE", "CONSTITUTIONAL"):
+         ident = official.get("source_id") or official.get("case_number")
+diff --git a/packages/legal_engine/source_review.py b/packages/legal_engine/source_review.py
+index 3fd327e..e80488b 100644
+--- a/packages/legal_engine/source_review.py
++++ b/packages/legal_engine/source_review.py
+@@ -167,6 +167,11 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
+     verdict.status = VerificationStatus.PARTIALLY_VERIFIED
+     if citation.quoted_text:
+         level, ratio = verifier._compare_quote(citation.quoted_text, provision["text"])
++        # TK-163: 조항 원문과 인용문을 어절 단위로 맞댄 자료(화면 '원문 대조 보기'용, 판정과 무관).
++        from .evidence_basis import align_quote
++        alignment = align_quote(citation.quoted_text, provision["text"])
++        if alignment is not None:
++            verdict.review["quote_alignment"] = alignment
+         if level == "CONTRADICTED" and verdict.levels["temporal"] != "VERIFIED":
+             level = "UNVERIFIED"
+         verdict.levels["content"] = level
+diff --git a/packages/legal_engine/verifier.py b/packages/legal_engine/verifier.py
+index f55fd07..a9e42d3 100644
+--- a/packages/legal_engine/verifier.py
++++ b/packages/legal_engine/verifier.py
+@@ -29,7 +29,7 @@ from packages.common.schemas import Citation, EngineResult, Evidence, Finding, S
+ from packages.common.textutil import contains_fuzzy, normalize_quote, similarity
+ from packages.source_adapters import SourceRegistry
+ 
+-from .evidence_basis import build_basis, quote_span
++from .evidence_basis import align_quote, build_basis, quote_span
+ from .components import citation_components, component_summary, identity_confirmed
+ from .citation_format import code_court_family, court_family, format_violations
+ from .authority_status import (ENBANC_PUBLICATION_LAG_DAYS, LegalVerificationStatus, classify_authority_status,
+@@ -513,6 +513,10 @@ class LegalVerifier:
+             if span is not None:
+                 span["field"] = "full_text+holding+summary" if has_full_text else "holding+summary"
+                 verdict.review["quote_span"] = span
++                # TK-163: 화면 '원문 대조 보기'에 쓸 어절 정렬(전문 기준이라 발췌 200자에서 잘린 거짓 차이가 없다).
++                alignment = align_quote(citation.quoted_text, official_text)
++                if alignment is not None:
++                    verdict.review["quote_alignment"] = alignment
+             if level3 == "CONTRADICTED":
+                 verdict.status = VerificationStatus.CONTRADICTED
+                 is_fabricated_quote = False
+diff --git a/packages/report_engine/docx_report.py b/packages/report_engine/docx_report.py
+index 4bb1c09..0dfd49e 100644
+--- a/packages/report_engine/docx_report.py
++++ b/packages/report_engine/docx_report.py
+@@ -196,7 +196,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
+         doc.add_heading("모델별 AI 작성 판정", 2)
+         table(["문서", "모델", "판정", "점수", "근거"], opinion_rows, [1.3, 1.2, 1.1, 0.5, 2.9])
+ 
+-    from .reference_opinions import REPORT_NOTICE, row_basis, table_additions
++    from .reference_opinions import REPORT_NOTICE, compare_text, row_basis, table_additions
+     from .review_tiers import classify_row_tier
+     tier2_rows = []
+     tier3_rows = []
+@@ -209,6 +209,9 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
+             cell_basis = (f"[평가] {row.get('validity_verdict', '') or '확인 필요'}\n{row.get('ai_generation_basis', '')}\n"
+                           + format_context_review(row.get("context_review")))
+             cell_basis += "\n" + row_basis(d, row)
++            compared = compare_text(d, row)  # TK-160·163
++            if compared:
++                cell_basis += "\n" + compared
+             cell_review = row_cell_text(row)
+             formatted_entry = [cell_loc, cell_claim, cell_basis, cell_review]
+ 
+diff --git a/packages/report_engine/pdf_report.py b/packages/report_engine/pdf_report.py
+index b76cf79..cdecdda 100644
+--- a/packages/report_engine/pdf_report.py
++++ b/packages/report_engine/pdf_report.py
+@@ -258,7 +258,7 @@ def build_report_pdf(
+         story.append(Paragraph(_escape("모델별 AI 작성 판정"), styles["h2"]))
+         story.append(table([["문서", "모델", "판정", "점수", "근거"], *opinion_rows], [80, 70, 70, 30, 240]))
+ 
+-    from .reference_opinions import REPORT_NOTICE, row_basis, table_additions
++    from .reference_opinions import REPORT_NOTICE, compare_text, row_basis, table_additions
+     from .review_tiers import classify_row_tier
+     tier2_rows = []
+     tier3_rows = []
+@@ -272,6 +272,9 @@ def build_report_pdf(
+                           + str(row.get("ai_generation_basis", ""))[:120] + "\n"
+                           + format_context_review(row.get("context_review")))
+             cell_basis += "\n" + row_basis(d, row)
++            compared = compare_text(d, row)  # TK-160·163
++            if compared:
++                cell_basis += "\n" + compared
+             cell_review = row_cell_text(row, limit=900)
+             formatted_entry = [cell_loc, cell_claim, cell_basis, cell_review]
+ 
+diff --git a/packages/report_engine/reference_opinions.py b/packages/report_engine/reference_opinions.py
+index ba7ce18..342be84 100644
+--- a/packages/report_engine/reference_opinions.py
++++ b/packages/report_engine/reference_opinions.py
+@@ -52,3 +52,23 @@ def table_additions(document, existing_rows):
+ def row_basis(document, row):
+     return "\n".join(basis_text(item) for item in reference_rows(document)
+                      if row.get("citation_id") and item.get("citation_id") == row["citation_id"])
++
++
++def compare_text(document, row):
++    """TK-160·163: 보고서 칸에 주장 3분류와 원문 대조 요약을 한두 줄로 싣는다(화면 '원문 대조 보기'의 요약)."""
++    lines = []
++    if row.get("claim_verdict_label"):
++        note = f" — {row['claim_verdict_note']}" if row.get("claim_verdict_note") else ""
++        lines.append(f"[근거 판정] {row['claim_verdict_label']}{note}")
++    cid = row.get("citation_id")
++    if cid:
++        for item in value(document, "review_items", []) or []:
++            item = item.to_dict() if hasattr(item, "to_dict") else dict(item)
++            comparison = item.get("source_comparison")
++            if item.get("citation_id") == cid and comparison:
++                scan = " · 스캔 문서에서 읽은 인용(위치·글자 확인 필요)" if comparison.get("location_confidence") == "OCR" else ""
++                lines.append(f"[원문 대조] {comparison.get('status_label')} · {comparison.get('source_label')} · "
++                             f"{comparison.get('summary')}{scan}")
++                break
++    return "\n".join(lines)
++
+diff --git a/packages/verification_engine/review_items.py b/packages/verification_engine/review_items.py
+index 5705137..d4bd82f 100644
+--- a/packages/verification_engine/review_items.py
++++ b/packages/verification_engine/review_items.py
+@@ -8,7 +8,7 @@
+ """
+ from __future__ import annotations
+ 
+-from typing import Any, Dict, List, Optional, Set
++from typing import Any, Dict, List, Optional, Set, Tuple
+ 
+ from packages.common.enums import (
+     FindingType,
+@@ -86,6 +86,95 @@ def _kind_for_finding_type(ft: FindingType) -> ReviewItemKind:
+     return ReviewItemKind.FACT
+ 
+ 
++# TK-163: 원문 대조 보기 — 판정 근거(TK-159 evidence_basis)와 어절 정렬을 화면·보고서가 쓰는 꼴로 묶는다.
++BASIS_STATUS_LABELS = {
++    "SOURCE_MATCHED": "공식 원문과 일치",
++    "SOURCE_MISMATCHED": "공식 원문과 다름",
++    "SOURCE_FOUND_NOT_DECIDED": "공식 원문 확보 · 일치 여부 판단 유보",
++    "LOOKUP_FAILED": "공식 원문 조회 실패",
++    "NOT_FOUND": "공식 원문을 찾지 못함",
++    "NO_SOURCE": "대조할 공식 원문 없음",
++    "RULE_BASED": "형식 규칙으로 판단(원문 대조 아님)",
++    "MISSING_BASIS": "판정 근거 구간 없음",
++}
++
++
++def _source_label(source: Dict[str, Any]) -> str:
++    kind = source.get("kind")
++    if kind in ("OFFICIAL_CASE", "CASE_RECORD"):
++        parts = [source.get("court"), source.get("decision_date"), source.get("case_number")]
++        return " ".join(str(p) for p in parts if p) or "공식 판례"
++    if kind == "OFFICIAL_LAW":
++        return f"공식 법령 원문 (시행 {source['effective_from']})" if source.get("effective_from") else "공식 법령 원문"
++    if kind == "MIRROR_LAW":
++        return "내부 사본 조문(공식 응답 아님)"
++    if kind == "DETERMINISTIC_RULE":
++        return "형식 규칙"
++    return "공식 원문"
++
++
++def _runs(tokens: List[List[str]], mark: str) -> Tuple[int, int]:
++    """표지가 이어진 묶음 수(곳)와 어절 수."""
++    groups = words = 0
++    previous = None
++    for _, m in tokens or []:
++        if m == mark:
++            words += 1
++            if previous != mark:
++                groups += 1
++        previous = m
++    return groups, words
++
++
++def _alignment_summary(alignment: Optional[Dict[str, Any]]) -> str:
++    if not alignment:
++        return ""
++    if not alignment.get("changed"):
++        return "인용문이 공식 원문과 어절 단위로 같음"
++    parts = []
++    for label, side, mark in (("인용에서 빠짐", "official", "removed"), ("인용에 더해짐", "quoted", "added"),
++                              ("바뀜", "quoted", "changed")):
++        groups, words = _runs(alignment.get(side), mark)
++        if groups:
++            parts.append(f"{label} {groups}곳({words}어절)" if mark != "changed" else f"{label} {groups}곳")
++    return "공식 원문과 다른 곳: " + " · ".join(parts)
++
++
++def build_source_comparison(verdict_row: Dict[str, Any], citation: Any = None,
++                            norm_doc: Optional[Any] = None) -> Optional[Dict[str, Any]]:
++    """판정 근거 구간이 있는 인용만 원문 대조 자료를 만든다. 없으면 None(빈 상자를 보이지 않는다)."""
++    basis = verdict_row.get("evidence_basis") or {}
++    review = verdict_row.get("review") or {}
++    alignment = review.get("quote_alignment")
++    passage = basis.get("passage") or {}
++    if not basis or (not alignment and not passage.get("excerpt")):
++        return None
++    source = basis.get("source") or {}
++    link = source.get("detail_link")
++    block_id = getattr(citation, "block_id", None) if citation is not None else None
++    block = norm_doc.block_by_id(block_id) if (norm_doc is not None and block_id and hasattr(norm_doc, "block_by_id")) else None
++    scanned = bool(block is not None and getattr(block, "source_layer", "") == "ocr_layer")
++    summary = review.get("quote_diff") or _alignment_summary(alignment) or "공식 원문 발췌(서면에 직접 인용문 없음)"
++    return {
++        "basis_status": basis.get("basis_status"),
++        "status_label": BASIS_STATUS_LABELS.get(basis.get("basis_status"), "판정 근거 확인 필요"),
++        "source_label": _source_label(source),
++        "detail_link": link if isinstance(link, str) and link.startswith(("https://", "http://")) else None,
++        "alignment": alignment,
++        "official_excerpt": None if alignment else passage.get("excerpt"),
++        "location_confidence": "OCR" if scanned else "TEXT",
++        "summary": summary,
++    }
++
++
++def claim_verdict_of(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
++    """TK-160 주장 3분류를 행에서 꺼낸다. 표 행이 없는 인용은 None."""
++    code = row.get("claim_verdict")
++    if not code:
++        return None
++    return {"code": code, "label": row.get("claim_verdict_label"), "note": row.get("claim_verdict_note")}
++
++
+ def build_document_review_items(
+     doc_result: Any,
+     norm_doc: Optional[Any] = None,
+@@ -298,6 +387,8 @@ def build_document_review_items(
+             reasoning_sections=reasoning,
+             counteraction=counteraction,
+             reference_case_match=case_match_info.get("status"),
++            source_comparison=build_source_comparison(v_row, cit, norm_doc),
++            claim_verdict=claim_verdict_of(h_row),
+         )
+         items.append(item)
+ 
+diff --git a/tests/test_tk163_source_compare.py b/tests/test_tk163_source_compare.py
+new file mode 100644
+index 0000000..dde92d9
+--- /dev/null
++++ b/tests/test_tk163_source_compare.py
+@@ -0,0 +1,236 @@
++"""TK-163 원문 대조 보기 + TK-160 주장 3분류 배지(화면·보고서). 문장·사건번호는 모두 합성이다."""
++from __future__ import annotations
++
++import copy
++import os
++from types import SimpleNamespace
++
++import pytest
++
++from packages.common.schemas import Block, ReviewItem
++from packages.legal_engine.evidence_basis import ALIGN_LIMIT, align_quote
++from packages.report_engine.reference_opinions import compare_text
++from packages.verification_engine.review_items import build_source_comparison, claim_verdict_of
++from test_legal_engine import _verify  # noqa: F401  (시험용 내부 Mirror의 가상 판례)
++
++OFFICIAL = "징계권자가 재량권의 행사로서 한 처분이 사회통념상 현저하게 타당성을 잃은 경우에 한하여 위법하다고 할 수 있다"
++
++
++def _marks(alignment, side):
++    return [(t, m) for t, m in alignment[side] if m != "same"]
++
++
++# --- 엔진: 어절 정렬 ------------------------------------------------------------------------------------
++def test_deleted_word_is_marked_removed_on_the_official_side():
++    a = align_quote("재량권의 행사로서 한 처분이 사회통념상 타당성을 잃은 경우", OFFICIAL)
++    assert a and a["changed"] and _marks(a, "official") == [("현저하게", "removed")] and _marks(a, "quoted") == []
++
++
++def test_replaced_word_is_marked_on_both_sides():
++    a = align_quote("재량권의 행사로서 한 처분이 사회통념상 다소 타당성을 잃은 경우", OFFICIAL)
++    assert ("현저하게", "changed") in _marks(a, "official") and ("다소", "changed") in _marks(a, "quoted")
++
++
++def test_added_word_is_marked_added_on_the_quoted_side():
++    a = align_quote("재량권의 행사로서 한 처분이 사회통념상 현저하게 명백히 타당성을 잃은 경우", OFFICIAL)
++    assert _marks(a, "quoted") == [("명백히", "added")] and _marks(a, "official") == []
++
++
++def test_exact_quote_has_no_marks():
++    a = align_quote("사회통념상 현저하게 타당성을 잃은 경우에 한하여", OFFICIAL)
++    assert a and not a["changed"]
++
++
++@pytest.mark.parametrize("quoted", ["", "전혀 다른 문장으로 원문과 겹치는 어절이 없는 인용문이다", "가나다"])
++def test_no_alignment_when_not_comparable(quoted):
++    assert align_quote(quoted, OFFICIAL) is None
++    assert align_quote(OFFICIAL, "") is None
++
++
++def test_long_quote_is_trimmed_without_false_tail_marks():
++    base = " ".join(f"어절{i}" for i in range(400))
++    a = align_quote(base, "앞말 " + base + " 뒷말")
++    assert a["truncated"] and a["quoted"][-1][1] == "same" and a["official"][-1][1] == "same"
++    assert len(" ".join(t for t, _ in a["quoted"])) <= ALIGN_LIMIT and not a["changed"]
++
++
++def test_verifier_stores_alignment_from_full_official_text(registry):
++    _, result = _verify(registry, '대법원 2099. 1. 15. 선고 2099도99999 판결은 "테스트를 위한 판시사항이다"라고 판시하였다.')
++    verdict = result.data["verdicts"][0]
++    alignment = verdict["review"]["quote_alignment"]
++    assert alignment["changed"] and ("가상의", "removed") in _marks(alignment, "official")
++    assert verdict["evidence_basis"]["basis_status"]  # TK-159 근거와 함께 실린다
++
++
++# --- 검토 항목: 원문 대조 자료·3분류 ----------------------------------------------------------------------
++BASIS = {"basis_status": "SOURCE_MISMATCHED",
++         "source": {"kind": "OFFICIAL_CASE", "id": "1", "court": "대법원", "decision_date": "2099-01-15",
++                    "case_number": "2099도99999", "detail_link": "https://www.law.go.kr/precInfoP.do?precSeq=1"},
++         "passage": {"excerpt": "테스트를 위한 가상의 판시사항이다"}}
++
++
++def _row(review=None, basis=BASIS):
++    return {"citation_id": "c1", "evidence_basis": basis, "review": review or {}}
++
++
++def test_comparison_carries_status_source_alignment_and_summary():
++    alignment = align_quote("테스트를 위한 판시사항이다", "테스트를 위한 가상의 판시사항이다")
++    c = build_source_comparison(_row({"quote_alignment": alignment}))
++    assert c["status_label"] == "공식 원문과 다름" and c["source_label"] == "대법원 2099-01-15 2099도99999"
++    assert c["alignment"] == alignment and c["official_excerpt"] is None and c["location_confidence"] == "TEXT"
++    assert "인용에서 빠짐 1곳(1어절)" in c["summary"] and c["detail_link"].startswith("https://")
++
++
++def test_statute_without_quote_shows_official_excerpt_only():
++    basis = {"basis_status": "SOURCE_MATCHED", "source": {"kind": "OFFICIAL_LAW", "id": "9", "effective_from": "2099-01-01"},
++             "passage": {"excerpt": "합성 조문 본문"}}
++    c = build_source_comparison(_row(basis=basis))
++    assert c["alignment"] is None and c["official_excerpt"] == "합성 조문 본문"
++    assert c["source_label"] == "공식 법령 원문 (시행 2099-01-01)" and "직접 인용문 없음" in c["summary"]
++
++
++@pytest.mark.parametrize("row", [
++    {"citation_id": "c1"},                                                                          # 근거 없음
++    _row(basis={"basis_status": "RULE_BASED", "source": {"kind": "DETERMINISTIC_RULE"}, "passage": None}),  # 규칙 판정
++    _row(basis={"basis_status": "LOOKUP_FAILED", "source": None, "passage": None}),                 # 조회 실패
++])
++def test_no_comparison_box_without_an_official_passage(row):
++    assert build_source_comparison(row) is None
++
++
++def test_scanned_citation_is_flagged_and_unsafe_link_dropped():
++    doc = SimpleNamespace(block_by_id=lambda b: Block(block_id=b, text="x", page=1, source_layer="ocr_layer"))
++    basis = copy.deepcopy(BASIS)
++    basis["source"]["detail_link"] = "javascript:alert(1)"
++    c = build_source_comparison(_row(basis=basis), SimpleNamespace(block_id="b1"), doc)
++    assert c["location_confidence"] == "OCR" and c["detail_link"] is None
++
++
++def test_claim_verdict_is_taken_from_the_claim_row():
++    assert claim_verdict_of({}) is None
++    v = claim_verdict_of({"claim_verdict": "INSUFFICIENT", "claim_verdict_label": "근거 부족", "claim_verdict_note": "합성 사유"})
++    assert v == {"code": "INSUFFICIENT", "label": "근거 부족", "note": "합성 사유"}
++
++
++def test_review_item_serializes_new_fields():
++    item = ReviewItem(item_id="i", kind="CITATION", document_id="d", claim_text="c", official_status="OFFICIAL_CONFIRMED",
++                      reference_status="NOT_CHECKED", verdict_label="v", severity="INFO",
++                      source_comparison={"summary": "s"}, claim_verdict={"code": "SUPPORTED"})
++    d = item.to_dict()
++    assert d["source_comparison"] == {"summary": "s"} and d["claim_verdict"] == {"code": "SUPPORTED"}
++
++
++# --- 보고서 요약 줄 ------------------------------------------------------------------------------------
++def test_report_cell_gets_claim_verdict_and_comparison_summary():
++    alignment = align_quote("테스트를 위한 판시사항이다", "테스트를 위한 가상의 판시사항이다")
++    comparison = build_source_comparison(_row({"quote_alignment": alignment}))
++    document = SimpleNamespace(review_items=[{"citation_id": "c1", "source_comparison": comparison}])
++    row = {"citation_id": "c1", "claim_verdict_label": "근거와 모순", "claim_verdict_note": "합성 사유"}
++    text = compare_text(document, row)
++    assert "[근거 판정] 근거와 모순 — 합성 사유" in text
++    assert "[원문 대조] 공식 원문과 다름 · 대법원 2099-01-15 2099도99999 · 공식 원문과 다른 곳: 인용에서 빠짐 1곳(1어절)" in text
++    assert compare_text(SimpleNamespace(review_items=[]), {"citation_id": "c9"}) == ""
++
++
++# --- 화면 -------------------------------------------------------------------------------------------
++@pytest.fixture
++def browser():
++    from playwright.sync_api import sync_playwright
++    options = {"headless": True}
++    if os.getenv("LV_TEST_BROWSER_CHANNEL"):
++        options["channel"] = os.environ["LV_TEST_BROWSER_CHANNEL"]
++    with sync_playwright() as playwright:
++        b = playwright.chromium.launch(**options)
++        yield b
++        b.close()
++
++
++def _result_with_comparison():
++    import test_tk155_ui_cleanup as ui
++    result = copy.deepcopy(ui.RESULT)
++    item = result["documents"][0]["review_items"][1]  # 합성 판례 인용 행(출처 미확인 탭)
++    alignment = align_quote("테스트를 위한 판시사항이다", "이 사건에서 테스트를 위한 가상의 판시사항이다 라고 보았다")
++    item["source_comparison"] = build_source_comparison(_row({"quote_alignment": alignment}))
++    item["claim_verdict"] = {"code": "INSUFFICIENT", "label": "근거 부족", "note": "공식 원문의 근거 구간이 없어 모순으로 단정하지 않음"}
++    return ui, result
++
++
++def test_review_row_shows_badge_and_side_by_side_comparison(browser, monkeypatch):
++    from playwright.sync_api import expect
++    ui, result = _result_with_comparison()
++    monkeypatch.setattr(ui, "RESULT", result)
++    page = browser.new_page(viewport={"width": 1440, "height": 1000})
++    ui._serve(page, ui.BASE_PROJECT)
++    page.locator('.tabs button[data-tab="review"]').click()
++    box = page.locator("#reviewTable details.source-compare").first
++    expect(box).to_contain_text("원문 대조 보기 · 공식 원문과 다름")
++    expect(page.locator("#reviewTable .claim-verdict").first).to_have_text("근거 부족")
++    box.locator(":scope > summary").click()
++    expect(box.locator(":scope > .compare-hunks del.diff-removed")).to_have_text("가상의")  # 칸 요약(다른 곳만)
++    expect(box.locator(":scope > .compare-hunks .compare-quoted")).to_contain_text("테스트를 위한 판시사항이다")
++    expect(box.locator(":scope > .compare-hunks .compare-head")).to_have_count(2)  # 머리글은 한 번만
++    full = box.locator("details.compare-full")
++    expect(full.locator(".compare-grid")).to_be_hidden()  # 전문은 접혀 있다
++    full.locator("summary").click()
++    expect(full.locator("del.diff-removed")).to_have_text("가상의")
++    expect(box.locator("a", has_text="원문 열기")).to_have_attribute("rel", "noopener noreferrer")
++    assert ui._codes(box.text_content()) == []
++    if os.getenv("TK163_SHOT"):
++        box.locator("xpath=ancestor::tr[1]").screenshot(path=os.environ["TK163_SHOT"])
++
++
++def test_comparison_stacks_on_narrow_screens(browser, monkeypatch):
++    from playwright.sync_api import expect
++    ui, result = _result_with_comparison()
++    monkeypatch.setattr(ui, "RESULT", result)
++    page = browser.new_page(viewport={"width": 390, "height": 900})
++    ui._serve(page, ui.BASE_PROJECT)
++    page.locator('.tabs button[data-tab="review"]').click()
++    box = page.locator("#reviewTable details.source-compare").first
++    expect(box).to_be_attached()
++    page.evaluate("document.querySelectorAll('details.source-compare').forEach(d => d.open = true)")
++    columns = box.locator(":scope > .compare-grid").first.evaluate("g => getComputedStyle(g).gridTemplateColumns.split(' ').length")
++    assert columns == 1
++
++
++def test_summary_counts_change_groups_not_only_words():
++    official = "가 나 다 라 마 바 사 아 자 차 카 타 파"
++    a = align_quote("가 나 다 마 바 사 아 자 거 카 타 파", official)  # '라' 빠짐 1곳, '차'→'거' 바뀜 1곳
++    c = build_source_comparison(_row({"quote_alignment": a}))
++    assert c["summary"] == "공식 원문과 다른 곳: 인용에서 빠짐 1곳(1어절) · 바뀜 1곳"
++
++
++LONG = ("공무원에 대한 징계처분이 사회통념상 현저하게 타당성을 잃었다고 하려면 구체적인 사례에 따라 징계의 원인이 된 비위사실의 내용과 성질, "
++        "징계에 의하여 달성하려고 하는 행정목적, 징계 양정의 기준 등 여러 요소를 종합하여 판단할 때에 그 징계 내용이 객관적으로 명백히 "
++        "부당하다고 인정할 수 있는 경우라야 하고, 징계권자가 내부적인 징계양정기준을 정하고 그에 따라 징계처분을 하였을 경우에는 정해진 "
++        "징계양정기준이 합리성이 없다는 등의 특별한 사정이 없는 한 당해 징계처분이 재량권의 범위를 일탈하였다거나 재량권을 남용하였다고 할 수 없다")
++
++
++def test_compact_hunks_show_only_changed_places_with_short_context():
++    quoted = LONG.replace("현저하게 ", "").replace("객관적으로 명백히", "다소")  # 합성 변형
++    a = align_quote(quoted, LONG)
++    hunks = a["hunks"]
++    assert len(hunks) == 2
++    first, second = hunks
++    assert [t for t, m in first["official"] if m == "removed"] == ["현저하게"] and len(first["official"]) <= 5
++    assert [t for t, m in second["quoted"] if m == "changed"] == ["다소"] and second["lead"] and second["tail"]
++    assert sum(len(h["quoted"]) for h in hunks) < len(a["quoted"]) // 3  # 칸 요약은 전문보다 훨씬 짧다
++    assert align_quote(LONG[:80], LONG)["hunks"] == []  # 같으면 요약할 곳이 없다
++
++
++def test_long_quote_cell_shows_at_most_three_places(browser, monkeypatch):
++    from playwright.sync_api import expect
++    ui, result = _result_with_comparison()
++    official = LONG
++    quoted = (LONG.replace("현저하게 ", "").replace("행정목적, ", "").replace("객관적으로 ", "")
++              .replace("내부적인 ", "").replace("특별한 ", ""))  # 서로 떨어진 5곳 삭제(합성)
++    item = result["documents"][0]["review_items"][1]
++    item["source_comparison"] = build_source_comparison(_row({"quote_alignment": align_quote(quoted, official)}))
++    monkeypatch.setattr(ui, "RESULT", result)
++    page = browser.new_page(viewport={"width": 1440, "height": 1000})
++    ui._serve(page, ui.BASE_PROJECT)
++    page.locator('.tabs button[data-tab="review"]').click()
++    box = page.locator("#reviewTable details.source-compare").first
++    box.locator(":scope > summary").click()
++    expect(box.locator(":scope > .compare-hunks .compare-quoted")).to_have_count(3)
++    expect(box).to_contain_text("외 2곳은 전문 대조에서 확인하세요.")
