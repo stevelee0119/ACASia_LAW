@@ -5969,3 +5969,8 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 ### 2-55-3. #284(0.20.0 버전 커밋) 판정: 수용 (11-14, 사용자 '#284 확인')
 - head `c706567`이 평가 측 증분과 같다(index 줄 제외). check_version_policy 위반 없음(0.19.0 → 0.20.0), update_readme 변경 없음, 게이트 3종·관련 시험 17건 통과(평가 측 재실행). CI 전부 성공(인용).
 - 병합은 사용자 지시로 한다. 다음: 릴리스 PR(Steve → main, 기존 제외 목록 유지).
+
+### 2-55-4. 사용자 '#284 병합' (11-14)
+- #284 병합: Steve `edcc270`(head c706567 확인). 버전 0.20.0이 Steve에 들어감.
+- 릴리스 PR 사전 준비(평가 측, 아직 push 안 함): main `5b878a1`에 Steve `edcc270`을 병합한 release/0.20.0 = `fcec772`. Steve와의 차이는 0.19.0과 같은 제외 11파일(sealed_20261025 9개 + approved_protected_changes.json·retired_sealed/README.md의 해당 항목)뿐이다. 충돌 없음.
+- 다음: 사용자 '릴리스 PR 생성' → push·PR → CI → 병합(사용자) → 배포 → /api/health 0.20.0 확인 → 태그.
