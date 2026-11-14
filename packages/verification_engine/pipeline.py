@@ -11,6 +11,7 @@ QUEUED → PARSING → ADVERSARIAL_SCANNING → OCR/EXTRACTING → PII_PROCESSIN
 from __future__ import annotations
 
 import asyncio
+import os
 import hashlib
 import json
 from dataclasses import dataclass, field
