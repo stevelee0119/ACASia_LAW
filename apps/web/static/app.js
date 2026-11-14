@@ -748,12 +748,24 @@ function dateText(value) {
   return value ? new Date(/(Z|[+-]\d{2}:\d{2})$/i.test(value) ? value : `${value}Z`).toLocaleString("ko-KR") : "";
 }
 
+function syncMobileBottomNav(activeKey) {
+  const nav = $("mobileBottomNav");
+  if (!nav) return;
+  const mapped = ["ai-verification", "review", "legal-claims"].includes(activeKey) ? "review" : activeKey;
+  nav.querySelectorAll("[data-mobile-nav]").forEach(btn => {
+    const isCurrent = btn.dataset.mobileNav === mapped;
+    btn.classList.toggle("active", isCurrent);
+    btn.setAttribute("aria-current", isCurrent ? "page" : "false");
+  });
+}
+
 function switchTab(tab) {
   document.querySelectorAll("[data-tab]").forEach(el => {
     el.classList.toggle("active", el.dataset.tab === tab);
     el.setAttribute("aria-current", el.dataset.tab === tab ? "page" : "false");
   });
   document.querySelectorAll("[data-panel]").forEach(el => el.hidden = el.dataset.panel !== tab);
+  syncMobileBottomNav(tab);
   workflowUI.activate(tab).catch(e => toast(e.message));
 }
 async function loadProjects() {
@@ -1576,19 +1588,24 @@ function renderDocuments() {
       else state.selected.delete(d.id);
       renderSelection();
     };
-    const td = node("td");
+    const td = node("td", null, "doc-col-check");
+    td.dataset.label = "선택";
     td.append(check);
-    const file = node("td");
+    const file = node("td", null, "doc-col-file");
+    file.dataset.label = "파일명";
     file.append(button(d.filename, () => openDocument(d), "file-name"), node("small", `${Math.max(1,Math.ceil(d.size_bytes/1024))} KB · ${d.document_kind||"문서"}${d.quarantined?" · 안전 검토 필요":""}`, "file-sub"));
-    const evidence = node("td");
+    const evidence = node("td", null, "doc-col-evidence");
+    evidence.dataset.label = "증거번호 / 제출자";
     evidence.append(node("div", d.evidence_number || "증거번호 미지정"), node("small", label(d.submitted_by), "file-sub"));
-    const scope = node("td");
+    const scope = node("td", null, "doc-col-scope");
+    scope.dataset.label = "검토 범위";
     scope.append(node("span", d.included_in_verification ? "검토에 포함" : "검토에서 제외", `badge ${d.included_in_verification?"":"excluded"}`));
     if (d.exclusion_reason) {
       const reason = node("small", d.exclusion_reason, "file-sub");
       scope.append(reason);
     }
-    const controls = node("td");
+    const controls = node("td", null, "doc-col-actions");
+    controls.dataset.label = "관리";
     const group = node("div", null, "actions");
     group.append(iconButton("pencil", "자료 정보 편집", () => editDocument(d)), iconButton(d.included_in_verification ? "circle-minus" : "circle-plus", d.included_in_verification ? "검토에서 제외" : "검토에 다시 포함", () => setScope([d.id], !d.included_in_verification)));
     controls.append(group);
@@ -3303,6 +3320,15 @@ async function createReport() {
 }
 document.querySelectorAll("[data-close]").forEach(el => el.onclick = () => el.closest("dialog").close());
 document.querySelectorAll("[data-tab]").forEach(el => el.onclick = () => switchTab(el.dataset.tab));
+document.querySelectorAll("[data-mobile-nav]").forEach(el => el.onclick = () => {
+  const navKey = el.dataset.mobileNav;
+  if (navKey === "home") {
+    syncMobileBottomNav("home");
+    window.scrollTo({top: 0, behavior: "smooth"});
+  } else if (navKey) {
+    switchTab(navKey);
+  }
+});
 document.addEventListener("click", e => {
   const jump = e.target.closest("[data-jump-tab]");
   if (jump) {
@@ -3310,8 +3336,23 @@ document.addEventListener("click", e => {
     const target = jump.getAttribute("data-jump-tab");
     if (target) switchTab(target);
   }
+  const sidebar = $("sidebar");
+  const menuBtn = $("menuButton");
+  if (sidebar && sidebar.classList.contains("open") && !sidebar.contains(e.target) && (!menuBtn || !menuBtn.contains(e.target))) {
+    sidebar.classList.remove("open");
+    if (menuBtn) menuBtn.setAttribute("aria-expanded", "false");
+  }
 });
-$("menuButton").onclick = () => $("sidebar").classList.toggle("open");
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && $("sidebar")?.classList.contains("open") && !document.querySelector("dialog[open]")) {
+    $("sidebar").classList.remove("open");
+    $("menuButton")?.setAttribute("aria-expanded", "false");
+  }
+});
+$("menuButton").onclick = () => {
+  const open = $("sidebar").classList.toggle("open");
+  $("menuButton").setAttribute("aria-expanded", String(open));
+};
 $("projectSearch").oninput = renderProjects;
 $("newProjectBtn").onclick = action(() => editProject(true));
 for (const id of ["editProject"]) $(id).onclick = action(() => editProject());
