@@ -8,7 +8,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from packages.common.enums import (
     FindingType,
@@ -84,6 +84,95 @@ def _kind_for_finding_type(ft: FindingType) -> ReviewItemKind:
     if cat in (ScreenCategory.FACT_DISCREPANCY, ScreenCategory.MM4_ADVISORY):
         return ReviewItemKind.FACT
     return ReviewItemKind.FACT
+
+
+# TK-163: 원문 대조 보기 — 판정 근거(TK-159 evidence_basis)와 어절 정렬을 화면·보고서가 쓰는 꼴로 묶는다.
+BASIS_STATUS_LABELS = {
+    "SOURCE_MATCHED": "공식 원문과 일치",
+    "SOURCE_MISMATCHED": "공식 원문과 다름",
+    "SOURCE_FOUND_NOT_DECIDED": "공식 원문 확보 · 일치 여부 판단 유보",
+    "LOOKUP_FAILED": "공식 원문 조회 실패",
+    "NOT_FOUND": "공식 원문을 찾지 못함",
+    "NO_SOURCE": "대조할 공식 원문 없음",
+    "RULE_BASED": "형식 규칙으로 판단(원문 대조 아님)",
+    "MISSING_BASIS": "판정 근거 구간 없음",
+}
+
+
+def _source_label(source: Dict[str, Any]) -> str:
+    kind = source.get("kind")
+    if kind in ("OFFICIAL_CASE", "CASE_RECORD"):
+        parts = [source.get("court"), source.get("decision_date"), source.get("case_number")]
+        return " ".join(str(p) for p in parts if p) or "공식 판례"
+    if kind == "OFFICIAL_LAW":
+        return f"공식 법령 원문 (시행 {source['effective_from']})" if source.get("effective_from") else "공식 법령 원문"
+    if kind == "MIRROR_LAW":
+        return "내부 사본 조문(공식 응답 아님)"
+    if kind == "DETERMINISTIC_RULE":
+        return "형식 규칙"
+    return "공식 원문"
+
+
+def _runs(tokens: List[List[str]], mark: str) -> Tuple[int, int]:
+    """표지가 이어진 묶음 수(곳)와 어절 수."""
+    groups = words = 0
+    previous = None
+    for _, m in tokens or []:
+        if m == mark:
+            words += 1
+            if previous != mark:
+                groups += 1
+        previous = m
+    return groups, words
+
+
+def _alignment_summary(alignment: Optional[Dict[str, Any]]) -> str:
+    if not alignment:
+        return ""
+    if not alignment.get("changed"):
+        return "인용문이 공식 원문과 어절 단위로 같음"
+    parts = []
+    for label, side, mark in (("인용에서 빠짐", "official", "removed"), ("인용에 더해짐", "quoted", "added"),
+                              ("바뀜", "quoted", "changed")):
+        groups, words = _runs(alignment.get(side), mark)
+        if groups:
+            parts.append(f"{label} {groups}곳({words}어절)" if mark != "changed" else f"{label} {groups}곳")
+    return "공식 원문과 다른 곳: " + " · ".join(parts)
+
+
+def build_source_comparison(verdict_row: Dict[str, Any], citation: Any = None,
+                            norm_doc: Optional[Any] = None) -> Optional[Dict[str, Any]]:
+    """판정 근거 구간이 있는 인용만 원문 대조 자료를 만든다. 없으면 None(빈 상자를 보이지 않는다)."""
+    basis = verdict_row.get("evidence_basis") or {}
+    review = verdict_row.get("review") or {}
+    alignment = review.get("quote_alignment")
+    passage = basis.get("passage") or {}
+    if not basis or (not alignment and not passage.get("excerpt")):
+        return None
+    source = basis.get("source") or {}
+    link = source.get("detail_link")
+    block_id = getattr(citation, "block_id", None) if citation is not None else None
+    block = norm_doc.block_by_id(block_id) if (norm_doc is not None and block_id and hasattr(norm_doc, "block_by_id")) else None
+    scanned = bool(block is not None and getattr(block, "source_layer", "") == "ocr_layer")
+    summary = review.get("quote_diff") or _alignment_summary(alignment) or "공식 원문 발췌(서면에 직접 인용문 없음)"
+    return {
+        "basis_status": basis.get("basis_status"),
+        "status_label": BASIS_STATUS_LABELS.get(basis.get("basis_status"), "판정 근거 확인 필요"),
+        "source_label": _source_label(source),
+        "detail_link": link if isinstance(link, str) and link.startswith(("https://", "http://")) else None,
+        "alignment": alignment,
+        "official_excerpt": None if alignment else passage.get("excerpt"),
+        "location_confidence": "OCR" if scanned else "TEXT",
+        "summary": summary,
+    }
+
+
+def claim_verdict_of(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """TK-160 주장 3분류를 행에서 꺼낸다. 표 행이 없는 인용은 None."""
+    code = row.get("claim_verdict")
+    if not code:
+        return None
+    return {"code": code, "label": row.get("claim_verdict_label"), "note": row.get("claim_verdict_note")}
 
 
 def build_document_review_items(
@@ -298,6 +387,8 @@ def build_document_review_items(
             reasoning_sections=reasoning,
             counteraction=counteraction,
             reference_case_match=case_match_info.get("status"),
+            source_comparison=build_source_comparison(v_row, cit, norm_doc),
+            claim_verdict=claim_verdict_of(h_row),
         )
         items.append(item)
 

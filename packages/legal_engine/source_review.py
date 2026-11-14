@@ -167,6 +167,11 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
     verdict.status = VerificationStatus.PARTIALLY_VERIFIED
     if citation.quoted_text:
         level, ratio = verifier._compare_quote(citation.quoted_text, provision["text"])
+        # TK-163: 조항 원문과 인용문을 어절 단위로 맞댄 자료(화면 '원문 대조 보기'용, 판정과 무관).
+        from .evidence_basis import align_quote
+        alignment = align_quote(citation.quoted_text, provision["text"])
+        if alignment is not None:
+            verdict.review["quote_alignment"] = alignment
         if level == "CONTRADICTED" and verdict.levels["temporal"] != "VERIFIED":
             level = "UNVERIFIED"
         verdict.levels["content"] = level

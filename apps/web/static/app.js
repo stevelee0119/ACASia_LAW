@@ -2337,6 +2337,86 @@ function classifyReviewItemTier(item, findingsMap) {
   return 3;
 }
 
+// TK-160·163: 주장 3분류 배지와 '원문 대조 보기'(서면 인용문 ↔ 공식 원문 구간, 어절 단위 표시).
+const CLAIM_BADGE_CLASS = {SUPPORTED: "SUCCESS", CONTRADICTED: "CRITICAL", INSUFFICIENT: "MEDIUM"};
+function claimVerdictBadge(verdict) {
+  if (!verdict || !verdict.label) return null;
+  const badge = node("span", verdict.label, `badge ${CLAIM_BADGE_CLASS[verdict.code] || "MEDIUM"} claim-verdict`);
+  if (verdict.note) badge.title = verdict.note;
+  return badge;
+}
+function compareTokens(tokens, side) {
+  const line = node("p", null, `compare-text compare-${side}`);
+  for (const [text, mark] of tokens || []) {
+    const tag = mark === "removed" ? "del" : mark === "added" ? "ins" : mark === "changed" ? "mark" : "span";
+    line.append(node(tag, text, mark === "same" ? null : `diff-${mark}`), document.createTextNode(" "));
+  }
+  return line;
+}
+const COMPARE_HUNK_LIMIT = 3;  // 칸에는 다른 곳 3곳까지만(사용자 요청 11-14: 핵심만 간략히, 전문은 따로)
+function compareSnippet(tokens, side, lead, tail) {
+  const line = compareTokens(tokens, side);
+  if (lead) line.prepend(document.createTextNode("… "));
+  if (tail) line.append(document.createTextNode("…"));
+  return line;
+}
+function compareGrid(quotedLine, officialLine) {
+  const grid = node("div", null, "compare-grid");
+  const quoted = node("div", null, "compare-side");
+  const official = node("div", null, "compare-side");
+  quoted.append(node("strong", "서면 인용"), quotedLine);
+  official.append(node("strong", "공식 원문"), officialLine);
+  grid.append(quoted, official);
+  return grid;
+}
+function sourceComparisonBlock(comparison) {
+  if (!comparison) return null;
+  const box = node("details", null, "source-compare");
+  box.append(node("summary", `원문 대조 보기 · ${comparison.status_label || "판정 근거 확인 필요"}`));
+  const meta = node("p", comparison.source_label || "공식 원문", "muted source-compare-meta");
+  if (comparison.detail_link) {
+    const link = node("a", "원문 열기");
+    link.href = comparison.detail_link;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    meta.append(document.createTextNode(" · "), link);
+  }
+  box.append(meta);
+  if (comparison.location_confidence === "OCR") {
+    box.append(node("p", "스캔 문서에서 글자 인식으로 읽은 인용입니다. 위치와 글자를 원본에서 확인하세요.", "warning-text"));
+  }
+  const alignment = comparison.alignment;
+  const full = node("details", null, "compare-full");
+  full.append(node("summary", "전문 대조 보기"));
+  if (alignment) {
+    // 칸에는 다른 곳만 앞뒤 어절 조금과 함께 보인다. 전문은 접힌 '전문 대조 보기'와 '원문 열기'로 본다.
+    const hunks = alignment.hunks || [];
+    if (!hunks.length) box.append(node("p", "인용문이 공식 원문과 어절 단위로 같습니다.", "compare-same"));
+    if (hunks.length) {
+      // 머리글(서면 인용·공식 원문)은 한 번만 두고, 다른 곳마다 한 줄씩 나란히 보인다.
+      const table = node("div", null, "compare-grid compare-hunks");
+      table.append(node("strong", "서면 인용", "compare-head"), node("strong", "공식 원문", "compare-head"));
+      for (const hunk of hunks.slice(0, COMPARE_HUNK_LIMIT)) {
+        table.append(compareSnippet(hunk.quoted, "quoted", hunk.lead, hunk.tail),
+                     compareSnippet(hunk.official, "official", hunk.lead, hunk.tail));
+      }
+      box.append(table);
+    }
+    if (hunks.length > COMPARE_HUNK_LIMIT) box.append(node("p", `외 ${hunks.length - COMPARE_HUNK_LIMIT}곳은 전문 대조에서 확인하세요.`, "muted"));
+    full.append(compareGrid(compareTokens(alignment.quoted, "quoted"), compareTokens(alignment.official, "official")));
+    if (alignment.truncated) full.append(node("p", "긴 인용이라 앞부분만 맞대어 보입니다.", "muted"));
+  } else {
+    const excerpt = comparison.official_excerpt || "";
+    box.append(node("p", excerpt.length > 60 ? excerpt.slice(0, 60) + "…" : excerpt, "compare-text"));
+    box.append(node("p", "서면에 직접 인용문이 없어 공식 원문 발췌만 보입니다.", "muted"));
+    full.append(node("p", excerpt, "compare-text"));
+  }
+  box.append(full);
+  if (comparison.summary) box.append(node("p", friendlyText(comparison.summary), "muted"));
+  box.append(node("small", "빠짐은 취소선, 더해짐은 밑줄, 바뀜은 강조로 표시합니다. 어절 비교 결과이며 법적 의미의 차이는 직접 판단하세요.", "muted"));
+  return box;
+}
+
 function renderReviewRow(item, tier, findingsMap) {
   const tr = node("tr");
   if (item.item_id) tr.id = `row_${item.item_id}`;
@@ -2452,6 +2532,10 @@ function renderReviewRow(item, tier, findingsMap) {
   if (basisText) {
     tdBasis.append(node("p", basisText, "basis-text clamp"));
   }
+  const claimBadge = claimVerdictBadge(item.claim_verdict);
+  if (claimBadge) tdBasis.append(claimBadge);
+  const comparisonBlock = sourceComparisonBlock(item.source_comparison);
+  if (comparisonBlock) tdBasis.append(comparisonBlock);
   if (item.reference_case_match && item.reference_case_match !== "NOT_IN_REFERENCE") {
     tdBasis.append(node("p", `표준판례 사건정보: ${label(item.reference_case_match)}`, "basis-text"));
   }

@@ -52,3 +52,23 @@ def table_additions(document, existing_rows):
 def row_basis(document, row):
     return "\n".join(basis_text(item) for item in reference_rows(document)
                      if row.get("citation_id") and item.get("citation_id") == row["citation_id"])
+
+
+def compare_text(document, row):
+    """TK-160·163: 보고서 칸에 주장 3분류와 원문 대조 요약을 한두 줄로 싣는다(화면 '원문 대조 보기'의 요약)."""
+    lines = []
+    if row.get("claim_verdict_label"):
+        note = f" — {row['claim_verdict_note']}" if row.get("claim_verdict_note") else ""
+        lines.append(f"[근거 판정] {row['claim_verdict_label']}{note}")
+    cid = row.get("citation_id")
+    if cid:
+        for item in value(document, "review_items", []) or []:
+            item = item.to_dict() if hasattr(item, "to_dict") else dict(item)
+            comparison = item.get("source_comparison")
+            if item.get("citation_id") == cid and comparison:
+                scan = " · 스캔 문서에서 읽은 인용(위치·글자 확인 필요)" if comparison.get("location_confidence") == "OCR" else ""
+                lines.append(f"[원문 대조] {comparison.get('status_label')} · {comparison.get('source_label')} · "
+                             f"{comparison.get('summary')}{scan}")
+                break
+    return "\n".join(lines)
+

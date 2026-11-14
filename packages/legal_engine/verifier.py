@@ -29,7 +29,7 @@ from packages.common.schemas import Citation, EngineResult, Evidence, Finding, S
 from packages.common.textutil import contains_fuzzy, normalize_quote, similarity
 from packages.source_adapters import SourceRegistry
 
-from .evidence_basis import build_basis, quote_span
+from .evidence_basis import align_quote, build_basis, quote_span
 from .components import citation_components, component_summary, identity_confirmed
 from .citation_format import code_court_family, court_family, format_violations
 from .authority_status import (ENBANC_PUBLICATION_LAG_DAYS, LegalVerificationStatus, classify_authority_status,
@@ -513,6 +513,10 @@ class LegalVerifier:
             if span is not None:
                 span["field"] = "full_text+holding+summary" if has_full_text else "holding+summary"
                 verdict.review["quote_span"] = span
+                # TK-163: 화면 '원문 대조 보기'에 쓸 어절 정렬(전문 기준이라 발췌 200자에서 잘린 거짓 차이가 없다).
+                alignment = align_quote(citation.quoted_text, official_text)
+                if alignment is not None:
+                    verdict.review["quote_alignment"] = alignment
             if level3 == "CONTRADICTED":
                 verdict.status = VerificationStatus.CONTRADICTED
                 is_fabricated_quote = False

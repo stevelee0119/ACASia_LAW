@@ -196,7 +196,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
         doc.add_heading("모델별 AI 작성 판정", 2)
         table(["문서", "모델", "판정", "점수", "근거"], opinion_rows, [1.3, 1.2, 1.1, 0.5, 2.9])
 
-    from .reference_opinions import REPORT_NOTICE, row_basis, table_additions
+    from .reference_opinions import REPORT_NOTICE, compare_text, row_basis, table_additions
     from .review_tiers import classify_row_tier
     tier2_rows = []
     tier3_rows = []
@@ -209,6 +209,9 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
             cell_basis = (f"[평가] {row.get('validity_verdict', '') or '확인 필요'}\n{row.get('ai_generation_basis', '')}\n"
                           + format_context_review(row.get("context_review")))
             cell_basis += "\n" + row_basis(d, row)
+            compared = compare_text(d, row)  # TK-160·163
+            if compared:
+                cell_basis += "\n" + compared
             cell_review = row_cell_text(row)
             formatted_entry = [cell_loc, cell_claim, cell_basis, cell_review]
 
