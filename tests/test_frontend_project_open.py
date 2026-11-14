@@ -85,7 +85,7 @@ def test_clicking_an_existing_project_gives_feedback_and_opens_it(width, height,
                 expect(login).not_to_be_visible()
             expect(page.locator("#projectList > button")).to_have_count(3)
             expect(page.locator("#emptyState .empty-emblem")).to_be_visible()
-            expect(page.locator("#emptyState .empty-lettering")).to_be_visible()
+            expect(page.locator("#emptyState .empty-lettering")).to_have_count(0)
             expect(page.locator("#projectView")).to_be_hidden()
             assert project_reads == [] and page.evaluate("state.project") is None
             page.screenshot(path=str(tmp_path / f"workspace-home-{width}.png"), full_page=True)

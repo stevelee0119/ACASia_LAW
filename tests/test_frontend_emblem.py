@@ -45,12 +45,10 @@ def test_emblem_login_and_header_at_desktop_tablet_and_mobile_sizes(tmp_path):
                 page.goto("http://emblem.test/")
                 dialog = page.get_by_role("dialog", name="작업 공간 로그인")
                 expect(dialog).to_be_visible()
-                expect(dialog.get_by_role("heading", name="법률문서 검증시스템", exact=True)).to_be_visible()
-                expect(dialog.get_by_role("heading")).to_have_count(1)
+                expect(dialog.get_by_role("heading")).to_have_count(0)
                 expect(dialog.get_by_text("ACASia_LAW", exact=True)).to_have_count(0)
                 assert dialog.locator(".login-heading").evaluate("""element =>
-                    element.querySelector('h2').getBoundingClientRect().top >=
-                    element.querySelector('.brand-emblem').getBoundingClientRect().bottom + 12""")
+                    element.children.length === 1 && element.children[0].classList.contains('brand-emblem')""")
                 page.wait_for_function("""() => [...document.querySelectorAll('.brand-emblem img')]
                     .every(image => image.complete && image.naturalWidth === 1280)""")
                 assert page.locator(".brand-emblem img").count() == 2
@@ -70,25 +68,15 @@ def test_emblem_login_and_header_at_desktop_tablet_and_mobile_sizes(tmp_path):
                 expect(page.locator("#emptyState button, #emptyCreate, .empty-title")).to_have_count(0)
                 expect(page.locator(".emblem-credit")).to_have_count(0)
                 expect(page.locator("#emptyState")).not_to_contain_text("created by")
-                lettering = page.locator(".empty-lettering")
-                expect(lettering).to_be_visible()
-                expect(lettering).to_have_attribute("src", "/static/img/acas-lettering.png?v=20260927-2")
-                expect(lettering).to_have_attribute("alt", "육군 종합행정학교, Army Consolidate Administrative School, SMART and HARMONY")
-                page.wait_for_function("""() => {
-                    const image = document.querySelector('.empty-lettering');
-                    return image.complete && image.naturalWidth === 2172 && image.naturalHeight === 724;
+                expect(page.locator(".empty-lettering")).to_have_count(0)
+                expect(page.locator("#emptyState")).not_to_contain_text("육군 종합행정학교")
+                assert page.locator("#emptyState .empty-brand").evaluate("""el =>
+                    el.children.length === 1 && el.children[0].classList.contains('empty-emblem')""")
+                assert square.evaluate("""el => {
+                    const r = el.getBoundingClientRect();
+                    return r.width >= 200 && r.left >= 0 && r.right <= innerWidth
+                        && Math.abs((r.left + r.right) / 2 - el.parentElement.getBoundingClientRect().left - el.parentElement.getBoundingClientRect().width / 2) < 1;
                 }""")
-                assert lettering.evaluate("""el => {
-                    const rect = el.getBoundingClientRect(), emblem = el.previousElementSibling.getBoundingClientRect();
-                    return Math.abs(rect.width / emblem.width - 1.2) < .01 && rect.top >= emblem.bottom
-                        && Math.abs(rect.left + rect.width / 2 - emblem.left - emblem.width / 2) < 1
-                        && Math.abs(rect.width / rect.height - 2172 / 724) < .02
-                        && rect.left >= 0 && rect.right <= innerWidth && emblem.width >= 200
-                        && Math.abs(emblem.width - Math.min(280, rect.width / 1.2)) < 1;
-                }""")
-                with Image.open(io.BytesIO(lettering.screenshot())).convert("RGB") as rendered:
-                    assert sum(max(pixel) - min(pixel) > 50 and min(pixel) < 160
-                               for pixel in rendered.getdata()) > 100
                 expect(square).to_have_attribute("src", "/static/img/acas-law-square-transparent.png")
                 page.wait_for_function("""() => {
                     const image = document.querySelector('#emptyState .empty-emblem');
