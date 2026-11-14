@@ -6132,3 +6132,8 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 ### 2-55-17. 0.20.0 배포 확인 (11-14, 사용자 '배포 완료' + /api/health 응답 제공)
 - /api/health(사용자 제공): status ok, app ACASia_LAW, version 0.20.0, commit `034343f16934515659674950f99837ccdcaf54a0`(= #285 병합 커밋, 원격 main과 같음), database ok → 0.20.0 운영 배포 확인.
 - 다음: 태그 v.0.20.0(사용자, 034343f에 경량 태그 — v.0.19.0과 같은 형식) → 0.19.0 대 0.20.0 온라인 비교(case9·온라인 탐침, TK-161 3회, TK-162·163 공식 DB 응답) → 0.21.0 착수(2-56).
+
+### 2-55-18. 0.20.0 릴리스 주기 완료 (11-14, 사용자 '태그 완료'·'브랜치 삭제 완료')
+- 원격 태그 v.0.20.0 = `034343f16934515659674950f99837ccdcaf54a0`(배포 커밋) 확인.
+- 원격 브랜치: main, Steve_ACASiaLAW, evaluator/round8-promotion 3개만 남음(계속 개선 브랜치). 삭제 3개(antigravity/lv-legal-verification-architecture, sealed-retire-20261025, tk152-short-abbreviation-ranking)는 사용자가 처리, release/0.20.0은 병합 때 자동 삭제.
+- 0.20.0 주기(판정·버전 커밋·릴리스·배포·태그·브랜치 정리) 완료. 다음: 0.19.0 대 0.20.0 온라인 비교 → 0.21.0(2-56).
