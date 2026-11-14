@@ -780,6 +780,26 @@ def review_document(result, library, router, context, pii):
     return review
 
 
+# TK-174: Drive 대조가 끝나지 못한 실제 원인(review_completed=False의 두 조건)을 사람이 읽는 말로 적는다.
+def incomplete_reason(review) -> str:
+    """review_completed가 False인 까닭: 버린 모델 의견(사유별 건수)과 서면 잘림. 둘 다 아니면 상태 사유를 한글로."""
+    from collections import Counter
+
+    from packages.common.display_text import word
+    parts = []
+    rejected = review.get("rejected_observations") or []
+    if rejected:
+        counts = Counter(str(item.get("reason") or "") for item in rejected)
+        detail = ", ".join(f"{word(code or '사유 기록 없음')} {n}건" for code, n in counts.items())
+        parts.append(f"모델 의견 {len(rejected)}건을 근거 확인에서 제외({detail})")
+    if review.get("document_truncated"):
+        info = review.get("input") or {}
+        inspected, available = info.get("inspected_chars"), info.get("available_chars")
+        scope = f"{inspected:,}자/{available:,}자" if isinstance(inspected, int) and isinstance(available, int) else "일부"
+        parts.append(f"서면이 길어 앞부분({scope})만 대조")
+    return "; ".join(parts) or word(review.get("reason") or "사유 기록 없음")
+
+
 def report_lines(run_result):
     # V1.0.0: 보고서 본문용 문장이다. 상태·사유 코드와 시각은 사람이 읽는 말로 적는다(packages/common/display_text).
     from packages.common.display_text import korean_time, word
