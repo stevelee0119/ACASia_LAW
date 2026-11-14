@@ -6667,3 +6667,12 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - 2-59-8 지시(두 패널 제외 + 배치 안 A, 패치 TK-171_supplement2_on_c011a7b.diff)가 구현 측에 전달됐다. #294 병합(836dd59) 뒤 패치는 원격 evaluator/round8-promotion에 있다.
 - 평가 측은 #290 보완 2 커밋의 검토 요청·CI 완료를 기다린다. 판정: 사본(0e723a96)과 diff 0, TK-171 시험 11건, 필수 CI, 최종 캡처(1440·390) 사용자 확인.
 
+### 2-59-10. #290 보완 2(bfaf45f) 판정 (11-14)
+- 사본 대조(평가 측 재실행): bfaf45f의 app.js·styles.css·test_tk171_overview_real_data.py가 사본 0e723a96과 바이트 동일, c011a7b → bfaf45f 변경은 이 3파일뿐. 지시 대응표 전 항목 충족.
+- CI(인용): pull_request 실행 전부 성공(테스트 3종·Docker OCR·CodeQL·은퇴 세트·점수 하락 게이트). push 실행의 점수 하락 게이트만 실패.
+  · 원인: push 실행은 기준을 직전 푸시(c011a7b)로 잡는다. 이 PR이 c011a7b에서 만든 TK-171 시험 2개를 보완 2 지시대로 교체(이름 변경)했으므로 check_test_edits가 '삭제'로 봤다. PR 기준(Steve)에는 없던 시험이라 PR 실행은 통과.
+  · 평가 측 빈틈: 보완 2 사전 검증의 precheck 기준을 Steve 025df31로만 잡아 직전 PR head 기준 시험 변경 점검을 하지 않았다. 앞으로 PR 안에서 만든 시험을 바꾸는 보완은 check_test_edits --base <직전 PR head>를 함께 돌리고, 필요한 승인 항목을 지시와 함께 준비한다.
+  · 처리: 사용자 승인(11-14 'feat/v0.21.0에 푸시')으로 평가 측 커밋 cd6fc18(docs/scorecards/approved_test_marks.json에 delete 승인 2건, 선례 f5051c1·#277)을 feat/v0.21.0에 푸시. 로컬 확인: 기준 c011a7b 통과, 기준 836dd59 통과, 승인 없는 다른 삭제는 여전히 실패(대조군), 보호 경로 점검 통과(평가 측 커밋).
+- 화면: 최종 캡처(1440·390) 사용자 확인 '확인 — 수용'(11-14).
+- 판정: cd6fc18의 CI가 모두 성공하면 TK-171·172(#290) 수용, 병합 가능.
+
