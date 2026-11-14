@@ -7,6 +7,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from scripts import eval_testset as legacy
+from scripts.path_guard import contained_path
 
 PROTOCOL = "regression-proxy-v2.0"
 POSITIVE = {"NOT_FOUND", "CONTRADICTED", "SUSPICIOUS", "INVALID_FORMAT", "INVALID", "MODIFIED"}
@@ -19,13 +20,16 @@ def digest(value):
 
 
 def dataset_identity(folder):
-    folder = Path(folder).resolve()
-    gold = json.loads((folder / "ground_truth.json").read_text(encoding="utf-8"))
+    folder = contained_path(folder)
+    gold = json.loads(contained_path(folder / "ground_truth.json", folder).read_text(encoding="utf-8"))
     files = ["ground_truth.json", "match_spec.json"] + [d["file"] for d in gold["documents"].values()]
     hashes = {}
     for name in files:
-        path = (folder / name).resolve()
-        if not path.is_relative_to(folder) or not path.is_file():
+        try:
+            path = contained_path(folder / name, folder)
+        except ValueError:
+            raise ValueError("Evaluation input missing or outside dataset") from None
+        if not path.is_file():
             raise ValueError("Evaluation input missing or outside dataset")
         hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     return digest(hashes)
@@ -70,9 +74,9 @@ def aggregate(rows):
 
 
 def score(result, folder, legacy_report=None):
-    folder = Path(folder)
-    gold = json.loads((folder / "ground_truth.json").read_text(encoding="utf-8"))["documents"]
-    tokens = json.loads((folder / "match_spec.json").read_text(encoding="utf-8"))["tokens"]
+    folder = contained_path(folder)
+    gold = json.loads(contained_path(folder / "ground_truth.json", folder).read_text(encoding="utf-8"))["documents"]
+    tokens = json.loads(contained_path(folder / "match_spec.json", folder).read_text(encoding="utf-8"))["tokens"]
     if result.get("errors"):
         raise ValueError("Pipeline errors: regression measurement is incomplete")
     documents, ids = {}, {}
