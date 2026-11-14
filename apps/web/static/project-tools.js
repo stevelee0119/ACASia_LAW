@@ -3,7 +3,7 @@
 const projectTools = (() => {
   let timer = null, busy = false, authRequired = false, jobs = [], activeCount = 0;
   let jobsRoot = null, jobButton = null;
-  const baseTitle = "ACASia_LAW 법률문서 검증시스템";
+  const baseTitle = "AegisLAW";
 
   function renderControls() {
     const control = $("deleteProject");

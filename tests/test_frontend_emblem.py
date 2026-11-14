@@ -43,6 +43,7 @@ def test_emblem_login_and_header_at_desktop_tablet_and_mobile_sizes(tmp_path):
                 page.on("pageerror", lambda error: errors.append(str(error)))
                 page.route("**/*", respond)
                 page.goto("http://emblem.test/")
+                expect(page).to_have_title("AegisLAW")
                 dialog = page.get_by_role("dialog", name="작업 공간 로그인")
                 expect(dialog).to_be_visible()
                 expect(dialog.get_by_role("heading")).to_have_count(0)
