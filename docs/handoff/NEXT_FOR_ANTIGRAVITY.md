@@ -6150,3 +6150,10 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - 0.21.0 후보(원인 확인, 지시는 사본 사전 검증 뒤):
   - O1 모델 사실 지적이 결정론 판정과 연결되지 않음 — `ai_document_detector.py` 671행 `_anchor_cover`가 판정 제목에서만 값 표지를 뽑고(합계 판정의 기재·계산값은 confidence_features에만 있음), 649행 `_CONTRADICTION_WORDS`가 설명 문장('모순일 뿐 … 아니다')도 미확인으로 남긴다. D hwpx에서 같은 표 오류가 'MEDIUM 모델 지적 — 결정론 재계산으로 확인하지 못함'으로 한 번 더 표시됨(문구가 사실과 반대).
   - O2 Drive 대조 미완료 사유 오표시 — `pipeline.py` 545~548행이 미완료 원인(버린 의견 1건 QUOTE_NOT_GROUNDED)이 아니라 상태 사유 코드(`rag_engine/review.py` 779행)를 붙인다.
+
+### 2-57-1. case9 반복 2·3회차(11-14 사용자 업로드, TK-161 측정 완료)
+- 2회차 run_4105ef3fa1224d78: openai AI_PARTIAL 0.68 + anthropic AI_PARTIAL 0.55 → 일치(세 번째 미호출) → AI_PARTIAL 0.615, 23/23.
+- 3회차 run_d58d00386bdf4a04: openai UNCERTAIN 0.58 + anthropic AI_PARTIAL 0.55 → 엇갈림 → gemini AI_FULL 0.92 → 다수결 AI_PARTIAL, 23/23.
+- 3회 모두 23/23, 유보 0회(0.19.0은 2회 중 1회 유보). 첫 모델(openai) 변동은 남지만 TK-156이 흡수.
+- 권고: TK-161은 구현 지시 없이 닫고, 릴리스 후보마다 case9 온라인 1회 기록으로 감시(유보 재발 시 재개). 사용자 결정 대기.
+- O2는 2·3회차에 재현되지 않음(버린 의견 0건) — 모델이 근거 없는 발췌를 낼 때만 드러나는 표시 결함, 원인 코드는 그대로이므로 0.21.0 후보 유지.
