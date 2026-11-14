@@ -6466,3 +6466,110 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 ### 2-59-4. 사용자 결정 2건 (11-14)
 - L1(목록+상세 분할): 사용자 선택 '4열 표 유지' — 데스크톱은 10-25 결정의 4열 표를 그대로 두고 디자인만, 모바일(8장)은 카드형. 원문 5.4·5.5의 분할 요구는 이 결정으로 대체한다.
 - 사용자 원문: "feat/v0.21.0 브랜치(PR #290, 커밋 0ae2eb1 디자인 승인" — #290의 시각 디자인(0ae2eb1) 사용자 확인 완료. 남은 보완(D1~D4·F1·S1·M1·B1)은 데이터·표기·모바일 동작만 고치고 승인된 디자인은 바꾸지 않는다.
+
+### 2-59-5. TK-171 보완 지시(전달판, #290 0ae2eb1 위) — 기존 시험 수정 5곳은 사용자 승인 대기
+```
+[TK-171 보완(#290 feat/v0.21.0, 승인된 디자인 0ae2eb1 위) — 개요 화면 실제 값·브랜드 문구·Pretendard 자체 호스팅·넓은 화면 사이드바 접기·좁은 화면 표 카드화]  기준: feat/v0.21.0 0ae2eb1(디자인 사용자 승인 11-14)  평가 측 사본: TK-171 supplement copy(0ae2eb1 + Steve 025df31 병합 위)
+보완 패치: docs/handoff/patches/TK-171_supplement_on_0ae2eb1.diff (git apply, 0ae2eb1에 바로 적용됨 — 평가 측 확인)
+ - 패치 범위: 제품 4파일(apps/web/index.html·apps/web/static/app.js·operations.js·styles.css) + 새 시험 1파일.
+ - 글꼴 파일 94개(3.1MB)는 패치에 넣지 않았다. 아래 F1의 명령으로 받는다.
+대상 릴리스: 0.21.0.
+
+0. 근거와 범위
+ - 원문: docs/handoff/requests/FE_template_A_redesign_20261114.md(Codex 작성 지시서 + 제8장 대체).
+ - 판정: NEXT 2-59-2(#290 0ae2eb1).
+ - 사용자 결정(11-14):
+   · L1(출처 미확인·무리한 주장 탭을 목록+상세로 분할)은 하지 않는다. 데스크톱은 10-25 결정의 4열 표를 그대로 둔다(디자인만).
+   · 0ae2eb1의 시각 디자인은 승인됐다. 이 보완은 디자인을 바꾸지 않고 값·문구·동작만 고친다.
+ - 먼저 Steve_ACASiaLAW(025df31, #291~#293 병합)를 feat/v0.21.0에 병합한다. 겹치는 파일은 없다(평가 측 병합 확인).
+
+1. 원인(줄 번호는 0ae2eb1 기준)
+ D1. app.js 1320~1350행 '최근 작업 활동'이 실제 기록이 아니다(원문 1.1 '예시 수치·날짜 복제 금지', 6장 '실제 값만').
+     - 고정 4줄(자료 N건 업로드 완료·검증 분석 완료·AI 작성 진단·프로젝트 생성)을 그린다.
+     - 시각이 모두 state.run.started_at이고, 실행이 없으면 '방금 전'이다.
+     - 실제 기록은 화면이 이미 받는다: project.created_at, document.uploaded_at, run.started_at·finished_at, 보고서 created_at·finalized_at·label.
+ D2. app.js 1194행: '검토 대상 자료' 카드 보조 줄이 '성립 불가 인용 N건'이다. 자료 카드에 인용 수를 섞는다(원문 6장 지표 혼동 금지).
+ D3. app.js 1194·1205행: 검증 전에도 '성립 불가 인용 0건'·'공식 DB 미확인 0건'을 보인다(원문 5.7·6장).
+ D4. app.js 1255~1270행: 사람 검토 사유가 지표를 섞는다(원문 6장).
+     - 출처 미확인 사유의 건수에 unverified_items 길이를 대신 쓴다.
+     - 법률 사유의 건수에 legalCount가 0이면 'AI·보안이 아닌 모든 경고 수'를 대신 쓴다.
+     - 실행이 있으면 사유가 없어도 머리말이 '사람 검토 필요'다(1285행).
+ F1. styles.css 10행이 font-family 'Pretendard Variable'을 쓰는데, @font-face와 글꼴 파일이 없어 시스템 글꼴로 대체된다(원문 3.2 자체 호스팅·라이선스 고지, 8.6 글꼴 최적화).
+     - 보안 정책이 default-src 'self'라 외부 CDN 글꼴은 막힌다(apps/api/main.py 158행).
+ S1. 넓은 화면(701px 이상)에 사이드바 접기·펼치기가 없다(원문 4.2). 메뉴 단추(#menuButton)가 좁은 화면에서만 보인다(styles.css .mobile).
+ M1. 좁은 화면에서 #reviewTable·#tier3Table이 4열 표 그대로라 390px에서 잘리고 표 안 가로 스크롤이 생긴다(원문 8.4 C·D '4열 표를 그대로 표시하지 마십시오').
+ B1. 브랜드 문구가 옛 이름이다(원문 13장 9, 사용자 11-14 '문구는 AegisLAW로').
+     - index.html: 헤더 링크 aria-label 'ACASia_LAW 홈', 엠블럼 alt 'ACASia LAW', 빈 화면 aria-label 'ACASia_LAW', 바닥글 '© ACASia_LAW 법률문서 검증시스템'.
+     - operations.js 64행: 로그인 창 엠블럼 alt 'ACASia LAW'.
+
+2. 고칠 것(보완 패치와 같음)
+ F-D1. renderTemplateAOverview의 활동 목록을 실제 기록으로 만든다.
+     - 화면이 받은 값에서 사건을 모은다(시각 없는 사건은 넣지 않는다).
+       · 프로젝트 생성(project.created_at)
+       · 자료 업로드: 파일명(document.uploaded_at, 검토 제외면 '검토 제외' 표지)
+       · 자동 검증 시작(run.started_at)
+       · 자동 검증 종료(run.finished_at, 표지는 label(run.state))
+       · 보고서 생성(report.created_at, 표지는 서버 label)
+       · 보고서 확정(report.finalized_at)
+     - 최신순 5개를 보인다. 사건이 없으면 '기록된 작업이 없습니다.'를 보인다.
+     - loadReports에서 state.reports = reports로 두고 개요를 다시 그린다(renderSummary).
+ F-D2. 자료 카드 보조 줄을 '검토 포함 N건 · 제외 M건'으로 바꾼다.
+ F-D3. 출처 미확인 KPI 보조 줄은 실행 전 '검증 후 집계'로 한다.
+ F-D4. 사유는 지표마다 그 값만 쓴다. 각 사유는 실행이 있고 값이 0보다 클 때만 넣고, 최대 3개를 보인다.
+     - 출처 미확인 인용(sourceCount)
+     - 자동 확인 미완료(run.unverified_items 길이)
+     - 법률적으로 무리한 주장(legalCount)
+     - 머리말: 사유가 있으면 '사람 검토 필요 — 사유 N가지', 없으면 '검토 안내 — 주요 확인 항목'. 설명 문장은 실행 전·후를 구분한다(패치 문구).
+ F-F1. Pretendard 1.3.9(OFL-1.1)를 자체 호스팅한다. 글자 범위별 분할본을 써서 보이는 글자의 조각만 받게 한다.
+     npm pack pretendard@1.3.9          # sha256 0ffc240cee83be02520fb4ac1b2a0a51052b9d13506ade0ba90c591dbbb3bd53
+     tar xzf pretendard-1.3.9.tgz
+     mkdir -p apps/web/static/fonts/pretendard
+     cp package/dist/web/variable/woff2-dynamic-subset/*.woff2 apps/web/static/fonts/pretendard/
+     cp package/dist/LICENSE.txt apps/web/static/fonts/pretendard/OFL-Pretendard.txt
+     sed 's#url(./woff2-dynamic-subset/#url(./#g' package/dist/web/variable/pretendardvariable-dynamic-subset.css > apps/web/static/fonts/pretendard/pretendard.css
+     - 확인값(평가 측):
+       · pretendard.css sha256 bb69c4c451b673e9f61091acf3009551051f9d997eccd89c87b6b6b36424803b
+       · OFL-Pretendard.txt sha256 b04538c9abec39a3db75108cf0af0fd9c77032fe8aa2cf38345b4d250e98e38e
+       · woff2 92개를 이름순으로 이어 붙인 sha256 9bb067166c52c8d1afce56951c1a107e2a09555281e8dbcf0e67329200d0e350
+     - index.html: styles.css 링크 바로 앞에 <link rel="stylesheet" href="/static/fonts/pretendard/pretendard.css">.
+ F-S1. 같은 메뉴 단추 하나로 처리한다.
+     - 좁은 화면(≤700px): 기존 서랍 동작.
+     - 넓은 화면: .workspace에 sidebar-collapsed를 켜고 끈다(grid 첫 칸 0, aside 숨김). 상태는 localStorage 'acas-sidebar-collapsed'에 저장한다(try/catch, 저장 불가면 그 화면에서만).
+     - aria-expanded·aria-label('사이드바 접기'·'사이드바 펼치기'·'프로젝트 목록')을 함께 바꾼다.
+     - 화면 폭이 바뀌면 다시 맞춘다(matchMedia change).
+ F-M1. labelTableCells(tableId): 각 칸에 thead의 칸 이름을 data-label로 붙인다. 두 표를 그린 뒤에 부른다.
+     - CSS @media (max-width:700px): 두 표의 thead를 숨기고, tr·td를 block으로 바꿔 카드로 보인다(테두리·둥근 모서리). td::before에 칸 이름을 보인다. 표 최소 폭(760px)을 풀고 표 감싸개의 가로 스크롤을 없앤다.
+     - 넓은 화면의 4열 표는 그대로다(사용자 결정).
+ F-B1. 1절 B1의 다섯 곳을 'AegisLAW 홈'·'ACAS AegisLAW'·'AegisLAW'·'© ACAS AegisLAW 법률문서 검증시스템'으로 바꾼다.
+     - 보고서 JSON의 product 'ACASia_LAW'(데이터 계약), PDF·메일·API 설명은 이 PR 범위가 아니다(화면 밖, 원문 7장). 별도 판단한다.
+
+3. 확인 시험(새 tests/test_tk171_overview_real_data.py 9건, 값은 합성, 서버는 Playwright route)
+ - 활동 목록: 실제 기록 5건 최신순, 시각이 모두 다르고 '방금 전' 없음, 보고서 표지가 서버 label.
+ - 검증 전: KPI에 '성립 불가 인용'·'미확인 0건' 없음, '검증 후 집계', 머리말 '검토 안내', 지어낸 사건 없음.
+ - 자료 카드는 자료 수만 보인다.
+ - 브랜드 옛 이름 0건, Pretendard css·글꼴 파일·OFL 고지가 있고 css에 외부 주소가 없다.
+ - Pretendard 글꼴 면이 실제로 읽힌다(document.fonts 상태 loaded).
+ - 1440px: 메뉴 단추로 사이드바를 접고 펴며, aria-expanded가 맞다.
+ - 320·390px: 표 칸이 block 카드이고 data-label='위치', 표가 감싸개를 넘지 않고 머리 행이 숨는다. 768px: 문서 가로 넘침 없음.
+ - 기존 시험 수정 5곳(B1과 충돌, 평가 측 작성, 사용자 승인 대상): docs/handoff/patches/TK-171_supplement_tests_on_0ae2eb1.diff
+   · tests/test_api.py 68·70행: aria-label 'ACASia_LAW 홈' → 'AegisLAW 홈', alt 'ACASia LAW' → 'ACAS AegisLAW'
+   · tests/test_frontend_emblem.py 105행: 링크 이름 'ACASia_LAW 홈' → 'AegisLAW 홈'
+   · tests/frontend_auth.test.cjs 100행: 로그인 창 alt → 'ACAS AegisLAW', 208행: html에 'ACASia_LAW' 포함 → 'AegisLAW' 포함·'ACASia' 없음
+   · 단언을 지우거나 약하게 하지 않는다(같은 개수, 새 표기로만 바꿈). 이 5곳 외의 기존 시험은 바꾸지 않는다.
+ - 고치기 전 트리(0ae2eb1 + Steve 병합)에서는 9건 중 8건이 실패한다(평가 측 재실행). 768px 칸은 회귀 방지용이다.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본, SQLite, LV_ALLOW_NETWORK=0)
+ - 새 시험 9건 통과.
+ - precheck_pr --quick(기준 Steve 025df31): 종료 0. 화면 시험 34파일(Playwright 화면 시험 전부, 새 시험 포함) + test_api 364건 실패 0, 고정 82.6 / 81.9 / 오탐 0, 평가 세트 문구 대조 통과. 아래 '기존 시험 수정 5곳'을 적용한 상태다.
+ - node tests/frontend_auth.test.cjs: 20건 통과(아래 기존 시험 수정 적용 상태).
+ - 화면 캡처(1440·390, 합성 자료): 페이지 오류 0, 문서 가로 넘침 0. 승인된 디자인과 같은 배치이고, 바뀐 것은 값·문구·동작뿐이다(사용자에게 제시).
+ - 미검증: iOS Safari·Android 실기기(원문 8.7), 느린 모바일망에서 글꼴 조각 내려받기 시간.
+
+5. 제출물·수용 기준
+ - feat/v0.21.0에 Steve_ACASiaLAW 병합 + 보완 패치 + 시험 수정 패치(사용자 승인 뒤) + 글꼴 파일 94개를 한 커밋 또는 연속 커밋으로 올린다(PR #290 그대로).
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공.
+   · 고정·은퇴 세트 변화 0, 탐지 diff 0(화면만).
+   · 패치 적용분이 사본과 diff 0. 글꼴 파일은 2절 F-F1의 확인값과 같아야 한다.
+ - 화면 변경이라 평가 측은 화면 시험 전부를 함께 돌리고, 최종 캡처를 사용자에게 다시 보인다.
+```
