@@ -3498,6 +3498,62 @@ function bytesText(value) {
   return `${Math.round(n / 1024)} KB`;
 }
 
+// TK-157b: 담당자 검토 결정을 경고 유형별로 모아 보인다(서버 /api/review-quality, TK-157a).
+// 개수와 비율만 보인다(문서·제목·메모·작성자 없음). 결정이 적은 유형은 비율 대신 '표본 부족'.
+const REVIEW_QUALITY_ROWS = 15;
+const percentText = rate => (typeof rate === "number" ? `${Math.round(rate * 100)}%` : "표본 부족");
+async function renderReviewQuality() {
+  const content = $("settingsContent");
+  if (!content) return;
+  let data;
+  try {
+    data = await api("/review-quality", {interactiveAuth: false});
+  } catch (error) {
+    if ([401, 403].includes(error.status)) return;  // 로그인 전·권한 없음: 칸을 만들지 않는다
+    const failed = node("section", null, "diagnostic-row review-quality-panel");
+    failed.append(node("h3", "경고 유형별 검토 결정"), node("p", "집계를 불러오지 못했습니다. 잠시 뒤 다시 여세요.", "muted"));
+    content.append(failed);
+    return;
+  }
+  await loadFindingCategories({interactiveAuth: false});
+  const names = displayTables().names || {};
+  const rows = (data.types || []).filter(t => t.total > 0)
+    .sort((a, b) => b.decided - a.decided || b.total - a.total);
+  const section = node("section", null, "diagnostic-row review-quality-panel");
+  const heading = node("div", null, "diagnostic-heading");
+  const decided = rows.reduce((n, t) => n + t.decided, 0);
+  heading.append(node("h3", "경고 유형별 검토 결정"), node("span", `결정 ${decided.toLocaleString("ko-KR")}건`, "badge LOW"));
+  section.append(heading);
+  if (!rows.length) {
+    section.append(node("p", "아직 검토 결정이 없습니다. 검토 표에서 지적 수용·오탐·조치 완료를 고르면 여기에 모입니다.", "muted"));
+    content.append(section);
+    return;
+  }
+  const table = node("table", null, "review-quality-table");
+  const head = node("tr");
+  for (const [text, tip] of [["경고 유형", ""], ["결정 / 전체", "검토 결정을 내린 경고 수 / 전체 경고 수"],
+                             ["수용률", "지적 수용과 조치 완료를 합친 비율"], ["오탐률", "오탐으로 표시한 비율"]]) {
+    const th = node("th", text);
+    if (tip) th.title = tip;
+    head.append(th);
+  }
+  const body = node("tbody");
+  for (const t of rows.slice(0, REVIEW_QUALITY_ROWS)) {
+    const tr = node("tr");
+    tr.append(node("td", names[t.type] || friendlyText(t.type)),
+              node("td", `${t.decided} / ${t.total}`),
+              node("td", percentText(t.acceptance_rate)),
+              node("td", percentText(t.false_positive_rate)));
+    body.append(tr);
+  }
+  table.append(node("thead"), body);
+  table.querySelector("thead").append(head);
+  section.append(table);
+  if (rows.length > REVIEW_QUALITY_ROWS) section.append(node("p", `외 ${rows.length - REVIEW_QUALITY_ROWS}개 유형`, "muted"));
+  section.append(node("p", `결정이 ${data.min_decided}건 미만인 유형은 비율을 보이지 않습니다. 담당자 결정의 개수이며 법률가 독립 검증(정밀도)을 대신하지 않습니다.`, "muted"));
+  content.append(section);
+}
+
 // 저장 공간: PostgreSQL은 행을 지워도 파일이 바로 줄지 않는다. 사용량과 회수 방법을 관리자에게 보인다.
 async function renderStorage() {
   const content = $("settingsContent");
@@ -3538,7 +3594,11 @@ $("settingsButton").onclick = action(async () => {
   const data = await api("/diagnostics");
   renderDiagnostics(data);
   $("settingsDialog").showModal();
-  await renderStorage();
+  try {
+    await renderStorage();
+  } finally {
+    await renderReviewQuality();  // TK-157b: 저장 공간 조회가 실패해도 집계는 보인다
+  }
 });
 if ($("calculationForm")) {
   $("calculationForm").onsubmit = action(async e => {
