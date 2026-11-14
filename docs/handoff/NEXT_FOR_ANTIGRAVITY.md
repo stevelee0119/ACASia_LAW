@@ -6063,3 +6063,8 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 ### 2-55-9. 사용자 'TK-170 지시 전달 완료' (11-14)
 - TK-170(2-55-8)을 구현 측에 전달했다. 구현 PR이 오면 사본(redos-fix-copy)과 diff 0·CI로 판정한다.
 - 평가 PR #286(경로 묶기) CI 진행 중. 참고: GitHub 기본 'CodeQL' 결과 검사는 main 대상 PR에서만 돈다. #286·TK-170 PR에서는 저장소 자체 'CodeQL 새 경고 게이트'(python·js)만 돌고, 10건이 닫혔는지는 둘 병합 뒤 #285에 Steve를 다시 병합해 확인한다.
+
+### 2-55-10. #287(TK-170) 판정: 수용, #286 CI 성공 (11-14)
+- #287 head `ee48484` = 사본 redos-fix-copy(diff 0). 사본 precheck --quick 종료 0(1,124건), head에서 관련 52건·게이트 3종 통과(평가 측 재실행). CI 전부 성공(인용). 수용 코멘트 게시.
+- #286(평가 도구 경로 묶기) head `748daa3` CI 전부 성공(인용, CodeQL 분석 4건·새 경고 게이트 포함).
+- 다음: #286·#287 병합(사용자) → #285(release/0.20.0)에 Steve 재병합 → GitHub CodeQL 결과 확인.
