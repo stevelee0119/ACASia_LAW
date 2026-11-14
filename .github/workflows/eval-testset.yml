@@ -41,8 +41,8 @@ jobs:
       LV_DATA_DIR: ${{ github.workspace }}/.eval-data
       LV_PSEUDONYM_SECRET: ${{ secrets.LV_PSEUDONYM_SECRET || 'actions-eval-only' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -66,7 +66,7 @@ jobs:
           for f in reports-ci/eval_*.md; do cat "$f"; echo; done | tee -a "$GITHUB_STEP_SUMMARY"
       - name: 평가 결과 업로드
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: eval-reports
           path: reports-ci/
