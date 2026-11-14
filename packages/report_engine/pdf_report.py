@@ -258,7 +258,7 @@ def build_report_pdf(
         story.append(Paragraph(_escape("모델별 AI 작성 판정"), styles["h2"]))
         story.append(table([["문서", "모델", "판정", "점수", "근거"], *opinion_rows], [80, 70, 70, 30, 240]))
 
-    from .reference_opinions import REPORT_NOTICE, row_basis, table_additions
+    from .reference_opinions import REPORT_NOTICE, compare_text, row_basis, table_additions
     from .review_tiers import classify_row_tier
     tier2_rows = []
     tier3_rows = []
@@ -272,6 +272,9 @@ def build_report_pdf(
                           + str(row.get("ai_generation_basis", ""))[:120] + "\n"
                           + format_context_review(row.get("context_review")))
             cell_basis += "\n" + row_basis(d, row)
+            compared = compare_text(d, row)  # TK-160·163
+            if compared:
+                cell_basis += "\n" + compared
             cell_review = row_cell_text(row, limit=900)
             formatted_entry = [cell_loc, cell_claim, cell_basis, cell_review]
 
