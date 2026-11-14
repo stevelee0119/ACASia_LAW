@@ -1,11 +1,11 @@
 diff --git a/apps/web/static/app.js b/apps/web/static/app.js
-index f25c2de..5a57b35 100644
+index f25c2de..ced7656 100644
 --- a/apps/web/static/app.js
 +++ b/apps/web/static/app.js
-@@ -3499,6 +3499,62 @@ function bytesText(value) {
+@@ -3498,6 +3498,62 @@ function bytesText(value) {
+   return `${Math.round(n / 1024)} KB`;
  }
  
- // 저장 공간: PostgreSQL은 행을 지워도 파일이 바로 줄지 않는다. 사용량과 회수 방법을 관리자에게 보인다.
 +// TK-157b: 담당자 검토 결정을 경고 유형별로 모아 보인다(서버 /api/review-quality, TK-157a).
 +// 개수와 비율만 보인다(문서·제목·메모·작성자 없음). 결정이 적은 유형은 비율 대신 '표본 부족'.
 +const REVIEW_QUALITY_ROWS = 15;
@@ -62,9 +62,9 @@ index f25c2de..5a57b35 100644
 +  content.append(section);
 +}
 +
+ // 저장 공간: PostgreSQL은 행을 지워도 파일이 바로 줄지 않는다. 사용량과 회수 방법을 관리자에게 보인다.
  async function renderStorage() {
    const content = $("settingsContent");
-   const section = node("section", null, "diagnostic-row storage-panel");
 @@ -3538,7 +3594,11 @@ $("settingsButton").onclick = action(async () => {
    const data = await api("/diagnostics");
    renderDiagnostics(data);
@@ -93,10 +93,10 @@ index 9c1fda7..bd735a9 100644
 +.review-quality-table th:not(:first-child), .review-quality-table td:not(:first-child) { white-space: nowrap; }  /* '표본 부족'·'10 / 12'가 낱말 중간에서 갈리지 않게 */
 diff --git a/tests/test_tk157b_review_quality_panel.py b/tests/test_tk157b_review_quality_panel.py
 new file mode 100644
-index 0000000..5cee65f
+index 0000000..3ac6a8b
 --- /dev/null
 +++ b/tests/test_tk157b_review_quality_panel.py
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,127 @@
 +"""TK-157b: '연결 상태' 창의 경고 유형별 검토 결정 집계(서버 /api/review-quality, TK-157a). 값은 모두 합성이다."""
 +import os
 +import re
@@ -123,7 +123,7 @@ index 0000000..5cee65f
 +               "database": {"dialect": "sqlite"}, "worker_mode": "auto", "network_allowed": True, "source_keys_present": {}}}
 +
 +
-+def _open(page, quality_status=200, storage_status=200):
++def _open(page, quality_status=200, storage_status=200, quality=QUALITY):
 +    static = ROOT / "apps/web/static"
 +    files = {f"/static/{p.relative_to(static).as_posix()}": p for p in static.rglob("*") if p.is_file()}
 +    files["/"] = ROOT / "apps/web/index.html"
@@ -138,7 +138,7 @@ index 0000000..5cee65f
 +        if path in replies:
 +            return route.fulfill(json=replies[path])
 +        if path == "/api/review-quality":
-+            return route.fulfill(status=quality_status, json=QUALITY if quality_status == 200 else {"detail": "x"})
++            return route.fulfill(status=quality_status, json=quality if quality_status == 200 else {"detail": "x"})
 +        if path == "/api/admin/storage":
 +            return route.fulfill(status=storage_status, json={"database_bytes": 1, "files": {"root_bytes": 1, "parts": {}}, "tables": []}
 +                                 if storage_status == 200 else {"detail": "x"})
@@ -212,4 +212,15 @@ index 0000000..5cee65f
 +    page = browser.new_page(viewport={"width": 1440, "height": 900})
 +    errors = _open(page, quality_status=500)
 +    expect(page.locator(".review-quality-panel")).to_contain_text("집계를 불러오지 못했습니다")
++    assert errors == []
++
++
++def test_panel_without_decisions_explains_how_they_accumulate(browser):
++    page = browser.new_page(viewport={"width": 1440, "height": 900})
++    empty = {**QUALITY, "types": [{**t, "total": 0, "decided": 0} for t in QUALITY["types"]]}
++    errors = _open(page, quality=empty)
++    panel = page.locator(".review-quality-panel")
++    expect(panel).to_contain_text("아직 검토 결정이 없습니다")
++    expect(panel.locator("table")).to_have_count(0)
++    expect(panel.locator(".badge")).to_have_text("결정 0건")
 +    assert errors == []
