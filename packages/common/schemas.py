@@ -640,6 +640,8 @@ class ReviewItem:
     counteraction: Optional[str] = None          # 권고 대응 방향
     reference_case_match: Optional[str] = None   # 구조화 판례 사건정보 대조(지지 판정과 별개)
     reference_observations: List[Dict[str, Any]] = field(default_factory=list)
+    source_comparison: Optional[Dict[str, Any]] = None  # TK-163 원문 대조 보기(공식 원문 구간·어절 정렬·위치 신뢰도)
+    claim_verdict: Optional[Dict[str, Any]] = None      # TK-160 주장 3분류 {code, label, note}
 
     def to_dict(self) -> Dict[str, Any]:
         """직렬화 사전 반환 (Enum은 문자열로 변환)."""
@@ -665,5 +667,7 @@ class ReviewItem:
             "advisory_only": self.advisory_only,
             "reasoning_sections": self.reasoning_sections,
             "counteraction": self.counteraction,
+            "source_comparison": self.source_comparison,
+            "claim_verdict": self.claim_verdict,
         }
 

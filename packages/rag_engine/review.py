@@ -781,23 +781,25 @@ def review_document(result, library, router, context, pii):
 
 
 def report_lines(run_result):
+    # V1.0.0: 보고서 본문용 문장이다. 상태·사유 코드와 시각은 사람이 읽는 말로 적는다(packages/common/display_text).
+    from packages.common.display_text import korean_time, word
     library = (getattr(run_result, "run_manifest", {}) or {}).get("reference_library", {})
     if not library or library.get("status") == "DISABLED":
         return []
-    lines = [f"주요 참고문헌 검토 결과(RAG): {library.get('status')} / 조회 {library.get('checked_at')} / "
+    lines = [f"주요 참고문헌 검토 결과(RAG): {word(library.get('status'))} / 조회 {korean_time(library.get('checked_at'))} / "
              f"색인 {library.get('files_indexed', 0)}건 / 목록 {library.get('files_seen', 0)}건",
              "색인은 검색 가능한 텍스트 범위이며 책 전체 AI 검토가 아니다. 구조화 판례는 주장별 행 발췌와 사건정보 대조 범위만 기록한다.",
              "검색 기반 AI 참고 의견이며 공식 출처 확인, AI 작성 여부, 위조 여부 판정을 대체하지 않는다."]
     recorded = {item.get("file_id") for item in library.get("inventory", []) if item.get("file_id")}
     for issue in [i for i in library.get("issues", []) if not i.get("file_id") or i["file_id"] not in recorded][:20]:
-        lines.append(f"공통·기타 제한: {issue.get('name', issue.get('file_id', 'Drive'))} / {issue.get('reason')}")
+        lines.append(f"공통·기타 제한: {issue.get('name', issue.get('file_id', 'Drive'))} / {word(issue.get('reason'))}")
     for item in library.get("inventory", [])[:100]:
         reasons = list(dict.fromkeys(filter(None, [item.get("reason"), *[
             i.get("reason") for i in library.get("issues", []) if i.get("file_id") == item.get("file_id")]])))
-        coverage = f" / 텍스트 색인 {item.get('read_pages', 0)}/{item['pages']}쪽" if item.get("pages") else ""
+        coverage = f" / 텍스트 색인 {item.get('read_pages') or 0}/{item['pages']}쪽" if item.get("pages") else ""
         missing = f" / 텍스트 미추출 쪽 {item['no_text_pages']}" if item.get("no_text_pages") else ""
         lines.append(f"자료별 처리: {item.get('folder_path', '')}/{item.get('name')} / "
-                     f"{item.get('status')} / {' · '.join(reasons)}{coverage}{missing}")
+                     f"{word(item.get('status'))} / {' · '.join(word(r) for r in reasons)}{coverage}{missing}")
     if len(library.get("inventory", [])) > 100:
         lines.append("자료별 처리 기록은 앞 100건만 표시했다. 전체 기록은 결과 JSON에 보존되어 있다.")
     for group in library.get("duplicates", [])[:20]:
@@ -806,24 +808,24 @@ def report_lines(run_result):
     for doc in run_result.documents:
         review = doc.engine_data.get("rag", {})
         used = "Drive 자료 활용" if review.get("drive_used") else "Drive 자료 미활용"
-        lines.append(f"{doc.filename}: {review.get('status', '미실행')} / {used} / {review.get('reason', '')}")
+        lines.append(f"{doc.filename}: {word(review.get('status', '미실행'))} / {used} / {word(review.get('reason', '')).replace(':', ' — ')}")
         if review.get("case_table_status"):
-            lines.append(f"표준판례 표 상태: {review['case_table_status']}")
+            lines.append(f"표준판례 표 상태: {word(review['case_table_status'])}")
         for cid, match in (review.get("reference_case_matches") or {}).items():
-            lines.append(f"사건정보 대조({cid}): {match.get('status', 'NOT_CHECKED')} / "
+            lines.append(f"사건정보 대조({cid}): {word(match.get('status', 'NOT_CHECKED'))} / "
                          f"{match.get('sheet', '')}!{match.get('source_cell_range', '')}")
         for source in review.get("sources", []):
             location = f"{source['page']}쪽" if source.get("page_numbers_reliable", True) else f"텍스트 구간 {source['page']}(원본 쪽 미확인)"
             lines.append(f"{source['source_id']}: {source['title']} / {location} / "
-                         f"수정 {source['modified_time']} / SHA-256 {source['sha256']} / {source['url']}")
+                         f"수정 {korean_time(source['modified_time'])} / SHA-256 {source['sha256']} / {source['url']}")
         for item in review.get("observations", []):
             kind = "규칙 대조 의견" if item.get("method") in {"DETERMINISTIC_PROVISION_COMPARISON", "DETERMINISTIC_CITATION_COMPARISON"} else "AI 참고 의견"
             lines.append(f"문서: {item['claim_quote']}\n근거 {item['source_id']}: {item['source_quote']}\n"
-                         f"{kind}({item['relationship']}): {item['explanation']}")
+                         f"{kind}({word(item['relationship'])}): {item['explanation']}")
         for calc in review.get("contract_review", {}).get("calculations", []):
             values = calc["outputs"]
             lines.append(f"자료 기반 조건부 검산: {values['delay_days']}일 × {values['daily_penalty']}원 = "
-                         f"{values['penalty']}원 / 기재 일수 일치: {calc['stated_days_match']} / {calc['note']}")
+                         f"{values['penalty']}원 / 기재 일수 일치: {word(calc['stated_days_match'])} / {calc['note']}")
         if review.get("observation_limit_reached"):
             lines.append("참고 의견 5건 한도에 도달했다. 전체 주장 검토 완료를 의미하지 않는다.")
         if review.get("unreviewed_drive_sources"):

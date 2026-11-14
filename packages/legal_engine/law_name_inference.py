@@ -84,19 +84,44 @@ def _initials_subsequence(query: str, target: str) -> bool:
     return True
 
 
-def score(written: str, record: Dict[str, Any], *, min_stem: int = MIN_STEM) -> int:
-    q = compact(written)
-    if len(stem(q)) < min_stem:
-        return 0
+def _short_score(q: str, record: Dict[str, Any]) -> int:
+    """두 음절 어간 비공식 약칭의 점수(TK-152)."""
     abbreviation = compact(record.get("abbreviation"))
     target = abbreviation or compact(record.get("law_name"))
     if not target or law_kind(target) != law_kind(q) or target[0] != q[0]:
         return 0
     if target == q or not is_subsequence(q, target):
         return 0
-    if min_stem == SHORT_STEM and len(stem(q)) == SHORT_STEM and not (
-            _initials_subsequence(stem(q), stem(target)) or stem(target).startswith(stem(q))):
-        return 0                       # 두 음절 줄임말: 말마디 첫 음절이거나 정식명 첫 낱말 그대로(TK-143)
+    if q.endswith("법"):
+        full_name = compact(record.get("law_name"))
+        if not (target.endswith(("법", "법률")) and (not full_name or full_name.endswith(("법", "법률")))):
+            return 0
+    q_stem = stem(q)
+    target_stem = stem(target)
+    if target_stem.startswith(q_stem):
+        grade = 1000
+    elif len(target_stem) >= 3 and target_stem[2] == q_stem[1]:
+        grade = 850
+    elif _initials_subsequence(q_stem, target_stem):
+        grade = 700
+    else:
+        return 0
+    return grade - min(max(len(target_stem) - 2, 0), 100)
+
+
+def score(written: str, record: Dict[str, Any], *, min_stem: int = MIN_STEM) -> int:
+    q = compact(written)
+    q_stem = stem(q)
+    if len(q_stem) < min_stem:
+        return 0
+    if min_stem == SHORT_STEM and len(q_stem) == SHORT_STEM:
+        return _short_score(q, record)
+    abbreviation = compact(record.get("abbreviation"))
+    target = abbreviation or compact(record.get("law_name"))
+    if not target or law_kind(target) != law_kind(q) or target[0] != q[0]:
+        return 0
+    if target == q or not is_subsequence(q, target):
+        return 0
     base = 800 if abbreviation else 600
     return base - min(len(target) - len(q), 200 if not abbreviation else 100)
 

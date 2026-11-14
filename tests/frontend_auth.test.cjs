@@ -100,8 +100,8 @@ test("password login is default, deduplicated, cookie based, and resolves univer
   assert.equal(emblem.alt, "ACASia LAW");
   assert.equal(emblem.parent.className, "brand-emblem");
   assert.equal(emblem.width, 1280); assert.equal(emblem.height, 640);
-  assert.equal(dialog.querySelector("h2").textContent, "법률문서 검증시스템");
-  assert.equal(emblem.parent.parent.children.length, 2);
+  assert.equal(dialog.querySelector("h2"), null);
+  assert.equal(emblem.parent.parent.children.length, 1);
   const email = fieldInput(dialog, "email"), password = fieldInput(dialog, "password"), token = fieldInput(dialog, "token");
   assert.equal(token.disabled, true); assert.equal(email.autocomplete, "username"); assert.equal(password.autocomplete, "current-password");
   email.value = " lawyer@example.test "; password.value = "secret-password"; loginSuccess(h);

@@ -39,8 +39,17 @@ def test_two_syllable_stem_is_resolved_from_dictionary_list(monkeypatch, adapter
 def test_short_name_with_no_candidate_in_complete_list_keeps_not_found_law(monkeypatch, adapter):
     # 공식 목록을 끝까지 읽고도 후보가 없으면 부존재 가능성(CRITICAL)을 유지한다(보호 시험과 같은 정책).
     t130.install(monkeypatch, adapter, lambda params: [])
-    verdict = t130.verify(adapter, t130.cite("가나법"))
+    verdict = t130.verify(adapter, t130.cite("가나다법"))
     assert "NOT_FOUND_LAW" in kinds(verdict) and "ABBREVIATION_UNRESOLVED" not in kinds(verdict)
+
+
+def test_two_syllable_name_with_no_candidate_is_unverified(monkeypatch, adapter):
+    # 두 음절 약칭은 앞 낱말을 생략한 공식 약칭일 수 있어 후보가 0건이어도 미결로 본다(TK-152, X7 승인).
+    t130.install(monkeypatch, adapter, lambda params: [])
+    verdict = t130.verify(adapter, t130.cite("가나법"))
+    assert "ABBREVIATION_UNRESOLVED" in kinds(verdict) and "NOT_FOUND_LAW" not in kinds(verdict)
+    [f] = [f for f in verdict.findings if f.confidence_features.get("verdict_label") == "ABBREVIATION_UNRESOLVED"]
+    assert str(f.severity) == "MEDIUM" and str(f.status) == "UNVERIFIED"
 
 
 def test_single_word_short_abbreviation_matching_two_laws_is_unverified(monkeypatch, adapter):

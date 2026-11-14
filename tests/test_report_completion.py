@@ -247,6 +247,11 @@ def test_shareable_removes_notes_pages_sealed_and_pii(report_case):
     assert case.client.post("/api/projects/p1/reports", json={"audience": "SHAREABLE", "formats": ["highlight"]}).status_code == 422
 
 
+def _unverified_shown(text):
+    """미검증 상태가 실렸는지: 엑셀·JSON은 코드, Word·PDF 본문은 한글(V1.0.0 display_text)."""
+    return any(word in text for word in ("UNVERIFIED", "확인 불가", "확인하지 못함", "미확인 상태"))
+
+
 def test_cross_format_labels_appendix_and_docx_zip(report_case):
     case = report_case
     draft = create(case, ["pdf", "xlsx", "csv", "json", "manifest", "docx"])
@@ -262,8 +267,9 @@ def test_cross_format_labels_appendix_and_docx_zip(report_case):
     xlsx_text = "\n".join(str(c.value) for ws in workbook for row in ws for c in row if c.value is not None)
     archive = zipfile.ZipFile(io.BytesIO(exports["docx"]))
     word = archive.read("word/document.xml").decode()
+    # V1.0.0 R2(사용자 승인 11-13): Word·PDF 본문은 상태 코드를 한글로 적는다(엑셀·JSON 기술부록은 코드 그대로).
     for text in (pdf_text, xlsx_text, word):
-        assert "FINAL" in text and final["snapshot_hash"] in text and "UNVERIFIED" in text
+        assert "FINAL" in text and final["snapshot_hash"] in text and _unverified_shown(text)
         assert "signature verification unavailable" in text and "full source note" in text
         assert "official.example/full/source" in text
         assert "DO_NOT_EXPORT_SEALED" not in text
@@ -551,7 +557,7 @@ def test_summary_report_keeps_review_content_and_moves_the_full_record_to_json(r
         sheet_text = "\n".join(str(c.value) for ws in workbook for row in ws for c in row if c.value is not None)
         for text in (texts[name], word, sheet_text):
             assert "signature verification unavailable" in text and "full source note" in text
-            assert "official.example/full/source" in text and "UNVERIFIED" in text
+            assert "official.example/full/source" in text and _unverified_shown(text)
         texts[name + "_sheets"] = workbook.sheetnames
     assert "전체 기술 기록(실행 당시의 모든 필드)을 싣지 않았습니다" in texts["summary"]
     assert "검증근거" in texts["summary_sheets"] and "기술부록" not in texts["summary_sheets"]

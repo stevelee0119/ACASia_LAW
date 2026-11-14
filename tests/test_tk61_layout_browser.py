@@ -249,11 +249,18 @@ def test_tk61_security_finding_items_vertical_layout(tk61_browser_page):
     page.locator('.tabs button[data-tab="ai-verification"]').click()
 
     panel = page.locator('section[data-panel="ai-verification"]')
-    items = panel.locator(".security-finding-item")
-    expect(items.first).to_be_visible()
+    # V1.0.0 5·5-2(사용자 승인으로 단언 변경): AI 작성 진단 세부 항목은 같은 제목을 한 묶음으로 보이므로
+    # '제목 머리 위, 번호 근거 목록 아래' 배치를 따로 확인하고, 아래 반복은 보안·인젝션 항목에만 적용한다.
+    expect(panel.locator(".security-finding-item").first).to_be_visible()
+    groups = panel.locator(".ai-finding-list > .security-finding-item").all()
+    for group in groups:
+        head_box = group.locator("> .finding-group-head").bounding_box()
+        list_box = group.locator("> ol.finding-group-reasons").bounding_box()
+        assert head_box and list_box and list_box["y"] >= head_box["y"] + head_box["height"] - 2
+    items = panel.locator(".security-finding-item:not(.ai-finding-list > .security-finding-item)")
 
     count = items.count()
-    assert count >= 1, "세부 항목이 1개 이상 존재해야 합니다."
+    assert count + len(groups) >= 1, "세부 항목이 1개 이상 존재해야 합니다."
 
     for i in range(count):
         item = items.nth(i)

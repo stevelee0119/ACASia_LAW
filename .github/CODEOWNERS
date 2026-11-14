@@ -5,6 +5,9 @@
 /scripts/eval_testset.py              @stevelee0119
 /scripts/scorecard.py                 @stevelee0119
 /scripts/score_gate.py                @stevelee0119
+/scripts/evaluation_*.py              @stevelee0119
+/scripts/export_quality_predictions.py @stevelee0119
+/scripts/evaluate_quality.py          @stevelee0119
 /scripts/verify_all.py                @stevelee0119
 /scripts/probe_document.py            @stevelee0119
 /scripts/score_report.py             @stevelee0119

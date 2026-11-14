@@ -3986,6 +3986,11 @@ F11 [미탐] 인용문에서 두 당사자를 맞바꾸면(예: '채권자는 �
 - 확인: python scripts/check_version_policy.py --base <Steve 최신> → '위반 없음(상향 1건 0.18.0 → 0.19.0)', python scripts/update_readme.py 실행 뒤 변경 없음, tests/test_update_readme.py·tests/test_v4_run_manifest.py 통과.
 - 수용 기준: 평가 측 증분과 diff 0, 필수 CI 성공. 그 밖의 파일은 바꾸지 않는다.
 ```
+
+
+## 2026-11-13 평가 v2 전환 — 평가 측 반영
+
+사용자 원문: “권고대로 평가 방법을 전환해줘.” 평가 측이 새 성적표/CI/상태 계약/세트 manifest/실제 인용 출력 export/KBL 채점 도구를 반영한다. 구현 측은 [EVALUATION_V2](../scorecards/EVALUATION_V2.md)에 따라 기존 점수를 전체 법률 정확도로 표시하지 않는다. 같은 문서의 identity와 quote 판정을 구분하고, 실제 출력 result.json과 정확한 SHA를 평가 측에 전달한다(원문은 비공개 경로). 평가자는 export_quality_predictions.py로 정답을 읽지 않고 예측을 묶는다. 아직 없는 독립 법률가 라벨·실제 KBL 모델 응답·주장별 법리 정답·실무 시간은 NOT_MEASURED다. 이 절은 새 제품 탐지 규칙 구현 지시가 아니며, 제품 변경은 별도 티켓의 원인/보존 계약/교차 시험/수용 조건을 따른다. 평가 세트·하한·채점기를 제품 PR에서 바꾸지 않는다.
 - 11-12 #267(평가 PR, 0.19.0 판정서) CI 전부 성공(인용) → 병합 Steve `7375695`(expectedHeadSha `c48d8fc`). 버전 커밋 지시 NEXT 2-37 전달 가능(증분이 새 Steve에 그대로 적용됨 — 평가 측 확인).
 - 11-12 #268 0.19.0 버전 커밋(head `98a7754`) **수용**: 평가 측 증분과 diff 0, check_version_policy 위반 없음(0.18.0 → 0.19.0), update_readme 변경 없음, 관련 시험 15건 통과(평가 측 재실행). CI 전부 성공(인용). 병합 대기(사용자) → 릴리스 PR.
 - 11-12 사용자 '#268 병합' → Steve `e57855f`(expectedHeadSha `98a7754`). 버전 0.19.0이 Steve에 들어감. 다음: 릴리스 PR(Steve → main, sealed_20261025 제외).
