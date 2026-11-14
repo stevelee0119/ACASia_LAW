@@ -358,8 +358,6 @@ class LLMRouter:
             return list(await asyncio.gather(*(ask(name) for name in names)))
 
         from .routing import (
-            sampled,
-            needs_additional_review,
             conflicting,
             complete_argument_reviews,
             argument_escalation_item_ids,
@@ -370,7 +368,9 @@ class LLMRouter:
         if advisory and "openai" in names:
             names = ["openai", *[n for n in names if n != "openai"]]
         answers = []
-        wanted = 1 if advisory else 2
+        # AI 작성 판별(advisory)도 늘 두 모델 의견을 받는다(V1.0.0 D4). 첫 모델 한 번의 응답이 두 번째 의견
+        # 호출 여부와 최종 판정을 가르던 변동(case9 같은 입력 2회 중 1회 유보)을 없앤다. 엇갈리면 세 번째를 부른다.
+        wanted = 2
         for name in names:
             current_request = request
             successes = [a for a in answers if a.used]
@@ -384,12 +384,6 @@ class LLMRouter:
 
             answers.append(await ask(name, current_request))
             successes = [a for a in answers if a.used]
-            if advisory and len(successes) == 1:
-                import json
-                payload = json.loads(request.user)
-                if (needs_additional_review(successes[0]) or payload.get("metadata_ai_hint")
-                        or sampled(request, self.settings.llm_review_sample_percent)):
-                    wanted = 2
             if len(successes) >= wanted:
                 if is_argument_review:
                     # 법리 검토: 합의 완결되었거나 추가 에스컬레이션을 1회 마쳤으면 종료

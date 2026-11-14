@@ -176,16 +176,8 @@ def to_xlsx(run_result: Any, *, reveal_sealed: bool = False) -> bytes:
     summary.append(["생성시각", datetime.utcnow().isoformat()])
     summary.append(["문서 수", len(run_result.documents)])
     summary.append(["Finding 수", len(run_result.all_findings)])
-    # 제9.2장 배포가능 상태. 보고서를 여는 사람이 가장 먼저 봐야 하는 값이다.
-    gate = (run_result.scores or {}).get("release_gate") or {}
-    if gate:
-        append(summary, ["배포가능 상태", gate.get("release_gate")])
-        append(summary, ["검증위험 지수", gate.get("hallucination_risk")])
-        append(summary, ["지수 성격", gate.get("risk_index_note")])
-        if gate.get("hard_block_reasons"):
-            append(summary, ["차단 사유", "\n".join(gate["hard_block_reasons"])])
-        if gate.get("review_reasons"):
-            append(summary, ["사람 검토 사유", "\n".join(gate["review_reasons"])])
+    # V1.0.0 D3(사용자 결정 11-13): 배포가능 상태·검증위험 지수·차단 사유는 보고서 요약에 싣지 않는다.
+    # 같은 항목이 보고서의 인용·주장 표에 있고, 판정 데이터는 결과 JSON(scores.release_gate)에 남는다.
     for key, value in getattr(run_result, "report_metadata", {}).items():
         append(summary, [key, value])
     append(summary, ["editable_copy_notice", EDITABLE_COPY_NOTICE])

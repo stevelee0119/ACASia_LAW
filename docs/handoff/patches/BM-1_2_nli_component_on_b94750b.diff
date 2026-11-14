@@ -1,0 +1,427 @@
+diff --git a/packages/evaluation/__init__.py b/packages/evaluation/__init__.py
+index d76282a..432b9c3 100644
+--- a/packages/evaluation/__init__.py
++++ b/packages/evaluation/__init__.py
+@@ -1,5 +1,7 @@
+ """Offline, case-separated evaluation of externally supplied predictions."""
+ from .schemas import LabelRecord, PredictionRecord
+ from .quality import evaluate_quality, load_jsonl, validate_case_splits
++from .nli import NLILabel, NLIPrediction, evaluate_nli
+ 
+-__all__ = ["LabelRecord", "PredictionRecord", "evaluate_quality", "load_jsonl", "validate_case_splits"]
++__all__ = ["LabelRecord", "PredictionRecord", "evaluate_quality", "load_jsonl", "validate_case_splits",
++           "NLILabel", "NLIPrediction", "evaluate_nli"]
+diff --git a/packages/evaluation/nli.py b/packages/evaluation/nli.py
+new file mode 100644
+index 0000000..df8f8b7
+--- /dev/null
++++ b/packages/evaluation/nli.py
+@@ -0,0 +1,193 @@
++"""Claim–document relation scoring (ContractNLI-style), separate from citation identity/quote quality.
++
++Labels and predictions are supplied from outside; this module never calls a model or reads documents.
++- Three classes: ENTAILMENT / CONTRADICTION / NOT_MENTIONED. NOT_MENTIONED means "the document does not
++  address the hypothesis"; it is never converted into a legal falsity or non-existence claim.
++- A missing, failed or unsupported prediction stays in the denominator as its own outcome (MISSING);
++  it is never treated as NOT_MENTIONED or dropped.
++- Evidence spans are half-open character ranges over the benchmark's own document text. Span scores are
++  character-level precision/recall/F1 against the union of gold spans.
++- One benchmark revision per evaluation; mixing revisions, product versions or runs is rejected.
++- Intervals resample whole documents (and their case_family_id), not individual hypotheses.
++"""
++from __future__ import annotations
++
++import random
++from collections import defaultdict
++from typing import Literal
++
++from pydantic import Field, field_validator, model_validator
++
++from .schemas import Record, Split
++
++NLILabelValue = Literal["ENTAILMENT", "CONTRADICTION", "NOT_MENTIONED"]
++CLASSES = ("ENTAILMENT", "CONTRADICTION", "NOT_MENTIONED")
++OUTCOMES = CLASSES + ("MISSING",)
++
++
++def _spans_ok(spans):
++    previous_end = -1
++    for start, end in spans:
++        if start < 0 or end <= start:
++            raise ValueError("Spans must be nonempty half-open [start, end) ranges")
++        if start < previous_end:
++            raise ValueError("Spans must be sorted and non-overlapping")
++        previous_end = end
++    return spans
++
++
++class NLILabel(Record):
++    schema_version: Literal[1] = 1
++    item_id: str = Field(min_length=1)
++    benchmark_id: str = Field(min_length=1)
++    benchmark_revision: str = Field(min_length=1)
++    document_id: str = Field(min_length=1)
++    case_family_id: str = Field(min_length=1)
++    hypothesis_id: str = Field(min_length=1)
++    split: Split
++    label: NLILabelValue
++    spans: list[tuple[int, int]] = Field(default_factory=list)
++
++    @field_validator("spans")
++    @classmethod
++    def valid_spans(cls, spans):
++        return _spans_ok(sorted(spans))
++
++    @model_validator(mode="after")
++    def spans_follow_label(self):
++        if self.label == "NOT_MENTIONED" and self.spans:
++            raise ValueError("NOT_MENTIONED gold labels carry no evidence spans")
++        return self
++
++
++class NLIPrediction(Record):
++    schema_version: Literal[1] = 1
++    item_id: str = Field(min_length=1)
++    run_id: str = Field(min_length=1)
++    system_version: str = Field(min_length=1)
++    benchmark_revision: str = Field(min_length=1)
++    execution_status: Literal["OK", "ERROR", "UNSUPPORTED"] = "OK"
++    label: NLILabelValue | None = None
++    spans: list[tuple[int, int]] = Field(default_factory=list)
++
++    @field_validator("spans")
++    @classmethod
++    def valid_spans(cls, spans):
++        return _spans_ok(sorted(spans))
++
++    @model_validator(mode="after")
++    def label_follows_status(self):
++        if (self.execution_status == "OK") != (self.label is not None):
++            raise ValueError("Only an OK prediction carries a label; ERROR/UNSUPPORTED carry none")
++        return self
++
++
++def _chars(spans):
++    return {i for start, end in spans for i in range(start, end)}
++
++
++def _ratio(a, b):
++    return a / b if b else None
++
++
++def _index(labels, predictions):
++    known = {label.item_id: label for label in labels}
++    if len(known) != len(labels):
++        raise ValueError("Duplicate label item_id")
++    revisions = {label.benchmark_revision for label in labels} | {p.benchmark_revision for p in predictions}
++    if len(revisions) != 1:
++        raise ValueError("Do not mix benchmark revisions")
++    if len({(p.run_id, p.system_version) for p in predictions}) > 1:
++        raise ValueError("Do not pool different runs or system versions")
++    index = {}
++    for prediction in predictions:
++        if prediction.item_id in index:
++            raise ValueError(f"Duplicate prediction: {prediction.item_id}")
++        if prediction.item_id not in known:
++            raise ValueError(f"Prediction has no label: {prediction.item_id}")
++        index[prediction.item_id] = prediction
++    return index
++
++
++def _outcome(prediction):
++    if prediction is None or prediction.execution_status != "OK":
++        return "MISSING"
++    return prediction.label
++
++
++def _scores(labels, index):
++    confusion = {gold: {out: 0 for out in OUTCOMES} for gold in CLASSES}
++    span_tp = span_fp = span_fn = 0
++    for label in labels:
++        prediction = index.get(label.item_id)
++        outcome = _outcome(prediction)
++        confusion[label.label][outcome] += 1
++        if label.label != "NOT_MENTIONED":
++            gold = _chars(label.spans)
++            found = _chars(prediction.spans) if outcome == label.label else set()
++            span_tp += len(gold & found)
++            span_fp += len(found - gold)
++            span_fn += len(gold - found)
++    per_class = {}
++    for cls in CLASSES:
++        tp = confusion[cls][cls]
++        fp = sum(confusion[g][cls] for g in CLASSES if g != cls)
++        fn = sum(confusion[cls][o] for o in OUTCOMES if o != cls)
++        precision, recall = _ratio(tp, tp + fp), _ratio(tp, tp + fn)
++        f1 = _ratio(2 * tp, 2 * tp + fp + fn)
++        per_class[cls] = {"tp": tp, "fp": fp, "fn": fn, "precision": precision, "recall": recall, "f1": f1}
++    f1s = [per_class[c]["f1"] for c in CLASSES if per_class[c]["f1"] is not None]
++    total = len(labels)
++    missing = sum(confusion[g]["MISSING"] for g in CLASSES)
++    return {
++        "items": total, "confusion": confusion, "per_class": per_class,
++        "macro_f1": sum(f1s) / len(CLASSES) if len(f1s) == len(CLASSES) else None,
++        "accuracy": _ratio(sum(confusion[c][c] for c in CLASSES), total),
++        "missing_or_failed": missing, "completeness": _ratio(total - missing, total),
++        "span": {"precision": _ratio(span_tp, span_tp + span_fp), "recall": _ratio(span_tp, span_tp + span_fn),
++                 "f1": _ratio(2 * span_tp, 2 * span_tp + span_fp + span_fn)},
++    }
++
++
++def evaluate_nli(labels: list[NLILabel], predictions: list[NLIPrediction], *, split: str = "TEST",
++                 bootstrap_samples: int = 1000, seed: int = 0) -> dict:
++    if not 100 <= bootstrap_samples <= 10000:
++        raise ValueError("bootstrap_samples must be between 100 and 10000")
++    families = defaultdict(set)
++    for label in labels:
++        families[label.case_family_id].add(label.split)
++    if any(len(splits) > 1 for splits in families.values()):
++        raise ValueError("Split leakage via case_family_id")
++    index = _index(labels, predictions)
++    selected = sorted((label for label in labels if label.split == split), key=lambda label: label.item_id)
++    if not selected:
++        raise ValueError("Selected evaluation cohort is empty")
++    measured = _scores(selected, index)
++    groups = defaultdict(list)
++    for label in selected:
++        groups[label.case_family_id].append(label)
++    keys = sorted(groups)
++    draws = []
++    rng = random.Random(seed)
++    if len(keys) >= 2:
++        for _ in range(bootstrap_samples):
++            sample = [label for key in rng.choices(keys, k=len(keys)) for label in groups[key]]
++            value = _scores(sample, index)["macro_f1"]
++            if value is not None:
++                draws.append(value)
++    draws.sort()
++    interval = None
++    if draws:
++        pick = lambda q: draws[min(len(draws) - 1, max(0, int(round(q * (len(draws) - 1)))))]
++        interval = {"lower": pick(0.025), "upper": pick(0.975), "valid_resamples": len(draws)}
++    return {
++        "schema_version": 1, "split": split, "benchmark_revision": selected[0].benchmark_revision,
++        "metrics": measured,
++        "uncertainty": {"unit": "case_family_id", "independent_case_families": len(keys),
++                        "macro_f1_percentile_bootstrap_95": interval, "bootstrap_samples": bootstrap_samples, "seed": seed},
++        "claim_scope": "CLAIM_DOCUMENT_RELATION_ONLY",
++        "notice": ("Relation of a hypothesis to the supplied document. Not citation identity, legal validity of an argument, "
++                   "or Korean-law accuracy. NOT_MENTIONED is not a finding that something is false or nonexistent."),
++        "reproducibility": {"system_versions": sorted({p.system_version for p in predictions}),
++                            "run_ids": sorted({p.run_id for p in predictions})},
++    }
+diff --git a/packages/rag_engine/review.py b/packages/rag_engine/review.py
+index 6a3a216..c2c4f04 100644
+--- a/packages/rag_engine/review.py
++++ b/packages/rag_engine/review.py
+@@ -159,6 +159,36 @@ def _match_citations_to_references(citations: list, sources: list) -> dict:
+     return matches
+ 
+ 
++def build_review_request(document, sources, *, korean_profile=False, reference_date=None, batch=1):
++    """참고자료 대조 요청 하나(운영 review_document와 구성요소 시험이 같은 요청을 쓰도록 한 곳에 둔다)."""
++    request = LLMRequest(
++        system=RAG_REVIEW_SYSTEM_PROMPT,
++        user=json.dumps({"document": document, "untrusted_references": [
++            {k: s[k] for k in ("source_id", "title", "text", "page")} for s in sources]}, ensure_ascii=False),
++        schema=ENVELOPE_SCHEMA, max_tokens=4000, metadata={"stage": "drive_rag_advisory", "batch": batch},
++        input_contract="reference_review_v1")
++    return with_review_context(request, enabled=korean_profile, reference_date=reference_date)
++
++
++def judge_claim_against_sources(claim_text, sources, router, *, policy, korean_profile=False, reference_date=None):
++    """구성요소 시험용 진입점(BM-2): 주장 문장 하나와 참고자료를 운영과 같은 요청·스키마·근거 검증으로 판정한다.
++
++    문서 선정·관련성 문턱·분할·재시도는 하지 않는다(그것은 review_document의 몫). 법률 판단을 덧붙이지 않는다.
++    반환: {"status": OK|NO_PROVIDER|MODEL_FAILED|REJECTED, "observations": [...], "rejected": [...], "executions": [...]}.
++    """
++    if not router.has_available_provider(policy=policy):
++        return {"status": "NO_PROVIDER", "observations": [], "rejected": [], "executions": []}
++    request = build_review_request(claim_text, sources, korean_profile=korean_profile, reference_date=reference_date)
++    outcome = asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request, policy=policy, expected_task="참고자료 검토"))
++    executions = [e.to_dict() for e in outcome.executions]
++    if not outcome.used or outcome.quarantined:
++        return {"status": "MODEL_FAILED", "observations": [], "rejected": [], "executions": executions}
++    rejected = []
++    observations = grounded_observations(outcome.parsed, claim_text, sources, rejected=rejected)
++    return {"status": "OK" if observations is not None else "REJECTED", "observations": observations or [],
++            "rejected": rejected, "executions": executions}
++
++
+ def grounded_observations(parsed, document, sources, *, rejected=None):
+     try:
+         validate(parsed, ENVELOPE_SCHEMA)
+@@ -440,13 +470,8 @@ def review_document(result, library, router, context, pii):
+         s_batch, depth = queue.pop(0)
+         total_calls += 1
+ 
+-        request = LLMRequest(
+-            system=RAG_REVIEW_SYSTEM_PROMPT,
+-            user=json.dumps({"document": document, "untrusted_references": [
+-                {k: s[k] for k in ("source_id", "title", "text", "page")} for s in s_batch]}, ensure_ascii=False),
+-            schema=ENVELOPE_SCHEMA, max_tokens=4000, metadata={"stage": "drive_rag_advisory", "batch": total_calls},
+-            input_contract="reference_review_v1")
+-        request = with_review_context(request, enabled=korean_profile, reference_date=getattr(context, "case_date", None))
++        request = build_review_request(document, s_batch, korean_profile=korean_profile,
++                                       reference_date=getattr(context, "case_date", None), batch=total_calls)
+         # One selected provider; the existing router bounds each call and its transient retries.
+         batch_outcome = asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request,
+                                                policy=context.external_ai_policy, expected_task="참고자료 검토"))
+diff --git a/tests/test_bm1_nli_scoring.py b/tests/test_bm1_nli_scoring.py
+new file mode 100644
+index 0000000..40c74a5
+--- /dev/null
++++ b/tests/test_bm1_nli_scoring.py
+@@ -0,0 +1,86 @@
++"""BM-1: 주장–문서 관계(ContractNLI 꼴) 3분류·근거 구간 채점(합성 값, 모델 호출 없음)."""
++import pytest
++
++from packages.evaluation import NLILabel, NLIPrediction, evaluate_nli
++
++REV = "rev-1"
++
++
++def L(i, label, spans=(), fam=None, split="TEST", doc=None):
++    return NLILabel(item_id=i, benchmark_id="contractnli", benchmark_revision=REV, document_id=doc or ("d" + i),
++                    case_family_id=fam or ("f" + i), hypothesis_id="h1", split=split, label=label, spans=list(spans))
++
++
++def P(i, label=None, spans=(), status="OK", sv="sha1", rev=REV):
++    return NLIPrediction(item_id=i, run_id="r1", system_version=sv, benchmark_revision=rev, execution_status=status,
++                         label=label, spans=list(spans))
++
++
++GOLD = [L("a", "ENTAILMENT", [(0, 10)]), L("b", "CONTRADICTION", [(5, 15)]), L("c", "NOT_MENTIONED"), L("d", "ENTAILMENT", [(0, 4)])]
++
++
++def test_perfect_predictions():
++    r = evaluate_nli(GOLD, [P("a", "ENTAILMENT", [(0, 10)]), P("b", "CONTRADICTION", [(5, 15)]), P("c", "NOT_MENTIONED"),
++                            P("d", "ENTAILMENT", [(0, 4)])], bootstrap_samples=100)
++    m = r["metrics"]
++    assert m["macro_f1"] == 1.0 and m["accuracy"] == 1.0 and m["span"]["f1"] == 1.0 and m["missing_or_failed"] == 0
++
++
++def test_missing_and_failed_stay_in_denominator_and_are_not_not_mentioned():
++    r = evaluate_nli(GOLD, [P("a", status="ERROR"), P("c", status="UNSUPPORTED")], bootstrap_samples=100)
++    m = r["metrics"]
++    assert m["items"] == 4 and m["missing_or_failed"] == 4 and m["completeness"] == 0
++    assert m["confusion"]["NOT_MENTIONED"]["MISSING"] == 1 and m["per_class"]["NOT_MENTIONED"]["tp"] == 0
++    assert m["accuracy"] == 0 and m["span"]["recall"] == 0
++
++
++def test_span_only_counts_when_relation_matches():
++    r = evaluate_nli([L("a", "ENTAILMENT", [(0, 10)])], [P("a", "CONTRADICTION", [(0, 10)])], bootstrap_samples=100)
++    assert r["metrics"]["span"]["recall"] == 0 and r["metrics"]["span"]["precision"] is None
++
++
++def test_partial_span_overlap():
++    r = evaluate_nli([L("a", "ENTAILMENT", [(0, 10)])], [P("a", "ENTAILMENT", [(5, 15)])], bootstrap_samples=100)
++    assert r["metrics"]["span"]["precision"] == 0.5 and r["metrics"]["span"]["recall"] == 0.5
++
++
++@pytest.mark.parametrize("preds,error", [
++    ([P("a", "ENTAILMENT"), P("a", "ENTAILMENT")], "Duplicate prediction"),
++    ([P("zz", "ENTAILMENT")], "no label"),
++    ([P("a", "ENTAILMENT", rev="rev-2")], "benchmark revisions"),
++    ([P("a", "ENTAILMENT", sv="s1"), P("b", "CONTRADICTION", sv="s2")], "runs or system versions"),
++])
++def test_rejected_inputs(preds, error):
++    with pytest.raises(ValueError, match=error):
++        evaluate_nli(GOLD, preds, bootstrap_samples=100)
++
++
++def test_family_split_leak_rejected():
++    with pytest.raises(ValueError, match="Split leakage"):
++        evaluate_nli([L("a", "NOT_MENTIONED", fam="x"), L("b", "NOT_MENTIONED", fam="x", split="DEVELOPMENT")], [],
++                     bootstrap_samples=100)
++
++
++@pytest.mark.parametrize("kwargs", [
++    {"label": "NOT_MENTIONED", "spans": [(0, 3)]},   # 근거 없는 '언급 없음'에 구간이 붙으면 거절
++    {"label": "ENTAILMENT", "spans": [(5, 5)]},      # 빈 구간
++    {"label": "ENTAILMENT", "spans": [(0, 5), (3, 8)]},  # 겹침
++])
++def test_invalid_gold(kwargs):
++    with pytest.raises(ValueError):
++        NLILabel(item_id="x", benchmark_id="b", benchmark_revision=REV, document_id="d", case_family_id="f",
++                 hypothesis_id="h", split="TEST", **kwargs)
++
++
++def test_ok_prediction_requires_label_and_error_has_none():
++    with pytest.raises(ValueError):
++        P("a", None, status="OK")
++    with pytest.raises(ValueError):
++        P("a", "ENTAILMENT", status="ERROR")
++
++
++def test_interval_resamples_case_families_and_scope_notice():
++    gold = [L(str(i), "ENTAILMENT", [(0, 2)], fam="fam" + str(i // 3)) for i in range(9)]
++    r = evaluate_nli(gold, [P(str(i), "ENTAILMENT", [(0, 2)]) for i in range(9)], bootstrap_samples=200, seed=1)
++    assert r["uncertainty"]["independent_case_families"] == 3
++    assert r["claim_scope"] == "CLAIM_DOCUMENT_RELATION_ONLY" and "Korean-law" in r["notice"]
+diff --git a/tests/test_bm2_component_entry.py b/tests/test_bm2_component_entry.py
+new file mode 100644
+index 0000000..3812159
+--- /dev/null
++++ b/tests/test_bm2_component_entry.py
+@@ -0,0 +1,60 @@
++"""BM-2: 참고자료 대조 판정의 구성요소 진입점 — 운영과 같은 요청·근거 검증을 쓴다(가짜 라우터, 네트워크 없음)."""
++import json
++from types import SimpleNamespace
++
++from packages.common.enums import LLMRole
++from packages.rag_engine import review
++from packages.rag_engine.review import build_review_request, judge_claim_against_sources
++
++SOURCES = [{"source_id": "R1", "title": "합성 계약", "text": "수령자는 비밀정보를 제3자에게 공개하여서는 아니 된다.", "page": 1}]
++CLAIM = "수령자는 비밀정보를 공개할 수 없다는 합성 주장이다."
++
++
++class FakeRouter:
++    def __init__(self, parsed, used=True, quarantined=False, available=True):
++        self.parsed, self.used, self.quarantined, self.available, self.calls = parsed, used, quarantined, available, []
++
++    def has_available_provider(self, policy=None):
++        return self.available
++
++    async def run(self, role, request, **kwargs):
++        self.calls.append((role, request, kwargs))
++        return SimpleNamespace(used=self.used, quarantined=self.quarantined, parsed=self.parsed, executions=[])
++
++
++def obs(rel, claim=CLAIM, quote="비밀정보를 제3자에게 공개하여서는 아니 된다"):
++    return {"observations": [{"claim_quote": claim, "source_id": "R1", "source_quote": quote, "relationship": rel,
++                              "explanation": "합성 설명"}]}
++
++
++def test_same_request_as_production():
++    request = build_review_request(CLAIM, SOURCES, batch=1)
++    body = json.loads(request.user)
++    assert request.system == review.RAG_REVIEW_SYSTEM_PROMPT and request.schema == review.ENVELOPE_SCHEMA
++    assert body["document"] == CLAIM and body["untrusted_references"][0]["source_id"] == "R1"
++    assert request.input_contract == "reference_review_v1"
++
++
++def test_grounded_observation_is_returned():
++    router = FakeRouter(obs("SUPPORTS"))
++    got = judge_claim_against_sources(CLAIM, SOURCES, router, policy=None)
++    assert got["status"] == "OK" and got["observations"][0]["relationship"] == "SUPPORTS"
++    assert router.calls[0][0] == LLMRole.PRIMARY_REASONER and len(router.calls) == 1
++
++
++def test_ungrounded_quote_is_rejected_not_accepted():
++    got = judge_claim_against_sources(CLAIM, SOURCES, FakeRouter(obs("CONTRADICTS", quote="원문에 없는 합성 문장입니다")),
++                                      policy=None)
++    assert got["status"] == "REJECTED" and got["observations"] == [] and got["rejected"][0]["reason"] == "QUOTE_NOT_GROUNDED"
++
++
++def test_empty_observations_is_ok_with_none():
++    got = judge_claim_against_sources(CLAIM, SOURCES, FakeRouter({"observations": []}), policy=None)
++    assert got["status"] == "OK" and got["observations"] == []
++
++
++def test_no_provider_and_model_failure_are_explicit():
++    assert judge_claim_against_sources(CLAIM, SOURCES, FakeRouter({}, available=False), policy=None)["status"] == "NO_PROVIDER"
++    assert judge_claim_against_sources(CLAIM, SOURCES, FakeRouter({}, used=False), policy=None)["status"] == "MODEL_FAILED"
++    assert judge_claim_against_sources(CLAIM, SOURCES, FakeRouter(obs("SUPPORTS"), quarantined=True),
++                                       policy=None)["status"] == "MODEL_FAILED"

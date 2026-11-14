@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from packages.common.confidence import score as confidence_score
 from packages.common.enums import (
@@ -140,6 +140,33 @@ def _basis_for(citation: Any, status: str) -> str:
     return "CONTENT_MISMATCH" if status == "CONTRADICTED" else "UNCONFIRMED"
 
 
+# TK-160(B2): 주장 판정 3분류(ContractNLI 꼴). 기존 basis·문구는 그대로 두고 덧붙인다.
+#   SUPPORTED    공식 원문이 확인되고 인용 근거가 일치(사건 적용성은 여전히 사람 검토)
+#   CONTRADICTED 공식 원문 근거 구간(TK-159 passage 또는 판시 근거 발췌)이 주장과 어긋남
+#   INSUFFICIENT 근거를 찾지 못했거나, 원문 근거 구간 없이 '모순'을 말하게 되는 경우
+CLAIM_VERDICTS = ("SUPPORTED", "CONTRADICTED", "INSUFFICIENT")
+CLAIM_VERDICT_LABELS = {"SUPPORTED": "근거 일치", "CONTRADICTED": "근거와 모순", "INSUFFICIENT": "근거 부족"}
+
+
+def classify_claim(basis: str, evidence_basis: Optional[Dict[str, Any]], grounded_quote: str = "") -> Tuple[str, str]:
+    """(3분류, 낮춘 사유). 근거 구간 없는 '모순'은 INSUFFICIENT로 낮춘다."""
+    evidence = evidence_basis or {}
+    official = bool(evidence.get("source")) and evidence.get("basis_status") not in ("RULE_BASED", "MISSING_BASIS")
+    located = bool(evidence.get("passage")) or bool((grounded_quote or "").strip())
+    if evidence.get("basis_status") == "RULE_BASED":
+        # 인용 자체가 형식 규칙에 어긋난다(성립 불가 번호·법원 부호 불일치 등). 주장의 근거를 확인할 수 없다.
+        return "INSUFFICIENT", "인용 형식 오류로 근거를 확인할 수 없음"
+    if basis in ("CONTRADICTION", "CONTENT_MISMATCH"):
+        if official and located:
+            return "CONTRADICTED", ""
+        return "INSUFFICIENT", "공식 원문의 근거 구간이 없어 모순으로 단정하지 않음"
+    if basis == "OFFICIAL_CONFIRMED":
+        if official:
+            return "SUPPORTED", ""
+        return "INSUFFICIENT", "공식 원문 식별자가 없어 일치로 단정하지 않음"
+    return "INSUFFICIENT", ""
+
+
 @dataclass
 class HallucinationTableRow:
     """AI 임의 생성 의심 내용 및 법률 주장 타당성 검토 대조표의 단일 행."""
@@ -172,6 +199,8 @@ class HallucinationTableRow:
     quote_diff_categories: List[str] = field(default_factory=list)
     quote_diff_status: Optional[str] = None
     actionable_guidance: Optional[Dict[str, Any]] = None
+    evidence_basis: Dict[str, Any] = field(default_factory=dict)  # TK-159 판정 근거
+    grounded_evidence_quote: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         review = self.review_text or self.legal_reasoning
@@ -205,7 +234,14 @@ class HallucinationTableRow:
                                else "LEGAL_CITATION_ERROR" if self.basis in ("FABRICATION_SUSPECTED", "CONTENT_MISMATCH")
                                else "UNSUPPORTED_LEGAL_BASIS"),
             "authorship_evidence": False,
+            # TK-160: 주장 판정 3분류와 그 근거(TK-159). 근거 없는 '모순'은 근거 부족으로 낮춘다.
+            **self._claim_fields(),
         }
+
+    def _claim_fields(self) -> Dict[str, Any]:
+        verdict, note = classify_claim(self.basis, self.evidence_basis, self.grounded_evidence_quote)
+        return {"claim_verdict": verdict, "claim_verdict_label": CLAIM_VERDICT_LABELS[verdict],
+                "claim_verdict_note": note, "claim_evidence": self.evidence_basis or None}
 
 
 @dataclass
@@ -556,6 +592,8 @@ async def verify_argument_validity(
 
         statute = c.type in (CitationType.STATUTE, CitationType.ADMIN_RULE)
         noun = "법령" if statute else "판례"
+        # 받침에 맞는 조사(V1.0.0 D6: '판례을(를)' 같은 조사 오류 제거). 법령은 받침 있음, 판례는 받침 없음.
+        obj, subj = ("을", "이") if statute else ("를", "가")
 
         if contradiction:
             distortion_type = item.get("distortion_type")
@@ -636,7 +674,7 @@ async def verify_argument_validity(
             )
             verdict_text = "출처 한계 확인 불가 (판결문 사본 제출 필요)"
             legal_reason = (f"하급심 판례는 공식 DB에 전문이 수록되지 않을 수 있으므로, 판결문 사본을 확보하기 전까지는 "
-                            f"그 주장의 근거가 확정되지 않습니다. {noun}이(가) 실재하지 않는다는 뜻은 아닙니다.")
+                            f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 실재하지 않는다는 뜻은 아닙니다.")
             counteraction = "상대방에게 판결문 사본 제출을 요청하거나 법원 판결서 열람 서비스를 통해 확인 후 변론할 것."
             auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
         elif basis == "CONFIRMED_NONEXISTENT":
@@ -659,8 +697,8 @@ async def verify_argument_validity(
                  "부존재나 임의 생성으로 단정하지 않음.")
             )
             verdict_text = "공식 DB 미확인 (원문 확인 필요)"
-            legal_reason = (f"공식 DB에서 확인하지 못한 {noun}을(를) 근거로 삼고 있어, 원문을 확인하기 전까지 "
-                            f"그 주장의 근거가 확정되지 않습니다. {noun}이(가) 존재하지 않는다는 뜻은 아닙니다.")
+            legal_reason = (f"공식 DB에서 찾지 못한 {noun}{obj} 근거로 삼고 있어, 원문을 확인하기 전까지 "
+                            f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 실재하지 않는다는 의미는 아닙니다.")
             counteraction = (
                 ("정식 법령명·약칭·시행 여부를 국가법령정보센터에서 다시 확인하고, 조문 원문과 대조할 것."
                  if statute else
@@ -703,6 +741,8 @@ async def verify_argument_validity(
             quote_diff_categories=item.get("quote_diff_categories") or [],
             quote_diff_status=item.get("quote_diff_status"),
             actionable_guidance=guidance,
+            evidence_basis=item["verdict"].get("evidence_basis") or {},
+            grounded_evidence_quote=item.get("grounded_evidence_quote") or "",
         )
         row.item_id = index
         row.citation_id = c.citation_id

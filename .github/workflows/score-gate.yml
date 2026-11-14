@@ -30,6 +30,7 @@ jobs:
         shell: bash
     env:
       LV_ALLOW_NETWORK: "0"
+      OMP_THREAD_LIMIT: "1"
       LV_PSEUDONYM_SECRET: ci-only-not-a-real-secret
 
     steps:
@@ -59,6 +60,17 @@ jobs:
       - name: 점수 게이트
         if: ${{ !cancelled() }}
         run: python scripts/score_gate.py --current artifacts/scorecard.json --strict-env | tee -a artifacts-summary.txt
+
+      - name: 다층 평가 보고서 (미측정 구분)
+        if: ${{ !cancelled() }}
+        run: |
+          python scripts/evaluation_dashboard.py --scorecard artifacts/scorecard.json --out artifacts/evaluation-v2.json
+          cat artifacts/evaluation-v2.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 평가 세트 전체 목록·해시 검증
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "from pathlib import Path; from scripts.retired_compare import check_inventory; print('verified retired sets:', len(check_inventory(Path.cwd())))"
 
       # 사건 값·서면 문구 하드코딩 차단, 측정 도구 자체 시험, 서면별 항목 시험(알려진 미해결은 strict xfail)
       - name: 수용 시험
@@ -142,11 +154,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: scorecard
-          path: artifacts/scorecard.json
+          path: |
+            artifacts/scorecard.json
+            artifacts/evaluation-v2.json
+            artifacts/evaluation-v2.md
           if-no-files-found: ignore
 
-  # 은퇴 봉인 4세트(tests/fixtures/retired_sealed/)를 기준 브랜치와 PR head로 각각 채점해 집계를 비교한다(2026-10-17 사용자 승인).
-  # 제품 경로가 바뀐 PR만 잰다. 종합점수 하락·오탐 증가·A등급 오탐 증가·인젝션 방어 실패면 실패한다.
+  # manifest에 고정한 은퇴 5세트. 같은 입력·현재 채점기를 기준/후보 제품에 적용한다.
+  # 제품·평가 도구·자료 변경 시 잰다. 자료 누락·실행 실패·기존/v2 회귀를 차단한다.
   # 평가 측이 PR마다 다시 돌리던 비교를 CI 인용으로 바꾸려는 것이다. OCR이 필요한 문서가 있어 점수 하락 게이트와 따로 돈다.
   retired-sets:
     name: 은퇴 세트 비교
@@ -158,6 +173,7 @@ jobs:
         shell: bash
     env:
       LV_ALLOW_NETWORK: "0"
+      OMP_THREAD_LIMIT: "1"
       LV_PSEUDONYM_SECRET: ci-only-not-a-real-secret
 
     steps:
@@ -196,3 +212,11 @@ jobs:
             cat retired-summary.txt 2>/dev/null || echo '(없음)'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 은퇴 비교 집계 보존
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retired-comparison
+          path: artifacts/retired_comparison.json
+          if-no-files-found: ignore

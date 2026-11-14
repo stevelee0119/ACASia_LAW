@@ -37,6 +37,20 @@ def _mismatch(verdict, title, detail, excerpt):
     ))
 
 
+def _resolve(verifier, law_name, citation, as_of, current_date):
+    """TK-158: 인용 조문 번호를 함께 넘겨 같은 시행일 판들의 문언 비교를 가능하게 한다(받지 않는 어댑터는 예전대로)."""
+    import inspect
+
+    resolver = verifier.registry.law.resolve_statute
+    try:
+        accepts = "article" in inspect.signature(resolver).parameters
+    except (TypeError, ValueError):
+        accepts = False
+    if accepts and citation.article:
+        return resolver(law_name, as_of=as_of, current_date=current_date, article=citation.article)
+    return resolver(law_name, as_of=as_of, current_date=current_date)
+
+
 def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None, current_date=None):
     from .verifier import CitationVerdict
 
@@ -47,12 +61,12 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
     if any(value is not None and not legal_date(value) for value in (as_of, incident_date, current_date)):
         verdict.notes.append("유효한 기준일이 필요하다. 누락·오류 날짜를 오늘로 대체하지 않는다")
         return verdict
-    response = verifier.registry.law.resolve_statute(citation.law_name, as_of=as_of, current_date=current_date)
+    response = _resolve(verifier, citation.law_name, citation, as_of, current_date)
     verdict.source_records.extend(response.source_records)
     alias = (citation.attributes or {}).get("law_alias_candidate")
     if response.ok and (response.message or "").startswith("EXACT_LAW_NOT_FOUND:") and alias:
         # 적힌 이름이 목록에 없고, 같은 문서가 정식 법령명을 함께 쓴 경우: 정식명으로 다시 조회한다.
-        retried = verifier.registry.law.resolve_statute(alias, as_of=as_of, current_date=current_date)
+        retried = _resolve(verifier, alias, citation, as_of, current_date)
         verdict.source_records.extend(retried.source_records)
         verdict.review["law_alias"] = {"written": citation.law_name, "resolved": alias,
                                        "basis": citation.attributes.get("law_alias_basis"),
@@ -153,6 +167,11 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
     verdict.status = VerificationStatus.PARTIALLY_VERIFIED
     if citation.quoted_text:
         level, ratio = verifier._compare_quote(citation.quoted_text, provision["text"])
+        # TK-163: 조항 원문과 인용문을 어절 단위로 맞댄 자료(화면 '원문 대조 보기'용, 판정과 무관).
+        from .evidence_basis import align_quote
+        alignment = align_quote(citation.quoted_text, provision["text"])
+        if alignment is not None:
+            verdict.review["quote_alignment"] = alignment
         if level == "CONTRADICTED" and verdict.levels["temporal"] != "VERIFIED":
             level = "UNVERIFIED"
         verdict.levels["content"] = level

@@ -40,6 +40,7 @@ from ..access import project_scoped
 from ..identity import (actor_id, apply_organization_policy, filter_project_query,
                         project_creation_defaults, require_project, project_role)
 
+from packages.common.display_text import CODE_WORDS, FIELD_WORDS, FINDING_TYPE_NAMES, PHRASES, WORD_NAMES
 from packages.common.finding_category_map import CATEGORY_TO_TAB, FINDING_CATEGORY_MAP, get_category_counts
 
 router = APIRouter(tags=["projects"])
@@ -53,6 +54,12 @@ def get_finding_categories() -> dict:
         "categories": {ft.value: cat.value for ft, cat in FINDING_CATEGORY_MAP.items()},
         "tabs": {ft.value: CATEGORY_TO_TAB[cat].value for ft, cat in FINDING_CATEGORY_MAP.items()},
         "counts": get_category_counts(),
+        # V1.0.0: 화면이 코드를 한글로 바꿀 때 쓰는 표(packages/common/display_text.py 하나가 기준, 보고서와 같음)
+        "names": FINDING_TYPE_NAMES,
+        "code_words": CODE_WORDS,
+        "field_words": FIELD_WORDS,
+        "word_names": WORD_NAMES,
+        "phrases": [list(pair) for pair in PHRASES],  # TK-155 보완 3: 문장 단위 치환 표(보고서 readable과 같은 순서)
     }
 
 

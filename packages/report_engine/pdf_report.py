@@ -1,7 +1,7 @@
 """제20.3장 검증보고서 PDF 및 Highlight PDF.
 
 보고서 구성:
- 검증개요·대상문서·방법론 / 핵심 CRITICAL·HIGH / 판례·법령·유권해석·학술자료 검증표 /
+ 검증개요·대상문서·방법론 / 핵심 사항(심각도 매우 높음·높음) / 판례·법령·유권해석·학술자료 검증표 /
  사실관계·논리·문서간 모순 / AI 작성 분석 / 문서 포렌식·전자서명 /
  메타 지시어·Prompt Injection 결과 / 미검증 항목·사용하지 못한 Source /
  방법론상 한계 / Chain of Custody Manifest
@@ -74,6 +74,9 @@ GLYPH_FALLBACK = {
 }
 
 
+from packages.common.display_text import word  # noqa: E402  V1.0.0 보고서 본문 코드 → 한글
+
+
 def _sanitize(text: str) -> str:
     if _register_font() != KOREAN_FONT:
         return text
@@ -83,8 +86,9 @@ def _sanitize(text: str) -> str:
 
 
 def _escape(text: Any) -> str:
+    # V1.0.0: 사람이 읽는 본문 글은 코드를 한글로 바꾼다(packages/common/display_text). 기술 부록(_appendix_blocks)은 그대로.
     return (
-        _sanitize(xml_text(text))
+        _sanitize(word(xml_text(text)))
         .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
@@ -182,7 +186,7 @@ def build_report_pdf(
     story.append(table(integrity, [110, 180, 90, 60, 40]))
 
     # --- 2. 핵심 CRITICAL / HIGH -------------------------------------------
-    story.append(Paragraph(_escape("2. 핵심 CRITICAL·HIGH 사항"), styles["h1"]))
+    story.append(Paragraph(_escape("2. 핵심 사항(심각도 매우 높음·높음)"), styles["h1"]))
     critical = [f for f in main_findings if f.severity in (Severity.CRITICAL, Severity.HIGH)]
     if critical:
         rows = [["위험도", "유형", "등급", "확신도", "내용"]]
@@ -193,7 +197,7 @@ def build_report_pdf(
             )
         story.append(table(rows, [50, 110, 34, 40, 256]))
     else:
-        story.append(Paragraph("CRITICAL·HIGH 등급 항목이 없다.", styles["body"]))
+        story.append(Paragraph("심각도 매우 높음·높음 항목이 없다.", styles["body"]))
 
     # --- 3. 법률 인용 검증표 ------------------------------------------------
     story.append(Paragraph(_escape("3. 판례·법령·유권해석·학술자료 검증표"), styles["h1"]))
@@ -206,7 +210,7 @@ def build_report_pdf(
             citation_rows.append([
                 row["filename"], pages + (f"\n({row['count']}회)" if row["count"] > 1 else ""),
                 citation.get("raw_text") or "", str(citation.get("type")),
-                verdict.get("status", "UNVERIFIED") + component_line(verdict.get("components") or []),
+                word(verdict.get("status", "UNVERIFIED")) + component_line(verdict.get("components") or []),
                 "A" if verdict.get("official_record") else "U"])
     else:
         for d in run_result.documents:
@@ -219,7 +223,7 @@ def build_report_pdf(
                         str(citation.get("page") or "-"),
                         (citation.get("raw_text") or ""),
                         str(citation.get("type")),
-                        verdict.get("status", "UNVERIFIED") + "".join(
+                        word(verdict.get("status", "UNVERIFIED")) + "".join(
                             f"\n· {c['label']}: {c['meaning']}" for c in verdict.get("components") or []),
                         "A" if verdict.get("official_record") else "U",
                     ]
@@ -254,7 +258,7 @@ def build_report_pdf(
         story.append(Paragraph(_escape("모델별 AI 작성 판정"), styles["h2"]))
         story.append(table([["문서", "모델", "판정", "점수", "근거"], *opinion_rows], [80, 70, 70, 30, 240]))
 
-    from .reference_opinions import REPORT_NOTICE, row_basis, table_additions
+    from .reference_opinions import REPORT_NOTICE, compare_text, row_basis, table_additions
     from .review_tiers import classify_row_tier
     tier2_rows = []
     tier3_rows = []
@@ -268,6 +272,9 @@ def build_report_pdf(
                           + str(row.get("ai_generation_basis", ""))[:120] + "\n"
                           + format_context_review(row.get("context_review")))
             cell_basis += "\n" + row_basis(d, row)
+            compared = compare_text(d, row)  # TK-160·163
+            if compared:
+                cell_basis += "\n" + compared
             cell_review = row_cell_text(row, limit=900)
             formatted_entry = [cell_loc, cell_claim, cell_basis, cell_review]
 
@@ -290,6 +297,7 @@ def build_report_pdf(
     story.append(Spacer(1, 4))
     story.append(Paragraph(_escape("3. 법률적으로 무리한 주장"), styles["h2"]))
     if tier3_rows:
+        story.append(Paragraph(_escape(REPORT_NOTICE), styles["small"]))  # D5: 표 위 안내 한 번
         t3_table_rows = [["위치", "문서 주장 / 인용", "법리 검토 결과 및 근거", "반박 근거 및 확인 필요 내용"]]
         story.append(table(t3_table_rows + tier3_rows, [60, 105, 110, 215]))
     else:
@@ -362,8 +370,8 @@ def build_report_pdf(
     story.append(
         Paragraph(
             _escape(
-                "아래 항목은 해석의 영역에 속하는 참고 신호이다. Severity 상한 MEDIUM, Evidence Grade D, "
-                "Verification Status UNVERIFIED로 고정되며, 이 신호만으로 허위·고의·위법을 단정하지 않는다."
+                "아래 항목은 해석의 영역에 속하는 참고 신호이다. 심각도는 '보통'을 넘지 않고 근거 등급 D, "
+                "검증 상태 '확인 불가'로 고정되며, 이 신호만으로 허위·고의·위법을 단정하지 않는다."
             ),
             styles["body"],
         )
@@ -423,7 +431,7 @@ def build_report_pdf(
         ["검증 프로필", str(context.get("profile", "기록 없음"))],
         ["외부 AI 정책", str(context.get("external_ai_policy", "기록 없음"))],
         ["법령 기준일", str(context.get("case_date") or "미지정: 시행법 적합성 미검증")],
-        ["판정 한계", "VERIFIED는 해당 검사 단계의 확인 결과이며 문서 전체의 적법성 보증이 아니다. 신뢰도 지표는 통계적으로 보정된 확률이 아니다."]], [100, 390]))
+        ["판정 한계", "'확인됨'은 해당 검사 단계의 확인 결과이며 문서 전체의 적법성 보증이 아니다. 신뢰도 지표는 통계적으로 보정된 확률이 아니다."]], [100, 390]))
     level = detail_level(run_result)
     summary = level == SUMMARY
     if summary:
@@ -438,7 +446,7 @@ def build_report_pdf(
                 source = record.to_dict() if hasattr(record, "to_dict") else record
                 story.append(Paragraph(_escape(f"Source: {source.get('adapter')} / {source.get('retrieved_at')} / SHA-256 {source.get('response_hash')} / {source.get('url')}"), styles["small"]))
             for review in item.engine_data.get("semantic_reviews", []):
-                story.append(Paragraph(_escape(f"AI 참고 의견 / {review.get('citation_id')} / 근거 문구 대조 {review.get('source_quotes_validated', False)}: {review.get('reason')}"), styles["small"]))
+                story.append(Paragraph(_escape(f"AI 참고 의견 / {review.get('citation_id')} / 근거 문구 대조 {'일치' if review.get('source_quotes_validated') else '불일치·미확인'}: {review.get('reason')}"), styles["small"]))
         executions = getattr(run_result, "model_executions", [])
         story.append(Paragraph(_escape(f"모델 호출 기록: {executions}" if executions else "실행된 모델 호출 없음. 의미·법리 적용 검토를 완료한 것으로 해석할 수 없음."), styles["small"]))
         story.append(Paragraph("실행에 저장된 검토 기록", styles["h2"]))
@@ -520,7 +528,7 @@ def _summary_evidence(story, styles, table, run_result, findings) -> None:
     for item in run_result.documents:
         for review in item.engine_data.get("semantic_reviews", []):
             story.append(Paragraph(_escape(f"AI 참고 의견 / {review.get('citation_id')} / 근거 문구 대조 "
-                                           f"{review.get('source_quotes_validated', False)}: {review.get('reason')}"),
+                                           f"{'일치' if review.get('source_quotes_validated') else '불일치·미확인'}: {review.get('reason')}"),
                                    styles["small"]))
     reviewed = [f for f in findings if f.to_dict().get("review_note") or
                 str(f.to_dict().get("review_status", "NEEDS_REVIEW")) != "NEEDS_REVIEW"]

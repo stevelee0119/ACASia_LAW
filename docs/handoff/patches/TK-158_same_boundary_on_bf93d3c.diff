@@ -1,0 +1,316 @@
+diff --git a/packages/legal_engine/source_review.py b/packages/legal_engine/source_review.py
+index 8ac7d80..3fd327e 100644
+--- a/packages/legal_engine/source_review.py
++++ b/packages/legal_engine/source_review.py
+@@ -37,6 +37,20 @@ def _mismatch(verdict, title, detail, excerpt):
+     ))
+ 
+ 
++def _resolve(verifier, law_name, citation, as_of, current_date):
++    """TK-158: 인용 조문 번호를 함께 넘겨 같은 시행일 판들의 문언 비교를 가능하게 한다(받지 않는 어댑터는 예전대로)."""
++    import inspect
++
++    resolver = verifier.registry.law.resolve_statute
++    try:
++        accepts = "article" in inspect.signature(resolver).parameters
++    except (TypeError, ValueError):
++        accepts = False
++    if accepts and citation.article:
++        return resolver(law_name, as_of=as_of, current_date=current_date, article=citation.article)
++    return resolver(law_name, as_of=as_of, current_date=current_date)
++
++
+ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None, current_date=None):
+     from .verifier import CitationVerdict
+ 
+@@ -47,12 +61,12 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
+     if any(value is not None and not legal_date(value) for value in (as_of, incident_date, current_date)):
+         verdict.notes.append("유효한 기준일이 필요하다. 누락·오류 날짜를 오늘로 대체하지 않는다")
+         return verdict
+-    response = verifier.registry.law.resolve_statute(citation.law_name, as_of=as_of, current_date=current_date)
++    response = _resolve(verifier, citation.law_name, citation, as_of, current_date)
+     verdict.source_records.extend(response.source_records)
+     alias = (citation.attributes or {}).get("law_alias_candidate")
+     if response.ok and (response.message or "").startswith("EXACT_LAW_NOT_FOUND:") and alias:
+         # 적힌 이름이 목록에 없고, 같은 문서가 정식 법령명을 함께 쓴 경우: 정식명으로 다시 조회한다.
+-        retried = verifier.registry.law.resolve_statute(alias, as_of=as_of, current_date=current_date)
++        retried = _resolve(verifier, alias, citation, as_of, current_date)
+         verdict.source_records.extend(retried.source_records)
+         verdict.review["law_alias"] = {"written": citation.law_name, "resolved": alias,
+                                        "basis": citation.attributes.get("law_alias_basis"),
+diff --git a/packages/source_adapters/legal_history.py b/packages/source_adapters/legal_history.py
+index 58f3a86..01f32b2 100644
+--- a/packages/source_adapters/legal_history.py
++++ b/packages/source_adapters/legal_history.py
+@@ -76,6 +76,50 @@ def provision_number(value: Any) -> str | None:
+     return str(int(match[1])) + (f"의{int(match[2])}" if match[2] else "")
+ 
+ 
++BOUNDARY_ERROR = "Multiple versions share the requested effective boundary"
++# TK-158: 같은 시행일의 판들이 인용 조문 문언까지 서로 다를 때(확정 불가)
++BOUNDARY_TEXT_DIFFERS = "Multiple versions share the requested effective boundary and the cited provision differs"
++
++
++def boundary_versions(records: list[dict], as_of: str) -> list[dict]:
++    """TK-158: 기준일에 시행 중인 같은 시행일 판을 모두 고른다(select_version과 같은 검증 규칙).
++
++    법적 판단(어느 개정이 우선인지)은 하지 않는다. 호출하는 쪽이 인용 조문 문언을 비교해, 모두 같을 때만 확정한다.
++    """
++    when = legal_date(as_of)
++    unique: dict[tuple, dict] = {}
++    for row in records:
++        start = legal_date(row.get("effective_from"))
++        promulgated = legal_date(row.get("promulgation_date"))
++        mst = str(row.get("version_id") or "")
++        if not when or not start or not promulgated or not mst.isdigit():
++            raise ValueError("History contains missing or invalid version dates/identifiers")
++        key = (mst, start)
++        if key in unique and unique[key] != row:
++            raise ValueError("Conflicting duplicate historical version")
++        unique[key] = row
++    eligible = [r for r in unique.values() if r["effective_from"] <= when]
++    if not eligible:
++        raise ValueError("No effective version covers the requested date")
++    latest = max(r["effective_from"] for r in eligible)
++    choices = sorted((r for r in eligible if r["effective_from"] == latest), key=lambda r: int(r["version_id"]))
++    next_dates = [r["effective_from"] for r in unique.values() if r["effective_from"] > latest]
++    out = []
++    for row in choices:
++        if row["promulgation_date"] > when:
++            raise ValueError("Retroactive commencement requires legal review")
++        if "폐지" in str(row.get("amendment_type") or ""):
++            raise ValueError("Repeal boundary requires legal review")
++        chosen = dict(row)
++        chosen.update(requested_as_of=when, effective_until=min(next_dates) if next_dates else None,
++                      history_complete=True,
++                      version_history=[{k: r.get(k) for k in (
++                          "law_id", "version_id", "effective_from", "promulgation_date", "amendment_type"
++                      )} for r in sorted(unique.values(), key=lambda r: r["effective_from"])])
++        out.append(chosen)
++    return out
++
++
+ def select_version(records: list[dict], as_of: str) -> dict:
+     """Select a textual version only; never infer substantive applicability."""
+     when = legal_date(as_of)
+@@ -103,7 +147,7 @@ def select_version(records: list[dict], as_of: str) -> dict:
+     latest = max(r["effective_from"] for r in eligible)
+     choices = [r for r in eligible if r["effective_from"] == latest]
+     if len(choices) != 1:
+-        raise ValueError("Multiple versions share the requested effective boundary")
++        raise ValueError(BOUNDARY_ERROR)
+     chosen = dict(choices[0])
+     if chosen["promulgation_date"] > when:
+         raise ValueError("Retroactive commencement requires legal review")
+diff --git a/packages/source_adapters/official_legal.py b/packages/source_adapters/official_legal.py
+index 13246ff..a052022 100644
+--- a/packages/source_adapters/official_legal.py
++++ b/packages/source_adapters/official_legal.py
+@@ -14,7 +14,8 @@ from urllib.parse import urlencode
+ 
+ from packages.common.enums import AdapterStatus
+ from .base import AdapterResponse, response_hash
+-from .legal_history import body_text, legal_date, objects, parse_law_body, select_version, today_korea
++from .legal_history import (BOUNDARY_ERROR, BOUNDARY_TEXT_DIFFERS, body_text, boundary_versions, legal_date, objects,
++                             parse_law_body, select_provision, select_version, today_korea)
+ 
+ _USED_FIELDS = {
+     "eflaw": ["법령ID", "법령일련번호", "시행일자", "공포일자", "공포번호",
+@@ -221,7 +222,7 @@ class OfficialLegalMixin:
+         return AdapterResponse(AdapterStatus.READY, ambiguous, first,
+                                "AMBIGUOUS" if ambiguous else "NO_CANDIDATE", sources, True)
+ 
+-    def resolve_statute(self, law_name, *, as_of=None, current_date=None, law_id=None):
++    def resolve_statute(self, law_name, *, as_of=None, current_date=None, law_id=None, article=None):
+         current = legal_date(current_date) if current_date is not None else today_korea()
+         when = legal_date(as_of) if as_of is not None else current
+         if not current or not when or when > current:
+@@ -240,11 +241,47 @@ class OfficialLegalMixin:
+             selected.update(review_as_of=as_of, current_as_of=current,
+                             date_basis="EXPLICIT_REFERENCE" if as_of else "CURRENT_ONLY")
+         except ValueError as exc:
++            if str(exc) == BOUNDARY_ERROR and article:
++                # TK-158: 같은 시행일 판이 여럿이면 인용 조문 문언을 판마다 받아 비교한다. 모두 같을 때만 확정한다.
++                return self._resolve_same_boundary(history, when, current, as_of, article)
+             return AdapterResponse(AdapterStatus.ERROR, [], history.source_record, str(exc), history.source_records)
+         detail = self.fetch_law_version(selected)
+         detail.source_records = history.source_records + detail.source_records
+         return detail
+ 
++    def _resolve_same_boundary(self, history, when, current, as_of, article):
++        try:
++            candidates = boundary_versions(history.records, when)
++        except ValueError as exc:
++            return AdapterResponse(AdapterStatus.ERROR, [], history.source_record, str(exc), history.source_records)
++        sources, details, texts = list(history.source_records or []), [], set()
++        for candidate in candidates:
++            detail = self.fetch_law_version(candidate)
++            sources += detail.source_records or []
++            if not detail.ok or not detail.records:
++                return AdapterResponse(AdapterStatus.ERROR, [], history.source_record,
++                                       detail.message or BOUNDARY_ERROR, sources)
++            provision = select_provision(detail.records[0], str(article))
++            if provision.get("status") != "VERIFIED":
++                return AdapterResponse(AdapterStatus.ERROR, [], history.source_record, BOUNDARY_ERROR, sources)
++            texts.add(re.sub(r"\s+", "", provision.get("text") or ""))
++            details.append(detail)
++        if len(texts) != 1:
++            return AdapterResponse(AdapterStatus.ERROR, [], history.source_record, BOUNDARY_TEXT_DIFFERS, sources)
++        chosen = details[0]
++        record = chosen.records[0]
++        record.update(version_selection="SAME_PROVISION_AT_BOUNDARY",
++                      boundary_versions=[c["version_id"] for c in candidates],
++                      review_as_of=as_of, current_as_of=current,
++                      date_basis="EXPLICIT_REFERENCE" if as_of else "CURRENT_ONLY")
++        try:
++            now = select_version(history.records, current)
++            record["current_version"] = {k: now[k] for k in ("version_id", "law_id", "effective_from", "promulgation_date")}
++        except ValueError:
++            record["current_version"] = None
++        chosen.source_records = sources
++        return chosen
++
+     def fetch_law_version(self, selected):
+         mst, effective = str(selected.get("version_id") or ""), legal_date(selected.get("effective_from"))
+         if not mst.isdigit() or not effective:
+diff --git a/packages/verification_engine/review_items.py b/packages/verification_engine/review_items.py
+index 6910694..5705137 100644
+--- a/packages/verification_engine/review_items.py
++++ b/packages/verification_engine/review_items.py
+@@ -34,6 +34,8 @@ from packages.common.schemas import (
+ 
+ # 사람 말(Human-Readable) 변환표 (19b 설계 2.5절 반영)
+ HUMAN_READABLE_UNVERIFIED_REASONS: Dict[str, str] = {
++    "Multiple versions share the requested effective boundary and the cited provision differs":
++        "같은 날 시행된 개정판이 여럿이고 인용 조문 문언이 판마다 달라 어느 판인지 확인 필요",
+     "Multiple versions share the requested effective boundary": "해당 조문의 시행일자 기준 복수 개정판이 존재하여 특정 판본 확인 필요",
+     "NO_READABLE_DRIVE_REFERENCE": "판독 가능한 Drive 참고자료 문서 없음",
+     "RELEVANT_REFERENCES_NOT_FULLY_READ": "참고자료 분량 초과로 일부 문서 미대조",
+diff --git a/tests/test_tk158_same_boundary_versions.py b/tests/test_tk158_same_boundary_versions.py
+new file mode 100644
+index 0000000..719cfae
+--- /dev/null
++++ b/tests/test_tk158_same_boundary_versions.py
+@@ -0,0 +1,122 @@
++"""TK-158: 같은 시행일에 개정판이 여럿일 때 인용 조문 문언을 판마다 비교해 같으면 확정, 다르면 미확인(사유 명시).
++
++연혁·본문은 모두 합성이다(법령명 '검증법', 번호·날짜는 구조 시험용). 네트워크·자격 증명 없이 공식 응답 꼴만 흉내 낸다.
++"""
++from copy import deepcopy
++from types import SimpleNamespace
++
++import httpx
++import pytest
++
++from packages.common.enums import AdapterStatus, CitationType
++from packages.common.schemas import Citation
++from packages.legal_engine import LegalVerifier
++from packages.source_adapters.law_go_kr import LawGoKrAdapter
++from packages.source_adapters.legal_history import BOUNDARY_ERROR, BOUNDARY_TEXT_DIFFERS
++from packages.source_adapters.local_mirror import LocalLegalMirror
++from packages.verification_engine.review_items import HUMAN_READABLE_UNVERIFIED_REASONS
++
++
++def row(mst, effective, promulgated):
++    return {"법령명한글": "검증법", "법령ID": "000123", "법령일련번호": mst, "공포일자": promulgated,
++            "시행일자": effective, "공포번호": mst, "제개정구분명": "일부개정"}
++
++
++def body(r, text):
++    return {"법령": {
++        "기본정보": {"법령ID": "000123", "법령일련번호": r["법령일련번호"], "법령명_한글": "검증법",
++                 "시행일자": r["시행일자"], "공포일자": r["공포일자"], "공포번호": r["공포번호"]},
++        "조문": {"조문단위": [
++            {"조문번호": "7", "조문여부": "조문", "조문시행일자": r["시행일자"], "조문내용": text},
++            {"조문번호": "8", "조문여부": "조문", "조문시행일자": r["시행일자"], "조문내용": "제8조(다른 조) 판마다 다른 문장 " + r["법령일련번호"]},
++        ]}}}
++
++
++ROWS = [row("100", "20190101", "20180601"), row("200", "20220101", "20210601"), row("201", "20220101", "20210901")]
++SAME = "제7조(합성 조문) 이 조문의 문언은 두 판에서 같다."
++
++
++@pytest.fixture
++def adapter(monkeypatch, tmp_path):
++    law = LawGoKrAdapter(mirror=LocalLegalMirror(tmp_path / "empty"))
++    monkeypatch.setattr(law, "status", lambda: AdapterStatus.READY)
++    monkeypatch.setattr(LawGoKrAdapter, "api_key", property(lambda self: "TEST_ONLY_KEY"))
++    return law
++
++
++def install(monkeypatch, adapter, rows, texts):
++    calls = []
++
++    def request(url, *, params):
++        calls.append(deepcopy(params))
++        if "MST" in params:
++            r = next(x for x in rows if x["법령일련번호"] == params["MST"] and x["시행일자"] == params["efYd"])
++            payload = body(r, texts[r["법령일련번호"]])
++        else:
++            payload = {"LawSearch": {"totalCnt": len(rows), "page": 1, "law": rows}}
++        return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
++    monkeypatch.setattr(adapter, "_http_get", request)
++    return calls
++
++
++def test_same_provision_text_at_boundary_is_confirmed(adapter, monkeypatch):
++    install(monkeypatch, adapter, ROWS, {"100": "제7조(합성 조문) 옛 문언.", "200": SAME, "201": SAME})
++    got = adapter.resolve_statute("검증법", as_of="2023-06-12", current_date="2026-11-13", article="7")
++    assert got.ok, got.message
++    record = got.records[0]
++    assert record["version_selection"] == "SAME_PROVISION_AT_BOUNDARY"
++    assert record["boundary_versions"] == ["200", "201"]
++    assert record["version_id"] == "200"  # 결정적: 판 번호가 작은 쪽을 대표로 싣는다(문언은 같다)
++
++
++def test_other_articles_may_differ_only_the_cited_one_is_compared(adapter, monkeypatch):
++    # 제8조는 판마다 다르지만 인용은 제7조다 → 확정
++    install(monkeypatch, adapter, ROWS, {"100": "옛", "200": SAME, "201": "제7조(합성 조문)  이 조문의 문언은 두 판에서\n같다."})
++    assert adapter.resolve_statute("검증법", as_of="2023-06-12", current_date="2026-11-13", article="7").ok
++
++
++def test_different_provision_text_stays_unverified_with_reason(adapter, monkeypatch):
++    install(monkeypatch, adapter, ROWS, {"100": "옛", "200": SAME, "201": "제7조(합성 조문) 두 번째 판에서 바뀐 문언."})
++    got = adapter.resolve_statute("검증법", as_of="2023-06-12", current_date="2026-11-13", article="7")
++    assert not got.ok and got.status == AdapterStatus.ERROR
++    assert got.message == BOUNDARY_TEXT_DIFFERS
++    assert "판마다 달라" in HUMAN_READABLE_UNVERIFIED_REASONS[BOUNDARY_TEXT_DIFFERS]
++
++
++def test_without_article_keeps_previous_behaviour(adapter, monkeypatch):
++    install(monkeypatch, adapter, ROWS, {"100": "옛", "200": SAME, "201": SAME})
++    got = adapter.resolve_statute("검증법", as_of="2023-06-12", current_date="2026-11-13")
++    assert not got.ok and got.message == BOUNDARY_ERROR
++
++
++def test_missing_article_in_one_version_is_not_confirmed(adapter, monkeypatch):
++    install(monkeypatch, adapter, ROWS, {"100": "옛", "200": SAME, "201": SAME})
++    got = adapter.resolve_statute("검증법", as_of="2023-06-12", current_date="2026-11-13", article="9")
++    assert not got.ok  # 어느 판에도 없는 조문 → 확정하지 않는다
++
++
++@pytest.mark.parametrize("order", [1, -1])
++def test_result_does_not_depend_on_history_order(adapter, monkeypatch, order):
++    install(monkeypatch, adapter, ROWS[::order], {"100": "옛", "200": SAME, "201": SAME})
++    got = adapter.resolve_statute("검증법", as_of="2023-06-12", current_date="2026-11-13", article="7")
++    assert got.ok and got.records[0]["version_id"] == "200"
++
++
++def _verify(adapter, as_of="2023-06-12"):
++    citation = Citation.create(CitationType.STATUTE, "검증법 제7조", law_name="검증법", article="7")
++    return LegalVerifier(SimpleNamespace(law=adapter)).verify_statute(citation, as_of=as_of, current_date="2026-11-13")
++
++
++def test_verifier_main_path_no_longer_leaves_same_text_unverified(adapter, monkeypatch):
++    install(monkeypatch, adapter, ROWS, {"100": "옛", "200": SAME, "201": SAME})
++    verdict = _verify(adapter)
++    assert not any(BOUNDARY_ERROR in n for n in verdict.notes)
++    assert verdict.official_record and verdict.official_record.get("version_selection") == "SAME_PROVISION_AT_BOUNDARY"
++
++
++def test_verifier_main_path_reports_differing_text(adapter, monkeypatch):
++    install(monkeypatch, adapter, ROWS, {"100": "옛", "200": SAME, "201": "제7조 바뀐 문언"})
++    verdict = _verify(adapter)
++    assert verdict.official_record is None
++    assert any(BOUNDARY_TEXT_DIFFERS in n for n in verdict.notes) or any(
++        BOUNDARY_TEXT_DIFFERS in (f.detail or "") for f in verdict.findings)

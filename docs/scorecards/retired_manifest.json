@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "scope": "Five CI datasets present in Steve_ACASiaLAW e57855f; all five must survive release promotion",
+  "sets": {
+    "sealed_20261008": "1b14a49c7ae5c04857e0d11f0c2186bf09b2a1c649d6f0b7ab2fc9ac75c74778",
+    "sealed_20261008b": "7125370eb8cbc2aa6aa5272e66ff608cf73566c195e77309b02ea57bd121d5f1",
+    "sealed_20261009": "f365482654bfb85f017d0268d5c16c1593c8ab35dfd2db86038409f9f4d062b1",
+    "sealed_20261010": "82bc21344fdc14f1032a5704786b60753ecab65979ae6c253d9772afffd77b9c",
+    "sealed_20261025": "296e25e16c82b93604b2807132d8cfe24375738de499c21af0b71c6fe1261c1b"
+  }
+}

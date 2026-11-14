@@ -10,6 +10,7 @@
 - 기준선에서 방어했던 인젝션 시험을 방어하지 못함
 - 문서별 재현율이 기준선 − 문서 허용오차(기본 0.05) 미만(개발·홀드아웃만. 한 항목을 잃은 회귀를 잡는다)
 - 기준선에 있는 세트가 성적표에 없음
+- v2 측정 누락·분모/자료/프로토콜 변경·유형별 정답 인정 건수 감소
 
 조건(네트워크·OCR)이 기준선과 다르면 비교 불가 경고를 낸다. --strict-env면 실패(종료 코드 3)로 본다.
 종료 코드: 0 통과, 1 실패, 2 사용 오류, 3 조건 불일치(--strict-env).
@@ -23,6 +24,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from scripts.evaluation_v2 import compare_sets
 DEFAULT_CURRENT = ROOT / "artifacts" / "scorecard.json"
 DEFAULT_BASELINE = ROOT / "docs" / "scorecards" / "baseline.json"
 COUNT_KEYS = ("false_positives", "a_grade_fp", "duplicate_citation_verdicts", "findings_without_document_id")
@@ -35,6 +38,10 @@ def env_differences(current: Dict[str, Any], baseline: Dict[str, Any]) -> List[s
         diffs.append(f"네트워크 {b.get('network')} → {a.get('network')}")
     if bool(a.get("tesseract")) != bool(b.get("tesseract")):
         diffs.append(f"OCR {b.get('tesseract') or '없음'} → {a.get('tesseract') or '없음'}")
+    # Older snapshots included a malformed path token; compare actual language IDs only.
+    required = {v for v in b.get("ocr_langs", []) if v in {"eng", "kor", "osd"}}
+    if required - set(a.get("ocr_langs", [])):
+        diffs.append("OCR 언어 누락: " + ", ".join(sorted(required - set(a.get("ocr_langs", [])))))
     return diffs
 
 
@@ -88,6 +95,7 @@ def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--current", default=str(DEFAULT_CURRENT))
     parser.add_argument("--baseline", default=str(DEFAULT_BASELINE))
+    parser.add_argument("--quality-baseline", default=str(ROOT / "docs/scorecards/regression_v2_baseline.json"))
     parser.add_argument("--tolerance", type=float, default=0.5)
     parser.add_argument("--doc-tolerance", type=float, default=0.05)
     parser.add_argument("--strict-env", action="store_true")
@@ -96,9 +104,15 @@ def main(argv: List[str] | None = None) -> int:
     try:
         current = json.loads(Path(args.current).read_text(encoding="utf-8"))
         baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
+        v2_baseline = json.loads(Path(args.quality_baseline).read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         print(f"입력을 읽지 못했다: {exc}", file=sys.stderr)
         return 2
+    v2_failures = compare_sets({name: current.get("sets", {}).get(name, {}).get("regression_v2")
+                               for name in v2_baseline["sets"]}, v2_baseline["sets"])
+    if v2_failures:
+        print("v2 회귀 측정 게이트 실패:\n  " + "\n  ".join(v2_failures))
+        return 1
     if args.update_baseline:
         blockers = can_raise_baseline(current, baseline)
         if blockers:
