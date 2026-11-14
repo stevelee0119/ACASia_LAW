@@ -96,4 +96,4 @@
 
 ## 평가 방법 전환 (2026-11-13 사용자 승인)
 
-사용자 지시 “권고대로 평가 방법을 전환해줘.”에 따라 [EVALUATION_V2](scorecards/EVALUATION_V2.md)를 적용한다. 종전 점수는 회귀 지표로만 쓰고, 일대일 이진 재현율·유형별 하한·미판정 경고·측정 완전성을 함께 평가한다. 같은 현재 채점기와 같은 입력으로 기준/후보 제품을 비교한다. 실무 정확도·법리 타당성·공개 벤치마크는 실제 정답/응답 없이는 NOT_MEASURED이며 0점/통과로 대체하지 않는다. 새 scripts/evaluation_*.py·export_quality_predictions.py·evaluate_kbl.py·evaluate_quality.py와 관련 시험·규약·기준선도 평가 측 보호 자산이다. 제품 직접 수정은 기존 역할 분리를 유지한다.
+사용자 지시 “권고대로 평가 방법을 전환해줘.”에 따라 [EVALUATION_V2](scorecards/EVALUATION_V2.md)를 적용한다. 종전 점수는 회귀 지표로만 쓰고, 일대일 이진 재현율·유형별 하한·미판정 경고·측정 완전성을 함께 평가한다. 같은 현재 채점기와 같은 입력으로 기준/후보 제품을 비교한다. 실무 정확도·법리 타당성·공개 벤치마크는 실제 정답/응답 없이는 NOT_MEASURED이며 0점/통과로 대체하지 않는다. 새 scripts/evaluation_*.py·export_quality_predictions.py·evaluate_quality.py와 관련 시험·규약·기준선도 평가 측 보호 자산이다. 제품 직접 수정은 기존 역할 분리를 유지한다.

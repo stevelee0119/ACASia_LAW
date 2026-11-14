@@ -52,19 +52,24 @@ inventory는 개발 중 동결하고 새 버전에 재사용한다. 정답 라�
 
 현재 exporter는 **identity와 literal quote**만 지원한다. 판례가 실재한다는 VERIFIED를 인용문 또는 주장 전체의 VERIFIED로 옮기지 않는다. 법령의 existence/article/content도 해당 차원으로 분리한다. 정답 error_types는 각각 `CITATION_IDENTITY_ERROR`, `QUOTE_CONTENT_ERROR`를 사용한다. 이 두 유형은 구성요소 오류의 큰 분류이며 상세 법리 오류 분류를 대체하지 않는다. `legal_verdicts.findings`의 축약 참조는 문서/프로젝트의 실제 finding과 연결한다. LAW_CITATION_ERROR처럼 내용 오류에도 쓰이는 유형을 식별 오류로 단정하지 않는다. 알려지지 않은 상태, 같은 차원의 VERIFIED와 명확한 결함 finding 충돌은 실패한다. 새 버전에서 inventory 밖에 생긴 인용은 manifest의 unbound_candidate_items로 따로 표시하며 정밀도 분모에서 조용히 지우지 않는다. 비용·시간을 측정하지 않았으면 null이다. 기존 quality 모듈의 precision/recall/F1, false VERIFIED, coverage, 사건군 신뢰구간을 그대로 사용한다. 새 실무 합격선은 위험 예산과 독립 validation 자료로 사전에 정한 뒤 TEST를 열어야 한다. 임의 80점이나 0건 관측만으로 안전을 인증하지 않는다.
 
-## 5. 공개 벤치마크
+## 5. 공개 벤치마크 — 미적용 (2026-11-13 사용자 결정)
 
-KBL을 한국법 우선 과제로 채택했다. `evaluate_kbl.py`는 `lbox/kbl` revision `695653ba87affa2c3113896013179c81fc16786a`의 statute_hallucination 75문항을 파일 SHA256까지 고정한다. 입력은 실제 실행의 `{run_id, system_version, predictions: [{item_id, choice}]}` JSON이다. choice는 A/B/C/D 중 하나다. 중복/알 수 없는 ID·다른 데이터 해시는 거절한다. 누락/형식 오류를 분모 75에서 빼지 않는다. 예측이 하나도 없으면 NOT_MEASURED다. 생성 모델 호출·제품 추론 실행은 이 채점기가 대신하지 않는다.
+사용자 결정: "추가 벤치마크는 필요성이 높지 않아보이니 미적용 하자."(2026-11-13)
 
-```bash
-python scripts/evaluate_kbl.py --dataset /private/kbl_statute_hallucination_qa_v0.1.json --predictions /private/kbl-run.json --out /private/kbl-report.json
-python scripts/evaluation_dashboard.py --scorecard artifacts/scorecard.json --kbl-dataset /private/kbl_statute_hallucination_qa_v0.1.json --kbl-predictions /private/kbl-run.json --out /private/evaluation-v2.json
-```
+KBL·영어권 공개 벤치마크를 적용하지 않는다. 근거는 [벤치마크 재평가 r3](benchmark_adoption_review_2026-11-13_r3.md)의 제로베이스 검토와 계획 문서 6.15다.
+- 제품 핵심 기능(한국어 서면의 판례·법령 실재, 인용문, 시점, 주장 근거)은 자체 한국법 평가가 직접 잰다.
+- 영어권 자료는 제품 경로에 들어가지 못한다(영어 인용 추출 0건).
+- KBL 선택형 과제는 제품에 선택형 응답 기능이 없어 모델 단독 시험이 된다. 일부 정답은 개정 전 법을 기준으로 한다.
 
-KBL의 CC-BY-NC-4.0 조건과 법률 기준시점을 확인한다. 데이터 원문·답안을 CI나 이 PR에 복제하지 않았다. 선택형 정답률은 문서 전체의 허위 판례 탐지율이나 최신 한국법 인증값이 아니다. LegalBench-RAG의 근거 구간 precision/recall, ContractNLI의 지지/모순/자료에 없음 및 근거 span, ALCE의 인용 정합성/완전성 설계를 한국법 데이터에 반영하는 확장 규약은 감사 보고서를 따른다. 이들 과제를 실행하지 않은 상태에서 숫자를 채우지 않는다.
+조치:
+- 이 규약 초판(#272)의 KBL 채택과 `evaluate_kbl.py`(statute_hallucination 75문항 채점기)를 철회·삭제했다.
+- `evaluation_dashboard.py`의 `public_benchmark` 층과 성적표 `measurement_status.public_benchmarks`는 `NOT_APPLIED`(값 null)로 남는다.
+  - 미측정(NOT_MEASURED)과 다르다. 적용하지 않기로 결정한 층이며, 통과·0점으로 읽지 않는다. 점수를 붙이는 입력 경로는 없다.
+- 지표 정의는 자체 평가에 그대로 쓴다: 지지·모순·근거 부족 3분류, 근거 구간 정밀도·재현율, 실패를 분모에 남기는 규칙, 사건군 단위 구간.
+- 외부 벤치마크를 다시 들이려면 r3 2절의 필요성 기준(측정 공백, 자체 수단 대비 이점, 쓰일 결정, 역효과)으로 새로 검토하고 사용자 결정을 받는다.
 
 ## 6. 기존 시험과 전환 검증
 
-기존 `test_retired_compare_failed_head_and_new_set`는 기준 실행 실패와 세트 차이를 무시하도록 기대했다. 사용자가 승인한 실패 시 차단 원칙에 맞춰 그 기대값을 강화했다. 그 밖의 기존 기준선·정답은 유지한다. 새 계약 시험은 중복 득점, 메타데이터만의 득점, advisory/불확실성 상태, 미판정 경고, 오류/문서 누락, 세트 누락, 분모/해시 변경, 실제 출력 export, KBL 누락/중복/잘못된 데이터, CI 연결을 다룬다.
+기존 `test_retired_compare_failed_head_and_new_set`는 기준 실행 실패와 세트 차이를 무시하도록 기대했다. 사용자가 승인한 실패 시 차단 원칙에 맞춰 그 기대값을 강화했다. 그 밖의 기존 기준선·정답은 유지한다. 새 계약 시험은 중복 득점, 메타데이터만의 득점, advisory/불확실성 상태, 미판정 경고, 오류/문서 누락, 세트 누락, 분모/해시 변경, 실제 출력 export, CI 연결을 다룬다. KBL 채점 시험은 5절 결정에 따라 '외부 벤치마크 미적용·입력 경로 없음' 시험으로 바꾸었다(2026-11-13).
 
-새 평가 스크립트·규약·기준선은 보호 경로와 CODEOWNERS에 포함한다. 평가 측 변경도 독립 코드 검토와 같은 SHA CI를 거친다. 인용문 위치/법리 의미, 실제 법률가 라벨과 실제 KBL 모델 응답, 실무 시간 측정은 확보 전까지 미검증으로 남는다. 구현 에이전트가 합격시키기 위해 평가 자료·라벨·manifest·하한을 바꾸지 않는다.
+새 평가 스크립트·규약·기준선은 보호 경로와 CODEOWNERS에 포함한다. 평가 측 변경도 독립 코드 검토와 같은 SHA CI를 거친다. 인용문 위치/법리 의미, 실제 법률가 라벨, 실무 시간 측정은 확보 전까지 미검증으로 남는다. 구현 에이전트가 합격시키기 위해 평가 자료·라벨·manifest·하한을 바꾸지 않는다.

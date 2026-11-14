@@ -125,7 +125,7 @@ def build(sets: Dict[str, Path], sealed_dir: Optional[Path]) -> Dict[str, Any]:
         "evaluation_policy": "legal-quality-v2",
         "measurement_status": {
             "legal_accuracy": {"status": "NOT_MEASURED", "value": None, "reason": "independent attorney labels and product predictions required"},
-            "public_benchmarks": {"status": "NOT_MEASURED", "value": None, "reason": "no benchmark prediction run supplied"},
+            "public_benchmarks": {"status": "NOT_APPLIED", "value": None, "reason": "External benchmarks are not applied (user decision 2026-11-13, benchmark plan 6.15); own Korean-law evaluation only"},
             "retrieval_quality": {"status": "NOT_MEASURED", "value": None, "reason": "official source/span labels required"},
             "practice_utility": {"status": "NOT_MEASURED", "value": None, "reason": "independent review-time study required"},
         },

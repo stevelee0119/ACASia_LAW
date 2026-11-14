@@ -9,7 +9,6 @@ import pytest
 from scripts import evaluation_v2 as v2
 from scripts import evaluation_dashboard as dashboard
 from scripts import export_quality_predictions as exporter
-from scripts import evaluate_kbl as kbl
 from scripts import retired_compare as retired
 
 
@@ -207,41 +206,6 @@ def test_retired_cache_changes_when_frozen_bytes_change(tmp_path, monkeypatch):
     assert retired.cache_file("base", ["synthetic"]) != first
 
 
-def fake_kbl(tmp_path, monkeypatch, predictions):
-    # Synthetic mechanics test, never claim this dataset is the actual public benchmark.
-    data = tmp_path / "data.json"; answers = tmp_path / "answers.json"
-    data.write_text(json.dumps([{"doc-id": i, "label": "A"} for i in range(75)]))
-    monkeypatch.setattr(kbl, "DATA_SHA256", hashlib.sha256(data.read_bytes()).hexdigest())
-    answers.write_text(json.dumps({"run_id": "synthetic", "system_version": "synthetic", "predictions": predictions}))
-    return data, answers
-
-
-def test_kbl_missing_invalid_answers_stay_in_denominator(tmp_path, monkeypatch):
-    data, answers = fake_kbl(tmp_path, monkeypatch, [{"item_id": 0, "choice": "A"}, {"item_id": 1, "choice": "probably A"}])
-    result = kbl.evaluate(data, answers)
-    assert result["correct"] == 1 and result["items"] == 75 and result["missing"] == 73
-    assert result["invalid_answers"] == 1 and result["accuracy"] == 1/75
-
-
-def test_no_kbl_execution_is_not_zero_accuracy(tmp_path, monkeypatch):
-    data, answers = fake_kbl(tmp_path, monkeypatch, [])
-    result = kbl.evaluate(data, answers)
-    assert result["status"] == "NOT_MEASURED" and result["accuracy"] is None
-
-
-@pytest.mark.parametrize("ids", [[0, 0], [999]])
-def test_kbl_duplicate_or_unknown_id_rejected(tmp_path, monkeypatch, ids):
-    data, answers = fake_kbl(tmp_path, monkeypatch, [{"item_id": i, "choice": "A"} for i in ids])
-    with pytest.raises(ValueError):
-        kbl.evaluate(data, answers)
-
-
-def test_kbl_wrong_dataset_rejected(tmp_path):
-    data = tmp_path / "wrong.json"; data.write_text("[]")
-    with pytest.raises(ValueError, match="hash mismatch"):
-        kbl.evaluate(data, data)
-
-
 def test_dashboard_keeps_unknown_quality_unknown():
     base = json.loads((Path(dashboard.ROOT) / "docs/scorecards/regression_v2_baseline.json").read_text())
     card = {"sets": {k: {"regression_v2": v} for k, v in base["sets"].items()}}
@@ -249,17 +213,27 @@ def test_dashboard_keeps_unknown_quality_unknown():
     assert report["regression"]["status"] == "MEASURED"
     assert report["legal_quality_approval"] == "NOT_ESTABLISHED"
     assert all(report[k]["status"] == "NOT_MEASURED" and report[k]["value"] is None
-               for k in ["labeled_quality", "public_benchmark", "retrieval", "legal_argument_validity", "practice_utility"])
+               for k in ["labeled_quality", "retrieval", "legal_argument_validity", "practice_utility"])
+    # 외부 벤치마크는 미적용(사용자 결정 2026-11-13): 미측정과 구분해 NOT_APPLIED로 남고 값은 없다.
+    assert report["public_benchmark"]["status"] == "NOT_APPLIED" and report["public_benchmark"]["value"] is None
     card["sets"].pop("holdout")
     assert dashboard.build(card)["regression"]["status"] == "FAILED"
 
 
-def test_dashboard_does_not_attach_another_products_kbl_score(tmp_path, monkeypatch):
+def test_external_benchmark_is_not_applied_and_cannot_be_attached(tmp_path):
+    # 외부 벤치마크 미적용(사용자 결정 2026-11-13): 보고서·성적표에 '미적용'으로 남고, 점수를 붙이는 입력 경로가 없다.
     base = json.loads((Path(dashboard.ROOT) / "docs/scorecards/regression_v2_baseline.json").read_text())
     card = {"git": {"sha": "current"}, "sets": {k: {"regression_v2": v} for k, v in base["sets"].items()}}
-    monkeypatch.setattr(dashboard, "evaluate_kbl", lambda *a: {"status": "MEASURED", "system_version": "old"})
-    with pytest.raises(ValueError, match="different product SHA"):
+    report = dashboard.build(card)
+    assert report["public_benchmark"] == dashboard.NOT_APPLIED_PUBLIC_BENCHMARK
+    assert "| public_benchmark | NOT_APPLIED |" in dashboard.render(report)
+    scorecard_text = (Path(dashboard.ROOT) / "scripts/scorecard.py").read_text(encoding="utf-8")
+    assert '"public_benchmarks": {"status": "NOT_APPLIED"' in scorecard_text
+    with pytest.raises(TypeError):
         dashboard.build(card, kbl_dataset=tmp_path, kbl_predictions=tmp_path)
+    with pytest.raises(SystemExit):
+        dashboard.main(["--scorecard", str(tmp_path / "s.json"), "--kbl-dataset", str(tmp_path), "--out", str(tmp_path / "o.json")])
+    assert not (Path(dashboard.ROOT) / "scripts/evaluate_kbl.py").exists()
 
 
 def test_dashboard_rejects_mismatched_labeled_prediction_version(tmp_path):
