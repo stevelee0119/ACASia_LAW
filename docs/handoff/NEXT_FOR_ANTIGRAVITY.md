@@ -6089,3 +6089,492 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - #288 병합 Steve `2efd987`, release/0.20.0 = `a65a370`(Steve와 같음). GitHub CodeQL 새 경고 4건 남음(그 밖 CI 성공·진행, 인용).
 - 남은 4건(#147~#150): retired_compare.py 199·200·228·229행 '--out' 쓰기. 원인: `args.out = contained_path(args.out)`로 속성에 다시 넣어, CodeQL이 args.out 읽기를 외부 입력 객체의 속성으로 계속 봄.
 - 수정: 검사한 값을 지역 변수 out에만 담아 쓴다. 허용 폴더 밖 --out은 ValueError(평가 측 재실행 확인), 관련 시험 55건 통과.
+
+## 2-56. 다음 릴리스 0.21.0 범위(사용자 예고, 11-14)
+- 사용자 원문: "다음 릴리스(v.0.21.0)은 온라인 테스트 결과에 따른 회귀, 오류 해소 작업과 프론트엔드 디자인 변경으로 진행할 예정이야."
+- 범위(원문 대응):
+  | 원문 | 평가 측 준비 |
+  |---|---|
+  | 온라인 테스트 결과에 따른 회귀·오류 해소 | 0.20.0 배포 뒤 0.19.0 대 0.20.0 온라인 비교(case9·온라인 탐침), TK-161(AI 판별 3회 반복), TK-162·163 공식 DB 응답 확인 결과를 원인 유형별 티켓으로 정리 |
+  | 프론트엔드 디자인 변경 | 화면 PR은 실제 진입점 캡처 + 원문 대응표로 사용자 확인 뒤 수용(CLAUDE.md 원문 대조 수용) |
+- 함께 정리할 후보(사용자 결정 전, 범위 밖일 수 있음): #282 참고 사항(바닥글·PDF·메일의 'ACASia_LAW 법률문서 검증시스템' 표기, 쓰지 않는 acas-lettering 자산), main의 기존 CodeQL 경고 24건(10월부터 열림).
+
+### 2-56-1. 0.21.0 범위 확정 추가(사용자 '후보 두가지도 포함', 11-14)
+- 0.21.0 범위에 다음 두 가지를 포함한다(사용자 결정).
+  1. #282 잔여: 바닥글(apps/web/index.html)·PDF 보고서(packages/report_engine/pdf_report.py)·안내 메일(packages/notification_engine/mailer.py)·API 설명(apps/api/main.py)의 'ACASia_LAW 법률문서 검증시스템' 표기 정리, 쓰지 않는 apps/web/static/img/acas-lettering.png와 styles.css .empty-lettering 규칙 제거. 새 표기는 프론트엔드 디자인 변경과 함께 사용자 확인으로 정한다.
+  2. main의 기존 CodeQL 경고 24건(Security → Code scanning, branch:main): 경로 주입 21건(packages/common/storage.py·apps/api/project_purge.py·scripts/export_security_alerts.py·scripts/ci_failed_tests.py·scripts/probe_document.py·scripts/inspect_boundary_signals.py), SSRF 1건(scripts/export_security_alerts.py), 비효율 정규식 2건(tests/test_probe_regex_complex…), 예외 정보 노출 1건(apps/api/main.py, Medium). 제품 코드분은 구현 측 티켓(사본 사전 검증 후 지시), 평가 도구·시험분은 평가 측이 고친다. 검증 방식은 #285에서 확인한 형태(정규화 경로 자체의 startswith 단일 검사, 검사 값은 지역 변수로)를 따른다.
+- 티켓 번호·지시문은 0.20.0 배포 뒤 온라인 비교 결과와 함께 낸다.
+
+### 2-56-2. 0.21.0 범위 추가: CI 액션 Node 24 전환(사용자 '0.21.0 범위에 포함해서 기록해줘', 11-14)
+- 계기: CI마다 "Node.js 20 is deprecated … forced to run on Node.js 24" 경고. GitHub은 러너에서 Node 20을 2026-09-23에 제거했고 사용자 조치로 "Node24에서 도는 최신 액션 버전으로 워크플로 갱신"을 안내한다(https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/, 2026-08-25 갱신). 현재는 강제 실행으로 동작하며 CI 실패 원인은 아니다.
+- 바꿀 것(각 태그 action.yml의 runs.using 직접 확인, 11-14):
+  | 현재 | 사용 수 | 현재 using | Node 24 첫 메이저 |
+  |---|---|---|---|
+  | actions/checkout@v4 | 15 | node20 | v5 |
+  | actions/setup-python@v5 | 12 | node20 | v6 |
+  | actions/upload-artifact@v4 | 9 | node20 | v6(v5도 node20) |
+  | actions/download-artifact@v4 | 1 | node20 | v7(v5·v6도 node20) |
+  | github/codeql-action/init·analyze@v3 | 각 1 | node20 | v4 |
+- 처리: 평가 측 평가 PR 하나(.github/workflows는 보호 경로). 메이저 버전 변경이라 각 액션 변경 내역(산출물 업·다운로드 동작 등)을 확인하고, 같은 SHA CI 전 단계(테스트·점수 하락 게이트·은퇴 세트 비교·CodeQL·산출물 보존)가 그대로 도는지 확인한다. 변경 내역은 아직 읽지 않았다(미검증).
+- 시점: 0.20.0 배포 뒤(릴리스 후보 검증 중에는 워크플로를 바꾸지 않는다).
+
+### 2-55-15. 0.20.0 최종 후보 판정 보충: 수용 유지 (11-14)
+- 최종 후보 release/0.20.0 `bb5c73c` = Steve `997687e`(판정서 measured_commit 2cc7ac2 뒤 추가: #282 엠블럼, #283·#284 기록·버전, #286·#288·#289 평가 도구 경로 묶기, #287 TK-170).
+- verify_all 전체(기준 0.19.0 main 5b878a1, 평가 측 재실행, 단독) 실패 0: 수용 1,275·회귀 장부 2,357·전체 10,168·브라우저 197, 보호 경로 43개 모두 평가 측 또는 승인, version_policy 위반 없음(0.19.0 → 0.20.0). 고정 82.6 / 81.9 / 오탐 0 / A 0, v2 42/56·41/54.
+- #285 CI 전부 성공(인용): GitHub CodeQL 새 경고 0(10 → 11 → 4 → 0), 테스트 6건·점수 하락 게이트·은퇴 세트 비교(5세트) 성공.
+- 판정: 0.20.0 minor 수용 유지. 병합은 사용자 지시로. 병합 뒤: 브랜치 4개 정리(2-55-5) → 배포 → /api/health 0.20.0 확인 → 태그 v.0.20.0 → 0.19.0 대 0.20.0 온라인 비교.
+
+### 2-55-16. 사용자 '#285 병합' (11-14)
+- #285 병합: main `034343f`(head bb5c73c 확인). 0.20.0이 main에 들어감. release/0.20.0은 병합 때 GitHub이 자동 삭제.
+- 브랜치 정리(2-55-5): 남은 3개(antigravity/lv-legal-verification-architecture cbc8385, sealed-retire-20261025 c58c683, tk152-short-abbreviation-ranking f91d984)를 평가 측이 `git push --delete`로 지우려 했으나 이 세션의 git 경로가 HTTP 403으로 거부했다(삭제 권한 없음). 커밋은 조사 때와 같아 삭제 판단은 유효하다. 사용자가 GitHub 화면 또는 자신의 PC에서 삭제한다.
+- 다음: 배포(사용자) → /api/health version 0.20.0·commit 034343f 확인 → 태그 v.0.20.0(사용자) → 0.19.0 대 0.20.0 온라인 비교 → 0.21.0.
+
+### 2-55-17. 0.20.0 배포 확인 (11-14, 사용자 '배포 완료' + /api/health 응답 제공)
+- /api/health(사용자 제공): status ok, app ACASia_LAW, version 0.20.0, commit `034343f16934515659674950f99837ccdcaf54a0`(= #285 병합 커밋, 원격 main과 같음), database ok → 0.20.0 운영 배포 확인.
+- 다음: 태그 v.0.20.0(사용자, 034343f에 경량 태그 — v.0.19.0과 같은 형식) → 0.19.0 대 0.20.0 온라인 비교(case9·온라인 탐침, TK-161 3회, TK-162·163 공식 DB 응답) → 0.21.0 착수(2-56).
+
+### 2-55-18. 0.20.0 릴리스 주기 완료 (11-14, 사용자 '태그 완료'·'브랜치 삭제 완료')
+- 원격 태그 v.0.20.0 = `034343f16934515659674950f99837ccdcaf54a0`(배포 커밋) 확인.
+- 원격 브랜치: main, Steve_ACASiaLAW, evaluator/round8-promotion 3개만 남음(계속 개선 브랜치). 삭제 3개(antigravity/lv-legal-verification-architecture, sealed-retire-20261025, tk152-short-abbreviation-ranking)는 사용자가 처리, release/0.20.0은 병합 때 자동 삭제.
+- 0.20.0 주기(판정·버전 커밋·릴리스·배포·태그·브랜치 정리) 완료. 다음: 0.19.0 대 0.20.0 온라인 비교 → 0.21.0(2-56).
+
+## 2-57. 0.19.0 대 0.20.0 온라인 비교 1차 (11-14, 사용자 업로드 7건)
+- 문서: [online_compare_0190_0200_20261114.md](../scorecards/online_compare_0190_0200_20261114.md). 0.20.0 결과 7건 모두 커밋 `034343f`(배포·태그와 같음), PARTIAL_COMPLETED, 최상위 오류 0.
+- 결과(평가 측 채점, 같은 서면·정답지):
+  | 항목 | 0.19.0 | 0.20.0 |
+  |---|---|---|
+  | case9(score_report 규칙 2판) | 20/23(1차)·23/23(재실행) | 23/23(1차) |
+  | 탐침 A·B·C·D×3(47) | 40/47 | **47/47**(C 9/16 → 16/16, TK-169) |
+- TK-161(AI 판별 반복 안정성): 0.20.0 case9 1회차 — openai UNCERTAIN 0.38, anthropic AI_PARTIAL 0.55, gemini AI_FULL 0.92 → 다수결 AI_PARTIAL(AI-1·2·4 통과). TK-156(D4, 늘 두 모델 + 엇갈리면 세 번째)이 0.19.0 1차 실패의 구조 원인을 없앴음을 온라인에서 확인. 3회 중 1회 측정. 나머지 반복 결과(사용자 업로드 예정)로 변동 폭을 잰 뒤 TK-161 지시 여부를 정한다(2-41-3).
+- TK-162: B에서 실행(대상 6·역조회 5·13.1초·경고 0). 정답지에 판례 변경 항목이 없어 정확도는 미측정.
+- 0.21.0 후보(원인 확인, 지시는 사본 사전 검증 뒤):
+  - O1 모델 사실 지적이 결정론 판정과 연결되지 않음 — `ai_document_detector.py` 671행 `_anchor_cover`가 판정 제목에서만 값 표지를 뽑고(합계 판정의 기재·계산값은 confidence_features에만 있음), 649행 `_CONTRADICTION_WORDS`가 설명 문장('모순일 뿐 … 아니다')도 미확인으로 남긴다. D hwpx에서 같은 표 오류가 'MEDIUM 모델 지적 — 결정론 재계산으로 확인하지 못함'으로 한 번 더 표시됨(문구가 사실과 반대).
+  - O2 Drive 대조 미완료 사유 오표시 — `pipeline.py` 545~548행이 미완료 원인(버린 의견 1건 QUOTE_NOT_GROUNDED)이 아니라 상태 사유 코드(`rag_engine/review.py` 779행)를 붙인다.
+
+### 2-57-1. case9 반복 2·3회차(11-14 사용자 업로드, TK-161 측정 완료)
+- 2회차 run_4105ef3fa1224d78: openai AI_PARTIAL 0.68 + anthropic AI_PARTIAL 0.55 → 일치(세 번째 미호출) → AI_PARTIAL 0.615, 23/23.
+- 3회차 run_d58d00386bdf4a04: openai UNCERTAIN 0.58 + anthropic AI_PARTIAL 0.55 → 엇갈림 → gemini AI_FULL 0.92 → 다수결 AI_PARTIAL, 23/23.
+- 3회 모두 23/23, 유보 0회(0.19.0은 2회 중 1회 유보). 첫 모델(openai) 변동은 남지만 TK-156이 흡수.
+- 권고: TK-161은 구현 지시 없이 닫고, 릴리스 후보마다 case9 온라인 1회 기록으로 감시(유보 재발 시 재개). 사용자 결정 대기.
+- O2는 2·3회차에 재현되지 않음(버린 의견 0건) — 모델이 근거 없는 발췌를 낼 때만 드러나는 표시 결함, 원인 코드는 그대로이므로 0.21.0 후보 유지.
+
+### 2-56-3. 0.21.0 프런트엔드 디자인 변경의 구현 경로(사용자 알림, 11-14)
+- 사용자 원문: "프런트엔드 개선은 codex에서 지시문을 만들어 현재 antigravity가 구현하고 있어."
+- 처리:
+  - 지시문은 Codex 세션이 작성했고, 구현은 Antigravity가 하고 있다. 평가 측은 이 지시문을 쓰지 않았다(사본 사전 검증 없음).
+  - 평가 측은 PR이 '검토 요청'과 CI 완료 상태로 오면 판정한다. 판정 기준은 다음과 같다.
+    · 원문 대응표 + 실제 진입점 화면 캡처(1440·390, 긴 문구 포함)를 사용자에게 보이고, 사용자 확인 뒤 수용한다.
+    · Playwright 화면 시험 전부, 고정·은퇴 세트 변화 0을 확인한다.
+    · 기존 화면 시험과 충돌하면 구현을 되돌리지 않고, 사용자 승인으로 시험을 고친다.
+  - 원문 대조에는 Codex 지시문 원문이 필요하다. 받으면 대응표의 기준으로 싣는다.
+- 겹침 확인 필요:
+  - 2-56-1의 #282 잔여 중 바닥글·PDF·메일·API 설명의 'ACASia_LAW 법률문서 검증시스템' 표기와, 쓰지 않는 acas-lettering 자산이 Codex 지시문에 들어 있는지 확인해야 한다.
+  - 들어 있으면 평가 측은 따로 지시하지 않는다. 없으면 디자인 PR 병합 뒤 새 표기에 맞춰 낸다.
+- 0.21.0의 나머지(O1·O2, 기존 CodeQL 24건, CI Node 24)는 평가 측이 지시하거나 처리한다. 화면 파일(apps/web/)을 건드리지 않는 것부터 낸다.
+- O1·O2의 대상 파일은 packages/verification_engine/ai_document_detector.py·pipeline.py다. 디자인 PR과 겹치지 않는다.
+
+### 2-56-4. 프런트엔드 리디자인 지시서 원문 수령 + 탭 아이콘(옛 엠블럼) 보완 (11-14)
+- 원문(사용자 제공, 그대로): [requests/FE_template_A_redesign_20261114.md](requests/FE_template_A_redesign_20261114.md). 본 지시서 1건과 '제8장 대체'(모바일·태블릿 필수) 1건이다. 평가 측 번호는 **TK-171**(Codex 작성, Antigravity 구현)로 둔다. 판정 때 이 원문으로 문장별 대응표를 만든다.
+- 사용자 원문(11-14): "바닥글·PDF·메일·API 설명의 'ACASia_LAW 법률문서 검증시스템' 표기와, 쓰지 않는 acas-lettering 이미지 정리는 일부 반영이 되었는데, 홈페이지 상단의 제목란에는 아직 기존 엠블럼이 사용되고 있는 것 같은데 그 부분은 수정이 필요해. (cf.문구는 AegisLAW로 변경 반영)"
+- **TK-172 탭 아이콘 캐시** — 평가 측 확인(Steve `997687e` = 운영 0.20.0 제품 코드):
+  - 상단 헤더 그림은 이미 새 AegisLAW 배너다(`/static/acas-law-emblem.jpg`, #282에서 교체, 1440·390 캡처로 확인).
+  - 탭 아이콘 파일도 새 방패 엠블럼으로 바뀌었다(`img/favicon.ico` 48px, `img/emblem-192.png`).
+  - 그러나 #282가 **파일 내용만 바꾸고 주소는 그대로** 두었다(index.html 2행 `href="/static/img/favicon.ico"`·`emblem-192.png`). 브라우저는 탭 아이콘을 주소 기준으로 따로 오래 보관하고, 서버의 no-cache로는 다시 받지 않는다. 그래서 제목 'AegisLAW' 옆에 옛 엠블럼이 남는다.
+  - 사용자 화면은 직접 보지 못했으므로, 이 판단은 '추정(원인 후보 중 유력)'으로 적는다. 시크릿 창에서 새 아이콘이 보이면 확정이다.
+  - 고칠 것: 아이콘 세 줄의 주소에 판 표지를 붙여 새 주소로 만든다(`?v=aegislaw-20261114`). 파일 이름은 바꾸지 않는다(frontend_auth.test.cjs 211·214행이 주소 포함 여부를 본다).
+  - 사전 검증(평가 측 재실행, 사본 `997687e` + index.html 1줄):
+    · `node tests/frontend_auth.test.cjs` 20건 통과.
+    · `tests/test_frontend_emblem.py`·`tests/test_api.py` 34건 통과.
+    · TestClient에서 세 주소 모두 200, 원본과 같은 바이트.
+  - 미검증: 실제 브라우저 아이콘 보관소 갱신(사용자 브라우저).
+  - 리디자인(TK-171)이 index.html 머리를 크게 바꾸므로, 따로 PR을 내지 않고 TK-171 PR에 함께 넣게 한다.
+- TK-171 판정 때 미리 알릴 충돌·제약(평가 측 확인):
+  1. 옛 표기를 단언한 기존 시험:
+     · `tests/test_api.py` 68·70행: aria-label 'ACASia_LAW 홈', alt 'ACASia LAW'.
+     · `tests/test_frontend_emblem.py` 105행(링크 이름), 113·114행(기관명·시스템명 글자), 57행(배너 비율 1280/296).
+     · `tests/frontend_auth.test.cjs` 208행(index.html에 'ACASia_LAW'), 212행(배너 src 1개).
+     AegisLAW 표기로 바꾸면 깨진다. 구현 측은 단언을 지우거나 약하게 하지 말고 목록으로 보고한다. 평가 측이 사용자 승인으로 고친다(CLAUDE.md).
+  2. 보고서 JSON의 `product: "ACASia_LAW"`(`tests/test_improvements.py` 77행)는 데이터 계약이다. 화면 표기와 별개로 바꾸지 않는다(원문 7장).
+  3. 10-25 사용자 결정과 겹치는 부분 — 새 원문과 옛 결정 중 어느 쪽을 따를지 사용자 확인 필요:
+     · 상단 탭 다섯 개, 세부 탭 없음(TK-126 대응표 6).
+     · 활동 기록 탭 삭제(`tests/test_frontend_admin.py` 317행).
+     새 원문의 개요 화면 '최근 작업 활동'과 '검증 이력·작업 기록 탭'이 이 결정과 겹친다.
+  4. 헤더 '알림'은 현재 기능이 없다(화면 안내 팝업만 있음). 실제 기능 없이 단추만 만들지 않는다(원문 13장 5).
+  5. 보안 정책이 `default-src 'self'`다(`apps/api/main.py` 158행). Pretendard는 자체 호스팅만 동작하며, OFL 고지 파일을 함께 넣어야 한다.
+  6. 원문 8.7의 iOS Safari·Android 실기기 시험은 평가 측이 할 수 없다. Chromium 에뮬레이션 결과와 미검증을 구분해 적는다.
+  7. #282 잔여 중 PDF(`packages/report_engine/pdf_report.py`)·메일(`notification_engine/mailer.py`)·API 설명(`apps/api/main.py` 107행)은 화면 밖이다. TK-171이 고쳤는지 PR에서 확인하고, 안 고쳤으면 평가 측이 따로 지시한다.
+
+### 2-56-5. 사용자 결정·정정 (11-14)
+- 사용자 원문: "TK-172 지시 전달 완료, 시크릿 창에서 탭 아이콘 확인은 불필요. TK-161은 구현 지시 없이 닫고 지켜봄. … codex의 지시문에서는 (탭의 개수 변경 없이) 디자인만 변경하도록 하였는데"
+- TK-172: 구현 측에 전달됨(TK-171 PR에 함께 포함). 원인 확정용 시크릿 창 확인은 하지 않는다. 판단은 '추정'으로 남긴다.
+- TK-161: 구현 지시 없이 닫는다(사용자 결정). 릴리스 후보마다 case9 온라인 1회 기록에서 AI 판별 유보가 다시 나오면 재개한다.
+- **2-56-4 3번 정정**(평가 측 과잉 해석):
+  - 원문을 다시 대조했다. 새 지시서에는 탭을 더하거나 빼는 문장이 없다.
+    · 1.2에서 기존 탭 다섯 개를 그대로 열거한다.
+    · 0장 2·13장 3은 '기존 메뉴·페이지·탭 유지'를 요구한다.
+  - 4.3의 "검증 이력, 작업 기록"은 새 탭이 아니다. 이미 있는 단추다(`apps/web/static/operations.js` 294·296행). 10-25에 지운 '활동 기록' 탭과도 다르다(TK-126 대응표 7은 '작업 기록'을 유지 대상으로 명시).
+  - 따라서 10-25 결정(탭 5개·활동 기록 삭제)과 새 지시서 사이의 선택 문제는 없다. 사용자 결정 요청은 철회한다.
+- TK-171 수용 기준에 반영(Codex 지시 의도 '탭 개수 변경 없이 디자인만'):
+  1. 상단 탭은 [자료][AI 작성·보안 진단][출처가 확인되지 않는 항목][법률적으로 무리한 주장][보고서] 다섯 개 그대로다. 세부 탭이 없다(TK-126 대응표 6).
+  2. 5.1 '프로젝트 개요'는 지금 없는 화면이다. 탭을 늘리지 않는 방식으로 둔다(예: 프로젝트를 열었을 때의 머리 영역, 모바일 하단 '홈'). 여섯째 탭으로 만들면 기준 위반이다.
+  3. 개요의 '최근 작업 활동'은 개요 안의 패널이다. 활동 기록 탭이나 세부 탭을 되살리지 않는다.
+     · `tests/test_frontend_admin.py` 317행: `[data-panel="audit"]`·`[data-tab="audit"]`·`#openAudit`이 0개여야 한다.
+     · 표시 자료는 기존 응답(작업 기록·검증 이력 등)만 쓴다. API를 새로 만들거나 바꾸지 않는다(원문 7장).
+
+## 2-58. 0.21.0 화면 무관 티켓 착수(사용자 승인 11-14 "화면과 무관한 0.21.0 티켓 지시 착수 승인")
+- 기준: Steve_ACASiaLAW `997687e`(= 운영 0.20.0 제품). 세 제품 패치는 겹치는 파일이 없고 함께 적용해도 충돌 없음(평가 측 확인).
+  | 티켓 | 내용 | 담당 | 패치·커밋 | 사전 검증(평가 측 재실행) |
+  |---|---|---|---|---|
+  | TK-173 | 모델 사실 지적 ↔ 결정론 판정 연결(O1) | 구현 측 | patches/TK-173_on_997687e.diff | 축 조합 144칸 전부 통과(고치기 전 15칸 실패), 온라인 D hwpx 지적 확인됨, precheck 전체 종료 0(3,819건·은퇴 5세트 후퇴 없음·고정 82.6/81.9/0) |
+  | TK-174 | Drive 대조 미완료 사유 정확화(O2) + 처리 사유 코드 10개 한글 이름 | 구현 측 | patches/TK-174_on_997687e.diff | precheck --quick 종료 0(235건·고정 82.6/81.9/0) |
+  | TK-175 | main 기존 CodeQL 24건 — 제품 11건(경로 주입 10·예외 노출 1, 같은 성격 1건 추가: 암호화 캐시 형제 폴더) | 구현 측 | patches/TK-175_on_997687e.diff | 새 시험 15건, precheck --quick 종료 0(244건·고정 82.6/81.9/0). CodeQL 재분석 미검증(PR CI) |
+  | TK-175 | 같은 24건 중 평가 도구·시험 13건(경로 주입 10·부분 SSRF 1·시험 정규식 2) | 평가 측 | 13175bf | 관련 시험 약 750건 + 새 시험 13건 통과, 게이트 3종 통과 |
+  | TK-176 | CI 액션 Node 24 전환(checkout v5·setup-python v6·upload-artifact v6·download-artifact v7·codeql-action v4) | 평가 측 | ba2b70b | 각 액션 공식 릴리스 노트 확인(입력 호환), YAML 10개 구문 확인. CI 실제 동작은 평가 PR CI로 확인(미검증) |
+- 지시문 전달판: 아래 2-58-1~3(사용자에게 코드 블록으로 제시).
+- TK-175 경고 위치 근거: 사용자 화면(Security → Code scanning, is:open branch:main, 24건, 11-14).
+
+### 2-58-1. TK-173 지시(전달판)
+```
+[TK-173 모델 사실 지적이 결정론 판정과 이어지지 않아 같은 오류가 'MEDIUM 재계산으로 확인하지 못함'으로 한 번 더 표시됨]  기준: Steve_ACASiaLAW 997687e(= 운영 0.20.0 제품)  평가 측 사본: TK-173 copy(14b13b3)
+보완 패치: docs/handoff/patches/TK-173_on_997687e.diff (git apply)
+ - 997687e → 사본 차이 전부: 제품 1파일(packages/verification_engine/ai_document_detector.py) + 새 시험 1파일.
+대상 릴리스: 0.21.0('온라인 테스트 결과에 따른 회귀·오류 해소', 사용자 11-14).
+
+0. 근거
+ - 0.20.0 온라인 탐침 D(hwpx, run_b2db0e693b5f4472, 커밋 034343f): 표1 합계 오류가 이미 HIGH 결정론 판정(ARITHMETIC_MISMATCH)으로 잡혔는데, 같은 오류를 짚은 모델(anthropic) 지적이 'MEDIUM 모델 지적 — 결정론 재계산으로 확인하지 못했으므로 사람이 원문을 확인한다'로 따로 남았다. 같은 오류가 두 번이고, 문구는 사실과 반대다.
+ - 평가 기록: docs/scorecards/online_compare_0190_0200_20261114.md 3절 O1, NEXT 2-57.
+
+1. 원인(줄 번호는 997687e 기준, 평가 측 재현)
+ C1. ai_document_detector.py 671행 `_anchor_cover`가 지적 문장의 값 표지(금액·날짜·조문)를 결정론 판정의 **제목**에서만 찾는다.
+     - 합계 판정 제목은 '합계가 세부 금액 합산값과 다르다 (차이 100,000원)'로 차액만 담는다. 기재 합계·계산 합계는 confidence_features의 stated·computed에만 있다(claim_engine/calculation.py가 기록).
+     - 그래서 지적 문장의 표지 {2,000,000원, 2,100,000원}이 어느 판정에서도 맞지 않아 UNCONFIRMED로 남았다.
+ C2. 지적의 둘째 문장 '이는 문서 내부 모순일 뿐 작성 주체의 근거가 아니다'는 값 표지가 없다. 그런데 649행 `_CONTRADICTION_WORDS`('모순')에 걸려 '확인하지 못한 문장'으로 남는다. C1만 고쳐도 PARTIAL로 남는다.
+     - 앞 문장을 되받아 풀이하는 문장('이는·이것은·이러한 …')은 새 지적이 아니다.
+
+2. 고칠 것(보완 패치와 같음)
+ F1. 새 함수 `verdict_anchors(finding)`를 둔다. 반환값은 판정의 값 표지다.
+     - 기본은 `value_anchors(finding.title)`.
+     - 금액 판정(제목 또는 상세에 원 금액 표지가 하나라도 있는 판정)이면 confidence_features의 stated·computed·difference·stated_total·computed_total 값도 금액 표지로 더한다. Decimal로 읽히고 0보다 큰 값만 더하며, 쉼표는 지운다.
+     - 날짜·일수 판정(원 금액 표지 없음)의 숫자는 금액으로 쓰지 않는다. 오확인을 막기 위해서다.
+ F2. `_anchor_cover` 671행: `value_anchors(f.title)` → `verdict_anchors(f)`.
+ F3. 표지 없는 문장이 `_BACK_REFERENCE = ^(?:이는|이것은|이러한|이와\s*같은|이\s*점은|이\s*역시)\s`로 시작하면 앞 문장의 풀이로 보고 건너뛴다(continue). 이 검사는 `_CONTRADICTION_WORDS` 검사보다 먼저 한다.
+     - 되받는 문장에 자기 값이 있으면 표지가 있으므로 F3 대상이 아니다. 평소처럼 대조한다.
+ - 바꾸지 않는 것:
+   · CONTRADICTED·같은 문서·rule_id·advisory 아님 조건(718행 candidates).
+   · 가정·선택적 주장 제외.
+   · '성명이 서로 다르다'처럼 독립된 모순 문장은 계속 사람 확인으로 남긴다(test_v4_review_model_reconcile.py의 PARTIAL 시험 그대로).
+
+3. 확인 시험(새 tests/test_tk173_remark_verdict_values.py 13건, 값은 합성)
+ - 금액 판정 표지에 기재·계산·차액이 들어가고, 날짜 판정 숫자는 금액이 되지 않는다.
+ - 금액 세 꼴(쉼표 원·만 원·금 …원)의 지적이 판정에 붙는다(확인 1, 남는 지적 0).
+ - 되받는 풀이 문장이 있어도 확인된다.
+ - 독립된 무표지 모순 문장은 PARTIAL로 남는다.
+ - 되받는 문장에 맞지 않는 값이 있으면 PARTIAL로 남는다.
+ - UNVERIFIED·SUSPICIOUS 판정, 가정 지적, 날짜 판정 숫자로는 확인되지 않는다.
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본, SQLite, LV_ALLOW_NETWORK=0)
+ - 축 조합 점검표(저장소 밖) 144칸, 전 칸 통과(고치기 전 997687e는 15칸 실패). 축은 다음과 같다.
+   · 판정 값 위치: 제목·상세 값·비금액 판정.
+   · 금액 꼴 3가지.
+   · 둘째 문장: 없음·되받는 풀이·독립 모순·되받는 문장의 다른 값.
+   · 단정·가정.
+   · 판정 상태: CONTRADICTED·UNVERIFIED.
+ - 온라인 결과 되살리기: 실제 판정·지적을 그대로 넣어 다시 대조했다.
+   · D hwpx 지적 1건: UNCONFIRMED → 확인(판정에 근거로 붙음).
+   · B(0.18.0·0.19.0)의 법리 지적 2건: 값 표지가 없어 그대로 사람 확인. 의도한 동작이다.
+ - precheck_pr 전체(기준 997687e): 종료 0.
+   · 회귀·수용·관련 시험 3,819건 실패 0.
+   · 은퇴 5세트 후퇴 없음(구 산식·확인오탐·v2 모두 같음).
+   · 고정 82.6 / 81.9 / 오탐 0.
+   · 평가 세트 문구 대조 통과.
+   · 관련 기존 시험 9파일 111건 통과(test_v4_review_model_reconcile·test_v3_j2_model_remarks·test_evidence_hardening·test_school_completeness·test_tk09_candidate_verifier·test_v4_p6_ai_aggregation·test_f2_review_items·test_finding_categories + 새 시험).
+ - 미검증: 실제 모델이 다른 표현(예: '본 모순은 …')으로 풀이할 때의 비율. 배포 뒤 온라인 비교로 확인한다.
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나. 제품 1파일 + 새 시험 1파일, 보호 경로 변경 없음.
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공.
+   · 고정·은퇴 세트 변화 0, 확인 오탐 0.
+   · 사본과 diff 0.
+ - 판정은 CI 결과 인용 + 평가 측 비공개 탐침 + diff 검토로 한다.
+```
+
+### 2-58-2. TK-174 지시(전달판)
+```
+[TK-174 Drive 참고자료 AI 대조 '미완료' 사유가 실제 원인과 다르게 표시됨 + 처리 사유 코드 10개 영문 노출]  기준: Steve_ACASiaLAW 997687e  평가 측 사본: TK-174 copy(384ca10)
+보완 패치: docs/handoff/patches/TK-174_on_997687e.diff (git apply)
+ - 997687e → 사본 차이 전부: 제품 3파일(packages/rag_engine/review.py·packages/verification_engine/pipeline.py·packages/common/display_text.py) + 새 시험 1파일.
+대상 릴리스: 0.21.0.
+
+0. 근거
+ - 0.20.0 온라인 case9(run_5581c59497ca479a, 커밋 034343f): 모델 의견 1건이 원문에 없는 발췌를 대서 버려졌다(QUOTE_NOT_GROUNDED, 안전 동작). 그런데 미확인 항목 사유는 'Drive 참고자료 AI 대조 미완료: 원문 발췌 일치만 확인(내용 함의·법적 타당성 판단 아님)'으로 나와 원인을 알 수 없었다.
+ - 평가 기록: online_compare_0190_0200_20261114.md 3절 O2, NEXT 2-57·2-57-1(2·3회차에는 버린 의견 0건 — 모델이 근거 없는 발췌를 낼 때만 드러난다).
+
+1. 원인(줄 번호는 997687e 기준)
+ C1. pipeline.py 545~548행: review_completed가 False면 미확인 항목을 만든다. 이때 사유로 review["reason"](상태 사유 코드)을 붙인다.
+     - review_completed가 False가 되는 조건은 rag_engine/review.py 762행의 두 가지다: 버린 모델 의견(rejected_observations)이 있거나, 서면이 길어 잘렸거나(document_truncated).
+     - 그런데 붙는 사유는 779행 상태 사유 'EXACT_QUOTES_CHECKED_NOT_ENTAILMENT_OR_LEGAL_VALIDITY'다. 실제 원인과 무관하다.
+ C2. 같은 성격의 표시 결함(평가 측 확인): rag_engine·pipeline이 실제로 내는 처리 사유 코드 가운데 10개는 display_text CODE_WORDS에 한글 이름이 없다. 화면·보고서에 영문 코드 그대로 나온다.
+     - 해당 코드: QUOTE_NOT_GROUNDED, INVALID_ITEM_SCHEMA, INVALID_ENVELOPE, REFERENCE_REVIEW_FAILED(pipeline 538행), NO_GROUNDED_COMPARISON, RELATED_AUTHORITY_LOOKUP_FAILED, CONTRACT_ID_NOT_UNAMBIGUOUSLY_LINKED, IDENTICAL_CONTENT, INVALID_CALCULATION_INPUTS, MISSING_OR_CONFLICTING_CALCULATION_INPUTS.
+     - 화면(app.js)도 /api 코드표(projects.py 59행 code_words)로 같은 표를 쓴다.
+
+2. 고칠 것(보완 패치와 같음)
+ F1. rag_engine/review.py에 `incomplete_reason(review) -> str`를 둔다(report_lines 바로 위).
+     - 버린 의견이 있으면: '모델 의견 N건을 근거 확인에서 제외(사유별 한글 이름 n건, …)'. 사유 이름은 display_text.word로 바꾼다.
+     - 잘렸으면: '서면이 길어 앞부분(검토 글자 수/전체 글자 수)만 대조'. 수를 모르면 '(일부)'로 적는다.
+     - 둘 다면 '; '로 잇는다. 둘 다 아니면 word(review["reason"])로 적는다(없으면 '사유 기록 없음').
+ F2. pipeline.py 494행 import에 incomplete_reason를 더한다. 548행 사유를 "Drive 참고자료 AI 대조 미완료: " + incomplete_reason(review)로 바꾼다.
+     - 미확인 항목에 새 키를 더하지 않는다(응답 형태 그대로).
+ F3. display_text.py CODE_WORDS 155행 'REFERENCE_PROCESSING_FAILED' 바로 뒤에 C2의 10개 한글 이름을 더한다(패치 문구 그대로).
+
+3. 확인 시험(새 tests/test_tk174_reference_incomplete_reason.py 7건, 값은 합성)
+ - 버린 의견의 사유별 건수.
+ - 잘림의 글자 수.
+ - 두 원인 함께.
+ - 다른 미완료 상태 3종의 사유가 한글(밑줄 코드 없음).
+ - 파이프라인 경로(VerificationPipeline.run, review_document 대역)의 미확인 항목 사유 문장.
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본, SQLite, LV_ALLOW_NETWORK=0)
+ - precheck_pr --quick(기준 997687e): 종료 0. 시험 235건 실패 0, 고정 82.6 / 81.9 / 오탐 0, 평가 세트 문구 대조 통과.
+   · 함께 돌린 시험: 새 시험, test_tk70_rag_contradiction_promotion, test_verification_completeness, test_tk84_reference_text_truncation, korean_law_profile/test_review_path, test_tk155_ui_cleanup, test_report_completion, test_display_text_linear_time, test_api.
+ - 처음 사본에서는 미확인 항목에 'status_code' 키를 더했다. 응답 형태가 바뀌므로 뺐다(F2 마지막 줄).
+ - 미검증: 실제 Drive 대조에서 잘림·버림이 함께 일어나는 경우의 화면 문구(배포 뒤 온라인 확인).
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나. 제품 3파일 + 새 시험 1파일, 보호 경로 변경 없음.
+ - 수용 기준: 3절 시험 통과, 필수 CI 성공, 고정·은퇴 세트 변화 0, 탐지 diff 0(표시 문구만), 사본과 diff 0.
+ - TK-173·TK-175와 겹치는 파일이 없다. 세 패치를 함께 적용해도 충돌하지 않는다(평가 측 확인).
+```
+
+### 2-58-3. TK-175 지시(전달판)
+```
+[TK-175 main의 기존 CodeQL 경고 중 제품 코드 11건: 경로 주입 10건(storage·project_purge) + 예외 문구 노출 1건(진단 응답)]  기준: Steve_ACASiaLAW 997687e  평가 측 사본: TK-175 copy(0f7d7b7)
+보완 패치: docs/handoff/patches/TK-175_on_997687e.diff (git apply)
+ - 997687e → 사본 차이 전부: 제품 4파일(packages/common/storage.py·apps/api/project_purge.py·apps/api/capabilities.py·apps/api/main.py) + 새 시험 1파일.
+대상 릴리스: 0.21.0(사용자 11-14 '후보 두가지도 포함' — main의 기존 CodeQL 24건).
+나머지 13건(평가 도구·시험)은 평가 측이 평가 PR로 고친다(evaluator/round8-promotion 13175bf). 이 PR에 넣지 않는다.
+
+0. 근거
+ - GitHub Security → Code scanning, is:open branch:main, 24건(사용자 화면 11-14). 이 PR의 대상은 아래 11건이다.
+   · #117 storage.py:68, #24 :78, #118 :94, #26 :104, #119 :107, #120 :108, #121 :111, #30 :130 — 경로 주입 High.
+   · #21 project_purge.py:73, #130 :74 — 경로 주입 High.
+   · #32 main.py:264 — 예외 정보 노출 Medium.
+ - #285에서 확인한 CodeQL 인정 꼴:
+   · 정규화한 경로 값 자체에 접두 검사 하나(startswith)를 하고, 검사한 값을 그대로 쓴다.
+   · 다른 값을 검사하거나 'or'로 묶으면 인정하지 않는다.
+   · Path.is_relative_to·부모 비교는 인정하지 않는다.
+
+1. 원인(줄 번호는 997687e 기준)
+ C1. storage.py 93~98행 `_abs`: (root/key).resolve() 뒤 is_relative_to로 검사한다. 안전한 검사지만 CodeQL은 이를 경로 검사로 보지 않는다.
+     그래서 put_original·put_derivative·get·path·exists의 모든 사용처(104·107·108·111·130행)가 경고다.
+ C2. storage.py 72~81행 `_project_dirs`: 부모 비교(target.parent != …)로 검사한다. 역시 인정되지 않는다. 78행과 _remove_tree의 rmtree(68행)가 경고다.
+ C3. project_purge.py 70~74행: PROJECT_ID_RE.fullmatch 뒤 data_dir()/pii_vault/{id}.vault를 exists·unlink한다. 정규식 검사는 경로 검사로 인정되지 않는다.
+ C4. capabilities.py 127행 `_worker_state`가 예외 원문을 그대로 담는다: "error": f"{type(exc).__name__}: {exc}".
+     main.py 182행은 기동 시 암호화 키 오류 원문 str(exc)를 기록한다. storage.py 310~316행이 키 공급자 예외 문구를 그대로 이어 붙이기 때문이다.
+     이 기록은 /api/diagnostics 응답의 capabilities.storage_encryption.error로 나간다(main.py 264행).
+     화면(app.js 3477~3490행)은 error 칸을 쓰지 않는다.
+ C5. 같은 성격(평가 측 확인, 경고 목록에는 없음): storage.py 246행 EncryptedObjectStorage.path가 구분자 없는 접두 비교 str(target).startswith(str(cache_root))를 쓴다.
+     그래서 형제 폴더(cache_root2/…)가 통과한다. 재현: path('../cache2/x')가 거부되지 않는다.
+
+2. 고칠 것(보완 패치와 같음)
+ F1. storage.py에 `resolve_within(root, *parts) -> str`를 둔다. 동작:
+     - base = realpath(root), full = realpath(join(base, *parts)).
+     - full.startswith(join(base, ""))가 아니면 ValueError("path traversal detected").
+     - 검사한 full을 그대로 돌려준다.
+ F2. `_abs`는 Path(resolve_within(self.root, storage_key))를 돌려준다.
+ F3. `_project_dirs`는 area_root = realpath(root/area)를 구하고 target = resolve_within(area_root, project_id)로 한다.
+     - 이어서 따로 하는 if로 dirname(target) == area_root를 확인한다(한 단계만 허용). 'or'로 묶지 않는다.
+     - Path(target)를 yield한다.
+ F4. EncryptedObjectStorage.path: 기존 접두 비교를 지우고 target = Path(resolve_within(self.cache_root, storage_key))로 한다(C5).
+ F5. project_purge.py: vault = resolve_within(data_dir()/"pii_vault", f"{project_id}.vault")로 구하고, os.path.exists·os.unlink로 지운다.
+     - except를 (OSError, ValueError)로 넓힌다.
+     - import os와 resolve_within import를 더한다.
+     - PROJECT_ID_RE.fullmatch 검사는 그대로 둔다.
+ F6. capabilities.py 127행의 error는 type(exc).__name__만 담는다.
+ F7. main.py 182행: 진단에 싣는 기록은 고정 문구로 한다.
+     - 문구: "저장 시 암호화 키 설정을 확인할 수 없습니다({원인 예외 종류}). 자세한 원인은 서버 로그를 보세요."
+     - 원인 예외 종류는 exc.__cause__가 있으면 그 종류, 없으면 exc의 종류다.
+     - 원문은 기존 logger.error에만 남긴다.
+     - 화면의 note(설정 방법 안내)는 그대로다.
+
+3. 확인 시험(새 tests/test_tk175_path_and_exception_exposure.py 15건, 값은 합성)
+ - resolve_within이 안쪽 경로 3꼴은 받고, 바깥·형제 폴더·절대 경로·빈 키·심볼릭 링크 탈출은 거부한다.
+ - LocalObjectStorage의 저장·읽기·존재 확인, 탈출 키 거부.
+ - _project_dirs: 두 영역 바로 아래 한 단계, 잘못된 id 4꼴 거부.
+ - 암호화 캐시: 형제 폴더 거부(C5).
+ - purge_files: 해당 프로젝트 보관소 파일만 지운다.
+ - _worker_state error는 예외 종류만 담는다.
+ - 기동 시 암호화 오류 기록에 예외 원문이 없다.
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본, SQLite, LV_ALLOW_NETWORK=0)
+ - 새 시험 15건 통과. 관련 기존 시험 9파일(test_storage_encryption·test_project_lifecycle·test_identity_security·test_release_gates·acceptance/test_security_round·acceptance/test_pinned_ledger_4da3910_additions·regression/test_ledger·test_api + 새 시험) 실패 0.
+ - precheck_pr --quick 결과: 종료 0(기준 997687e). 함께 돌린 시험 244건 실패 0(위 9파일 + test_report_completion), 고정 82.6 / 81.9 / 오탐 0, 평가 세트 문구 대조 통과.
+ - 미검증: CodeQL 재분석으로 11건이 닫히는지. 이 세션은 CodeQL을 돌릴 수 없으므로 PR CI의 codeql-pr 결과로 확인한다. 꼴은 #285에서 0건으로 확인된 path_guard.contained_path와 같다.
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나. 제품 4파일 + 새 시험 1파일, 보호 경로 변경 없음.
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공.
+   · codeql-pr 새 경고 0.
+   · 고정·은퇴 세트 변화 0.
+   · 사본과 diff 0.
+   · 병합 뒤 main 반영 때 Security 화면에서 11건이 닫힘(릴리스 PR에서 확인).
+```
+
+### 2-58-4. 사용자 '지시문 전체 전달완료' (11-14)
+- TK-173·TK-174·TK-175(제품 11건) 지시가 구현 측에 전달됐다. 평가 측은 각 PR의 '검토 요청'과 CI 완료를 기다린다.
+- 판정 방식: CI 결과 인용 + 평가 측 비공개 탐침 + diff 검토(사본과 diff 0 확인). TK-175는 codeql-pr 새 경고 0과 대상 11건 해소를 함께 본다.
+- 평가 측 남은 일: TK-175 도구·시험분(13175bf)과 TK-176(ba2b70b)의 평가 PR은 사용자 지시 뒤에 만든다.
+
+## 2-59. #290~#293 판정 (11-14, 사용자 "#290은 다시 변경된 최종 커밋 기준으로 재판정", "나머지 pr 먼저 판정")
+### 2-59-1. #291(TK-173)·#292(TK-174)·#293(TK-175 제품) — 수용
+- head 트리가 평가 측 사전 검증 사본과 diff 0(평가 측 재실행): #291 `76936b7` = 14b13b3, #292 `9f3e2aa` = 384ca10, #293 `8f4fad0` = 0f7d7b7.
+- CI(인용): 세 PR 모두 테스트 3종·점수 하락 게이트·은퇴 세트 비교·CodeQL 새 경고 게이트·Docker OCR 성공. #293 CodeQL 게이트: 기준 8건 → 병합본 4건, 새 결과 0.
+- 미검증: #293 게이트에 남은 4건의 내용(SARIF 산출물 내려받기 불가)과 main Security 화면의 대상 11건 해소 — 병합·main 반영 뒤 확인.
+- 세 PR은 겹치는 파일이 없다. 수용 코멘트 게시. 병합은 사용자 지시로.
+### 2-59-2. #290(TK-171·172) 최종 커밋 `0ae2eb1` — 보완 필요(화면 사용자 확인 대기)
+- 범위: 제품 3파일(index.html·app.js·styles.css) + 새 시험 1파일. CI 전부 성공(인용). 기존 시험 단언 변경 없음.
+- 평가 측 캡처(1440·390, 합성 모의 응답, 페이지 오류 0, 문서 가로 넘침 0): 사용자에게 제시.
+- 원문 대응(requests/FE_template_A_redesign_20261114.md):
+  | 원문 | 판정 | 근거 |
+  |---|---|---|
+  | 1.1 네이비 사이드바·흰 헤더·파스텔 4열 KPI·사람 검토 패널·활동 타임라인·바로가기 카드 | 충족(시각) | 캡처 |
+  | 탭 5개 유지(Codex 지시 의도)·개요는 탭이 아님·최근 작업 활동은 패널 | 충족 | index.html data-tab 5개, #templateAOverview |
+  | TK-172 아이콘 판 표지 | 충족 | index.html 2행 |
+  | 5.3 AI 탭 모델 카드 가로 배치·한계 안내 | 충족 | 캡처 |
+  | 8.3 모바일 서랍·하단 탐색 4항목 | 충족 | 캡처·새 시험 |
+  | 1.1·6장 '예시 수치·하드코딩 금지, 실제 값만' | **미충족 D1** | app.js 1320~1350 '최근 작업 활동' 4줄이 고정 문구이고 시각이 모두 run.started_at(없으면 '방금 전'). 프로젝트 생성·자료 업로드 시각은 API에 있음(project.created_at, document.uploaded_at, /runs, /audit) |
+  | 6장 서로 다른 지표 혼동 금지 | **미충족 D2·D4** | 1194행 '검토 대상 자료' 카드 아래 '성립 불가 인용 N건'(인용 수를 자료 카드에), 1260행 사람 검토 사유 건수가 무리한 주장 수 또는 비AI 경고 수를 섞어 씀 |
+  | 5.7·6장 '진행 전 결과를 0건으로 확정 표시 금지' | **미충족 D3** | 1194·1205행: 검증 전에도 '성립 불가 인용 0건'·'공식 DB 미확인 0건' |
+  | 3.2 Pretendard 자체 호스팅·OFL 고지 | **미충족 F1** | 글꼴 파일 추가 없음(styles.css font-family만), 시스템 글꼴로 대체됨 |
+  | 4.2 사이드바 접기·펼치기(데스크톱) | **미충족 S1** | 데스크톱 접기 없음(모바일 서랍만) |
+  | 5.4·5.5 '좌 목록 + 우 상세' 분할, 상세 순서 1~8 | **미충족 L1** | 두 탭 모두 기존 4열 표 유지 |
+  | 8.4 C·D 모바일 카드형(4열 표 그대로 금지) | **미충족 M1** | 390px에서 4열 표가 잘려 가로 스크롤 |
+  | 5.6 보고서 상태 구분·미리보기 | 부분 | 상태 문구만, 미리보기 없음 |
+  | 13장 9 브랜드(사용자 11-14 '문구는 AegisLAW') | **미충족 B1** | index.html aria-label 'ACASia_LAW 홈'·alt 'ACASia LAW'(2곳)·바닥글 '© ACASia_LAW 법률문서 검증시스템' 그대로 |
+  | 8.7 실기기 iOS·Android | 미검증 | 평가 측은 Chromium 에뮬레이션만 가능 |
+- 다음: 사용자 화면 확인(시각 방향) → 평가 측이 D1~D4·F1·S1·L1·M1·B1 보완을 사본에 적용해 사전 검증한 지시문을 낸다(CLAUDE.md '판정 중 식별 문제는 같은 TK').
+
+### 2-59-3. 사용자 '#291,292. 293 병합' (11-14)
+- 평가 측이 병합: #291 → Steve `669a461`, #292 → `c1d9655`, #293 → `025df31`(각 head SHA 고정 병합).
+- 병합 뒤 확인(평가 측 재실행): Steve `025df31` 트리 = 997687e + TK-173·174·175 사전 검증 패치 합본과 diff 0. 세 TK 새 시험 + 관련 시험(6파일 71건) 통과.
+- 남은 확인: main 반영(0.21.0 릴리스) 때 Security 화면에서 TK-175 대상 11건 해소.
+
+### 2-59-4. 사용자 결정 2건 (11-14)
+- L1(목록+상세 분할): 사용자 선택 '4열 표 유지' — 데스크톱은 10-25 결정의 4열 표를 그대로 두고 디자인만, 모바일(8장)은 카드형. 원문 5.4·5.5의 분할 요구는 이 결정으로 대체한다.
+- 사용자 원문: "feat/v0.21.0 브랜치(PR #290, 커밋 0ae2eb1 디자인 승인" — #290의 시각 디자인(0ae2eb1) 사용자 확인 완료. 남은 보완(D1~D4·F1·S1·M1·B1)은 데이터·표기·모바일 동작만 고치고 승인된 디자인은 바꾸지 않는다.
+
+### 2-59-5. TK-171 보완 지시(전달판, #290 0ae2eb1 위) — 기존 시험 수정 5곳은 사용자 승인 대기
+```
+[TK-171 보완(#290 feat/v0.21.0, 승인된 디자인 0ae2eb1 위) — 개요 화면 실제 값·브랜드 문구·Pretendard 자체 호스팅·넓은 화면 사이드바 접기·좁은 화면 표 카드화]  기준: feat/v0.21.0 0ae2eb1(디자인 사용자 승인 11-14)  평가 측 사본: TK-171 supplement copy(0ae2eb1 + Steve 025df31 병합 위)
+보완 패치: docs/handoff/patches/TK-171_supplement_on_0ae2eb1.diff (git apply, 0ae2eb1에 바로 적용됨 — 평가 측 확인)
+ - 패치 범위: 제품 4파일(apps/web/index.html·apps/web/static/app.js·operations.js·styles.css) + 새 시험 1파일.
+ - 글꼴 파일 94개(3.1MB)는 패치에 넣지 않았다. 아래 F1의 명령으로 받는다.
+대상 릴리스: 0.21.0.
+
+0. 근거와 범위
+ - 원문: docs/handoff/requests/FE_template_A_redesign_20261114.md(Codex 작성 지시서 + 제8장 대체).
+ - 판정: NEXT 2-59-2(#290 0ae2eb1).
+ - 사용자 결정(11-14):
+   · L1(출처 미확인·무리한 주장 탭을 목록+상세로 분할)은 하지 않는다. 데스크톱은 10-25 결정의 4열 표를 그대로 둔다(디자인만).
+   · 0ae2eb1의 시각 디자인은 승인됐다. 이 보완은 디자인을 바꾸지 않고 값·문구·동작만 고친다.
+ - 먼저 Steve_ACASiaLAW(025df31, #291~#293 병합)를 feat/v0.21.0에 병합한다. 겹치는 파일은 없다(평가 측 병합 확인).
+
+1. 원인(줄 번호는 0ae2eb1 기준)
+ D1. app.js 1320~1350행 '최근 작업 활동'이 실제 기록이 아니다(원문 1.1 '예시 수치·날짜 복제 금지', 6장 '실제 값만').
+     - 고정 4줄(자료 N건 업로드 완료·검증 분석 완료·AI 작성 진단·프로젝트 생성)을 그린다.
+     - 시각이 모두 state.run.started_at이고, 실행이 없으면 '방금 전'이다.
+     - 실제 기록은 화면이 이미 받는다: project.created_at, document.uploaded_at, run.started_at·finished_at, 보고서 created_at·finalized_at·label.
+ D2. app.js 1194행: '검토 대상 자료' 카드 보조 줄이 '성립 불가 인용 N건'이다. 자료 카드에 인용 수를 섞는다(원문 6장 지표 혼동 금지).
+ D3. app.js 1194·1205행: 검증 전에도 '성립 불가 인용 0건'·'공식 DB 미확인 0건'을 보인다(원문 5.7·6장).
+ D4. app.js 1255~1270행: 사람 검토 사유가 지표를 섞는다(원문 6장).
+     - 출처 미확인 사유의 건수에 unverified_items 길이를 대신 쓴다.
+     - 법률 사유의 건수에 legalCount가 0이면 'AI·보안이 아닌 모든 경고 수'를 대신 쓴다.
+     - 실행이 있으면 사유가 없어도 머리말이 '사람 검토 필요'다(1285행).
+ F1. styles.css 10행이 font-family 'Pretendard Variable'을 쓰는데, @font-face와 글꼴 파일이 없어 시스템 글꼴로 대체된다(원문 3.2 자체 호스팅·라이선스 고지, 8.6 글꼴 최적화).
+     - 보안 정책이 default-src 'self'라 외부 CDN 글꼴은 막힌다(apps/api/main.py 158행).
+ S1. 넓은 화면(701px 이상)에 사이드바 접기·펼치기가 없다(원문 4.2). 메뉴 단추(#menuButton)가 좁은 화면에서만 보인다(styles.css .mobile).
+ M1. 좁은 화면에서 #reviewTable·#tier3Table이 4열 표 그대로라 390px에서 잘리고 표 안 가로 스크롤이 생긴다(원문 8.4 C·D '4열 표를 그대로 표시하지 마십시오').
+ B1. 브랜드 문구가 옛 이름이다(원문 13장 9, 사용자 11-14 '문구는 AegisLAW로').
+     - index.html: 헤더 링크 aria-label 'ACASia_LAW 홈', 엠블럼 alt 'ACASia LAW', 빈 화면 aria-label 'ACASia_LAW', 바닥글 '© ACASia_LAW 법률문서 검증시스템'.
+     - operations.js 64행: 로그인 창 엠블럼 alt 'ACASia LAW'.
+
+2. 고칠 것(보완 패치와 같음)
+ F-D1. renderTemplateAOverview의 활동 목록을 실제 기록으로 만든다.
+     - 화면이 받은 값에서 사건을 모은다(시각 없는 사건은 넣지 않는다).
+       · 프로젝트 생성(project.created_at)
+       · 자료 업로드: 파일명(document.uploaded_at, 검토 제외면 '검토 제외' 표지)
+       · 자동 검증 시작(run.started_at)
+       · 자동 검증 종료(run.finished_at, 표지는 label(run.state))
+       · 보고서 생성(report.created_at, 표지는 서버 label)
+       · 보고서 확정(report.finalized_at)
+     - 최신순 5개를 보인다. 사건이 없으면 '기록된 작업이 없습니다.'를 보인다.
+     - loadReports에서 state.reports = reports로 두고 개요를 다시 그린다(renderSummary).
+ F-D2. 자료 카드 보조 줄을 '검토 포함 N건 · 제외 M건'으로 바꾼다.
+ F-D3. 출처 미확인 KPI 보조 줄은 실행 전 '검증 후 집계'로 한다.
+ F-D4. 사유는 지표마다 그 값만 쓴다. 각 사유는 실행이 있고 값이 0보다 클 때만 넣고, 최대 3개를 보인다.
+     - 출처 미확인 인용(sourceCount)
+     - 자동 확인 미완료(run.unverified_items 길이)
+     - 법률적으로 무리한 주장(legalCount)
+     - 머리말: 사유가 있으면 '사람 검토 필요 — 사유 N가지', 없으면 '검토 안내 — 주요 확인 항목'. 설명 문장은 실행 전·후를 구분한다(패치 문구).
+ F-F1. Pretendard 1.3.9(OFL-1.1)를 자체 호스팅한다. 글자 범위별 분할본을 써서 보이는 글자의 조각만 받게 한다.
+     npm pack pretendard@1.3.9          # sha256 0ffc240cee83be02520fb4ac1b2a0a51052b9d13506ade0ba90c591dbbb3bd53
+     tar xzf pretendard-1.3.9.tgz
+     mkdir -p apps/web/static/fonts/pretendard
+     cp package/dist/web/variable/woff2-dynamic-subset/*.woff2 apps/web/static/fonts/pretendard/
+     cp package/dist/LICENSE.txt apps/web/static/fonts/pretendard/OFL-Pretendard.txt
+     sed 's#url(./woff2-dynamic-subset/#url(./#g' package/dist/web/variable/pretendardvariable-dynamic-subset.css > apps/web/static/fonts/pretendard/pretendard.css
+     - 확인값(평가 측):
+       · pretendard.css sha256 bb69c4c451b673e9f61091acf3009551051f9d997eccd89c87b6b6b36424803b
+       · OFL-Pretendard.txt sha256 b04538c9abec39a3db75108cf0af0fd9c77032fe8aa2cf38345b4d250e98e38e
+       · woff2 92개를 이름순으로 이어 붙인 sha256 9bb067166c52c8d1afce56951c1a107e2a09555281e8dbcf0e67329200d0e350
+     - index.html: styles.css 링크 바로 앞에 <link rel="stylesheet" href="/static/fonts/pretendard/pretendard.css">.
+ F-S1. 같은 메뉴 단추 하나로 처리한다.
+     - 좁은 화면(≤700px): 기존 서랍 동작.
+     - 넓은 화면: .workspace에 sidebar-collapsed를 켜고 끈다(grid 첫 칸 0, aside 숨김). 상태는 localStorage 'acas-sidebar-collapsed'에 저장한다(try/catch, 저장 불가면 그 화면에서만).
+     - aria-expanded·aria-label('사이드바 접기'·'사이드바 펼치기'·'프로젝트 목록')을 함께 바꾼다.
+     - 화면 폭이 바뀌면 다시 맞춘다(matchMedia change).
+ F-M1. labelTableCells(tableId): 각 칸에 thead의 칸 이름을 data-label로 붙인다. 두 표를 그린 뒤에 부른다.
+     - CSS @media (max-width:700px): 두 표의 thead를 숨기고, tr·td를 block으로 바꿔 카드로 보인다(테두리·둥근 모서리). td::before에 칸 이름을 보인다. 표 최소 폭(760px)을 풀고 표 감싸개의 가로 스크롤을 없앤다.
+     - 넓은 화면의 4열 표는 그대로다(사용자 결정).
+ F-B1. 1절 B1의 다섯 곳을 'AegisLAW 홈'·'ACAS AegisLAW'·'AegisLAW'·'© ACAS AegisLAW 법률문서 검증시스템'으로 바꾼다.
+     - 보고서 JSON의 product 'ACASia_LAW'(데이터 계약), PDF·메일·API 설명은 이 PR 범위가 아니다(화면 밖, 원문 7장). 별도 판단한다.
+
+3. 확인 시험(새 tests/test_tk171_overview_real_data.py 9건, 값은 합성, 서버는 Playwright route)
+ - 활동 목록: 실제 기록 5건 최신순, 시각이 모두 다르고 '방금 전' 없음, 보고서 표지가 서버 label.
+ - 검증 전: KPI에 '성립 불가 인용'·'미확인 0건' 없음, '검증 후 집계', 머리말 '검토 안내', 지어낸 사건 없음.
+ - 자료 카드는 자료 수만 보인다.
+ - 브랜드 옛 이름 0건, Pretendard css·글꼴 파일·OFL 고지가 있고 css에 외부 주소가 없다.
+ - Pretendard 글꼴 면이 실제로 읽힌다(document.fonts 상태 loaded).
+ - 1440px: 메뉴 단추로 사이드바를 접고 펴며, aria-expanded가 맞다.
+ - 320·390px: 표 칸이 block 카드이고 data-label='위치', 표가 감싸개를 넘지 않고 머리 행이 숨는다. 768px: 문서 가로 넘침 없음.
+ - 기존 시험 수정 5곳(B1과 충돌, 평가 측 작성, 사용자 승인 대상): docs/handoff/patches/TK-171_supplement_tests_on_0ae2eb1.diff
+   · tests/test_api.py 68·70행: aria-label 'ACASia_LAW 홈' → 'AegisLAW 홈', alt 'ACASia LAW' → 'ACAS AegisLAW'
+   · tests/test_frontend_emblem.py 105행: 링크 이름 'ACASia_LAW 홈' → 'AegisLAW 홈'
+   · tests/frontend_auth.test.cjs 100행: 로그인 창 alt → 'ACAS AegisLAW', 208행: html에 'ACASia_LAW' 포함 → 'AegisLAW' 포함·'ACASia' 없음
+   · 단언을 지우거나 약하게 하지 않는다(같은 개수, 새 표기로만 바꿈). 이 5곳 외의 기존 시험은 바꾸지 않는다.
+ - 고치기 전 트리(0ae2eb1 + Steve 병합)에서는 9건 중 8건이 실패한다(평가 측 재실행). 768px 칸은 회귀 방지용이다.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본, SQLite, LV_ALLOW_NETWORK=0)
+ - 새 시험 9건 통과.
+ - precheck_pr --quick(기준 Steve 025df31): 종료 0. 화면 시험 34파일(Playwright 화면 시험 전부, 새 시험 포함) + test_api 364건 실패 0, 고정 82.6 / 81.9 / 오탐 0, 평가 세트 문구 대조 통과. 아래 '기존 시험 수정 5곳'을 적용한 상태다.
+ - node tests/frontend_auth.test.cjs: 20건 통과(아래 기존 시험 수정 적용 상태).
+ - 화면 캡처(1440·390, 합성 자료): 페이지 오류 0, 문서 가로 넘침 0. 승인된 디자인과 같은 배치이고, 바뀐 것은 값·문구·동작뿐이다(사용자에게 제시).
+ - 미검증: iOS Safari·Android 실기기(원문 8.7), 느린 모바일망에서 글꼴 조각 내려받기 시간.
+
+5. 제출물·수용 기준
+ - feat/v0.21.0에 Steve_ACASiaLAW 병합 + 보완 패치 + 시험 수정 패치(사용자 승인 뒤) + 글꼴 파일 94개를 한 커밋 또는 연속 커밋으로 올린다(PR #290 그대로).
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공.
+   · 고정·은퇴 세트 변화 0, 탐지 diff 0(화면만).
+   · 패치 적용분이 사본과 diff 0. 글꼴 파일은 2절 F-F1의 확인값과 같아야 한다.
+ - 화면 변경이라 평가 측은 화면 시험 전부를 함께 돌리고, 최종 캡처를 사용자에게 다시 보인다.
+```
+
+### 2-59-6. 사용자 승인: 기존 시험 5곳 수정 (11-14)
+- 사용자 원문: "B1(‘AegisLAW’ 문구)을 반영하면 옛 표기 ‘ACASia’를 확인하던 기존 시험 5곳 변경 승인"
+- 승인 대상: patches/TK-171_supplement_tests_on_0ae2eb1.diff(test_api.py 68·70행, test_frontend_emblem.py 105행, frontend_auth.test.cjs 100·208행 — 표기만 새 이름으로, 단언 개수 그대로). 2-59-5 지시의 '사용자 승인 뒤' 조건 충족 → 구현 측은 보완 패치와 함께 #290에 넣는다.
+- #294(평가 PR) head 16f94c3: CI 전부 성공(인용) — Node 24 액션(checkout v5·setup-python v6·upload-artifact v6·download-artifact v7·codeql-action v4)으로 테스트 3종·점수 하락 게이트·은퇴 세트 비교·CodeQL·산출물 업·다운로드가 모두 돌았다. CodeQL 게이트: 기준(Steve 025df31) 4건 → 병합본 2건, 새 0건. 앞선 점수 하락 게이트 실패(ci_failed_tests 요약 경로)는 2bd0521에서 고쳤다. 남은 2건의 내용은 SARIF 산출물을 내려받지 못해 미확인.

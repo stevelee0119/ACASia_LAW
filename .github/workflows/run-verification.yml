@@ -76,9 +76,9 @@ jobs:
       LV_PSEUDONYM_SECRET: ${{ secrets.LV_PSEUDONYM_SECRET || 'actions-run-only' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -129,7 +129,7 @@ jobs:
 
       - name: 보고서 아티팩트 업로드
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: verification-report
           path: out/

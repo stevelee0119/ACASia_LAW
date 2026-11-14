@@ -11,6 +11,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from packages.document_engine import parse_document
+from scripts.path_guard import INPUT_ROOTS, contained_path
 
 
 def main() -> None:
@@ -19,7 +20,7 @@ def main() -> None:
     args = parser.parse_args()
     signals, reasons, modes = Counter(), Counter(), Counter()
     for path in args.paths:
-        source = Path(path)
+        source = contained_path(path, *INPUT_ROOTS)  # TK-175: 저장소·임시 폴더·사용자 홈 안의 문서만
         doc = parse_document(str(source), document_id="boundary-instrumentation",
                              filename=source.name, mime_type="application/pdf",
                              sha256=hashlib.sha256(source.read_bytes()).hexdigest())

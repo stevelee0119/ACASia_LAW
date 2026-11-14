@@ -1,0 +1,5 @@
+{
+ "_note": "정규식 탐침 시험용 합성 패턴. 일부러 지수 시간 되짚기가 나는 꼴이다(TK-175: CodeQL py/redos가 시험 코드의 정규식 리터럴로 보지 않도록 자료로 둔다).",
+ "ambiguous_alternation": "(?:ab|a|b)+$",
+ "overlapping_whitespace_bytes": "^\\s*(?:[-\\d.\\s]+(?:Tm|Td)\\s*)*Z"
+}
