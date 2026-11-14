@@ -5659,3 +5659,134 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
   - full 10,118 / browser 197 / 수용 1,275 / 회귀 2,357 실패 0.
   - 고정 82.6 / 81.9 / 오탐 0.
 - 화면 사용자 확인을 마쳤다. 수용 코멘트를 게시했다. 병합은 사용자 지시로 한다.
+
+## 2-52. TK-162(판례 변경 추적) 사전 검증·지시 (11-14, 사용자 '다음 티켓 TK-162(판례 변경 추적) 사전 검증 착수 지시' → 화면 확인 → '화면 확인 완료, TK-162 지시문 생성')
+- 첫 사본 b0a8eea(엔진 안 후처리)는 기존 시험 test_source_recovery::test_deferred_detail_lookup_reuses_successful_search(본문 검색 1회 단언)와 충돌했다.
+- 기존 시험을 고치지 않고 설계를 바꿨다: 역조회를 파이프라인의 별도 단계 precedent_change로 옮겼다(관련 근거 탐색과 같은 방식). 사본 c346684.
+- 사본 precheck 전체 종료 0(관련 기존 시험 50파일 포함 4,410건 실패 0), 고정 82.6 / 81.9 / 오탐 0, 은퇴 후퇴 없음, 게이트 3종 통과.
+- 패치: docs/handoff/patches/TK-162_precedent_change_on_1e2c351.diff
+
+### 2-52-1. TK-162 지시(전달판)
+```
+[TK-162 판례 효력 확인 — 뒤의 전원합의체 판결로 변경된 판례 인용 역조회]  기준: Steve_ACASiaLAW 1e2c351  평가 측 사본: c346684
+보완 패치: docs/handoff/patches/TK-162_precedent_change_on_1e2c351.diff
+ - 1e2c351 → 사본 차이 전부: 제품 3파일(새 모듈 1) + 새 시험 1파일. git apply 가능.
+ - 화면(경고 표시)은 사용자 확인을 마쳤다(11-14, 캡처 1장).
+ - TK-163(#279)과 겹치는 파일이 없다. TK-163은 verifier.py를 고치고, TK-162는 pipeline.py를 고친다.
+대상 릴리스: 0.20.0.
+
+0. 요구 원문과 대응표(계획 문서 3절 TK-162, 사용자 승인 11-13)
+ | 원문 | 고친 것 | 위치 |
+ |---|---|---|
+ | "전원합의체 판결 이유의 판례 변경 문단에서 변경 대상 판결 목록을 추출해 색인" | 변경 문장('이 판결의 견해에 배치되는 범위에서 (이를)(모두) 변경하기로 한다')과 그 안의 사건번호를 정규형으로 뽑는다 | precedent_change.overruling_sentences |
+ | "서면 인용 판례가 변경 대상이면 경고(변경 범위 문구 함께 표시, '배치되는 범위' 판단은 사람 검토)" | CASE_HOLDING_DISTORTION · SUSPICIOUS · HIGH 경고를 낸다. 칸에는 짧은 문구만 둔다. 변경 문장 전문은 근거(evidence)와 grounded_evidence_quote에 싣는다. 실재 판정은 바꾸지 않는다 | precedent_change._finding |
+ | "합성 판결문으로 추출 시험(양성·대조 각 3건 이상)" | 양성 3꼴, 대조 3꼴. 역조회는 양성 1건, 대조 4건 | 새 시험 |
+ | "오탐 0(변경 대상이 아닌 판례)" | 다음 경우 경고 0: 다른 사건이 변경됨, 앞선 판결, 자기 자신, 변경 문장 없음 | 같음 |
+ | "실제 공식 판결 응답으로 재현" | 오프라인 환경이라 미검증. 배포 뒤 온라인으로 확인한다(4절) | — |
+ | "하드코딩 금지(사건번호를 제품 코드에 넣지 않음)" | 규칙은 문장 꼴과 사건번호 정규식만 쓴다 | — |
+
+1. 원인(줄 번호는 1e2c351 기준)
+ C1. 판례 실재 확인(verifier.py 264행 verify_case)은 인용한 판례 자체의 공식 기록만 본다.
+     - 그 판례가 뒤의 전원합의체 판결에서 변경됐다는 사실은 인용 판례의 원문에 없다. 뒤의 판결 원문에 있다.
+     - 그래서 변경된 옛 판례를 근거로 한 주장도 '존재 확인'만으로 통과한다.
+     - 기존 LV-05(1057행)는 새 판결을 인용하면서 옛 법리를 옮긴 경우만 잡는다.
+ C2. LV-05 정규식(opinion_attribution.py 304~308행 CHANGED_PRECEDENT_RE)은 실제 판결에 흔한 '이를 모두 변경하기로 한다'를 놓친다.
+     - 원인: '(?:이를\s*)?변경' 사이에 '모두'가 들어갈 자리가 없다.
+ C3. 설계 제약(평가 측 재현): 역조회를 verifier.verify_citations 안에 두면 기존 시험 tests/test_source_recovery.py 128행 test_deferred_detail_lookup_reuses_successful_search가 실패한다.
+     - 그 시험은 인용 확인 중 판례 본문 검색이 1번(len(searches)==1)이라고 단언한다.
+     - 역조회도 같은 어댑터의 본문 검색을 써서 2번이 된다.
+     - 그래서 역조회는 인용 확인 엔진 밖, 파이프라인의 별도 단계로 둔다. 같은 파일의 '관련 근거 탐색'(pipeline.py 922~941행 related_authorities)과 같은 방식이다.
+     - verifier.py는 고치지 않는다. 기존 시험 단언도 바꾸지 않는다.
+
+2. 고칠 것(보완 패치와 같음)
+ F1. 새 packages/legal_engine/precedent_change.py
+     - overruling_sentences(text):
+       · OVERRULE_END_RE를 찾는다. 꼴: '… 견해에 배치되는 범위 (내)에서 (이를) (모두) 변경하기로 한다|변경한다'.
+       · 찾은 곳 앞 1,200자 안에서 마지막 문장 끝('다.'·'함.'·'음.' + 공백)부터 문장을 잡는다.
+       · 날짜 '2008. 2. 14.'의 마침표는 숫자 뒤라 문장 끝으로 보지 않는다.
+       · 문장 안 사건번호를 normalize.extract_all_case_numbers로 정규형 목록으로 만든다.
+     - check_precedent_change(adapter, citation, official_record):
+       · 인용 사건번호의 정규형으로 adapter.search_cases_by_query(org="400201", display=20)를 부른다(law_go_kr.py 148행, 본문 검색).
+       · 후보에서 자기 자신과 인용 판례 선고일 이전의 판결을 뺀다.
+       · 전원합의체 판결(최근순), 그다음 나머지(최근순) 순서로 최대 3건(MAX_FETCH_PER_CITATION)을 본다.
+       · full_text가 없으면 fetch_case(333행)로 받는다.
+       · 변경 문장 목록에 인용 판례가 있으면 OVERRULED를 돌려준다. overruled_by(법원·선고일·사건번호·판결유형·source_id·detail_link)와 문장을 함께 준다.
+       · 없으면 NOT_FOUND_IN_SCOPE(후보 3건 이하) 또는 INCOMPLETE를 돌려주고 '변경되지 않았다는 확인은 아니다' 문구를 단다.
+       · 검색이 READY가 아니면 LOOKUP_FAILED.
+     - review_precedent_changes(legal, citations, verdicts) — 파이프라인 단계용. 입력은 engine_data.legal_verdicts의 판정 사전이다.
+       · 대상: 다음을 모두 갖춘 판정만.
+         ◦ official_record가 있다.
+         ◦ status가 VERIFIED 또는 PARTIALLY_VERIFIED다.
+         ◦ citation_id로 찾은 인용이 대법원이다(get_court_tier == SUPREME).
+       · 대상이 없으면 NO_TARGET으로 끝낸다(조회 0).
+       · legal.registry.law가 READY가 아니면 조회하지 않는다. 대상의 review["precedent_change"]에 NOT_ASSESSED(SOURCE_UNAVAILABLE)를 적는다.
+       · 같은 사건은 한 번만 조회한다.
+       · 서로 다른 사건이 8건(MAX_CITATIONS)을 넘으면 넘친 것은 NOT_ASSESSED(LOOKUP_BUDGET)로 둔다.
+       · 조회 예외는 LOOKUP_FAILED로 적는다(판정 불변).
+       · 기준일별 판정에 같은 인용이 여러 번 있어도 조회와 경고는 한 번이다.
+       · OVERRULED이면 경고(Finding)를 만들어 돌려준다. 판정 사전 findings에는 요약 사전(finding_id·type·tags·confidence_features)을 더한다.
+       · 판정 status(실재 확인)와 levels는 바꾸지 않는다.
+       · 반환: {status: NO_TARGET|SOURCE_UNAVAILABLE|CHECKED|OVERRULED_FOUND, targets, looked_up, findings}.
+     - 경고:
+       · FindingType.CASE_HOLDING_DISTORTION, VerificationStatus.SUSPICIOUS, Severity.HIGH, EvidenceGrade.A.
+       · title: '뒤의 판결로 변경된 판례 인용 의심: {인용}'.
+       · detail(짧게): '{법원} {YYYY. M. D.} 선고 {사건번호} {판결유형}이 이 판례를 변경 대상으로 적었습니다. 변경된 범위('이 판결의 견해에 배치되는 범위')가 서면의 주장과 겹치는지 확인하세요.'
+       · 변경 문장 전문(300자)은 evidence.excerpt와 confidence_features.grounded_evidence_quote에 둔다.
+       · tags에 PRECEDENT_OVERRULED를 넣는다.
+       · confidence_features에 citation_id, rule_id 'TK162.PRECEDENT_OVERRULED', overruled_by를 싣는다.
+ F2. packages/verification_engine/pipeline.py: related_authorities 단계 뒤, 942행 '# 법령 적용 시점(행위시법)' 주석 바로 앞에 단계를 하나 더한다.
+     - 단계: manifest.stage("precedent_change", result.findings, inputs=0, unit="역조회한 판례", document_id=doc.document_id).
+     - context.profile == QUICK이면 skip_reason '빠른 검토에서는 판례 변경 역조회를 하지 않음'으로 건너뛴다.
+     - 그 밖에는 review_precedent_changes(self.legal, citations, result.engine_data["legal_verdicts"])를 부른다.
+     - stage.inputs는 looked_up으로 둔다. 대상이 없거나 검색을 쓸 수 없으면 skip_reason을 적는다.
+     - 경고는 result.findings에 더한다. 요약(경고 제외)은 engine_data["precedent_change"]에 둔다.
+     - 예외가 나면 stage.error를 적고 unverified_items에 {"kind": "precedent_change", "reason": "판례 변경 역조회 미완료"}를 더한다.
+ F3. opinion_attribution.py 308행을 '(?:이를\s*)?(?:모두\s*)?변경(?:하기로\s*한다|한다)'로 바꾼다.
+
+3. 확인 시험(새 tests/test_tk162_precedent_change.py 20건 — 사건번호·문장은 합성, 가짜 어댑터 사용)
+ - 추출:
+   · 양성 3꼴: 이를 모두 변경 / 이를 변경 / 범위 내에서 변경한다.
+   · 대조 3꼴: 파기환송 문장 / 변경할 필요 없다 / 유지한다.
+ - LV-05: '이를 모두 변경' 꼴을 탐지한다.
+ - 역조회:
+   · 양성 1건: 경고 종류·상태·태그·짧은 detail·근거 전문을 확인한다. 실재 판정 불변. 판정 사전 findings에 연결된다.
+   · 기준일별 판정 중복: 조회 1번, 경고 1건.
+   · 대조 4건: 다른 사건이 변경됨 / 앞선 판결 / 자기 자신 / 변경 문장 없음 → 경고 0과 '확인은 아니다' 문구.
+   · 검색 실패와 오프라인: 오프라인은 조회 호출 0, 단계 상태 SOURCE_UNAVAILABLE.
+   · 하급심과 실재 미확인은 대상에서 빠진다(NO_TARGET).
+   · full_text가 없으면 받아 오고, 받는 횟수에 상한이 있다.
+   · 조회 상한과 같은 사건 중복 제거.
+   · 오프라인 시험용 registry: NOT_ASSESSED.
+ - 파이프라인: 합성 감사 실행(scripts.audit.runner.run_synthetic)에서 run_manifest에 'precedent_change' 단계가 단위 '역조회한 판례'로 기록되고, 오류 0·경고 0이다.
+ - 기존 시험 단언 변경: 없음. test_source_recovery·test_v4_run_manifest 통과.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본 c346684, SQLite, LV_ALLOW_NETWORK=0)
+ - 새 시험 20건, test_source_recovery, test_v4_run_manifest: 40건 통과.
+ - 첫 설계(엔진 안 후처리, 사본 b0a8eea)의 precheck에서 test_source_recovery 1건이 실패했다(C3). 설계를 바꿔 해소했다.
+ - precheck_pr 전체 모드: 종료 0.
+   · 함께 돌린 관련 기존 시험 50파일: 법률 엔진, LV-01~06, 인용 조회·재조회, 관련 근거, TK-137~139·152~154·159·160, v3 D·G·J, 매니페스트, API.
+   · 회귀·수용 포함 4,410건 통과, 실패 0.
+   · 고정 82.6 / 81.9 / 오탐 0, 변화 0.
+   · 은퇴 5세트 전후 같음(후퇴 없음).
+   · 평가 세트 문구 대조 통과.
+ - 게이트(평가 측 재실행):
+   · check_test_edits: 기존 시험의 삭제·표시 변경 없음.
+   · check_hardcoding_diff: 추가 187줄에 시험 입력 값 없음.
+   · check_protected_paths: 변경 없음.
+ - 합성 감사 실행 7문서: 'precedent_change' 단계 오류 0. 건너뛴 사유 두 가지('공식 판례 검색을 쓸 수 없음', '공식 원문으로 확인된 대법원 판례 인용이 없음')가 매니페스트에 남는다.
+ - 오프라인에서는 법령 어댑터가 READY가 아니어서 역조회가 돌지 않는다(단계 건너뜀) → 고정·은퇴 세트의 탐지 diff 0이 기대값이다.
+ - 미검증:
+   · 공식 DB 본문 검색이 인용 사건번호로 변경 판결을 상위 20건 안에 내는지.
+   · 실제 판결 전문의 문장 꼴이 얼마나 다양한지.
+   · 온라인 단계 소요 시간(상한: 판례 8건 × 검색 1회 + 전문 3회).
+   · 확인 방법: 배포 뒤 평가 측이 온라인으로 측정한다. 알려진 판례 변경 사례 몇 건을 서면에 넣는다(평가 측 탐침이며 문장은 공개하지 않는다).
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나. 제품 3파일 + 새 시험 1파일. 보호 경로 변경 없음. verifier.py는 고치지 않는다.
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공.
+   · 고정·은퇴 세트 변화 0, 확인 오탐 0.
+   · 오프라인 탐지 diff 0.
+   · 사본과 diff 0.
+ - 법률 엔진 변경이라 평가 측이 수용 판정 때 verify_all 전체 모드를 돈다.
+```
