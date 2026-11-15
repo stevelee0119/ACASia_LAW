@@ -851,7 +851,7 @@ _VERDICT_FORMAT = (
     "  CONTRADICTED(제공된 공식 원문이 문서의 주장과 반대됨) / UNVERIFIED(판단할 근거가 부족함)\n"
     "- confidence: 0부터 1 사이의 숫자\n"
     "- rationale: 판단 이유(문자열)\n"
-    "- evidence_quotes: 제공된 공식 원문(발췌면 한 구간) 안의 문장을 글자 그대로 옮긴 문자열 배열\n"
+    "- evidence_quotes: 제공된 공식 원문 한 구간 안의 실제 판결 문장을 글자 그대로 옮긴 문자열 배열(단, '[구간 S0 ...]'·'…(공식 원문 일부 생략)…' 같은 안내 표시는 넣지 말 것)\n"
     "- contradicts: true 또는 false"
 )
 _VERDICT_BREVITY = "[분량] rationale은 400자 이내, evidence_quotes는 최대 3개(각 200자 이내)로 쓰고 JSON 객체 하나만 답하라."

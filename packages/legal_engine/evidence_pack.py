@@ -140,14 +140,162 @@ def _pack(text: str, spans, coverage: str, reasons: List[str]) -> Dict[str, Any]
             "truncation_reasons": reasons, "selected_chars": sum(len(s["text"]) for s in segments)}
 
 
+SEGMENT_TAG_RE = re.compile(r"\[구간\s+S\d+(?:\s*[·|][^\]]*)?\]")
+_GAP_MARKER_TOKENS = ("…(공식 원문 일부 생략)…", "(공식 원문 일부 생략)")
+
+
 def render(segments: Sequence[str]) -> str:
     """모델에 보낼 발췌 본문. 구간 사이에는 원문이 아닌 생략 표시를 넣는다."""
     return GAP_MARKER.join(segments)
 
 
+def segment_tag(
+    segment_id: str,
+    opinion_kinds: Sequence[str],
+    *,
+    start: Optional[int] = None,
+    end: Optional[int] = None,
+) -> str:
+    """구간 ID·의견 종류·원문 위치를 묶는 비인용 표시 태그."""
+    kinds = ", ".join(opinion_kinds) if opinion_kinds else "MAJORITY"
+    if start is not None and end is not None:
+        return f"[구간 {segment_id} · 의견: {kinds} · 원문 {start}~{end}자]"
+    return f"[구간 {segment_id} · 의견: {kinds}]"
+
+
+def render_sections(
+    segments_meta: Sequence[Dict[str, Any]],
+    segment_texts: Optional[Sequence[str]] = None,
+) -> str:
+    """각 구간 앞에 ID·의견 종류·원문 위치 표시 태그를 붙여 생략 구간과 명시적으로 연결한다."""
+    parts = []
+    for idx, meta in enumerate(segments_meta):
+        body = segment_texts[idx] if segment_texts is not None else str(meta.get("text", ""))
+        tag = segment_tag(
+            str(meta.get("segment_id") or f"S{idx}"),
+            meta.get("opinion_kinds") or ["MAJORITY"],
+            start=meta.get("original_start"),
+            end=meta.get("original_end"),
+        )
+        parts.append(f"{tag}\n{body}")
+    return GAP_MARKER.join(parts)
+
+
+def is_display_tag(quote: Any) -> bool:
+    """구간 경계·생략 표시용 태그가 원문 인용으로 섞였는지 판정한다."""
+    if not isinstance(quote, str):
+        return False
+    return bool(SEGMENT_TAG_RE.search(quote) or any(tok in quote for tok in _GAP_MARKER_TOKENS))
+
+
 def quote_in_one_segment(quote: str, segments: Sequence[str]) -> bool:
-    """근거 인용이 보낸 구간 하나 안에 그대로 있는지. 구간을 이어 붙인 인용·생략 표시가 든 인용은 받지 않는다."""
-    return isinstance(quote, str) and bool(quote.strip()) and any(quote in seg for seg in segments)
+    """근거 인용이 보낸 구간 하나 안에 그대로 있는지. 구간을 이어 붙인 인용·생략 표시·표시용 태그는 받지 않는다."""
+    if not isinstance(quote, str) or not quote.strip():
+        return False
+    if is_display_tag(quote):
+        return False
+    return any(quote in seg for seg in segments)
+
+
+def validate_quotes_by_stage(
+    stages: Sequence[Dict[str, Any]],
+    segments: Sequence[str],
+    *,
+    opinion_text: str = "",
+    segments_meta: Sequence[Dict[str, Any]] = (),
+) -> Dict[str, Any]:
+    """모델 단계별·인용별 근거 일치 검증을 분리해 기록한다. 전체 채택 기준(all)은 완화하지 않는다."""
+    from packages.legal_engine.opinion_attribution import quote_opinion
+
+    stage_checks: List[Dict[str, Any]] = []
+    validated_quotes: List[Dict[str, Any]] = []
+    rejected_quotes: List[Dict[str, Any]] = []
+    seen_valid: set = set()
+    all_stages_grounded = True
+    has_model_verdict = False
+    minority_only = False
+
+    for stage in stages:
+        if not (stage.get("used") and isinstance(stage.get("verdict"), dict)):
+            continue
+        has_model_verdict = True
+        verdict = stage["verdict"]
+        stage_name = str(stage.get("name") or f"stage{stage.get('stage', '')}")
+        raw_quotes = verdict.get("evidence_quotes")
+        quote_list = raw_quotes if isinstance(raw_quotes, list) else []
+        checks: List[Dict[str, Any]] = []
+        if not quote_list:
+            all_stages_grounded = False
+            rejected_quotes.append({"stage": stage_name, "quote": "", "reason": "NO_QUOTES_PROVIDED"})
+        for raw_q in quote_list:
+            if not isinstance(raw_q, str) or not raw_q.strip():
+                all_stages_grounded = False
+                entry = {"quote": str(raw_q or ""), "valid": False, "reason": "EMPTY_QUOTE"}
+                checks.append(entry)
+                rejected_quotes.append({"stage": stage_name, **entry})
+                continue
+            if is_display_tag(raw_q):
+                all_stages_grounded = False
+                entry = {"quote": raw_q[:160], "valid": False, "reason": "DISPLAY_TAG_FORBIDDEN"}
+                checks.append(entry)
+                rejected_quotes.append({"stage": stage_name, **entry})
+                continue
+            matched_idx = next((idx for idx, seg in enumerate(segments) if raw_q in seg), None)
+            if matched_idx is None:
+                all_stages_grounded = False
+                in_full = bool(opinion_text and _find_quote(opinion_text, raw_q))
+                reason = "UNSENT_FULL_TEXT_QUOTE" if in_full else "NOT_FOUND_IN_EXCERPT"
+                entry = {"quote": raw_q[:160], "valid": False, "reason": reason}
+                checks.append(entry)
+                rejected_quotes.append({"stage": stage_name, **entry})
+                continue
+            seg_id = (
+                str(segments_meta[matched_idx].get("segment_id"))
+                if matched_idx < len(segments_meta) else f"S{matched_idx}"
+            )
+            op_kind = quote_opinion(raw_q, opinion_text) if opinion_text else None
+            entry = {
+                "quote": raw_q,
+                "valid": True,
+                "reason": "MATCHED_SEGMENT",
+                "segment_id": seg_id,
+                "opinion_kind": op_kind or "MAJORITY",
+            }
+            checks.append(entry)
+            if raw_q not in seen_valid:
+                seen_valid.add(raw_q)
+                validated_quotes.append({k: entry[k] for k in ("quote", "segment_id", "opinion_kind")})
+
+        stage_all_valid = bool(checks) and all(c["valid"] for c in checks)
+        stage_minority_only = False
+        if (
+            stage_all_valid
+            and str(verdict.get("status", "")).upper() in {"VERIFIED", "SUPPORTED"}
+            and all(
+                (quote_opinion(c["quote"], opinion_text) in {"DISSENT", "CONCURRING"})
+                for c in checks
+            )
+        ):
+            stage_minority_only = True
+            minority_only = True
+            all_stages_grounded = False
+        stage_checks.append({
+            "stage": stage_name,
+            "status": str(verdict.get("status", "")),
+            "empty_quotes": not bool(quote_list),
+            "all_valid": stage_all_valid,
+            "minority_opinion_only": stage_minority_only,
+            "checks": checks,
+        })
+
+    grounded = has_model_verdict and all_stages_grounded and not minority_only
+    return {
+        "grounded": grounded,
+        "minority_opinion_only": minority_only,
+        "validated_quotes": validated_quotes,
+        "rejected_quotes": rejected_quotes,
+        "stage_checks": stage_checks,
+    }
 
 
 def project_masked(full_text: str, mask_result, segments: Sequence[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]]]:
