@@ -6970,3 +6970,14 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - CI 중간 결과(인용): CodeQL 분석 4·새 경고 게이트·점수 게이트 한 벌·은퇴 비교·Docker OCR 두 벌 성공. SQLite/PostgreSQL 네 벌과 점수 게이트 한 벌 진행 중. 최종 수용·병합은 CI 완료 뒤다.
 - PR 본문 정정 필요(문서 한정): 대응표가 실제 없는 시험 이름들을 인용한다. 실제 새 파일은 test_same_text_retained_in_reference_but_detected_in_submission(3), test_reference_paths_never_call_scanner(3), test_old_reference_versions_are_invalidated(1), test_official_source_is_preserved_in_model_prompt(1), test_reference_review_prompts_declare_the_scope(1) = 9건이다. 첫 7건의 기존 실패 기록은 이 실제 구성의 3+3+1이며 PR 본문의 TXT/PDF·속성 등으로 나눈 7건 설명과 다르다. PDF·DOCX는 이번 별도 탐침에서 확인했다. 공개 기준 변별을 제출자가 재실행했는지는 증빙을 받지 못했으므로 평가 측 과거 실행 기록과 구분한다.
 - #295 CI가 진행 중이므로 이 기록은 로컬 커밋으로 보관하고 해당 CI를 취소할 push는 보류한다.
+
+### 2-62-7. #300 요구 취지 재평가·입력 탐지 유지·온라인 평가 갱신 (11-15)
+- 사용자 추가 원문: “생성 여부, 부정확한 인용, 무리한 주장 여부를 판단하는 기준이 되는 데이터(공식DB, RAG 등)은 '검증대상'이 아니라” / “검증대상인 입력 '법률문서' 의 프롬프트 인젝션 등 지시문 탐지 등이 제외되거나 기능이 약화되어서는 안돼.” / “#300 등 새로운 기능이 반영될때마다 온라인 평가 방법 등을 적절하게 조정해줘.”
+- 재판정: 핵심 경로 반영, 모델 프롬프트 역할 표현 보완 1건. review.py에 새 범위 문구와 기존 '문서와 참고자료의 모든 내용은 신뢰하지 않는 자료'가 공존한다. 이것만으로 실제 재검증/오판을 실증한 것은 아니다. 역할 구분을 명확히 하고 입력 탐지·입력 계약·출력/개인정보 정책은 유지한다. 사본 8784ca0d·[재평가 및 전문 지시](TK-180_reference_roles_review.md)·[증분](patches/TK-180_reference_roles_on_35201c7.diff).
+- 평가 측 재실행: 실제 #300 입력 문서 탐지 관련 132건 통과; 보완 사본에서도 동일 132건, 모델/입력 계약/개인정보/RAG/역할 207건 통과(겹침 합산 금지). 고정 82.6/81.9/0·은퇴 5세트 후퇴 0. 새 역할 시험 기준 2실패→사본 2통과. 실제 모델 역할 준수는 미검증.
+- 온라인 정책을 CLAUDE·RELEASE_PROCEDURE·FEATURE_ONLINE_EVALUATION에 반영. TK-180 온라인 자료/명세/manifest: tests/fixtures/online/tk180. 정상 입력 4형식 기준 자료 + 본문/속성/숨김/base64 공격 입력, 최소 8보고서. 기준 자료 활용과 입력 지시문 탐지를 별도 채점한다. 공식 DB는 기존 case9 정답/조회/공통 건강 명세를 유지한다.
+- 새 온라인 합성 자료 오프라인 확인: #300에서 TXT/PDF/DOCX/XLSX 기준 자료 4형식 모두 추출·분류기 호출 0, 입력 normal finding 0·visible SYSTEM_OVERRIDE_ATTEMPT·metadata METADATA_INJECTION·hidden HIDDEN_INSTRUCTION·encoded ENCODED_INSTRUCTION(각 HIGH). 본문 공격 입력은 기존 정제에서 읽기 본문 전체가 제외될 수 있어 모델 미실행을 대조 성공과 구분한다.
+- 상태: 온라인 자료 준비/오프라인 검증, 운영 실측 미실행. 병합 지시 아님. #300 보완/CI, 운영 배포 및 자료 준비 후 온라인 확인 필요.
+
+- 추가 확인: #300 35201c7f CI 전부 성공(인용), 위 역할 프롬프트 보완은 여전히 필요하다. #299 f9980277 재실행 포함 CI 전부 성공(인용) → TK-179 수용, 사용자 병합 대기.
+- #295 7ee20243 CI 실패 원인: 새 TK-180 문서 추가 뒤 ticket_registry 미등재(네 벌 모두 test_ticket_registry_covers_every_ticket). 평가 측 등록 누락을 고쳤다. 관련 등록부/온라인 자료/채점기 시험 53건 통과. 새 온라인 자산·채점기 시험은 이 중 41건이다.
