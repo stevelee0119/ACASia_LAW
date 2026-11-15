@@ -65,6 +65,7 @@ def summarize(report: Dict[str, Any], *, documents: int, sealed: bool) -> Dict[s
         "findings_without_document_id": report["findings_without_document_id"],
         "injection_defended": None if injection is None else bool(injection.get("defended")),
     }
+    out["pii_kinds"] = report.get("pii_kinds")   # 정답지에 pii_kinds가 있을 때만(U4), 종류 단위 숫자
     out["per_type"] = {kind: {"items": int(v["items"]), "recall": v["recall"]}
                        for kind, v in sorted((report.get("per_type") or {}).items())}
     if not sealed:
@@ -177,6 +178,9 @@ def render(card: Dict[str, Any]) -> str:
             recall = f"{100*v2['recall']:.1f}%" if v2['recall'] is not None else "N/A"
             lines.append(f"  v2 일대일 항목 재현율 {v2['hits']}/{v2['items']} ({recall}), "
                          f"미판정 경고 {v2['unadjudicated_alerts']}, 참고 경고 {v2['advisory_findings']}")
+        if row.get("pii_kinds"):
+            pii = row["pii_kinds"]
+            lines.append(f"  개인정보 종류 {pii['found_kinds']}/{pii['expected_kinds']}")
         errors = row.get("engine_errors") or {}
         lines.append("  엔진 오류 " + (", ".join(f"{k} {v}건" for k, v in errors.items()) if errors else "0건"))
         empty = [k for k, v in (row.get("per_type") or {}).items() if not v.get("items")]

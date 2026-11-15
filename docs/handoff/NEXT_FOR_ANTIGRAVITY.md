@@ -6806,3 +6806,144 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - 필요: 사용자가 Render worker에서 python -m scripts.check_drive_references 결과(JSON, 파일 내용 제외)를 준다.
 - 평가 측이 격리 사유가 실제 위험(지시문·숨김 시트 등)인지 오판인지 판정하고, 오판이면 사본 사전 검증 뒤 지시한다.
 
+## 2-62. 사용자 결정·RAG·공식 DB·API 원인 분석 (11-14~15)
+- 사용자 결정(11-14): "TK177 0.21.0에 포함. U-1~5 모두 반영". 지시(11-15): "RAG 검색이나 공식DB, API 연결 등 원인을 면밀하게 분석하고 오류가 있는 경우 해소방안을 Antigravity에 지시".
+  · 지시(11-15): "요청한 내용들을 모두 실제로 검증해서 정상 작동여부를 엄격하게 판정하고, 실제 실행해보지 않거나 확인되지 않는 것을 정상 기능하는 것으로 허위보고하지 않도록". 아래는 실측과 미검증을 나눠 적는다.
+- TK-177(#297, head 7b82b77): 사본과 바이트 동일, CI 18건 성공(인용) → 수용, 병합 가능.
+- U1~U5 반영(평가 측 도구·명세·절차, RELEASE_PROCEDURE 4.4, SEALED_SET_SPEC.md):
+  · U1 score_sealed_online.py: 개발 세트 사본으로 실행해 오프라인과 같은 82.6을 재현.
+  · U3 RAG 대조군: 합성 자료 2건 + 명세, 운영 보고서로 채점 동작 확인(대조군 미업로드라 S1·S3 실패가 정상).
+  · U4 채점기 결함 유형 8종·개인정보 종류 채점 추가.
+  · U5 ai_repeat_summary.py: 운영 case9 3건으로 실행, 커밋 불일치 표시 확인.
+  · U2: live-source-check(main, 읽기 전용) 실제 실행 1회.
+- 공식 DB(실측, live-source-check run 43655080920·9/24 run 35937101077 로그):
+  · 법령검색·판례검색·사건번호 2011모1839·2017두38560·KCI·OpenAlex·Semantic Scholar·Crossref 정상(READY, 정규화 성공).
+  · DB-1 2015모2524 일치 0: 9/24에도 실패한 지속 현상.
+    - 원인: 이 번호는 '2015도6980, 2015모2524' 병합 판결의 병합 번호이고, 공식 DB 기록의 사건번호에는 대표 번호 2015도6980만 있다(9/24 돌아온 번호 2022도15950·2015도6980). 웹 공개 판례 정보(lbox·law.go.kr 인용 표기)로 실재 확인.
+    - 병합 번호 단독 인용은 '공식 DB 미확인'(부존재 아님)으로 남는다. 안전 동작이며 오판은 아니다.
+    - 대표 번호로 이어 찾는 보완은 공식 DB 응답 필드에 병합 번호가 있는지 확인해야 정할 수 있다(미검증, 키·네트워크 필요).
+  · DB-2 2014다236311 TIMEOUT: 9/24 정상 → 11-14 재조회 후에도 시간 초과. 간헐 지연. 운영 실행 7건의 공식 DB 조회 재시도 실패 0. 코드 결함 근거 없음(원인 미확정), 실행 상태 명세 H-LOOKUP으로 감시한다.
+- 모델 API(실측, 운영 7건): 실패는 0.19.0 탐침 B anthropic 3/50건뿐 → TK-179.
+- RAG(실측, 사용자 Render 진단 + 평가 측 재현) → TK-178.
+  · 남은 판단(사용자 결정 필요, 보안 정책): 보이는 본문의 일반 법률 서술('검토 절차를 생략하도록' 등)이 지시문으로 걸려 쪽 제외 5건.
+    참고자료 쪽 제외 기준을 '기계 호명이 있을 때만'으로 바꿀지는 보안 정책 변경이라 이번 지시에 넣지 않았다.
+
+### 2-62-1. TK-178 지시(전달판)
+```
+[TK-178 Drive 참고자료(RAG) 보안 격리 오판 — 판례표 색인 0행·정상 PDF 통째 격리·격리 근거 누락]  기준: Steve_ACASiaLAW 0653872  평가 측 사본: TK-178 copy(3d504f2)
+보완 패치: docs/handoff/patches/TK-178_on_0653872.diff (git apply)
+ - 0653872 → 사본 차이 전부: 제품 4파일(packages/adversarial_engine/patterns.py·scanner.py, packages/rag_engine/case_table.py·extract.py) + 새 시험 1파일.
+ - TK-177·TK-179 패치와 함께 적용해도 충돌 없음(평가 측 확인).
+
+0. 근거(실측)
+ - 운영 실행 7건(0.18.0·0.19.0): Drive 참고자료 매번 PARTIAL. 0.19.0 case9 기준 35개 중 23개 색인, 격리 5.
+ - 사용자 Render worker `python -m scripts.check_drive_references` 결과(11-14):
+   · 2026_표준판례_2차_배포용.xlsx: 발견 3,556행, 색인 0, 격리 749, 대기 2,807. 격리 근거 3건이 모두 판례 DB 주소 하이퍼링크(https://bigcase.ai/...)의 HIDDEN_INSTRUCTION. 시트 '민법' 2~33행 이하 연속 SECURITY_QUARANTINE.
+   · 2025년도 언론관련판결 분석보고서.pdf·인사혁신처 징계업무편람.pdf: METADATA_INJECTION(ROLE_OVERRIDE)으로 파일 통째 격리, 발췌 빈칸.
+
+1. 원인(줄 번호는 0653872 기준, 평가 측 재현)
+ C1. packages/adversarial_engine/patterns.py 322행 AI_ADDRESSING_RE와 20행 MACHINE_ADDRESSEE가 영문 'AI'·'LLM'·'gpt'·'assistant'·'reviewer'를 낱말 경계 없이(IGNORECASE) 찾는다.
+     - 'bigcase.ai'·'Container'·'Maintenance'·'story/ai-in'·'email@x.ai'가 'AI 호명'으로 잡힌다(재현).
+     - classifier.py 375행 addresses_ai가 참이 되면 숨은 채널(401행)에서 ROLE_OVERRIDE로 PROMPT_INJECTION_LIKELY가 된다.
+     - 재현: _row_scan('민법', 2, 'https://bigcase.ai/notices/60', visible=False, hidden_reason='HYPERLINK') → HIDDEN_INSTRUCTION HIGH.
+       같은 꼴의 'https://example.com/notices/60' → 없음.
+ C2. packages/rag_engine/case_table.py 367~370행이 하이퍼링크 주소를 숨은 글(visible=False, HYPERLINK)로 검사한다.
+     C1 때문에 판례 DB 링크가 붙은 모든 행이 격리된다.
+ C3. 같은 파일 403~412행: 격리 행이 한도를 넘으면 표 전체를 격리하고 continuation을 None으로 둔다.
+     - 이 결과가 같은 판(EXTRACTOR_VERSION)으로 저장되어 재사용(reused)되므로, 남은 2,807행은 다시 읽히지 않는다.
+     - library.py 355~363행: 같은 판의 결과는 continuation이 없으면 다시 열지 않는다.
+ C4. packages/adversarial_engine/scanner.py 318~319행 _scan_metadata의 features에 observed_text가 없다.
+     extract.py 74~81행 scan_evidence가 발췌를 observed_text로만 만들어, 문서 속성 격리의 근거(필드·글자)가 빈칸이다.
+     - 두 PDF 격리도 C1(속성 값 속 'ai' 글자)일 가능성이 크다. 예: 'Container Builder'는 PROMPT_INJECTION_LIKELY로 재현.
+     - 다만 실제 속성 값은 확인하지 못했다(미검증).
+
+2. 고칠 것(보완 패치와 같음)
+ F1. patterns.py: 영문 호명어 앞뒤 경계를 둔다.
+     - _EN_START=(?<![A-Za-z0-9._\-/]), _EN_END=(?![A-Za-z]).
+     - AI_ADDRESSING_RE의 AI·LLM·chatgpt·gpt·claude·gemini·copilot·assistant·reviewer와 MACHINE_ADDRESSEE의 AI·LLM·reviewer·assistant에 적용한다.
+     - 'AI검증 시스템'·'GPT-4'·'GPT4o'·'(AI)'는 계속 호명으로 잡힌다(시험).
+ F2. case_table.py: 새 함수 _scan_hyperlink.
+     - unquote한 주소가 공백 없는 http·https·mailto 주소면 보이는 글로 검사한다.
+     - 풀었을 때 공백이 생기거나 주소 꼴이 아니면 종전처럼 숨은 글(HYPERLINK)로 검사한다. 인코딩해 숨긴 지시문은 계속 격리된다.
+     - 367~370행이 이 함수를 부른다.
+ F3. CASE_TABLE_VERSION을 "case-table-v3-tk178"로, extract.py EXTRACTOR_VERSION을 "drive-text-v6-tk178"로 올린다.
+     예전 오격리 결과를 다시 읽기 위해서다(첫 동기화 때 Drive 파일을 한 번 다시 받는다).
+ F4. scanner.py _scan_metadata features에 "observed_text": text[:2000]을 더한다.
+     extract.py scan_evidence는 metadata_key(또는 field_name)가 있으면 "field"로 남긴다.
+ - 바꾸지 않는 것: 보이는 본문 지시문 규칙, 격리 한도, 숨은 층·인코딩 검사.
+
+3. 확인 시험(새 tests/test_tk178_reference_quarantine.py 24건, 값은 합성)
+ - 'ai' 글자가 섞인 주소·낱말 6꼴은 호명이 아니다. 실제 호명 8꼴은 계속 잡힌다.
+ - 일반 PDF 속성 값 3꼴은 무해하다. 속성 속 지시문은 계속 격리된다.
+ - 판례 DB 링크 행 5개는 모두 색인된다. 인코딩한 지시문 링크 행은 1행만 격리된다.
+ - 속성 격리 근거에 필드 이름과 발췌가 남는다.
+ - 고치기 전 코드에서 오판 시험 11건 실패, 호명·지시문 보호 시험은 고치기 전후 모두 통과(평가 측 재실행).
+ - 기존 시험 단언 변경: 없음.
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본, SQLite, LV_ALLOW_NETWORK=0)
+ - precheck_pr --quick(기준 0653872): 종료 0.
+   · 인젝션·적대 검사·판례표·참고자료 관련 69파일 2,223건 실패 0.
+   · 고정 82.6 / 81.9 / 오탐 0, 인젝션 방어 유지.
+   · 평가 세트 문구 대조 통과.
+ - 은퇴 5세트(기준 0653872) 구 산식·확인 오탐·v2·미판정 모두 같음, 후퇴 없음.
+ - 개발 세트 finding 비교 123 → 123(새로 생긴 것·없어진 것 0).
+ - 미검증(운영 환경 필요):
+   · 운영 판례표 3,556행이 실제로 색인되는지와 소요 시간(행당 25초 예산으로 여러 동기화에 나뉨).
+   · 두 PDF의 실제 속성 값과 격리 해소 여부.
+   · 배포 뒤 check_drive_references와 온라인 실행 상태 명세 H-REF로 확인한다.
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나. 제품 4파일 + 새 시험 1파일, 보호 경로 변경 없음.
+ - 수용 기준:
+   · 3절 시험 통과, 필수 CI 성공.
+   · 고정·은퇴 세트 변화 0, 사본과 diff 0.
+   · 배포 뒤 사용자 check_drive_references 재실행에서 판례표 색인 행 > 0·격리 근거에 필드 이름(운영 확인).
+```
+
+### 2-62-2. TK-179 지시(전달판)
+```
+[TK-179 모델 응답 JSON 추출 실패·잘림과 형식 오류 원인 미기록]  기준: Steve_ACASiaLAW 0653872  평가 측 사본: TK-179 copy(e290523)
+보완 패치: docs/handoff/patches/TK-179_on_0653872.diff (git apply)
+ - 0653872 → 사본 차이 전부: 제품 2파일(packages/llm_router/providers.py·router.py) + 새 시험 1파일.
+ - TK-177·TK-178과 충돌 없음.
+
+0. 근거(실측)
+ - 0.19.0 운영 탐침 B(run 기록 model_execution_summary): anthropic 50건 중 3건 실패.
+   · 'INVALID_RESPONSE_SCHEMA: JSON이 아님' 2건.
+   · 'OUTPUT_TRUNCATED: 응답이 출력 한도(2500 토큰)에서 잘림' 1건.
+ - 실패한 의견은 판정 근거에서 빠진다. 다른 운영 실행 6건은 실패 0.
+
+1. 원인(줄 번호는 0653872 기준)
+ C1. packages/llm_router/providers.py 103~114행 _extract_json이 첫 '{'부터 마지막 '}'까지를 한 번에 json.loads 한다.
+     - 설명 문장에 중괄호가 있거나({예시}) 객체가 둘 이상이면 올바른 객체가 있어도 None이 된다.
+       재현: '설명 {예시} 이후 {"status":"VERIFIED"}' → None. '{"a":1}\n{"status":"VERIFIED"}' → None.
+     - 운영 2건이 이 때문인지는 응답 원문이 저장되지 않아 확정하지 못했다(미검증).
+ C2. router.py 603행 형식 오류 기록이 'JSON이 아님' 한 마디라 원인(잘림·설명 섞임·빈 응답)을 나중에 가를 수 없다.
+ C3. router.py 827행 _VERDICT_MAX_TOKENS=2500. 판례 의미·적용 검토만 한도가 작아(다른 검토 4096) 긴 한국어 판단에서 잘렸다(운영 1건).
+
+2. 고칠 것(보완 패치와 같음)
+ F1. _extract_json: 코드 울타리(```json, 대소문자 무관)를 벗긴다.
+     '{'가 나오는 자리마다 json.JSONDecoder().raw_decode로 그 자리에서 시작하는 값을 읽어, 처음 읽히는 dict를 돌려준다. 없으면 None.
+ F2. providers.py에 response_shape(text)를 둔다: 길이·코드 울타리 유무·중괄호 수·끝 글자 종류만 적는다(사건 내용 없음).
+     router.py 603행 'JSON이 아님' 뒤에 괄호로 붙인다.
+     - 화면 문구('응답 형식 오류(…)')와 상태 코드(INVALID_RESPONSE_SCHEMA, ':' 앞부분)는 그대로다.
+ F3. _VERDICT_MAX_TOKENS = 4096.
+ - 바꾸지 않는 것: 스키마 검증, 잘림 판정(OUTPUT_TRUNCATED), 재시도 규칙.
+
+3. 확인 시험(새 tests/test_tk179_model_json_extraction.py 14건, 값은 합성)
+ - 추출 8꼴(평문·울타리·대문자 울타리·앞뒤 설명·설명 속 중괄호·객체 둘·형식 안내 뒤 객체).
+ - 객체 없음 4꼴(잘림·빈 응답·설명만·배열).
+ - 모양 기록에 내용이 없음, 판정 한도 ≥ 4096.
+ - 기존 _extract_json 동작으로 '설명 속 중괄호'·'객체 둘'이 None이 됨을 평가 측이 직접 확인했다(고치기 전 재현).
+
+4. 평가 측 사전 검증(평가 측 재실행, 사본, SQLite, LV_ALLOW_NETWORK=0)
+ - 모델 라우터·AI 판별·주장 타당성 관련 96파일 5,937건 실패 0(건너뜀 24건은 기존).
+ - precheck_pr --quick(기준 0653872): 종료 0, 고정 82.6 / 81.9 / 오탐 0, 평가 세트 문구 대조 통과.
+ - 미검증(운영 환경 필요): 실제 모델 응답에서 형식 오류·잘림 비율이 줄었는지. 오프라인에서는 모델을 부르지 않는다.
+   배포 뒤 온라인 실행 상태 명세 H-MODEL과 실패 기록의 모양 정보로 확인한다.
+
+5. 제출물·수용 기준
+ - Steve_ACASiaLAW 기준 새 PR 하나. 제품 2파일 + 새 시험 1파일, 보호 경로 변경 없음.
+ - 수용 기준: 3절 시험 통과, 필수 CI 성공, 고정·은퇴 세트 변화 0, 사본과 diff 0.
+```
+

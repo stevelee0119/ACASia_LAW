@@ -1,0 +1,13 @@
+{
+  "name": "case9_state_compensation_online_rag_controls",
+  "rule_version": "1",
+  "rule_history": [{"version": "1", "date": "2026-11-14", "note": "U3 RAG 대조군(사용자 승인 11-14 'U-1~5 모두 반영'). 사용자가 tests/fixtures/rag_controls의 합성 참고자료 2건을 운영 Drive 참고자료 폴더에 올린 뒤부터 잰다"}],
+  "description": "Drive 대조(RAG)가 의도대로 자료를 고르고 관계를 판정하는지 보는 대조군. 지지 자료(야간사격훈련 안전관리 지침, 합성)는 case9의 '통제관이 포강 검사·불발탄 확인을 유기했다'는 주장과 같은 방향의 의무를 적는다. 무관 자료(학교급식 위생점검 지침, 합성)는 case9와 관련이 없다. case9 정답 명세(23항목)와 별도 명세라 그 점수와 섞지 않는다. 대조군 자료를 Drive에 올리기 전 보고서는 이 명세로 채점하지 않는다.",
+  "checks": [
+    {"id": "RAGC-S1", "kind": "rag_source_selected", "title": "rag_control_support", "expect": true, "label": "RAG 대조군: 관련 지지 자료가 대조 자료로 뽑힌다"},
+    {"id": "RAGC-S2", "kind": "rag_source_relationship", "title": "rag_control_support", "any_of": ["CONTRADICTS"], "expect": false, "label": "RAG 대조군: 지지 자료에서 '모순' 의견이 나오지 않는다(거짓 모순 없음)"},
+    {"id": "RAGC-S3", "kind": "rag_source_relationship", "title": "rag_control_support", "any_of": ["SUPPORTS"], "expect": true, "label": "RAG 대조군: 지지 자료에서 '지지' 의견이 1건 이상 나온다(모델 판단)"},
+    {"id": "RAGC-N1", "kind": "rag_source_selected", "title": "rag_control_unrelated", "expect": false, "label": "RAG 대조군: 무관 자료가 대조 자료로 뽑히지 않는다(관련성 관문)"},
+    {"id": "RAGC-N2", "kind": "rag_source_relationship", "title": "rag_control_unrelated", "any_of": ["SUPPORTS", "CONTRADICTS"], "expect": false, "label": "RAG 대조군: 무관 자료에서 '지지·모순' 의견이 나오지 않는다"}
+  ]
+}

@@ -28,6 +28,10 @@ AI 작성 판정·공식 DB 대조·Drive 대조·모델 경로를 이 도구가
                   · models_ok       : 모델 호출 실패 비율이 max_failed_ratio 이하이고 호출이 min_calls번 이상이다
                   · reference_sync  : Drive 참고자료 동기화가 끝났다(reference_sync 단계 오류 없음, 참고자료 상태 READY)
                   · commit_present  : 보고서에 배포 커밋(implementation.git_commit)이 있다
+- rag_source_selected     : Drive 대조에 쓰인 참고자료(engine_data.rag.sources) 중 제목에 title이 든 것이 있다.
+                            "expect": false면 없어야 통과(무관 자료가 뽑히지 않는지 보는 음성 대조군, U3)
+- rag_source_relationship : 제목에 title이 든 참고자료에서 나온 의견 중 relationship이 any_of에 드는 것이 있다.
+                            "expect": false면 없어야 통과(지지 자료에서 '모순', 무관 자료에서 '지지·모순'이 나오지 않는지, U3)
 """
 from __future__ import annotations
 
@@ -43,7 +47,7 @@ from typing import Any, Dict, List, Optional
 ROOT = Path(__file__).resolve().parents[1]
 LOG = ROOT / "docs" / "scorecards" / "first_touch_log.jsonl"
 KINDS = {"finding", "no_finding", "pii_kind", "ai_verdict", "ai_models", "rag_relationship", "no_rag_relationship",
-         "run_health"}
+         "run_health", "rag_source_selected", "rag_source_relationship"}
 HEALTH_CHECKS = {"engine_errors", "law_db_ready", "source_lookups", "models_ok", "reference_sync", "commit_present"}
 
 
@@ -77,6 +81,7 @@ def observe_report(report: Dict[str, Any]) -> Dict[str, Any]:
     verdicts: List[str] = []
     models: List[Dict[str, Any]] = []
     rag: List[Dict[str, Any]] = []
+    rag_sources: List[str] = []
     claim_texts: Dict[str, str] = {}
     for doc in report.get("documents", []):
         for claim in doc.get("claims") or []:
@@ -89,14 +94,18 @@ def observe_report(report: Dict[str, Any]) -> Dict[str, Any]:
             pii_kinds[kind] = pii_kinds.get(kind, 0) + int(count)
         detector = doc.get("ai_detector_result") or {}
         models.extend(detector.get("model_opinions") or [])
-        rag.extend(((doc.get("engine_data") or {}).get("rag") or {}).get("observations") or [])
+        rag_data = (doc.get("engine_data") or {}).get("rag") or {}
+        titles = {str(s.get("source_id")): str(s.get("title") or "") for s in rag_data.get("sources") or []}
+        rag_sources.extend(titles.values())
+        for observation in rag_data.get("observations") or []:
+            rag.append({**observation, "_source_title": titles.get(str(observation.get("source_id")), "")})
     for f in report.get("project_findings") or []:
         findings.append({"type": str(f.get("type")), "severity": str(f.get("severity")),
                          "status": str(f.get("status")), "text": json.dumps(f, ensure_ascii=False, default=str)})
     for entry in ((report.get("scores") or {}).get("axes") or {}).get("ai_authorship", {}).get("documents", []):
         verdicts.append(str(entry.get("verdict")))
     manifest = report.get("run_manifest") or {}
-    return {"findings": findings, "pii_kinds": pii_kinds, "ai_verdicts": verdicts, "ai_models": models, "rag": rag, "claim_texts": claim_texts,
+    return {"rag_sources": rag_sources, "findings": findings, "pii_kinds": pii_kinds, "ai_verdicts": verdicts, "ai_models": models, "rag": rag, "claim_texts": claim_texts,
             "commit": ((manifest.get("implementation") or {}).get("git_commit") or "")[:12],
             "versions": manifest.get("versions") or {},
             "network": bool(((manifest.get("environment") or {}).get("network"))),
@@ -121,6 +130,13 @@ def evaluate(spec: Dict[str, Any], obs: Dict[str, Any]) -> List[Dict[str, Any]]:
                   if float(m.get("score") or 0) >= float(check.get("min_score", 0))
                   and str(m.get("verdict", "")).startswith("AI_")]
             passed = len(ai) >= int(check.get("at_least", 1))
+        elif kind == "rag_source_selected":
+            hit = any(check["title"] in title for title in obs.get("rag_sources") or [])
+            passed = hit if check.get("expect", True) else not hit
+        elif kind == "rag_source_relationship":
+            hit = any(check["title"] in o.get("_source_title", "") and o.get("relationship") in check["any_of"]
+                      for o in obs["rag"])
+            passed = hit if check.get("expect", True) else not hit
         elif kind == "run_health":
             passed, detail = run_health(check, obs.get("manifest") or {})
             rows.append({"id": check["id"], "label": check.get("label", ""), "passed": bool(passed), "detail": detail})
