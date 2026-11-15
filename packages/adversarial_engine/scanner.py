@@ -316,7 +316,8 @@ class AdversarialScanner:
             if classification.label in (AdversarialClass.BENIGN_CONTENT, AdversarialClass.INSTRUCTION_LIKE):
                 continue
             features = {"deterministic_rule": True, "cross_layer_mismatch": True, **classification.features,
-                        "injection_path": "METADATA", "metadata_key": key, "obfuscation": kinds}
+                        "injection_path": "METADATA", "metadata_key": key, "obfuscation": kinds,
+                        "observed_text": text[:2000]}
             out.append(
                 Finding.create(
                     type=FindingType.METADATA_INJECTION,
