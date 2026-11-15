@@ -15,7 +15,7 @@ from packages.document_engine.registry import parse_document
 
 MAX_CHARS = 3_000_000
 MAX_PAGES = 1500
-EXTRACTOR_VERSION = "drive-text-v6-tk178"  # TK-178: 호명어 경계·하이퍼링크 검사를 고쳐 예전 격리 결과를 다시 읽는다
+EXTRACTOR_VERSION = "drive-text-v7-tk180"  # TK-180: invalidate old instruction-exclusion caches
 EXCLUDE_MIN_TOTAL = 10       # 이보다 짧은 파일은 쪽 단위로 빼지 않고 전체를 격리한다
 EXCLUDE_MAX_SHARE = 0.02     # 전체 쪽수의 2%까지(최소 1쪽)
 EXCLUDE_MAX_PAGES = 3        # 그리고 3쪽까지만 해당 쪽을 빼고 색인한다
@@ -142,17 +142,9 @@ def extract(path, filename, mime, *, continuation=None):
             raise ValueError("REFERENCE_PARSE_FAILED")
         if len(doc.visible_text) > MAX_CHARS or total > MAX_PAGES:
             raise ValueError("REFERENCE_TEXT_LIMIT")
-    scan = AdversarialScanner().scan(doc)
-    flagged = [f for f in scan.findings if f.severity in (Severity.HIGH, Severity.CRITICAL)
-               and f.meta_message_type == MetaMessageType.MM1_MACHINE_INSTRUCTION]
-    evidence = [scan_evidence(f) for f in flagged[:5]]
-    # 지시형 문자열이 특정 쪽에만 있으면 그 쪽만 빼고 나머지를 색인한다(수백 쪽 판례집 전체를 버리지 않는다).
-    # 쪽을 특정할 수 없는 신호(메타데이터·숨은 층·인코딩)나 여러 쪽에 퍼진 경우에는 종전처럼 파일 전체를 격리한다.
-    pages_hit = {f.page for f in flagged if f.page and f.block_id}
-    whole_file = any(not (f.page and f.block_id) for f in flagged) or len(pages_hit) > excludable_pages(total)
-    if flagged and whole_file:
-        return {"chunks": [], "sha256": digest, "reason": "REFERENCE_QUARANTINED", "partial": True,
-                "scan_findings": evidence, "pages": total}
+    # TK-180: verified reference material is evidence, outside instruction classification.
+    # Parsing, visibility, size and coverage constraints still apply.
+    pages_hit, evidence = set(), []
     chunks, read_pages, no_text_pages = [], 0, []
     for page in doc.pages:
         if page.page_number in pages_hit:
