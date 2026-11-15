@@ -2849,13 +2849,15 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
   background-color: #e2e8f0;
   text-decoration: underline;
 }
-.tier3-table {
+.tier3-table,
+.timeline-table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 12px;
   background: #ffffff;
 }
-.tier3-table th {
+.tier3-table th,
+.timeline-table th {
   background: #f8fafc;
   color: #334155;
   font-weight: 600;
@@ -2864,25 +2866,54 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
   font-size: 13px;
   border: 1px solid var(--line);
 }
-.tier3-table td {
+.tier3-table td,
+.timeline-table td {
   padding: 12px;
   border: 1px solid var(--line);
   vertical-align: top;
   font-size: 13px;
   line-height: 1.55;
 }
-#tier3Table {
+#tier3Table,
+#timelineTable {
   table-layout: fixed;
 }
-#tier3Table td {
+#tier3Table td,
+#timelineTable td {
   overflow-wrap: anywhere;
+}
+.timeline-date-text {
+  display: block;
+  color: #0f172a;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.timeline-source-link {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+}
+.timeline-source-link:hover {
+  color: #1e40af;
+}
+.badge.evidence-missing {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
 }
 
 /* TK-127: 표 안 판정 문구는 칸 안에서 줄바꿈한다(옆 칸 겹침 방지). 짧은 등급 표시는 .badge 기본(nowrap) 유지 */
 .review-items-table .validity-verdict, .tier3-table .validity-verdict {
   display: inline-block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; word-break: keep-all; line-height: 1.45;
 }
-.review-items-table td, .tier3-table td { overflow-wrap: anywhere; }
+.review-items-table td, .tier3-table td, .timeline-table td { overflow-wrap: anywhere; }
 /* TK-126: 엘박스/AI 검증 프롬프트 버튼을 표 위에 주 버튼으로 둔다 */
 .review-prompt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #f0fdf9; }
 .review-prompt-bar[hidden] { display: none; }
@@ -2959,14 +2990,14 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
 
 /* TK-171 보완 M1: 좁은 화면(700px 이하)에서는 4열 표를 행 단위 카드로 보인다(원문 8.4 C·D). 칸 이름은 data-label */
 @media (max-width: 700px) {
-  .review-items-table, .tier3-table { min-width: 0 !important; width: 100%; border: 0; }
-  .review-items-table thead, .tier3-table thead { display: none; }
-  .review-items-table tbody, .tier3-table tbody,
-  .review-items-table tr, .tier3-table tr,
-  .review-items-table td, .tier3-table td { display: block; width: 100% !important; box-sizing: border-box; }
-  .review-items-table tr, .tier3-table tr { border: 1px solid var(--color-border, #dfe6ec); border-radius: 12px; margin: 0 0 12px; padding: 4px 0; background: #fff; }
-  .review-items-table td, .tier3-table td { border: 0; padding: 8px 14px; }
-  .review-items-table td + td, .tier3-table td + td { border-top: 1px dashed var(--color-border, #dfe6ec); }
-  .review-items-table td[data-label]::before, .tier3-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--color-text-muted, #64748b); }
-  .table-wrap:has(.review-items-table), .table-wrap:has(.tier3-table) { overflow-x: visible; }
+  .review-items-table, .tier3-table, .timeline-table { min-width: 0 !important; width: 100%; border: 0; }
+  .review-items-table thead, .tier3-table thead, .timeline-table thead { display: none; }
+  .review-items-table tbody, .tier3-table tbody, .timeline-table tbody,
+  .review-items-table tr, .tier3-table tr, .timeline-table tr,
+  .review-items-table td, .tier3-table td, .timeline-table td { display: block; width: 100% !important; box-sizing: border-box; }
+  .review-items-table tr, .tier3-table tr, .timeline-table tr { border: 1px solid var(--color-border, #dfe6ec); border-radius: 12px; margin: 0 0 12px; padding: 4px 0; background: #fff; }
+  .review-items-table td, .tier3-table td, .timeline-table td { border: 0; padding: 8px 14px; }
+  .review-items-table td + td, .tier3-table td + td, .timeline-table td + td { border-top: 1px dashed var(--color-border, #dfe6ec); }
+  .review-items-table td[data-label]::before, .tier3-table td[data-label]::before, .timeline-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--color-text-muted, #64748b); }
+  .table-wrap:has(.review-items-table), .table-wrap:has(.tier3-table), .table-wrap:has(.timeline-table) { overflow-x: visible; }
 }

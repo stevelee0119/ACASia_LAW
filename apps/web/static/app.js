@@ -3372,17 +3372,82 @@ function reasoningBlock(r) {
   return box;
 }
 
+function formatTimelineDateLabel(item) {
+  if (item?.formatted_date) return item.formatted_date;
+  const raw = String(item?.date || item?.event_date || "").trim();
+  const match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!match) return raw || "일시 미확인";
+  const dt = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+  return `${Number(match[1]) % 100}.${Number(match[2])}.${Number(match[3])}.(${weekdays[dt.getDay()]})`;
+}
+
+function timelineSortKey(item) {
+  const raw = String(item?.date || item?.event_date || "").trim();
+  return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : "9999-99-99";
+}
+
+function formatTimelineEvidence(item) {
+  if (item?.evidence_summary) return item.evidence_summary;
+  const refs = Array.isArray(item?.evidence_references) ? item.evidence_references : [];
+  const texts = refs.map(r => String(r?.raw_text || "").trim()).filter(Boolean);
+  return texts.length ? texts.join(", ") : "[근거 미작성]";
+}
+
 function renderTimeline() {
-  const root = $("timeline");
-  if (!root) return;
-  root.replaceChildren();
-  const events = state.run?.timeline || [];
-  if (!events.length) empty(root, "추출된 사건 일지가 없습니다.");
-  for (const e of events) {
-    const row = node("article", null, "row-item");
-    row.append(node("strong", e.date || e.event_date || "날짜 미확인"), node("p", e.description || e.text || JSON.stringify(e)), node("div", `${state.documents.find(d=>d.id===e.document_id)?.filename||""} · 문서 기재 내용 기준`, "row-meta"));
-    root.append(row);
+  const tbody = $("timelineRows");
+  const emptyEl = $("timelineEmpty");
+  const countEl = $("timelineCount");
+  const copyBtn = $("copyTimelineMarkdown");
+  if (!tbody) return;
+  tbody.replaceChildren();
+  const rawEvents = Array.isArray(state.run?.timeline) ? [...state.run.timeline] : [];
+  rawEvents.sort((a, b) => timelineSortKey(a).localeCompare(timelineSortKey(b)));
+  if (countEl) countEl.textContent = rawEvents.length ? `${rawEvents.length}건` : "";
+  if (emptyEl) emptyEl.hidden = rawEvents.length > 0;
+  if (copyBtn) {
+    copyBtn.disabled = !rawEvents.length;
+    copyBtn.onclick = async () => {
+      const md = [
+        "| 일시 | 내용 | 관련근거 |",
+        "| :--- | :--- | :--- |",
+        ...rawEvents.map(ev => {
+          const d = formatTimelineDateLabel(ev).replace(/\|/g, "\\|");
+          const c = String(ev.formatted_content || ev.description || ev.text || "").replace(/\s+/g, " ").trim().replace(/\|/g, "\\|");
+          const e = formatTimelineEvidence(ev).replace(/\|/g, "\\|");
+          return `| ${d} | ${c} | ${e} |`;
+        }),
+      ].join("\n");
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(md);
+    };
   }
+  for (const e of rawEvents) {
+    const tr = document.createElement("tr");
+    const dateTd = document.createElement("td");
+    dateTd.append(node("strong", formatTimelineDateLabel(e), "timeline-date-text"));
+    const srcDoc = state.documents.find(d => d.id === e.document_id);
+    if (srcDoc || e.page) {
+      const locBtn = node("button", `${srcDoc?.filename || "서면"}${e.page ? ` ${e.page}쪽` : ""}`, "timeline-source-link");
+      locBtn.type = "button";
+      if (srcDoc) locBtn.onclick = () => openDocument(srcDoc, e.page ? { page: e.page, title: formatTimelineDateLabel(e) } : null);
+      dateTd.append(locBtn);
+    }
+
+    const contentTd = document.createElement("td");
+    contentTd.textContent = String(e.formatted_content || e.description || e.text || "").trim() || "-";
+
+    const evTd = document.createElement("td");
+    const evidenceText = formatTimelineEvidence(e);
+    if (evidenceText === "[근거 미작성]") {
+      evTd.append(node("span", "[근거 미작성]", "badge evidence-missing"));
+    } else {
+      evTd.textContent = evidenceText;
+    }
+
+    tr.append(dateTd, contentTd, evTd);
+    tbody.append(tr);
+  }
+  labelTableCells("timelineTable");
 }
 async function openDocument(d, finding = null, runId = state.run?.id) {
   state.viewing = {

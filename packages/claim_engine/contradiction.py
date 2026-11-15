@@ -7,6 +7,7 @@ from dataclasses import fields
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from itertools import combinations
+import re
 from typing import Any
 
 from packages.common.enums import EvidenceGrade, FindingType, Severity, VerificationStatus
@@ -183,5 +184,50 @@ def claim_contradictions(claims: list[Claim], *, project_id: str) -> list[Findin
     return cross_document_contradictions(by_document)
 
 
+_WEEKDAYS_KR = ("월", "화", "수", "목", "금", "토", "일")
+_TIMELINE_EVIDENCE_RE = re.compile(
+    r"(?:(?:갑|을|병|정)\s*제?\s*\d+\s*호증(?:\s*의\s*\d+)*"
+    r"|증\s*제?\s*\d+\s*호(?:증)?"
+    r"|(?:별첨|별지|첨부)\s*제?\s*\d+\s*호?)"
+    r"(?:\s+\d{2,4}\.\s*\d{1,2}\.\s*\d{1,2}\.\s*자)?"
+    r"(?:\s+[가-힣A-Za-z0-9_()（）\-]+){0,2}"
+)
+
+
+def _format_timeline_date(d: date) -> str:
+    return f"{d.year % 100}.{d.month}.{d.day}.({_WEEKDAYS_KR[d.weekday()]})"
+
+
+def _format_timeline_evidence(event: Event) -> str:
+    found: list[str] = []
+    for match in _TIMELINE_EVIDENCE_RE.finditer(event.description or ""):
+        text = " ".join(match.group(0).split()).strip(" ,.;:()[]{}")
+        if text and text not in found:
+            found.append(text)
+    if not found:
+        for ref in event.evidence_references or []:
+            raw = " ".join(str(ref.get("raw_text") or "").split()).strip()
+            if raw and raw not in found:
+                found.append(raw)
+    return ", ".join(found) if found else "[근거 미작성]"
+
+
 def build_timeline(events: list[Event]) -> list[dict[str, Any]]:
-    return [event.to_dict() for event in sorted((e for e in events if e.date), key=lambda e: e.date)]
+    ordered = sorted(
+        (e for e in events if e.date),
+        key=lambda e: (e.date, e.document_id or "", e.page or 0, (e.span or (0, 0))[0]),
+    )
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for event in ordered:
+        desc = " ".join((event.description or "").split())
+        key = (event.date.isoformat() if event.date else "", desc)
+        if key in seen:
+            continue
+        seen.add(key)
+        item = event.to_dict()
+        item["formatted_date"] = _format_timeline_date(event.date)
+        item["formatted_content"] = desc
+        item["evidence_summary"] = _format_timeline_evidence(event)
+        out.append(item)
+    return out
