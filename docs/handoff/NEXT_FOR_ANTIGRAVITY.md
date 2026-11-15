@@ -7052,3 +7052,9 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - 사용자 "릴리스 까지 순차적으로 진행"·"계속"에 따라 main 대상 release/0.21.0 브랜치 준비. main034343f에 Steve c0d2e060 병합, 후속 평가 기록만 추가. 제품·시험·설정·스크립트는 Steve와 동일. 은퇴5세트 유지, migrations 변경없음.
 - 사전 점검: 버전 정책·보호 경로·시험 수정·문서 생성·티켓 등록 점검 통과. 최종 전체 검증86434b6a 및 버전51건·#295/#296 CI 성공을 연결하며 중복 전체 실행하지 않음. 봉인시험 대신 온라인 평가라는 사용자 결정 유지; TK-180 운영8건 등은 아직 NOT_RUN.
 - 운영 https://verify-acas-law.onrender.com/api/health 사전 확인: version0.20.0, commit034343f16934515659674950f99837ccdcaf54a0, database.status=ok. 릴리스 PR의 동일 head CI 성공 뒤 승인 범위 내 병합, 정확한 운영 SHA/DB 확인 뒤 태그 v.0.21.0 생성 예정.
+
+### 2-62-20. 0.21.0 릴리스·배포 완료 및 온라인 점검 (11-15)
+- #301 head4973f850의 CI 성공16·건너뜀2·실패/진행중0·CLEAN을 확인하고 사용자 "릴리스 까지 순차적으로 진행" 승인으로 병합. main83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca, 운영 health0.21.0·동일 SHA·DB ok 확인 후 태그/릴리스 v.0.21.0 생성. migrations 변경없음.
+- 외부 Source 실연동43683347281(with_llm=true/strict=true) failure: 공식 판례 조회5/6, 학술3/4, 모델 직접3/3·AI/주장 합의8/8 성공. 2015모2524 미일치는 0.20.0 실행43655080920에서도 동일. Semantic Scholar 제한·구형 Gemini404(현재 Gemini 성공)는 외부 응답. 인용 검증3공급자 모두 INPUT_PRIVACY_BLOCKED/NOT_SENT; 이전 실행 모델OFF로 신규/기존 판정 불가. 지시문 판정과 구분·개인정보 검사 우회 금지. 조사 메모 requests/online_021_cascade_privacy_followup.md.
+- 별도 평가 브랜치 실연동 통합43683349002 성공: 이번 커밋7항목 모두 passed. 합성 모델63실행 기록·61성공·2개인정보 차단, semantic_review7인용/3실행·model_fact_reconcile16입력/4실행(단계 오류0). 전체 온라인 합격으로 확대하지 않음.
+- 배포 증거 release_021_deployment_20261115.json, 원본 통합 결과/매니페스트 보존. TK-180 deployed는 코드 상태이며 실제8보고서 NOT_RUN. 운영 로그인/Drive 대조군 업로드 및 보고서가 없어 case9·RAG 대조군·AI3반복·TK-1808보고서 채점은 미실행. 이 잔여를 완료로 계산하지 않음.

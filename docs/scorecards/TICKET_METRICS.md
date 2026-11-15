@@ -3,8 +3,8 @@
 `python scripts/ticket_metrics.py`가 만든다. 손으로 고치지 않는다. 상태는 `ticket_registry.json`(평가 측 갱신)을 따른다.
 티켓 번호는 발견한 문제 수다. 해소 여부·회귀(구현 수정이 새로 만든 결함)·재발은 아래처럼 따로 센다.
 
-- 전체 118건 · 회귀 28건 · 미해결(open·accepted·merged·known_open) 21건
-- 상태별: open 1 · accepted 0 · merged 15 · known_open 5 · deployed 97 · closed 0
+- 전체 118건 · 회귀 28건 · 미해결(open·accepted·merged·known_open) 19건
+- 상태별: open 1 · accepted 0 · merged 13 · known_open 5 · deployed 99 · closed 0
 - 해소일(deployed_on·closed_on)은 2026-10-10 이후 기록분만 있다. 그 전 해소 건은 날짜 미상이라 주간 해소 수에 들어가지 않는다.
 
 ## 주별
@@ -16,7 +16,7 @@
 | 2026-W43 | 18 | 2 | 11% | 0 | 18 | 0 |
 | 2026-W44 | 1 | 1 | 100% | 0 | 5 | 0 |
 | 2026-W45 | 13 | 0 | 0% | 0 | 4 | 0 |
-| 2026-W46 | 2 | 0 | 0% | 0 | 0 | 0 |
+| 2026-W46 | 2 | 0 | 0% | 0 | 2 | 0 |
 
 ## 일별 발견
 | 날짜 | 발견 | 그중 회귀 |
@@ -65,8 +65,6 @@
 | TK-143 | merged | new | - | 2026-11-03 0.17.0 온라인 탐침(docs/scorecards/online_probe_0170_20261103.md)에서 발견. 11-03 사용자 결정 '전부 이번 릴리스에 포함'. P1 두 음절 비공식 약칭(XX법) 추정 불가 — infer_law_by_abbreviation 검색어 3자 미만 생략·부분 문자열 검색 한계로 후보 없음 → 실재 법률 STATUTE_NONEXISTENT CRITICAL(탐침 5/5). 약칭+시행령·모호한 약칭도 CRITICAL. TK-130b(평가 측 수정본)의 탐침 범위 결함. · 11-03 평가 측 수정본 사전 검증(합본 2판 verify_all 종료 0·고정·은퇴 변화 0), 지시문 Antigravity 전달 완료(11-03, 사용자). · 11-03 #218 `235db42` 수용(diff=수정본, CI 성공, 합본 후보 verify_all 종료 0) — Steve 병합 대기. · 11-03 #218 Steve 병합 `831b325`(사용자 지시). |
 | TK-147 | merged | new | 2026-11-03 | 2026-11-03 #215 CI 1회차에서 발견. tests/test_tk56_structured_name_boundary.py 절대 시간 상한(0.1초) 단발 측정 시험이 흔들림 — 기준 코드 7b41c7d에서도 로컬 재현(0.113초). TK-142와 같은 방식 안정화 후보. 범위 결정 대기. docs/handoff/TK-147_tk56_timing_test_stability.md · 11-03 사용자 'TK147 포함'(기존 시험 수정 승인). 변경안 patches/TK-147_tk56_timing_stability_on_cf57cb7.diff 사전 검증(부하 12회 기존 실패 3 → 0, 지연 주입 탐지 유지). · 11-03 3차 지시 전달 완료(사용자). · 11-03 #222 `0890cb3` 수용 — Steve 병합 대기. · 11-03 #222 Steve 병합 `200db94`(사용자 지시). |
 | TK-148 | merged | new | 2026-11-03 | 2026-11-03 평가 측 공식 API 실제 응답 확인에서 발견(TK-143 후속). law_name_inference._GANA의 ㅇ 값 'a'가 틀려(정답 'ah') 필터 없는 전체 목록이 와 ㅇ 두 글자 약칭은 늘 INCOMPLETE. 수정본 patches/TK-148_gana_ah_on_cf57cb7.diff. 기존 시험 test_gana_code_follows_initial_consonant 단언 1건 변경 — 사용자 승인 대기. docs/handoff/TK-148_gana_initial_ah.md · 11-03 사용자 '148 변경승인'(범위 포함·기존 시험 단언 1건 변경 승인) → 지시. · 11-03 #223 `f1e3969` 수용(시험 주석 1줄 승인 전 판, 비차단) — Steve 병합 대기. · 11-03 #223 Steve 병합 `f6aba23`(사용자 지시). |
-| TK-180 | merged | new | 2026-11-15 | 2026-11-15 TK-180: 사용자 요구에 따라 입력 법률문서 검증을 유지하고 공식 DB/RAG를 판단 기준 자료로 분리. #300 db83c849 역할 프롬프트 보완 완료·사본 8784ca0d와 제품/시험 diff 0·최신 CI 전부 성공, 2026-11-15 최종 수용 및 사용자 승인 병합 완료(Steve c28cc981). 온라인 평가 자료/명세 준비, 운영 실측 미시행. NEXT 2-62-7, TK-180_reference_roles_review.md. #295 CI의 등록 누락 실패를 해소하기 위해 등재. |
-| TK-180 | merged | new | 2026-11-15 | 2026-11-15 TK-180: 사용자 요구에 따라 입력 법률문서 검증을 유지하고 공식 DB/RAG를 판단 기준 자료로 분리. #300 db83c849 역할 프롬프트 보완 완료·사본 8784ca0d와 제품/시험 diff 0·최신 CI 전부 성공, 2026-11-15 최종 수용 및 사용자 승인 병합 완료(Steve c28cc981). 온라인 평가 자료/명세 준비, 운영 실측 미시행. NEXT 2-62-7, TK-180_reference_roles_review.md. #295 CI의 등록 누락 실패를 해소하기 위해 등재. |
 
 ## 읽는 법
 - 회귀 비율이 줄면 수정 과정의 품질 관리가 나아지는 것이다. 성능(처음 보는 문서의 탐지율)은 고정 비공개 벤치마크로 따로 본다(`FIXED_BENCHMARK.md`).

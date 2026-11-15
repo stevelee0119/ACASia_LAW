@@ -1,0 +1,217 @@
+{
+  "release": "0.21.0",
+  "release_pr": 301,
+  "release_commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+  "tag": "v.0.21.0",
+  "verified_at_utc": "2026-11-15",
+  "health": {
+    "status": "ok",
+    "version": "0.21.0",
+    "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+    "database": {
+      "status": "ok"
+    }
+  },
+  "release_ci": {
+    "head": "4973f850d658475f896bdd740e84144d4d0de222",
+    "success": 16,
+    "failure": 0,
+    "pending": 0,
+    "skipped": 2
+  },
+  "live_source_check": {
+    "run_id": 43683347281,
+    "conclusion": "failure",
+    "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+    "groups": {
+      "secret": {
+        "passed": 6,
+        "total": 7
+      },
+      "adapter_status": {
+        "passed": 5,
+        "total": 5
+      },
+      "live_legal": {
+        "passed": 5,
+        "total": 6
+      },
+      "live_academic": {
+        "passed": 3,
+        "total": 4
+      },
+      "llm": {
+        "passed": 3,
+        "total": 3
+      },
+      "llm_cascade": {
+        "passed": 0,
+        "total": 2
+      },
+      "llm_consensus": {
+        "passed": 8,
+        "total": 8
+      },
+      "gemini_models": {
+        "passed": 5,
+        "total": 7
+      },
+      "model_catalog": {
+        "passed": 2,
+        "total": 2
+      }
+    },
+    "failed_checks": [
+      {
+        "name": "law_go_kr:사건번호조회(2015모2524 · 형사 재항고 결정)",
+        "category": "live_legal",
+        "status": "READY",
+        "detail": "사건번호 일치 0건 / 응답 0건. 일치하는 기록을 찾지 못했다. 이 상태면 실재하는 판례가 '공식 DB 미확인'으로 남는다. 돌아온 사건번호: 없음 | 사건번호 일치 없음(조회 DB prec, 시도: prec:nb=2015모2524 1건 → prec:search=2 2건; 다른 사건 1건은 채택하지 않음)"
+      },
+      {
+        "name": "semantic_scholar",
+        "category": "live_academic",
+        "status": "RATE_LIMITED",
+        "detail": "자동 재조회 후에도 외부 출처 응답을 확보하지 못했습니다"
+      },
+      {
+        "name": "cascade:stage2:primary",
+        "category": "llm_cascade",
+        "status": "NOT_USED",
+        "detail": "시도 anthropic(실패: INPUT_PRIVACY_BLOCKED: 마스킹 후 입력 검사 불통과), openai(실패: INPUT_PRIVACY_BLOCKED: 마스킹 후 입력 검사 불통과), gemini(실패: INPUT_PRIVACY_BLOCKED: 마스킹 후 입력 검사 불통과) — 판단 -, 근거 인용 0건 중 공식 전문과 일치 0건 — 모든 공급자가 응답하지 못함: anthropic(INPUT_PRIVACY_BLOCKED: 마스킹 후 입력 검사 불통과), openai(INPUT_PRIVACY_BLOCKED: 마스킹 후 입력 검사 불통과), gemini(INPUT_PRIVACY_BLOCKED: 마스킹 후 입력 검사 불통과)"
+      },
+      {
+        "name": "cascade:참여 공급자",
+        "category": "llm_cascade",
+        "status": "PARTIAL",
+        "detail": "0개(없음) · 대상 2011모1839 (전문 30211자) · 최종 UNVERIFIED · 의견 불일치 False · 교차검증 설정 all"
+      },
+      {
+        "name": "gemini:gemini-2.5-flash",
+        "category": "gemini_models",
+        "status": "HTTP 404",
+        "detail": "This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features and impro"
+      },
+      {
+        "name": "gemini:gemini-2.5-flash-lite",
+        "category": "gemini_models",
+        "status": "HTTP 404",
+        "detail": "This model models/gemini-2.5-flash-lite is no longer available to new users. Please update your code to use models/gemini-3.5-flash-lite for the latest features"
+      }
+    ],
+    "prior_020_comparison": {
+      "run_id": 43655080920,
+      "commit": "034343f16934515659674950f99837ccdcaf54a0",
+      "with_llm": false,
+      "findings": [
+        "2015모2524 사건번호 미일치는 0.20.0에서도 동일: 이번 릴리스 신규 회귀로 분류하지 않음.",
+        "0.20.0의 2014다236311 TIMEOUT은 이번 조회 성공. 외부 응답 시점 차이를 고려.",
+        "이전 실행은 with_llm=false: cascade 개인정보 차단의 신규/기존 여부는 비교 불가.",
+        "Semantic Scholar RATE_LIMITED 및 구형 Gemini 모델404는 외부 서비스 응답. 현재 설정 Gemini 모델은 호출 성공."
+      ]
+    }
+  },
+  "live_integration": {
+    "run_id": 43683349002,
+    "status": "COMPLETED",
+    "conclusion": "success",
+    "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+    "items": {
+      "J2": {
+        "status": "passed",
+        "passed": true,
+        "prepared": 2,
+        "detected": 2,
+        "false_positive": 0,
+        "summary": "모델 3개 응답, 결정론 재계산 2건, 모델 지적 연결 1건, 사람 확인으로 남은 지적 2건, 확인 문장의 오분류 0건"
+      },
+      "R10": {
+        "status": "passed",
+        "passed": true,
+        "prepared": 1,
+        "detected": 1,
+        "false_positive": 0,
+        "summary": "문서 판정 AI_PARTIAL_GENERATION / 축 판정 AI_PARTIAL_GENERATION / 관여 NO_OBJECTIVE_TRACES"
+      },
+      "G1": {
+        "status": "passed",
+        "passed": true,
+        "prepared": 11,
+        "detected": 11,
+        "false_positive": 0,
+        "summary": "헌재 결정 11/11건 사건번호 정확 일치(다른 번호 기록 0건은 채택하지 않음)"
+      },
+      "J1": {
+        "status": "passed",
+        "passed": true,
+        "prepared": 2,
+        "detected": 2,
+        "false_positive": 0,
+        "summary": "병합 표기 2/2건 대표 번호로 확인"
+      },
+      "R4": {
+        "status": "passed",
+        "passed": true,
+        "prepared": 3,
+        "detected": 3,
+        "false_positive": 0,
+        "summary": "실제 조회 3/3건, 다른 번호 기록 채택 0건"
+      },
+      "R3": {
+        "status": "passed",
+        "passed": true,
+        "prepared": 1,
+        "detected": 1,
+        "false_positive": 0,
+        "summary": "실연동 테스트 1/1 통과"
+      },
+      "R6": {
+        "status": "passed",
+        "passed": true,
+        "prepared": 1,
+        "detected": 1,
+        "false_positive": 0,
+        "summary": "실연동 테스트 1/1 통과"
+      }
+    },
+    "model_manifest": {
+      "providers_used": [
+        "anthropic",
+        "gemini",
+        "openai"
+      ],
+      "model_calls": {
+        "total": 63,
+        "succeeded": 61,
+        "failed": [
+          {
+            "provider": "openai",
+            "error": "INPUT_PRIVACY_BLOCKED: 마스킹 후 입력 검사 불통과"
+          },
+          {
+            "provider": "gemini",
+            "error": "INPUT_PRIVACY_BLOCKED: 마스킹 후 입력 검사 불통과"
+          }
+        ]
+      },
+      "semantic_review": {
+        "executed": true,
+        "runs": 3,
+        "inputs": 7,
+        "errors": []
+      },
+      "model_fact_reconcile": {
+        "executed": true,
+        "runs": 4,
+        "inputs": 16,
+        "findings": 6,
+        "errors": []
+      }
+    }
+  },
+  "document_online_evaluation": {
+    "status": "NOT_RUN",
+    "reason": "운영 로그인 세션·Drive 대조군 업로드 및 실제 실행 보고서 미제공. GitHub 실연동 점검은 운영 문서별 검증을 대체하지 않는다.",
+    "plan": "docs/scorecards/online_compare_0200_0210_plan.md"
+  }
+}
