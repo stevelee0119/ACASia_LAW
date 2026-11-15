@@ -213,6 +213,14 @@ def test_time_table_tab_order_chronology_and_responsive(timeline_browser_page) -
     expect(page.locator(".brand-title")).to_have_text("법률문서 검증시스템")
     expect(page.locator(".brand-title")).not_to_contain_text("종합행정학교 법무교육단")
 
+    # 스크롤을 내려도 상단 엠블럼 영역(.topbar)이 화면 최상단에 고정되는지 확인
+    page.evaluate("() => { document.body.style.minHeight = '2000px'; window.scrollTo(0, 600); }")
+    topbar_rect = page.locator(".topbar").evaluate("el => el.getBoundingClientRect().toJSON()")
+    emblem_rect = page.locator(".brand-emblem").evaluate("el => el.getBoundingClientRect().toJSON()")
+    assert 0 <= topbar_rect["top"] <= 1
+    assert 0 <= emblem_rect["top"] < topbar_rect["bottom"]
+    page.evaluate("() => { window.scrollTo(0, 0); document.body.style.minHeight = ''; }")
+
     metric_titles = page.locator("#summary .metric .metric-content span").all_inner_texts()
     assert metric_titles == [
         "AI 작성·보안 진단",
