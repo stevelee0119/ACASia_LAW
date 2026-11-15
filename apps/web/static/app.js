@@ -3411,13 +3411,14 @@ function renderTimeline() {
   if (copyBtn) {
     copyBtn.disabled = !rawEvents.length;
     copyBtn.onclick = async () => {
+      const escapeMd = v => String(v).replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
       const md = [
         "| 일시 | 내용 | 관련근거 |",
         "| :--- | :--- | :--- |",
         ...rawEvents.map(ev => {
-          const d = formatTimelineDateLabel(ev).replace(/\|/g, "\\|");
-          const c = String(ev.formatted_content || ev.description || ev.text || "").replace(/\s+/g, " ").trim().replace(/\|/g, "\\|");
-          const e = formatTimelineEvidence(ev).replace(/\|/g, "\\|");
+          const d = escapeMd(formatTimelineDateLabel(ev));
+          const c = escapeMd(String(ev.formatted_content || ev.description || ev.text || "").replace(/\s+/g, " ").trim());
+          const e = escapeMd(formatTimelineEvidence(ev));
           return `| ${d} | ${c} | ${e} |`;
         }),
       ].join("\n");
