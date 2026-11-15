@@ -35,7 +35,7 @@ from scripts.path_guard import contained_path  # noqa: E402
 
 API = "https://api.github.com"
 # TK-175(CodeQL py/partial-ssrf #124): 요청 주소에 넣는 값은 이 꼴만 받는다(re.fullmatch가 참인 분기에서만 쓴다).
-REPO_RE = re.compile(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}")
+REPO_RE = re.compile(r"(?!\.{1,2}/)[A-Za-z0-9_.-]{1,100}/(?!\.{1,2}$)[A-Za-z0-9_.-]{1,100}")
 REF_RE = re.compile(r"refs/(?:heads|tags|pull)/[A-Za-z0-9_./-]{1,200}")
 STATE_RE = re.compile(r"open|closed|dismissed|fixed")
 PER_PAGE = 100

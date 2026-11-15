@@ -12,8 +12,10 @@ import scripts.ci_failed_tests as ci_failed
 import scripts.export_security_alerts as export
 
 
-@pytest.mark.parametrize("repo", ["evil.example/x?y", "a/b/c", "a b/c", "../x", ""])
-def test_alert_export_refuses_a_repo_that_is_not_owner_slash_name(repo):
+@pytest.mark.parametrize("repo", ["evil.example/x?y", "a/b/c", "a b/c", "../x", "./x", "owner/..", "owner/.", ""])
+def test_alert_export_refuses_a_repo_that_is_not_owner_slash_name(repo, monkeypatch):
+    # HTTP failures must never masquerade as successful local validation.
+    monkeypatch.setattr(export.urllib.request, "urlopen", lambda *a, **kw: pytest.fail("invalid repository reached network"))
     with pytest.raises(SystemExit):
         export.fetch_alerts(repo, "token")
 
@@ -29,7 +31,8 @@ def test_alert_export_refuses_an_unknown_state():
         export.fetch_alerts("owner/repo", "token", state="open&x=1")
 
 
-def test_alert_export_builds_the_api_url_for_valid_inputs(monkeypatch):
+@pytest.mark.parametrize("repo", ["owner/repo", "owner/repo.git", "owner/a..b"])
+def test_alert_export_builds_the_api_url_for_valid_inputs(monkeypatch, repo):
     seen = []
 
     class Response:
@@ -43,8 +46,8 @@ def test_alert_export_builds_the_api_url_for_valid_inputs(monkeypatch):
             return b"[]"
 
     monkeypatch.setattr(export.urllib.request, "urlopen", lambda request, timeout: seen.append(request.full_url) or Response())
-    assert export.fetch_alerts("owner/repo", "token", ref="refs/pull/7/merge") == []
-    assert seen == ["https://api.github.com/repos/owner/repo/code-scanning/alerts?state=open&per_page=100&page=1"
+    assert export.fetch_alerts(repo, "token", ref="refs/pull/7/merge") == []
+    assert seen == [f"https://api.github.com/repos/{repo}/code-scanning/alerts?state=open&per_page=100&page=1"
                     "&ref=refs%2Fpull%2F7%2Fmerge"]
 
 
