@@ -15,7 +15,7 @@ from packages.document_engine.registry import parse_document
 
 MAX_CHARS = 3_000_000
 MAX_PAGES = 1500
-EXTRACTOR_VERSION = "drive-text-v5-case-table-resumable"
+EXTRACTOR_VERSION = "drive-text-v6-tk178"  # TK-178: 호명어 경계·하이퍼링크 검사를 고쳐 예전 격리 결과를 다시 읽는다
 EXCLUDE_MIN_TOTAL = 10       # 이보다 짧은 파일은 쪽 단위로 빼지 않고 전체를 격리한다
 EXCLUDE_MAX_SHARE = 0.02     # 전체 쪽수의 2%까지(최소 1쪽)
 EXCLUDE_MAX_PAGES = 3        # 그리고 3쪽까지만 해당 쪽을 빼고 색인한다
@@ -78,7 +78,10 @@ def scan_evidence(finding):
     return {"type": str(getattr(finding.type, "value", finding.type)),
             "severity": str(getattr(finding.severity, "value", finding.severity)),
             "page": finding.page, "path": features.get("injection_path") or features.get("layer"),
-            "intents": [t for t in (finding.tags or [])][:3], "excerpt": " ".join(observed.split())[:60]}
+            "intents": [t for t in (finding.tags or [])][:3], "excerpt": " ".join(observed.split())[:60],
+            # TK-178: 문서 속성(메타데이터) 격리는 어느 필드였는지 남긴다(종전에는 발췌가 비어 근거를 알 수 없었다).
+            **({"field": features.get("metadata_key") or features.get("field_name")}
+               if (features.get("metadata_key") or features.get("field_name")) else {})}
 
 
 def extract(path, filename, mime, *, continuation=None):

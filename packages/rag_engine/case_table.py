@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import re
+from urllib.parse import unquote
 import time
 import unicodedata
 import zipfile
@@ -22,7 +23,7 @@ from packages.adversarial_engine import AdversarialScanner
 from packages.common.enums import MetaMessageType, Severity
 from packages.common.schemas import Block, NormalizedDocument, Page
 
-CASE_TABLE_VERSION = "case-table-v2-resumable"
+CASE_TABLE_VERSION = "case-table-v3-tk178"  # TK-178: 하이퍼링크 주소 오격리로 저장된 결과를 다시 읽는다
 MAX_HEADER_ROWS = 40
 MAX_CELL_CHARS = 200_000
 MAX_ROW_CHARS = 1_000_000
@@ -247,6 +248,21 @@ def _row_scan(sheet: str, number: int, text: str, scanner: AdversarialScanner | 
     ]
 
 
+_PLAIN_URL = re.compile(r"(?:https?|mailto):\S+", re.IGNORECASE)
+
+
+def _scan_hyperlink(sheet: str, number: int, link: str, scanner: AdversarialScanner | None = None) -> list[dict[str, Any]]:
+    """하이퍼링크 대상(셀 뒤의 주소)을 검사한다(TK-178).
+
+    퍼센트 인코딩을 풀어도 공백 없는 웹 주소면 사람이 읽는 문장이 아니므로 보이는 글자로 검사한다(주소 속
+    'bigcase.ai'·사건번호를 숨은 지시로 보지 않는다). 풀었을 때 공백·줄바꿈이 생기거나 주소 꼴이 아니면 숨은 글자로
+    엄격히 검사한다(주소에 지시문을 인코딩해 숨긴 경우는 계속 격리)."""
+    decoded = unquote(link).strip()
+    if _PLAIN_URL.fullmatch(decoded):
+        return _row_scan(sheet, number, decoded, scanner, visible=True, hidden_reason="")
+    return _row_scan(sheet, number, link, scanner, visible=False, hidden_reason="HYPERLINK")
+
+
 def _chunks(record: dict[str, Any], target: int = 1040, max_size: int = 1200) -> list[dict[str, Any]]:
     text = record["indexed_text"]
     head = record["case_head"][:500]
@@ -366,8 +382,7 @@ def extract_case_table(path: str | Path, *, file_id: str = "", revision: str = "
             # Hyperlinks are untrusted metadata, too; do not follow them.
             for _i, _value, link in populated:
                 if link:
-                    warnings.extend(_row_scan(sheet, number, link, scanner, visible=False,
-                                              hidden_reason="HYPERLINK"))
+                    warnings.extend(_scan_hyperlink(sheet, number, link, scanner))
             scan_seconds += time.monotonic() - mark
             scanned_chars += len(raw_text)
             file_findings.extend({**warning, "sheet": sheet, "row": number} for warning in warnings)
