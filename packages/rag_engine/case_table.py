@@ -240,11 +240,7 @@ _PLAIN_URL = re.compile(r"(?:https?|mailto):\S+", re.IGNORECASE)
 
 
 def _scan_hyperlink(sheet: str, number: int, link: str, scanner: AdversarialScanner | None = None) -> list[dict[str, Any]]:
-    """하이퍼링크 대상(셀 뒤의 주소)을 검사한다(TK-178).
-
-    퍼센트 인코딩을 풀어도 공백 없는 웹 주소면 사람이 읽는 문장이 아니므로 보이는 글자로 검사한다(주소 속
-    'bigcase.ai'·사건번호를 숨은 지시로 보지 않는다). 풀었을 때 공백·줄바꿈이 생기거나 주소 꼴이 아니면 숨은 글자로
-    엄격히 검사한다(주소에 지시문을 인코딩해 숨긴 경우는 계속 격리)."""
+    """TK-180: 검증된 참고자료 링크는 지시문 판정 대상이 아니다. 링크를 따라가지는 않는다."""
     return []  # TK-180: hyperlink content is reference data.
 
 
@@ -364,7 +360,7 @@ def extract_case_table(path: str | Path, *, file_id: str = "", revision: str = "
         elif raw_text:
             mark = time.monotonic()
             warnings = _row_scan(sheet, number, raw_text, scanner, visible=visible, hidden_reason=hidden_reason)
-            # Hyperlinks are untrusted metadata, too; do not follow them.
+            # Reference links are not instruction-classification targets; do not follow them.
             for _i, _value, link in populated:
                 if link:
                     warnings.extend(_scan_hyperlink(sheet, number, link, scanner))
