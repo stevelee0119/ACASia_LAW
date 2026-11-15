@@ -95,3 +95,62 @@ def test_performance_csv_has_one_measured_row_per_release():
     assert rows and required <= set(rows[0])
     assert len({r["version"] for r in rows}) == len(rows)
     assert all(len(r["sha"]) == 40 and 0 <= float(r["strict_recall"]) <= 100 for r in rows)
+
+
+def test_updated_readme_syncs_version_badge_operational_line_tabs_and_models(tmp_path, monkeypatch):
+    module = _module()
+    readme_copy = tmp_path / "README.md"
+    readme_copy.write_text((ROOT / "README.md").read_text(encoding="utf-8"), encoding="utf-8")
+    config_copy = tmp_path / "config.py"
+    config_copy.write_text('    version: str = "0.22.0"\n', encoding="utf-8")
+    providers_copy = tmp_path / "providers.json"
+    providers_copy.write_text(
+        json.dumps({"openai": {"model": "gpt-6-luna"}, "anthropic": {"model": "claude-opus-5-5"}, "gemini": {"model": "gemini-4-hydrogen"}}),
+        encoding="utf-8",
+    )
+    index_copy = tmp_path / "index.html"
+    index_copy.write_text(
+        '<nav class="tabs workspace-tabs">'
+        '<button data-tab="documents">자료</button>'
+        '<button data-tab="ai-verification">AI 작성·보안 진단</button>'
+        '<button data-tab="review">출처가 확인되지 않는 항목</button>'
+        '<button data-tab="legal-claims">법률적으로 무리한 주장</button>'
+        '<button data-tab="timeline">Time Table</button>'
+        '<button data-tab="reports">보고서</button>'
+        "</nav>",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "README", readme_copy)
+    monkeypatch.setattr(module, "CONFIG", config_copy)
+    monkeypatch.setattr(module, "PROVIDERS", providers_copy)
+    monkeypatch.setattr(module, "INDEX_HTML", index_copy)
+
+    releases = [{"version": "0.22.0", "date": "2026-11-16", "changes": ["v0.22.0"]}]
+    rendered = module.updated_readme(releases)
+    assert "운영%20버전-0.22.0-blue.svg" in rendered
+    assert "**현재 운영 버전:** 0.22.0 (2026-11-16 배포)." in rendered
+    assert "### 검토 화면 6개 탭 구성" in rendered
+    assert "| **5** | **Time Table** |" in rendered
+    assert "gpt-6-luna · claude-opus-5-5 · gemini-4-hydrogen" in rendered
+
+
+def test_render_performance_chart_selects_v010_and_1_2_3_month_milestones():
+    from datetime import date
+    spec = importlib.util.spec_from_file_location("render_performance_chart", ROOT / "scripts" / "render_performance_chart.py")
+    chart = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(chart)
+
+    rows = [
+        {"version": "v0.10"}, {"version": "v0.12"}, {"version": "v0.15"},
+        {"version": "v0.18"}, {"version": "v0.22"},
+    ]
+    dates = {
+        "v0.10": date(2026, 8, 1),
+        "v0.12": date(2026, 8, 20),
+        "v0.15": date(2026, 9, 18),
+        "v0.18": date(2026, 10, 19),
+        "v0.22": date(2026, 11, 18),
+    }
+    picked = [r["version"] for r in chart.select_milestone_rows(rows, release_dates=dates)]
+    assert picked == ["v0.10", "v0.12", "v0.15", "v0.18", "v0.22"]
+

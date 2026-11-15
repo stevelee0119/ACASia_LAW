@@ -11,10 +11,13 @@
 from __future__ import annotations
 
 import csv
+from datetime import date, timedelta
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "docs" / "scorecards" / "version_performance.csv"
+RELEASES = ROOT / "docs" / "releases.json"
 OUT = ROOT / "docs" / "assets" / "performance_trend.png"
 KOREAN_FONTS = ("Noto Sans CJK KR", "NanumGothic", "NanumBarunGothic", "Malgun Gothic", "AppleGothic")
 
@@ -22,6 +25,52 @@ KOREAN_FONTS = ("Noto Sans CJK KR", "NanumGothic", "NanumBarunGothic", "Malgun G
 def load_rows(path: Path = DATA) -> list:
     with path.open(encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def _release_dates(path: Path = RELEASES) -> dict[str, date]:
+    if not path.is_file():
+        return {}
+    out: dict[str, date] = {}
+    for item in json.loads(path.read_text(encoding="utf-8")):
+        ver = str(item.get("version") or "")
+        short = "v" + ".".join(ver.split(".")[:2])
+        try:
+            d = date.fromisoformat(str(item.get("date") or ""))
+        except ValueError:
+            continue
+        out.setdefault(short, d)
+        out[ver] = d
+    return out
+
+
+def select_milestone_rows(rows: list, release_dates: dict[str, date] | None = None) -> list:
+    """v0.10을 시작으로 최신 릴리스 기준 1·2·3개월 전 커밋 마일스톤을 선택한다(기간이 짧으면 전체 유지)."""
+    if len(rows) <= 2:
+        return rows
+    dates = release_dates if release_dates is not None else _release_dates()
+    dated = [(r, dates.get(r["version"])) for r in rows]
+    if any(d is None for _, d in dated):
+        return rows
+    latest_date = dated[-1][1]
+    earliest_date = dated[0][1]
+    assert latest_date is not None and earliest_date is not None
+    if (latest_date - earliest_date).days < 60:
+        return rows
+
+    targets = [
+        earliest_date,
+        latest_date - timedelta(days=90),
+        latest_date - timedelta(days=60),
+        latest_date - timedelta(days=30),
+        latest_date,
+    ]
+    chosen_indices: list[int] = []
+    for target in targets:
+        best_idx = min(range(len(dated)), key=lambda i: abs((dated[i][1] - target).days))
+        if best_idx not in chosen_indices:
+            chosen_indices.append(best_idx)
+    chosen_indices.sort()
+    return [rows[i] for i in chosen_indices]
 
 
 def main() -> int:
@@ -37,7 +86,7 @@ def main() -> int:
         raise SystemExit("한국어 글꼴이 없습니다: " + ", ".join(KOREAN_FONTS))
     plt.rcParams.update({"font.family": family, "axes.unicode_minus": False})
 
-    rows = load_rows()
+    rows = select_milestone_rows(load_rows())
     versions = [r["version"] for r in rows]
     x = list(range(len(rows)))
     fig, (left, right) = plt.subplots(1, 2, figsize=(13, 4.8), dpi=150)
