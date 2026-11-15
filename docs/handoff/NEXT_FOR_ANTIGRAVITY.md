@@ -6958,3 +6958,7 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - #299 f9980277: 사전 검증 패치 3파일 diff 0, 새 시험 14건 통과(재실행). CI PostgreSQL 벌 11,720건 통과·화면 캡처 시간 초과 1건 실패(test_web_shows_drive_health_selection_and_duplicates, run 43658043265/job 132640904608). 실패 작업 재실행 요청, 수용 보류.
 - #295 ceb645bc: CI 전부 성공(인용). 최종 릴리스 후보 변경에 따른 판정서·버전 패치 갱신은 아직 필요하다.
 - TK-180 사용자 원문·경로 조사·사전 검증·구현 전달문: [TK-180_reference_instruction_scope](TK-180_reference_instruction_scope.md), [패치](patches/TK-180_on_d0af873.diff). 사본 64c4ff9a, 새 시험 9건·확장 414건·개인정보/모델 입력 203건 통과(중복 합산 안 함). 고정 82.6/81.9/0·은퇴 5세트 후퇴 0. 운영·합본 전체·CI 환경 미검증.
+
+### 2-62-5. 사용자 "#298 병합" (11-15)
+- #298(TK-178) head d0af8733b830b525fc7fc084b3136b2896537579의 필수 CI 전부 성공을 재확인(인용)하고 expected head를 고정하여 병합했다. Steve 병합 커밋 3bd5cad38bf482df23ed0048943e929f8c0ec906. main 배포는 진행하지 않았다.
+- TK-179 #299는 별도 판정·사용자 병합 대기. TK-180 전달문 기준은 #298이 반영된 Steve 최신이다. 최종 후보 확정·verify_all·판정서 및 버전 패치 갱신은 그 뒤 진행한다.
