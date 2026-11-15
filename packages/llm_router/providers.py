@@ -338,7 +338,7 @@ class GeminiProvider(LLMProvider):
                         "systemInstruction": {"parts": [{"text": request.system}]},
                         "contents": [{"role": "user", "parts": [{"text": request.user}]}],
                         "generationConfig": {
-                            "temperature": request.temperature,
+                            **({} if self.config.model == "gemini-4-hydrogen" else {"temperature": request.temperature}),
                             "maxOutputTokens": request.max_tokens,
                             # 형식이 정해진 요청은 JSON으로만 답하게 한다(OpenAI의 json_object와 같은 역할).
                             **({"responseMimeType": "application/json"} if request.schema else {}),

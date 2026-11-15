@@ -47,5 +47,10 @@
       "output": 7.5,
       "cache_read": 0.15
     }
+  },
+  "gemini-4-hydrogen": {
+    "input": 1.5,
+    "output": 7.5,
+    "cache_read": 0.075
   }
 }
