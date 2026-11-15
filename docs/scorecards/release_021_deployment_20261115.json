@@ -221,7 +221,7 @@
       "H-REF"
     ],
     "tk180_controlled_eight_reports": "NOT_RUN",
-    "ai_three_repeats": "OBSERVED_3_RUNS_BUT_DRIVE_SNAPSHOT_DIFFERS",
+    "ai_three_repeats": "COMPLETE_FIXED_CONDITION_COHORT4",
     "abCD_47_answer_key": "RECEIVED_ADJUDICATED",
     "adjudication_47": {
       "answer_key_passed": 46,
@@ -229,6 +229,17 @@
       "total": 47,
       "evidence": "online_0210_47_adjudication_20261115.json"
     },
-    "repeat_evidence": "online_0210_case9_repeat_20261115.json"
+    "repeat_evidence": "online_0210_case9_repeat_20261115.json",
+    "automated_followup": {
+      "runs": 6,
+      "case9_runs": 2,
+      "case9_each": "23/23",
+      "input_attacks_passed": 4,
+      "input_attacks_total": 4,
+      "fixed_condition_ai_cohort": 4,
+      "ai_modal_agreement": 0.75,
+      "status": "PARTIAL",
+      "evidence": "online_0210_automated_20261115.json"
+    }
   }
 }
