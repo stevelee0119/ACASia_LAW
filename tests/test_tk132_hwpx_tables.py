@@ -77,7 +77,7 @@ def test_cell_with_several_paragraphs_and_nested_table(tmp_path):
     doc = hwpx(tmp_path, (0, table(1, 2,
         [cell(0, 0, "첫 문단", "둘째 문단"), cell(0, 1, "바깥 칸", inner=inner)])))
     outer, nested = doc.structure["tables"]
-    assert outer["cells"] == [["첫 문단 둘째 문단", "바깥 칸"]]  # 중첩 표 글자는 바깥 칸에 섞이지 않는다
+    assert outer["cells"] == [["첫 문단\n둘째 문단", "바깥 칸"]]  # 중첩 표 글자는 바깥 칸에 섞이지 않는다
     assert nested["nested"] is True and nested["parent_table_ref"] == outer["table_ref"]
     assert nested["cells"] == [["내부 표", "7일"]]
     assert text_of(doc).count("7일") == 1
