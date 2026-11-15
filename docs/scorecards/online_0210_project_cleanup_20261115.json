@@ -1,0 +1,13 @@
+{
+  "operation": "trash_only",
+  "evaluation_version": "0.21.0",
+  "started_at": "2026-11-15T10:29:26.564251+00:00",
+  "finished_at": "2026-11-15T10:29:31.514261+00:00",
+  "owned_projects": 4,
+  "trash_verified": 4,
+  "borrowed_projects_deleted": 0,
+  "purge_performed": false,
+  "archive_sha256": "98cda12c3c528d69a94bb6f158a54319ea4f87894280af23970d57249d2637ca",
+  "private_receipt": "project_cleanup_receipt.json",
+  "note": "Report hashes and archive bytes verified before deletion. No project identifiers published."
+}
