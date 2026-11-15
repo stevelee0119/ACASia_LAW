@@ -110,8 +110,11 @@ def test_pending_and_status_metrics_explain_themselves(width, height):
             browser.close()
 
 
-@pytest.mark.parametrize("items,expected", [(UNVERIFIED, "일부 미확인: 4건을 확인하지 못했습니다."), ([], "일부 미확인: 0건을 확인하지 못했습니다.")])
-def test_partial_completed_status_line_shows_unverified_count(items, expected):
+@pytest.mark.parametrize("items,expected,detail_heading", [
+    (UNVERIFIED, "일부 미확인: 3건을 확인하지 못했습니다.", "확인하지 못한 항목 3건 — 원인별"),
+    ([], "일부 미확인: 0건을 확인하지 못했습니다.", None),
+])
+def test_partial_completed_status_line_shows_unverified_count(items, expected, detail_heading):
     static = ROOT / "apps/web/static"
     files = {f"/static/{p.relative_to(static).as_posix()}": p for p in static.rglob("*") if p.is_file()}
     files["/"] = ROOT / "apps/web/index.html"
@@ -150,6 +153,10 @@ def test_partial_completed_status_line_shows_unverified_count(items, expected):
             line = page.locator(".run-status-line")
             expect(line).to_contain_text(expected)
             expect(line).not_to_contain_text("일부 항목을 확인하지 못했습니다.")
+            if detail_heading:
+                line.get_by_role("button", name="사유 보기").click()
+                status = page.get_by_role("dialog", name="진행 상태: 일부 미확인")
+                expect(status).to_contain_text(detail_heading)
             page.close()
         finally:
             browser.close()

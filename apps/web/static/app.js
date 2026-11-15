@@ -1261,7 +1261,7 @@ function renderSummary() {
   // 완료가 아닐 때만 실행 상태를 한 줄로 알린다(V1.0.0 D2). 진행 중은 진행 막대가 따로 보인다.
   if (state.run && ["PARTIAL_COMPLETED", "FAILED", "CANCELLED"].includes(state.run.state)) {
     const line = node("p", null, "run-status-line");
-    const unverifiedItemsCount = (state.run.unverified_items || []).length;
+    const unverifiedItemsCount = (state.run.unverified_items || []).filter(item => !isPartialItem(item)).length;
     line.append(node("strong", `${label(state.run.state)}: `),
       document.createTextNode(state.run.state === "PARTIAL_COMPLETED" ? `${unverifiedItemsCount}건을 확인하지 못했습니다. ` : "검증이 끝나지 않았습니다. "));
     line.append(button("사유 보기", action(explainRunStatus), "link-button small"));
