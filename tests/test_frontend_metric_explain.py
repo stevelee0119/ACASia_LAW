@@ -108,3 +108,55 @@ def test_pending_and_status_metrics_explain_themselves(width, height):
             page.close()
         finally:
             browser.close()
+
+
+@pytest.mark.parametrize("items,expected,detail_heading", [
+    (UNVERIFIED, "일부 미확인: 3건을 확인하지 못했습니다.", "확인하지 못한 항목 3건 — 원인별"),
+    ([], "일부 미확인: 0건을 확인하지 못했습니다.", None),
+])
+def test_partial_completed_status_line_shows_unverified_count(items, expected, detail_heading):
+    static = ROOT / "apps/web/static"
+    files = {f"/static/{p.relative_to(static).as_posix()}": p for p in static.rglob("*") if p.is_file()}
+    files["/"] = ROOT / "apps/web/index.html"
+    run = {"id": "r1", "project_id": "p1", "state": "PARTIAL_COMPLETED", "progress": 1, "stage_message": "",
+           "document_ids": ["d1"], "scores": {}, "unverified_items": items, "errors": [],
+           "unavailable_sources": [], "input_snapshot": {"scope_revision": 0}, "started_at": "2026-09-24T00:00:00"}
+    project = {"id": "p1", "name": "시험 사건", "can_delete": True, "document_count": 1,
+               "external_ai_policy": "MASKED", "scope_revision": 0}
+    api = {
+        "/api/health": {"status": "ok", "version": "0.5.0"},
+        "/api/identity/me": {"user_id": "u", "role": "ADMIN", "authentication": "password"},
+        "/api/verification-runs": {"active_count": 0, "runs": []},
+        "/api/projects": [project],
+        "/api/projects/p1": project,
+        "/api/projects/p1/runs": [run],
+        "/api/projects/p1/findings": FINDINGS,
+    }
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 1000})
+            def handle(route):
+                path = urlsplit(route.request.url).path
+                if path in files:
+                    return route.fulfill(path=str(files[path]))
+                if path in api:
+                    return route.fulfill(json=api[path])
+                if path.endswith("/result"):
+                    return route.fulfill(json={"documents": [{"document_id": "d1", "filename": "준비서면.pdf", "review_items": []}]})
+                if path.endswith("/case-matrix"):
+                    return route.fulfill(body="null", content_type="application/json")
+                return route.fulfill(json=[])
+            page.route("**/*", handle)
+            page.goto("http://app.test/", wait_until="networkidle")
+            select_first_project(page)
+            line = page.locator(".run-status-line")
+            expect(line).to_contain_text(expected)
+            expect(line).not_to_contain_text("일부 항목을 확인하지 못했습니다.")
+            if detail_heading:
+                line.get_by_role("button", name="사유 보기").click()
+                status = page.get_by_role("dialog", name="진행 상태: 일부 미확인")
+                expect(status).to_contain_text(detail_heading)
+            page.close()
+        finally:
+            browser.close()
