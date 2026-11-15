@@ -1,0 +1,62 @@
+[
+  {
+    "label": "D_hwpx",
+    "seconds": 192.7
+  },
+  {
+    "label": "D_docx",
+    "seconds": 21.9
+  },
+  {
+    "label": "D_hwp",
+    "seconds": 20.0
+  },
+  {
+    "label": "A",
+    "seconds": 204.0
+  },
+  {
+    "label": "tk180_normal_txt",
+    "seconds": 109.4
+  },
+  {
+    "label": "case9_r1",
+    "seconds": 341.6
+  },
+  {
+    "label": "case9_r2",
+    "seconds": 355.3
+  },
+  {
+    "label": "case9_r3",
+    "seconds": 328.1
+  },
+  {
+    "label": "case9_r4",
+    "seconds": 371.4
+  },
+  {
+    "label": "tk180_visible",
+    "seconds": 11.3
+  },
+  {
+    "label": "tk180_metadata",
+    "seconds": 94.6
+  },
+  {
+    "label": "tk180_hidden",
+    "seconds": 91.3
+  },
+  {
+    "label": "tk180_encoded",
+    "seconds": 134.5
+  },
+  {
+    "label": "B",
+    "seconds": 709.2
+  },
+  {
+    "label": "C",
+    "seconds": 32.4
+  }
+]
