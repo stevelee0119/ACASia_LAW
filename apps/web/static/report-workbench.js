@@ -1,7 +1,7 @@
 "use strict";
 
 const reportWorkbench = (() => {
-  const formats = {pdf:"PDF",docx:"Word (DOCX)",xlsx:"Excel (XLSX)",csv:"CSV",json:"검증 상세 (JSON)",manifest:"무결성 기록"};
+  const formats = {pdf:"PDF",json:"검증 상세 (JSON)"};
   // 보고서는 서버 뒤편에서 만들고, 화면은 1초마다 단계·진행률만 받아 온다.
   // 요청 하나가 수십 초 붙잡혀 있다 끊기던 문제를 없애고, 기다리는 동안 무엇을 하는지 보인다.
   const POLL_MS=1000, MAX_POLL_FAILURES=30, watching=new Set();
@@ -130,10 +130,9 @@ const reportWorkbench = (() => {
     editor.submit.textContent="확정본 생성";
   }
   function decorate(report,row) {
-    row.prepend(node("strong",report.label || `${report.state === "FINAL"?"확정본":"초안"} · ${report.audience === "SHAREABLE"?"공유용":"내부 검토용"}`));
-    if(report.state === "FINAL")row.append(node("p",`${report.finalized_by} · ${dateText(report.finalized_at)} · ${report.note || ""}`,"muted"));
-    else if(report.snapshot_hash)row.append(button("점검 후 확정",()=>finalize(report)));
-    if(report.snapshot_hash){const details=node("details");details.append(node("summary","고정본 무결성"),node("code",`SHA-256: ${report.snapshot_hash}`));row.append(details);}
+    const info=row.querySelector(".report-row-info") || row;
+    info.prepend(node("strong",report.label || `${report.state === "FINAL"?"확정본":"초안"} · ${report.audience === "SHAREABLE"?"공유용":"내부 검토용"}`));
+    if(report.state === "FINAL")info.append(node("span",`${report.finalized_by} · ${dateText(report.finalized_at)}${report.note?` · ${report.note}`:""}`,"muted"));
   }
   return {create,decorate,showActive};
 })();
