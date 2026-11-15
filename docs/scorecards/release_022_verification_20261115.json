@@ -3556,7 +3556,9 @@
   "readme": 12,
   "total": 55
  },
- "sealed_status": "HOLD: user summary only; Korean OCR absent and paired main result missing",
+ "sealed_status": "PASS_NO_REGRESSION: paired main/candidate aggregate scorecards match conditions and all set aggregates; no per-type regression.",
  "sealed_submission": "release_022_sealed_submitted_20261115.json",
- "performance": "release_022_performance_20261115.json"
+ "performance": "release_022_performance_20261115.json",
+ "sealed_comparison_record": "release_022_sealed_comparison_20261115.json",
+ "version_commit_sha": "b91aaab022019f3fd17311b5b7804f1d3aae5cc8 (PR #314 head; pending CI/merge)"
 }

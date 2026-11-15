@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "verdict": "PASS_NO_REGRESSION",
+  "measured_on": "2026-11-15",
+  "comparison": "main vs release candidate, same offline conditions",
+  "main": {
+    "sha": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+    "version": "0.21.0",
+    "scorecard_sha256": "147b8f560880261f3cb70ea8669441cc841e8a67b8fff5ded26191ca41f5432f"
+  },
+  "candidate": {
+    "sha": "fca75347c5612b3a5960005726b4a31f7143b38a",
+    "version": "0.21.0",
+    "scorecard_sha256": "049d15939157034e682abd3156e8245d81538dae8ae5ba72210118cbd0088ea5"
+  },
+  "environment": {
+    "network": false,
+    "tesseract": "5.3.4",
+    "ocr_langs": [
+      "eng",
+      "kor",
+      "osd"
+    ],
+    "python": "3.11.18"
+  },
+  "rule_version": "2026.09.30.1",
+  "dataset_sha256": "940bcdcefcdca102f8081d7baf22e5a88eac75b737088e069c520dec2ef1da61",
+  "documents": 8,
+  "items": 62,
+  "types": 36,
+  "legacy": {
+    "main": 23.0,
+    "candidate": 23.0
+  },
+  "v2": {
+    "main_hits": 13,
+    "candidate_hits": 13,
+    "items": 62,
+    "main_recall": 0.20967741935483872,
+    "candidate_recall": 0.20967741935483872,
+    "main_macro": 0.16666666666666663,
+    "candidate_macro": 0.16666666666666663
+  },
+  "pii_kinds": {
+    "main": {
+      "expected_kinds": 26,
+      "found_kinds": 13,
+      "recall": 0.5
+    },
+    "candidate": {
+      "expected_kinds": 26,
+      "found_kinds": 13,
+      "recall": 0.5
+    }
+  },
+  "false_positives": {
+    "main": 0,
+    "candidate": 0
+  },
+  "a_grade_false_positives": {
+    "main": 0,
+    "candidate": 0
+  },
+  "engine_errors": {
+    "main": {},
+    "candidate": {}
+  },
+  "alerts": {
+    "main": {
+      "unadjudicated_alerts": 13,
+      "advisory_findings": 1
+    },
+    "candidate": {
+      "unadjudicated_alerts": 13,
+      "advisory_findings": 1
+    }
+  },
+  "injection_detection": {
+    "main": {
+      "items": 10,
+      "hits": 0,
+      "recall": 0.0
+    },
+    "candidate": {
+      "items": 10,
+      "hits": 0,
+      "recall": 0.0
+    },
+    "interpretation": "0/10 in both; legacy injection_defended is not detection success"
+  },
+  "all_set_aggregates_and_per_type_group_counts_equal": true,
+  "limitations": [
+    "not a measure of legal accuracy or overall precision",
+    "not evidence of security effectiveness",
+    "offline scorecards use lexical matching and are not blinded"
+  ]
+}

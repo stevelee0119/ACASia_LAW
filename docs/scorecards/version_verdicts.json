@@ -445,42 +445,42 @@
   "release_tag": "v.0.21.0",
   "deployment_evidence": "release_021_deployment_20261115.json"
  },
-{
- "version": "0.22.0",
- "from": "0.21.0",
- "level": "minor",
- "basis": [
-  "added",
-  "changed",
-  "fixed",
-  "security"
- ],
- "measured_commit": "fca75347c5612b3a5960005726b4a31f7143b38a",
- "conditions": {
-  "network": false,
-  "python": "3.11.17",
-  "tesseract": "5.3.4 eng/kor/osd",
-  "os": "Ubuntu 24.04 container",
-  "baseline_commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
-  "track": "일반 경로. 버전 자리 판정과 배포 승인은 분리. 봉인 게이트 보류.",
-  "scoring": "main과 후보의 동일 고정/은퇴 자료·채점기·의존성 비교. 원문/정답/기준선 변경 없음."
- },
- "evidence": {
-  "M1": "main/후보 모두 dev 82.6, holdout 81.9, 확인 오탐/A 0, 구 인젝션 방어 대리값 유지. v2 dev 42/56, holdout 41/54; 엔진 오류 0.",
-  "M2": "새 봉인 후보 단독 제출 요약: 8문서/62항목, 구23.0·v2 13/62·개인정보13/26·보안탐지0/10. Python3.11.2/Tesseract5.3.0 eng/osd만. 원본 집계 JSON·한국어OCR·동일 조건 main 결과가 없어 봉인 통과/회귀 판정 보류. 0.21 봉인 대체 승인을 승계하지 않음.",
-  "M3": "은퇴5세트 양쪽 53.3/48.6/56.9/45.8/34.1, 확인오탐/A 0, v2 유형별 후퇴 없음. 같은365항목 0.20/0.21/후보 모두195/365(53.4%), 법률43/123(35.0%), RER0. 실무 정확도 아님.",
-  "M4": "Added Time Table(#305). Changed Gemini 기본 모델(#304), AI 관여/범위/이견/표본/근거 정보(#308). Fixed Drive/HWPX/비율근거/개인정보 진단(#307), 건수표시(#310), 모바일 목록(#312). 의존성 해시 잠금·runtime·감사(#303), README 동기화(#306).",
-  "P1": "verify_all 전체 최종 종료0, 수용1278·원장2357·전체10430·브라우저200, 실제실패/strict XPASS0. 최초 환경실패는 최종 근거에서 제외하고 원인/재검증 보존.",
-  "P2": "고정/은퇴 비교의 회귀0. 점수 순증을 근거로 버전을 올리지 않음.",
-  "P3": "하드코딩·시험삭제·보호경로·버전 검사 통과. TK185 평가 조건 P1 보완은 별도 evaluator 커밋; 관련43시험 통과, README12시험 통과.",
-  "P4": "후보 fca75347 CI43709116501·점수43709116513·pip-audit43709116539 성공. SQLite11906/PG11910 passed, 각24xfail. 평가/버전/릴리스 PR 최종 head CI는 단계별 확인.",
-  "P5": "새로 확인된 제품 P1 회귀 없음. 기존 P1 TK182/186의 운영 미확인 상태는 유지. 코드 병합을 운영 해소로 계산하지 않음.",
-  "unmeasured": "새 봉인 동일조건 비교, 실제 Drive 원본/암호화/HWPX, 새 Gemini 호출·비용·품질, AI 범위 정확도, 공식 Source cascade 실제해소, 실기기 화면. 온라인 비교계획 유지.",
-  "record": "release_022_candidate_20261115.md / release_022_verification_20261115.json"
- },
- "rer": 0.0,
- "decided_by": "Codex 평가 세션 (사용자 진행 지시)",
- "decided_at": "2026-11-15",
- "release_status": "HOLD_SEALED_COMPARISON_AND_VERSION_COMMIT_AND_USER_MAIN_MERGE_APPROVAL"
-}
+ {
+  "version": "0.22.0",
+  "from": "0.21.0",
+  "level": "minor",
+  "basis": [
+   "added",
+   "changed",
+   "fixed",
+   "security"
+  ],
+  "measured_commit": "fca75347c5612b3a5960005726b4a31f7143b38a",
+  "conditions": {
+   "network": false,
+   "python": "3.11.17",
+   "tesseract": "5.3.4 eng/kor/osd",
+   "os": "Ubuntu 24.04 container",
+   "baseline_commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+   "track": "일반 경로. 봉인 동일 조건 비교 수용; 배포 승인은 main 병합 및 온라인 평가와 별도.",
+   "scoring": "main과 후보의 동일 고정/은퇴 자료·채점기·의존성 비교. 원문/정답/기준선 변경 없음."
+  },
+  "evidence": {
+   "M1": "main/후보 모두 dev 82.6, holdout 81.9, 확인 오탐/A 0, 구 인젝션 방어 대리값 유지. v2 dev 42/56, holdout 41/54; 엔진 오류 0.",
+   "M2": "사용자 제공 main/후보 집계 JSON 직접 비교 수용: main 83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca, 후보 fca75347c5612b3a5960005726b4a31f7143b38a; 동일 오프라인 환경 Python 3.11.18, Tesseract 5.3.4 eng/kor/osd, 자료 SHA-256 940bcdcefcdca102f8081d7baf22e5a88eac75b737088e069c520dec2ef1da61. 봉인 8문서/62항목/36유형, 구 산식 23.0=23.0, v2 13/62=13/62, macro 16.67% 동일, 개인정보 종류 13/26, FP/A/오류 0, 유형별 감소 없음. 보안 탐지 0/10 양쪽 동일이며 실무 정확도·보안성 입증 아님. 집계 JSON SHA-256 147b8f560880261f3cb70ea8669441cc841e8a67b8fff5ded26191ca41f5432f / 049d15939157034e682abd3156e8245d81538dae8ae5ba72210118cbd0088ea5. 상세 release_022_sealed_comparison_20261115.json.",
+   "M3": "은퇴5세트 양쪽 53.3/48.6/56.9/45.8/34.1, 확인오탐/A 0, v2 유형별 후퇴 없음. 같은365항목 0.20/0.21/후보 모두195/365(53.4%), 법률43/123(35.0%), RER0. 실무 정확도 아님.",
+   "M4": "Added Time Table(#305). Changed Gemini 기본 모델(#304), AI 관여/범위/이견/표본/근거 정보(#308). Fixed Drive/HWPX/비율근거/개인정보 진단(#307), 건수표시(#310), 모바일 목록(#312). 의존성 해시 잠금·runtime·감사(#303), README 동기화(#306).",
+   "P1": "verify_all 전체 최종 종료0, 수용1278·원장2357·전체10430·브라우저200, 실제실패/strict XPASS0. 최초 환경실패는 최종 근거에서 제외하고 원인/재검증 보존.",
+   "P2": "고정/은퇴 비교의 회귀0. 점수 순증을 근거로 버전을 올리지 않음.",
+   "P3": "하드코딩·시험삭제·보호경로·버전 검사 통과. TK185 평가 조건 P1 보완은 별도 evaluator 커밋; 관련43시험 통과, README12시험 통과.",
+   "P4": "후보 fca75347 CI43709116501·점수43709116513·pip-audit43709116539 성공. SQLite11906/PG11910 passed, 각24xfail. 평가/버전/릴리스 PR 최종 head CI는 단계별 확인.",
+   "P5": "새로 확인된 제품 P1 회귀 없음. 기존 P1 TK182/186의 운영 미확인 상태는 유지. 코드 병합을 운영 해소로 계산하지 않음.",
+   "unmeasured": "배포 후 운영 비교: 실제 Drive 원본/암호화/HWPX, Gemini 새 모델 호출·비용·품질, AI 범위 정확도/반복, 공식 Source cascade, 실기기 화면, 온라인 봉인(U1).",
+   "record": "release_022_candidate_20261115.md / release_022_verification_20261115.json / release_022_sealed_comparison_20261115.json"
+  },
+  "rer": 0.0,
+  "decided_by": "Codex 평가 세션 (사용자 진행 지시)",
+  "decided_at": "2026-11-15",
+  "release_status": "HOLD_VERSION_PR_FINAL_CI_AND_USER_MERGE_AND_MAIN_RELEASE_AND_ONLINE_EVALUATION"
+ }
 ]

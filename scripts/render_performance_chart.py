@@ -86,7 +86,8 @@ def main() -> int:
     plt.rcParams.update({"font.family": family, "axes.unicode_minus": False})
 
     rows = select_milestone_rows(load_rows())
-    versions = [r["version"] for r in rows]
+    # Mark an unreleased candidate compactly so the rightmost tick remains readable.
+    versions = ["v0.22*" if r["version"].endswith("-candidate") else r["version"] for r in rows]
     x = list(range(len(rows)))
     fig, (left, right) = plt.subplots(1, 2, figsize=(13, 4.8), dpi=150)
 
