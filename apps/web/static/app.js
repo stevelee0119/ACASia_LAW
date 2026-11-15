@@ -794,8 +794,8 @@ function switchTab(tab) {
   syncMobileBottomNav(tab);
   workflowUI.activate(tab).catch(e => toast(e.message));
 }
-async function loadProjects() {
-  state.projects = await api("/projects");
+async function loadProjects(options = {}) {
+  state.projects = await api("/projects", { cache: "no-store", ...options });
   renderProjects();
   updateSidebarHeader();
 }
@@ -3627,6 +3627,7 @@ document.querySelectorAll(".sidebar-menu [data-side-nav]").forEach(el => el.oncl
   document.querySelectorAll(".sidebar-menu [data-side-nav]").forEach(b => b.classList.toggle("active", b === el));
   const key = el.dataset.sideNav;
   if (key === "projects") {
+    loadProjects({ interactiveAuth: false }).catch(() => {});
     $("projectSearch")?.focus();
   } else if (key === "history") {
     const histBtn = [...document.querySelectorAll("#jobControls button")].find(b => b.textContent.includes("검증 이력"));
@@ -3660,7 +3661,8 @@ document.addEventListener("keydown", e => {
 });
 $("menuButton").onclick = () => {
   if (narrowScreen()) {
-    $("sidebar").classList.toggle("open");
+    const opened = $("sidebar").classList.toggle("open");
+    if (opened) loadProjects({ interactiveAuth: false }).catch(() => {});
   } else {
     const collapsed = document.querySelector(".workspace").classList.toggle("sidebar-collapsed");
     try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0"); } catch (e) { /* 저장 불가 환경: 이번 화면에서만 적용 */ }
