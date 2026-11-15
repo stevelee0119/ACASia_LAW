@@ -580,13 +580,39 @@ def inspect_request(request, *, _original_system: str = None):
         failure_code = None
         diagnostic_category = None
 
+    safe_masking = {}
+    if source_text is not None:
+        try:
+            src_obj = json.loads(source_text)
+            raw_mask_meta = ((src_obj.get("official") or {}).get("masking")
+                             if isinstance(src_obj, dict) else None)
+            if isinstance(raw_mask_meta, dict):
+                for mk in ("attempted", "masked", "raw_chars", "masked_chars", "raw_sha256", "masked_sha256"):
+                    mv = raw_mask_meta.get(mk)
+                    if isinstance(mv, (bool, int)):
+                        safe_masking[mk] = mv
+                    elif isinstance(mv, str) and re.fullmatch(r"[0-9a-fA-F]{8,64}", mv):
+                        safe_masking[mk] = mv[:64]
+                if isinstance(raw_mask_meta.get("masked_types"), dict):
+                    safe_masking["masked_types"] = {
+                        str(k)[:32]: int(v)
+                        for k, v in raw_mask_meta["masked_types"].items()
+                        if isinstance(v, (int, float))
+                    }
+        except Exception:
+            pass
+
+    user_chars = len(request.user) if isinstance(request.user, str) else 0
     res = {
         "policy_version": POLICY_VERSION,
         "request_sha256": hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
         "scope": "ASSEMBLED_LLM_REQUEST",
         "status": status,
         "detected_types": dict(kinds),
+        "user_chars": user_chars,
     }
+    if safe_masking:
+        res["masking"] = safe_masking
     if excerpt_statuses:
         from packages.common.source_trace import MAX_SOURCE_CHARS, MAX_TRACE_CHARS
         res['excerpt_projection'] = {'statuses': dict(Counter(excerpt_statuses)),
@@ -602,4 +628,21 @@ def inspect_request(request, *, _original_system: str = None):
         res["retryable"] = failure_code == "STATIC_PROMPT_FALSE_POSITIVE"
         if failure_code == "STATIC_PROMPT_FALSE_POSITIVE":
             res["note"] = "출처가 확인된 등록 고정 상수의 정적 어휘 오탐으로 판정하여 호출을 허용함(동적 PII 없음)"
+    if status != "PASSED":
+        types_str = ",".join(f"{k}:{v}" for k, v in sorted(blocked_kinds.items())) or "none"
+        paths_list = sorted(detected_paths)
+        paths_str = ",".join((p[:32] + ".." if len(p) > 34 else p) for p in paths_list[:4])
+        if len(paths_list) > 4:
+            paths_str += f"(+{len(paths_list) - 4})"
+        mask_str = (
+            f"mask=yes({safe_masking.get('masked_chars', user_chars)})"
+            if safe_masking.get("attempted") else f"mask=unrecorded(len={user_chars})"
+        )
+        code_parts = [str(failure_code or "UNKNOWN")]
+        if contract_failures:
+            code_parts.append(",".join(str(x) for x in contract_failures))
+        res["safe_summary"] = (
+            f"[{diagnostic_category or failure_code}:{'/'.join(code_parts)}] "
+            f"types={types_str}; paths={paths_str or '-'}; {mask_str}; sha={res['request_sha256'][:12]}"
+        )
     return res

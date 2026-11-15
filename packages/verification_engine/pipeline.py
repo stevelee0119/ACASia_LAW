@@ -1450,7 +1450,8 @@ class VerificationPipeline:
         cleaned = _re.sub(r"(sk-[A-Za-z0-9_\-]{8,}|AIza[A-Za-z0-9_\-]{8,}|[A-Za-z0-9_\-]{40,})",
                           "[REDACTED]", str(text))
         cleaned = _re.sub(r"\s+", " ", cleaned).strip()
-        return cleaned[:160]
+        limit = 360 if ("INPUT_PRIVACY_BLOCKED" in cleaned or "입력 개인정보" in cleaned) else 160
+        return cleaned[:limit]
 
     async def _sized_cascade(self, input_cap: int, budget_note: Dict[str, Any], **kwargs):
         """요청 크기가 공급자 입력 한도 안이면 부르고, 넘으면 None(공급자 '예산 승인 실패'로 남기지 않는다, TK-141)."""

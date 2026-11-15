@@ -610,9 +610,44 @@ def _width_normalized_positions(text: str) -> List[Tuple[str, int]]:
     return expanded
 
 
+_PSEUDONYM_TOKEN_RE = re.compile(
+    r"\[(?:PERSON|COMPANY|RRN|PHONE|EMAIL|ADDRESS|ACCOUNT|MILID|PASSPORT|DOB|MED|VEHICLE|DLICENSE|AFFIL|BIZNO|PII)_\d{3,6}\]"
+)
+
+
+def _pseudonym_spans(text: str) -> List[Tuple[int, int]]:
+    return [m.span() for m in _PSEUDONYM_TOKEN_RE.finditer(text)]
+
+
+def _overlaps_span(spans: List[Tuple[int, int]], start: int, end: int) -> bool:
+    if not spans:
+        return False
+    index = bisect_right(spans, (start, float("inf")))
+    for check_idx in (index - 1, index):
+        if 0 <= check_idx < len(spans):
+            s_start, s_end = spans[check_idx]
+            if s_start < end and start < s_end:
+                return True
+    return False
+
+
 def _normalise_contact_view(text: str) -> Tuple[str, List[int]]:
-    """숫자 사이 표기를 정리한 연락처 탐지 뷰와 문자별 원문 위치를 만든다."""
-    expanded = _width_normalized_positions(text)
+    """숫자 사이 표기를 정리한 연락처 탐지 뷰와 문자별 원문 위치를 만든다.
+
+    가명 토큰([PERSON_001] 등) 안의 숫자는 인접한 괄호·숫자와 합쳐 가짜 전화번호로
+    오인하지 않도록 비숫자 경계로 둔다. 토큰 바깥의 실제 번호는 그대로 탐지한다.
+    """
+    pseudonym_digit_positions = set()
+    for m in _PSEUDONYM_TOKEN_RE.finditer(text):
+        for pos in range(m.start(), m.end()):
+            if text[pos].isdigit():
+                pseudonym_digit_positions.add(pos)
+
+    expanded: List[Tuple[str, int]] = []
+    for source_index, source_char in enumerate(text):
+        mapped = "X" if source_index in pseudonym_digit_positions else source_char
+        for char in unicodedata.normalize("NFKC", mapped):
+            expanded.append((char, source_index))
 
     def is_separator(char: str) -> bool:
         category = unicodedata.category(char)
@@ -863,6 +898,7 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
         return matches
 
     guard_spans = legal_identifier_spans(text)
+    pseudonym_spans = _pseudonym_spans(text)
     contact_view, contact_source_positions = _normalise_contact_view(text)
     matches.extend(
         _contact_matches(
@@ -879,7 +915,7 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
             continue
         for m in pattern.finditer(text):
             start, end = m.start(), m.end()
-            if _covered_by_span(guard_spans, start, end):
+            if _covered_by_span(guard_spans, start, end) or _overlaps_span(pseudonym_spans, start, end):
                 continue
             raw = m.group(0)
             confidence = base_confidence

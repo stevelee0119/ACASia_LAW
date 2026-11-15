@@ -166,6 +166,9 @@ def describe_failure(error: str) -> str:
         detail = text.partition(":")[2].strip()
         named = [labels.get(code.strip(), code.strip()) for code in detail.split("(")[0].split(",") if code.strip()]
         return "응답이 출력 보안 검사에서 격리됨(" + (", ".join(named) or "사유 미상") + ")"
+    if text.startswith("INPUT_PRIVACY_BLOCKED"):
+        detail = text.partition(" ")[2].strip()
+        return ("입력 개인정보·계약 검사 차단 " + detail)[:360] if detail else "입력 개인정보 검사 차단"
     if text.startswith("INVALID_RESPONSE_SCHEMA"):
         detail = text.partition(":")[2].strip()
         return f"응답 형식 오류({detail})" if detail else "응답 형식 오류"
@@ -445,15 +448,21 @@ class LLMRouter:
                     "exception_type": type(exc).__name__,
                 }
             if privacy["status"] != "PASSED":
-                code = privacy.get("failure_code") or privacy.get("reason") or "UNKNOWN"
-                cat = privacy.get("diagnostic_category") or code
-                detail_parts = [str(code)]
-                if privacy.get("contract_failures"):
-                    detail_parts.append(",".join(str(x) for x in privacy["contract_failures"]))
-                if privacy.get("exception_type"):
-                    detail_parts.append(str(privacy["exception_type"]))
+                privacy["sent"] = False
+                privacy["stage"] = str(request.metadata.get("stage") or request.input_contract or role)
+                safe_summary = privacy.get("safe_summary")
+                if not safe_summary:
+                    code = privacy.get("failure_code") or privacy.get("reason") or "UNKNOWN"
+                    cat = privacy.get("diagnostic_category") or code
+                    detail_parts = [str(code)]
+                    if privacy.get("contract_failures"):
+                        detail_parts.append(",".join(str(x) for x in privacy["contract_failures"]))
+                    if privacy.get("exception_type"):
+                        detail_parts.append(str(privacy["exception_type"]))
+                    safe_summary = f"[{cat}:{'/'.join(detail_parts)}]"
+                error_msg = f"INPUT_PRIVACY_BLOCKED {safe_summary}; stage={privacy['stage']}; sent=false"
                 execution = ModelExecution(str(role), provider.name, provider.config.model, False,
-                    error=f"INPUT_PRIVACY_BLOCKED [{cat}:{'/'.join(detail_parts)}]: 마스킹 후 입력 검사 불통과",
+                    error=error_msg,
                     cost_status="NOT_SENT",
                     input_privacy=privacy)
                 if self.on_execution:
