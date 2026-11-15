@@ -55,7 +55,7 @@ def test_gate_reasons_are_shown_open_and_readable(width, height):
             page.route("**/*", respond)
             page.goto("http://gate.test/")
             select_first_project(page)
-            expect(page.locator("#summary .metric")).to_have_count(3)
+            expect(page.locator("#summary .metric")).to_have_count(4)
             expect(page.get_by_role("region", name="배포가능 판정 사유")).to_have_count(0)
             summary = page.locator("#summary")
             for text in ["배포 차단", "배포가능", "검증위험", "사람 검토 사유", GATE["risk_index_note"],

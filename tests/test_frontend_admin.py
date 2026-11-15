@@ -309,9 +309,9 @@ def test_grouped_workbench_preserves_all_tools_and_selected_case(admin_page):
     }""")
     # 2026-10-25 사용자 요구(평가 측 개정): 하위 탭 없는 다섯 개 평면 탭. 활동 기록 화면은 두지 않는다(사용자 결정).
     tabs = page.locator(".tabs [data-tab]:visible")
-    expect(tabs).to_have_count(5)
-    assert tabs.all_inner_texts() == ["자료", "AI 작성·보안 진단", "출처가 확인되지 않는 항목", "법률적으로 무리한 주장", "보고서"]
-    for tab in ("documents", "ai-verification", "review", "legal-claims", "reports"):
+    expect(tabs).to_have_count(6)
+    assert tabs.all_inner_texts() == ["자료", "AI 작성·보안 진단", "출처가 확인되지 않는 항목", "법률적으로 무리한 주장", "Time Table", "보고서"]
+    for tab in ("documents", "ai-verification", "review", "legal-claims", "timeline", "reports"):
         page.locator(f'.tabs [data-tab="{tab}"]').click()
         expect(page.locator(f'[data-panel="{tab}"]')).to_be_visible()
     expect(page.locator('[data-panel="audit"], [data-tab="audit"], #openAudit')).to_have_count(0)

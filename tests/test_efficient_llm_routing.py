@@ -189,6 +189,17 @@ def test_authorship_uses_luna_and_adds_independent_review_for_signal_or_sample(t
     answers = asyncio.run(router.consult_all(LLMRole.PRIMARY_REASONER, authorship_request(hint)))
     assert len(requests) == count and all(a.used for a in answers)
     assert requests[0][1]["model"] == "gpt-6-luna"
+    assert [a.executions[-1].provider for a in answers] == ["openai", "gemini"]
+
+
+def test_authorship_calls_anthropic_third_only_when_openai_and_gemini_disagree(transport):
+    router, requests, responses = transport
+    responses["openai"] = {"verdict": "AI_PARTIAL_GENERATION"}
+    responses["gemini"] = {"verdict": "UNCERTAIN"}
+    responses["anthropic"] = {"verdict": "AI_PARTIAL_GENERATION"}
+    answers = asyncio.run(router.consult_all(LLMRole.PRIMARY_REASONER, authorship_request(False)))
+    assert len(requests) == 3
+    assert [a.executions[-1].provider for a in answers] == ["openai", "gemini", "anthropic"]
 
 
 @pytest.mark.parametrize("kept", [[], [1], [2]])

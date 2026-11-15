@@ -77,7 +77,7 @@ def test_pending_and_status_metrics_explain_themselves(width, height):
             page.route("**/*", respond)
             page.goto("http://metrics.test/")
             select_first_project(page)
-            expect(page.locator("#summary .metric")).to_have_count(3)
+            expect(page.locator("#summary .metric")).to_have_count(4)
             expect(page.locator(".metric-explain", has_text="확인 전 항목")).to_have_count(0)
             expect(page.locator(".metric-explain", has_text="진행 상태")).to_have_count(0)
             page.locator('.tabs button[data-tab="review"]').click()
