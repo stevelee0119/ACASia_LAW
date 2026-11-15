@@ -643,6 +643,11 @@
       "status": "open",
       "kind": "new",
       "note": "2026-11-15 사용자 지시로0.22.0 해소 대상. AI 반복 조건동일성 오표시·범위판정 품질 평가. 운영/사본 근거 online_0210_automated_20261115.json. TK182빈비밀번호 부분 사본54+3시험, TK183사본57시험 통과. 전체 제품 적용/운영 재측정 전이며 나머지 설계 미검증 범위는 개별 티켓 참조."
+    },
+    "TK-186": {
+      "status": "open",
+      "kind": "existing",
+      "note": "2026-11-15 사용자0.22해소범위: 공식Source cascade INPUT_PRIVACY_BLOCKED 정밀진단. 이전Source점검3공급자NOT_SENT·원인미확정, 이번다른경로80호출성공으로종결하지않음. 개인정보/입력인젝션 보호완화금지. TK-186_official_cascade_privacy_diagnostics.md."
     }
   },
   "updated_on": "2026-11-15"
