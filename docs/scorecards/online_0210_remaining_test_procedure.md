@@ -35,7 +35,7 @@ Drive의 현재 참고 자료 경로(읽기권한이 있는 폴더)에 다음2�
 - `rag_control_support_night_firing_safety.pdf`
 - `rag_control_unrelated_school_meal.pdf`
 
-파일은 tests/fixtures/rag_controls 또는 제공시험묶음의 rag_controls 폴더에 있다. 합성 시험자료이며 실제규정으로 사용하지 않는다. 정상업무에 섞이지 않게 시험자료임을 유지하고 시험후 정리는 사용자가 판단한다.
+파일은 tests/fixtures/rag_controls 또는 제공 시험 묶음의 02_drive_references/case9 폴더에 있다. 합성 시험자료이며 실제규정으로 사용하지 않는다. 정상업무에 섞이지 않게 시험자료임을 유지하고 시험후 정리는 사용자가 판단한다.
 
 동기화·색인을 완료하고 스냅샷을 고정한다. case9는 기존 제공한 같은 PDF1개, 같은 사건설정/외부 AI정책으로 실행한다.
 
@@ -67,7 +67,7 @@ r2/r3에도 같은4명세 적용. CLI종료0만 보지 않고 failed를 확인�
 
 ## 3. TK-180 역할 분리 전용 시험 — 최소8보고서
 
-검증 대상 `input_*.docx`와 참고 자료 `TK180_verified_reference_control.*`의 역할을 섞지 않는다. 자료는 제공묶음의 tk180 폴더에 있으며 manifest.json으로 해시를 확인한다.
+검증 대상 `input_*.docx`와 참고 자료 `TK180_verified_reference_control.*`의 역할을 섞지 않는다. 자료는 제공 묶음의 01_inputs 및 02_drive_references/tk180 폴더에 있으며 package_manifest.json으로 해시를 확인한다.
 
 ### 환경
 
