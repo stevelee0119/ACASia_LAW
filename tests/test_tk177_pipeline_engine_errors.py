@@ -1,0 +1,50 @@
+"""TK-177: 검증 단계가 예외를 삼켜도 실행 기록(run_manifest)의 엔진 오류는 0이어야 한다.
+
+0.18.0~0.21.0에서 pipeline.py가 `os`를 들여오지 않아 법리 규칙 단계(legal_rules)가 모든 문서에서 NameError를 냈다.
+단계가 예외를 삼켜 시험·채점이 모두 통과했고, 화면 경고에는 "법리 규칙 검토 경고: name 'os' is not defined"가 남았다.
+값은 모두 합성이다.
+"""
+import pytest
+
+from packages.common.schemas import Block, NormalizedDocument, Page
+from packages.pii_engine import PseudonymStore
+from packages.verification_engine import pipeline as module
+from packages.verification_engine.pipeline import DocumentInput, ProjectContext, VerificationPipeline
+
+TEXT = ("원고는 피고에게 금 1,000,000원의 지급을 구한다. 피고는 2024. 1. 3. 계약을 체결하였으나 "
+        "민법 제750조에 따라 손해를 배상할 책임이 있다. 원고의 청구를 인용하여 주시기 바랍니다.")
+
+
+def _manifest(result):
+    manifest = result.run_manifest
+    return manifest if isinstance(manifest, dict) else manifest.to_dict()
+
+
+def _run(tmp_path, monkeypatch):
+    doc = NormalizedDocument("doc", "synthetic.txt", "text/plain", "synthetic-hash",
+                             pages=[Page(1, blocks=[Block("b1", TEXT, 1)])])
+    monkeypatch.setattr(module, "parse_document", lambda *args, **kw: doc)
+    monkeypatch.setattr(module, "PseudonymStore", lambda project_id: PseudonymStore(project_id, root=tmp_path))
+    return VerificationPipeline().run("run-tk177", ProjectContext("project-tk177"),
+                                      [DocumentInput("doc", "synthetic.txt", "synthetic.txt")])
+
+
+@pytest.mark.parametrize("flag", [None, "1"])
+def test_legal_rules_stage_has_no_engine_error(tmp_path, monkeypatch, flag):
+    if flag is None:
+        monkeypatch.delenv("LV_ENABLE_CAUSE_OF_ACTION_REVIEW", raising=False)
+    else:
+        monkeypatch.setenv("LV_ENABLE_CAUSE_OF_ACTION_REVIEW", flag)
+    result = _run(tmp_path, monkeypatch)
+    stage = _manifest(result)["engines"]["legal_rules"]
+    assert stage["executed"] and not stage["errors"], stage["errors"]
+    warnings = [w for d in result.documents for w in (d.warnings or [])]
+    assert not [w for w in warnings if "법리 규칙 검토 경고" in w], warnings
+
+
+def test_no_offline_stage_reports_an_engine_error(tmp_path, monkeypatch):
+    monkeypatch.delenv("LV_ENABLE_CAUSE_OF_ACTION_REVIEW", raising=False)
+    result = _run(tmp_path, monkeypatch)
+    errors = {name: stage.get("errors") for name, stage in _manifest(result)["engines"].items()
+              if isinstance(stage, dict) and stage.get("errors")}
+    assert errors == {}

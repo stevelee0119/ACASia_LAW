@@ -61,7 +61,7 @@ const operationsUI = (() => {
       resetBtn.onclick = () => resetPasswordModal();
       actions.append(registerBtn, resetBtn);
       const emblem = node("div", null, "brand-emblem"), emblemImage = node("img");
-      emblemImage.src = "/static/acas-law-emblem.jpg"; emblemImage.alt = "ACASia LAW";
+      emblemImage.src = "/static/acas-law-emblem.jpg"; emblemImage.alt = "ACAS AegisLAW";
       emblemImage.width = 1280; emblemImage.height = 640; emblem.append(emblemImage);
       const heading = node("div", null, "login-heading");
       heading.append(emblem);

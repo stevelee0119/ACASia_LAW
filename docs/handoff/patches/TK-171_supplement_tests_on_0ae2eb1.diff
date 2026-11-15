@@ -1,0 +1,51 @@
+diff --git a/tests/frontend_auth.test.cjs b/tests/frontend_auth.test.cjs
+index cfaa7219..6541f2e9 100644
+--- a/tests/frontend_auth.test.cjs
++++ b/tests/frontend_auth.test.cjs
+@@ -97,7 +97,7 @@ test("password login is default, deduplicated, cookie based, and resolves univer
+   assert.equal(h.ui.authenticate(), pending);
+   const emblem = dialog.querySelector("img");
+   assert.equal(emblem.src, "/static/acas-law-emblem.jpg");
+-  assert.equal(emblem.alt, "ACASia LAW");
++  assert.equal(emblem.alt, "ACAS AegisLAW");
+   assert.equal(emblem.parent.className, "brand-emblem");
+   assert.equal(emblem.width, 1280); assert.equal(emblem.height, 640);
+   assert.equal(dialog.querySelector("h2"), null);
+@@ -205,7 +205,7 @@ test("merged page retains every workbench and no script persists authentication
+   const app = readFileSync(path.join(root, "apps/web/static/app.js"), "utf8");
+   // TK-86: 저사용 계산 워크벤치 제거 후 유지되는 필수 워크벤치 스크립트 검증
+   for (const file of ["workflow.js", "admin.js", "operations.js", "report-workbench.js"]) assert.ok(html.includes(file));
+-  assert.ok(html.includes("ACASia_LAW"));
++  assert.ok(html.includes("AegisLAW") && !html.includes("ACASia"));
+   assert.ok(html.includes("법률문서 검증시스템"));
+   // 엠블럼은 상단바와 빈 상태 화면 양쪽에 있어야 한다.
+   assert.ok(html.includes("/static/img/emblem-192.png"));
+diff --git a/tests/test_api.py b/tests/test_api.py
+index fb9ed291..5518384b 100644
+--- a/tests/test_api.py
++++ b/tests/test_api.py
+@@ -65,9 +65,9 @@ def test_frontend_emblem_is_available_without_login(client):
+     assert page.status_code == 200
+     markup = html.fromstring(page.text)
+     brand = markup.xpath("//a[@class='brand']")[0]
+-    assert brand.get("aria-label") == "ACASia_LAW 홈"
++    assert brand.get("aria-label") == "AegisLAW 홈"
+     emblem = brand.xpath(".//img")[0]
+-    assert emblem.get("alt") == "ACASia LAW"
++    assert emblem.get("alt") == "ACAS AegisLAW"
+     square = markup.xpath("//img[@class='empty-emblem']")[0]
+     assert square.get("src") == "/static/img/acas-law-square-transparent.png"
+     for element, size, fmt, mime in (
+diff --git a/tests/test_frontend_emblem.py b/tests/test_frontend_emblem.py
+index 68ece8bb..dbcf8766 100644
+--- a/tests/test_frontend_emblem.py
++++ b/tests/test_frontend_emblem.py
+@@ -102,7 +102,7 @@ def test_emblem_login_and_header_at_desktop_tablet_and_mobile_sizes(tmp_path):
+                     return rects.every((rect, index) => rect.left >= 0 && rect.right <= innerWidth
+                         && (!index || rect.left >= rects[index - 1].right));
+                 }""")
+-                expect(page.get_by_role("link", name="ACASia_LAW 홈")).to_be_visible()
++                expect(page.get_by_role("link", name="AegisLAW 홈")).to_be_visible()
+                 title = page.locator(".brand-title")
+                 expect(title).to_be_visible()
+                 page.evaluate("document.fonts.ready")

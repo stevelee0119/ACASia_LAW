@@ -54,9 +54,9 @@ jobs:
       LV_REQUIRE_AUDIT_TRIGGER: "1"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -122,9 +122,9 @@ jobs:
       LV_REQUIRE_AUDIT_TRIGGER: "1"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -184,7 +184,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build production image and verify OCR
         run: docker build --tag acas-law-ocr-check --file docker/Dockerfile .
       - name: Verify OCR as production user without network

@@ -1,0 +1,165 @@
+diff --git a/packages/verification_engine/ai_document_detector.py b/packages/verification_engine/ai_document_detector.py
+index 355b07f4..cac789dd 100644
+--- a/packages/verification_engine/ai_document_detector.py
++++ b/packages/verification_engine/ai_document_detector.py
+@@ -647,6 +647,10 @@ _ANCHOR_AMOUNT = re.compile(r"(?<![\d,])(\d{1,3}(?:,\d{3})+|\d{5,})(?=\s*원)")
+ _ANCHOR_ARTICLE = re.compile(r"([가-힣]+법)\s*제\s*(\d+)\s*조")
+ # 표지가 없는 문장 중에서도 모순을 주장하는 문장은 사람 확인으로 남긴다(예: '성명이 서로 다르다').
+ _CONTRADICTION_WORDS = re.compile(r"다르|다름|다릅|혼재|상충|불일치|모순|어긋|맞지 않")
++# TK-173: 앞 문장을 되받아 풀이하는 문장('이는 … 모순일 뿐 … 근거가 아니다')은 새 지적이 아니라 앞 문장의 설명이다.
++_BACK_REFERENCE = re.compile(r"^(?:이는|이것은|이러한|이와\s*같은|이\s*점은|이\s*역시)\s")
++# TK-173: 금액 판정이 상세 값으로 기록한 기재값·계산값(제목에는 차액만 있는 경우가 있다).
++_VERDICT_AMOUNT_KEYS = ("stated", "computed", "difference", "stated_total", "computed_total")
+ 
+ 
+ def value_anchors(text: str) -> set:
+@@ -658,22 +662,46 @@ def value_anchors(text: str) -> set:
+     return anchors
+ 
+ 
++def verdict_anchors(finding: Finding) -> set:
++    """결정론 판정의 값 표지(TK-173). 제목의 표지에 더해, 금액을 다루는 판정(제목·상세에 원 금액이 있는 판정)이면
++    그 판정이 기록한 기재값·계산값·차액도 금액 표지로 쓴다. 날짜·일수 등 금액이 아닌 판정의 숫자는 쓰지 않는다."""
++    from decimal import Decimal, InvalidOperation
++
++    anchors = value_anchors(finding.title)
++    if not any(a.startswith("A:") for a in anchors | value_anchors(finding.detail or "")):
++        return anchors
++    features = finding.confidence_features or {}
++    for key in _VERDICT_AMOUNT_KEYS:
++        raw = features.get(key)
++        if raw is None or isinstance(raw, bool):
++            continue
++        try:
++            amount = Decimal(str(raw).replace(",", ""))
++        except InvalidOperation:
++            continue
++        if amount.is_finite() and amount > 0:
++            anchors.add(f"A:{format(amount.normalize(), 'f')}")
++    return anchors
++
++
+ def _remark_sentences(reason: str) -> List[str]:
+     body = re.sub(r"^\[[^\]]+\]\s*", "", reason or "")
+     return [s.strip() for s in re.split(r"(?<=[가-힣])\.\s+", body) if s.strip()]
+ 
+ 
+ def _anchor_cover(remark: Finding, candidates: List[Finding]) -> tuple:
+-    """지적 문장마다 값 표지를 결정론 판정 제목의 표지와 맞춘다. → (확인에 쓴 판정들, 확인하지 못한 문장들)
++    """지적 문장마다 값 표지를 결정론 판정의 표지(제목 + 금액 판정의 기재·계산값, TK-173)와 맞춘다. → (확인에 쓴 판정들, 확인하지 못한 문장들)
+ 
+     한 문장의 표지가 모두 판정 제목들에서 확인되어야 그 문장이 확인된 것이다. 표지가 없는 문장은 모순을 주장하는
+     문장일 때만 '확인하지 못함'으로 남기고, 설명 문장(예: '오기 가능성')은 판단 대상에서 뺀다."""
+-    titles = [(f, value_anchors(f.title)) for f in candidates]
++    titles = [(f, verdict_anchors(f)) for f in candidates]
+     used: List[Finding] = []
+     unresolved: List[str] = []
+     for sentence in _remark_sentences(remark.confidence_features.get("model_remark") or ""):
+         anchors = value_anchors(sentence)
+         if not anchors:
++            if _BACK_REFERENCE.match(sentence):
++                continue  # 앞 문장의 풀이: 앞 문장의 확인 결과를 따른다
+             if _CONTRADICTION_WORDS.search(sentence):
+                 unresolved.append(sentence)
+             continue
+diff --git a/tests/test_tk173_remark_verdict_values.py b/tests/test_tk173_remark_verdict_values.py
+new file mode 100644
+index 00000000..0214ca00
+--- /dev/null
++++ b/tests/test_tk173_remark_verdict_values.py
+@@ -0,0 +1,95 @@
++"""TK-173: 모델의 사실 지적을 결정론 판정의 기재값·계산값으로도 잇는다(0.20.0 온라인 D hwpx 관찰 O1).
++
++온라인 실행에서 표 합계 판정(제목에는 차액만, 기재·계산 합계는 상세 값에만)과 같은 오류를 짚은 모델 지적이
++'결정론 재계산으로 확인하지 못함'으로 따로 남았다. 지적 뒤의 풀이 문장('이는 … 모순일 뿐 …')도 확인하지 못한
++문장으로 남았다. 금액·문장은 시험용 합성이다.
++"""
++from __future__ import annotations
++
++import pytest
++
++from packages.common.enums import EvidenceGrade, FindingType, Severity, VerificationStatus
++from packages.common.schemas import Block, Finding, NormalizedDocument, Page
++from packages.verification_engine.ai_document_detector import (_fact_category, _fact_remark_finding,
++                                                               reconcile_model_fact_remarks, verdict_anchors)
++
++
++def _doc():
++    page = Page(page_number=1, blocks=[Block(block_id="b0", text="본문", page=1)])
++    return NormalizedDocument(document_id="d", filename="d.pdf", mime_type="application/pdf", sha256="0", pages=[page])
++
++
++def remark(text):
++    return _fact_remark_finding(_doc(), text, _fact_category(text) or "OTHER")
++
++
++def total_verdict(status=VerificationStatus.CONTRADICTED):
++    return Finding.create(type=FindingType.ARITHMETIC_MISMATCH, status=status, severity=Severity.HIGH,
++                          evidence_grade=EvidenceGrade.A, title="합계가 세부 금액 합산값과 다르다 (차이 200,000원)",
++                          detail="세부 2건 합산 4,500,000 / 문서 기재 4,700,000. 차액 200,000원.",
++                          confidence_features={"rule_id": "claim_engine.calculation:ARITHMETIC_MISMATCH",
++                                               "stated": "4700000", "computed": "4500000", "difference": "200000"},
++                          document_id="d")
++
++
++def date_verdict():
++    return Finding.create(type=FindingType.ARITHMETIC_MISMATCH, status=VerificationStatus.CONTRADICTED, severity=Severity.HIGH,
++                          evidence_grade=EvidenceGrade.A, title="기간 만료일이 계산과 다르다: 문서 2027. 8. 1. / 계산 2027. 2. 1.",
++                          detail="차이 181일", confidence_features={"rule_id": "CALC.EXPIRY_DATE", "difference": 181,
++                                                                 "stated": "4700000"}, document_id="d")
++
++
++def run(findings):
++    stats = {}
++    out = reconcile_model_fact_remarks(findings, stats)
++    return [f for f in out if f.type == FindingType.MODEL_FACT_REMARK], stats
++
++
++def test_amount_verdict_anchors_include_recorded_stated_and_computed_values():
++    assert verdict_anchors(total_verdict()) == {"A:200000", "A:4700000", "A:4500000"}
++
++
++def test_non_amount_verdict_does_not_turn_its_numbers_into_amounts():
++    assert not any(a.startswith("A:") for a in verdict_anchors(date_verdict()))
++
++
++@pytest.mark.parametrize("values", ["4,700,000원과 4,500,000원", "470만 원과 450만 원", "금 4,700,000원과 금 4,500,000원"])
++def test_remark_with_the_verdicts_recorded_totals_is_folded_into_the_verdict(values):
++    verdict = total_verdict()
++    left, stats = run([verdict, remark(f"[m] 표1 합계 {values}이 서로 다르다.")])
++    assert not left and stats["confirmed"] == 1 and verdict.confidence_features["model_remarks"]
++
++
++def test_back_reference_explanation_does_not_keep_the_remark_open():
++    verdict = total_verdict()
++    left, stats = run([verdict, remark("[m] 표1 항목 합(4,500,000원)과 기재 합계(4,700,000원)가 다르다. "
++                                       "이는 문서 내부 모순일 뿐 작성 주체의 근거가 아니다.")])
++    assert not left and stats == {"confirmed": 1, "partial": 0, "unconfirmed": 0}
++
++
++def test_independent_contradiction_without_values_still_needs_a_person():
++    verdict = total_verdict()
++    left, stats = run([verdict, remark("[m] 표1 합계 4,700,000원과 4,500,000원이 다르다. 원고 성명도 서로 다르게 적혀 있다.")])
++    [kept] = left
++    assert stats["partial"] == 1 and "성명" in kept.confidence_features["unconfirmed_sentences"][0]
++
++
++def test_back_reference_with_its_own_unmatched_value_still_needs_a_person():
++    left, stats = run([total_verdict(), remark("[m] 표1 합계 4,700,000원과 4,500,000원이 다르다. 이는 3,000,000원과도 다르다.")])
++    assert len(left) == 1 and stats["partial"] == 1
++
++
++@pytest.mark.parametrize("status", [VerificationStatus.UNVERIFIED, VerificationStatus.SUSPICIOUS])
++def test_only_contradicted_verdicts_confirm(status):
++    left, stats = run([total_verdict(status), remark("[m] 표1 합계 4,700,000원과 4,500,000원이 서로 다르다.")])
++    assert len(left) == 1 and stats["unconfirmed"] == 1
++
++
++def test_hypothetical_remark_is_not_confirmed():
++    left, stats = run([total_verdict(), remark("[m] 만약 표1 합계 4,700,000원과 4,500,000원이 서로 다르다면 오기일 수 있다.")])
++    assert len(left) == 1 and stats["unconfirmed"] == 1
++
++
++def test_date_verdict_numbers_do_not_confirm_an_amount_remark():
++    left, stats = run([date_verdict(), remark("[m] 청구 금액 4,700,000원과 영수증 금액이 서로 다르다.")])
++    assert len(left) == 1 and stats["unconfirmed"] == 1

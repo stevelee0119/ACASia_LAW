@@ -40,8 +40,8 @@ jobs:
       LV_RUN_BUDGET_USD: ${{ vars.LV_LIVE_RUN_BUDGET_USD || '5' }}
       LV_LLM_MAX_INPUT_TOKENS: "32768"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -64,7 +64,7 @@ jobs:
         run: python scripts/audit_models_manifest.py --out docs/run_manifest_with_models.json
       - name: 결과 아티팩트
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: live-integration
           path: |

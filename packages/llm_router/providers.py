@@ -101,17 +101,39 @@ def wrap_untrusted(document: Any, task: str) -> str:
 
 
 def _extract_json(text: str) -> Optional[Dict[str, Any]]:
-    text = text.strip()
+    """모델 응답에서 JSON 객체 하나를 꺼낸다.
+
+    TK-179: 종전에는 첫 '{'부터 마지막 '}'까지를 통째로 읽어, 설명 문장에 중괄호가 있거나({예시}) 객체가 둘 이상이면
+    올바른 객체가 있어도 'JSON이 아님'으로 버렸다. 이제 '{'가 나오는 자리마다 그 자리에서 시작하는 JSON 값을 읽어
+    처음으로 읽히는 객체(dict)를 쓴다. 잘린 응답처럼 어느 자리에서도 객체가 읽히지 않으면 None이다.
+    """
+    text = (text or "").strip()
     if text.startswith("```"):
-        text = text.split("```")[1] if len(text.split("```")) > 1 else text
-        text = text.lstrip("json").strip()
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end <= start:
-        return None
-    try:
-        return json.loads(text[start : end + 1])
-    except json.JSONDecodeError:
-        return None
+        parts = text.split("```")
+        text = parts[1] if len(parts) > 1 else text
+        text = text[4:] if text[:4].lower() == "json" else text
+        text = text.strip()
+    decoder = json.JSONDecoder()
+    index = text.find("{")
+    while index >= 0:
+        try:
+            value, _end = decoder.raw_decode(text, index)
+        except json.JSONDecodeError:
+            value = None
+        if isinstance(value, dict):
+            return value
+        index = text.find("{", index + 1)
+    return None
+
+
+def response_shape(text: str) -> str:
+    """형식 오류 응답의 모양만 적는다(TK-179). 사건 내용은 남기지 않는다: 길이·코드 울타리·중괄호 수·끝 글자 종류."""
+    raw = text or ""
+    stripped = raw.strip()
+    last = stripped[-1:] if stripped else ""
+    ending = "닫는 중괄호" if last == "}" else "따옴표" if last in ('"', "'") else "기타" if last else "빈 응답"
+    return (f"길이 {len(raw)}자, 코드 울타리 {'있음' if '```' in raw else '없음'}, "
+            f"여는 중괄호 {raw.count('{')}·닫는 중괄호 {raw.count('}')}, 끝 {ending}")
 
 
 def _checked(response: "LLMResponse", *, truncated: bool, limit: int) -> "LLMResponse":

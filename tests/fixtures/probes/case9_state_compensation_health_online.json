@@ -1,0 +1,9 @@
+{
+  "name": "case9_state_compensation_health_online",
+  "rule_version": "1",
+  "rule_history": [{"version": "1", "date": "2026-11-14", "note": "case9는 공식 DB 인용 조회가 반드시 일어나는 문서다. 0.18.0·0.19.0 실제 실행은 22건 조회"}],
+  "description": "case9 온라인 실행에서 공식 DB 조회가 실제로 일어났는지 본다(공통 실행 상태 명세 pipeline_health_online와 함께 돌린다).",
+  "checks": [
+    {"id": "H-LOOKUP-C9", "kind": "run_health", "check": "source_lookups", "min_requests": 10, "max_retryable_failures": 0, "label": "실행 상태: case9 공식 DB 조회 10건 이상·재시도 실패 0"}
+  ]
+}
