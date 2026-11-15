@@ -221,8 +221,71 @@ def test_tk184_table_stated_total_cause_links_row_evidence():
     assert percent[0].confidence_features["row_evidence"][0]["stated_total"] == "5000000"
 
 
+def test_tk184_table_over_10_mismatched_rows_keep_all_row_evidence():
+    cells = [["항목", "금액", "비율"]]
+    # 12 mismatched rows (each 1,000,000원 out of 13,000,000원 -> 7.69%, stated 10%) + 1 matching row (7.69%)
+    for idx in range(1, 13):
+        cells.append([f"항목{idx}", "1,000,000원", "10%"])
+    cells.append(["일치항목", "1,000,000원", "7.69%"])
+    cells.append(["합계", "13,000,000원", "100%"])
+
+    doc = NormalizedDocument("doc_many", "many.hwp", "application/x-hwp", "sha")
+    doc.structure["tables"] = [{"table_ref": "t0", "page": 1, "cells": cells}]
+    findings = CalculationEngine().verify_document(doc)
+    percent = [f for f in findings if f.confidence_features.get("rule_id") == "CALC.PERCENT_MISMATCH"]
+    assert len(percent) == 1
+    f = percent[0]
+    row_ev = f.confidence_features["row_evidence"]
+    assert len(row_ev) == 12
+    assert all(r["row"] != "일치항목" for r in row_ev)
+    assert f.confidence_features["rows"][0] == "항목1: 기재 10% / 계산 7.69%"
+    # 1 summary Evidence + 12 per-row Evidences (11~12번째 행도 누락되지 않음)
+    row_evidences = [ev for ev in f.evidence if ev.description.startswith("비율 불일치 행")]
+    assert len(row_evidences) == 12
+    assert any("항목12" in ev.excerpt and "1,000,000원" in ev.excerpt and "10%" in ev.excerpt and "7.69%" in ev.excerpt
+               for ev in row_evidences)
+
+
+@pytest.mark.parametrize(
+    "sentence,expected_amt,expected_stated,expected_computed",
+    [
+        ("총 10,000,000원 중 3,000,000원은 40%에 해당한다.", "3000000", "40", "30.00"),
+        ("전체 8,000,000원 가운데 2,000,000원의 비율은 35%이다.", "2000000", "35", "25.00"),
+        ("합계 5,000,000원 중 1,000,000원(25%)을 산정하였다.", "1000000", "25", "20.00"),
+    ],
+)
+def test_tk184_sentence_ratio_positives(sentence, expected_amt, expected_stated, expected_computed):
+    doc = NormalizedDocument("doc_sent_pos", "sample.hwpx", "application/hwpx", "sha")
+    doc.pages = [Page(1, blocks=[Block("b1", f"{sentence} 한편 그 비율이 과다하다는 포괄적 의견이 있다.", 1)])]
+    findings = CalculationEngine().verify_document(doc)
+    sent_findings = [f for f in findings if f.confidence_features.get("rule_id") == "CALC.SENTENCE_PERCENT_MISMATCH"]
+    assert len(sent_findings) == 1
+    ev = sent_findings[0].confidence_features["row_evidence"][0]
+    assert ev["amount"] == expected_amt
+    assert ev["stated_percent"] == expected_stated
+    assert ev["computed_percent"] == expected_computed
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "총 10,000,000원 중 3,000,000원은 변제되었고, 별도 채권의 배분율은 40%이다.",
+        "총 10,000,000원 중 3,000,000원은 지급하였고 나머지 비율은 40%이다.",
+        "전체 8,000,000원 중 2,000,000원은 25%이다.",
+        "총 10,000,000원 중 3,000,000원은 약 40%이다.",
+        "총 10,000,000원 중 3,000,000원은 20~40%이다.",
+        "총 10,000,000원 중 3,000,000원은 연 12% 이자이다.",
+        "배분 비율이 합리적이지 않다는 포괄 의견이다.",
+    ],
+)
+def test_tk184_sentence_ratio_controls(sentence):
+    ctrl_doc = NormalizedDocument("doc_sent_ctrl", "ctrl.hwpx", "application/hwpx", "sha")
+    ctrl_doc.pages = [Page(1, blocks=[Block("b1", sentence, 1)])]
+    ctrl_findings = CalculationEngine().verify_document(ctrl_doc)
+    assert not [f for f in ctrl_findings if "PERCENT" in str(f.confidence_features.get("rule_id", ""))]
+
+
 def test_tk184_sentence_ratio_recalculation_and_controls():
-    # 양성: 문장 내 명시적 총액-부분-비율 불일치
     pos_doc = NormalizedDocument("doc3", "sample.hwpx", "application/hwpx", "sha")
     pos_doc.pages = [Page(1, blocks=[
         Block("b1", "총 10,000,000원 중 3,000,000원은 40%에 해당한다. 한편 그 비율이 과다하다는 포괄적 의견이 있다.", 1),
@@ -236,7 +299,6 @@ def test_tk184_sentence_ratio_recalculation_and_controls():
     assert ev["computed_percent"] == "30.00"
     assert ev["computed_total"] == "10000000"
 
-    # 대조 1~3: 일치 문장, 근사치/범위 문장, 수치 근거 없는 포괄 의견은 오탐 없이 보존
     ctrl_doc = NormalizedDocument("doc4", "ctrl.hwpx", "application/hwpx", "sha")
     ctrl_doc.pages = [Page(1, blocks=[
         Block("b1", "전체 8,000,000원 중 2,000,000원은 25%이다.", 1),

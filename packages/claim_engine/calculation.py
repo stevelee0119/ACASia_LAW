@@ -838,13 +838,10 @@ class CalculationEngine:
                 if abs(pct - by_sum) <= tolerance:
                     continue
                 if stated and stated != computed and abs(pct - value / stated * 100) <= tolerance:
-                    by_stated = value / stated * 100
-                    derived.append(
-                        f"{label} ({amount_raw}): {raw}% (기재 합계 {stated:,}원 기준 {by_stated:.2f}%, 세부 합산 {computed:,}원 기준 {by_sum:.2f}%)"
-                    )
+                    derived.append(f"{label}: {raw}% (기재 합계 기준 {value / stated * 100:.2f}%, 세부 합산 기준 {by_sum:.2f}%)")
                     row_cause = "STATED_TOTAL"
                 else:
-                    wrong.append(f"{label} ({amount_raw}): 기재 {raw}% / 계산 {by_sum:.2f}% (합계 {computed:,}원)")
+                    wrong.append(f"{label}: 기재 {raw}% / 계산 {by_sum:.2f}%")
                     row_cause = "PERCENT_CALCULATION"
                 row_evidence.append({
                     "row_index": row_idx,
@@ -879,7 +876,7 @@ class CalculationEngine:
                 Evidence.create(description="비율 열", grade=EvidenceGrade.A, document_id=doc.document_id,
                                 page=table.get("page"), excerpt="; ".join(wrong + derived)[:300])
             ]
-            for item_ev in row_evidence[:10]:
+            for item_ev in row_evidence:
                 total_note = (f" | 기재합계 {stated:,}원" if stated is not None else "")
                 evidences.append(
                     Evidence.create(
@@ -906,12 +903,18 @@ class CalculationEngine:
 
     _SENTENCE_RATE_GUARD_RE = re.compile(r"(?:연\s*\d|이자(?:율)?|지연손해금|부가(?:가치)?세|세율|가산세|할인율)")
     _SENTENCE_TOTAL_CUE_RE = re.compile(r"(?:총|전체|합계|총액)\s*$")
-    _SENTENCE_PART_CUE_RE = re.compile(r"(?:중|가운데|에서)")
+    _SENTENCE_PART_CUE_RE = re.compile(r"^\s*(?:중|가운데|에서)\s*$")
+    _SENTENCE_DIRECT_PCT_RE = re.compile(
+        r"^(?:\s*\(\s*$"
+        r"|\s*(?:은|는|이|가)\s*(?:(?:전체|총액?|합계)(?:의|에서|중)?\s*)?(?:비율(?:은|이|로)?\s*)?$"
+        r"|\s*의\s*비율(?:은|이)\s*$)"
+    )
 
     def _verify_sentence_percentages(self, doc: NormalizedDocument) -> List[Finding]:
         """문장 안의 명시적 '총액 중 일부 금액과 비율(%)' 진술을 문장별로 재계산한다(TK-184).
 
-        수치 근거가 불완전한 포괄 의견, 근사치('약', '내외'), 범위('~', '내지'), 이자율·세율 진술은 건드리지 않는다.
+        수치 근거가 불완전한 포괄 의견, 근사치('약', '내외'), 범위('~', '내지'), 이자율·세율,
+        절 전환·별도 대상이 낀 진술은 건드리지 않는다.
         """
         out: List[Finding] = []
         for block in doc.body_blocks():
@@ -936,7 +939,10 @@ class CalculationEngine:
                     continue
                 before_total = sent[:total_amt.start]
                 between_amts = sent[total_amt.end:part_amt.start]
-                if not (self._SENTENCE_TOTAL_CUE_RE.search(before_total) and self._SENTENCE_PART_CUE_RE.search(between_amts)):
+                between_part_pct = sent[part_amt.end:pct_match.start()]
+                if not (self._SENTENCE_TOTAL_CUE_RE.search(before_total)
+                        and self._SENTENCE_PART_CUE_RE.fullmatch(between_amts)
+                        and self._SENTENCE_DIRECT_PCT_RE.fullmatch(between_part_pct)):
                     continue
                 raw_pct = pct_match.group("num")
                 stated_pct = Decimal(raw_pct)
