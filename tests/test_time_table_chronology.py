@@ -195,6 +195,21 @@ def test_time_table_tab_order_chronology_and_responsive(timeline_browser_page) -
     page.goto("http://localhost/")
     select_first_project(page)
 
+    expect(page.locator(".brand-title")).to_have_text("법률문서 검증시스템")
+    expect(page.locator(".brand-title")).not_to_contain_text("종합행정학교 법무교육단")
+
+    metric_titles = page.locator("#summary .metric .metric-content span").all_inner_texts()
+    assert metric_titles == [
+        "AI 작성·보안 진단",
+        "출처 미확인 인용",
+        "법률적으로 무리한 주장",
+        "Time Table",
+    ]
+    time_card = page.locator("#summary .metric", has_text="Time Table")
+    expect(time_card).to_contain_text("완료")
+    expect(time_card).to_contain_text("사실관계 정리 총 3건")
+    expect(time_card.locator("svg")).to_be_visible()
+
     tabs = page.locator(".workspace-tabs button")
     assert tabs.count() == 6
     tab_names = [tabs.nth(i).get_attribute("data-tab") for i in range(6)]
@@ -208,7 +223,7 @@ def test_time_table_tab_order_chronology_and_responsive(timeline_browser_page) -
     ]
     assert "Time Table" in (tabs.nth(4).inner_text() or "")
 
-    tabs.nth(4).click()
+    time_card.click()
     panel = page.locator('section[data-panel="timeline"]')
     expect(panel).to_be_visible()
 

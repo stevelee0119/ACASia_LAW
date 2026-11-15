@@ -1160,6 +1160,7 @@ const TEMPLATE_A_SVGS = {
   people: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><circle cx="10.5" cy="9.5" r="4" fill="#fde68a" stroke="#d97706" stroke-width="1.8"/><path d="M3.5 22.5C3.5 18.9 6.6 16.2 10.5 16.2C14.4 16.2 17.5 18.9 17.5 22.5" fill="#fef3c7" stroke="#d97706" stroke-width="1.8" stroke-linecap="round"/><circle cx="18.8" cy="10.5" r="3.2" fill="#fed7aa" stroke="#ea580c" stroke-width="1.7"/><path d="M18.5 16.5C21.7 16.7 24.3 19 24.5 22.2" stroke="#ea580c" stroke-width="1.7" stroke-linecap="round"/></svg>`,
   shield: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M14 3.2L22.5 6.8V13.6C22.5 19.1 18.8 23.4 14 25C9.2 23.4 5.5 19.1 5.5 13.6V6.8L14 3.2Z" fill="#ccfbf1" stroke="#0d9488" stroke-width="1.8" stroke-linejoin="round"/><path d="M10.3 14.1L12.9 16.7L18.1 11.5" stroke="#0f766e" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   aiChip: `<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="#6366f1" stroke-width="1.8" stroke-linecap="round"><line x1="11" y1="2.5" x2="11" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/><line x1="21" y1="2.5" x2="21" y2="6.5"/><line x1="11" y1="25.5" x2="11" y2="29.5"/><line x1="16" y1="25.5" x2="16" y2="29.5"/><line x1="21" y1="25.5" x2="21" y2="29.5"/><line x1="2.5" y1="11" x2="6.5" y2="11"/><line x1="2.5" y1="16" x2="6.5" y2="16"/><line x1="2.5" y1="21" x2="6.5" y2="21"/><line x1="25.5" y1="11" x2="29.5" y2="11"/><line x1="25.5" y1="16" x2="29.5" y2="16"/><line x1="25.5" y1="21" x2="29.5" y2="21"/></g><rect x="6.5" y="6.5" width="19" height="19" rx="4" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.8"/><rect x="9.5" y="9.5" width="13" height="13" rx="2.2" fill="#ffffff" stroke="#818cf8" stroke-width="1.2" stroke-dasharray="2 1.5"/><text x="16" y="18.6" text-anchor="middle" fill="#4338ca" font-size="8.2" font-weight="800" font-family="Pretendard, sans-serif">AI</text></svg>`,
+  calendar: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><rect x="4" y="6" width="20" height="18" rx="3.2" fill="#ccfbf1" stroke="#0d9488" stroke-width="1.8"/><path d="M4 11.2H24" stroke="#0d9488" stroke-width="1.8"/><path d="M9.5 3.8V7.6M18.5 3.8V7.6" stroke="#0f766e" stroke-width="1.8" stroke-linecap="round"/><rect x="8.2" y="14.5" width="3.2" height="3.2" rx="0.8" fill="#0f766e"/><rect x="12.8" y="14.5" width="3.2" height="3.2" rx="0.8" fill="#0d9488"/><rect x="17.4" y="14.5" width="3.2" height="3.2" rx="0.8" fill="#0d9488"/></svg>`,
   warningTriangle: `<svg viewBox="0 0 44 44" fill="none" aria-hidden="true"><defs><linearGradient id="warnGrad" x1="22" y1="4" x2="22" y2="39" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#fde047"/><stop offset="55%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/></linearGradient></defs><path d="M20.1 6.8C20.9 5.3 23.1 5.3 23.9 6.8L39.6 34.8C40.4 36.2 39.4 38 37.7 38H6.3C4.6 38 3.6 36.2 4.4 34.8L20.1 6.8Z" fill="url(#warnGrad)" stroke="#92400e" stroke-width="2"/><path d="M22 15.5V25.5" stroke="#451a03" stroke-width="3" stroke-linecap="round"/><circle cx="22" cy="31.2" r="1.9" fill="#451a03"/></svg>`,
 };
 
@@ -1217,14 +1218,16 @@ function renderSummary() {
     scopeCard.onclick = () => switchTab("documents");
   }
 
-  // 2~4열(#summary .metric 3칸 유지): 사람 아이콘 · 방패 아이콘 · AI 반도체 아이콘 배치
+  // 2~5열(#summary): 하단 탭 순서(AI 작성·보안 진단 → 출처 미확인 인용 → 법률적으로 무리한 주장 → Time Table)와 일치시킨다.
   const aiHintState = !state.run ? "대기" : state.run.state === "PARTIAL_COMPLETED" ? "일부 미확인" : "완료";
+  const timelineCount = Array.isArray(state.run?.timeline) ? state.run.timeline.length : 0;
   const metrics = [
+    ["AI 작성·보안 진단", state.run ? aiStatus : "—", `판정 · ${aiHintState}`, "aiChip", "metric-indigo"],
     ["출처 미확인 인용", state.run ? `${sourceCount}건` : "—", !state.run ? "검증 후 집계" : fakeCaseCount ? `사건번호 형식 오류 ${fakeCaseCount}건 포함` : `공식 DB 미확인 ${unconfirmedCount}건`, "people", "metric-amber"],
     ["법률적으로 무리한 주장", state.run && legalCount != null ? `${legalCount}건` : "—", state.run && legalCount != null ? `법리 검토 대상 ${legalCount}건` : "검증 후 집계", "shield", "metric-sky"],
-    ["AI 작성 진단", state.run ? aiStatus : "—", `판정 · ${aiHintState}`, "aiChip", "metric-indigo"],
+    ["Time Table", state.run ? "완료" : "—", state.run ? `사실관계 정리 총 ${timelineCount}건` : "검증 후 집계", "calendar", "metric-teal"],
   ];
-  const tabFor = {"AI 작성 진단": "ai-verification", "출처 미확인 인용": "review", "법률적으로 무리한 주장": "legal-claims"};
+  const tabFor = {"AI 작성·보안 진단": "ai-verification", "출처 미확인 인용": "review", "법률적으로 무리한 주장": "legal-claims", "Time Table": "timeline"};
   for (const [title, value, note, iconKey, toneCls] of metrics) {
     const el = node("div", null, `metric metric-explain ${toneCls}`);
     const body = node("div", null, "metric-content");
