@@ -5,10 +5,25 @@ import importlib.metadata
 import re
 from pathlib import Path
 
+import yaml
+
 from packages.verification_engine import environment as env_mod
 
 
 ROOT = Path(__file__).resolve().parents[1]
+_HASHED_TEST_INSTALL_RE = re.compile(
+    r"pip\s+install\s+--require-hashes\s+-r\s+requirements-test\.txt"
+)
+
+
+def _job_installs_hashed_test_requirements(workflow_text: str, job_name: str) -> bool:
+    data = yaml.safe_load(workflow_text) or {}
+    job = (data.get("jobs") or {}).get(job_name) or {}
+    for step in job.get("steps") or []:
+        run = str(step.get("run") or "")
+        if _HASHED_TEST_INSTALL_RE.search(run):
+            return True
+    return False
 
 
 def test_preflight_records_runtime_python_os_and_packages():
@@ -72,11 +87,41 @@ def test_dockerfile_requires_hashes():
     assert "--require-hashes" in dockerfile
 
 
+def test_workflow_check_targets_score_gate_job_only():
+    only_retired_updated = """
+jobs:
+  score-gate:
+    steps:
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+  retired-sets:
+    steps:
+      - name: 의존성 설치
+        run: pip install --require-hashes -r requirements-test.txt
+"""
+    score_gate_updated = """
+jobs:
+  score-gate:
+    steps:
+      - name: 의존성 설치
+        run: pip install --require-hashes -r requirements-test.txt
+  retired-sets:
+    steps:
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+"""
+    assert not _job_installs_hashed_test_requirements(only_retired_updated, "score-gate")
+    assert _job_installs_hashed_test_requirements(score_gate_updated, "score-gate")
+
+
 def test_workflows_install_hashed_test_requirements():
-    for rel_path in (".github/workflows/score-gate.yml", ".github/workflows/live-integration.yml"):
+    targets = (
+        (".github/workflows/score-gate.yml", "score-gate"),
+        (".github/workflows/live-integration.yml", "live"),
+    )
+    for rel_path, job_name in targets:
         content = (ROOT / rel_path).read_text(encoding="utf-8")
-        assert re.search(
-            r"pip\s+install\s+--require-hashes\s+-r\s+requirements-test\.txt",
-            content,
-        ), f"{rel_path} must install requirements-test.txt with --require-hashes"
+        assert _job_installs_hashed_test_requirements(
+            content, job_name
+        ), f"{rel_path} jobs.{job_name} must install requirements-test.txt with --require-hashes"
 
