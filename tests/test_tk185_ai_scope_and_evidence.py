@@ -188,3 +188,56 @@ def test_control_split_uncertain_has_not_applicable_scope():
     assert res.verdict == "UNCERTAIN"
     assert res.signals["scope"] == "NOT_APPLICABLE"
     assert res.signals["scope_disagreement"] is False
+
+
+def test_uncertain_partial_sampling_with_scope_disagreement_preserves_detail_and_features(monkeypatch):
+    long_text = (_sample_prose() + " ") * 40
+    doc = _doc(long_text)
+    monkeypatch.setattr(
+        "packages.verification_engine.ai_document_detector.get_settings",
+        lambda: SimpleNamespace(authorship_max_chars=300),
+    )
+    router = _FakeRouter(
+        {
+            "anthropic": {"verdict": "AI_PARTIAL_GENERATION", "ai_score": 0.65, "reasons": ["일부 구간 추정"]},
+            "openai": {"verdict": "AI_FULL_GENERATION_LIKELY", "ai_score": 0.85, "reasons": ["전체 문체 추정"]},
+            "gemini": {"verdict": "AI_FULL_GENERATION_LIKELY", "ai_score": 0.80, "reasons": ["전반적 추정"]},
+        }
+    )
+    res = asyncio.run(detect_ai_document(doc, [], router=router))
+    assert res.verdict == "UNCERTAIN"
+    assert res.signals["coverage"]["sampling_mode"] == "head_middle_tail"
+    assert res.signals["coverage"]["is_full_coverage"] is False
+    assert res.signals["scope_disagreement"] is True
+    assert res.signals["model_scope_opinions"] == {
+        "anthropic": "PART_OF_DOCUMENT",
+        "openai": "WHOLE_DOCUMENT",
+        "gemini": "WHOLE_DOCUMENT",
+    }
+
+    findings = create_ai_detector_findings(doc, res)
+    advisory = [f for f in findings if f.advisory_only][0]
+    assert advisory.status.value == "UNVERIFIED"
+    assert advisory.confidence_features["scope_disagreement"] is True
+    assert advisory.confidence_features["model_scope_opinions"] == {
+        "anthropic": "PART_OF_DOCUMENT",
+        "openai": "WHOLE_DOCUMENT",
+        "gemini": "WHOLE_DOCUMENT",
+    }
+    assert "모델 간 범위 이견" in advisory.detail
+    assert "anthropic=PART_OF_DOCUMENT" in advisory.detail
+    assert "openai=WHOLE_DOCUMENT" in advisory.detail
+    assert "gemini=WHOLE_DOCUMENT" in advisory.detail
+
+    axis = scoring.unified_authorship(
+        SimpleNamespace(document_id=doc.document_id, ai_detector_result=res.to_dict(), authorship=None)
+    )
+    assert axis["verdict"] == "UNCERTAIN"
+    assert axis["scope"] == "NOT_APPLICABLE"
+    assert axis["scope_disagreement"] is True
+    assert axis["model_scope_opinions"] == {
+        "anthropic": "PART_OF_DOCUMENT",
+        "openai": "WHOLE_DOCUMENT",
+        "gemini": "WHOLE_DOCUMENT",
+    }
+    assert axis["coverage"]["sampling_mode"] == "head_middle_tail"

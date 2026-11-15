@@ -924,7 +924,7 @@ def create_ai_detector_findings(doc: NormalizedDocument, result: AIDetectorResul
                 evidence_grade=EvidenceGrade.D,
                 title=f"AI 작성 가능성 판단 유보 (모델 추정치 중앙값 {result.signals.get('model_score_median'):.2f})",
                 detail=("모델별 판단: " + ", ".join(f"{k} {v}건" for k, v in dist.items() if v) + ". "
-                        + "; ".join(result.reasons[:2])),
+                        + "; ".join(result.reasons[:2]) + scope_note),
                 confidence=confidence_score(features),
                 confidence_features=features,
                 document_id=doc.document_id,
