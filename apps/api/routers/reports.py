@@ -4,10 +4,13 @@ from __future__ import annotations
 import json
 import copy
 import logging
+import re
 import threading
 from collections import OrderedDict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional
+from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -784,6 +787,28 @@ def get_report(report_id: str, session: Session = Depends(get_db)) -> Dict[str, 
     return _report_response(report, session.get(ReportReview, report.id))
 
 
+_KST = ZoneInfo("Asia/Seoul")
+_UNSAFE_FILENAME_RE = re.compile(r'[\\/:*?"<>|\r\n]+')
+
+
+def _report_download_filename(
+    project_name: Optional[str],
+    started_at: Optional[datetime],
+    ext: str,
+) -> tuple[str, str]:
+    clean_name = " ".join(_UNSAFE_FILENAME_RE.sub("_", (project_name or "")).split()).strip(" .")
+    if not clean_name:
+        clean_name = "report"
+    dt = started_at or datetime.utcnow()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    stamp = dt.astimezone(_KST).strftime("%y%m%d%H%M")
+    filename = f"{clean_name}({stamp} report).{ext}"
+    ascii_name = clean_name.encode("ascii", "ignore").decode("ascii").strip(" ._") or "report"
+    ascii_fallback = f"{ascii_name}({stamp} report).{ext}"
+    return filename, ascii_fallback
+
+
 @router.get("/reports/{report_id}/download/{fmt}")
 def download_report(report_id: str, fmt: str, session: Session = Depends(get_db)) -> Response:
     report, _ = _report_or_404(session, report_id)
@@ -798,9 +823,21 @@ def download_report(report_id: str, fmt: str, session: Session = Depends(get_db)
         {"report_id": report_id, "format": fmt, "sha256": artifact.get("sha256")},
         actor=current_principal().user_id, project_id=report.project_id,
     )
-    filename = f"verification_{report_id}.{_extension(fmt)}"
+    project = session.get(Project, report.project_id)
+    run = session.get(VerificationRun, report.run_id)
+    started_at = (run.started_at if run is not None else None) or report.created_at
+    filename, ascii_fallback = _report_download_filename(
+        project.name if project is not None else report.project_id,
+        started_at,
+        _extension(fmt),
+    )
     return Response(
         content=data,
         media_type=MEDIA_TYPES.get(fmt, "application/octet-stream"),
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{ascii_fallback}"; '
+                f"filename*=UTF-8''{quote(filename)}"
+            )
+        },
     )

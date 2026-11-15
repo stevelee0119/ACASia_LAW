@@ -68,6 +68,23 @@ def test_build_timeline_sorts_chronologically_and_formats_evidence() -> None:
     assert timeline[2]["evidence_summary"] == "[근거 미작성]"
 
 
+def test_report_download_filename_uses_project_and_kst_start_time() -> None:
+    from datetime import datetime, timezone
+    from apps.api.routers.reports import _report_download_filename
+
+    # 2026-11-15 16:00 KST == 2026-11-15 07:00 UTC
+    started_utc_naive = datetime(2026, 11, 15, 7, 0, 0)
+    filename, ascii_fallback = _report_download_filename("captain", started_utc_naive, "json")
+    assert filename == "captain(2611151600 report).json"
+    assert ascii_fallback == "captain(2611151600 report).json"
+
+    # 한글·특수문자 프로젝트명도 안전하게 치환되고 ASCII 폴백이 제공된다
+    started_aware = datetime(2026, 11, 15, 7, 0, 0, tzinfo=timezone.utc)
+    kr_name, kr_ascii = _report_download_filename("사건/검토: 테스트", started_aware, "pdf")
+    assert kr_name == "사건_검토_ 테스트(2611151600 report).pdf"
+    assert kr_ascii == "report(2611151600 report).pdf"
+
+
 @pytest.fixture
 def timeline_browser_page():
     launch_kwargs = {"headless": True}
