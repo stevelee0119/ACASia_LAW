@@ -163,6 +163,27 @@ def test_updated_readme_fails_closed_on_missing_or_invalid_release_date(tmp_path
         module.updated_readme([{"version": "0.22.0", "date": "2026-11-16", "changes": ["x"]}])
 
 
+def test_render_performance_chart_selects_v010_and_1_2_3_month_milestones():
+    from datetime import date
+    spec = importlib.util.spec_from_file_location("render_performance_chart", ROOT / "scripts" / "render_performance_chart.py")
+    chart = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(chart)
+
+    rows = [
+        {"version": "v0.10"}, {"version": "v0.12"}, {"version": "v0.15"},
+        {"version": "v0.18"}, {"version": "v0.22"},
+    ]
+    dates = {
+        "v0.10": date(2026, 8, 1),
+        "v0.12": date(2026, 8, 20),
+        "v0.15": date(2026, 9, 18),
+        "v0.18": date(2026, 10, 19),
+        "v0.22": date(2026, 11, 18),
+    }
+    picked = [r["version"] for r in chart.select_milestone_rows(rows, release_dates=dates)]
+    assert picked == ["v0.10", "v0.12", "v0.15", "v0.18", "v0.22"]
+
+
 def test_render_performance_chart_shrinks_10_releases_over_90_days_and_preserves_short_or_missing():
     from datetime import date
     spec = importlib.util.spec_from_file_location("render_performance_chart", ROOT / "scripts" / "render_performance_chart.py")
