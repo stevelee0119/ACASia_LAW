@@ -10,5 +10,5 @@
 사용 방법
 1. 사용자가 두 파일을 운영 Drive 참고자료 폴더(또는 하위 폴더)에 파일 이름 그대로 올린다.
 2. 배포 직후 온라인 점검(RELEASE_PROCEDURE 4절)의 case9 결과 JSON을 평가 측이 다음 명세로 함께 채점한다.
-   `python scripts/score_report.py --report <결과.json> --spec tests/fixtures/probes/case9_state_compensation_online_rag_controls.json`
+   `python scripts/score_report.py --report <결과.json> --spec tests/fixtures/probes/case9_state_compensation_rag_controls_online.json`
 3. 자료를 올리기 전 결과는 이 명세로 채점하지 않는다(대조군 없음).

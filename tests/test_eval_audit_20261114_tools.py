@@ -108,7 +108,7 @@ def test_health_specs_load_and_score_a_synthetic_report(tmp_path):
     report = {"documents": [], "run_manifest": _manifest(), "run_id": "r"}
     path = tmp_path / "report.json"
     path.write_text(json.dumps(report), encoding="utf-8")
-    for name in ("online_pipeline_health", "case9_state_compensation_online_health"):
+    for name in ("pipeline_health_online", "case9_state_compensation_health_online"):
         result = score_report.score(path, ROOT / "tests/fixtures/probes" / f"{name}.json")
         assert result["passed"] == result["total"], result["failed"]
     with pytest.raises(ValueError):

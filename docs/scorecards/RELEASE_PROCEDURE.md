@@ -143,12 +143,12 @@ python scripts/score_report.py --report <보고서.json> --spec tests/fixtures/p
 
 ### 4.4 평가 체계 보강(2026-11-14 사용자 승인 'U-1~5 모두 반영', 근거 [평가 체계 감사](eval_coverage_audit_20261114.md))
 배포 직후 온라인 점검은 아래를 모두 한다. 정답 항목 점수와 실행 상태는 따로 적는다. 실제로 돌리지 않은 항목은 '측정 못 함'으로 적고 통과로 보지 않는다.
-1. **실행 상태(모든 온라인 결과 JSON):** 정답 명세와 함께 `tests/fixtures/probes/online_pipeline_health.json`으로 채점한다(case9는 `case9_state_compensation_online_health.json`도). 엔진 단계 오류·국가법령정보 연결·공식 DB 조회 실패·모델 실패율·Drive 동기화와 판례표 격리를 본다.
+1. **실행 상태(모든 온라인 결과 JSON):** 정답 명세와 함께 `tests/fixtures/probes/pipeline_health_online.json`으로 채점한다(case9는 `case9_state_compensation_health_online.json`도). 엔진 단계 오류·국가법령정보 연결·공식 DB 조회 실패·모델 실패율·Drive 동기화와 판례표 격리를 본다.
 2. **U2 실연동 점검:** 릴리스 PR 병합 직후 평가 측이 다음을 실행하고 결과를 판정서에 적는다.
    - `외부 Source 실연동 점검`(live-source-check.yml, 읽기 전용)을 `main`에서 workflow_dispatch(with_llm=true, strict=true)로 1회.
    - `실연동 통합 테스트`(live-integration.yml)는 결과를 실행 브랜치에 커밋하므로 `main`이 아니라 평가 브랜치에서 실행한다(main 커밋은 재배포를 일으킨다).
    - 실패 항목은 원인(공식 DB 색인 범위·일시 지연·코드 결함)을 나눠 적는다.
-3. **U3 RAG 대조군:** 사용자가 `tests/fixtures/rag_controls`의 합성 참고자료 2건을 운영 Drive 참고자료 폴더에 올린 뒤부터 case9 결과를 `case9_state_compensation_online_rag_controls.json`으로도 채점한다(올리기 전에는 '측정 못 함').
+3. **U3 RAG 대조군:** 사용자가 `tests/fixtures/rag_controls`의 합성 참고자료 2건을 운영 Drive 참고자료 폴더에 올린 뒤부터 case9 결과를 `case9_state_compensation_rag_controls_online.json`으로도 채점한다(올리기 전에는 '측정 못 함').
 4. **U5 AI 작성 판별 반복:** case9를 같은 조건으로 3회 실행하고 `python scripts/ai_repeat_summary.py --reports r1 r2 r3 --expect AI_FULL_GENERATION_LIKELY AI_PARTIAL_GENERATION`으로 판정 일치율·유보 횟수·공급자별 점수 범위를 적는다. 커밋이 다르면 비교 근거로 쓰지 않는다.
 5. **U1 온라인 봉인 실행:** 봉인 세트를 배포 서비스에서 한 프로젝트로 돌린 결과 JSON을 사용자가 `python scripts/score_sealed_online.py --report <결과.json> --sealed-dir <봉인 폴더>`로 채점한다(집계 숫자만 출력, 공식 DB 항목까지 채점). 봉인 문서는 마스킹을 거쳐 외부 모델로 보내진다(사용자 승인 11-14). 오프라인 봉인 점수와 증감을 비교하지 않는다.
 6. **U4 봉인 출제:** 새 봉인 세트는 [봉인 출제 사양](SEALED_SET_SPEC.md)을 따른다.

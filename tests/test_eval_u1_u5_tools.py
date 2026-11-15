@@ -37,7 +37,7 @@ def test_rag_source_controls_positive_and_negative(tmp_path):
 
 
 def test_rag_control_spec_loads():
-    spec = score_report.load_spec(ROOT / "tests/fixtures/probes/case9_state_compensation_online_rag_controls.json")
+    spec = score_report.load_spec(ROOT / "tests/fixtures/probes/case9_state_compensation_rag_controls_online.json")
     assert {c["kind"] for c in spec["checks"]} == {"rag_source_selected", "rag_source_relationship"}
     for name in ("rag_control_support_night_firing_safety.pdf", "rag_control_unrelated_school_meal.pdf"):
         assert (ROOT / "tests/fixtures/rag_controls" / name).is_file()

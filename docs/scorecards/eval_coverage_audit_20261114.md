@@ -79,11 +79,11 @@
 |---|---|---|---|
 | S1 | 성적표에 엔진 오류(`단계:예외 종류`→건수)와 결함 유형별 항목 수·재현율(봉인도 숫자만) | `scripts/scorecard.py` | 시험 2건 |
 | S2 | 점수 하락 게이트: 알려진 목록에 없는 엔진 오류는 실패, 알려졌는데 사라지면 지우라는 경고 | `scripts/score_gate.py`, `docs/scorecards/known_engine_errors.json`(TK-177 1건) | 시험 2건 |
-| S3 | 온라인 채점 `run_health` 6종(커밋·엔진 오류·법령 DB READY·조회 실패·모델 실패율·Drive 동기화와 판례표 격리) | `scripts/score_report.py`, `tests/fixtures/probes/online_pipeline_health.json`, `case9_state_compensation_online_health.json` | 시험 16건. 운영 실행 7건 재채점: 7건 모두 H-ENGINE(F1)·H-REF(F2) 실패, 법령 DB·조회·모델은 통과 |
+| S3 | 온라인 채점 `run_health` 6종(커밋·엔진 오류·법령 DB READY·조회 실패·모델 실패율·Drive 동기화와 판례표 격리) | `scripts/score_report.py`, `tests/fixtures/probes/pipeline_health_online.json`, `case9_state_compensation_health_online.json` | 시험 16건. 운영 실행 7건 재채점: 7건 모두 H-ENGINE(F1)·H-REF(F2) 실패, 법령 DB·조회·모델은 통과 |
 | S4 | 커버리지 표: 탐지 유형 × 채점기·온라인 명세·개발 명세·시험 코드 | `scripts/eval_coverage.py`, `docs/scorecards/eval_coverage_20261114.json` | 시험 1건 |
 | S5 | 저장소 밖 비공개 탐침·봉인 문서 대비 하드코딩 점검(출력은 파일·건수만) | `scripts/check_private_probe_overlap.py` | 시험 2건. 평가 측 비공개 탐침 95건 대조 겹침 0 |
 
-- 앞으로 온라인 결과 JSON은 정답 명세와 `online_pipeline_health`(문서별 조회 하한이 있으면 그 명세도)를 함께 채점한다.
+- 앞으로 온라인 결과 JSON은 정답 명세와 `pipeline_health_online`(문서별 조회 하한이 있으면 그 명세도)를 함께 채점한다.
 - 판정은 정답 항목과 실행 상태를 따로 적는다.
 
 ## 5. 오프라인 대 온라인 — 전환이 아니라 두 층

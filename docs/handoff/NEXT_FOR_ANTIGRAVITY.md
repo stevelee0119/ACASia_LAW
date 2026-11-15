@@ -6744,7 +6744,7 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - 평가 측 보완(Agent: evaluator):
   · scorecard 엔진 오류·유형별 집계.
   · score_gate 엔진 오류 게이트(known_engine_errors.json, TK-177 등재).
-  · score_report run_health + online_pipeline_health 명세.
+  · score_report run_health + pipeline_health_online 명세.
   · eval_coverage.py, check_private_probe_overlap.py.
   · 시험 23건.
 - 운영 실행 7건 재채점: 모두 H-ENGINE·H-REF 실패(F1·F2).
@@ -6789,7 +6789,7 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
  - 고정 82.6 / 81.9 / 오탐 0, 평가 세트 문구 대조(새 한글 조각 0) 통과.
  - 개발 문서 13건 엔진 오류: 고치기 전 legal_rules:NameError 12건 → 고친 뒤 0건.
  - 은퇴 5세트·새 성적표 엔진 오류 집계: 은퇴 5세트(retired_compare, 기준 0653872) 구 산식·확인 오탐·v2·미판정 모두 같음(후퇴 없음). 새 성적표(엔진 오류 집계): 0653872 dev·holdout 각 legal_rules:NameError 6건 → 고친 트리 0건, 종합·v2(42/56·41/54, 미판정 10·9) 같음. 개발 세트 finding 비교(findings_diff) 123 → 123, 바뀐 것 0.
- - 미검증: 운영 실행 기록의 엔진 오류 0(배포 뒤 온라인 결과 JSON을 online_pipeline_health 명세로 확인).
+ - 미검증: 운영 실행 기록의 엔진 오류 0(배포 뒤 온라인 결과 JSON을 pipeline_health_online 명세로 확인).
 
 5. 제출물·수용 기준
  - Steve_ACASiaLAW 기준 새 PR 하나. 제품 1파일 + 새 시험 1파일, 보호 경로 변경 없음.

@@ -1,5 +1,5 @@
 {
-  "name": "online_pipeline_health",
+  "name": "pipeline_health_online",
   "rule_version": "1",
   "rule_history": [{"version": "1", "date": "2026-11-14", "note": "평가 체계 감사 보완: 온라인 보고서마다 실행 기록으로 파이프라인 동작(엔진 오류·공식 DB·모델·Drive 동기화)을 본다"}],
   "description": "모든 온라인 보고서(case9·탐침)에 함께 돌리는 실행 상태 명세. finding 정답과 무관하게 '단계가 예외 없이 돌았는가, 공식 DB·모델·Drive가 실제로 일했는가'를 본다. 조회 건수 하한은 인용이 있는 문서에만 의미가 있으므로 문서별 명세(case9 등)에서 따로 둔다.",
