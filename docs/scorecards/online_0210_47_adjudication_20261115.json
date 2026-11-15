@@ -1,0 +1,834 @@
+{
+  "schema": "manual-answer-key-adjudication-v1",
+  "release_commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+  "answer_key_sha256": "84c059b851eb5b1a8c5c1cc2dc75668ede64a717b7002bb1c92af96327eb9e2c",
+  "items": [
+    {
+      "group": "A",
+      "id": "A-P1",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_8b78d9b5f57a",
+        "status": "PARTIALLY_VERIFIED",
+        "levels": {
+          "applicability": "REVIEW_NEEDED",
+          "article": "VERIFIED",
+          "content": "UNVERIFIED",
+          "existence": "VERIFIED",
+          "provision": "VERIFIED",
+          "temporal": "UNVERIFIED",
+          "version": "VERIFIED"
+        },
+        "finding_ids": []
+      }
+    },
+    {
+      "group": "A",
+      "id": "A-P2",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_6ca73ca8285e",
+        "status": "PARTIALLY_VERIFIED",
+        "levels": {
+          "applicability": "REVIEW_NEEDED",
+          "article": "VERIFIED",
+          "content": "UNVERIFIED",
+          "existence": "INFERRED_FROM_ABBREVIATION",
+          "provision": "VERIFIED",
+          "temporal": "UNVERIFIED",
+          "version": "VERIFIED"
+        },
+        "finding_ids": [
+          "F_93b8ad8fcdb6"
+        ]
+      }
+    },
+    {
+      "group": "A",
+      "id": "A-P3",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_42217400d2f6",
+        "status": "PARTIALLY_VERIFIED",
+        "levels": {
+          "applicability": "REVIEW_NEEDED",
+          "article": "VERIFIED",
+          "content": "UNVERIFIED",
+          "existence": "INFERRED_FROM_ABBREVIATION",
+          "provision": "VERIFIED",
+          "temporal": "UNVERIFIED",
+          "version": "VERIFIED"
+        },
+        "finding_ids": [
+          "F_d15ae65a0acf"
+        ]
+      }
+    },
+    {
+      "group": "A",
+      "id": "A-P4",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_139af2397829",
+        "status": "PARTIALLY_VERIFIED",
+        "levels": {
+          "applicability": "REVIEW_NEEDED",
+          "article": "VERIFIED",
+          "content": "UNVERIFIED",
+          "existence": "INFERRED_FROM_ABBREVIATION",
+          "provision": "VERIFIED",
+          "temporal": "UNVERIFIED",
+          "version": "VERIFIED"
+        },
+        "finding_ids": [
+          "F_6d3c6cb71b54"
+        ]
+      }
+    },
+    {
+      "group": "A",
+      "id": "A-P5",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_b7b6b302e2a9",
+        "status": "UNVERIFIED",
+        "levels": {
+          "applicability": "REVIEW_NEEDED",
+          "article": "UNVERIFIED",
+          "content": "UNVERIFIED",
+          "existence": "UNVERIFIED",
+          "provision": "UNVERIFIED",
+          "temporal": "UNVERIFIED"
+        },
+        "finding_ids": [
+          "F_166c1077d0ea"
+        ]
+      }
+    },
+    {
+      "group": "A",
+      "id": "A-P6",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_36167086c50e",
+        "status": "UNVERIFIED",
+        "levels": {
+          "applicability": "REVIEW_NEEDED",
+          "article": "UNVERIFIED",
+          "content": "UNVERIFIED",
+          "existence": "INFERRED_FROM_ABBREVIATION",
+          "provision": "UNVERIFIED",
+          "temporal": "UNVERIFIED",
+          "version": "VERIFIED"
+        },
+        "finding_ids": [
+          "F_23e01d31fd30"
+        ]
+      }
+    },
+    {
+      "group": "A",
+      "id": "A-C1",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_831f5217fcbe",
+        "status": "NOT_FOUND",
+        "levels": {
+          "applicability": "REVIEW_NEEDED",
+          "article": "NOT_FOUND_IN_SELECTED_VERSION",
+          "content": "UNVERIFIED",
+          "existence": "VERIFIED",
+          "provision": "NOT_FOUND_IN_SELECTED_VERSION",
+          "temporal": "UNVERIFIED",
+          "version": "VERIFIED"
+        },
+        "finding_ids": [
+          "F_48bd9a0c79ed"
+        ]
+      }
+    },
+    {
+      "group": "A",
+      "id": "A-C2",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_12e8d729d7f7",
+        "status": "NOT_FOUND",
+        "levels": {
+          "applicability": "REVIEW_NEEDED",
+          "article": "NOT_FOUND",
+          "content": "UNVERIFIED",
+          "existence": "NOT_FOUND",
+          "provision": "NOT_FOUND",
+          "temporal": "UNVERIFIED"
+        },
+        "finding_ids": [
+          "F_364cadaf3881"
+        ]
+      }
+    },
+    {
+      "group": "A",
+      "id": "A-C3",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_4e9f26301a94",
+        "status": "UNVERIFIED",
+        "levels": {
+          "applicability": "REVIEW_NEEDED",
+          "article": "UNVERIFIED",
+          "content": "UNVERIFIED",
+          "existence": "UNVERIFIED",
+          "provision": "UNVERIFIED",
+          "temporal": "UNVERIFIED"
+        },
+        "finding_ids": [
+          "F_04b9b68b6e0b"
+        ]
+      }
+    },
+    {
+      "group": "A",
+      "id": "A-C4",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_d7182949cafc",
+        "status": "NOT_FOUND",
+        "levels": {
+          "applicability": "REVIEW_NEEDED",
+          "article": "NOT_FOUND_IN_SELECTED_VERSION",
+          "content": "UNVERIFIED",
+          "existence": "VERIFIED",
+          "provision": "NOT_FOUND_IN_SELECTED_VERSION",
+          "temporal": "UNVERIFIED",
+          "version": "VERIFIED"
+        },
+        "finding_ids": [
+          "F_747644f390fb"
+        ]
+      }
+    },
+    {
+      "group": "B",
+      "id": "B-P1",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_da47bc0ec19c",
+        "source_quotes_validated": true,
+        "semantic_status": "UNVERIFIED",
+        "finding_ids": [],
+        "coverage_status": "SELECTED"
+      }
+    },
+    {
+      "group": "B",
+      "id": "B-P2",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_ed730cd5a001",
+        "source_quotes_validated": true,
+        "semantic_status": "UNVERIFIED",
+        "finding_ids": [],
+        "coverage_status": "SELECTED"
+      }
+    },
+    {
+      "group": "B",
+      "id": "B-P3",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_19dd115f9007",
+        "source_quotes_validated": true,
+        "semantic_status": "UNVERIFIED",
+        "finding_ids": [],
+        "coverage_status": "SELECTED"
+      }
+    },
+    {
+      "group": "B",
+      "id": "B-P4",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_05c4535c5e45",
+        "source_quotes_validated": true,
+        "semantic_status": "UNVERIFIED",
+        "finding_ids": [],
+        "coverage_status": "SELECTED"
+      }
+    },
+    {
+      "group": "B",
+      "id": "B-C1",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_a9780f35cf63",
+        "source_quotes_validated": true,
+        "semantic_status": "UNVERIFIED",
+        "finding_ids": [
+          "F_5db6b23d931e",
+          "F_cc6675d4442c"
+        ],
+        "coverage_status": "SELECTED"
+      }
+    },
+    {
+      "group": "B",
+      "id": "B-C2",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_5376377f94bf",
+        "source_quotes_validated": false,
+        "semantic_status": "UNVERIFIED",
+        "finding_ids": [
+          "F_6927af93ac73"
+        ],
+        "coverage_status": "SELECTED"
+      }
+    },
+    {
+      "group": "B",
+      "id": "B-C3",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_ee780a820b2f",
+        "source_quotes_validated": true,
+        "semantic_status": "CONTRADICTED",
+        "finding_ids": [
+          "F_b3f5b3842b14",
+          "F_3b7681566af8"
+        ],
+        "coverage_status": "SELECTED"
+      }
+    },
+    {
+      "group": "B-embedded",
+      "id": "B-E1",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_b115d2f381bc",
+        "status": "VERIFIED"
+      }
+    },
+    {
+      "group": "B-embedded",
+      "id": "B-E2",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "citation_id": "CIT_aa05add46944",
+        "status": "CONTRADICTED"
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-P1",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": "UNOPENED_INSIDE",
+        "report_matching_pattern_count": 1,
+        "finding_ids": [
+          "F_c337d22db58e"
+        ]
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-P2",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": "CLOSED_INSIDE",
+        "report_matching_pattern_count": 1,
+        "finding_ids": [
+          "F_3873ba8ceaff"
+        ]
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-C1",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": null,
+        "report_matching_pattern_count": 0,
+        "finding_ids": []
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-C2",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": null,
+        "report_matching_pattern_count": 0,
+        "finding_ids": []
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-P3",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": "NEVER_PRESENT",
+        "report_matching_pattern_count": 1,
+        "finding_ids": [
+          "F_b66c982c329d"
+        ]
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-P4",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": "INCAPACITATED",
+        "report_matching_pattern_count": 2,
+        "finding_ids": [
+          "F_e857e8e1e462",
+          "F_b325bf478358"
+        ]
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-C3",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": null,
+        "report_matching_pattern_count": 0,
+        "finding_ids": []
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-C4",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": null,
+        "report_matching_pattern_count": 0,
+        "finding_ids": []
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-P5",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": "ELSEWHERE_SAME_TIME",
+        "report_matching_pattern_count": 1,
+        "finding_ids": [
+          "F_71662bebc663"
+        ]
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-P6",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": "SOUND_ONLY_VISUAL",
+        "report_matching_pattern_count": 2,
+        "finding_ids": [
+          "F_c6e487e64df9",
+          "F_fbc506e2f517"
+        ]
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-C5",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": null,
+        "report_matching_pattern_count": 0,
+        "finding_ids": []
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-C6",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": null,
+        "report_matching_pattern_count": 0,
+        "finding_ids": []
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-P7",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": "INCAPACITATED",
+        "report_matching_pattern_count": 2,
+        "finding_ids": [
+          "F_e857e8e1e462",
+          "F_b325bf478358"
+        ]
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-P8",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": "SOUND_ONLY_VISUAL",
+        "report_matching_pattern_count": 2,
+        "finding_ids": [
+          "F_c6e487e64df9",
+          "F_fbc506e2f517"
+        ]
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-C7",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": null,
+        "report_matching_pattern_count": 0,
+        "finding_ids": []
+      }
+    },
+    {
+      "group": "C",
+      "id": "C-C8",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "text_present_in_report": true,
+        "replay_pattern": null,
+        "report_matching_pattern_count": 0,
+        "finding_ids": []
+      }
+    },
+    {
+      "group": "D-docx",
+      "id": "D-P1",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "table_ref": "docx_t0",
+        "merges": [],
+        "finding_ids": [
+          "F_312b9661d834"
+        ]
+      }
+    },
+    {
+      "group": "D-docx",
+      "id": "D-C1",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "table_ref": "docx_t1",
+        "merges": []
+      }
+    },
+    {
+      "group": "D-docx",
+      "id": "D-C2",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "table_ref": "docx_t2",
+        "merges": [
+          {
+            "col": 0,
+            "col_span": 1,
+            "row": 0,
+            "row_span": 2
+          },
+          {
+            "col": 1,
+            "col_span": 2,
+            "row": 0,
+            "row_span": 1
+          },
+          {
+            "col": 3,
+            "col_span": 1,
+            "row": 0,
+            "row_span": 2
+          }
+        ],
+        "merged_cells_preserved": true,
+        "two_paragraph_blocks_preserved": true,
+        "cell_coordinates_exported": true,
+        "conversion_input_hash_available": true
+      }
+    },
+    {
+      "group": "D-docx",
+      "id": "D-P2",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "table_ref": "docx_t3",
+        "merges": [],
+        "finding_ids": [
+          "F_a28ded265f5c"
+        ]
+      }
+    },
+    {
+      "group": "D-hwpx",
+      "id": "D-P1",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "table_ref": "hwpx_s0t0",
+        "merges": [],
+        "finding_ids": [
+          "F_406a20500ea8"
+        ]
+      }
+    },
+    {
+      "group": "D-hwpx",
+      "id": "D-C1",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "table_ref": "hwpx_s0t1",
+        "merges": []
+      }
+    },
+    {
+      "group": "D-hwpx",
+      "id": "D-C2",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": false,
+      "evidence": {
+        "table_ref": "hwpx_s0t2",
+        "merges": [
+          {
+            "col": 0,
+            "col_span": 1,
+            "row": 0,
+            "row_span": 2
+          },
+          {
+            "col": 1,
+            "col_span": 2,
+            "row": 0,
+            "row_span": 1
+          },
+          {
+            "col": 3,
+            "col_span": 1,
+            "row": 0,
+            "row_span": 2
+          }
+        ],
+        "merged_cells_preserved": true,
+        "two_paragraph_blocks_preserved": false,
+        "cell_coordinates_exported": false,
+        "conversion_input_hash_available": false
+      }
+    },
+    {
+      "group": "D-hwpx",
+      "id": "D-P2",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "table_ref": "hwpx_s0t3",
+        "merges": [],
+        "finding_ids": [
+          "F_e15902d2c647"
+        ]
+      }
+    },
+    {
+      "group": "D-hwp",
+      "id": "D-P1",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "table_ref": "hwp_s0t0",
+        "merges": [],
+        "finding_ids": [
+          "F_ab1f6e518d07"
+        ]
+      }
+    },
+    {
+      "group": "D-hwp",
+      "id": "D-C1",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "table_ref": "hwp_s0t1",
+        "merges": []
+      }
+    },
+    {
+      "group": "D-hwp",
+      "id": "D-C2",
+      "role": "control",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "table_ref": "hwp_s0t2",
+        "merges": [
+          {
+            "col": 0,
+            "col_span": 1,
+            "row": 0,
+            "row_span": 2
+          },
+          {
+            "col": 1,
+            "col_span": 2,
+            "row": 0,
+            "row_span": 1
+          },
+          {
+            "col": 3,
+            "col_span": 1,
+            "row": 0,
+            "row_span": 2
+          }
+        ],
+        "merged_cells_preserved": true,
+        "two_paragraph_blocks_preserved": true,
+        "cell_coordinates_exported": false,
+        "conversion_input_hash_available": false
+      }
+    },
+    {
+      "group": "D-hwp",
+      "id": "D-P2",
+      "role": "positive",
+      "compatibility_pass": true,
+      "answer_key_pass": true,
+      "evidence": {
+        "table_ref": "hwp_s0t3",
+        "merges": [],
+        "finding_ids": [
+          "F_546998dd7d61"
+        ]
+      }
+    }
+  ],
+  "compatibility": {
+    "passed": 47,
+    "total": 47,
+    "rule_version": "legacy-47-calculation-detection-v1"
+  },
+  "answer_key": {
+    "passed": 46,
+    "total": 47,
+    "failed": [
+      "D-hwpx:D-C2"
+    ],
+    "rule_version": "answer-key-structure-v1"
+  },
+  "selfcheck_sha256": "883336eabf299b15d6cccff24f3ab55d1ca9dd01e9c3d9e7695fbe84404ebf1d",
+  "input_hash_checks": {
+    "A_pdf": true,
+    "B_pdf": true,
+    "C_pdf": true,
+    "D_docx": true,
+    "answer_key_matches_selfcheck": true,
+    "D_hwpx_hwp_conversion_hash_in_selfcheck": false
+  },
+  "method": {
+    "compatibility": "과거47항목의 계산/탐지 중심 판정. A 양성은 부존재 오단정 없음, B 양성은 근거확보/정확인용 오류표시 없음. D-C2는 계산오탐 없음.",
+    "answer_key": "동일47항목에 정답지 D-C2의 병합셀 및 두 문단 보존 요건도 적용. HWPX의 문단경계 미보존으로 이 항목만 실패. 과거38/47 등에 이 기준을 소급 적용한 점수는 미산출.",
+    "limits": "정답/자체점검의 작업지시는 실행하지 않음. 원본·정답 문장 비공개 유지. HWPX/HWP 저장변환 원본 미제공으로 원인 귀속 불가. 제품/시험 코드는 릴리스83d862e7와 동일, C 단문 재실행은 실제 보고서 관찰을 보조."
+  }
+}

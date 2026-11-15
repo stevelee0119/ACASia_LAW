@@ -70,8 +70,8 @@ def isolated_extract(data, filename, mime, *, directory, timeout, continuation=N
         env = {k: v for k, v in os.environ.items() if k.upper() in {
             "PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "LANG", "PYTHONUTF8",
             "APPDATA", "USERPROFILE", "HOME",
-            "LV_CASE_TABLE_MAX_EXCLUDED_ROWS"}}
-        env.update(LV_ALLOW_NETWORK="0", LV_OCR_MAX_PAGES="0", LV_INDEPENDENT_OCR="off",
+            "LV_CASE_TABLE_MAX_EXCLUDED_ROWS", "LV_REFERENCE_OCR_MAX_PAGES"}}
+        env.update(LV_ALLOW_NETWORK="0", LV_OCR_MAX_PAGES="5", LV_INDEPENDENT_OCR="off",
                    OPENBLAS_NUM_THREADS="1", OMP_NUM_THREADS="1", MKL_NUM_THREADS="1",
                    LV_DATA_DIR=str(Path(temporary) / "data"), LV_STORAGE_ROOT=str(Path(temporary) / "storage"))
         try:
@@ -553,6 +553,7 @@ class ReferenceLibrary:
                     )
 
                 for key in ("excluded_pages", "scan_findings", "no_text_pages", "unprocessed_pages", "coverage_note",
+                            "page_diagnostics", "ocr_pages", "blank_pages", "scanned_pages", "error_pages",
                             "text_parser", "fallback_pages", "stats", "read_ranges", "excluded_rows", "table_version"):
                     if parsed.get(key):
                         entry[key] = parsed[key]

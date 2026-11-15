@@ -12,11 +12,28 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import os
+import platform
 from typing import Any, Dict, List, Optional
 
 AI_PROVIDERS = ("anthropic", "openai", "gemini")
+RUNTIME_PACKAGES = (
+    "fastapi",
+    "pydantic",
+    "pdfplumber",
+    "pypdfium2",
+    "pypdf",
+    "python-docx",
+    "openpyxl",
+    "pillow",
+    "lxml",
+    "pytesseract",
+    "sqlalchemy",
+    "httpx",
+    "cryptography",
+)
 
 # 없는 자원 → 그 자원 없이는 평가할 수 없는 영역
 AREAS = {
@@ -37,6 +54,31 @@ def _ocr_state(lang: str) -> Dict[str, Any]:
     languages = set(probe.get("languages") or [])
     return {"status": probe.get("status"), "version": probe.get("version", ""),
             "kor": "kor" in languages, "osd": "osd" in languages}
+
+
+def _os_pretty_name() -> str:
+    try:
+        with open("/etc/os-release", "r", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("PRETTY_NAME="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except OSError:
+        return ""
+    return ""
+
+
+def _runtime_info() -> Dict[str, Any]:
+    packages: Dict[str, str] = {}
+    for pkg in RUNTIME_PACKAGES:
+        try:
+            packages[pkg] = importlib.metadata.version(pkg)
+        except Exception:  # noqa: BLE001 - 미설치 패키지는 빈 문자열로 남긴다
+            packages[pkg] = ""
+    return {
+        "python": platform.python_version(),
+        "os": _os_pretty_name(),
+        "packages": packages,
+    }
 
 
 def preflight(settings: Any = None, registry: Any = None, router: Any = None) -> Dict[str, Any]:
@@ -84,6 +126,7 @@ def preflight(settings: Any = None, registry: Any = None, router: Any = None) ->
         "complete": not missing,
         "missing_required": missing,
         "incomparable_areas": [area for name in missing for area in AREAS[name]],
+        "runtime": _runtime_info(),
     }
     environment["fingerprint"] = fingerprint(environment)
     return environment

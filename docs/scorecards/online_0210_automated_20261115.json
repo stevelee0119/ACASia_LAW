@@ -1,0 +1,398 @@
+{
+  "date": "2026-11-15",
+  "version": "0.21.0",
+  "release_commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+  "authentication": {
+    "login": "SUCCESS",
+    "role": "ADMIN",
+    "credentials_or_cookies_persisted_in_evidence": false
+  },
+  "automatic_runs": [
+    {
+      "label": "case9_auto_r1",
+      "result_sha256": "3d8321235b2a7c42e2509084e3d4bc8727527c28354425a501498704934f2875",
+      "input_sha256": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "state": "PARTIAL_COMPLETED",
+      "model_calls": 26,
+      "model_failures": 0,
+      "reference_status": "PARTIAL",
+      "reference_snapshot_hash": "beebe315ead1c18b9bb957e6d024e9074922fb36b86364d26223360bf43580a7",
+      "engine_errors": {
+        "reference_sync": [
+          "project: 참고자료 전체 동기화·읽기를 완료하지 못함"
+        ]
+      },
+      "security_findings": [
+        {
+          "type": "META_INSTRUCTION",
+          "severity": "HIGH"
+        },
+        {
+          "type": "HIDDEN_INSTRUCTION",
+          "severity": "HIGH"
+        }
+      ],
+      "answer_score": {
+        "passed": 23,
+        "total": 23
+      },
+      "case9_health": {
+        "passed": 1,
+        "total": 1
+      },
+      "common_health": {
+        "passed": 5,
+        "total": 6,
+        "failed": [
+          "H-REF"
+        ]
+      },
+      "ai": {
+        "verdict": "AI_PARTIAL_GENERATION",
+        "score": 0.665
+      }
+    },
+    {
+      "label": "case9_auto_r2",
+      "result_sha256": "97e401a71840aba0a2a22102f1c237a4828e940be36eea1d65c8e9a7a86ce203",
+      "input_sha256": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "state": "PARTIAL_COMPLETED",
+      "model_calls": 27,
+      "model_failures": 0,
+      "reference_status": "PARTIAL",
+      "reference_snapshot_hash": "beebe315ead1c18b9bb957e6d024e9074922fb36b86364d26223360bf43580a7",
+      "engine_errors": {
+        "reference_sync": [
+          "project: 참고자료 전체 동기화·읽기를 완료하지 못함"
+        ]
+      },
+      "security_findings": [
+        {
+          "type": "META_INSTRUCTION",
+          "severity": "HIGH"
+        },
+        {
+          "type": "HIDDEN_INSTRUCTION",
+          "severity": "HIGH"
+        }
+      ],
+      "answer_score": {
+        "passed": 23,
+        "total": 23
+      },
+      "case9_health": {
+        "passed": 1,
+        "total": 1
+      },
+      "common_health": {
+        "passed": 5,
+        "total": 6,
+        "failed": [
+          "H-REF"
+        ]
+      },
+      "ai": {
+        "verdict": "AI_PARTIAL_GENERATION",
+        "score": 0.665
+      }
+    },
+    {
+      "label": "tk180_visible",
+      "result_sha256": "bdf0d3a7661c8cd66fab76b9250c023a70f29997f46794597cb2625a81a51143",
+      "input_sha256": "a16e29c032e2256fa79d782235b3aae0676dfa2116ff4c850ad52779595d22fb",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "state": "PARTIAL_COMPLETED",
+      "model_calls": 2,
+      "model_failures": 0,
+      "reference_status": "PARTIAL",
+      "reference_snapshot_hash": "beebe315ead1c18b9bb957e6d024e9074922fb36b86364d26223360bf43580a7",
+      "engine_errors": {
+        "reference_sync": [
+          "project: 참고자료 전체 동기화·읽기를 완료하지 못함"
+        ]
+      },
+      "security_findings": [
+        {
+          "type": "SYSTEM_OVERRIDE_ATTEMPT",
+          "severity": "HIGH"
+        }
+      ],
+      "attack_score": {
+        "passed": 1,
+        "total": 1,
+        "failed": []
+      },
+      "adversarial_executed": true,
+      "rag_model_executed": false,
+      "controlled_reference_present": false
+    },
+    {
+      "label": "tk180_metadata",
+      "result_sha256": "5e7920abf4eef8229bd4fa3fbdc7cf3f1f9415fe06a47babadb2739361a4cfe9",
+      "input_sha256": "5c899116c85fa47a42d2010e9d9af6cfff0b41bd9a0a104ec38607eac603619b",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "state": "PARTIAL_COMPLETED",
+      "model_calls": 8,
+      "model_failures": 0,
+      "reference_status": "PARTIAL",
+      "reference_snapshot_hash": "cf2edbc1800e0bf309b911c237210812b1a6282c943f1502a5fd21967ab3757a",
+      "engine_errors": {
+        "reference_sync": [
+          "project: 참고자료 전체 동기화·읽기를 완료하지 못함"
+        ]
+      },
+      "security_findings": [
+        {
+          "type": "METADATA_INJECTION",
+          "severity": "HIGH"
+        }
+      ],
+      "attack_score": {
+        "passed": 1,
+        "total": 1,
+        "failed": []
+      },
+      "adversarial_executed": true,
+      "rag_model_executed": true,
+      "controlled_reference_present": false
+    },
+    {
+      "label": "tk180_hidden",
+      "result_sha256": "c6559f3e3b020ee00e8305b316a43991bb44e98e48871030212839e4c766b4aa",
+      "input_sha256": "288d4d95ddb5f02c25d4943563896c8e2e8c908a7ba315eac44c2726324156bb",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "state": "PARTIAL_COMPLETED",
+      "model_calls": 8,
+      "model_failures": 0,
+      "reference_status": "PARTIAL",
+      "reference_snapshot_hash": "cf2edbc1800e0bf309b911c237210812b1a6282c943f1502a5fd21967ab3757a",
+      "engine_errors": {
+        "reference_sync": [
+          "project: 참고자료 전체 동기화·읽기를 완료하지 못함"
+        ]
+      },
+      "security_findings": [
+        {
+          "type": "HIDDEN_INSTRUCTION",
+          "severity": "HIGH"
+        }
+      ],
+      "attack_score": {
+        "passed": 1,
+        "total": 1,
+        "failed": []
+      },
+      "adversarial_executed": true,
+      "rag_model_executed": true,
+      "controlled_reference_present": false
+    },
+    {
+      "label": "tk180_encoded",
+      "result_sha256": "17396017cb97556efa5f7799f98a07c0a6a9fc1806f4d2dea070b3b3a99efa67",
+      "input_sha256": "a65b596e97932b660fb0151a878ee052de5842e320ac0a893698190c857fd74d",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "state": "PARTIAL_COMPLETED",
+      "model_calls": 9,
+      "model_failures": 0,
+      "reference_status": "PARTIAL",
+      "reference_snapshot_hash": "cf2edbc1800e0bf309b911c237210812b1a6282c943f1502a5fd21967ab3757a",
+      "engine_errors": {
+        "reference_sync": [
+          "project: 참고자료 전체 동기화·읽기를 완료하지 못함"
+        ]
+      },
+      "security_findings": [
+        {
+          "type": "ENCODED_INSTRUCTION",
+          "severity": "HIGH"
+        }
+      ],
+      "attack_score": {
+        "passed": 1,
+        "total": 1,
+        "failed": []
+      },
+      "adversarial_executed": true,
+      "rag_model_executed": true,
+      "controlled_reference_present": false
+    }
+  ],
+  "model_calls_total": 80,
+  "fixed_case9_cohort": {
+    "source_reports": [
+      "verification_rpt_4e17e2a026004f10.json",
+      "verification_rpt_2a5aa601a2d24000.json",
+      "case9_auto_r1.json",
+      "case9_auto_r2.json"
+    ],
+    "conditions_independently_checked": [
+      "full_commit",
+      "input_sha256",
+      "context",
+      "execution",
+      "security",
+      "versions",
+      "issues",
+      "reference_snapshot_hash"
+    ],
+    "summary": {
+      "runs": 4,
+      "commits": [
+        "83d862e78ba3"
+      ],
+      "same_condition": true,
+      "verdict_counts": {
+        "AI_FULL_GENERATION_LIKELY": 1,
+        "AI_PARTIAL_GENERATION": 3
+      },
+      "agreement": 0.75,
+      "modal_verdict": "AI_PARTIAL_GENERATION",
+      "uncertain_runs": 0,
+      "expected_ratio": 1.0,
+      "provider_score_range": {
+        "anthropic": [
+          0.5,
+          0.55,
+          4
+        ],
+        "gemini": [
+          0.92,
+          0.92,
+          1
+        ],
+        "openai": [
+          0.74,
+          0.78,
+          4
+        ]
+      }
+    }
+  },
+  "drive": {
+    "indexed_files": 27,
+    "files_seen": 35,
+    "partial_files": 19,
+    "reported_text_missing_pages": 163,
+    "issue_counts": {
+      "REFERENCE_PARTIALLY_READ": 19,
+      "ENCRYPTED_REFERENCE": 1
+    },
+    "case_table": {
+      "indexed_rows": 3556,
+      "quarantined": 0,
+      "errors": 0,
+      "pending": 0
+    },
+    "actual_missing_page_content": "UNVERIFIED; blank/scanned distinction unavailable in current evidence",
+    "actual_encrypted_reference_openability": "UNVERIFIED"
+  },
+  "local_reproductions": {
+    "drive_extraction_probes": [
+      {
+        "probe": "native",
+        "partial": false,
+        "reason": "",
+        "pages": 1,
+        "read_pages": 1,
+        "no_text_pages": [],
+        "chunks": 1
+      },
+      {
+        "probe": "blank",
+        "partial": true,
+        "reason": "REFERENCE_PARTIALLY_READ",
+        "pages": 1,
+        "read_pages": 0,
+        "no_text_pages": [
+          1
+        ],
+        "chunks": 0
+      },
+      {
+        "probe": "scanned",
+        "partial": true,
+        "reason": "REFERENCE_PARTIALLY_READ",
+        "pages": 1,
+        "read_pages": 0,
+        "no_text_pages": [
+          1
+        ],
+        "chunks": 0
+      },
+      {
+        "probe": "empty_password",
+        "empty_password_open_succeeds": true,
+        "reason": "ENCRYPTED_REFERENCE"
+      },
+      {
+        "probe": "password_required",
+        "reason": "ENCRYPTED_REFERENCE"
+      }
+    ],
+    "hwpx_original": [
+      {
+        "section": "Contents/section0.xml",
+        "paragraph_count": 2,
+        "separate_expected_paragraphs": true
+      }
+    ],
+    "hwpx_parser": {
+      "original_cell_paragraphs": 2,
+      "normalized_cells": [
+        {
+          "has_newline": false,
+          "paragraph_strings_joined_by_space": true
+        }
+      ],
+      "cause": "packages/document_engine/hwp_parser.py _hwpx_tables joins cell paragraphs with spaces"
+    },
+    "model_fact_reconcile": [
+      {
+        "format": "hwp",
+        "used_count": 0,
+        "unresolved_sentences": 1,
+        "unmatched_value_count": 1,
+        "has_numeric_anchors": true
+      },
+      {
+        "format": "hwpx",
+        "used_count": 0,
+        "unresolved_sentences": 1,
+        "unmatched_value_count": 0,
+        "has_numeric_anchors": false
+      }
+    ]
+  },
+  "candidate_validation": {
+    "hwpx": {
+      "source_original_boundary": "PASS",
+      "related_tests": 57,
+      "failed": 0,
+      "product_applied": false
+    },
+    "empty_password_pdf": {
+      "existing_tests": 54,
+      "new_tests": 3,
+      "failed": 0,
+      "old_code_new_tests": {
+        "passed": 2,
+        "failed": 1
+      },
+      "product_applied": false
+    }
+  },
+  "not_completed": [
+    "TK180 normal reference-role trials with TXT/PDF/DOCX/XLSX; Drive write/folder configuration not connected",
+    "RAG support/unrelated controls not registered",
+    "Live source cascade privacy block root cause",
+    "Physical device UI checks; headless smoke blocked by proxy certificate trust"
+  ],
+  "ui_smoke": {
+    "status": "BLOCKED",
+    "error": "net::ERR_CERT_AUTHORITY_INVALID",
+    "tls_verification_disabled": false
+  },
+  "release_022_scope": "User 2026-11-15 instruction: resolve confirmed online issues in v.0.22.0; completion requires implemented candidate and actual operational remeasurement"
+}

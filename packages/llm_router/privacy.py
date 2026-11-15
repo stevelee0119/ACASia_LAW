@@ -465,9 +465,14 @@ def inspect_request(request, *, _original_system: str = None):
     from .cascade_source import cascade_inspection_text, valid_cascade_source
     from .excerpt_source import excerpt_inspection, valid_excerpt_source
 
-    contract_valid = (valid_input_contract(request, original_system=_original_system)
-                      and valid_cascade_source(request, original_system=_original_system)
-                      and valid_excerpt_source(request, original_system=_original_system))
+    contract_failures = []
+    if not valid_input_contract(request, original_system=_original_system):
+        contract_failures.append("input_contract")
+    if not valid_cascade_source(request, original_system=_original_system):
+        contract_failures.append("cascade_source")
+    if not valid_excerpt_source(request, original_system=_original_system):
+        contract_failures.append("excerpt_source")
+    contract_valid = not contract_failures
     payload = asdict(request)
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
 
@@ -479,6 +484,8 @@ def inspect_request(request, *, _original_system: str = None):
     excerpt_statuses, excerpt_matches = excerpt_inspection(request)
     if 'INVALID_TRACE' in excerpt_statuses:
         contract_valid = False
+        if "excerpt_invalid_trace" not in contract_failures:
+            contract_failures.append("excerpt_invalid_trace")
     for path, kind, _ in excerpt_matches:
         kinds[kind] += 1
         blocked_kinds[kind] += 1
@@ -559,15 +566,19 @@ def inspect_request(request, *, _original_system: str = None):
     if blocked_kinds:
         status = "BLOCKED"
         failure_code = "PII_INPUT_BLOCKED"
+        diagnostic_category = "MASKING_PII_DETECTED"
     elif not contract_valid:
         status = "BLOCKED"
         failure_code = "INPUT_CONTRACT_VIOLATION"
+        diagnostic_category = "REQUEST_WIRING_CONTRACT"
     elif static_fp_kinds:
         status = "PASSED"
         failure_code = "STATIC_PROMPT_FALSE_POSITIVE"
+        diagnostic_category = None
     else:
         status = "PASSED"
         failure_code = None
+        diagnostic_category = None
 
     res = {
         "policy_version": POLICY_VERSION,
@@ -581,6 +592,10 @@ def inspect_request(request, *, _original_system: str = None):
         res['excerpt_projection'] = {'statuses': dict(Counter(excerpt_statuses)),
                                     'source_char_limit': MAX_SOURCE_CHARS, 'trace_char_limit': MAX_TRACE_CHARS,
                                     'decoder_work_multiple': 8}
+    if diagnostic_category:
+        res["diagnostic_category"] = diagnostic_category
+    if contract_failures:
+        res["contract_failures"] = contract_failures
     if failure_code:
         res["failure_code"] = failure_code
         res["detected_field_paths"] = sorted(detected_paths)

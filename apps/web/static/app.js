@@ -794,8 +794,8 @@ function switchTab(tab) {
   syncMobileBottomNav(tab);
   workflowUI.activate(tab).catch(e => toast(e.message));
 }
-async function loadProjects() {
-  state.projects = await api("/projects");
+async function loadProjects(options = {}) {
+  state.projects = await api("/projects", { cache: "no-store", ...options });
   renderProjects();
   updateSidebarHeader();
 }
@@ -1160,6 +1160,7 @@ const TEMPLATE_A_SVGS = {
   people: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><circle cx="10.5" cy="9.5" r="4" fill="#fde68a" stroke="#d97706" stroke-width="1.8"/><path d="M3.5 22.5C3.5 18.9 6.6 16.2 10.5 16.2C14.4 16.2 17.5 18.9 17.5 22.5" fill="#fef3c7" stroke="#d97706" stroke-width="1.8" stroke-linecap="round"/><circle cx="18.8" cy="10.5" r="3.2" fill="#fed7aa" stroke="#ea580c" stroke-width="1.7"/><path d="M18.5 16.5C21.7 16.7 24.3 19 24.5 22.2" stroke="#ea580c" stroke-width="1.7" stroke-linecap="round"/></svg>`,
   shield: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M14 3.2L22.5 6.8V13.6C22.5 19.1 18.8 23.4 14 25C9.2 23.4 5.5 19.1 5.5 13.6V6.8L14 3.2Z" fill="#ccfbf1" stroke="#0d9488" stroke-width="1.8" stroke-linejoin="round"/><path d="M10.3 14.1L12.9 16.7L18.1 11.5" stroke="#0f766e" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   aiChip: `<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="#6366f1" stroke-width="1.8" stroke-linecap="round"><line x1="11" y1="2.5" x2="11" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/><line x1="21" y1="2.5" x2="21" y2="6.5"/><line x1="11" y1="25.5" x2="11" y2="29.5"/><line x1="16" y1="25.5" x2="16" y2="29.5"/><line x1="21" y1="25.5" x2="21" y2="29.5"/><line x1="2.5" y1="11" x2="6.5" y2="11"/><line x1="2.5" y1="16" x2="6.5" y2="16"/><line x1="2.5" y1="21" x2="6.5" y2="21"/><line x1="25.5" y1="11" x2="29.5" y2="11"/><line x1="25.5" y1="16" x2="29.5" y2="16"/><line x1="25.5" y1="21" x2="29.5" y2="21"/></g><rect x="6.5" y="6.5" width="19" height="19" rx="4" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.8"/><rect x="9.5" y="9.5" width="13" height="13" rx="2.2" fill="#ffffff" stroke="#818cf8" stroke-width="1.2" stroke-dasharray="2 1.5"/><text x="16" y="18.6" text-anchor="middle" fill="#4338ca" font-size="8.2" font-weight="800" font-family="Pretendard, sans-serif">AI</text></svg>`,
+  calendar: `<svg viewBox="0 0 28 28" fill="none" aria-hidden="true"><rect x="4" y="6" width="20" height="18" rx="3.2" fill="#ccfbf1" stroke="#0d9488" stroke-width="1.8"/><path d="M4 11.2H24" stroke="#0d9488" stroke-width="1.8"/><path d="M9.5 3.8V7.6M18.5 3.8V7.6" stroke="#0f766e" stroke-width="1.8" stroke-linecap="round"/><rect x="8.2" y="14.5" width="3.2" height="3.2" rx="0.8" fill="#0f766e"/><rect x="12.8" y="14.5" width="3.2" height="3.2" rx="0.8" fill="#0d9488"/><rect x="17.4" y="14.5" width="3.2" height="3.2" rx="0.8" fill="#0d9488"/></svg>`,
   warningTriangle: `<svg viewBox="0 0 44 44" fill="none" aria-hidden="true"><defs><linearGradient id="warnGrad" x1="22" y1="4" x2="22" y2="39" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#fde047"/><stop offset="55%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/></linearGradient></defs><path d="M20.1 6.8C20.9 5.3 23.1 5.3 23.9 6.8L39.6 34.8C40.4 36.2 39.4 38 37.7 38H6.3C4.6 38 3.6 36.2 4.4 34.8L20.1 6.8Z" fill="url(#warnGrad)" stroke="#92400e" stroke-width="2"/><path d="M22 15.5V25.5" stroke="#451a03" stroke-width="3" stroke-linecap="round"/><circle cx="22" cy="31.2" r="1.9" fill="#451a03"/></svg>`,
 };
 
@@ -1217,14 +1218,27 @@ function renderSummary() {
     scopeCard.onclick = () => switchTab("documents");
   }
 
-  // 2~4열(#summary .metric 3칸 유지): 사람 아이콘 · 방패 아이콘 · AI 반도체 아이콘 배치
+  // 2~5열(#summary): 하단 탭 순서(AI 작성·보안 진단 → 출처 미확인 인용 → 법률적으로 무리한 주장 → Time Table)와 일치시킨다.
   const aiHintState = !state.run ? "대기" : state.run.state === "PARTIAL_COMPLETED" ? "일부 미확인" : "완료";
+  const timelineCount = Array.isArray(state.run?.timeline) ? state.run.timeline.length : 0;
+  const timelineCard = (() => {
+    const runState = state.run?.state;
+    if (!state.run) return ["—", "검증 후 집계"];
+    if (runState === "COMPLETED") return ["완료", `사실관계 정리 총 ${timelineCount}건`];
+    if (runState === "PARTIAL_COMPLETED") return ["일부 미확인", `사실관계 정리 ${timelineCount}건 (일부 미확인)`];
+    if (runState === "FAILED" || runState === "CANCELLED") {
+      return [label(runState), timelineCount > 0 ? `중단 전 추출 ${timelineCount}건` : "검증이 끝나지 않았습니다"];
+    }
+    if (runState === "QUEUED") return ["대기", "검증 대기 중"];
+    return ["진행 중", timelineCount > 0 ? `${label(runState)} · 현재 ${timelineCount}건` : `${label(runState)} · 정리 중`];
+  })();
   const metrics = [
+    ["AI 작성·보안 진단", state.run ? aiStatus : "—", `판정 · ${aiHintState}`, "aiChip", "metric-indigo"],
     ["출처 미확인 인용", state.run ? `${sourceCount}건` : "—", !state.run ? "검증 후 집계" : fakeCaseCount ? `사건번호 형식 오류 ${fakeCaseCount}건 포함` : `공식 DB 미확인 ${unconfirmedCount}건`, "people", "metric-amber"],
     ["법률적으로 무리한 주장", state.run && legalCount != null ? `${legalCount}건` : "—", state.run && legalCount != null ? `법리 검토 대상 ${legalCount}건` : "검증 후 집계", "shield", "metric-sky"],
-    ["AI 작성 진단", state.run ? aiStatus : "—", `판정 · ${aiHintState}`, "aiChip", "metric-indigo"],
+    ["Time Table", timelineCard[0], timelineCard[1], "calendar", "metric-teal"],
   ];
-  const tabFor = {"AI 작성 진단": "ai-verification", "출처 미확인 인용": "review", "법률적으로 무리한 주장": "legal-claims"};
+  const tabFor = {"AI 작성·보안 진단": "ai-verification", "출처 미확인 인용": "review", "법률적으로 무리한 주장": "legal-claims", "Time Table": "timeline"};
   for (const [title, value, note, iconKey, toneCls] of metrics) {
     const el = node("div", null, `metric metric-explain ${toneCls}`);
     const body = node("div", null, "metric-content");
@@ -1247,8 +1261,9 @@ function renderSummary() {
   // 완료가 아닐 때만 실행 상태를 한 줄로 알린다(V1.0.0 D2). 진행 중은 진행 막대가 따로 보인다.
   if (state.run && ["PARTIAL_COMPLETED", "FAILED", "CANCELLED"].includes(state.run.state)) {
     const line = node("p", null, "run-status-line");
+    const unverifiedItemsCount = (state.run.unverified_items || []).filter(item => !isPartialItem(item)).length;
     line.append(node("strong", `${label(state.run.state)}: `),
-      document.createTextNode(state.run.state === "PARTIAL_COMPLETED" ? "일부 항목을 확인하지 못했습니다. " : "검증이 끝나지 않았습니다. "));
+      document.createTextNode(state.run.state === "PARTIAL_COMPLETED" ? `${unverifiedItemsCount}건을 확인하지 못했습니다. ` : "검증이 끝나지 않았습니다. "));
     line.append(button("사유 보기", action(explainRunStatus), "link-button small"));
     $("summary").append(line);
   }
@@ -3372,17 +3387,83 @@ function reasoningBlock(r) {
   return box;
 }
 
+function formatTimelineDateLabel(item) {
+  if (item?.formatted_date) return item.formatted_date;
+  const raw = String(item?.date || item?.event_date || "").trim();
+  const match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!match) return raw || "일시 미확인";
+  const dt = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+  return `${String(Number(match[1]) % 100).padStart(2, "0")}.${Number(match[2])}.${Number(match[3])}.(${weekdays[dt.getDay()]})`;
+}
+
+function timelineSortKey(item) {
+  const raw = String(item?.date || item?.event_date || "").trim();
+  return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : "9999-99-99";
+}
+
+function formatTimelineEvidence(item) {
+  if (item?.evidence_summary) return item.evidence_summary;
+  const refs = Array.isArray(item?.evidence_references) ? item.evidence_references : [];
+  const texts = refs.map(r => String(r?.raw_text || "").trim()).filter(Boolean);
+  return texts.length ? texts.join(", ") : "[근거 미작성]";
+}
+
 function renderTimeline() {
-  const root = $("timeline");
-  if (!root) return;
-  root.replaceChildren();
-  const events = state.run?.timeline || [];
-  if (!events.length) empty(root, "추출된 사건 일지가 없습니다.");
-  for (const e of events) {
-    const row = node("article", null, "row-item");
-    row.append(node("strong", e.date || e.event_date || "날짜 미확인"), node("p", e.description || e.text || JSON.stringify(e)), node("div", `${state.documents.find(d=>d.id===e.document_id)?.filename||""} · 문서 기재 내용 기준`, "row-meta"));
-    root.append(row);
+  const tbody = $("timelineRows");
+  const emptyEl = $("timelineEmpty");
+  const countEl = $("timelineCount");
+  const copyBtn = $("copyTimelineMarkdown");
+  if (!tbody) return;
+  tbody.replaceChildren();
+  const rawEvents = Array.isArray(state.run?.timeline) ? [...state.run.timeline] : [];
+  rawEvents.sort((a, b) => timelineSortKey(a).localeCompare(timelineSortKey(b)));
+  if (countEl) countEl.textContent = rawEvents.length ? `${rawEvents.length}건` : "";
+  if (emptyEl) emptyEl.hidden = rawEvents.length > 0;
+  if (copyBtn) {
+    copyBtn.disabled = !rawEvents.length;
+    copyBtn.onclick = async () => {
+      const escapeMd = v => String(v ?? "").replace(/\s+/g, " ").trim().replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
+      const md = [
+        "| 일시 | 내용 | 관련근거 |",
+        "| :--- | :--- | :--- |",
+        ...rawEvents.map(ev => {
+          const d = escapeMd(formatTimelineDateLabel(ev));
+          const c = escapeMd(ev.formatted_content || ev.description || ev.text || "");
+          const e = escapeMd(formatTimelineEvidence(ev));
+          return `| ${d} | ${c} | ${e} |`;
+        }),
+      ].join("\n");
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(md);
+    };
   }
+  for (const e of rawEvents) {
+    const tr = document.createElement("tr");
+    const dateTd = document.createElement("td");
+    dateTd.append(node("strong", formatTimelineDateLabel(e), "timeline-date-text"));
+    const srcDoc = state.documents.find(d => d.id === e.document_id);
+    if (srcDoc || e.page) {
+      const locBtn = node("button", `${srcDoc?.filename || "서면"}${e.page ? ` ${e.page}쪽` : ""}`, "timeline-source-link");
+      locBtn.type = "button";
+      if (srcDoc) locBtn.onclick = () => openDocument(srcDoc, e.page ? { page: e.page, title: formatTimelineDateLabel(e) } : null);
+      dateTd.append(locBtn);
+    }
+
+    const contentTd = document.createElement("td");
+    contentTd.textContent = String(e.formatted_content || e.description || e.text || "").trim() || "-";
+
+    const evTd = document.createElement("td");
+    const evidenceText = formatTimelineEvidence(e);
+    if (evidenceText === "[근거 미작성]") {
+      evTd.append(node("span", "[근거 미작성]", "badge evidence-missing"));
+    } else {
+      evTd.textContent = evidenceText;
+    }
+
+    tr.append(dateTd, contentTd, evTd);
+    tbody.append(tr);
+  }
+  labelTableCells("timelineTable");
 }
 async function openDocument(d, finding = null, runId = state.run?.id) {
   state.viewing = {
@@ -3509,8 +3590,9 @@ async function loadReports() {
   $("reportList").replaceChildren();
   if (!reports.length) empty($("reportList"), "생성된 보고서가 없습니다.");
   for (const report of reports) {
-    const row = node("article", null, "row-item");
-    row.append(node("p", `${dateText(report.created_at)} · 실행 ${report.run_id.slice(0,8)}`));
+    const row = node("article", null, "row-item report-row");
+    const info = node("div", null, "report-row-info");
+    info.append(node("span", `${dateText(report.created_at)} · 실행 ${report.run_id.slice(0,8)}`, "muted"));
     const links = node("div", null, "report-links");
     for (const [fmt, artifact] of Object.entries(report.artifacts || {})) {
       if (artifact.download) {
@@ -3519,7 +3601,7 @@ async function loadReports() {
         links.append(a);
       } else if (artifact.error) links.append(node("span", `${fmt}: 생성 실패`, "error"));
     }
-    row.append(links);
+    row.append(info, links);
     reportWorkbench.decorate(report, row);
     $("reportList").append(row);
   }
@@ -3546,6 +3628,7 @@ document.querySelectorAll(".sidebar-menu [data-side-nav]").forEach(el => el.oncl
   document.querySelectorAll(".sidebar-menu [data-side-nav]").forEach(b => b.classList.toggle("active", b === el));
   const key = el.dataset.sideNav;
   if (key === "projects") {
+    loadProjects({ interactiveAuth: false }).catch(() => {});
     $("projectSearch")?.focus();
   } else if (key === "history") {
     const histBtn = [...document.querySelectorAll("#jobControls button")].find(b => b.textContent.includes("검증 이력"));
@@ -3579,7 +3662,8 @@ document.addEventListener("keydown", e => {
 });
 $("menuButton").onclick = () => {
   if (narrowScreen()) {
-    $("sidebar").classList.toggle("open");
+    const opened = $("sidebar").classList.toggle("open");
+    if (opened) loadProjects({ interactiveAuth: false }).catch(() => {});
   } else {
     const collapsed = document.querySelector(".workspace").classList.toggle("sidebar-collapsed");
     try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0"); } catch (e) { /* 저장 불가 환경: 이번 화면에서만 적용 */ }

@@ -365,8 +365,12 @@ class LLMRouter:
         )
         advisory = request.input_contract == "ai_document_v1"
         is_argument_review = request.input_contract == "argument_review_v1"
-        if advisory and "openai" in names:
-            names = ["openai", *[n for n in names if n != "openai"]]
+        if advisory:
+            advisory_order = ("openai", "gemini", "anthropic", "local")
+            names = sorted(
+                names,
+                key=lambda n: advisory_order.index(n) if n in advisory_order else len(advisory_order),
+            )
         answers = []
         # AI 작성 판별(advisory)도 늘 두 모델 의견을 받는다(V1.0.0 D4). 첫 모델 한 번의 응답이 두 번째 의견
         # 호출 여부와 최종 판정을 가르던 변동(case9 같은 입력 2회 중 1회 유보)을 없앤다. 엇갈리면 세 번째를 부른다.
@@ -432,11 +436,25 @@ class LLMRouter:
 
             try:
                 privacy = inspect_request(request, _original_system=original_system)
-            except Exception:
-                privacy = {"status": "BLOCKED", "reason": "INSPECTION_FAILED"}
+            except Exception as exc:
+                privacy = {
+                    "status": "BLOCKED",
+                    "reason": "INSPECTION_FAILED",
+                    "failure_code": "INSPECTION_EXCEPTION",
+                    "diagnostic_category": "INSPECTION_EXCEPTION",
+                    "exception_type": type(exc).__name__,
+                }
             if privacy["status"] != "PASSED":
+                code = privacy.get("failure_code") or privacy.get("reason") or "UNKNOWN"
+                cat = privacy.get("diagnostic_category") or code
+                detail_parts = [str(code)]
+                if privacy.get("contract_failures"):
+                    detail_parts.append(",".join(str(x) for x in privacy["contract_failures"]))
+                if privacy.get("exception_type"):
+                    detail_parts.append(str(privacy["exception_type"]))
                 execution = ModelExecution(str(role), provider.name, provider.config.model, False,
-                    error="INPUT_PRIVACY_BLOCKED: 마스킹 후 입력 검사 불통과", cost_status="NOT_SENT",
+                    error=f"INPUT_PRIVACY_BLOCKED [{cat}:{'/'.join(detail_parts)}]: 마스킹 후 입력 검사 불통과",
+                    cost_status="NOT_SENT",
                     input_privacy=privacy)
                 if self.on_execution:
                     self.on_execution(execution)

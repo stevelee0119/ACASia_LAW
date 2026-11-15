@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 from contextlib import closing
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -15,7 +16,7 @@ from packages.document_engine.registry import parse_document
 
 MAX_CHARS = 3_000_000
 MAX_PAGES = 1500
-EXTRACTOR_VERSION = "drive-text-v7-tk180"  # TK-180: invalidate old instruction-exclusion caches
+EXTRACTOR_VERSION = "drive-text-v8-tk182"  # TK-182: empty-password PDFs, per-page diagnostics, bounded OCR, continuation
 EXCLUDE_MIN_TOTAL = 10       # 이보다 짧은 파일은 쪽 단위로 빼지 않고 전체를 격리한다
 EXCLUDE_MAX_SHARE = 0.02     # 전체 쪽수의 2%까지(최소 1쪽)
 EXCLUDE_MAX_PAGES = 3        # 그리고 3쪽까지만 해당 쪽을 빼고 색인한다
@@ -84,40 +85,138 @@ def scan_evidence(finding):
                if (features.get("metadata_key") or features.get("field_name")) else {})}
 
 
+def _ocr_pdf_page(pdfium_page, page_number: int) -> tuple[str, dict]:
+    """Run bounded OCR on a single rendered PDF page and return (text, diagnostic)."""
+    from packages.document_engine.ocr import get_ocr_adapter
+
+    adapter = get_ocr_adapter()
+    if not getattr(adapter, "available", False):
+        return "", {"status": "scanned", "ocr_available": False}
+    try:
+        scale = 2.0
+        with closing(pdfium_page.render(scale=scale)) as bitmap:
+            image = bitmap.to_pil()
+        lines = adapter.recognize_image(image, page=page_number, scale=scale)
+    except Exception as exc:
+        return "", {"status": "error", "error": type(exc).__name__}
+    last_error = getattr(adapter, "last_error", None)
+    if last_error:
+        return "", {"status": "error", "error": str(last_error)}
+    ocr_text = "\n".join(line.text.strip() for line in lines if (line.text or "").strip())
+    if ocr_text.strip():
+        return ocr_text, {"status": "ocr_applied", "lines": len(lines)}
+    return "", {"status": "scanned", "ocr_attempted": True, "ocr_empty": True}
+
+
 def extract(path, filename, mime, *, continuation=None):
     path = Path(path)
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    cont = continuation if isinstance(continuation, dict) else {}
+    resumed = bool(cont and cont.get("next_page"))
+    next_continuation = None
+    page_diagnostics: dict[str, dict] = dict(cont.get("page_diagnostics") or {})
+    prev_read_pages = int(cont.get("read_pages") or 0)
+    prev_no_text_pages = list(cont.get("no_text_pages") or [])
+    prev_fallback_pages = list(cont.get("fallback_pages") or [])
+    prev_chars = int(cont.get("chars") or 0)
+
     if mime == "application/pdf" or path.suffix.lower() == ".pdf":
         from pypdf import PdfReader
 
         reader = PdfReader(path)
         if reader.is_encrypted:
-            raise ValueError("ENCRYPTED_REFERENCE")
+            try:
+                decrypted = reader.decrypt("")
+            except Exception:
+                decrypted = 0
+            if not decrypted:
+                raise ValueError("ENCRYPTED_REFERENCE")
+            try:
+                _ = len(reader.pages)
+            except Exception:
+                raise ValueError("ENCRYPTED_REFERENCE") from None
         doc = NormalizedDocument("reference", filename, mime, digest)
         doc.metadata = dict(reader.metadata or {})
         doc.raw_layers["metadata_text"] = str(doc.metadata)
-        total, count = len(reader.pages), 0
-        native, fallback_pages = None, []
+        total, count = len(reader.pages), prev_chars
+        start_page = max(1, int(cont.get("next_page") or 1))
+        max_ocr_pages = max(0, int(os.getenv("LV_REFERENCE_OCR_MAX_PAGES", os.getenv("LV_OCR_MAX_PAGES", "5"))))
+        ocr_used = 0
+        native, fallback_pages = None, list(prev_fallback_pages)
+        last_processed = start_page - 1
         try:
             import pypdfium2 as pdfium
             native = pdfium.PdfDocument(path)
         except Exception:
             pass  # Retain the existing parser if the native engine cannot open this PDF.
         try:
-            for number in range(1, min(total, MAX_PAGES) + 1):
+            for number in range(start_page, min(total, MAX_PAGES) + 1):
                 text = None
+                used_fallback = False
+                page_error = None
+                has_visual_objects = False
                 if native is not None:
                     try:
-                        with closing(native[number - 1]) as page, closing(page.get_textpage()) as textpage:
-                            text = textpage.get_text_range()
-                    except Exception:
+                        with closing(native[number - 1]) as page:
+                            with closing(page.get_textpage()) as textpage:
+                                text = textpage.get_text_range()
+                            if not (text or "").strip():
+                                try:
+                                    has_visual_objects = any(True for _ in page.get_objects())
+                                except Exception:
+                                    has_visual_objects = False
+                    except Exception as exc:
                         text = None
+                        page_error = type(exc).__name__
                 if text is None or not text.strip():
-                    fallback_pages.append(number)
-                    text = reader.pages[number - 1].extract_text() or ""
+                    used_fallback = True
+                    if number not in fallback_pages:
+                        fallback_pages.append(number)
+                    try:
+                        reader_page = reader.pages[number - 1]
+                        text = reader_page.extract_text() or ""
+                        if not text.strip() and not has_visual_objects:
+                            try:
+                                has_visual_objects = bool(getattr(reader_page, "images", None))
+                            except Exception:
+                                pass
+                    except Exception as exc:
+                        if reader.is_encrypted and native is None and "Decrypt" in type(exc).__name__:
+                            raise ValueError("ENCRYPTED_REFERENCE") from None
+                        text = ""
+                        page_error = page_error or type(exc).__name__
+
+                if (text or "").strip():
+                    page_diagnostics[str(number)] = {
+                        "status": "text",
+                        "parser": "pypdf" if used_fallback else "pypdfium2",
+                    }
+                elif page_error and not has_visual_objects:
+                    page_diagnostics[str(number)] = {"status": "error", "error": page_error}
+                elif has_visual_objects:
+                    if max_ocr_pages > 0 and native is not None:
+                        if ocr_used >= max_ocr_pages:
+                            next_continuation = {
+                                "next_page": number,
+                                "chars": count,
+                                "fallback_pages": fallback_pages,
+                                "page_diagnostics": page_diagnostics,
+                            }
+                            break
+                        ocr_used += 1
+                        with closing(native[number - 1]) as page:
+                            ocr_text, diag = _ocr_pdf_page(page, number)
+                        text = ocr_text
+                        page_diagnostics[str(number)] = diag
+                    else:
+                        page_diagnostics[str(number)] = {"status": "scanned", "ocr_available": max_ocr_pages > 0}
+                else:
+                    page_diagnostics[str(number)] = {"status": "blank"}
+
                 count += len(text)
                 if count > MAX_CHARS:
                     break
+                last_processed = number
                 doc.pages.append(Page(number, blocks=[Block(f"p{number}", text, number)]))
         finally:
             if native is not None:
@@ -138,6 +237,7 @@ def extract(path, filename, mime, *, continuation=None):
         doc = parse_document(str(path), document_id="reference", filename=filename,
                              mime_type=mime, sha256=digest)
         total = len(doc.pages)
+        last_processed = total
         if doc.structure.get("parse_error") or doc.structure.get("unsupported_format"):
             raise ValueError("REFERENCE_PARSE_FAILED")
         if len(doc.visible_text) > MAX_CHARS or total > MAX_PAGES:
@@ -145,28 +245,44 @@ def extract(path, filename, mime, *, continuation=None):
     # TK-180: verified reference material is evidence, outside instruction classification.
     # Parsing, visibility, size and coverage constraints still apply.
     pages_hit, evidence = set(), []
-    chunks, read_pages, no_text_pages = [], 0, []
+    chunks, read_pages, no_text_pages = [], prev_read_pages, list(prev_no_text_pages)
     for page in doc.pages:
         if page.page_number in pages_hit:
             continue
         text = "\n".join(b.text for b in page.blocks if b.visible and b.source_layer == "visible_text")
         if not text.strip():
-            no_text_pages.append(page.page_number)
+            if page.page_number not in no_text_pages:
+                no_text_pages.append(page.page_number)
             continue
         read_pages += 1
         page_chunks = chunk_page_text(text, page.page_number)
         chunks.extend(page_chunks)
+    if next_continuation is not None:
+        next_continuation["read_pages"] = read_pages
+        next_continuation["no_text_pages"] = no_text_pages
     coverage_missing = any(p.get("status") in ("UNVERIFIED", "OCR_LOW_QUALITY")
                            for p in doc.structure.get("page_coverage", []))
-    partial = read_pages < total or coverage_missing or bool(doc.parse_warnings)
+    unprocessed_pages = list(range(last_processed + 1, total + 1))
+    partial = read_pages < total or bool(next_continuation) or coverage_missing or bool(doc.parse_warnings)
     reason = ("REFERENCE_INSTRUCTION_PAGES_EXCLUDED" if pages_hit else
               "REFERENCE_PARTIALLY_READ" if partial else "")
+    blank_pages = sorted(int(p) for p, d in page_diagnostics.items() if d.get("status") == "blank")
+    scanned_pages = sorted(int(p) for p, d in page_diagnostics.items() if d.get("status") == "scanned")
+    ocr_pages = sorted(int(p) for p, d in page_diagnostics.items() if d.get("status") == "ocr_applied")
+    error_pages = sorted(int(p) for p, d in page_diagnostics.items() if d.get("status") == "error")
     return {"chunks": chunks, "sha256": digest, "partial": partial,
             "excluded_pages": sorted(pages_hit), "scan_findings": evidence,
             "no_text_pages": no_text_pages,
+            "page_diagnostics": page_diagnostics,
+            "blank_pages": blank_pages,
+            "scanned_pages": scanned_pages,
+            "ocr_pages": ocr_pages,
+            "error_pages": error_pages,
+            "continuation": next_continuation,
+            "resumed": resumed,
             "text_parser": doc.structure.get("text_parser", doc.parser_name),
             "fallback_pages": doc.structure.get("fallback_pages", []),
-            "unprocessed_pages": list(range(len(doc.pages) + 1, total + 1)),
+            "unprocessed_pages": unprocessed_pages,
             "coverage_note": ("텍스트 미추출 쪽은 빈 쪽 또는 스캔 쪽일 수 있으며 전문 확인으로 간주하지 않음"
                               if no_text_pages else ""),
             "page_numbers_reliable": doc.structure.get("page_numbers_reliable", path.suffix.lower() not in (".hwp", ".hwpx")),
@@ -181,7 +297,7 @@ def main():
         if sys.platform == "linux":
             import resource
             # Keep a compressed or malformed reference from exhausting the API/worker container.
-            resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
+            resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
         continuation = json.loads(Path(sys.argv[5]).read_text(encoding="utf-8")) if len(sys.argv) > 5 else None
         result = extract(source, filename, mime, continuation=continuation)
     except ValueError as exc:

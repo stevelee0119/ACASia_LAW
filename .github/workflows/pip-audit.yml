@@ -1,0 +1,43 @@
+name: 의존성 취약점 점검 (pip-audit)
+
+on:
+  pull_request:
+    branches: [Steve_ACASiaLAW, main]
+    paths:
+      - requirements.in
+      - requirements.txt
+      - requirements-test.in
+      - requirements-test.txt
+      - config/pip_audit_ignore.txt
+      - .github/workflows/pip-audit.yml
+  push:
+    branches: [Steve_ACASiaLAW, main]
+  schedule:
+    - cron: "0 18 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    name: pip-audit (requirements.txt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: pip-audit 설치 및 잠금 파일 취약점 점검
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          IGNORE_FLAGS=""
+          if [ -f config/pip_audit_ignore.txt ]; then
+            while IFS= read -r line; do
+              id=$(echo "$line" | sed 's/#.*//' | xargs)
+              if [ -n "$id" ]; then
+                echo "예외 적용: $line"
+                IGNORE_FLAGS="$IGNORE_FLAGS --ignore-vuln $id"
+              fi
+            done < config/pip_audit_ignore.txt
+          fi
+          pip-audit -r requirements.txt --no-deps --disable-pip $IGNORE_FLAGS

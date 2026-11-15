@@ -1,0 +1,3564 @@
+{
+ "candidate_sha": "fca75347c5612b3a5960005726b4a31f7143b38a",
+ "baseline_sha": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+ "version_before_bump": "0.21.0",
+ "measured_on": "2026-11-15",
+ "environment": {
+  "os": "Ubuntu 24.04 container",
+  "python": "3.11.17",
+  "tesseract": "5.3.4",
+  "ocr_languages": [
+   "eng",
+   "kor",
+   "osd"
+  ],
+  "playwright": "1.63.0",
+  "chromium": "153.0.8010.12",
+  "node": "18.19.1",
+  "network": false,
+  "dependencies": "Same candidate requirements-test.txt, 83 packages, installed with --require-hashes; uv pip check passed",
+  "requirements_test_sha256": "f3bbc235e1c8e4982304f6d1d14df0ad8f039ab89cb5ac232a0a1e5683d95c3b",
+  "final_test_layout": "Independent clone on container overlay; TMPDIR also on overlay. No path guard, test, baseline or product change."
+ },
+ "verify_all": {
+  "head": "fca75347",
+  "base": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+  "env": {
+   "python": "3.11.17",
+   "os": "Linux-6.18.57-x86_64-with-glibc2.39",
+   "tesseract": "5.3.4",
+   "matches_ci": true
+  },
+  "steps": {
+   "environment": {
+    "ok": true,
+    "matches_ci": true,
+    "tail": [
+     "python 3.11.17, tesseract 5.3.4"
+    ]
+   },
+   "acceptance": {
+    "cmd": "/tmp/release022-venv/bin/python -m pytest -q -p no:cacheprovider -p verify_all_plugin --tb=no tests/acceptance",
+    "code": 0,
+    "tail": [
+     "........................................................................ [ 94%]",
+     "........................................................................ [ 99%]",
+     "......                                                                   [100%]"
+    ],
+    "seconds": 97.4,
+    "passed": 1278,
+    "real_failures": [],
+    "strict_xpass": 0,
+    "ok": true
+   },
+   "regression_ledger": {
+    "cmd": "/tmp/release022-venv/bin/python -m pytest -q -p no:cacheprovider -p verify_all_plugin --tb=no tests/regression",
+    "code": 0,
+    "tail": [
+     "........................................................................ [ 94%]",
+     "........................................................................ [ 97%]",
+     ".....................................................                    [100%]"
+    ],
+    "seconds": 20.0,
+    "passed": 2357,
+    "real_failures": [],
+    "strict_xpass": 0,
+    "ok": true
+   },
+   "score_gate": {
+    "cmd": "/tmp/release022-venv/bin/python scripts/score_gate.py --current artifacts/scorecard.json --strict-env",
+    "code": 0,
+    "tail": [
+     "점수 게이트 통과"
+    ],
+    "seconds": 0.0,
+    "scorecard_tail": [
+     "Could not get FontBBox from font descriptor because None cannot be parsed as 4 floats",
+     "Could not get FontBBox from font descriptor because None cannot be parsed as 4 floats",
+     "Could not get FontBBox from font descriptor because None cannot be parsed as 4 floats"
+    ],
+    "ok": true
+   },
+   "regression_gate": {
+    "cmd": "/tmp/release022-venv/bin/python scripts/regression_gate.py --base 83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca --head-scorecard artifacts/scorecard.json",
+    "code": 0,
+    "tail": [
+     "  variant2_food_license/primary                   21/21 → 21/21  ",
+     "  variant2_food_license/text                      21/21 → 21/21  ",
+     "회귀 없음"
+    ],
+    "seconds": 23.3,
+    "ok": true
+   },
+   "hardcoding_diff": {
+    "cmd": "/tmp/release022-venv/bin/python scripts/check_hardcoding_diff.py --base 83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+    "code": 0,
+    "tail": [
+     "하드코딩 변경분 점검 — 기준 83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca, 추가된 줄 800개",
+     "  새로 추가된 줄에 시험 입력의 값·낱말·조문 번호 없음"
+    ],
+    "seconds": 0.0,
+    "ok": true
+   },
+   "test_edits": {
+    "cmd": "/tmp/release022-venv/bin/python scripts/check_test_edits.py --base 83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+    "code": 0,
+    "tail": [
+     "  [경고] assert가 줄어든 시험 1개(약화 의심, 사람이 확인)",
+     "    - tests/test_frontend_emblem.py::test_emblem_login_and_header_at_desktop_tablet_and_mobile_sizes (assert 16 → 15)",
+     "  기존 시험의 삭제·표시 변경 없음"
+    ],
+    "seconds": 0.2,
+    "ok": true
+   },
+   "protected_paths": {
+    "cmd": "/tmp/release022-venv/bin/python scripts/check_protected_paths.py --base 83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+    "code": 0,
+    "tail": [
+     "  [평가 측] docs/scorecards/ticket_registry.json — 866db35 평가: 0.22.0 공식Source 개인정보 차단 진단·회귀 기준 추가",
+     "  [평가 측] docs/scorecards/version_verdicts.json — 7d233b3 평가: 인증API 온라인6건·원인 재현 및 0.22.0 해소 티켓/검증 사본 기록",
+     "보호 경로 점검: 바뀐 보호 경로 22개 모두 평가 측 커밋 또는 승인"
+    ],
+    "seconds": 0.1,
+    "ok": true
+   },
+   "version_policy": {
+    "cmd": "/tmp/release022-venv/bin/python scripts/check_version_policy.py --base 83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+    "code": 0,
+    "tail": [
+     "버전 정책: 위반 없음 (버전 변경 없음)"
+    ],
+    "seconds": 0.1,
+    "ok": true
+   },
+   "full_tests": {
+    "cmd": "/tmp/release022-venv/bin/python -m pytest -q -p no:cacheprovider -p verify_all_plugin --tb=no --ignore=tests/acceptance --ignore=tests/test_analysis_completion.py --ignore=tests/test_drive_rag_relevance.py --ignore=tests/test_frontend_admin.py --ignore=tests/test_frontend_auth.py --ignore=tests/test_frontend_citation_groups.py --ignore=tests/test_frontend_diagnostics.py --ignore=tests/test_frontend_emblem.py --ignore=tests/test_frontend_footer.py --ignore=tests/test_frontend_gate.py --ignore=tests/test_frontend_metric_explain.py --ignore=tests/test_frontend_mobile_projects_sync.py --ignore=tests/test_frontend_model_opinions.py --ignore=tests/test_frontend_progress.py --ignore=tests/test_frontend_project_open.py --ignore=tests/test_frontend_project_tools.py --ignore=tests/test_frontend_report_button.py --ignore=tests/test_frontend_report_progress.py --ignore=tests/test_frontend_retry.py --ignore=tests/test_frontend_summary_compact.py --ignore=tests/test_frontend_trash_bulk.py --ignore=tests/test_frontend_upload.py --ignore=tests/test_reasoning_layout.py",
+    "code": 0,
+    "tail": [
+     "........................................................................ [ 99%]",
+     ".............................................................s.......... [ 99%]",
+     ".                                                                        [100%]"
+    ],
+    "seconds": 308.0,
+    "passed": 10430,
+    "real_failures": [],
+    "strict_xpass": 0,
+    "ok": true
+   },
+   "browser_tests": {
+    "cmd": "/tmp/release022-venv/bin/python -m pytest -q -p no:cacheprovider -p verify_all_plugin --tb=no tests/test_analysis_completion.py tests/test_drive_rag_relevance.py tests/test_frontend_admin.py tests/test_frontend_auth.py tests/test_frontend_citation_groups.py tests/test_frontend_diagnostics.py tests/test_frontend_emblem.py tests/test_frontend_footer.py tests/test_frontend_gate.py tests/test_frontend_metric_explain.py tests/test_frontend_mobile_projects_sync.py tests/test_frontend_model_opinions.py tests/test_frontend_progress.py tests/test_frontend_project_open.py tests/test_frontend_project_tools.py tests/test_frontend_report_button.py tests/test_frontend_report_progress.py tests/test_frontend_retry.py tests/test_frontend_summary_compact.py tests/test_frontend_trash_bulk.py tests/test_frontend_upload.py tests/test_reasoning_layout.py",
+    "code": 0,
+    "tail": [
+     "........................................................................ [ 36%]",
+     "........................................................................ [ 72%]",
+     "........................................................                 [100%]"
+    ],
+    "seconds": 130.6,
+    "passed": 200,
+    "real_failures": [],
+    "strict_xpass": 0,
+    "ok": true
+   }
+  },
+  "failed_steps": [],
+  "mode": "full"
+ },
+ "fixed_main": {
+  "schema": 1,
+  "created": "2026-11-15T11:50:30+00:00",
+  "git": {
+   "sha": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+   "dirty": false
+  },
+  "version": "0.21.0",
+  "rule_version": "2026.09.30.1",
+  "environment": {
+   "network": false,
+   "tesseract": "5.3.4",
+   "ocr_langs": [
+    "eng",
+    "kor",
+    "osd"
+   ],
+   "python": "3.11.17"
+  },
+  "sets": {
+   "dev": {
+    "documents": 6,
+    "overall": 82.6,
+    "weighted_recall": 0.826,
+    "defect_items": 56,
+    "false_positives": 0,
+    "fp_trap": 0,
+    "control_fp": 0,
+    "a_grade_fp": 0,
+    "duplicate_citation_verdicts": 0,
+    "findings_without_document_id": 0,
+    "injection_defended": true,
+    "pii_kinds": null,
+    "per_type": {
+     "AIGEN": {
+      "items": 7,
+      "recall": 0.786
+     },
+     "CIT-FAB-Q": {
+      "items": 2,
+      "recall": 0.0
+     },
+     "CIT-META": {
+      "items": 3,
+      "recall": 0.5
+     },
+     "CIT-MIS": {
+      "items": 1,
+      "recall": 0.0
+     },
+     "CIT-NX": {
+      "items": 5,
+      "recall": 1.0
+     },
+     "CIT-NX-DB": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-COPY": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-DATE": {
+      "items": 3,
+      "recall": 1.0
+     },
+     "EVI-FAKECIT": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-FORM": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-INCONS": {
+      "items": 2,
+      "recall": 1.0
+     },
+     "EVI-LOGIC": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-NUM": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-OVR": {
+      "items": 1,
+      "recall": 0.25
+     },
+     "INJ-ANNOT": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-ATTACH": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-COVERED": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-INVISIBLE-TR3": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-META": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-OFFPAGE": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-TINY": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-VISIBLE": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-WHITE": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-ZWSP": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "LAW-MIS": {
+      "items": 3,
+      "recall": 0.5
+     },
+     "LAW-NX": {
+      "items": 2,
+      "recall": 0.25
+     },
+     "OVR": {
+      "items": 9,
+      "recall": 1.0
+     },
+     "SRC-UNV": {
+      "items": 2,
+      "recall": 1.0
+     }
+    },
+    "per_document": {
+     "TC-01": null,
+     "TC-02": 0.682,
+     "TC-03": 1.0,
+     "TC-04": 0.906,
+     "TC-05": 0.932,
+     "TC-06": 0.429
+    },
+    "engine_errors": {},
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "f72438d87cca09955ab6c26de49c58deab16925581efe0b315c59df2da2d5e74",
+     "documents": 6,
+     "items": 56,
+     "hits": 42,
+     "recall": 0.75,
+     "macro_recall": 0.7648604269293924,
+     "by_type": {
+      "AIGEN": {
+       "items": 7,
+       "hits": 5,
+       "recall": 0.7142857142857143
+      },
+      "CIT-FAB-Q": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "CIT-MIS": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-NX": {
+       "items": 5,
+       "hits": 4,
+       "recall": 0.8
+      },
+      "CIT-NX-DB": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-DATE": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      },
+      "EVI-FAKECIT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-FORM": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-INCONS": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-LOGIC": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-NUM": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-OVR": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-ANNOT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ATTACH": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-INVISIBLE-TR3": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-VISIBLE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "LAW-MIS": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "LAW-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 8,
+       "hits": 8,
+       "recall": 1.0
+      },
+      "OVR / LAW-NX": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "SRC-UNV": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 7,
+       "hits": 5,
+       "recall": 0.7142857142857143
+      },
+      "document_consistency": {
+       "items": 10,
+       "hits": 8,
+       "recall": 0.8
+      },
+      "legal": {
+       "items": 26,
+       "hits": 16,
+       "recall": 0.6153846153846154
+      },
+      "security_detection": {
+       "items": 10,
+       "hits": 10,
+       "recall": 1.0
+      },
+      "source_uncertainty": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 10,
+     "advisory_findings": 10,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    }
+   },
+   "holdout": {
+    "documents": 6,
+    "overall": 81.9,
+    "weighted_recall": 0.819,
+    "defect_items": 54,
+    "false_positives": 0,
+    "fp_trap": 0,
+    "control_fp": 0,
+    "a_grade_fp": 0,
+    "duplicate_citation_verdicts": 0,
+    "findings_without_document_id": 0,
+    "injection_defended": true,
+    "pii_kinds": null,
+    "per_type": {
+     "AIGEN": {
+      "items": 7,
+      "recall": 0.75
+     },
+     "CIT-FAB-Q": {
+      "items": 1,
+      "recall": 0.0
+     },
+     "CIT-META": {
+      "items": 3,
+      "recall": 0.5
+     },
+     "CIT-NX": {
+      "items": 5,
+      "recall": 1.0
+     },
+     "CIT-NX-DB": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-COPY": {
+      "items": 1,
+      "recall": 0.0
+     },
+     "EVI-DATE": {
+      "items": 3,
+      "recall": 1.0
+     },
+     "EVI-FAKECIT": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-FORM": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-INCONS": {
+      "items": 2,
+      "recall": 1.0
+     },
+     "EVI-LOGIC": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-NUM": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-OVR": {
+      "items": 1,
+      "recall": 0.25
+     },
+     "INJ-ANNOT": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-ATTACH": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-COVERED": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-INVISIBLE-TR3": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-META": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-OFFPAGE": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-TINY": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-VISIBLE": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-WHITE": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-ZWSP": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "LAW-MIS": {
+      "items": 3,
+      "recall": 0.5
+     },
+     "LAW-NX": {
+      "items": 2,
+      "recall": 0.25
+     },
+     "OVR": {
+      "items": 9,
+      "recall": 0.917
+     },
+     "SRC-UNV": {
+      "items": 2,
+      "recall": 1.0
+     }
+    },
+    "per_document": {
+     "HO-01": null,
+     "HO-02": 0.833,
+     "HO-03": 1.0,
+     "HO-04": 0.844,
+     "HO-05": 0.841,
+     "HO-06": 0.429
+    },
+    "engine_errors": {},
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "b19a1dd99c19a886c6feb476749e4819aeb6d76fa151b268599090bc3c24a6f7",
+     "documents": 6,
+     "items": 54,
+     "hits": 41,
+     "recall": 0.7592592592592593,
+     "macro_recall": 0.727891156462585,
+     "by_type": {
+      "AIGEN": {
+       "items": 7,
+       "hits": 5,
+       "recall": 0.7142857142857143
+      },
+      "CIT-FAB-Q": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "CIT-NX": {
+       "items": 5,
+       "hits": 5,
+       "recall": 1.0
+      },
+      "CIT-NX-DB": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-DATE": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      },
+      "EVI-FAKECIT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-FORM": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-INCONS": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-LOGIC": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-NUM": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-OVR": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-ANNOT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ATTACH": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-INVISIBLE-TR3": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-VISIBLE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "LAW-MIS": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "LAW-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 8,
+       "hits": 8,
+       "recall": 1.0
+      },
+      "OVR / LAW-NX": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "SRC-UNV": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 7,
+       "hits": 5,
+       "recall": 0.7142857142857143
+      },
+      "document_consistency": {
+       "items": 10,
+       "hits": 7,
+       "recall": 0.7
+      },
+      "legal": {
+       "items": 24,
+       "hits": 16,
+       "recall": 0.6666666666666666
+      },
+      "security_detection": {
+       "items": 10,
+       "hits": 10,
+       "recall": 1.0
+      },
+      "source_uncertainty": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 9,
+     "advisory_findings": 4,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    }
+   }
+  },
+  "evaluation_policy": "legal-quality-v2",
+  "measurement_status": {
+   "legal_accuracy": {
+    "status": "NOT_MEASURED",
+    "value": null,
+    "reason": "independent attorney labels and product predictions required"
+   },
+   "public_benchmarks": {
+    "status": "NOT_APPLIED",
+    "value": null,
+    "reason": "External benchmarks are not applied (user decision 2026-11-13, benchmark plan 6.15); own Korean-law evaluation only"
+   },
+   "retrieval_quality": {
+    "status": "NOT_MEASURED",
+    "value": null,
+    "reason": "official source/span labels required"
+   },
+   "practice_utility": {
+    "status": "NOT_MEASURED",
+    "value": null,
+    "reason": "independent review-time study required"
+   }
+  }
+ },
+ "fixed_candidate": {
+  "schema": 1,
+  "created": "2026-11-15T11:59:44+00:00",
+  "git": {
+   "sha": "fca75347c5612b3a5960005726b4a31f7143b38a",
+   "dirty": false
+  },
+  "version": "0.21.0",
+  "rule_version": "2026.09.30.1",
+  "environment": {
+   "network": false,
+   "tesseract": "5.3.4",
+   "ocr_langs": [
+    "eng",
+    "kor",
+    "osd"
+   ],
+   "python": "3.11.17"
+  },
+  "sets": {
+   "dev": {
+    "documents": 6,
+    "overall": 82.6,
+    "weighted_recall": 0.826,
+    "defect_items": 56,
+    "false_positives": 0,
+    "fp_trap": 0,
+    "control_fp": 0,
+    "a_grade_fp": 0,
+    "duplicate_citation_verdicts": 0,
+    "findings_without_document_id": 0,
+    "injection_defended": true,
+    "pii_kinds": null,
+    "per_type": {
+     "AIGEN": {
+      "items": 7,
+      "recall": 0.786
+     },
+     "CIT-FAB-Q": {
+      "items": 2,
+      "recall": 0.0
+     },
+     "CIT-META": {
+      "items": 3,
+      "recall": 0.5
+     },
+     "CIT-MIS": {
+      "items": 1,
+      "recall": 0.0
+     },
+     "CIT-NX": {
+      "items": 5,
+      "recall": 1.0
+     },
+     "CIT-NX-DB": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-COPY": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-DATE": {
+      "items": 3,
+      "recall": 1.0
+     },
+     "EVI-FAKECIT": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-FORM": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-INCONS": {
+      "items": 2,
+      "recall": 1.0
+     },
+     "EVI-LOGIC": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-NUM": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-OVR": {
+      "items": 1,
+      "recall": 0.25
+     },
+     "INJ-ANNOT": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-ATTACH": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-COVERED": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-INVISIBLE-TR3": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-META": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-OFFPAGE": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-TINY": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-VISIBLE": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-WHITE": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-ZWSP": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "LAW-MIS": {
+      "items": 3,
+      "recall": 0.5
+     },
+     "LAW-NX": {
+      "items": 2,
+      "recall": 0.25
+     },
+     "OVR": {
+      "items": 9,
+      "recall": 1.0
+     },
+     "SRC-UNV": {
+      "items": 2,
+      "recall": 1.0
+     }
+    },
+    "per_document": {
+     "TC-01": null,
+     "TC-02": 0.682,
+     "TC-03": 1.0,
+     "TC-04": 0.906,
+     "TC-05": 0.932,
+     "TC-06": 0.429
+    },
+    "engine_errors": {},
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "f72438d87cca09955ab6c26de49c58deab16925581efe0b315c59df2da2d5e74",
+     "documents": 6,
+     "items": 56,
+     "hits": 42,
+     "recall": 0.75,
+     "macro_recall": 0.7648604269293924,
+     "by_type": {
+      "AIGEN": {
+       "items": 7,
+       "hits": 5,
+       "recall": 0.7142857142857143
+      },
+      "CIT-FAB-Q": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "CIT-MIS": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-NX": {
+       "items": 5,
+       "hits": 4,
+       "recall": 0.8
+      },
+      "CIT-NX-DB": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-DATE": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      },
+      "EVI-FAKECIT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-FORM": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-INCONS": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-LOGIC": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-NUM": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-OVR": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-ANNOT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ATTACH": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-INVISIBLE-TR3": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-VISIBLE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "LAW-MIS": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "LAW-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 8,
+       "hits": 8,
+       "recall": 1.0
+      },
+      "OVR / LAW-NX": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "SRC-UNV": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 7,
+       "hits": 5,
+       "recall": 0.7142857142857143
+      },
+      "document_consistency": {
+       "items": 10,
+       "hits": 8,
+       "recall": 0.8
+      },
+      "legal": {
+       "items": 26,
+       "hits": 16,
+       "recall": 0.6153846153846154
+      },
+      "security_detection": {
+       "items": 10,
+       "hits": 10,
+       "recall": 1.0
+      },
+      "source_uncertainty": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 10,
+     "advisory_findings": 10,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    }
+   },
+   "holdout": {
+    "documents": 6,
+    "overall": 81.9,
+    "weighted_recall": 0.819,
+    "defect_items": 54,
+    "false_positives": 0,
+    "fp_trap": 0,
+    "control_fp": 0,
+    "a_grade_fp": 0,
+    "duplicate_citation_verdicts": 0,
+    "findings_without_document_id": 0,
+    "injection_defended": true,
+    "pii_kinds": null,
+    "per_type": {
+     "AIGEN": {
+      "items": 7,
+      "recall": 0.75
+     },
+     "CIT-FAB-Q": {
+      "items": 1,
+      "recall": 0.0
+     },
+     "CIT-META": {
+      "items": 3,
+      "recall": 0.5
+     },
+     "CIT-NX": {
+      "items": 5,
+      "recall": 1.0
+     },
+     "CIT-NX-DB": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-COPY": {
+      "items": 1,
+      "recall": 0.0
+     },
+     "EVI-DATE": {
+      "items": 3,
+      "recall": 1.0
+     },
+     "EVI-FAKECIT": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-FORM": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-INCONS": {
+      "items": 2,
+      "recall": 1.0
+     },
+     "EVI-LOGIC": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-NUM": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "EVI-OVR": {
+      "items": 1,
+      "recall": 0.25
+     },
+     "INJ-ANNOT": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-ATTACH": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-COVERED": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-INVISIBLE-TR3": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-META": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-OFFPAGE": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-TINY": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-VISIBLE": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-WHITE": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "INJ-ZWSP": {
+      "items": 1,
+      "recall": 1.0
+     },
+     "LAW-MIS": {
+      "items": 3,
+      "recall": 0.5
+     },
+     "LAW-NX": {
+      "items": 2,
+      "recall": 0.25
+     },
+     "OVR": {
+      "items": 9,
+      "recall": 0.917
+     },
+     "SRC-UNV": {
+      "items": 2,
+      "recall": 1.0
+     }
+    },
+    "per_document": {
+     "HO-01": null,
+     "HO-02": 0.833,
+     "HO-03": 1.0,
+     "HO-04": 0.844,
+     "HO-05": 0.841,
+     "HO-06": 0.429
+    },
+    "engine_errors": {},
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "b19a1dd99c19a886c6feb476749e4819aeb6d76fa151b268599090bc3c24a6f7",
+     "documents": 6,
+     "items": 54,
+     "hits": 41,
+     "recall": 0.7592592592592593,
+     "macro_recall": 0.727891156462585,
+     "by_type": {
+      "AIGEN": {
+       "items": 7,
+       "hits": 5,
+       "recall": 0.7142857142857143
+      },
+      "CIT-FAB-Q": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "CIT-NX": {
+       "items": 5,
+       "hits": 5,
+       "recall": 1.0
+      },
+      "CIT-NX-DB": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-DATE": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      },
+      "EVI-FAKECIT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-FORM": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-INCONS": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-LOGIC": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-NUM": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-OVR": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-ANNOT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ATTACH": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-INVISIBLE-TR3": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-VISIBLE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "LAW-MIS": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "LAW-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 8,
+       "hits": 8,
+       "recall": 1.0
+      },
+      "OVR / LAW-NX": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "SRC-UNV": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 7,
+       "hits": 5,
+       "recall": 0.7142857142857143
+      },
+      "document_consistency": {
+       "items": 10,
+       "hits": 7,
+       "recall": 0.7
+      },
+      "legal": {
+       "items": 24,
+       "hits": 16,
+       "recall": 0.6666666666666666
+      },
+      "security_detection": {
+       "items": 10,
+       "hits": 10,
+       "recall": 1.0
+      },
+      "source_uncertainty": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 9,
+     "advisory_findings": 4,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    }
+   }
+  },
+  "evaluation_policy": "legal-quality-v2",
+  "measurement_status": {
+   "legal_accuracy": {
+    "status": "NOT_MEASURED",
+    "value": null,
+    "reason": "independent attorney labels and product predictions required"
+   },
+   "public_benchmarks": {
+    "status": "NOT_APPLIED",
+    "value": null,
+    "reason": "External benchmarks are not applied (user decision 2026-11-13, benchmark plan 6.15); own Korean-law evaluation only"
+   },
+   "retrieval_quality": {
+    "status": "NOT_MEASURED",
+    "value": null,
+    "reason": "official source/span labels required"
+   },
+   "practice_utility": {
+    "status": "NOT_MEASURED",
+    "value": null,
+    "reason": "independent review-time study required"
+   }
+  }
+ },
+ "retired_comparison": {
+  "status": "MEASURED",
+  "base_sha": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+  "head_sha": "fca75347c5612b3a5960005726b4a31f7143b38a",
+  "evaluator_sha256": {
+   "scripts/evaluation_v2.py": "f8f93a7cf28c23bf4421ce898397b5765b4a6f8956a23b321d316856dea2c571",
+   "scripts/evaluation_replay.py": "70c6265ff8c9c0e5d9febea86738ffc43904a5b28d6fbdd0cdeb322c0e12f810",
+   "scripts/eval_testset.py": "b1e94ede0bcf27966de13e38a34b47327d2c9edf0cf41f8198f9ff3aeb8ffd97",
+   "scripts/retired_compare.py": "6ae59f4f5b62f36773c7a29fcd9585ebe9c4a1172ac7044a43594bbb094fd16b",
+   "docs/scorecards/retired_manifest.json": "9dda1b38a703df64f9748e72063be5c4eb95d578c0451222c6406b4670a9ec3e"
+  },
+  "evaluator": "current frozen scorer for both products",
+  "base": {
+   "sealed_20261008": {
+    "overall": 53.3,
+    "weighted_recall": 0.533,
+    "false_positives": 0,
+    "a_grade_fp": 0,
+    "injection_defended": true,
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "1b14a49c7ae5c04857e0d11f0c2186bf09b2a1c649d6f0b7ab2fc9ac75c74778",
+     "documents": 8,
+     "items": 46,
+     "hits": 22,
+     "recall": 0.4782608695652174,
+     "macro_recall": 0.6089743589743589,
+     "by_type": {
+      "AIGEN": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "CIT-FAB-Q": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "CIT-NX-DB": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-DATE": {
+       "items": 3,
+       "hits": 2,
+       "recall": 0.6666666666666666
+      },
+      "EVI-FAKECIT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-FORM": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-INCONS": {
+       "items": 5,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-LOGIC": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-NUM": {
+       "items": 3,
+       "hits": 2,
+       "recall": 0.6666666666666666
+      },
+      "EVI-OVR": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-ANNOT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ATTACH": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-INVISIBLE-TR3": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-VISIBLE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-MIS": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "SRC-UNV": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "document_consistency": {
+       "items": 19,
+       "hits": 6,
+       "recall": 0.3157894736842105
+      },
+      "legal": {
+       "items": 11,
+       "hits": 2,
+       "recall": 0.18181818181818182
+      },
+      "security_detection": {
+       "items": 10,
+       "hits": 9,
+       "recall": 0.9
+      },
+      "source_uncertainty": {
+       "items": 4,
+       "hits": 4,
+       "recall": 1.0
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 6,
+     "advisory_findings": 8,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    },
+    "product_version": "0.21.0"
+   },
+   "sealed_20261008b": {
+    "overall": 48.6,
+    "weighted_recall": 0.486,
+    "false_positives": 0,
+    "a_grade_fp": 0,
+    "injection_defended": true,
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "7125370eb8cbc2aa6aa5272e66ff608cf73566c195e77309b02ea57bd121d5f1",
+     "documents": 8,
+     "items": 54,
+     "hits": 24,
+     "recall": 0.4444444444444444,
+     "macro_recall": 0.5857142857142856,
+     "by_type": {
+      "AIGEN": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-FAB-Q": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-MIS": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-NX": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "CIT-NX-DB": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-DATE": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      },
+      "EVI-FAKECIT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-FORM": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-INCONS": {
+       "items": 5,
+       "hits": 2,
+       "recall": 0.4
+      },
+      "EVI-LOGIC": {
+       "items": 3,
+       "hits": 2,
+       "recall": 0.6666666666666666
+      },
+      "EVI-NUM": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "EVI-OVR": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-ANNOT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ATTACH": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-INVISIBLE-TR3": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-VISIBLE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "LAW-MIS": {
+       "items": 4,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 4,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "SRC-UNV": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "document_consistency": {
+       "items": 21,
+       "hits": 8,
+       "recall": 0.38095238095238093
+      },
+      "legal": {
+       "items": 16,
+       "hits": 2,
+       "recall": 0.125
+      },
+      "security_detection": {
+       "items": 10,
+       "hits": 10,
+       "recall": 1.0
+      },
+      "source_uncertainty": {
+       "items": 4,
+       "hits": 4,
+       "recall": 1.0
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 20,
+     "advisory_findings": 8,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    },
+    "product_version": "0.21.0"
+   },
+   "sealed_20261009": {
+    "overall": 56.9,
+    "weighted_recall": 0.569,
+    "false_positives": 0,
+    "a_grade_fp": 0,
+    "injection_defended": true,
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "f365482654bfb85f017d0268d5c16c1593c8ab35dfd2db86038409f9f4d062b1",
+     "documents": 8,
+     "items": 58,
+     "hits": 31,
+     "recall": 0.5344827586206896,
+     "macro_recall": 0.5988095238095238,
+     "by_type": {
+      "AIGEN": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "CIT-FAB-Q": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "CIT-MIS": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-NX": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "CIT-NX-DB": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-DATE": {
+       "items": 4,
+       "hits": 2,
+       "recall": 0.5
+      },
+      "EVI-FAKECIT": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-FORM": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "EVI-INCONS": {
+       "items": 5,
+       "hits": 4,
+       "recall": 0.8
+      },
+      "EVI-LOGIC": {
+       "items": 3,
+       "hits": 2,
+       "recall": 0.6666666666666666
+      },
+      "EVI-NUM": {
+       "items": 5,
+       "hits": 4,
+       "recall": 0.8
+      },
+      "EVI-OVR": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-ANNOT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ATTACH": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-INVISIBLE-TR3": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-VISIBLE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-MIS": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "LAW-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 4,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "SRC-UNV": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "document_consistency": {
+       "items": 25,
+       "hits": 13,
+       "recall": 0.52
+      },
+      "legal": {
+       "items": 15,
+       "hits": 3,
+       "recall": 0.2
+      },
+      "security_detection": {
+       "items": 10,
+       "hits": 9,
+       "recall": 0.9
+      },
+      "source_uncertainty": {
+       "items": 5,
+       "hits": 5,
+       "recall": 1.0
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 30,
+     "advisory_findings": 7,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    },
+    "product_version": "0.21.0"
+   },
+   "sealed_20261010": {
+    "overall": 45.8,
+    "weighted_recall": 0.458,
+    "false_positives": 0,
+    "a_grade_fp": 0,
+    "injection_defended": true,
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "82bc21344fdc14f1032a5704786b60753ecab65979ae6c253d9772afffd77b9c",
+     "documents": 8,
+     "items": 53,
+     "hits": 23,
+     "recall": 0.4339622641509434,
+     "macro_recall": 0.5370370370370371,
+     "by_type": {
+      "AIGEN": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-FAB-Q": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "CIT-MIS": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-NX-DB": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-DATE": {
+       "items": 4,
+       "hits": 2,
+       "recall": 0.5
+      },
+      "EVI-FAKECIT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-FORM": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-INCONS": {
+       "items": 6,
+       "hits": 1,
+       "recall": 0.16666666666666666
+      },
+      "EVI-LOGIC": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "EVI-NUM": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      },
+      "EVI-OVR": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-ANNOT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ATTACH": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-INVISIBLE-TR3": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-META": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-VISIBLE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-MIS": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "LAW-NX": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 4,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "SRC-UNV": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "document_consistency": {
+       "items": 22,
+       "hits": 7,
+       "recall": 0.3181818181818182
+      },
+      "legal": {
+       "items": 14,
+       "hits": 3,
+       "recall": 0.21428571428571427
+      },
+      "security_detection": {
+       "items": 10,
+       "hits": 8,
+       "recall": 0.8
+      },
+      "source_uncertainty": {
+       "items": 5,
+       "hits": 5,
+       "recall": 1.0
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 11,
+     "advisory_findings": 8,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    },
+    "product_version": "0.21.0"
+   },
+   "sealed_20261025": {
+    "overall": 34.1,
+    "weighted_recall": 0.341,
+    "false_positives": 0,
+    "a_grade_fp": 0,
+    "injection_defended": true,
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "296e25e16c82b93604b2807132d8cfe24375738de499c21af0b71c6fe1261c1b",
+     "documents": 7,
+     "items": 44,
+     "hits": 12,
+     "recall": 0.2727272727272727,
+     "macro_recall": 0.3115942028985507,
+     "by_type": {
+      "AIGEN": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-FAB-Q": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "CIT-MIS": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-NX-DB": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-DATE": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "EVI-FAKECIT": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-FORM": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "EVI-INCONS": {
+       "items": 3,
+       "hits": 2,
+       "recall": 0.6666666666666666
+      },
+      "EVI-LOGIC": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "EVI-NUM": {
+       "items": 4,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-OVR": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-MIS": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "SRC-UNV": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "document_consistency": {
+       "items": 16,
+       "hits": 5,
+       "recall": 0.3125
+      },
+      "legal": {
+       "items": 17,
+       "hits": 1,
+       "recall": 0.058823529411764705
+      },
+      "security_detection": {
+       "items": 5,
+       "hits": 3,
+       "recall": 0.6
+      },
+      "source_uncertainty": {
+       "items": 4,
+       "hits": 3,
+       "recall": 0.75
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 16,
+     "advisory_findings": 8,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    },
+    "product_version": "0.21.0"
+   }
+  },
+  "head": {
+   "sealed_20261008": {
+    "overall": 53.3,
+    "weighted_recall": 0.533,
+    "false_positives": 0,
+    "a_grade_fp": 0,
+    "injection_defended": true,
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "1b14a49c7ae5c04857e0d11f0c2186bf09b2a1c649d6f0b7ab2fc9ac75c74778",
+     "documents": 8,
+     "items": 46,
+     "hits": 22,
+     "recall": 0.4782608695652174,
+     "macro_recall": 0.6089743589743589,
+     "by_type": {
+      "AIGEN": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "CIT-FAB-Q": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "CIT-NX-DB": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-DATE": {
+       "items": 3,
+       "hits": 2,
+       "recall": 0.6666666666666666
+      },
+      "EVI-FAKECIT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-FORM": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-INCONS": {
+       "items": 5,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-LOGIC": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-NUM": {
+       "items": 3,
+       "hits": 2,
+       "recall": 0.6666666666666666
+      },
+      "EVI-OVR": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-ANNOT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ATTACH": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-INVISIBLE-TR3": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-VISIBLE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-MIS": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "SRC-UNV": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "document_consistency": {
+       "items": 19,
+       "hits": 6,
+       "recall": 0.3157894736842105
+      },
+      "legal": {
+       "items": 11,
+       "hits": 2,
+       "recall": 0.18181818181818182
+      },
+      "security_detection": {
+       "items": 10,
+       "hits": 9,
+       "recall": 0.9
+      },
+      "source_uncertainty": {
+       "items": 4,
+       "hits": 4,
+       "recall": 1.0
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 6,
+     "advisory_findings": 8,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    },
+    "product_version": "0.21.0"
+   },
+   "sealed_20261008b": {
+    "overall": 48.6,
+    "weighted_recall": 0.486,
+    "false_positives": 0,
+    "a_grade_fp": 0,
+    "injection_defended": true,
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "7125370eb8cbc2aa6aa5272e66ff608cf73566c195e77309b02ea57bd121d5f1",
+     "documents": 8,
+     "items": 54,
+     "hits": 24,
+     "recall": 0.4444444444444444,
+     "macro_recall": 0.5857142857142856,
+     "by_type": {
+      "AIGEN": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-FAB-Q": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-MIS": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-NX": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "CIT-NX-DB": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-DATE": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      },
+      "EVI-FAKECIT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-FORM": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-INCONS": {
+       "items": 5,
+       "hits": 2,
+       "recall": 0.4
+      },
+      "EVI-LOGIC": {
+       "items": 3,
+       "hits": 2,
+       "recall": 0.6666666666666666
+      },
+      "EVI-NUM": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "EVI-OVR": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-ANNOT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ATTACH": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-INVISIBLE-TR3": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-VISIBLE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "LAW-MIS": {
+       "items": 4,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 4,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "SRC-UNV": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "document_consistency": {
+       "items": 21,
+       "hits": 8,
+       "recall": 0.38095238095238093
+      },
+      "legal": {
+       "items": 16,
+       "hits": 2,
+       "recall": 0.125
+      },
+      "security_detection": {
+       "items": 10,
+       "hits": 10,
+       "recall": 1.0
+      },
+      "source_uncertainty": {
+       "items": 4,
+       "hits": 4,
+       "recall": 1.0
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 20,
+     "advisory_findings": 8,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    },
+    "product_version": "0.21.0"
+   },
+   "sealed_20261009": {
+    "overall": 56.9,
+    "weighted_recall": 0.569,
+    "false_positives": 0,
+    "a_grade_fp": 0,
+    "injection_defended": true,
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "f365482654bfb85f017d0268d5c16c1593c8ab35dfd2db86038409f9f4d062b1",
+     "documents": 8,
+     "items": 58,
+     "hits": 31,
+     "recall": 0.5344827586206896,
+     "macro_recall": 0.5988095238095238,
+     "by_type": {
+      "AIGEN": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "CIT-FAB-Q": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "CIT-MIS": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-NX": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "CIT-NX-DB": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-DATE": {
+       "items": 4,
+       "hits": 2,
+       "recall": 0.5
+      },
+      "EVI-FAKECIT": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-FORM": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "EVI-INCONS": {
+       "items": 5,
+       "hits": 4,
+       "recall": 0.8
+      },
+      "EVI-LOGIC": {
+       "items": 3,
+       "hits": 2,
+       "recall": 0.6666666666666666
+      },
+      "EVI-NUM": {
+       "items": 5,
+       "hits": 4,
+       "recall": 0.8
+      },
+      "EVI-OVR": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-ANNOT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ATTACH": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-INVISIBLE-TR3": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-VISIBLE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-MIS": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "LAW-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 4,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "SRC-UNV": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "document_consistency": {
+       "items": 25,
+       "hits": 13,
+       "recall": 0.52
+      },
+      "legal": {
+       "items": 15,
+       "hits": 3,
+       "recall": 0.2
+      },
+      "security_detection": {
+       "items": 10,
+       "hits": 9,
+       "recall": 0.9
+      },
+      "source_uncertainty": {
+       "items": 5,
+       "hits": 5,
+       "recall": 1.0
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 30,
+     "advisory_findings": 7,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    },
+    "product_version": "0.21.0"
+   },
+   "sealed_20261010": {
+    "overall": 45.8,
+    "weighted_recall": 0.458,
+    "false_positives": 0,
+    "a_grade_fp": 0,
+    "injection_defended": true,
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "82bc21344fdc14f1032a5704786b60753ecab65979ae6c253d9772afffd77b9c",
+     "documents": 8,
+     "items": 53,
+     "hits": 23,
+     "recall": 0.4339622641509434,
+     "macro_recall": 0.5370370370370371,
+     "by_type": {
+      "AIGEN": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-FAB-Q": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "CIT-MIS": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-NX-DB": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-DATE": {
+       "items": 4,
+       "hits": 2,
+       "recall": 0.5
+      },
+      "EVI-FAKECIT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "EVI-FORM": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-INCONS": {
+       "items": 6,
+       "hits": 1,
+       "recall": 0.16666666666666666
+      },
+      "EVI-LOGIC": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "EVI-NUM": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      },
+      "EVI-OVR": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-ANNOT": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ATTACH": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-INVISIBLE-TR3": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-META": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-VISIBLE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-MIS": {
+       "items": 3,
+       "hits": 1,
+       "recall": 0.3333333333333333
+      },
+      "LAW-NX": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 4,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "SRC-UNV": {
+       "items": 3,
+       "hits": 3,
+       "recall": 1.0
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "document_consistency": {
+       "items": 22,
+       "hits": 7,
+       "recall": 0.3181818181818182
+      },
+      "legal": {
+       "items": 14,
+       "hits": 3,
+       "recall": 0.21428571428571427
+      },
+      "security_detection": {
+       "items": 10,
+       "hits": 8,
+       "recall": 0.8
+      },
+      "source_uncertainty": {
+       "items": 5,
+       "hits": 5,
+       "recall": 1.0
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 11,
+     "advisory_findings": 8,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    },
+    "product_version": "0.21.0"
+   },
+   "sealed_20261025": {
+    "overall": 34.1,
+    "weighted_recall": 0.341,
+    "false_positives": 0,
+    "a_grade_fp": 0,
+    "injection_defended": true,
+    "regression_v2": {
+     "protocol": "regression-proxy-v2.0",
+     "scope": "REUSED_REGRESSION_PROXY",
+     "status": "MEASURED",
+     "dataset_sha256": "296e25e16c82b93604b2807132d8cfe24375738de499c21af0b71c6fe1261c1b",
+     "documents": 7,
+     "items": 44,
+     "hits": 12,
+     "recall": 0.2727272727272727,
+     "macro_recall": 0.3115942028985507,
+     "by_type": {
+      "AIGEN": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-FAB-Q": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-META": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "CIT-MIS": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "CIT-NX-DB": {
+       "items": 2,
+       "hits": 2,
+       "recall": 1.0
+      },
+      "EVI-COPY": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-DATE": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "EVI-FAKECIT": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-FORM": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "EVI-INCONS": {
+       "items": 3,
+       "hits": 2,
+       "recall": 0.6666666666666666
+      },
+      "EVI-LOGIC": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      },
+      "EVI-NUM": {
+       "items": 4,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "EVI-OVR": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-COVERED": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-OFFPAGE": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "INJ-TINY": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-WHITE": {
+       "items": 1,
+       "hits": 1,
+       "recall": 1.0
+      },
+      "INJ-ZWSP": {
+       "items": 1,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-MIS": {
+       "items": 3,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "LAW-NX": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "OVR": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "SRC-UNV": {
+       "items": 2,
+       "hits": 1,
+       "recall": 0.5
+      }
+     },
+     "by_group": {
+      "authorship_signals": {
+       "items": 2,
+       "hits": 0,
+       "recall": 0.0
+      },
+      "document_consistency": {
+       "items": 16,
+       "hits": 5,
+       "recall": 0.3125
+      },
+      "legal": {
+       "items": 17,
+       "hits": 1,
+       "recall": 0.058823529411764705
+      },
+      "security_detection": {
+       "items": 5,
+       "hits": 3,
+       "recall": 0.6
+      },
+      "source_uncertainty": {
+       "items": 4,
+       "hits": 3,
+       "recall": 0.75
+      }
+     },
+     "known_false_positive_findings": 0,
+     "unadjudicated_alerts": 16,
+     "advisory_findings": 8,
+     "precision": null,
+     "legal_accuracy": null,
+     "injection_defense_success_rate": null,
+     "limitations": [
+      "lexical_matching_not_semantic_or_span_verified",
+      "reused_not_blind",
+      "unadjudicated_alerts_not_false_positives",
+      "no_official_db_or_llm"
+     ]
+    },
+    "product_version": "0.21.0"
+   }
+  },
+  "problems": []
+ },
+ "candidate_ci": {
+  "CI": {
+   "run": 43709116501,
+   "conclusion": "success",
+   "sqlite_passed": 11906,
+   "sqlite_skipped": 13,
+   "postgres_passed": 11910,
+   "postgres_skipped": 9,
+   "xfailed_each": 24,
+   "docker_ocr": "success"
+  },
+  "score_gate": {
+   "run": 43709116513,
+   "conclusion": "success",
+   "acceptance_passed": 1278,
+   "regression_passed": 2357,
+   "retired_job": "skipped on this push; evaluator main comparison separately measured"
+  },
+  "pip_audit": {
+   "run": 43709116539,
+   "conclusion": "success"
+  },
+  "codeql": "Implementation PR heads passed before merge. Final release-PR head checks remain required."
+ },
+ "discarded_environment_attempts": [
+  {
+   "failed_steps": [
+    "acceptance",
+    "regression_gate",
+    "full_tests"
+   ],
+   "reason": "Minimal Ubuntu container lacked tzdata; cross-worktree input path outside allowed temp/home roots.",
+   "accepted_as_final": false
+  },
+  {
+   "failed_steps": [
+    "full_tests"
+   ],
+   "reason": "Four durability expectations differ when /tmp and the repository are bind mounts. Same 14 durability tests passed on the container overlay filesystem.",
+   "accepted_as_final": false
+  }
+ ],
+ "evaluator_tests": {
+  "ai_repeat_and_u1_u5": 43,
+  "readme": 12,
+  "total": 55
+ },
+ "sealed_status": "PASS_NO_REGRESSION: paired main/candidate aggregate scorecards match conditions and all set aggregates; no per-type regression.",
+ "sealed_submission": "release_022_sealed_submitted_20261115.json",
+ "performance": "release_022_performance_20261115.json",
+ "sealed_comparison_record": "release_022_sealed_comparison_20261115.json",
+ "version_commit_sha": "b91aaab022019f3fd17311b5b7804f1d3aae5cc8 (PR #314 head; pending CI/merge)"
+}

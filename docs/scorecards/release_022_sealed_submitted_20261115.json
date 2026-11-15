@@ -1,0 +1,66 @@
+{
+  "recorded_on": "2026-11-15",
+  "status": "HOLD_MISSING_PAIRED_BASELINE_AND_KOREAN_OCR",
+  "provenance": "User-supplied execution summary; original aggregate scorecard JSON not provided",
+  "source_summary_sha256": "093684663767312a60dc890d6a015eebfd4d369766dc12acd47f42a1c9c6d457",
+  "reported_commit_prefix": "fca7534",
+  "expected_candidate": "fca75347c5612b3a5960005726b4a31f7143b38a",
+  "full_commit_verified": false,
+  "dataset_hash_verified": false,
+  "paired_main_result": null,
+  "reported_environment": {
+    "network": false,
+    "python": "3.11.2",
+    "tesseract": "5.3.0",
+    "ocr_langs": [
+      "eng",
+      "osd"
+    ]
+  },
+  "reported_sealed": {
+    "documents": 8,
+    "items": 62,
+    "legacy_overall": 23.0,
+    "v2_hits": 13,
+    "v2_recall": 0.21,
+    "v2_macro_recall": 0.167,
+    "known_false_positives": 0,
+    "a_grade_false_positives": 0,
+    "unadjudicated_alerts": 13,
+    "advisory_alerts": 1,
+    "engine_errors": 0,
+    "pii_kinds_found": 13,
+    "pii_kinds_expected": 26,
+    "legacy_injection_defended": true,
+    "groups": {
+      "source_uncertainty": {
+        "hits": 4,
+        "items": 4
+      },
+      "authorship_signals": {
+        "hits": 1,
+        "items": 3
+      },
+      "legal": {
+        "hits": 4,
+        "items": 17
+      },
+      "document_consistency": {
+        "hits": 4,
+        "items": 28
+      },
+      "security_detection": {
+        "hits": 0,
+        "items": 10
+      }
+    }
+  },
+  "limitations": [
+    "Not a verified same-condition main/candidate comparison",
+    "Missing Korean OCR; contribution to missed items not established",
+    "Zero known false positives does not resolve 13 unadjudicated alerts",
+    "Legacy injection flag is gate-not-PASS plus no payload marker echoed in aggregate scores; it does not certify all ten security-detection items",
+    "No raw sealed documents, answer keys, private file IDs or detailed findings copied into this record"
+  ],
+  "next_instruction": "../handoff/RELEASE_022_sealed_remeasurement_instructions_2026-11-15.md"
+}

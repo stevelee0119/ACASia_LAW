@@ -251,8 +251,8 @@ def _hwpx_tables(root, section_index, warnings, budget=None):
                 col = _int(addr, "colAddr", c_i) if addr is not None else c_i
                 row_span = max(1, _int(span, "rowSpan", 1)) if span is not None else 1
                 col_span = max(1, _int(span, "colSpan", 1)) if span is not None else 1
-                text = " ".join(_own_text(p).strip() for p in tc.iter()
-                                if _hp(p, "p") and _nearest_cell(p) is tc and _own_text(p).strip())
+                text = "\n".join(_own_text(p).strip() for p in tc.iter()
+                                 if _hp(p, "p") and _nearest_cell(p) is tc and _own_text(p).strip())
                 cells.append((row, col, row_span, col_span, text))
         rows = rows_attr or max((r + rs for r, _, rs, _, _ in cells), default=0)
         cols = cols_attr or max((c + cs for _, c, _, cs, _ in cells), default=0)

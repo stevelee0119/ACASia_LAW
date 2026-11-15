@@ -1,0 +1,387 @@
+{
+  "date": "2026-11-15",
+  "version": "0.21.0",
+  "release_commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+  "reports": [
+    {
+      "label": "C_statements.pdf",
+      "report_file": "verification_rpt_d2ed1e34a3624703.json",
+      "sha256": "7f718fbfd38634f353862ba0139e60f4313635260ac9100301c6747fe0d229a7",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "state": "PARTIAL_COMPLETED",
+      "health": {
+        "passed": 5,
+        "total": 6,
+        "failed": [
+          "H-REF"
+        ]
+      },
+      "model_calls": 2,
+      "model_failures": 0,
+      "engine_errors": {
+        "reference_sync": [
+          "project: 참고자료 전체 동기화·읽기를 완료하지 못함"
+        ]
+      },
+      "reference": {
+        "extractor": "drive-text-v7-tk180",
+        "status": "PARTIAL",
+        "case_table_status": "INDEXED",
+        "files_seen": 35,
+        "files_indexed": 27,
+        "files_reused": 27
+      },
+      "reference_issue_counts": {
+        "ENCRYPTED_REFERENCE": 1,
+        "REFERENCE_PARTIALLY_READ": 19
+      },
+      "rag_model_executed": false,
+      "rag_relationship_counts": {},
+      "finding_type_counts": {
+        "UNICODE_SMUGGLING": 1,
+        "AUTHORSHIP_METADATA_LEAK": 2,
+        "METADATA_ANOMALY": 1,
+        "SPECIMEN_DOCUMENT_DECLARED": 1,
+        "STATEMENT_BEYOND_PERCEPTION": 8,
+        "AI_AUTHORSHIP_LIKELY": 2,
+        "MODEL_FACT_REMARK": 1
+      },
+      "ai_verdict": "UNCERTAIN",
+      "tables": 0
+    },
+    {
+      "label": "case9",
+      "report_file": "verification_rpt_6a2eb627de744efc.json",
+      "sha256": "36f247732232df0fd3529a241f7ff5fb10ed2535dc7cf8beb138a79c0c1ff744",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "state": "PARTIAL_COMPLETED",
+      "health": {
+        "passed": 5,
+        "total": 6,
+        "failed": [
+          "H-REF"
+        ]
+      },
+      "model_calls": 27,
+      "model_failures": 0,
+      "engine_errors": {
+        "reference_sync": [
+          "project: 참고자료 전체 동기화·읽기를 완료하지 못함"
+        ]
+      },
+      "reference": {
+        "extractor": "drive-text-v7-tk180",
+        "status": "PARTIAL",
+        "case_table_status": "INDEXED",
+        "files_seen": 35,
+        "files_indexed": 9,
+        "files_reused": 0
+      },
+      "reference_issue_counts": {
+        "DRIVE_NETWORK_ERROR (READ_TIMEOUT (0 bytes, ReadTimeout))": 1,
+        "REFERENCE_PARTIALLY_READ": 3
+      },
+      "rag_model_executed": true,
+      "rag_relationship_counts": {
+        "CONTRADICTS": 7,
+        "CONTEXT": 24,
+        "INSUFFICIENT": 7,
+        "SUPPORTS": 2
+      },
+      "finding_type_counts": {
+        "META_INSTRUCTION": 1,
+        "HIDDEN_INSTRUCTION": 1,
+        "AUTHORSHIP_METADATA_LEAK": 1,
+        "CASE_NOT_FOUND": 1,
+        "LAW_CITATION_ERROR": 2,
+        "TEMPORAL_LAW_MISMATCH": 1,
+        "LEGAL_ARGUMENT_INVALID": 2,
+        "AI_AUTHORSHIP_LIKELY": 5,
+        "FACT_CONTRADICTION": 5
+      },
+      "ai_verdict": "AI_PARTIAL_GENERATION",
+      "tables": 0,
+      "answer_score": {
+        "passed": 23,
+        "total": 23,
+        "failed": [],
+        "spec": "case9_state_compensation_online.json",
+        "rule_version": "2"
+      },
+      "case_health_score": {
+        "passed": 1,
+        "total": 1,
+        "failed": []
+      },
+      "rag_controls": {
+        "status": "NOT_EVALUABLE",
+        "reason": "지정 대조군 자료가 보고서 색인/선택에서 확인되지 않음; 업로드·동기화 증거 없음. 진단용 원시 채점3/5를 유효 점수로 인정하지 않음."
+      }
+    },
+    {
+      "label": "D_tables_brief.hwpx",
+      "report_file": "verification_rpt_d334a77c143745bb.json",
+      "sha256": "b458a9821f36607123a8b776ea389d3c990341dad21e35fb41c310dc6aad55dc",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "state": "PARTIAL_COMPLETED",
+      "health": {
+        "passed": 5,
+        "total": 6,
+        "failed": [
+          "H-REF"
+        ]
+      },
+      "model_calls": 22,
+      "model_failures": 0,
+      "engine_errors": {
+        "reference_sync": [
+          "project: 참고자료 전체 동기화·읽기를 완료하지 못함"
+        ]
+      },
+      "reference": {
+        "extractor": "drive-text-v7-tk180",
+        "status": "PARTIAL",
+        "case_table_status": "INDEXED",
+        "files_seen": 35,
+        "files_indexed": 27,
+        "files_reused": 28
+      },
+      "reference_issue_counts": {
+        "ENCRYPTED_REFERENCE": 1,
+        "REFERENCE_PARTIALLY_READ": 19
+      },
+      "rag_model_executed": true,
+      "rag_relationship_counts": {
+        "CONTEXT": 5,
+        "INSUFFICIENT": 1
+      },
+      "finding_type_counts": {
+        "ARITHMETIC_MISMATCH": 2,
+        "AI_AUTHORSHIP_LIKELY": 3,
+        "MODEL_FACT_REMARK": 1
+      },
+      "ai_verdict": "UNCERTAIN",
+      "tables": 4
+    },
+    {
+      "label": "A_abbrev_brief.pdf",
+      "report_file": "verification_rpt_c12e3c0cd58143df.json",
+      "sha256": "5564b1cfb982b308dc5a69d833bab5f85ae91bc99fe1bcd96b22d1803b7d5693",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "state": "PARTIAL_COMPLETED",
+      "health": {
+        "passed": 5,
+        "total": 6,
+        "failed": [
+          "H-REF"
+        ]
+      },
+      "model_calls": 5,
+      "model_failures": 0,
+      "engine_errors": {
+        "reference_sync": [
+          "project: 참고자료 전체 동기화·읽기를 완료하지 못함"
+        ]
+      },
+      "reference": {
+        "extractor": "drive-text-v7-tk180",
+        "status": "PARTIAL",
+        "case_table_status": "INDEXED",
+        "files_seen": 35,
+        "files_indexed": 22,
+        "files_reused": 9
+      },
+      "reference_issue_counts": {
+        "ENCRYPTED_REFERENCE": 1,
+        "REFERENCE_PARTIALLY_READ": 14
+      },
+      "rag_model_executed": false,
+      "rag_relationship_counts": {},
+      "finding_type_counts": {
+        "UNICODE_SMUGGLING": 1,
+        "AUTHORSHIP_METADATA_LEAK": 2,
+        "METADATA_ANOMALY": 1,
+        "COERCIVE_LANGUAGE_SIGNAL": 1,
+        "LAW_CITATION_ERROR": 8,
+        "STATUTE_NONEXISTENT": 1,
+        "AI_AUTHORSHIP_LIKELY": 2
+      },
+      "ai_verdict": "UNCERTAIN",
+      "tables": 0
+    },
+    {
+      "label": "B_precedent_brief.pdf",
+      "report_file": "verification_rpt_3bb798fcee9240bc.json",
+      "sha256": "e541aa8648379721cf3ad203b8f0e56c6f1f7745ef250a67e4f5f7c676acfd74",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "state": "PARTIAL_COMPLETED",
+      "health": {
+        "passed": 5,
+        "total": 6,
+        "failed": [
+          "H-REF"
+        ]
+      },
+      "model_calls": 64,
+      "model_failures": 0,
+      "engine_errors": {
+        "reference_sync": [
+          "project: 참고자료 전체 동기화·읽기를 완료하지 못함"
+        ]
+      },
+      "reference": {
+        "extractor": "drive-text-v7-tk180",
+        "status": "PARTIAL",
+        "case_table_status": "INDEXED",
+        "files_seen": 35,
+        "files_indexed": 26,
+        "files_reused": 23
+      },
+      "reference_issue_counts": {
+        "ENCRYPTED_REFERENCE": 1,
+        "REFERENCE_PARTIALLY_READ": 18
+      },
+      "rag_model_executed": true,
+      "rag_relationship_counts": {
+        "CONTRADICTS": 1,
+        "SUPPORTS": 3,
+        "CONTEXT": 14,
+        "INSUFFICIENT": 9
+      },
+      "finding_type_counts": {
+        "UNICODE_SMUGGLING": 1,
+        "AUTHORSHIP_METADATA_LEAK": 2,
+        "METADATA_ANOMALY": 1,
+        "CASE_QUOTE_MISMATCH": 1,
+        "CASE_HOLDING_DISTORTION": 2,
+        "LEGAL_ARGUMENT_INVALID": 2,
+        "AI_AUTHORSHIP_LIKELY": 3,
+        "FACT_CONTRADICTION": 1
+      },
+      "ai_verdict": "UNCERTAIN",
+      "tables": 0
+    },
+    {
+      "label": "D_tables_brief.docx",
+      "report_file": "verification_rpt_3da840450a3940fb.json",
+      "sha256": "a2f1dcdb6cb59edf3669da5e5a6f3b5a7bf333a5f98d0263e6e402d06e31810b",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "state": "PARTIAL_COMPLETED",
+      "health": {
+        "passed": 5,
+        "total": 6,
+        "failed": [
+          "H-REF"
+        ]
+      },
+      "model_calls": 2,
+      "model_failures": 0,
+      "engine_errors": {
+        "reference_sync": [
+          "project: 참고자료 전체 동기화·읽기를 완료하지 못함"
+        ]
+      },
+      "reference": {
+        "extractor": "drive-text-v7-tk180",
+        "status": "PARTIAL",
+        "case_table_status": "INDEXED",
+        "files_seen": 35,
+        "files_indexed": 27,
+        "files_reused": 28
+      },
+      "reference_issue_counts": {
+        "ENCRYPTED_REFERENCE": 1,
+        "REFERENCE_PARTIALLY_READ": 19
+      },
+      "rag_model_executed": false,
+      "rag_relationship_counts": {},
+      "finding_type_counts": {
+        "METADATA_ANOMALY": 1,
+        "AUTHORSHIP_METADATA_LEAK": 1,
+        "ARITHMETIC_MISMATCH": 2,
+        "AI_AUTHORSHIP_LIKELY": 3
+      },
+      "ai_verdict": "UNCERTAIN",
+      "tables": 4
+    },
+    {
+      "label": "D_tables_brief.hwp",
+      "report_file": "verification_rpt_aa5880864a924be8.json",
+      "sha256": "97670b10f608e00827b9548bb09e3f47eebf78e465b82b2a3d023b14f8f31a0a",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "state": "PARTIAL_COMPLETED",
+      "health": {
+        "passed": 5,
+        "total": 6,
+        "failed": [
+          "H-REF"
+        ]
+      },
+      "model_calls": 2,
+      "model_failures": 0,
+      "engine_errors": {
+        "reference_sync": [
+          "project: 참고자료 전체 동기화·읽기를 완료하지 못함"
+        ]
+      },
+      "reference": {
+        "extractor": "drive-text-v7-tk180",
+        "status": "PARTIAL",
+        "case_table_status": "INDEXED",
+        "files_seen": 35,
+        "files_indexed": 27,
+        "files_reused": 28
+      },
+      "reference_issue_counts": {
+        "ENCRYPTED_REFERENCE": 1,
+        "REFERENCE_PARTIALLY_READ": 19
+      },
+      "rag_model_executed": false,
+      "rag_relationship_counts": {},
+      "finding_type_counts": {
+        "ARITHMETIC_MISMATCH": 2,
+        "AI_AUTHORSHIP_LIKELY": 2,
+        "MODEL_FACT_REMARK": 1
+      },
+      "ai_verdict": "UNCERTAIN",
+      "tables": 4
+    }
+  ],
+  "overall": "PARTIAL: case9정답23/23, A~D 정답지요건46/47/기존비교47/47, 공통Drive건강실패. TK180전용8실험·AI반복 미완료.",
+  "limits": [
+    "7보고서는 모두 같은 배포 SHA이나 참고자료 색인 상태가 서로 다름. 통제된 전후 비교 또는 형식별 모델 품질 비교로 일반화하지 않음.",
+    "후속 정답지 수신으로47항목 확정 완료. 구조조건 미충족1건과 기존비교기준 점수를 구분하며 원본HWPX 부재로 원인귀속 보류.",
+    "공통 건강5/6의 실패는 H-REF. reference_sync 외 엔진 오류 없음, 모델124호출 기록 실패0.",
+    "참고자료 문제는 부분 읽기·암호화·초기 네트워크 시간 초과. 지시문 격리 문제로 단정하지 않음.",
+    "TK180 역할 분리의 일부 관찰 증거는 확보, 전체 수용은 전용8대조 실험 전 보류.",
+    "case9 AI 판정1회 AI_PARTIAL_GENERATION은 3회 반복 안정성 측정을 대체하지 않음."
+  ],
+  "adjudication_47": {
+    "status": "COMPLETED",
+    "answer_key": {
+      "passed": 46,
+      "total": 47,
+      "failed": [
+        "D-hwpx:D-C2"
+      ]
+    },
+    "compatibility": {
+      "passed": 47,
+      "total": 47
+    },
+    "evidence": "online_0210_47_adjudication_20261115.json"
+  },
+  "case9_repeat_followup": {
+    "report_count_added": 2,
+    "evidence": "online_0210_case9_repeat_20261115.json",
+    "answer_each": "23/23",
+    "health_each": "5/6 H-REF",
+    "ai_modes": [
+      "AI_PARTIAL_GENERATION",
+      "AI_FULL_GENERATION_LIKELY",
+      "AI_PARTIAL_GENERATION"
+    ],
+    "observed_agreement": 0.667,
+    "fixed_snapshot_three_repeat": "NOT_COMPLETE"
+  }
+}
