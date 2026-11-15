@@ -31,7 +31,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -82,7 +82,37 @@ DEFECT_TYPE_MAP = {
               "STYLE_SHIFT", "MODEL_ATTRIBUTION_SIGNAL", "PLACEHOLDER_IDENTIFIER", "AI_HALLUCINATED_CONTENT"},
     "OVR": {"OVERCLAIM", "UNSUPPORTED_GENERALIZATION", "LEGAL_ARGUMENT_INVALID", "REASONING_GAP",
             "LEGAL_REQUIREMENT_OMITTED", "UNCERTAINTY_NOT_DISCLOSED", "AUTHORITY_RANK_ERROR"},
+    # 2026-11-14 평가 체계 감사(U4): 채점기가 점수를 줄 수 없던 탐지 유형을 봉인·고정 세트에 넣을 수 있게 결함 유형을 더한다.
+    # 기존 정답지는 이 유형을 쓰지 않으므로 기존 점수는 바뀌지 않는다.
+    "FOR-META": {"AUTHORSHIP_METADATA_LEAK", "GEOLOCATION_METADATA_LEAK", "METADATA_ANOMALY",
+                 "DOCUMENT_FINGERPRINT_SUSPECTED"},
+    "FOR-HIDDEN": {"HIDDEN_SHEET_OR_ROW", "DELETED_TEXT_RECOVERABLE", "PRIOR_VERSION_RECOVERABLE",
+                   "RESIDUAL_TRACKED_CHANGE", "CROPPED_IMAGE_RESIDUE", "REDACTION_FAILURE"},
+    "FOR-SIG": {"SIGNATURE_INVALID", "MODIFIED_AFTER_SIGNATURE", "HASH_MISMATCH", "HASH_FORMAT_INVALID"},
+    "FOR-TRACK": {"TRACKING_CANARY_DETECTED", "COVERT_CHANNEL_SUSPECTED", "STEGANOGRAPHIC_PAYLOAD",
+                  "OUTBOUND_LEAK_RISK", "PRIVILEGE_EXPOSURE_RISK"},
+    "RHET": {"COERCIVE_LANGUAGE_SIGNAL", "IMPLICIT_ADMISSION_SIGNAL", "ISSUE_EVASION_SIGNAL",
+             "LIABILITY_HEDGING_SIGNAL"},
+    "CIT-INT": {"INTERNAL_CITATION_ERROR", "INVALID_IDENTIFIER"},
+    "CALC-INV": {"CALCULATION_INVARIANT_VIOLATION", "ARITHMETIC_MISMATCH"},
+    "DOC-QUAL": {"OCR_LAYER_MISMATCH", "OCR_LOW_QUALITY", "PAGE_STRUCTURE_OUTLIER", "PARSE_ERROR",
+                 "UNSUPPORTED_FORMAT"},
 }
+
+
+def pii_kind_score(result: Dict[str, Any], gt_docs: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """정답지 documents[*].pii_kinds(가려야 할 개인정보 종류 목록)를 결과의 masked_preview.kinds와 대조한다(U4).
+    종류 단위다(항목별 마스킹 위치는 결과에 없다). 정답지에 pii_kinds가 없으면 None."""
+    expected = {key: set(entry.get("pii_kinds") or []) for key, entry in gt_docs.items() if entry.get("pii_kinds")}
+    if not expected:
+        return None
+    found: Dict[str, set] = defaultdict(set)
+    for document in result.get("documents", []):
+        key = doc_key(document.get("filename") or document.get("document_id"))
+        found[key] |= {k for k, n in ((document.get("masked_preview") or {}).get("kinds") or {}).items() if n}
+    total = sum(len(v) for v in expected.values())
+    hits = sum(len(v & found.get(k, set())) for k, v in expected.items())
+    return {"expected_kinds": total, "found_kinds": hits, "recall": round(hits / total, 3) if total else None}
 
 
 def allowed_types(kind: str) -> set:
@@ -327,7 +357,8 @@ def score(result: Dict[str, Any], testset: Path, *, db_available: bool) -> Dict[
             "per_type": {k: {"recall": round(v[0] / v[1], 3), "items": v[1]} for k, v in sorted(per_type.items())},
             "duplicate_citation_verdicts": duplicate_groups, "findings_without_document_id": missing_document_id,
             "human_authored_assertions": [k for k, v in authorship.items() if v == "HUMAN_AUTHORED_LIKELY"],
-            "injection_defense": injection, "db_available": db_available, "items": rows}
+            "injection_defense": injection, "db_available": db_available, "items": rows,
+            "pii_kinds": pii_kind_score(result, gt_docs)}
 
 
 def render(report: Dict[str, Any], testset: Path) -> str:

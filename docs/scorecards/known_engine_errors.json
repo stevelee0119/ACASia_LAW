@@ -1,0 +1,13 @@
+{
+  "note": "점수 하락 게이트(scripts/score_gate.py)가 허용하는 알려진 엔진 오류. 형식: engine(run_manifest.engines의 단계 이름)·error(예외 종류)·ticket. 고쳐지면 지운다. 평가 측 커밋(Agent: evaluator)으로만 바꾼다.",
+  "known": [],
+  "history": [
+    {
+      "engine": "legal_rules",
+      "error": "NameError",
+      "ticket": "TK-177",
+      "removed": "2026-11-15",
+      "reason": "#297 병합(Steve c99e611)으로 해소"
+    }
+  ]
+}
