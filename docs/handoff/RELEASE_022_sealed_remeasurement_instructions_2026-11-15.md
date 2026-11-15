@@ -31,7 +31,7 @@
    후보 트리:
    `LV_ALLOW_NETWORK=0 OMP_THREAD_LIMIT=1 <동일venv>/bin/python scripts/scorecard.py --sealed-dir /tmp/sealed_20261115 --out /tmp/scorecard_sealed_candidate_022.json`
 
-5. 두 집계 JSON에서 전체 `git.sha`, `dirty=false`, environment, sealed 데이터셋 SHA-256, 문서/항목/유형별 분모가 일치하는지 확인한다. 서로 다른 것은 제품 SHA/버전과 측정 시각뿐이어야 하며, 의도하지 않은 차이가 있으면 원인을 적는다.
+5. 각 JSON의 전체 `git.sha`가 지정한 운영/후보 SHA에 각각 대응하고 `dirty=false`인지 확인한다. 양쪽 실행 환경·봉인 데이터셋 SHA-256·채점 파일 해시·문서/항목/유형별 분모는 같아야 한다. 제품 SHA/버전과 그 변경으로 생긴 모델 설정·산출 점수의 차이는 비교 대상이므로 같게 만들지 않는다. 의도하지 않은 환경·자료·채점 조건 차이가 있으면 원인을 적고 비교를 보류한다.
 6. 평가자에게 **두 성적표 집계 JSON**, 실행 종료 코드, 한국어 OCR self-test 결과, 동일 의존성 설치 확인을 전달한다. 원문·정답·문서별 상세·`.sealed_out`은 전달하지 않는다. 현재 텍스트 요약만으로 전체 SHA·데이터 지문·누락 필드를 검증할 수 없다.
 
 ## 평가 측 후속 판정

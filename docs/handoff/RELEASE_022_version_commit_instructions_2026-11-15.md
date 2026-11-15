@@ -34,7 +34,7 @@
 
 1. `python scripts/update_readme.py --check` 및 `pytest -q tests/test_update_readme.py`를 실행한다.
 2. 단일 버전 커밋에 `Agent: implementer`를 넣고 `python scripts/check_version_policy.py --base origin/Steve_ACASiaLAW`를 실행한다.
-3. Steve 대상 PR을 열고 최종 head의 CI·점수 게이트·CodeQL·pip-audit 결과를 확인한다. 제품 버전 필드 이외의 제품·설정·잠금·workflow diff가 생기면 제거하거나 평가 측에 이유를 설명한다. 전체 `verify_all`은 중복 실행하지 않는다.
+3. Steve 대상 PR을 열고 최종 head의 필수 CI·점수 게이트·CodeQL 결과를 확인한다. pip-audit가 경로 필터 때문에 실행되지 않는 버전/문서 전용 PR이면, 잠금 파일 diff 0과 후보 `fca75347`의 성공 실행 `43709116539`를 연결해 미실행 사유를 적는다. 존재하지 않는 실행을 기다리거나 통과했다고 쓰지 않는다. 제품 버전 필드 이외의 제품·설정·잠금·workflow diff가 생기면 제거하거나 평가 측에 이유를 설명한다. 전체 `verify_all`은 중복 실행하지 않는다.
 4. PR 본문에 최종 SHA, 변경 파일, 버전 정책/문서 생성 검사 결과, 측정값 출처, 운영 미측정 항목, `검토 요청`을 적는다. 평가자는 버전 외 제품 diff 0을 확인한 뒤 main 대상 릴리스 PR을 준비한다.
 
 main 직접 푸시·병합·태그·운영 배포는 이 전달문의 실행 범위에 포함되지 않는다. 최종 main 병합은 릴리스 선행요건 충족 및 사용자 승인 뒤 수행한다.
