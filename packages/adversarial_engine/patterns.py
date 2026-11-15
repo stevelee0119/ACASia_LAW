@@ -18,16 +18,21 @@ def _c(pattern: str) -> Pattern[str]:
     return re.compile(pattern, re.IGNORECASE)
 
 
+# 영문 호명어의 경계(TK-178): 영문·숫자·URL 구분자(. _ - /)에 붙은 'ai'(bigcase.ai, container, story/ai-in)는
+# 호명이 아니다. 앞은 영문·숫자·. _ - / 가 아니고, 뒤는 영문이 아니어야 한다('AI검증'·'GPT-4'·'GPT4o'는 호명).
+_EN_START = r"(?<![A-Za-z0-9._\-/])"
+_EN_END = r"(?![A-Za-z])"
+
 # 기계(AI·모델·검토 도구·시스템)를 수신자로 부르는 말. 사람 수신자(피고·원고·귀하)와 구분한다.
 MACHINE_ADDRESSEE = (
-    r"(?:AI|ＡＩ|인공지능|LLM|언어\s*모델|"
+    r"(?:" + _EN_START + r"(?:AI|LLM)" + _EN_END + r"|ＡＩ|인공지능|언어\s*모델|"
     r"(?:검증|검토|분석)(?:하는)?\s*(?:자동화\s*)?(?:모델|도구|시스템|엔진|AI|프로그램|소프트웨어|에이전트)|"
     r"자동화\s*(?:도구|시스템|프로그램|소프트웨어|에이전트)|"
     r"automated\s*(?:legal\s*)?(?:verification|compliance|audit)\s*(?:engine|analyzer|model|system)|"
     r"AI\s*(?:compliance|verification|audit)\s*(?:analyzer|engine|model|system)|"
     r"LLM\s*(?:audit|verification)\s*(?:model|engine|system)|"
     r"AI\s*검증\s*시스템|"
-    r"(?:AI|인공지능)\s*검토자|모델|시스템|reviewer|assistant)"
+    r"(?:AI|인공지능)\s*검토자|모델|시스템|" + _EN_START + r"(?:reviewer|assistant)" + _EN_END + r")"
 )
 
 INSTRUCTION_PATTERNS: List[PatternSpec] = [
@@ -320,10 +325,10 @@ INSTRUCTION_PATTERNS: List[PatternSpec] = [
 
 # LLM·검증 시스템을 명시적으로 호명하는 표현 (메타 지시어 강한 신호)
 AI_ADDRESSING_RE = _c(
-    r"(AI|인공지능|LLM|언어\s*모델|chatgpt|gpt|claude|gemini|copilot|"
+    r"(" + _EN_START + r"(?:AI|LLM|chatgpt|gpt|claude|gemini|copilot)" + _EN_END + r"|인공지능|언어\s*모델|"
     r"(?:검증|검토|분석)(?:하는)?\s*(?:자동화\s*)?(?:시스템|엔진|도구|모델|프로그램|AI)|"
     r"자동화\s*(?:도구|시스템|프로그램|소프트웨어|에이전트)|"
-    r"assistant|모델|reviewer|심사자|automated\s+(?:system|reviewer|checker|tool)|"
+    + _EN_START + r"(?:assistant|reviewer)" + _EN_END + r"|모델|심사자|automated\s+(?:system|reviewer|checker|tool)|"
     r"automated\s*(?:legal\s*)?(?:verification|compliance|audit)\s*(?:engine|analyzer|model|system)|"
     r"AI\s*(?:compliance|verification|audit)\s*(?:analyzer|engine|model|system)|"
     r"LLM\s*(?:audit|verification)\s*(?:model|engine|system)|"
