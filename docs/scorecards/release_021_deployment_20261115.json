@@ -222,6 +222,12 @@
     ],
     "tk180_controlled_eight_reports": "NOT_RUN",
     "ai_three_repeats": "NOT_RUN",
-    "abCD_47_answer_key": "MISSING"
+    "abCD_47_answer_key": "RECEIVED_ADJUDICATED",
+    "adjudication_47": {
+      "answer_key_passed": 46,
+      "compatibility_passed": 47,
+      "total": 47,
+      "evidence": "online_0210_47_adjudication_20261115.json"
+    }
   }
 }

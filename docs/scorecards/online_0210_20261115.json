@@ -347,13 +347,28 @@
       "tables": 4
     }
   ],
-  "overall": "PARTIAL: case9 정답 통과, 공통 Drive 건강 실패. TK180 전용8보고서·AI반복 및 A~D 정답지 대조는 미완료.",
+  "overall": "PARTIAL: case9정답23/23, A~D 정답지요건46/47/기존비교47/47, 공통Drive건강실패. TK180전용8실험·AI반복 미완료.",
   "limits": [
     "7보고서는 모두 같은 배포 SHA이나 참고자료 색인 상태가 서로 다름. 통제된 전후 비교 또는 형식별 모델 품질 비교로 일반화하지 않음.",
-    "A~D 기존 47항목 answer_key.json은 이 환경에 없어 항목별 확정 점수 산출하지 않음. 기존 기록을 대신 정답으로 복제하지 않음.",
+    "후속 정답지 수신으로47항목 확정 완료. 구조조건 미충족1건과 기존비교기준 점수를 구분하며 원본HWPX 부재로 원인귀속 보류.",
     "공통 건강5/6의 실패는 H-REF. reference_sync 외 엔진 오류 없음, 모델124호출 기록 실패0.",
     "참고자료 문제는 부분 읽기·암호화·초기 네트워크 시간 초과. 지시문 격리 문제로 단정하지 않음.",
     "TK180 역할 분리의 일부 관찰 증거는 확보, 전체 수용은 전용8대조 실험 전 보류.",
     "case9 AI 판정1회 AI_PARTIAL_GENERATION은 3회 반복 안정성 측정을 대체하지 않음."
-  ]
+  ],
+  "adjudication_47": {
+    "status": "COMPLETED",
+    "answer_key": {
+      "passed": 46,
+      "total": 47,
+      "failed": [
+        "D-hwpx:D-C2"
+      ]
+    },
+    "compatibility": {
+      "passed": 47,
+      "total": 47
+    },
+    "evidence": "online_0210_47_adjudication_20261115.json"
+  }
 }
