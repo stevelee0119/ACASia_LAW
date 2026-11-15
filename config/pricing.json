@@ -49,13 +49,8 @@
     }
   },
   "gemini-4-hydrogen": {
-    "input": 0.75,
-    "output": 3.75,
-    "cache_read": 0.075,
-    "after_2026-12-31": {
-      "input": 1.5,
-      "output": 7.5,
-      "cache_read": 0.15
-    }
+    "input": 1.5,
+    "output": 7.5,
+    "cache_read": 0.075
   }
 }

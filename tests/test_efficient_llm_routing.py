@@ -137,7 +137,36 @@ def test_gemini_thinking_is_settled_from_reported_usage(transport):
     execution = result.executions[0]
     assert execution.output_tokens == 15 and execution.thinking_tokens == 5
     assert execution.cost_status == "REPORTED"
-    assert Decimal(str(execution.cost_usd)) == Decimal("0.00013125")
+    assert Decimal(str(execution.cost_usd)) == Decimal("0.0002625")
+
+
+def test_hydrogen_standard_and_cache_rates(transport):
+    router, _, _ = transport
+    provider = router.providers["gemini"]
+    assert provider.config.model == "gemini-4-hydrogen"
+    # 1M input ($1.50) + 1M output ($7.50) = $9.00
+    cost_1m, status_1m = usage_cost(
+        LLMResponse(True, input_tokens=1_000_000, output_tokens=1_000_000),
+        (Decimal("1.5"), Decimal("7.5")),
+        Decimal(1),
+        pricing=router.settings.pricing["gemini-4-hydrogen"],
+    )
+    assert status_1m == "REPORTED" and cost_1m == Decimal("9.000000")
+
+    # 0 / partial / full cache_read at $0.075 per 1M (+ 100k output = $0.75)
+    for cached, expected in (
+        (0, Decimal("2.250000")),
+        (400_000, Decimal("1.680000")),
+        (1_000_000, Decimal("0.825000")),
+    ):
+        reply = LLMResponse(True, input_tokens=1_000_000, output_tokens=100_000, cache_read_tokens=cached)
+        cost, status = usage_cost(
+            reply,
+            (Decimal("1.5"), Decimal("7.5")),
+            Decimal(1),
+            pricing=router.settings.pricing["gemini-4-hydrogen"],
+        )
+        assert status == "REPORTED" and cost == expected
 
 
 def test_cache_tokens_are_charged_at_their_own_rates():
@@ -217,6 +246,7 @@ def test_gemini_promotion_expiry_changes_pricing_without_mutating_table(transpor
     from packages.llm_router.budget import effective_pricing
     router, _, _ = transport
     provider = router.providers["gemini"]
+    provider.config.model = "gemini-3.8-flash"
     assert effective_pricing(router.settings, provider, today="2026-12-31")["input"] == .75
     assert effective_pricing(router.settings, provider, today="2027-01-01")["input"] == 1.5
     assert router.settings.pricing["gemini-3.8-flash"]["input"] == .75

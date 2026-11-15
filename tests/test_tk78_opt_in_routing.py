@@ -118,7 +118,9 @@ def test_configured_cache_rates_are_used_in_settlement(tmp_path, model, read_rat
 @pytest.mark.parametrize("day,rates", [("2026-12-31", (.75, 3.75, .075)), ("2027-01-01", (1.5, 7.5, .15))])
 def test_gemini_promotion_checks_all_three_rates(transport, day, rates):
     router, _, _ = transport
-    table = effective_pricing(router.settings, router.providers["gemini"], today=day)
+    provider = router.providers["gemini"]
+    provider.config.model = "gemini-3.8-flash"
+    table = effective_pricing(router.settings, provider, today=day)
     assert tuple(table[k] for k in ("input", "output", "cache_read")) == rates
 
 
