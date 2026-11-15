@@ -17,7 +17,7 @@ from test_operations_completion import ops, seeded_run, completed  # noqa: F401
 
 # 0.13.0 production commit b68cfeec2c5c168a3b9e6e2e92653ea6892521bf.
 LEGACY_MODELS = {"anthropic": "claude-opus-5-5", "openai": "gpt-6-luna",
-                 "gemini": "gemini-3.8-flash", "local": "local-model"}
+                 "gemini": "gemini-4-hydrogen", "local": "local-model"}
 ROUTING_FIELDS = {"llm_cross_check", "llm_efficient_routing", "llm_prompt_caching",
                   "llm_review_sample_percent", "llm_routing", "llm_model_overrides", "llm_default_models"}
 
@@ -66,7 +66,7 @@ def test_off_uses_all_legacy_models_and_does_not_reuse_requests(transport, unset
         answers = asyncio.run(router.consult_all(LLMRole.PRIMARY_REASONER, request))
         assert len(answers) == 3 and all(a.used for a in answers)
         assert not any(e.reused for a in answers for e in a.executions)
-    assert sent_models(requests) == ["claude-opus-5-5", "gpt-6-luna", "gemini-3.8-flash"] * 2
+    assert sent_models(requests) == ["claude-opus-5-5", "gpt-6-luna", "gemini-4-hydrogen"] * 2
     assert all("cache_control" not in body for _, body in requests)
 
 
@@ -74,7 +74,7 @@ def test_off_cascade_retains_0130_wire_and_three_calls(transport, unset_routing_
     router, requests, responses = make_default_router(transport)
     responses["anthropic"] = {"status": "VERIFIED", "confidence": 1, "rationale": "synthetic"}
     result = asyncio.run(router.cascade(question="q", evidence={"official": {"full_text": "source"}}))
-    assert sent_models(requests) == ["claude-opus-5-5", "gpt-6-luna", "gemini-3.8-flash"]
+    assert sent_models(requests) == ["claude-opus-5-5", "gpt-6-luna", "gemini-4-hydrogen"]
     assert '"confidence": 1' in requests[1][1]["messages"][1]["content"]
     assert not any(s["name"] == "escalation" for s in result.stages)
 
