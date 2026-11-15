@@ -1221,11 +1221,22 @@ function renderSummary() {
   // 2~5열(#summary): 하단 탭 순서(AI 작성·보안 진단 → 출처 미확인 인용 → 법률적으로 무리한 주장 → Time Table)와 일치시킨다.
   const aiHintState = !state.run ? "대기" : state.run.state === "PARTIAL_COMPLETED" ? "일부 미확인" : "완료";
   const timelineCount = Array.isArray(state.run?.timeline) ? state.run.timeline.length : 0;
+  const timelineCard = (() => {
+    const runState = state.run?.state;
+    if (!state.run) return ["—", "검증 후 집계"];
+    if (runState === "COMPLETED") return ["완료", `사실관계 정리 총 ${timelineCount}건`];
+    if (runState === "PARTIAL_COMPLETED") return ["일부 미확인", `사실관계 정리 ${timelineCount}건 (일부 미확인)`];
+    if (runState === "FAILED" || runState === "CANCELLED") {
+      return [label(runState), timelineCount > 0 ? `중단 전 추출 ${timelineCount}건` : "검증이 끝나지 않았습니다"];
+    }
+    if (runState === "QUEUED") return ["대기", "검증 대기 중"];
+    return ["진행 중", timelineCount > 0 ? `${label(runState)} · 현재 ${timelineCount}건` : `${label(runState)} · 정리 중`];
+  })();
   const metrics = [
     ["AI 작성·보안 진단", state.run ? aiStatus : "—", `판정 · ${aiHintState}`, "aiChip", "metric-indigo"],
     ["출처 미확인 인용", state.run ? `${sourceCount}건` : "—", !state.run ? "검증 후 집계" : fakeCaseCount ? `사건번호 형식 오류 ${fakeCaseCount}건 포함` : `공식 DB 미확인 ${unconfirmedCount}건`, "people", "metric-amber"],
     ["법률적으로 무리한 주장", state.run && legalCount != null ? `${legalCount}건` : "—", state.run && legalCount != null ? `법리 검토 대상 ${legalCount}건` : "검증 후 집계", "shield", "metric-sky"],
-    ["Time Table", state.run ? "완료" : "—", state.run ? `사실관계 정리 총 ${timelineCount}건` : "검증 후 집계", "calendar", "metric-teal"],
+    ["Time Table", timelineCard[0], timelineCard[1], "calendar", "metric-teal"],
   ];
   const tabFor = {"AI 작성·보안 진단": "ai-verification", "출처 미확인 인용": "review", "법률적으로 무리한 주장": "legal-claims", "Time Table": "timeline"};
   for (const [title, value, note, iconKey, toneCls] of metrics) {
@@ -3382,7 +3393,7 @@ function formatTimelineDateLabel(item) {
   if (!match) return raw || "일시 미확인";
   const dt = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
   const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
-  return `${Number(match[1]) % 100}.${Number(match[2])}.${Number(match[3])}.(${weekdays[dt.getDay()]})`;
+  return `${String(Number(match[1]) % 100).padStart(2, "0")}.${Number(match[2])}.${Number(match[3])}.(${weekdays[dt.getDay()]})`;
 }
 
 function timelineSortKey(item) {
@@ -3411,13 +3422,13 @@ function renderTimeline() {
   if (copyBtn) {
     copyBtn.disabled = !rawEvents.length;
     copyBtn.onclick = async () => {
-      const escapeMd = v => String(v).replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
+      const escapeMd = v => String(v ?? "").replace(/\s+/g, " ").trim().replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
       const md = [
         "| 일시 | 내용 | 관련근거 |",
         "| :--- | :--- | :--- |",
         ...rawEvents.map(ev => {
           const d = escapeMd(formatTimelineDateLabel(ev));
-          const c = escapeMd(String(ev.formatted_content || ev.description || ev.text || "").replace(/\s+/g, " ").trim());
+          const c = escapeMd(ev.formatted_content || ev.description || ev.text || "");
           const e = escapeMd(formatTimelineEvidence(ev));
           return `| ${d} | ${c} | ${e} |`;
         }),
