@@ -3,9 +3,9 @@
   "baseline": "2026-10-10 초기화(claude-code): 미해결 목록은 docs/handoff/README.md 배포 대기 현황 기준. 그 밖은 deployed로 두되 해소일은 미상.",
   "tickets": {
     "TK-180": {
-      "status": "open",
+      "status": "merged",
       "kind": "new",
-      "note": "2026-11-15 TK-180: 사용자 요구에 따라 입력 법률문서 검증을 유지하고 공식 DB/RAG를 판단 기준 자료로 분리. #300 db83c849 역할 프롬프트 보완 완료·사본 8784ca0d와 제품/시험 diff 0·최신 CI 전부 성공, 2026-11-15 최종 수용·사용자 병합 대기. 온라인 평가 자료/명세 준비, 운영 실측 미시행. NEXT 2-62-7, TK-180_reference_roles_review.md. #295 CI의 등록 누락 실패를 해소하기 위해 등재."
+      "note": "2026-11-15 TK-180: 사용자 요구에 따라 입력 법률문서 검증을 유지하고 공식 DB/RAG를 판단 기준 자료로 분리. #300 db83c849 역할 프롬프트 보완 완료·사본 8784ca0d와 제품/시험 diff 0·최신 CI 전부 성공, 2026-11-15 최종 수용 및 사용자 승인 병합 완료(Steve c28cc981). 온라인 평가 자료/명세 준비, 운영 실측 미시행. NEXT 2-62-7, TK-180_reference_roles_review.md. #295 CI의 등록 누락 실패를 해소하기 위해 등재."
     },
     "TK-01": {
       "status": "deployed",
