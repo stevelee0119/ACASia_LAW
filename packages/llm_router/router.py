@@ -436,11 +436,25 @@ class LLMRouter:
 
             try:
                 privacy = inspect_request(request, _original_system=original_system)
-            except Exception:
-                privacy = {"status": "BLOCKED", "reason": "INSPECTION_FAILED"}
+            except Exception as exc:
+                privacy = {
+                    "status": "BLOCKED",
+                    "reason": "INSPECTION_FAILED",
+                    "failure_code": "INSPECTION_EXCEPTION",
+                    "diagnostic_category": "INSPECTION_EXCEPTION",
+                    "exception_type": type(exc).__name__,
+                }
             if privacy["status"] != "PASSED":
+                code = privacy.get("failure_code") or privacy.get("reason") or "UNKNOWN"
+                cat = privacy.get("diagnostic_category") or code
+                detail_parts = [str(code)]
+                if privacy.get("contract_failures"):
+                    detail_parts.append(",".join(str(x) for x in privacy["contract_failures"]))
+                if privacy.get("exception_type"):
+                    detail_parts.append(str(privacy["exception_type"]))
                 execution = ModelExecution(str(role), provider.name, provider.config.model, False,
-                    error="INPUT_PRIVACY_BLOCKED: 마스킹 후 입력 검사 불통과", cost_status="NOT_SENT",
+                    error=f"INPUT_PRIVACY_BLOCKED [{cat}:{'/'.join(detail_parts)}]: 마스킹 후 입력 검사 불통과",
+                    cost_status="NOT_SENT",
                     input_privacy=privacy)
                 if self.on_execution:
                     self.on_execution(execution)
