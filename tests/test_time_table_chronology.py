@@ -160,6 +160,21 @@ def timeline_browser_page():
         if path == "/api/projects/p-time/findings":
             route.fulfill(json=[])
             return
+        if path == "/api/projects/p-time/reports":
+            route.fulfill(json=[{
+                "report_id": "rep-1",
+                "project_id": "p-time",
+                "run_id": "r-time-1234",
+                "created_at": "2026-11-15T00:05:00",
+                "state": "DRAFT",
+                "audience": "INTERNAL",
+                "snapshot_hash": "abcdef1234567890",
+                "artifacts": {
+                    "pdf": {"download": "/api/reports/rep-1/download?format=pdf"},
+                    "docx": {"download": "/api/reports/rep-1/download?format=docx"},
+                },
+            }])
+            return
         if path.endswith("/result") or path.endswith("/results"):
             route.fulfill(json={"summary": {}, "findings": []})
             return
@@ -243,7 +258,26 @@ def test_time_table_tab_order_chronology_and_responsive(timeline_browser_page) -
     assert ev1 == "갑 제2호증 통장사본"
     expect(ev2_badge).to_have_text("[근거 미작성]")
 
+    # 보고서 탭: 점검 후 확정·고정본 무결성 제거 및 가로 일렬 배치 확인
+    tabs.nth(5).click()
+    reports_panel = page.locator('section[data-panel="reports"]')
+    expect(reports_panel).to_be_visible()
+    report_row = reports_panel.locator("#reportList .row-item").first
+    expect(report_row).to_be_visible()
+    expect(report_row).not_to_contain_text("점검 후 확정")
+    expect(report_row).not_to_contain_text("고정본 무결성")
+    expect(report_row.locator(".report-links a", has_text="PDF")).to_be_visible()
+    expect(report_row.locator(".report-links a", has_text="DOCX")).to_be_visible()
+    row_geom = report_row.evaluate("""el => {
+        const info = el.querySelector('.report-row-info').getBoundingClientRect();
+        const links = el.querySelector('.report-links').getBoundingClientRect();
+        return { height: el.getBoundingClientRect().height, infoRight: info.right, linksLeft: links.left };
+    }""")
+    assert row_geom["linksLeft"] >= row_geom["infoRight"] - 1
+    assert row_geom["height"] <= 80
+
     # 모바일 390px 카드 배치 및 가로 넘침 없음 확인
+    tabs.nth(4).click()
     page.set_viewport_size({"width": 390, "height": 844})
     first_cell_display = rows.nth(0).locator("td").nth(0).evaluate("el => getComputedStyle(el).display")
     assert first_cell_display == "block"

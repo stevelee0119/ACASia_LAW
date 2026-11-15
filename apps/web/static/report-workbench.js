@@ -130,10 +130,9 @@ const reportWorkbench = (() => {
     editor.submit.textContent="확정본 생성";
   }
   function decorate(report,row) {
-    row.prepend(node("strong",report.label || `${report.state === "FINAL"?"확정본":"초안"} · ${report.audience === "SHAREABLE"?"공유용":"내부 검토용"}`));
-    if(report.state === "FINAL")row.append(node("p",`${report.finalized_by} · ${dateText(report.finalized_at)} · ${report.note || ""}`,"muted"));
-    else if(report.snapshot_hash)row.append(button("점검 후 확정",()=>finalize(report)));
-    if(report.snapshot_hash){const details=node("details");details.append(node("summary","고정본 무결성"),node("code",`SHA-256: ${report.snapshot_hash}`));row.append(details);}
+    const info=row.querySelector(".report-row-info") || row;
+    info.prepend(node("strong",report.label || `${report.state === "FINAL"?"확정본":"초안"} · ${report.audience === "SHAREABLE"?"공유용":"내부 검토용"}`));
+    if(report.state === "FINAL")info.append(node("span",`${report.finalized_by} · ${dateText(report.finalized_at)}${report.note?` · ${report.note}`:""}`,"muted"));
   }
   return {create,decorate,showActive};
 })();

@@ -3577,8 +3577,9 @@ async function loadReports() {
   $("reportList").replaceChildren();
   if (!reports.length) empty($("reportList"), "생성된 보고서가 없습니다.");
   for (const report of reports) {
-    const row = node("article", null, "row-item");
-    row.append(node("p", `${dateText(report.created_at)} · 실행 ${report.run_id.slice(0,8)}`));
+    const row = node("article", null, "row-item report-row");
+    const info = node("div", null, "report-row-info");
+    info.append(node("span", `${dateText(report.created_at)} · 실행 ${report.run_id.slice(0,8)}`, "muted"));
     const links = node("div", null, "report-links");
     for (const [fmt, artifact] of Object.entries(report.artifacts || {})) {
       if (artifact.download) {
@@ -3587,7 +3588,7 @@ async function loadReports() {
         links.append(a);
       } else if (artifact.error) links.append(node("span", `${fmt}: 생성 실패`, "error"));
     }
-    row.append(links);
+    row.append(info, links);
     reportWorkbench.decorate(report, row);
     $("reportList").append(row);
   }
