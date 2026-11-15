@@ -7012,3 +7012,20 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - 은퇴 5세트도 종료 0(기준 034343f를 같은 환경/현재 채점기로 다시 측정): 53.3/48.6/56.9/45.8/34.1·확인 오탐 0, v2/미판정 후퇴 없음. 고정 82.6/81.9/확인 오탐 0, v2 42/56·41/54, 엔진 오류 각 0. 이전 환경의 경고 수와 직접 증감 비교하지 않는다.
 - 판정서 0.21.0 measured_commit·범위·M1~P7 갱신. 봉인 시험 미실시/온라인 갈음 확정은 유지, 실제 온라인은 미실행. 증빙 docs/scorecards/release_021_verification_20261115.json, 온라인 계획 docs/scorecards/online_compare_0200_0210_plan.md.
 - 다음: 갱신된 버전 패치 사본 점검 및 #296 보완 지시. #295 최종 갱신 CI 성공/사용자 병합 뒤에 #296을 갱신한다. 기존 2-60의 0653872 기준 버전 설명은 최종 근거로 사용하지 않는다.
+
+### 2-62-14. #296 최종 버전 보완 지시 — 기존 2-60 버전 지시를 대체 (11-15)
+- 판정서: 0.21.0 minor(changed·fixed·security), 최종 측정 86434b6a. 이전 0653872 기준 설명을 최종 후보 근거로 사용하지 않는다. 버전 사본 4011c9c6에서 실제 상향 1건 정책 점검 통과, update_readme --check 변경 없음, 관련 51건 통과(같은 SHA·같은 Docker 환경).
+- 전체 패치 patches/v0.21.0_version_commit_on_86434b6a.diff: 최신 Steve의 0.20.0에서 버전 0.21.0과 최종 메타데이터 4파일 반영.
+- 기존 #296용 patches/v0.21.0_supplement_on_860516c0.diff: #296 860516c0에 최신 평가 브랜치를 병합한 뒤 적용할 증분(릴리스 설명 3파일, config는 이미 0.21.0 유지). 두 적용 경로 모두 결과 전체 트리가 사본 4011c9c6와 일치함을 임시 인덱스로 확인했다.
+
+```text
+[0.21.0 버전 PR #296 보완 — 최종 후보 86434b6a 반영]
+선행조건: 최종 갱신 #295의 CI 성공·사용자 병합. 그 전에는 #296을 병합하지 않는다.
+1. #296 브랜치 chore/v0.21.0-version(현재 860516c0)에서 최신 origin/Steve_ACASiaLAW를 병합한다. 리베이스·강제 푸시 금지. 평가 판정서/시험 자산은 최신 Steve 내용을 유지한다.
+2. git apply --check docs/handoff/patches/v0.21.0_supplement_on_860516c0.diff 후 같은 패치를 적용한다. 새 브랜치에서 다시 낼 때만 전체 패치 v0.21.0_version_commit_on_86434b6a.diff를 쓴다. 두 패치를 중복 적용하지 않는다.
+3. 바뀔 파일은 docs/releases.json·docs/release_highlights.json·docs/RELEASE_HISTORY.md 3개다. packages/common/config.py는 기존 #296의 0.21.0을 유지한다. 보호 경로·제품 탐지 코드는 바꾸지 않는다.
+4. 릴리스 기록은 최종 측정 SHA 86434b6a, 전체 검증 1278/2357/10328/197, TK-171~180, 봉인시험 미실시·온라인 갈음·운영 실측 미시행을 반영한다.
+5. python scripts/update_readme.py --check, python scripts/check_version_policy.py --base <최신 Steve>, tests/test_update_readme.py·tests/test_v4_run_manifest.py·tests/acceptance/test_version_policy_tool.py를 확인한다.
+6. 기존 PR에 보완 커밋 1개(Agent: implementer)를 더하고 실제 시험 이름/결과와 새 판정서 기준으로 PR 설명을 갱신한다. 수용은 평가 사본의 4개 최종 버전 파일과 diff 0·필수 CI 성공이다.
+7. #296 수용·사용자 병합 뒤 평가 측이 Steve→main 릴리스 PR을 준비한다. 운영 배포는 사용자 승인으로 한다.
+```
