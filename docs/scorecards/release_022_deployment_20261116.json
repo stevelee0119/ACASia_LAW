@@ -1,0 +1,35 @@
+{
+  "release": "0.22.0",
+  "release_pr": 316,
+  "release_commit": "5b9957932259526e1f7edca9ba7d92767771618e",
+  "tag": "v.0.22.0",
+  "verified_on": "2026-11-16",
+  "verification_source": "사용자가 제공한 /api/health 응답",
+  "health": {
+    "status": "ok",
+    "app": "ACASia_LAW",
+    "version": "0.22.0",
+    "commit": "5b9957932259526e1f7edca9ba7d92767771618e",
+    "principles": [
+      "Source First",
+      "Evidence First",
+      "Human Final Decision"
+    ],
+    "database": {
+      "status": "ok"
+    }
+  },
+  "release_ci": {
+    "head": "e84141d7fde2c62b3e613d5b3a645c8ef2ce7415",
+    "checks": {
+      "score_gate": "success",
+      "retired_set_comparison": "success",
+      "sqlite_tests": "success",
+      "postgresql_pgvector_celery_tests": "success",
+      "docker_ocr_readiness": "success",
+      "pip_audit": "success",
+      "codeql": "success"
+    }
+  },
+  "online_evaluation": "PENDING_SEPARATE_SESSION"
+}

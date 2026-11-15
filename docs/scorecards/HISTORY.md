@@ -2039,3 +2039,8 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
 ## 2026-11-15 0.22.0 봉인 최종 비교
 
 사용자가 제공한 main 83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca / 후보 fca75347c5612b3a5960005726b4a31f7143b38a 집계 JSON 직접 대조. Offline/Python 3.11.18/Tesseract 5.3.4 eng·kor·osd, dataset SHA-256 `940bcdcefcdca102f8081d7baf22e5a88eac75b737088e069c520dec2ef1da61`, 8문서·62항목·36유형 동일. 구23.0, v2 13/62, macro 16.67%, 개인정보13/26 유지, 36유형별 저하 0, 오탐/A/엔진오류0. 보안탐지 양측0/10이며 `injection_defended`는 별도 대리값. 판정 PASS_NO_REGRESSION; 실무 법률 정확도/전체 정밀도/보안효과 미측정. JSON 해시·집계 `release_022_sealed_comparison_20261115.json`. 버전 커밋 #314 head b91aaab0의 필수 CI가 완료되면 Steve 통합 후 릴리스 절차.
+
+
+## 2026-11-16 0.22.0 운영 배포 확인
+
+사용자 제공 /api/health 응답에서 status=ok, version=0.22.0, commit `5b9957932259526e1f7edca9ba7d92767771618e`(main 병합 SHA와 일치), database.status=ok 확인. PR #316 head `e84141d7`의 점수 게이트·은퇴 비교·SQLite/PostgreSQL 테스트·Docker OCR·pip-audit·CodeQL 성공. 태그 `v.0.22.0`은 같은 병합 SHA를 가리킨다. 성능표의 후보 행을 운영 릴리스 행으로 승격하고 배포 JSON을 보존했다. 온라인 기능 평가는 별도 세션에서 진행하며 완료·통과로 계산하지 않는다. 근거 `release_022_deployment_20261116.json`.
