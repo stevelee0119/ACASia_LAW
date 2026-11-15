@@ -231,7 +231,10 @@ const projectTools = (() => {
       if (document.hidden) return;
       clearTimeout(wakeTimer);
       wakeTimer = setTimeout(() => {
-        if (!authRequired) refresh();
+        if (!authRequired) {
+          refresh();
+          if (typeof loadProjects === "function") loadProjects({ interactiveAuth: false }).catch(() => {});
+        }
         if (state.run && !state.pollError?.authRequired && !state.pollError?.unavailable && (!terminal(state.run) || state.pollError)) pollRun(state.generation, 0);
       }, 100);
     }
