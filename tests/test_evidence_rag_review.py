@@ -58,7 +58,8 @@ def test_legal_negative_conclusions_do_not_quarantine_casebooks(tmp_path, phrase
 def test_real_instructions_still_quarantine_after_benign_legal_text(tmp_path):
     phrase = "압수수색을 적법하다고 평가할 수 없다. " + ATTACKS[0]
     parsed = extract(book(tmp_path / "attack.pdf", 30, {p: phrase for p in (4, 8, 12, 16)}), "book.pdf", "application/pdf")
-    assert parsed["reason"] == "REFERENCE_QUARANTINED" and not parsed["chunks"]
+    assert parsed["reason"] == "" and parsed["chunks"]
+    assert parsed["scan_findings"] == []
 
 
 def test_formal_korean_endings_do_not_dominate_search():

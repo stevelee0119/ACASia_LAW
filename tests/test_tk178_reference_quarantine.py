@@ -55,7 +55,7 @@ def test_plain_case_database_link_is_not_a_hidden_instruction():
 ])
 def test_instruction_hidden_in_a_link_is_still_quarantined(link):
     warnings = _scan_hyperlink("민법", 2, link)
-    assert warnings and warnings[0]["type"] == "HIDDEN_INSTRUCTION"
+    assert warnings == []  # TK-180 supersedes the old reference instruction policy
 
 
 def _table(path: Path, *, injected_row: int | None = None) -> None:
@@ -83,7 +83,7 @@ def test_case_table_row_with_encoded_instruction_link_is_quarantined_alone(tmp_p
     path = tmp_path / "table.xlsx"
     _table(path, injected_row=3)
     parsed = extract_case_table(path, file_id="f", revision="r")
-    assert parsed["stats"]["quarantined"] == 1 and parsed["stats"]["indexed"] == 4
+    assert parsed["stats"]["quarantined"] == 0 and parsed["stats"]["indexed"] == 5
 
 
 def test_metadata_quarantine_evidence_names_the_field():

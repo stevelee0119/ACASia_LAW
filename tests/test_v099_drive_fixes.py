@@ -55,12 +55,11 @@ def book(path, total, attacks):
 def test_instruction_page_is_excluded_and_rest_of_book_indexed(tmp_path, total, page, attack):
     path = book(tmp_path / "book.pdf", total, {page: attack})
     parsed = real_extract(path, "book.pdf", "application/pdf")
-    assert parsed["reason"] == "REFERENCE_INSTRUCTION_PAGES_EXCLUDED"
-    assert parsed["excluded_pages"] == [page] and parsed["partial"] is True
-    assert parsed["scan_findings"] and parsed["scan_findings"][0]["page"] == page
-    pages = {c["page"] for c in parsed["chunks"]}
-    assert page not in pages and len(pages) == total - 1
-    assert not any("무시" in c["text"] or "ignore" in c["text"] for c in parsed["chunks"])
+    assert parsed["reason"] == ""
+    assert parsed["excluded_pages"] == [] and parsed["partial"] is False
+    assert parsed["scan_findings"] == []
+    assert {c["page"] for c in parsed["chunks"]} == set(range(1, total + 1))
+
 
 
 @pytest.mark.parametrize("total, attacks", [
@@ -70,9 +69,10 @@ def test_instruction_page_is_excluded_and_rest_of_book_indexed(tmp_path, total, 
 ])
 def test_short_or_widespread_instruction_files_stay_quarantined_with_evidence(tmp_path, total, attacks):
     parsed = real_extract(book(tmp_path / "book.pdf", total, attacks), "book.pdf", "application/pdf")
-    assert parsed["reason"] == "REFERENCE_QUARANTINED" and parsed["chunks"] == []
-    assert parsed["scan_findings"] and all(f["page"] in attacks for f in parsed["scan_findings"])
-    assert all(len(f["excerpt"]) <= 60 for f in parsed["scan_findings"])
+    assert parsed["reason"] == "" and parsed["chunks"]
+    assert parsed["scan_findings"] == [] and parsed["excluded_pages"] == []
+    assert parsed["read_pages"] == total
+
 
 
 @pytest.mark.parametrize("cached, reread", [

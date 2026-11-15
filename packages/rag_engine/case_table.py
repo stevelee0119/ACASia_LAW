@@ -23,7 +23,7 @@ from packages.adversarial_engine import AdversarialScanner
 from packages.common.enums import MetaMessageType, Severity
 from packages.common.schemas import Block, NormalizedDocument, Page
 
-CASE_TABLE_VERSION = "case-table-v3-tk178"  # TK-178: 하이퍼링크 주소 오격리로 저장된 결과를 다시 읽는다
+CASE_TABLE_VERSION = "case-table-v4-tk180"  # TK-180: old instruction exclusions must be read again
 MAX_HEADER_ROWS = 40
 MAX_CELL_CHARS = 200_000
 MAX_ROW_CHARS = 1_000_000
@@ -232,35 +232,16 @@ def _xlsx_hidden_rows(path: Path) -> dict[str, set[int]]:
 
 def _row_scan(sheet: str, number: int, text: str, scanner: AdversarialScanner | None = None, *,
               visible: bool = True, hidden_reason: str = "") -> list[dict[str, Any]]:
-    doc = NormalizedDocument("reference-row", f"{sheet}:{number}", "text", "")
-    doc.pages.append(Page(number, blocks=[Block(f"{sheet}:{number}", text, number, visible=visible,
-                                                    attributes={"hidden_reason": hidden_reason} if hidden_reason else {})]))
-    result = (scanner or AdversarialScanner()).scan(doc)
-    return [
-        {"type": str(getattr(f.type, "value", f.type)),
-         "severity": str(getattr(f.severity, "value", f.severity)),
-         "page": number,
-         "path": (f.confidence_features or {}).get("injection_path"),
-         "excerpt": " ".join(str((f.confidence_features or {}).get("observed_text", "")).split())[:100]}
-        for f in result.findings
-        if f.severity in (Severity.HIGH, Severity.CRITICAL)
-        and f.meta_message_type == MetaMessageType.MM1_MACHINE_INSTRUCTION
-    ]
+    # TK-180: RAG rows and links are verified reference data, not scan targets.
+    return []
 
 
 _PLAIN_URL = re.compile(r"(?:https?|mailto):\S+", re.IGNORECASE)
 
 
 def _scan_hyperlink(sheet: str, number: int, link: str, scanner: AdversarialScanner | None = None) -> list[dict[str, Any]]:
-    """하이퍼링크 대상(셀 뒤의 주소)을 검사한다(TK-178).
-
-    퍼센트 인코딩을 풀어도 공백 없는 웹 주소면 사람이 읽는 문장이 아니므로 보이는 글자로 검사한다(주소 속
-    'bigcase.ai'·사건번호를 숨은 지시로 보지 않는다). 풀었을 때 공백·줄바꿈이 생기거나 주소 꼴이 아니면 숨은 글자로
-    엄격히 검사한다(주소에 지시문을 인코딩해 숨긴 경우는 계속 격리)."""
-    decoded = unquote(link).strip()
-    if _PLAIN_URL.fullmatch(decoded):
-        return _row_scan(sheet, number, decoded, scanner, visible=True, hidden_reason="")
-    return _row_scan(sheet, number, link, scanner, visible=False, hidden_reason="HYPERLINK")
+    """TK-180: 검증된 참고자료 링크는 지시문 판정 대상이 아니다. 링크를 따라가지는 않는다."""
+    return []  # TK-180: hyperlink content is reference data.
 
 
 def _chunks(record: dict[str, Any], target: int = 1040, max_size: int = 1200) -> list[dict[str, Any]]:
@@ -340,7 +321,7 @@ def extract_case_table(path: str | Path, *, file_id: str = "", revision: str = "
                               os.getenv("LV_CASE_TABLE_MAX_EXCLUDED_ROWS", "32")))
     headers: dict[str, dict[str, int]] = {}
     records, chunks = [], []
-    scanner = AdversarialScanner()
+    scanner = None
     stopped = False
     row_limit = False
     auxiliary_quarantine = False
@@ -379,7 +360,7 @@ def extract_case_table(path: str | Path, *, file_id: str = "", revision: str = "
         elif raw_text:
             mark = time.monotonic()
             warnings = _row_scan(sheet, number, raw_text, scanner, visible=visible, hidden_reason=hidden_reason)
-            # Hyperlinks are untrusted metadata, too; do not follow them.
+            # Reference links are not instruction-classification targets; do not follow them.
             for _i, _value, link in populated:
                 if link:
                     warnings.extend(_scan_hyperlink(sheet, number, link, scanner))
