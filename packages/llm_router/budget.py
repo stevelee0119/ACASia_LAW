@@ -220,7 +220,7 @@ def budget_settings(settings):
         "monthly_limit": str(money(os.getenv("LV_MONTHLY_BUDGET_USD", str(settings.monthly_budget_usd)))),
         "run_limit": str(money(os.getenv("LV_RUN_BUDGET_USD", "0"))),
         "max_input_tokens": int(os.getenv("LV_LLM_MAX_INPUT_TOKENS", "131072")),
-        "max_output_tokens": int(os.getenv("LV_LLM_MAX_OUTPUT_TOKENS", "4096")),
+        "max_output_tokens": int(os.getenv("LV_LLM_MAX_OUTPUT_TOKENS", "8192")),
         "unknown_call_usd": os.getenv("LV_LLM_UNKNOWN_CALL_USD", ""),
     }
 

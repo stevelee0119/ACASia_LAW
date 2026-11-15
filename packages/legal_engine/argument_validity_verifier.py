@@ -913,13 +913,20 @@ def _answer_provider(answer) -> str:
     return getattr(execution, "provider", "") or ""
 
 
+def _is_output_exhaustion_error(error: Any) -> bool:
+    text = str(error or "")
+    return text.startswith("OUTPUT_TRUNCATED") or (
+        text.startswith("EMPTY_RESPONSE") and "MAX_TOKENS" in text
+    )
+
+
 async def _retry_truncated_singly(router: Any, replies: List[Any], batch: List[Dict[str, Any]],
                                   policy: ExternalAIPolicy, *, excerpt_pieces=None) -> List[Any]:
     if len(batch) < 2:
         return []
     providers = [p for p in (_answer_provider(a) for a in replies) if p]
     truncated = [_answer_provider(a) for a in replies if not a.used and any(
-        str(getattr(e, "error", "") or "").startswith("OUTPUT_TRUNCATED") for e in a.executions)]
+        _is_output_exhaustion_error(getattr(e, "error", "")) for e in a.executions)]
     out = []
     for provider in (p for p in truncated if p):
         others = [p for p in providers if p != provider]
