@@ -203,3 +203,5 @@
 ## 2026-11-16 0.22.0 배포 확인
 
 main 병합 SHA `5b9957932259526e1f7edca9ba7d92767771618e`의 사용자 제공 health: status=ok·version=0.22.0·database.status=ok 일치. 태그 `v.0.22.0` 확인, 오프라인 성능표의 후보 행을 배포 버전 행으로 갱신. 온라인 평가는 별도 세션 대기이며 측정·통과 미기록. `release_022_deployment_20261116.json` 참조.
+
+- 2026-11-16 0.22.0/183f3d22 전체기능 온라인 평가 진행: TXT 역할5/5, case9첫2회23/23이나RAG대조3/5(후보누락), 동일해시23자료OCR14쪽 개선·잔여111쪽(빈쪽104/스캔7). Time Table 인접호증0/6·참고자료펼침소실 재현. TK187~189 open, TK182/186 known_open으로 효과판정 분리. Source43763383773 failure; 통합43763420560 workflow success지만6passed/1unreachable. 전체평가·정리미완료. online_0220_coverage_20261116.md 및 NEXT 마지막 보완절 참조.

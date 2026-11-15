@@ -625,9 +625,9 @@
       "note": "2026-11-12 사용자 'EX-1 처리 결정: 둘다 처리'((나) 규칙 보정 + (다) 명세 정리). case9 EX-1 회귀(LV-03 X6으로 미발견 대법원 전원합의체 판결 MEDIUM) 대응: 서면이 '전원합의체'라고 밝힌 대법원 판결을 선고 180일 뒤에도 공식 DB에서 찾지 못하면 '부존재 의심'(HIGH·NOT_FOUND·ENBANC_NOT_FOUND, authority_status SUSPICIOUS) — CRITICAL·부존재 확정은 쓰지 않음(X6 유지). 근거: 법원도서관 조사심의관 '판례공보와 종합법률정보'(2017. 8. 4.) A급(전원합의체) 판례공보 게재·종합법률정보 등록. 국가법령정보 판례 DB 전수 수록은 미증명. 평가 측 사본 6125e4a, case9 명세는 바꾸지 않음(현 기대 HIGH 이상을 충족 예정 — 배포 후 온라인 확인). 지시 NEXT 2-36-3, 증분 patches/TK-154_on_3c75071.diff. · 11-12 #266(Steve 대상, head 86d8d04) 수용: 제품·시험 = 평가 측 사본 diff 0, 합본(Steve d8b1b2a + #265 + #266) 관련 296건 통과·은퇴 5세트·고정 변화 0, CI 전부 성공(인용). 병합 대기(사용자). · 11-12 사용자 병합 지시 → #266 병합 Steve 9406d9c."
     },
     "TK-182": {
-      "status": "deployed",
+      "status": "known_open",
       "kind": "existing",
-      "note": "2026-11-15 사용자 지시로0.22.0 해소 대상. Drive19자료163쪽 미추출/암호화 과잉거절·읽기완전성 진단. 운영/사본 근거 online_0210_automated_20261115.json. TK182빈비밀번호 부분 사본54+3시험, TK183사본57시험 통과. 전체 제품 적용/운영 재측정 전이며 나머지 설계 미검증 범위는 개별 티켓 참조. 2026-11-15 릴리스 후보 fca75347: #307 제품 수용/Steve 병합 반영. 운영 재측정 전이며 배포/문제 해소 완료를 뜻하지 않음. · 2026-11-16 운영 health 사용자 제공 확인: status=ok, version=0.22.0, commit=5b9957932259526e1f7edca9ba7d92767771618e, database.status=ok. 코드 배포 확인이며 해당 티켓의 온라인 효과·문제 해소 판정은 별도 평가 전까지 미완료.",
+      "note": "2026-11-15 사용자 지시로0.22.0 해소 대상. Drive19자료163쪽 미추출/암호화 과잉거절·읽기완전성 진단. 운영/사본 근거 online_0210_automated_20261115.json. TK182빈비밀번호 부분 사본54+3시험, TK183사본57시험 통과. 전체 제품 적용/운영 재측정 전이며 나머지 설계 미검증 범위는 개별 티켓 참조. 2026-11-15 릴리스 후보 fca75347: #307 제품 수용/Steve 병합 반영. 운영 재측정 전이며 배포/문제 해소 완료를 뜻하지 않음. · 2026-11-16 운영 health 사용자 제공 확인: status=ok, version=0.22.0, commit=5b9957932259526e1f7edca9ba7d92767771618e, database.status=ok. 코드 배포 확인이며 해당 티켓의 온라인 효과·문제 해소 판정은 별도 평가 전까지 미완료. · 2026-11-16 0.22 온라인 일부 개선/잔여 확인. 같은 파일해시의 쪽수 있는 23자료에서 미추출125→111, 빈쪽104·스캔7·OCR14. 전체27자료163쪽과 분모 다름. 읽기/암호화 전체 및 부분완료 상태 검증은 계속, 종결하지 않음.",
       "deployed_on": "2026-11-16"
     },
     "TK-183": {
@@ -649,10 +649,25 @@
       "deployed_on": "2026-11-16"
     },
     "TK-186": {
-      "status": "deployed",
+      "status": "known_open",
       "kind": "existing",
-      "note": "2026-11-15 사용자0.22해소범위: 공식Source cascade INPUT_PRIVACY_BLOCKED 정밀진단. 이전Source점검3공급자NOT_SENT·원인미확정, 이번다른경로80호출성공으로종결하지않음. 개인정보/입력인젝션 보호완화금지. TK-186_official_cascade_privacy_diagnostics.md. 2026-11-15 릴리스 후보 fca75347: #307 제품 수용/Steve 병합 반영. 운영 재측정 전이며 배포/문제 해소 완료를 뜻하지 않음. 사유 코드·진단 보완 수용이며 기존 cascade 3공급자 NOT_SENT의 실제 해소는 NOT_RUN. · 2026-11-16 운영 health 사용자 제공 확인: status=ok, version=0.22.0, commit=5b9957932259526e1f7edca9ba7d92767771618e, database.status=ok. 코드 배포 확인이며 해당 티켓의 온라인 효과·문제 해소 판정은 별도 평가 전까지 미완료.",
+      "note": "2026-11-15 사용자0.22해소범위: 공식Source cascade INPUT_PRIVACY_BLOCKED 정밀진단. 이전Source점검3공급자NOT_SENT·원인미확정, 이번다른경로80호출성공으로종결하지않음. 개인정보/입력인젝션 보호완화금지. TK-186_official_cascade_privacy_diagnostics.md. 2026-11-15 릴리스 후보 fca75347: #307 제품 수용/Steve 병합 반영. 운영 재측정 전이며 배포/문제 해소 완료를 뜻하지 않음. 사유 코드·진단 보완 수용이며 기존 cascade 3공급자 NOT_SENT의 실제 해소는 NOT_RUN. · 2026-11-16 운영 health 사용자 제공 확인: status=ok, version=0.22.0, commit=5b9957932259526e1f7edca9ba7d92767771618e, database.status=ok. 코드 배포 확인이며 해당 티켓의 온라인 효과·문제 해소 판정은 별도 평가 전까지 미완료. · 2026-11-16 0.22 Source 실연동43763383773에서도 동일 cascade 3공급자 INPUT_PRIVACY_BLOCKED/NOT_USED 지속. MASKING_PII_DETECTED 사유 추가는 확인했으나 실제 경로 해소 아님. 개인정보 검사 유지한 원인/마스킹 보완 필요.",
       "deployed_on": "2026-11-16"
+    },
+    "TK-187": {
+      "status": "open",
+      "kind": "existing",
+      "note": "2026-11-16 0.22.0 온라인 공개 RAG 지지 자료 2회 모두 미선택/미색인. 문서 전체 대표어 AND + 이름 게이트에서 소수 쟁점 근거를 제거. 원인 확인, 비동기 전량색인/주장별 검색 설계 요청, 수정 미검증. TK-187_rag_claim_candidate_coverage.md."
+    },
+    "TK-188": {
+      "status": "open",
+      "kind": "existing",
+      "note": "2026-11-16 0.22.0 실제 합성 TXT 2문서의 사건 6행에서 다음 문장 호증 연결 0/6. 정렬/전언/가정 보존은 통과. 로컬 양성3실패/음성3정상. 문장 경계 결속 설계·사본 검증 필요. TK-188_timeline_adjacent_evidence_binding.md."
+    },
+    "TK-189": {
+      "status": "open",
+      "kind": "existing",
+      "note": "2026-11-16 0.22.0 실제 운영 응답 UI 통제 재렌더에서 참고자료 details open true→false 재현. 직접 브라우저 TLS는 환경 문제로 미완료; 실응답 전달 경로 사용. 같은 프로젝트/실행 내 상태 보존, 문맥 전환 초기화 필요. TK-189_reference_details_open_state.md."
     }
   },
   "updated_on": "2026-11-16"
