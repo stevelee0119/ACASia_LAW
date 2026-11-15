@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-11-15T06:01:19+00:00",
-  "commit": "83d862e",
+  "generated_at": "2026-11-15T21:26:58+00:00",
+  "commit": "183f3d2",
   "note": "CI '실연동 통합 테스트'가 국가법령정보센터·모델 API를 실제로 호출한 결과다. status: passed(통과)·failed(응답을 받았으나 기준 미달)·unreachable(외부 출처 무응답으로 판정 보류, last_pass는 이전 통과 기록). 기록이 없는 항목은 실행되지 않았다.",
   "J2": {
     "prepared": 2,
     "detected": 2,
     "false_positive": 0,
-    "summary": "모델 3개 응답, 결정론 재계산 2건, 모델 지적 연결 1건, 사람 확인으로 남은 지적 2건, 확인 문장의 오분류 0건",
+    "summary": "모델 3개 응답, 결정론 재계산 2건, 모델 지적 연결 3건, 사람 확인으로 남은 지적 3건, 확인 문장의 오분류 0건",
     "cases": [
       {
         "provider": "anthropic",
@@ -22,14 +22,17 @@
         "provider": "openai",
         "verdict": "AI_PARTIAL_GENERATION",
         "kinds": [
-          "style"
+          "style",
+          "contradiction",
+          "contradiction"
         ]
       },
       {
         "provider": "gemini",
-        "verdict": "AI_FULL_GENERATION_LIKELY",
+        "verdict": "AI_PARTIAL_GENERATION",
         "kinds": [
           "style",
+          "contradiction",
           "contradiction"
         ]
       }
@@ -39,9 +42,9 @@
       "llm_failures": {},
       "llm_failure_models": {},
       "reasons": [
-        "AI 교차검토 다수 모델(3/3개)이 AI 작성을 지목(점수 중앙값 94.0%)하여 AI_PARTIAL_GENERATION로 최종 확정함(다수결)",
-        "[anthropic] 3항 끝에 '도움이 되셨길 바랍니다. 추가로 궁금한 점이 있으면 말씀해 주세요.'라는 챗봇 응답 마무리 문구가 본문에 그대로 남아 있습니다. AI 출력물을 서면에 옮긴 흔적입니다.",
-        "[anthropic] 1·2항에는 별도의 AI 흔적이 없습니다. 잔재가 문서 끝에만 있어 적어도 일부가 AI 출력이라는 점은 확인되지만, 전체 생성 여부는 단정하기 어렵습니다."
+        "AI 교차검토 다수 모델(3/3개)이 AI 작성을 지목(점수 중앙값 80.0%)하여 AI_PARTIAL_GENERATION로 최종 확정함(다수결) (객관적 생성 흔적 미확인 — 문체·모델 추정 기반)",
+        "[anthropic] 본문 끝에 '도움이 되셨길 바랍니다. 추가로 궁금한 점이 있으면 말씀해 주세요.'라는 챗봇 응답 상투구가 있음. 준비서면에 쓰일 이유가 없는 문장으로, AI 응답을 옮기며 남은 잔재로 보임.",
+        "[anthropic] 잔재 외의 본문(사고일, 청구 항목, 입원 기간)에는 번역투나 일반론 같은 별도의 AI 흔적이 보이지 않음. 문서 전체를 AI가 생성했다고 단정할 근거는 부족함."
       ]
     },
     "tests": [
@@ -53,15 +56,15 @@
     ],
     "passed": true,
     "status": "passed",
-    "run_commit": "83d862e",
-    "run_at": "2026-11-15T06:01:19+00:00",
+    "run_commit": "183f3d2",
+    "run_at": "2026-11-15T21:26:58+00:00",
     "last_pass": {
-      "commit": "83d862e",
-      "at": "2026-11-15T06:01:19+00:00",
+      "commit": "183f3d2",
+      "at": "2026-11-15T21:26:58+00:00",
       "prepared": 2,
       "detected": 2,
       "false_positive": 0,
-      "summary": "모델 3개 응답, 결정론 재계산 2건, 모델 지적 연결 1건, 사람 확인으로 남은 지적 2건, 확인 문장의 오분류 0건"
+      "summary": "모델 3개 응답, 결정론 재계산 2건, 모델 지적 연결 3건, 사람 확인으로 남은 지적 3건, 확인 문장의 오분류 0건"
     }
   },
   "R10": {
@@ -74,11 +77,30 @@
         "document_id": "d1",
         "verdict": "AI_PARTIAL_GENERATION",
         "basis": "AI_DETECTOR",
-        "score": 0.94,
+        "score": 0.8,
         "stylometry_signal": "ABSTAIN",
         "involvement": "NO_OBJECTIVE_TRACES",
         "objective_traces": 0,
-        "scope": "PART_OF_DOCUMENT"
+        "scope": "PART_OF_DOCUMENT",
+        "evidence_strength": "HEURISTIC_ONLY",
+        "scope_disagreement": false,
+        "model_scope_opinions": {
+          "anthropic": "PART_OF_DOCUMENT",
+          "openai": "PART_OF_DOCUMENT",
+          "gemini": "PART_OF_DOCUMENT"
+        },
+        "coverage": {
+          "total_chars": 194,
+          "inspected_chars": 194,
+          "sampling_mode": "full_text",
+          "is_full_coverage": true,
+          "omitted_chars": 0,
+          "char_limit": 24000,
+          "quote_masked_chars": 0,
+          "scope": "BODY_WITH_QUOTES_AND_INSTRUCTIONS_EXCLUDED",
+          "requested_chars": 194,
+          "model_executed": true
+        }
       }
     ],
     "diagnostics": {
@@ -94,11 +116,11 @@
     ],
     "passed": true,
     "status": "passed",
-    "run_commit": "83d862e",
-    "run_at": "2026-11-15T06:01:19+00:00",
+    "run_commit": "183f3d2",
+    "run_at": "2026-11-15T21:26:58+00:00",
     "last_pass": {
-      "commit": "83d862e",
-      "at": "2026-11-15T06:01:19+00:00",
+      "commit": "183f3d2",
+      "at": "2026-11-15T21:26:58+00:00",
       "prepared": 1,
       "detected": 1,
       "false_positive": 0,
@@ -229,16 +251,16 @@
       {
         "test": "test_G1_constitutional_decisions_are_found_by_exact_number",
         "outcome": "passed",
-        "seconds": 47.1
+        "seconds": 33.3
       }
     ],
     "passed": true,
     "status": "passed",
-    "run_commit": "83d862e",
-    "run_at": "2026-11-15T06:01:19+00:00",
+    "run_commit": "183f3d2",
+    "run_at": "2026-11-15T21:26:58+00:00",
     "last_pass": {
-      "commit": "83d862e",
-      "at": "2026-11-15T06:01:19+00:00",
+      "commit": "183f3d2",
+      "at": "2026-11-15T21:26:58+00:00",
       "prepared": 11,
       "detected": 11,
       "false_positive": 0,
@@ -287,16 +309,16 @@
       {
         "test": "test_J1_merged_notation_is_verified_through_the_lead_number",
         "outcome": "passed",
-        "seconds": 16.5
+        "seconds": 10.3
       }
     ],
     "passed": true,
     "status": "passed",
-    "run_commit": "83d862e",
-    "run_at": "2026-11-15T06:01:19+00:00",
+    "run_commit": "183f3d2",
+    "run_at": "2026-11-15T21:26:58+00:00",
     "last_pass": {
-      "commit": "83d862e",
-      "at": "2026-11-15T06:01:19+00:00",
+      "commit": "183f3d2",
+      "at": "2026-11-15T21:26:58+00:00",
       "prepared": 2,
       "detected": 2,
       "false_positive": 0,
@@ -305,9 +327,9 @@
   },
   "R4": {
     "prepared": 3,
-    "detected": 3,
+    "detected": 2,
     "false_positive": 0,
-    "summary": "실제 조회 3/3건, 다른 번호 기록 채택 0건",
+    "summary": "실제 조회 2/3건, 다른 번호 기록 채택 0건",
     "cases": [
       {
         "case_number": "2004헌마55",
@@ -331,24 +353,25 @@
         "case_number": "2016헌나10",
         "status": "UNVERIFIED",
         "adopted": null,
-        "lookup_ready": true,
+        "lookup_ready": false,
         "notes": [
-          "헌재결정례 DB(detc)에서 사건번호가 일치하는 결정을 확인하지 못했다 — 사건번호 일치 없음(조회 DB detc, 시도: detc:nb=2016헌나10 0건 → detc:search=2 0건; 다른 사건 0건은 채택하지 않음). 조회 실패는 부존재 판단이 아니다."
+          "공식 Source 조회 불가(TIMEOUT): 자동 재조회 후에도 외부 출처 응답을 확보하지 못했습니다"
         ]
       }
     ],
     "diagnostics": {},
+    "unreachable": "헌재 결정 조회: 무응답 1건",
     "tests": [
       {
         "test": "test_R4_only_exact_number_records_are_adopted",
-        "outcome": "passed",
-        "seconds": 14.8
+        "outcome": "skipped",
+        "seconds": 36.9
       }
     ],
-    "passed": true,
-    "status": "passed",
-    "run_commit": "83d862e",
-    "run_at": "2026-11-15T06:01:19+00:00",
+    "passed": false,
+    "status": "unreachable",
+    "run_commit": "183f3d2",
+    "run_at": "2026-11-15T21:26:58+00:00",
     "last_pass": {
       "commit": "83d862e",
       "at": "2026-11-15T06:01:19+00:00",
@@ -366,11 +389,11 @@
     "cases": [
       {
         "citation": {
-          "citation_id": "CIT_84fb716bfadb",
+          "citation_id": "CIT_daf2eec44bc8",
           "type": "CASE",
           "raw_text": "대법원 1996. 2. 15.\n선고 95다38677 전원합의체 판결",
           "document_id": "d1",
-          "block_id": "B_bc46c79f9318",
+          "block_id": "B_2b931e09fd51",
           "page": 1,
           "span": [
             16,
@@ -408,16 +431,16 @@
       {
         "test": "test_R3_line_broken_court_and_date_survive_to_the_live_lookup",
         "outcome": "passed",
-        "seconds": 21.7
+        "seconds": 24.5
       }
     ],
     "passed": true,
     "status": "passed",
-    "run_commit": "83d862e",
-    "run_at": "2026-11-15T06:01:19+00:00",
+    "run_commit": "183f3d2",
+    "run_at": "2026-11-15T21:26:58+00:00",
     "last_pass": {
-      "commit": "83d862e",
-      "at": "2026-11-15T06:01:19+00:00",
+      "commit": "183f3d2",
+      "at": "2026-11-15T21:26:58+00:00",
       "prepared": 1,
       "detected": 1,
       "false_positive": 0,
@@ -444,16 +467,16 @@
       {
         "test": "test_R6_running_head_citation_is_not_counted",
         "outcome": "passed",
-        "seconds": 18.0
+        "seconds": 57.5
       }
     ],
     "passed": true,
     "status": "passed",
-    "run_commit": "83d862e",
-    "run_at": "2026-11-15T06:01:19+00:00",
+    "run_commit": "183f3d2",
+    "run_at": "2026-11-15T21:26:58+00:00",
     "last_pass": {
-      "commit": "83d862e",
-      "at": "2026-11-15T06:01:19+00:00",
+      "commit": "183f3d2",
+      "at": "2026-11-15T21:26:58+00:00",
       "prepared": 1,
       "detected": 1,
       "false_positive": 0,
