@@ -73,7 +73,9 @@ def test_ai_repeat_summary_agreement_and_condition():
             ai_repeat_summary.observe(run("c1", "UNCERTAIN", 0.5, [{"provider": "a", "verdict": "UNCERTAIN", "score": 0.4}])),
             ai_repeat_summary.observe(run("c1", "AI_PARTIAL_GENERATION", 0.7, [{"provider": "a", "verdict": "AI_X", "score": 0.8}]))]
     summary = ai_repeat_summary.summarize(runs, ["AI_PARTIAL_GENERATION"])
-    assert summary["same_condition"] and summary["agreement"] == 0.667 and summary["uncertain_runs"] == 1
+    # Legacy reports lack input/policy/model/Drive evidence; equal commit labels cannot prove equality.
+    assert not summary["same_condition"] and summary["condition_status"] == "UNKNOWN"
+    assert summary["agreement"] == 0.667 and summary["uncertain_runs"] == 1
     assert summary["expected_ratio"] == 0.667 and summary["provider_score_range"]["a"] == [0.4, 0.8, 3]
     runs[0]["commit"] = "c2"
     assert ai_repeat_summary.summarize(runs)["same_condition"] is False

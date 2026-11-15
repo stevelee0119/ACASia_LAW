@@ -7092,3 +7092,8 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 ## #303 평가자 변경 통합 정정 (2026-11-15)
 
 기존의 #311 → Steve 선행 병합 대기는 해제한다. 평가자 workflow 커밋을 #303의 잠금 파일과 같은 브랜치에 일반 병합해 함께 검증한다. 구현 에이전트는 원격 #303 브랜치를 받아 최신 head의 CI 결과를 확인하고, 통과하면 추가 구현 없이 재판정·병합 승인 단계로 진행한다. 상세 원인·통합 이력·잔여 조치는 [PR303_evaluator_integration_resolution_2026-11-15.md](PR303_evaluator_integration_resolution_2026-11-15.md)를 따른다.
+
+
+## 0.22.0 통합 후보 판정 및 버전 커밋 (2026-11-15)
+
+제품 후보 fca75347은 최종 verify_all 전체/고정·은퇴 비교를 통과했다. 평가 PR의 CI 성공·Steve 통합 후 `RELEASE_022_version_commit_instructions_2026-11-15.md`로 단일 버전 커밋을 제출한다. 버전 판정0.22.0 minor, 제품 변경은 하지 않는다. #303/#311 선행 통합 대기는 끝났다. 새 봉인 결과는 한국어OCR·운영본 쌍 비교 부재로 보류이며 별도 `RELEASE_022_sealed_remeasurement_instructions_2026-11-15.md`를 봉인 담당자에게 전달한다. main 병합/배포는 아직 불가. 상세 `docs/scorecards/release_022_candidate_20261115.md`.
