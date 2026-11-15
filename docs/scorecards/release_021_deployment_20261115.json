@@ -216,18 +216,19 @@
       "passed": 23,
       "total": 23
     },
-    "report_count": 7,
+    "report_count": 9,
     "health_failed_in_all": [
       "H-REF"
     ],
     "tk180_controlled_eight_reports": "NOT_RUN",
-    "ai_three_repeats": "NOT_RUN",
+    "ai_three_repeats": "OBSERVED_3_RUNS_BUT_DRIVE_SNAPSHOT_DIFFERS",
     "abCD_47_answer_key": "RECEIVED_ADJUDICATED",
     "adjudication_47": {
       "answer_key_passed": 46,
       "compatibility_passed": 47,
       "total": 47,
       "evidence": "online_0210_47_adjudication_20261115.json"
-    }
+    },
+    "repeat_evidence": "online_0210_case9_repeat_20261115.json"
   }
 }

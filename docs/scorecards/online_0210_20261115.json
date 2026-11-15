@@ -370,5 +370,18 @@
       "total": 47
     },
     "evidence": "online_0210_47_adjudication_20261115.json"
+  },
+  "case9_repeat_followup": {
+    "report_count_added": 2,
+    "evidence": "online_0210_case9_repeat_20261115.json",
+    "answer_each": "23/23",
+    "health_each": "5/6 H-REF",
+    "ai_modes": [
+      "AI_PARTIAL_GENERATION",
+      "AI_FULL_GENERATION_LIKELY",
+      "AI_PARTIAL_GENERATION"
+    ],
+    "observed_agreement": 0.667,
+    "fixed_snapshot_three_repeat": "NOT_COMPLETE"
   }
 }

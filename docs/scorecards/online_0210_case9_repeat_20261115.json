@@ -1,0 +1,232 @@
+{
+  "date": "2026-11-15",
+  "version": "0.21.0",
+  "runs": [
+    {
+      "report_file": "verification_rpt_6a2eb627de744efc.json",
+      "sha256": "36f247732232df0fd3529a241f7ff5fb10ed2535dc7cf8beb138a79c0c1ff744",
+      "input_sha256": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "answer_score": {
+        "passed": 23,
+        "total": 23
+      },
+      "pipeline_health": {
+        "passed": 5,
+        "total": 6,
+        "failed": [
+          "H-REF"
+        ]
+      },
+      "case9_health": {
+        "passed": 1,
+        "total": 1
+      },
+      "model_calls": 27,
+      "model_failures": 0,
+      "ai_verdict": "AI_PARTIAL_GENERATION",
+      "ai_score": 0.58,
+      "ai_model_opinions": [
+        {
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "score": 0.58,
+          "verdict": "UNCERTAIN"
+        },
+        {
+          "provider": "anthropic",
+          "model": "claude-sonnet-5-5",
+          "score": 0.55,
+          "verdict": "AI_PARTIAL_GENERATION"
+        },
+        {
+          "provider": "gemini",
+          "model": "gemini-3.8-flash",
+          "score": 0.75,
+          "verdict": "AI_PARTIAL_GENERATION"
+        }
+      ],
+      "reference_snapshot_hash": "56d30e259ca627665f45fd994eef93c853cf711c7ab33b79fd1ff9b44135baa1",
+      "reference_status": "PARTIAL",
+      "reference_issue_counts": {
+        "DRIVE_NETWORK_ERROR (READ_TIMEOUT (0 bytes, ReadTimeout))": 1,
+        "REFERENCE_PARTIALLY_READ": 3
+      },
+      "control_sources_found": 0,
+      "input_security": [
+        {
+          "type": "META_INSTRUCTION",
+          "severity": "HIGH"
+        },
+        {
+          "type": "HIDDEN_INSTRUCTION",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    {
+      "report_file": "verification_rpt_4e17e2a026004f10.json",
+      "sha256": "7e2a2936ceb43ba61289583cf42c4c9191671cd7639d4305c8c1628cb071a662",
+      "input_sha256": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "answer_score": {
+        "passed": 23,
+        "total": 23
+      },
+      "pipeline_health": {
+        "passed": 5,
+        "total": 6,
+        "failed": [
+          "H-REF"
+        ]
+      },
+      "case9_health": {
+        "passed": 1,
+        "total": 1
+      },
+      "model_calls": 27,
+      "model_failures": 0,
+      "ai_verdict": "AI_FULL_GENERATION_LIKELY",
+      "ai_score": 0.78,
+      "ai_model_opinions": [
+        {
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "score": 0.78,
+          "verdict": "AI_FULL_GENERATION_LIKELY"
+        },
+        {
+          "provider": "anthropic",
+          "model": "claude-sonnet-5-5",
+          "score": 0.55,
+          "verdict": "AI_PARTIAL_GENERATION"
+        },
+        {
+          "provider": "gemini",
+          "model": "gemini-3.8-flash",
+          "score": 0.92,
+          "verdict": "AI_FULL_GENERATION_LIKELY"
+        }
+      ],
+      "reference_snapshot_hash": "beebe315ead1c18b9bb957e6d024e9074922fb36b86364d26223360bf43580a7",
+      "reference_status": "PARTIAL",
+      "reference_issue_counts": {
+        "ENCRYPTED_REFERENCE": 1,
+        "REFERENCE_PARTIALLY_READ": 19
+      },
+      "control_sources_found": 0,
+      "input_security": [
+        {
+          "type": "META_INSTRUCTION",
+          "severity": "HIGH"
+        },
+        {
+          "type": "HIDDEN_INSTRUCTION",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    {
+      "report_file": "verification_rpt_2a5aa601a2d24000.json",
+      "sha256": "14b1262f71e999842ce91ef9dc8a169b4cb765aac167484d983984a598207ae3",
+      "input_sha256": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92",
+      "commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "answer_score": {
+        "passed": 23,
+        "total": 23
+      },
+      "pipeline_health": {
+        "passed": 5,
+        "total": 6,
+        "failed": [
+          "H-REF"
+        ]
+      },
+      "case9_health": {
+        "passed": 1,
+        "total": 1
+      },
+      "model_calls": 27,
+      "model_failures": 0,
+      "ai_verdict": "AI_PARTIAL_GENERATION",
+      "ai_score": 0.62,
+      "ai_model_opinions": [
+        {
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "score": 0.74,
+          "verdict": "AI_PARTIAL_GENERATION"
+        },
+        {
+          "provider": "anthropic",
+          "model": "claude-sonnet-5-5",
+          "score": 0.5,
+          "verdict": "AI_PARTIAL_GENERATION"
+        }
+      ],
+      "reference_snapshot_hash": "beebe315ead1c18b9bb957e6d024e9074922fb36b86364d26223360bf43580a7",
+      "reference_status": "PARTIAL",
+      "reference_issue_counts": {
+        "ENCRYPTED_REFERENCE": 1,
+        "REFERENCE_PARTIALLY_READ": 19
+      },
+      "control_sources_found": 0,
+      "input_security": [
+        {
+          "type": "META_INSTRUCTION",
+          "severity": "HIGH"
+        },
+        {
+          "type": "HIDDEN_INSTRUCTION",
+          "severity": "HIGH"
+        }
+      ]
+    }
+  ],
+  "ai_repeat_observation": {
+    "runs": 3,
+    "commits": [
+      "83d862e78ba3"
+    ],
+    "verdict_counts": {
+      "AI_PARTIAL_GENERATION": 2,
+      "AI_FULL_GENERATION_LIKELY": 1
+    },
+    "agreement": 0.667,
+    "modal_verdict": "AI_PARTIAL_GENERATION",
+    "uncertain_runs": 0,
+    "expected_ratio": 1.0,
+    "provider_score_range": {
+      "anthropic": [
+        0.5,
+        0.55,
+        3
+      ],
+      "gemini": [
+        0.75,
+        0.92,
+        2
+      ],
+      "openai": [
+        0.58,
+        0.78,
+        3
+      ]
+    }
+  },
+  "conditions": {
+    "same_commit": true,
+    "same_input_sha256": true,
+    "same_context_execution_security_versions_issues": true,
+    "same_drive_snapshot_all_three": false,
+    "same_drive_snapshot_last_two": true,
+    "fully_controlled_three_repeat": "NOT_COMPLETE",
+    "note": "ai_repeat_summary.py의 same_condition은 현재 커밋 일치만 확인하므로 완전 조건 일치로 인용하지 않음. RAG 스냅샷 차이의 AI 판정에 대한 인과관계는 입증하지 않음."
+  },
+  "interpretation": [
+    "기존과 추가2회 모두 case9정답23/23, 추가건강1/1, 공통건강5/6(H-REF).",
+    "AI 범주 일부/전체/일부, 최다판정2/3(66.7%), 최종UNCERTAIN0. AI관여 예상범위3/3이나 전체/일부 구분의 안정성이나 정확도100%를 뜻하지 않음.",
+    "Gemini2회만 참여: auto라우팅은 앞두모델 일치시3번째호출생략. 이번 실패0이므로 무응답/장애로 분류하지 않음.",
+    "TK180전용8실험·RAG대조군·고정스냅샷3반복은 미완료."
+  ]
+}
