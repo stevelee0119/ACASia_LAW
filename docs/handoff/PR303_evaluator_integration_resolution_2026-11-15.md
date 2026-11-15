@@ -20,3 +20,7 @@
 ## 사전 검증
 
 결합 트리에서 `tests/test_tk181_runtime_manifest.py`와 `tests/test_v5_eval_reliability.py` 18건 통과. 보호 경로 검사는 workflow의 마지막 변경자를 `a429e2d` 평가자 커밋으로 인식했고, 시험 삭제·약화/하드코딩/평가 세트 문구 대조도 통과했다. 전체 CI 결과는 PR의 최신 head에 연결된 실행을 기준으로 판정한다.
+
+## 결합 CI에서 확인한 추가 평가자 조치
+
+`7f59972f`의 점수 게이트는 해시 설치·점수 비교·회귀 원장·은퇴 비교를 통과했으나, 보호 수용 화면 시험 3건에서 Playwright의 Chromium 실행 파일 부재로 실패했다. 테스트 의존성 설치로 기존 `importorskip` 조건이 해제되면서 드러난 환경 누락이다. 평가자가 score-gate 의존성 설치 다음에 기존 CI와 동일한 `python -m playwright install --with-deps chromium` 단계를 추가했다. 시험을 건너뛰거나 기대값을 바꾸지 않는다. 이 후속 evaluator 커밋을 포함한 최신 head로 전체 검사를 판정한다.

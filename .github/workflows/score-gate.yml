@@ -52,6 +52,10 @@ jobs:
       - name: 의존성 설치
         run: pip install --require-hashes -r requirements-test.txt
 
+      # 테스트 잠금에는 Playwright가 포함되며, 보호 수용 시험 3건이 Chromium을 실행한다.
+      - name: 수용 시험 브라우저 설치
+        run: python -m playwright install --with-deps chromium
+
       - name: 성적표 작성
         run: python scripts/scorecard.py --out artifacts/scorecard.json | tee artifacts-summary.txt
 
