@@ -70,3 +70,13 @@ def test_runtime_requirements_exclude_pytest_and_include_hashes():
 def test_dockerfile_requires_hashes():
     dockerfile = (ROOT / "docker/Dockerfile").read_text(encoding="utf-8")
     assert "--require-hashes" in dockerfile
+
+
+def test_workflows_install_hashed_test_requirements():
+    for rel_path in (".github/workflows/score-gate.yml", ".github/workflows/live-integration.yml"):
+        content = (ROOT / rel_path).read_text(encoding="utf-8")
+        assert re.search(
+            r"pip\s+install\s+--require-hashes\s+-r\s+requirements-test\.txt",
+            content,
+        ), f"{rel_path} must install requirements-test.txt with --require-hashes"
+
