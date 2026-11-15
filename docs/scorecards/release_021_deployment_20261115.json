@@ -210,8 +210,18 @@
     }
   },
   "document_online_evaluation": {
-    "status": "NOT_RUN",
-    "reason": "운영 로그인 세션·Drive 대조군 업로드 및 실제 실행 보고서 미제공. GitHub 실연동 점검은 운영 문서별 검증을 대체하지 않는다.",
-    "plan": "docs/scorecards/online_compare_0200_0210_plan.md"
+    "status": "PARTIAL",
+    "evidence": "online_0210_20261115.json",
+    "case9_answer": {
+      "passed": 23,
+      "total": 23
+    },
+    "report_count": 7,
+    "health_failed_in_all": [
+      "H-REF"
+    ],
+    "tk180_controlled_eight_reports": "NOT_RUN",
+    "ai_three_repeats": "NOT_RUN",
+    "abCD_47_answer_key": "MISSING"
   }
 }

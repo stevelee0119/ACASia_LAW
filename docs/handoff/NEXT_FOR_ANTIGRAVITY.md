@@ -7058,3 +7058,8 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 - 외부 Source 실연동43683347281(with_llm=true/strict=true) failure: 공식 판례 조회5/6, 학술3/4, 모델 직접3/3·AI/주장 합의8/8 성공. 2015모2524 미일치는 0.20.0 실행43655080920에서도 동일. Semantic Scholar 제한·구형 Gemini404(현재 Gemini 성공)는 외부 응답. 인용 검증3공급자 모두 INPUT_PRIVACY_BLOCKED/NOT_SENT; 이전 실행 모델OFF로 신규/기존 판정 불가. 지시문 판정과 구분·개인정보 검사 우회 금지. 조사 메모 requests/online_021_cascade_privacy_followup.md.
 - 별도 평가 브랜치 실연동 통합43683349002 성공: 이번 커밋7항목 모두 passed. 합성 모델63실행 기록·61성공·2개인정보 차단, semantic_review7인용/3실행·model_fact_reconcile16입력/4실행(단계 오류0). 전체 온라인 합격으로 확대하지 않음.
 - 배포 증거 release_021_deployment_20261115.json, 원본 통합 결과/매니페스트 보존. TK-180 deployed는 코드 상태이며 실제8보고서 NOT_RUN. 운영 로그인/Drive 대조군 업로드 및 보고서가 없어 case9·RAG 대조군·AI3반복·TK-1808보고서 채점은 미실행. 이 잔여를 완료로 계산하지 않음.
+
+### 2-62-21. 운영 보고서7건 평가 (11-15)
+- 사용자 보고서7건 모두83d862e7. case9정답23/23·추가건강1/1, 공통건강 전부5/6(H-REF실패), 모델124호출 기록 실패0. Drive PARTIAL은 부분읽기·암호화·초기timeout이며 지시문 격리 사유 없음.
+- 입력case9 본문/북마크HIGH 탐지 유지·실제RAG활용 관찰. TK-180전용8실험/AI반복은 미완료, RAG대조군 자료 미확인. A~D47항목은 저장소밖answer_key 미제공으로 확정채점 보류.
+- D 세형식 합계/비율 검출. HWP/HWPX의 미확인 모델 지적 겹침은TK-173잔여 가능성(사본재현/원인확정 전). 제품변경0. 상세 online_0210_20261115.md/json.
