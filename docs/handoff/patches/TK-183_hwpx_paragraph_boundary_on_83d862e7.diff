@@ -1,0 +1,33 @@
+--- a/packages/document_engine/hwp_parser.py
++++ b/packages/document_engine/hwp_parser.py
+@@ -251,7 +251,7 @@
+                 col = _int(addr, "colAddr", c_i) if addr is not None else c_i
+                 row_span = max(1, _int(span, "rowSpan", 1)) if span is not None else 1
+                 col_span = max(1, _int(span, "colSpan", 1)) if span is not None else 1
+-                text = " ".join(_own_text(p).strip() for p in tc.iter()
++                text = "\n".join(_own_text(p).strip() for p in tc.iter()
+                                 if _hp(p, "p") and _nearest_cell(p) is tc and _own_text(p).strip())
+                 cells.append((row, col, row_span, col_span, text))
+         rows = rows_attr or max((r + rs for r, _, rs, _, _ in cells), default=0)
+--- a/tests/test_tk132_hwpx_tables.py
++++ b/tests/test_tk132_hwpx_tables.py
+@@ -77,7 +77,7 @@
+     doc = hwpx(tmp_path, (0, table(1, 2,
+         [cell(0, 0, "첫 문단", "둘째 문단"), cell(0, 1, "바깥 칸", inner=inner)])))
+     outer, nested = doc.structure["tables"]
+-    assert outer["cells"] == [["첫 문단 둘째 문단", "바깥 칸"]]  # 중첩 표 글자는 바깥 칸에 섞이지 않는다
++    assert outer["cells"] == [["첫 문단\n둘째 문단", "바깥 칸"]]  # 중첩 표 글자는 바깥 칸에 섞이지 않는다
+     assert nested["nested"] is True and nested["parent_table_ref"] == outer["table_ref"]
+     assert nested["cells"] == [["내부 표", "7일"]]
+     assert text_of(doc).count("7일") == 1
+@@ -165,3 +165,10 @@
+     doc = hwpx(tmp_path, (0, big), (1, big), (2, big))
+     assert len(doc.structure.get("tables") or []) == 2         # 세 번째 표는 문서 상한을 넘어 만들지 않는다
+     assert any("상한" in w for w in doc.parse_warnings)
++
++
++@pytest.mark.parametrize("paragraphs", [("문단 가", "문단 나"), ("문단 가", "문단 나", "문단 다"), ("문단 가", "", "문단 나")])
++def test_candidate_preserves_cell_paragraph_boundaries(tmp_path, paragraphs):
++    doc = hwpx(tmp_path, (0, table(1, 1, [cell(0, 0, *paragraphs)])))
++    expected = "\n".join(p for p in paragraphs if p)
++    assert doc.structure["tables"][0]["cells"][0][0] == expected
