@@ -2034,3 +2034,8 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
 ## 2026-11-15 0.22.0 통합 후보 판정
 
 후보 fca75347 대 main83d862e7, 최종 verify_all 전체 종료0: 수용1278·원장2357·전체10430·브라우저200 passed, 실제실패0. 초기 tzdata/경로 및 bind mount 내구성 환경실패는 별도 보존·제외. 고정82.6/81.9·은퇴53.3/48.6/56.9/45.8/34.1 유지, 오탐/A0, 항목후퇴0. 0.20/0.21/후보 같은365항목195/365, RER0. 0.22 minor는 Time Table·모델/AI정보 변경 가치로 판정. TK185 평가 조건 도구43시험+README12시험. 운영미측정 유지. 새 봉인 사용자 요약13/62·보안0/10·PII13/26은 kor 부재/운영본 비교·원본집계 부재로 보류. 평가 PR→버전 커밋→봉인/최종CI→사용자 main 승인 순서. 근거 release_022_candidate_20261115.md/json 계열.
+
+
+## 2026-11-15 0.22.0 봉인 최종 비교
+
+사용자가 제공한 main 83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca / 후보 fca75347c5612b3a5960005726b4a31f7143b38a 집계 JSON 직접 대조. Offline/Python 3.11.18/Tesseract 5.3.4 eng·kor·osd, dataset SHA-256 `940bcdcefcdca102f8081d7baf22e5a88eac75b737088e069c520dec2ef1da61`, 8문서·62항목·36유형 동일. 구23.0, v2 13/62, macro 16.67%, 개인정보13/26 유지, 36유형별 저하 0, 오탐/A/엔진오류0. 보안탐지 양측0/10이며 `injection_defended`는 별도 대리값. 판정 PASS_NO_REGRESSION; 실무 법률 정확도/전체 정밀도/보안효과 미측정. JSON 해시·집계 `release_022_sealed_comparison_20261115.json`. 버전 커밋 #314 head b91aaab0의 필수 CI가 완료되면 Steve 통합 후 릴리스 절차.

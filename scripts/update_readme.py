@@ -136,11 +136,13 @@ def render_performance(rows: list) -> str:
     first, last = rows[0], rows[-1]
     dates = sorted({r["measured_on"] for r in rows})
     measured = dates[0] if len(dates) == 1 else f"{dates[0]}~{dates[-1]}"
+    candidate_note = ("<br>\n> **표기:** v0.22*는 평가 완료된 통합 후보이며 아직 배포된 릴리스가 아니다.\n"
+                     if last["version"].endswith("-candidate") else "")
     return (f"![버전별 성능 발전 추이]({CHART})\n\n"
             f"> **벤치마크 기준** — ACAS AegisLAW 내부 회귀 벤치마크(공개 벤치마크 아님). 고정 7세트(개발 dev·홀드아웃 holdout·"
             f"은퇴 봉인 5세트) 51문서의 결함·확인불가 **{last['items']}항목**(그중 법률 결함 {last['legal_items']}항목)을 "
             f"{first['version']}~{last['version']} 각 릴리스 코드에 같은 조건(오프라인, 공식 DB·LLM 호출 없음, 한국어 OCR 포함)으로 "
-            f"공급해 {measured}에 다시 측정했다.<br>\n"
+            f"공급해 {measured}에 다시 측정했다.{candidate_note}<br>\n"
             "> **왼쪽** 같은 항목을 같은 규칙으로 일대일 재채점한 재현율(%) · **오른쪽** 기존 산식 회귀 점수(/100). "
             "두 패널은 분모·산식이 달라 서로 합산·비교하지 않는다.<br>\n"
             "> 실무 법률 정확도나 KBL 등 공개 벤치마크 점수가 아니다. 공식 DB를 조회하지 않으므로 법률 결함 재현율은 "
