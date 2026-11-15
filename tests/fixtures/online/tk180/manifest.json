@@ -1,0 +1,38 @@
+{
+  "feature": "TK-180",
+  "schema_version": 1,
+  "spec_rule_version": "1",
+  "status": "PREPARED_NOT_RUN_ONLINE",
+  "report_policy": "one_input_document_per_report",
+  "variants": [
+    "normal",
+    "visible",
+    "metadata",
+    "hidden",
+    "encoded"
+  ],
+  "reference_formats": [
+    "txt",
+    "pdf",
+    "docx",
+    "xlsx"
+  ],
+  "hashes": {
+    "README.md": "f2a0e19b5bb89f9e3bb4645768e1d5f945598feb6132bdd67b8546f8bdf37b17",
+    "TK180_unrelated_reference_control.txt": "518221bb2afc253f8b5ebf76a69eef8eb17e0dda023d6863aec0706be59c46a8",
+    "TK180_verified_reference_control.docx": "29d6c9f3acc2f26608f4683e602b9ea9635a899b51b5fb12c92d0d52d41215f9",
+    "TK180_verified_reference_control.pdf": "b8c96c1b967553fb34b6bdfe1037669ad02af5eed7f409b404c34c2b3bcb2d19",
+    "TK180_verified_reference_control.txt": "1b7f31a25cd0a295c1bd9a2ab0032ed2a693505b96bb564146dc68a3d8de1c0f",
+    "TK180_verified_reference_control.xlsx": "f56d57f9f0d3eb957b07dab300c583d27e835affc9cc3d07edf10d0b24cf96fb",
+    "input_encoded.docx": "a65b596e97932b660fb0151a878ee052de5842e320ac0a893698190c857fd74d",
+    "input_hidden.docx": "288d4d95ddb5f02c25d4943563896c8e2e8c908a7ba315eac44c2726324156bb",
+    "input_metadata.docx": "5c899116c85fa47a42d2010e9d9af6cfff0b41bd9a0a104ec38607eac603619b",
+    "input_normal.docx": "10e68461a2bf6c7d0a786fced772368e6d36dbdb9e8e4368a80a9de8f00b0ed6",
+    "input_visible.docx": "a16e29c032e2256fa79d782235b3aae0676dfa2116ff4c850ad52779595d22fb",
+    "spec_encoded.json": "a385e66bc4b40bb4c46e2ba1640f5bcf680b69632261946d6c93049386355268",
+    "spec_hidden.json": "12b0805518143d0adb7bdd713afa7c564cb9f8af24d73d85feef104350a7a224",
+    "spec_metadata.json": "e54e64e692707999729c678e309e304768f462c0c34a4fa7652ade78ac0d771b",
+    "spec_normal.json": "8210cead7279738bba821c21e20c57ee568ebdd1fd2520cc45daecc74d546a61",
+    "spec_visible.json": "8438e9cb49fff4c828e7479315293790275448a680a4cfdb5dc2d5875849ba8f"
+  }
+}
