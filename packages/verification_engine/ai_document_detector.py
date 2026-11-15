@@ -223,6 +223,12 @@ def _rule_based_ai_detection(
         else:
             reasons.append("객관적 작성 흔적을 찾지 못해 판단을 유보함(흔적이 없다는 것이 사람 작성의 근거는 아님)")
 
+    signals["involvement"] = "TRACES_FOUND" if objective_hits else "NO_OBJECTIVE_TRACES"
+    signals["scope"] = _scope_for_verdict(verdict)
+    signals["evidence_strength"] = _evidence_strength(
+        objective_hits, bool(stylometry.get("stylometry_alert", False)), synthetic_cluster, used_llm=False
+    )
+
     return AIDetectorResult(
         verdict=verdict,
         score=score,
@@ -437,6 +443,23 @@ _VERDICT_RANK = {"HUMAN_AUTHORED_LIKELY": 0, "UNCERTAIN": 1, "AI_PARTIAL_GENERAT
                  "AI_FULL_GENERATION_LIKELY": 3}
 
 
+def _scope_for_verdict(verdict: str) -> str:
+    return {
+        "AI_FULL_GENERATION_LIKELY": "WHOLE_DOCUMENT",
+        "AI_PARTIAL_GENERATION": "PART_OF_DOCUMENT",
+    }.get(verdict, "NOT_APPLICABLE" if verdict in ("HUMAN_AUTHORED_LIKELY", "UNCERTAIN") else "UNDETERMINED")
+
+
+def _evidence_strength(
+    objective_traces: int, has_stylometry: bool, has_synthetic_cluster: bool, *, used_llm: bool
+) -> str:
+    if objective_traces > 0:
+        return "OBJECTIVE_TRACES"
+    if has_stylometry or has_synthetic_cluster or used_llm:
+        return "HEURISTIC_ONLY"
+    return "NONE"
+
+
 def _combine_model_verdicts(rule_res: AIDetectorResult, answers: List[Any], sample: str) -> AIDetectorResult:
     """모델 판정을 교차검증해 합친다.
 
@@ -502,6 +525,15 @@ def _combine_model_verdicts(rule_res: AIDetectorResult, answers: List[Any], samp
     full_votes = sum(1 for o in ai_opinions if o["verdict"] == "AI_FULL_GENERATION_LIKELY")
     model_median = float(statistics.median(o["score"] for o in opinions))
 
+    model_scope_opinions = {o["provider"]: _scope_for_verdict(o["verdict"]) for o in opinions}
+    ai_scopes = {
+        _scope_for_verdict(o["verdict"])
+        for o in ai_opinions
+        if _scope_for_verdict(o["verdict"]) in ("WHOLE_DOCUMENT", "PART_OF_DOCUMENT")
+    }
+    scope_disagreement = len(ai_scopes) > 1
+    evidence_strength = _evidence_strength(objective, has_stylometry, has_synthetic_cluster, used_llm=True)
+
     # TK-11 다수결 판정 규칙
     if n == 1:
         verdict = opinions[0]["verdict"]
@@ -518,9 +550,10 @@ def _combine_model_verdicts(rule_res: AIDetectorResult, answers: List[Any], samp
             verdict = "AI_FULL_GENERATION_LIKELY" if full_votes > n / 2 else "AI_PARTIAL_GENERATION"
             agreement = "AGREE" if len({o["verdict"] for o in opinions}) == 1 else "MAJORITY_AI_AGREE"
             decision_rule = "MAJORITY_AI_CONSENSUS"
+            basis_note = "" if objective > 0 else " (객관적 생성 흔적 미확인 — 문체·모델 추정 기반)"
             reasons_prefix = (
                 f"AI 교차검토 다수 모델({len(ai_opinions)}/{n}개)이 AI 작성을 지목(점수 중앙값 {round(model_median*100, 1)}%)하여 "
-                f"{verdict}로 최종 확정함(다수결)"
+                f"{verdict}로 최종 확정함(다수결){basis_note}"
             )
         else:
             verdict = "UNCERTAIN"
@@ -595,6 +628,11 @@ def _combine_model_verdicts(rule_res: AIDetectorResult, answers: List[Any], samp
                  "model_score_median": round(model_median, 3),
                  "verdict_distribution": {v: sum(o["verdict"] == v for o in opinions) for v in _VERDICT_RANK},
                  "decision_rule": decision_rule,
+                 "involvement": "TRACES_FOUND" if objective else "NO_OBJECTIVE_TRACES",
+                 "scope": _scope_for_verdict(verdict),
+                 "evidence_strength": evidence_strength,
+                 "scope_disagreement": scope_disagreement,
+                 "model_scope_opinions": model_scope_opinions,
                  **SCORE_DEFINITIONS},
         used_llm=True,
     )
@@ -800,6 +838,14 @@ def create_ai_detector_findings(doc: NormalizedDocument, result: AIDetectorResul
         result = AIDetectorResult(verdict=result.verdict, score=result.score, reasons=kept,
                                   suspicious_excerpts=result.suspicious_excerpts, signals=result.signals,
                                   used_llm=result.used_llm)
+    model_scope_opinions = dict(result.signals.get("model_scope_opinions") or {})
+    scope_disagreement = bool(result.signals.get("scope_disagreement", False))
+    evidence_strength = result.signals.get("evidence_strength") or _evidence_strength(
+        int(result.signals.get("objective_traces") or 0),
+        bool((result.signals.get("stylometry") or {}).get("stylometry_alert", False)),
+        bool(result.signals.get("synthetic_citation_cluster", False)),
+        used_llm=result.used_llm,
+    )
     features = {
         "ai_score": result.score,
         "used_llm": result.used_llm,
@@ -808,9 +854,20 @@ def create_ai_detector_findings(doc: NormalizedDocument, result: AIDetectorResul
         "objective_traces": result.signals.get("objective_traces", 0),
         # 문체만의 판단은 휴리스틱이다. 신뢰도 계산이 이것을 반영한다.
         "heuristic_only": not result.signals.get("objective_traces"),
+        "involvement": result.signals.get("involvement") or ("TRACES_FOUND" if result.signals.get("objective_traces") else "NO_OBJECTIVE_TRACES"),
+        "scope": result.signals.get("scope") or _scope_for_verdict(result.verdict),
+        "evidence_strength": evidence_strength,
+        "scope_disagreement": scope_disagreement,
+        "model_scope_opinions": model_scope_opinions,
+        "coverage": dict(result.signals.get("coverage") or {}),
         "score_definition": SCORE_DEFINITIONS["score_definition"],
         "confidence_definition": SCORE_DEFINITIONS["confidence_definition"],
     }
+    scope_note = (
+        " [모델 간 범위 이견: " + ", ".join(f"{p}={s}" for p, s in sorted(model_scope_opinions.items())) + "]"
+        if scope_disagreement and model_scope_opinions
+        else ""
+    )
     # 여러 모델이 같은 판단을 냈을 때만 한 단계 높은 증거등급을 준다.
     cross_checked_grade = (EvidenceGrade.B if result.used_llm and result.signals.get("llm_agreement") == "AGREE"
                            else EvidenceGrade.C)
@@ -823,7 +880,7 @@ def create_ai_detector_findings(doc: NormalizedDocument, result: AIDetectorResul
                 severity=Severity.HIGH,
                 evidence_grade=cross_checked_grade,
                 title=f"문서 전체의 AI 작성 가능성 높음 (추정치 {result.score:.2f}, 근거 신뢰도는 별도 표시)",
-                detail="; ".join(result.reasons[:3]) + " 법원 제출 전 실무 법률문서 요건과 진정성립에 대한 면밀한 검토가 필요합니다.",
+                detail="; ".join(result.reasons[:3]) + " 법원 제출 전 실무 법률문서 요건과 진정성립에 대한 면밀한 검토가 필요합니다." + scope_note,
                 confidence=confidence_score(features),
                 confidence_features=features,
                 document_id=doc.document_id,
@@ -847,7 +904,7 @@ def create_ai_detector_findings(doc: NormalizedDocument, result: AIDetectorResul
                 severity=Severity.MEDIUM,
                 evidence_grade=EvidenceGrade.C,
                 title=f"문서 일부의 AI 작성 가능성 (추정치 {result.score:.2f}, 근거 신뢰도는 별도 표시)",
-                detail="; ".join(result.reasons[:3]),
+                detail="; ".join(result.reasons[:3]) + scope_note,
                 confidence=confidence_score(features),
                 confidence_features=features,
                 document_id=doc.document_id,
@@ -867,7 +924,7 @@ def create_ai_detector_findings(doc: NormalizedDocument, result: AIDetectorResul
                 evidence_grade=EvidenceGrade.D,
                 title=f"AI 작성 가능성 판단 유보 (모델 추정치 중앙값 {result.signals.get('model_score_median'):.2f})",
                 detail=("모델별 판단: " + ", ".join(f"{k} {v}건" for k, v in dist.items() if v) + ". "
-                        + "; ".join(result.reasons[:2])),
+                        + "; ".join(result.reasons[:2]) + scope_note),
                 confidence=confidence_score(features),
                 confidence_features=features,
                 document_id=doc.document_id,

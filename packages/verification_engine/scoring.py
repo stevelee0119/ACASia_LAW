@@ -105,10 +105,18 @@ def unified_authorship(document: Any) -> Dict[str, Any]:
     scope = {"AI_FULL_GENERATION_LIKELY": "WHOLE_DOCUMENT", "AI_PARTIAL_GENERATION": "PART_OF_DOCUMENT"}.get(
         verdict, "NOT_APPLICABLE" if verdict in ("HUMAN_AUTHORED_LIKELY", "UNCERTAIN") else "UNDETERMINED"
     )
+    signals = detector.get("signals") or {}
+    evidence_strength = signals.get("evidence_strength") or (
+        "OBJECTIVE_TRACES" if traces else ("HEURISTIC_ONLY" if detector.get("used_llm") or stylometry else "NONE")
+    )
     return {"document_id": document.document_id, "verdict": verdict,
             "basis": "AI_DETECTOR" if detector.get("verdict") else "STYLOMETRY",
             "score": detector.get("score"), "stylometry_signal": stylometry,
-            "involvement": involvement, "objective_traces": traces, "scope": scope}
+            "involvement": involvement, "objective_traces": traces, "scope": scope,
+            "evidence_strength": evidence_strength,
+            "scope_disagreement": bool(signals.get("scope_disagreement", False)),
+            "model_scope_opinions": dict(signals.get("model_scope_opinions") or {}),
+            "coverage": dict(signals.get("coverage") or {})}
 
 
 def _sum_components(documents: List[Any]) -> Dict[str, int]:
