@@ -44,16 +44,15 @@ def _release_dates(path: Path = RELEASES) -> dict[str, date]:
 
 
 def select_milestone_rows(rows: list, release_dates: dict[str, date] | None = None) -> list:
-    """v0.10을 시작으로 최신 릴리스 기준 1·2·3개월 전 커밋 마일스톤을 선택한다(기간이 짧으면 전체 유지)."""
+    """v0.10을 시작으로 최신 릴리스 기준 1·2·3개월 전 커밋 마일스톤을 선택한다(기간이 60일 미만이거나 날짜 누락 시 전체 유지)."""
     if len(rows) <= 2:
         return rows
     dates = release_dates if release_dates is not None else _release_dates()
     dated = [(r, dates.get(r["version"])) for r in rows]
     if any(d is None for _, d in dated):
         return rows
-    latest_date = dated[-1][1]
-    earliest_date = dated[0][1]
-    assert latest_date is not None and earliest_date is not None
+    earliest_date = min(d for _, d in dated if d is not None)
+    latest_date = max(d for _, d in dated if d is not None)
     if (latest_date - earliest_date).days < 60:
         return rows
 

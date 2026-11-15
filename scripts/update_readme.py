@@ -191,17 +191,30 @@ def updated_readme(releases: list) -> str:
         raise SystemExit(f"README에 {START}·{END} 표시가 없습니다")
 
     ver = current_version()
-    rel_date = next((r["date"] for r in reversed(releases) if r["version"] == ver), date.today().isoformat())
-    text = re.sub(
+    entry = next((r for r in reversed(releases) if r.get("version") == ver), None)
+    if entry is None:
+        raise SystemExit(f"docs/releases.json에 현재 버전({ver}) 항목이 없습니다")
+    rel_date = str(entry.get("date") or "").strip()
+    try:
+        date.fromisoformat(rel_date)
+    except ValueError as exc:
+        raise SystemExit(f"docs/releases.json 버전 {ver}의 date가 올바른 ISO 날짜가 아닙니다: {rel_date!r}") from exc
+
+    text, badge_count = re.subn(
         r"https://img\.shields\.io/badge/운영%20버전-[^-]+-blue\.svg",
         f"https://img.shields.io/badge/운영%20버전-{ver}-blue.svg",
         text,
     )
-    text = re.sub(
+    if badge_count != 1:
+        raise SystemExit(f"README.md에서 운영 버전 배지를 정확히 1개 찾지 못했습니다(일치 {badge_count}개)")
+
+    text, line_count = re.subn(
         r"\*\*현재 운영 버전:\*\*\s*[^\n.]+(?:\.\d+)*\s*\([^)]*\)\.",
         f"**현재 운영 버전:** {ver} ({rel_date} 배포).",
         text,
     )
+    if line_count != 1:
+        raise SystemExit(f"README.md에서 '**현재 운영 버전:**' 줄을 정확히 1개 찾지 못했습니다(일치 {line_count}개)")
 
     tabs = _extract_workspace_tabs()
     if tabs:

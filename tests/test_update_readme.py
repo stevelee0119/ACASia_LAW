@@ -134,23 +134,65 @@ def test_updated_readme_syncs_version_badge_operational_line_tabs_and_models(tmp
     assert "gpt-6-luna · claude-opus-5-5 · gemini-4-hydrogen" in rendered
 
 
-def test_render_performance_chart_selects_v010_and_1_2_3_month_milestones():
+def test_updated_readme_fails_closed_on_missing_or_invalid_release_date(tmp_path, monkeypatch):
+    import pytest
+
+    module = _module()
+    readme_copy = tmp_path / "README.md"
+    readme_copy.write_text((ROOT / "README.md").read_text(encoding="utf-8"), encoding="utf-8")
+    config_copy = tmp_path / "config.py"
+    config_copy.write_text('    version: str = "0.22.0"\n', encoding="utf-8")
+    monkeypatch.setattr(module, "README", readme_copy)
+    monkeypatch.setattr(module, "CONFIG", config_copy)
+
+    # 1) Missing version entry
+    with pytest.raises(SystemExit, match="0.22.0"):
+        module.updated_readme([{"version": "0.21.0", "date": "2026-11-15", "changes": ["x"]}])
+
+    # 2) Empty date
+    with pytest.raises(SystemExit, match="ISO 날짜"):
+        module.updated_readme([{"version": "0.22.0", "date": "", "changes": ["x"]}])
+
+    # 3) Non-ISO date
+    with pytest.raises(SystemExit, match="ISO 날짜"):
+        module.updated_readme([{"version": "0.22.0", "date": "2026/11/15", "changes": ["x"]}])
+
+    # 4) Missing version badge in README
+    readme_copy.write_text("<!-- RELEASES:START --><!-- RELEASES:END -->\n**현재 운영 버전:** 0.21.0 (2026-11-15 배포).\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="운영 버전 배지"):
+        module.updated_readme([{"version": "0.22.0", "date": "2026-11-16", "changes": ["x"]}])
+
+
+def test_render_performance_chart_shrinks_10_releases_over_90_days_and_preserves_short_or_missing():
     from datetime import date
     spec = importlib.util.spec_from_file_location("render_performance_chart", ROOT / "scripts" / "render_performance_chart.py")
     chart = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(chart)
 
-    rows = [
-        {"version": "v0.10"}, {"version": "v0.12"}, {"version": "v0.15"},
-        {"version": "v0.18"}, {"version": "v0.22"},
-    ]
-    dates = {
+    rows = [{"version": f"v0.{i}"} for i in range(10, 20)]
+    dates_100d = {
         "v0.10": date(2026, 8, 1),
-        "v0.12": date(2026, 8, 20),
-        "v0.15": date(2026, 9, 18),
-        "v0.18": date(2026, 10, 19),
-        "v0.22": date(2026, 11, 18),
+        "v0.11": date(2026, 8, 10),
+        "v0.12": date(2026, 8, 18),  # -90d from 2026-11-18 is 2026-08-20 (closest: v0.12)
+        "v0.13": date(2026, 9, 1),
+        "v0.14": date(2026, 9, 10),
+        "v0.15": date(2026, 9, 19),  # -60d from 2026-11-18 is 2026-09-19 (exact: v0.15)
+        "v0.16": date(2026, 10, 1),
+        "v0.17": date(2026, 10, 18),  # -30d from 2026-11-18 is 2026-10-19 (closest: v0.17)
+        "v0.18": date(2026, 11, 2),
+        "v0.19": date(2026, 11, 18),  # latest
     }
-    picked = [r["version"] for r in chart.select_milestone_rows(rows, release_dates=dates)]
-    assert picked == ["v0.10", "v0.12", "v0.15", "v0.18", "v0.22"]
+    picked = [r["version"] for r in chart.select_milestone_rows(rows, release_dates=dates_100d)]
+    assert len(picked) < len(rows)
+    assert picked == ["v0.10", "v0.12", "v0.15", "v0.17", "v0.19"]
+
+    # < 60 days preserves all rows
+    from datetime import timedelta
+    dates_40d = {f"v0.{i}": date(2026, 10, 1) + timedelta(days=(i - 10) * 4) for i in range(10, 20)}
+    assert [r["version"] for r in chart.select_milestone_rows(rows, release_dates=dates_40d)] == [r["version"] for r in rows]
+
+    # Missing any release date preserves all rows
+    dates_missing = {k: v for k, v in dates_100d.items() if k != "v0.14"}
+    assert [r["version"] for r in chart.select_milestone_rows(rows, release_dates=dates_missing)] == [r["version"] for r in rows]
+
 
