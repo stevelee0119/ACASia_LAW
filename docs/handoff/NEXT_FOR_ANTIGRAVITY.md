@@ -6962,3 +6962,11 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 ### 2-62-5. 사용자 "#298 병합" (11-15)
 - #298(TK-178) head d0af8733b830b525fc7fc084b3136b2896537579의 필수 CI 전부 성공을 재확인(인용)하고 expected head를 고정하여 병합했다. Steve 병합 커밋 3bd5cad38bf482df23ed0048943e929f8c0ec906. main 배포는 진행하지 않았다.
 - TK-179 #299는 별도 판정·사용자 병합 대기. TK-180 전달문 기준은 #298이 반영된 Steve 최신이다. 최종 후보 확정·verify_all·판정서 및 버전 패치 갱신은 그 뒤 진행한다.
+
+### 2-62-6. #300 TK-180 구현 대조 (11-15, head 35201c7f) — CI 대기
+- 제출 제품 5파일·시험 6파일 = 평가 측 사본 64c4ff9a diff 0(전체 packages/tests 대조). #298 병합 뒤 Steve 3bd5cad3 기준. 제품 추가 수정 없음.
+- 평가 측 재실행: 새 시험 9건 통과(실제 head). 저장소 밖 추가 탐침: TXT·DOCX·PDF·XLSX 참고자료 12/12 보존(분류기 호출 시 실패하도록 계측), 같은 입력 서면 3/3 MM1 탐지, 공식 원문/프롬프트 3/3 보존. PDF는 본문 일반 문구+지시형 속성, DOCX는 본문+속성, 표는 본문+속성+링크를 확인했다.
+- 앞선 사본 측정(고정 82.6/81.9/오탐 0, 은퇴 5세트 후퇴 0, 확장 414·개인정보/모델 203)은 사본과 제출 트리 일치 근거로 인용하며 같은 점검을 중복 실행하지 않았다. 실제 모델·운영 재색인·한국어 OCR·합본 전체는 미검증이다.
+- CI 중간 결과(인용): CodeQL 분석 4·새 경고 게이트·점수 게이트 한 벌·은퇴 비교·Docker OCR 두 벌 성공. SQLite/PostgreSQL 네 벌과 점수 게이트 한 벌 진행 중. 최종 수용·병합은 CI 완료 뒤다.
+- PR 본문 정정 필요(문서 한정): 대응표가 실제 없는 시험 이름들을 인용한다. 실제 새 파일은 test_same_text_retained_in_reference_but_detected_in_submission(3), test_reference_paths_never_call_scanner(3), test_old_reference_versions_are_invalidated(1), test_official_source_is_preserved_in_model_prompt(1), test_reference_review_prompts_declare_the_scope(1) = 9건이다. 첫 7건의 기존 실패 기록은 이 실제 구성의 3+3+1이며 PR 본문의 TXT/PDF·속성 등으로 나눈 7건 설명과 다르다. PDF·DOCX는 이번 별도 탐침에서 확인했다. 공개 기준 변별을 제출자가 재실행했는지는 증빙을 받지 못했으므로 평가 측 과거 실행 기록과 구분한다.
+- #295 CI가 진행 중이므로 이 기록은 로컬 커밋으로 보관하고 해당 CI를 취소할 push는 보류한다.
