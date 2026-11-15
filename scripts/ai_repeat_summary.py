@@ -58,11 +58,14 @@ def conditions(report: Dict[str, Any]) -> tuple[Dict[str, str], List[str]]:
         sha = source.get("sha256")
         valid = (isinstance(sha, str) and bool(re.fullmatch(r"[0-9a-f]{64}", sha))
                  and doc.get("sha256") == sha and bool(source.get("document_id"))
-                 and source["document_id"] == doc.get("document_id") == score.get("document_id"))
-        record("input", {k: v for k, v in source.items() if k not in {"document_id", "storage_key", "filename"}}, valid)
+                 and source["document_id"] == doc.get("document_id") == score.get("document_id")
+                 and bool(source.get("filename")) and isinstance(source.get("mime_type"), str)
+                 and "is_own_document" in source)
+        record("input", {k: v for k, v in source.items() if k not in {"document_id", "storage_key"}}, valid)
     context = snapshot.get("context")
-    mapping("context", {k: v for k, v in context.items() if k != "project_id"} if isinstance(context, dict) else None,
-            ("profile", "case_date", "external_ai_policy", "issue_dates", "requested_issues", "counterparty_document"),
+    # Project identity affects pseudonymization; filename/ownership can affect document handling.
+    mapping("context", context,
+            ("project_id", "profile", "case_date", "external_ai_policy", "issue_dates", "requested_issues", "counterparty_document"),
             nullable=("case_date",))
     mapping("security", snapshot.get("security"), ("external_ai_policy", "blocked_providers", "block_sealed_reveal"))
     execution = snapshot.get("execution") or {}

@@ -20,7 +20,8 @@ def report():
             "reference_library": {"status": "READY", "folder_id": "private-folder", "snapshot_hash": "b" * 64},
         },
         "input_snapshot": {
-            "documents": [{"document_id": "doc-1", "sha256": "c" * 64, "is_own_document": False}],
+            "documents": [{"document_id": "doc-1", "sha256": "c" * 64, "is_own_document": False,
+                           "filename": "sample.pdf", "mime_type": "application/pdf"}],
             "context": {"project_id": "project-1", "profile": "STANDARD", "case_date": None,
                         "external_ai_policy": "MASKED", "issue_dates": {}, "requested_issues": [],
                         "counterparty_document": True},
@@ -60,6 +61,8 @@ def test_complete_same_conditions_and_auto_routing_participation():
 @pytest.mark.parametrize("path,value,field", [
     (("run_manifest", "implementation", "git_commit"), "a" * 12 + "d" * 28, "commit"),
     (("input_snapshot", "context", "profile"), "STRICT", "context"),
+    (("input_snapshot", "context", "project_id"), "different-project", "context"),
+    (("input_snapshot", "documents", 0, "filename"), "renamed.pdf", "input"),
     (("input_snapshot", "context", "case_date"), "2026-01-01", "context"),
     (("input_snapshot", "security", "external_ai_policy"), "LOCAL_ONLY", "security"),
     (("input_snapshot", "execution", "settings", "llm_cross_check"), "always", "execution.settings"),
@@ -88,6 +91,7 @@ def test_different_input_bytes_even_with_equal_commit():
 
 @pytest.mark.parametrize("path", [
     ("run_manifest", "implementation", "git_commit"), ("input_snapshot", "documents", 0, "sha256"),
+    ("input_snapshot", "documents", 0, "filename"), ("input_snapshot", "documents", 0, "is_own_document"),
     ("input_snapshot", "context", "profile"), ("input_snapshot", "security", "external_ai_policy"),
     ("input_snapshot", "execution", "settings", "llm_cross_check"),
     ("input_snapshot", "execution", "providers", "a", "model"),
