@@ -600,7 +600,8 @@ class LLMRouter:
             except ValidationError as invalid:
                 execution.ok = False
                 # 원문은 남기지 않는다(사건 내용). 어디가 어긋났는지만 적는다.
-                execution.error = ("INVALID_RESPONSE_SCHEMA: JSON이 아님" if parsed is None else
+                from .providers import response_shape
+                execution.error = (f"INVALID_RESPONSE_SCHEMA: JSON이 아님({response_shape(response.text)})" if parsed is None else
                                    f"INVALID_RESPONSE_SCHEMA: {invalid.validator} 위반({'/'.join(map(str, invalid.path)) or '최상위'})")
                 return finish(RouterResult(executions=[execution], note="모델 응답 형식 검증 실패"))
         return finish(RouterResult(
@@ -824,7 +825,7 @@ class LLMRouter:
 
 # 한국어 JSON은 공급자마다 토큰 사용량이 크게 다르다. 기본값(1200)에서는 한
 # 모델만 잘려 형식 오류로 탈락했다. 분량 상한을 프롬프트에 두고 한도는 넉넉히 준다.
-_VERDICT_MAX_TOKENS = 2500
+_VERDICT_MAX_TOKENS = 4096  # TK-179: 0.19.0 운영 탐침 B에서 2500 한도 잘림(OUTPUT_TRUNCATED) 1건. 주장 타당성·AI 판별과 같은 한도
 _VERDICT_FORMAT = (
     "[응답 형식] 다음 키를 가진 JSON 객체 하나만 출력하라.\n"
     "- status: 아래 영문 값 중 하나를 그대로 쓴다.\n"
