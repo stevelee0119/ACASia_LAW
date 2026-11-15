@@ -1,16 +1,19 @@
 """TK-185: repeated measurements must prove input and execution comparability."""
 from copy import deepcopy
 import json
+from itertools import count
 
 import pytest
 
 from scripts import ai_repeat_summary as tool
 
+_RUN_IDS = count(1)
+
 
 def report():
     versions = {"rule": "rule-1", "prompt": "prompt-1", "model_config": "model-policy-1"}
     return {
-        "started_at": "2026-11-15T10:00:00", "run_id": "run-1",
+        "started_at": "2026-11-15T10:00:00", "run_id": f"run-{next(_RUN_IDS)}",
         "run_manifest": {
             "implementation": {"git_commit": "a" * 40}, "versions": versions.copy(),
             "environment": {"fingerprint": "environment-1"},
@@ -133,9 +136,18 @@ def test_explicit_disabled_drive_and_single_run():
     a = report()
     a["run_manifest"]["reference_library"] = {"status": "DISABLED", "folder_id": "", "snapshot_hash": None}
     a["input_snapshot"]["execution"]["settings"]["rag_drive_folder_id"] = ""
-    assert summary(a, a)["same_condition"]
+    b = deepcopy(a)
+    b["run_id"] = "another-run"
+    assert summary(a, b)["same_condition"]
     assert not summary(a)["same_condition"]
     assert not summary()["same_condition"]
+
+
+def test_duplicate_reports_are_not_independent_repetitions():
+    a = report()
+    s = summary(a, deepcopy(a))
+    assert not s["same_condition"] and "distinct_run_ids" in s["missing_conditions"]
+    assert s["comparable_agreement"] is None
 
 
 def test_cli_unknown_conditions_exit_two_and_no_raw_context(tmp_path, capsys):

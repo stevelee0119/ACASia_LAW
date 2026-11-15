@@ -135,6 +135,9 @@ def summarize(runs: List[Dict[str, Any]], expect: Optional[List[str]] = None) ->
     missing = sorted({key for run in runs for key in run.get("missing_conditions", ["condition_evidence"])})
     if len(runs) < 2:
         missing.append("repeat_runs")
+    run_ids = [run.get("run_id") for run in runs]
+    if not all(isinstance(value, str) and value for value in run_ids) or len(set(run_ids)) != len(runs):
+        missing.append("distinct_run_ids")
     status = "DIFFERENT" if differences else "UNKNOWN" if missing else "SAME"
     return {"runs": len(runs), "commits": sorted(commits), "same_condition": status == "SAME",
             "condition_status": status, "different_conditions": sorted(differences), "missing_conditions": missing,
