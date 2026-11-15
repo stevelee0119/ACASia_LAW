@@ -90,6 +90,33 @@ def test_build_timeline_preserves_distinct_event_ids_when_source_metadata_missin
     assert [r["event_id"] for r in rows] == ["EVT-A", "EVT-B"]
 
 
+@pytest.mark.parametrize(
+    "partial_meta",
+    [
+        {"document_id": "doc-1"},
+        {"source_document_sha256": "sha-1"},
+        {"document_id": "doc-1", "page": 2},
+        {"document_id": "doc-1", "block_id": "blk-1"},
+        {"source_document_sha256": "sha-1", "page": 3},
+        {"source_document_sha256": "sha-1", "block_id": "blk-2"},
+        {"span": (10, 40)},
+        {"block_id": "blk-1", "page": 2},
+    ],
+)
+def test_build_timeline_preserves_distinct_event_ids_for_partial_source_metadata(partial_meta):
+    e1 = _event(event_id="EVT-1", description="부분 출처 동일 문구", **partial_meta)
+    e2 = _event(event_id="EVT-2", description="부분 출처 동일 문구", **partial_meta)
+    rows = build_timeline([e1, e2])
+    assert [r["event_id"] for r in rows] == ["EVT-1", "EVT-2"]
+
+
+def test_build_timeline_collapses_complete_doc_and_block_page_duplicates():
+    e1 = _event(event_id="EVT-1", document_id="doc-1", block_id="blk-1", page=2, description="완전 위치 동일 문구")
+    e2 = _event(event_id="EVT-2", document_id="doc-1", block_id="blk-1", page=2, description="완전 위치 동일 문구")
+    rows = build_timeline([e1, e2])
+    assert len(rows) == 1
+
+
 def test_timeline_evidence_preserves_structured_raw_text_and_multiple_exhibits():
     ev_structured = _event(
         description="갑 제7호증 및 을 제18호증에 의하여 확인됨",

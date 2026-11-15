@@ -235,13 +235,9 @@ def _format_timeline_evidence(event: Event) -> str:
 
 def _timeline_dedup_key(event: Event, desc: str, evidence_summary: str) -> tuple[Any, ...]:
     date_key = event.date.isoformat() if event.date else ""
-    has_source_meta = any((
-        event.document_id,
-        event.source_document_sha256,
-        event.block_id,
-        event.page is not None,
-        event.span is not None,
-    ))
+    has_doc_id = bool(event.document_id or event.source_document_sha256)
+    has_exact_loc = (event.span is not None) or bool(event.block_id and event.page is not None)
+    has_complete_source = has_doc_id and has_exact_loc
     source_key: tuple[Any, ...] = (
         (
             event.document_id or "",
@@ -250,8 +246,8 @@ def _timeline_dedup_key(event: Event, desc: str, evidence_summary: str) -> tuple
             event.page if event.page is not None else -1,
             tuple(event.span) if event.span is not None else (),
         )
-        if has_source_meta
-        else ("__missing_source__", event.event_id)
+        if has_complete_source
+        else ("__incomplete_source__", event.event_id)
     )
     fact_key = (
         event.event_identity or "",
