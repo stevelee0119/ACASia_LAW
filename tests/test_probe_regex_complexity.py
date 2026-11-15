@@ -7,6 +7,7 @@ TK-38 착수 시 평가 측이 별도로 둔다.
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import signal
 from pathlib import Path
@@ -15,6 +16,7 @@ SPEC = importlib.util.spec_from_file_location(
     "probe_regex_complexity", Path(__file__).resolve().parents[1] / "scripts" / "probe_regex_complexity.py")
 probe = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(probe)
+PATTERNS = json.loads((Path(__file__).resolve().parent / "fixtures" / "regex_probe_patterns.json").read_text(encoding="utf-8"))
 
 
 def _arm():
@@ -29,13 +31,13 @@ def test_alternation_pumps_for_str_and_bytes():
 
 def test_ambiguous_alternation_repeat_is_flagged_as_exponential():
     _arm()
-    pattern = r"(?:ab|a|b)+$"  # 'ab'을 'a'+'b'로도 읽을 수 있어 실패할 때 모든 분할을 되짚는다(합성 사례)
+    pattern = PATTERNS["ambiguous_alternation"]  # 'ab'을 'a'+'b'로도 읽을 수 있어 실패할 때 모든 분할을 되짚는다(합성 사례)
     assert probe.exponential_hit(re.compile(pattern), pattern) is not None
 
 
 def test_overlapping_whitespace_in_bytes_pattern_is_flagged():
     _arm()
-    pattern = rb"^\s*(?:[-\d.\s]+(?:Tm|Td)\s*)*Z"  # 반복 끝의 \s*와 다음 반복 앞의 [\s]+가 같은 공백을 나눠 갖는다(합성 사례)
+    pattern = PATTERNS["overlapping_whitespace_bytes"].encode()  # 반복 끝의 \s*와 다음 반복 앞의 [\s]+가 같은 공백을 나눠 갖는다(합성 사례)
     assert probe.exponential_hit(re.compile(pattern), pattern) is not None
 
 

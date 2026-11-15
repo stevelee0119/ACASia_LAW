@@ -1,0 +1,692 @@
+{
+ "summary": {
+  "offline_scorer": 62,
+  "online_spec": 19,
+  "dev_probe": 13,
+  "ci_tests": 75,
+  "total": 97,
+  "offline_and_online_none": 35,
+  "ci_only_or_none": 35
+ },
+ "rows": [
+  {
+   "type": "ACADEMIC_CITATION_ERROR",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "AI_AUTHORSHIP_LIKELY",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "AI_FULL_GENERATION_SUSPECTED",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "AI_HALLUCINATED_CONTENT",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "ARITHMETIC_MISMATCH",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "AUTHORITY_RANK_ERROR",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "AUTHORSHIP_METADATA_LEAK",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "CALCULATION_INVARIANT_VIOLATION",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "CASE_CITATION_ERROR",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "CASE_HOLDING_DISTORTION",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "CASE_METADATA_MISMATCH",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "CASE_NOT_FOUND",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "CASE_QUOTE_MISMATCH",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "CASE_RELEVANCE_WEAK",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "COERCIVE_LANGUAGE_SIGNAL",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "COVERT_CHANNEL_SUSPECTED",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "CROPPED_IMAGE_RESIDUE",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "CROSS_DOCUMENT_CONTRADICTION",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "CROSS_DOC_COPY",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "DATA_EXFILTRATION_INSTRUCTION",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "DELETED_TEXT_RECOVERABLE",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "DOCUMENT_FINGERPRINT_SUSPECTED",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "DRAFT_ARTIFACT",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "ENCODED_INSTRUCTION",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "EVIDENCE_DATE_INVALID",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "EVIDENCE_FORM_DEFECT",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "EVIDENCE_LIST_MISMATCH",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "EVIDENCE_NOT_PROVIDED",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "EVIDENCE_NUMBERING_GAP",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "EVIDENCE_PERSON_INCONSISTENT",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "EVIDENCE_PURPOSE_MISMATCH",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "EVIDENCE_REFERENCE_MISSING",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "EVIDENCE_TIMELINE_INVERSION",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "FACT_CONTRADICTION",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "FACT_UNSUPPORTED",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "GEOLOCATION_METADATA_LEAK",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "HASH_FORMAT_INVALID",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "HASH_MISMATCH",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "HIDDEN_INSTRUCTION",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": true,
+   "ci_tests": true
+  },
+  {
+   "type": "HIDDEN_SHEET_OR_ROW",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "HIDDEN_TEXT_MISMATCH",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "IMPLICIT_ADMISSION_SIGNAL",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "INTERNAL_CITATION_ERROR",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "INVALID_IDENTIFIER",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "ISSUE_EVASION_SIGNAL",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "LAW_CITATION_ERROR",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "LEGAL_ARGUMENT_INVALID",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": true,
+   "ci_tests": true
+  },
+  {
+   "type": "LEGAL_REQUIREMENT_OMITTED",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "LIABILITY_HEDGING_SIGNAL",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "METADATA_ANOMALY",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "METADATA_INJECTION",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "META_INSTRUCTION",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": true,
+   "ci_tests": true
+  },
+  {
+   "type": "MODEL_ATTRIBUTION_SIGNAL",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "MODEL_FACT_REMARK",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "MODEL_OUTPUT_QUARANTINED",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "MODIFIED_AFTER_SIGNATURE",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "MULTIMODAL_INJECTION",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "OBFUSCATED_INSTRUCTION",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "OCR_LAYER_INJECTION",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "OCR_LAYER_MISMATCH",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "OCR_LOW_QUALITY",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "OUTBOUND_LEAK_RISK",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "OUTPUT_MANIPULATION_ATTEMPT",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": true,
+   "ci_tests": true
+  },
+  {
+   "type": "OVERCLAIM",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": true,
+   "ci_tests": true
+  },
+  {
+   "type": "PAGE_STRUCTURE_OUTLIER",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "PARSE_ERROR",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "PLACEHOLDER_IDENTIFIER",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "PRIOR_VERSION_RECOVERABLE",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "PRIVILEGE_EXPOSURE_RISK",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "PROMPT_INJECTION_SUSPECTED",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": true,
+   "ci_tests": true
+  },
+  {
+   "type": "QUOTE_MISMATCH",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "RAG_POISONING_SIGNAL",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "REASONING_GAP",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "REDACTION_FAILURE",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "RESIDUAL_COMMENT",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "RESIDUAL_TRACKED_CHANGE",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "ROLE_OVERRIDE_ATTEMPT",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": true,
+   "ci_tests": true
+  },
+  {
+   "type": "SELECTIVE_QUOTATION_SIGNAL",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "SIGNATURE_INVALID",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "SOURCE_CONFLICT_IGNORED",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "SPECIMEN_DOCUMENT_DECLARED",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "STATEMENT_BEYOND_PERCEPTION",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "STATUTE_NONEXISTENT",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "STATUTE_TEXT_MISMATCH",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "STEGANOGRAPHIC_PAYLOAD",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "STYLE_SHIFT",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "SYSTEM_OVERRIDE_ATTEMPT",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": true,
+   "ci_tests": true
+  },
+  {
+   "type": "TEMPLATE_RESIDUE",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "TEMPORAL_LAW_MISMATCH",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": true,
+   "ci_tests": true
+  },
+  {
+   "type": "TIMELINE_CONTRADICTION",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": true,
+   "ci_tests": true
+  },
+  {
+   "type": "TOOL_MANIPULATION_ATTEMPT",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": true,
+   "ci_tests": true
+  },
+  {
+   "type": "TRACKING_CANARY_DETECTED",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "UNCERTAINTY_NOT_DISCLOSED",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "UNICODE_SMUGGLING",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": true,
+   "ci_tests": true
+  },
+  {
+   "type": "UNSUPPORTED_FORMAT",
+   "offline_scorer": false,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": false
+  },
+  {
+   "type": "UNSUPPORTED_GENERALIZATION",
+   "offline_scorer": true,
+   "online_spec": false,
+   "dev_probe": false,
+   "ci_tests": true
+  },
+  {
+   "type": "VERIFICATION_SUPPRESSION",
+   "offline_scorer": true,
+   "online_spec": true,
+   "dev_probe": true,
+   "ci_tests": true
+  }
+ ]
+}

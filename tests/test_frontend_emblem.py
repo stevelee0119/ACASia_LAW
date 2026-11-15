@@ -102,7 +102,7 @@ def test_emblem_login_and_header_at_desktop_tablet_and_mobile_sizes(tmp_path):
                     return rects.every((rect, index) => rect.left >= 0 && rect.right <= innerWidth
                         && (!index || rect.left >= rects[index - 1].right));
                 }""")
-                expect(page.get_by_role("link", name="ACASia_LAW 홈")).to_be_visible()
+                expect(page.get_by_role("link", name="AegisLAW 홈")).to_be_visible()
                 title = page.locator(".brand-title")
                 expect(title).to_be_visible()
                 page.evaluate("document.fonts.ready")

@@ -28,6 +28,30 @@ sys.path.insert(0, str(ROOT))
 from scripts.evaluation_v2 import compare_sets
 DEFAULT_CURRENT = ROOT / "artifacts" / "scorecard.json"
 DEFAULT_BASELINE = ROOT / "docs" / "scorecards" / "baseline.json"
+# 알려진 엔진 오류(티켓으로 추적 중). 여기에 없는 엔진 오류가 성적표에 있으면 게이트가 실패한다(2026-11-14 평가 체계 감사, TK-177).
+KNOWN_ENGINE_ERRORS = ROOT / "docs" / "scorecards" / "known_engine_errors.json"
+
+
+def known_engine_errors(path: Path = KNOWN_ENGINE_ERRORS) -> Dict[str, str]:
+    """'단계:예외 종류' → 티켓. 파일이 없으면 빈 목록(모든 엔진 오류가 실패)."""
+    if not Path(path).is_file():
+        return {}
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    return {f"{e['engine']}:{e['error']}": str(e.get("ticket", "")) for e in data.get("known", [])}
+
+
+def engine_error_check(current: Dict[str, Any], known: Dict[str, str]) -> Tuple[List[str], List[str]]:
+    """(실패, 경고). 알려지지 않은 엔진 오류는 실패, 알려졌는데 더는 나지 않는 오류는 목록에서 지우라는 경고."""
+    failures: List[str] = []
+    seen = set()
+    for name, row in (current.get("sets") or {}).items():
+        for key, count in (row.get("engine_errors") or {}).items():
+            seen.add(key)
+            if key not in known:
+                failures.append(f"[{name}] 엔진 오류 {key} {count}건(알려진 오류 목록에 없음 — 단계가 예외를 삼킨 회귀)")
+    warnings = [f"알려진 엔진 오류 {key}({ticket})가 더는 나지 않는다 — known_engine_errors.json에서 지운다"
+                for key, ticket in known.items() if key not in seen]
+    return failures, warnings
 COUNT_KEYS = ("false_positives", "a_grade_fp", "duplicate_citation_verdicts", "findings_without_document_id")
 
 
@@ -126,6 +150,9 @@ def main(argv: List[str] | None = None) -> int:
         return 0
     failures, warnings, improvements = compare(current, baseline, tolerance=args.tolerance,
                                                doc_tolerance=args.doc_tolerance)
+    engine_failures, engine_warnings = engine_error_check(current, known_engine_errors())
+    failures += engine_failures
+    warnings += engine_warnings
     for line in warnings:
         print(f"경고: {line}")
     for line in improvements:
