@@ -1,7 +1,7 @@
 "use strict";
 
 const reportWorkbench = (() => {
-  const formats = {pdf:"PDF",docx:"Word (DOCX)",xlsx:"Excel (XLSX)",csv:"CSV",json:"검증 상세 (JSON)",manifest:"무결성 기록"};
+  const formats = {pdf:"PDF",json:"검증 상세 (JSON)"};
   // 보고서는 서버 뒤편에서 만들고, 화면은 1초마다 단계·진행률만 받아 온다.
   // 요청 하나가 수십 초 붙잡혀 있다 끊기던 문제를 없애고, 기다리는 동안 무엇을 하는지 보인다.
   const POLL_MS=1000, MAX_POLL_FAILURES=30, watching=new Set();

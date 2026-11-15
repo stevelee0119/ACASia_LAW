@@ -77,8 +77,9 @@ def test_top_button_generates_and_reports_tab_only_downloads(width, height):
             expect(page.locator("[data-panel='documents']")).to_be_visible()     # 다른 탭에서도 바로 생성한다
             button.click()
             dialog = page.get_by_role("dialog", name="검토 보고서 초안")
-            for name in ("docx", "xlsx", "csv", "json", "manifest"):
-                dialog.locator(f"input[name='{name}']").uncheck()
+            for removed in ("docx", "xlsx", "csv", "manifest"):
+                expect(dialog.locator(f"input[name='{removed}']")).to_have_count(0)
+            dialog.locator("input[name='json']").uncheck()
             dialog.get_by_role("button", name="초안 생성").click()
             expect(dialog).to_be_hidden()
             reports = page.locator("[data-panel='reports']")
