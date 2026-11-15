@@ -164,9 +164,14 @@
 ### ⭐ 방법 2: Linux · macOS 로컬 실행
 
 ```bash
-# 1) 가상환경 생성 및 패키지 설치
+# 1) 가상환경 생성 및 패키지 설치 (해시 잠금 파일 기준)
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.txt
+# 개발/테스트 도구 포함 설치 시:
+# pip install --require-hashes -r requirements-test.txt
+# 의존성(requirements.in / requirements-test.in) 변경 후 잠금 파일 갱신:
+# uv pip compile requirements.in --python-version 3.11 --generate-hashes -o requirements.txt
+# uv pip compile requirements-test.in --python-version 3.11 --generate-hashes -o requirements-test.txt
 
 # 2) (선택) 한국어 스캔 문서 OCR을 쓰려면 시스템 패키지 설치
 # Ubuntu/Debian:

@@ -1,0 +1,38 @@
+# 코어
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+pydantic-settings>=2.3
+python-multipart>=0.0.9
+sqlalchemy>=2.0
+alembic>=1.13
+httpx>=0.27
+google-auth[requests]>=2.38,<3
+cryptography>=43
+PyJWT[crypto]>=2.10,<3
+filelock>=3.15
+jsonschema>=4.22
+
+# 문서 파싱
+pdfplumber>=0.11
+pypdfium2>=4.30          # PDF 페이지 래스터화 (독립 OCR·스캔본 처리)
+pypdf>=4.2
+python-docx>=1.1
+openpyxl>=3.1
+pillow>=10.3
+lxml>=5.2
+olefile>=0.47,<0.48      # HWP 5.x CFB streams
+
+# OCR — 시스템에 tesseract-ocr, tesseract-ocr-kor 설치 필요
+pytesseract>=0.3.13
+
+# 데이터베이스 — PostgreSQL + pgvector
+psycopg[binary]>=3.1
+pgvector>=0.2
+
+# 비동기 Worker
+celery>=5.4
+redis>=5.0
+
+# 보고서
+reportlab>=4.2
