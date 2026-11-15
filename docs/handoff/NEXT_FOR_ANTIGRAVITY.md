@@ -7047,3 +7047,8 @@ PR 대상 브랜치: Steve_ACASiaLAW(main 아님). 버전: 0.20.0(changed·remov
 ### 2-62-18. 사용자 "#296 병합" (11-15)
 - #296 head571be926e7c47ef1df880c1b1f0f52c9ddf3e925의 필수 CI 성공(성공17/건너뜀2)을 재확인하고 head 고정 병합. Steve c0d2e0606c4c3587fc366c615ce5c8e0d9487eee, MERGED 확인.
 - Steve에 0.21.0 버전/최종 릴리스 설명 반영 완료. 다음은 최신 main/Steve 확인→release/0.21.0 브랜치 및 main 대상 릴리스 PR 준비·CI 확인. main 병합/운영 배포는 아직 하지 않았다.
+
+### 2-62-19. 0.21.0 릴리스 진행 (11-15)
+- 사용자 "릴리스 까지 순차적으로 진행"·"계속"에 따라 main 대상 release/0.21.0 브랜치 준비. main034343f에 Steve c0d2e060 병합, 후속 평가 기록만 추가. 제품·시험·설정·스크립트는 Steve와 동일. 은퇴5세트 유지, migrations 변경없음.
+- 사전 점검: 버전 정책·보호 경로·시험 수정·문서 생성·티켓 등록 점검 통과. 최종 전체 검증86434b6a 및 버전51건·#295/#296 CI 성공을 연결하며 중복 전체 실행하지 않음. 봉인시험 대신 온라인 평가라는 사용자 결정 유지; TK-180 운영8건 등은 아직 NOT_RUN.
+- 운영 https://verify-acas-law.onrender.com/api/health 사전 확인: version0.20.0, commit034343f16934515659674950f99837ccdcaf54a0, database.status=ok. 릴리스 PR의 동일 head CI 성공 뒤 승인 범위 내 병합, 정확한 운영 SHA/DB 확인 뒤 태그 v.0.21.0 생성 예정.
