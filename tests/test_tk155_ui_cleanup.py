@@ -147,7 +147,7 @@ def _codes(text):
 def test_top_summary_three_cards_and_no_empty_meta(browser):
     page = browser.new_page(viewport={"width": 1440, "height": 1000})
     _serve(page, BASE_PROJECT)
-    expect(page.locator("#summary .metric")).to_have_count(3)
+    expect(page.locator("#summary .metric")).to_have_count(4)
     expect(page.locator(".metric", has_text="출처 미확인 인용")).to_contain_text("2건")
     expect(page.locator(".metric", has_text="출처 미확인 인용")).to_contain_text("사건번호 형식 오류 1건 포함")
     for gone in ("검토에 포함", "배포가능", "배포 가능", "검증위험", "확인 전 항목", "진행 상태", "합성 차단 사유", "합성 지수 설명"):

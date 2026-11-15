@@ -7,6 +7,7 @@ from dataclasses import fields
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from itertools import combinations
+import re
 from typing import Any
 
 from packages.common.enums import EvidenceGrade, FindingType, Severity, VerificationStatus
@@ -183,5 +184,107 @@ def claim_contradictions(claims: list[Claim], *, project_id: str) -> list[Findin
     return cross_document_contradictions(by_document)
 
 
+_WEEKDAYS_KR = ("월", "화", "수", "목", "금", "토", "일")
+_TIMELINE_ATTACHMENT_RE = re.compile(
+    r"(?:별첨|별지|첨부)\s*제?\s*\d+\s*호?(?:\s*의\s*\d+)*"
+    r"(?:\s*[,\(]?\s*(?:제\s*|[pP]\.\s*)?\d+(?:\s*[~～\-–]\s*\d+)?\s*(?:쪽|면|페이지|[pP](?![A-Za-z]))\s*\)?)?"
+)
+
+
+def _format_timeline_date(d: date) -> str:
+    return f"{d.year % 100:02d}.{d.month}.{d.day}.({_WEEKDAYS_KR[d.weekday()]})"
+
+
+def _format_timeline_evidence(event: Event) -> str:
+    from .exhibits import parse_exhibits
+
+    found: list[str] = []
+    for ref in event.evidence_references or []:
+        raw = " ".join(str(ref.get("raw_text") or "").split()).strip()
+        if raw and raw not in found:
+            found.append(raw)
+    if found:
+        return ", ".join(found)
+
+    desc = event.description or ""
+    spans_and_labels: list[tuple[int, int, str]] = []
+    seen_spans: set[tuple[int, int]] = set()
+    for ref in parse_exhibits(desc):
+        span = tuple(ref["span"])
+        if span in seen_spans:
+            continue
+        seen_spans.add(span)
+        label = " ".join(str(ref.get("label") or "").split()).strip()
+        if label:
+            spans_and_labels.append((span[0], span[1], label))
+
+    for match in _TIMELINE_ATTACHMENT_RE.finditer(desc):
+        m_start, m_end = match.start(), match.end()
+        if any(not (m_end <= s0 or m_start >= s1) for s0, s1 in seen_spans):
+            continue
+        text = " ".join(match.group(0).split()).strip(" ,.;:()[]{}")
+        if text:
+            spans_and_labels.append((m_start, m_end, text))
+
+    spans_and_labels.sort(key=lambda item: (item[0], item[1]))
+    for _, _, label in spans_and_labels:
+        if label not in found:
+            found.append(label)
+    return ", ".join(found) if found else "[근거 미작성]"
+
+
+def _timeline_dedup_key(event: Event, desc: str, evidence_summary: str) -> tuple[Any, ...]:
+    date_key = event.date.isoformat() if event.date else ""
+    has_doc_id = bool(event.document_id or event.source_document_sha256)
+    has_exact_loc = (event.span is not None) or bool(event.block_id and event.page is not None)
+    has_complete_source = has_doc_id and has_exact_loc
+    source_key: tuple[Any, ...] = (
+        (
+            event.document_id or "",
+            event.source_document_sha256 or "",
+            event.block_id or "",
+            event.page if event.page is not None else -1,
+            tuple(event.span) if event.span is not None else (),
+        )
+        if has_complete_source
+        else ("__incomplete_source__", event.event_id)
+    )
+    fact_key = (
+        event.event_identity or "",
+        event.transaction_id or "",
+        event.action or "",
+        event.speaker_id or "",
+        event.speaker_text or "",
+        event.target_id or "",
+        event.target_text or "",
+        bool(event.negated),
+        bool(event.hearsay),
+        bool(event.quoted),
+        bool(event.conditional),
+        bool(event.alternative),
+        event.stance or "",
+        evidence_summary,
+    )
+    return (date_key, desc, source_key, fact_key)
+
+
 def build_timeline(events: list[Event]) -> list[dict[str, Any]]:
-    return [event.to_dict() for event in sorted((e for e in events if e.date), key=lambda e: e.date)]
+    ordered = sorted(
+        (e for e in events if e.date),
+        key=lambda e: (e.date, e.document_id or "", e.page or 0, (e.span or (0, 0))[0]),
+    )
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+    for event in ordered:
+        desc = " ".join((event.description or "").split())
+        ev_summary = _format_timeline_evidence(event)
+        key = _timeline_dedup_key(event, desc, ev_summary)
+        if key in seen:
+            continue
+        seen.add(key)
+        item = event.to_dict()
+        item["formatted_date"] = _format_timeline_date(event.date)
+        item["formatted_content"] = desc
+        item["evidence_summary"] = ev_summary
+        out.append(item)
+    return out

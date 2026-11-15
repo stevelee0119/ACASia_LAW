@@ -17,7 +17,7 @@ from test_operations_completion import ops, seeded_run, completed  # noqa: F401
 
 # 0.13.0 production commit b68cfeec2c5c168a3b9e6e2e92653ea6892521bf.
 LEGACY_MODELS = {"anthropic": "claude-opus-5-5", "openai": "gpt-6-luna",
-                 "gemini": "gemini-3.8-flash", "local": "local-model"}
+                 "gemini": "gemini-4-hydrogen", "local": "local-model"}
 ROUTING_FIELDS = {"llm_cross_check", "llm_efficient_routing", "llm_prompt_caching",
                   "llm_review_sample_percent", "llm_routing", "llm_model_overrides", "llm_default_models"}
 
@@ -66,7 +66,7 @@ def test_off_uses_all_legacy_models_and_does_not_reuse_requests(transport, unset
         answers = asyncio.run(router.consult_all(LLMRole.PRIMARY_REASONER, request))
         assert len(answers) == 3 and all(a.used for a in answers)
         assert not any(e.reused for a in answers for e in a.executions)
-    assert sent_models(requests) == ["claude-opus-5-5", "gpt-6-luna", "gemini-3.8-flash"] * 2
+    assert sent_models(requests) == ["claude-opus-5-5", "gpt-6-luna", "gemini-4-hydrogen"] * 2
     assert all("cache_control" not in body for _, body in requests)
 
 
@@ -74,7 +74,7 @@ def test_off_cascade_retains_0130_wire_and_three_calls(transport, unset_routing_
     router, requests, responses = make_default_router(transport)
     responses["anthropic"] = {"status": "VERIFIED", "confidence": 1, "rationale": "synthetic"}
     result = asyncio.run(router.cascade(question="q", evidence={"official": {"full_text": "source"}}))
-    assert sent_models(requests) == ["claude-opus-5-5", "gpt-6-luna", "gemini-3.8-flash"]
+    assert sent_models(requests) == ["claude-opus-5-5", "gpt-6-luna", "gemini-4-hydrogen"]
     assert '"confidence": 1' in requests[1][1]["messages"][1]["content"]
     assert not any(s["name"] == "escalation" for s in result.stages)
 
@@ -118,7 +118,9 @@ def test_configured_cache_rates_are_used_in_settlement(tmp_path, model, read_rat
 @pytest.mark.parametrize("day,rates", [("2026-12-31", (.75, 3.75, .075)), ("2027-01-01", (1.5, 7.5, .15))])
 def test_gemini_promotion_checks_all_three_rates(transport, day, rates):
     router, _, _ = transport
-    table = effective_pricing(router.settings, router.providers["gemini"], today=day)
+    provider = router.providers["gemini"]
+    provider.config.model = "gemini-3.8-flash"
+    table = effective_pricing(router.settings, provider, today=day)
     assert tuple(table[k] for k in ("input", "output", "cache_read")) == rates
 
 

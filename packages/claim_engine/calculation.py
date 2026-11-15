@@ -723,6 +723,7 @@ class CalculationEngine:
         findings.extend(self._verify_statement_formulas(doc))
         findings = self._deduplicate_totals(merge_same_total(findings))
         findings.extend(self._verify_percentages(doc, findings))
+        findings.extend(self._verify_sentence_percentages(doc))
         from .claim_amounts import claim_amount_findings
 
         findings.extend(claim_amount_findings(doc))
@@ -807,7 +808,7 @@ class CalculationEngine:
                 continue
             col = amount_cols[-1]
             items, stated = [], None
-            for row in cells[1:]:
+            for row_idx, row in enumerate(cells[1:], start=1):
                 if col >= len(row) or pct_col >= len(row):
                     continue
                 amount = parse_amounts(row[col])
@@ -824,12 +825,13 @@ class CalculationEngine:
                     # 머리글이 비율(%) 열이면 칸에 % 기호가 없는 수도 비율이다(TK-146)
                     pct = _BARE_PERCENT_RE.fullmatch(row[pct_col].replace(" ", ""))
                 if pct:
-                    items.append((row[0], amount[-1].value, Decimal(pct.group("num")), pct.group("num")))
-            computed = sum((value for _, value, _, _ in items), Decimal(0))
+                    items.append((row_idx, row[0], amount[-1].value, amount[-1].raw, Decimal(pct.group("num")), pct.group("num")))
+            computed = sum((value for _, _, value, _, _, _ in items), Decimal(0))
             if len(items) < 2 or computed <= 0:
                 continue
-            wrong, derived = [], []
-            for label, value, pct, raw in items:
+            wrong, derived, row_evidence = [], [], []
+            table_ref = table.get("table_ref") or f"table-{table_index}"
+            for row_idx, label, value, amount_raw, pct, raw in items:
                 decimals = len(raw.split(".")[1]) if "." in raw else 0
                 tolerance = Decimal("0.5") * (Decimal(10) ** -decimals) + Decimal("0.001")
                 by_sum = value / computed * 100
@@ -837,23 +839,58 @@ class CalculationEngine:
                     continue
                 if stated and stated != computed and abs(pct - value / stated * 100) <= tolerance:
                     derived.append(f"{label}: {raw}% (기재 합계 기준 {value / stated * 100:.2f}%, 세부 합산 기준 {by_sum:.2f}%)")
+                    row_cause = "STATED_TOTAL"
                 else:
                     wrong.append(f"{label}: 기재 {raw}% / 계산 {by_sum:.2f}%")
+                    row_cause = "PERCENT_CALCULATION"
+                row_evidence.append({
+                    "row_index": row_idx,
+                    "row": label,
+                    "amount": str(value),
+                    "amount_raw": amount_raw,
+                    "stated_percent": raw,
+                    "computed_percent": f"{by_sum:.2f}",
+                    "stated_total": str(stated) if stated is not None else None,
+                    "computed_total": str(computed),
+                    "table_ref": table_ref,
+                    "cause": row_cause,
+                })
             if not (wrong or derived):
                 continue
-            table_ref = table.get("table_ref") or f"table-{table_index}"
             cause = next((f for f in totals if f.confidence_features.get("stated") == str(stated)
                           and f.confidence_features.get("table_ref") == table_ref
                           and f.confidence_features.get("table_column") == col), None) if derived else None
             if cause is not None:
                 cause.confidence_features.setdefault("derived_effects", []).extend(derived)
             features = {"arithmetic_proof": True, "deterministic_rule": True, "rule_id": "CALC.PERCENT_MISMATCH",
-                        "rows": wrong + derived, "computed_total": str(computed),
+                        "rows": wrong + derived, "row_evidence": row_evidence,
+                        "table_ref": table_ref, "table_column": pct_col, "amount_column": col,
+                        "total_rows_checked": len(items),
+                        "computed_total": str(computed),
                         "stated_total": str(stated) if stated is not None else None,
                         "cause": "STATED_TOTAL" if derived and not wrong else "PERCENT_CALCULATION",
                         "cause_finding": cause.finding_id if cause is not None else None}
             title = ("비율(%)이 틀린 합계를 기준으로 계산되었다(원인: 합계 칸 오류)" if derived and not wrong
                      else "비율(%)이 금액으로 다시 계산한 값과 다르다")
+            evidences = [
+                Evidence.create(description="비율 열", grade=EvidenceGrade.A, document_id=doc.document_id,
+                                page=table.get("page"), excerpt="; ".join(wrong + derived)[:300])
+            ]
+            for item_ev in row_evidence:
+                total_note = (f" | 기재합계 {stated:,}원" if stated is not None else "")
+                evidences.append(
+                    Evidence.create(
+                        description=f"비율 불일치 행 ({item_ev['row']})",
+                        grade=EvidenceGrade.A,
+                        document_id=doc.document_id,
+                        page=table.get("page"),
+                        excerpt=(
+                            f"{item_ev['row']} | 금액 {item_ev['amount_raw']} ({Decimal(item_ev['amount']):,}원) | "
+                            f"기재 {item_ev['stated_percent']}% | 재계산 {item_ev['computed_percent']}% | "
+                            f"세부합계 {computed:,}원{total_note}"
+                        )[:300],
+                    )
+                )
             out.append(Finding.create(
                 type=FindingType.ARITHMETIC_MISMATCH, status=VerificationStatus.CONTRADICTED, severity=Severity.MEDIUM,
                 evidence_grade=EvidenceGrade.A, title=title,
@@ -861,8 +898,109 @@ class CalculationEngine:
                         + (f". 비율은 기재 합계 {stated:,}원 기준으로 맞으므로 원인은 합계 칸이다." if derived and not wrong else "")),
                 confidence=confidence_score(features), confidence_features=features, document_id=doc.document_id,
                 page=table.get("page"), engine=ENGINE_NAME, tags=["CALCULATION", "PERCENT"],
-                evidence=[Evidence.create(description="비율 열", grade=EvidenceGrade.A, document_id=doc.document_id,
-                                          page=table.get("page"), excerpt="; ".join(wrong + derived)[:300])]))
+                evidence=evidences))
+        return out
+
+    _SENTENCE_RATE_GUARD_RE = re.compile(r"(?:연\s*\d|이자(?:율)?|지연손해금|부가(?:가치)?세|세율|가산세|할인율)")
+    _SENTENCE_TOTAL_CUE_RE = re.compile(r"(?:총|전체|합계|총액)\s*$")
+    _SENTENCE_PART_CUE_RE = re.compile(r"^\s*(?:중|가운데|에서)\s*$")
+    _SENTENCE_DIRECT_PCT_RE = re.compile(
+        r"^(?:\s*\(\s*$"
+        r"|\s*(?:은|는|이|가)\s*(?:(?:전체|총액?|합계)(?:의|에서|중)?\s*)?(?:비율(?:은|이|로)?\s*)?$"
+        r"|\s*의\s*비율(?:은|이)\s*$)"
+    )
+
+    def _verify_sentence_percentages(self, doc: NormalizedDocument) -> List[Finding]:
+        """문장 안의 명시적 '총액 중 일부 금액과 비율(%)' 진술을 문장별로 재계산한다(TK-184).
+
+        수치 근거가 불완전한 포괄 의견, 근사치('약', '내외'), 범위('~', '내지'), 이자율·세율,
+        절 전환·별도 대상이 낀 진술은 건드리지 않는다.
+        """
+        out: List[Finding] = []
+        for block in doc.body_blocks():
+            if block.block_type == "table" or block.attributes.get("table_ref"):
+                continue
+            for sentence in re.split(r"(?<=[.!?다함임음])\s+|\n+", block.text):
+                sent = sentence.strip()
+                if not sent or "%" not in sent:
+                    continue
+                if (APPROX_GUARD_RE.search(sent) or RANGE_GUARD_RE.search(sent)
+                        or CLAIM_QUOTE_GUARD_RE.search(sent) or self._SENTENCE_RATE_GUARD_RE.search(sent)):
+                    continue
+                amounts = parse_amounts(sent, block_id=block.block_id, page=block.page)
+                pcts = list(PERCENT_RE.finditer(sent))
+                if len(amounts) != 2 or len(pcts) != 1:
+                    continue
+                total_amt, part_amt = amounts[0], amounts[1]
+                pct_match = pcts[0]
+                if total_amt.value <= 0 or part_amt.value <= 0 or part_amt.value > total_amt.value:
+                    continue
+                if pct_match.start() < part_amt.end:
+                    continue
+                before_total = sent[:total_amt.start]
+                between_amts = sent[total_amt.end:part_amt.start]
+                between_part_pct = sent[part_amt.end:pct_match.start()]
+                if not (self._SENTENCE_TOTAL_CUE_RE.search(before_total)
+                        and self._SENTENCE_PART_CUE_RE.fullmatch(between_amts)
+                        and self._SENTENCE_DIRECT_PCT_RE.fullmatch(between_part_pct)):
+                    continue
+                raw_pct = pct_match.group("num")
+                stated_pct = Decimal(raw_pct)
+                computed_pct = part_amt.value / total_amt.value * 100
+                decimals = len(raw_pct.split(".")[1]) if "." in raw_pct else 0
+                tolerance = Decimal("0.5") * (Decimal(10) ** -decimals) + Decimal("0.001")
+                if abs(stated_pct - computed_pct) <= tolerance:
+                    continue
+                row_ev = {
+                    "sentence": sent[:200],
+                    "amount": str(part_amt.value),
+                    "amount_raw": part_amt.raw,
+                    "stated_percent": raw_pct,
+                    "computed_percent": f"{computed_pct:.2f}",
+                    "stated_total": str(total_amt.value),
+                    "computed_total": str(total_amt.value),
+                    "cause": "PERCENT_CALCULATION",
+                }
+                features = {
+                    "arithmetic_proof": True,
+                    "deterministic_rule": True,
+                    "rule_id": "CALC.SENTENCE_PERCENT_MISMATCH",
+                    "row_evidence": [row_ev],
+                    "computed_total": str(total_amt.value),
+                    "stated_total": str(total_amt.value),
+                    "cause": "PERCENT_CALCULATION",
+                }
+                out.append(Finding.create(
+                    type=FindingType.ARITHMETIC_MISMATCH,
+                    status=VerificationStatus.CONTRADICTED,
+                    severity=Severity.MEDIUM,
+                    evidence_grade=EvidenceGrade.A,
+                    title="문장의 비율(%)이 기재 금액으로 재계산한 값과 다르다",
+                    detail=(
+                        f"전체 {total_amt.value:,}원 중 {part_amt.value:,}원의 비율은 "
+                        f"{computed_pct:.2f}%이나 문장에 {raw_pct}%로 기재되었다."
+                    ),
+                    confidence=confidence_score(features),
+                    confidence_features=features,
+                    document_id=doc.document_id,
+                    block_id=block.block_id,
+                    page=block.page,
+                    engine=ENGINE_NAME,
+                    tags=["CALCULATION", "PERCENT"],
+                    evidence=[
+                        Evidence.create(
+                            description="문장 비율 불일치",
+                            grade=EvidenceGrade.A,
+                            document_id=doc.document_id,
+                            block_id=block.block_id,
+                            page=block.page,
+                            excerpt=(
+                                f"{sent[:140]} | 금액 {part_amt.raw} ({part_amt.value:,}원) | "
+                                f"기재 {raw_pct}% | 재계산 {computed_pct:.2f}% | 전체 {total_amt.value:,}원"
+                            )[:300],
+                        )
+                    ],
+                ))
         return out
 
     def _verify_line_items(self, doc: NormalizedDocument, seen_blocks: set) -> List[Finding]:

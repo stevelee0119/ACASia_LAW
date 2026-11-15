@@ -61,7 +61,7 @@ def test_summary_metrics_are_compact(width, height, max_cell, tmp_path):
             page.goto("http://summary.test/")
             select_first_project(page)
             metrics_locator = page.locator("#summary .metric")
-            expect(metrics_locator).to_have_count(3)
+            expect(metrics_locator).to_have_count(4)
             sizes = metrics_locator.evaluate_all("""cells => cells.map(cell => {
                 const strong = cell.querySelector('strong');
                 const span = cell.querySelector('span');
@@ -71,10 +71,10 @@ def test_summary_metrics_are_compact(width, height, max_cell, tmp_path):
                     height: cell.getBoundingClientRect().height
                 };
             })""")
-            assert len(sizes) == 3
+            assert len(sizes) == 4
             assert all(0 < s["value"] <= 18.5 and 0 < s["title"] <= 12.5 for s in sizes), sizes
             assert all(s["height"] <= max_cell for s in sizes), [round(s["height"]) for s in sizes]
-            for title in ("AI 작성 진단", "출처 미확인 인용", "법률적으로 무리한 주장"):
+            for title in ("AI 작성·보안 진단", "출처 미확인 인용", "법률적으로 무리한 주장", "Time Table"):
                 expect(page.locator(".metric", has_text=title)).to_be_visible()
             for title in ("배포가능 상태", "검증위험 지수", "검토에 포함", "확인 전 항목", "진행 상태"):
                 expect(page.locator(".metric", has_text=title)).to_have_count(0)
