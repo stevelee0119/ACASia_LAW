@@ -452,9 +452,9 @@ def review_document(result, library, router, context, pii):
     accepted_any = False
     outcome = None  # 변수 명시적 초기화 (한국어 주석)
 
-    # 큐 항목: (문서 청크, 참고자료 묶음, 분할 깊이, 제외 공급자)
-    queue: List[tuple[str, List[Dict[str, Any]], int, Optional[List[str]]]] = [
-        (doc_chunk, b, 0, None) for doc_chunk in doc_chunks for b in initial_batches
+    # 큐 항목: (문서 청크, 참고자료 묶음, 분할 깊이, 제외 공급자, 원래 batch 번호)
+    queue: List[tuple[str, List[Dict[str, Any]], int, Optional[List[str]], Optional[int]]] = [
+        (doc_chunk, b, 0, None, None) for doc_chunk in doc_chunks for b in initial_batches
     ]
     total_calls = 0
     # C3 최악 상한: 전체 호출 수(재시도·분할 포함) <= 2 * ceil(N / 6) * len(doc_chunks)
@@ -477,25 +477,31 @@ def review_document(result, library, router, context, pii):
 
     while queue and total_calls < max_total_calls:
         remaining_budget = max_total_calls - total_calls
-        wave_items = queue[:remaining_budget]
+        wave_cap = 1 if len(doc_chunks) == 1 else min(remaining_budget, rag_concurrency)
+        wave_items = queue[:wave_cap]
         queue = queue[len(wave_items):]
 
         wave_reqs: List[tuple[LLMRequest, Optional[List[str]]]] = []
-        for doc_chunk, s_batch, _depth, exc_providers in wave_items:
+        wave_batch_nos: List[int] = []
+        for doc_chunk, s_batch, _depth, exc_providers, orig_batch_no in wave_items:
             total_calls += 1
+            batch_no = orig_batch_no if orig_batch_no is not None else total_calls
+            wave_batch_nos.append(batch_no)
             request = LLMRequest(
                 system=RAG_REVIEW_SYSTEM_PROMPT,
                 user=json.dumps({"document": doc_chunk, "untrusted_references": [
                     {k: s[k] for k in ("source_id", "title", "text", "page")} for s in s_batch]}, ensure_ascii=False),
-                schema=ENVELOPE_SCHEMA, max_tokens=4000, metadata={"stage": "drive_rag_advisory", "batch": total_calls},
+                schema=ENVELOPE_SCHEMA, max_tokens=4000, metadata={"stage": "drive_rag_advisory", "batch": batch_no},
                 input_contract="reference_review_v1")
             request = with_review_context(request, enabled=korean_profile, reference_date=getattr(context, "case_date", None))
             wave_reqs.append((request, exc_providers))
 
         wave_outcomes = asyncio.run(_run_rag_wave(wave_reqs))
-        retry_tasks: List[tuple[str, List[Dict[str, Any]], int, Optional[List[str]]]] = []
+        retry_tasks: List[tuple[str, List[Dict[str, Any]], int, Optional[List[str]], Optional[int]]] = []
 
-        for (doc_chunk, s_batch, depth, exc_providers), batch_outcome in zip(wave_items, wave_outcomes):
+        for (doc_chunk, s_batch, depth, exc_providers, _orig), batch_no, batch_outcome in zip(
+            wave_items, wave_batch_nos, wave_outcomes
+        ):
             outcome = batch_outcome
             result.engine_data.setdefault("model_executions", []).extend(e.to_dict() for e in batch_outcome.executions)
             executed_any |= bool(batch_outcome.executions or batch_outcome.used)
@@ -509,15 +515,15 @@ def review_document(result, library, router, context, pii):
             if (not batch_outcome.used and is_truncated and len(s_batch) > 1
                     and depth < max_subdivision_depth and remaining_calls >= 2 and exc_providers is None):
                 mid = len(s_batch) // 2
-                retry_tasks.append((doc_chunk, s_batch[:mid], depth + 1, None))
-                retry_tasks.append((doc_chunk, s_batch[mid:], depth + 1, None))
+                retry_tasks.append((doc_chunk, s_batch[:mid], depth + 1, None, None))
+                retry_tasks.append((doc_chunk, s_batch[mid:], depth + 1, None, None))
                 continue
 
             failed = [e.provider for e in batch_outcome.executions if getattr(e, "provider", "") and not e.ok]
             if not batch_outcome.used and failed and exc_providers is None and remaining_calls >= 1:
                 if failed:
                     review.setdefault("retried_after", []).extend(failed)
-                retry_tasks.append((doc_chunk, s_batch, depth, failed))
+                retry_tasks.append((doc_chunk, s_batch, depth, failed, batch_no))
                 continue
 
             batch_accepted = bool(batch_outcome.used and not batch_outcome.quarantined)
