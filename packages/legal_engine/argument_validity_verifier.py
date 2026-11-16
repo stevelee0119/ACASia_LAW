@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from dataclasses import dataclass, field
@@ -989,24 +990,32 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
     } for index, item in enumerate(unverified_cases, 1)]
     # 한 번에 모두 물으면 인용이 많을 때 응답이 출력 한도에서 잘린다. 한국어 JSON은
     # 공급자마다 토큰 사용량이 달라, 잘리는 모델만 교차검증에서 빠졌다.
+    # 독립된 2건 묶음 호출은 제한된 동시성(Semaphore)으로 병렬 수행하되 응답 순서를 보존한다.
     answers = []
-    for start in range(0, len(items), _OPINION_BATCH):
+    batches = [items[start:start + _OPINION_BATCH] for start in range(0, len(items), _OPINION_BATCH)]
+    opinion_sem = asyncio.Semaphore(4)
+
+    async def _query_opinion_batch(batch: List[Dict[str, Any]]) -> List[Any]:
         request = LLMRequest(system=_OPINION_SYSTEM,
-                             user=json.dumps({"items": items[start:start + _OPINION_BATCH]}, ensure_ascii=False),
+                             user=json.dumps({"items": batch}, ensure_ascii=False),
                              temperature=0.1, max_tokens=4096, schema=_OPINION_SCHEMA,
                              input_contract="argument_review_v1")
-        request = bind_argument_excerpts(request, tuple(excerpt_pieces[item['item_id']]
-                                                       for item in items[start:start + _OPINION_BATCH]))
-        try:
-            batch = items[start:start + _OPINION_BATCH]
+        request = bind_argument_excerpts(request, tuple(excerpt_pieces[item['item_id']] for item in batch))
+        async with opinion_sem:
             replies = await router.consult_all(LLMRole.PRIMARY_REASONER, request, policy=policy,
                                                expected_task="법률 주장 타당성 검토")
-            answers += replies
             # 2건 묶음도 출력 한도에서 잘린 공급자(0.9.8 실제 실행 1건)에는 그 공급자에게만 1건씩 다시 묻는다.
-            answers += await _retry_truncated_singly(router, replies, batch, policy, excerpt_pieces=excerpt_pieces)
-        except Exception as exc:  # 참고 의견이 없어도 판정은 이미 끝났다.
-            result.ai_summary = f"AI 교차검토를 수행하지 못함({type(exc).__name__})."
-            return
+            retried = await _retry_truncated_singly(router, replies, batch, policy, excerpt_pieces=excerpt_pieces)
+        return list(replies) + list(retried)
+
+    try:
+        if batches:
+            batch_chunks = await asyncio.gather(*(_query_opinion_batch(b) for b in batches))
+            for chunk in batch_chunks:
+                answers.extend(chunk)
+    except Exception as exc:  # 참고 의견이 없어도 판정은 이미 끝났다.
+        result.ai_summary = f"AI 교차검토를 수행하지 못함({type(exc).__name__})."
+        return
 
     opinions_by_item: Dict[int, List[Dict[str, Any]]] = {}
     summaries, used = [], []

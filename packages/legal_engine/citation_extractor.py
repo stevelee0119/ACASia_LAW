@@ -74,8 +74,8 @@ def _merged_attributes(main: str, merged: str) -> dict:
     return {"merged_case_numbers": numbers, "merged_notation": True}
 
 
-# 「형법」 제250조 제1항 제2호 / 형법 제250조
-_LAW_NAME_PATTERN = r"[「『]?[가-힣A-Za-z· ]{1,40}?(?:법|법률|령|규칙|조례|훈령|예규|규정|고시|지침)[」』]?"
+# 「형법」 제250조 제1항 제2호 / 형법 제250조 / '점검지침' 제5조
+_LAW_NAME_PATTERN = r"[「『'‘\"“]?[가-힣A-Za-z· ]{1,40}?(?:법|법률|령|규칙|조례|훈령|예규|규정|고시|지침)[」』'’\"”]?"
 LAW_RE = re.compile(
     rf"(?P<law>{_LAW_NAME_PATTERN})\s*"
     r"(?:부칙\s*)?"
@@ -86,7 +86,7 @@ LAW_RE = re.compile(
 )
 _LAW_ARTICLE_ANCHOR_RE = re.compile(r"제\s*\d+\s*조")
 _LAW_NAME_END_RE = re.compile(_LAW_NAME_PATTERN + r"\Z")
-# 원래 문법: 이름 본체 최대 40자 + 접미사 최대 2자 + 낫표 2자.
+# 원래 문법: 이름 본체 최대 40자 + 접미사 최대 2자 + 낫표/따옴표 2자.
 _LAW_NAME_MAX_LENGTH = 40 + 2 + 2
 
 
@@ -716,6 +716,7 @@ def extract_from_text(
 
     # 4) 법령 (조문 "조"가 있을 때만 수행)
     previous_law: Optional[str] = None
+    admin_bracket_index = None
     if "조" in text:
         for m in _law_matches(text):
             if overlaps(m.start(), m.end()):
@@ -737,10 +738,36 @@ def extract_from_text(
             if law_name.endswith(ADMIN_RULE_KINDS):
                 kind = next(k for k in ADMIN_RULE_KINDS if law_name.endswith(k))
                 if law_name == kind:
-                    earlier = [n.group("name").strip() for n in BRACKET_NAME_RE.finditer(text, max(0, m.start() - 600), m.start())
-                               if n.group("name").strip().endswith(kind)]
-                    if earlier:
-                        law_name = earlier[-1]
+                    if admin_bracket_index is None:
+                        alias_by_abbr = {}
+                        for am in ALIAS_DEFINITION_RE.finditer(text):
+                            raw_full = (am.group("full") or am.group("full_q") or "").strip()
+                            full = canonical_law_name(raw_full)
+                            abbr = " ".join(am.group("abbr").split()).replace(" ", "")
+                            if full and abbr and full.endswith(_ADMIN_ALIAS_SUFFIXES):
+                                alias_by_abbr[abbr] = full
+                        admin_bracket_index = {}
+                        for bm in BRACKET_NAME_RE.finditer(text):
+                            b_name = canonical_law_name(bm.group("name").strip())
+                            b_kind = next((k for k in ADMIN_RULE_KINDS if b_name.endswith(k)), None)
+                            if b_kind and b_name != b_kind:
+                                resolved_b = alias_by_abbr.get(b_name.replace(" ", ""), b_name)
+                                ends_list, names_list = admin_bracket_index.setdefault(b_kind, ([], []))
+                                ends_list.append(bm.end())
+                                names_list.append(resolved_b)
+                    ends_list, names_list = admin_bracket_index.get(kind, ([], []))
+                    idx = bisect.bisect_right(ends_list, m.start()) - 1
+                    if idx >= 0:
+                        law_name = names_list[idx]
+                    else:
+                        prev_rule = next(
+                            (c.law_name for c in reversed(citations)
+                             if c.type == CitationType.ADMIN_RULE and c.law_name
+                             and c.law_name.endswith(kind) and c.law_name != kind),
+                            None,
+                        )
+                        if prev_rule:
+                            law_name = prev_rule
                 citations.append(_admin_rule_citation(
                     text, m.start(), m.end(), kind=kind, name=law_name,
                     article=m.group("article"), sub=m.group("article_sub"), paragraph=m.group("paragraph"),
@@ -1201,20 +1228,20 @@ def attach_claim_text(text: str, citations: List[Citation], *, _targets=None) ->
 def _law_name_offset(raw: str) -> int:
     """법령명 앞에 붙어 잡힌 문장 조각을 뺀 법령명의 상대 시작 위치 (TK-72 캐시)."""
     suffix = law_name_suffix(raw)
-    clean_raw = re.sub(r"[「」『』]", " ", raw or "")
+    clean_raw = re.sub(r"[「」『』'‘’\"“”]", " ", raw or "")
     first_word = suffix.split()[0] if suffix else ""
     if first_word:
         pos = clean_raw.rfind(first_word)
         if pos >= 0:
-            if pos > 0 and raw[pos - 1] in "「『":
+            if pos > 0 and raw[pos - 1] in "「『'‘\"“":
                 pos -= 1
             return pos
     kept = suffix.split()
-    tokens = list(re.finditer(r"[^\s「」『』]+", raw))
+    tokens = list(re.finditer(r"[^\s「」『』'‘’\"“”]+", raw))
     if not kept or len(kept) > len(tokens):
         return 0
     start = tokens[-len(kept)].start()
-    if start > 0 and raw[start - 1] in "「『":
+    if start > 0 and raw[start - 1] in "「『'‘\"“":
         start -= 1
     return start
 
@@ -1513,51 +1540,84 @@ def extract_citations(doc: NormalizedDocument) -> List[Citation]:
     return batch.finish(out)
 
 
-# "「…에 관한 법률」(이하 '○○법'이라 한다)"처럼 문서가 스스로 정한 약칭
+# "「…에 관한 법률」(이하 '○○법'이라 한다)" 또는 "'…지침'(이하 '○○지침'이라 한다)"처럼 문서가 스스로 정한 약칭
 ALIAS_DEFINITION_RE = re.compile(
-    r"[「『](?P<full>[^」』]{3,80})[」』]\s*[(（]\s*(?:이하\s*)?[‘'\"“「『]?(?P<abbr>[가-힣A-Za-z·]{2,30}?)[’'\"”」』]?"
+    r"(?:[「『](?P<full>[^」』\n]{3,80})[」』]|['‘\"“](?P<full_q>[^'’\"”\n]{3,80})['’\"”])\s*"
+    r"[(（]\s*(?:이하\s*)?[‘'\"“「『]?(?P<abbr>[가-힣A-Za-z· ]{2,30}?)[’'\"”」』]?"
     r"\s*(?:이?라\s*(?:한다|함|칭한다|약칭한다))?\s*[)）]")
+
+_ALIAS_RULE_SUFFIXES = (
+    "시행규칙", "시행령", "법률", "법", "조례",
+    "훈령", "예규", "고시", "지침", "규정", "규칙", "내규", "요령", "기준", "수칙", "세칙",
+)
+_ADMIN_ALIAS_SUFFIXES = ("훈령", "예규", "고시", "지침", "규정", "규칙", "내규", "요령", "기준", "수칙", "세칙")
 
 
 def _attach_law_alias_candidates(text: str, citations: List[Citation]) -> None:
-    """짧게 쓴 법령명에 같은 문서 안의 정식 법령명을 약칭 후보로 붙인다(교체하지 않는다).
+    """짧게 쓴 법령명·행정규칙명에 같은 문서 안의 정식 명칭을 약칭 후보로 붙인다(교체하지 않는다).
 
-    적힌 이름으로 먼저 조회하고, 목록에 없을 때만 후보로 다시 조회한다(source_review). 근거는
-    ① 문서의 약칭 정의("(이하 '○○법'이라 한다)") ② 같은 문서에 인용된 정식 법령명이 짧은 이름의
-    어간(끝의 '법'을 뗀 4자 이상)으로 시작하는 경우이며, 후보가 하나일 때만 붙인다.
+    적힌 이름으로 먼저 조회하고, 목록에 없을 때만 후보로 다시 조회한다(source_review) 또는 참고자료 대조에 쓴다.
+    근거는 ① 문서의 약칭 정의("(이하 '○○법/○○지침'이라 한다)") ② 같은 문서에 인용된 정식 명칭이
+    짧은 이름과 어간·접미로 유일하게 대응하는 경우이며, 후보가 하나일 때만 붙인다.
     """
-    statutes = [c for c in citations if c.type == CitationType.STATUTE and c.law_name]
+    statutes = [c for c in citations if c.type in (CitationType.STATUTE, CitationType.ADMIN_RULE) and c.law_name]
     if not statutes:
         return
     defined = {}
     for m in ALIAS_DEFINITION_RE.finditer(text):
-        full, abbr = canonical_law_name(m.group("full")), m.group("abbr").strip()
-        if abbr.endswith("법") and full.replace(" ", "") != abbr.replace(" ", ""):
+        raw_full = (m.group("full") or m.group("full_q") or "").strip()
+        full = canonical_law_name(raw_full)
+        abbr = " ".join(m.group("abbr").split())
+        if (full and abbr and full.endswith(_ALIAS_RULE_SUFFIXES)
+                and full.replace(" ", "") != abbr.replace(" ", "")):
             defined[abbr.replace(" ", "")] = full
-    full_names = {c.law_name for c in statutes if " " in c.law_name}
-    clean_full_names = sorted((f.replace(" ", ""), f) for f in full_names)
+    statute_full_names = {c.law_name for c in statutes if c.type == CitationType.STATUTE and " " in c.law_name}
+    clean_full_names = sorted((f.replace(" ", ""), f) for f in statute_full_names)
     clean_names = [clean for clean, _ in clean_full_names]
+
+    admin_full_names = {
+        canonical_law_name(c.law_name) for c in statutes
+        if c.type == CitationType.ADMIN_RULE and " " in c.law_name
+    }
+    for m in BRACKET_NAME_RE.finditer(text):
+        cand = " ".join(m.group("name").split())
+        if " " in cand and cand.endswith(_ADMIN_ALIAS_SUFFIXES):
+            admin_full_names.add(canonical_law_name(cand))
+
     prefix_candidates = {}
     for citation in statutes:
         written = citation.law_name.replace(" ", "")
-        if " " in citation.law_name or not written.endswith("법"):
-            continue
         if written in defined:
             citation.attributes.update(law_alias_candidate=defined[written], law_alias_basis="DOCUMENT_DEFINITION")
             continue
-        stem = written[:-1]
-        if len(stem) < 4:
+        if " " in citation.law_name:
             continue
-        if written not in prefix_candidates:
-            lo = bisect.bisect_left(clean_names, stem)
-            hi = bisect.bisect_left(clean_names, stem + chr(0x10ffff))
-            count = hi - lo
-            # 같은 적힌 이름은 후보에서 제외한다. 정렬 범위로 갯수만 판정한다.
-            eq_lo = bisect.bisect_left(clean_names, written, lo, hi)
-            eq_hi = bisect.bisect_right(clean_names, written, eq_lo, hi)
-            count -= eq_hi - eq_lo
-            at = lo if eq_lo != lo else eq_hi
-            prefix_candidates[written] = clean_full_names[at][1] if count == 1 else None
-        candidate = prefix_candidates[written]
-        if candidate is not None:
-            citation.attributes.update(law_alias_candidate=candidate, law_alias_basis="DOCUMENT_FULL_NAME_PREFIX")
+        if citation.type == CitationType.STATUTE and written.endswith("법"):
+            stem = written[:-1]
+            if len(stem) < 4:
+                continue
+            if written not in prefix_candidates:
+                lo = bisect.bisect_left(clean_names, stem)
+                hi = bisect.bisect_left(clean_names, stem + chr(0x10ffff))
+                count = hi - lo
+                # 같은 적힌 이름은 후보에서 제외한다. 정렬 범위로 갯수만 판정한다.
+                eq_lo = bisect.bisect_left(clean_names, written, lo, hi)
+                eq_hi = bisect.bisect_right(clean_names, written, eq_lo, hi)
+                count -= eq_hi - eq_lo
+                at = lo if eq_lo != lo else eq_hi
+                prefix_candidates[written] = clean_full_names[at][1] if count == 1 else None
+            candidate = prefix_candidates[written]
+            if candidate is not None:
+                citation.attributes.update(law_alias_candidate=candidate, law_alias_basis="DOCUMENT_FULL_NAME_PREFIX")
+        elif written.endswith(_ADMIN_ALIAS_SUFFIXES):
+            kind = next(k for k in _ADMIN_ALIAS_SUFFIXES if written.endswith(k))
+            pre = written[:-len(kind)]
+            if len(pre) < 2:
+                continue
+            matches = sorted({
+                full for full in admin_full_names
+                if full.replace(" ", "") != written and full.endswith(kind)
+                and (full.replace(" ", "").startswith(pre) or full.replace(" ", "").endswith(written))
+            })
+            if len(matches) == 1:
+                citation.attributes.update(law_alias_candidate=matches[0], law_alias_basis="DOCUMENT_FULL_NAME_MATCH")

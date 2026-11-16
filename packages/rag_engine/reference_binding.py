@@ -46,7 +46,11 @@ def identifier(citation):
         if part:
             article += part if part.startswith("제") else "제" + part + suffix
     if not law:
-        found = re.search(r"([가-힣A-Za-z·]+(?:법률|법|령|규정|조례))(제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?)", raw)
+        found = re.search(
+            r"([가-힣A-Za-z·]+(?:법률|법|령|규정|규칙|조례|훈령|예규|고시|지침|요령|기준|수칙|세칙|내규))"
+            r"(제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?)",
+            raw,
+        )
         if found:
             law, article = found.groups()
     return ("law", law, article) if law and ARTICLE_RE.fullmatch(article) else None
@@ -68,13 +72,19 @@ def identifier_match(citation, excerpt):
     # a different law's name is not the complete law identifier.
     original = str(excerpt or "")
     separator = r"[\u0009-\u000D\u001C-\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF「」『』]*"
-    law_pattern = (r"(?<![가-힣A-Za-z0-9])" + separator.join(re.escape(c) for c in key)
-                   + r"(?:(?![가-힣A-Za-z0-9])|(?=제" + separator + r"[0-9]))")
-    positions = [len(authority_text(original[:m.start()])) for m in re.finditer(law_pattern, original)]
+    attrs = value(citation, "attributes") or {}
+    alias = authority_text(attrs.get("law_alias_candidate") or "") if isinstance(attrs, dict) else ""
+    keys = [key] + ([alias] if alias and alias != key else [])
+    positions = []
+    for candidate_key in keys:
+        law_pattern = (r"(?<![가-힣A-Za-z0-9])" + separator.join(re.escape(c) for c in candidate_key)
+                       + r"(?:(?![가-힣A-Za-z0-9])|(?=제" + separator + r"[0-9]))")
+        for m in re.finditer(law_pattern, original):
+            positions.append((len(authority_text(original[:m.start()])), len(candidate_key)))
     # 조문 표기는 가장 길게 읽는다. 뒤에 숫자가 이어지면('제8조제2항0') 잘린 표기라 어느 조문과도 같지 않다.
     articles = [(m.start(), None if re.match(r"[0-9]", text[m.end():m.end() + 1]) else m.group())
                 for m in ARTICLE_TOKEN_RE.finditer(text)]
-    nearby = lambda start: any(abs(start - p - len(key)) <= 100 for p in positions)  # noqa: E731
+    nearby = lambda start: any(abs(start - p - klen) <= 100 for p, klen in positions)  # noqa: E731
     conflict = any(not article_compatible(token, article) and nearby(start) for start, token in articles)
     full = bool(positions) and any(article_compatible(token, article) for _, token in articles) and not conflict
     near = full and any(article_compatible(token, article) and nearby(start) for start, token in articles)

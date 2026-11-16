@@ -9,7 +9,7 @@ from .reading_text import build_reading_text
 CONTRACT_VERSION = "analysis-text-v1"
 
 
-def analysis_text(doc, findings=(), *, limit=12000):
+def analysis_text(doc, findings=(), *, limit=None):
     from packages.verification_engine.sanitized_input import injection_parts, strip_injections
 
     excluded_ids, instructions = injection_parts(findings, doc)
@@ -56,12 +56,14 @@ def analysis_text(doc, findings=(), *, limit=12000):
         segments.append({"block_ids": [b.block_id for b in blocks], "kind": group_key[0],
                          "span": [start, cursor], "page": blocks[0].page})
     full = "\n".join(parts)
-    selected = full[:limit]
+    selected = full if limit is None else full[:limit]
+    omitted = 0 if limit is None else max(0, len(full) - limit)
+    within_limit = True if limit is None else len(full) <= limit
     return selected, {"mode": "SANITIZED_EXCLUDING_INSTRUCTIONS", "text_scope": "VISIBLE_PROSE_AND_TABLES",
         "contract_version": CONTRACT_VERSION,
-        "available_chars": len(full), "inspected_chars": len(selected), "omitted_chars": max(0, len(full) - limit),
-        "is_full_visible_body": len(full) <= limit and not excluded_ids,
-        "is_full_document": len(full) <= limit and not excluded,
+        "available_chars": len(full), "inspected_chars": len(selected), "omitted_chars": omitted,
+        "is_full_visible_body": within_limit and not excluded_ids,
+        "is_full_document": within_limit and not excluded,
         "included_block_counts": dict(Counter(b.block_type for b in kept)),
         "excluded_blocks": sorted(excluded_ids), "excluded_texts": len(instructions), "remaining_chars": len(full),
         "excluded_segments": excluded, "segments": segments}

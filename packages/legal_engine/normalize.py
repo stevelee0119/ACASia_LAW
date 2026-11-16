@@ -221,7 +221,7 @@ def law_name_suffix(raw: str) -> str:
         return " ".join(bracketed.group(1).split())
 
     # 공식 제명 목록(LAW_ALIASES의 공식 명칭 및 주요 법전)이 raw 내에 완전 포함된 경우 최장 일치를 우선 보존한다
-    clean_raw = re.sub(r"[「」『』]", " ", raw or "")
+    clean_raw = re.sub(r"[「」『』'‘’\"“”]", " ", raw or "")
     matches = []
     targets = set(LAW_ALIASES.values()) | set(LAW_ALIASES.keys()) | CORE_LEGAL_CODES
     for official in targets:
@@ -314,7 +314,7 @@ def _joins_forward(tokens) -> bool:
 
 def canonical_law_name(raw: str) -> str:
     """법령명 앞에 붙은 문장 조각·접속어를 떼고 표준 법령명을 만든다."""
-    name = law_name_suffix(raw) or re.sub(r"[「」『』]", "", raw or "").strip()
+    name = law_name_suffix(raw) or re.sub(r"[「」『』'‘’\"“”]", "", raw or "").strip()
     changed = True
     while changed:
         changed = False
