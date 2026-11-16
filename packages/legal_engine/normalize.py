@@ -165,6 +165,8 @@ LAW_ALIASES = {
 # 법령명 앞에 붙어 나오기 쉬운 접속·부사어. 정규식이 함께 잡아도 법령명에서 제외한다.
 LAW_NAME_PREFIX_NOISE = [
     "또한", "그리고", "및", "한편", "따라서", "이에", "아울러", "특히", "나아가",
+    "최소한", "적어도", "단지", "단순히", "불과", "약", "결국", "즉", "가령",
+    "예컨대", "물론", "실제로", "사실상", "비록", "설령", "원래", "당초",
     "위", "본", "동", "구", "현행", "당시", "관련", "해당", "각", "위반한", "위반하여",
     "이상",  # "…위험이 배제된 이상 군사기밀보호법 제10조"
 ]
@@ -172,10 +174,29 @@ LAW_NAME_PREFIX_NOISE = [
 
 # 공백 없이 법령명에 붙어도 떼어 낼 수 있는 접속·부사어. 한 글자 접두("위", "구", "동")는
 # 법령명 첫 글자와 구별되지 않으므로(예: 위치정보법, 구강보건법, 동물보호법) 띄어 쓴 경우에만 뗀다.
-_GLUED_NOISE = {"또한", "그리고", "한편", "따라서", "아울러", "특히", "나아가"}
+_GLUED_NOISE = {
+    "또한", "그리고", "한편", "따라서", "아울러", "특히", "나아가",
+    "최소한", "적어도", "단지", "단순히", "불과", "결국", "가령",
+    "예컨대", "물론", "실제로", "사실상", "비록", "설령",
+}
 
 # 기본 주요 법전 (약칭 매핑과 별도로 단독 법령명으로 최우선 인식)
 CORE_LEGAL_CODES = {"민법", "형법", "상법", "헌법", "대한민국헌법", "민사소송법", "형사소송법", "행정소송법", "국가배상법", "근로기준법"}
+
+_KNOWN_LAWS_COMPACT = frozenset(
+    v.replace(" ", "")
+    for v in (set(LAW_ALIASES.keys()) | set(LAW_ALIASES.values()) | CORE_LEGAL_CODES)
+)
+
+# 공백 없이 조사 뒤에 붙은 법령명 분리를 허용하는 문장 성분(주어·행위·절차 명사) 어간.
+_GLUED_CLAUSE_STEMS = (
+    "행위", "규정", "사건", "처분", "계약", "원고", "피고", "피고인", "당사자",
+    "신청인", "채권자", "채무자", "조항", "조문", "법조", "판결", "사실", "청구",
+    "부분", "경우", "이유", "목적", "원칙", "기준", "절차", "내용", "책임", "의무",
+    "권리", "효력", "위반", "적용", "판단", "인정", "주장", "취지", "부대", "기관",
+    "회사", "단체", "서면", "증거", "조치", "명령", "요건", "결과", "문제",
+    "해석", "범위", "법원",
+)
 
 # 법령명 앞 토큰이 조사로 끝나면 법령명이 아니다(예: "적용법조는 테스트법" -> "테스트법").
 JOSA_TAILS = set("는은이가을를의에로과와도만며고서")
@@ -206,6 +227,46 @@ PREDICATE_TAIL_RE = re.compile(r"[가-힣]{2,}한$|[가-힣]+(?:된|던)$")
 # 띄어쓰기 없이 서술어에 붙은 법령명: "기망한형법", "제출함으로써민법". 서술어 부분이 법령명 연결어로 끝나면
 # (…에관한법률, 대한민국헌법) 나누지 않는다.
 GLUED_PREDICATE_RE = re.compile(r"^(?P<pre>[가-힣]{2,}?(?:한|써))(?P<law>[가-힣]{1,20}(?:법률|법|령|규칙))$")
+_GLUED_LAW_TAIL_RE = re.compile(r"^[가-힣]{1,20}(?:법률|법|령|규칙)$")
+
+
+def _split_glued_law_token(token: str) -> str:
+    """단일 어절 앞쪽에 공백 없이 붙은 접속·부사어나 서술어·조사를 안전하게 분리한다."""
+    current = token
+    for noise in _GLUED_NOISE:
+        if current.startswith(noise) and len(current) > len(noise) + 1:
+            rest = current[len(noise):]
+            if _GLUED_LAW_TAIL_RE.fullmatch(rest):
+                current = rest
+                break
+
+    compact = current.replace(" ", "")
+    if compact in _KNOWN_LAWS_COMPACT or any(
+        compact.endswith(kind) and compact[:-len(kind)] in _KNOWN_LAWS_COMPACT
+        for kind in ("시행규칙", "시행령")
+    ):
+        return current
+
+    glued = GLUED_PREDICATE_RE.match(current)
+    if glued and not any(glued.group("pre").endswith(link) for link in LAW_NAME_LINKS) \
+            and current not in LAW_ALIASES:
+        return glued.group("law")
+
+    for idx in range(2, len(current) - 2):
+        particle = current[idx]
+        if particle not in "은는이가을를":
+            continue
+        pre, tail = current[:idx], current[idx + 1:]
+        if not any(pre.endswith(stem) for stem in _GLUED_CLAUSE_STEMS):
+            continue
+        if not _GLUED_LAW_TAIL_RE.fullmatch(tail):
+            continue
+        tail_base = re.sub(r"시행(?:령|규칙)$", "", tail)
+        if tail in _KNOWN_LAWS_COMPACT or tail_base in _KNOWN_LAWS_COMPACT:
+            return tail
+        if particle in "은는을를" and len(tail) >= 3:
+            return tail
+    return current
 
 
 def law_name_suffix(raw: str) -> str:
@@ -273,10 +334,8 @@ def law_name_suffix(raw: str) -> str:
     while kept and (kept[0] in LAW_NAME_LINKS or kept[0][-1] in LAW_NAME_JOINING_TAILS) and len(kept) > 1 \
             and not _joins_forward(kept):
         kept.pop(0)
-    glued = GLUED_PREDICATE_RE.match(kept[0]) if len(kept) == 1 else None
-    if glued and not any(glued.group("pre").endswith(link) for link in LAW_NAME_LINKS) \
-            and " ".join(kept) not in LAW_ALIASES:
-        kept = [glued.group("law")]
+    if len(kept) == 1 or (len(kept) == 2 and kept[1] in ("시행령", "시행규칙")):
+        kept[0] = _split_glued_law_token(kept[0])
     return " ".join(kept)
 
 

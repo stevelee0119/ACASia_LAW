@@ -13,6 +13,16 @@ from packages.common.enums import ClaimType, EntityType
 from packages.common.schemas import Claim, Citation, Entity, Event, NormalizedDocument
 from packages.common.textutil import sentences
 
+from packages.document_engine.meta_sections import meta_checklist_block_ids
+from packages.pii_engine.detector import (
+    MILITARY_NOUNS,
+    PARTY_HEADER_STOPWORDS,
+    REPRESENTATIVE_NAME_STOPWORDS,
+    _CATEGORY_JOSA_TAIL_RE,
+    _has_category_name_ambiguity,
+)
+from packages.pii_engine.name_stopwords import PERSON_CATEGORY_STOPWORDS
+
 from .calculation import parse_amounts
 from .classification import (classify_sentence, document_kind, segment_kind, assertion_mode,
                              event_role, NOMINAL_FACT_RE, OPINION_RE as EXPLICIT_OPINION_RE)
@@ -66,6 +76,54 @@ NON_NAME_TOKENS = {
     "이행", "손해", "배상", "지급", "반환", "확인", "신청", "요청", "통지", "최고",
 }
 
+_PERSON_STOPWORDS = (
+    NON_NAME_TOKENS
+    | PARTY_ROLE_WORDS
+    | PARTY_HEADER_STOPWORDS
+    | REPRESENTATIVE_NAME_STOPWORDS
+    | PERSON_CATEGORY_STOPWORDS
+    | set(MILITARY_NOUNS)
+    | {
+        "측", "원고측", "피고측", "상대측", "회사측",
+        "대한", "관한", "의한", "위한", "따른", "인한", "같은", "다른",
+        "있는", "없는", "하는", "되는", "하여", "되어", "위해", "대해",
+        "관해", "따라", "인해", "영위", "대법원", "고등법원", "지방법원",
+        "헌법재판소", "법원", "재판부", "당해", "해당", "관련", "본건", "이건",
+        "각", "위",
+    }
+)
+
+_NON_NAME_VERB_ADNOMINAL_SUFFIXES = (
+    "하는", "되는", "있는", "없는", "한다", "된다", "했다", "됐다", "였다", "이다",
+    "하며", "되며", "하고", "되고", "하여", "되어", "하지", "되지", "하다", "되다",
+)
+
+COMPANY_MODIFIER_STOPWORDS = PARTY_ROLE_WORDS | ORG_WORDS | {
+    "민간", "국영", "공영", "공공", "일반", "기존", "신규", "당해", "해당", "관련", "특정",
+    "외국", "국내", "해외", "대형", "중소", "주요", "영리", "비영리", "선정", "협력", "하도급",
+    "모회사", "자회사", "계열", "관계", "모든", "다른", "어느", "각", "본", "위", "동",
+    "원고측", "피고측", "상대방", "제3자", "특수목적", "유가증권", "비상장", "상장",
+}
+_COMPANY_MODIFIER_VERB_SUFFIXES = (
+    "하는", "되는", "있는", "없는", "한다", "된다",
+    "하였고", "하였으며", "하였고서", "했고", "됐고", "았고", "었고", "였고",
+    "하고", "하며", "되며", "이고", "이며", "하거나", "되거나", "이므로", "하므로",
+    "했으나", "했지만", "하였으나", "하여", "되어", "위한", "대한", "관한", "따른", "의한", "인한", "통한",
+    "계약한", "체결한", "관련된", "선정된", "설립된", "지정된", "운영하는", "영위하는",
+)
+_AFTER_COMPANY_WORD_RE = re.compile(r"\s+([가-힣A-Za-z0-9]{1,20})")
+_ORG_MARKER_RE = re.compile(r"(?:주식회사|㈜)")
+_COMPANY_JOSA_TAIL_RE = re.compile(r"(?:으로|에서|에게|과의|와의|은|는|이|가|을|를|과|와|에|의|도)$")
+
+
+def _strip_company_josa(name: str) -> str:
+    cleaned = (name or "").strip()
+    m = _COMPANY_JOSA_TAIL_RE.search(cleaned)
+    if m and m.start() >= 2:
+        return cleaned[:m.start()]
+    return cleaned
+
+
 # 당사자 표기 뒤의 이름. 뒤에 법인 표시가 오면 사람 이름이 아니다.
 # 이름 뒤 조사는 선택이 아니라 '조사 또는 경계'로 못박는다.
 PERSON_CONTEXT_RE = re.compile(
@@ -75,17 +133,48 @@ PERSON_CONTEXT_RE = re.compile(
 )
 
 
-def is_person_name(token: str) -> bool:
+def is_person_name(token: str, *, full_token: str = "") -> bool:
     """당사자 표기 뒤에 잡힌 토큰이 사람 이름일 수 있는지 본다."""
     name = (token or "").strip()
     if len(name) < 2 or len(name) > 4:
         return False
-    if name in NON_NAME_TOKENS:
+    if not all("\uac00" <= ch <= "\ud7a3" for ch in name):
+        return False
+    if full_token:
+        ft = full_token.strip()
+        if ft.endswith(_NON_NAME_VERB_ADNOMINAL_SUFFIXES):
+            return False
+        if ft.endswith(("한", "된", "할", "될")) and ft[:-1] in _PERSON_STOPWORDS:
+            return False
+    if name in _PERSON_STOPWORDS:
+        return False
+    if name.startswith("측") or name.endswith("측"):
+        return False
+    if name.endswith(_NON_NAME_VERB_ADNOMINAL_SUFFIXES):
         return False
     # 조사만으로 이루어진 토큰은 이름이 아니다
     if all(ch in "은는이가을를과와의에도로서만며고" for ch in name):
         return False
+    particle = _CATEGORY_JOSA_TAIL_RE.search(name)
+    if particle is not None:
+        stem = name[:particle.start()]
+        if stem in _PERSON_STOPWORDS and not _has_category_name_ambiguity(name):
+            return False
     return True
+
+
+def _is_company_modifier_stopword(token: str) -> bool:
+    name = (token or "").strip()
+    if not name or name in COMPANY_MODIFIER_STOPWORDS:
+        return True
+    if name.endswith(_COMPANY_MODIFIER_VERB_SUFFIXES):
+        return True
+    particle = _CATEGORY_JOSA_TAIL_RE.search(name)
+    if particle is not None and name[:particle.start()] in COMPANY_MODIFIER_STOPWORDS:
+        return True
+    return False
+
+
 COMPANY_CONTEXT_RE = re.compile(
     r"(?<![가-힣])([가-힣A-Za-z0-9]{2,10})\s*(?:주식회사|㈜)|(?:주식회사|㈜)\s+([가-힣A-Za-z0-9]{1,20})"
 )
@@ -142,8 +231,10 @@ def extract_claims(doc: NormalizedDocument, citations: Optional[List[Citation]] 
             by_block.setdefault(citation.block_id, []).append(citation)
 
     claims: List[Claim] = []
+    meta_ids = meta_checklist_block_ids(doc)
     kind = document_kind(b.text for b in doc.prose_blocks()[:8])
     for block in doc.prose_blocks():
+        in_meta = block.block_id in meta_ids
         cursor = 0
         for sentence in sentences(block.text):
             start = block.text.find(sentence, cursor)
@@ -152,8 +243,12 @@ def extract_claims(doc: NormalizedDocument, citations: Optional[List[Citation]] 
             cursor = start + len(sentence)
             if len(sentence) < 10:
                 continue
-            segment = segment_kind(sentence, block_type=block.block_type, source_layer=block.source_layer,
-                                   table_ref=block.attributes.get("table_ref"))
+            segment = (
+                "DOCUMENT_GUIDE"
+                if in_meta
+                else segment_kind(sentence, block_type=block.block_type, source_layer=block.source_layer,
+                                  table_ref=block.attributes.get("table_ref"))
+            )
             claim_type = classify_sentence(sentence, segment, classify_claim)
             related = [
                 c.citation_id
@@ -197,6 +292,7 @@ def extract_claims(doc: NormalizedDocument, citations: Optional[List[Citation]] 
 def extract_entities(doc: NormalizedDocument, *, project_id: Optional[str] = None) -> List[Entity]:
     """사람·법인·법원 등을 추출한다. 동일 대상 통합은 resolve_entities가 담당한다."""
     found: Dict[Tuple[str, str], Entity] = {}
+    meta_ids = meta_checklist_block_ids(doc)
 
     def add(entity_type: EntityType, name: str, block, span: Tuple[int, int]) -> None:
         name = name.strip()
@@ -213,15 +309,30 @@ def extract_entities(doc: NormalizedDocument, *, project_id: Optional[str] = Non
         )
 
     for block in doc.prose_blocks():
+        if block.block_id in meta_ids:
+            continue
         for m in PERSON_CONTEXT_RE.finditer(block.text):
-            if not is_person_name(m.group(1)):
+            if not is_person_name(m.group(1), full_token=block.text[m.start(1):m.end()]):
                 continue
             add(EntityType.PERSON, m.group(1), block, (m.start(1), m.end(1)))
         for m in COMPANY_CONTEXT_RE.finditer(block.text):
-            name = (m.group(1) or m.group(2) or "").strip()
-            if name in PARTY_ROLE_WORDS or name in ORG_WORDS:
-                continue
-            add(EntityType.COMPANY, name, block, (m.start(), m.end()))
+            if m.group(1) is not None:
+                name = m.group(1).strip()
+                if _is_company_modifier_stopword(name):
+                    after = _AFTER_COMPANY_WORD_RE.match(block.text, m.end())
+                    if after:
+                        after_name = _strip_company_josa(after.group(1))
+                        if not _is_company_modifier_stopword(after_name):
+                            org_match = _ORG_MARKER_RE.search(m.group(0))
+                            span_start = m.start() + (org_match.start() if org_match else 0)
+                            add(EntityType.COMPANY, after_name, block, (span_start, after.end()))
+                    continue
+                add(EntityType.COMPANY, name, block, (m.start(), m.end()))
+            else:
+                name = _strip_company_josa(m.group(2) or "")
+                if _is_company_modifier_stopword(name):
+                    continue
+                add(EntityType.COMPANY, name, block, (m.start(), m.end()))
         for m in COURT_CONTEXT_RE.finditer(block.text):
             add(EntityType.COURT, m.group(1), block, (m.start(1), m.end(1)))
         for amount in parse_amounts(block.text, block_id=block.block_id, page=block.page):
@@ -233,7 +344,10 @@ def extract_events(doc: NormalizedDocument, *, project_id: Optional[str] = None,
                    source_run_id: Optional[str] = None) -> List[Event]:
     """제11.4장 Timeline 입력. 날짜와 같은 문장의 사건 서술을 결합한다."""
     events: List[Event] = []
+    meta_ids = meta_checklist_block_ids(doc)
     for block in doc.prose_blocks():
+        if block.block_id in meta_ids:
+            continue
         cursor = 0
         for sentence in sentences(block.text):
             start = block.text.find(sentence, cursor)

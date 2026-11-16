@@ -976,6 +976,8 @@ class VerificationPipeline:
             result.engine_data["temporal_review"] = {"reviewed": found["reviewed"],
                                                      "unavailable": found.get("unavailable", [])}
             result.findings.extend(found["findings"])
+        if not context.case_date:
+            self._promote_inferred_current_statutes(result, citations, found["findings"])
         emit(JobState.VERIFYING, f"{document.filename} 판례 의미·적용 검토", base + span * 0.75)
         with manifest.stage("semantic_review", result.findings, inputs=0, unit="검토한 인용", document_id=document.document_id) as stage:
             self._semantic_review(result, citations, context, pii, progress=lambda done, total: emit(
@@ -1247,6 +1249,110 @@ class VerificationPipeline:
         result.review_items = build_document_review_items(result, doc, context)
         emit(JobState.VERIFYING, f"{document.filename} 문서 분석 완료", base + span)
         return result
+
+    @staticmethod
+    def _promote_inferred_current_statutes(result, citations, temporal_findings) -> None:
+        """기준일 미입력 상태에서 자동 추정 기준일로 조회됐으나 시점 쟁점이 없는 현행 실정법을 VERIFIED_PROVISION으로 승격한다."""
+        from packages.legal_engine.components import component_summary
+        from packages.legal_engine.verification_labels import provision_label
+
+        verdicts = result.engine_data.get("legal_verdicts") or []
+        if not verdicts:
+            return
+        cit_by_id = {c.citation_id: c for c in citations}
+        disputed_cids = set()
+        disputed_laws = set()
+        for f in list(temporal_findings or []) + list(result.findings or []):
+            feats = getattr(f, "confidence_features", None) or {}
+            cid = feats.get("citation_id")
+            if cid and (
+                getattr(f, "type", None) in (FindingType.TEMPORAL_LAW_MISMATCH, FindingType.LAW_CITATION_ERROR, FindingType.STATUTE_NONEXISTENT)
+                or getattr(f, "status", None) in (VerificationStatus.CONTRADICTED, VerificationStatus.NOT_FOUND)
+            ):
+                disputed_cids.add(cid)
+            if getattr(f, "type", None) == FindingType.TEMPORAL_LAW_MISMATCH:
+                law = feats.get("law") or feats.get("law_name")
+                art = feats.get("article")
+                if law:
+                    disputed_laws.add((str(law), str(art or "")))
+
+        promoted_map: Dict[str, tuple[str, str]] = {}
+        for v in verdicts:
+            if not v.get("inferred_reference_applied") or v.get("type") != "STATUTE":
+                continue
+            if v.get("status") != "PARTIALLY_VERIFIED":
+                continue
+            review = v.get("review") or {}
+            if review.get("temporal_review_needed"):
+                continue
+            cid = v.get("citation_id")
+            if not cid or cid in disputed_cids:
+                continue
+            cit = cit_by_id.get(cid)
+            if cit and ((cit.law_name, str(cit.article or "")) in disputed_laws or (cit.law_name, "") in disputed_laws):
+                continue
+            if any(
+                vf.get("type") in ("TEMPORAL_LAW_MISMATCH", "LAW_CITATION_ERROR", "STATUTE_NONEXISTENT")
+                for vf in (v.get("findings") or [])
+            ):
+                continue
+            levels = v.get("levels") or {}
+            if levels.get("temporal") == "CONTRADICTED":
+                continue
+            new_status, label, advisory = provision_label(levels, VerificationStatus.PARTIALLY_VERIFIED, None)
+            if new_status != VerificationStatus.VERIFIED or not label:
+                continue
+            v["status"] = str(new_status)
+            v["verification_label"] = label
+            review["verification_label"] = label
+            if advisory:
+                advisories = v.setdefault("advisories", [])
+                if advisory not in advisories:
+                    advisories.append(advisory)
+                r_advisories = review.setdefault("advisories", [])
+                if advisory not in r_advisories:
+                    r_advisories.append(advisory)
+                levels["temporal_basis"] = "CURRENT_VERSION"
+            v["review"] = review
+            promoted_map[cid] = (label, advisory)
+
+        if not promoted_map:
+            return
+        for group in result.engine_data.get("legal_reviews") or []:
+            if group.get("scope") != "incident":
+                continue
+            for gv in group.get("verdicts") or []:
+                cid = gv.get("citation_id")
+                if cid in promoted_map:
+                    label, advisory = promoted_map[cid]
+                    gv["status"] = "VERIFIED"
+                    gv["verification_label"] = label
+                    gv.setdefault("review", {})["verification_label"] = label
+                    if advisory:
+                        gv.setdefault("advisories", [])
+                        if advisory not in gv["advisories"]:
+                            gv["advisories"].append(advisory)
+                        gv.setdefault("levels", {})["temporal_basis"] = "CURRENT_VERSION"
+        for item in result.unverified_items:
+            cid = item.get("citation_id")
+            if cid in promoted_map and item.get("scope") in ("PARTIAL", "UNVERIFIED"):
+                label, advisory = promoted_map[cid]
+                item["kind"] = "applicability"
+                item["status"] = "VERIFIED"
+                item["scope"] = "PARTIAL"
+                item["verification_label"] = label
+                item["applicability"] = "APPLICABILITY_UNREVIEWED"
+                if advisory:
+                    advs = item.setdefault("advisories", [])
+                    if advisory not in advs:
+                        advs.append(advisory)
+                item["reason"] = "공식 원문과 일치 확인(현행 기준) — 사건 기준일·적용성은 사람이 검토"
+        legal_meta = result.engine_data.get("legal")
+        if isinstance(legal_meta, dict):
+            incident_verdicts = [v for v in verdicts if v.get("scope", "incident") == "incident"]
+            legal_meta["component_summary"] = component_summary(incident_verdicts)
+            legal_meta["verified_count"] = sum(1 for v in incident_verdicts if v.get("status") == "VERIFIED")
+            legal_meta["unverified_count"] = sum(1 for v in incident_verdicts if v.get("status") == "UNVERIFIED")
 
     @staticmethod
     def _attach_reference_dates(result, doc, context):

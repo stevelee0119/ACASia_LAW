@@ -461,10 +461,11 @@ async def verify_argument_validity(
             )
         )
 
-        # 3. 요약 전용 / 본문 미확보 판정 (SC2)
+        # 3. 요약 전용 / 본문 미확보 판정 (SC2) — 판례·결정류에만 적용한다(법령·행정규칙은 full_text 대신 articles/provisions 구조 사용).
         has_official = bool(verdict.get("official_record"))
         has_full_text = bool((verdict.get("official_record") or {}).get("full_text"))
-        is_summary_only = has_official and not has_full_text
+        is_statute_like = citation.type in (CitationType.STATUTE, CitationType.ADMIN_RULE)
+        is_summary_only = (not is_statute_like) and has_official and not has_full_text
 
         # 4. 부존재 / 미확인 상태
         is_unverified = (status in ("NOT_FOUND", "CONTRADICTED") or level1 == "NOT_FOUND"
@@ -502,7 +503,15 @@ async def verify_argument_validity(
             distortion_label = feats.get("verdict_label")
             grounded_evidence_quote = feats.get("grounded_evidence_quote") or ""
 
-        if is_unverified or is_semantic_issue or is_official_confirmed or is_quote_mismatch or is_summary_only:
+        is_verified_statute = (
+            is_statute_like
+            and (status == "VERIFIED" or verdict.get("verification_label") == "VERIFIED_PROVISION")
+            and not is_unverified
+            and not is_quote_mismatch
+            and not is_semantic_issue
+        )
+
+        if not is_verified_statute and (is_unverified or is_semantic_issue or is_official_confirmed or is_quote_mismatch or is_summary_only):
             auth_id = make_authority_id(citation)
             court_tier = get_court_tier(citation)
             is_cov = is_covered_precedent_scope(citation)
@@ -555,6 +564,7 @@ async def verify_argument_validity(
                 "quote_level3": level3,
                 "is_quote_unverified": is_quote_unverified,
                 "is_summary_only": is_summary_only,
+                "has_official": has_official,
                 "has_full_text": has_full_text,
                 "context": raw_context,
                 "evaluation_context": linked_claim,
@@ -643,7 +653,7 @@ async def verify_argument_validity(
                 f"구체적 사실관계에 타당하게 적용되는지(사건 적용성)는 AI 작성 여부 판단과 별개로 검토자가 직접 검토해야 합니다."
             )
             counteraction = "공식 판례의 원문 취지와 당해 사건의 계약 조건(손해배상액 예정 vs 위약벌 법리 등)을 직접 비교 검토할 것."
-        elif (basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and has_official
+        elif (not statute and basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and item.get("has_official")
               and (item.get("is_summary_only") or item.get("quote_level3") == "UNVERIFIED")):
             ai_basis = "공식 DB에서 요약본만 확보되어 판결문 본문 원문과의 직접 인용 대조가 유보됨 (판결문 사본 확인 필요)"
             verdict_text = "출처 한계 확인 불가 (판결문 사본 확인 필요)"
@@ -672,10 +682,22 @@ async def verify_argument_validity(
                 ("하급심 판결(지방법원/고등법원) 또는 미공개 결정은 공식 판례 DB의 공개 수록 대상에서 제외될 수 있어, "
                  "공식 DB 미수록만으로 가짜 판례로 단정하지 않음.")
             )
-            verdict_text = "출처 한계 확인 불가 (판결문 사본 제출 필요)"
-            legal_reason = (f"하급심 판례는 공식 DB에 전문이 수록되지 않을 수 있으므로, 판결문 사본을 확보하기 전까지는 "
-                            f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 실재하지 않는다는 뜻은 아닙니다.")
-            counteraction = "상대방에게 판결문 사본 제출을 요청하거나 법원 판결서 열람 서비스를 통해 확인 후 변론할 것."
+            verdict_text = (
+                "출처 한계 확인 불가 (법령·규정 원문 확인 필요)" if statute else
+                "출처 한계 확인 불가 (판결문 사본 제출 필요)"
+            )
+            legal_reason = (
+                (f"공식 DB 조회 범위 내에서 해당 {noun} 원문이 완전하게 확인되지 않았습니다. "
+                 "자치법규·행정규칙 또는 약칭 인용 가능성이 있으므로 원문을 직접 확인하기 전까지 부존재로 단정하지 않습니다.")
+                if statute else
+                (f"하급심 판례는 공식 DB에 전문이 수록되지 않을 수 있으므로, 판결문 사본을 확보하기 전까지는 "
+                 f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 실재하지 않는다는 뜻은 아닙니다.")
+            )
+            counteraction = (
+                "국가법령정보센터(law.go.kr) 또는 소관 기관 규정 원문을 직접 확인하여 조문 존재와 내용을 대조할 것."
+                if statute else
+                "상대방에게 판결문 사본 제출을 요청하거나 법원 판결서 열람 서비스를 통해 확인 후 변론할 것."
+            )
             auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
         elif basis == "CONFIRMED_NONEXISTENT":
             ai_basis = (
