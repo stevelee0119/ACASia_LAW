@@ -145,7 +145,7 @@ process.stdout.write(JSON.stringify(result));
 
 
 def test_behavior_prompt_includes_official_notice():
-    """행동 시험: 외부 AI 답변은 공식 확인이 아니라는 필수 고지 문구가 프롬프트에 포함되어야 함."""
+    """행동 시험: 프롬프트 결과 블록에 모델명 기재 안내가 포함되고 불필요한 비공식 고지는 제거되어야 함."""
     mask_fn_code = _extract_js_mask_function()
     prompt_fn_code = _extract_js_prompt_function()
 
@@ -160,8 +160,9 @@ process.stdout.write(JSON.stringify(result));
     proc = subprocess.run(["node"], input=runner_script.encode("utf-8"), capture_output=True, check=True)
     generated_prompt = json.loads(proc.stdout.decode("utf-8"))
 
-    assert "외부 AI 답변은 법적 효력이 있는 공식 확인이 아니며" in generated_prompt
-    assert "법원 판결서 사본 또는 국가법령정보센터 공식 원문으로 반드시 확인" in generated_prompt
+    assert "모델: 사용한 AI 모델 또는 서비스명" in generated_prompt
+    assert "<<<ACAS_RESULT" in generated_prompt and "ACAS_RESULT>>>" in generated_prompt
+    assert "외부 AI 답변은 법적 효력이 있는 공식 확인이 아니며" not in generated_prompt
 
 
 def test_behavior_filter_boundary_official_status():

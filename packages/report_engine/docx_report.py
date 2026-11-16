@@ -243,7 +243,8 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
     external_rows = external_answer_rows(snapshot)
     if external_rows:
         doc.add_heading(EXTERNAL_AI_TITLE, 2)
-        paragraph(EXTERNAL_AI_NOTICE)
+        if EXTERNAL_AI_NOTICE:
+            paragraph(EXTERNAL_AI_NOTICE)
         table(EXTERNAL_AI_HEADERS, external_rows, EXTERNAL_AI_DOCX_WIDTHS)
 
     from packages.legal_engine.related_authorities import report_lines as related_lines

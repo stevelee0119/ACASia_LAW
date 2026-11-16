@@ -133,7 +133,7 @@ def to_csv(findings: List[Any], *, reveal_sealed: bool = False, report_metadata=
              "snapshot_hash": metadata.get("snapshot_hash"), "created_by": metadata.get("created_by"),
              "finalized_by": metadata.get("finalized_by"), "finalized_at": metadata.get("finalized_at"),
              "editable_copy_notice": EDITABLE_COPY_NOTICE,
-             "external_ai_scope": "외부 AI 참고의견은 XLSX·PDF·DOCX·JSON 전용 절/시트에만 수록되며 CSV(진단 목록 단일표)에는 포함되지 않음(공식 확인 아님)"} if report_metadata else {}
+             "external_ai_scope": "외부 AI 참고의견은 XLSX·PDF·DOCX·JSON 전용 절/시트에만 수록되며 CSV(진단 목록 단일표)에는 포함되지 않음"} if report_metadata else {}
     writer = csv.DictWriter(buffer, fieldnames=FINDING_COLUMNS + list(extra), extrasaction="ignore")
     writer.writeheader()
     rows = findings_to_rows(findings, reveal_sealed=reveal_sealed)
@@ -234,8 +234,8 @@ def to_xlsx(run_result: Any, *, reveal_sealed: bool = False) -> bytes:
     external_rows = external_answer_rows(snapshot)
     if external_rows:
         external_sheet = workbook.create_sheet("외부AI참고의견")
-        # TK-129: 시트 최상단 안내 행으로 비공식성 및 공식 확인 아님 명시
-        append(external_sheet, [f"[안내] {EXTERNAL_AI_TITLE}: {EXTERNAL_AI_NOTICE}"])
+        if EXTERNAL_AI_NOTICE:
+            append(external_sheet, [f"[안내] {EXTERNAL_AI_TITLE}: {EXTERNAL_AI_NOTICE}"])
         append(external_sheet, EXTERNAL_AI_HEADERS)
         for row in external_rows:
             append(external_sheet, row)

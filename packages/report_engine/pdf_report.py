@@ -309,7 +309,8 @@ def build_report_pdf(
     if external_rows:
         story.append(Spacer(1, 4))
         story.append(Paragraph(_escape(EXTERNAL_AI_TITLE), styles["h2"]))
-        story.append(Paragraph(_escape(EXTERNAL_AI_NOTICE), styles["small"]))
+        if EXTERNAL_AI_NOTICE:
+            story.append(Paragraph(_escape(EXTERNAL_AI_NOTICE), styles["small"]))
         story.append(table([EXTERNAL_AI_HEADERS, *external_rows], EXTERNAL_AI_PDF_WIDTHS))
 
     from packages.legal_engine.related_authorities import report_lines as related_lines

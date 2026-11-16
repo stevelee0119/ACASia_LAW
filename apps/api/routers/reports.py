@@ -565,9 +565,7 @@ def _snapshot(session, project, run, engine, metadata, manifest, human=None, ext
         frozen["external_ai_metadata"] = {
             "official": False,
             "source": "external_ai",
-            "title": "외부 AI 참고 의견 (사용자 입력, 공식 확인 아님)",
-            "notice": ("엘박스 등 외부 AI의 답변을 검토자가 표에 반영한 것입니다. 공식 DB 판정·등급·점수에는 쓰지 않았으며, "
-                       "판례·법령 원문은 판결서·국가법령정보센터로 확인해야 합니다."),
+            "title": "외부 AI 참고 의견",
             "count": len(external),
         }
     return remove_sealed(frozen)

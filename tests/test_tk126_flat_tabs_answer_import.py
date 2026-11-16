@@ -126,11 +126,12 @@ def test_answer_import_applies_to_row_without_changing_official_badge():
         expect(preview).to_contain_text("A7")
         preview.get_by_role("button", name="표에 반영").click()
         row = page.locator("#aiVerificationRows tr", has_text="대법원 2022다99999 판결")
-        expect(row.locator(".external-ai-answer")).to_contain_text("외부 AI 답변 A1 (공식 확인 아님)")
+        expect(row.locator(".external-ai-answer")).to_contain_text("외부 AI 답변 A1")
+        expect(row.locator(".external-ai-answer")).not_to_contain_text("공식 확인 아님")
         expect(row.locator(".external-ai-answer")).to_contain_text("판정: 부존재")
         expect(row.locator(".validity-verdict")).to_have_text("공식 DB 미확인 (원문 확인 필요)")
-        # 2026-10-25 사용자 결정: 공식 DB는 검증 실행 때 이미 조회하므로 '다시 조회' 버튼을 두지 않는다.
-        expect(row.locator(".external-ai-answer")).to_contain_text("참고용이며 위 공식 DB 판정은 바뀌지 않습니다")
+        # 2026-11-16 사용자 결정(7-1): 하단 당연 고지 문구는 삭제하고 공식 DB 재조회 버튼도 두지 않는다.
+        expect(row.locator(".external-ai-answer")).not_to_contain_text("참고용이며 위 공식 DB 판정은 바뀌지 않습니다")
         expect(row.get_by_role("button", name="공식 DB로 다시 조회")).to_have_count(0)
         browser.close()
 

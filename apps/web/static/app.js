@@ -418,8 +418,6 @@ function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "",
 당신은 대한민국 법률 및 판례 검증 전문 AI입니다.
 아래 소송 서면에서 인용되었으나 공식 DB에서 출처가 확인되지 않은 [판례·법령 목록 ${items.length}건]에 대해 실재 여부와 판결요지/조문 내용을 정밀 검증해 주세요.
 
-※ 고지: 외부 AI 답변은 법적 효력이 있는 공식 확인이 아니며, 실제 변론 및 증거 제출 시에는 법원 판결서 사본 또는 국가법령정보센터 공식 원문으로 반드시 확인해야 합니다.
-
 [기준 시점]
 - ${dateStr}
 
@@ -445,41 +443,64 @@ ${itemsListText}
 - 각 항목별 상세 확인 내용
 
 [결과 블록 — 답변 맨 끝에 반드시 아래 형식 그대로]
-항목마다 한 줄씩, 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
+첫 줄에 사용한 AI 모델 또는 서비스 이름(예: 모델: 엘박스, 모델: Gemini 2.5 Pro)을 적고, 이어서 항목마다 한 줄씩 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
 <<<ACAS_RESULT
+모델: 사용한 AI 모델 또는 서비스명
 ${prefix}1 | 판정: 확인/부존재/불일치/불명 | 근거: 사건번호·선고일 또는 법령·조문(확인 방법) | 요지: 한두 문장
 ACAS_RESULT>>>`;
 }
 
 // 2026-10-25 사용자 요구: 엘박스 등 외부 AI 답변을 다시 붙여넣어 표에 반영한다.
-// 번호(A1·B1)와 고정 결과 블록으로 답변을 행에 연결하며, 외부 AI 답변은 공식 확인 상태를 바꾸지 않는다.
+// 번호(A1·B1)와 고정 결과 블록으로 답변을 행에 연결한다.
 const EXTERNAL_ANSWER_OPEN = "<<<ACAS_RESULT", EXTERNAL_ANSWER_CLOSE = "ACAS_RESULT>>>";
 function externalAnswerFormat(prefix) {
   return `
 [결과 블록 — 답변 맨 끝에 반드시 아래 형식 그대로]
-항목마다 한 줄씩, 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
+첫 줄에 사용한 AI 모델 또는 서비스 이름(예: 모델: 엘박스, 모델: Gemini 2.5 Pro)을 적고, 이어서 항목마다 한 줄씩 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
 ${EXTERNAL_ANSWER_OPEN}
+모델: 사용한 AI 모델 또는 서비스명
 ${prefix}1 | 판정: 확인/부존재/불일치/불명 | 근거: 사건번호·선고일 또는 법령·조문(확인 방법) | 요지: 한두 문장
 ${EXTERNAL_ANSWER_CLOSE}`;
+}
+function cleanExternalModelName(raw) {
+  return String(raw || "")
+    .replace(/^[*`\s"'「『]+|[*`\s"'」』]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
 }
 function parseExternalAnswers(text) {
   const raw = String(text || "");
   const start = raw.lastIndexOf(EXTERNAL_ANSWER_OPEN), end = raw.lastIndexOf(EXTERNAL_ANSWER_CLOSE);
   const body = start >= 0 && end > start ? raw.slice(start + EXTERNAL_ANSWER_OPEN.length, end) : raw;
   const answers = new Map();
+  let defaultModel = "";
   for (const line of body.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const modelLine = trimmed.match(/^(?:모델명?|AI\s*모델|서비스명?|MODEL)\s*[:：]\s*(.+)$/i);
+    if (modelLine && !/^[|*\s]*[AB]\d{1,3}\b/i.test(trimmed)) {
+      const parsedModel = cleanExternalModelName(modelLine[1]);
+      if (parsedModel && !parsedModel.includes("사용한 AI 모델")) defaultModel = parsedModel;
+      continue;
+    }
     const cells = line.replace(/^\s*\|/, "").split(/[|｜]/).map(c => c.trim());
     const code = (cells[0] || "").replace(/[*`\s.]/g, "").toUpperCase();
     if (!/^[AB]\d{1,3}$/.test(code)) continue;
-    const answer = {code, verdict: "", basis: "", summary: ""};
+    const answer = {code, model_name: "", verdict: "", basis: "", summary: ""};
     for (const cell of cells.slice(1)) {
-      const m = cell.match(/^(판정|근거|요지)\s*[:：]\s*(.*)$/);
-      if (m) answer[{판정: "verdict", 근거: "basis", 요지: "summary"}[m[1]]] = m[2].slice(0, 1000);
-      else if (cell) answer.summary = [answer.summary, cell].filter(Boolean).join(" ").slice(0, 1000);
+      const m = cell.match(/^(모델명?|모델|판정|근거|요지)\s*[:：]\s*(.*)$/i);
+      if (m) {
+        const key = m[1].toLowerCase();
+        if (key === "모델" || key === "모델명") answer.model_name = cleanExternalModelName(m[2]);
+        else answer[{판정: "verdict", 근거: "basis", 요지: "summary"}[m[1]]] = m[2].slice(0, 1000);
+      } else if (cell) {
+        answer.summary = [answer.summary, cell].filter(Boolean).join(" ").slice(0, 1000);
+      }
     }
     if (answer.verdict || answer.basis || answer.summary) answers.set(code, answer);
   }
-  return [...answers.values()];
+  return [...answers.values()].map(a => ({...a, model_name: a.model_name || defaultModel}));
 }
 function externalStoreKey(projectId = state.project?.id, runId = state.run?.id) { return `acas.externalAi.${projectId || "none"}.${runId || "none"}`; }
 function loadExternalStore(projectId, runId) {
@@ -496,11 +517,53 @@ function externalAnswersForReport(projectId, runId) {
       return Boolean(a.item_id && boundItemId && a.item_id === boundItemId);
     })
     .map(([code, a]) => ({
-      code, item_id: a.item_id,
+      code, item_id: a.item_id, model_name: a.model_name || "",
       verdict: a.verdict || "", basis: a.basis || "", summary: a.summary || "", applied_at: a.applied_at || ""}));
 }
+function writeLocalExternalStore(store, projectId = state.project?.id, runId = state.run?.id) {
+  try { localStorage.setItem(externalStoreKey(projectId, runId), JSON.stringify(store)); } catch (e) { toast("이 브라우저에 답변을 저장하지 못했습니다. 화면을 새로 고치면 사라집니다."); }
+}
+async function persistExternalStoreToServer(store, projectId = state.project?.id, runId = state.run?.id) {
+  if (!projectId || !runId) return;
+  try {
+    const cleanAnswers = {};
+    for (const [code, ans] of Object.entries(store.answers || {})) {
+      if (!ans || !ans.item_id) continue;
+      cleanAnswers[code] = {
+        code,
+        item_id: String(ans.item_id),
+        model_name: String(ans.model_name || ""),
+        verdict: String(ans.verdict || ""),
+        basis: String(ans.basis || ""),
+        summary: String(ans.summary || ""),
+        applied_at: String(ans.applied_at || ""),
+      };
+    }
+    await api(`/projects/${projectId}/runs/${runId}/external-ai-answers`, {
+      method: "PUT",
+      interactiveAuth: false,
+      body: {codes: store.codes || {}, answers: cleanAnswers},
+    });
+  } catch (e) {
+    /* 오프라인·단독 화면 시험 등에서는 로컬 저장소만 유지한다. */
+  }
+}
+async function loadExternalAnswersFromServer(projectId, runId, options = {}) {
+  if (!projectId || !runId) return;
+  try {
+    const res = await api(`/projects/${projectId}/runs/${runId}/external-ai-answers`, {
+      ...options,
+      interactiveAuth: false,
+    });
+    if (!res || typeof res !== "object" || Array.isArray(res) || !res.saved) return;
+    writeLocalExternalStore({codes: res.codes || {}, answers: res.answers || {}}, projectId, runId);
+  } catch (e) {
+    /* 조회 실패 시 기존 브라우저 저장소 값을 그대로 둔다. */
+  }
+}
 function saveExternalStore(store) {
-  try { localStorage.setItem(externalStoreKey(), JSON.stringify(store)); } catch (e) { toast("이 브라우저에 답변을 저장하지 못했습니다. 화면을 새로 고치면 사라집니다."); }
+  writeLocalExternalStore(store);
+  void persistExternalStoreToServer(store);
 }
 function rememberPromptCodes(prefix, items) {
   const store = loadExternalStore();
@@ -541,32 +604,41 @@ function applyStoredExternalAnswers(items) {
 }
 function externalAnswerBlock(answer) {
   const box = node("div", null, "external-ai-answer");
-  box.append(node("strong", `외부 AI 답변 ${answer.code} (공식 확인 아님)`));
+  const modelName = cleanExternalModelName(answer.model_name);
+  box.append(node("strong", modelName ? `${modelName} 답변 ${answer.code}` : `외부 AI 답변 ${answer.code}`));
   if (answer.verdict) box.append(node("p", `판정: ${answer.verdict}`));
   if (answer.basis) box.append(node("p", `근거: ${answer.basis}`));
   if (answer.summary) box.append(node("p", `요지: ${answer.summary}`));
-  box.append(node("small", `${answer.applied_at || ""} 반영 · 참고용이며 위 공식 DB 판정은 바뀌지 않습니다. 원문은 판결서·국가법령정보센터로 확인하십시오.`, "muted"));
   return box;
 }
 function openExternalAnswerImport(prefix, rowsByCode) {
+  const modelInput = workflowUI.field("model_name", "사용한 외부 AI 모델명 (선택)", "", "text");
+  modelInput.classList.add("full");
+  const modelEl = modelInput.querySelector("input");
+  if (modelEl) modelEl.placeholder = "예: 엘박스, Gemini 2.5 Pro (결과 블록의 '모델:' 줄이 있으면 자동 반영)";
   const input = workflowUI.field("answer", "엘박스 등 외부 AI 답변 전문", "", "textarea");
   input.classList.add("full");
   input.querySelector("textarea").rows = 12;
-  const hint = node("p", `프롬프트 끝의 결과 블록(${EXTERNAL_ANSWER_OPEN} … ${EXTERNAL_ANSWER_CLOSE})을 읽어 ${prefix}1, ${prefix}2 … 번호의 행에 붙입니다. 외부 AI 답변은 공식 확인이 아닙니다.`, "muted full");
-  workflowUI.modal("외부 AI 답변 붙여넣기", [hint, input], async values => {
-    const parsed = parseExternalAnswers(values.answer).filter(a => a.code.startsWith(prefix));
+  const hint = node("p", `프롬프트 끝의 결과 블록(${EXTERNAL_ANSWER_OPEN} … ${EXTERNAL_ANSWER_CLOSE})을 읽어 ${prefix}1, ${prefix}2 … 번호의 행에 붙입니다. 새로 반영하면 기존 ${prefix} 답변은 대체됩니다.`, "muted full");
+  workflowUI.modal("외부 AI 답변 붙여넣기", [hint, modelInput, input], async values => {
+    const manualModel = cleanExternalModelName(values.model_name);
+    const parsed = parseExternalAnswers(values.answer)
+      .filter(a => a.code.startsWith(prefix))
+      .map(a => ({...a, model_name: manualModel || a.model_name || ""}));
     if (!parsed.length) throw new Error(`결과 블록에서 ${prefix} 번호 항목을 찾지 못했습니다. 프롬프트의 결과 블록 형식으로 다시 요청하세요.`);
     const matched = parsed.filter(a => rowsByCode.has(a.code));
     const missing = parsed.filter(a => !rowsByCode.has(a.code)).map(a => a.code);
-    setTimeout(() => previewExternalAnswers(matched, missing, rowsByCode), 0);
+    setTimeout(() => previewExternalAnswers(matched, missing, rowsByCode, prefix), 0);
   }, true);
 }
-function previewExternalAnswers(answers, missing, rowsByCode) {
+function previewExternalAnswers(answers, missing, rowsByCode, prefix = "") {
+  const effectivePrefix = prefix || (answers[0]?.code?.[0] || "");
   const list = node("div", null, "full external-answer-preview");
   for (const a of answers) {
     const row = rowsByCode.get(a.code);
     const card = node("div", null, "external-answer-preview-item");
-    card.append(node("strong", `${a.code} → ${row.cited_authority || friendlyText(row.claim_text || "") || row.item_id}`),
+    const prefixLabel = a.model_name ? `[${a.model_name}] ` : "";
+    card.append(node("strong", `${prefixLabel}${a.code} → ${row.cited_authority || friendlyText(row.claim_text || "") || row.item_id}`),
       node("p", [a.verdict && `판정: ${a.verdict}`, a.basis && `근거: ${a.basis}`, a.summary && `요지: ${a.summary}`].filter(Boolean).join(" · ")));
     list.append(card);
   }
@@ -574,16 +646,23 @@ function previewExternalAnswers(answers, missing, rowsByCode) {
   if (!answers.length) list.append(node("p", "반영할 항목이 없습니다.", "muted"));
   const view = workflowUI.modal(`표에 반영할 답변 ${answers.length}건 확인`, [list], async () => {
     const store = loadExternalStore();
-    store.answers = {...(store.answers || {})};
+    const nextAnswers = {};
+    for (const [key, value] of Object.entries(store.answers || {})) {
+      if (!effectivePrefix || !key.startsWith(effectivePrefix)) {
+        nextAnswers[key] = value;
+      }
+    }
     const appliedAt = new Date().toLocaleString("ko-KR");
     for (const a of answers) {
       const row = rowsByCode.get(a.code);
       // 답변 저장 시 원래 item_id를 함께 보존하여 코드 재할당 시 오염을 방지한다.
-      store.answers[a.code] = {...a, item_id: row?.item_id || a.item_id || "", applied_at: appliedAt};
+      nextAnswers[a.code] = {...a, item_id: row?.item_id || a.item_id || "", applied_at: appliedAt};
     }
-    saveExternalStore(store);
+    store.answers = nextAnswers;
+    writeLocalExternalStore(store);
+    await persistExternalStoreToServer(store);
     renderFindings();
-    toast(`외부 AI 답변 ${answers.length}건을 표에 반영했습니다(공식 확인 아님).`);
+    toast(`외부 AI 답변 ${answers.length}건을 표에 반영했습니다.`);
   }, true);
   view.submit.textContent = "표에 반영";
   if (!answers.length) view.submit.hidden = true;
@@ -598,7 +677,7 @@ function externalAnswerButton(prefix, items) {
     if (!rowsByCode.size) { toast("먼저 이 표의 '엘박스/AI 검증 프롬프트 만들기'로 번호가 붙은 프롬프트를 만드세요."); return; }
     openExternalAnswerImport(prefix, rowsByCode);
   }, "external-ai-import-btn");
-  b.title = "엘박스 등에서 받은 답변을 붙여넣어 번호별로 표의 행에 반영합니다. 공식 확인 상태는 바뀌지 않습니다.";
+  b.title = "엘박스 등에서 받은 답변을 붙여넣어 번호별로 표의 행에 반영합니다.";
   return b;
 }
 function buildExternalAiPromptForLegalClaims(entries, incidentDate = "") {
@@ -607,7 +686,6 @@ function buildExternalAiPromptForLegalClaims(entries, incidentDate = "") {
 당신은 대한민국 법률 및 판례 검증 전문 AI입니다.
 아래는 소송 서면에서 법리상 무리하거나 판례 취지와 맞지 않을 수 있다고 표시된 [주장 ${entries.length}건]입니다. 각 주장이 인용한 판례·법령의 취지에 비추어 성립하는지 검토해 주세요.
 
-※ 고지: 외부 AI 답변은 법적 효력이 있는 공식 확인이 아니며, 실제 변론 및 증거 제출 시에는 법원 판결서 사본 또는 국가법령정보센터 공식 원문으로 반드시 확인해야 합니다.
 ※ 개인정보는 프로젝트 정책에 따라 가림 처리되었습니다.
 
 [기준 시점]
@@ -1388,6 +1466,29 @@ function authorshipVerdict(verdict) {
   }[verdict] || ["판단 보류", "badge INFO"];
 }
 
+const MODEL_FAILURE_KOREAN = [
+  { match: /MASKING_PII_DETECTED|PII_INPUT_BLOCKED/, text: "개인정보 비식별 확인 단계에서 가려지지 않은 식별 정보 가능성이 탐지되어 외부 AI 전송을 차단했습니다." },
+  { match: /REQUEST_WIRING_CONTRACT|INPUT_CONTRACT_VIOLATION/, text: "외부 AI 입력 형식 검증 기준을 충족하지 못해 전송을 보류했습니다." },
+  { match: /STATIC_PROMPT_FALSE_POSITIVE/, text: "시스템 프롬프트 보호 점검 중 오탐이 발생해 전송을 보류했습니다." },
+  { match: /INSPECTION_EXCEPTION/, text: "개인정보 보호 점검 중 오류가 발생해 안전을 위해 외부 AI 전송을 차단했습니다." },
+  { match: /INPUT_PRIVACY_BLOCKED/, text: "개인정보 보호 입력 점검을 통과하지 못해 외부 AI 전송을 차단했습니다." },
+  { match: /PROVIDER_POLICY_BLOCKED/, text: "프로젝트 또는 기관의 외부 AI 이용 정책에 따라 호출이 제한되었습니다." },
+  { match: /PROVIDER_TIMEOUT/, text: "AI 모델 응답 시간이 초과되어 이번 교차검증에 참여하지 못했습니다." },
+  { match: /PROVIDER_EXCEPTION/, text: "AI 모델 호출 중 통신 오류가 발생해 이번 교차검증에 참여하지 못했습니다." },
+  { match: /EMPTY_RESPONSE/, text: "AI 모델이 빈 응답을 반환해 판정에 반영하지 못했습니다." },
+  { match: /\bHTTP\s*429\b/i, text: "AI 서비스 호출 한도를 일시적으로 초과해 응답하지 못했습니다." },
+];
+
+function humanizeModelFailureReason(why) {
+  const raw = String(why || "").trim();
+  if (!raw) return "AI 모델이 응답하지 못해 이번 교차검증에 참여하지 못했습니다.";
+  for (const rule of MODEL_FAILURE_KOREAN) {
+    if (rule.match.test(raw)) return rule.text;
+  }
+  const cleaned = friendlyText(raw).replace(/\b[A-Z][A-Z0-9_]{3,}\b/g, code => labels[code] || "내부 점검 항목");
+  return cleaned;
+}
+
 // 교차검증에 참여한 모델마다 결론·점수·설명을 모두 보인다. 응답하지 못한 모델은 사유와 함께 둔다.
 function modelOpinions(opinions, failures, failureModels = {}) {
   const box = node("div", null, "model-opinions");
@@ -1421,7 +1522,7 @@ function modelOpinions(opinions, failures, failureModels = {}) {
     const block = node("div", null, "model-opinion model-opinion-failed");
     const head = node("div", null, "model-opinion-head");
     head.append(node("strong", modelTitle(provider, failureModels[provider])), node("span", "응답 없음", "badge INFO"));
-    block.append(head, node("p", why, "muted"));
+    block.append(head, node("p", humanizeModelFailureReason(why), "muted"));
     grid.append(block);
   }
   return box;
@@ -1446,18 +1547,18 @@ function injectionCard(docs, hasQuarantine, findings) {
     return card;
   }
   card.append(hasQuarantine
-    ? node("p", "프롬프트 인젝션 속임수 검증: AI 판단 왜곡 지시문 탐지 — 이 문서는 AI 검토에서 제외", "danger-text")
+    ? node("p", "프롬프트 인젝션 속임수 검증: AI 판단 왜곡 지시문이 탐지되어 지시문 구간만 AI 입력·참고자료 자동 등록에서 격리하고, 나머지 본문 내용 검토는 정상 수행했습니다.", "danger-text")
     : node("p", "정상: 문서를 왜곡하려는 악의적 프롬프트 인젝션이 발견되지 않았습니다.", "safe-text"));
   const basis = node("div", null, "injection-basis");
   basis.append(node("h4", "판정 근거"));
-  basis.append(node("p", `검사 항목: ${INJECTION_CHECKS.join(" · ")}. 격리 기준: 기계 지시문 중 심각도 높음 이상이 1건이라도 있으면 격리합니다.`, "muted"));
+  basis.append(node("p", `검사 항목: ${INJECTION_CHECKS.join(" · ")}. 격리 기준: 기계 지시문 중 심각도 높음 이상이 1건이라도 있으면 지시문 구간을 격리하고 나머지 본문만 검토합니다.`, "muted"));
   for (const d of docs) {
     const adversarial = d.engine_data?.adversarial || {};
     const found = (d.findings || []).filter(f => f.engine === "adversarial_engine");
     const block = node("div", null, "injection-doc");
     const layers = (adversarial.scanned_layers || []).map(l => LAYER_NAMES[l] || l).join(", ") || "기록 없음";
     block.append(node("strong", d.filename || "문서"),
-      node("p", `검사한 층: ${layers} · 탐지 후보 ${found.length}건 · 위험도 ${RISK_NAMES[adversarial.adversarial_risk] || adversarial.adversarial_risk || "기록 없음"} · ${d.quarantined ? "격리됨" : "격리 안 함"}`));
+      node("p", `검사한 층: ${layers} · 탐지 후보 ${found.length}건 · 위험도 ${RISK_NAMES[adversarial.adversarial_risk] || adversarial.adversarial_risk || "기록 없음"} · ${d.quarantined ? "지시문 구간 격리됨 (본문 검토 진행)" : "격리 안 함"}`));
     if (found.length) {
       const list = node("ul", null, "reason-list");
       for (const f of found) {
@@ -2206,6 +2307,7 @@ async function loadResults(generation, options = {}) {
   const findings = await api(`/projects/${state.project.id}/findings?run_id=${state.run.id}`, options);
   // TK-155 보완 4: 표시 표(코드→한글)를 받은 뒤에 결과를 상태에 넣는다. 그 사이 탭 전환으로 다시 그려도 코드가 보이지 않는다.
   await loadFindingCategories(options);
+  await loadExternalAnswersFromServer(state.project.id, state.run.id, options);
   if (generation !== state.generation) return;
   state.result = result;
   state.findings = findings;
@@ -2269,7 +2371,7 @@ function isSecurityCardFinding(f) {
 
 function securityCard(docs, findings) {
   const secFindings = (findings || []).filter(isSecurityCardFinding);
-  const card = node("div", null, "summary-card security-card");
+  const card = node("div", null, "summary-card summary-card-wide security-card");
   card.append(node("h3", "보안 및 파일 진단"));
   if (secFindings.length > 0) {
     const list = node("ul", null, "security-finding-list");
@@ -2774,17 +2876,19 @@ function renderReviewRow(item, tier, findingsMap) {
   } else if (String(item.verdict_label).includes("부당") || String(item.verdict_label).includes("결여")) {
     verdictCls = "badge CRITICAL";
   }
-  tdBasis.append(
+  const badges = node("div", null, "review-verdict-badges");
+  badges.append(
     node("span", label(item.severity), `badge ${item.severity}`),
     node("span", friendlyText(item.verdict_label) || "확인 필요", `${verdictCls} validity-verdict`)
   );
+  const claimBadge = claimVerdictBadge(item.claim_verdict);
+  if (claimBadge) badges.append(claimBadge);
+  tdBasis.append(badges);
   // V1.0.0 6-3·7-2: 판정 배지와 겹치는 상태 코드 줄은 쓰지 않는다. 설명 문장만 둔다.
   const basisText = item.ai_generation_basis ? friendlyText(item.ai_generation_basis) : "";
   if (basisText) {
     tdBasis.append(node("p", basisText, "basis-text clamp"));
   }
-  const claimBadge = claimVerdictBadge(item.claim_verdict);
-  if (claimBadge) tdBasis.append(claimBadge);
   const comparisonBlock = sourceComparisonBlock(item.source_comparison);
   if (comparisonBlock) tdBasis.append(comparisonBlock);
   if (item.reference_case_match && item.reference_case_match !== "NOT_IN_REFERENCE") {
@@ -3139,11 +3243,10 @@ function renderFindings() {
             "엘박스/법률 AI 검증 프롬프트가 복사되었습니다."
           );
         }, "primary external-ai-prompt-btn");
-        promptBtn.title = `미확인 판례·법령 ${unverifiedAuthorities.length}건을 엘박스 등 법률 AI에 한 번에 질의할 수 있는 일괄 프롬프트를 복사합니다. (외부 AI 답변은 공식 확인이 아닙니다)`;
+        promptBtn.title = `미확인 판례·법령 ${unverifiedAuthorities.length}건을 엘박스 등 법률 AI에 한 번에 질의할 수 있는 일괄 프롬프트를 복사합니다.`;
 
         const badge = node("span", `(미확인 판례·법령 ${unverifiedAuthorities.length}건)`, "muted small review-prompt-count");
-        const notice = node("span", "※ 외부 AI 답변은 공식 확인이 아니므로 원문 확인이 필요합니다.", "muted small review-prompt-notice");
-        tableActions.append(promptBtn, externalAnswerButton("A", unverifiedAuthorities), badge, notice);
+        tableActions.append(promptBtn, externalAnswerButton("A", unverifiedAuthorities), badge);
         tableActions.hidden = false;
       } else {
         tableActions.hidden = true;
@@ -3170,10 +3273,9 @@ function renderFindings() {
         rememberPromptCodes("B", tier3Items);
         await copyToClipboard(buildExternalAiPromptForLegalClaims(entries, state.project?.incident_date), "엘박스/법률 AI 검토 프롬프트가 복사되었습니다.");
       }), "primary external-ai-prompt-btn");
-      promptBtn.title = `이 표의 주장 ${tier3Items.length}건을 개인정보 가림 후 한 번에 질의하는 프롬프트를 복사합니다. (외부 AI 답변은 공식 확인이 아닙니다)`;
+      promptBtn.title = `이 표의 주장 ${tier3Items.length}건을 개인정보 가림 후 한 번에 질의하는 프롬프트를 복사합니다.`;
       legalActions.append(promptBtn, externalAnswerButton("B", tier3Items),
-        node("span", `(검토 대상 주장 ${tier3Items.length}건)`, "muted small review-prompt-count"),
-        node("span", "※ 외부 AI 답변은 공식 확인이 아니므로 원문 확인이 필요합니다.", "muted small review-prompt-notice"));
+        node("span", `(검토 대상 주장 ${tier3Items.length}건)`, "muted small review-prompt-count"));
       legalActions.hidden = false;
     }
   }
