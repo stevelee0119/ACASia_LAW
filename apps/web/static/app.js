@@ -2884,10 +2884,31 @@ function renderReviewRow(item, tier, findingsMap) {
   const claimBadge = claimVerdictBadge(item.claim_verdict);
   if (claimBadge) badges.append(claimBadge);
   tdBasis.append(badges);
+  const leadF = (item.finding_ids && item.finding_ids.length && findingsMap) ? findingsMap.get(item.finding_ids[0]) : null;
+
   // V1.0.0 6-3·7-2: 판정 배지와 겹치는 상태 코드 줄은 쓰지 않는다. 설명 문장만 둔다.
   const basisText = item.ai_generation_basis ? friendlyText(item.ai_generation_basis) : "";
   if (basisText) {
     tdBasis.append(node("p", basisText, "basis-text clamp"));
+  }
+  // 261116 8·8-1: 3단(법률적으로 무리한 주장) 3열에는 정당한 계산 방식·액수 또는 정당한 법리 결론·근거를 직접 표시한다.
+  if (tier === 3) {
+    const rawConclusion = (
+      item.reasoning_sections?.review ||
+      item.legal_reasoning ||
+      (leadF && leadF.detail && leadF.detail !== item.claim_text ? leadF.detail : "") ||
+      ""
+    ).trim();
+    const conclusionText = rawConclusion ? friendlyText(rawConclusion) : "";
+    const claimPlain = item.claim_text ? friendlyText(item.claim_text).trim() : "";
+    if (conclusionText && conclusionText !== basisText && conclusionText !== claimPlain) {
+      tdBasis.append(node("p", conclusionText, "basis-text legal-conclusion-basis clamp"));
+    }
+    const legalSources = (Array.isArray(item.evidence_sources) ? item.evidence_sources : [])
+      .filter(s => s && !String(s).includes("구속력 없음"));
+    if (legalSources.length) {
+      tdBasis.append(node("p", `법적 근거: ${legalSources.slice(0, 3).map(s => friendlyText(s)).join(" · ")}`, "basis-text legal-basis-sources muted"));
+    }
   }
   const comparisonBlock = sourceComparisonBlock(item.source_comparison);
   if (comparisonBlock) tdBasis.append(comparisonBlock);
@@ -2916,7 +2937,6 @@ function renderReviewRow(item, tier, findingsMap) {
   // 4열: 확인이 필요한 내용 요약 (TK-87)
   const tdSummary = node("td", null, "review-summary-cell");
   const summaryBox = node("div", null, "review-summary-box");
-  const leadF = (item.finding_ids && item.finding_ids.length && findingsMap) ? findingsMap.get(item.finding_ids[0]) : null;
 
   // 1) 대상
   const targetText = item.cited_authority || (item.claim_text ? friendlyText(item.claim_text) : "") || (leadF ? friendlyText(leadF.title) : "");
@@ -2926,21 +2946,29 @@ function renderReviewRow(item, tier, findingsMap) {
     summaryBox.append(targetLine);
   }
 
-  // 2) 사유 축약
+  // 2) 사유 / 확인 필요 사항
+  const verificationText = (tier === 3 && item.counteraction) ? friendlyText(String(item.counteraction).trim()) : "";
   const rawReason = (item.reasoning_sections?.review || item.legal_reasoning || item.ai_generation_basis || (leadF ? leadF.detail : "") || item.verdict_label || "").trim();
   // V1.0.0 7-5: 사유를 자르지 않으면서 '확인 대상'과 같은 글이 두 번 나오지 않게 한다(한쪽이 다른 쪽을 담으면 생략).
   const squash = t => friendlyText(t).replace(/\s+/g, "").replace(/[.…]+$/, "");
   const sameAsTarget = targetText && rawReason && (squash(targetText).includes(squash(rawReason)) || squash(rawReason).includes(squash(targetText)));
-  // 사유가 대상 글을 담고 더 길면 대상 줄을 사유 전문으로 바꿔 정보가 빠지지 않게 한다.
-  if (sameAsTarget && squash(rawReason).length > squash(targetText).length) {
-    const targetLine = summaryBox.querySelector(".summary-target");
-    if (targetLine) targetLine.lastChild.textContent = friendlyText(rawReason);
-  }
-  if (rawReason && !sameAsTarget) {
-    // V1.0.0 7-5: 문장을 자르지 않는다. 길면 4줄까지 보이고 '더보기'로 펼친다.
-    const reasonLine = node("p", null, "summary-line summary-reason clamp");
-    reasonLine.append(node("strong", "의심 사유: "), document.createTextNode(friendlyText(rawReason)));
-    summaryBox.append(reasonLine);
+  if (verificationText) {
+    // 261116 8·8-1: 3단 4열에는 3열 결론 검증을 위해 확인해야 할 구체적 사실·자료·근거를 우선 제시한다.
+    const verifLine = node("p", null, "summary-line summary-verification clamp");
+    verifLine.append(node("strong", "확인 필요 사항: "), document.createTextNode(verificationText));
+    summaryBox.append(verifLine);
+  } else {
+    // 사유가 대상 글을 담고 더 길면 대상 줄을 사유 전문으로 바꿔 정보가 빠지지 않게 한다.
+    if (sameAsTarget && squash(rawReason).length > squash(targetText).length) {
+      const targetLine = summaryBox.querySelector(".summary-target");
+      if (targetLine) targetLine.lastChild.textContent = friendlyText(rawReason);
+    }
+    if (rawReason && !sameAsTarget) {
+      // V1.0.0 7-5: 문장을 자르지 않는다. 길면 4줄까지 보이고 '더보기'로 펼친다.
+      const reasonLine = node("p", null, "summary-line summary-reason clamp");
+      reasonLine.append(node("strong", "의심 사유: "), document.createTextNode(friendlyText(rawReason)));
+      summaryBox.append(reasonLine);
+    }
   }
 
   // 4) 상세 법리 의견
@@ -3091,21 +3119,36 @@ function renderFindings() {
         if (attachedFindingIds.has(fid)) continue;
         if (f.document_id && docId && f.document_id !== docId) continue;
         attachedFindingIds.add(fid);
+        const cf = f.confidence_features || {};
+        const primaryEv = (Array.isArray(f.evidence) ? f.evidence : []).find(
+          ev => ev && ev.excerpt && !String(ev.description || "").startsWith("근거:") && ev.description !== "세부 금액"
+        );
+        const statedClaim = String(cf.stated_claim || cf.claim || cf.claim_quote || primaryEv?.excerpt || "").trim();
+        const claimText = statedClaim || f.detail || f.title;
+        let rawVerdict = String(cf.judgment || cf.verdict || f.title || f.type || "").trim();
+        if (statedClaim && rawVerdict.includes(" — '")) {
+          rawVerdict = rawVerdict.split(" — '", 1)[0].trim();
+        }
+        const lawfulReview = String(cf.lawful_calculation || (f.detail && f.detail !== claimText ? f.detail : "") || "").trim();
+        const basisSources = (Array.isArray(cf.basis) ? cf.basis : [])
+          .filter(b => b && b.name)
+          .map(b => b.url ? `${b.name} (${b.url})` : b.name);
         allReviewItems.push({
           doc: d,
           item_id: `${docId}_FINDING_${fid}`,
           kind: "FACT",
           document_id: docId,
           location: { page: f.page },
-          claim_text: f.detail || f.title,
-          cited_authority: null,
+          claim_text: claimText,
+          cited_authority: cf.cited_authority || cf.compared || null,
           official_status: "NOT_ASSESSED",
           reference_status: "NOT_CHECKED",
-          verdict_label: f.title,
+          verdict_label: rawVerdict,
           severity: f.severity,
+          evidence_sources: basisSources,
           finding_ids: [fid],
-          reasoning_sections: null,
-          counteraction: f.recommendation,
+          reasoning_sections: lawfulReview ? { review: lawfulReview, ai_label: "", opinions: [] } : null,
+          counteraction: cf.verification_needed || f.recommendation || null,
         });
       }
     }

@@ -66,7 +66,10 @@ def claim_amount_findings(doc):
                 document_id=doc.document_id, block_id=block.block_id, page=block.page,
                 engine="claim_engine.calculation", confidence=0.95,
                 confidence_features={"rule_id": "CALC.CLAIM_TOTAL_MISMATCH", "arithmetic_proof": True,
-                    "claim_amount": str(claim), "computed": str(computed), "table_total": str(stated)},
+                    "claim_amount": str(claim), "computed": str(computed), "table_total": str(stated),
+                    "stated_claim": f"청구 본문 청구 금액: {claim:,}원 (손해액 표 합계 기재: {stated:,}원)",
+                    "lawful_calculation": f"동일 표 세부 {len(amounts)}개 항목의 정당한 합산 금액은 {computed:,}원입니다 (본문 청구액과 차이 {claim - computed:+,}원).",
+                    "verification_needed": "청구취지 금액과 세부 손해액 표 사이에 합산 누락·일부청구 여부 또는 오기가 있는지 소장·준비서면을 대조해야 합니다."},
                 evidence=[Evidence.create(description="본문과 단일 손해액 표", grade=EvidenceGrade.A,
                     document_id=doc.document_id, page=block.page, excerpt=text[:500])]))
         included = re.search(r"향\s*후\s*치료비[^.。]{0,90}이미\s*합계에\s*포함", text)
@@ -79,7 +82,10 @@ def claim_amount_findings(doc):
                 document_id=doc.document_id, block_id=block.block_id, page=block.page,
                 engine="claim_engine.calculation", confidence=0.6,
                 confidence_features={"rule_id": "CALC.INCLUDED_ITEM_NOT_LISTED", "human_review": True,
-                    "table_labels": labels, "claim": included.group()},
+                    "table_labels": labels, "claim": included.group(),
+                    "stated_claim": included.group()[:200],
+                    "lawful_calculation": f"단일 손해액 표({', '.join(labels[:6])})에서 향후 치료비 항목을 찾을 수 없어 합계 포함 여부가 계산상 확인되지 않습니다.",
+                    "verification_needed": "향후 치료비 추정서와 손해액 세부 표를 대조해 다른 항목에 합산되었는지 또는 표 기재가 누락되었는지 확인해야 합니다."},
                 evidence=[Evidence.create(description="포함 주장과 표 항목", grade=EvidenceGrade.C,
                     document_id=doc.document_id, page=block.page, excerpt=included.group())]))
     return out

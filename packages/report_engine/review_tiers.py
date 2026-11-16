@@ -138,3 +138,77 @@ def classify_row_tier(row: Dict[str, Any]) -> int:
 
     # 기본값: 3단
     return 3
+
+
+def tier3_review_item_entries(doc: Any, *, limit: int = 0) -> list[list[str]]:
+    """인용 표(ai_hallucination_table)에 포함되지 않은 3단 검토 항목(계산 오류·무리한 법리 주장 등)을 보고서 4열 형식으로 변환한다."""
+    from packages.common.display_text import readable
+
+    existing_table = getattr(doc, "ai_hallucination_table", None) or []
+    existing_keys = {
+        (str(r.get("claim_text") or "").strip(), str(r.get("cited_authority") or "").strip())
+        for r in existing_table if isinstance(r, dict)
+    }
+    existing_cids = {
+        str(r.get("citation_id"))
+        for r in existing_table if isinstance(r, dict) and r.get("citation_id")
+    }
+
+    entries: list[list[str]] = []
+    filename = str(getattr(doc, "filename", "") or "").strip()
+    for raw_item in getattr(doc, "review_items", None) or []:
+        item = raw_item if isinstance(raw_item, dict) else (raw_item.to_dict() if hasattr(raw_item, "to_dict") else None)
+        if not item:
+            continue
+        kind = str(item.get("kind") or "")
+        if kind in ("CITATION", "CLAIM", "UNVERIFIED_SCOPE", "PROCESSING_QUALITY") or item.get("citation_id"):
+            continue
+        if item.get("citation_id") and str(item.get("citation_id")) in existing_cids:
+            continue
+        if classify_row_tier(item) != 3:
+            continue
+
+        claim = str(item.get("claim_text") or "").strip()
+        authority = str(item.get("cited_authority") or "").strip()
+        if (claim, authority) in existing_keys:
+            continue
+
+        loc = item.get("location") or {}
+        if isinstance(loc, dict):
+            loc_disp = str(loc.get("display") or (f"{loc['page']}쪽" if loc.get("page") is not None else "")).strip()
+        else:
+            loc_disp = str(loc).strip()
+        cell_loc = f"{filename} {loc_disp}".strip() or filename or "-"
+
+        claim_shown = claim[:limit] if limit and len(claim) > limit else claim
+        cell_claim = readable(claim_shown + (f"\n({authority})" if authority else ""))
+
+        verdict = readable(str(item.get("verdict_label") or "검토 필요").strip())
+        basis_parts = [f"[평가] {verdict}"]
+        basis_note = readable(str(item.get("ai_generation_basis") or "").strip())
+        if basis_note and basis_note != verdict:
+            basis_parts.append(basis_note)
+        review_body = readable(
+            str((item.get("reasoning_sections") or {}).get("review") or item.get("legal_reasoning") or "").strip()
+        )
+        if review_body and review_body != verdict and review_body != basis_note and review_body != cell_claim:
+            if limit and len(review_body) > limit:
+                review_body = review_body[:limit]
+            basis_parts.append(review_body)
+        sources = [
+            readable(str(s).strip())
+            for s in (item.get("evidence_sources") or [])
+            if s and "구속력 없음" not in str(s)
+        ]
+        if sources:
+            basis_parts.append("근거: " + " · ".join(sources[:3]))
+        cell_basis = "\n".join(basis_parts)
+
+        verif = readable(str(item.get("counteraction") or "").strip())
+        if verif:
+            cell_review = f"확인 필요 사항: {verif}"
+        else:
+            cell_review = "서면 주장 및 관련 계산·사실관계 근거를 원문·증빙과 대조하여 확인해야 합니다."
+
+        entries.append([cell_loc, cell_claim, cell_basis, cell_review])
+    return entries
