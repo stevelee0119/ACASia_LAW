@@ -63,45 +63,81 @@ def _unmasked_segments(
     return segments
 
 
+def _applied_with_token_lengths(
+    src_text: str, masked_text: str, applied_matches: List[PIIMatch],
+) -> List[Tuple[PIIMatch, int]]:
+    if not applied_matches:
+        return []
+    out: List[Tuple[PIIMatch, int]] = []
+    masked_pos = 0
+    src_pos = 0
+    for idx, m in enumerate(applied_matches):
+        gap = m.start - src_pos
+        masked_pos += gap
+        if idx + 1 < len(applied_matches):
+            next_gap = applied_matches[idx + 1].start - m.end
+            close = masked_text.find("]", masked_pos)
+            while close != -1:
+                cand_end = close + 1
+                if next_gap == 0 and cand_end < len(masked_text) and masked_text[cand_end] == "[":
+                    break
+                if next_gap > 0 and masked_text.startswith(src_text[m.end:m.end + next_gap], cand_end):
+                    break
+                close = masked_text.find("]", close + 1)
+            tok_len = (close + 1 - masked_pos) if close != -1 else 0
+        else:
+            tail_len = len(src_text) - m.end
+            tok_len = len(masked_text) - masked_pos - tail_len
+        out.append((m, tok_len))
+        masked_pos += tok_len
+        src_pos = m.end
+    return out
+
+
 class PIIEngine:
     def __init__(self, store: PseudonymStore) -> None:
         self.store = store
 
     def mask_text(self, text: str, *, block_id: Optional[str] = None, page: Optional[int] = None, _trace=None) -> MaskResult:
-        current_text = text
-        applied_orig: List[Tuple[PIIMatch, int]] = []
-        all_replacements: Dict[str, str] = {}
+        matches = [m for m in detect(text, block_id=block_id, page=page) if m.confidence >= MIN_CONFIDENCE]
+        first = self._mask_matches(text, matches) if _trace is None else self._mask_matches(text, matches, _trace=_trace)
+        if _trace is not None or len(first.matches) >= len(matches) or first.masked_text == text:
+            return first
 
-        for pass_idx in range(MAX_MASK_PASSES):
-            matches = [m for m in detect(current_text, block_id=block_id, page=page) if m.confidence >= MIN_CONFIDENCE]
-            if not matches:
+        # 부분 중첩으로 1차 패스에서 건너뛴 후보가 남아 있을 때만 후속 패스로 잔여 PII를 마스킹한다.
+        current_text = first.masked_text
+        applied_orig = _applied_with_token_lengths(text, current_text, first.matches)
+        all_replacements: Dict[str, str] = dict(first.replacements)
+
+        for _ in range(1, MAX_MASK_PASSES):
+            next_matches = [m for m in detect(current_text, block_id=block_id, page=page) if m.confidence >= MIN_CONFIDENCE]
+            if not next_matches:
                 break
-            next_text, pass_applied, pass_replacements = self._apply_matches(current_text, matches, _trace=_trace)
+            next_text, pass_applied, pass_replacements = self._apply_matches(current_text, next_matches)
             if not pass_applied or next_text == current_text:
                 break
             all_replacements.update(pass_replacements)
-            if pass_idx == 0:
-                applied_orig = list(pass_applied)
-            else:
-                segments = _unmasked_segments(len(text), applied_orig)
-                seg_starts = [s[0] for s in segments]
-                for cur_match, tok_len in pass_applied:
-                    idx = bisect_right(seg_starts, cur_match.start) - 1
-                    if idx < 0:
-                        continue
-                    gap_cur_start, gap_cur_end, gap_orig_start = segments[idx]
-                    if gap_cur_start <= cur_match.start and cur_match.end <= gap_cur_end:
-                        orig_start = gap_orig_start + (cur_match.start - gap_cur_start)
-                        orig_end = gap_orig_start + (cur_match.end - gap_cur_start)
-                        orig_match = replace(
-                            cur_match,
-                            start=orig_start,
-                            end=orig_end,
-                            text=text[orig_start:orig_end],
-                        )
-                        applied_orig.append((orig_match, tok_len))
-                applied_orig.sort(key=lambda item: item[0].start)
+            segments = _unmasked_segments(len(text), applied_orig)
+            seg_starts = [s[0] for s in segments]
+            for cur_match, tok_len in pass_applied:
+                idx = bisect_right(seg_starts, cur_match.start) - 1
+                if idx < 0:
+                    continue
+                gap_cur_start, gap_cur_end, gap_orig_start = segments[idx]
+                if gap_cur_start <= cur_match.start and cur_match.end <= gap_cur_end:
+                    orig_start = gap_orig_start + (cur_match.start - gap_cur_start)
+                    orig_end = gap_orig_start + (cur_match.end - gap_cur_start)
+                    orig_match = replace(
+                        cur_match,
+                        start=orig_start,
+                        end=orig_end,
+                        text=text[orig_start:orig_end],
+                    )
+                    applied_orig.append((orig_match, tok_len))
+            applied_orig.sort(key=lambda item: item[0].start)
             current_text = next_text
+            if len(pass_applied) >= len(next_matches):
+                break
 
         return MaskResult(current_text, [m for m, _ in applied_orig], all_replacements)
 

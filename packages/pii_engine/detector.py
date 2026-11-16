@@ -700,7 +700,6 @@ def _extend_international_prefix_spans(
     text: str,
     matches: List[PIIMatch],
     guard_spans: List[Tuple[int, int]],
-    token_spans: Optional[List[Tuple[int, int]]] = None,
 ) -> None:
     """Extend existing numeric spans; never detect or reclassify a number.
 
@@ -710,6 +709,7 @@ def _extend_international_prefix_spans(
     """
     if not any(match.kind in {"PHONE", "ACCOUNT", "RRN", "PII"} for match in matches):
         return
+    token_spans = _pseudonym_spans(text)
     expanded = _width_normalized_positions(text)
     normalized = "".join(char for char, _ in expanded)
     positions = [position for _, position in expanded]
@@ -1122,7 +1122,7 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
             matches.append(PIIMatch("COMPANY", name, start, end,
                                     block_id, page, 0.8, "법인 표기"))
 
-    _extend_international_prefix_spans(text, matches, guard_spans, token_spans=token_spans)
+    _extend_international_prefix_spans(text, matches, guard_spans)
 
     # 중복 span 정리 (긴 매치 우선).
     # start 오름차순이므로 앞선 항목의 start는 모두 현재 start 이하다. 따라서
