@@ -748,7 +748,7 @@ def _pseudonym_analysis(
     *,
     block_id: Optional[str] = None,
     page: Optional[int] = None,
-    trusted_tokens: Optional[frozenset[str]] = None,
+    trusted_spans: Optional[frozenset[Tuple[int, int, str]]] = None,
 ) -> Tuple[List[Tuple[int, int]], List[PIIMatch]]:
     """검증된 가명 토큰([KIND_NNN]) 구간과 토큰 경계 결합 PII 후보를 분리한다."""
     safe_spans: List[Tuple[int, int]] = []
@@ -757,14 +757,14 @@ def _pseudonym_analysis(
         ts, te = match.span()
         bare = match.group(0)[1:-1]
         inner_digits = bare[-3:]
-        is_trusted = trusted_tokens is not None and bare in trusted_tokens
+        is_trusted = trusted_spans is not None and (ts, te, bare) in trusted_spans
         cross_match = _cross_boundary_pii_match(
             text, ts, te, inner_digits, block_id, page, trusted=is_trusted,
         )
         if cross_match is not None:
             boundary_matches.append(cross_match)
             continue
-        if trusted_tokens is not None and not is_trusted:
+        if trusted_spans is not None and not is_trusted:
             continue
         safe_spans.append((ts, te))
     return safe_spans, boundary_matches
@@ -864,6 +864,7 @@ def _extend_international_prefix_spans(
     text: str,
     matches: List[PIIMatch],
     guard_spans: List[Tuple[int, int]],
+    token_spans: Optional[List[Tuple[int, int]]] = None,
 ) -> None:
     """Extend existing numeric spans; never detect or reclassify a number.
 
@@ -873,7 +874,7 @@ def _extend_international_prefix_spans(
     """
     if not any(match.kind in {"PHONE", "ACCOUNT", "RRN", "PII"} for match in matches):
         return
-    token_spans = _pseudonym_spans(text)
+    token_spans = _pseudonym_spans(text) if token_spans is None else token_spans
     expanded = _width_normalized_positions(text)
     normalized = "".join(char for char, _ in expanded)
     positions = [position for _, position in expanded]
@@ -1073,7 +1074,7 @@ def detect(
     *,
     block_id: Optional[str] = None,
     page: Optional[int] = None,
-    _trusted_tokens: Optional[frozenset[str]] = None,
+    _trusted_spans: Optional[frozenset[Tuple[int, int, str]]] = None,
 ) -> List[PIIMatch]:
     """텍스트에서 개인정보 후보를 찾는다."""
     matches: List[PIIMatch] = []
@@ -1082,7 +1083,7 @@ def detect(
 
     guard_spans = legal_identifier_spans(text)
     token_spans, boundary_matches = _pseudonym_analysis(
-        text, block_id=block_id, page=page, trusted_tokens=_trusted_tokens,
+        text, block_id=block_id, page=page, trusted_spans=_trusted_spans,
     )
     matches.extend(boundary_matches)
     contact_view, contact_source_positions = _normalise_contact_view(text, token_spans=token_spans)
@@ -1298,7 +1299,7 @@ def detect(
             matches.append(PIIMatch("COMPANY", name, start, end,
                                     block_id, page, 0.8, "법인 표기"))
 
-    _extend_international_prefix_spans(text, matches, guard_spans)
+    _extend_international_prefix_spans(text, matches, guard_spans, token_spans)
 
     # 중복 span 정리 (긴 매치 우선).
     # start 오름차순이므로 앞선 항목의 start는 모두 현재 start 이하다. 따라서
