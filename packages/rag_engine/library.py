@@ -106,6 +106,7 @@ class ReferenceLibrary:
         self.settings, self.check = settings, check
         self.notify = notify
         self.client_factory, self.extractor = client_factory, extractor
+        self._default_collect_all: bool | None = None
         self._case_rows_cache: list[dict] | None = None
         self._case_number_index: dict[str, list[dict]] = {}
         self.folder = settings.rag_drive_folder_id
@@ -148,23 +149,29 @@ class ReferenceLibrary:
         finally:
             db.close()
 
-    def sync(self, query=""):
+    def sync(self, query="", *, collect_all: bool | None = None):
         started = time.monotonic()
         self.eligible = {}
         self._case_rows_cache = None
         self._case_number_index = {}
         self.summary.update(checked_at=None, snapshot_hash=None, files_seen=0, files_indexed=0,
                             files_reused=0, issues=[], sources=[], duplicates=[], similar_names=[], inventory=[])
+        self.summary.pop("coverage_ledger", None)
         # 분석 문서마다 따로 받은 질의(목록)나 하나로 합친 질의(문자열) 모두 받는다.
-        queries = [q for q in (query if isinstance(query, (list, tuple)) else [query]) if q]
-        self.sync_query = "\n".join(queries) if self.settings.rag_metadata_first else ""
-        queries = queries if self.sync_query else []
+        raw_queries = [q for q in (query if isinstance(query, (list, tuple)) else [query]) if q]
+        eff_collect_all = self._default_collect_all if collect_all is None else collect_all
+        decoupled = bool(eff_collect_all) if eff_collect_all is not None else (not bool(self.settings.rag_metadata_first))
+        self.sync_query = "\n".join(raw_queries) if (raw_queries and (not decoupled or eff_collect_all)) else ""
+        queries = raw_queries if (raw_queries and not decoupled) else []
         budget = max(1, min(600, self.settings.rag_sync_seconds))
+        collection_mode = "DECOUPLED_FULL_CORPUS" if decoupled else ("METADATA_GATE" if queries else "FULL_CORPUS")
+        selection_strategy = "METADATA_GATE" if queries else ("FULL_CORPUS_INDEX" if raw_queries else "CACHE_SIZE_ORDER")
         diagnostics = self.summary["diagnostics"] = {
             "started_at": datetime.now(timezone.utc).isoformat(), "folder_id": self.folder,
             "network_allowed": bool(self.settings.allow_network), "budget_seconds": budget,
             "max_files": self.settings.rag_max_files, "inventory_max_files": self.settings.rag_inventory_max_files,
-            "selection_strategy": "METADATA_GATE" if self.sync_query else "CACHE_SIZE_ORDER",
+            "selection_strategy": selection_strategy,
+            "collection_mode": collection_mode,
             "download_budget_mb": self.settings.rag_download_mb,
             "credential_mode": None, "stages": [], "downloads": {"count": 0, "bytes": 0},
             "extractions": {"count": 0, "ms": 0}, "duplicates_skipped": 0, "deferred": 0}
@@ -205,8 +212,7 @@ class ReferenceLibrary:
                 diagnostics["files_by_type"] = extensions
                 duplicates, similar, skip = relevance.duplicate_groups(items)
                 self.summary["duplicates"], self.summary["similar_names"] = duplicates, similar
-                # 분석 중에는 폴더·파일명·Drive 본문 검색으로 고른 후보만 새로 연다. 질의 없는 동기화(관리자 점검
-                # 스크립트)는 종전처럼 전체를 색인해 캐시를 채운다.
+                # collect_all=False/레거시 METADATA_GATE 모드에서만 열기 전 선정을 쓰고, 분리 수집 모드에서는 전량 수집한다.
                 gate = None
                 if queries:
                     try:
@@ -251,9 +257,55 @@ class ReferenceLibrary:
         diagnostics["elapsed_ms"] = round((time.monotonic() - started) * 1000)
         diagnostics["outcome"] = self.summary["status"]
         counts = {}
+        pages_total = 0
+        extracted_text_pages = 0
+        completed_pages = 0
+        page_states: dict[str, int] = {}
+        files_complete = 0
+        files_partial = 0
+        files_failed = 0
+        files_not_selected = 0
         for item in self.summary["inventory"]:
             if item["reason"] == "NOT_PROCESSED":
                 item["reason"] = "SYNC_INTERRUPTED"
+            st = item.get("status") or ""
+            if st == "INDEXED":
+                files_complete += 1
+            elif st == "INDEXED_PARTIAL":
+                files_partial += 1
+            elif st == "NOT_SELECTED_METADATA":
+                files_not_selected += 1
+            elif st in ("PARSE_FAILED", "UNAVAILABLE", "UNSUPPORTED_TYPE", "QUARANTINED"):
+                files_failed += 1
+            pages_total += int(item.get("pages") or 0)
+            extracted_text_pages += int(
+                item.get("extracted_text_pages")
+                if item.get("extracted_text_pages") is not None
+                else (item.get("read_pages") or 0)
+            )
+            completed_pages += int(
+                item.get("completed_pages")
+                if item.get("completed_pages") is not None
+                else (item.get("read_pages") or 0)
+            )
+            for k, v in (item.get("page_state_counts") or {}).items():
+                page_states[k] = page_states.get(k, 0) + int(v or 0)
+        self.summary["coverage_ledger"] = {
+            "collection_mode": diagnostics.get("collection_mode"),
+            "global_library": {
+                "files_seen": self.summary.get("files_seen", 0),
+                "files_indexed": self.summary.get("files_indexed", 0),
+                "files_reused": self.summary.get("files_reused", 0),
+                "files_complete": files_complete,
+                "files_partial": files_partial,
+                "files_failed_or_unavailable": files_failed,
+                "files_not_selected_metadata": files_not_selected,
+                "pages_total": pages_total,
+                "extracted_text_pages": extracted_text_pages,
+                "completed_pages": completed_pages,
+                "page_states": page_states,
+            },
+        }
         for issue in self.summary["issues"]:
             counts[issue.get("reason", "")] = counts.get(issue.get("reason", ""), 0) + 1
         diagnostics["issue_counts"] = counts
@@ -299,6 +351,12 @@ class ReferenceLibrary:
         return gate
 
     def _sync_files(self, client, db, items, skip, gate=None):
+        def _purge_file(target_id: str) -> None:
+            db.execute("DELETE FROM chunks WHERE file_id=?", (target_id,))
+            db.execute("DELETE FROM case_rows WHERE file_id=?", (target_id,))
+            db.execute("DELETE FROM files WHERE id=?", (target_id,))
+            db.commit()
+
         diagnostics = self.summary["diagnostics"]
         seen = {item["id"] for item in items}
         # Delete only after a complete listing, never infer deletion from a failed page.
@@ -340,16 +398,14 @@ class ReferenceLibrary:
                 client.remaining()
                 if skip.get(file_id) in self.eligible:
                     diagnostics["duplicates_skipped"] += 1
-                    db.execute("DELETE FROM chunks WHERE file_id=?", (file_id,))
-                    db.execute("DELETE FROM case_rows WHERE file_id=?", (file_id,))
-                    db.execute("DELETE FROM files WHERE id=?", (file_id,))
-                    db.commit()
+                    _purge_file(file_id)
                     entry.update(status="DUPLICATE_REUSED", reason="IDENTICAL_CONTENT", duplicate_of=skip[file_id])
                     continue
                 # The listing was read moments ago in this run; it already carries parents, trash state,
                 # download permission and revision, so an unchanged cached file needs no second request.
                 problem = access_problem(item)
                 if problem:
+                    _purge_file(file_id)
                     raise ReferenceError(problem)
                 folder_path = item.get("folder_path", "")
                 version = revision(item) + ":" + EXTRACTOR_VERSION
@@ -359,7 +415,7 @@ class ReferenceLibrary:
                 prior = json.loads(row[0]) if row else None
                 continuation = prior.get("continuation") if prior else None
                 if continuation:
-                    row = None  # Only a progressing structured table is retried at the same revision.
+                    row = None  # Only a progressing structured table or bounded OCR is retried at the same revision.
                 if row:
                     parsed = json.loads(row[0])
                     self.summary["files_reused"] += 1
@@ -377,6 +433,7 @@ class ReferenceLibrary:
                     fresh = client.metadata(file_id)
                     problem = access_problem(item, fresh)
                     if problem:
+                        _purge_file(file_id)
                         self._access_detail(item, fresh, problem)
                         raise ReferenceError(problem)
                     item = {**fresh, "folder_path": folder_path, "listed_parent": item.get("listed_parent")}
@@ -397,9 +454,11 @@ class ReferenceLibrary:
                     diagnostics["downloads"]["count"] += 1
                     diagnostics["downloads"]["bytes"] += len(data)
                     after = client.metadata(file_id)
-                    if access_problem(item, after):
-                        self._access_detail(item, after, access_problem(item, after))
-                        raise ReferenceError(access_problem(item, after))
+                    after_problem = access_problem(item, after)
+                    if after_problem:
+                        _purge_file(file_id)
+                        self._access_detail(item, after, after_problem)
+                        raise ReferenceError(after_problem)
                     if revision(after) != revision(item):
                         raise ReferenceError("REFERENCE_CHANGED_DURING_DOWNLOAD")
                     if item.get("md5Checksum") and hashlib.md5(data).hexdigest() != item["md5Checksum"]:
@@ -469,8 +528,26 @@ class ReferenceLibrary:
                                  json.dumps(r.get("raw_cells", {}), ensure_ascii=False)) for r in case_records])
                 is_case_table = bool(parsed.get("structured_case_table"))
                 raw_reason = parsed.get("reason") or ""
-                is_partial = bool(parsed.get("partial"))
                 has_continuation = bool(parsed.get("continuation"))
+                has_unfinished_pages = bool(
+                    parsed.get("incomplete_pages")
+                    or parsed.get("scanned_pages")
+                    or parsed.get("ocr_low_quality_pages")
+                    or parsed.get("error_pages")
+                    or parsed.get("unprocessed_pages")
+                )
+                blank_only_complete = bool(
+                    parsed.get("coverage_complete")
+                    and not has_unfinished_pages
+                    and not has_continuation
+                    and parsed.get("blank_pages")
+                    and raw_reason in ("", "VERIFIED_BLANK_PAGES", "VERIFIED_BLANK_DOCUMENT")
+                )
+                is_partial = (
+                    has_unfinished_pages
+                    or has_continuation
+                    or (bool(parsed.get("partial")) and not blank_only_complete)
+                )
                 chunk_count = int(parsed.get("chunk_count", 0))
 
                 # 파싱 중 오류·시간초과·격리 또는 미완료(이어 읽기 대기) 여부 판정 (TK-74 한국어 주석)
@@ -535,8 +612,9 @@ class ReferenceLibrary:
                         # 정상적으로 완전히 읽었으나 판례표 요건을 충족하지 못한 경우: 정상 음성 판별
                         entry.update(status="NOT_A_CASE_TABLE", reason="NOT_A_CASE_TABLE")
                 else:
-                    # 3. 서면 본문에서 선별된 일반 문서
-                    if is_partial or not chunk_count:
+                    # 3. 일반 문서(모든 쪽이 시각적으로 빈 쪽으로 검증된 문서는 오류/부분으로 부풀리지 않는다)
+                    verified_blank_doc = bool(blank_only_complete and not chunk_count)
+                    if is_partial or (not chunk_count and not verified_blank_doc):
                         self.summary["issues"].append({
                             "file_id": file_id,
                             "name": item.get("name"),
@@ -544,19 +622,27 @@ class ReferenceLibrary:
                             "read_pages": parsed.get("read_pages"),
                             "pages": parsed.get("pages"),
                         })
-                    cand_status = ("INDEXED_PARTIAL" if is_partial else "INDEXED") if chunk_count else "PARSE_FAILED"
+                    cand_status = (
+                        ("INDEXED_PARTIAL" if is_partial else "INDEXED")
+                        if (chunk_count or verified_blank_doc)
+                        else "PARSE_FAILED"
+                    )
                     entry.update(
                         status=cand_status,
-                        reason=raw_reason or "TEXT_INDEXED",
+                        reason=raw_reason or ("VERIFIED_BLANK_DOCUMENT" if verified_blank_doc else "TEXT_INDEXED"),
                         pages=parsed.get("pages"),
                         read_pages=parsed.get("read_pages"),
                     )
 
                 for key in ("excluded_pages", "scan_findings", "no_text_pages", "unprocessed_pages", "coverage_note",
-                            "page_diagnostics", "ocr_pages", "blank_pages", "scanned_pages", "error_pages",
-                            "text_parser", "fallback_pages", "stats", "read_ranges", "excluded_rows", "table_version"):
+                            "page_diagnostics", "ocr_pages", "ocr_low_quality_pages", "blank_pages", "scanned_pages",
+                            "error_pages", "incomplete_pages", "page_state_counts", "text_parser", "fallback_pages",
+                            "stats", "read_ranges", "excluded_rows", "table_version"):
                     if parsed.get(key):
                         entry[key] = parsed[key]
+                for count_key in ("extracted_text_pages", "completed_pages"):
+                    if count_key in parsed and parsed[count_key] is not None:
+                        entry[count_key] = parsed[count_key]
                 if parsed.get("structured_case_table"):
                     entry["structured_case_table"] = True
                     entry["case_table_stats"] = parsed.get("stats", {})
@@ -569,8 +655,10 @@ class ReferenceLibrary:
                         "metadata_score": entry["metadata"]["score"],
                         "url": "https://drive.google.com/file/d/" + file_id + "/view",
                         "revision": version, "modified_time": item.get("modifiedTime"),
-                        "sha256": parsed.get("sha256", ""), "partial": bool(parsed.get("partial")),
+                        "sha256": parsed.get("sha256", ""), "partial": bool(is_partial),
                         "pages": parsed.get("pages"), "read_pages": parsed.get("read_pages"),
+                        "extracted_text_pages": parsed.get("extracted_text_pages", parsed.get("read_pages")),
+                        "completed_pages": parsed.get("completed_pages", parsed.get("read_pages")),
                         "page_numbers_reliable": parsed.get("page_numbers_reliable", True),
                         "body_extraction_scope": parsed.get("body_extraction_scope"),
                         "chunk_count": chunk_count,
@@ -635,9 +723,10 @@ class ReferenceLibrary:
         mark = time.monotonic()
         total = sum(v.get("chunk_count") or 0 for v in prose_eligible.values())
         log["corpus_chunks"] = total
-        counts = set(relevance.query_tokens(text[:24000]))
+        scan_text = str(text or "")[:150000]
+        counts = set(relevance.query_tokens(scan_text))
         names = relevance.name_weights(prose_eligible)
-        priority_ids = sorted(k for k, v in prose_eligible.items() if relevance.priority_reference(v, text))
+        priority_ids = sorted(k for k, v in prose_eligible.items() if relevance.priority_reference(v, scan_text))
         log["priority_references"] = [{"file_id": k, "title": prose_eligible[k].get("title"),
                                       "searched": False, "search_reason": "NOT_EXECUTED" if i < 12 else "SEARCH_LIMIT"}
                                      for i, k in enumerate(priority_ids)]
@@ -650,11 +739,11 @@ class ReferenceLibrary:
                 batch = terms[offset:offset + 500]
                 frequency.update(db.execute("SELECT term, doc FROM chunk_terms WHERE term IN ("
                                             + ",".join("?" for _ in batch) + ")", batch).fetchall())
-            profiles = relevance.query_profiles(text[:24000], frequency, total)
+            profiles = relevance.query_profiles(scan_text, frequency, total)
             profile = profiles[0]
             # Round-robin window terms keeps one issue from consuming the query budget.
             present = list(dict.fromkeys(t for rank in range(relevance.QUERY_TERMS)
-                for p in profiles for t in list(p)[rank:rank + 1] if t in frequency))[:160]
+                for p in profiles for t in list(p)[rank:rank + 1] if t in frequency))[:240]
             log["query_windows"] = len(profiles) - 1
             log["topic_window_chars"] = relevance.TOPIC_WINDOW
             log["topic_step_chars"] = relevance.TOPIC_STEP
@@ -674,6 +763,17 @@ class ReferenceLibrary:
                 "JOIN eligible e ON e.id=chunks.file_id AND e.revision=chunks.revision "
                 "WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT ?",
                 (" OR ".join('"' + term + '"' for term in present), relevance.CANDIDATE_CHUNKS)).fetchall()
+            # 뒷부분 소수 쟁점이 전체 상위 300청크 밖으로 밀리지 않도록 구간별 보조 조회를 병행한다.
+            if len(profiles) > 1:
+                step_win = max(1, (len(profiles) - 1) // 16)
+                for p_win in profiles[1::step_win][:16]:
+                    win_terms = [t for t in p_win if t in frequency][:24]
+                    if not win_terms:
+                        continue
+                    rows.extend(db.execute("SELECT file_id, page, start, text, terms FROM chunks "
+                        "JOIN eligible e ON e.id=chunks.file_id AND e.revision=chunks.revision "
+                        "WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT 25",
+                        (" OR ".join('"' + term + '"' for term in win_terms),)).fetchall())
             # A large, relevant casebook must not disappear behind the global top-chunk limit.
             for index, file_id in enumerate(priority_ids[:12]):
                 rows.extend(db.execute("SELECT file_id, page, start, text, terms FROM chunks "
@@ -691,6 +791,8 @@ class ReferenceLibrary:
             score, matched, window = max(scores, key=lambda s: (len(s[1]) >= required, s[0], len(s[1])))
             entry = files.setdefault(file_id, {"chunks": []})
             entry["chunks"].append((score, len(matched), int(page), int(start), excerpt, window))
+        hybrid_enabled = bool(getattr(self.settings, "rag_hybrid_semantic", True))
+        doc_stems = set(relevance.content_stems(scan_text, limit=80)) if hybrid_enabled else set()
         candidates = []
         for file_id, entry in files.items():
             source = self.eligible[file_id]
@@ -698,17 +800,24 @@ class ReferenceLibrary:
             best = max(entry["chunks"], key=lambda c: (c[1] >= required and c[0] >= relevance.MIN_CHUNK_COVERAGE, c[0], c[1]))
             metadata_bonus = min(0.05, (source.get("metadata_score") or 0) / 1000)
             file_score = best[0] + relevance.META_WEIGHT * name_score + metadata_bonus
+            sem_score = (relevance.local_semantic_score(scan_text[:6000], best[4], query_stems=doc_stems)
+                         if hybrid_enabled else 0.0)
             reasons = []
             if best[1] < required:
                 reasons.append("TOO_FEW_SHARED_TERMS")
             if best[0] < relevance.MIN_CHUNK_COVERAGE:
                 reasons.append("LOW_TEXT_COVERAGE")
-            if file_score < relevance.MIN_FILE_SCORE:
+            # 파일명이 무관한 문서(name_score==0)라도 본문 적용 비율이 기준 이상이고 어간·의미 근접도가 높으면 탈락시키지 않는다.
+            body_strong = best[0] >= relevance.MIN_CHUNK_COVERAGE and best[1] >= required and (
+                best[0] >= 0.20 or sem_score >= 0.22
+            )
+            if file_score < relevance.MIN_FILE_SCORE and not body_strong:
                 reasons.append("LOW_FILE_SCORE")
             candidates.append({"file_id": file_id, "title": source.get("title"), "folder_path": source.get("folder_path"),
                                "text_coverage": round(best[0], 3), "shared_terms": best[1],
                                "name_coverage": round(name_score, 3), "name_terms": name_hits[:8],
                                "metadata_bonus": round(metadata_bonus, 3),
+                               "semantic_score": round(sem_score, 3),
                                "matched_query_window": best[5],
                                "file_score": round(file_score, 3), "selected": not reasons, "rejected_because": reasons,
                                "_name": name_score, "_chunks": entry["chunks"]})
@@ -801,6 +910,204 @@ class ReferenceLibrary:
             if len(found) >= limit:
                 return found
         return found
+
+    def search_claim(self, claim_text: str, *, citations=None, limit: int = 5) -> list[dict]:
+        """주장 단위 다중 경로 검색(식별자·어간/FTS5·로컬 하이브리드 유사도 + 다양성·인접 문맥 결합).
+
+        항상 현재 실행의 self.eligible (file_id, revision)으로만 제한되어 삭제·철회·격리 문서는 제외한다.
+        """
+        query = str(claim_text or "").strip()
+        if not query and not citations:
+            return []
+        prose_eligible = {
+            fid: meta for fid, meta in self.eligible.items()
+            if not (meta.get("structured_case_table") or meta.get("case_table_only"))
+        }
+        if not prose_eligible:
+            return []
+
+        hybrid_enabled = bool(getattr(self.settings, "rag_hybrid_semantic", True))
+        identifiers = relevance.extract_identifiers(query, citations=citations)
+        stems = relevance.content_stems(query, limit=24)
+        stems_set = set(stems)
+        q_tokens = list(dict.fromkeys(relevance.tokens(relevance.query_text(query))))[:48]
+        q_token_set = set(q_tokens)
+
+        candidates: dict[tuple[str, int, int], dict] = {}
+
+        def _register(fid: str, page: int, start: int, text: str, path_name: str, *,
+                      exact: bool = False, fts_rank: int | None = None, c_terms: set[str] | None = None):
+            meta = prose_eligible.get(fid)
+            if not meta:
+                return
+            key = (fid, int(page), int(start))
+            entry = candidates.get(key)
+            if entry is None:
+                entry = {
+                    "file_id": fid, "page": int(page), "start": int(start), "text": text,
+                    "paths": set(), "exact": False, "fts_rank": None, "c_terms": c_terms,
+                }
+                candidates[key] = entry
+            entry["paths"].add(path_name)
+            if exact:
+                entry["exact"] = True
+            if fts_rank is not None and (entry["fts_rank"] is None or fts_rank < entry["fts_rank"]):
+                entry["fts_rank"] = fts_rank
+
+        # 경로 1: 사건번호 및 법령명+조문 정확 식별자 조회
+        cit_list = list(citations or [])
+        for num in identifiers.get("case_numbers", []):
+            cit_list.append({"case_number": num, "raw_text": num})
+        for lname, art in identifiers.get("law_articles", []):
+            cit_list.append({"law_name": lname, "article": art, "raw_text": f"{lname} {art}"})
+        seen_cits = set()
+        for cit in cit_list:
+            from .reference_binding import identifier as _ident
+            ident = _ident(cit)
+            if not ident or ident in seen_cits:
+                continue
+            seen_cits.add(ident)
+            for hit in self.search_citation(cit, limit=limit):
+                _register(hit["file_id"], hit["page"], hit["start"], hit["text"],
+                          "EXACT_IDENTIFIER", exact=True)
+
+        # 경로 2: 한국어 어간 + 2-gram FTS5 검색 (+ 필요 시 로컬 하이브리드 폴백)
+        with self.connect() as db:
+            deadline = time.monotonic() + 3
+            db.set_progress_handler(lambda: int(time.monotonic() > deadline), 10000)
+            db.execute("CREATE TEMP TABLE IF NOT EXISTS claim_eligible (id TEXT PRIMARY KEY, revision TEXT)")
+            db.execute("DELETE FROM claim_eligible")
+            db.executemany("INSERT INTO claim_eligible VALUES (?,?)",
+                           [(k, v["revision"]) for k, v in prose_eligible.items()])
+
+            if q_tokens:
+                fts_rows = db.execute(
+                    "SELECT c.file_id, c.page, c.start, c.text, c.terms FROM chunks c "
+                    "JOIN claim_eligible e ON e.id=c.file_id AND e.revision=c.revision "
+                    "WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT 60",
+                    (" OR ".join('"' + t + '"' for t in q_tokens),),
+                ).fetchall()
+                for rank_idx, (fid, page, start, ctext, cterms) in enumerate(fts_rows):
+                    _register(fid, int(page), int(start), ctext, "LEXICAL_STEM_FTS",
+                              fts_rank=rank_idx, c_terms=set(cterms.split()))
+
+            stem_probes = [s for s in stems if len(s) >= 2][:10]
+            if stem_probes:
+                where_clause = " OR ".join("instr(c.text, ?) > 0" for _ in stem_probes)
+                stem_rows = db.execute(
+                    f"SELECT c.file_id, c.page, c.start, c.text, c.terms FROM chunks c "
+                    f"JOIN claim_eligible e ON e.id=c.file_id AND e.revision=c.revision "
+                    f"WHERE ({where_clause}) LIMIT 80",
+                    stem_probes,
+                ).fetchall()
+                for fid, page, start, ctext, cterms in stem_rows:
+                    _register(fid, int(page), int(start), ctext, "LEXICAL_STEM_FTS",
+                              c_terms=set(cterms.split()))
+
+            # 경로 3 보충: 표현이 크게 달라 어휘 겹침 후보가 적을 때 현재 유효 청크 일부를 의미 유사도로 직접 탐색
+            if hybrid_enabled and len(candidates) < 12 and (stems or q_tokens):
+                scan_rows = db.execute(
+                    "SELECT c.file_id, c.page, c.start, c.text, c.terms FROM chunks c "
+                    "JOIN claim_eligible e ON e.id=c.file_id AND e.revision=c.revision LIMIT 120"
+                ).fetchall()
+                for fid, page, start, ctext, cterms in scan_rows:
+                    key = (fid, int(page), int(start))
+                    if key in candidates:
+                        continue
+                    c_stems = set(relevance.content_stems(ctext, limit=80))
+                    sem = relevance.local_semantic_score(query, ctext, query_stems=stems_set, candidate_stems=c_stems)
+                    if sem >= 0.24:
+                        _register(fid, int(page), int(start), ctext, "HYBRID_SEMANTIC",
+                                  c_terms=set(cterms.split()))
+
+        if not candidates:
+            return []
+
+        scored = []
+        law_names = identifiers.get("law_names", [])
+        for cand in candidates.values():
+            ctext = cand["text"]
+            meta = prose_eligible[cand["file_id"]]
+            c_stems = set(relevance.content_stems(ctext, limit=80))
+            stem_hits = [s for s in stems if s in ctext or s in c_stems]
+            bigram_hits = len(q_token_set & (cand["c_terms"] or set(relevance.tokens(ctext))))
+            sem = (relevance.local_semantic_score(query, ctext, query_stems=stems_set, candidate_stems=c_stems)
+                   if hybrid_enabled else 0.0)
+            law_hit = any(ln in ctext for ln in law_names)
+            qualified = (
+                cand["exact"]
+                or (len(stems) >= 2 and len(stem_hits) >= 2)
+                or (len(stems) == 1 and len(stem_hits) == 1)
+                or (law_hit and len(stem_hits) >= 1)
+                or (hybrid_enabled and sem >= 0.24 and (len(stem_hits) >= 1 or bigram_hits >= 3))
+            )
+            if not qualified:
+                continue
+            if hybrid_enabled and sem >= 0.20:
+                cand["paths"].add("HYBRID_SEMANTIC")
+            stem_ratio = len(stem_hits) / max(1, len(stems)) if stems else 0.0
+            rrf = (1.0 / (20 + cand["fts_rank"])) if cand["fts_rank"] is not None else 0.0
+            meta_bonus = min(0.05, (meta.get("metadata_score") or 0) / 1000)
+            score = (
+                (2.0 if cand["exact"] else 0.0)
+                + 0.45 * stem_ratio
+                + 0.08 * min(5, len(stem_hits))
+                + 0.45 * sem
+                + 0.35 * rrf
+                + meta_bonus
+            )
+            cand["score"] = round(score, 4)
+            cand["semantic_score"] = sem
+            cand["stem_hits"] = len(stem_hits)
+            scored.append(cand)
+
+        scored.sort(key=lambda c: (-c["score"], c["file_id"], c["page"], c["start"]))
+
+        # 동일 파일 독점 방지(1차 파일당 최대 2청크) 후 부족하면 잔여 순위로 채운다.
+        picked = []
+        per_file: dict[str, int] = {}
+        leftover = []
+        for cand in scored:
+            fid = cand["file_id"]
+            if per_file.get(fid, 0) < 2:
+                picked.append(cand)
+                per_file[fid] = per_file.get(fid, 0) + 1
+                if len(picked) >= limit:
+                    break
+            else:
+                leftover.append(cand)
+        if len(picked) < limit:
+            picked.extend(leftover[:max(0, limit - len(picked))])
+
+        # 인접 같은 (파일, 쪽) 청크 문맥 결합(문단 경계 절단 완화, review.py에서 800자 내로 발췌)
+        results = []
+        with self.connect() as db:
+            for cand in picked[:limit]:
+                fid = cand["file_id"]
+                meta = prose_eligible[fid]
+                text_out = cand["text"]
+                if not cand["exact"]:
+                    rev = meta["revision"]
+                    nxt = db.execute(
+                        "SELECT start, text FROM chunks WHERE file_id=? AND revision=? AND page=? AND start>? "
+                        "ORDER BY start ASC LIMIT 1",
+                        (fid, rev, cand["page"], cand["start"]),
+                    ).fetchone()
+                    if nxt and len(text_out) + len(nxt[1]) <= 2200:
+                        text_out = text_out.rstrip() + "\n" + nxt[1].lstrip()
+                results.append({
+                    **meta,
+                    "file_id": fid,
+                    "source_id": "",
+                    "page": cand["page"],
+                    "start": cand["start"],
+                    "text": text_out,
+                    "relevance": cand["score"],
+                    "semantic_score": cand["semantic_score"],
+                    "retrieval_paths": sorted(cand["paths"]),
+                    "claim_search_matched": True,
+                })
+        return results
 
     def has_case_tables(self) -> bool:
         return any(v.get("structured_case_table") for v in self.eligible.values())

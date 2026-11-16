@@ -238,6 +238,7 @@ def reference_health(summary, documents, settings=None):
             "files_seen": summary.get("files_seen", 0), "files_indexed": summary.get("files_indexed", 0),
             "files_reused": summary.get("files_reused", 0),
             "duplicate_groups": len(summary.get("duplicates") or []),
+            "coverage_ledger": summary.get("coverage_ledger"),
             "sync_ms": diagnostics.get("elapsed_ms"), "documents": per_document}
 
 
@@ -521,8 +522,9 @@ class VerificationPipeline:
             issues = "\n".join(context.requested_issues)
             query = [sanitized_reading_text(d.normalized, d.findings)[0][:12000] + "\n" + issues
                      for d in result.documents if d.normalized]
-            emit(JobState.VERIFYING, "Drive 전수 목록·폴더·파일명으로 관련 자료 선정", 0.85)
+            emit(JobState.VERIFYING, "Drive 참고자료 전체 수집·색인 및 우선순위 정렬", 0.85)
             with manifest.stage("reference_sync", [], inputs=0, unit="참고자료") as stage:
+                references._default_collect_all = bool(getattr(self.settings, "rag_decoupled_collection", True))
                 references.sync(query=query)
                 stage.inputs = references.summary["files_seen"]
                 stage.note = references.summary["status"]

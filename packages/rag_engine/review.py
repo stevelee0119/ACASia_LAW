@@ -274,18 +274,58 @@ def review_document(result, library, router, context, pii):
         return review
     review["document_truncated"] = bool(review["input"]["omitted_chars"])
     korean_profile = bool(getattr(getattr(router, "settings", None), "korean_law_review_profile", False))
+    from packages.common.config import get_settings
+    settings = get_settings()
+    claim_multisearch = bool(getattr(settings, "rag_claim_multisearch", True))
+    max_claims = getattr(settings, "rag_claim_max_per_document", 30)
+    eligible = [c for c in getattr(result, "claims", []) if c.get("type") not in ("DOCUMENT_META", "ADVERSARIAL_INSTRUCTION")]
+    citations = getattr(result, "citations", []) or []
+    citation_by_id = {getattr(c, "citation_id", None) or (c.get("citation_id") if isinstance(c, dict) else None): c
+                      for c in citations}
+
     selection = library.select(document + "\n" + "\n".join(context.requested_issues))
     hits = selection.pop("sources")
+    whole_doc_hits_count = len(hits)
     # Direct local identifier queries are independent of document-level relevance.
     search_citation = getattr(library, "search_citation", None)
+    seen = {(s.get("file_id"), s.get("page"), s.get("text")) for s in hits}
     if callable(search_citation):
-        seen = {(s.get("file_id"), s.get("page"), s.get("text")) for s in hits}
-        for citation in getattr(result, "citations", []) or []:
+        for citation in citations:
             for source in search_citation(citation):
                 key = (source.get("file_id"), source.get("page"), source.get("text"))
                 if key not in seen:
                     hits.append({**source, "source_id": "R" + str(len(hits) + 1)})
                     seen.add(key)
+
+    # TK-187: 전체 문서 select에서 누락된 소수 쟁점·무관 파일명 참고자료도 주장 단위 다중 경로 검색으로 회수한다.
+    claim_search_cache: dict[str, list[dict]] = {}
+    claim_hits_added = 0
+    paths_used: set[str] = set()
+    if hits:
+        paths_used.add("WHOLE_DOC_SELECT")
+    search_claim_fn = getattr(library, "search_claim", None)
+    if claim_multisearch and callable(search_claim_fn) and eligible:
+        pre_claims, _ = select_claims_for_review(eligible)
+        for claim_obj in pre_claims[:max_claims]:
+            c_id = claim_obj.get("claim_id")
+            c_raw_text = claim_obj.get("text", "")
+            if not c_id or not c_raw_text:
+                continue
+            claim_citation_ids = claim_obj.get("citation_ids") or []
+            if isinstance(claim_citation_ids, str):
+                claim_citation_ids = [claim_citation_ids]
+            linked_citations = [citation_by_id[cid] for cid in claim_citation_ids if cid in citation_by_id]
+            c_hits = search_claim_fn(c_raw_text, citations=linked_citations, limit=5) or []
+            claim_search_cache[c_id] = c_hits
+            for source in c_hits:
+                for p in source.get("retrieval_paths") or []:
+                    paths_used.add(p)
+                key = (source.get("file_id"), source.get("page"), source.get("text"))
+                if key not in seen:
+                    hits.append({**source, "source_id": "R" + str(len(hits) + 1)})
+                    seen.add(key)
+                    claim_hits_added += 1
+
     selection["sources_used"] = [{k: h.get(k) for k in ("source_id", "file_id", "title", "folder_path", "page",
                                                        "relevance", "text_coverage", "shared_terms",
                                                        "structured_case_table", "sheet", "row",
@@ -296,16 +336,24 @@ def review_document(result, library, router, context, pii):
     document = mask(document)
     sources = [{**source, "text": mask(source["text"]), "title": mask(source["title"])} for source in hits]
     review["sources"] = sources
-    eligible = [c for c in getattr(result, "claims", []) if c.get("type") not in ("DOCUMENT_META", "ADVERSARIAL_INSTRUCTION")]
     review["claim_coverage"] = {"eligible_claims": len(eligible), "linked_claims": 0,
         "unreviewed": [{"claim_id": c.get("claim_id"), "reason": "NO_GROUNDED_COMPARISON"} for c in eligible],
         "all_claims_verified": False}
+    review["search_scope"] = {
+        "whole_doc_candidates": selection.get("candidates_total", 0),
+        "whole_doc_selected": whole_doc_hits_count,
+        "claim_search_enabled": claim_multisearch,
+        "hybrid_semantic_enabled": bool(getattr(settings, "rag_hybrid_semantic", True)),
+        "claim_queries_run": len(claim_search_cache),
+        "claim_hits_added": claim_hits_added,
+        "retrieval_paths_used": sorted(paths_used),
+        "sources_total": len(sources),
+        "claims_eligible": len(eligible),
+        "claims_evaluated": 0,
+    }
     from .contract_facts import review_contract_calculations
     review["contract_review"] = review_contract_calculations(document, sources)
     review["coverage"] = selection.get("coverage")
-    citations = getattr(result, "citations", []) or []
-    citation_by_id = {getattr(c, "citation_id", None) or (c.get("citation_id") if isinstance(c, dict) else None): c
-                      for c in citations}
     reference_case_matches = {}
     table_info = getattr(library, "case_table_status", lambda: {"status": "NO_CASE_TABLE", "candidates": [], "indexed_rows": 0})()
     review["case_table_status"] = table_info.get("status", "NO_CASE_TABLE")
@@ -545,20 +593,47 @@ def review_document(result, library, router, context, pii):
         # 1) 질의어 생성 (한국어 핵심어 추출, 단일 문장 주장 보충 지원)
         salient = _claim_salient_words(c_raw_text)
 
-        # 2) 문서 최초 선택과 독립된 전체 구조화 판례 코퍼스 주장별 검색.
-        #    인용이 있으면 정확 사건번호 행을 우선하고, 없으면 쟁점/요지로 찾는다.
+        # 2) 문서 최초 선택과 독립된 전체 구조화 판례 코퍼스 + 일반 참고자료 주장별 검색
+        claim_citation_ids = claim_obj.get("citation_ids") or []
+        if isinstance(claim_citation_ids, str):
+            claim_citation_ids = [claim_citation_ids]
+        linked_citations = [citation_by_id[cid] for cid in claim_citation_ids if cid in citation_by_id]
+
         claim_case_sources = []
         if getattr(library, "has_case_tables", lambda: False)():
-            claim_citation_ids = claim_obj.get("citation_ids") or []
-            if isinstance(claim_citation_ids, str):
-                claim_citation_ids = [claim_citation_ids]
-            linked_citations = [citation_by_id[cid] for cid in claim_citation_ids
-                                if cid in citation_by_id]
             claim_case_sources = library.search_case_table(c_raw_text, citations=linked_citations, limit=5)
 
-        # 3) 이미 읽은 sources와 행 단위 후보를 주장 핵심어 출현 빈도로 정렬
+        claim_prose_sources = []
+        if claim_multisearch and callable(search_claim_fn):
+            claim_prose_sources = claim_search_cache.get(c_id)
+            if claim_prose_sources is None:
+                claim_prose_sources = search_claim_fn(c_raw_text, citations=linked_citations, limit=5) or []
+
+        # 3) 이미 읽은 sources와 주장별·행 단위 후보를 주장 적합성 순으로 정렬
         claim_sources = list(sources)
+        existing_key_to_sid = {
+            (s.get("file_id"), s.get("page"), s.get("text")): s.get("source_id")
+            for s in sources
+        }
+        claim_direct_sids: set[str] = set()
         next_source_id = len(claim_sources) + 1
+        for prose_src in claim_prose_sources:
+            masked_text = mask(prose_src.get("text", ""))
+            masked_title = mask(prose_src.get("title", ""))
+            key = (prose_src.get("file_id"), prose_src.get("page"), masked_text)
+            sid = existing_key_to_sid.get(key)
+            if sid:
+                claim_direct_sids.add(sid)
+                continue
+            sid = f"R{next_source_id}"
+            next_source_id += 1
+            enriched = {**prose_src, "source_id": sid, "text": masked_text, "title": masked_title}
+            existing_key_to_sid[key] = sid
+            claim_direct_sids.add(sid)
+            claim_sources.append(enriched)
+            sources.append(enriched)
+            review["sources"] = sources
+
         for case_source in claim_case_sources:
             case_source = {**case_source, "source_id": f"R{next_source_id}",
                            "text": mask(case_source.get("text", "")),
@@ -571,11 +646,18 @@ def review_document(result, library, router, context, pii):
             if not any(s.get("source_id") == case_source["source_id"] for s in sources):
                 sources.append(case_source)
                 review["sources"] = sources
-        if salient:
+        if salient or claim_direct_sids:
             def _score_source(src):
                 stext = src.get("text", "")
-                return sum(1 for w in salient if w in stext)
-            scored = sorted(claim_sources, key=lambda src: (src.get("structured_case_table", False), _score_source(src)), reverse=True)
+                salient_hits = sum(1 for w in salient if w in stext) if salient else 0
+                is_direct = src.get("source_id") in claim_direct_sids
+                return (
+                    bool(src.get("structured_case_table", False)),
+                    is_direct,
+                    salient_hits,
+                    float(src.get("relevance") or 0.0),
+                )
+            scored = sorted(claim_sources, key=_score_source, reverse=True)
             relevant_sources = scored[:5]
         else:
             relevant_sources = claim_sources[:5]
@@ -756,6 +838,11 @@ def review_document(result, library, router, context, pii):
         },
     }
 
+    review["search_scope"].update({
+        "sources_total": len(sources),
+        "claims_evaluated": len(bounded_claims),
+        "budget_halt_reason": halt_reason,
+    })
     review["batches_evaluated"] = len(batches)
     review["total_sources_evaluated"] = len(sources)
     review["observation_limit_reached"] = False
@@ -818,6 +905,12 @@ def report_lines(run_result):
         reasons = list(dict.fromkeys(filter(None, [item.get("reason"), *[
             i.get("reason") for i in library.get("issues", []) if i.get("file_id") == item.get("file_id")]])))
         coverage = f" / 텍스트 색인 {item.get('read_pages') or 0}/{item['pages']}쪽" if item.get("pages") else ""
+        if (
+            item.get("pages")
+            and item.get("completed_pages") is not None
+            and item.get("completed_pages") != (item.get("read_pages") or 0)
+        ):
+            coverage += f" (완독 검사 {item['completed_pages']}/{item['pages']}쪽)"
         missing = f" / 텍스트 미추출 쪽 {item['no_text_pages']}" if item.get("no_text_pages") else ""
         lines.append(f"자료별 처리: {item.get('folder_path', '')}/{item.get('name')} / "
                      f"{word(item.get('status'))} / {' · '.join(word(r) for r in reasons)}{coverage}{missing}")
