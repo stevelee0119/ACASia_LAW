@@ -97,6 +97,10 @@ def is_valid_pseudonym_token(
     )
 
 
+class PseudonymSequenceLimitError(ValueError):
+    """Raised when pseudonym generation exceeds MAX_PSEUDONYM_SEQUENCE."""
+
+
 @dataclass
 class PseudonymStore:
     """실명-가명 매핑. 본문 DB와 분리된 파일/저장소에 암호화 보관한다."""
@@ -226,7 +230,7 @@ class PseudonymStore:
         prefix = KIND_PREFIX.get(kind, kind)
         next_seq = self._counters.get(prefix, 0) + 1
         if next_seq > MAX_PSEUDONYM_SEQUENCE:
-            raise ValueError(
+            raise PseudonymSequenceLimitError(
                 f"Pseudonym sequence limit ({MAX_PSEUDONYM_SEQUENCE}) exceeded for {prefix}"
             )
         self._counters[prefix] = next_seq
