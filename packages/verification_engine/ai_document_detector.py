@@ -340,9 +340,19 @@ async def detect_ai_document(
 
     system_prompt = AI_DETECTOR_SYSTEM_PROMPT
 
-    sample = hide(sample_text)
+    from packages.common.source_trace import _ModelInputRenderer
+    from packages.llm_router.token_attestation import bind_masked_tokens
+
+    issued_tokens: set[str] = set()
+    use_renderer = type(hide) is _ModelInputRenderer
+    if use_renderer:
+        sample = hide.mask_tracked(sample_text, issued_tokens)
+        masked_filename = hide.mask_tracked(doc.filename, issued_tokens)
+    else:
+        sample = hide(sample_text)
+        masked_filename = hide(doc.filename)
     user_payload = {
-        "document_filename": hide(doc.filename),
+        "document_filename": masked_filename,
         "metadata_ai_hint": metadata_indications,
         "document_sample_text": sample,
         "document_coverage": sampling_info,
@@ -359,6 +369,8 @@ async def detect_ai_document(
     )
     # ai_document_v1 폐쇄 스키마 검증을 유지하기 위해 규칙 검사 글자 수는 payload 직렬화 이후에 기록한다.
     sampling_info["rule_inspected_chars"] = int(rule_res.signals.get("rule_inspected_chars") or total_chars)
+    if use_renderer and not hide._is_original() and hide._uses_real_store():
+        req = bind_masked_tokens(req, issued_tokens)
     try:
         answers = await router.consult_all(LLMRole.PRIMARY_REASONER, req, policy=external_ai_policy,
                                            expected_task="AI 작성 여부 판별")

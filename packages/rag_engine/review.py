@@ -291,10 +291,33 @@ def review_document(result, library, router, context, pii):
                                                        "structured_case_table", "sheet", "row",
                                                        "source_cell_range")} for h in hits]
     review["selection"] = selection
-    mask = (lambda value: value) if context.external_ai_policy == ExternalAIPolicy.ORIGINAL else (
-        lambda value: pii.mask_text(value).masked_text)
-    document = mask(document)
-    sources = [{**source, "text": mask(source["text"]), "title": mask(source["title"])} for source in hits]
+    from packages.pii_engine.pseudonym import PseudonymStore
+    has_real_store = type(getattr(pii, "store", None)) is PseudonymStore
+    doc_tokens: set[str] = set()
+
+    def _mask_with(value: str, bucket: set[str] | None = None) -> str:
+        if context.external_ai_policy == ExternalAIPolicy.ORIGINAL:
+            return value
+        res = pii.mask_text(value)
+        if bucket is not None:
+            replacements = getattr(res, "replacements", None) or {}
+            bucket.update(replacements.keys())
+        return res.masked_text
+
+    mask = lambda value: _mask_with(value)
+    document = _mask_with(document, doc_tokens)
+    sources = []
+    source_tokens_by_id: dict[str, set[str]] = {}
+    for source in hits:
+        s_tokens: set[str] = set()
+        masked_src = {
+            **source,
+            "text": _mask_with(source["text"], s_tokens),
+            "title": _mask_with(source["title"], s_tokens),
+        }
+        sources.append(masked_src)
+        sid = str(masked_src.get("source_id", ""))
+        source_tokens_by_id.setdefault(sid, set()).update(s_tokens)
     review["sources"] = sources
     eligible = [c for c in getattr(result, "claims", []) if c.get("type") not in ("DOCUMENT_META", "ADVERSARIAL_INSTRUCTION")]
     review["claim_coverage"] = {"eligible_claims": len(eligible), "linked_claims": 0,
@@ -447,6 +470,12 @@ def review_document(result, library, router, context, pii):
                 {k: s[k] for k in ("source_id", "title", "text", "page")} for s in s_batch]}, ensure_ascii=False),
             schema=ENVELOPE_SCHEMA, max_tokens=4000, metadata={"stage": "drive_rag_advisory", "batch": total_calls},
             input_contract="reference_review_v1")
+        if context.external_ai_policy != ExternalAIPolicy.ORIGINAL and has_real_store:
+            from packages.llm_router.token_attestation import bind_masked_tokens
+            batch_tokens = set(doc_tokens)
+            for s in s_batch:
+                batch_tokens.update(source_tokens_by_id.get(str(s.get("source_id", "")), ()))
+            request = bind_masked_tokens(request, batch_tokens)
         request = with_review_context(request, enabled=korean_profile, reference_date=getattr(context, "case_date", None))
         # One selected provider; the existing router bounds each call and its transient retries.
         batch_outcome = asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request,
@@ -560,10 +589,12 @@ def review_document(result, library, router, context, pii):
         claim_sources = list(sources)
         next_source_id = len(claim_sources) + 1
         for case_source in claim_case_sources:
+            case_src_tokens: set[str] = set()
             case_source = {**case_source, "source_id": f"R{next_source_id}",
-                           "text": mask(case_source.get("text", "")),
-                           "title": mask(case_source.get("title", ""))}
+                           "text": _mask_with(case_source.get("text", ""), case_src_tokens),
+                           "title": _mask_with(case_source.get("title", ""), case_src_tokens)}
             next_source_id += 1
+            source_tokens_by_id[case_source["source_id"]] = case_src_tokens
             claim_sources.append(case_source)
             # Keep the source available to quote grounding and the final
             # report.  The request itself still observes the existing
@@ -583,6 +614,7 @@ def review_document(result, library, router, context, pii):
         # 3) 발췌문 구성 (주장 관련 문맥 구간 추출, 최대 5개 항목, 항목당 800자 이내, 총합 4,000자 이내)
         ref_sources_items = []
         excerpt_pieces = []
+        claim_src_tokens: set[str] = set()
         total_chars = 0
         for s in relevant_sources[:5]:
             s_text = s.get("text", "")
@@ -614,8 +646,10 @@ def review_document(result, library, router, context, pii):
             total_chars += len(s_excerpt)
             from packages.common.source_trace import capture_slice
             excerpt_pieces.append(capture_slice(s_text, start_pos, end_pos, s_excerpt))
+            sid = str(s.get("source_id", "R1"))
+            claim_src_tokens.update(source_tokens_by_id.get(sid, ()))
             ref_sources_items.append({
-                "source_id": s.get("source_id", "R1"),
+                "source_id": sid,
                 "text": s_excerpt,
                 "page": int(s.get("page", 1)),
             })
@@ -625,7 +659,8 @@ def review_document(result, library, router, context, pii):
             continue
 
         # 4) 요청 페이로드 조립 (평가 측 시험 합성 문자열 복사 제거, 지침은 LLMRequest.system 활용)
-        masked_claim_text = mask(c_raw_text)[:1000]
+        claim_text_tokens: set[str] = set()
+        masked_claim_text = _mask_with(c_raw_text, claim_text_tokens)[:1000]
         claim_payload = {
             "claim_id": c_id,
             "claim_text": masked_claim_text,
@@ -646,6 +681,9 @@ def review_document(result, library, router, context, pii):
             max_tokens=4000,
             metadata={"stage": "claim_rag_advisory", "claim_id": c_id},
         )
+        if context.external_ai_policy != ExternalAIPolicy.ORIGINAL and has_real_store:
+            from packages.llm_router.token_attestation import bind_masked_tokens
+            claim_req = bind_masked_tokens(claim_req, claim_text_tokens | claim_src_tokens)
         claim_req = with_review_context(claim_req, enabled=korean_profile, reference_date=getattr(context, "case_date", None))
         from packages.llm_router.excerpt_source import bind_claim_excerpts
         claim_req = bind_claim_excerpts(claim_req, excerpt_pieces)

@@ -429,9 +429,11 @@ class LLMRouter:
         privacy = {}
         from .cascade_source import valid_cascade_source
         from .excerpt_source import valid_excerpt_source
+        from .token_attestation import valid_token_attestation
         if ((provider.config.kind != "local" and policy == ExternalAIPolicy.MASKED)
                 or not valid_cascade_source(request, original_system=original_system)
-                or not valid_excerpt_source(request, original_system=original_system)):
+                or not valid_excerpt_source(request, original_system=original_system)
+                or not valid_token_attestation(request, original_system=original_system)):
             from .privacy import inspect_request
 
             try:
@@ -639,6 +641,7 @@ class LLMRouter:
         profile: VerificationProfile = VerificationProfile.STANDARD,
         policy: ExternalAIPolicy = ExternalAIPolicy.MASKED,
         severity_hint: Severity = Severity.MEDIUM,
+        attested_tokens: Any = None,
     ) -> CascadeOutcome:
         """Stage 1 결정론 → Stage 2 Primary → Stage 3 Critic → Stage 4 Third → Final Judge."""
         stages: List[Dict[str, Any]] = []
@@ -668,9 +671,19 @@ class LLMRouter:
         # Stage 2: Primary Reasoner
         from .cascade_source import build_cascade_request
 
+        def _build_stage_request(stage: str, *, primary_verdict: Any = None) -> LLMRequest:
+            if stage == "critic":
+                req = build_cascade_request(stage, question, evidence, primary_verdict=primary_verdict)
+            else:
+                req = build_cascade_request(stage, question, evidence)
+            if attested_tokens is not None:
+                from .token_attestation import bind_masked_tokens
+                req = bind_masked_tokens(req, attested_tokens)
+            return req
+
         primary = await self.run_any(
             LLMRole.PRIMARY_REASONER,
-            build_cascade_request("primary", question, evidence),
+            _build_stage_request("primary"),
             policy=policy,
             expected_task=question,
         )
@@ -712,9 +725,11 @@ class LLMRouter:
         # Stage 3: Independent Critic (다른 Provider 우선)
         critic = await self.run_any(
             LLMRole.INDEPENDENT_CRITIC,
-            build_cascade_request("critic", question, evidence,
+            _build_stage_request(
+                "critic",
                 primary_verdict={} if mode == "auto" and getattr(self.settings, "llm_efficient_routing", False)
-                else primary_verdict),
+                else primary_verdict,
+            ),
             policy=policy,
             exclude=[e.provider for e in primary.executions],
             expected_task=question,
@@ -735,7 +750,7 @@ class LLMRouter:
                 or (efficient and (disagreement or not critic.used))):
             third = await self.run_any(
                 LLMRole.WEB_GROUNDER,
-                build_cascade_request("grounder", question, evidence),
+                _build_stage_request("grounder"),
                 policy=policy,
                 exclude=[e.provider for e in executions],
                 expected_task=question,
@@ -762,7 +777,10 @@ class LLMRouter:
                 and (disagreement or not critic.used)):
             selected = self.providers.get("anthropic")
             if selected is not None and selected.available:
-                request = replace(build_cascade_request("primary", question, evidence), model_tier="escalation")
+                request = replace(
+                    _build_stage_request("primary"),
+                    model_tier="escalation",
+                )
                 escalation = await self.run(LLMRole.PRIMARY_REASONER, request, policy=policy,
                     exclude=[name for name in self.providers if name != "anthropic"], expected_task=question)
                 outcome.executions.extend(escalation.executions)

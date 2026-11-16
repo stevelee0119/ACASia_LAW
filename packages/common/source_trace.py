@@ -109,20 +109,42 @@ class _ModelInputRenderer:
     def __repr__(self):
         return '<model input renderer>'
 
+    def _is_original(self) -> bool:
+        return bool(self.__original)
+
+    def _uses_real_store(self) -> bool:
+        from packages.pii_engine.pseudonym import PseudonymStore
+        return type(getattr(self.__pii, 'store', None)) is PseudonymStore
+
     def __call__(self, text):
         from packages.verification_engine.sanitized_input import strip_injections
         text = strip_injections(text, self.__excluded)
         return text if self.__original else self.__pii.mask_text(text).masked_text
 
-    def _excerpt(self, source, end):
+    def mask_tracked(self, text, tokens: set[str]):
+        from packages.verification_engine.sanitized_input import strip_injections
+        text = strip_injections(text, self.__excluded)
+        if self.__original:
+            return text
+        result = self.__pii.mask_text(text)
+        tokens.update(result.replacements.keys())
+        return result.masked_text
+
+    def _excerpt(self, source, end, *, tokens: set[str] | None = None):
         from packages.verification_engine.sanitized_input import strip_injections
         text = source[:end]  # Same actual cut, before stripping/masking.
         if type(source) is not str or len(source) > MAX_SOURCE_CHARS:
-            rendered = self(text)
+            rendered = self.mask_tracked(text, tokens) if tokens is not None else self(text)
             return rendered, _abstain_piece(rendered, 'ABSTAIN_CAPTURE_LIMIT')
         trace = _EditTrace(source, 0, min(end, len(source)))
         text = strip_injections(text, self.__excluded, _trace=trace)
-        rendered = text if self.__original else self.__pii.mask_text(text, _trace=trace).masked_text
+        if self.__original:
+            rendered = text
+        else:
+            result = self.__pii.mask_text(text, _trace=trace)
+            if tokens is not None:
+                tokens.update(result.replacements.keys())
+            rendered = result.masked_text
         return rendered, trace.seal(rendered)
 
 
@@ -130,8 +152,8 @@ def model_input_renderer(pii, excluded, *, original=False):
     return _ModelInputRenderer(pii, excluded, original)
 
 
-def render_argument_context(hide, source):
+def render_argument_context(hide, source, *, tokens: set[str] | None = None):
     if type(hide) is _ModelInputRenderer:
-        return hide._excerpt(source, 1000)
+        return hide._excerpt(source, 1000, tokens=tokens)
     rendered = hide(source[:1000])
     return rendered, _abstain_piece(rendered, 'ABSTAIN_NO_TRACE')

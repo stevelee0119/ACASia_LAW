@@ -151,6 +151,7 @@ def build_partial_argument_request(request, escalation_item_ids):
 
     from .providers import LLMRequest
     from .excerpt_source import is_excerpt_request, bind_argument_excerpts
+    from .token_attestation import _rebind_token_attestation
 
     if is_excerpt_request(request):
         source = getattr(request, "inspection_source", None)
@@ -177,11 +178,13 @@ def build_partial_argument_request(request, escalation_item_ids):
             metadata=copy(request.metadata),
         )
         if len(reduced_pieces) == len(reduced_items):
-            return bind_argument_excerpts(base_request, tuple(reduced_pieces))
+            return _rebind_token_attestation(
+                request, bind_argument_excerpts(base_request, tuple(reduced_pieces))
+            )
         # 발췌 바인딩 실패 시 원본 요청(발췌 연결 유지)으로 폴백 — 축소 없이 전체 항목 전송
         return request
 
-    return LLMRequest(
+    fallback_req = LLMRequest(
         system=request.system,
         user=reduced_user,
         temperature=request.temperature,
@@ -191,4 +194,5 @@ def build_partial_argument_request(request, escalation_item_ids):
         model_tier=request.model_tier,
         metadata=copy(request.metadata),
     )
+    return _rebind_token_attestation(request, fallback_req)
 
