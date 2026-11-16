@@ -379,22 +379,32 @@ def test_token_attestation_binds_to_request_and_blocks_copy_mutation_and_injecti
     masked = engine.mask_text("원고 강태민")
     assert set(masked.replacements.keys()) == {"PERSON_001"}
 
-    # 1. 실제 발급 토큰이 바인딩된 해당 요청은 통과
+    # 0. 집합/목록 기반 호출은 TypeError로 거부 (per-field, per-occurrence provenance 필수)
+    with pytest.raises(TypeError):
+        bind_masked_tokens(
+            LLMRequest("s", json.dumps({"내용": masked.masked_text}, ensure_ascii=False)),
+            masked.replacements.keys(),
+        )
+
+    # 1. 실제 발급 토큰이 필드별 위치·내용 해시와 함께 바인딩된 요청은 통과
     valid_req = bind_masked_tokens(
         LLMRequest("s", json.dumps({"성명": "[PERSON_001]", "내용": masked.masked_text}, ensure_ascii=False)),
-        masked.replacements.keys(),
+        {
+            "user.성명": ("[PERSON_001]", ((0, 12, "PERSON_001"),)),
+            "user.내용": masked,
+        },
     )
     assert inspect_request(valid_req)["status"] == "PASSED"
 
-    # 2. 같은 증명 요청 안에 비증명 토큰([PERSON_002] 또는 공백 전화 결합)을 끼워 넣으면 차단
+    # 2. 같은 증명 요청 안에 비증명 토큰([PERSON_002])을 끼워 넣으면 차단
     injected_person = bind_masked_tokens(
         LLMRequest("s", json.dumps({"성명": "[PERSON_002]"}, ensure_ascii=False)),
-        masked.replacements.keys(),
+        {"user.내용": masked},
     )
     assert inspect_request(injected_person)["status"] == "BLOCKED"
     assert inspect_request(injected_person)["failure_code"] == "PII_INPUT_BLOCKED"
 
-    # 3. 다른 요청으로 inspection_source(token attestation) 객체만 복사하면 fail-closed (INPUT_CONTRACT_VIOLATION + NOT_SENT)
+    # 3. 다른 요청으로 inspection_source(token attestation) 객체만 복사하면 fail-closed (PII_INPUT_BLOCKED + NOT_SENT)
     sent = []
 
     class Provider:
@@ -438,6 +448,480 @@ def test_token_attestation_binds_to_request_and_blocks_copy_mutation_and_injecti
     assert sent == []
     assert outcome2.executions[0].cost_status == "NOT_SENT"
     assert outcome2.executions[0].input_privacy["failure_code"] == "INPUT_CONTRACT_VIOLATION"
+
+
+# ---------------------------------------------------------------------------
+# Round 2 재현: 동일 요청 내 정상 발급 토큰([PERSON_010]/[PHONE_010]) 존재 시에도
+#              별도 공격자 필드 또는 비증명 중복 결합 변형은 모두 BLOCKED + NOT_SENT
+# ---------------------------------------------------------------------------
+def _seed_pseudonyms_to_009(engine: PIIEngine) -> None:
+    prior_names = [
+        "고하은", "구도윤", "권서연", "길지후", "남수아",
+        "노현우", "도하율", "류시우", "문채원",
+    ]
+    for idx, name in enumerate(prior_names, 1):
+        res = engine.mask_text(f"원고 {name} 연락처 010-7700-000{idx}")
+        assert f"PERSON_00{idx}" in res.replacements
+        assert f"PHONE_00{idx}" in res.replacements
+
+
+@pytest.mark.parametrize(
+    "attack_text",
+    [
+        "[PERSON_010] 2468-1357",
+        "[PHONE_010] 2468-1357",
+        "[PERSON_010] 1234-5678",
+    ],
+)
+def test_round2_repro_duplicate_token_in_separate_field_and_splice_blocked(attack_text, tmp_path, monkeypatch):
+    from packages.common.source_trace import model_input_renderer
+    from packages.llm_router.token_attestation import bind_masked_tokens
+
+    engine = PIIEngine(PseudonymStore("p02_round2_repro", root=tmp_path))
+    _seed_pseudonyms_to_009(engine)
+    renderer = model_input_renderer(engine, [], original=False)
+
+    # 10번째 인물/전화번호를 실제 렌더러로 마스킹 -> PERSON_010, PHONE_010 정식 발급
+    safe_masked, safe_spans = renderer.mask_attested("참고인 배도현 연락처 010-5555-0010")
+    assert "[PERSON_010]" in safe_masked
+    assert "[PHONE_010]" in safe_masked
+
+    sent = []
+
+    class Provider:
+        name, available = "openai", True
+        config = SimpleNamespace(name="openai", kind="cloud", model="fake", enabled=True)
+
+        async def generate(self, request):
+            sent.append(request)
+            return LLMResponse(True, text="{}")
+
+    monkeypatch.setattr(router_module, "estimate_call", lambda *a, **k: (Decimal("0.01"), {}))
+    ledger = SimpleNamespace(reserve=lambda *a, **k: SimpleNamespace(id="r", amount=Decimal("0.01")), dispatch=lambda *a, **k: None)
+    rtr = router_module.LLMRouter(providers={"openai": Provider()}, ledger=ledger)
+
+    # A. 정상 발급 필드 + 별도 공격자 제어 필드가 한 개의 유효 증명 요청 안에 공존
+    req_separate = bind_masked_tokens(
+        LLMRequest(
+            "system_round2",
+            json.dumps({"safe_field": safe_masked, "attacker_field": attack_text}, ensure_ascii=False),
+        ),
+        {"user.safe_field": (safe_masked, safe_spans)},
+    )
+    verdict_sep = inspect_request(req_separate)
+    assert verdict_sep["status"] == "BLOCKED", f"Bypass in separate field for {attack_text}: {verdict_sep}"
+    assert verdict_sep["failure_code"] == "PII_INPUT_BLOCKED"
+
+    out_sep = asyncio.run(rtr.run(LLMRole.PRIMARY_REASONER, req_separate, policy=ExternalAIPolicy.MASKED))
+    assert sent == []
+    assert out_sep.executions[0].cost_status == "NOT_SENT"
+    assert out_sep.executions[0].input_privacy["failure_code"] == "PII_INPUT_BLOCKED"
+
+    # B. 한 필드 앞부분 토큰만 provenance로 증명되고 뒤에 비증명 중복 + 전화번호가 접합된 경우
+    spliced_val = f"{safe_masked} {attack_text}"
+    req_spliced = bind_masked_tokens(
+        LLMRequest("system_round2", json.dumps({"mixed_field": spliced_val}, ensure_ascii=False)),
+        {"user.mixed_field": (spliced_val, safe_spans)},
+    )
+    verdict_spliced = inspect_request(req_spliced)
+    assert verdict_spliced["status"] == "BLOCKED", f"Bypass in spliced field for {attack_text}: {verdict_spliced}"
+    assert verdict_spliced["failure_code"] == "PII_INPUT_BLOCKED"
+
+    out_spliced = asyncio.run(rtr.run(LLMRole.PRIMARY_REASONER, req_spliced, policy=ExternalAIPolicy.MASKED))
+    assert sent == []
+    assert out_spliced.executions[0].cost_status == "NOT_SENT"
+    assert out_spliced.executions[0].input_privacy["failure_code"] == "PII_INPUT_BLOCKED"
+
+
+def test_duplicate_legitimate_occurrences_and_multipass_spans_and_pii_type_keys(tmp_path):
+    from packages.common.source_trace import model_input_renderer
+    from packages.llm_router.token_attestation import bind_masked_tokens
+    from packages.pii_engine import engine as engine_mod
+
+    engine = PIIEngine(PseudonymStore("p02_dup_spans", root=tmp_path))
+    _seed_pseudonyms_to_009(engine)
+    renderer = model_input_renderer(engine, [], original=False)
+
+    # 동일 필드 내 정당한 중복 출현 (둘 다 마스킹기에서 생성)
+    dup_masked, dup_spans = renderer.mask_attested("원고 배도현 주장과 원고 배도현 진술 (2025. 11. 16.)")
+    assert dup_masked.count("[PERSON_010]") == 2
+    assert len(dup_spans) == 2
+
+    req_ok = bind_masked_tokens(
+        LLMRequest("s", json.dumps({"summary": dup_masked}, ensure_ascii=False)),
+        {"user.summary": (dup_masked, dup_spans)},
+    )
+    assert inspect_request(req_ok)["status"] == "PASSED"
+
+    # 두 번째 출현의 span이 빠지면(첫 번째만 증명) 두 번째 출현이 비증명이지만 정식 날짜 인접은 통과,
+    # 반면 비증명 중복 뒤에 전화 꼬리가 붙으면 차단됨을 구분
+    spliced_text = f"{dup_masked} [PERSON_010] 2468-1357"
+    req_third_forged = bind_masked_tokens(
+        LLMRequest("s", json.dumps({"summary": spliced_text}, ensure_ascii=False)),
+        {"user.summary": (spliced_text, dup_spans)},
+    )
+    assert inspect_request(req_third_forged)["status"] == "BLOCKED"
+
+    # _PII_TYPE_KEYS ("연락처": value -> "연락처: " + value) 오프셋 보정 검증
+    contact_masked, contact_spans = renderer.mask_attested("010-5555-0010")
+    # 010-5555-0010을 날짜 문맥과 함께 구성해 비증명 시 경계 위험 확인
+    contact_with_date = f"{contact_masked} (2025. 11. 16.)"
+    req_pii_key_ok = bind_masked_tokens(
+        LLMRequest("s", json.dumps({"연락처": contact_with_date}, ensure_ascii=False)),
+        {"user.연락처": (contact_with_date, contact_spans)},
+    )
+    assert inspect_request(req_pii_key_ok)["status"] == "PASSED"
+
+    # 다중 패스 token_spans 전파 검증
+    orig_detect = engine_mod.detect
+    text = "앞문장 AB-TARGET-CDEF-TAIL 뒷문장"
+
+    def multi_fake_detect(s, *, block_id=None, page=None):
+        hits = []
+        idx1 = s.find("AB-TARGET")
+        if idx1 >= 0:
+            hits.append(PIIMatch("PHONE", s[idx1:idx1 + 9], idx1, idx1 + 9, block_id, page, 0.95))
+            hits.append(PIIMatch("ACCOUNT", s[idx1 + 2:idx1 + 14], idx1 + 2, idx1 + 14, block_id, page, 0.9))
+        idx2 = s.find("-CDEF-TAIL")
+        if idx2 >= 0 and s[idx2 - 1] == "]":
+            hits.append(PIIMatch("PII", s[idx2:idx2 + 10], idx2, idx2 + 10, block_id, page, 0.9))
+        return hits
+
+    engine_mp = PIIEngine(PseudonymStore("p02_mp_spans", root=tmp_path))
+    prev = engine_mod.detect
+    engine_mod.detect = multi_fake_detect
+    try:
+        res_mp = engine_mp.mask_text(text)
+    finally:
+        engine_mod.detect = prev
+    assert len(res_mp.token_spans) == 2
+    for ts, te, bare in res_mp.token_spans:
+        assert res_mp.masked_text[ts:te] == f"[{bare}]"
+    assert orig_detect is not None
+
+
+# ---------------------------------------------------------------------------
+# 통합 시험: argument_validity_verifier, rag_engine.review_document, LLMRouter.cascade
+# ---------------------------------------------------------------------------
+def test_consumer_integrations_propagate_per_occurrence_provenance(tmp_path, monkeypatch):
+    from packages.common.schemas import Citation
+    from packages.common.enums import CitationType
+    from packages.common.source_trace import model_input_renderer
+    from packages.legal_engine.argument_validity_verifier import verify_argument_validity
+    from packages.legal_engine.evidence_pack import build_evidence_pack, project_masked, projected_token_spans, render
+    from packages.llm_router.token_attestation import has_token_attestation
+    from packages.rag_engine.review import review_document
+
+    engine = PIIEngine(PseudonymStore("p02_consumers", root=tmp_path))
+    _seed_pseudonyms_to_009(engine)
+    renderer = model_input_renderer(engine, [], original=False)
+
+    # 1. argument_validity_verifier (배치 + 잘림 1건 재시도 경로)
+    arg_body = "원고 배도현(010-5555-0010)은 대법원 94누4615 판결 및 대법원 86다카1122 판결(2025. 11. 16.)을 근거로 주장합니다."
+    arg_doc = NormalizedDocument(
+        document_id="doc_arg", filename="배도현_서면.pdf", mime_type="application/pdf", sha256="sha_arg",
+        pages=[Page(1, blocks=[Block("b1", arg_body, 1, source_layer="visible_text")])],
+    )
+    arg_doc.raw_layers["visible_text"] = arg_body
+    cit1 = Citation(citation_id="c1", document_id="doc_arg", type=CitationType.CASE, raw_text="대법원 94누4615 판결", page=1, context=arg_body)
+    cit2 = Citation(citation_id="c2", document_id="doc_arg", type=CitationType.CASE, raw_text="대법원 86다카1122 판결", page=1, context=arg_body)
+    verdicts = [
+        {"citation_id": cit1.citation_id, "status": "NOT_FOUND", "levels": {}, "official_record": None},
+        {"citation_id": cit2.citation_id, "status": "NOT_FOUND", "levels": {}, "official_record": None},
+    ]
+
+    sent_arg = []
+
+    class ArgProvider:
+        def __init__(self, name, truncate_first=False):
+            self.name = name
+            self.available = True
+            self.truncate_first = truncate_first
+            self.calls = 0
+            self.config = SimpleNamespace(name=name, kind="cloud", model=f"{name}-test", enabled=True)
+
+        async def generate(self, request):
+            self.calls += 1
+            sent_arg.append(request)
+            if self.truncate_first and self.calls == 1:
+                return LLMResponse(False, text="", error="OUTPUT_TRUNCATED")
+            req_items = json.loads(request.user)["items"]
+            return LLMResponse(
+                True,
+                text=json.dumps({
+                    "overall_summary": "검토 완료",
+                    "rows": [
+                        {
+                            "item_id": item["item_id"],
+                            "claim_text": "주장",
+                            "validity_verdict": "판단 불가",
+                            "legal_reasoning": "확인 필요",
+                            "recommended_check": "원문 대조",
+                        }
+                        for item in req_items
+                    ],
+                }, ensure_ascii=False),
+            )
+
+    monkeypatch.setattr(router_module, "estimate_call", lambda *a, **k: (Decimal("0.01"), {}))
+    rtr = router_module.LLMRouter(
+        providers={"anthropic": ArgProvider("anthropic"), "openai": ArgProvider("openai", truncate_first=True)},
+        ledger=BudgetLedger(),
+    )
+    arg_res = asyncio.run(verify_argument_validity(
+        arg_doc, [cit1, cit2], verdicts, [],
+        router=rtr, external_ai_policy=ExternalAIPolicy.MASKED, mask=renderer,
+    ))
+    assert len(sent_arg) == 4  # anthropic 배치 1 + openai 배치 1(잘림) + openai 단건 2건
+    assert all(has_token_attestation(req) for req in sent_arg)
+    assert all(len(row.ai_opinions) == 2 for row in arg_res.rows)
+
+    # 2. rag_engine.review_document (korean_law_review_profile=True + >1000자 주장 슬라이싱)
+    long_claim = ("원고 배도현(010-5555-0010)의 손해배상 청구 주장은 구체적 사실관계에 기초합니다. " * 30).strip()
+    rag_body = f"문서 서두 원고 배도현.\n{long_claim}"
+    rag_doc = NormalizedDocument(
+        document_id="doc_rag", filename="참고검토.pdf", mime_type="application/pdf", sha256="sha_rag",
+        pages=[Page(1, blocks=[Block("b1", rag_body, 1, source_layer="visible_text")])],
+    )
+    rag_doc.raw_layers["visible_text"] = rag_body
+    doc_result = SimpleNamespace(
+        document_id="doc_rag", filename="참고검토.pdf", normalized=rag_doc, quarantined=False,
+        findings=[], claims=[{"claim_id": "clm1", "text": long_claim}],
+        engine_data={},
+    )
+    ref_hit = {
+        "source_id": "R1",
+        "file_id": "df1",
+        "title": "배도현 관련 계약자료.pdf",
+        "text": "계약 당사자 배도현(010-5555-0010)은 2025. 11. 16. 합의서를 작성함.",
+        "folder_path": "/",
+        "page": 1,
+        "relevance": 0.9,
+        "text_coverage": 0.8,
+        "shared_terms": ["배도현"],
+        "source_type": "CONTRACT",
+        "role": "REFERENCE",
+    }
+
+    class FakeRefLib:
+        summary = {"status": "READY", "folder_id": "fld1", "snapshot_hash": "snap_consumers"}
+
+        def select(self, query_text):
+            return {"sources": [dict(ref_hit)], "files_selected": 1, "decision": "SELECTED", "reason": "SELECTED"}
+
+    rag_reqs = []
+
+    class RagProvider:
+        name, available = "anthropic", True
+        config = SimpleNamespace(name="anthropic", kind="cloud", model="rag-test", enabled=True)
+
+        async def generate(self, request):
+            rag_reqs.append(request)
+            if "claim_assessments" in (request.system or "") or "relationship" in (request.system or ""):
+                return LLMResponse(True, text=json.dumps({
+                    "observations": [], "claim_assessments": [], "unassessed_reason": "없음",
+                }, ensure_ascii=False))
+            return LLMResponse(True, text=json.dumps({"observations": []}, ensure_ascii=False))
+
+    from packages.common.enums import VerificationProfile
+
+    rag_rtr = router_module.LLMRouter(providers={"anthropic": RagProvider()}, ledger=BudgetLedger())
+    rag_rtr.settings = SimpleNamespace(**{**vars(rag_rtr.settings), "korean_law_review_profile": True})
+    rag_ctx = SimpleNamespace(
+        external_ai_policy=ExternalAIPolicy.MASKED,
+        profile=VerificationProfile.STANDARD,
+        korean_law_review_profile=True,
+        requested_issues=["배도현 관련 쟁점"],
+    )
+    rag_review = review_document(doc_result, FakeRefLib(), rag_rtr, rag_ctx, pii=engine)
+    assert rag_review["model_executed"] is True
+    assert len(rag_reqs) >= 1
+    assert all(has_token_attestation(req) for req in rag_reqs)
+
+    # 3. LLMRouter.cascade + projected_token_spans / doc_mask.token_spans + unattested question 차단
+    official_full = "판결 이유 원고 배도현(010-5555-0010)은 2025. 11. 16. 계약을 체결하였다."
+    pack = build_evidence_pack(official_full, quotes=[], claim=official_full, structured=[], budget=2000)
+    official_mask = engine.mask_text(official_full)
+    _, projected = project_masked(official_full, official_mask, pack["segments"])
+    doc_mask = engine.mask_text("준비서면 원고 배도현(010-5555-0010) 주장 (2025. 11. 16.)")
+    source_text = render([seg["text"] for seg in projected])
+
+    cascade_reqs = []
+
+    class CascadeProvider:
+        def __init__(self, name):
+            self.name = name
+            self.available = True
+            self.config = SimpleNamespace(name=name, kind="cloud", model=f"{name}-cas", enabled=True)
+
+        async def generate(self, request):
+            cascade_reqs.append(request)
+            return LLMResponse(
+                True,
+                text=json.dumps({
+                    "status": "VERIFIED", "confidence": 0.8,
+                    "rationale": "정상 확인", "evidence_quotes": [source_text[:10]],
+                }, ensure_ascii=False),
+            )
+
+    cas_rtr = router_module.LLMRouter(
+        providers={"anthropic": CascadeProvider("anthropic"), "openai": CascadeProvider("openai")},
+        ledger=BudgetLedger(),
+    )
+    cas_outcome = asyncio.run(cas_rtr.cascade(
+        question="판결과 주장을 대조하라.",
+        evidence={
+            "official": {
+                "case_number": "대법원 2024다123456",
+                "source_excerpt": source_text,
+                "confirmed_metadata": {"court": "대법원", "case_name": "손해배상"},
+            },
+            "document": doc_mask.masked_text,
+        },
+        policy=ExternalAIPolicy.MASKED,
+        attested_tokens={
+            "official_excerpt_spans": projected_token_spans(official_mask, projected),
+            "document_spans": doc_mask.token_spans,
+        },
+    ))
+    assert any(s.get("used") for s in cas_outcome.stages)
+    assert all(has_token_attestation(req) for req in cascade_reqs)
+
+    # cascade에 비증명 [PERSON_010] 2468-1357을 question 또는 case_name에 주입하면 즉시 차단 + 0 호출
+    cas_rtr2 = router_module.LLMRouter(
+        providers={"anthropic": CascadeProvider("anthropic")},
+        ledger=BudgetLedger(),
+    )
+    cas_reqs_before = len(cascade_reqs)
+    bad_cas = asyncio.run(cas_rtr2.cascade(
+        question="[PERSON_010] 2468-1357 확인하라.",
+        evidence={
+            "official": {
+                "case_number": "대법원 2024다123456",
+                "source_excerpt": source_text,
+                "confirmed_metadata": {"case_name": "[PHONE_010] 2468-1357"},
+            },
+            "document": doc_mask.masked_text,
+        },
+        policy=ExternalAIPolicy.MASKED,
+        attested_tokens={
+            "official_excerpt_spans": projected_token_spans(official_mask, projected),
+            "document_spans": doc_mask.token_spans,
+        },
+    ))
+    assert len(cascade_reqs) == cas_reqs_before
+    assert not any(s.get("used") for s in bad_cas.stages)
+    assert all(e.cost_status == "NOT_SENT" for e in bad_cas.executions)
+
+
+# ---------------------------------------------------------------------------
+# Fail-Closed: PseudonymSequenceLimitError 발생 시 부분 가림 유출·외부 LLM 호출·500 없음
+# ---------------------------------------------------------------------------
+def test_pseudonym_sequence_limit_fail_closed_across_runtime_paths(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from apps.api.routers import workspace as workspace_router
+    from packages.legal_engine.argument_validity_verifier import _context_review
+    from packages.pii_engine import PIIEngine as RealPIIEngine, PseudonymSequenceLimitError, PseudonymStore as RealStore
+    from packages.rag_engine.review import review_document
+    from packages.verification_engine import pipeline as pipeline_mod
+
+    # 1. workspace.external_prompt_texts -> HTTP 422 (부분 가림 텍스트 반환 안 함)
+    monkeypatch.setattr(
+        workspace_router,
+        "project_or_404",
+        lambda session, pid: SimpleNamespace(id=pid, external_ai_policy="MASKED"),
+    )
+    monkeypatch.setattr("packages.pii_engine.PseudonymStore", lambda project_id=None: RealStore(project_id or "cap", root=tmp_path))
+
+    cap_store = RealStore("proj_cap_ws", root=tmp_path)
+    cap_store._counters["PERSON"] = 999
+    monkeypatch.setattr("packages.pii_engine.PIIEngine", lambda store=None: RealPIIEngine(cap_store))
+
+    with pytest.raises(HTTPException) as exc_info:
+        workspace_router.external_prompt_texts(
+            "proj_cap_ws",
+            workspace_router.ExternalPromptTexts(texts=["원고 강태민 주장"]),
+            session=SimpleNamespace(),
+        )
+    assert exc_info.value.status_code == 422
+
+    # 2. rag_engine.review_document -> UNVERIFIED + PSEUDONYM_SEQUENCE_LIMIT_EXCEEDED + 0 LLM calls
+    rag_calls = []
+
+    class NoCallProvider:
+        name, available = "anthropic", True
+        config = SimpleNamespace(name="anthropic", kind="cloud", model="m", enabled=True)
+
+        async def generate(self, request):
+            rag_calls.append(request)
+            return LLMResponse(True, text="{}")
+
+    cap_store_rag = RealStore("proj_cap_rag", root=tmp_path)
+    cap_store_rag._counters["PERSON"] = 999
+    cap_engine_rag = RealPIIEngine(cap_store_rag)
+
+    doc_rag = NormalizedDocument(
+        document_id="d_cap", filename="문서.pdf", mime_type="application/pdf", sha256="s_cap",
+        pages=[Page(1, blocks=[Block("b1", "원고 강태민 청구", 1, source_layer="visible_text")])],
+    )
+    doc_rag.raw_layers["visible_text"] = "원고 강태민 청구"
+    res_rag = SimpleNamespace(
+        document_id="d_cap", filename="문서.pdf", normalized=doc_rag, quarantined=False,
+        findings=[], claims=[], engine_data={},
+    )
+    ref_lib = SimpleNamespace(
+        summary={"status": "READY", "folder_id": "f1", "snapshot_hash": "snap_cap"},
+        select=lambda *a, **k: {
+            "sources": [{"source_id": "R1", "file_id": "d1", "title": "참고.pdf", "text": "원고 박서준", "folder_path": "/", "page": 1}],
+            "files_selected": 1,
+        },
+    )
+    monkeypatch.setattr(router_module, "estimate_call", lambda *a, **k: (Decimal("0.01"), {}))
+    rtr_nocall = router_module.LLMRouter(providers={"anthropic": NoCallProvider()}, ledger=BudgetLedger())
+    rag_out = review_document(
+        res_rag, ref_lib, rtr_nocall,
+        SimpleNamespace(external_ai_policy=ExternalAIPolicy.MASKED, requested_issues=[]),
+        pii=cap_engine_rag,
+    )
+    assert rag_calls == []
+    assert rag_out["status"] == "UNVERIFIED"
+    assert rag_out["reason"] == "PSEUDONYM_SEQUENCE_LIMIT_EXCEEDED"
+    assert rag_out["sources"] == []
+    assert rag_out["model_executed"] is False
+
+    # 3. detect_ai_document & _context_review -> 0 LLM calls, fail-closed
+    ai_out = asyncio.run(detect_ai_document(
+        doc_rag, citation_findings=[], router=rtr_nocall,
+        mask=lambda s: cap_engine_rag.mask_text(s).masked_text,
+        external_ai_policy=ExternalAIPolicy.MASKED,
+    ))
+    assert rag_calls == []
+    assert ai_out.signals.get("llm_error") == "PSEUDONYM_SEQUENCE_LIMIT_EXCEEDED"
+
+    ctx_out = _context_review(
+        {"citation_id": "c1", "review_id": "r1", "official_record": {"full_text": "원고 강태민 판결"}},
+        [],
+        mask=lambda s: cap_engine_rag.mask_text(s).masked_text,
+    )
+    assert ctx_out["status"] == "UNVERIFIED"
+
+    # 4. VerificationPipeline.run -> 처리 실패로 안전 종료, 부분 masked_preview 유출 0, LLM 호출 0
+    sample_txt = tmp_path / "cap_brief.txt"
+    sample_txt.write_text("준비서면\n원고 강태민(010-2468-1357)은 주장합니다.\n", encoding="utf-8")
+    cap_store_pipe = RealStore("proj_cap_pipe", root=tmp_path)
+    cap_store_pipe._counters["PERSON"] = 999
+    monkeypatch.setattr(pipeline_mod, "PseudonymStore", lambda project_id="default": cap_store_pipe)
+
+    pipe = pipeline_mod.VerificationPipeline(router=rtr_nocall)
+    pipe_res = pipe.run(
+        "run_cap",
+        pipeline_mod.ProjectContext(project_id="proj_cap_pipe"),
+        [pipeline_mod.DocumentInput(document_id="d_pipe", path=str(sample_txt), filename="cap_brief.txt")],
+    )
+    assert rag_calls == []
+    assert len(pipe_res.documents) == 1
+    assert pipe_res.documents[0].masked_preview == {}
+    assert any("999" in err or "상한" in err for err in pipe_res.errors)
 
 
 def test_real_vehicle_and_contact_pii_still_detected():

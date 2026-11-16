@@ -142,7 +142,12 @@ def build_partial_argument_request(request, escalation_item_ids):
         return request
 
     escalation_set = {str(i) for i in escalation_item_ids}
-    reduced_items = [item for item in original_items if str(item.get("item_id")) in escalation_set]
+    index_map = {}
+    reduced_items = []
+    for orig_idx, item in enumerate(original_items):
+        if str(item.get("item_id")) in escalation_set:
+            index_map[orig_idx] = len(reduced_items)
+            reduced_items.append(item)
     if not reduced_items or len(reduced_items) == len(original_items):
         return request
 
@@ -179,7 +184,9 @@ def build_partial_argument_request(request, escalation_item_ids):
         )
         if len(reduced_pieces) == len(reduced_items):
             return _rebind_token_attestation(
-                request, bind_argument_excerpts(base_request, tuple(reduced_pieces))
+                request,
+                bind_argument_excerpts(base_request, tuple(reduced_pieces)),
+                item_index_map=index_map,
             )
         # 발췌 바인딩 실패 시 원본 요청(발췌 연결 유지)으로 폴백 — 축소 없이 전체 항목 전송
         return request
@@ -194,5 +201,5 @@ def build_partial_argument_request(request, escalation_item_ids):
         model_tier=request.model_tier,
         metadata=copy(request.metadata),
     )
-    return _rebind_token_attestation(request, fallback_req)
+    return _rebind_token_attestation(request, fallback_req, item_index_map=index_map)
 

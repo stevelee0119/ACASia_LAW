@@ -254,6 +254,7 @@ CODE_WORDS: Dict[str, str] = {
     "NOT_RELEVANT": "관련 자료 없음 · Drive 자료 미활용",
     "SOURCE_REVIEW_ONLY": "출처 검토만(직접 인용과 별도)",
     "MISSING_KEY": "연결 키 미설정",
+    "PSEUDONYM_SEQUENCE_LIMIT_EXCEEDED": "가명 생성 상한(종류별 999건)을 초과하여 안전을 위해 중단함",
 }
 
 # 엔진 문장 속 소문자 식별자(검사 층·필드·출처 이름).

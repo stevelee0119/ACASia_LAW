@@ -25,24 +25,21 @@
 ### 2.2 토큰 경계·내부 PII fail-closed 탐지 (`packages/pii_engine/detector.py`)
 - `_pseudonym_analysis` 및 `_cross_boundary_pii_match`:
   - 토큰 직전/직후의 숫자·구두점 결합(`010-[PERSON_246]-1357`, `[PHONE_010]-2468-1357`, `780512-[PERSON_123]4567`, `110-[ACCOUNT_234]-567890`)과 토큰 경계 차량번호 결합(`12가[PERSON_001]3456`)이 전화번호·주민번호·계좌·차량번호·군번 패턴과 일치하면(날짜 제외) 토큰을 면책하지 않고 해당 PII `PIIMatch`를 반환한다.
-  - 요청 증명(`trusted_tokens`)이 제공된 경우 증명 집합에 없는 비증명 토큰(`not is_trusted`)은 안전 스팬으로 제외하지 않으며, 공백 뒤 한국 전화번호 패턴 결합(`[PHONE_010] 2468-1357`)까지 탐지한다.
+  - 요청 증명(`_trusted_spans: frozenset[(start, end, bare_token)]`)이 제공된 경우 `(ts, te, bare) in trusted_spans`로 정확히 증명된 출현만 신뢰하며, 비증명 출현(`not is_trusted`)은 안전 스팬으로 제외하지 않고 공백 뒤 한국 전화번호 패턴 결합(`[PERSON_010] 2468-1357`, `[PHONE_010] 2468-1357`, `[PERSON_010] 1234-5678`)까지 탐지한다.
 
-### 2.3 요청 바인딩 기반 불변 마스킹 증명 (`packages/llm_router/token_attestation.py`, 소비 경로 연동)
-- `_TokenAttestation`: capability 보호(`_CAP`)·불변 슬롯·`repr`/`deepcopy` 마스킹 객체로, 해당 요청의 `(sha256(user), system)` 및 실제 마스킹 단계(`_ModelInputRenderer.mask_tracked`, `pii.mask_text().replacements`)에서 발급된 정식 토큰 집합(`frozenset[str]`)을 바인딩한다.
-- 소비 경로 연동: `ai_document_detector.detect_ai_document`, `rag_engine.review`, `argument_validity_verifier._attach_ai_opinions`, `pipeline._semantic_review` (`cascade` / `build_cascade_request`).
-- 1차 내부 재조립(`_rebind_review_profile`, `build_partial_argument_request`, `LLMRouter.run`의 `SYSTEM_BASE` 조립)에 한해 증명 재바인딩 및 `original_system` 대조를 수행한다. 다른 요청으로 복제하거나 본문/시스템을 임의 수정하면 `valid_token_attestation`이 `False`로 fail-closed(`INPUT_CONTRACT_VIOLATION` / `BLOCKED`) 처리된다.
+### 2.3 필드·출현 위치 단위 불변 마스킹 증명 (`token_attestation.py`, 소비 경로·`cascade` 오프셋 매핑)
+- **요청 수준 토큰 집합 폐기**: `bind_masked_tokens`는 평면 토큰 이름 집합을 거부하고, 각 필드 경로별 `(field_text, token_spans)` 또는 `MaskResult`만 받는다.
+- `_TokenAttestation`은 불변 슬롯·capability(`_CAP`)·`repr`/`deepcopy` 마스킹 객체에 `field_path -> (sha256(field_text), frozenset[(start, end, bare_token)])`와 요청 `(sha256(user), system)`을 바인딩한다. 동일 토큰의 중복 출현도 각 출현 좌표를 모두 증명해야 신뢰한다.
+- 마스킹기 산출 스팬: `MaskResult.token_spans`(다중 패스 좌표 이동 포함), `evidence_pack.projected_token_spans`, `_ModelInputRenderer.mask_attested`·`render_argument_context(..., spans_out=...)`가 실제 가림 위치만 수집한다.
+- 소비 경로 연동: `detect_ai_document`, `argument_validity_verifier`(배치·단건 재시도·부분 에스컬레이션 `build_partial_argument_request` 항목 인덱스 재매핑), `rag_engine.review`(배치·구간 슬라이싱 `slice_token_spans`·검토 프로필 재바인딩), `pipeline._semantic_review` → `LLMRouter.cascade`(`req.user` 내 JSON/래퍼 오프셋 매핑 + `cascade_source.official.source_excerpt`·`cascade_source.document`).
 
-### 2.4 구조화 필드 종류별 허용 접두사 구분 (`packages/llm_router/privacy.py`)
-- 순수 인명 키(`성명`, `이름`, `fullName` 등): `_STRICT_PERSON_NAME_PREFIXES = ("PERSON",)`만 허용(`PHONE`, `RRN`, `ACCOUNT`, `BIZNO`, `COMPANY` 등 거부).
-- 법인/기관 겸용 당사자·역할 키(`원고`, `피고`, `대표자`, `담당자` 등): `_ROLE_PARTY_PREFIXES = ("PERSON", "COMPANY", "AFFIL")`만 허용.
-- `trusted_tokens`가 존재하는 증명 요청에서는 `_uncertain_person_value`와 `detect(..., _trusted_tokens=...)` 모두 해당 요청에 증명된 토큰만 신뢰한다. `000`, 4자리 이상, 짝이 맞지 않는 괄호, 추가 문자(`_extra`, ` extra`)는 항상 차단된다.
+### 2.4 구조화 필드 접두사·좌표 검증 및 999 상한 fail-closed (`privacy.py`, `pseudonym.py`, 런타임)
+- 순수 인명 키(`성명` 등)는 `PERSON`, 역할 키(`원고`·`대표자` 등)는 `PERSON`·`COMPANY`·`AFFIL`만 허용한다. `_uncertain_person_value`는 증명 요청 시 원문 오프셋(`raw_matches`)과 대괄호 균형·좌표를 대조해 비증명 중복 출현·전각 변형을 차단한다.
+- `PseudonymSequenceLimitError(ValueError)`: `MAX_PSEUDONYM_SEQUENCE(999)` 초과 시 부분 가림 반환·미처리 500·외부 LLM 호출 없이 안전하게 실패한다(`workspace.external_prompt_texts` HTTP 422, `rag_engine.review_document` 결과 초기화 후 `UNVERIFIED`, `VerificationPipeline` 단계 중단).
 
 ### 2.5 다중 패스 멱등성·증거 좌표 보존 (`packages/pii_engine/engine.py`)
-- `PIIEngine.mask_text`는 일반 `str`(및 `_EditTrace`)에서 부분 중첩 잔여 후보가 있을 때만 최대 5회 유한 다중 패스를 돌며 후속 매치를 원문 좌표계(`MaskResult.matches`)로 역매핑한다.
-- `TracedText`(`type(text) is not str`) 호출 경로(`_mask_matches` 단일 패스 훅 계약)는 기존 단일 패스 동작을 보존한다. `mask_document`의 대리인·법원 주소 보존도 유지한다.
+- `PIIEngine.mask_text`는 일반 `str`에서 부분 중첩 잔여 후보가 있을 때만 최대 5회 유한 다중 패스를 돌며 후속 매치와 `token_spans`를 갱신한다. `TracedText` 단일 패스 `_mask_matches` 훅 계약과 대리인·법원 주소 보존은 유지한다.
 
 ## 3. 검증 계획
-- 위조 토큰 재현군(`[PERSON_01024681357]`, `[PHONE_01024681357]`, `[RRN_7805121234567]`, `PERSON_01024681357`, `[PERSON_001`, `PERSON_001]`, `[PERSON_001_extra]`, `PERSON_001 extra`, `[PHONE_010]-2468-1357`, `[PHONE_010] 2468-1357`, `010-[PERSON_246]-1357`, `780512-[PERSON_123]4567`, `110-[ACCOUNT_234]-567890`)의 `detect()`, `inspect_request()`, `LLMRouter.run`(`NOT_SENT`) 차단 검증.
-- `PseudonymStore` 999건 한계 초과 시 `ValueError` 발생 및 `000`·`1000` 차단 검증.
-- `_TokenAttestation` 연동 요청 통과, 타 요청 복사·변조 시 `INPUT_CONTRACT_VIOLATION` 차단, 비증명 토큰 주입 차단 검증.
-- 기존 양성(날짜 인접 가명, 필드별 정식 접두사, 하이픈 법령/구 사건번호, `detect_ai_document` + `_ModelInputRenderer`) 및 `_EditTrace` 다중 패스/`project_masked`/`test_pii_redos_linear`/`test_no_case_literals` 통과 검증.
+- 실 `PseudonymStore` + `_ModelInputRenderer`로 `PERSON_010`·`PHONE_010` 발급 후, 동일 유효 증명 요청의 별도 필드·중복 삽입에 `[PERSON_010] 2468-1357`, `[PHONE_010] 2468-1357`, `[PERSON_010] 1234-5678` 주입 시 모두 `BLOCKED`/`NOT_SENT`(provider 0회 호출) 검증(키·실명 비로깅).
+- 정상 다중 출현·날짜 인접·`detect_ai_document`·`verify_argument_validity`(부분 에스컬레이션·단건 재시도)·`review_document`·`cascade`·`PseudonymSequenceLimitError` fail-closed 및 기존 위조·ReDoS·리터럴 회귀 검증.
