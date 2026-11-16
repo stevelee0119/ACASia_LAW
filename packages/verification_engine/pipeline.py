@@ -1528,35 +1528,22 @@ class VerificationPipeline:
             source_text = render(segments)
             pack_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
             # 보내기 직전 실제 요청 크기를 다시 잰다(가림으로 길어진 경우 등). 넘으면 부르지 않는다(TK-141).
-            cascade_kwargs = {
-                "question": (
-                    "인용된 판결과 문서 주장을 대조하라. rationale에서 ① 띄어쓰기·어절 등 문구의 차이 "
-                    "② 핵심 법리와 취지·맥락의 동일 여부 ③ 사실관계·적용 요건의 차이와 확인 한계를 구분하라. "
-                    "표현 차이만으로 취지 왜곡이라고 판단하지 말고, 부정·예외·적용 조건을 확인하라. "
-                    "source_excerpt는 판결 원문에서 고른 구간이며 생략 표시 사이는 보내지 않은 부분이다. "
-                    "반드시 source_excerpt 한 구간 안의 실제 문구를 evidence_quotes에 인용하라. "
-                    "opinion_sections에 적힌 반대의견·별개의견 구간의 문장은 판결의 판시가 아니므로 문서 주장을 "
-                    "지지하는 근거로 인용하지 말라."
-                ),
-                "evidence": {
-                    "official": {
-                        "case_number": official.get("case_number"),
-                        "source_excerpt": source_text,
-                        "excerpt_coverage": pack["coverage_status"],
-                        "opinion_sections": opinion_sections,
-                        "confirmed_metadata": {k: official.get(k) for k in (
-                            "court", "decision_date", "decision_type", "case_name"
-                        )},
-                        "metadata_scope": "OFFICIAL_RECORD_NOT_FULL_TEXT_INFERENCE",
-                    },
-                    "document": document_text,
-                },
-                "profile": context.profile,
-                "policy": context.external_ai_policy,
-            }
-            if attested_tokens is not None:
-                cascade_kwargs["attested_tokens"] = attested_tokens
-            outcome = asyncio.run(self._sized_cascade(input_cap, budget_note, **cascade_kwargs))
+            _cascade_extra = {"attested_tokens": attested_tokens} if attested_tokens is not None else {}
+            outcome = asyncio.run(self._sized_cascade(input_cap, budget_note,
+                question=("인용된 판결과 문서 주장을 대조하라. rationale에서 ① 띄어쓰기·어절 등 문구의 차이 "
+                          "② 핵심 법리와 취지·맥락의 동일 여부 ③ 사실관계·적용 요건의 차이와 확인 한계를 구분하라. "
+                          "표현 차이만으로 취지 왜곡이라고 판단하지 말고, 부정·예외·적용 조건을 확인하라. "
+                          "source_excerpt는 판결 원문에서 고른 구간이며 생략 표시 사이는 보내지 않은 부분이다. "
+                          "반드시 source_excerpt 한 구간 안의 실제 문구를 evidence_quotes에 인용하라. "
+                          "opinion_sections에 적힌 반대의견·별개의견 구간의 문장은 판결의 판시가 아니므로 문서 주장을 "
+                          "지지하는 근거로 인용하지 말라."),
+                evidence={"official": {"case_number": official.get("case_number"), "source_excerpt": source_text,
+                          "excerpt_coverage": pack["coverage_status"], "opinion_sections": opinion_sections,
+                          "confirmed_metadata": {k: official.get(k) for k in (
+                              "court", "decision_date", "decision_type", "case_name")},
+                          "metadata_scope": "OFFICIAL_RECORD_NOT_FULL_TEXT_INFERENCE"},
+                          "document": document_text},
+                profile=context.profile, policy=context.external_ai_policy, **_cascade_extra))
             if outcome is None:
                 reviews.append({"citation_id": citation.citation_id, "status": "UNVERIFIED", "advisory_only": True,
                                 "review_id": verdict.get("review_id"), "model_executed": False,
