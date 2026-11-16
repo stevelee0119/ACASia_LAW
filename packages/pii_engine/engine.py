@@ -101,10 +101,10 @@ class PIIEngine:
     def mask_text(self, text: str, *, block_id: Optional[str] = None, page: Optional[int] = None, _trace=None) -> MaskResult:
         matches = [m for m in detect(text, block_id=block_id, page=page) if m.confidence >= MIN_CONFIDENCE]
         first = self._mask_matches(text, matches) if _trace is None else self._mask_matches(text, matches, _trace=_trace)
-        if first.masked_text == text:
+        if (_trace is not None and type(text) is not str) or len(first.matches) >= len(matches) or first.masked_text == text:
             return first
 
-        # 부분 중첩 또는 토큰 인접 경계로 잔여 PII가 남지 않도록 상한 내 반복 검증·마스킹한다.
+        # 부분 중첩으로 1차 패스에서 건너뛴 후보가 남아 있을 때만 후속 패스로 잔여 PII를 마스킹한다.
         current_text = first.masked_text
         applied_orig = _applied_with_token_lengths(text, current_text, first.matches)
         all_replacements: Dict[str, str] = dict(first.replacements)
@@ -113,8 +113,10 @@ class PIIEngine:
             next_matches = [m for m in detect(current_text, block_id=block_id, page=page) if m.confidence >= MIN_CONFIDENCE]
             if not next_matches:
                 break
-            next_text, pass_applied, pass_replacements = self._apply_matches(
-                current_text, next_matches, _trace=_trace,
+            next_text, pass_applied, pass_replacements = (
+                self._apply_matches(current_text, next_matches)
+                if _trace is None
+                else self._apply_matches(current_text, next_matches, _trace=_trace)
             )
             if not pass_applied or next_text == current_text:
                 break
@@ -138,6 +140,8 @@ class PIIEngine:
                     applied_orig.append((orig_match, tok_len))
             applied_orig.sort(key=lambda item: item[0].start)
             current_text = next_text
+            if len(pass_applied) >= len(next_matches):
+                break
 
         return MaskResult(current_text, [m for m, _ in applied_orig], all_replacements)
 
