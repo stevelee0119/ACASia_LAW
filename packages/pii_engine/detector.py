@@ -13,6 +13,7 @@ from itertools import chain
 from typing import List, Optional, Tuple
 
 from .name_stopwords import PERSON_CATEGORY_STOPWORDS
+from .pseudonym import PSEUDONYM_TOKEN_RE
 
 # ---------------------------------------------------------------------------
 # 법률 식별자 Guard — 이 패턴에 걸리는 구간은 PII로 마스킹하지 않는다
@@ -20,10 +21,15 @@ from .name_stopwords import PERSON_CATEGORY_STOPWORDS
 LEGAL_IDENTIFIER_PATTERNS = [
     re.compile(r"\d{4}\s*[가-힣]{1,3}\s*\d{1,6}"),          # 사건번호 2023도12345, 2026가합1234
     re.compile(r"\d{4}\s*헌[가-힣]\s*\d{1,4}"),              # 헌재 사건번호
+    re.compile(r"(?<!\d)\d{2}\s*(?:가단|가합|가소|나카|다카|고단|고합|고정|구단|구합|드단|드합|재[가-힣]{1,2}|헌[가-힣]{1,2})\s*\d{1,6}(?!\d)"),
+    re.compile(r"(?<!\d)\d{2}(?:초|모|르|므|후)\d{1,6}(?!\d)"),
+    re.compile(r"(?<!\d)\d{2}(?:가|나|다|라|마|노|도|누|두|허)\d{5,6}(?!\d)"),
+    re.compile(r"(?<!\d)\d{2}\s*[가-힣]{1,3}\s*\d{1,6}(?=\s*(?:판결|결정|사건))"),
+    re.compile(r"(?:대법원|고등법원|지방법원|행정법원|가정법원|특허법원|헌법재판소|판결|결정|선고|사건(?:\s*번호)?)\s*(?:\d{4}\.\s*\d{1,2}\.\s*\d{1,2}\.?\s*(?:선고|자)\s*)?\d{2}\s*[가-힣]{1,3}\s*\d{1,6}(?!\d)"),
     re.compile(r"제\s*\d+\s*조(\s*의\s*\d+)?"),               # 법령 조문
     re.compile(r"제\s*\d+\s*[항호]"),
-    re.compile(r"법률\s*제\s*\d+\s*호"),
-    re.compile(r"대통령령\s*제\s*\d+\s*호"),
+    re.compile(r"(?:법률|대통령령|총리령|부령|훈령|예규|고시|지침|조례|규칙|공고)\s*제\s*\d+(?:\s*-\s*\d+)*\s*호(?:증)?"),
+    re.compile(r"제\s*\d{1,5}(?:\s*-\s*\d{1,6})+\s*호(?:증)?"),
     re.compile(r"등기\s*번호|등록\s*번호\s*제"),
     re.compile(r"\d{4}\.\s*\d{1,2}\.\s*\d{1,2}\.?"),          # 선고일자
     re.compile(r"\b(19|20)\d{2}\b"),                            # 연도
@@ -601,6 +607,23 @@ def _covered_by_span(spans: List[Tuple[int, int]], start: int, end: int) -> bool
     return span_start <= start and end <= span_end
 
 
+def _pseudonym_spans(text: str) -> List[Tuple[int, int]]:
+    """이미 가명 토큰([KIND_NNN])으로 가려진 구간 목록(정렬·비중첩)."""
+    return [m.span() for m in PSEUDONYM_TOKEN_RE.finditer(text)]
+
+
+def _overlaps_span(spans: List[Tuple[int, int]], start: int, end: int) -> bool:
+    """[start, end)가 정렬·비중첩 구간 spans 중 하나라도 겹치는지 O(log N)으로 판정한다."""
+    if not spans or start >= end:
+        return False
+    index = bisect_right(spans, (start, float("inf")))
+    if index > 0 and spans[index - 1][1] > start:
+        return True
+    if index < len(spans) and spans[index][0] < end:
+        return True
+    return False
+
+
 def _width_normalized_positions(text: str) -> List[Tuple[str, int]]:
     """Keep punctuation and an original offset for every NFKC character."""
     expanded: List[Tuple[str, int]] = []
@@ -610,9 +633,23 @@ def _width_normalized_positions(text: str) -> List[Tuple[str, int]]:
     return expanded
 
 
-def _normalise_contact_view(text: str) -> Tuple[str, List[int]]:
+def _normalise_contact_view(
+    text: str, token_spans: Optional[List[Tuple[int, int]]] = None,
+) -> Tuple[str, List[int]]:
     """숫자 사이 표기를 정리한 연락처 탐지 뷰와 문자별 원문 위치를 만든다."""
-    expanded = _width_normalized_positions(text)
+    spans = _pseudonym_spans(text) if token_spans is None else token_spans
+    if spans:
+        chunks: List[str] = []
+        pos = 0
+        for s, e in spans:
+            chunks.append(text[pos:s])
+            chunks.append("A" * (e - s))
+            pos = e
+        chunks.append(text[pos:])
+        view_source = "".join(chunks)
+    else:
+        view_source = text
+    expanded = _width_normalized_positions(view_source)
 
     def is_separator(char: str) -> bool:
         category = unicodedata.category(char)
@@ -660,7 +697,10 @@ _INTERNATIONAL_PREFIX_RE = re.compile(
 
 
 def _extend_international_prefix_spans(
-    text: str, matches: List[PIIMatch], guard_spans: List[Tuple[int, int]],
+    text: str,
+    matches: List[PIIMatch],
+    guard_spans: List[Tuple[int, int]],
+    token_spans: Optional[List[Tuple[int, int]]] = None,
 ) -> None:
     """Extend existing numeric spans; never detect or reclassify a number.
 
@@ -712,6 +752,8 @@ def _extend_international_prefix_spans(
         if not attached or depth:
             continue
         start = positions[prefix.start()]
+        if token_spans and _overlaps_span(token_spans, start, match.end):
+            continue
         guard_index = bisect_right(guard_spans, (start, float("inf")))
         neighbors = guard_spans[max(0, guard_index - 1):guard_index + 1]
         if any(guard_start < match.end and start < guard_end for guard_start, guard_end in neighbors):
@@ -747,6 +789,7 @@ def _contact_matches(
     guard_spans: List[Tuple[int, int]],
     block_id: Optional[str],
     page: Optional[int],
+    token_spans: Optional[List[Tuple[int, int]]] = None,
 ) -> List[PIIMatch]:
     matches: List[PIIMatch] = []
     seen = set()
@@ -774,6 +817,8 @@ def _contact_matches(
             if end < len(text) and text[end] in ")]）］":
                 end += 1
             if _covered_by_span(guard_spans, start, end):
+                continue
+            if token_spans and _overlaps_span(token_spans, start, end):
                 continue
             if kind == "RRN":
                 prefix_context = normalized[max(0, found.start(group) - 20):found.start(group)]
@@ -863,7 +908,8 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
         return matches
 
     guard_spans = legal_identifier_spans(text)
-    contact_view, contact_source_positions = _normalise_contact_view(text)
+    token_spans = _pseudonym_spans(text)
+    contact_view, contact_source_positions = _normalise_contact_view(text, token_spans=token_spans)
     matches.extend(
         _contact_matches(
             text,
@@ -872,6 +918,7 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
             guard_spans,
             block_id,
             page,
+            token_spans=token_spans,
         )
     )
     for kind, pattern, base_confidence in DETECTORS:
@@ -880,6 +927,8 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
         for m in pattern.finditer(text):
             start, end = m.start(), m.end()
             if _covered_by_span(guard_spans, start, end):
+                continue
+            if token_spans and _overlaps_span(token_spans, start, end):
                 continue
             raw = m.group(0)
             confidence = base_confidence
@@ -911,12 +960,16 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
         start, end = m.start(1), m.end(1)
         if _covered_by_span(guard_spans, start, end) or re.fullmatch(r"(?:19|20)\d{2}-\d{1,2}-\d{1,2}", m.group(1)):
             continue  # "은행 2024-12-24 거래내역"의 날짜는 계좌번호가 아니다
+        if token_spans and _overlaps_span(token_spans, start, end):
+            continue
         matches.append(PIIMatch("ACCOUNT", m.group(1), start, end, block_id, page, 0.9, "은행명·계좌 표지 문맥"))
 
     # 사업자등록번호 라벨 문맥 포착 (3-2-5 형식)
     for m in BUSINESS_REG_LABELLED_RE.finditer(text):
         start, end = m.start(1), m.end(1)
         if _covered_by_span(guard_spans, start, end):
+            continue
+        if token_spans and _overlaps_span(token_spans, start, end):
             continue
         matches.append(PIIMatch("BUSINESS_REGISTRATION", m.group(1), start, end, block_id, page, 1.0, "사업자등록번호 라벨 문맥"))
 
@@ -926,6 +979,8 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
         clean_name = re.sub(r"\s+", "", raw_name)
         start, end = m.start(1), m.end(1)
         if _covered_by_span(guard_spans, start, end):
+            continue
+        if token_spans and _overlaps_span(token_spans, start, end):
             continue
 
         # 명시적 라벨 직후 후보는 후행 일반 문맥으로 제외되지 않는 점을 완화(TK-39, TK-43)
@@ -1003,6 +1058,8 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
             start, end = m.start(1), m.end(1)
             if _covered_by_span(guard_spans, start, end):
                 continue
+            if token_spans and _overlaps_span(token_spans, start, end):
+                continue
             # 조사 분리 후보 검사 (TK-39)
             josa_match = re.search(r"(?:은|는|이|가|을|를|의|과|와|에게|에|도|로|으로|에서)$", name)
             if josa_match:
@@ -1044,6 +1101,8 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
             end -= len(group) - len(group.rstrip())
             if _covered_by_span(guard_spans, start, end):
                 continue
+            if token_spans and _overlaps_span(token_spans, start, end):
+                continue
             matches.append(PIIMatch("MEDICAL", med_text, start, end, block_id, page, 0.85, "질병·처방 등 민감 의료정보"))
 
     for pattern in (COMPANY_SUFFIX_RE, COMPANY_PREFIX_RE):
@@ -1057,10 +1116,13 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
             name = (m.group(index) or "").strip()
             if not name or name in COMPANY_STOPWORDS:
                 continue
-            matches.append(PIIMatch("COMPANY", name, m.start(index), m.end(index),
+            start, end = m.start(index), m.end(index)
+            if token_spans and _overlaps_span(token_spans, start, end):
+                continue
+            matches.append(PIIMatch("COMPANY", name, start, end,
                                     block_id, page, 0.8, "법인 표기"))
 
-    _extend_international_prefix_spans(text, matches, guard_spans)
+    _extend_international_prefix_spans(text, matches, guard_spans, token_spans=token_spans)
 
     # 중복 span 정리 (긴 매치 우선).
     # start 오름차순이므로 앞선 항목의 start는 모두 현재 start 이하다. 따라서

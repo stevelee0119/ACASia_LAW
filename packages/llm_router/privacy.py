@@ -24,10 +24,12 @@ from packages.pii_engine.detector import (
     detect,
     is_valid_korean_name_structure,
 )
+from packages.pii_engine.pseudonym import PSEUDONYM_PREFIXES
 from packages.rag_engine.review import ENVELOPE_SCHEMA, ITEM_SCHEMA, KOREAN_RAG_REVIEW_SYSTEM_PROMPT, RAG_REVIEW_SYSTEM_PROMPT, SCHEMA
 from packages.verification_engine.ai_document_detector import AI_DETECTOR_SYSTEM_PROMPT, _DETECTOR_SCHEMA
 
 POLICY_VERSION = "payload-pii-v4"
+_PSEUDONYM_PREFIX_PATTERN = "|".join(re.escape(prefix) for prefix in PSEUDONYM_PREFIXES)
 
 # ===========================================================================
 # 라벨 키 집합: detector.py의 PARTY_AND_TITLE_LABELS에서 단일 출처로 구성 (TK-51, TK-52 2절)
@@ -73,9 +75,10 @@ _COMPOSITE_NAME_PARTICLE_RE = re.compile(
 )
 # Same token grammar as PseudonymStore, never a prefix-only exemption.
 _MASKED_NAME_VALUE_RE = re.compile(
-    rf"[ \t]*(?:\[?(?:PERSON|COMPANY)_[0-9]{{3,}}\]?(?:{JOSA})?)"
-    rf"(?:[ \t,;/]+\[?(?:PERSON|COMPANY)_[0-9]{{3,}}\]?(?:{JOSA})?)*[ \t]*"
+    rf"[ \t]*(?:\[?(?:{_PSEUDONYM_PREFIX_PATTERN})_[0-9]{{3,}}\]?(?:{JOSA})?)"
+    rf"(?:[ \t,;/]+\[?(?:{_PSEUDONYM_PREFIX_PATTERN})_[0-9]{{3,}}\]?(?:{JOSA})?)*[ \t]*"
 )
+
 
 
 def _normalise_korean_key(key: str) -> str:
