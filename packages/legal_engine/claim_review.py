@@ -139,7 +139,7 @@ HistoryLookup = Callable[[str, str], Dict[str, Any]]
 
 def _source(name: str) -> Dict[str, Any]:
     sources = load_rules().get("sources") or {}
-    entry = sources.get(name)
+    entry = sources.get(name) or (sources.get(f"대한민국{name}") if name.startswith("헌법 ") else None)
     if entry:
         return {"name": name, **entry}
     return {"name": name, "text": "", "note": "공식 원문을 규칙표에 수록하지 않았다(이름만 표시)"}
@@ -454,15 +454,15 @@ def _unreasonable_argument(sentence: str, previous: str, *, criminal_doc: bool =
             )
         )
         proof_confusion = bool(
-            re.search(r"합리적(?:인)?\s*의심(?:이|의\s*여지가)?\s*없(?:을|는)\s*정도|범죄(?:의)?\s*증명(?:이)?\s*없", sentence)
+            re.search(r"합리적.{0,2}의심[^.]{0,12}?없(?:을|는)\s*정도|범죄(?:의)?\s*증명(?:이)?\s*없", sentence)
             and re.search(r"민사|손해\s*배상|배상\s*책임|채무\s*불이행|계약\s*책임|증명\s*책임|입증\s*책임", context)
         )
         if presumption_confusion or proof_confusion:
             return ClaimMatch(
                 "CIVIL_CRIMINAL_STANDARD_CONFUSION", sentence, 0,
                 "민·형사 입증책임 및 무죄추정 원칙 혼동 주장", "B", "CONTRADICTED",
-                [_source("대한민국헌법 제27조 제4항"), _source("민사소송법 제202조")],
-                "헌법 제27조 제4항의 무죄추정 원칙과 '합리적 의심이 없을 정도의 증명'은 형사피고인의 유죄 인정에 관한 "
+                [_source("헌법 제27조 제4항"), _source("민사소송법 제202조")],
+                "헌법 제27조 제4항의 무죄추정 원칙과 형사상 고도 증명 기준은 형사피고인의 유죄 인정에 관한 "
                 "원칙이다. 민사상 손해배상이나 채무불이행 책임은 변론 전체의 취지와 증거조사 결과에 따른 자유심증 및 "
                 "증명의 우월성(고도의 개연성) 기준(민사소송법 제202조)으로 판단하므로 형사 기준을 그대로 적용해 배척할 수 없다.",
                 {"defect_type": "UNFOUNDED_CLAIM"},
@@ -492,8 +492,8 @@ def _unreasonable_argument(sentence: str, previous: str, *, criminal_doc: bool =
         return ClaimMatch(
             "LOWER_COURT_STATUTE_INVALIDATION", sentence, 0,
             "하급심 법원의 법률 효력 직접 폐지·무효화 주장", "B", "CONTRADICTED",
-            [_source("대한민국헌법 제107조"), _source("대한민국헌법 제111조")],
-            "대한민국헌법 제107조 제1항 및 제111조 제1항 제1호에 따라 법률의 위헌 여부 심판 권한은 헌법재판소에 전속하며, "
+            [_source("헌법 제107조"), _source("헌법 제111조")],
+            "헌법 제107조 제1항 및 제111조 제1항 제1호에 따라 법률의 위헌 여부 심판 권한은 헌법재판소에 전속하며, "
             "각급 법원은 명령·규칙이나 처분의 위헌·위법 심사 외에 법률의 효력을 직접 폐지·실효시킬 권한이 없고 위헌심판 제청만 가능하다.",
             {"defect_type": "JURISDICTIONAL_DEFECT"},
         )
@@ -670,7 +670,7 @@ _CLAIM_SPANS = {
         re.compile(r"\d{2,3}\s*년|(?:소멸|완성)(?:하지|되지)\s*않|완성될\s*수\s*없|완성|소멸"),
     ),
     "CIVIL_CRIMINAL_STANDARD_CONFUSION": (
-        re.compile(r"무죄\s*추정|합리적(?:인)?\s*의심|범죄(?:의)?\s*증명"),
+        re.compile(r"무죄\s*추정|합리적.{0,2}의심|범죄(?:의)?\s*증명"),
         re.compile(
             r"인정(?:될|할)\s*수\s*없|성립(?:하지|될\s*수\s*없)|전제(?:될|할)\s*수\s*없|"
             r"책임(?:이|을)?\s*(?:없|질\s*수\s*없|묻기\s*어렵)|묻기\s*어렵|물을\s*수\s*없|"
