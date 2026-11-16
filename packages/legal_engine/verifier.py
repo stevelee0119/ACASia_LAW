@@ -427,18 +427,33 @@ class LegalVerifier:
             )
             return verdict
 
+        if verdict.levels.get("number_format") == "IMPOSSIBLE":
+            verdict.levels["number_format"] = "VALID"
         verdict.official_record = official
         verdict.levels["authority_status"] = LegalVerificationStatus.VERIFIED.value
         verdict.levels["authority_id"] = make_authority_id(citation)
         verdict.levels["authority_tier"] = get_court_tier(citation)
         fetch_detail = getattr(self.registry.law, "fetch_case", None)
         if fetch_detail is not None and not official.get("full_text"):
-            detail = fetch_detail(official, constitutional=citation.type == CitationType.CONSTITUTIONAL)
+            is_constitutional = (
+                citation.type == CitationType.CONSTITUTIONAL
+                or constitutional_code
+                or bool((official.get("raw") or {}).get("헌재결정례일련번호"))
+            )
+            detail = fetch_detail(official, constitutional=is_constitutional)
             if detail.source_record:
                 verdict.source_records.append(detail.source_record)
             if detail.records:
-                official = {**official, **detail.records[0]}
-                verdict.official_record = official
+                detail_rec = detail.records[0]
+                detail_case_no = str(detail_rec.get("case_number") or "")
+                from .normalize import extract_all_case_numbers
+                if not extract_all_case_numbers(detail_case_no) or same_case_number(case_number, detail_case_no):
+                    official = {**official, **detail_rec}
+                    verdict.official_record = official
+                else:
+                    verdict.notes.append(
+                        f"상세 조회 결과({detail_case_no})의 사건번호가 인용 사건번호({case_number})와 달라 본문 병합을 건너뜀"
+                    )
         verdict.levels["level1"] = "VERIFIED"
 
         # --- Level 2: 메타데이터 대조 ------------------------------------

@@ -5,11 +5,15 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
+from functools import lru_cache
+from pathlib import Path
+from typing import Dict, Optional
 
 # 1999년까지의 사건번호는 연도를 두 자리로 적는다(예: 94누4615). 네 자리 연도와 함께 받는다.
 CASE_NUMBER_RE = re.compile(r"(?<!\d)(?P<year>(?:19|20)\d{2}|\d{2})\s*(?P<code>[가-힣]{1,3})\s*(?P<serial>\d{1,6})")
 CONSTITUTIONAL_RE = re.compile(r"(?P<year>(?:19|20)\d{2})\s*(?P<code>헌[가-힣]{1,2})\s*(?P<serial>\d{1,4})")
+
+_CASE_CODES_YAML = Path(__file__).resolve().parents[2] / "config" / "legal_rules" / "case_codes.yaml"
 
 # 대표 사건부호 (대법원 재판예규 기준 주요 항목)
 CASE_CODE_MEANING = {
@@ -24,7 +28,55 @@ CASE_CODE_MEANING = {
     "헌라": "권한쟁의심판", "헌마": "헌법소원(권리구제형)", "헌바": "헌법소원(위헌심사형)",
 }
 
-SUPREME_COURT_CODES = {"도", "다", "두", "무", "므", "후", "마", "재도", "재다"}
+# 구 사건부호 및 재심 사건부호 (재판예규 연혁·재심 접두 '재')
+HISTORICAL_CASE_CODE_MEANING = {
+    "다카": "민사 상고(구 부호)",
+    "나카": "민사 항소(구 부호)",
+    "재다": "민사 상고 재심",
+    "재도": "형사 상고 재심",
+    "재두": "행정 상고 재심",
+    "재나": "민사 항소 재심",
+    "재노": "형사 항소 재심",
+    "재누": "행정 항소 재심",
+    "재마": "민사 재항고 재심",
+    "재모": "형사 재항고 재심",
+    "재라": "민사 항고 재심",
+    "재로": "형사 항고 재심",
+    "재가합": "민사 1심 합의 재심",
+    "재가단": "민사 1심 단독 재심",
+    "재구합": "행정 1심 합의 재심",
+    "재구단": "행정 1심 단독 재심",
+    "재허": "특허 1심 재심",
+    "재후": "특허 상고 재심",
+    "재르": "가사 항소 재심",
+    "재므": "가사 상고 재심",
+    "재드단": "가사 단독 재심",
+    "재드합": "가사 합의 재심",
+    "재그": "민사 특별항고 재심",
+    "재바": "민사 준항고 재심",
+}
+
+SUPREME_COURT_CODES = {
+    "도", "다", "다카", "두", "무", "므", "후", "마",
+    "재도", "재다", "재두", "재므", "재후", "재마", "재모", "재그",
+}
+
+
+@lru_cache(maxsize=1)
+def _yaml_case_code_meaning() -> Dict[str, str]:
+    try:
+        import yaml
+        data = yaml.safe_load(_CASE_CODES_YAML.read_text(encoding="utf-8")) or {}
+    except (OSError, ValueError, ImportError):
+        return {}
+    out: Dict[str, str] = {}
+    for code, entry in (data.get("codes") or {}).items():
+        if isinstance(entry, dict) and entry.get("case_type"):
+            out[str(code)] = str(entry["case_type"])
+    for code, desc in (data.get("constitutional_codes") or {}).items():
+        if desc:
+            out[str(code)] = str(desc)
+    return out
 
 
 def canonical_case_number(raw: str) -> Optional[str]:
@@ -99,7 +151,13 @@ def case_number_possible(raw: str) -> bool:
 
 
 def case_code_meaning(code: str) -> Optional[str]:
-    return CASE_CODE_MEANING.get(code)
+    if not code:
+        return None
+    return (
+        CASE_CODE_MEANING.get(code)
+        or HISTORICAL_CASE_CODE_MEANING.get(code)
+        or _yaml_case_code_meaning().get(code)
+    )
 
 
 def is_supreme_court_code(code: str) -> bool:
