@@ -3414,7 +3414,26 @@ function renderAIVerification() {
       if (dist.length) item.append(node("p", `모델별 판단 분포: ${dist.map(([v, n]) => `${authorshipVerdict(v)[0]} ${n}`).join(", ")}`, "muted"));
       if (res.signals?.score_definition) item.append(node("p", friendlyText(`추정치: ${res.signals.score_definition} 신뢰도: ${res.signals.confidence_definition}`), "muted metric-definition"));
       const coverage = res.signals?.coverage;
-      if (coverage) item.append(node("p", `작성 주체 검토 범위: ${coverage.inspected_chars || 0}/${coverage.total_chars || 0}자 · ${coverage.is_full_coverage ? "대상 본문 전체" : "일부 표본 또는 미실행"}. 직접 인용·문서 속 지시문은 작성 주체 근거에서 제외합니다.`, "muted"));
+      if (coverage) {
+        const total = coverage.total_chars || 0;
+        const inspected = coverage.inspected_chars || 0;
+        const ruleChars = coverage.rule_inspected_chars;
+        let scopeText;
+        if (!coverage.model_executed) {
+          const rulePart = ruleChars != null
+            ? `규칙 기반 ${ruleChars}자 전수 검사 완료`
+            : "규칙 기반 1차 진단 수행";
+          const aiState = coverage.sampling_mode === "not_run" ? "미실행" : "호출 실패·차단";
+          scopeText = `작성 주체 검토 범위: ${rulePart} · 외부 AI 모델 ${inspected}/${total}자 (${aiState}). 직접 인용·문서 속 지시문은 작성 주체 근거에서 제외합니다.`;
+        } else if (coverage.is_full_coverage) {
+          const ruleNote = ruleChars != null ? ` (규칙 전수 ${ruleChars}자)` : "";
+          scopeText = `작성 주체 검토 범위: ${inspected}/${total}자 · 대상 본문 전체${ruleNote}. 직접 인용·문서 속 지시문은 작성 주체 근거에서 제외합니다.`;
+        } else {
+          const ruleNote = ruleChars != null ? ` (규칙 기반 ${ruleChars}자 전수 검사 완료)` : "";
+          scopeText = `작성 주체 검토 범위: 외부 AI 모델 표본 ${inspected}/${total}자 · 일부 표본${ruleNote}. 직접 인용·문서 속 지시문은 작성 주체 근거에서 제외합니다.`;
+        }
+        item.append(node("p", scopeText, "muted"));
+      }
       const opinions = res.signals?.llm_opinions || res.model_opinions || res.opinions || [];
       const failures = Object.entries(res.signals?.llm_failures || {});
       const summary = (res.reasons || []).filter(r => !opinions.length || !/^\[[a-z]+\] /.test(r));

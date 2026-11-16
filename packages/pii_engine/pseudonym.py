@@ -41,6 +41,10 @@ KIND_PREFIX = {
     "BUSINESS_REGISTRATION": "BIZNO",
 }
 
+PSEUDONYM_PREFIXES = tuple(sorted(set(KIND_PREFIX.values()) | {"PII"}))
+_PSEUDONYM_PREFIX_PATTERN = "|".join(re.escape(prefix) for prefix in PSEUDONYM_PREFIXES)
+PSEUDONYM_TOKEN_RE = re.compile(rf"\[(?:{_PSEUDONYM_PREFIX_PATTERN})_[0-9]{{3,}}\]")
+
 
 @dataclass
 class PseudonymStore:
