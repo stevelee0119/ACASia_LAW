@@ -611,6 +611,12 @@ _BOUNDARY_NUMERIC_CHARS = frozenset("0123456789-–.*●xX")
 _REAL_KR_PHONE_RE = re.compile(
     r"(?<!\d)(?:01[016789]|02|0[3-6][1-5]|070|080)-?\d{3,4}-?\d{4}(?!\d)"
 )
+_BRIDGED_RRN_RE = re.compile(r"\d{6}-?[1-9]\d{6}")
+_BRIDGED_RRN_MASKED_RE = re.compile(r"\d{6}-?[1-9][*●xX]{6}")
+_BRIDGED_BIZNO_RE = re.compile(r"\d{3}-\d{2}-\d{5}")
+_BRIDGED_DRIVER_LICENSE_RE = re.compile(r"\d{2}-\d{2}-\d{6}-\d{2}")
+_BRIDGED_MILITARY_ID_RE = re.compile(r"\d{2}(?:-\d{5,8}|\d{8})")
+_BRIDGED_ACCOUNT_RE = re.compile(r"\d{2,3}-\d{2,6}-\d{2,6}(?:-\d{1,6})?")
 _VEHICLE_LEFT_RE = re.compile(r"\d{2,3}[가-힣]$")
 _VEHICLE_RIGHT_RE = re.compile(r"^\d{4}(?![0-9])")
 
@@ -619,17 +625,17 @@ def _match_bridged_numeric_pii(candidate: str) -> Optional[str]:
     normalized = candidate.replace("–", "-").strip("-")
     if not normalized or re.fullmatch(r"(?:19|20)\d{2}[-.]\d{1,2}[-.]\d{1,2}", normalized):
         return None
-    if RRN_RE.fullmatch(normalized) or RRN_MASKED_RE.fullmatch(normalized):
+    if _BRIDGED_RRN_RE.fullmatch(normalized) or _BRIDGED_RRN_MASKED_RE.fullmatch(normalized):
         return "RRN"
     if _REAL_KR_PHONE_RE.fullmatch(normalized):
         return "PHONE"
-    if BUSINESS_NO_RE.fullmatch(normalized):
+    if _BRIDGED_BIZNO_RE.fullmatch(normalized):
         return "BUSINESS_REGISTRATION"
-    if DRIVER_LICENSE_RE.fullmatch(normalized):
+    if _BRIDGED_DRIVER_LICENSE_RE.fullmatch(normalized):
         return "DRIVER_LICENSE"
-    if MILITARY_ID_RE.fullmatch(normalized):
+    if _BRIDGED_MILITARY_ID_RE.fullmatch(normalized):
         return "MILITARY_ID"
-    if ACCOUNT_RE.fullmatch(normalized):
+    if _BRIDGED_ACCOUNT_RE.fullmatch(normalized):
         return "ACCOUNT"
     return None
 
