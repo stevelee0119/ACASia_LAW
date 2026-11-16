@@ -102,6 +102,22 @@ def verify_rag_candidate(
         return None, {"candidate_id": candidate.candidate_id, "reason": "BASIS_QUOTE_NOT_GROUNDED_IN_SOURCE"}
 
     source_title = candidate.source_title or source.get("title") or candidate.source_id or "참고자료"
+    source_file_id = source.get("file_id") or ""
+    source_format = source.get("format") or ""
+    source_page = source.get("page")
+    source_start = source.get("start")
+    source_sheet = source.get("sheet") or ""
+    source_row = source.get("row")
+    source_cell_range = source.get("source_cell_range") or ""
+    ref_page = int(source_page) if isinstance(source_page, int) and source_page > 0 else None
+    ref_records = [source_file_id] if source_file_id else []
+    table_meta = {}
+    if source_sheet:
+        table_meta["source_sheet"] = source_sheet
+    if source_row is not None:
+        table_meta["source_row"] = source_row
+    if source_cell_range:
+        table_meta["source_cell_range"] = source_cell_range
 
     if is_reference_contradiction:
         # TK-70 / TK-84: Drive 참고자료 '모순' 의견 조건부 승격 (LOW, C등급, SUSPICIOUS, 제목 고정 문구 및 전문 보존)
@@ -124,6 +140,8 @@ def verify_rag_candidate(
                 description=f"참고자료 규정 원문 ({source_title})",
                 grade=EvidenceGrade.C,
                 document_id=document_id,
+                page=ref_page,
+                source_record_ids=ref_records,
                 excerpt=candidate.basis_quote.strip()[:300],
                 supports=True,
             ),
@@ -140,7 +158,12 @@ def verify_rag_candidate(
                 "rule_id": "RAG.REFERENCE_CONTRADICTION",
                 "candidate_id": candidate.candidate_id,
                 "source_id": candidate.source_id,
+                "file_id": source_file_id,
                 "source_title": source_title,
+                "source_format": source_format,
+                "source_page": source_page,
+                "source_start": source_start,
+                **table_meta,
                 "claim_id": claim_id or "",
                 "claim_text": claim_text or candidate.claim_quote,
                 "claim_quote": candidate.claim_quote.strip(),
@@ -178,6 +201,8 @@ def verify_rag_candidate(
             description=f"참고자료 규정 원문 ({source_title})",
             grade=EvidenceGrade.A,
             document_id=document_id,
+            page=ref_page,
+            source_record_ids=ref_records,
             excerpt=candidate.basis_quote.strip()[:300],
             supports=True,
         ),
@@ -195,7 +220,12 @@ def verify_rag_candidate(
             "rule_id": "RAG.GROUNDED_CONTRADICTION",
             "candidate_id": candidate.candidate_id,
             "source_id": candidate.source_id,
+            "file_id": source_file_id,
             "source_title": source_title,
+            "source_format": source_format,
+            "source_page": source_page,
+            "source_start": source_start,
+            **table_meta,
             "claim_quote": candidate.claim_quote,
             "basis_quote": candidate.basis_quote,
             "model_name": candidate.model_name,

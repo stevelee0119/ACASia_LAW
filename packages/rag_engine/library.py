@@ -652,6 +652,9 @@ class ReferenceLibrary:
                 if is_case_table or (chunk_count > 0 and (not is_candidate(file_id) or chosen(file_id))):
                     self.eligible[file_id] = {"file_id": file_id, "title": item.get("name", ""),
                         "folder_path": folder_path,
+                        "format": relevance.source_format(item.get("name", ""), item.get("mimeType", "")),
+                        "mime_type": item.get("mimeType", ""),
+                        "base_name": relevance.base_name(item.get("name", "")).lower(),
                         "metadata_score": entry["metadata"]["score"],
                         "url": "https://drive.google.com/file/d/" + file_id + "/view",
                         "revision": version, "modified_time": item.get("modifiedTime"),
@@ -814,6 +817,11 @@ class ReferenceLibrary:
             if file_score < relevance.MIN_FILE_SCORE and not body_strong:
                 reasons.append("LOW_FILE_SCORE")
             candidates.append({"file_id": file_id, "title": source.get("title"), "folder_path": source.get("folder_path"),
+                               "format": source.get("format") or relevance.source_format(
+                                   source.get("title", ""), source.get("mime_type", "")),
+                               "mime_type": source.get("mime_type", ""),
+                               "page": int(best[2]), "start": int(best[3]),
+                               "pages_matched": sorted({int(c[2]) for c in entry["chunks"]})[:20],
                                "text_coverage": round(best[0], 3), "shared_terms": best[1],
                                "name_coverage": round(name_score, 3), "name_terms": name_hits[:8],
                                "metadata_bonus": round(metadata_bonus, 3),
@@ -837,24 +845,92 @@ class ReferenceLibrary:
                 reserved.append(excerpt)
                 reserved_ids.add(excerpt[1])
         excerpts = reserved + [e for e in excerpts if e not in reserved]
-        result, seen = [], set()
-        for score, file_id, (coverage, shared, page, start, excerpt, window) in excerpts:
-            # Identical copies cannot occupy every retrieval slot.
+        result, seen_exact = [], set()
+        seen_fp: dict[str, str] = {}
+        per_file_picked: dict[str, int] = {}
+        per_base_picked: dict[str, int] = {}
+        leftover_unique, leftover_dup = [], []
+        dup_suppressed = 0
+
+        def _append_excerpt(score_val, fid_val, chunk_tuple, *, duplicate_of: str = ""):
+            coverage_val, shared_val, page_val, start_val, text_val, window_val = chunk_tuple
+            src_meta = self.eligible[fid_val]
+            fp_val = relevance.content_fingerprint(text_val)
+            sid = "R" + str(len(result) + 1)
+            item_dict = {
+                **src_meta,
+                "format": src_meta.get("format") or relevance.source_format(
+                    src_meta.get("title", ""), src_meta.get("mime_type", "")),
+                "source_id": sid,
+                "page": page_val,
+                "start": start_val,
+                "text": text_val,
+                "relevance": round(score_val, 3),
+                "text_coverage": round(coverage_val, 3),
+                "shared_terms": shared_val,
+                "matched_query_window": window_val,
+                "content_fingerprint": fp_val,
+            }
+            if duplicate_of:
+                item_dict["duplicate_content"] = True
+                item_dict["duplicate_of_source_id"] = duplicate_of
+            result.append(item_dict)
+            return sid, fp_val
+
+        # 1차 패스: 서로 다른 내용(content_fingerprint)·파일명 묶음·파일에 각 1슬롯씩 먼저 배정해 중복 청크 독점 차단
+        for score, file_id, chunk in excerpts:
+            excerpt = chunk[4]
             digest = hashlib.sha256(excerpt.encode()).hexdigest()
-            if digest in seen:
+            if digest in seen_exact:
+                dup_suppressed += 1
                 continue
-            seen.add(digest)
-            result.append({**self.eligible[file_id], "source_id": "R" + str(len(result) + 1), "page": page,
-                           "start": start, "text": excerpt, "relevance": round(score, 3),
-                           "text_coverage": round(coverage, 3), "shared_terms": shared,
-                           "matched_query_window": window})
+            seen_exact.add(digest)
+            fp = relevance.content_fingerprint(excerpt)
+            src_meta = self.eligible[file_id]
+            base_key = (src_meta.get("base_name")
+                        or relevance.base_name(src_meta.get("title", "")).lower()
+                        or file_id)
+            if fp and fp in seen_fp:
+                dup_suppressed += 1
+                leftover_dup.append((score, file_id, chunk, fp))
+                continue
+            if per_file_picked.get(file_id, 0) >= 1 or per_base_picked.get(base_key, 0) >= 1:
+                leftover_unique.append((score, file_id, chunk, fp))
+                continue
+            sid, fp_val = _append_excerpt(score, file_id, chunk)
+            if fp_val:
+                seen_fp.setdefault(fp_val, sid)
+            per_file_picked[file_id] = per_file_picked.get(file_id, 0) + 1
+            per_base_picked[base_key] = per_base_picked.get(base_key, 0) + 1
             if limit is not None and len(result) >= limit:
                 break
+
+        # 2차 패스: 고유 내용 추가 청크 채우기
+        if limit is None or len(result) < limit:
+            for score, file_id, chunk, fp in leftover_unique:
+                if fp and fp in seen_fp:
+                    dup_suppressed += 1
+                    leftover_dup.append((score, file_id, chunk, fp))
+                    continue
+                sid, fp_val = _append_excerpt(score, file_id, chunk)
+                if fp_val:
+                    seen_fp.setdefault(fp_val, sid)
+                if limit is not None and len(result) >= limit:
+                    break
+
+        # 3차 패스: 슬롯이 아직 남았을 때만 타 형식 중복 청크를 보조 기록으로 포함(출처 표기 포함)
+        if limit is None or len(result) < limit:
+            for score, file_id, chunk, fp in leftover_dup:
+                _append_excerpt(score, file_id, chunk, duplicate_of=seen_fp.get(fp, ""))
+                if limit is not None and len(result) >= limit:
+                    break
+
         for candidate in candidates:
             candidate.pop("_name"), candidate.pop("_chunks")
         log["candidates"] = candidates
         log["candidates_total"] = len(candidates)
         log["files_qualified"] = len(chosen)
+        log["duplicate_chunks_suppressed"] = dup_suppressed
         selected_ids = {s["file_id"] for s in result}
         log["files_selected"] = len(selected_ids)
         for candidate in candidates:
@@ -905,8 +981,16 @@ class ReferenceLibrary:
             excerpt = citation_excerpt(citation, text)
             if not excerpt:
                 continue
-            found.append({**meta, "file_id": file_id, "page": int(page),
-                          "start": int(start) + text.index(excerpt), "text": excerpt})
+            found.append({
+                **meta,
+                "file_id": file_id,
+                "format": meta.get("format") or relevance.source_format(
+                    meta.get("title", ""), meta.get("mime_type", "")),
+                "page": int(page),
+                "start": int(start) + text.index(excerpt),
+                "text": excerpt,
+                "content_fingerprint": relevance.content_fingerprint(excerpt),
+            })
             if len(found) >= limit:
                 return found
         return found
@@ -1063,21 +1147,87 @@ class ReferenceLibrary:
 
         scored.sort(key=lambda c: (-c["score"], c["file_id"], c["page"], c["start"]))
 
-        # 동일 파일 독점 방지(1차 파일당 최대 2청크) 후 부족하면 잔여 순위로 채운다.
+        # 동일 내용(다형식)·동일 파일명 묶음·동일 파일의 후보 독점 방지 (1: 다양성, 2: 고유 추가 청크, 3: 잔여 중복)
         picked = []
+        seen_keys: set[tuple[str, int, int]] = set()
+        seen_fp: dict[str, tuple[str, int, int]] = {}
         per_file: dict[str, int] = {}
-        leftover = []
+        per_base: dict[str, int] = {}
+        leftover_unique = []
+        leftover_dup = []
+
+        def _cand_key(c):
+            return (c["file_id"], c["page"], c["start"])
+
         for cand in scored:
             fid = cand["file_id"]
-            if per_file.get(fid, 0) < 2:
+            meta = prose_eligible[fid]
+            base_key = (meta.get("base_name")
+                        or relevance.base_name(meta.get("title", "")).lower()
+                        or fid)
+            fp = relevance.content_fingerprint(cand["text"])
+            cand["_fp"] = fp
+            cand["_base_key"] = base_key
+            if fp and fp in seen_fp:
+                cand["_duplicate_of_file_id"] = seen_fp[fp][0]
+                leftover_dup.append(cand)
+                continue
+            if per_file.get(fid, 0) >= 1 or per_base.get(base_key, 0) >= 1:
+                leftover_unique.append(cand)
+                continue
+            cand["_duplicate_of_file_id"] = ""
+            picked.append(cand)
+            seen_keys.add(_cand_key(cand))
+            if fp:
+                seen_fp.setdefault(fp, _cand_key(cand))
+            per_file[fid] = per_file.get(fid, 0) + 1
+            per_base[base_key] = per_base.get(base_key, 0) + 1
+            if len(picked) >= limit:
+                break
+
+        if len(picked) < limit:
+            defer_unique = []
+            for cand in leftover_unique:
+                fp = cand["_fp"]
+                fid = cand["file_id"]
+                if fp and fp in seen_fp:
+                    cand["_duplicate_of_file_id"] = seen_fp[fp][0]
+                    leftover_dup.append(cand)
+                    continue
+                if per_file.get(fid, 0) < 2:
+                    cand["_duplicate_of_file_id"] = ""
+                    picked.append(cand)
+                    seen_keys.add(_cand_key(cand))
+                    if fp:
+                        seen_fp.setdefault(fp, _cand_key(cand))
+                    per_file[fid] = per_file.get(fid, 0) + 1
+                    if len(picked) >= limit:
+                        break
+                else:
+                    defer_unique.append(cand)
+            if len(picked) < limit:
+                for cand in defer_unique:
+                    fp = cand["_fp"]
+                    if fp and fp in seen_fp:
+                        cand["_duplicate_of_file_id"] = seen_fp[fp][0]
+                        leftover_dup.append(cand)
+                        continue
+                    cand["_duplicate_of_file_id"] = ""
+                    picked.append(cand)
+                    seen_keys.add(_cand_key(cand))
+                    if fp:
+                        seen_fp.setdefault(fp, _cand_key(cand))
+                    if len(picked) >= limit:
+                        break
+
+        if len(picked) < limit:
+            for cand in leftover_dup:
+                if _cand_key(cand) in seen_keys:
+                    continue
                 picked.append(cand)
-                per_file[fid] = per_file.get(fid, 0) + 1
+                seen_keys.add(_cand_key(cand))
                 if len(picked) >= limit:
                     break
-            else:
-                leftover.append(cand)
-        if len(picked) < limit:
-            picked.extend(leftover[:max(0, limit - len(picked))])
 
         # 인접 같은 (파일, 쪽) 청크 문맥 결합(문단 경계 절단 완화, review.py에서 800자 내로 발췌)
         results = []
@@ -1095,9 +1245,13 @@ class ReferenceLibrary:
                     ).fetchone()
                     if nxt and len(text_out) + len(nxt[1]) <= 2200:
                         text_out = text_out.rstrip() + "\n" + nxt[1].lstrip()
-                results.append({
+                fp_out = relevance.content_fingerprint(text_out) or cand.get("_fp", "")
+                item = {
                     **meta,
                     "file_id": fid,
+                    "format": meta.get("format") or relevance.source_format(
+                        meta.get("title", ""), meta.get("mime_type", "")),
+                    "mime_type": meta.get("mime_type", ""),
                     "source_id": "",
                     "page": cand["page"],
                     "start": cand["start"],
@@ -1106,7 +1260,12 @@ class ReferenceLibrary:
                     "semantic_score": cand["semantic_score"],
                     "retrieval_paths": sorted(cand["paths"]),
                     "claim_search_matched": True,
-                })
+                    "content_fingerprint": fp_out,
+                }
+                if cand.get("_duplicate_of_file_id"):
+                    item["duplicate_content"] = True
+                    item["duplicate_of_file_id"] = cand["_duplicate_of_file_id"]
+                results.append(item)
         return results
 
     def has_case_tables(self) -> bool:
@@ -1301,12 +1460,26 @@ class ReferenceLibrary:
             # claim envelope; the review layer applies masking before use.
             holding = row.get("holding") or ""
             support = " | ".join(filter(None, [row.get("case_head"), holding, row.get("reason"), row.get("issue")]))
-            result.append({**source, "source_id": "", "text": support[:800], "page": row.get("row", 1),
-                           "relevance": _score, "structured_case_table": exact,
-                           "case_table_candidate": True,
-                           "case_record_id": row.get("record_id"), "case_head": row.get("case_head"),
-                           "sheet": row.get("sheet"), "row": row.get("row"),
-                           "source_cell_range": row.get("source_cell_range"),
-                           "case_numbers": row.get("case_numbers", []), "court": row.get("court"),
-                           "decision_date": row.get("decision_date"), "holding": holding})
+            result.append({
+                **source,
+                "format": source.get("format") or relevance.source_format(
+                    source.get("title", ""), source.get("mime_type", "")),
+                "mime_type": source.get("mime_type", ""),
+                "source_id": "",
+                "text": support[:800],
+                "page": row.get("row", 1),
+                "relevance": _score,
+                "structured_case_table": exact,
+                "case_table_candidate": True,
+                "case_record_id": row.get("record_id"),
+                "case_head": row.get("case_head"),
+                "sheet": row.get("sheet"),
+                "row": row.get("row"),
+                "source_cell_range": row.get("source_cell_range"),
+                "case_numbers": row.get("case_numbers", []),
+                "court": row.get("court"),
+                "decision_date": row.get("decision_date"),
+                "holding": holding,
+                "content_fingerprint": relevance.content_fingerprint(support[:800]),
+            })
         return result

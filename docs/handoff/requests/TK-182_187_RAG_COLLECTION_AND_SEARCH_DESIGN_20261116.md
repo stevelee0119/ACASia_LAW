@@ -32,3 +32,12 @@
 4. **보안·역할 경계 및 되돌림(Rollback)**
    - TK-180 역할 분리(`authority="USER_REFERENCE_NOT_OFFICIAL"`, 참고자료 본문을 `AdversarialScanner`에 넣지 않음)와 입력 문서 PII 마스킹(`pii.mask_text`)·인젝션 격리는 변경 없이 유지한다.
    - 환경변수 플래그(`LV_RAG_DECOUPLED_COLLECTION`, `LV_RAG_CLAIM_MULTISEARCH`, `LV_RAG_HYBRID_SEMANTIC`, 기본 `1`)로 운영 중 즉시 구 경로로 되돌리거나 동일 스냅샷 기준 A/B 비교가 가능하다.
+
+5. **동명 다형식 공존 출처 추적·중복 청크 독점 방지 보완 (TK-187 추가 전달문)**
+   - **후보·최종 근거·인용의 파일/형식/쪽 출처 기록**:
+     - `library.py` (`eligible`, `select()`, `search_claim()`), `review.py` (`selection["sources_used"]`, `search_scope["candidate_provenance"]`, `observations`, `reference_matches`), `contract_facts.py` (`issues[*]["source_refs"]`), `candidate_verifier.py` (`Finding.confidence_features` 및 `Evidence.page`) 전 구간에 `file_id`, `source_title`/`title`, `format`/`source_format`, `page`/`source_page` (및 표 자료 시 `sheet`, `row`, `source_cell_range`)를 일관되게 기록한다.
+   - **다형식 중복 청크의 후보 예산·최종 근거 독점 방지**:
+     - `relevance.content_fingerprint()`(구분자·공백·문장부호 정규화 해시)와 파일 기본명(`base_name`)을 기준으로 `select()`, `search_claim()`, `review_document()` 주장별 `relevant_sources[:5]` 선별을 **2단계 다양성 우선 선택**으로 보강한다. 1차 패스에서 서로 다른 내용 지문·다른 파일/기본명 후보에 먼저 슬롯을 배정하고, 2차 패스에서만 잔여 예산을 채워 동일 내용 다형식(PDF·DOCX·XLSX) 또는 다청크 분할 파일이 타 참고자료를 밀어내지 못하게 한다.
+     - 최종 관찰(`observations`)·승격 결함(`promoted_groups`)에서도 동일 주장·정규화 동일 인용의 중복 출력을 합치고, 한 형식의 관찰이 다른 형식의 성공으로 전파되지 않도록 실제 근거 출처(`file_id`, `source_format`, `source_page`)만 보존한다.
+   - **단일 형식 독립 대조 일관성**: `ExternalAIPolicy.MASKED` 환경에서 마스킹된 `claim_quote`가 `verify_rag_candidate` 원문 대조에서 탈락하지 않도록 마스킹 본문 보조 검증을 추가해 PDF·DOCX·XLSX 단일 형식 실행 모두 비자문 `CONTRADICTS` 승격이 일관되게 동작하게 한다.
+

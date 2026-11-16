@@ -11,6 +11,7 @@ When no file passes, the Drive library is not used for that document.
 from __future__ import annotations
 
 from collections import Counter
+import hashlib
 import math
 from pathlib import Path
 import re
@@ -31,6 +32,19 @@ TOPIC_STEP = 600
 COPY_MARK = re.compile(r"의\s*사본|\s*-\s*복사본|복사본|\s*\(\d{1,3}\)|^\s*사본\s*-\s*|^\s*copy of\s+|\s+-\s*copy\b",
                        re.IGNORECASE)
 EXTENSION = re.compile(r"\.[A-Za-z0-9]{1,5}$")
+_NORM_STRIP = re.compile(r"[\s|│·•\-_,.:;()\[\]{}「」『』'\"“”‘’]+")
+_MIME_TO_FORMAT = {
+    "application/pdf": "pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.google-apps.document": "gdoc",
+    "application/vnd.google-apps.spreadsheet": "gsheet",
+    "text/csv": "csv",
+    "text/plain": "txt",
+    "application/x-hwp": "hwp",
+    "application/haansofthwp": "hwp",
+    "application/hwp+zip": "hwpx",
+}
 
 
 def tokens(text):
@@ -58,6 +72,23 @@ def base_name(name):
 
 def extension(name):
     return Path(COPY_MARK.sub("", str(name or "")).strip()).suffix.lower()
+
+
+def source_format(name: str = "", mime_type: str = "") -> str:
+    """파일명 확장자와 MIME에서 표준 형식 코드(pdf·docx·xlsx 등)를 돌려준다."""
+    ext = extension(name).lstrip(".").lower()
+    if ext:
+        return ext
+    mime = str(mime_type or "").split(";")[0].strip().lower()
+    return _MIME_TO_FORMAT.get(mime, "")
+
+
+def content_fingerprint(text: str) -> str:
+    """형식별 공백·표 구분자(|)·문장부호 차이를 정규화한 내용 지문(다형식 중복 판별용)."""
+    norm = _NORM_STRIP.sub("", str(text or "")).lower()
+    if not norm:
+        return ""
+    return hashlib.sha256(norm.encode("utf-8")).hexdigest()[:24]
 
 
 def name_terms(folder_path, name):
