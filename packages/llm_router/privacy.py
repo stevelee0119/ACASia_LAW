@@ -24,12 +24,28 @@ from packages.pii_engine.detector import (
     detect,
     is_valid_korean_name_structure,
 )
-from packages.pii_engine.pseudonym import PSEUDONYM_PREFIXES
+from packages.pii_engine.pseudonym import (
+    PSEUDONYM_PREFIXES,
+    PSEUDONYM_SEQUENCE_PATTERN,
+    canonical_pseudonym_token,
+)
 from packages.rag_engine.review import ENVELOPE_SCHEMA, ITEM_SCHEMA, KOREAN_RAG_REVIEW_SYSTEM_PROMPT, RAG_REVIEW_SYSTEM_PROMPT, SCHEMA
 from packages.verification_engine.ai_document_detector import AI_DETECTOR_SYSTEM_PROMPT, _DETECTOR_SCHEMA
 
 POLICY_VERSION = "payload-pii-v4"
 _PSEUDONYM_PREFIX_PATTERN = "|".join(re.escape(prefix) for prefix in PSEUDONYM_PREFIXES)
+_STRICT_PERSON_NAME_PREFIXES: Tuple[str, ...] = ("PERSON",)
+_ROLE_PARTY_PREFIXES: Tuple[str, ...] = ("PERSON", "COMPANY", "AFFIL")
+_CORPORATE_CAPABLE_ROLE_LABELS = frozenset({
+    "원고", "피고", "신청인", "피신청인", "청구인", "피청구인", "상고인", "항소인",
+    "채권자", "채무자", "대리인", "소송대리인", "대표이사", "대표자", "대표", "담당자",
+    "이사장", "원장", "소장", "이사", "감사", "지배인", "관리인", "회장", "사장",
+    "매도인", "매수인", "임대인", "임차인", "도급인", "수급인", "위임인", "수임인",
+    "양도인", "양수인", "의뢰인", "상대방", "사용자", "보증인", "연대보증인", "법정대리인",
+    "plaintiff", "defendant", "applicant", "claimant", "petitioner", "respondent",
+    "representative", "counsel", "attorney", "employer", "account holder", "account owner",
+    "payee",
+})
 
 # ===========================================================================
 # 라벨 키 집합: detector.py의 PARTY_AND_TITLE_LABELS에서 단일 출처로 구성 (TK-51, TK-52 2절)
@@ -73,11 +89,30 @@ _LEADING_NAME_VALUE_RE = re.compile(
 _COMPOSITE_NAME_PARTICLE_RE = re.compile(
     rf"^(?P<name>(?:[가-힣][ \t]?){{1,3}}[가-힣])(?:{JOSA}){{1,2}}$"
 )
-# Same token grammar as PseudonymStore, never a prefix-only exemption.
-_MASKED_NAME_VALUE_RE = re.compile(
-    rf"[ \t]*(?:\[?(?:{_PSEUDONYM_PREFIX_PATTERN})_[0-9]{{3,}}\]?(?:{JOSA})?)"
-    rf"(?:[ \t,;/]+\[?(?:{_PSEUDONYM_PREFIX_PATTERN})_[0-9]{{3,}}\]?(?:{JOSA})?)*[ \t]*"
+
+
+def _build_masked_value_re(prefixes: Tuple[str, ...]) -> re.Pattern[str]:
+    prefix_pat = "|".join(re.escape(prefix) for prefix in prefixes)
+    single = (
+        rf"(?:\[(?:{prefix_pat})_{PSEUDONYM_SEQUENCE_PATTERN}\]"
+        rf"|(?:{prefix_pat})_{PSEUDONYM_SEQUENCE_PATTERN})(?:{JOSA})?"
+    )
+    return re.compile(rf"[ \t]*{single}(?:[ \t,;/]+{single})*[ \t]*")
+
+
+# Strict canonical token grammar (balanced brackets, 3-digit bound, field-kind prefix distinction)
+_MASKED_NAME_VALUE_RE = _build_masked_value_re(_STRICT_PERSON_NAME_PREFIXES)
+_MASKED_ROLE_PARTY_VALUE_RE = _build_masked_value_re(_ROLE_PARTY_PREFIXES)
+_MASKED_TOKEN_EXTRACTOR_RE = re.compile(
+    rf"\[(?:{_PSEUDONYM_PREFIX_PATTERN})_{PSEUDONYM_SEQUENCE_PATTERN}\]"
+    rf"|(?:{_PSEUDONYM_PREFIX_PATTERN})_{PSEUDONYM_SEQUENCE_PATTERN}"
 )
+
+
+def _allowed_prefixes_for_field(label: str | None, marker: bool) -> Tuple[str, ...]:
+    if not marker and label and label.casefold() in _CORPORATE_CAPABLE_ROLE_LABELS:
+        return _ROLE_PARTY_PREFIXES
+    return _STRICT_PERSON_NAME_PREFIXES
 
 
 
@@ -197,13 +232,38 @@ def _name_like_value(value: str) -> str | None:
     return name if is_valid_korean_name_structure(name) else None
 
 
-def _uncertain_person_value(value: Any, *, explicit_name: bool, name_field: bool = False) -> bool:
+def _uncertain_person_value(
+    value: Any,
+    *,
+    explicit_name: bool,
+    name_field: bool = False,
+    allowed_prefixes: Tuple[str, ...] = _STRICT_PERSON_NAME_PREFIXES,
+    trusted_tokens: frozenset[str] | None = None,
+) -> bool:
     """Decide send safety separately from extracting a single name token."""
     if not isinstance(value, str):
         return True
     text = unicodedata.normalize("NFKC", value).strip()
-    if not text or _MASKED_NAME_VALUE_RE.fullmatch(text):
+    if not text:
         return False
+    masked_pattern = (
+        _MASKED_ROLE_PARTY_VALUE_RE
+        if allowed_prefixes == _ROLE_PARTY_PREFIXES
+        else _MASKED_NAME_VALUE_RE
+    )
+    if masked_pattern.fullmatch(text):
+        if trusted_tokens is None:
+            return False
+        found_tokens = _MASKED_TOKEN_EXTRACTOR_RE.findall(text)
+        if not found_tokens:
+            return True
+        canon_tokens = [
+            canonical_pseudonym_token(tok, allowed_prefixes=allowed_prefixes)
+            for tok in found_tokens
+        ]
+        if all(tok is not None and tok in trusted_tokens for tok in canon_tokens):
+            return False
+        return True
     if _name_like_value(text):
         # Single-name context is checked by the normal detector.
         return False
@@ -335,7 +395,11 @@ def _try_json_parse(value: str):
 
 
 def _collect_texts_from_value(
-    value, path: str = "", *, _uncertain_paths: List[str] | None = None,
+    value,
+    path: str = "",
+    *,
+    _uncertain_paths: List[str] | None = None,
+    trusted_tokens: frozenset[str] | None = None,
 ) -> List[Tuple[str, str]]:
     """값에서 (경로, 검사할 텍스트) 쌍을 수집한다.
 
@@ -355,7 +419,9 @@ def _collect_texts_from_value(
         # JSON 문자열인지 시도
         decoded = _try_json_parse(value)
         if decoded is not None:
-            results.extend(_collect_texts_from_value(decoded, path, _uncertain_paths=_uncertain_paths))
+            results.extend(_collect_texts_from_value(
+                decoded, path, _uncertain_paths=_uncertain_paths, trusted_tokens=trusted_tokens,
+            ))
         else:
             # 일반 문자열 값
             results.append((path, value))
@@ -369,7 +435,11 @@ def _collect_texts_from_value(
             label = _person_label_for_key(key)
             marker = _has_name_field_marker(key)
             if (label or marker) and _uncertain_person_value(
-                item, explicit_name=bool(label and marker), name_field=marker,
+                item,
+                explicit_name=bool(label and marker),
+                name_field=marker,
+                allowed_prefixes=_allowed_prefixes_for_field(label, marker),
+                trusted_tokens=trusted_tokens,
             ):
                 if _uncertain_paths is not None:
                     _uncertain_paths.append(current_path)
@@ -379,7 +449,7 @@ def _collect_texts_from_value(
                 if decoded is not None:
                     # JSON 문자열이면 파싱하여 재귀 검사
                     results.extend(_collect_texts_from_value(
-                        decoded, current_path, _uncertain_paths=_uncertain_paths,
+                        decoded, current_path, _uncertain_paths=_uncertain_paths, trusted_tokens=trusted_tokens,
                     ))
                 else:
                     # 원본 값 검사
@@ -398,7 +468,7 @@ def _collect_texts_from_value(
             else:
                 # 비문자열 값은 재귀
                 results.extend(_collect_texts_from_value(
-                    item, current_path, _uncertain_paths=_uncertain_paths,
+                    item, current_path, _uncertain_paths=_uncertain_paths, trusted_tokens=trusted_tokens,
                 ))
 
         # 형제 문자열 결합:
@@ -419,14 +489,14 @@ def _collect_texts_from_value(
                 decoded = _try_json_parse(item)
                 if decoded is not None:
                     results.extend(_collect_texts_from_value(
-                        decoded, current_path, _uncertain_paths=_uncertain_paths,
+                        decoded, current_path, _uncertain_paths=_uncertain_paths, trusted_tokens=trusted_tokens,
                     ))
                 else:
                     results.append((current_path, item))
                     str_elements.append(item)
             else:
                 results.extend(_collect_texts_from_value(
-                    item, current_path, _uncertain_paths=_uncertain_paths,
+                    item, current_path, _uncertain_paths=_uncertain_paths, trusted_tokens=trusted_tokens,
                 ))
 
         # 배열 이웃 결합:
@@ -441,14 +511,14 @@ def _collect_texts_from_value(
     return results
 
 
-def _walk_fields(value, path="", *, _uncertain_paths=None):
+def _walk_fields(value, path="", *, _uncertain_paths=None, trusted_tokens: frozenset[str] | None = None):
     """필드 경로(path)와 함께 문자열 값들을 추출한다 (R8-A 강화 버전).
 
     TK-51/TK-56: 원본 값과 유효한 이름 문맥, 형제/배열 문맥을 추출한다.
     라벨 키 정의는 detector.py의 PARTY_AND_TITLE_LABELS에서 단일 출처로 가져온다.
     """
     for collected_path, collected_text in _collect_texts_from_value(
-        value, path, _uncertain_paths=_uncertain_paths,
+        value, path, _uncertain_paths=_uncertain_paths, trusted_tokens=trusted_tokens,
     ):
         yield collected_path, collected_text
 
@@ -467,6 +537,7 @@ def inspect_request(request, *, _original_system: str = None):
     from .input_contracts import valid_input_contract
     from .cascade_source import cascade_inspection_text, valid_cascade_source
     from .excerpt_source import excerpt_inspection, valid_excerpt_source
+    from .token_attestation import attested_tokens_for, valid_token_attestation
 
     contract_failures = []
     if not valid_input_contract(request, original_system=_original_system):
@@ -475,7 +546,10 @@ def inspect_request(request, *, _original_system: str = None):
         contract_failures.append("cascade_source")
     if not valid_excerpt_source(request, original_system=_original_system):
         contract_failures.append("excerpt_source")
+    if not valid_token_attestation(request, original_system=_original_system):
+        contract_failures.append("token_attestation")
     contract_valid = not contract_failures
+    trusted_tokens = attested_tokens_for(request, original_system=_original_system)
     payload = asdict(request)
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
 
@@ -499,8 +573,10 @@ def inspect_request(request, *, _original_system: str = None):
     source_text = cascade_inspection_text(request)
     if source_text is not None:
         uncertain_paths = []
-        for path, text in _walk_fields(source_text, "cascade_source", _uncertain_paths=uncertain_paths):
-            matches = [m for m in detect(text) if m.confidence >= 0.6]
+        for path, text in _walk_fields(
+            source_text, "cascade_source", _uncertain_paths=uncertain_paths, trusted_tokens=trusted_tokens,
+        ):
+            matches = [m for m in detect(text, _trusted_tokens=trusted_tokens) if m.confidence >= 0.6]
             for match in matches:
                 kinds[match.kind] += 1
                 blocked_kinds[match.kind] += 1
@@ -517,9 +593,11 @@ def inspect_request(request, *, _original_system: str = None):
     if _original_system is not None:
         uncertain_paths = []
         for path, text in _walk_fields(
-            {"__original_system__": _original_system}, _uncertain_paths=uncertain_paths,
+            {"__original_system__": _original_system},
+            _uncertain_paths=uncertain_paths,
+            trusted_tokens=trusted_tokens,
         ):
-            matches = [m for m in detect(text) if m.confidence >= 0.6]
+            matches = [m for m in detect(text, _trusted_tokens=trusted_tokens) if m.confidence >= 0.6]
             for m in matches:
                 kinds[m.kind] += 1
                 # 원본 system은 사용자 제공 동적 값이므로 등록 상수 면책 없음
@@ -534,8 +612,10 @@ def inspect_request(request, *, _original_system: str = None):
     # (payload 전체를 _walk_fields에 넘기면 최상위 형제 결합이 경로 판정을 혼동시킴)
     for top_key, top_value in payload.items():
         uncertain_paths = []
-        for path, text in _walk_fields(top_value, top_key, _uncertain_paths=uncertain_paths):
-            matches = [m for m in detect(text) if m.confidence >= 0.6]
+        for path, text in _walk_fields(
+            top_value, top_key, _uncertain_paths=uncertain_paths, trusted_tokens=trusted_tokens,
+        ):
+            matches = [m for m in detect(text, _trusted_tokens=trusted_tokens) if m.confidence >= 0.6]
             if not matches:
                 continue
             detected_paths.add(path)

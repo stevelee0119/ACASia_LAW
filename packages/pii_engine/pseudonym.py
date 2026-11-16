@@ -41,9 +41,60 @@ KIND_PREFIX = {
     "BUSINESS_REGISTRATION": "BIZNO",
 }
 
+MAX_PSEUDONYM_SEQUENCE = 999
+PSEUDONYM_SEQUENCE_PATTERN = r"(?!000)[0-9]{3}"
 PSEUDONYM_PREFIXES = tuple(sorted(set(KIND_PREFIX.values()) | {"PII"}))
 _PSEUDONYM_PREFIX_PATTERN = "|".join(re.escape(prefix) for prefix in PSEUDONYM_PREFIXES)
-PSEUDONYM_TOKEN_RE = re.compile(rf"\[(?:{_PSEUDONYM_PREFIX_PATTERN})_[0-9]{{3,}}\]")
+PSEUDONYM_TOKEN_RE = re.compile(
+    rf"\[(?:{_PSEUDONYM_PREFIX_PATTERN})_{PSEUDONYM_SEQUENCE_PATTERN}\]"
+)
+_BARE_PSEUDONYM_TOKEN_RE = re.compile(
+    rf"^(?P<prefix>{_PSEUDONYM_PREFIX_PATTERN})_(?P<seq>{PSEUDONYM_SEQUENCE_PATTERN})$"
+)
+
+
+def canonical_pseudonym_token(
+    value: str,
+    *,
+    allowed_prefixes: Optional[tuple[str, ...]] = None,
+    bracketed: Optional[bool] = None,
+) -> Optional[str]:
+    """Validate token grammar/sequence bound and return bare PREFIX_NNN if valid."""
+    if not isinstance(value, str):
+        return None
+    has_left = value.startswith("[")
+    has_right = value.endswith("]")
+    if has_left != has_right:
+        return None
+    if bracketed is True and not has_left:
+        return None
+    if bracketed is False and has_left:
+        return None
+    inner = value[1:-1] if has_left else value
+    match = _BARE_PSEUDONYM_TOKEN_RE.fullmatch(inner)
+    if not match:
+        return None
+    prefix = match.group("prefix")
+    if allowed_prefixes is not None and prefix not in allowed_prefixes:
+        return None
+    seq = int(match.group("seq"))
+    if not (1 <= seq <= MAX_PSEUDONYM_SEQUENCE):
+        return None
+    return inner
+
+
+def is_valid_pseudonym_token(
+    value: str,
+    *,
+    allowed_prefixes: Optional[tuple[str, ...]] = None,
+    bracketed: Optional[bool] = None,
+) -> bool:
+    return (
+        canonical_pseudonym_token(
+            value, allowed_prefixes=allowed_prefixes, bracketed=bracketed
+        )
+        is not None
+    )
 
 
 @dataclass
@@ -173,8 +224,13 @@ class PseudonymStore:
         if key in self._mapping:
             return self._mapping[key]
         prefix = KIND_PREFIX.get(kind, kind)
-        self._counters[prefix] = self._counters.get(prefix, 0) + 1
-        token = f"{prefix}_{self._counters[prefix]:03d}"
+        next_seq = self._counters.get(prefix, 0) + 1
+        if next_seq > MAX_PSEUDONYM_SEQUENCE:
+            raise ValueError(
+                f"Pseudonym sequence limit ({MAX_PSEUDONYM_SEQUENCE}) exceeded for {prefix}"
+            )
+        self._counters[prefix] = next_seq
+        token = f"{prefix}_{next_seq:03d}"
         self._mapping[key] = token
         self._originals[token] = value
         self._save_unlocked()

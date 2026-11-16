@@ -26,15 +26,15 @@ def _leaf(user, path):
 
 
 class _ExcerptSource:
-    __slots__ = ('__consumer', '__system', '__user', '__schema', '__entries')
+    __slots__ = ('__consumer', '__system', '__user', '__schema', '__entries', '__attestation')
 
-    def __init__(self, request, consumer, entries, *, capability):
+    def __init__(self, request, consumer, entries, *, capability, attestation=None):
         if capability is not _CAP:
             raise TypeError('Internal excerpt consumer required')
         for name, value in (
             ('consumer', consumer), ('system', request.system), ('user', request.user),
             ('schema', json.dumps(request.schema, sort_keys=True, ensure_ascii=False)),
-            ('entries', tuple(entries)),
+            ('entries', tuple(entries)), ('attestation', attestation),
         ):
             object.__setattr__(self, '_ExcerptSource__' + name, value)
 
@@ -49,6 +49,9 @@ class _ExcerptSource:
 
     def __deepcopy__(self, memo):
         return _REDACTED
+
+    def _token_attestation(self):
+        return self.__attestation
 
     def _matches(self, request, original_system):
         from .input_contracts import _consumer_binding
@@ -113,8 +116,20 @@ class _ExcerptSource:
         return tuple(statuses), tuple(matches)
 
 
+def _with_excerpt_attestation(source: _ExcerptSource, attestation) -> _ExcerptSource:
+    cloned = _ExcerptSource.__new__(_ExcerptSource)
+    for slot in ('__consumer', '__system', '__user', '__schema', '__entries'):
+        attr = '_ExcerptSource' + slot
+        object.__setattr__(cloned, attr, object.__getattribute__(source, attr))
+    object.__setattr__(cloned, '_ExcerptSource__attestation', attestation)
+    return cloned
+
+
 def _bind(request, consumer, entries):
-    source = _ExcerptSource(request, consumer, entries, capability=_CAP)
+    from .token_attestation import _extract_attestation
+
+    attestation = _extract_attestation(request)
+    source = _ExcerptSource(request, consumer, entries, capability=_CAP, attestation=attestation)
     values = {field.name: getattr(request, field.name) for field in fields(LLMRequest)}
     values['schema'] = copy.deepcopy(request.schema)
     return _ExcerptRequest(**{**values, 'inspection_source': source})
@@ -132,11 +147,14 @@ def bind_claim_excerpts(request, pieces):
 
 def _rebind_review_profile(before, after):
     """Called only by the actual profile renderer after it builds new bytes."""
+    from .token_attestation import _rebind_token_attestation, valid_token_attestation
+
     if (type(before) is _ExcerptRequest and type(before.inspection_source) is _ExcerptSource
-            and valid_excerpt_source(before)):
+            and valid_excerpt_source(before) and valid_token_attestation(before)):
         source = before.inspection_source
-        return _bind(after, 'claim_review_v1', source._ExcerptSource__entries)
-    return after  # Invalid-present evidence remains attached and fails closed.
+        rebound = _bind(after, 'claim_review_v1', source._ExcerptSource__entries)
+        return _rebind_token_attestation(before, rebound)
+    return _rebind_token_attestation(before, after)  # Invalid-present evidence remains attached and fails closed.
 
 
 def is_excerpt_request(request):

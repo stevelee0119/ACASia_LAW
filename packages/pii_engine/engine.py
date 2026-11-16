@@ -101,7 +101,7 @@ class PIIEngine:
     def mask_text(self, text: str, *, block_id: Optional[str] = None, page: Optional[int] = None, _trace=None) -> MaskResult:
         matches = [m for m in detect(text, block_id=block_id, page=page) if m.confidence >= MIN_CONFIDENCE]
         first = self._mask_matches(text, matches) if _trace is None else self._mask_matches(text, matches, _trace=_trace)
-        if _trace is not None or len(first.matches) >= len(matches) or first.masked_text == text:
+        if (_trace is not None and type(text) is not str) or len(first.matches) >= len(matches) or first.masked_text == text:
             return first
 
         # 부분 중첩으로 1차 패스에서 건너뛴 후보가 남아 있을 때만 후속 패스로 잔여 PII를 마스킹한다.
@@ -113,7 +113,11 @@ class PIIEngine:
             next_matches = [m for m in detect(current_text, block_id=block_id, page=page) if m.confidence >= MIN_CONFIDENCE]
             if not next_matches:
                 break
-            next_text, pass_applied, pass_replacements = self._apply_matches(current_text, next_matches)
+            next_text, pass_applied, pass_replacements = (
+                self._apply_matches(current_text, next_matches)
+                if _trace is None
+                else self._apply_matches(current_text, next_matches, _trace=_trace)
+            )
             if not pass_applied or next_text == current_text:
                 break
             all_replacements.update(pass_replacements)

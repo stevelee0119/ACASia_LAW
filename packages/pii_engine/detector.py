@@ -607,9 +607,166 @@ def _covered_by_span(spans: List[Tuple[int, int]], start: int, end: int) -> bool
     return span_start <= start and end <= span_end
 
 
+_BOUNDARY_NUMERIC_CHARS = frozenset("0123456789-–.*●xX")
+_REAL_KR_PHONE_RE = re.compile(
+    r"(?<!\d)(?:01[016789]|02|0[3-6][1-5]|070|080)-?\d{3,4}-?\d{4}(?!\d)"
+)
+_VEHICLE_LEFT_RE = re.compile(r"\d{2,3}[가-힣]$")
+_VEHICLE_RIGHT_RE = re.compile(r"^\d{4}(?![0-9])")
+
+
+def _match_bridged_numeric_pii(candidate: str) -> Optional[str]:
+    normalized = candidate.replace("–", "-").strip("-")
+    if not normalized or re.fullmatch(r"(?:19|20)\d{2}[-.]\d{1,2}[-.]\d{1,2}", normalized):
+        return None
+    if RRN_RE.fullmatch(normalized) or RRN_MASKED_RE.fullmatch(normalized):
+        return "RRN"
+    if _REAL_KR_PHONE_RE.fullmatch(normalized):
+        return "PHONE"
+    if BUSINESS_NO_RE.fullmatch(normalized):
+        return "BUSINESS_REGISTRATION"
+    if DRIVER_LICENSE_RE.fullmatch(normalized):
+        return "DRIVER_LICENSE"
+    if MILITARY_ID_RE.fullmatch(normalized):
+        return "MILITARY_ID"
+    if ACCOUNT_RE.fullmatch(normalized):
+        return "ACCOUNT"
+    return None
+
+
+def _cross_boundary_pii_match(
+    text: str,
+    ts: int,
+    te: int,
+    inner_digits: str,
+    block_id: Optional[str],
+    page: Optional[int],
+    *,
+    trusted: bool,
+) -> Optional[PIIMatch]:
+    ls = ts
+    limit_left = max(0, ts - 32)
+    while ls > limit_left and text[ls - 1] in _BOUNDARY_NUMERIC_CHARS:
+        ls -= 1
+    re_ = te
+    limit_right = min(len(text), te + 32)
+    while re_ < limit_right and text[re_] in _BOUNDARY_NUMERIC_CHARS:
+        re_ += 1
+
+    left = text[ls:ts]
+    right = text[te:re_]
+    left_has_digit = any("0" <= c <= "9" for c in left)
+    right_has_digit = any("0" <= c <= "9" for c in right)
+
+    if left_has_digit and right_has_digit:
+        candidate = (left + inner_digits + right).replace("–", "-")
+        if not re.fullmatch(r"(?:19|20)\d{2}[-.]\d{1,2}[-.]\d{1,2}", candidate):
+            kind = _match_bridged_numeric_pii(candidate)
+            if kind is None and PHONE_NORMALIZED_RE.fullmatch(candidate):
+                kind = "PHONE"
+            return PIIMatch(
+                kind or "PII",
+                text[ls:re_],
+                ls,
+                re_,
+                block_id,
+                page,
+                0.95,
+                "토큰 경계 양측 숫자 결합",
+            )
+
+    if left_has_digit or right_has_digit:
+        candidate = left + inner_digits + right
+        kind = _match_bridged_numeric_pii(candidate)
+        if kind is not None:
+            return PIIMatch(
+                kind,
+                text[ls:re_],
+                ls,
+                re_,
+                block_id,
+                page,
+                0.95,
+                "토큰 경계 결합 개인정보",
+            )
+
+    # Check vehicle splicing immediately across a token: e.g. 12가[PERSON_001]3456
+    left_slice = text[max(0, ts - 5):ts]
+    right_slice = text[te:min(len(text), te + 6)]
+    vm_left = _VEHICLE_LEFT_RE.search(left_slice)
+    vm_right = _VEHICLE_RIGHT_RE.match(right_slice)
+    if vm_left and vm_right:
+        span_start = max(0, ts - 5) + vm_left.start()
+        span_end = te + vm_right.end()
+        return PIIMatch(
+            "VEHICLE",
+            text[span_start:span_end],
+            span_start,
+            span_end,
+            block_id,
+            page,
+            0.85,
+            "토큰 경계 차량번호 결합",
+        )
+
+    # For unattested tokens followed by horizontal space + phone body (e.g. [PHONE_010] 2468-1357)
+    if not trusted and not right_has_digit and te < len(text) and text[te] in " \t":
+        if re.fullmatch(r"(?:01[016789]|02|0[3-6][1-5]|070|080)", inner_digits):
+            ws_start = te
+            while ws_start < len(text) and text[ws_start] in " \t":
+                ws_start += 1
+            ws_end = ws_start
+            ws_limit = min(len(text), ws_start + 16)
+            while ws_end < ws_limit and text[ws_end] in "0123456789-–":
+                ws_end += 1
+            tail = text[ws_start:ws_end].replace("–", "-")
+            if tail and not re.fullmatch(r"(?:19|20)\d{2}-\d{1,2}-\d{1,2}", tail):
+                if _REAL_KR_PHONE_RE.fullmatch(f"{inner_digits}-{tail}"):
+                    return PIIMatch(
+                        "PHONE",
+                        text[ts:ws_end],
+                        ts,
+                        ws_end,
+                        block_id,
+                        page,
+                        0.9,
+                        "토큰 숫자-후행 전화번호 결합",
+                    )
+
+    return None
+
+
+def _pseudonym_analysis(
+    text: str,
+    *,
+    block_id: Optional[str] = None,
+    page: Optional[int] = None,
+    trusted_tokens: Optional[frozenset[str]] = None,
+) -> Tuple[List[Tuple[int, int]], List[PIIMatch]]:
+    """검증된 가명 토큰([KIND_NNN]) 구간과 토큰 경계 결합 PII 후보를 분리한다."""
+    safe_spans: List[Tuple[int, int]] = []
+    boundary_matches: List[PIIMatch] = []
+    for match in PSEUDONYM_TOKEN_RE.finditer(text):
+        ts, te = match.span()
+        bare = match.group(0)[1:-1]
+        inner_digits = bare[-3:]
+        is_trusted = trusted_tokens is not None and bare in trusted_tokens
+        cross_match = _cross_boundary_pii_match(
+            text, ts, te, inner_digits, block_id, page, trusted=is_trusted,
+        )
+        if cross_match is not None:
+            boundary_matches.append(cross_match)
+            continue
+        if trusted_tokens is not None and not is_trusted:
+            continue
+        safe_spans.append((ts, te))
+    return safe_spans, boundary_matches
+
+
 def _pseudonym_spans(text: str) -> List[Tuple[int, int]]:
     """이미 가명 토큰([KIND_NNN])으로 가려진 구간 목록(정렬·비중첩)."""
-    return [m.span() for m in PSEUDONYM_TOKEN_RE.finditer(text)]
+    spans, _ = _pseudonym_analysis(text)
+    return spans
 
 
 def _overlaps_span(spans: List[Tuple[int, int]], start: int, end: int) -> bool:
@@ -901,14 +1058,23 @@ def is_lawyer_court_address_context(text: str, start: int, end: int) -> bool:
     return False
 
 
-def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = None) -> List[PIIMatch]:
+def detect(
+    text: str,
+    *,
+    block_id: Optional[str] = None,
+    page: Optional[int] = None,
+    _trusted_tokens: Optional[frozenset[str]] = None,
+) -> List[PIIMatch]:
     """텍스트에서 개인정보 후보를 찾는다."""
     matches: List[PIIMatch] = []
     if not text:
         return matches
 
     guard_spans = legal_identifier_spans(text)
-    token_spans = _pseudonym_spans(text)
+    token_spans, boundary_matches = _pseudonym_analysis(
+        text, block_id=block_id, page=page, trusted_tokens=_trusted_tokens,
+    )
+    matches.extend(boundary_matches)
     contact_view, contact_source_positions = _normalise_contact_view(text, token_spans=token_spans)
     matches.extend(
         _contact_matches(

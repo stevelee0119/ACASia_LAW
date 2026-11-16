@@ -914,7 +914,7 @@ def _answer_provider(answer) -> str:
 
 
 async def _retry_truncated_singly(router: Any, replies: List[Any], batch: List[Dict[str, Any]],
-                                  policy: ExternalAIPolicy, *, excerpt_pieces=None) -> List[Any]:
+                                  policy: ExternalAIPolicy, *, excerpt_pieces=None, item_tokens=None) -> List[Any]:
     if len(batch) < 2:
         return []
     providers = [p for p in (_answer_provider(a) for a in replies) if p]
@@ -927,6 +927,9 @@ async def _retry_truncated_singly(router: Any, replies: List[Any], batch: List[D
             single = LLMRequest(system=_OPINION_SYSTEM, user=json.dumps({"items": [item]}, ensure_ascii=False),
                                 temperature=0.1, max_tokens=4096, schema=_OPINION_SCHEMA,
                                 input_contract="argument_review_v1")
+            if item_tokens is not None:
+                from packages.llm_router.token_attestation import bind_masked_tokens
+                single = bind_masked_tokens(single, item_tokens.get(item['item_id'], ()))
             if excerpt_pieces is not None:
                 from packages.llm_router.excerpt_source import bind_argument_excerpts
                 single = bind_argument_excerpts(single, (excerpt_pieces[item['item_id']],))
@@ -948,9 +951,14 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
     from packages.llm_router.router import failure_summary
 
     hide = mask or (lambda text: text)
-    from packages.common.source_trace import render_argument_context
+    from packages.common.source_trace import _ModelInputRenderer, render_argument_context
     from packages.llm_router.excerpt_source import bind_argument_excerpts
+    from packages.llm_router.token_attestation import bind_masked_tokens
+
     excerpt_pieces = {}
+    use_renderer = type(hide) is _ModelInputRenderer
+    attach_attestation = use_renderer and not hide._is_original() and hide._uses_real_store()
+    item_tokens: Dict[int, set[str]] = {}
 
     # TK-138 관련 권위 판례 제공 목록 및 사건번호 집합 구성 (P4, P6, U3)
     precedents = (related_authorities or {}).get("precedents", [])
@@ -965,45 +973,71 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
                 provided_case_numbers.add(str(cno).replace(" ", ""))
 
     precedent_context_str = ""
+    precedent_tokens: set[str] = set()
     if precedents:
         prec_lines = []
         for p in precedents[:3]:
             kind_str = f" {p['case_kind']}" if p.get("case_kind") else ""
             summary_str = f": {p['summary'][:150]}" if p.get("summary") else ""
             prec_lines.append(f"- {p['case_number']} ({p['court']}{kind_str}){summary_str}")
-        precedent_context_str = "\n".join(prec_lines)
+        raw_prec = "\n".join(prec_lines)
+        precedent_context_str = hide.mask_tracked(raw_prec, precedent_tokens) if use_renderer else hide(raw_prec)
 
     def context_for(index, item):
         raw_ctx = item.get("evaluation_context") or item.get("context") or ""
-        rendered, piece = render_argument_context(hide, raw_ctx)
+        tokens = item_tokens.setdefault(index, set())
+        if use_renderer:
+            rendered, piece = render_argument_context(hide, raw_ctx, tokens=tokens)
+        else:
+            rendered, piece = render_argument_context(hide, raw_ctx)
         excerpt_pieces[index] = piece
         return rendered
-    items = [{
-        "item_id": index,
-        "page": item["citation"].page or 1,
-        "cited_case": hide(item["citation"].raw_text),
-        "확인 상태": _BASIS_LABEL.get(item.get("basis", "UNCONFIRMED"), _BASIS_LABEL["UNCONFIRMED"]),
-        "surrounding_context_and_claim": context_for(index, item),
-        **({"관련 권위 판례(참고)": hide(precedent_context_str)} if precedent_context_str else {}),
-        **({"원문 대조(어절 단위, 원문 기준)": hide(item["quote_diff"])} if item.get("quote_diff") else {}),
-    } for index, item in enumerate(unverified_cases, 1)]
+
+    def mask_field(index: int, raw_text: str) -> str:
+        tokens = item_tokens.setdefault(index, set())
+        return hide.mask_tracked(raw_text, tokens) if use_renderer else hide(raw_text)
+
+    items = []
+    for index, item in enumerate(unverified_cases, 1):
+        entry = {
+            "item_id": index,
+            "page": item["citation"].page or 1,
+            "cited_case": mask_field(index, item["citation"].raw_text),
+            "확인 상태": _BASIS_LABEL.get(item.get("basis", "UNCONFIRMED"), _BASIS_LABEL["UNCONFIRMED"]),
+            "surrounding_context_and_claim": context_for(index, item),
+        }
+        if precedent_context_str:
+            entry["관련 권위 판례(참고)"] = precedent_context_str
+            item_tokens.setdefault(index, set()).update(precedent_tokens)
+        if item.get("quote_diff"):
+            entry["원문 대조(어절 단위, 원문 기준)"] = mask_field(index, item["quote_diff"])
+        items.append(entry)
     # 한 번에 모두 물으면 인용이 많을 때 응답이 출력 한도에서 잘린다. 한국어 JSON은
     # 공급자마다 토큰 사용량이 달라, 잘리는 모델만 교차검증에서 빠졌다.
     answers = []
     for start in range(0, len(items), _OPINION_BATCH):
+        batch = items[start:start + _OPINION_BATCH]
         request = LLMRequest(system=_OPINION_SYSTEM,
-                             user=json.dumps({"items": items[start:start + _OPINION_BATCH]}, ensure_ascii=False),
+                             user=json.dumps({"items": batch}, ensure_ascii=False),
                              temperature=0.1, max_tokens=4096, schema=_OPINION_SCHEMA,
                              input_contract="argument_review_v1")
+        if attach_attestation:
+            batch_tokens: set[str] = set()
+            for b_item in batch:
+                batch_tokens.update(item_tokens.get(b_item["item_id"], ()))
+            request = bind_masked_tokens(request, batch_tokens)
         request = bind_argument_excerpts(request, tuple(excerpt_pieces[item['item_id']]
-                                                       for item in items[start:start + _OPINION_BATCH]))
+                                                       for item in batch))
         try:
-            batch = items[start:start + _OPINION_BATCH]
             replies = await router.consult_all(LLMRole.PRIMARY_REASONER, request, policy=policy,
                                                expected_task="법률 주장 타당성 검토")
             answers += replies
             # 2건 묶음도 출력 한도에서 잘린 공급자(0.9.8 실제 실행 1건)에는 그 공급자에게만 1건씩 다시 묻는다.
-            answers += await _retry_truncated_singly(router, replies, batch, policy, excerpt_pieces=excerpt_pieces)
+            answers += await _retry_truncated_singly(
+                router, replies, batch, policy,
+                excerpt_pieces=excerpt_pieces,
+                item_tokens=item_tokens if attach_attestation else None,
+            )
         except Exception as exc:  # 참고 의견이 없어도 판정은 이미 끝났다.
             result.ai_summary = f"AI 교차검토를 수행하지 못함({type(exc).__name__})."
             return
