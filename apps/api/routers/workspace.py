@@ -364,6 +364,9 @@ def external_prompt_texts(project_id: str, payload: ExternalPromptTexts, session
         raise HTTPException(403, "이 프로젝트는 외부 AI 전송을 허용하지 않습니다")
     if policy == "ORIGINAL":
         return {"policy": policy, "texts": payload.texts}
-    from packages.pii_engine import PIIEngine, PseudonymStore
+    from packages.pii_engine import PIIEngine, PseudonymSequenceLimitError, PseudonymStore
     engine = PIIEngine(PseudonymStore(project_id=project_id))
-    return {"policy": "MASKED", "texts": [engine.mask_text(text).masked_text for text in payload.texts]}
+    try:
+        return {"policy": "MASKED", "texts": [engine.mask_text(text).masked_text for text in payload.texts]}
+    except PseudonymSequenceLimitError:
+        raise HTTPException(422, "가명 생성 상한(종류별 999건)을 초과하여 외부 AI 프롬프트 생성을 중단했습니다")

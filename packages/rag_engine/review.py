@@ -137,6 +137,7 @@ def validate_claim_request_payload(payload: Any) -> bool:
 
 def _match_citations_to_references(citations: list, sources: list) -> dict:
     """참고자료 본문과 인용(사건번호 또는 법령명+조) 간의 동일성 대조(U1)를 수행합니다."""
+    from . import relevance
     from .reference_binding import citation_excerpt, value
 
     matches = {}
@@ -150,10 +151,16 @@ def _match_citations_to_references(citations: list, sources: list) -> dict:
             excerpt = citation_excerpt(citation, source.get("text", ""))
             if not excerpt:
                 continue
+            fmt = source.get("format") or relevance.source_format(
+                source.get("title", ""), source.get("mime_type", ""))
             matches[cid] = {
                 "status": "SUPPORTED", "relationship": "SUPPORTS",
                 "source_id": source.get("source_id"), "source_title": source.get("title", ""),
-                "file_id": source.get("file_id", ""), "source_quote": excerpt,
+                "file_id": source.get("file_id", ""),
+                "source_format": fmt, "format": fmt,
+                "page": source.get("page"), "source_page": source.get("page"),
+                "start": source.get("start"),
+                "source_quote": excerpt,
                 "matched_authority": value(citation, "raw_text", ""),
             }
             break
@@ -186,6 +193,34 @@ def grounded_observations(parsed, document, sources, *, rejected=None):
         if item not in accepted:
             accepted.append(item)
     return accepted if accepted or not parsed["observations"] else None
+
+
+def _attach_observation_provenance(observations: list[dict], sources: list[dict]) -> list[dict]:
+    """모든 관찰 항목에 참고자료 파일 ID·제목·형식·쪽·시작 위치 출처를 부착한다."""
+    from . import relevance
+
+    by_id = {s.get("source_id"): s for s in sources if s.get("source_id")}
+    for obs in observations:
+        src = by_id.get(obs.get("source_id"))
+        if not src:
+            continue
+        fmt = src.get("format") or relevance.source_format(
+            src.get("title", ""), src.get("mime_type", ""))
+        obs.setdefault("file_id", src.get("file_id", ""))
+        obs.setdefault("source_title", src.get("title", ""))
+        if fmt:
+            obs.setdefault("source_format", fmt)
+        if src.get("page") is not None:
+            obs.setdefault("source_page", src.get("page"))
+        if src.get("start") is not None:
+            obs.setdefault("source_start", src.get("start"))
+        if src.get("sheet"):
+            obs.setdefault("source_sheet", src.get("sheet"))
+        if src.get("row") is not None:
+            obs.setdefault("source_row", src.get("row"))
+        if src.get("source_cell_range"):
+            obs.setdefault("source_cell_range", src.get("source_cell_range"))
+    return observations
 
 
 def _check_exhibit_facts(document: str, sources: list) -> list:
@@ -274,512 +309,850 @@ def review_document(result, library, router, context, pii):
         return review
     review["document_truncated"] = bool(review["input"]["omitted_chars"])
     korean_profile = bool(getattr(getattr(router, "settings", None), "korean_law_review_profile", False))
-    selection = library.select(document + "\n" + "\n".join(context.requested_issues))
-    hits = selection.pop("sources")
-    # Direct local identifier queries are independent of document-level relevance.
-    search_citation = getattr(library, "search_citation", None)
-    if callable(search_citation):
-        seen = {(s.get("file_id"), s.get("page"), s.get("text")) for s in hits}
-        for citation in getattr(result, "citations", []) or []:
-            for source in search_citation(citation):
-                key = (source.get("file_id"), source.get("page"), source.get("text"))
-                if key not in seen:
-                    hits.append({**source, "source_id": "R" + str(len(hits) + 1)})
-                    seen.add(key)
-    selection["sources_used"] = [{k: h.get(k) for k in ("source_id", "file_id", "title", "folder_path", "page",
-                                                       "relevance", "text_coverage", "shared_terms",
-                                                       "structured_case_table", "sheet", "row",
-                                                       "source_cell_range")} for h in hits]
-    review["selection"] = selection
-    mask = (lambda value: value) if context.external_ai_policy == ExternalAIPolicy.ORIGINAL else (
-        lambda value: pii.mask_text(value).masked_text)
-    document = mask(document)
-    sources = [{**source, "text": mask(source["text"]), "title": mask(source["title"])} for source in hits]
-    review["sources"] = sources
+    from packages.common.config import get_settings
+    settings = get_settings()
+    claim_multisearch = bool(getattr(settings, "rag_claim_multisearch", True))
+    max_claims = getattr(settings, "rag_claim_max_per_document", 30)
     eligible = [c for c in getattr(result, "claims", []) if c.get("type") not in ("DOCUMENT_META", "ADVERSARIAL_INSTRUCTION")]
-    review["claim_coverage"] = {"eligible_claims": len(eligible), "linked_claims": 0,
-        "unreviewed": [{"claim_id": c.get("claim_id"), "reason": "NO_GROUNDED_COMPARISON"} for c in eligible],
-        "all_claims_verified": False}
-    from .contract_facts import review_contract_calculations
-    review["contract_review"] = review_contract_calculations(document, sources)
-    review["coverage"] = selection.get("coverage")
     citations = getattr(result, "citations", []) or []
     citation_by_id = {getattr(c, "citation_id", None) or (c.get("citation_id") if isinstance(c, dict) else None): c
                       for c in citations}
-    reference_case_matches = {}
-    table_info = getattr(library, "case_table_status", lambda: {"status": "NO_CASE_TABLE", "candidates": [], "indexed_rows": 0})()
-    review["case_table_status"] = table_info.get("status", "NO_CASE_TABLE")
-    if table_info.get("candidates"):
-        review["case_table_candidates"] = table_info["candidates"]
 
-    has_tables = getattr(library, "has_case_tables", lambda: False)()
-    is_partial = table_info.get("status") in ("PARTIAL", "INDEXING", "QUARANTINED")
-    # 표가 색인되었거나, 후보가 부분/진행/격리 상태인 경우 사건번호 대조 수행 (TK-74 평가 측 조건 2)
-    if has_tables or (is_partial and citations):
+    from . import relevance
+
+    selection = library.select(document + "\n" + "\n".join(context.requested_issues))
+    hits = selection.pop("sources")
+    whole_doc_hits_count = len(hits)
+    # Direct local identifier queries are independent of document-level relevance.
+    search_citation = getattr(library, "search_citation", None)
+    seen = {(s.get("file_id"), s.get("page"), s.get("text")) for s in hits}
+    seen_fp_sid: dict[str, str] = {}
+    for h in hits:
+        fp_h = h.get("content_fingerprint") or relevance.content_fingerprint(h.get("text", ""))
+        if fp_h:
+            h.setdefault("content_fingerprint", fp_h)
+            if not h.get("duplicate_content"):
+                seen_fp_sid.setdefault(fp_h, h.get("source_id", ""))
+        if not h.get("format"):
+            h["format"] = relevance.source_format(h.get("title", ""), h.get("mime_type", ""))
+
+    def _append_hit(src: dict) -> bool:
+        key = (src.get("file_id"), src.get("page"), src.get("text"))
+        if key in seen:
+            return False
+        seen.add(key)
+        sid = "R" + str(len(hits) + 1)
+        fp_val = src.get("content_fingerprint") or relevance.content_fingerprint(src.get("text", ""))
+        fmt_val = src.get("format") or relevance.source_format(src.get("title", ""), src.get("mime_type", ""))
+        entry = {
+            **src,
+            "source_id": sid,
+            "format": fmt_val,
+            "content_fingerprint": fp_val,
+        }
+        if fp_val and fp_val in seen_fp_sid and not entry.get("duplicate_of_source_id"):
+            entry["duplicate_content"] = True
+            entry["duplicate_of_source_id"] = seen_fp_sid[fp_val]
+        elif fp_val and not entry.get("duplicate_content"):
+            seen_fp_sid.setdefault(fp_val, sid)
+        hits.append(entry)
+        return True
+
+    if callable(search_citation):
         for citation in citations:
-            cid = getattr(citation, "citation_id", None) or (citation.get("citation_id") if isinstance(citation, dict) else None)
-            case_number = getattr(citation, "canonical_case_number", None) or getattr(citation, "case_number", None)
-            if isinstance(citation, dict):
-                case_number = case_number or citation.get("canonical_case_number") or citation.get("case_number")
-            if cid and case_number:
-                match = library.match_case(citation)
-                # 부분 색인 또는 미완료/격리 후보가 있을 때 미조회 사건 메타데이터 보강
-                if is_partial and match.get("status") == "NOT_IN_REFERENCE":
-                    match["scope"] = "QUARANTINED_RANGE" if table_info.get("status") == "QUARANTINED" else "PARTIAL_INDEX_RANGE"
-                    match["partial_indexed"] = True
-                reference_case_matches[cid] = match
-        if has_tables:
-            review["structured_case_search"] = {"enabled": True, "corpus": "ELIGIBLE_CASE_TABLE_ROWS",
-                                                 "holding_first": True}
-    review["reference_case_matches"] = reference_case_matches
-    if selection["decision"] == "INCOMPLETE_COVERAGE":
-        review.update(status="INCOMPLETE_COVERAGE", reason="RELEVANT_REFERENCES_NOT_FULLY_READ")
-        return review
-    if selection["reason"] == "NO_ELIGIBLE_REFERENCE":
-        # Nothing could be read from Drive: that is an unfinished check, not "no relevant material".
-        review["reason"] = "NO_READABLE_DRIVE_REFERENCE"
-        return review
-    if not sources:
-        # No relevant Drive material: the library is not used for this document (not proof of absence).
-        review.update(status="NOT_RELEVANT", reason="NO_RELEVANT_DRIVE_REFERENCE:" + selection["reason"])
-        return review
-    review["drive_used"] = True
+            for source in search_citation(citation):
+                _append_hit(source)
 
-    # 1. 인용 동일성 대조 (U1: 판례 사건번호 경계 일치, 법령명+조 근접 대조)
-    reference_matches = _match_citations_to_references(citations, sources)
-    review["reference_matches"] = reference_matches
-
-    # 2. 규정 조항 인용의 허용·금지 방향 대조는 규칙으로 한다. 모델이 없어도 결과를 남긴다.
-    from .provision_quotes import check_quoted_provisions
-    provision_obs = check_quoted_provisions(document, sources)
-    from .reference_binding import value
-    citation_observations = [{
-        "claim_quote": mask(value(citation_by_id[cid], "raw_text", "") or match["matched_authority"]),
-        "source_quote": match["source_quote"], "source_id": match["source_id"],
-        "relationship": "SUPPORTS", "method": "DETERMINISTIC_CITATION_COMPARISON",
-        "explanation": "전체 인용 식별자가 참고문헌 발췌에 있습니다. 법리의 타당성이나 공식 확인을 뜻하지 않습니다.",
-    } for cid, match in reference_matches.items()]
-    provision_obs.extend(citation_observations)
-    review["deterministic_observations"] = len(provision_obs)
-
-    # 3. QUICK 및 LOCAL_ONLY 분기 (외부 모델 호출 차단)
-    if (
-        context.profile == VerificationProfile.QUICK
-        or context.external_ai_policy == ExternalAIPolicy.LOCAL_ONLY
-        or not router.has_available_provider(policy=context.external_ai_policy)
-    ):
-        review.update(status="RETRIEVED_ONLY", reason="MODEL_NOT_AVAILABLE_OR_QUICK_PROFILE")
-        if provision_obs or reference_matches:
-            from .contract_facts import link_observations
-            masked_claims = [{**c, "text": mask(c.get("text", ""))} for c in getattr(result, "claims", [])]
-            review.update(observations=provision_obs, source_quotes_validated=True,
-                          issues=link_observations(provision_obs, sources, masked_claims))
-        return review
-
-    # 4. 문서 단위 배치 대조 (TK-68 개정 1: 비용 비증가 조건 C1~C3 충족)
-    max_subdivision_depth = 1
-
-    def _split_sources_into_batches(
-        src_list: List[Dict[str, Any]],
-        max_chars_limit: int = 6000,
-        max_items_limit: int = 6,
-    ) -> List[List[Dict[str, Any]]]:
-        """참고자료 발췌 글자 수 합계와 개수 상한에 기초하여 고르게 균등 분할한다. (한국어 주석)
-        - 서면9 실증 근거: 참고자료 11개 중 앞 6개 합계 6,885자 묶음은 잘렸으나, 5개 묶음은 첫 시도에 성공함.
-        - 서면 본문 길이와 무관하게, 참고자료 발췌 글자 수 합계(상한 6,000자) 및 개수(최대 6개)에 따라 균등 분할함.
-        - 1개짜리 꼬리 묶음 없이 고르게 분할함 (예: 11개 -> 4·4·3 분할로 각 묶음 4개 이하 및 6,000자 이하 충족).
-        - 작은 참고자료 6개(N<=6)는 1개 묶음으로 유지하여 호출 수 1회 보장 (C1).
-        """
-        if not src_list:
-            return []
-        n = len(src_list)
-        # k = 1부터 n까지 균등 분할을 시도하여 모든 묶음이 개수(<=6) 및 발췌 합계(<=6000)를 만족하는 최소 k 탐색
-        for k in range(1, n + 1):
-            base = n // k
-            rem = n % k
-            batches = []
-            idx = 0
-            valid = True
-            for i in range(k):
-                size = base + (1 if i < rem else 0)
-                batch = src_list[idx:idx + size]
-                idx += size
-                batch_chars = sum(len(s.get("text") or "") for s in batch)
-                if len(batch) > max_items_limit or batch_chars > max_chars_limit:
-                    valid = False
-                    break
-                batches.append(batch)
-            if valid:
-                return batches
-
-        # 단일 참고자료 > 6,000자 등 극단적 경우 대비 최대 개수(max_items_limit) 기준 균등 분할 fallback
-        min_k = math.ceil(n / max_items_limit)
-        base = n // min_k
-        rem = n % min_k
-        fallback_batches = []
-        idx = 0
-        for i in range(min_k):
-            size = base + (1 if i < rem else 0)
-            fallback_batches.append(src_list[idx:idx + size])
-            idx += size
-        return fallback_batches
-
-    initial_batches = _split_sources_into_batches(sources) or [sources]
-    evaluated_batches: List[List[Dict[str, Any]]] = []
-    all_observations = []
-    executed_any = False
-    accepted_any = False
-    outcome = None  # 변수 명시적 초기화 (한국어 주석)
-
-    # 큐 항목: (참고자료 묶음, 분할 깊이)
-    queue = [(b, 0) for b in initial_batches]
-    total_calls = 0
-    # C3 최악 상한: 전체 호출 수(재시도·분할 포함) <= 2 * ceil(N / 6)
-    max_total_calls = 2 * math.ceil(len(sources) / 6) if sources else 2
-
-    while queue and total_calls < max_total_calls:
-        s_batch, depth = queue.pop(0)
-        total_calls += 1
-
-        request = LLMRequest(
-            system=RAG_REVIEW_SYSTEM_PROMPT,
-            user=json.dumps({"document": document, "untrusted_references": [
-                {k: s[k] for k in ("source_id", "title", "text", "page")} for s in s_batch]}, ensure_ascii=False),
-            schema=ENVELOPE_SCHEMA, max_tokens=4000, metadata={"stage": "drive_rag_advisory", "batch": total_calls},
-            input_contract="reference_review_v1")
-        request = with_review_context(request, enabled=korean_profile, reference_date=getattr(context, "case_date", None))
-        # One selected provider; the existing router bounds each call and its transient retries.
-        batch_outcome = asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request,
-                                               policy=context.external_ai_policy, expected_task="참고자료 검토"))
-        outcome = batch_outcome
-        result.engine_data.setdefault("model_executions", []).extend(e.to_dict() for e in batch_outcome.executions)
-        executed_any |= bool(batch_outcome.executions or batch_outcome.used)
-
-        is_truncated = any("OUTPUT_TRUNCATED" in getattr(e, "error", "") for e in batch_outcome.executions)
-        remaining_calls = max_total_calls - total_calls
-
-        # TK-68: OUTPUT_TRUNCATED 발생 시 적응형 분할
-        # - 남은 호출 예산이 2회 이상이면 절반으로 분할(Adaptive Halving)
-        # - 남은 호출 예산이 1회뿐이면(N<=6 문서 등) 반으로 나누면 뒷부분이 누락되므로,
-        #   분할 대신 기존 대체 공급자 재시도(아래 failed 처리)로 넘어가 6개 전체를 온전히 대조함
-        if (not batch_outcome.used and is_truncated and len(s_batch) > 1
-                and depth < max_subdivision_depth and remaining_calls >= 2):
-            mid = len(s_batch) // 2
-            queue.insert(0, (s_batch[mid:], depth + 1))
-            queue.insert(0, (s_batch[:mid], depth + 1))
-            continue
-
-        failed = [e.provider for e in batch_outcome.executions if getattr(e, "provider", "") and not e.ok]
-        if not batch_outcome.used and failed:
-            if total_calls < max_total_calls:
-                total_calls += 1
-                retry = asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request, policy=context.external_ai_policy,
-                                               exclude=failed, expected_task="참고자료 검토"))
-                result.engine_data["model_executions"].extend(e.to_dict() for e in retry.executions)
-                executed_any |= bool(retry.executions or retry.used)
-                if retry.executions:
-                    review.setdefault("retried_after", []).extend(failed)
-                    outcome = retry
-                    batch_outcome = retry
-
-        batch_accepted = bool(batch_outcome.used and not batch_outcome.quarantined)
-        accepted_any |= batch_accepted
-        if batch_accepted:
-            evaluated_batches.append(s_batch)
-            if batch_outcome.parsed:
-                b_obs = grounded_observations(batch_outcome.parsed, document, s_batch,
-                                              rejected=review["rejected_observations"])
-                if b_obs:
-                    all_observations.extend(b_obs)
-
-    # C3 최악 상한 등에 도달하여 검토되지 못한 참고자료를 기록 (분모 보존)
-    reviewed_source_ids = {s.get("source_id") for b in evaluated_batches for s in b if s.get("source_id")}
-    unreviewed_sources = [s for s in sources if s.get("source_id") not in reviewed_source_ids]
-    if unreviewed_sources:
-        review["unreviewed_drive_sources"] = [s.get("source_id") for s in unreviewed_sources]
-
-    batches = evaluated_batches or initial_batches
-
-    # 5. 주장 단위 검색 및 대조 (F3b, 19b 5.2/6.1, TK-63 개정 1)
-    from packages.common.config import get_settings
-    settings = get_settings()
-    max_claims = getattr(settings, "rag_claim_max_per_document", 30)
-    budget_seconds = getattr(settings, "rag_claim_budget_seconds", 240.0)
-    budget_usd = getattr(settings, "rag_claim_budget_usd", 1.00)
-
-    claim_observations = []
-    unreviewed_claims_map = {}
-
-    sorted_claims, selection_rule = select_claims_for_review(eligible)
-
-    bounded_claims = []
-    exceeded_claims = []
-    halt_reason = None
-
-    start_mono = time.monotonic()
-    accumulated_cost_usd = 0.0
-    accumulated_uncertain_usd = 0.0
-
-    for idx, claim_obj in enumerate(sorted_claims):
-        # 다음 주장을 보내기 전에 개수·시간·비용 예산 확인 (TK-63 3.2절, 한국어 주석)
-        if len(bounded_claims) >= max_claims:
-            halt_reason = "COUNT"
-            exceeded_claims.extend(sorted_claims[idx:])
-            break
-        if (time.monotonic() - start_mono) >= budget_seconds:
-            halt_reason = "TIME"
-            exceeded_claims.extend(sorted_claims[idx:])
-            break
-        if budget_usd > 0 and accumulated_cost_usd >= budget_usd:
-            halt_reason = "COST"
-            exceeded_claims.extend(sorted_claims[idx:])
-            break
-
-        bounded_claims.append(claim_obj)
-
-        c_id = claim_obj.get("claim_id")
-        c_raw_text = claim_obj.get("text", "")
-        if not c_id:
-            continue
-
-        # 1) 질의어 생성 (한국어 핵심어 추출, 단일 문장 주장 보충 지원)
-        salient = _claim_salient_words(c_raw_text)
-
-        # 2) 문서 최초 선택과 독립된 전체 구조화 판례 코퍼스 주장별 검색.
-        #    인용이 있으면 정확 사건번호 행을 우선하고, 없으면 쟁점/요지로 찾는다.
-        claim_case_sources = []
-        if getattr(library, "has_case_tables", lambda: False)():
+    # TK-187: 전체 문서 select에서 누락된 소수 쟁점·무관 파일명 참고자료도 주장 단위 다중 경로 검색으로 회수한다.
+    claim_search_cache: dict[str, list[dict]] = {}
+    claim_hits_added = 0
+    paths_used: set[str] = set()
+    if hits:
+        paths_used.add("WHOLE_DOC_SELECT")
+    search_claim_fn = getattr(library, "search_claim", None)
+    if claim_multisearch and callable(search_claim_fn) and eligible:
+        pre_claims, _ = select_claims_for_review(eligible)
+        for claim_obj in pre_claims[:max_claims]:
+            c_id = claim_obj.get("claim_id")
+            c_raw_text = claim_obj.get("text", "")
+            if not c_id or not c_raw_text:
+                continue
             claim_citation_ids = claim_obj.get("citation_ids") or []
             if isinstance(claim_citation_ids, str):
                 claim_citation_ids = [claim_citation_ids]
-            linked_citations = [citation_by_id[cid] for cid in claim_citation_ids
-                                if cid in citation_by_id]
-            claim_case_sources = library.search_case_table(c_raw_text, citations=linked_citations, limit=5)
+            linked_citations = [citation_by_id[cid] for cid in claim_citation_ids if cid in citation_by_id]
+            c_hits = search_claim_fn(c_raw_text, citations=linked_citations, limit=5) or []
+            claim_search_cache[c_id] = c_hits
+            for source in c_hits:
+                for p in source.get("retrieval_paths") or []:
+                    paths_used.add(p)
+                if _append_hit(source):
+                    claim_hits_added += 1
 
-        # 3) 이미 읽은 sources와 행 단위 후보를 주장 핵심어 출현 빈도로 정렬
-        claim_sources = list(sources)
-        next_source_id = len(claim_sources) + 1
-        for case_source in claim_case_sources:
-            case_source = {**case_source, "source_id": f"R{next_source_id}",
-                           "text": mask(case_source.get("text", "")),
-                           "title": mask(case_source.get("title", ""))}
-            next_source_id += 1
-            claim_sources.append(case_source)
-            # Keep the source available to quote grounding and the final
-            # report.  The request itself still observes the existing
-            # five-item/eight-hundred-character envelope.
-            if not any(s.get("source_id") == case_source["source_id"] for s in sources):
-                sources.append(case_source)
-                review["sources"] = sources
-        if salient:
-            def _score_source(src):
-                stext = src.get("text", "")
-                return sum(1 for w in salient if w in stext)
-            scored = sorted(claim_sources, key=lambda src: (src.get("structured_case_table", False), _score_source(src)), reverse=True)
-            relevant_sources = scored[:5]
-        else:
-            relevant_sources = claim_sources[:5]
+    selection["sources_used"] = [{k: h.get(k) for k in ("source_id", "file_id", "title", "format",
+                                                       "folder_path", "page", "start",
+                                                       "relevance", "text_coverage", "shared_terms",
+                                                       "structured_case_table", "sheet", "row",
+                                                       "source_cell_range", "retrieval_paths",
+                                                       "claim_search_matched", "content_fingerprint",
+                                                       "duplicate_content", "duplicate_of_source_id")}
+                                 for h in hits]
+    review["selection"] = selection
+    from packages.pii_engine.engine import slice_token_spans
+    from packages.pii_engine.pseudonym import PseudonymSequenceLimitError, PseudonymStore
+    has_real_store = type(getattr(pii, "store", None)) is PseudonymStore
 
-        # 3) 발췌문 구성 (주장 관련 문맥 구간 추출, 최대 5개 항목, 항목당 800자 이내, 총합 4,000자 이내)
-        ref_sources_items = []
-        excerpt_pieces = []
-        total_chars = 0
-        for s in relevant_sources[:5]:
-            s_text = s.get("text", "")
-            if not s_text:
+    def _mask_with(value: str) -> tuple[str, tuple[tuple[int, int, str], ...]]:
+        if context.external_ai_policy == ExternalAIPolicy.ORIGINAL:
+            return value, ()
+        res = pii.mask_text(value)
+        return res.masked_text, tuple(getattr(res, "token_spans", ()) or ())
+
+    mask = lambda value: _mask_with(value)[0]
+    try:
+        document, doc_spans = _mask_with(document)
+        sources = []
+        source_text_spans_by_id: dict[str, tuple[tuple[int, int, str], ...]] = {}
+        source_title_spans_by_id: dict[str, tuple[tuple[int, int, str], ...]] = {}
+        for source in hits:
+            m_text, text_spans = _mask_with(source["text"])
+            m_title, title_spans = _mask_with(source["title"])
+            masked_src = {
+                **source,
+                "text": m_text,
+                "title": m_title,
+            }
+            sources.append(masked_src)
+            sid = str(masked_src.get("source_id", ""))
+            source_text_spans_by_id[sid] = text_spans
+            source_title_spans_by_id[sid] = title_spans
+        review["sources"] = sources
+        review["claim_coverage"] = {"eligible_claims": len(eligible), "linked_claims": 0,
+            "unreviewed": [{"claim_id": c.get("claim_id"), "reason": "NO_GROUNDED_COMPARISON"} for c in eligible],
+            "all_claims_verified": False}
+
+        candidate_provenance = []
+        for cand in selection.get("candidates", []):
+            candidate_provenance.append({
+                "stage": "whole_doc_select",
+                "file_id": cand.get("file_id", ""),
+                "title": mask(cand.get("title", "")),
+                "format": cand.get("format") or relevance.source_format(
+                    cand.get("title", ""), cand.get("mime_type", "")),
+                "page": cand.get("page"),
+                "pages_matched": cand.get("pages_matched", []),
+                "selected": bool(cand.get("selected")),
+            })
+        seen_claim_cand: set[tuple[str, Any, Any]] = set()
+        for c_hits in claim_search_cache.values():
+            for src in c_hits:
+                ck = (src.get("file_id", ""), src.get("page"), src.get("start"))
+                if ck in seen_claim_cand:
+                    continue
+                seen_claim_cand.add(ck)
+                candidate_provenance.append({
+                    "stage": "claim_search",
+                    "file_id": src.get("file_id", ""),
+                    "title": mask(src.get("title", "")),
+                    "format": src.get("format") or relevance.source_format(
+                        src.get("title", ""), src.get("mime_type", "")),
+                    "page": src.get("page"),
+                    "start": src.get("start"),
+                    "retrieval_paths": src.get("retrieval_paths", []),
+                    "duplicate_content": bool(src.get("duplicate_content", False)),
+                })
+
+        review["search_scope"] = {
+            "whole_doc_candidates": selection.get("candidates_total", 0),
+            "whole_doc_selected": whole_doc_hits_count,
+            "duplicate_chunks_suppressed": selection.get("duplicate_chunks_suppressed", 0),
+            "claim_search_enabled": claim_multisearch,
+            "hybrid_semantic_enabled": bool(getattr(settings, "rag_hybrid_semantic", True)),
+            "claim_queries_run": len(claim_search_cache),
+            "claim_hits_added": claim_hits_added,
+            "retrieval_paths_used": sorted(paths_used),
+            "sources_total": len(sources),
+            "claims_eligible": len(eligible),
+            "claims_evaluated": 0,
+            "candidate_provenance": candidate_provenance,
+        }
+        from .contract_facts import review_contract_calculations
+        review["contract_review"] = review_contract_calculations(document, sources)
+        review["coverage"] = selection.get("coverage")
+        reference_case_matches = {}
+        table_info = getattr(library, "case_table_status", lambda: {"status": "NO_CASE_TABLE", "candidates": [], "indexed_rows": 0})()
+        review["case_table_status"] = table_info.get("status", "NO_CASE_TABLE")
+        if table_info.get("candidates"):
+            review["case_table_candidates"] = table_info["candidates"]
+
+        has_tables = getattr(library, "has_case_tables", lambda: False)()
+        is_partial = table_info.get("status") in ("PARTIAL", "INDEXING", "QUARANTINED")
+        # 표가 색인되었거나, 후보가 부분/진행/격리 상태인 경우 사건번호 대조 수행 (TK-74 평가 측 조건 2)
+        if has_tables or (is_partial and citations):
+            for citation in citations:
+                cid = getattr(citation, "citation_id", None) or (citation.get("citation_id") if isinstance(citation, dict) else None)
+                case_number = getattr(citation, "canonical_case_number", None) or getattr(citation, "case_number", None)
+                if isinstance(citation, dict):
+                    case_number = case_number or citation.get("canonical_case_number") or citation.get("case_number")
+                if cid and case_number:
+                    match = library.match_case(citation)
+                    # 부분 색인 또는 미완료/격리 후보가 있을 때 미조회 사건 메타데이터 보강
+                    if is_partial and match.get("status") == "NOT_IN_REFERENCE":
+                        match["scope"] = "QUARANTINED_RANGE" if table_info.get("status") == "QUARANTINED" else "PARTIAL_INDEX_RANGE"
+                        match["partial_indexed"] = True
+                    reference_case_matches[cid] = match
+            if has_tables:
+                review["structured_case_search"] = {"enabled": True, "corpus": "ELIGIBLE_CASE_TABLE_ROWS",
+                                                     "holding_first": True}
+        review["reference_case_matches"] = reference_case_matches
+        if selection["decision"] == "INCOMPLETE_COVERAGE":
+            review.update(status="INCOMPLETE_COVERAGE", reason="RELEVANT_REFERENCES_NOT_FULLY_READ")
+            return review
+        if selection["reason"] == "NO_ELIGIBLE_REFERENCE":
+            # Nothing could be read from Drive: that is an unfinished check, not "no relevant material".
+            review["reason"] = "NO_READABLE_DRIVE_REFERENCE"
+            return review
+        if not sources:
+            # No relevant Drive material: the library is not used for this document (not proof of absence).
+            review.update(status="NOT_RELEVANT", reason="NO_RELEVANT_DRIVE_REFERENCE:" + selection["reason"])
+            return review
+        review["drive_used"] = True
+
+        # 1. 인용 동일성 대조 (U1: 판례 사건번호 경계 일치, 법령명+조 근접 대조)
+        reference_matches = _match_citations_to_references(citations, sources)
+        review["reference_matches"] = reference_matches
+
+        # 2. 규정 조항 인용의 허용·금지 방향 대조는 규칙으로 한다. 모델이 없어도 결과를 남긴다.
+        from .provision_quotes import check_quoted_provisions
+        provision_obs = check_quoted_provisions(document, sources)
+        from .reference_binding import value
+        citation_observations = [{
+            "citation_id": cid,
+            "claim_quote": mask(value(citation_by_id[cid], "raw_text", "") or match["matched_authority"]),
+            "source_quote": match["source_quote"], "source_id": match["source_id"],
+            "file_id": match.get("file_id", ""),
+            "source_title": match.get("source_title", ""),
+            "source_format": match.get("source_format", ""),
+            "source_page": match.get("source_page"),
+            "source_start": match.get("start"),
+            "relationship": "SUPPORTS", "method": "DETERMINISTIC_CITATION_COMPARISON",
+            "explanation": "전체 인용 식별자가 참고문헌 발췌에 있습니다. 법리의 타당성이나 공식 확인을 뜻하지 않습니다.",
+        } for cid, match in reference_matches.items()]
+        provision_obs.extend(citation_observations)
+        _attach_observation_provenance(provision_obs, sources)
+        review["deterministic_observations"] = len(provision_obs)
+
+        # 3. QUICK 및 LOCAL_ONLY 분기 (외부 모델 호출 차단)
+        if (
+            context.profile == VerificationProfile.QUICK
+            or context.external_ai_policy == ExternalAIPolicy.LOCAL_ONLY
+            or not router.has_available_provider(policy=context.external_ai_policy)
+        ):
+            review.update(status="RETRIEVED_ONLY", reason="MODEL_NOT_AVAILABLE_OR_QUICK_PROFILE")
+            if provision_obs or reference_matches:
+                from .contract_facts import link_observations
+                masked_claims = [{**c, "text": mask(c.get("text", ""))} for c in getattr(result, "claims", [])]
+                review.update(observations=provision_obs, source_quotes_validated=True,
+                              issues=link_observations(provision_obs, sources, masked_claims))
+            return review
+
+        # 4. 문서 단위 배치 대조 (TK-68 개정 1: 비용 비증가 조건 C1~C3 충족)
+        max_subdivision_depth = 1
+
+        def _split_sources_into_batches(
+            src_list: List[Dict[str, Any]],
+            max_chars_limit: int = 6000,
+            max_items_limit: int = 6,
+        ) -> List[List[Dict[str, Any]]]:
+            """참고자료 발췌 글자 수 합계와 개수 상한에 기초하여 고르게 균등 분할한다. (한국어 주석)
+            - 서면9 실증 근거: 참고자료 11개 중 앞 6개 합계 6,885자 묶음은 잘렸으나, 5개 묶음은 첫 시도에 성공함.
+            - 서면 본문 길이와 무관하게, 참고자료 발췌 글자 수 합계(상한 6,000자) 및 개수(최대 6개)에 따라 균등 분할함.
+            - 1개짜리 꼬리 묶음 없이 고르게 분할함 (예: 11개 -> 4·4·3 분할로 각 묶음 4개 이하 및 6,000자 이하 충족).
+            - 작은 참고자료 6개(N<=6)는 1개 묶음으로 유지하여 호출 수 1회 보장 (C1).
+            """
+            if not src_list:
+                return []
+            n = len(src_list)
+            # k = 1부터 n까지 균등 분할을 시도하여 모든 묶음이 개수(<=6) 및 발췌 합계(<=6000)를 만족하는 최소 k 탐색
+            for k in range(1, n + 1):
+                base = n // k
+                rem = n % k
+                batches = []
+                idx = 0
+                valid = True
+                for i in range(k):
+                    size = base + (1 if i < rem else 0)
+                    batch = src_list[idx:idx + size]
+                    idx += size
+                    batch_chars = sum(len(s.get("text") or "") for s in batch)
+                    if len(batch) > max_items_limit or batch_chars > max_chars_limit:
+                        valid = False
+                        break
+                    batches.append(batch)
+                if valid:
+                    return batches
+
+            # 단일 참고자료 > 6,000자 등 극단적 경우 대비 최대 개수(max_items_limit) 기준 균등 분할 fallback
+            min_k = math.ceil(n / max_items_limit)
+            base = n // min_k
+            rem = n % min_k
+            fallback_batches = []
+            idx = 0
+            for i in range(min_k):
+                size = base + (1 if i < rem else 0)
+                fallback_batches.append(src_list[idx:idx + size])
+                idx += size
+            return fallback_batches
+
+        initial_batches = _split_sources_into_batches(sources) or [sources]
+        evaluated_batches: List[List[Dict[str, Any]]] = []
+        all_observations = []
+        executed_any = False
+        accepted_any = False
+        outcome = None  # 변수 명시적 초기화 (한국어 주석)
+
+        # 큐 항목: (참고자료 묶음, 분할 깊이)
+        queue = [(b, 0) for b in initial_batches]
+        total_calls = 0
+        # C3 최악 상한: 전체 호출 수(재시도·분할 포함) <= 2 * ceil(N / 6)
+        max_total_calls = 2 * math.ceil(len(sources) / 6) if sources else 2
+
+        while queue and total_calls < max_total_calls:
+            s_batch, depth = queue.pop(0)
+            total_calls += 1
+
+            request = LLMRequest(
+                system=RAG_REVIEW_SYSTEM_PROMPT,
+                user=json.dumps({"document": document, "untrusted_references": [
+                    {k: s[k] for k in ("source_id", "title", "text", "page")} for s in s_batch]}, ensure_ascii=False),
+                schema=ENVELOPE_SCHEMA, max_tokens=4000, metadata={"stage": "drive_rag_advisory", "batch": total_calls},
+                input_contract="reference_review_v1")
+            if context.external_ai_policy != ExternalAIPolicy.ORIGINAL and has_real_store:
+                from packages.llm_router.token_attestation import bind_masked_tokens
+                batch_provenance = {"user.document": (document, doc_spans)}
+                for pos, s in enumerate(s_batch):
+                    sid = str(s.get("source_id", ""))
+                    batch_provenance[f"user.untrusted_references[{pos}].title"] = (
+                        s["title"], source_title_spans_by_id.get(sid, ()),
+                    )
+                    batch_provenance[f"user.untrusted_references[{pos}].text"] = (
+                        s["text"], source_text_spans_by_id.get(sid, ()),
+                    )
+                request = bind_masked_tokens(request, batch_provenance)
+            request = with_review_context(request, enabled=korean_profile, reference_date=getattr(context, "case_date", None))
+            # One selected provider; the existing router bounds each call and its transient retries.
+            batch_outcome = asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request,
+                                                   policy=context.external_ai_policy, expected_task="참고자료 검토"))
+            outcome = batch_outcome
+            result.engine_data.setdefault("model_executions", []).extend(e.to_dict() for e in batch_outcome.executions)
+            executed_any |= bool(batch_outcome.executions or batch_outcome.used)
+
+            is_truncated = any("OUTPUT_TRUNCATED" in getattr(e, "error", "") for e in batch_outcome.executions)
+            remaining_calls = max_total_calls - total_calls
+
+            # TK-68: OUTPUT_TRUNCATED 발생 시 적응형 분할
+            # - 남은 호출 예산이 2회 이상이면 절반으로 분할(Adaptive Halving)
+            # - 남은 호출 예산이 1회뿐이면(N<=6 문서 등) 반으로 나누면 뒷부분이 누락되므로,
+            #   분할 대신 기존 대체 공급자 재시도(아래 failed 처리)로 넘어가 6개 전체를 온전히 대조함
+            if (not batch_outcome.used and is_truncated and len(s_batch) > 1
+                    and depth < max_subdivision_depth and remaining_calls >= 2):
+                mid = len(s_batch) // 2
+                queue.insert(0, (s_batch[mid:], depth + 1))
+                queue.insert(0, (s_batch[:mid], depth + 1))
                 continue
 
-            # 핵심어가 출현하는 문맥 위치를 탐색하여 해당 위치 중심으로 발췌
-            best_pos = -1
-            if salient:
-                for w in salient:
-                    pos = s_text.find(w)
-                    if pos != -1:
-                        best_pos = pos
+            failed = [e.provider for e in batch_outcome.executions if getattr(e, "provider", "") and not e.ok]
+            if not batch_outcome.used and failed:
+                if total_calls < max_total_calls:
+                    total_calls += 1
+                    retry = asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request, policy=context.external_ai_policy,
+                                                   exclude=failed, expected_task="참고자료 검토"))
+                    result.engine_data["model_executions"].extend(e.to_dict() for e in retry.executions)
+                    executed_any |= bool(retry.executions or retry.used)
+                    if retry.executions:
+                        review.setdefault("retried_after", []).extend(failed)
+                        outcome = retry
+                        batch_outcome = retry
+
+            batch_accepted = bool(batch_outcome.used and not batch_outcome.quarantined)
+            accepted_any |= batch_accepted
+            if batch_accepted:
+                evaluated_batches.append(s_batch)
+                if batch_outcome.parsed:
+                    b_obs = grounded_observations(batch_outcome.parsed, document, s_batch,
+                                                  rejected=review["rejected_observations"])
+                    if b_obs:
+                        all_observations.extend(b_obs)
+
+        # C3 최악 상한 등에 도달하여 검토되지 못한 참고자료를 기록 (분모 보존)
+        reviewed_source_ids = {s.get("source_id") for b in evaluated_batches for s in b if s.get("source_id")}
+        unreviewed_sources = [s for s in sources if s.get("source_id") not in reviewed_source_ids]
+        if unreviewed_sources:
+            review["unreviewed_drive_sources"] = [s.get("source_id") for s in unreviewed_sources]
+
+        batches = evaluated_batches or initial_batches
+
+        # 5. 주장 단위 검색 및 대조 (F3b, 19b 5.2/6.1, TK-63 개정 1)
+        from packages.common.config import get_settings
+        settings = get_settings()
+        max_claims = getattr(settings, "rag_claim_max_per_document", 30)
+        budget_seconds = getattr(settings, "rag_claim_budget_seconds", 240.0)
+        budget_usd = getattr(settings, "rag_claim_budget_usd", 1.00)
+
+        claim_observations = []
+        unreviewed_claims_map = {}
+
+        sorted_claims, selection_rule = select_claims_for_review(eligible)
+
+        bounded_claims = []
+        exceeded_claims = []
+        halt_reason = None
+
+        start_mono = time.monotonic()
+        accumulated_cost_usd = 0.0
+        accumulated_uncertain_usd = 0.0
+
+        for idx, claim_obj in enumerate(sorted_claims):
+            # 다음 주장을 보내기 전에 개수·시간·비용 예산 확인 (TK-63 3.2절, 한국어 주석)
+            if len(bounded_claims) >= max_claims:
+                halt_reason = "COUNT"
+                exceeded_claims.extend(sorted_claims[idx:])
+                break
+            if (time.monotonic() - start_mono) >= budget_seconds:
+                halt_reason = "TIME"
+                exceeded_claims.extend(sorted_claims[idx:])
+                break
+            if budget_usd > 0 and accumulated_cost_usd >= budget_usd:
+                halt_reason = "COST"
+                exceeded_claims.extend(sorted_claims[idx:])
+                break
+
+            bounded_claims.append(claim_obj)
+
+            c_id = claim_obj.get("claim_id")
+            c_raw_text = claim_obj.get("text", "")
+            if not c_id:
+                continue
+
+            # 1) 질의어 생성 (한국어 핵심어 추출, 단일 문장 주장 보충 지원)
+            salient = _claim_salient_words(c_raw_text)
+
+            # 2) 문서 최초 선택과 독립된 전체 구조화 판례 코퍼스 + 일반 참고자료 주장별 검색
+            claim_citation_ids = claim_obj.get("citation_ids") or []
+            if isinstance(claim_citation_ids, str):
+                claim_citation_ids = [claim_citation_ids]
+            linked_citations = [citation_by_id[cid] for cid in claim_citation_ids if cid in citation_by_id]
+
+            claim_case_sources = []
+            if getattr(library, "has_case_tables", lambda: False)():
+                claim_case_sources = library.search_case_table(c_raw_text, citations=linked_citations, limit=5)
+
+            claim_prose_sources = []
+            if claim_multisearch and callable(search_claim_fn):
+                claim_prose_sources = claim_search_cache.get(c_id)
+                if claim_prose_sources is None:
+                    claim_prose_sources = search_claim_fn(c_raw_text, citations=linked_citations, limit=5) or []
+
+            # 3) 이미 읽은 sources와 주장별·행 단위 후보를 주장 적합성 순으로 정렬
+            claim_sources = list(sources)
+            existing_key_to_sid = {
+                (s.get("file_id"), s.get("page"), s.get("text")): s.get("source_id")
+                for s in sources
+            }
+            claim_direct_sids: set[str] = set()
+            claim_case_sids: set[str] = set()
+            next_source_id = len(claim_sources) + 1
+            for prose_src in claim_prose_sources:
+                p_text, p_text_spans = _mask_with(prose_src.get("text", ""))
+                p_title, p_title_spans = _mask_with(prose_src.get("title", ""))
+                key = (prose_src.get("file_id"), prose_src.get("page"), p_text)
+                sid = existing_key_to_sid.get(key)
+                if sid:
+                    claim_direct_sids.add(sid)
+                    continue
+                sid = f"R{next_source_id}"
+                next_source_id += 1
+                fp_p = prose_src.get("content_fingerprint") or relevance.content_fingerprint(p_text)
+                fmt_p = prose_src.get("format") or relevance.source_format(
+                    prose_src.get("title", ""), prose_src.get("mime_type", ""))
+                enriched = {
+                    **prose_src,
+                    "source_id": sid,
+                    "format": fmt_p,
+                    "content_fingerprint": fp_p,
+                    "text": p_text,
+                    "title": p_title,
+                }
+                if fp_p and fp_p in seen_fp_sid and not enriched.get("duplicate_of_source_id"):
+                    enriched["duplicate_content"] = True
+                    enriched["duplicate_of_source_id"] = seen_fp_sid[fp_p]
+                elif fp_p and not enriched.get("duplicate_content"):
+                    seen_fp_sid.setdefault(fp_p, sid)
+                source_text_spans_by_id[sid] = p_text_spans
+                source_title_spans_by_id[sid] = p_title_spans
+                existing_key_to_sid[key] = sid
+                claim_direct_sids.add(sid)
+                claim_sources.append(enriched)
+                sources.append(enriched)
+                review["sources"] = sources
+
+            for case_source in claim_case_sources:
+                sid = f"R{next_source_id}"
+                fmt_c = case_source.get("format") or relevance.source_format(
+                    case_source.get("title", ""), case_source.get("mime_type", ""))
+                c_text, c_text_spans = _mask_with(case_source.get("text", ""))
+                c_title, c_title_spans = _mask_with(case_source.get("title", ""))
+                case_source = {
+                    **case_source,
+                    "source_id": sid,
+                    "format": fmt_c,
+                    "content_fingerprint": case_source.get("content_fingerprint")
+                    or relevance.content_fingerprint(c_text),
+                    "text": c_text,
+                    "title": c_title,
+                }
+                next_source_id += 1
+                source_text_spans_by_id[sid] = c_text_spans
+                source_title_spans_by_id[sid] = c_title_spans
+                claim_case_sids.add(sid)
+                claim_sources.append(case_source)
+                # Keep the source available to quote grounding and the final
+                # report.  The request itself still observes the existing
+                # five-item/eight-hundred-character envelope.
+                if not any(s.get("source_id") == case_source["source_id"] for s in sources):
+                    sources.append(case_source)
+                    review["sources"] = sources
+
+            def _score_source(src):
+                stext = src.get("text", "")
+                salient_hits = sum(1 for w in salient if w in stext) if salient else 0
+                is_direct = src.get("source_id") in claim_direct_sids
+                is_case_hit = (
+                    (src.get("source_id") in claim_case_sids or bool(src.get("case_table_candidate")))
+                    and (bool(src.get("structured_case_table", False)) or salient_hits >= 2)
+                )
+                return (
+                    is_case_hit,
+                    is_direct,
+                    salient_hits,
+                    float(src.get("relevance") or 0.0),
+                )
+
+            ordered_claim_sources = (
+                sorted(claim_sources, key=_score_source, reverse=True)
+                if (salient or claim_direct_sids or claim_case_sids)
+                else claim_sources
+            )
+
+            # 동일 내용(content_fingerprint)·동일 기본 파일명 다형식 중복이 주장별 5슬롯을 독점하지 않도록 2단계 선별
+            relevant_sources = []
+            picked_sids: set[str] = set()
+            seen_c_fp: set[str] = set()
+            seen_c_base: set[str] = set()
+            seen_c_file: set[str] = set()
+            deferred_unique = []
+            deferred_dup = []
+
+            for s in ordered_claim_sources:
+                fp_s = s.get("content_fingerprint") or relevance.content_fingerprint(s.get("text", ""))
+                fid_s = s.get("file_id", "")
+                bkey_s = s.get("base_name") or (relevance.base_name(s.get("title", "")).lower() if s.get("title") else "") or fid_s
+                if s.get("duplicate_content") or (fp_s and fp_s in seen_c_fp):
+                    deferred_dup.append((s, fp_s))
+                    continue
+                if (bkey_s and bkey_s in seen_c_base) or (fid_s and fid_s in seen_c_file):
+                    deferred_unique.append((s, fp_s))
+                    continue
+                relevant_sources.append(s)
+                picked_sids.add(s.get("source_id", ""))
+                if fp_s:
+                    seen_c_fp.add(fp_s)
+                if bkey_s:
+                    seen_c_base.add(bkey_s)
+                if fid_s:
+                    seen_c_file.add(fid_s)
+                if len(relevant_sources) >= 5:
+                    break
+
+            if len(relevant_sources) < 5:
+                for s, fp_s in deferred_unique:
+                    if s.get("source_id", "") in picked_sids:
+                        continue
+                    if fp_s and fp_s in seen_c_fp:
+                        deferred_dup.append((s, fp_s))
+                        continue
+                    relevant_sources.append(s)
+                    picked_sids.add(s.get("source_id", ""))
+                    if fp_s:
+                        seen_c_fp.add(fp_s)
+                    if len(relevant_sources) >= 5:
                         break
 
-            if best_pos != -1:
-                # 매칭 키워드 주변 문맥을 포함한 800자 발췌 구간 산출 (기계적 선두 잘라내기 방지)
-                start_pos = max(0, best_pos - 200)
-                end_pos = min(len(s_text), start_pos + 800)
-                if end_pos - start_pos < 800 and len(s_text) > (end_pos - start_pos):
-                    start_pos = max(0, end_pos - 800)
-                s_excerpt = s_text[start_pos:end_pos]
-            else:
-                start_pos, end_pos = 0, min(len(s_text), 800)
-                s_excerpt = s_text[:800]
+            if len(relevant_sources) < 5:
+                for s, _fp_s in deferred_dup:
+                    if s.get("source_id", "") in picked_sids:
+                        continue
+                    relevant_sources.append(s)
+                    picked_sids.add(s.get("source_id", ""))
+                    if len(relevant_sources) >= 5:
+                        break
 
-            if total_chars + len(s_excerpt) > EXCERPT_CHARS:
-                break
-            total_chars += len(s_excerpt)
-            from packages.common.source_trace import capture_slice
-            excerpt_pieces.append(capture_slice(s_text, start_pos, end_pos, s_excerpt))
-            ref_sources_items.append({
-                "source_id": s.get("source_id", "R1"),
-                "text": s_excerpt,
-                "page": int(s.get("page", 1)),
+            # 3) 발췌문 구성 (주장 관련 문맥 구간 추출, 최대 5개 항목, 항목당 800자 이내, 총합 4,000자 이내)
+            ref_sources_items = []
+            excerpt_pieces = []
+            claim_provenance = {}
+            total_chars = 0
+            for s in relevant_sources[:5]:
+                s_text = s.get("text", "")
+                if not s_text:
+                    continue
+
+                # 핵심어가 출현하는 문맥 위치를 탐색하여 해당 위치 중심으로 발췌
+                best_pos = -1
+                if salient:
+                    for w in salient:
+                        pos = s_text.find(w)
+                        if pos != -1:
+                            best_pos = pos
+                            break
+
+                if best_pos != -1:
+                    # 매칭 키워드 주변 문맥을 포함한 800자 발췌 구간 산출 (기계적 선두 잘라내기 방지)
+                    start_pos = max(0, best_pos - 200)
+                    end_pos = min(len(s_text), start_pos + 800)
+                    if end_pos - start_pos < 800 and len(s_text) > (end_pos - start_pos):
+                        start_pos = max(0, end_pos - 800)
+                    s_excerpt = s_text[start_pos:end_pos]
+                else:
+                    start_pos, end_pos = 0, min(len(s_text), 800)
+                    s_excerpt = s_text[:800]
+
+                if total_chars + len(s_excerpt) > EXCERPT_CHARS:
+                    break
+                total_chars += len(s_excerpt)
+                from packages.common.source_trace import capture_slice
+                excerpt_pieces.append(capture_slice(s_text, start_pos, end_pos, s_excerpt))
+                sid = str(s.get("source_id", "R1"))
+                excerpt_spans = slice_token_spans(source_text_spans_by_id.get(sid, ()), start_pos, end_pos)
+                src_pos = len(ref_sources_items)
+                claim_provenance[f"user.reference_sources[{src_pos}].text"] = (s_excerpt, excerpt_spans)
+                ref_sources_items.append({
+                    "source_id": sid,
+                    "text": s_excerpt,
+                    "page": int(s.get("page", 1)),
+                })
+
+            if not ref_sources_items:
+                unreviewed_claims_map[c_id] = "NO_GROUNDED_COMPARISON"
+                continue
+
+            # 4) 요청 페이로드 조립 (평가 측 시험 합성 문자열 복사 제거, 지침은 LLMRequest.system 활용)
+            masked_claim_raw, raw_claim_spans = _mask_with(c_raw_text)
+            masked_claim_text = masked_claim_raw[:1000]
+            claim_text_spans = slice_token_spans(raw_claim_spans, 0, len(masked_claim_text))
+            claim_provenance["user.claim_text"] = (masked_claim_text, claim_text_spans)
+            claim_payload = {
+                "claim_id": c_id,
+                "claim_text": masked_claim_text,
+                "reference_sources": ref_sources_items,
+            }
+
+            # 5) 스키마 검증 (fail-closed)
+            if not validate_claim_request_payload(claim_payload):
+                unreviewed_claims_map[c_id] = "REASON_SCHEMA_VALIDATION_FAILED"
+                continue
+
+            # 6) 모델 요청 생성 및 라우터 호출 (주장당 1회 호출, 내부 retry 포함 공급자 요청 최대 3회)
+            claim_req = LLMRequest(
+                system=RAG_REVIEW_SYSTEM_PROMPT,
+                user=json.dumps(claim_payload, ensure_ascii=False),
+                schema=ENVELOPE_SCHEMA,
+                input_contract="claim_review_v1",
+                max_tokens=4000,
+                metadata={"stage": "claim_rag_advisory", "claim_id": c_id},
+            )
+            if context.external_ai_policy != ExternalAIPolicy.ORIGINAL and has_real_store:
+                from packages.llm_router.token_attestation import bind_masked_tokens
+                claim_req = bind_masked_tokens(claim_req, claim_provenance)
+            claim_req = with_review_context(claim_req, enabled=korean_profile, reference_date=getattr(context, "case_date", None))
+            from packages.llm_router.excerpt_source import bind_claim_excerpts
+            claim_req = bind_claim_excerpts(claim_req, excerpt_pieces)
+
+            claim_runner = router.run
+            if getattr(getattr(router, "settings", None), "llm_efficient_routing", False):
+                claim_runner = getattr(router, "run_any", router.run)
+            c_outcome = asyncio.run(claim_runner(
+                LLMRole.PRIMARY_REASONER, claim_req,
+                policy=context.external_ai_policy, expected_task="참고자료 검토"
+            ))
+            result.engine_data.setdefault("model_executions", []).extend(e.to_dict() for e in c_outcome.executions)
+            executed_any |= bool(c_outcome.executions or c_outcome.used)
+            if c_outcome and c_outcome.executions:
+                for e in c_outcome.executions:
+                    c_val = float(getattr(e, "cost_usd", 0.0) if hasattr(e, "cost_usd") else (e.get("cost_usd", 0.0) if isinstance(e, dict) else 0.0) or 0.0)
+                    c_st = str(getattr(e, "cost_status", "") if hasattr(e, "cost_status") else (e.get("cost_status", "") if isinstance(e, dict) else ""))
+                    accumulated_cost_usd += c_val
+                    if c_st == "RESERVED_UNCERTAIN":
+                        accumulated_uncertain_usd += c_val
+
+            c_accepted = bool(c_outcome.used and not c_outcome.quarantined)
+            accepted_any |= c_accepted
+
+            if c_accepted and c_outcome.parsed:
+                c_obs = grounded_observations(c_outcome.parsed, document, claim_sources,
+                                              rejected=review["rejected_observations"])
+                if c_obs:
+                    for o in c_obs:
+                        o["claim_id"] = c_id
+                        o["advisory_only"] = True
+                    claim_observations.extend(c_obs)
+                else:
+                    unreviewed_claims_map.setdefault(c_id, "NOT_LINKED_TO_SELECTED_EXCERPTS")
+            else:
+                unreviewed_claims_map.setdefault(c_id, "MODEL_UNAVAILABLE")
+
+        for ec in exceeded_claims:
+            ec_id = ec.get("claim_id")
+            if ec_id:
+                unreviewed_claims_map[ec_id] = "REASON_BUDGET_EXCEEDED"
+
+        # 서증 원문 대조 팩트체크 (갑3호증 취업규칙, 갑7호증 조사보고서, 갑10호증 노동위 판정서 등)
+        ex_obs = _check_exhibit_facts(document, sources)
+        if ex_obs:
+            all_observations.extend(ex_obs)
+        all_observations.extend(provision_obs)
+
+        review["model_executed"] = executed_any
+        review["model_response_accepted"] = accepted_any
+
+        _attach_observation_provenance(all_observations, sources)
+        _attach_observation_provenance(claim_observations, sources)
+
+        # 6. 결정적 중복 제거 (3.2절: 설명 길이 긴 쪽 우선, 같으면 주장 단위 우선)
+        def _merge_obs_provenance(winner: dict, other: dict) -> None:
+            if (other.get("file_id"), other.get("source_id")) == (winner.get("file_id"), winner.get("source_id")):
+                return
+            alt = {k: other.get(k) for k in ("source_id", "file_id", "source_title", "source_format", "source_page")
+                   if other.get(k) is not None and other.get(k) != ""}
+            if not alt:
+                return
+            existing_alts = winner.setdefault("alternate_sources", [])
+            if alt not in existing_alts:
+                existing_alts.append(alt)
+
+        obs_map = {}
+        for obs in all_observations:
+            key = (_clean_str(obs.get("claim_quote")), _clean_str(obs.get("source_quote")))
+            if key in obs_map:
+                existing = obs_map[key]
+                if len(obs.get("explanation", "")) > len(existing.get("explanation", "")):
+                    _merge_obs_provenance(obs, existing)
+                    obs_map[key] = obs
+                else:
+                    _merge_obs_provenance(existing, obs)
+            else:
+                obs_map[key] = obs
+
+        for c_obs in claim_observations:
+            key = (_clean_str(c_obs.get("claim_quote")), _clean_str(c_obs.get("source_quote")))
+            if key in obs_map:
+                existing = obs_map[key]
+                if len(c_obs.get("explanation", "")) >= len(existing.get("explanation", "")):
+                    _merge_obs_provenance(c_obs, existing)
+                    obs_map[key] = c_obs
+                else:
+                    _merge_obs_provenance(existing, c_obs)
+            else:
+                obs_map[key] = c_obs
+
+        observations = list(obs_map.values())
+
+        if not observations and not accepted_any:
+            review["reason"] = ("NO_GROUNDED_MODEL_ADVICE" if (outcome.used if outcome is not None else False) else
+                                "MODEL_RESPONSE_REJECTED" if review["model_executed"] else "MODEL_UNAVAILABLE")
+            return review
+
+        from .contract_facts import link_observations
+        masked_claims = [{**c, "text": mask(c.get("text", ""))} for c in getattr(result, "claims", [])]
+        review["issues"] = link_observations(observations, sources, masked_claims)
+        linked = {claim_id for issue in review["issues"] for claim_id in issue["claim_ids"] if claim_id}
+
+        # claim_coverage 업데이트 (T7 불변식: eligible_claims == linked_claims + len(unreviewed))
+        # linked는 대상 주장(eligible) id와의 교집합으로 집계하고, 미대조 목록은 대상 주장 전체에서 linked를 차감한 집합으로 단일화 (한국어 주석)
+        eligible_id_list = [c["claim_id"] for c in eligible if c.get("claim_id")]
+        eligible_set = set(eligible_id_list)
+        linked_ids = {cid for cid in linked if cid in eligible_set}
+
+        unreviewed_items = []
+        for cid in eligible_id_list:
+            if cid in linked_ids:
+                continue
+            reason = unreviewed_claims_map.get(cid, "NOT_LINKED_TO_SELECTED_EXCERPTS")
+            unreviewed_items.append({
+                "claim_id": cid,
+                "reason": reason,
             })
 
-        if not ref_sources_items:
-            unreviewed_claims_map[c_id] = "NO_GROUNDED_COMPARISON"
-            continue
-
-        # 4) 요청 페이로드 조립 (평가 측 시험 합성 문자열 복사 제거, 지침은 LLMRequest.system 활용)
-        masked_claim_text = mask(c_raw_text)[:1000]
-        claim_payload = {
-            "claim_id": c_id,
-            "claim_text": masked_claim_text,
-            "reference_sources": ref_sources_items,
+        review["claim_coverage"] = {
+            "eligible_claims": len(eligible_set),
+            "linked_claims": len(linked_ids),
+            "unreviewed": unreviewed_items,
+            "all_claims_verified": len(linked_ids) == len(eligible_set) and bool(eligible_set),
+            "selection_rule": selection_rule,
+            "budget": {
+                "max_per_document": max_claims,
+                "budget_seconds": budget_seconds,
+                "budget_usd": budget_usd,
+                "halt_reason": halt_reason,
+                "spent_usd": round(accumulated_cost_usd, 4),
+                "uncertain_usd": round(accumulated_uncertain_usd, 4),
+            },
         }
 
-        # 5) 스키마 검증 (fail-closed)
-        if not validate_claim_request_payload(claim_payload):
-            unreviewed_claims_map[c_id] = "REASON_SCHEMA_VALIDATION_FAILED"
-            continue
-
-        # 6) 모델 요청 생성 및 라우터 호출 (주장당 1회 호출, 내부 retry 포함 공급자 요청 최대 3회)
-        claim_req = LLMRequest(
-            system=RAG_REVIEW_SYSTEM_PROMPT,
-            user=json.dumps(claim_payload, ensure_ascii=False),
-            schema=ENVELOPE_SCHEMA,
-            input_contract="claim_review_v1",
-            max_tokens=4000,
-            metadata={"stage": "claim_rag_advisory", "claim_id": c_id},
-        )
-        claim_req = with_review_context(claim_req, enabled=korean_profile, reference_date=getattr(context, "case_date", None))
-        from packages.llm_router.excerpt_source import bind_claim_excerpts
-        claim_req = bind_claim_excerpts(claim_req, excerpt_pieces)
-
-        claim_runner = router.run
-        if getattr(getattr(router, "settings", None), "llm_efficient_routing", False):
-            claim_runner = getattr(router, "run_any", router.run)
-        c_outcome = asyncio.run(claim_runner(
-            LLMRole.PRIMARY_REASONER, claim_req,
-            policy=context.external_ai_policy, expected_task="참고자료 검토"
-        ))
-        result.engine_data.setdefault("model_executions", []).extend(e.to_dict() for e in c_outcome.executions)
-        executed_any |= bool(c_outcome.executions or c_outcome.used)
-        if c_outcome and c_outcome.executions:
-            for e in c_outcome.executions:
-                c_val = float(getattr(e, "cost_usd", 0.0) if hasattr(e, "cost_usd") else (e.get("cost_usd", 0.0) if isinstance(e, dict) else 0.0) or 0.0)
-                c_st = str(getattr(e, "cost_status", "") if hasattr(e, "cost_status") else (e.get("cost_status", "") if isinstance(e, dict) else ""))
-                accumulated_cost_usd += c_val
-                if c_st == "RESERVED_UNCERTAIN":
-                    accumulated_uncertain_usd += c_val
-
-        c_accepted = bool(c_outcome.used and not c_outcome.quarantined)
-        accepted_any |= c_accepted
-
-        if c_accepted and c_outcome.parsed:
-            c_obs = grounded_observations(c_outcome.parsed, document, claim_sources,
-                                          rejected=review["rejected_observations"])
-            if c_obs:
-                for o in c_obs:
-                    o["claim_id"] = c_id
-                    o["advisory_only"] = True
-                claim_observations.extend(c_obs)
-            else:
-                unreviewed_claims_map.setdefault(c_id, "NOT_LINKED_TO_SELECTED_EXCERPTS")
-        else:
-            unreviewed_claims_map.setdefault(c_id, "MODEL_UNAVAILABLE")
-
-    for ec in exceeded_claims:
-        ec_id = ec.get("claim_id")
-        if ec_id:
-            unreviewed_claims_map[ec_id] = "REASON_BUDGET_EXCEEDED"
-
-    # 서증 원문 대조 팩트체크 (갑3호증 취업규칙, 갑7호증 조사보고서, 갑10호증 노동위 판정서 등)
-    ex_obs = _check_exhibit_facts(document, sources)
-    if ex_obs:
-        all_observations.extend(ex_obs)
-    all_observations.extend(provision_obs)
-
-    review["model_executed"] = executed_any
-    review["model_response_accepted"] = accepted_any
-
-    # 6. 결정적 중복 제거 (3.2절: 설명 길이 긴 쪽 우선, 같으면 주장 단위 우선)
-    obs_map = {}
-    for obs in all_observations:
-        key = (obs.get("claim_quote"), obs.get("source_quote"))
-        obs_map[key] = obs
-
-    for c_obs in claim_observations:
-        key = (c_obs.get("claim_quote"), c_obs.get("source_quote"))
-        if key in obs_map:
-            existing = obs_map[key]
-            if len(c_obs.get("explanation", "")) >= len(existing.get("explanation", "")):
-                obs_map[key] = c_obs
-        else:
-            obs_map[key] = c_obs
-
-    observations = list(obs_map.values())
-
-    if not observations and not accepted_any:
-        review["reason"] = ("NO_GROUNDED_MODEL_ADVICE" if (outcome.used if outcome is not None else False) else
-                            "MODEL_RESPONSE_REJECTED" if review["model_executed"] else "MODEL_UNAVAILABLE")
-        return review
-
-    from .contract_facts import link_observations
-    masked_claims = [{**c, "text": mask(c.get("text", ""))} for c in getattr(result, "claims", [])]
-    review["issues"] = link_observations(observations, sources, masked_claims)
-    linked = {claim_id for issue in review["issues"] for claim_id in issue["claim_ids"] if claim_id}
-
-    # claim_coverage 업데이트 (T7 불변식: eligible_claims == linked_claims + len(unreviewed))
-    # linked는 대상 주장(eligible) id와의 교집합으로 집계하고, 미대조 목록은 대상 주장 전체에서 linked를 차감한 집합으로 단일화 (한국어 주석)
-    eligible_id_list = [c["claim_id"] for c in eligible if c.get("claim_id")]
-    eligible_set = set(eligible_id_list)
-    linked_ids = {cid for cid in linked if cid in eligible_set}
-
-    unreviewed_items = []
-    for cid in eligible_id_list:
-        if cid in linked_ids:
-            continue
-        reason = unreviewed_claims_map.get(cid, "NOT_LINKED_TO_SELECTED_EXCERPTS")
-        unreviewed_items.append({
-            "claim_id": cid,
-            "reason": reason,
+        review["search_scope"].update({
+            "sources_total": len(sources),
+            "claims_evaluated": len(bounded_claims),
+            "budget_halt_reason": halt_reason,
         })
-
-    review["claim_coverage"] = {
-        "eligible_claims": len(eligible_set),
-        "linked_claims": len(linked_ids),
-        "unreviewed": unreviewed_items,
-        "all_claims_verified": len(linked_ids) == len(eligible_set) and bool(eligible_set),
-        "selection_rule": selection_rule,
-        "budget": {
-            "max_per_document": max_claims,
-            "budget_seconds": budget_seconds,
-            "budget_usd": budget_usd,
-            "halt_reason": halt_reason,
-            "spent_usd": round(accumulated_cost_usd, 4),
-            "uncertain_usd": round(accumulated_uncertain_usd, 4),
-        },
-    }
-
-    review["batches_evaluated"] = len(batches)
-    review["total_sources_evaluated"] = len(sources)
-    review["observation_limit_reached"] = False
-    review["assessment_scope"] = "ALL_QUALIFIED_DRIVE_EXCERPTS_REVIEWED"
-    review["review_completed"] = (not review["rejected_observations"] and not review["document_truncated"])
-    review["comparison_completed"] = True
-    review["legal_binding_determined"] = False
-    review["authority_limitation"] = "내부 안내자료에 기초한 참고 의견이며, 공식 법령·상급 규정 확인 필요"
-    review["stages"] = {
-        "inventory_listed": bool(getattr(library, "summary", {}).get("status") in ("READY", "PARTIAL")),
-        "text_extracted": True,
-        "sources_selected": bool(sources),
-        "model_compared": True,
-        "quotes_verified": True,
-        "advisory_formed": bool(observations),
-        "legal_binding_determined": False,
-    }
-    if not observations:
-        review.update(status="REVIEWED_NO_ADVICE", reason="MODEL_RETURNED_NO_ADVICE_NOT_LEGAL_CLEARANCE")
+        review["batches_evaluated"] = len(batches)
+        review["total_sources_evaluated"] = len(sources)
+        review["observation_limit_reached"] = False
+        review["assessment_scope"] = "ALL_QUALIFIED_DRIVE_EXCERPTS_REVIEWED"
+        review["review_completed"] = (not review["rejected_observations"] and not review["document_truncated"])
+        review["comparison_completed"] = True
+        review["legal_binding_determined"] = False
+        review["authority_limitation"] = "내부 안내자료에 기초한 참고 의견이며, 공식 법령·상급 규정 확인 필요"
+        review["stages"] = {
+            "inventory_listed": bool(getattr(library, "summary", {}).get("status") in ("READY", "PARTIAL")),
+            "text_extracted": True,
+            "sources_selected": bool(sources),
+            "model_compared": True,
+            "quotes_verified": True,
+            "advisory_formed": bool(observations),
+            "legal_binding_determined": False,
+        }
+        if not observations:
+            review.update(status="REVIEWED_NO_ADVICE", reason="MODEL_RETURNED_NO_ADVICE_NOT_LEGAL_CLEARANCE")
+            return review
+        review.update(status="ADVISORY_REVIEWED", source_quotes_validated=True, observations=observations,
+                      reason="EXACT_QUOTES_CHECKED_NOT_ENTAILMENT_OR_LEGAL_VALIDITY")
         return review
-    review.update(status="ADVISORY_REVIEWED", source_quotes_validated=True, observations=observations,
-                  reason="EXACT_QUOTES_CHECKED_NOT_ENTAILMENT_OR_LEGAL_VALIDITY")
-    return review
-
+    except PseudonymSequenceLimitError:
+        review.update(
+            status="UNVERIFIED",
+            reason="PSEUDONYM_SEQUENCE_LIMIT_EXCEEDED",
+            sources=[],
+            observations=[],
+            issues=[],
+            rejected_observations=[],
+            contract_review={},
+            source_quotes_validated=False,
+            model_executed=False,
+            model_response_accepted=False,
+            review_completed=False,
+            comparison_completed=False,
+        )
+        return review
 
 # TK-174: Drive 대조가 끝나지 못한 실제 원인(review_completed=False의 두 조건)을 사람이 읽는 말로 적는다.
 def incomplete_reason(review) -> str:
@@ -818,6 +1191,12 @@ def report_lines(run_result):
         reasons = list(dict.fromkeys(filter(None, [item.get("reason"), *[
             i.get("reason") for i in library.get("issues", []) if i.get("file_id") == item.get("file_id")]])))
         coverage = f" / 텍스트 색인 {item.get('read_pages') or 0}/{item['pages']}쪽" if item.get("pages") else ""
+        if (
+            item.get("pages")
+            and item.get("completed_pages") is not None
+            and item.get("completed_pages") != (item.get("read_pages") or 0)
+        ):
+            coverage += f" (완독 검사 {item['completed_pages']}/{item['pages']}쪽)"
         missing = f" / 텍스트 미추출 쪽 {item['no_text_pages']}" if item.get("no_text_pages") else ""
         lines.append(f"자료별 처리: {item.get('folder_path', '')}/{item.get('name')} / "
                      f"{word(item.get('status'))} / {' · '.join(word(r) for r in reasons)}{coverage}{missing}")

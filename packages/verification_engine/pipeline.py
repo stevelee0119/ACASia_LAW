@@ -16,7 +16,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from packages.adversarial_engine import AdversarialScanner
 from packages.audit_engine import AuditChain
@@ -238,6 +238,7 @@ def reference_health(summary, documents, settings=None):
             "files_seen": summary.get("files_seen", 0), "files_indexed": summary.get("files_indexed", 0),
             "files_reused": summary.get("files_reused", 0),
             "duplicate_groups": len(summary.get("duplicates") or []),
+            "coverage_ledger": summary.get("coverage_ledger"),
             "sync_ms": diagnostics.get("elapsed_ms"), "documents": per_document}
 
 
@@ -521,8 +522,9 @@ class VerificationPipeline:
             issues = "\n".join(context.requested_issues)
             query = [sanitized_reading_text(d.normalized, d.findings)[0][:12000] + "\n" + issues
                      for d in result.documents if d.normalized]
-            emit(JobState.VERIFYING, "Drive 전수 목록·폴더·파일명으로 관련 자료 선정", 0.85)
+            emit(JobState.VERIFYING, "Drive 참고자료 전체 수집·색인 및 우선순위 정렬", 0.85)
             with manifest.stage("reference_sync", [], inputs=0, unit="참고자료") as stage:
+                references._default_collect_all = bool(getattr(self.settings, "rag_decoupled_collection", True))
                 references.sync(query=query)
                 stage.inputs = references.summary["files_seen"]
                 stage.note = references.summary["status"]
@@ -553,6 +555,7 @@ class VerificationPipeline:
                     if settings.rag_contradiction_promotion_enabled and review and review.get("observations") and document_result.normalized:
                         from packages.verification_engine.candidate_verifier import ModelCandidate, verify_rag_candidate
                         doc_text = document_result.normalized.visible_text
+                        masked_doc_text = None
                         sources = review.get("sources", [])
                         claims_by_id = {c.get("claim_id"): c for c in getattr(document_result, "claims", []) if isinstance(c, dict) and c.get("claim_id")}
 
@@ -592,10 +595,29 @@ class VerificationPipeline:
                                     claim_id=c_id,
                                     claim_text=c_text,
                                 )
+                                if rej and rej.get("reason") == "CLAIM_QUOTE_NOT_GROUNDED_IN_DOCUMENT" and context.external_ai_policy != ExternalAIPolicy.ORIGINAL:
+                                    if masked_doc_text is None:
+                                        masked_doc_text = pii.mask_text(doc_text).masked_text
+                                    f_masked, rej_masked = verify_rag_candidate(
+                                        candidate, masked_doc_text, sources,
+                                        document_id=document_result.document_id,
+                                        is_reference_contradiction=True,
+                                        claim_id=c_id,
+                                        claim_text=c_text,
+                                    )
+                                    if f_masked:
+                                        f, rej = f_masked, None
                                 if f:
                                     # 동일 주장(claim_id 없으면 정규화된 claim_quote) 및 동일 참고자료(source_id) 중복 합치기
                                     group_claim = c_id or " ".join(candidate.claim_quote.split())
                                     group_key = (group_claim, candidate.source_id or "")
+                                    prov_entry = {
+                                        "source_id": f.confidence_features.get("source_id"),
+                                        "file_id": f.confidence_features.get("file_id"),
+                                        "source_title": f.confidence_features.get("source_title"),
+                                        "source_format": f.confidence_features.get("source_format"),
+                                        "source_page": f.confidence_features.get("source_page"),
+                                    }
                                     if group_key in promoted_groups:
                                         existing_f = promoted_groups[group_key]
                                         # 설명 및 근거 병합
@@ -604,7 +626,11 @@ class VerificationPipeline:
                                         for ev in f.evidence:
                                             if not any(ev.excerpt == e.excerpt for e in existing_f.evidence):
                                                 existing_f.evidence.append(ev)
+                                        provs = existing_f.confidence_features.setdefault("source_provenances", [])
+                                        if prov_entry not in provs:
+                                            provs.append(prov_entry)
                                     else:
+                                        f.confidence_features["source_provenances"] = [prov_entry]
                                         promoted_groups[group_key] = f
                                 elif rej:
                                     review.setdefault("rejected_observations", []).append(rej)
@@ -616,6 +642,7 @@ class VerificationPipeline:
                         # 기존 TK-09 일반 후보 승격 경로
                         from packages.verification_engine.candidate_verifier import ModelCandidate, verify_rag_candidate
                         doc_text = document_result.normalized.visible_text
+                        masked_doc_text = None
                         sources = review.get("sources", [])
                         for obs in review.get("observations", []):
                             if obs.get("engine") == "exhibit_facts" or obs.get("source_type") == "deterministic":
@@ -633,6 +660,13 @@ class VerificationPipeline:
                                     model_name=obs.get("model_name", "rag_primary_reasoner"),
                                 )
                                 f, rej = verify_rag_candidate(candidate, doc_text, sources, document_id=document_result.document_id)
+                                if rej and rej.get("reason") == "CLAIM_QUOTE_NOT_GROUNDED_IN_DOCUMENT" and context.external_ai_policy != ExternalAIPolicy.ORIGINAL:
+                                    if masked_doc_text is None:
+                                        masked_doc_text = pii.mask_text(doc_text).masked_text
+                                    f_masked, rej_masked = verify_rag_candidate(
+                                        candidate, masked_doc_text, sources, document_id=document_result.document_id)
+                                    if f_masked:
+                                        f, rej = f_masked, None
                                 if f:
                                     document_result.findings.append(f)
                                 elif rej:
@@ -1460,6 +1494,127 @@ class VerificationPipeline:
             return None
         return await self.router.cascade(**kwargs)
 
+    def _recheck_stage_quotes(
+        self,
+        outcome,
+        *,
+        grounding: Dict[str, Any],
+        segments: List[str],
+        official_doc_evidence: Dict[str, Any],
+        input_cap: int,
+        policy: ExternalAIPolicy,
+        attested_tokens: Any = None,
+        opinion_text: str = "",
+        segments_meta: Sequence[Dict[str, Any]] = (),
+    ) -> Dict[str, Any]:
+        """빈 인용·표지 태그·미완결 조각·미발견 인용으로 근거가 부족한 모델 단계에 한해 유한(단계당 최대 1회) 인용 재확인을 수행한다."""
+        if not hasattr(self.router, "run"):
+            return {"attempted": False, "recovered": False, "stages": []}
+        from packages.common.enums import LLMRole
+        from packages.legal_engine.evidence_pack import validate_quotes_by_stage
+        from packages.llm_router.cascade_source import build_cascade_request
+
+        stage_roles = {
+            "primary": LLMRole.PRIMARY_REASONER,
+            "critic": LLMRole.INDEPENDENT_CRITIC,
+            "grounder": LLMRole.WEB_GROUNDER,
+        }
+        # stages와 stage_checks는 used=True이고 verdict가 dict인 단계 순서를 공유한다.
+        used_stages = [
+            s for s in outcome.stages
+            if s.get("used") and isinstance(s.get("verdict"), dict)
+        ]
+
+        # 각 역할의 성공 실행 공급자를 찾아 같은 공급자에게 재확인을 요청한다.
+        role_providers: Dict[str, str] = {}
+        for ex in outcome.executions:
+            if getattr(ex, "ok", False) and getattr(ex, "provider", ""):
+                role_providers[str(getattr(ex, "role", ""))] = str(ex.provider)
+
+        assertive_statuses = {"VERIFIED", "SUPPORTED", "PARTIALLY_VERIFIED", "CONTRADICTED", "DISTORTED"}
+        rechecked: List[Dict[str, Any]] = []
+        any_recovered = False
+        providers_map = getattr(self.router, "providers", None)
+        for stage, sc in zip(used_stages, grounding.get("stage_checks", [])):
+            if stage.get("name") not in stage_roles:
+                continue
+            verdict = stage["verdict"]
+            status = str(verdict.get("status", "")).upper()
+            if status not in assertive_statuses:
+                continue
+            if sc.get("all_valid"):
+                continue
+            if hasattr(self.router, "budget_exhausted") and self.router.budget_exhausted():
+                rechecked.append({"stage": stage["name"], "attempted": False, "reason": "BUDGET_EXHAUSTED"})
+                continue
+
+            failure_codes = sorted({c["reason"] for c in sc.get("checks", []) if not c.get("valid")})
+            if sc.get("empty_quotes"):
+                failure_codes.append("NO_QUOTES_PROVIDED")
+            recheck_question = (
+                f"직전 응답의 evidence_quotes 검증이 다음 사유로 통과하지 못했습니다({', '.join(failure_codes) or 'UNGROUNDED_QUOTES'}). "
+                "주장 대조 결과를 다시 확인하되, evidence_quotes에는 반드시 제공된 source_excerpt의 "
+                "한 구간 본문 안에 있는 완결된 실제 판결 문장 전체(문장 시작부터 종결부호까지)만 글자 그대로 복사해 넣으십시오. "
+                "문장 일부 조각·제목·번호 표지·'[구간 S...]' 표지·'…(공식 원문 일부 생략)…' 생략 표시는 절대 넣지 마십시오. "
+                "직접 뒷받침·반박 문장을 찾을 수 없으면 status를 UNVERIFIED로, evidence_quotes를 []로 답하십시오."
+            )
+            if _request_bytes(recheck_question, official_doc_evidence) > input_cap:
+                rechecked.append({"stage": stage["name"], "attempted": False, "reason": "INPUT_CAP_EXCEEDED"})
+                continue
+
+            stage_name = str(stage["name"])
+            role = stage_roles[stage_name]
+            target_provider = role_providers.get(str(role))
+            exclude = (
+                [p for p in providers_map if p != target_provider]
+                if isinstance(providers_map, dict) and target_provider
+                else []
+            )
+            req = build_cascade_request(
+                stage_name,
+                recheck_question,
+                official_doc_evidence,
+                primary_verdict={} if stage_name == "critic" else None,
+            )
+            if attested_tokens is not None:
+                from packages.llm_router.router import bind_cascade_provenance
+
+                req = bind_cascade_provenance(
+                    req,
+                    question=recheck_question,
+                    evidence=official_doc_evidence,
+                    attested=attested_tokens,
+                )
+            retry_res = asyncio.run(self.router.run(
+                role,
+                req,
+                policy=policy,
+                exclude=exclude,
+                expected_task=recheck_question,
+            ))
+            outcome.executions.extend(getattr(retry_res, "executions", []) or [])
+            stage["initial_verdict"] = dict(verdict)
+            if getattr(retry_res, "used", False) and isinstance(getattr(retry_res, "parsed", None), dict):
+                stage["verdict"] = retry_res.parsed
+                stage_grounding = validate_quotes_by_stage(
+                    [stage],
+                    segments,
+                    opinion_text=opinion_text,
+                    segments_meta=segments_meta,
+                )
+                recovered = bool(stage_grounding["grounded"])
+                if recovered:
+                    any_recovered = True
+                stage["quote_recheck"] = {"attempted": True, "recovered": recovered, "failure_codes": failure_codes}
+                rechecked.append({"stage": stage_name, "attempted": True, "recovered": recovered,
+                                  "failure_codes": failure_codes})
+            else:
+                stage["quote_recheck"] = {"attempted": True, "recovered": False, "failure_codes": failure_codes,
+                                          "note": str(getattr(retry_res, "note", ""))}
+                rechecked.append({"stage": stage_name, "attempted": True, "recovered": False,
+                                  "failure_codes": failure_codes})
+        return {"attempted": any(r.get("attempted") for r in rechecked), "recovered": any_recovered, "stages": rechecked}
+
     def _semantic_review(self, result, citations, context, pii, *, progress=None):
         """Source-grounded model advice never replaces deterministic findings."""
         by_id = {c.citation_id: c for c in citations}
@@ -1486,7 +1641,8 @@ class VerificationPipeline:
                 continue
             # 전문 앞부분을 자르지 않고, 전문 전체에서 인용 대응 구간·주장 관련 문장·판시사항을 먼저 고른다(TK-131).
             from packages.legal_engine.evidence_pack import (DEFAULT_BUDGET, build_evidence_pack,
-                                                             quote_in_one_segment, render)
+                                                             quote_in_one_segment, render_sections,
+                                                             validate_quotes_by_stage)
             # 격리 문서는 지시문 구간을 뺀 인용 주변 문장만 보낸다(v6 P3).
             document_text = strip_injections(citation.context[:8000], instruction_texts)
             # 공급자 입력 한도 안에 들도록 발췌 예산을 정한다(TK-141). 기본 한도에서는 기존 예산(24,000자) 그대로다.
@@ -1508,36 +1664,75 @@ class VerificationPipeline:
                                              f"(공급자 입력 한도 {input_cap}에 맞춘 발췌 예산 {pack_budget}자)")})
                 continue
             projected = None
+            attested_tokens = None
             if context.external_ai_policy != ExternalAIPolicy.ORIGINAL:
                 # 전문 전체를 한 번 가리고 구간을 옮긴다. 뒤의 맥락 검토가 전문을 가려 다시 대조할 때와 결과가 같다.
-                from packages.legal_engine.evidence_pack import project_masked
-                opinion_text, projected = project_masked(str(official["full_text"]),
-                                                         pii.mask_text(str(official["full_text"])), pack["segments"])
-                segments = [seg["text"] for seg in projected]
-                document_text = pii.mask_text(document_text).masked_text
+                from packages.legal_engine.evidence_pack import project_masked, projected_token_spans
+                from packages.pii_engine.pseudonym import PseudonymSequenceLimitError, PseudonymStore
+                try:
+                    official_mask = pii.mask_text(str(official["full_text"]))
+                    opinion_text, projected = project_masked(str(official["full_text"]), official_mask, pack["segments"])
+                    segments = [seg["text"] for seg in projected]
+                    doc_mask = pii.mask_text(document_text)
+                    document_text = doc_mask.masked_text
+                except PseudonymSequenceLimitError:
+                    reviews.append({"citation_id": citation.citation_id, "status": "UNVERIFIED", "advisory_only": True,
+                                    "review_id": verdict.get("review_id"), "model_executed": False,
+                                    "reason": "가명 생성 상한(종류별 999건)을 초과하여 의미·적용 검토를 수행하지 않음"})
+                    continue
+                if type(getattr(pii, "store", None)) is PseudonymStore:
+                    attested_tokens = {
+                        "official_excerpt_spans": projected_token_spans(
+                            official_mask, projected, segments_meta=pack["segments"]
+                        ),
+                        "document_spans": doc_mask.token_spans,
+                    }
             else:
                 opinion_text = str(official["full_text"])
                 segments = [seg["text"] for seg in pack["segments"]]
+            excerpt_sections = [
+                {
+                    "segment_id": seg["segment_id"],
+                    "opinion_kinds": seg["opinion_kinds"],
+                    "original_start": seg["original_start"],
+                    "original_end": seg["original_end"],
+                }
+                for seg in pack["segments"]
+            ]
             opinion_sections = [{"segment_id": seg["segment_id"], "opinion_kinds": seg["opinion_kinds"]}
                                 for seg in pack["segments"] if seg["opinion_kinds"] != ["MAJORITY"]]
-            source_text = render(segments)
+            source_text = render_sections(pack["segments"], segments)
             pack_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+            official_doc_evidence = {
+                "official": {
+                    "case_number": official.get("case_number"),
+                    "source_excerpt": source_text,
+                    "excerpt_coverage": pack["coverage_status"],
+                    "excerpt_sections": excerpt_sections,
+                    "opinion_sections": opinion_sections,
+                    "confirmed_metadata": {k: official.get(k) for k in (
+                        "court", "decision_date", "decision_type", "case_name")},
+                    "metadata_scope": "OFFICIAL_RECORD_NOT_FULL_TEXT_INFERENCE",
+                },
+                "document": document_text,
+            }
+            question = (
+                "인용된 판결과 문서 주장을 대조하라. rationale에서 ① 띄어쓰기·어절 등 문구의 차이 "
+                "② 핵심 법리와 취지·맥락(부정·예외·적용 조건 포함)의 동일 여부 "
+                "③ 사실관계·적용 요건의 차이와 확인 한계를 구분하라. "
+                "표현 차이만으로 곧바로 취지 왜곡이라 단정하는 대신, 부정·예외·적용 조건을 확인하라. "
+                "source_excerpt는 excerpt_sections에 표시된 판결 원문 구간이며 각 구간 앞의 "
+                "'[구간 S0 · ...]'와 '…(공식 원문 일부 생략)…'은 안내 표시일 뿐 원문이 아니다. "
+                "evidence_quotes에는 반드시 한 구간 본문 안에 있는 실제 문장만 글자 그대로 인용하고, "
+                "'[구간 S...]' 표지나 생략 표시를 인용문에 넣지 말라. "
+                "opinion_sections에 적힌 반대의견·별개의견 구간의 문장은 판결의 판시가 아니므로 문서 주장을 "
+                "지지하는 근거로 인용하지 말라."
+            )
             # 보내기 직전 실제 요청 크기를 다시 잰다(가림으로 길어진 경우 등). 넘으면 부르지 않는다(TK-141).
-            outcome = asyncio.run(self._sized_cascade(input_cap, budget_note,
-                question=("인용된 판결과 문서 주장을 대조하라. rationale에서 ① 띄어쓰기·어절 등 문구의 차이 "
-                          "② 핵심 법리와 취지·맥락의 동일 여부 ③ 사실관계·적용 요건의 차이와 확인 한계를 구분하라. "
-                          "표현 차이만으로 취지 왜곡이라고 판단하지 말고, 부정·예외·적용 조건을 확인하라. "
-                          "source_excerpt는 판결 원문에서 고른 구간이며 생략 표시 사이는 보내지 않은 부분이다. "
-                          "반드시 source_excerpt 한 구간 안의 실제 문구를 evidence_quotes에 인용하라. "
-                          "opinion_sections에 적힌 반대의견·별개의견 구간의 문장은 판결의 판시가 아니므로 문서 주장을 "
-                          "지지하는 근거로 인용하지 말라."),
-                evidence={"official": {"case_number": official.get("case_number"), "source_excerpt": source_text,
-                          "excerpt_coverage": pack["coverage_status"], "opinion_sections": opinion_sections,
-                          "confirmed_metadata": {k: official.get(k) for k in (
-                              "court", "decision_date", "decision_type", "case_name")},
-                          "metadata_scope": "OFFICIAL_RECORD_NOT_FULL_TEXT_INFERENCE"},
-                          "document": document_text},
-                profile=context.profile, policy=context.external_ai_policy))
+            _cascade_extra = {"attested_tokens": attested_tokens} if attested_tokens is not None else {}
+            outcome = asyncio.run(self._sized_cascade(
+                input_cap, budget_note, question=question, evidence=official_doc_evidence,
+                profile=context.profile, policy=context.external_ai_policy, **_cascade_extra))
             if outcome is None:
                 reviews.append({"citation_id": citation.citation_id, "status": "UNVERIFIED", "advisory_only": True,
                                 "review_id": verdict.get("review_id"), "model_executed": False,
@@ -1546,20 +1741,42 @@ class VerificationPipeline:
                                 "input_budget": budget_note,
                                 "reason": f"공급자 입력 한도({input_cap})를 넘어 의미·적용 검토를 수행하지 않음"})
                 continue
+            grounding_segments_meta = (
+                [
+                    {
+                        **meta,
+                        "masked_start": projected[idx]["masked_start"],
+                        "masked_end": projected[idx]["masked_end"],
+                    }
+                    for idx, meta in enumerate(pack["segments"])
+                ]
+                if projected is not None
+                else pack["segments"]
+            )
+            grounding = validate_quotes_by_stage(
+                outcome.stages, segments, opinion_text=opinion_text, segments_meta=grounding_segments_meta)
+            recheck_meta = {"attempted": False, "recovered": False, "stages": []}
+            if not grounding["grounded"] and not grounding["minority_opinion_only"]:
+                recheck_meta = self._recheck_stage_quotes(
+                    outcome,
+                    grounding=grounding,
+                    segments=segments,
+                    official_doc_evidence=official_doc_evidence,
+                    input_cap=input_cap,
+                    policy=context.external_ai_policy,
+                    attested_tokens=attested_tokens,
+                    opinion_text=opinion_text,
+                    segments_meta=grounding_segments_meta,
+                )
+                if recheck_meta["attempted"]:
+                    grounding = validate_quotes_by_stage(
+                        outcome.stages, segments, opinion_text=opinion_text, segments_meta=grounding_segments_meta)
             result.engine_data.setdefault("model_executions", []).extend(e.to_dict() for e in outcome.executions)
             model_verdicts = [s["verdict"] for s in outcome.stages if s.get("used") and s.get("verdict")]
             quotes = [q for v in model_verdicts for q in v.get("evidence_quotes", [])]
-            grounded = bool(model_verdicts) and all(
-                v.get("evidence_quotes") and all(quote_in_one_segment(q, segments)
-                    for q in v["evidence_quotes"]) for v in model_verdicts)
-            # 지지(VERIFIED·SUPPORTED) 판단의 근거가 모두 반대·별개의견 구간에만 있으면 판시 근거가 아니다(TK-135).
-            from packages.legal_engine.opinion_attribution import quote_opinion
-            minority_only = grounded and any(
-                str(v.get("status", "")).upper() in {"VERIFIED", "SUPPORTED"}
-                and all(quote_opinion(q, opinion_text) in {"DISSENT", "CONCURRING"} for q in v["evidence_quotes"])
-                for v in model_verdicts)
-            if minority_only:
-                grounded = False
+            grounded = grounding["grounded"]
+            minority_only = grounding["minority_opinion_only"]
+            ambiguous_opinion = bool(grounding.get("ambiguous_opinion_only"))
             # 모델이 한 번도 실행되지 않은 것과, 실행됐으나 근거 인용이 확인되지
             # 않은 것은 전혀 다르다. 둘을 같은 문구로 적으면 공급자 키·모델 ID가
             # 잘못되어 AI가 아무 일도 하지 않는 동안에도 "검토했으나 채택하지
@@ -1570,6 +1787,8 @@ class VerificationPipeline:
                 reason = outcome.rationale
             elif minority_only:
                 reason = "AI가 근거로 든 원문이 반대의견·별개의견 구간에만 있어 판시 근거로 채택하지 않음"
+            elif ambiguous_opinion:
+                reason = "AI가 근거로 든 인용의 의견 귀속이 다수·소수의견 사이에 모호하거나 확인되지 않아 판시 근거로 채택하지 않음"
             elif model_ran:
                 reason = "보낸 공식 원문 구간에 있는 근거 인용이 확인되지 않아 AI 의견을 채택하지 않음"
             else:
@@ -1591,21 +1810,57 @@ class VerificationPipeline:
                                               "evidence_quotes": advice_quotes, "advisory_only": True})
                     reason += " 추가 정밀 검토 의견(참고): " + str(advice.get("rationale", ""))[:800]
 
-            review = {"citation_id": citation.citation_id, "status": sem_status,
-                      "semantic_status": sem_status,
-                      "review_id": verdict.get("review_id"),
-                      "source_record_ids": verdict.get("source_record_ids", []),
-                      "advisory_only": True, "source_quotes_validated": grounded,
-                      "minority_opinion_evidence": minority_only,
-                      "model_executed": model_ran,
-                      "consensus": consensus,
-                      # 절단 여부는 마스킹 전 원문 기준 발췌 범위로 정한다(마스킹으로 줄어든 길이를 절단으로 보지 않는다).
-                      "source_truncated": pack["coverage_status"] != "FULL",
-                      "evidence_pack": _pack_summary(pack, projected) | {"sent_sha256": pack_hash},
-                      "input_budget": budget_note,
-                      "reason": reason,
-                      "additional_advice": additional_advice,
-                      "stages": outcome.stages, "evidence_quotes": quotes if grounded else []}
+            applicability_status = (
+                sem_status if sem_status in {"DISTINGUISHABLE", "CONTRADICTED"} else "REVIEW_NEEDED"
+            )
+            review = {
+                "citation_id": citation.citation_id,
+                "status": sem_status,
+                "semantic_status": sem_status,
+                "review_id": verdict.get("review_id"),
+                "source_record_ids": verdict.get("source_record_ids", []),
+                "advisory_only": True,
+                "source_quotes_validated": grounded,
+                "minority_opinion_evidence": minority_only,
+                "model_executed": model_ran,
+                "consensus": consensus,
+                # TK-191: 문구 일치(quote_grounding) / 핵심 법리 합의(legal_principle_consensus) / 사건 적용(case_applicability)을 분리해 보존한다.
+                "quote_grounding": {
+                    "grounded": grounded,
+                    "minority_opinion_only": minority_only,
+                    "ambiguous_opinion_only": ambiguous_opinion,
+                    "validated_quotes": grounding["validated_quotes"],
+                    "rejected_quotes": grounding["rejected_quotes"],
+                    "stage_checks": grounding["stage_checks"],
+                    "section_map": excerpt_sections,
+                    "recheck_attempted": recheck_meta["attempted"],
+                    "recheck_recovered": recheck_meta["recovered"],
+                    "recheck_stages": recheck_meta["stages"],
+                },
+                "legal_principle_consensus": {
+                    "status": sem_status,
+                    "raw_model_statuses": consensus["model_statuses"],
+                    "disagreement": consensus["disagreement"],
+                    "incomplete_models": consensus["incomplete_models"],
+                    "advisory_only": True,
+                },
+                "case_applicability": {
+                    "status": applicability_status,
+                    "advisory_only": True,
+                    "requires_human_check": True,
+                    "applies_to_case": None,
+                    "incomplete_models": consensus["incomplete_models"],
+                    "disagreement": consensus["disagreement"],
+                },
+                # 절단 여부는 마스킹 전 원문 기준 발췌 범위로 정한다(마스킹으로 줄어든 길이를 절단으로 보지 않는다).
+                "source_truncated": pack["coverage_status"] != "FULL",
+                "evidence_pack": _pack_summary(pack, projected) | {"sent_sha256": pack_hash},
+                "input_budget": budget_note,
+                "reason": reason,
+                "additional_advice": additional_advice,
+                "stages": outcome.stages,
+                "evidence_quotes": quotes if grounded else [],
+            }
             reviews.append(review)
             verdict["semantic_status"] = sem_status
             if sem_status == "CONTRADICTED":

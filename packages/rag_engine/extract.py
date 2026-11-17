@@ -16,10 +16,24 @@ from packages.document_engine.registry import parse_document
 
 MAX_CHARS = 3_000_000
 MAX_PAGES = 1500
-EXTRACTOR_VERSION = "drive-text-v8-tk182"  # TK-182: empty-password PDFs, per-page diagnostics, bounded OCR, continuation
+EXTRACTOR_VERSION = "drive-text-v9-tk182"  # TK-182: visual blank verification, OCR quality states, completed vs text-extracted counts
 EXCLUDE_MIN_TOTAL = 10       # 이보다 짧은 파일은 쪽 단위로 빼지 않고 전체를 격리한다
 EXCLUDE_MAX_SHARE = 0.02     # 전체 쪽수의 2%까지(최소 1쪽)
 EXCLUDE_MAX_PAGES = 3        # 그리고 3쪽까지만 해당 쪽을 빼고 색인한다
+
+_PAGE_STATE_BY_STATUS = {
+    "text": "NATIVE_TEXT",
+    "ocr_applied": "OCR_TEXT",
+    "blank": "VERIFIED_BLANK",
+    "scanned": "SCAN_UNEXTRACTED",
+    "ocr_low_quality": "OCR_LOW_QUALITY",
+    "error": "ERROR",
+    "unprocessed": "UNPROCESSED",
+}
+
+
+def _page_diag(status: str, **extra) -> dict:
+    return {"status": status, "state": _PAGE_STATE_BY_STATUS.get(status, status.upper()), **extra}
 
 
 def chunk_page_text(text: str, page_number: int, target_size: int = 1040, max_size: int = 1200, overlap: int = 160) -> list[dict]:
@@ -87,25 +101,47 @@ def scan_evidence(finding):
 
 def _ocr_pdf_page(pdfium_page, page_number: int) -> tuple[str, dict]:
     """Run bounded OCR on a single rendered PDF page and return (text, diagnostic)."""
-    from packages.document_engine.ocr import get_ocr_adapter
+    from packages.common.config import get_settings
+    from packages.document_engine.ocr import get_ocr_adapter, is_noise, page_quality
 
+    settings = get_settings()
     adapter = get_ocr_adapter()
     if not getattr(adapter, "available", False):
-        return "", {"status": "scanned", "ocr_available": False}
+        return "", _page_diag("scanned", ocr_available=False)
     try:
         scale = 2.0
         with closing(pdfium_page.render(scale=scale)) as bitmap:
             image = bitmap.to_pil()
         lines = adapter.recognize_image(image, page=page_number, scale=scale)
     except Exception as exc:
-        return "", {"status": "error", "error": type(exc).__name__}
+        return "", _page_diag("error", error=type(exc).__name__)
     last_error = getattr(adapter, "last_error", None)
     if last_error:
-        return "", {"status": "error", "error": str(last_error)}
-    ocr_text = "\n".join(line.text.strip() for line in lines if (line.text or "").strip())
-    if ocr_text.strip():
-        return ocr_text, {"status": "ocr_applied", "lines": len(lines)}
-    return "", {"status": "scanned", "ocr_attempted": True, "ocr_empty": True}
+        return "", _page_diag("error", error=str(last_error))
+    raw_lines = [line for line in (lines or []) if (getattr(line, "text", "") or "").strip()]
+    if not raw_lines:
+        return "", _page_diag("scanned", ocr_attempted=True, ocr_empty=True)
+    quality = page_quality(
+        raw_lines,
+        min_confidence=settings.ocr_quality_min_confidence,
+        min_hangul_ratio=0.0,
+    )
+    kept = [
+        line for line in raw_lines
+        if float(getattr(line, "confidence", 0.0) or 0.0) >= settings.ocr_min_confidence
+        and not is_noise(line.text)
+    ]
+    ocr_text = "\n".join(line.text.strip() for line in kept)
+    if not ocr_text.strip() or quality.get("low_quality"):
+        # 저품질·저신뢰도 OCR 결과는 빈 쪽이나 정상 완독으로 숨기지 않는다.
+        usable_text = ocr_text if (ocr_text.strip() and kept) else ""
+        return usable_text, _page_diag(
+            "ocr_low_quality",
+            ocr_attempted=True,
+            lines=len(kept) if kept else len(raw_lines),
+            ocr_quality=quality,
+        )
+    return ocr_text, _page_diag("ocr_applied", lines=len(kept), ocr_quality=quality)
 
 
 def extract(path, filename, mime, *, continuation=None):
@@ -155,6 +191,7 @@ def extract(path, filename, mime, *, continuation=None):
                 used_fallback = False
                 page_error = None
                 has_visual_objects = False
+                object_check_ok = False
                 if native is not None:
                     try:
                         with closing(native[number - 1]) as page:
@@ -163,8 +200,10 @@ def extract(path, filename, mime, *, continuation=None):
                             if not (text or "").strip():
                                 try:
                                     has_visual_objects = any(True for _ in page.get_objects())
-                                except Exception:
-                                    has_visual_objects = False
+                                    object_check_ok = True
+                                except Exception as obj_exc:
+                                    object_check_ok = False
+                                    page_error = page_error or type(obj_exc).__name__
                     except Exception as exc:
                         text = None
                         page_error = type(exc).__name__
@@ -177,9 +216,19 @@ def extract(path, filename, mime, *, continuation=None):
                         text = reader_page.extract_text() or ""
                         if not text.strip() and not has_visual_objects:
                             try:
-                                has_visual_objects = bool(getattr(reader_page, "images", None))
-                            except Exception:
-                                pass
+                                if getattr(reader_page, "images", None):
+                                    has_visual_objects = True
+                            except Exception as img_exc:
+                                page_error = page_error or type(img_exc).__name__
+                            if not has_visual_objects and not object_check_ok:
+                                # pypdfium2 객체 열거를 못 한 경우 콘텐츠 스트림에 그리기·이미지 연산이 있으면 스캔/벡터로 취급한다.
+                                try:
+                                    contents = reader_page.get_contents()
+                                    raw_ops = contents.get_data() if contents is not None else b""
+                                    if raw_ops and re.search(rb"\b(?:Do|BI|re|l|c|S|s|f|F|B|b|sh)\b", raw_ops):
+                                        has_visual_objects = True
+                                except Exception as op_exc:
+                                    page_error = page_error or type(op_exc).__name__
                     except Exception as exc:
                         if reader.is_encrypted and native is None and "Decrypt" in type(exc).__name__:
                             raise ValueError("ENCRYPTED_REFERENCE") from None
@@ -187,12 +236,10 @@ def extract(path, filename, mime, *, continuation=None):
                         page_error = page_error or type(exc).__name__
 
                 if (text or "").strip():
-                    page_diagnostics[str(number)] = {
-                        "status": "text",
-                        "parser": "pypdf" if used_fallback else "pypdfium2",
-                    }
-                elif page_error and not has_visual_objects:
-                    page_diagnostics[str(number)] = {"status": "error", "error": page_error}
+                    page_diagnostics[str(number)] = _page_diag(
+                        "text",
+                        parser="pypdf" if used_fallback else "pypdfium2",
+                    )
                 elif has_visual_objects:
                     if max_ocr_pages > 0 and native is not None:
                         if ocr_used >= max_ocr_pages:
@@ -209,9 +256,15 @@ def extract(path, filename, mime, *, continuation=None):
                         text = ocr_text
                         page_diagnostics[str(number)] = diag
                     else:
-                        page_diagnostics[str(number)] = {"status": "scanned", "ocr_available": max_ocr_pages > 0}
+                        page_diagnostics[str(number)] = _page_diag("scanned", ocr_available=max_ocr_pages > 0)
+                elif page_error or not object_check_ok:
+                    page_diagnostics[str(number)] = _page_diag(
+                        "error",
+                        error=page_error or "OBJECT_ENUMERATION_FAILED",
+                        blank_verified=False,
+                    )
                 else:
-                    page_diagnostics[str(number)] = {"status": "blank"}
+                    page_diagnostics[str(number)] = _page_diag("blank", blank_verified=True)
 
                 count += len(text)
                 if count > MAX_CHARS:
@@ -263,31 +316,82 @@ def extract(path, filename, mime, *, continuation=None):
     coverage_missing = any(p.get("status") in ("UNVERIFIED", "OCR_LOW_QUALITY")
                            for p in doc.structure.get("page_coverage", []))
     unprocessed_pages = list(range(last_processed + 1, total + 1))
-    partial = read_pages < total or bool(next_continuation) or coverage_missing or bool(doc.parse_warnings)
-    reason = ("REFERENCE_INSTRUCTION_PAGES_EXCLUDED" if pages_hit else
-              "REFERENCE_PARTIALLY_READ" if partial else "")
     blank_pages = sorted(int(p) for p, d in page_diagnostics.items() if d.get("status") == "blank")
     scanned_pages = sorted(int(p) for p, d in page_diagnostics.items() if d.get("status") == "scanned")
     ocr_pages = sorted(int(p) for p, d in page_diagnostics.items() if d.get("status") == "ocr_applied")
+    ocr_low_quality_pages = sorted(int(p) for p, d in page_diagnostics.items() if d.get("status") == "ocr_low_quality")
     error_pages = sorted(int(p) for p, d in page_diagnostics.items() if d.get("status") == "error")
+
+    if page_diagnostics:
+        completed_statuses = {"text", "ocr_applied", "blank"}
+        completed_pages = sum(
+            1 for p in range(1, min(total, MAX_PAGES) + 1)
+            if page_diagnostics.get(str(p), {}).get("status") in completed_statuses
+        )
+        incomplete_pages = sorted(
+            p for p in range(1, total + 1)
+            if page_diagnostics.get(str(p), {}).get("status") not in completed_statuses
+        )
+        coverage_complete = (
+            not incomplete_pages
+            and not next_continuation
+            and not coverage_missing
+            and not doc.parse_warnings
+        )
+        # Keep `partial` aligned with unreadable/no-text page disclosure while
+        # `coverage_complete` distinguishes visually verified blank pages from unfinished reads.
+        partial = (read_pages < total) or (not coverage_complete)
+    else:
+        completed_pages = read_pages
+        incomplete_pages = unprocessed_pages
+        partial = read_pages < total or bool(next_continuation) or coverage_missing or bool(doc.parse_warnings)
+        coverage_complete = not partial
+
+    page_state_counts = {}
+    for p in range(1, total + 1):
+        diag = page_diagnostics.get(str(p))
+        state = (diag.get("state") if diag else ("NATIVE_TEXT" if p not in no_text_pages and p <= last_processed else "UNPROCESSED"))
+        page_state_counts[state] = page_state_counts.get(state, 0) + 1
+
+    if pages_hit:
+        reason = "REFERENCE_INSTRUCTION_PAGES_EXCLUDED"
+    elif not coverage_complete:
+        reason = "REFERENCE_PARTIALLY_READ"
+    elif partial and blank_pages:
+        reason = "VERIFIED_BLANK_PAGES" if read_pages > 0 else "VERIFIED_BLANK_DOCUMENT"
+    elif partial:
+        reason = "REFERENCE_PARTIALLY_READ"
+    else:
+        reason = ""
+    coverage_note = (
+        "스캔·저품질 OCR·오류·미처리 쪽이 남아 있어 전문 완독으로 간주하지 않음"
+        if not coverage_complete
+        else ("시각적 객체가 없는 빈 쪽 확인을 포함해 전체 쪽 검사를 마침" if blank_pages else "")
+    )
     return {"chunks": chunks, "sha256": digest, "partial": partial,
+            "coverage_complete": coverage_complete,
             "excluded_pages": sorted(pages_hit), "scan_findings": evidence,
             "no_text_pages": no_text_pages,
             "page_diagnostics": page_diagnostics,
             "blank_pages": blank_pages,
             "scanned_pages": scanned_pages,
             "ocr_pages": ocr_pages,
+            "ocr_low_quality_pages": ocr_low_quality_pages,
             "error_pages": error_pages,
+            "incomplete_pages": incomplete_pages,
+            "page_state_counts": page_state_counts,
             "continuation": next_continuation,
             "resumed": resumed,
             "text_parser": doc.structure.get("text_parser", doc.parser_name),
             "fallback_pages": doc.structure.get("fallback_pages", []),
             "unprocessed_pages": unprocessed_pages,
-            "coverage_note": ("텍스트 미추출 쪽은 빈 쪽 또는 스캔 쪽일 수 있으며 전문 확인으로 간주하지 않음"
-                              if no_text_pages else ""),
+            "coverage_note": coverage_note,
             "page_numbers_reliable": doc.structure.get("page_numbers_reliable", path.suffix.lower() not in (".hwp", ".hwpx")),
             "body_extraction_scope": doc.structure.get("body_extraction_scope", "TEXT_EXTRACTION"),
-            "pages": total, "read_pages": read_pages,
+            "pages": total,
+            "read_pages": read_pages,
+            "extracted_text_pages": read_pages,
+            "completed_pages": completed_pages,
             "reason": reason}
 
 
