@@ -857,10 +857,10 @@ def extract_from_text(
                     law_name = _resolve_kind_only_rule(
                         text, m, kind, admin_bracket_index, alias_defs, citations, admin_sentences) or law_name
                 citations.append(_admin_rule_citation(
-                    text, m.start(), m.end(), kind=kind, name=law_name,
+                    text, start, m.end(), kind=kind, name=law_name,
                     article=m.group("article"), sub=m.group("article_sub"), paragraph=m.group("paragraph"),
                     document_id=document_id, block_id=block_id, page=page, sentence_index=admin_sentences, _create=_create))
-                consumed.append((m.start(), m.end()))
+                consumed.append((start, m.end()))
                 continue
             article = m.group("article")
             if m.group("article_sub"):
@@ -1565,7 +1565,10 @@ def extract_citations(doc: NormalizedDocument) -> List[Citation]:
     두 줄에 걸친 법원·선고일이 잘린다(R3). 위치는 인용이 시작하는 블록 기준으로 되돌린다.
     표는 칸 단위로 따로 추출한다(칸 좌표가 인용 위치다).
     """
+    from packages.document_engine.meta_sections import meta_checklist_block_ids
+
     ensure_running_heads(doc)
+    meta_ids = meta_checklist_block_ids(doc)
     reading = build_reading_text(doc)
     out: List[Citation] = []
     seen: set = set()
@@ -1578,6 +1581,8 @@ def extract_citations(doc: NormalizedDocument) -> List[Citation]:
             if citation.span:
                 block, _ = reading.locate(citation.span[0])
                 if block is not None:
+                    if block.block_id in meta_ids:
+                        continue
                     citation.block_id, citation.page = block.block_id, block.page
             key = (_identity(citation), citation.block_id)
             # 인용문 연결은 선택 뒤에 일어나므로, 그 인용이 든 문장의 첫 인용문을 직접 읽어 같은 인용인지 가린다(TK-145).
@@ -1598,6 +1603,8 @@ def extract_citations(doc: NormalizedDocument) -> List[Citation]:
         if citation.span:
             block, offset = reading.locate(citation.span[0])
             if block is not None:
+                if block.block_id in meta_ids:
+                    continue
                 citation.block_id, citation.page = block.block_id, block.page
         if block is not None:
             citation.attributes["reading_span"] = list(citation.span)
@@ -1608,7 +1615,7 @@ def extract_citations(doc: NormalizedDocument) -> List[Citation]:
     batch.reading = None
 
     for block in doc.body_blocks():
-        if block.block_type != "table":
+        if block.block_type != "table" or block.block_id in meta_ids:
             continue
         rows = (block.attributes or {}).get("cells") or [line.split(" | ") for line in block.text.splitlines()]
         for r_index, row in enumerate(rows):

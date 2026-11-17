@@ -139,7 +139,7 @@ HistoryLookup = Callable[[str, str], Dict[str, Any]]
 
 def _source(name: str) -> Dict[str, Any]:
     sources = load_rules().get("sources") or {}
-    entry = sources.get(name)
+    entry = sources.get(name) or (sources.get(f"대한민국{name}") if name.startswith("헌법 ") else None)
     if entry:
         return {"name": name, **entry}
     return {"name": name, "text": "", "note": "공식 원문을 규칙표에 수록하지 않았다(이름만 표시)"}
@@ -393,6 +393,188 @@ def requirement_mismatches(doc: NormalizedDocument, provisions: Sequence[Dict[st
 
 
 # --- 문서 단위 ----------------------------------------------------------------------
+def _unreasonable_argument(sentence: str, previous: str, *, criminal_doc: bool = False) -> Optional[ClaimMatch]:
+    """무리한 법리 주장 4종을 인용 오류와 분리해 독립 탐지한다(다중 신호 + 예외·극성 확인)."""
+    context = f"{previous} {sentence}".strip()
+
+    # 1) 소멸시효 기간 왜곡 (민법 제162조 일반 채권 10년·제766조 불법행위 3년/10년 대상 권리에 한정)
+    is_limitation_topic = bool(
+        re.search(r"소멸\s*시효|시효\s*(?:기간|완성)|영구(?:적|히)?\s*(?:소멸하지|완성되지)\s*않", sentence)
+    )
+    is_limitation_excluded = bool(
+        re.search(
+            r"취득\s*시효|공소\s*시효|징계\s*시효|"
+            r"시효\s*(?:중단|정지|기산(?:점)?|이익\s*포기)|최고|재판상\s*청구|승인|압류|가압류|가처분|기산점|"
+            r"국유\s*재산|조세\s*채권|국세|지방세|과징금|과태료|"
+            r"특별법|상법|어음법|수표법|근로기준법|국가배상법|공익사업|보험금|단기소멸시효|임금\s*채권",
+            context,
+        )
+    )
+    if is_limitation_topic and not is_limitation_excluded:
+        year_m = re.search(r"(\d{2,3})\s*년", sentence)
+        perpetual = bool(re.search(r"영구(?:적|히)?|(?:소멸|완성)(?:하지|되지)\s*않|완성될\s*수\s*없", sentence))
+        years = int(year_m.group(1)) if year_m else None
+        is_property_other_than_ownership = bool(
+            re.search(r"소유권\s*(?:이외|외)(?:의)?\s*재산권|물권|지상권|전세권|지역권", context)
+        )
+        is_ownership_defense = bool(re.search(r"소유권|물권적\s*청구권|등기\s*청구권|말소\s*등기", sentence))
+
+        is_general_bond = bool(re.search(
+            r"일반\s*채권|대여금|차용금|매매\s*대금|용역\s*대금|공사\s*대금|물품\s*대금|"
+            r"임대차\s*보증금|보증금\s*반환|구상금|구상권|부당\s*이득|계약\s*(?:상)?\s*(?:채권|청구권)|"
+            r"채무\s*불이행|민법\s*제\s*162\s*조",
+            context,
+        ))
+        is_tort_claim = bool(re.search(
+            r"손해\s*배상|불법\s*행위|위자료|민법\s*제\s*766\s*조",
+            context,
+        ))
+        is_claim_scope = (is_general_bond or is_tort_claim)
+
+        # 연수만으로 판정하지 않으며, 반드시 일반 채권 또는 손해배상청구권 특정 문맥이 존재해야 한다.
+        distorted = (
+            (years is not None and years >= 11 and is_claim_scope and not is_property_other_than_ownership)
+            or (perpetual and is_claim_scope and not is_ownership_defense)
+        )
+        if distorted:
+            detail_val = f"{years}년" if years is not None else "영구·시효 미완성"
+            sources = []
+            if is_general_bond:
+                sources.append(_source("민법 제162조"))
+            if is_tort_claim:
+                sources.append(_source("민법 제766조"))
+            if not sources:
+                sources = [_source("민법 제162조"), _source("민법 제766조")]
+
+            if is_general_bond and not is_tort_claim:
+                reason_text = (
+                    f"민법 제162조 제1항은 일반 채권의 소멸시효를 10년으로 정한다. 법정 중단·정지나 특별법상 특례 근거 없이 "
+                    f"일반 채권의 소멸시효를 {detail_val}로 단정하는 주장은 실정법 기준에 반한다."
+                )
+            elif is_tort_claim and not is_general_bond:
+                reason_text = (
+                    f"민법 제766조는 불법행위로 인한 손해배상청구권의 소멸시효를 안 날로부터 3년·불법행위를 한 날로부터 10년으로 정한다. "
+                    f"법정 중단·정지나 특례 없이 불법행위 손해배상청구권의 소멸시효를 {detail_val}로 단정하는 주장은 실정법 기준에 반한다."
+                )
+            else:
+                reason_text = (
+                    f"민법 제162조 제1항은 일반 채권의 소멸시효를 10년으로, 제766조는 불법행위 손해배상청구권의 소멸시효를 "
+                    f"안 날로부터 3년·불법행위를 한 날로부터 10년으로 정한다. 법정 중단·정지나 특별법상 특례 근거 없이 "
+                    f"일반 채권·손해배상청구권의 소멸시효를 {detail_val}로 단정하는 주장은 실정법 기준에 반한다."
+                )
+
+            return ClaimMatch(
+                "LIMITATION_PERIOD_DISTORTION", sentence, 0,
+                f"소멸시효 기간의 법정 기준 왜곡 주장 ({detail_val})", "B", "CONTRADICTED",
+                sources,
+                reason_text,
+                {"defect_type": "UNFOUNDED_CLAIM", "claimed_period": detail_val},
+            )
+
+    # 2) 민·형사 입증책임 및 무죄추정 혼동
+    if (
+        not criminal_doc
+        and not re.search(r"공소\s*사실|공소\s*제기|구형|형사\s*처벌을?\s*(?:과하|명하|선고하)", sentence)
+        and not re.search(
+            r"별개|구별|다르|달리|독자적|기속되지\s*않|무관하게|불구하고\s*(?:민사|배상|책임)|"
+            r"미치지\s*않|인정될\s*수\s*있|부정되는\s*것은\s*아니",
+            sentence,
+        )
+    ):
+        has_civil_context = bool(re.search(
+            r"민사|손해\s*배상|배상\s*책임|배상|채무\s*불이행|불법\s*행위|계약\s*책임|국가\s*배상|청구|책임|징계|처분",
+            context,
+        ))
+        presumption_confusion = bool(
+            re.search(r"무죄\s*추정(?:의\s*원칙)?", sentence)
+            and has_civil_context
+            and re.search(
+                r"면책|성립(?:하지|될\s*수\s*없)|인정(?:될|할)\s*수\s*없|부정|기각|배제|"
+                r"책임(?:이|을)?\s*(?:없|질\s*수\s*없|묻기\s*어렵)|전제(?:될|할)\s*수\s*없",
+                sentence,
+            )
+        )
+        proof_confusion = bool(
+            re.search(r"합리적.{0,2}의심[^.]{0,12}?없(?:을|는)\s*정도|범죄(?:의)?\s*증명(?:이)?\s*없", sentence)
+            and re.search(r"민사|손해\s*배상|배상\s*책임|채무\s*불이행|계약\s*책임|증명\s*책임|입증\s*책임", context)
+        )
+        if presumption_confusion or proof_confusion:
+            return ClaimMatch(
+                "CIVIL_CRIMINAL_STANDARD_CONFUSION", sentence, 0,
+                "민·형사 입증책임 및 무죄추정 원칙 혼동 주장", "B", "CONTRADICTED",
+                [_source("헌법 제27조 제4항"), _source("민사소송법 제202조")],
+                "헌법 제27조 제4항의 무죄추정 원칙과 형사상 고도 증명 기준은 형사피고인의 유죄 인정에 관한 "
+                "원칙이다. 민사상 손해배상이나 채무불이행 책임은 변론 전체의 취지와 증거조사 결과에 따른 자유심증 및 "
+                "증명의 우월성(고도의 개연성) 기준(민사소송법 제202조)으로 판단하므로 형사 기준을 그대로 적용해 배척할 수 없다.",
+                {"defect_type": "UNFOUNDED_CLAIM"},
+            )
+
+    # 3) 하급심의 법률 효력 폐지 주장
+    if (
+        re.search(r"(?:지방|고등|가정|행정|회생|특허)\s*법원|하급심(?:\s*법원)?|일반\s*법원|제?\s*1\s*심\s*(?:법원|판결)|항소심\s*(?:법원|판결)", sentence)
+        and re.search(
+            r"(?:법률|법\s*조항|법조문|법\s*규정|민법|형법|상법|국가배상법|근로기준법|[가-힣]{2,15}법률?)"
+            r"(?:\s*제\s*\d+\s*조(?:의\s*\d+)?)?"
+            r"(?!\s*(?:시행령|시행규칙|규칙|고시|훈령|예규|조례|처분|계약|약관))",
+            sentence,
+        )
+        and not re.search(r"약관\s*규정|계약\s*규정|사규|내부\s*규정", sentence)
+        and not re.search(r"위헌\s*(?:법률\s*)?심판\s*제청|제청\s*신청|명령[\s·ㆍ]*규칙\s*(?:심사|위헌|위법)|헌법재판소(?:의|가)?\s*(?:위헌|헌법불합치)\s*결정", sentence)
+        and re.search(
+            r"위헌(?:으로|이라)\s*(?:판단하여\s*)?(?:직접\s*)?(?:폐지|무효화?|실효|효력을?\s*(?:상실|부인|배제|정지|소멸|박탈))|"
+            r"(?:법률|법\s*조항|법조문|법\s*규정|(?:민법|형법|상법|국가배상법|근로기준법|[가-힣]{2,15}법)(?:\s*제\s*\d+\s*조(?:의\s*\d+)?)?)"
+            r"(?:을|를|이|가|은|는)?\s*(?:직접\s*)?(?:위헌\s*(?:결정|선고)|폐지|실효|무효로\s*선언)|"
+            r"(?:법률|법\s*조항|법조문|(?:민법|형법|상법|국가배상법|근로기준법|[가-힣]{2,15}법)(?:\s*제\s*\d+\s*조(?:의\s*\d+)?)?)"
+            r"(?:의)?\s*효력(?:을|이)\s*(?:전면\s*)?(?:상실|폐지|소멸)(?:하|시|되)|"
+            r"위헌[^.]{0,25}더\s*이상\s*(?:어떠한\s*)?(?:적용|효력)(?:도|이|을)?\s*(?:할|될|가질|인정할)\s*수\s*없",
+            sentence,
+        )
+    ):
+        return ClaimMatch(
+            "LOWER_COURT_STATUTE_INVALIDATION", sentence, 0,
+            "하급심 법원의 법률 효력 직접 폐지·무효화 주장", "B", "CONTRADICTED",
+            [_source("헌법 제107조"), _source("헌법 제111조")],
+            "헌법 제107조 제1항 및 제111조 제1항 제1호에 따라 법률의 위헌 여부 심판 권한은 헌법재판소에 전속하며, "
+            "각급 법원은 명령·규칙이나 처분의 위헌·위법 심사 외에 법률의 효력을 직접 폐지·실효시킬 권한이 없고 위헌심판 제청만 가능하다.",
+            {"defect_type": "JURISDICTIONAL_DEFECT"},
+        )
+
+    # 4) 계약 일방 변경·증액 주장
+    if (
+        re.search(
+            r"일방적(?:인|으로)?\s*(?:통지|통보|고지|결정|선언|변경|인상|증액)|"
+            r"(?:상대방|원고|피고|계약\s*당사자)(?:의)?\s*(?:동의|합의|승낙)(?:이나|도|가)?\s*없이(?:\s*(?:도|서도))?(?:\s*일방적으로)?",
+            sentence,
+        )
+        and re.search(
+            r"(?:계약\s*(?:내용|조건|금액|대금|단가|임대료|수수료|위약금|기간)|대금|임료|약정\s*(?:금액|내용)|계약상\s*의무)(?:을|를|이|가|은|는)?[^.]{0,35}?(?:변경|증액|인상|추가\s*부과|감액|개정|상향)|"
+            r"(?:\d+(?:\.\d+)?\s*배|\d{3,}\s*%|두\s*배|세\s*배|네\s*배)[^.]{0,20}(?:증액|인상|청구|부과|상향)",
+            sentence,
+        )
+        and re.search(
+            r"유효(?:하다|합니다|하게|히)|효력(?:이|을)\s*(?:발생|인정|가지|갖)|구속(?:한다|력이\s*있)|"
+            r"지급할\s*의무|따라야\s*(?:한다|합니다)|당연히\s*(?:변경|증액|인상|적용|성립)|"
+            r"(?:변경|증액|인상)(?:되었다|됐다|된다|할\s*수\s*있)",
+            sentence,
+        )
+        and not re.search(
+            r"(?:물가\s*변동|단가\s*연동|차임\s*증감\s*청구|해지|해제)(?:에\s*따|으로\s*인)|"
+            r"(?:계약상\s*조정\s*조항|조정\s*기준|별도\s*특약|당사자\s*(?:간|사이의)\s*합의)(?:이|가|에\s*(?:따|의))|"
+            r"정관\s*변경|취업\s*규칙",
+            sentence,
+        )
+    ):
+        return ClaimMatch(
+            "UNILATERAL_CONTRACT_MODIFICATION", sentence, 0,
+            "합의·법정 근거 없는 계약 일방 변경 및 증액 주장", "B", "CONTRADICTED",
+            [_source("민법 제105조"), _source("민법 제543조")],
+            "계약 내용과 대금의 변경은 사적자치 원칙상 당사자의 의사 합치나 계약상 조정 특약 또는 법률의 명시적 규정이 있어야 효력이 발생한다. "
+            "해지·해제의 형성권과 달리 일방적 통보·통지만으로 상대방의 동의 없이 계약 금액이나 조건을 증액·변경할 수 없다.",
+            {"defect_type": "UNFOUNDED_CLAIM"},
+        )
+    return None
+
+
 def _civil_inference(sentence: str, previous: str) -> Optional[ClaimMatch]:
     """Flag a missing inference step for human review, not a merits determination."""
     compact = re.sub(r"\s+", "", sentence)
@@ -405,7 +587,7 @@ def _civil_inference(sentence: str, previous: str) -> Optional[ClaimMatch]:
             "사후의 지체·불이행만으로 계약 당시 기망이나 편취 고의를 확정할 수 없다. 계약 체결 당시의 "
             "의사·능력, 기망행위, 처분행위와의 관계를 뒷받침하는 별도 사실과 증거를 확인해야 한다.")
     if (re.search(r"반증하지\s*못|무손해", compact)
-            and re.search(r"확정\s*간주|확정간주|당연.{0,8}(?:확정|간주|인정)|자동.{0,8}(?:확정|인정)|전액.{0,8}확정", compact)):
+            and re.search(r"확정\s*간주|확정간주|당연.{0,8}(?:확정|간주|인정)|자동.{0,8}(?:확정|간주|인정)|전액.{0,8}확정", compact)):
         return ClaimMatch("DAMAGE_PROOF_INFERENCE", sentence, 0, "입증책임의 임의 전도 및 손해액 당연 확정 궤변 (기각/각하 위험)", "B", "CONTRADICTED",
             [_source("민사소송법 제202조"), _source("민사소송법 제288조")],
             "민사소송법상 손해 발생과 손해액의 증명책임은 원고에게 있으며, 자유심증주의는 증거판단 원칙일 뿐 입증책임을 전환하지 않는다. "
@@ -414,7 +596,7 @@ def _civil_inference(sentence: str, previous: str) -> Optional[ClaimMatch]:
             {"defect_type": "BURDEN_OF_PROOF_INVERSION"})
     if (re.search(r"자유심증|입증책임|증명책임", compact)
             and re.search(r"청구(?:금액|액)|손해액|개발\s*손실액|손실액|법정손해|위자료", compact)
-            and re.search(r"확정\s*간주|확정간주|당연.{0,8}(?:확정|간주|인정)|자동.{0,8}(?:확정|인정)|전액.{0,8}확정", compact)):
+            and re.search(r"확정\s*간주|확정간주|당연.{0,8}(?:확정|간주|인정)|자동.{0,8}(?:확정|간주|인정)|전액.{0,8}확정", compact)):
         return ClaimMatch("DAMAGE_PROOF_INFERENCE", sentence, 0, "자유심증주의와 손해액 입증책임", "C", "SUSPICIOUS",
             [_source("민사소송법 제202조")],
             "자유심증주의는 증거의 증명력을 법관의 자유로운 판단에 맡기는 원칙일 뿐, 손해 발생과 액수의 "
@@ -491,7 +673,9 @@ def classify_claims(text: str, lookup: Optional[HistoryLookup] = None) -> List[C
             continue
         in_relief = bool(relief and relief[0] <= start < relief[1])
         chosen = None
-        for check in (lambda s: _unconstitutionality(s, lookup), lambda s: _civil_inference(s, previous),
+        for check in (lambda s: _unconstitutionality(s, lookup),
+                      lambda s: _unreasonable_argument(s, previous, criminal_doc=criminal_doc),
+                      lambda s: _civil_inference(s, previous),
                       lambda s: _generalization(s, previous),
                       lambda s: _remedy(s, in_relief, criminal_doc), _unsourced_standard,
                       lambda s: _requirement_exclusion(s, previous)):
@@ -522,6 +706,27 @@ def classify_claims(text: str, lookup: Optional[HistoryLookup] = None) -> List[C
 
 # 유형마다 '명제'로 볼 부분: (앞 부분, 명제 끝을 정하는 뒷부분). 극성은 명제 끝 뒤의 글로 판별한다.
 _CLAIM_SPANS = {
+    "LIMITATION_PERIOD_DISTORTION": (
+        re.compile(r"소멸\s*시효|시효|영구"),
+        re.compile(r"\d{2,3}\s*년|(?:소멸|완성)(?:하지|되지)\s*않|완성될\s*수\s*없|완성|소멸"),
+    ),
+    "CIVIL_CRIMINAL_STANDARD_CONFUSION": (
+        re.compile(r"무죄\s*추정|합리적.{0,2}의심|범죄(?:의)?\s*증명"),
+        re.compile(
+            r"인정(?:될|할)\s*수\s*없|성립(?:하지|될\s*수\s*없)|전제(?:될|할)\s*수\s*없|"
+            r"책임(?:이|을)?\s*(?:없|질\s*수\s*없|묻기\s*어렵)|묻기\s*어렵|물을\s*수\s*없|"
+            r"적용|면책|부정|기각|배제"
+        ),
+    ),
+    "LOWER_COURT_STATUTE_INVALIDATION": (
+        re.compile(r"(?:지방|고등|가정|행정|회생|특허)\s*법원|하급심|일반\s*법원|제?\s*1\s*심|항소심"),
+        re.compile(
+            r"더\s*이상[^.]{0,30}?(?:적용|효력)[^.]{0,20}?수\s*없|"
+            r"(?:폐지|실효|상실|소멸|무효화?|부인|배제)"
+            r"(?:[^.,;]{0,30}?더\s*이상[^.]{0,30}?(?:적용|효력)[^.]{0,20}?수\s*없)?"
+        ),
+    ),
+    "UNILATERAL_CONTRACT_MODIFICATION": (re.compile(r"일방적|동의\s*없이|합의\s*없이|통지(?:만)?으로|통보(?:만)?으로"), re.compile(r"유효|효력|변경|증액|인상|구속|의무")),
     "CIVIL_FRAUD_INFERENCE": (re.compile(r"사기죄"), re.compile(r"구성|성립|해당")),
     "DAMAGE_PROOF_INFERENCE": (re.compile(r"확정|간주|인정"), None),
     "THIRD_PARTY_DAMAGE": (re.compile(r"대위|동일|합산"), None),
@@ -584,7 +789,11 @@ def _to_finding(doc: NormalizedDocument, match: ClaimMatch, reading) -> Finding:
         evidence=evidence)
 
 
-_TYPE_LABELS = {"CIVIL_FRAUD_INFERENCE": "채무불이행과 사기", "DAMAGE_PROOF_INFERENCE": "손해 증명",
+_TYPE_LABELS = {"LIMITATION_PERIOD_DISTORTION": "소멸시효 기간 왜곡",
+                "CIVIL_CRIMINAL_STANDARD_CONFUSION": "민·형사 입증기준 혼동",
+                "LOWER_COURT_STATUTE_INVALIDATION": "하급심 법률 폐지 주장",
+                "UNILATERAL_CONTRACT_MODIFICATION": "계약 일방 변경·증액",
+                "CIVIL_FRAUD_INFERENCE": "채무불이행과 사기", "DAMAGE_PROOF_INFERENCE": "손해 증명",
                 "THIRD_PARTY_DAMAGE": "타인 손해 청구", "PRIVATE_CONSTITUTIONAL_EFFECT": "사법상 기본권 적용",
                 "CRIMINAL_PROVISIONAL_EXECUTION": "가집행 참조 대상",
                 "UNCONSTITUTIONALITY": "위헌 주장", "UNSUPPORTED_GENERALIZATION": "전칭 일반화",

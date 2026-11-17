@@ -470,6 +470,7 @@ async def verify_argument_validity(
         # 3. 요약 전용 / 본문 미확보 판정 (SC2) — 판례·헌재결정례에만 full_text 요구(법령·행정규칙 제외)
         has_official = bool(verdict.get("official_record"))
         has_full_text = bool((verdict.get("official_record") or {}).get("full_text"))
+        is_statute_like = citation.type in (CitationType.STATUTE, CitationType.ADMIN_RULE)
         is_summary_only = (
             citation.type in (CitationType.CASE, CitationType.CONSTITUTIONAL)
             and has_official
@@ -512,7 +513,15 @@ async def verify_argument_validity(
             distortion_label = feats.get("verdict_label")
             grounded_evidence_quote = feats.get("grounded_evidence_quote") or ""
 
-        if is_unverified or is_semantic_issue or is_official_confirmed or is_quote_mismatch or is_summary_only:
+        is_verified_statute = (
+            is_statute_like
+            and (status == "VERIFIED" or verdict.get("verification_label") == "VERIFIED_PROVISION")
+            and not is_unverified
+            and not is_quote_mismatch
+            and not is_semantic_issue
+        )
+
+        if not is_verified_statute and (is_unverified or is_semantic_issue or is_official_confirmed or is_quote_mismatch or is_summary_only):
             auth_id = make_authority_id(citation)
             court_tier = get_court_tier(citation)
             is_cov = is_covered_precedent_scope(citation)
@@ -567,6 +576,7 @@ async def verify_argument_validity(
                 "quote_level3": level3,
                 "is_quote_unverified": is_quote_unverified,
                 "is_summary_only": is_summary_only,
+                "has_official": has_official,
                 "has_full_text": has_full_text,
                 "context": raw_context,
                 "evaluation_context": linked_claim,
@@ -656,7 +666,7 @@ async def verify_argument_validity(
                 f"구체적 사실관계에 타당하게 적용되는지(사건 적용성)는 AI 작성 여부 판단과 별개로 검토자가 직접 검토해야 합니다."
             )
             counteraction = "공식 판례의 원문 취지와 당해 사건의 계약 조건(손해배상액 예정 vs 위약벌 법리 등)을 직접 비교 검토할 것."
-        elif (basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and has_official
+        elif (not statute and basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT") and item.get("has_official")
               and (item.get("is_summary_only") or item.get("quote_level3") == "UNVERIFIED")):
             ai_basis = "공식 DB에서 요약본만 확보되어 판결문 본문 원문과의 직접 인용 대조가 유보됨 (판결문 사본 확인 필요)"
             verdict_text = "출처 한계 확인 불가 (판결문 사본 확인 필요)"
