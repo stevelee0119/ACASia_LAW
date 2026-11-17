@@ -13,6 +13,7 @@ from itertools import chain
 from typing import List, Optional, Tuple
 
 from .name_stopwords import PERSON_CATEGORY_STOPWORDS
+from .pseudonym import PSEUDONYM_TOKEN_RE
 
 # ---------------------------------------------------------------------------
 # 법률 식별자 Guard — 이 패턴에 걸리는 구간은 PII로 마스킹하지 않는다
@@ -20,10 +21,15 @@ from .name_stopwords import PERSON_CATEGORY_STOPWORDS
 LEGAL_IDENTIFIER_PATTERNS = [
     re.compile(r"\d{4}\s*[가-힣]{1,3}\s*\d{1,6}"),          # 사건번호 2023도12345, 2026가합1234
     re.compile(r"\d{4}\s*헌[가-힣]\s*\d{1,4}"),              # 헌재 사건번호
+    re.compile(r"(?<!\d)\d{2}\s*(?:가단|가합|가소|나카|다카|고단|고합|고정|구단|구합|드단|드합|재[가-힣]{1,2}|헌[가-힣]{1,2})\s*\d{1,6}(?!\d)"),
+    re.compile(r"(?<!\d)\d{2}(?:초|모|르|므|후)\d{1,6}(?!\d)"),
+    re.compile(r"(?<!\d)\d{2}(?:가|나|다|라|마|노|도|누|두|허)\d{5,6}(?!\d)"),
+    re.compile(r"(?<!\d)\d{2}\s*[가-힣]{1,3}\s*\d{1,6}(?=\s*(?:판결|결정|사건))"),
+    re.compile(r"(?:대법원|고등법원|지방법원|행정법원|가정법원|특허법원|헌법재판소|판결|결정|선고|사건(?:\s*번호)?)\s*(?:\d{4}\.\s*\d{1,2}\.\s*\d{1,2}\.?\s*(?:선고|자)\s*)?\d{2}\s*[가-힣]{1,3}\s*\d{1,6}(?!\d)"),
     re.compile(r"제\s*\d+\s*조(\s*의\s*\d+)?"),               # 법령 조문
     re.compile(r"제\s*\d+\s*[항호]"),
-    re.compile(r"법률\s*제\s*\d+\s*호"),
-    re.compile(r"대통령령\s*제\s*\d+\s*호"),
+    re.compile(r"(?:법률|대통령령|총리령|부령|훈령|예규|고시|지침|조례|규칙|공고)\s*제\s*\d+(?:\s*-\s*\d+)*\s*호(?:증)?"),
+    re.compile(r"제\s*\d{1,5}(?:\s*-\s*\d{1,6})+\s*호(?:증)?"),
     re.compile(r"등기\s*번호|등록\s*번호\s*제"),
     re.compile(r"\d{4}\.\s*\d{1,2}\.\s*\d{1,2}\.?"),          # 선고일자
     re.compile(r"\b(19|20)\d{2}\b"),                            # 연도
@@ -601,6 +607,186 @@ def _covered_by_span(spans: List[Tuple[int, int]], start: int, end: int) -> bool
     return span_start <= start and end <= span_end
 
 
+_BOUNDARY_NUMERIC_CHARS = frozenset("0123456789-–.*●xX")
+_REAL_KR_PHONE_RE = re.compile(
+    r"(?<!\d)(?:01[016789]|02|0[3-6][1-5]|070|080)-?\d{3,4}-?\d{4}(?!\d)"
+)
+_BRIDGED_RRN_RE = re.compile(r"\d{6}-?[1-9]\d{6}")
+_BRIDGED_RRN_MASKED_RE = re.compile(r"\d{6}-?[1-9][*●xX]{6}")
+_BRIDGED_BIZNO_RE = re.compile(r"\d{3}-\d{2}-\d{5}")
+_BRIDGED_DRIVER_LICENSE_RE = re.compile(r"\d{2}-\d{2}-\d{6}-\d{2}")
+_BRIDGED_MILITARY_ID_RE = re.compile(r"\d{2}(?:-\d{5,8}|\d{8})")
+_BRIDGED_ACCOUNT_RE = re.compile(r"\d{2,3}-\d{2,6}-\d{2,6}(?:-\d{1,6})?")
+_VEHICLE_LEFT_RE = re.compile(r"\d{2,3}[가-힣]$")
+_VEHICLE_RIGHT_RE = re.compile(r"^\d{4}(?![0-9])")
+
+
+def _match_bridged_numeric_pii(candidate: str) -> Optional[str]:
+    normalized = candidate.replace("–", "-").strip("-")
+    if not normalized or re.fullmatch(r"(?:19|20)\d{2}[-.]\d{1,2}[-.]\d{1,2}", normalized):
+        return None
+    if _BRIDGED_RRN_RE.fullmatch(normalized) or _BRIDGED_RRN_MASKED_RE.fullmatch(normalized):
+        return "RRN"
+    if _REAL_KR_PHONE_RE.fullmatch(normalized):
+        return "PHONE"
+    if _BRIDGED_BIZNO_RE.fullmatch(normalized):
+        return "BUSINESS_REGISTRATION"
+    if _BRIDGED_DRIVER_LICENSE_RE.fullmatch(normalized):
+        return "DRIVER_LICENSE"
+    if _BRIDGED_MILITARY_ID_RE.fullmatch(normalized):
+        return "MILITARY_ID"
+    if _BRIDGED_ACCOUNT_RE.fullmatch(normalized):
+        return "ACCOUNT"
+    return None
+
+
+def _cross_boundary_pii_match(
+    text: str,
+    ts: int,
+    te: int,
+    inner_digits: str,
+    block_id: Optional[str],
+    page: Optional[int],
+    *,
+    trusted: bool,
+) -> Optional[PIIMatch]:
+    ls = ts
+    limit_left = max(0, ts - 32)
+    while ls > limit_left and text[ls - 1] in _BOUNDARY_NUMERIC_CHARS:
+        ls -= 1
+    re_ = te
+    limit_right = min(len(text), te + 32)
+    while re_ < limit_right and text[re_] in _BOUNDARY_NUMERIC_CHARS:
+        re_ += 1
+
+    left = text[ls:ts]
+    right = text[te:re_]
+    left_has_digit = any("0" <= c <= "9" for c in left)
+    right_has_digit = any("0" <= c <= "9" for c in right)
+
+    if left_has_digit and right_has_digit:
+        candidate = (left + inner_digits + right).replace("–", "-")
+        if not re.fullmatch(r"(?:19|20)\d{2}[-.]\d{1,2}[-.]\d{1,2}", candidate):
+            kind = _match_bridged_numeric_pii(candidate)
+            if kind is None and PHONE_NORMALIZED_RE.fullmatch(candidate):
+                kind = "PHONE"
+            return PIIMatch(
+                kind or "PII",
+                text[ls:re_],
+                ls,
+                re_,
+                block_id,
+                page,
+                0.95,
+                "토큰 경계 양측 숫자 결합",
+            )
+
+    if left_has_digit or right_has_digit:
+        candidate = left + inner_digits + right
+        kind = _match_bridged_numeric_pii(candidate)
+        if kind is not None:
+            return PIIMatch(
+                kind,
+                text[ls:re_],
+                ls,
+                re_,
+                block_id,
+                page,
+                0.95,
+                "토큰 경계 결합 개인정보",
+            )
+
+    # Check vehicle splicing immediately across a token: e.g. 12가[PERSON_001]3456
+    left_slice = text[max(0, ts - 5):ts]
+    right_slice = text[te:min(len(text), te + 6)]
+    vm_left = _VEHICLE_LEFT_RE.search(left_slice)
+    vm_right = _VEHICLE_RIGHT_RE.match(right_slice)
+    if vm_left and vm_right:
+        span_start = max(0, ts - 5) + vm_left.start()
+        span_end = te + vm_right.end()
+        return PIIMatch(
+            "VEHICLE",
+            text[span_start:span_end],
+            span_start,
+            span_end,
+            block_id,
+            page,
+            0.85,
+            "토큰 경계 차량번호 결합",
+        )
+
+    # For unattested tokens followed by horizontal space + phone body (e.g. [PHONE_010] 2468-1357)
+    if not trusted and not right_has_digit and te < len(text) and text[te] in " \t":
+        if re.fullmatch(r"(?:01[016789]|02|0[3-6][1-5]|070|080)", inner_digits):
+            ws_start = te
+            while ws_start < len(text) and text[ws_start] in " \t":
+                ws_start += 1
+            ws_end = ws_start
+            ws_limit = min(len(text), ws_start + 16)
+            while ws_end < ws_limit and text[ws_end] in "0123456789-–":
+                ws_end += 1
+            tail = text[ws_start:ws_end].replace("–", "-")
+            if tail and not re.fullmatch(r"(?:19|20)\d{2}-\d{1,2}-\d{1,2}", tail):
+                if _REAL_KR_PHONE_RE.fullmatch(f"{inner_digits}-{tail}"):
+                    return PIIMatch(
+                        "PHONE",
+                        text[ts:ws_end],
+                        ts,
+                        ws_end,
+                        block_id,
+                        page,
+                        0.9,
+                        "토큰 숫자-후행 전화번호 결합",
+                    )
+
+    return None
+
+
+def _pseudonym_analysis(
+    text: str,
+    *,
+    block_id: Optional[str] = None,
+    page: Optional[int] = None,
+    trusted_spans: Optional[frozenset[Tuple[int, int, str]]] = None,
+) -> Tuple[List[Tuple[int, int]], List[PIIMatch]]:
+    """검증된 가명 토큰([KIND_NNN]) 구간과 토큰 경계 결합 PII 후보를 분리한다."""
+    safe_spans: List[Tuple[int, int]] = []
+    boundary_matches: List[PIIMatch] = []
+    for match in PSEUDONYM_TOKEN_RE.finditer(text):
+        ts, te = match.span()
+        bare = match.group(0)[1:-1]
+        inner_digits = bare[-3:]
+        is_trusted = trusted_spans is not None and (ts, te, bare) in trusted_spans
+        cross_match = _cross_boundary_pii_match(
+            text, ts, te, inner_digits, block_id, page, trusted=is_trusted,
+        )
+        if cross_match is not None:
+            boundary_matches.append(cross_match)
+            continue
+        if trusted_spans is not None and not is_trusted:
+            continue
+        safe_spans.append((ts, te))
+    return safe_spans, boundary_matches
+
+
+def _pseudonym_spans(text: str) -> List[Tuple[int, int]]:
+    """이미 가명 토큰([KIND_NNN])으로 가려진 구간 목록(정렬·비중첩)."""
+    spans, _ = _pseudonym_analysis(text)
+    return spans
+
+
+def _overlaps_span(spans: List[Tuple[int, int]], start: int, end: int) -> bool:
+    """[start, end)가 정렬·비중첩 구간 spans 중 하나라도 겹치는지 O(log N)으로 판정한다."""
+    if not spans or start >= end:
+        return False
+    index = bisect_right(spans, (start, float("inf")))
+    if index > 0 and spans[index - 1][1] > start:
+        return True
+    if index < len(spans) and spans[index][0] < end:
+        return True
+    return False
+
+
 def _width_normalized_positions(text: str) -> List[Tuple[str, int]]:
     """Keep punctuation and an original offset for every NFKC character."""
     expanded: List[Tuple[str, int]] = []
@@ -610,44 +796,23 @@ def _width_normalized_positions(text: str) -> List[Tuple[str, int]]:
     return expanded
 
 
-_PSEUDONYM_TOKEN_RE = re.compile(
-    r"\[(?:PERSON|COMPANY|RRN|PHONE|EMAIL|ADDRESS|ACCOUNT|MILID|PASSPORT|DOB|MED|VEHICLE|DLICENSE|AFFIL|BIZNO|PII)_\d{3,6}\]"
-)
-
-
-def _pseudonym_spans(text: str) -> List[Tuple[int, int]]:
-    return [m.span() for m in _PSEUDONYM_TOKEN_RE.finditer(text)]
-
-
-def _overlaps_span(spans: List[Tuple[int, int]], start: int, end: int) -> bool:
-    if not spans:
-        return False
-    index = bisect_right(spans, (start, float("inf")))
-    for check_idx in (index - 1, index):
-        if 0 <= check_idx < len(spans):
-            s_start, s_end = spans[check_idx]
-            if s_start < end and start < s_end:
-                return True
-    return False
-
-
-def _normalise_contact_view(text: str) -> Tuple[str, List[int]]:
-    """숫자 사이 표기를 정리한 연락처 탐지 뷰와 문자별 원문 위치를 만든다.
-
-    가명 토큰([PERSON_001] 등) 안의 숫자는 인접한 괄호·숫자와 합쳐 가짜 전화번호로
-    오인하지 않도록 비숫자 경계로 둔다. 토큰 바깥의 실제 번호는 그대로 탐지한다.
-    """
-    pseudonym_digit_positions = set()
-    for m in _PSEUDONYM_TOKEN_RE.finditer(text):
-        for pos in range(m.start(), m.end()):
-            if text[pos].isdigit():
-                pseudonym_digit_positions.add(pos)
-
-    expanded: List[Tuple[str, int]] = []
-    for source_index, source_char in enumerate(text):
-        mapped = "X" if source_index in pseudonym_digit_positions else source_char
-        for char in unicodedata.normalize("NFKC", mapped):
-            expanded.append((char, source_index))
+def _normalise_contact_view(
+    text: str, token_spans: Optional[List[Tuple[int, int]]] = None,
+) -> Tuple[str, List[int]]:
+    """숫자 사이 표기를 정리한 연락처 탐지 뷰와 문자별 원문 위치를 만든다."""
+    spans = _pseudonym_spans(text) if token_spans is None else token_spans
+    if spans:
+        chunks: List[str] = []
+        pos = 0
+        for s, e in spans:
+            chunks.append(text[pos:s])
+            chunks.append("A" * (e - s))
+            pos = e
+        chunks.append(text[pos:])
+        view_source = "".join(chunks)
+    else:
+        view_source = text
+    expanded = _width_normalized_positions(view_source)
 
     def is_separator(char: str) -> bool:
         category = unicodedata.category(char)
@@ -695,7 +860,10 @@ _INTERNATIONAL_PREFIX_RE = re.compile(
 
 
 def _extend_international_prefix_spans(
-    text: str, matches: List[PIIMatch], guard_spans: List[Tuple[int, int]],
+    text: str,
+    matches: List[PIIMatch],
+    guard_spans: List[Tuple[int, int]],
+    token_spans: Optional[List[Tuple[int, int]]] = None,
 ) -> None:
     """Extend existing numeric spans; never detect or reclassify a number.
 
@@ -705,6 +873,7 @@ def _extend_international_prefix_spans(
     """
     if not any(match.kind in {"PHONE", "ACCOUNT", "RRN", "PII"} for match in matches):
         return
+    token_spans = _pseudonym_spans(text) if token_spans is None else token_spans
     expanded = _width_normalized_positions(text)
     normalized = "".join(char for char, _ in expanded)
     positions = [position for _, position in expanded]
@@ -747,6 +916,8 @@ def _extend_international_prefix_spans(
         if not attached or depth:
             continue
         start = positions[prefix.start()]
+        if token_spans and _overlaps_span(token_spans, start, match.end):
+            continue
         guard_index = bisect_right(guard_spans, (start, float("inf")))
         neighbors = guard_spans[max(0, guard_index - 1):guard_index + 1]
         if any(guard_start < match.end and start < guard_end for guard_start, guard_end in neighbors):
@@ -782,6 +953,7 @@ def _contact_matches(
     guard_spans: List[Tuple[int, int]],
     block_id: Optional[str],
     page: Optional[int],
+    token_spans: Optional[List[Tuple[int, int]]] = None,
 ) -> List[PIIMatch]:
     matches: List[PIIMatch] = []
     seen = set()
@@ -809,6 +981,8 @@ def _contact_matches(
             if end < len(text) and text[end] in ")]）］":
                 end += 1
             if _covered_by_span(guard_spans, start, end):
+                continue
+            if token_spans and _overlaps_span(token_spans, start, end):
                 continue
             if kind == "RRN":
                 prefix_context = normalized[max(0, found.start(group) - 20):found.start(group)]
@@ -891,15 +1065,24 @@ def is_lawyer_court_address_context(text: str, start: int, end: int) -> bool:
     return False
 
 
-def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = None) -> List[PIIMatch]:
+def detect(
+    text: str,
+    *,
+    block_id: Optional[str] = None,
+    page: Optional[int] = None,
+    _trusted_spans: Optional[frozenset[Tuple[int, int, str]]] = None,
+) -> List[PIIMatch]:
     """텍스트에서 개인정보 후보를 찾는다."""
     matches: List[PIIMatch] = []
     if not text:
         return matches
 
     guard_spans = legal_identifier_spans(text)
-    pseudonym_spans = _pseudonym_spans(text)
-    contact_view, contact_source_positions = _normalise_contact_view(text)
+    token_spans, boundary_matches = _pseudonym_analysis(
+        text, block_id=block_id, page=page, trusted_spans=_trusted_spans,
+    )
+    matches.extend(boundary_matches)
+    contact_view, contact_source_positions = _normalise_contact_view(text, token_spans=token_spans)
     matches.extend(
         _contact_matches(
             text,
@@ -908,6 +1091,7 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
             guard_spans,
             block_id,
             page,
+            token_spans=token_spans,
         )
     )
     for kind, pattern, base_confidence in DETECTORS:
@@ -915,7 +1099,9 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
             continue
         for m in pattern.finditer(text):
             start, end = m.start(), m.end()
-            if _covered_by_span(guard_spans, start, end) or _overlaps_span(pseudonym_spans, start, end):
+            if _covered_by_span(guard_spans, start, end):
+                continue
+            if token_spans and _overlaps_span(token_spans, start, end):
                 continue
             raw = m.group(0)
             confidence = base_confidence
@@ -947,12 +1133,16 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
         start, end = m.start(1), m.end(1)
         if _covered_by_span(guard_spans, start, end) or re.fullmatch(r"(?:19|20)\d{2}-\d{1,2}-\d{1,2}", m.group(1)):
             continue  # "은행 2024-12-24 거래내역"의 날짜는 계좌번호가 아니다
+        if token_spans and _overlaps_span(token_spans, start, end):
+            continue
         matches.append(PIIMatch("ACCOUNT", m.group(1), start, end, block_id, page, 0.9, "은행명·계좌 표지 문맥"))
 
     # 사업자등록번호 라벨 문맥 포착 (3-2-5 형식)
     for m in BUSINESS_REG_LABELLED_RE.finditer(text):
         start, end = m.start(1), m.end(1)
         if _covered_by_span(guard_spans, start, end):
+            continue
+        if token_spans and _overlaps_span(token_spans, start, end):
             continue
         matches.append(PIIMatch("BUSINESS_REGISTRATION", m.group(1), start, end, block_id, page, 1.0, "사업자등록번호 라벨 문맥"))
 
@@ -962,6 +1152,8 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
         clean_name = re.sub(r"\s+", "", raw_name)
         start, end = m.start(1), m.end(1)
         if _covered_by_span(guard_spans, start, end):
+            continue
+        if token_spans and _overlaps_span(token_spans, start, end):
             continue
 
         # 명시적 라벨 직후 후보는 후행 일반 문맥으로 제외되지 않는 점을 완화(TK-39, TK-43)
@@ -1039,6 +1231,8 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
             start, end = m.start(1), m.end(1)
             if _covered_by_span(guard_spans, start, end):
                 continue
+            if token_spans and _overlaps_span(token_spans, start, end):
+                continue
             # 조사 분리 후보 검사 (TK-39)
             josa_match = re.search(r"(?:은|는|이|가|을|를|의|과|와|에게|에|도|로|으로|에서)$", name)
             if josa_match:
@@ -1080,6 +1274,8 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
             end -= len(group) - len(group.rstrip())
             if _covered_by_span(guard_spans, start, end):
                 continue
+            if token_spans and _overlaps_span(token_spans, start, end):
+                continue
             matches.append(PIIMatch("MEDICAL", med_text, start, end, block_id, page, 0.85, "질병·처방 등 민감 의료정보"))
 
     for pattern in (COMPANY_SUFFIX_RE, COMPANY_PREFIX_RE):
@@ -1093,10 +1289,13 @@ def detect(text: str, *, block_id: Optional[str] = None, page: Optional[int] = N
             name = (m.group(index) or "").strip()
             if not name or name in COMPANY_STOPWORDS:
                 continue
-            matches.append(PIIMatch("COMPANY", name, m.start(index), m.end(index),
+            start, end = m.start(index), m.end(index)
+            if token_spans and _overlaps_span(token_spans, start, end):
+                continue
+            matches.append(PIIMatch("COMPANY", name, start, end,
                                     block_id, page, 0.8, "법인 표기"))
 
-    _extend_international_prefix_spans(text, matches, guard_spans)
+    _extend_international_prefix_spans(text, matches, guard_spans, token_spans)
 
     # 중복 span 정리 (긴 매치 우선).
     # start 오름차순이므로 앞선 항목의 start는 모두 현재 start 이하다. 따라서

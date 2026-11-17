@@ -24,10 +24,28 @@ from packages.pii_engine.detector import (
     detect,
     is_valid_korean_name_structure,
 )
+from packages.pii_engine.pseudonym import (
+    PSEUDONYM_PREFIXES,
+    PSEUDONYM_SEQUENCE_PATTERN,
+    canonical_pseudonym_token,
+)
 from packages.rag_engine.review import ENVELOPE_SCHEMA, ITEM_SCHEMA, KOREAN_RAG_REVIEW_SYSTEM_PROMPT, RAG_REVIEW_SYSTEM_PROMPT, SCHEMA
 from packages.verification_engine.ai_document_detector import AI_DETECTOR_SYSTEM_PROMPT, _DETECTOR_SCHEMA
 
 POLICY_VERSION = "payload-pii-v4"
+_PSEUDONYM_PREFIX_PATTERN = "|".join(re.escape(prefix) for prefix in PSEUDONYM_PREFIXES)
+_STRICT_PERSON_NAME_PREFIXES: Tuple[str, ...] = ("PERSON",)
+_ROLE_PARTY_PREFIXES: Tuple[str, ...] = ("PERSON", "COMPANY", "AFFIL")
+_CORPORATE_CAPABLE_ROLE_LABELS = frozenset({
+    "원고", "피고", "신청인", "피신청인", "청구인", "피청구인", "상고인", "항소인",
+    "채권자", "채무자", "대리인", "소송대리인", "대표이사", "대표자", "대표", "담당자",
+    "이사장", "원장", "소장", "이사", "감사", "지배인", "관리인", "회장", "사장",
+    "매도인", "매수인", "임대인", "임차인", "도급인", "수급인", "위임인", "수임인",
+    "양도인", "양수인", "의뢰인", "상대방", "사용자", "보증인", "연대보증인", "법정대리인",
+    "plaintiff", "defendant", "applicant", "claimant", "petitioner", "respondent",
+    "representative", "counsel", "attorney", "employer", "account holder", "account owner",
+    "payee",
+})
 
 # ===========================================================================
 # 라벨 키 집합: detector.py의 PARTY_AND_TITLE_LABELS에서 단일 출처로 구성 (TK-51, TK-52 2절)
@@ -71,11 +89,31 @@ _LEADING_NAME_VALUE_RE = re.compile(
 _COMPOSITE_NAME_PARTICLE_RE = re.compile(
     rf"^(?P<name>(?:[가-힣][ \t]?){{1,3}}[가-힣])(?:{JOSA}){{1,2}}$"
 )
-# Same token grammar as PseudonymStore, never a prefix-only exemption.
-_MASKED_NAME_VALUE_RE = re.compile(
-    rf"[ \t]*(?:\[?(?:PERSON|COMPANY)_[0-9]{{3,}}\]?(?:{JOSA})?)"
-    rf"(?:[ \t,;/]+\[?(?:PERSON|COMPANY)_[0-9]{{3,}}\]?(?:{JOSA})?)*[ \t]*"
+
+
+def _build_masked_value_re(prefixes: Tuple[str, ...]) -> re.Pattern[str]:
+    prefix_pat = "|".join(re.escape(prefix) for prefix in prefixes)
+    single = (
+        rf"(?:\[(?:{prefix_pat})_{PSEUDONYM_SEQUENCE_PATTERN}\]"
+        rf"|(?:{prefix_pat})_{PSEUDONYM_SEQUENCE_PATTERN})(?:{JOSA})?"
+    )
+    return re.compile(rf"[ \t]*{single}(?:[ \t,;/]+{single})*[ \t]*")
+
+
+# Strict canonical token grammar (balanced brackets, 3-digit bound, field-kind prefix distinction)
+_MASKED_NAME_VALUE_RE = _build_masked_value_re(_STRICT_PERSON_NAME_PREFIXES)
+_MASKED_ROLE_PARTY_VALUE_RE = _build_masked_value_re(_ROLE_PARTY_PREFIXES)
+_MASKED_TOKEN_EXTRACTOR_RE = re.compile(
+    rf"\[(?:{_PSEUDONYM_PREFIX_PATTERN})_{PSEUDONYM_SEQUENCE_PATTERN}\]"
+    rf"|(?:{_PSEUDONYM_PREFIX_PATTERN})_{PSEUDONYM_SEQUENCE_PATTERN}"
 )
+
+
+def _allowed_prefixes_for_field(label: str | None, marker: bool) -> Tuple[str, ...]:
+    if not marker and label and label.casefold() in _CORPORATE_CAPABLE_ROLE_LABELS:
+        return _ROLE_PARTY_PREFIXES
+    return _STRICT_PERSON_NAME_PREFIXES
+
 
 
 def _normalise_korean_key(key: str) -> str:
@@ -194,12 +232,38 @@ def _name_like_value(value: str) -> str | None:
     return name if is_valid_korean_name_structure(name) else None
 
 
-def _uncertain_person_value(value: Any, *, explicit_name: bool, name_field: bool = False) -> bool:
+def _uncertain_person_value(
+    value: Any,
+    *,
+    explicit_name: bool,
+    name_field: bool = False,
+    allowed_prefixes: Tuple[str, ...] = _STRICT_PERSON_NAME_PREFIXES,
+    trusted_spans: frozenset[Tuple[int, int, str]] | None = None,
+) -> bool:
     """Decide send safety separately from extracting a single name token."""
     if not isinstance(value, str):
         return True
     text = unicodedata.normalize("NFKC", value).strip()
-    if not text or _MASKED_NAME_VALUE_RE.fullmatch(text):
+    if not text:
+        return False
+    masked_pattern = (
+        _MASKED_ROLE_PARTY_VALUE_RE
+        if allowed_prefixes == _ROLE_PARTY_PREFIXES
+        else _MASKED_NAME_VALUE_RE
+    )
+    if masked_pattern.fullmatch(text):
+        if trusted_spans is None:
+            return False
+        raw_matches = list(_MASKED_TOKEN_EXTRACTOR_RE.finditer(value))
+        nfkc_matches = list(_MASKED_TOKEN_EXTRACTOR_RE.finditer(text))
+        if not raw_matches or len(raw_matches) != len(nfkc_matches):
+            return True
+        for m in raw_matches:
+            canon = canonical_pseudonym_token(
+                m.group(0), allowed_prefixes=allowed_prefixes, bracketed=True,
+            )
+            if canon is None or (m.start(), m.end(), canon) not in trusted_spans:
+                return True
         return False
     if _name_like_value(text):
         # Single-name context is checked by the normal detector.
@@ -331,8 +395,122 @@ def _try_json_parse(value: str):
     return None
 
 
+def _collect_texts_with_spans(
+    value,
+    path: str = "",
+    *,
+    _uncertain_paths: List[str] | None = None,
+    span_resolver=None,
+) -> List[Tuple[str, str, frozenset[Tuple[int, int, str]] | None]]:
+    """Collect (path, text, trusted_spans) triples with per-field provenance resolution."""
+    results: List[Tuple[str, str, frozenset[Tuple[int, int, str]] | None]] = []
+
+    if isinstance(value, str):
+        decoded = _try_json_parse(value)
+        if decoded is not None:
+            results.extend(_collect_texts_with_spans(
+                decoded, path, _uncertain_paths=_uncertain_paths, span_resolver=span_resolver,
+            ))
+        else:
+            spans = span_resolver(path, value) if span_resolver is not None else None
+            results.append((path, value, spans))
+
+    elif isinstance(value, (dict, _JSONObjectPairs)):
+        str_items: List[Tuple[str, str]] = []
+        items = value.pairs if isinstance(value, _JSONObjectPairs) else value.items()
+        for key, item in items:
+            current_path = f"{path}.{key}" if path else str(key)
+            label = _person_label_for_key(key)
+            marker = _has_name_field_marker(key)
+            item_spans = (
+                span_resolver(current_path, item)
+                if (span_resolver is not None and isinstance(item, str))
+                else None
+            )
+            if (label or marker) and _uncertain_person_value(
+                item,
+                explicit_name=bool(label and marker),
+                name_field=marker,
+                allowed_prefixes=_allowed_prefixes_for_field(label, marker),
+                trusted_spans=item_spans,
+            ):
+                if _uncertain_paths is not None:
+                    _uncertain_paths.append(current_path)
+
+            if isinstance(item, str):
+                decoded = _try_json_parse(item)
+                if decoded is not None:
+                    results.extend(_collect_texts_with_spans(
+                        decoded, current_path, _uncertain_paths=_uncertain_paths, span_resolver=span_resolver,
+                    ))
+                else:
+                    results.append((current_path, item, item_spans))
+                    if key in _PII_TYPE_KEYS:
+                        if item_spans:
+                            shift = len(str(key)) + 2
+                            shifted_spans = frozenset(
+                                (ts + shift, te + shift, tok) for ts, te, tok in item_spans
+                            )
+                        else:
+                            shifted_spans = item_spans
+                        results.append((current_path, f"{key}: {item}", shifted_spans))
+                    else:
+                        name = _name_like_value(item)
+                        if (label or marker) and name:
+                            label = label or "이름"
+                            detector_label = "이름" if label.isascii() else label
+                            synth_text = f"{detector_label}: {name}"
+                            synth_spans = span_resolver(current_path, synth_text) if span_resolver is not None else None
+                            results.append((current_path, synth_text, synth_spans))
+                    str_items.append((key, item))
+            else:
+                results.extend(_collect_texts_with_spans(
+                    item, current_path, _uncertain_paths=_uncertain_paths, span_resolver=span_resolver,
+                ))
+
+        for i in range(len(str_items) - 1):
+            (k1, v1), (k2, v2) = str_items[i], str_items[i + 1]
+            if v1 in CONTEXT_LABEL_KEYS and v2 not in CONTEXT_LABEL_KEYS and is_valid_korean_name_structure(v2):
+                sibling_path = f"{path}.__siblings__[{i}]" if path else f"__siblings__[{i}]"
+                synth_text = f"{v1} {v2}"
+                synth_spans = span_resolver(sibling_path, synth_text) if span_resolver is not None else None
+                results.append((sibling_path, synth_text, synth_spans))
+
+    elif isinstance(value, (list, tuple)):
+        str_elements: List[str] = []
+        for idx, item in enumerate(value):
+            current_path = f"{path}[{idx}]"
+            if isinstance(item, str):
+                decoded = _try_json_parse(item)
+                if decoded is not None:
+                    results.extend(_collect_texts_with_spans(
+                        decoded, current_path, _uncertain_paths=_uncertain_paths, span_resolver=span_resolver,
+                    ))
+                else:
+                    elem_spans = span_resolver(current_path, item) if span_resolver is not None else None
+                    results.append((current_path, item, elem_spans))
+                    str_elements.append(item)
+            else:
+                results.extend(_collect_texts_with_spans(
+                    item, current_path, _uncertain_paths=_uncertain_paths, span_resolver=span_resolver,
+                ))
+
+        for i in range(len(str_elements) - 1):
+            w1, w2 = str_elements[i], str_elements[i + 1]
+            if w1 in CONTEXT_LABEL_KEYS and w2 not in CONTEXT_LABEL_KEYS and is_valid_korean_name_structure(w2):
+                neighbor_path = f"{path}.__neighbors__[{i}]" if path else f"__neighbors__[{i}]"
+                synth_text = f"{w1} {w2}"
+                synth_spans = span_resolver(neighbor_path, synth_text) if span_resolver is not None else None
+                results.append((neighbor_path, synth_text, synth_spans))
+
+    return results
+
+
 def _collect_texts_from_value(
-    value, path: str = "", *, _uncertain_paths: List[str] | None = None,
+    value,
+    path: str = "",
+    *,
+    _uncertain_paths: List[str] | None = None,
 ) -> List[Tuple[str, str]]:
     """값에서 (경로, 검사할 텍스트) 쌍을 수집한다.
 
@@ -346,96 +524,12 @@ def _collect_texts_from_value(
     JSON 문자열:
       - 재귀적으로 파싱하여 같은 규칙 적용.
     """
-    results: List[Tuple[str, str]] = []
-
-    if isinstance(value, str):
-        # JSON 문자열인지 시도
-        decoded = _try_json_parse(value)
-        if decoded is not None:
-            results.extend(_collect_texts_from_value(decoded, path, _uncertain_paths=_uncertain_paths))
-        else:
-            # 일반 문자열 값
-            results.append((path, value))
-
-    elif isinstance(value, (dict, _JSONObjectPairs)):
-        # 각 키-값 쌍을 검사
-        str_items: List[Tuple[str, str]] = []  # 형제 문자열 (key, value) 수집용
-        items = value.pairs if isinstance(value, _JSONObjectPairs) else value.items()
-        for key, item in items:
-            current_path = f"{path}.{key}" if path else str(key)
-            label = _person_label_for_key(key)
-            marker = _has_name_field_marker(key)
-            if (label or marker) and _uncertain_person_value(
-                item, explicit_name=bool(label and marker), name_field=marker,
-            ):
-                if _uncertain_paths is not None:
-                    _uncertain_paths.append(current_path)
-
-            if isinstance(item, str):
-                decoded = _try_json_parse(item)
-                if decoded is not None:
-                    # JSON 문자열이면 파싱하여 재귀 검사
-                    results.extend(_collect_texts_from_value(
-                        decoded, current_path, _uncertain_paths=_uncertain_paths,
-                    ))
-                else:
-                    # 원본 값 검사
-                    results.append((current_path, item))
-                    # 식별번호 종류 키의 기존 문맥은 유지한다. 사람 이름 키는 이름 꼴 값에만
-                    # 문맥을 붙여 장소·직무·법인 값의 차단을 늘리지 않는다.
-                    if key in _PII_TYPE_KEYS:
-                        results.append((current_path, f"{key}: {item}"))
-                    else:
-                        name = _name_like_value(item)
-                        if (label or marker) and name:
-                            label = label or "이름"
-                            detector_label = "이름" if label.isascii() else label
-                            results.append((current_path, f"{detector_label}: {name}"))
-                    str_items.append((key, item))
-            else:
-                # 비문자열 값은 재귀
-                results.extend(_collect_texts_from_value(
-                    item, current_path, _uncertain_paths=_uncertain_paths,
-                ))
-
-        # 형제 문자열 결합:
-        # '라벨 값 다음에 이름 구조 값이 올 때만' 결합 문맥을 생성한다 (TK-52 2절)
-        # 예: {"역할": "원고", "이름값": "편하람"} -> "원고 편하람"
-        for i in range(len(str_items) - 1):
-            (k1, v1), (k2, v2) = str_items[i], str_items[i + 1]
-            if v1 in CONTEXT_LABEL_KEYS and v2 not in CONTEXT_LABEL_KEYS and is_valid_korean_name_structure(v2):
-                sibling_path = f"{path}.__siblings__[{i}]" if path else f"__siblings__[{i}]"
-                results.append((sibling_path, f"{v1} {v2}"))
-
-    elif isinstance(value, (list, tuple)):
-        # 각 원소를 개별 검사
-        str_elements: List[str] = []  # 이웃 원소 결합용
-        for idx, item in enumerate(value):
-            current_path = f"{path}[{idx}]"
-            if isinstance(item, str):
-                decoded = _try_json_parse(item)
-                if decoded is not None:
-                    results.extend(_collect_texts_from_value(
-                        decoded, current_path, _uncertain_paths=_uncertain_paths,
-                    ))
-                else:
-                    results.append((current_path, item))
-                    str_elements.append(item)
-            else:
-                results.extend(_collect_texts_from_value(
-                    item, current_path, _uncertain_paths=_uncertain_paths,
-                ))
-
-        # 배열 이웃 결합:
-        # '선행 원소가 라벨이고 후행 원소가 이름 구조일 때만' 결합 문맥을 생성한다 (TK-52 2절)
-        # 예: ["원고", "편하람"] -> 결합 / ["원고", "피고", "증인"] -> 결합 안 함
-        for i in range(len(str_elements) - 1):
-            w1, w2 = str_elements[i], str_elements[i + 1]
-            if w1 in CONTEXT_LABEL_KEYS and w2 not in CONTEXT_LABEL_KEYS and is_valid_korean_name_structure(w2):
-                neighbor_path = f"{path}.__neighbors__[{i}]" if path else f"__neighbors__[{i}]"
-                results.append((neighbor_path, f"{w1} {w2}"))
-
-    return results
+    return [
+        (collected_path, collected_text)
+        for collected_path, collected_text, _ in _collect_texts_with_spans(
+            value, path, _uncertain_paths=_uncertain_paths,
+        )
+    ]
 
 
 def _walk_fields(value, path="", *, _uncertain_paths=None):
@@ -464,6 +558,7 @@ def inspect_request(request, *, _original_system: str = None):
     from .input_contracts import valid_input_contract
     from .cascade_source import cascade_inspection_text, valid_cascade_source
     from .excerpt_source import excerpt_inspection, valid_excerpt_source
+    from .token_attestation import attested_spans_for, has_token_attestation, valid_token_attestation
 
     contract_failures = []
     if not valid_input_contract(request, original_system=_original_system):
@@ -472,7 +567,17 @@ def inspect_request(request, *, _original_system: str = None):
         contract_failures.append("cascade_source")
     if not valid_excerpt_source(request, original_system=_original_system):
         contract_failures.append("excerpt_source")
+    if not valid_token_attestation(request, original_system=_original_system):
+        contract_failures.append("token_attestation")
     contract_valid = not contract_failures
+    is_attested = has_token_attestation(request)
+
+    def _user_span_resolver(field_path: str, raw_text: str):
+        return attested_spans_for(request, field_path, raw_text, original_system=_original_system)
+
+    def _unattested_span_resolver(field_path: str, raw_text: str):
+        return frozenset() if is_attested else None
+
     payload = asdict(request)
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
 
@@ -496,8 +601,10 @@ def inspect_request(request, *, _original_system: str = None):
     source_text = cascade_inspection_text(request)
     if source_text is not None:
         uncertain_paths = []
-        for path, text in _walk_fields(source_text, "cascade_source", _uncertain_paths=uncertain_paths):
-            matches = [m for m in detect(text) if m.confidence >= 0.6]
+        for path, text, spans in _collect_texts_with_spans(
+            source_text, "cascade_source", _uncertain_paths=uncertain_paths, span_resolver=_user_span_resolver,
+        ):
+            matches = [m for m in detect(text, _trusted_spans=spans) if m.confidence >= 0.6]
             for match in matches:
                 kinds[match.kind] += 1
                 blocked_kinds[match.kind] += 1
@@ -513,10 +620,12 @@ def inspect_request(request, *, _original_system: str = None):
     # R8-A: 조립 전 원본 system이 있으면 별도 검사 (JSON 구조 보존)
     if _original_system is not None:
         uncertain_paths = []
-        for path, text in _walk_fields(
-            {"__original_system__": _original_system}, _uncertain_paths=uncertain_paths,
+        for path, text, spans in _collect_texts_with_spans(
+            {"__original_system__": _original_system},
+            _uncertain_paths=uncertain_paths,
+            span_resolver=_unattested_span_resolver,
         ):
-            matches = [m for m in detect(text) if m.confidence >= 0.6]
+            matches = [m for m in detect(text, _trusted_spans=spans) if m.confidence >= 0.6]
             for m in matches:
                 kinds[m.kind] += 1
                 # 원본 system은 사용자 제공 동적 값이므로 등록 상수 면책 없음
@@ -531,8 +640,11 @@ def inspect_request(request, *, _original_system: str = None):
     # (payload 전체를 _walk_fields에 넘기면 최상위 형제 결합이 경로 판정을 혼동시킴)
     for top_key, top_value in payload.items():
         uncertain_paths = []
-        for path, text in _walk_fields(top_value, top_key, _uncertain_paths=uncertain_paths):
-            matches = [m for m in detect(text) if m.confidence >= 0.6]
+        resolver = _user_span_resolver if top_key == "user" else _unattested_span_resolver
+        for path, text, spans in _collect_texts_with_spans(
+            top_value, top_key, _uncertain_paths=uncertain_paths, span_resolver=resolver,
+        ):
+            matches = [m for m in detect(text, _trusted_spans=spans) if m.confidence >= 0.6]
             if not matches:
                 continue
             detected_paths.add(path)

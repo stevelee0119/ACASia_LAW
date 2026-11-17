@@ -197,3 +197,25 @@ def project_masked(full_text: str, mask_result, segments: Sequence[Dict[str, Any
         ms, me = to_masked(start, "start"), to_masked(end, "end")
         out.append({"segment_id": seg["segment_id"], "masked_start": ms, "masked_end": me, "text": masked[ms:me]})
     return masked, out
+
+
+def projected_token_spans(
+    mask_result, projected_segments: Sequence[Dict[str, Any]],
+) -> Tuple[Tuple[int, int, str], ...]:
+    """Map MaskResult token spans onto render([seg['text'] for seg in projected_segments])."""
+    from packages.pii_engine.engine import slice_token_spans
+
+    raw_spans = getattr(mask_result, "token_spans", ()) or ()
+    if not raw_spans or not projected_segments:
+        return ()
+    out: List[Tuple[int, int, str]] = []
+    cursor = 0
+    for idx, seg in enumerate(projected_segments):
+        if idx > 0:
+            cursor += len(GAP_MARKER)
+        ms = int(seg["masked_start"])
+        me = int(seg["masked_end"])
+        for ts, te, token in slice_token_spans(raw_spans, ms, me):
+            out.append((cursor + ts, cursor + te, token))
+        cursor += len(seg.get("text") or "")
+    return tuple(out)
