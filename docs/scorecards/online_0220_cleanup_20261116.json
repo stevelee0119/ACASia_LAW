@@ -1,0 +1,11 @@
+{
+  "operation": "TRASH_ONLY",
+  "projects": 14,
+  "status": "TRASH_VERIFIED",
+  "archive": "AegisLAW_022_online_evidence_phase1.zip",
+  "archive_sha256": "29a1ee34bacea06df0efb7e068b69874ea727edf301247e9488a8a6089437197",
+  "created_at": "2026-11-15T22:19:23.350653+00:00",
+  "purge_performed": false,
+  "existing_projects_deleted": false,
+  "shared_drive_modified": false
+}

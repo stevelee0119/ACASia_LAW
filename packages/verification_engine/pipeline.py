@@ -1469,6 +1469,7 @@ class VerificationPipeline:
         official_doc_evidence: Dict[str, Any],
         input_cap: int,
         policy: ExternalAIPolicy,
+        attested_tokens: Any = None,
     ) -> Dict[str, Any]:
         """빈 인용·표지 태그·미발견 인용으로 근거가 비어 있는 모델 단계에 한해 유한(단계당 최대 1회) 인용 재확인을 수행한다."""
         if not hasattr(self.router, "run"):
@@ -1539,6 +1540,15 @@ class VerificationPipeline:
                 official_doc_evidence,
                 primary_verdict={} if stage_name == "critic" else None,
             )
+            if attested_tokens is not None:
+                from packages.llm_router.router import bind_cascade_provenance
+
+                req = bind_cascade_provenance(
+                    req,
+                    question=recheck_question,
+                    evidence=official_doc_evidence,
+                    attested=attested_tokens,
+                )
             retry_res = asyncio.run(self.router.run(
                 role,
                 req,
@@ -1613,13 +1623,29 @@ class VerificationPipeline:
                                              f"(공급자 입력 한도 {input_cap}에 맞춘 발췌 예산 {pack_budget}자)")})
                 continue
             projected = None
+            attested_tokens = None
             if context.external_ai_policy != ExternalAIPolicy.ORIGINAL:
                 # 전문 전체를 한 번 가리고 구간을 옮긴다. 뒤의 맥락 검토가 전문을 가려 다시 대조할 때와 결과가 같다.
-                from packages.legal_engine.evidence_pack import project_masked
-                opinion_text, projected = project_masked(str(official["full_text"]),
-                                                         pii.mask_text(str(official["full_text"])), pack["segments"])
-                segments = [seg["text"] for seg in projected]
-                document_text = pii.mask_text(document_text).masked_text
+                from packages.legal_engine.evidence_pack import project_masked, projected_token_spans
+                from packages.pii_engine.pseudonym import PseudonymSequenceLimitError, PseudonymStore
+                try:
+                    official_mask = pii.mask_text(str(official["full_text"]))
+                    opinion_text, projected = project_masked(str(official["full_text"]), official_mask, pack["segments"])
+                    segments = [seg["text"] for seg in projected]
+                    doc_mask = pii.mask_text(document_text)
+                    document_text = doc_mask.masked_text
+                except PseudonymSequenceLimitError:
+                    reviews.append({"citation_id": citation.citation_id, "status": "UNVERIFIED", "advisory_only": True,
+                                    "review_id": verdict.get("review_id"), "model_executed": False,
+                                    "reason": "가명 생성 상한(종류별 999건)을 초과하여 의미·적용 검토를 수행하지 않음"})
+                    continue
+                if type(getattr(pii, "store", None)) is PseudonymStore:
+                    attested_tokens = {
+                        "official_excerpt_spans": projected_token_spans(
+                            official_mask, projected, segments_meta=pack["segments"]
+                        ),
+                        "document_spans": doc_mask.token_spans,
+                    }
             else:
                 opinion_text = str(official["full_text"])
                 segments = [seg["text"] for seg in pack["segments"]]
@@ -1662,9 +1688,10 @@ class VerificationPipeline:
                 "지지하는 근거로 인용하지 말라."
             )
             # 보내기 직전 실제 요청 크기를 다시 잰다(가림으로 길어진 경우 등). 넘으면 부르지 않는다(TK-141).
+            _cascade_extra = {"attested_tokens": attested_tokens} if attested_tokens is not None else {}
             outcome = asyncio.run(self._sized_cascade(
                 input_cap, budget_note, question=question, evidence=official_doc_evidence,
-                profile=context.profile, policy=context.external_ai_policy))
+                profile=context.profile, policy=context.external_ai_policy, **_cascade_extra))
             if outcome is None:
                 reviews.append({"citation_id": citation.citation_id, "status": "UNVERIFIED", "advisory_only": True,
                                 "review_id": verdict.get("review_id"), "model_executed": False,
@@ -1684,6 +1711,7 @@ class VerificationPipeline:
                     official_doc_evidence=official_doc_evidence,
                     input_cap=input_cap,
                     policy=context.external_ai_policy,
+                    attested_tokens=attested_tokens,
                 )
                 if recheck_meta["attempted"]:
                     grounding = validate_quotes_by_stage(

@@ -389,3 +389,32 @@ def test_pii_is_masked_before_rendering_sections_and_never_leaks_into_grounding_
     serialized = json.dumps(review["quote_grounding"], ensure_ascii=False)
     assert raw_phone not in serialized
     assert review["source_quotes_validated"] is True
+
+
+def test_masked_render_sections_and_quote_recheck_pass_token_attestation(tmp_path):
+    from packages.llm_router.token_attestation import has_token_attestation
+
+    text = "【이유】 원고 박민수(010-2345-6789) 청구에 관하여 " + _synthetic_mixed_judgment(filler_repeat=3)
+    primary = _QueuedProvider(
+        "anthropic",
+        "claude-stub",
+        lambda n, req: _verdict_json("VERIFIED", [] if n == 1 else [RULE_A]),
+    )
+    critic = _QueuedProvider("openai", "gpt-stub", lambda n, req: _verdict_json("VERIFIED", [RULE_A]))
+    grounder = _QueuedProvider("gemini", "gemini-stub", lambda n, req: _verdict_json("VERIFIED", [RULE_A]))
+
+    _, review, _ = _run_pipeline(
+        tmp_path,
+        full_text=text,
+        quoted_text=RULE_A,
+        case_number="2099다808",
+        providers={"anthropic": primary, "openai": critic, "gemini": grounder},
+        policy=ExternalAIPolicy.MASKED,
+    )
+    assert len(primary.calls) == 2
+    assert all(has_token_attestation(req) for req in primary.calls)
+    assert all("박민수" not in req.user and "010-2345-6789" not in req.user for req in primary.calls)
+    assert review["quote_grounding"]["recheck_attempted"] is True
+    assert review["quote_grounding"]["recheck_recovered"] is True
+    assert review["source_quotes_validated"] is True
+
