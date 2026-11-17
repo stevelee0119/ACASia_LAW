@@ -329,13 +329,32 @@ async def check_cascade(include: bool, registry) -> List[CheckResult]:
                             ok=False, requires_key=True,
                             detail="공식 전문을 받지 못해 교차검증을 돌리지 않음 — "
                                    + ("; ".join(failures) or "사건번호가 일치한 판례 없음"))]
-    source_text = full_text[:24000]
+    import hashlib
+    import tempfile
+    from collections import Counter
+    from packages.pii_engine import PIIEngine, PseudonymStore
+
+    raw_excerpt = full_text[:24000]
+    raw_doc = f"본 서면은 대법원 {case_number}을(를) 인용한다."
+    with tempfile.TemporaryDirectory() as tmp:
+        pii = PIIEngine(PseudonymStore("live_source_check", root=Path(tmp)))
+        mask_res = pii.mask_text(raw_excerpt)
+        source_text = mask_res.masked_text
+        masked_doc = pii.mask_text(raw_doc).masked_text
+    raw_sha = hashlib.sha256(raw_excerpt.encode("utf-8")).hexdigest()[:16]
+    masked_sha = hashlib.sha256(source_text.encode("utf-8")).hexdigest()[:16]
+    masked_types = dict(Counter(m.kind for m in mask_res.matches))
     router = LLMRouter()
     outcome = await router.cascade(
         question="인용된 판결의 취지와 문서의 주장이 부합하는지, 사실관계 차이와 적용상 한계를 검토하라. "
-                 "반드시 제공된 공식 전문의 실제 문구를 evidence_quotes에 인용하라.",
-        evidence={"official": {"case_number": case_number, "full_text": source_text},
-                  "document": f"본 서면은 대법원 {case_number}을(를) 인용한다."})
+                 "반드시 제공된 공식 원문의 실제 문구를 evidence_quotes에 인용하라.",
+        evidence={
+            "official": {
+                "case_number": case_number,
+                "source_excerpt": source_text,
+            },
+            "document": masked_doc,
+        })
     out: List[CheckResult] = []
     providers = []
     for stage in outcome.stages:
@@ -355,15 +374,16 @@ async def check_cascade(include: bool, registry) -> List[CheckResult]:
             configured=True, requires_key=True, status="OK" if stage.get("used") else "NOT_USED",
             ok=bool(stage.get("used")),
             detail=(f"시도 {tried} — 판단 {verdict.get('status', '-')}, "
-                    f"근거 인용 {len(quotes)}건 중 공식 전문과 일치 {grounded}건"
-                    + (f" — {sanitize(stage.get('note'))}" if stage.get("note") else ""))))
+                    f"근거 인용 {len(quotes)}건 중 공식 원문과 일치 {grounded}건"
+                    + (f" — {sanitize(stage.get('note'), 400)}" if stage.get("note") else ""))))
     distinct = sorted(set(providers))
+    types_summary = ",".join(f"{k}:{v}" for k, v in sorted(masked_types.items())) or "none"
     out.append(CheckResult(
         name="cascade:참여 공급자", category="llm_cascade", configured=True, requires_key=True,
         status="OK" if len(distinct) >= 3 else "PARTIAL", ok=len(distinct) >= 3,
         detail=(f"{len(distinct)}개({', '.join(distinct) or '없음'}) · 대상 {case_number} "
-                f"(전문 {len(full_text)}자) · 최종 {outcome.status} "
-                f"· 의견 불일치 {outcome.disagreement} · 교차검증 설정 {router.settings.llm_cross_check}")))
+                f"(전문 {len(full_text)}자, 마스킹 {len(raw_excerpt)}->{len(source_text)}자 [{types_summary}] sha={raw_sha}->{masked_sha}) "
+                f"· 최종 {outcome.status} · 의견 불일치 {outcome.disagreement} · 교차검증 설정 {router.settings.llm_cross_check}")))
     return out
 
 
