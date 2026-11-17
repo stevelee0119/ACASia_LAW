@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import secrets
 import unicodedata
 from collections import Counter
 from dataclasses import asdict, dataclass
@@ -403,9 +404,11 @@ def _collect_texts_with_spans(
     _uncertain_paths: List[str] | None = None,
     _uncertain_diag_paths: List[str] | None = None,
     span_resolver=None,
+    key_sanitizer=None,
 ) -> List[Tuple[str, str, frozenset[Tuple[int, int, str]] | None, str]]:
     """Collect (path, text, trusted_spans, diag_path) tuples with per-field provenance resolution."""
     results: List[Tuple[str, str, frozenset[Tuple[int, int, str]] | None, str]] = []
+    sanitizer = key_sanitizer or _safe_diagnostic_key
 
     if isinstance(value, str):
         decoded = _try_json_parse(value)
@@ -417,6 +420,7 @@ def _collect_texts_with_spans(
                 _uncertain_paths=_uncertain_paths,
                 _uncertain_diag_paths=_uncertain_diag_paths,
                 span_resolver=span_resolver,
+                key_sanitizer=sanitizer,
             ))
         else:
             spans = span_resolver(path, value) if span_resolver is not None else None
@@ -428,7 +432,7 @@ def _collect_texts_with_spans(
         for key, item in items:
             key_str = str(key)
             current_path = f"{path}.{key_str}" if path else key_str
-            safe_k = _safe_diagnostic_key(key_str)
+            safe_k = sanitizer(key_str)
             current_diag = f"{diag_path}.{safe_k}" if diag_path else safe_k
             label = _person_label_for_key(key)
             marker = _has_name_field_marker(key)
@@ -459,6 +463,7 @@ def _collect_texts_with_spans(
                         _uncertain_paths=_uncertain_paths,
                         _uncertain_diag_paths=_uncertain_diag_paths,
                         span_resolver=span_resolver,
+                        key_sanitizer=sanitizer,
                     ))
                 else:
                     results.append((current_path, item, item_spans, current_diag))
@@ -488,6 +493,7 @@ def _collect_texts_with_spans(
                     _uncertain_paths=_uncertain_paths,
                     _uncertain_diag_paths=_uncertain_diag_paths,
                     span_resolver=span_resolver,
+                    key_sanitizer=sanitizer,
                 ))
 
         for i in range(len(str_items) - 1):
@@ -514,6 +520,7 @@ def _collect_texts_with_spans(
                         _uncertain_paths=_uncertain_paths,
                         _uncertain_diag_paths=_uncertain_diag_paths,
                         span_resolver=span_resolver,
+                        key_sanitizer=sanitizer,
                     ))
                 else:
                     elem_spans = span_resolver(current_path, item) if span_resolver is not None else None
@@ -527,6 +534,7 @@ def _collect_texts_with_spans(
                     _uncertain_paths=_uncertain_paths,
                     _uncertain_diag_paths=_uncertain_diag_paths,
                     span_resolver=span_resolver,
+                    key_sanitizer=sanitizer,
                 ))
 
         for i in range(len(str_elements) - 1):
@@ -624,22 +632,44 @@ _SAFE_DIAGNOSTIC_CATEGORIES: frozenset[str] = frozenset({
     "MASKING_PII_DETECTED", "REQUEST_WIRING_CONTRACT", "INSPECTION_EXCEPTION",
 })
 _SAFE_PII_KIND_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,31}$")
-def _safe_diagnostic_key(raw_key: Any) -> str:
-    """허용 목록 밖의 객체 키를 원문이 드러나지 않는 고정 토큰(key_<12자 해시>)으로 변환한다."""
+def _create_request_key_sanitizer(salt: str | None = None):
+    """요청 단위의 난수 salt와 순번으로 비허용 키를 매핑하는 비가역·비결정적 토크나이저를 생성한다."""
+    req_salt = salt or secrets.token_hex(4)
+    mapping: dict[str, str] = {}
+
+    def sanitizer(raw_key: Any) -> str:
+        key_str = str(raw_key)
+        if key_str in _SAFE_DIAGNOSTIC_KEYS:
+            return key_str
+        token = mapping.get(key_str)
+        if token is None:
+            idx = len(mapping) + 1
+            token = f"key_{req_salt}_{idx}"
+            mapping[key_str] = token
+        return token
+
+    return sanitizer
+
+
+def _safe_diagnostic_key(raw_key: Any, *, key_sanitizer=None) -> str:
+    """허용 목록 밖의 객체 키를 원문 및 결정적 해시 지문이 드러나지 않는 비가역 토큰으로 변환한다."""
+    if key_sanitizer is not None:
+        return key_sanitizer(raw_key)
     key_str = str(raw_key)
     if key_str in _SAFE_DIAGNOSTIC_KEYS:
         return key_str
-    digest = hashlib.sha256(key_str.encode("utf-8")).hexdigest()[:12]
-    return f"key_{digest}"
+    # Standalone 호출 시에도 결정적 SHA-256 지문을 남기지 않고 단일 호출 단위의 난수 salt 토큰 반환
+    return f"key_{secrets.token_hex(4)}_1"
 
 
-def _safe_diagnostic_path(raw_path: Any, *, prefix: str = "") -> str:
+def _safe_diagnostic_path(raw_path: Any, *, prefix: str = "", key_sanitizer=None) -> str:
     """타입이 지정된 경로 구간(객체 키=str, 배열 첨자=int)만 받아 외부 진단용 경로로 직렬화한다.
 
     문자열 경로를 사후 분할·추정하지 않는다. `key_` 접두나 `[숫자]` 모양의 문자열도 신뢰하지 않으며,
-    허용 목록 밖의 객체 키는 모양과 무관하게 항상 해시 토큰으로 바꾼다. 실제 정수(bool 제외)만
-    배열 첨자로 보존한다. 튜플/리스트가 아닌 입력은 구조를 알 수 없으므로 하나의 불투명 키로 해시한다.
+    허용 목록 밖의 객체 키는 모양과 무관하게 항상 비결정적 순번 토큰으로 바꾼다. 실제 정수(bool 제외)만
+    배열 첨자로 보존한다. 튜플/리스트가 아닌 입력은 구조를 알 수 없으므로 하나의 불투명 키로 토큰화한다.
     """
+    sanitizer = key_sanitizer or _safe_diagnostic_key
     if isinstance(raw_path, (tuple, list)):
         segments = tuple(raw_path)
     elif raw_path is None or raw_path == "":
@@ -651,12 +681,12 @@ def _safe_diagnostic_path(raw_path: Any, *, prefix: str = "") -> str:
         if isinstance(elem, int) and not isinstance(elem, bool) and elem >= 0:
             normalized = f"{normalized}[{elem}]" if normalized else f"[{elem}]"
         else:
-            safe_k = _safe_diagnostic_key(elem)
+            safe_k = sanitizer(elem)
             normalized = f"{normalized}.{safe_k}" if normalized else safe_k
     if not normalized:
         normalized = "root"
     if prefix:
-        safe_prefix = _safe_diagnostic_key(prefix)
+        safe_prefix = sanitizer(prefix)
         return safe_prefix if normalized == "root" else f"{safe_prefix}.{normalized}"
     return normalized
 
@@ -703,6 +733,8 @@ def inspect_request(request, *, _original_system: str = None):
     static_fp_kinds = Counter()
     detected_paths = set()
 
+    req_sanitizer = _create_request_key_sanitizer()
+
     excerpt_statuses, excerpt_matches = excerpt_inspection(request)
     if 'INVALID_TRACE' in excerpt_statuses:
         contract_valid = False
@@ -712,7 +744,7 @@ def inspect_request(request, *, _original_system: str = None):
         safe_kind = kind if isinstance(kind, str) and _SAFE_PII_KIND_RE.fullmatch(kind) else "PII"
         kinds[safe_kind] += 1
         blocked_kinds[safe_kind] += 1
-        detected_paths.add(_safe_diagnostic_path(path, prefix="excerpt_source"))
+        detected_paths.add(_safe_diagnostic_path(path, prefix="excerpt_source", key_sanitizer=req_sanitizer))
 
     # Additional source inspection never replaces the original/assembled scans.
     # Even a mismatched context is inspected so PII keeps failure precedence.
@@ -725,6 +757,7 @@ def inspect_request(request, *, _original_system: str = None):
             diag_path="cascade_source",
             _uncertain_diag_paths=uncertain_diag_paths,
             span_resolver=_user_span_resolver,
+            key_sanitizer=req_sanitizer,
         ):
             matches = [m for m in detect(text, _trusted_spans=spans) if m.confidence >= 0.6]
             for match in matches:
@@ -746,6 +779,7 @@ def inspect_request(request, *, _original_system: str = None):
             diag_path="original_system",
             _uncertain_diag_paths=uncertain_diag_paths,
             span_resolver=_unattested_span_resolver,
+            key_sanitizer=req_sanitizer,
         ):
             matches = [m for m in detect(text, _trusted_spans=spans) if m.confidence >= 0.6]
             for m in matches:
@@ -764,13 +798,14 @@ def inspect_request(request, *, _original_system: str = None):
     for top_key, top_value in payload.items():
         uncertain_diag_paths = []
         resolver = _user_span_resolver if top_key == "user" else _unattested_span_resolver
-        top_diag = top_key if top_key in _SAFE_DIAGNOSTIC_KEYS else _safe_diagnostic_key(top_key)
+        top_diag = top_key if top_key in _SAFE_DIAGNOSTIC_KEYS else req_sanitizer(top_key)
         for path, text, spans, diag_path in _collect_texts_with_spans(
             top_value,
             top_key,
             diag_path=top_diag,
             _uncertain_diag_paths=uncertain_diag_paths,
             span_resolver=resolver,
+            key_sanitizer=req_sanitizer,
         ):
             matches = [m for m in detect(text, _trusted_spans=spans) if m.confidence >= 0.6]
             if not matches:

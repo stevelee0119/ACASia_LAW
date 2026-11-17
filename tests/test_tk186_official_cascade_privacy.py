@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -494,3 +495,39 @@ def test_safe_diagnostic_path_preserves_real_int_indices_and_allowlisted_keys(ty
     assert _safe_diagnostic_path(typed_path, prefix="excerpt_source") == f"excerpt_source.{expected}"
     # bool은 정수 첨자로 취급하지 않는다
     assert "[True]" not in _safe_diagnostic_path(("items", True))
+
+
+def test_unknown_keys_use_non_deterministic_uninvertible_tokens_without_fingerprint():
+    phone_key = "01012345678"
+    req = LLMRequest(
+        system="일반 안내",
+        user=json.dumps({phone_key: "010-9999-8888"}, ensure_ascii=False),
+    )
+    audit1 = inspect_request(req)
+    audit2 = inspect_request(req)
+
+    # 1. 원문 문자열이 진단에 없어야 함
+    assert phone_key not in audit1["safe_summary"]
+    assert all(phone_key not in p for p in audit1["detected_field_paths"])
+
+    # 2. 낮은 엔트로피 후보의 sha256 등 원문 유래 결정적 해시 지문이 경로 및 요약에 없어야 함
+    raw_sha = hashlib.sha256(phone_key.encode("utf-8")).hexdigest()
+    for length in (8, 12, 16, 32, 64):
+        assert raw_sha[:length] not in audit1["safe_summary"]
+        assert all(raw_sha[:length] not in p for p in audit1["detected_field_paths"])
+
+    # 3. 요청 간 동일 키라도 동일 토큰이 재사용되지 않는 비결정성(salt/nonce) 검증
+    paths1 = audit1["detected_field_paths"]
+    paths2 = audit2["detected_field_paths"]
+    assert paths1 != paths2, f"서로 다른 감사 실행에서 비허용 키의 진단 토큰이 달라야 함: {paths1} vs {paths2}"
+
+    # 4. 동일 요청 내에서는 동일 키에 대해 일관된 토큰 부여 확인
+    req_multi = LLMRequest(
+        system="일반 안내",
+        user=json.dumps({"sub1": {phone_key: "010-9999-8888"}, "sub2": {phone_key: "010-8888-7777"}}, ensure_ascii=False),
+    )
+    audit_multi = inspect_request(req_multi)
+    multi_paths = audit_multi["detected_field_paths"]
+    tokens = [p.rsplit(".", 1)[-1] for p in multi_paths]
+    assert len(set(tokens)) == 1, f"동일 요청 내 동일 키는 같은 토큰이어야 함: {multi_paths}"
+
