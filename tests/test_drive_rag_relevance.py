@@ -467,8 +467,8 @@ def test_web_shows_drive_health_selection_and_duplicates(tmp_path):
               renderFindings();
               switchTab('review');
             }""")
-            # 2026-10-25(평가 측 개정, TK-127): 참고문헌 처리 기록은 표 위 상태 줄을 펼쳐 본다.
-            page.locator("#referenceStatus summary").first.click()
+            # TK-189: 같은 프로젝트·실행에서 renderFindings() 뒤에도 펼침 상태가 유지된다.
+            expect(page.locator("#referenceStatus details").first).to_have_attribute("open", "")
             expect(section).to_contain_text("관련 자료 검토 범위 미완결")
             expect(section).to_contain_text("학교폭력 가이드북.pdf")
             for width in (1280, 390):
