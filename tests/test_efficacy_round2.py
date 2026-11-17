@@ -91,7 +91,7 @@ def test_semantic_review_negation_and_identity_guard():
                 VerificationStatus.VERIFIED,
                 EvidenceGrade.A,
                 "판례의 취지 왜곡 없이 완전히 부합하며 사안과 사실관계가 동일합니다.",
-                stages=[{"used": True, "verdict": {"status": "VERIFIED", "evidence_quotes": ["실제 판결 취지 문구"]}}],
+                stages=[{"used": True, "verdict": {"status": "VERIFIED", "evidence_quotes": ["실제 판결 취지 문구 전문."]}}],
                 executions=[ModelExecution("PRIMARY_REASONER", "stub", "test", True)],
             )
 
@@ -108,7 +108,7 @@ def test_semantic_review_negation_and_identity_guard():
     result.engine_data["legal_verdicts"] = [{
         "citation_id": citation.citation_id,
         "levels": {"level4": "PENDING_LLM"},
-        "official_record": {"full_text": "실제 판결 취지 문구 전문"},
+        "official_record": {"full_text": "실제 판결 취지 문구 전문."},
     }]
 
     with tempfile.TemporaryDirectory() as tmp_dir:

@@ -1545,7 +1545,7 @@ function referenceSection(docs) {
     section.append(node("p", `연결 점검 · 인증 ${CREDENTIAL_MODES[health.credential_mode] || health.credential_mode || "없음"} · 목록 조회 ${health.listing_succeeded ? "성공" : "실패"} · API 호출 ${health.http_calls}건(오류 ${health.http_errors}건) · 동기화 ${Math.round((health.sync_ms || 0) / 100) / 10}초`, "muted"));
   }
   if (library.duplicates?.length) {
-    const details = node("details");
+    const details = bindReferenceDetails(node("details"), "duplicates");
     const bytes = library.duplicates.reduce((sum, g) => sum + (g.reclaimable_bytes || 0), 0);
     details.append(node("summary", `중복 사본 ${library.duplicates.length}묶음 · 삭제 시 ${Math.round(bytes / 1048576)}MB 절약 (내용 동일, 보존본 1개만 색인)`));
     for (const group of library.duplicates) {
@@ -1565,13 +1565,13 @@ function referenceSection(docs) {
   const recordedIds = new Set((library.inventory || []).map(item => item.file_id).filter(Boolean));
   const generalIssues = (library.issues || []).filter(issue => !issue.file_id || !recordedIds.has(issue.file_id));
   if (generalIssues.length) {
-    const details = node("details");
+    const details = bindReferenceDetails(node("details"), "general-issues");
     details.append(node("summary", `공통·기타 제한 ${generalIssues.length}건`));
     for (const issue of generalIssues) details.append(node("p", `${issue.name || issue.file_id || "Drive"}: ${friendlyText(issue.reason)}`));
     section.append(details);
   }
   if (library.inventory?.length) {
-    const details = node("details");
+    const details = bindReferenceDetails(node("details"), "inventory");
     details.append(node("summary", `자료별 처리 기록 ${library.inventory.length}건`));
     for (const item of library.inventory.slice(0, 100)) {
       const reasons = [...new Set([item.reason, ...(library.issues || []).filter(i => i.file_id === item.file_id).map(i => i.reason)].filter(Boolean))];
@@ -1583,10 +1583,11 @@ function referenceSection(docs) {
     if (library.inventory.length > 100) details.append(node("p", "전체 자료별 처리 기록은 결과 JSON에 보존되어 있습니다.", "muted"));
     section.append(details);
   }
-  for (const doc of docs) {
+  for (let docIdx = 0; docIdx < docs.length; docIdx++) {
+    const doc = docs[docIdx];
     const review = doc.engine_data?.rag;
     if (!review) continue;
-    const details = node("details");
+    const details = bindReferenceDetails(node("details"), `doc:${doc.document_id || doc.id || doc.filename || docIdx}`);
     details.append(node("summary", `${doc.filename}: ${statuses[review.status] || review.status}`));
     if (review.claim_coverage && typeof review.claim_coverage.eligible_claims === "number") {
       const c = review.claim_coverage;
@@ -2407,7 +2408,7 @@ function referenceIdentifier(citation) {
     if (part) article += part.startsWith("제") ? part : `제${part}${suffix}`;
   }
   if (!law) {
-    const found = raw.match(/([가-힣A-Za-z·]+(?:법률|법|령|규정|조례))(제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?)/);
+    const found = raw.match(/([가-힣A-Za-z·]+(?:법률|법|령|규정|규칙|조례|훈령|예규|고시|지침|요령|기준|수칙|세칙|내규))(제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?)/);
     if (found) [law, article] = [found[1], found[2]];
   }
   return law && /^제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?$/.test(article) ? ["law", law, article] : null;
@@ -2425,13 +2426,22 @@ function referenceIdentifierMatch(citation, excerpt) {
   }
   const original = String(excerpt || "");
   const separator = "[\\u0009-\\u000D\\u001C-\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF「」『』]*";
-  const escaped = [...key].map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const lawPattern = new RegExp("(?<![가-힣A-Za-z0-9])" + escaped.join(separator) + "(?:(?![가-힣A-Za-z0-9])|(?=제" + separator + "[0-9]))", "g");
-  const positions = [...original.matchAll(lawPattern)].map(m => referenceTextLength(referenceAuthorityText(original.slice(0, m.index))));
+  const alias = referenceAuthorityText(citation.attributes?.law_alias_candidate);
+  // 종류명뿐인 행정규칙 이름(지침·훈령 등)은 다른 규칙 이름의 끝부분과 같아 특정 규칙으로 결속할 수 없다.
+  const genericKey = ["훈령", "예규", "고시", "지침"].includes(key);
+  const keys = (genericKey ? [] : [key]).concat(alias && alias !== key ? [alias] : []);
+  const positions = [];
+  for (const candidateKey of keys) {
+    const escaped = [...candidateKey].map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const lawPattern = new RegExp("(?<![가-힣A-Za-z0-9])" + escaped.join(separator) + "(?:(?![가-힣A-Za-z0-9])|(?=제" + separator + "[0-9]))", "g");
+    for (const m of original.matchAll(lawPattern)) {
+      positions.push([referenceTextLength(referenceAuthorityText(original.slice(0, m.index))), referenceTextLength(candidateKey)]);
+    }
+  }
   // 조문 표기는 가장 길게 읽고, 뒤에 숫자가 이어지면 잘린 표기라 어느 조문과도 같지 않다(Python과 같은 규칙).
   const articles = [...text.matchAll(/제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?/g)].map(m =>
     ({index:m.index, token:/[0-9]/.test(text.charAt(m.index + m[0].length)) ? null : m[0]}));
-  const nearby = m => positions.some(p => Math.abs(referenceTextLength(text.slice(0, m.index)) - p - referenceTextLength(key)) <= 100);
+  const nearby = m => positions.some(([p, klen]) => Math.abs(referenceTextLength(text.slice(0, m.index)) - p - klen) <= 100);
   const conflict = articles.some(m => !referenceArticleCompatible(m.token, article) && nearby(m));
   const full = positions.length > 0 && articles.some(m => referenceArticleCompatible(m.token, article)) && !conflict;
   return {full, proximate:full && articles.some(m => referenceArticleCompatible(m.token, article) && nearby(m)), conflict};
@@ -2514,14 +2524,52 @@ function referenceObservationBlock(observations) {
   }
   return box;
 }
+const referenceDetailsState = { contextKey: "", openKeys: new Set() };
+function referenceDetailsContextKey() {
+  const projectId = state.project?.id || "";
+  const runId = state.run?.id || "";
+  return projectId ? `${projectId}:${runId}` : "";
+}
+function syncReferenceDetailsContext() {
+  const nextKey = referenceDetailsContextKey();
+  if (nextKey !== referenceDetailsState.contextKey) {
+    referenceDetailsState.contextKey = nextKey;
+    referenceDetailsState.openKeys.clear();
+  }
+  return nextKey;
+}
+function captureReferenceDetailsState(container) {
+  const prevKey = referenceDetailsState.contextKey;
+  const nextKey = syncReferenceDetailsContext();
+  if (!nextKey || nextKey !== prevKey || !container) return;
+  for (const el of container.querySelectorAll("details[data-ref-detail-key]")) {
+    const detailKey = el.dataset.refDetailKey;
+    if (!detailKey) continue;
+    if (el.open) referenceDetailsState.openKeys.add(detailKey);
+    else referenceDetailsState.openKeys.delete(detailKey);
+  }
+}
+function bindReferenceDetails(details, detailKey) {
+  if (!details || !detailKey) return details;
+  details.dataset.refDetailKey = detailKey;
+  const key = syncReferenceDetailsContext();
+  if (key && referenceDetailsState.openKeys.has(detailKey)) details.open = true;
+  details.addEventListener("toggle", () => {
+    const activeKey = referenceDetailsContextKey();
+    if (!activeKey || activeKey !== referenceDetailsState.contextKey) return;
+    if (details.open) referenceDetailsState.openKeys.add(detailKey);
+    else referenceDetailsState.openKeys.delete(detailKey);
+  });
+  return details;
+}
 function referenceStatusLine(docs, unmatchedCount, withDetails = true) {
   const library = state.result?.run_manifest?.reference_library;
   if (!library) return null;
   const linked = docs.reduce((n, d) => n + (d.engine_data?.rag?.observations || []).length, 0) - unmatchedCount;
-  const details = node("details", null, "reference-status-line");
   const text = library.status === "DISABLED" ? "주요 참고문헌 대조: 사용 안 함(폴더 설정 없음) · 표의 행은 공식 DB 기준으로만 작성"
     : `주요 참고문헌 대조: 색인 ${library.files_indexed || 0}/${library.files_seen || 0}건 · 표의 행에 반영한 의견 ${linked}건` + (unmatchedCount ? ` · 행과 연결되지 않아 별도 행으로 추가 ${unmatchedCount}건` : "");
   if (!withDetails) return node("p", `${text} · 처리 기록은 '출처가 확인되지 않는 항목' 탭에서 펼쳐 봅니다.`, "muted reference-status-brief");
+  const details = bindReferenceDetails(node("details", null, "reference-status-line"), "outer");
   details.append(node("summary", text));
   const full = referenceSection(docs);
   if (full) details.append(full);
@@ -3180,6 +3228,7 @@ function renderFindings() {
   for (const id of ["referenceStatus", "legalReferenceStatus"]) {
     const box = $(id);
     if (!box) continue;
+    if (id === "referenceStatus") captureReferenceDetailsState(box);
     box.replaceChildren();
     const line = referenceStatusLine(docs, unmatchedReferences.length, id === "referenceStatus");
     if (line) box.append(line);

@@ -397,36 +397,77 @@ def _unreasonable_argument(sentence: str, previous: str, *, criminal_doc: bool =
     """무리한 법리 주장 4종을 인용 오류와 분리해 독립 탐지한다(다중 신호 + 예외·극성 확인)."""
     context = f"{previous} {sentence}".strip()
 
-    # 1) 소멸시효 기간 왜곡 (민법 제162조 일반 채권 10년·제766조 불법행위 3년/10년 대비 비정상 장기·불완성 주장)
-    if (
+    # 1) 소멸시효 기간 왜곡 (민법 제162조 일반 채권 10년·제766조 불법행위 3년/10년 대상 권리에 한정)
+    is_limitation_topic = bool(
         re.search(r"소멸\s*시효|시효\s*(?:기간|완성)|영구(?:적|히)?\s*(?:소멸하지|완성되지)\s*않", sentence)
-        and not re.search(
-            r"취득\s*시효|공소\s*시효|징계\s*시효|시효\s*(?:중단|정지|기산|이익\s*포기)|"
-            r"재판상\s*청구|승인|압류|가압류|국유\s*재산|조세\s*채권|국세",
-            sentence,
+    )
+    is_limitation_excluded = bool(
+        re.search(
+            r"취득\s*시효|공소\s*시효|징계\s*시효|"
+            r"시효\s*(?:중단|정지|기산(?:점)?|이익\s*포기)|최고|재판상\s*청구|승인|압류|가압류|가처분|기산점|"
+            r"국유\s*재산|조세\s*채권|국세|지방세|과징금|과태료|"
+            r"특별법|상법|어음법|수표법|근로기준법|국가배상법|공익사업|보험금|단기소멸시효|임금\s*채권",
+            context,
         )
-    ):
+    )
+    if is_limitation_topic and not is_limitation_excluded:
         year_m = re.search(r"(\d{2,3})\s*년", sentence)
         perpetual = bool(re.search(r"영구(?:적|히)?|(?:소멸|완성)(?:하지|되지)\s*않|완성될\s*수\s*없", sentence))
         years = int(year_m.group(1)) if year_m else None
-        is_property_other_than_ownership = bool(re.search(r"소유권\s*(?:이외|외)(?:의)?\s*재산권|물권|지상권|전세권|지역권", sentence))
-        is_claim_scope = bool(re.search(
-            r"채권|손해\s*배상|불법\s*행위|대여금|매매\s*대금|용역\s*대금|공사\s*대금|청구권|구상권|구상금|부당\s*이득|"
-            r"민법\s*제\s*(?:162|766)\s*조",
+        is_property_other_than_ownership = bool(
+            re.search(r"소유권\s*(?:이외|외)(?:의)?\s*재산권|물권|지상권|전세권|지역권", context)
+        )
+        is_ownership_defense = bool(re.search(r"소유권|물권적\s*청구권|등기\s*청구권|말소\s*등기", sentence))
+
+        is_general_bond = bool(re.search(
+            r"일반\s*채권|대여금|차용금|매매\s*대금|용역\s*대금|공사\s*대금|물품\s*대금|"
+            r"임대차\s*보증금|보증금\s*반환|구상금|구상권|부당\s*이득|계약\s*(?:상)?\s*(?:채권|청구권)|"
+            r"채무\s*불이행|민법\s*제\s*162\s*조",
             context,
         ))
-        distorted = (years is not None and years >= 21) or (
-            years is not None and 11 <= years <= 20 and is_claim_scope and not is_property_other_than_ownership
-        ) or (perpetual and is_claim_scope and not re.search(r"소유권|물권적\s*청구권|등기\s*청구권", sentence))
+        is_tort_claim = bool(re.search(
+            r"손해\s*배상|불법\s*행위|위자료|민법\s*제\s*766\s*조",
+            context,
+        ))
+        is_claim_scope = (is_general_bond or is_tort_claim)
+
+        # 연수만으로 판정하지 않으며, 반드시 일반 채권 또는 손해배상청구권 특정 문맥이 존재해야 한다.
+        distorted = (
+            (years is not None and years >= 11 and is_claim_scope and not is_property_other_than_ownership)
+            or (perpetual and is_claim_scope and not is_ownership_defense)
+        )
         if distorted:
             detail_val = f"{years}년" if years is not None else "영구·시효 미완성"
+            sources = []
+            if is_general_bond:
+                sources.append(_source("민법 제162조"))
+            if is_tort_claim:
+                sources.append(_source("민법 제766조"))
+            if not sources:
+                sources = [_source("민법 제162조"), _source("민법 제766조")]
+
+            if is_general_bond and not is_tort_claim:
+                reason_text = (
+                    f"민법 제162조 제1항은 일반 채권의 소멸시효를 10년으로 정한다. 법정 중단·정지나 특별법상 특례 근거 없이 "
+                    f"일반 채권의 소멸시효를 {detail_val}로 단정하는 주장은 실정법 기준에 반한다."
+                )
+            elif is_tort_claim and not is_general_bond:
+                reason_text = (
+                    f"민법 제766조는 불법행위로 인한 손해배상청구권의 소멸시효를 안 날로부터 3년·불법행위를 한 날로부터 10년으로 정한다. "
+                    f"법정 중단·정지나 특례 없이 불법행위 손해배상청구권의 소멸시효를 {detail_val}로 단정하는 주장은 실정법 기준에 반한다."
+                )
+            else:
+                reason_text = (
+                    f"민법 제162조 제1항은 일반 채권의 소멸시효를 10년으로, 제766조는 불법행위 손해배상청구권의 소멸시효를 "
+                    f"안 날로부터 3년·불법행위를 한 날로부터 10년으로 정한다. 법정 중단·정지나 특별법상 특례 근거 없이 "
+                    f"일반 채권·손해배상청구권의 소멸시효를 {detail_val}로 단정하는 주장은 실정법 기준에 반한다."
+                )
+
             return ClaimMatch(
                 "LIMITATION_PERIOD_DISTORTION", sentence, 0,
                 f"소멸시효 기간의 법정 기준 왜곡 주장 ({detail_val})", "B", "CONTRADICTED",
-                [_source("민법 제162조"), _source("민법 제766조")],
-                "민법 제162조 제1항은 일반 채권의 소멸시효를 10년으로, 제766조는 불법행위 손해배상청구권의 소멸시효를 "
-                "안 날로부터 3년·불법행위를 한 날로부터 10년으로 정한다. 법정 중단·정지나 특별법상 특례 근거 없이 "
-                f"청구권의 소멸시효를 {detail_val}로 단정하는 주장은 실정법 기준에 반한다.",
+                sources,
+                reason_text,
                 {"defect_type": "UNFOUNDED_CLAIM", "claimed_period": detail_val},
             )
 

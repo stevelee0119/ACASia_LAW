@@ -27,7 +27,8 @@ from .calculation import parse_amounts
 from .classification import (classify_sentence, document_kind, segment_kind, assertion_mode,
                              event_role, NOMINAL_FACT_RE, OPINION_RE as EXPLICIT_OPINION_RE)
 from .entity_resolution import resolve_entities
-from .structure import extract_evidence_references, structure_claim_text
+from .exhibits import parse_exhibits
+from .structure import ACTION_PATTERNS, extract_evidence_references, structure_claim_text
 
 # --- Claim 유형 판별 규칙 ----------------------------------------------------
 OPINION_RE = re.compile(r"(생각한다|사료된다|보아야\s*한다|타당하다|부당하다|바람직하다|판단된다|여겨진다|믿는다)")
@@ -48,6 +49,7 @@ FACT_RE = re.compile(
 DATE_RE = re.compile(
     r"(?P<y>(?:19|20)\d{2})\s*[.\-년]\s*(?P<m>\d{1,2})\s*[.\-월]\s*(?P<d>\d{1,2})\s*[일]?"
 )
+PARTIAL_DATE_RE = re.compile(r"(?<![\d가-힣])\d{1,2}\s*월\s*\d{1,2}\s*일(?![자])")
 EVENT_KIND_RE = [
     ("CONTRACT", re.compile(r"(계약(?:을)?\s*체결|약정|합의)")),
     ("TERMINATION", re.compile(r"(해지|해제|종료|파기)")),
@@ -57,6 +59,89 @@ EVENT_KIND_RE = [
     ("DECISION", re.compile(r"(선고|판결|결정|처분)")),
     ("INCIDENT", re.compile(r"(사고|발생|폭행|상해|침해|위반)")),
 ]
+_ADJACENT_DISQUALIFY_RE = re.compile(
+    r"(?:"
+    r"존재하지|제출되지|작성되지|교부되지|발행되지|첨부되지|미제출|미작성|미확인|"
+    r"위조|변조|허위|거짓|무관|별개|해당하지|다투|부인|배척|신빙성|인정할\s*수\s*없|단정할\s*수\s*없|"
+    r"불명|다르다|다름|아니다|아니라|추정|가능성|여부|인지|"
+    r"그러나|다만|하지만|반면|한편|그런데|오히려|달리|또는|혹은|"
+    r"위\s*(?:각|두|세|여러|모든)\s*(?:사건|사실|행위|날짜)|앞선\s*사건|여러\s*사건|각\s*사건|어느\s*사건|모든\s*사건|전후\s*사건"
+    r")"
+)
+_ADJACENT_SUBJECT_RE = re.compile(
+    r"(?:원고|피고|피고인|상대방|신청인|피신청인|채권자|채무자|공급자|구매자|증인|참고인|당사자|소외|고소인|고발인)"
+    r"(?:\s+[가-힣]{2,4})?(?:은|는|이|가)\b"
+)
+_ADJACENT_ROLE_RE = re.compile(
+    r"(?:원고|피고|피고인|상대방|신청인|피신청인|채권자|채무자|공급자|구매자|"
+    r"증인|참고인|당사자|소외|고소인|고발인|대리인|임대인|임차인|매도인|매수인|"
+    r"수급인|도급인|발주자|시공사|위탁사|피의자|망)(?!신문조서)"
+)
+_ADJACENT_ORG_RE = re.compile(
+    r"(?:주식회사|유한회사|합자회사|합명회사|재단법인|사단법인|학교법인|의료법인|법인|"
+    r"\(주\)|㈜|\(유\)|유한책임회사|"
+    r"[가-힣]{1,10}(?:회사|상사|은행|공사|공단|협회|병원|학교|학원|구청|시청|경찰서|검찰청|법원|위원회|재단|조합))\b"
+)
+_ADJACENT_ATTRIBUTION_WORDS_RE = re.compile(
+    r"(?:명의의|측의|소유|귀속|작성명의|제출명의|보관명의|발행명의)"
+)
+_ADJACENT_POSSESSIVE_RE = re.compile(
+    r"(?<![가-힣])의\b|[가-힣]+의(?:\s|[.,()\[\]{}:;/\-~–·'\"“”‘’「」『』【】]|$)"
+)
+_ALLOWED_UI_NOUN_STEMS = {"합", "결", "동", "협", "질", "이", "정", "명", "품", "건", "소", "주"}
+
+_ADJACENT_CASE_PARTICLE_START_RE = re.compile(
+    r"^\s*(?:[은는이가을를]|으로|에는|에도|에서|에게|과의|와의|만으로는|만으로)\b"
+)
+_ADJACENT_PARTICLE_RE = re.compile(
+    r"(?:에서|에게|한테|으로|로써|로서|와의|과의|에는|에도|만을|만을위한|만으로는|만으로)\b|"
+    r"[가-힣]{2,15}(?:은|는|이|가|을|를)\b"
+)
+
+_ADJACENT_ACTION_PREDICATE_RE = re.compile(
+    r"(?:보관|소지|작성|날인|제출|교부|송부|수령|보유|은닉|폐기|인도|발급|위임|체결|"
+    r"송금|입금|지급|발송|촬영|회신|청구|통지|통보|반환|변제|공제|요청|진술|설명|주장|"
+    r"선고|판결|기소|고소|고발|신청|접수)(?:\s*[.!?。]|\s*$)"
+)
+_ACTION_WORDS = {
+    "보관", "소지", "작성", "날인", "제출", "교부", "송부", "수령", "보유", "은닉",
+    "폐기", "인도", "발급", "위임", "체결", "송금", "입금", "지급", "발송", "촬영",
+    "회신", "청구", "통지", "통보", "반환", "변제", "공제", "요청", "진술", "설명",
+    "주장", "선고", "판결", "기소", "고소", "고발", "신청", "접수",
+}
+_ADJACENT_FINITE_END_RE = re.compile(
+    r"(?:하였다|했다|되었다|됐다|였다|었다|았다|이다|하다|되다|한다|된다|있다|없다|않다|니다|습니다|시오|까요|겠다)\s*[.!?。]?$"
+)
+_ADJACENT_VERB_STEM_RE = re.compile(
+    r"(?:하|되|받|보내|주|쓰|만들)(?:였|었|았|다|고|며|면서|지만|으나|므로|는데|니|면|여)"
+)
+_ADJACENT_ATTACHMENT_RE = re.compile(
+    r"(?:별첨|별지|첨부)\s*제?\s*\d+\s*호?(?:\s*의\s*\d+)*"
+    r"(?:\s*[,\(]?\s*(?:제\s*|[pP]\.\s*)?\d+(?:\s*[~～\-–]\s*\d+)?\s*(?:쪽|면|페이지|[pP](?![A-Za-z]))\s*\)?)?"
+)
+
+_INDICATOR_TOKENS = {
+    "및", "내지", "외", "등", "각", "참조", "첨부", "호증", "호", "건", "부", "매",
+    "장", "쪽", "면", "페이지", "p", "P", "pp", "PP",
+}
+_DOCUMENT_NOUN_SUFFIXES = (
+    "서", "표", "증", "장", "록", "문", "지", "도", "면", "본",
+    "첩", "철", "권", "사본", "출력물", "캡처", "파일", "사진",
+    "영상", "녹음", "녹취", "자료", "내역", "목록", "명세", "조서",
+)
+_DOCUMENT_NOUNS = {
+    "내용증명", "문자", "메시지", "이메일", "메일", "카카오톡", "카톡",
+    "약정", "계약", "영수증", "공정표", "도면", "사진", "일지", "장부",
+    "전표", "세금계산서", "통장사본", "통화녹음", "녹취록", "보고서", "견적서",
+}
+_ALLOWED_TITLE_MODIFIERS = {
+    "수정", "최종", "초안", "변경", "추가", "보완", "임시", "공식", "표준", "약식",
+    "현장", "물품", "부동산", "토지", "건물", "차량", "거래", "정산", "매매", "임대차",
+    "도급", "근로", "고용", "합의", "확약", "세금", "공정", "검수", "측량", "촬영",
+    "발주", "문의", "제안", "회의", "상세", "요약", "관련", "별첨", "별지", "사본",
+    "원본", "출력", "출력물", "화면", "캡처", "사진", "도면", "녹음", "녹취", "동영상",
+    "영상", "파일", "명세", "내역", "목록", "정본", "등본", "초본", "계약서", "계약",
+}
 
 PARTY_ROLE_WORDS = {
     "원고", "피고", "피고인", "참고인", "피의자", "증인", "고소인", "고발인",
@@ -340,27 +425,257 @@ def extract_entities(doc: NormalizedDocument, *, project_id: Optional[str] = Non
     return list(found.values())
 
 
+def _collect_event_evidence_references(
+    sentence: str, *, document_id: str, block_id: str, page: Optional[int],
+    source_run_id: Optional[str], document_sha256: str, offset: int,
+    include_attachments: bool = False,
+) -> List[dict]:
+    """사건/인접 문장에서 호증 참조를 수집하되 원문 span을 보존한다."""
+    refs = extract_evidence_references(
+        sentence, document_id=document_id, block_id=block_id,
+        page=page, source_run_id=source_run_id,
+        document_sha256=document_sha256, offset=offset,
+    )
+    by_span: Dict[Tuple[int, int], List[dict]] = {}
+    for item in parse_exhibits(sentence):
+        by_span.setdefault(tuple(item["span"]), []).append(item)
+
+    merged: List[dict] = list(refs)
+    for (s0, s1), items in sorted(by_span.items()):
+        abs_span = [offset + s0, offset + s1]
+        overlapping = [
+            r for r in merged
+            if not (r["span"][1] <= abs_span[0] or r["span"][0] >= abs_span[1])
+        ]
+        # extract_evidence_references가 쪽 범위까지 이미 넓게 잡았으면 유지하고,
+        # 복수/가지번호/특수 당사자(소갑·을가·증 등)로 parse_exhibits가 더 넓거나 유일하게 잡았을 때 반영한다.
+        if overlapping and all((r["span"][1] - r["span"][0]) >= (s1 - s0) for r in overlapping):
+            continue
+        merged = [r for r in merged if r not in overlapping]
+        first_ex = items[0]
+        branches = [b for item in items for b in (item.get("branches") or [])]
+        merged.append({
+            "key": ":".join([first_ex["party"], str(first_ex["number"]), *map(str, branches)]),
+            "raw_text": sentence[s0:s1],
+            "side": first_ex["party"],
+            "attachment": None,
+            "number": first_ex["number"],
+            "branches": branches,
+            "page_start": None,
+            "page_end": None,
+            "parse_status": "PARSED",
+            "document_id": document_id,
+            "block_id": block_id,
+            "page": page,
+            "source_run_id": source_run_id,
+            "document_sha256": document_sha256,
+            "span": abs_span,
+        })
+
+    if include_attachments:
+        for m in _ADJACENT_ATTACHMENT_RE.finditer(sentence):
+            abs_span = [offset + m.start(), offset + m.end()]
+            if any(not (r["span"][1] <= abs_span[0] or r["span"][0] >= abs_span[1]) for r in merged):
+                continue
+            merged.append({
+                "key": "",
+                "raw_text": sentence[m.start():m.end()],
+                "side": None,
+                "attachment": m.group(0),
+                "number": None,
+                "branches": [],
+                "page_start": None,
+                "page_end": None,
+                "parse_status": "PARSED",
+                "document_id": document_id,
+                "block_id": block_id,
+                "page": page,
+                "source_run_id": source_run_id,
+                "document_sha256": document_sha256,
+                "span": abs_span,
+            })
+
+    merged.sort(key=lambda r: (r["span"][0], r["span"][1]))
+    return merged
+
+
+def _can_event_bind_adjacent(date_count: int, structure: dict) -> bool:
+    """단일 확정 사건 문장만 바로 뒤 인접 호증 구절을 연결할 수 있다."""
+    if date_count != 1:
+        return False
+    if structure.get("stance") != "ASSERTED":
+        return False
+    if any(structure.get(flag) for flag in ("negated", "hearsay", "quoted", "conditional", "alternative")):
+        return False
+    return True
+
+
+def _is_allowed_evidence_residual(residual: str) -> bool:
+    """호증 참조 제거 후 잔여 구절이 허용된 증거 제목/표지 문법에 맞는지 엄격히 판정한다."""
+    if not residual:
+        return True
+    if ":" in residual or "：" in residual:
+        return False
+    if _ADJACENT_DISQUALIFY_RE.search(residual):
+        return False
+    if _ADJACENT_ROLE_RE.search(residual):
+        return False
+    if _ADJACENT_ORG_RE.search(residual):
+        return False
+    if _ADJACENT_ATTRIBUTION_WORDS_RE.search(residual):
+        return False
+    for match in _ADJACENT_POSSESSIVE_RE.finditer(residual):
+        word = match.group(0).strip(" .,()[]{}:;/-~–·'\"“”‘’「」『』【】")
+        if word == "의":
+            return False
+        if word.endswith("의"):
+            stem = word[:-1]
+            if stem not in _ALLOWED_UI_NOUN_STEMS:
+                return False
+    if _ADJACENT_CASE_PARTICLE_START_RE.search(residual):
+        return False
+    if _ADJACENT_PARTICLE_RE.search(residual):
+        return False
+    if _ADJACENT_ACTION_PREDICATE_RE.search(residual):
+        return False
+    if _ADJACENT_FINITE_END_RE.search(residual) or _ADJACENT_VERB_STEM_RE.search(residual):
+        return False
+    if any(pat.search(residual) for _, pat in ACTION_PATTERNS):
+        return False
+
+    tokens = [t.strip() for t in re.split(r"[\s.,()\[\]{}:;/\-~–·'\"“”‘’「」『』【】]+", residual) if t.strip()]
+    if not tokens:
+        return True
+
+    title_tokens = []
+    for t in tokens:
+        if t in _INDICATOR_TOKENS or re.match(r"^\d+(?:건|부|매|장|쪽|면|호)?$", t):
+            continue
+        title_tokens.append(t)
+
+    if not title_tokens:
+        return True
+
+    if len(title_tokens) > 4:
+        return False
+    if sum(len(t) for t in title_tokens) > 30:
+        return False
+
+    for t in title_tokens:
+        if not re.match(r"^[가-힣A-Za-z0-9]+$", t):
+            return False
+        if t in _ACTION_WORDS:
+            return False
+
+    if len(title_tokens) > 1:
+        for mod in title_tokens[:-1]:
+            if mod not in _ALLOWED_TITLE_MODIFIERS:
+                return False
+
+    last_token = title_tokens[-1]
+    ends_with_doc_suffix = any(last_token.endswith(sfx) for sfx in _DOCUMENT_NOUN_SUFFIXES)
+    is_doc_noun = last_token in _DOCUMENT_NOUNS
+    if not (ends_with_doc_suffix or is_doc_noun):
+        return False
+
+    return True
+
+
+def _adjacent_evidence_refs(
+    next_sentence: str, *, document_id: str, block_id: str, page: Optional[int],
+    source_run_id: Optional[str], document_sha256: str, offset: int,
+) -> Optional[List[dict]]:
+    """바로 뒤 문장이 새 사건/부정/전언/가정/주체/모호함 없는 호증 전용 구절일 때만 참조를 반환한다."""
+    if not next_sentence or DATE_RE.search(next_sentence) or PARTIAL_DATE_RE.search(next_sentence):
+        return None
+    if ":" in next_sentence or "：" in next_sentence:
+        return None
+    refs = _collect_event_evidence_references(
+        next_sentence, document_id=document_id, block_id=block_id,
+        page=page, source_run_id=source_run_id,
+        document_sha256=document_sha256, offset=offset,
+        include_attachments=True,
+    )
+    if not refs or any(r.get("parse_status") != "PARSED" for r in refs):
+        return None
+
+    next_struct = structure_claim_text(next_sentence)
+    if any(next_struct.get(flag) for flag in ("negated", "hearsay", "conditional", "alternative")):
+        return None
+    if next_struct.get("stance") in ("DENIED", "REPORTED", "CONDITIONAL", "ALTERNATIVE", "UNKNOWN", "AMBIGUOUS"):
+        return None
+    if _ADJACENT_DISQUALIFY_RE.search(next_sentence):
+        return None
+
+    # 호증 참조 구간을 제거한 나머지 문구에서 새 서술·주체·조사 경계를 점검한다.
+    chars = list(next_sentence)
+    for ref in refs:
+        rel_start = max(0, ref["span"][0] - offset)
+        rel_end = min(len(chars), ref["span"][1] - offset)
+        for idx in range(rel_start, rel_end):
+            chars[idx] = " "
+    residual = " ".join("".join(chars).split())
+
+    if not _is_allowed_evidence_residual(residual):
+        return None
+    compact_residual = re.sub(r"[\s.,()\[\]{}:;/\-~–·'\"“”‘’「」『』【】]", "", residual)
+    if len(compact_residual) > 40:
+        return None
+    return refs
+
+
 def extract_events(doc: NormalizedDocument, *, project_id: Optional[str] = None,
                    source_run_id: Optional[str] = None) -> List[Event]:
-    """제11.4장 Timeline 입력. 날짜와 같은 문장의 사건 서술을 결합한다."""
+    """제11.4장 Timeline 입력. 날짜와 같은 문장 또는 바로 뒤 인접 호증 구절의 근거를 결합한다."""
     events: List[Event] = []
     meta_ids = meta_checklist_block_ids(doc)
     for block in doc.prose_blocks():
         if block.block_id in meta_ids:
             continue
+        sent_spans: List[Tuple[str, int, int]] = []
         cursor = 0
         for sentence in sentences(block.text):
             start = block.text.find(sentence, cursor)
             if start < 0:
                 continue
             cursor = start + len(sentence)
+            sent_spans.append((sentence, start, cursor))
+
+        for idx, (sentence, start, end) in enumerate(sent_spans):
             structure = structure_claim_text(sentence)
             structure.pop("asserted_date")
+            parsed_dates: List[Tuple[re.Match[str], date]] = []
             for m in DATE_RE.finditer(sentence):
                 try:
                     value = date(int(m.group("y")), int(m.group("m")), int(m.group("d")))
                 except ValueError:
                     continue
+                parsed_dates.append((m, value))
+            if not parsed_dates:
+                continue
+
+            evidence_refs = _collect_event_evidence_references(
+                sentence, document_id=doc.document_id, block_id=block.block_id,
+                page=block.page, source_run_id=source_run_id,
+                document_sha256=doc.sha256, offset=start,
+            )
+            if _can_event_bind_adjacent(len(parsed_dates), structure):
+                seen_spans = {tuple(r["span"]) for r in evidence_refs}
+                for next_sent, next_start, _ in sent_spans[idx + 1:]:
+                    adj_refs = _adjacent_evidence_refs(
+                        next_sent, document_id=doc.document_id, block_id=block.block_id,
+                        page=block.page, source_run_id=source_run_id,
+                        document_sha256=doc.sha256, offset=next_start,
+                    )
+                    if not adj_refs:
+                        break
+                    for ref in adj_refs:
+                        ref_span = tuple(ref["span"])
+                        if ref_span not in seen_spans:
+                            seen_spans.add(ref_span)
+                            evidence_refs.append(ref)
+
+            for m, value in parsed_dates:
                 kind = "GENERIC"
                 for name, regex in EVENT_KIND_RE:
                     if regex.search(sentence):
@@ -377,11 +692,8 @@ def extract_events(doc: NormalizedDocument, *, project_id: Optional[str] = None,
                         raw_date_text=m.group(0),
                         project_id=project_id or doc.metadata.get("project_id"),
                         source_run_id=source_run_id, source_document_sha256=doc.sha256,
-                        span=(start, cursor),
-                        evidence_references=extract_evidence_references(
-                            sentence, document_id=doc.document_id, block_id=block.block_id,
-                            page=block.page, source_run_id=source_run_id,
-                            document_sha256=doc.sha256, offset=start),
+                        span=(start, end),
+                        evidence_references=[dict(r) for r in evidence_refs],
                         **structure,
                     )
                 )

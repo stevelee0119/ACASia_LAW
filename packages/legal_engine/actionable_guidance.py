@@ -148,6 +148,17 @@ def check_cause_of_action_elements(doc: NormalizedDocument) -> List[Finding]:
 
 SCOURT_GLAW_URL = "https://glaw.scourt.go.kr"
 SCOURT_RULING_SEARCH_URL = "https://www.scourt.go.kr/portal/information/finalruling/guide/index.html"
+LAW_GO_KR_URL = "https://www.law.go.kr"
+
+
+def _authority_kind(citation_type: Any) -> str:
+    value = getattr(citation_type, "value", citation_type)
+    text = str(value or "").upper()
+    if text in ("ADMIN_RULE", "CITATIONTYPE.ADMIN_RULE"):
+        return "ADMIN_RULE"
+    if text in ("STATUTE", "CITATIONTYPE.STATUTE"):
+        return "STATUTE"
+    return "CASE"
 
 
 def generate_actionable_guidance(
@@ -159,12 +170,43 @@ def generate_actionable_guidance(
     grounded_evidence_quote: str = "",
     quote_diff_categories: Optional[List[str]] = None,
     quote_diff_status: Optional[str] = None,
+    citation_type: Any = None,
 ) -> Dict[str, Any]:
     """대조표 단일 행에 대해 확정오류/출처한계/왜곡 3단계 실무 조치(Actionable Guidance)를 생성한다."""
     diff_cats = quote_diff_categories or []
+    kind = _authority_kind(citation_type)
+    is_admin_rule = kind == "ADMIN_RULE"
+    is_statute = kind == "STATUTE"
+    is_statute_or_admin = is_statute or is_admin_rule
 
     # 1) 확정 부존재 (Tier 1: CONFIRMED_NONEXISTENT)
     if basis == "CONFIRMED_NONEXISTENT":
+        if is_statute_or_admin:
+            label = "행정규칙" if is_admin_rule else "법령"
+            return {
+                "action_tier": "CONFIRMED_ERROR",
+                "action_type": "CLARIFICATION_MOTION",
+                "action_title": f"{label}·조문 미확인에 따른 출처 석명 요청 안내",
+                "guidance_summary": (
+                    f"국가법령정보 공식 목록에서 일치하는 {label} 또는 조문을 확인하지 못했습니다({cited_authority}). "
+                    f"상대방에게 정확한 정식 {label}명과 조문 출처 제출을 요청할 수 있습니다."
+                ),
+                "draft_motion_text": (
+                    f"[{label} 출처 석명 요청 안]\n"
+                    f"사건: [법원 사건번호]\n"
+                    f"신청인: [원고/피고]\n"
+                    f"피신청인: [상대방]\n\n"
+                    f"요청 취지:\n"
+                    f"상대방이 서면에서 원용한 {cited_authority}는 국가법령정보센터 공식 {label} 목록에서 확인되지 않습니다.\n"
+                    f"이에 상대방에게 정확한 정식 명칭, 발령·시행일 및 해당 조문 원문을 석명하도록 촉구하여 주시기 바랍니다."
+                ),
+                "official_portal_url": LAW_GO_KR_URL,
+                "recommended_steps": [
+                    f"1. 국가법령정보센터(law.go.kr)에서 정식 {label}명·약칭·조문 번호 재확인",
+                    "2. 폐지·개정 이력 또는 소관 기관 규정 여부 확인",
+                    "3. 상대방의 공식 출처 미제출 시 근거 없는 주장으로 배척 요청",
+                ],
+            }
         return {
             "action_tier": "CONFIRMED_ERROR",
             "action_type": "CLARIFICATION_MOTION",
@@ -216,6 +258,48 @@ def generate_actionable_guidance(
 
     # 3) 출처 한계 및 미확인 (Tier 2: UNCONFIRMED, UNCONFIRMED_SOURCE_LIMIT)
     if basis in ("UNCONFIRMED", "UNCONFIRMED_SOURCE_LIMIT"):
+        if is_admin_rule:
+            return {
+                "action_tier": "SOURCE_LIMIT_SUSPICIOUS",
+                "action_type": "SOURCE_VERIFICATION",
+                "action_title": "공식 행정규칙·소관 규정 원문 확인 안내",
+                "guidance_summary": (
+                    f"국가법령정보 행정규칙 DB 검색 결과 {cited_authority}의 원문을 확인하지 못했습니다. "
+                    "소관 기관 내부 규정·지침이거나 약칭 표기일 수 있으므로 소관 규정집 또는 전문 사본을 확인하십시오."
+                ),
+                "draft_motion_text": (
+                    f"[행정규칙·지침 원문 제출 요청 안]\n"
+                    f"상대방이 원용한 {cited_authority}는 공개 국가법령정보 행정규칙 목록에서 확인되지 않는 규정입니다.\n"
+                    f"상대방은 해당 지침·훈령·예규의 정식 명칭, 발령번호 및 해당 조문 전문 사본을 제출하여 주시기 바랍니다."
+                ),
+                "official_portal_url": LAW_GO_KR_URL,
+                "recommended_steps": [
+                    "1. 국가법령정보센터(law.go.kr) 행정규칙 및 소관 기관 법규집에서 정식 규정명 확인",
+                    "2. 내부 지침·예규인 경우 상대방 또는 소관 부서에 현행 규정 전문 제출 요청",
+                    "3. 원문·시행일·법령 위임 근거 확인 전까지 대외적 구속력 전제 판단 유보",
+                ],
+            }
+        if is_statute:
+            return {
+                "action_tier": "SOURCE_LIMIT_SUSPICIOUS",
+                "action_type": "SOURCE_VERIFICATION",
+                "action_title": "공식 법령정보 확인 및 조문 원문 대조 안내",
+                "guidance_summary": (
+                    f"국가법령정보 법령 DB 검색 결과 {cited_authority}의 일치 기록을 확인하지 못했습니다. "
+                    "법령명 오기·약칭·자치법규·시행령 구분 여부를 국가법령정보센터에서 직접 확인하십시오."
+                ),
+                "draft_motion_text": (
+                    f"[법령·조문 출처 확인 요청 안]\n"
+                    f"상대방이 원용한 {cited_authority}는 국가법령정보 공식 법령 목록에서 확인되지 않았습니다.\n"
+                    f"상대방은 해당 법령의 정식 제명, 시행 연혁 및 해당 조문 원문을 특정하여 제출하여 주시기 바랍니다."
+                ),
+                "official_portal_url": LAW_GO_KR_URL,
+                "recommended_steps": [
+                    "1. 국가법령정보센터(law.go.kr)에서 정식 법령명·약칭·조문 번호 검색",
+                    "2. 자치법규(조례·규칙), 시행령·시행규칙 또는 폐지 법령 여부 대조",
+                    "3. 공식 조문 원문 확보 전까지 해당 법령을 전제로 한 법리 판단 유보",
+                ],
+            }
         return {
             "action_tier": "SOURCE_LIMIT_SUSPICIOUS",
             "action_type": "SOURCE_VERIFICATION",
@@ -301,6 +385,36 @@ def generate_actionable_guidance(
 
     # 6) 인용문 실질 차이 (Tier 6: CONTENT_MISMATCH / MODIFIED_QUOTE)
     if basis in ("CONTENT_MISMATCH", "MODIFIED_QUOTE"):
+        if is_statute_or_admin:
+            label = "행정규칙" if is_admin_rule else "법령"
+            if quote_diff_status == "UNALIGNED_QUOTE":
+                return {
+                    "action_tier": "SOURCE_LIMIT_SUSPICIOUS",
+                    "action_type": "SOURCE_VERIFICATION",
+                    "action_title": f"공식 원문 검색 및 {label} 문맥 대조 안내",
+                    "guidance_summary": (
+                        f"{cited_authority}의 인용문이 공식 {label} 원문과 대응 구간을 확인할 수 없을 정도로 불일치합니다. "
+                        "원문 검색 및 정확한 조문 문맥을 대조하십시오."
+                    ),
+                    "draft_motion_text": None,
+                    "official_portal_url": LAW_GO_KR_URL,
+                    "recommended_steps": [
+                        f"1. 국가법령정보센터(law.go.kr)에서 공식 {label} 전문 검색",
+                        "2. 인용 문맥의 실제 존재 여부 및 규정 취지 대조 확인",
+                    ],
+                }
+            return {
+                "action_tier": "GENERAL",
+                "action_type": "QUOTE_REVIEW",
+                "action_title": "원문 대조 및 인용문 정정 안내",
+                "guidance_summary": f"{cited_authority}의 인용문이 공식 {label} 원문과 차이가 있습니다. 원문과 대조하여 정확한 자구로 정정하십시오.",
+                "draft_motion_text": None,
+                "official_portal_url": LAW_GO_KR_URL,
+                "recommended_steps": [
+                    f"1. 국가법령정보센터 공식 {label} 원문과 인용문 어절 비교 확인",
+                    "2. 준비서면에서 정확한 조문 인용문으로 정정",
+                ],
+            }
         if quote_diff_status == "UNALIGNED_QUOTE":
             return {
                 "action_tier": "SOURCE_LIMIT_SUSPICIOUS",
@@ -331,6 +445,23 @@ def generate_actionable_guidance(
         }
 
     # 7) 미검증 상태 및 미확인 상태값 (Tier 7: UNVERIFIED / UNKNOWN / SUSPENDED 등, 중립적 확인 요청)
+    if is_statute_or_admin:
+        label = "행정규칙" if is_admin_rule else "법령"
+        return {
+            "action_tier": "SOURCE_LIMIT_SUSPICIOUS",
+            "action_type": "SOURCE_VERIFICATION",
+            "action_title": f"공식 출처 및 {label} 원문 확인 안내",
+            "guidance_summary": (
+                f"{cited_authority}에 대해 공식 출처 확인 및 원문 대조가 완료되지 않았습니다. "
+                "국가법령정보센터 또는 소관 규정집을 통해 원문을 확인하십시오."
+            ),
+            "draft_motion_text": None,
+            "official_portal_url": LAW_GO_KR_URL,
+            "recommended_steps": [
+                f"1. 국가법령정보센터(law.go.kr)에서 {label} 원문 검색",
+                "2. 출처 미확인 시 상대방에게 전문 사본 제출 또는 석명 요구",
+            ],
+        }
     return {
         "action_tier": "SOURCE_LIMIT_SUSPICIOUS",
         "action_type": "SOURCE_VERIFICATION",

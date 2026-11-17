@@ -41,7 +41,9 @@ _RUBRIC_CELL_RE = re.compile(
 
 _REAL_LEGAL_TABLE_COL_RE = re.compile(
     r"^(?:호증|증거번호|증번|서증명|증거명|작성일|작성일자|입증취지|증명취지|"
-    r"일시|사건일시|사실관계|산정기준|산정내역|청구금액|원금|지연손해금)$"
+    r"일자|날짜|일시|사건일시|내용|주요내용|사실관계|법적근거|근거|관련조항|적용법조|관련법조|"
+    r"구분|항목|비목|산정기준|산정내역|청구금액|원금|이자|지연손해금|손해액|인정액|합계|금액|"
+    r"작성자|명의인|증거|서증|비고)$"
 )
 
 _SENTENCE_TERMINAL_RE = re.compile(r"(?:다|요|습니다|ㅂ니다|한다|된다|이다)\s*[.!?。]\s*$")
@@ -52,7 +54,8 @@ _CLOSING_SIGNATURE_RE = re.compile(
 )
 _FORMAL_LEGAL_SECTION_RE = re.compile(
     r"^\s*(?:청구\s*취지|청구\s*원인|입증\s*방법|증거\s*설명|첨부\s*서류|결\s*론|"
-    r"(?:[IVX]+\.|제\s*\d+\s*[장절]|\[(?:별지|첨부)\])\s*\S+)"
+    r"사실\s*관계\s*(?:정리|표|목록)?|증거\s*목록|서증\s*목록|손해액\s*산정\s*(?:내역|표)?|손해배상액\s*산정|"
+    r"(?:[IVX]+\.|제\s*\d+\s*[장절]|\[(?:별지|별첨|첨부)\b[^\]]*\])\s*\S*)"
 )
 
 
@@ -136,8 +139,13 @@ def meta_checklist_block_ids(doc: NormalizedDocument) -> Set[str]:
                 state = None
                 header_blocks = 0
                 continue
-            if is_meta_checklist_table_rows(rows) or state == "section":
+            if is_meta_checklist_table_rows(rows):
                 meta_ids.add(block.block_id)
+            else:
+                # 체크리스트 제목 뒤라는 이유만으로 임의의 표를 메타로 분류하지 않는다.
+                # 메타 표가 아닌 정상 표가 나오면 체크리스트 부록 구간 상태를 해제한다.
+                state = None
+                header_blocks = 0
             continue
 
         if not text:
