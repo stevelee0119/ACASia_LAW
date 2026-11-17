@@ -238,6 +238,7 @@ def reference_health(summary, documents, settings=None):
             "files_seen": summary.get("files_seen", 0), "files_indexed": summary.get("files_indexed", 0),
             "files_reused": summary.get("files_reused", 0),
             "duplicate_groups": len(summary.get("duplicates") or []),
+            "coverage_ledger": summary.get("coverage_ledger"),
             "sync_ms": diagnostics.get("elapsed_ms"), "documents": per_document}
 
 
@@ -521,8 +522,9 @@ class VerificationPipeline:
             issues = "\n".join(context.requested_issues)
             query = [sanitized_reading_text(d.normalized, d.findings)[0][:12000] + "\n" + issues
                      for d in result.documents if d.normalized]
-            emit(JobState.VERIFYING, "Drive 전수 목록·폴더·파일명으로 관련 자료 선정", 0.85)
+            emit(JobState.VERIFYING, "Drive 참고자료 전체 수집·색인 및 우선순위 정렬", 0.85)
             with manifest.stage("reference_sync", [], inputs=0, unit="참고자료") as stage:
+                references._default_collect_all = bool(getattr(self.settings, "rag_decoupled_collection", True))
                 references.sync(query=query)
                 stage.inputs = references.summary["files_seen"]
                 stage.note = references.summary["status"]
@@ -553,6 +555,7 @@ class VerificationPipeline:
                     if settings.rag_contradiction_promotion_enabled and review and review.get("observations") and document_result.normalized:
                         from packages.verification_engine.candidate_verifier import ModelCandidate, verify_rag_candidate
                         doc_text = document_result.normalized.visible_text
+                        masked_doc_text = None
                         sources = review.get("sources", [])
                         claims_by_id = {c.get("claim_id"): c for c in getattr(document_result, "claims", []) if isinstance(c, dict) and c.get("claim_id")}
 
@@ -592,10 +595,29 @@ class VerificationPipeline:
                                     claim_id=c_id,
                                     claim_text=c_text,
                                 )
+                                if rej and rej.get("reason") == "CLAIM_QUOTE_NOT_GROUNDED_IN_DOCUMENT" and context.external_ai_policy != ExternalAIPolicy.ORIGINAL:
+                                    if masked_doc_text is None:
+                                        masked_doc_text = pii.mask_text(doc_text).masked_text
+                                    f_masked, rej_masked = verify_rag_candidate(
+                                        candidate, masked_doc_text, sources,
+                                        document_id=document_result.document_id,
+                                        is_reference_contradiction=True,
+                                        claim_id=c_id,
+                                        claim_text=c_text,
+                                    )
+                                    if f_masked:
+                                        f, rej = f_masked, None
                                 if f:
                                     # 동일 주장(claim_id 없으면 정규화된 claim_quote) 및 동일 참고자료(source_id) 중복 합치기
                                     group_claim = c_id or " ".join(candidate.claim_quote.split())
                                     group_key = (group_claim, candidate.source_id or "")
+                                    prov_entry = {
+                                        "source_id": f.confidence_features.get("source_id"),
+                                        "file_id": f.confidence_features.get("file_id"),
+                                        "source_title": f.confidence_features.get("source_title"),
+                                        "source_format": f.confidence_features.get("source_format"),
+                                        "source_page": f.confidence_features.get("source_page"),
+                                    }
                                     if group_key in promoted_groups:
                                         existing_f = promoted_groups[group_key]
                                         # 설명 및 근거 병합
@@ -604,7 +626,11 @@ class VerificationPipeline:
                                         for ev in f.evidence:
                                             if not any(ev.excerpt == e.excerpt for e in existing_f.evidence):
                                                 existing_f.evidence.append(ev)
+                                        provs = existing_f.confidence_features.setdefault("source_provenances", [])
+                                        if prov_entry not in provs:
+                                            provs.append(prov_entry)
                                     else:
+                                        f.confidence_features["source_provenances"] = [prov_entry]
                                         promoted_groups[group_key] = f
                                 elif rej:
                                     review.setdefault("rejected_observations", []).append(rej)
@@ -616,6 +642,7 @@ class VerificationPipeline:
                         # 기존 TK-09 일반 후보 승격 경로
                         from packages.verification_engine.candidate_verifier import ModelCandidate, verify_rag_candidate
                         doc_text = document_result.normalized.visible_text
+                        masked_doc_text = None
                         sources = review.get("sources", [])
                         for obs in review.get("observations", []):
                             if obs.get("engine") == "exhibit_facts" or obs.get("source_type") == "deterministic":
@@ -633,6 +660,13 @@ class VerificationPipeline:
                                     model_name=obs.get("model_name", "rag_primary_reasoner"),
                                 )
                                 f, rej = verify_rag_candidate(candidate, doc_text, sources, document_id=document_result.document_id)
+                                if rej and rej.get("reason") == "CLAIM_QUOTE_NOT_GROUNDED_IN_DOCUMENT" and context.external_ai_policy != ExternalAIPolicy.ORIGINAL:
+                                    if masked_doc_text is None:
+                                        masked_doc_text = pii.mask_text(doc_text).masked_text
+                                    f_masked, rej_masked = verify_rag_candidate(
+                                        candidate, masked_doc_text, sources, document_id=document_result.document_id)
+                                    if f_masked:
+                                        f, rej = f_masked, None
                                 if f:
                                     document_result.findings.append(f)
                                 elif rej:
