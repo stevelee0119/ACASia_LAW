@@ -2408,7 +2408,7 @@ function referenceIdentifier(citation) {
     if (part) article += part.startsWith("제") ? part : `제${part}${suffix}`;
   }
   if (!law) {
-    const found = raw.match(/([가-힣A-Za-z·]+(?:법률|법|령|규정|조례))(제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?)/);
+    const found = raw.match(/([가-힣A-Za-z·]+(?:법률|법|령|규정|규칙|조례|훈령|예규|고시|지침|요령|기준|수칙|세칙|내규))(제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?)/);
     if (found) [law, article] = [found[1], found[2]];
   }
   return law && /^제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?$/.test(article) ? ["law", law, article] : null;
@@ -2426,13 +2426,22 @@ function referenceIdentifierMatch(citation, excerpt) {
   }
   const original = String(excerpt || "");
   const separator = "[\\u0009-\\u000D\\u001C-\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF「」『』]*";
-  const escaped = [...key].map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const lawPattern = new RegExp("(?<![가-힣A-Za-z0-9])" + escaped.join(separator) + "(?:(?![가-힣A-Za-z0-9])|(?=제" + separator + "[0-9]))", "g");
-  const positions = [...original.matchAll(lawPattern)].map(m => referenceTextLength(referenceAuthorityText(original.slice(0, m.index))));
+  const alias = referenceAuthorityText(citation.attributes?.law_alias_candidate);
+  // 종류명뿐인 행정규칙 이름(지침·훈령 등)은 다른 규칙 이름의 끝부분과 같아 특정 규칙으로 결속할 수 없다.
+  const genericKey = ["훈령", "예규", "고시", "지침"].includes(key);
+  const keys = (genericKey ? [] : [key]).concat(alias && alias !== key ? [alias] : []);
+  const positions = [];
+  for (const candidateKey of keys) {
+    const escaped = [...candidateKey].map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const lawPattern = new RegExp("(?<![가-힣A-Za-z0-9])" + escaped.join(separator) + "(?:(?![가-힣A-Za-z0-9])|(?=제" + separator + "[0-9]))", "g");
+    for (const m of original.matchAll(lawPattern)) {
+      positions.push([referenceTextLength(referenceAuthorityText(original.slice(0, m.index))), referenceTextLength(candidateKey)]);
+    }
+  }
   // 조문 표기는 가장 길게 읽고, 뒤에 숫자가 이어지면 잘린 표기라 어느 조문과도 같지 않다(Python과 같은 규칙).
   const articles = [...text.matchAll(/제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?/g)].map(m =>
     ({index:m.index, token:/[0-9]/.test(text.charAt(m.index + m[0].length)) ? null : m[0]}));
-  const nearby = m => positions.some(p => Math.abs(referenceTextLength(text.slice(0, m.index)) - p - referenceTextLength(key)) <= 100);
+  const nearby = m => positions.some(([p, klen]) => Math.abs(referenceTextLength(text.slice(0, m.index)) - p - klen) <= 100);
   const conflict = articles.some(m => !referenceArticleCompatible(m.token, article) && nearby(m));
   const full = positions.length > 0 && articles.some(m => referenceArticleCompatible(m.token, article)) && !conflict;
   return {full, proximate:full && articles.some(m => referenceArticleCompatible(m.token, article) && nearby(m)), conflict};

@@ -556,8 +556,29 @@ def review_document(result, library, router, context, pii):
                               issues=link_observations(provision_obs, sources, masked_claims))
             return review
 
-        # 4. 문서 단위 배치 대조 (TK-68 개정 1: 비용 비증가 조건 C1~C3 충족)
+        # 4. 문서 단위 배치 대조 (TK-68 개정 1: 비용 비증가 조건 C1~C3 충족 + P2-2 전체 본문 청크·병렬 처리)
         max_subdivision_depth = 1
+
+        def _split_document_chunks(
+            doc_text: str,
+            spans: tuple[tuple[int, int, str], ...] = (),
+            max_chars: int = 40000,
+            overlap: int = 1000,
+        ) -> List[tuple[str, tuple[tuple[int, int, str], ...]]]:
+            """서면 본문이 단일 프롬프트 한도를 넘으면 겹치는 청크로 분할해 후반부 누락을 방지한다."""
+            if not doc_text or len(doc_text) <= max_chars:
+                return [(doc_text, spans)]
+            chunks: List[tuple[str, tuple[tuple[int, int, str], ...]]] = []
+            step = max(1, max_chars - overlap)
+            pos = 0
+            n = len(doc_text)
+            while pos < n:
+                end = min(n, pos + max_chars)
+                chunks.append((doc_text[pos:end], slice_token_spans(spans, pos, end)))
+                if end >= n:
+                    break
+                pos += step
+            return chunks
 
         def _split_sources_into_batches(
             src_list: List[Dict[str, Any]],
@@ -604,6 +625,7 @@ def review_document(result, library, router, context, pii):
                 idx += size
             return fallback_batches
 
+        doc_chunks = _split_document_chunks(document, doc_spans, max_chars=40000, overlap=1000)
         initial_batches = _split_sources_into_batches(sources) or [sources]
         evaluated_batches: List[List[Dict[str, Any]]] = []
         all_observations = []
@@ -611,78 +633,104 @@ def review_document(result, library, router, context, pii):
         accepted_any = False
         outcome = None  # 변수 명시적 초기화 (한국어 주석)
 
-        # 큐 항목: (참고자료 묶음, 분할 깊이)
-        queue = [(b, 0) for b in initial_batches]
+        # 큐 항목: (문서 청크, 청크 토큰 구간, 참고자료 묶음, 분할 깊이, 제외 공급자, 원래 batch 번호)
+        queue: List[tuple[str, tuple[tuple[int, int, str], ...], List[Dict[str, Any]], int, Optional[List[str]], Optional[int]]] = [
+            (doc_chunk, chunk_spans, b, 0, None, None) for doc_chunk, chunk_spans in doc_chunks for b in initial_batches
+        ]
         total_calls = 0
-        # C3 최악 상한: 전체 호출 수(재시도·분할 포함) <= 2 * ceil(N / 6)
-        max_total_calls = 2 * math.ceil(len(sources) / 6) if sources else 2
+        # C3 최악 상한: 전체 호출 수(재시도·분할 포함) <= 2 * ceil(N / 6) * len(doc_chunks)
+        max_total_calls = (2 * math.ceil(len(sources) / 6) if sources else 2) * len(doc_chunks)
+        rag_concurrency = 4
+
+        async def _run_rag_wave(wave_reqs: List[tuple[LLMRequest, Optional[List[str]]]]):
+            sem = asyncio.Semaphore(rag_concurrency)
+
+            async def _call(req: LLMRequest, exc: Optional[List[str]]):
+                async with sem:
+                    return await router.run(
+                        LLMRole.PRIMARY_REASONER, req,
+                        policy=context.external_ai_policy,
+                        exclude=exc,
+                        expected_task="참고자료 검토",
+                    )
+
+            return await asyncio.gather(*(_call(r, exc) for r, exc in wave_reqs))
 
         while queue and total_calls < max_total_calls:
-            s_batch, depth = queue.pop(0)
-            total_calls += 1
+            remaining_budget = max_total_calls - total_calls
+            wave_cap = 1 if len(doc_chunks) == 1 else min(remaining_budget, rag_concurrency)
+            wave_items = queue[:wave_cap]
+            queue = queue[len(wave_items):]
 
-            request = LLMRequest(
-                system=RAG_REVIEW_SYSTEM_PROMPT,
-                user=json.dumps({"document": document, "untrusted_references": [
-                    {k: s[k] for k in ("source_id", "title", "text", "page")} for s in s_batch]}, ensure_ascii=False),
-                schema=ENVELOPE_SCHEMA, max_tokens=4000, metadata={"stage": "drive_rag_advisory", "batch": total_calls},
-                input_contract="reference_review_v1")
-            if context.external_ai_policy != ExternalAIPolicy.ORIGINAL and has_real_store:
-                from packages.llm_router.token_attestation import bind_masked_tokens
-                batch_provenance = {"user.document": (document, doc_spans)}
-                for pos, s in enumerate(s_batch):
-                    sid = str(s.get("source_id", ""))
-                    batch_provenance[f"user.untrusted_references[{pos}].title"] = (
-                        s["title"], source_title_spans_by_id.get(sid, ()),
-                    )
-                    batch_provenance[f"user.untrusted_references[{pos}].text"] = (
-                        s["text"], source_text_spans_by_id.get(sid, ()),
-                    )
-                request = bind_masked_tokens(request, batch_provenance)
-            request = with_review_context(request, enabled=korean_profile, reference_date=getattr(context, "case_date", None))
-            # One selected provider; the existing router bounds each call and its transient retries.
-            batch_outcome = asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request,
-                                                   policy=context.external_ai_policy, expected_task="참고자료 검토"))
-            outcome = batch_outcome
-            result.engine_data.setdefault("model_executions", []).extend(e.to_dict() for e in batch_outcome.executions)
-            executed_any |= bool(batch_outcome.executions or batch_outcome.used)
+            wave_reqs: List[tuple[LLMRequest, Optional[List[str]]]] = []
+            wave_batch_nos: List[int] = []
+            for doc_chunk, chunk_spans, s_batch, _depth, exc_providers, orig_batch_no in wave_items:
+                total_calls += 1
+                batch_no = orig_batch_no if orig_batch_no is not None else total_calls
+                wave_batch_nos.append(batch_no)
+                request = LLMRequest(
+                    system=RAG_REVIEW_SYSTEM_PROMPT,
+                    user=json.dumps({"document": doc_chunk, "untrusted_references": [
+                        {k: s[k] for k in ("source_id", "title", "text", "page")} for s in s_batch]}, ensure_ascii=False),
+                    schema=ENVELOPE_SCHEMA, max_tokens=4000, metadata={"stage": "drive_rag_advisory", "batch": batch_no},
+                    input_contract="reference_review_v1")
+                if context.external_ai_policy != ExternalAIPolicy.ORIGINAL and has_real_store:
+                    from packages.llm_router.token_attestation import bind_masked_tokens
+                    batch_provenance = {"user.document": (doc_chunk, chunk_spans)}
+                    for pos, s in enumerate(s_batch):
+                        sid = str(s.get("source_id", ""))
+                        batch_provenance[f"user.untrusted_references[{pos}].title"] = (
+                            s["title"], source_title_spans_by_id.get(sid, ()),
+                        )
+                        batch_provenance[f"user.untrusted_references[{pos}].text"] = (
+                            s["text"], source_text_spans_by_id.get(sid, ()),
+                        )
+                    request = bind_masked_tokens(request, batch_provenance)
+                request = with_review_context(request, enabled=korean_profile, reference_date=getattr(context, "case_date", None))
+                wave_reqs.append((request, exc_providers))
 
-            is_truncated = any("OUTPUT_TRUNCATED" in getattr(e, "error", "") for e in batch_outcome.executions)
-            remaining_calls = max_total_calls - total_calls
+            wave_outcomes = asyncio.run(_run_rag_wave(wave_reqs))
+            retry_tasks: List[tuple[str, tuple[tuple[int, int, str], ...], List[Dict[str, Any]], int, Optional[List[str]], Optional[int]]] = []
 
-            # TK-68: OUTPUT_TRUNCATED 발생 시 적응형 분할
-            # - 남은 호출 예산이 2회 이상이면 절반으로 분할(Adaptive Halving)
-            # - 남은 호출 예산이 1회뿐이면(N<=6 문서 등) 반으로 나누면 뒷부분이 누락되므로,
-            #   분할 대신 기존 대체 공급자 재시도(아래 failed 처리)로 넘어가 6개 전체를 온전히 대조함
-            if (not batch_outcome.used and is_truncated and len(s_batch) > 1
-                    and depth < max_subdivision_depth and remaining_calls >= 2):
-                mid = len(s_batch) // 2
-                queue.insert(0, (s_batch[mid:], depth + 1))
-                queue.insert(0, (s_batch[:mid], depth + 1))
-                continue
+            for (doc_chunk, chunk_spans, s_batch, depth, exc_providers, _orig), batch_no, batch_outcome in zip(
+                wave_items, wave_batch_nos, wave_outcomes
+            ):
+                outcome = batch_outcome
+                result.engine_data.setdefault("model_executions", []).extend(e.to_dict() for e in batch_outcome.executions)
+                executed_any |= bool(batch_outcome.executions or batch_outcome.used)
 
-            failed = [e.provider for e in batch_outcome.executions if getattr(e, "provider", "") and not e.ok]
-            if not batch_outcome.used and failed:
-                if total_calls < max_total_calls:
-                    total_calls += 1
-                    retry = asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request, policy=context.external_ai_policy,
-                                                   exclude=failed, expected_task="참고자료 검토"))
-                    result.engine_data["model_executions"].extend(e.to_dict() for e in retry.executions)
-                    executed_any |= bool(retry.executions or retry.used)
-                    if retry.executions:
+                is_truncated = any("OUTPUT_TRUNCATED" in getattr(e, "error", "") for e in batch_outcome.executions)
+                remaining_calls = max_total_calls - total_calls - len(retry_tasks)
+
+                # TK-68: OUTPUT_TRUNCATED 발생 시 적응형 분할
+                # - 남은 호출 예산이 2회 이상이면 절반으로 분할(Adaptive Halving)
+                # - 남은 호출 예산이 1회뿐이면(N<=6 문서 등) 분할 대신 대체 공급자 재시도로 전환
+                if (not batch_outcome.used and is_truncated and len(s_batch) > 1
+                        and depth < max_subdivision_depth and remaining_calls >= 2 and exc_providers is None):
+                    mid = len(s_batch) // 2
+                    retry_tasks.append((doc_chunk, chunk_spans, s_batch[:mid], depth + 1, None, None))
+                    retry_tasks.append((doc_chunk, chunk_spans, s_batch[mid:], depth + 1, None, None))
+                    continue
+
+                failed = [e.provider for e in batch_outcome.executions if getattr(e, "provider", "") and not e.ok]
+                if not batch_outcome.used and failed and exc_providers is None and remaining_calls >= 1:
+                    if failed:
                         review.setdefault("retried_after", []).extend(failed)
-                        outcome = retry
-                        batch_outcome = retry
+                    retry_tasks.append((doc_chunk, chunk_spans, s_batch, depth, failed, batch_no))
+                    continue
 
-            batch_accepted = bool(batch_outcome.used and not batch_outcome.quarantined)
-            accepted_any |= batch_accepted
-            if batch_accepted:
-                evaluated_batches.append(s_batch)
-                if batch_outcome.parsed:
-                    b_obs = grounded_observations(batch_outcome.parsed, document, s_batch,
-                                                  rejected=review["rejected_observations"])
-                    if b_obs:
-                        all_observations.extend(b_obs)
+                batch_accepted = bool(batch_outcome.used and not batch_outcome.quarantined)
+                accepted_any |= batch_accepted
+                if batch_accepted:
+                    evaluated_batches.append(s_batch)
+                    if batch_outcome.parsed:
+                        b_obs = grounded_observations(batch_outcome.parsed, document, s_batch,
+                                                      rejected=review["rejected_observations"])
+                        if b_obs:
+                            all_observations.extend(b_obs)
+
+            if retry_tasks:
+                queue = retry_tasks + queue
 
         # C3 최악 상한 등에 도달하여 검토되지 못한 참고자료를 기록 (분모 보존)
         reviewed_source_ids = {s.get("source_id") for b in evaluated_batches for s in b if s.get("source_id")}
@@ -692,7 +740,7 @@ def review_document(result, library, router, context, pii):
 
         batches = evaluated_batches or initial_batches
 
-        # 5. 주장 단위 검색 및 대조 (F3b, 19b 5.2/6.1, TK-63 개정 1)
+        # 5. 주장 단위 검색 및 대조 (F3b, 19b 5.2/6.1, TK-63 개정 1 + P2-2 제한적 병렬 처리)
         from packages.common.config import get_settings
         settings = get_settings()
         max_claims = getattr(settings, "rag_claim_max_per_document", 30)
@@ -711,305 +759,337 @@ def review_document(result, library, router, context, pii):
         start_mono = time.monotonic()
         accumulated_cost_usd = 0.0
         accumulated_uncertain_usd = 0.0
+        dispatched_claims_count = 0
 
-        for idx, claim_obj in enumerate(sorted_claims):
+        async def _run_claim_wave(prepared_items: List[tuple[str, LLMRequest, List[Dict[str, Any]]]]):
+            sem = asyncio.Semaphore(rag_concurrency)
+            claim_runner = router.run
+            if getattr(getattr(router, "settings", None), "llm_efficient_routing", False):
+                claim_runner = getattr(router, "run_any", router.run)
+
+            async def _call(req: LLMRequest):
+                async with sem:
+                    return await claim_runner(
+                        LLMRole.PRIMARY_REASONER, req,
+                        policy=context.external_ai_policy, expected_task="참고자료 검토"
+                    )
+
+            return await asyncio.gather(*(_call(req) for _, req, _ in prepared_items))
+
+        cursor_idx = 0
+        while cursor_idx < len(sorted_claims):
             # 다음 주장을 보내기 전에 개수·시간·비용 예산 확인 (TK-63 3.2절, 한국어 주석)
             if len(bounded_claims) >= max_claims:
                 halt_reason = "COUNT"
-                exceeded_claims.extend(sorted_claims[idx:])
+                exceeded_claims.extend(sorted_claims[cursor_idx:])
                 break
             if (time.monotonic() - start_mono) >= budget_seconds:
                 halt_reason = "TIME"
-                exceeded_claims.extend(sorted_claims[idx:])
+                exceeded_claims.extend(sorted_claims[cursor_idx:])
                 break
             if budget_usd > 0 and accumulated_cost_usd >= budget_usd:
                 halt_reason = "COST"
-                exceeded_claims.extend(sorted_claims[idx:])
+                exceeded_claims.extend(sorted_claims[cursor_idx:])
                 break
 
-            bounded_claims.append(claim_obj)
+            # 첫 호출(probe)은 단건으로 실행해 시간/비용 예산 초과 여부를 안전하게 실측한 뒤 병렬 묶음 크기를 정한다.
+            remaining_slots = max_claims - len(bounded_claims)
+            if dispatched_claims_count == 0:
+                wave_cap = 1
+            elif budget_usd > 0 and accumulated_cost_usd > 0:
+                avg_cost = accumulated_cost_usd / dispatched_claims_count
+                affordable = max(1, int((budget_usd - accumulated_cost_usd) // avg_cost)) if avg_cost > 0 else rag_concurrency
+                wave_cap = min(rag_concurrency, affordable, remaining_slots)
+            else:
+                wave_cap = min(rag_concurrency, remaining_slots)
 
-            c_id = claim_obj.get("claim_id")
-            c_raw_text = claim_obj.get("text", "")
-            if not c_id:
-                continue
+            wave_prepared: List[tuple[str, LLMRequest, List[Dict[str, Any]]]] = []
+            while cursor_idx < len(sorted_claims) and len(bounded_claims) < max_claims and len(wave_prepared) < wave_cap:
+                claim_obj = sorted_claims[cursor_idx]
+                cursor_idx += 1
+                bounded_claims.append(claim_obj)
 
-            # 1) 질의어 생성 (한국어 핵심어 추출, 단일 문장 주장 보충 지원)
-            salient = _claim_salient_words(c_raw_text)
-
-            # 2) 문서 최초 선택과 독립된 전체 구조화 판례 코퍼스 + 일반 참고자료 주장별 검색
-            claim_citation_ids = claim_obj.get("citation_ids") or []
-            if isinstance(claim_citation_ids, str):
-                claim_citation_ids = [claim_citation_ids]
-            linked_citations = [citation_by_id[cid] for cid in claim_citation_ids if cid in citation_by_id]
-
-            claim_case_sources = []
-            if getattr(library, "has_case_tables", lambda: False)():
-                claim_case_sources = library.search_case_table(c_raw_text, citations=linked_citations, limit=5)
-
-            claim_prose_sources = []
-            if claim_multisearch and callable(search_claim_fn):
-                claim_prose_sources = claim_search_cache.get(c_id)
-                if claim_prose_sources is None:
-                    claim_prose_sources = search_claim_fn(c_raw_text, citations=linked_citations, limit=5) or []
-
-            # 3) 이미 읽은 sources와 주장별·행 단위 후보를 주장 적합성 순으로 정렬
-            claim_sources = list(sources)
-            existing_key_to_sid = {
-                (s.get("file_id"), s.get("page"), s.get("text")): s.get("source_id")
-                for s in sources
-            }
-            claim_direct_sids: set[str] = set()
-            claim_case_sids: set[str] = set()
-            next_source_id = len(claim_sources) + 1
-            for prose_src in claim_prose_sources:
-                p_text, p_text_spans = _mask_with(prose_src.get("text", ""))
-                p_title, p_title_spans = _mask_with(prose_src.get("title", ""))
-                key = (prose_src.get("file_id"), prose_src.get("page"), p_text)
-                sid = existing_key_to_sid.get(key)
-                if sid:
-                    claim_direct_sids.add(sid)
+                c_id = claim_obj.get("claim_id")
+                c_raw_text = claim_obj.get("text", "")
+                if not c_id:
                     continue
-                sid = f"R{next_source_id}"
-                next_source_id += 1
-                fp_p = prose_src.get("content_fingerprint") or relevance.content_fingerprint(p_text)
-                fmt_p = prose_src.get("format") or relevance.source_format(
-                    prose_src.get("title", ""), prose_src.get("mime_type", ""))
-                enriched = {
-                    **prose_src,
-                    "source_id": sid,
-                    "format": fmt_p,
-                    "content_fingerprint": fp_p,
-                    "text": p_text,
-                    "title": p_title,
-                }
-                if fp_p and fp_p in seen_fp_sid and not enriched.get("duplicate_of_source_id"):
-                    enriched["duplicate_content"] = True
-                    enriched["duplicate_of_source_id"] = seen_fp_sid[fp_p]
-                elif fp_p and not enriched.get("duplicate_content"):
-                    seen_fp_sid.setdefault(fp_p, sid)
-                source_text_spans_by_id[sid] = p_text_spans
-                source_title_spans_by_id[sid] = p_title_spans
-                existing_key_to_sid[key] = sid
-                claim_direct_sids.add(sid)
-                claim_sources.append(enriched)
-                sources.append(enriched)
-                review["sources"] = sources
 
-            for case_source in claim_case_sources:
-                sid = f"R{next_source_id}"
-                fmt_c = case_source.get("format") or relevance.source_format(
-                    case_source.get("title", ""), case_source.get("mime_type", ""))
-                c_text, c_text_spans = _mask_with(case_source.get("text", ""))
-                c_title, c_title_spans = _mask_with(case_source.get("title", ""))
-                case_source = {
-                    **case_source,
-                    "source_id": sid,
-                    "format": fmt_c,
-                    "content_fingerprint": case_source.get("content_fingerprint")
-                    or relevance.content_fingerprint(c_text),
-                    "text": c_text,
-                    "title": c_title,
+                # 1) 질의어 생성 (한국어 핵심어 추출, 단일 문장 주장 보충 지원)
+                salient = _claim_salient_words(c_raw_text)
+
+                # 2) 문서 최초 선택과 독립된 전체 구조화 판례 코퍼스 + 일반 참고자료 주장별 검색
+                claim_citation_ids = claim_obj.get("citation_ids") or []
+                if isinstance(claim_citation_ids, str):
+                    claim_citation_ids = [claim_citation_ids]
+                linked_citations = [citation_by_id[cid] for cid in claim_citation_ids if cid in citation_by_id]
+
+                claim_case_sources = []
+                if getattr(library, "has_case_tables", lambda: False)():
+                    claim_case_sources = library.search_case_table(c_raw_text, citations=linked_citations, limit=5)
+
+                claim_prose_sources = []
+                if claim_multisearch and callable(search_claim_fn):
+                    claim_prose_sources = claim_search_cache.get(c_id)
+                    if claim_prose_sources is None:
+                        claim_prose_sources = search_claim_fn(c_raw_text, citations=linked_citations, limit=5) or []
+
+                # 3) 이미 읽은 sources와 주장별·행 단위 후보를 주장 적합성 순으로 정렬
+                claim_sources = list(sources)
+                existing_key_to_sid = {
+                    (s.get("file_id"), s.get("page"), s.get("text")): s.get("source_id")
+                    for s in sources
                 }
-                next_source_id += 1
-                source_text_spans_by_id[sid] = c_text_spans
-                source_title_spans_by_id[sid] = c_title_spans
-                claim_case_sids.add(sid)
-                claim_sources.append(case_source)
-                # Keep the source available to quote grounding and the final
-                # report.  The request itself still observes the existing
-                # five-item/eight-hundred-character envelope.
-                if not any(s.get("source_id") == case_source["source_id"] for s in sources):
-                    sources.append(case_source)
+                claim_direct_sids: set[str] = set()
+                claim_case_sids: set[str] = set()
+                next_source_id = len(claim_sources) + 1
+                for prose_src in claim_prose_sources:
+                    p_text, p_text_spans = _mask_with(prose_src.get("text", ""))
+                    p_title, p_title_spans = _mask_with(prose_src.get("title", ""))
+                    key = (prose_src.get("file_id"), prose_src.get("page"), p_text)
+                    sid = existing_key_to_sid.get(key)
+                    if sid:
+                        claim_direct_sids.add(sid)
+                        continue
+                    sid = f"R{next_source_id}"
+                    next_source_id += 1
+                    fp_p = prose_src.get("content_fingerprint") or relevance.content_fingerprint(p_text)
+                    fmt_p = prose_src.get("format") or relevance.source_format(
+                        prose_src.get("title", ""), prose_src.get("mime_type", ""))
+                    enriched = {
+                        **prose_src,
+                        "source_id": sid,
+                        "format": fmt_p,
+                        "content_fingerprint": fp_p,
+                        "text": p_text,
+                        "title": p_title,
+                    }
+                    if fp_p and fp_p in seen_fp_sid and not enriched.get("duplicate_of_source_id"):
+                        enriched["duplicate_content"] = True
+                        enriched["duplicate_of_source_id"] = seen_fp_sid[fp_p]
+                    elif fp_p and not enriched.get("duplicate_content"):
+                        seen_fp_sid.setdefault(fp_p, sid)
+                    source_text_spans_by_id[sid] = p_text_spans
+                    source_title_spans_by_id[sid] = p_title_spans
+                    existing_key_to_sid[key] = sid
+                    claim_direct_sids.add(sid)
+                    claim_sources.append(enriched)
+                    sources.append(enriched)
                     review["sources"] = sources
 
-            def _score_source(src):
-                stext = src.get("text", "")
-                salient_hits = sum(1 for w in salient if w in stext) if salient else 0
-                is_direct = src.get("source_id") in claim_direct_sids
-                is_case_hit = (
-                    (src.get("source_id") in claim_case_sids or bool(src.get("case_table_candidate")))
-                    and (bool(src.get("structured_case_table", False)) or salient_hits >= 2)
+                for case_source in claim_case_sources:
+                    sid = f"R{next_source_id}"
+                    fmt_c = case_source.get("format") or relevance.source_format(
+                        case_source.get("title", ""), case_source.get("mime_type", ""))
+                    c_text, c_text_spans = _mask_with(case_source.get("text", ""))
+                    c_title, c_title_spans = _mask_with(case_source.get("title", ""))
+                    case_source = {
+                        **case_source,
+                        "source_id": sid,
+                        "format": fmt_c,
+                        "content_fingerprint": case_source.get("content_fingerprint")
+                        or relevance.content_fingerprint(c_text),
+                        "text": c_text,
+                        "title": c_title,
+                    }
+                    next_source_id += 1
+                    source_text_spans_by_id[sid] = c_text_spans
+                    source_title_spans_by_id[sid] = c_title_spans
+                    claim_case_sids.add(sid)
+                    claim_sources.append(case_source)
+                    # Keep the source available to quote grounding and the final
+                    # report.  The request itself still observes the existing
+                    # five-item/eight-hundred-character envelope.
+                    if not any(s.get("source_id") == case_source["source_id"] for s in sources):
+                        sources.append(case_source)
+                        review["sources"] = sources
+
+                def _score_source(src):
+                    stext = src.get("text", "")
+                    salient_hits = sum(1 for w in salient if w in stext) if salient else 0
+                    is_direct = src.get("source_id") in claim_direct_sids
+                    is_case_hit = (
+                        (src.get("source_id") in claim_case_sids or bool(src.get("case_table_candidate")))
+                        and (bool(src.get("structured_case_table", False)) or salient_hits >= 2)
+                    )
+                    return (
+                        is_case_hit,
+                        is_direct,
+                        salient_hits,
+                        float(src.get("relevance") or 0.0),
+                    )
+
+                ordered_claim_sources = (
+                    sorted(claim_sources, key=_score_source, reverse=True)
+                    if (salient or claim_direct_sids or claim_case_sids)
+                    else claim_sources
                 )
-                return (
-                    is_case_hit,
-                    is_direct,
-                    salient_hits,
-                    float(src.get("relevance") or 0.0),
-                )
 
-            ordered_claim_sources = (
-                sorted(claim_sources, key=_score_source, reverse=True)
-                if (salient or claim_direct_sids or claim_case_sids)
-                else claim_sources
-            )
+                # 동일 내용(content_fingerprint)·동일 기본 파일명 다형식 중복이 주장별 5슬롯을 독점하지 않도록 2단계 선별
+                relevant_sources = []
+                picked_sids: set[str] = set()
+                seen_c_fp: set[str] = set()
+                seen_c_base: set[str] = set()
+                seen_c_file: set[str] = set()
+                deferred_unique = []
+                deferred_dup = []
 
-            # 동일 내용(content_fingerprint)·동일 기본 파일명 다형식 중복이 주장별 5슬롯을 독점하지 않도록 2단계 선별
-            relevant_sources = []
-            picked_sids: set[str] = set()
-            seen_c_fp: set[str] = set()
-            seen_c_base: set[str] = set()
-            seen_c_file: set[str] = set()
-            deferred_unique = []
-            deferred_dup = []
-
-            for s in ordered_claim_sources:
-                fp_s = s.get("content_fingerprint") or relevance.content_fingerprint(s.get("text", ""))
-                fid_s = s.get("file_id", "")
-                bkey_s = s.get("base_name") or (relevance.base_name(s.get("title", "")).lower() if s.get("title") else "") or fid_s
-                if s.get("duplicate_content") or (fp_s and fp_s in seen_c_fp):
-                    deferred_dup.append((s, fp_s))
-                    continue
-                if (bkey_s and bkey_s in seen_c_base) or (fid_s and fid_s in seen_c_file):
-                    deferred_unique.append((s, fp_s))
-                    continue
-                relevant_sources.append(s)
-                picked_sids.add(s.get("source_id", ""))
-                if fp_s:
-                    seen_c_fp.add(fp_s)
-                if bkey_s:
-                    seen_c_base.add(bkey_s)
-                if fid_s:
-                    seen_c_file.add(fid_s)
-                if len(relevant_sources) >= 5:
-                    break
-
-            if len(relevant_sources) < 5:
-                for s, fp_s in deferred_unique:
-                    if s.get("source_id", "") in picked_sids:
-                        continue
-                    if fp_s and fp_s in seen_c_fp:
+                for s in ordered_claim_sources:
+                    fp_s = s.get("content_fingerprint") or relevance.content_fingerprint(s.get("text", ""))
+                    fid_s = s.get("file_id", "")
+                    bkey_s = s.get("base_name") or (relevance.base_name(s.get("title", "")).lower() if s.get("title") else "") or fid_s
+                    if s.get("duplicate_content") or (fp_s and fp_s in seen_c_fp):
                         deferred_dup.append((s, fp_s))
+                        continue
+                    if (bkey_s and bkey_s in seen_c_base) or (fid_s and fid_s in seen_c_file):
+                        deferred_unique.append((s, fp_s))
                         continue
                     relevant_sources.append(s)
                     picked_sids.add(s.get("source_id", ""))
                     if fp_s:
                         seen_c_fp.add(fp_s)
+                    if bkey_s:
+                        seen_c_base.add(bkey_s)
+                    if fid_s:
+                        seen_c_file.add(fid_s)
                     if len(relevant_sources) >= 5:
                         break
 
-            if len(relevant_sources) < 5:
-                for s, _fp_s in deferred_dup:
-                    if s.get("source_id", "") in picked_sids:
-                        continue
-                    relevant_sources.append(s)
-                    picked_sids.add(s.get("source_id", ""))
-                    if len(relevant_sources) >= 5:
-                        break
-
-            # 3) 발췌문 구성 (주장 관련 문맥 구간 추출, 최대 5개 항목, 항목당 800자 이내, 총합 4,000자 이내)
-            ref_sources_items = []
-            excerpt_pieces = []
-            claim_provenance = {}
-            total_chars = 0
-            for s in relevant_sources[:5]:
-                s_text = s.get("text", "")
-                if not s_text:
-                    continue
-
-                # 핵심어가 출현하는 문맥 위치를 탐색하여 해당 위치 중심으로 발췌
-                best_pos = -1
-                if salient:
-                    for w in salient:
-                        pos = s_text.find(w)
-                        if pos != -1:
-                            best_pos = pos
+                if len(relevant_sources) < 5:
+                    for s, fp_s in deferred_unique:
+                        if s.get("source_id", "") in picked_sids:
+                            continue
+                        if fp_s and fp_s in seen_c_fp:
+                            deferred_dup.append((s, fp_s))
+                            continue
+                        relevant_sources.append(s)
+                        picked_sids.add(s.get("source_id", ""))
+                        if fp_s:
+                            seen_c_fp.add(fp_s)
+                        if len(relevant_sources) >= 5:
                             break
 
-                if best_pos != -1:
-                    # 매칭 키워드 주변 문맥을 포함한 800자 발췌 구간 산출 (기계적 선두 잘라내기 방지)
-                    start_pos = max(0, best_pos - 200)
-                    end_pos = min(len(s_text), start_pos + 800)
-                    if end_pos - start_pos < 800 and len(s_text) > (end_pos - start_pos):
-                        start_pos = max(0, end_pos - 800)
-                    s_excerpt = s_text[start_pos:end_pos]
-                else:
-                    start_pos, end_pos = 0, min(len(s_text), 800)
-                    s_excerpt = s_text[:800]
+                if len(relevant_sources) < 5:
+                    for s, _fp_s in deferred_dup:
+                        if s.get("source_id", "") in picked_sids:
+                            continue
+                        relevant_sources.append(s)
+                        picked_sids.add(s.get("source_id", ""))
+                        if len(relevant_sources) >= 5:
+                            break
 
-                if total_chars + len(s_excerpt) > EXCERPT_CHARS:
-                    break
-                total_chars += len(s_excerpt)
-                from packages.common.source_trace import capture_slice
-                excerpt_pieces.append(capture_slice(s_text, start_pos, end_pos, s_excerpt))
-                sid = str(s.get("source_id", "R1"))
-                excerpt_spans = slice_token_spans(source_text_spans_by_id.get(sid, ()), start_pos, end_pos)
-                src_pos = len(ref_sources_items)
-                claim_provenance[f"user.reference_sources[{src_pos}].text"] = (s_excerpt, excerpt_spans)
-                ref_sources_items.append({
-                    "source_id": sid,
-                    "text": s_excerpt,
-                    "page": int(s.get("page", 1)),
-                })
+                # 3) 발췌문 구성 (주장 관련 문맥 구간 추출, 최대 5개 항목, 항목당 800자 이내, 총합 4,000자 이내)
+                ref_sources_items = []
+                excerpt_pieces = []
+                claim_provenance = {}
+                total_chars = 0
+                for s in relevant_sources[:5]:
+                    s_text = s.get("text", "")
+                    if not s_text:
+                        continue
 
-            if not ref_sources_items:
-                unreviewed_claims_map[c_id] = "NO_GROUNDED_COMPARISON"
+                    # 핵심어가 출현하는 문맥 위치를 탐색하여 해당 위치 중심으로 발췌
+                    best_pos = -1
+                    if salient:
+                        for w in salient:
+                            pos = s_text.find(w)
+                            if pos != -1:
+                                best_pos = pos
+                                break
+
+                    if best_pos != -1:
+                        # 매칭 키워드 주변 문맥을 포함한 800자 발췌 구간 산출 (기계적 선두 잘라내기 방지)
+                        start_pos = max(0, best_pos - 200)
+                        end_pos = min(len(s_text), start_pos + 800)
+                        if end_pos - start_pos < 800 and len(s_text) > (end_pos - start_pos):
+                            start_pos = max(0, end_pos - 800)
+                        s_excerpt = s_text[start_pos:end_pos]
+                    else:
+                        start_pos, end_pos = 0, min(len(s_text), 800)
+                        s_excerpt = s_text[:800]
+
+                    if total_chars + len(s_excerpt) > EXCERPT_CHARS:
+                        break
+                    total_chars += len(s_excerpt)
+                    from packages.common.source_trace import capture_slice
+                    excerpt_pieces.append(capture_slice(s_text, start_pos, end_pos, s_excerpt))
+                    sid = str(s.get("source_id", "R1"))
+                    excerpt_spans = slice_token_spans(source_text_spans_by_id.get(sid, ()), start_pos, end_pos)
+                    src_pos = len(ref_sources_items)
+                    claim_provenance[f"user.reference_sources[{src_pos}].text"] = (s_excerpt, excerpt_spans)
+                    ref_sources_items.append({
+                        "source_id": sid,
+                        "text": s_excerpt,
+                        "page": int(s.get("page", 1)),
+                    })
+
+                if not ref_sources_items:
+                    unreviewed_claims_map[c_id] = "NO_GROUNDED_COMPARISON"
+                    continue
+
+                # 4) 요청 페이로드 조립 (평가 측 시험 합성 문자열 복사 제거, 지침은 LLMRequest.system 활용)
+                masked_claim_raw, raw_claim_spans = _mask_with(c_raw_text)
+                masked_claim_text = masked_claim_raw[:1000]
+                claim_text_spans = slice_token_spans(raw_claim_spans, 0, len(masked_claim_text))
+                claim_provenance["user.claim_text"] = (masked_claim_text, claim_text_spans)
+                claim_payload = {
+                    "claim_id": c_id,
+                    "claim_text": masked_claim_text,
+                    "reference_sources": ref_sources_items,
+                }
+
+                # 5) 스키마 검증 (fail-closed)
+                if not validate_claim_request_payload(claim_payload):
+                    unreviewed_claims_map[c_id] = "REASON_SCHEMA_VALIDATION_FAILED"
+                    continue
+
+                # 6) 모델 요청 생성 및 라우터 호출 (주장당 1회 호출, 내부 retry 포함 공급자 요청 최대 3회)
+                claim_req = LLMRequest(
+                    system=RAG_REVIEW_SYSTEM_PROMPT,
+                    user=json.dumps(claim_payload, ensure_ascii=False),
+                    schema=ENVELOPE_SCHEMA,
+                    input_contract="claim_review_v1",
+                    max_tokens=4000,
+                    metadata={"stage": "claim_rag_advisory", "claim_id": c_id},
+                )
+                if context.external_ai_policy != ExternalAIPolicy.ORIGINAL and has_real_store:
+                    from packages.llm_router.token_attestation import bind_masked_tokens
+                    claim_req = bind_masked_tokens(claim_req, claim_provenance)
+                claim_req = with_review_context(claim_req, enabled=korean_profile, reference_date=getattr(context, "case_date", None))
+                from packages.llm_router.excerpt_source import bind_claim_excerpts
+                claim_req = bind_claim_excerpts(claim_req, excerpt_pieces)
+                wave_prepared.append((c_id, claim_req, claim_sources))
+
+            if not wave_prepared:
                 continue
 
-            # 4) 요청 페이로드 조립 (평가 측 시험 합성 문자열 복사 제거, 지침은 LLMRequest.system 활용)
-            masked_claim_raw, raw_claim_spans = _mask_with(c_raw_text)
-            masked_claim_text = masked_claim_raw[:1000]
-            claim_text_spans = slice_token_spans(raw_claim_spans, 0, len(masked_claim_text))
-            claim_provenance["user.claim_text"] = (masked_claim_text, claim_text_spans)
-            claim_payload = {
-                "claim_id": c_id,
-                "claim_text": masked_claim_text,
-                "reference_sources": ref_sources_items,
-            }
+            wave_outcomes = asyncio.run(_run_claim_wave(wave_prepared))
+            for (c_id, _req, claim_sources), c_outcome in zip(wave_prepared, wave_outcomes):
+                dispatched_claims_count += 1
+                result.engine_data.setdefault("model_executions", []).extend(e.to_dict() for e in c_outcome.executions)
+                executed_any |= bool(c_outcome.executions or c_outcome.used)
+                if c_outcome and c_outcome.executions:
+                    for e in c_outcome.executions:
+                        c_val = float(getattr(e, "cost_usd", 0.0) if hasattr(e, "cost_usd") else (e.get("cost_usd", 0.0) if isinstance(e, dict) else 0.0) or 0.0)
+                        c_st = str(getattr(e, "cost_status", "") if hasattr(e, "cost_status") else (e.get("cost_status", "") if isinstance(e, dict) else ""))
+                        accumulated_cost_usd += c_val
+                        if c_st == "RESERVED_UNCERTAIN":
+                            accumulated_uncertain_usd += c_val
 
-            # 5) 스키마 검증 (fail-closed)
-            if not validate_claim_request_payload(claim_payload):
-                unreviewed_claims_map[c_id] = "REASON_SCHEMA_VALIDATION_FAILED"
-                continue
+                c_accepted = bool(c_outcome.used and not c_outcome.quarantined)
+                accepted_any |= c_accepted
 
-            # 6) 모델 요청 생성 및 라우터 호출 (주장당 1회 호출, 내부 retry 포함 공급자 요청 최대 3회)
-            claim_req = LLMRequest(
-                system=RAG_REVIEW_SYSTEM_PROMPT,
-                user=json.dumps(claim_payload, ensure_ascii=False),
-                schema=ENVELOPE_SCHEMA,
-                input_contract="claim_review_v1",
-                max_tokens=4000,
-                metadata={"stage": "claim_rag_advisory", "claim_id": c_id},
-            )
-            if context.external_ai_policy != ExternalAIPolicy.ORIGINAL and has_real_store:
-                from packages.llm_router.token_attestation import bind_masked_tokens
-                claim_req = bind_masked_tokens(claim_req, claim_provenance)
-            claim_req = with_review_context(claim_req, enabled=korean_profile, reference_date=getattr(context, "case_date", None))
-            from packages.llm_router.excerpt_source import bind_claim_excerpts
-            claim_req = bind_claim_excerpts(claim_req, excerpt_pieces)
-
-            claim_runner = router.run
-            if getattr(getattr(router, "settings", None), "llm_efficient_routing", False):
-                claim_runner = getattr(router, "run_any", router.run)
-            c_outcome = asyncio.run(claim_runner(
-                LLMRole.PRIMARY_REASONER, claim_req,
-                policy=context.external_ai_policy, expected_task="참고자료 검토"
-            ))
-            result.engine_data.setdefault("model_executions", []).extend(e.to_dict() for e in c_outcome.executions)
-            executed_any |= bool(c_outcome.executions or c_outcome.used)
-            if c_outcome and c_outcome.executions:
-                for e in c_outcome.executions:
-                    c_val = float(getattr(e, "cost_usd", 0.0) if hasattr(e, "cost_usd") else (e.get("cost_usd", 0.0) if isinstance(e, dict) else 0.0) or 0.0)
-                    c_st = str(getattr(e, "cost_status", "") if hasattr(e, "cost_status") else (e.get("cost_status", "") if isinstance(e, dict) else ""))
-                    accumulated_cost_usd += c_val
-                    if c_st == "RESERVED_UNCERTAIN":
-                        accumulated_uncertain_usd += c_val
-
-            c_accepted = bool(c_outcome.used and not c_outcome.quarantined)
-            accepted_any |= c_accepted
-
-            if c_accepted and c_outcome.parsed:
-                c_obs = grounded_observations(c_outcome.parsed, document, claim_sources,
-                                              rejected=review["rejected_observations"])
-                if c_obs:
-                    for o in c_obs:
-                        o["claim_id"] = c_id
-                        o["advisory_only"] = True
-                    claim_observations.extend(c_obs)
+                if c_accepted and c_outcome.parsed:
+                    c_obs = grounded_observations(c_outcome.parsed, document, claim_sources,
+                                                  rejected=review["rejected_observations"])
+                    if c_obs:
+                        for o in c_obs:
+                            o["claim_id"] = c_id
+                            o["advisory_only"] = True
+                        claim_observations.extend(c_obs)
+                    else:
+                        unreviewed_claims_map.setdefault(c_id, "NOT_LINKED_TO_SELECTED_EXCERPTS")
                 else:
-                    unreviewed_claims_map.setdefault(c_id, "NOT_LINKED_TO_SELECTED_EXCERPTS")
-            else:
-                unreviewed_claims_map.setdefault(c_id, "MODEL_UNAVAILABLE")
+                    unreviewed_claims_map.setdefault(c_id, "MODEL_UNAVAILABLE")
 
         for ec in exceeded_claims:
             ec_id = ec.get("claim_id")
