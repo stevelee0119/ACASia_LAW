@@ -5,11 +5,23 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
+from functools import lru_cache
+from pathlib import Path
+from typing import Dict, Optional
 
 # 1999년까지의 사건번호는 연도를 두 자리로 적는다(예: 94누4615). 네 자리 연도와 함께 받는다.
 CASE_NUMBER_RE = re.compile(r"(?<!\d)(?P<year>(?:19|20)\d{2}|\d{2})\s*(?P<code>[가-힣]{1,3})\s*(?P<serial>\d{1,6})")
 CONSTITUTIONAL_RE = re.compile(r"(?P<year>(?:19|20)\d{2})\s*(?P<code>헌[가-힣]{1,2})\s*(?P<serial>\d{1,4})")
+_CASE_SEP = r"[\s.\-–—−·･/]*"
+_OFFICIAL_CASE_NUMBER_RE = re.compile(
+    rf"(?<!\d)(?P<year>(?:19|20)\d{{2}}|\d{{2}}){_CASE_SEP}(?P<code>[가-힣]{{1,3}}){_CASE_SEP}(?P<serial>\d{{1,6}})(?!\d)"
+)
+_OFFICIAL_CONSTITUTIONAL_RE = re.compile(
+    rf"(?<!\d)(?P<year>(?:19|20)\d{{2}}|\d{{2}}){_CASE_SEP}(?P<code>헌[가-힣]{{1,2}}){_CASE_SEP}(?P<serial>\d{{1,5}})(?!\d)"
+)
+_NON_CASE_TOKENS = frozenset({"년", "월", "일", "제", "항", "호", "목"})
+
+_CASE_CODES_YAML = Path(__file__).resolve().parents[2] / "config" / "legal_rules" / "case_codes.yaml"
 
 # 대표 사건부호 (대법원 재판예규 기준 주요 항목)
 CASE_CODE_MEANING = {
@@ -24,7 +36,55 @@ CASE_CODE_MEANING = {
     "헌라": "권한쟁의심판", "헌마": "헌법소원(권리구제형)", "헌바": "헌법소원(위헌심사형)",
 }
 
-SUPREME_COURT_CODES = {"도", "다", "두", "무", "므", "후", "마", "재도", "재다"}
+# 구 사건부호 및 재심 사건부호 (재판예규 연혁·재심 접두 '재')
+HISTORICAL_CASE_CODE_MEANING = {
+    "다카": "민사 상고(구 부호)",
+    "나카": "민사 항소(구 부호)",
+    "재다": "민사 상고 재심",
+    "재도": "형사 상고 재심",
+    "재두": "행정 상고 재심",
+    "재나": "민사 항소 재심",
+    "재노": "형사 항소 재심",
+    "재누": "행정 항소 재심",
+    "재마": "민사 재항고 재심",
+    "재모": "형사 재항고 재심",
+    "재라": "민사 항고 재심",
+    "재로": "형사 항고 재심",
+    "재가합": "민사 1심 합의 재심",
+    "재가단": "민사 1심 단독 재심",
+    "재구합": "행정 1심 합의 재심",
+    "재구단": "행정 1심 단독 재심",
+    "재허": "특허 1심 재심",
+    "재후": "특허 상고 재심",
+    "재르": "가사 항소 재심",
+    "재므": "가사 상고 재심",
+    "재드단": "가사 단독 재심",
+    "재드합": "가사 합의 재심",
+    "재그": "민사 특별항고 재심",
+    "재바": "민사 준항고 재심",
+}
+
+SUPREME_COURT_CODES = {
+    "도", "다", "다카", "두", "무", "므", "후", "마",
+    "재도", "재다", "재두", "재므", "재후", "재마", "재모", "재그",
+}
+
+
+@lru_cache(maxsize=1)
+def _yaml_case_code_meaning() -> Dict[str, str]:
+    try:
+        import yaml
+        data = yaml.safe_load(_CASE_CODES_YAML.read_text(encoding="utf-8")) or {}
+    except (OSError, ValueError, ImportError):
+        return {}
+    out: Dict[str, str] = {}
+    for code, entry in (data.get("codes") or {}).items():
+        if isinstance(entry, dict) and entry.get("case_type"):
+            out[str(code)] = str(entry["case_type"])
+    for code, desc in (data.get("constitutional_codes") or {}).items():
+        if desc:
+            out[str(code)] = str(desc)
+    return out
 
 
 def canonical_case_number(raw: str) -> Optional[str]:
@@ -38,18 +98,27 @@ def canonical_case_number(raw: str) -> Optional[str]:
     return f"{m.group('year')}{m.group('code')}{int(m.group('serial'))}"
 
 
-def extract_all_case_numbers(text: str):
+def extract_all_case_numbers(text: str, *, allow_separators: bool = False):
     """문자열에 포함된 모든 사건번호를 (연도, 부호, 일련번호) 튜플 목록으로 추출한다.
 
     병합 판결(예: '2005가합100279, 2006가합62053')이나 복수 인용을 포괄한다.
+    ``allow_separators=True``는 공식 Source 표기('서울행정법원-2021-구합-70769',
+    '대법원 2020. 다. 12345')의 구분자 변형까지 함께 정규화한다.
     """
     if not text:
         return []
+    const_re = _OFFICIAL_CONSTITUTIONAL_RE if allow_separators else CONSTITUTIONAL_RE
+    case_re = _OFFICIAL_CASE_NUMBER_RE if allow_separators else CASE_NUMBER_RE
     results = []
-    for m in CONSTITUTIONAL_RE.finditer(text):
-        results.append((m.group("year"), m.group("code"), str(int(m.group("serial")))))
-    for m in CASE_NUMBER_RE.finditer(text):
+    for m in const_re.finditer(text):
         item = (m.group("year"), m.group("code"), str(int(m.group("serial"))))
+        if item not in results:
+            results.append(item)
+    for m in case_re.finditer(text):
+        code = m.group("code")
+        if allow_separators and code in _NON_CASE_TOKENS:
+            continue
+        item = (m.group("year"), code, str(int(m.group("serial"))))
         if item not in results:
             results.append(item)
     return results
@@ -63,8 +132,8 @@ def same_case_number(a: str, b: str) -> bool:
     어느 한쪽에 병합 사건번호가 포함된 경우에도 정확한 (연도, 부호, 일련번호) 단위의 교집합이 있으면
     동일 사건으로 인정한다. 부분 숫자만 같은 다른 사건의 오연결은 철저히 방지한다.
     """
-    left_cases = extract_all_case_numbers(a or "")
-    right_cases = extract_all_case_numbers(b or "")
+    left_cases = extract_all_case_numbers(a or "", allow_separators=True)
+    right_cases = extract_all_case_numbers(b or "", allow_separators=True)
     if not left_cases or not right_cases:
         return False
     return bool(set(left_cases) & set(right_cases))
@@ -99,7 +168,13 @@ def case_number_possible(raw: str) -> bool:
 
 
 def case_code_meaning(code: str) -> Optional[str]:
-    return CASE_CODE_MEANING.get(code)
+    if not code:
+        return None
+    return (
+        CASE_CODE_MEANING.get(code)
+        or HISTORICAL_CASE_CODE_MEANING.get(code)
+        or _yaml_case_code_meaning().get(code)
+    )
 
 
 def is_supreme_court_code(code: str) -> bool:

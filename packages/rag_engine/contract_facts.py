@@ -41,7 +41,7 @@ def extract_source_facts(source):
 
     def add(role, value, match):
         facts.append({"role": role, "value": str(value), "source_ref": {
-            **{k: source.get(k) for k in ("source_id", "file_id", "sha256", "revision", "modified_time", "page")},
+            **{k: source.get(k) for k in ("source_id", "file_id", "title", "format", "sha256", "revision", "modified_time", "page")},
             "chunk_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             "span": list(match.span()), "quote": match.group()}})
 
@@ -128,9 +128,22 @@ def link_observations(observations, sources, claims):
             span = [idx, idx + len(quote)]
         else:
             span = [0, len(quote)]
-        refs = {"source_id": item["source_id"], "file_id": source.get("file_id"),
-                "sha256": source.get("sha256"), "revision": source.get("revision"),
-                "span": span}
+        refs = {
+            "source_id": item["source_id"],
+            "file_id": source.get("file_id"),
+            "title": source.get("title"),
+            "format": source.get("format"),
+            "page": source.get("page"),
+            "sha256": source.get("sha256"),
+            "revision": source.get("revision"),
+            "span": span,
+        }
+        if source.get("sheet"):
+            refs["sheet"] = source.get("sheet")
+        if source.get("row") is not None:
+            refs["row"] = source.get("row")
+        if source.get("source_cell_range"):
+            refs["source_cell_range"] = source.get("source_cell_range")
         # 마침표·공백·문장부호 차이를 허용하여 관찰을 해당 claim_id에 유연하게 연결
         def _clean_str(s):
             return re.sub(r"[\s.,·~'\"`]+", "", s or "")
