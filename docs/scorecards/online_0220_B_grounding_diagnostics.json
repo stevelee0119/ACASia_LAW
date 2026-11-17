@@ -1,0 +1,117 @@
+{
+  "note": "Unmasked preserved source segments only; not reconstruction of sent masked bytes or validation-policy change",
+  "rows": [
+    {
+      "item": "B-P1",
+      "stage": "deterministic",
+      "used": null,
+      "quotes": 0,
+      "unmasked_exact_in_selected": [],
+      "unmasked_whitespace_normalized_in_selected": []
+    },
+    {
+      "item": "B-P1",
+      "stage": "primary",
+      "used": true,
+      "quotes": 0,
+      "unmasked_exact_in_selected": [],
+      "unmasked_whitespace_normalized_in_selected": []
+    },
+    {
+      "item": "B-P1",
+      "stage": "critic",
+      "used": true,
+      "quotes": 2,
+      "unmasked_exact_in_selected": [
+        true,
+        true
+      ],
+      "unmasked_whitespace_normalized_in_selected": [
+        true,
+        true
+      ]
+    },
+    {
+      "item": "B-P1",
+      "stage": "grounder",
+      "used": false,
+      "quotes": 0,
+      "unmasked_exact_in_selected": [],
+      "unmasked_whitespace_normalized_in_selected": []
+    },
+    {
+      "item": "B-P1",
+      "stage": "escalation",
+      "used": true,
+      "quotes": 3,
+      "unmasked_exact_in_selected": [
+        true,
+        true,
+        true
+      ],
+      "unmasked_whitespace_normalized_in_selected": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "item": "B-P4",
+      "stage": "deterministic",
+      "used": null,
+      "quotes": 0,
+      "unmasked_exact_in_selected": [],
+      "unmasked_whitespace_normalized_in_selected": []
+    },
+    {
+      "item": "B-P4",
+      "stage": "primary",
+      "used": true,
+      "quotes": 1,
+      "unmasked_exact_in_selected": [
+        true
+      ],
+      "unmasked_whitespace_normalized_in_selected": [
+        true
+      ]
+    },
+    {
+      "item": "B-P4",
+      "stage": "critic",
+      "used": true,
+      "quotes": 2,
+      "unmasked_exact_in_selected": [
+        true,
+        false
+      ],
+      "unmasked_whitespace_normalized_in_selected": [
+        true,
+        false
+      ]
+    },
+    {
+      "item": "B-P4",
+      "stage": "grounder",
+      "used": false,
+      "quotes": 0,
+      "unmasked_exact_in_selected": [],
+      "unmasked_whitespace_normalized_in_selected": []
+    },
+    {
+      "item": "B-P4",
+      "stage": "escalation",
+      "used": true,
+      "quotes": 3,
+      "unmasked_exact_in_selected": [
+        true,
+        true,
+        true
+      ],
+      "unmasked_whitespace_normalized_in_selected": [
+        true,
+        true,
+        true
+      ]
+    }
+  ]
+}
