@@ -140,14 +140,498 @@ def _pack(text: str, spans, coverage: str, reasons: List[str]) -> Dict[str, Any]
             "truncation_reasons": reasons, "selected_chars": sum(len(s["text"]) for s in segments)}
 
 
+SEGMENT_TAG_RE = re.compile(r"\[구간\s+S\d+(?:\s*[·|][^\]]*)?\]")
+_GAP_MARKER_TOKENS = ("…(공식 원문 일부 생략)…", "(공식 원문 일부 생략)")
+
+
 def render(segments: Sequence[str]) -> str:
     """모델에 보낼 발췌 본문. 구간 사이에는 원문이 아닌 생략 표시를 넣는다."""
     return GAP_MARKER.join(segments)
 
 
+def segment_tag(
+    segment_id: str,
+    opinion_kinds: Sequence[str],
+    *,
+    start: Optional[int] = None,
+    end: Optional[int] = None,
+) -> str:
+    """구간 ID·의견 종류·원문 위치를 묶는 비인용 표시 태그."""
+    kinds = ", ".join(opinion_kinds) if opinion_kinds else "MAJORITY"
+    if start is not None and end is not None:
+        return f"[구간 {segment_id} · 의견: {kinds} · 원문 {start}~{end}자]"
+    return f"[구간 {segment_id} · 의견: {kinds}]"
+
+
+def render_sections(
+    segments_meta: Sequence[Dict[str, Any]],
+    segment_texts: Optional[Sequence[str]] = None,
+) -> str:
+    """각 구간 앞에 ID·의견 종류·원문 위치 표시 태그를 붙여 생략 구간과 명시적으로 연결한다."""
+    parts = []
+    for idx, meta in enumerate(segments_meta):
+        body = segment_texts[idx] if segment_texts is not None else str(meta.get("text", ""))
+        tag = segment_tag(
+            str(meta.get("segment_id") or f"S{idx}"),
+            meta.get("opinion_kinds") or ["MAJORITY"],
+            start=meta.get("original_start"),
+            end=meta.get("original_end"),
+        )
+        parts.append(f"{tag}\n{body}")
+    return GAP_MARKER.join(parts)
+
+
+def is_display_tag(quote: Any) -> bool:
+    """구간 경계·생략 표시용 태그가 원문 인용으로 섞였는지 판정한다."""
+    if not isinstance(quote, str):
+        return False
+    return bool(SEGMENT_TAG_RE.search(quote) or any(tok in quote for tok in _GAP_MARKER_TOKENS))
+
+
+def _normalize_ws(text: str) -> str:
+    """연속 공백·줄바꿈만 단일 공백으로 정규화한다(비공백 문자 삭제·재배열 금지)."""
+    return re.sub(r"\s+", " ", text or "").strip()
+
+
+# 문장 종결부호: 단일 음절 목록 표지(가. 나. 다.)·날짜(2024. 1. 15.)는 문장 끝이 아니다.
+_SENTENCE_END_MARKER_RE = re.compile(
+    r"(?:(?<=[가-힣A-Za-z]{2})|(?<=[)\]\x22\u201d\x27\u2019】」]))"
+    r"\s*[.!?。][\x22\u201d\x27\u2019)\]】」]*(?=\s|$)"
+)
+_INNER_SINGLE_QUOTE_RE = re.compile(
+    r"[‘']([^’'\n]{2,600})[’'](?=\s*(?:이?라고|고|이라는|라는))"
+)
+# 문장 머리의 구조 표지(【주문】, [1], 1., (1), 가., 판시사항 등) — [PERSON_001] 등 가명 토큰은 제외
+_LEADING_MARKER_RE = re.compile(
+    r"^(?:"
+    r"【[^】]{1,30}】"
+    r"|\[\s*(?:\d{1,3}|(?:[^\]]{0,60}의\s+)?(?:다수의견|반대보충의견|반대의견|별개의견|보충의견|판시사항|판결요지)(?:\s+[^\]]{0,40})?)\s*\]"
+    r"|(?:\d{1,2}|[가-하]|[ivxIVX]{1,5})\s*[.)](?!\s*\d{1,2}\.)"
+    r"|\(\s*(?:\d{1,2}|[가-하]|[ivxIVX]{1,5})\s*\)"
+    r"|(?:판시사항|판결요지|참조조문|참조판례)(?=\s)"
+    r")\s*"
+)
+_INLINE_SECTION_MARKER_RE = re.compile(r"(?:^|\s)(【[^】]{1,30}】)\s*")
+_PURE_HEADER_WORD_RE = re.compile(
+    r"^(?:판시사항|판결요지|주\s*문|이\s*유|결\s*론|참조조문|참조판례|전\s*문|"
+    r"다수의견|반대의견|별개의견|보충의견|반대보충의견)$"
+)
+_CONTENT_CHAR_RE = re.compile(r"[가-힣A-Za-z0-9]")
+
+
+def _mask_inner_quotes(text: str) -> str:
+    """인용 부호 안의 마침표가 바깥 문장을 끊지 않도록 같은 길이의 자리표시자로 가린다."""
+    from packages.document_engine.reading_text import QUOTE_SPAN_RE
+
+    masked = QUOTE_SPAN_RE.sub(lambda q: "“" + "x" * (len(q.group(0)) - 2) + "”", text)
+    return _INNER_SINGLE_QUOTE_RE.sub(
+        lambda q: "‘" + ("x" * len(q.group(1))) + q.group(0)[-1],
+        masked,
+    )
+
+
+def _is_title_or_marker_only(quote: str) -> bool:
+    """제목·조문/항목 표지·줄임표·기호만으로 구성된 비문장 인용인지 판별한다."""
+    norm = _normalize_ws(quote)
+    if not norm:
+        return True
+    cur = norm
+    while True:
+        m = _LEADING_MARKER_RE.match(cur)
+        if not m or m.end() == 0:
+            break
+        cur = cur[m.end():].strip()
+        if not cur:
+            return True
+    if not _CONTENT_CHAR_RE.search(cur):
+        return True
+    if _PURE_HEADER_WORD_RE.match(cur):
+        return True
+    return False
+
+
+_NON_LINEBREAK_RE = re.compile(r"[^\r\n\x0b\x0c\x1c-\x1e\x85\u2028\u2029]+")
+_NON_WS_RE = re.compile(r"\S+")
+
+
+def _normalize_with_spans(seg: str) -> Tuple[str, List[Tuple[int, int]], set]:
+    """구간 텍스트를 줄/공백 정규화하면서 정규화 인덱스별 원문 offset(char_spans)을 보존한다."""
+    norm_chars: List[str] = []
+    char_spans: List[Tuple[int, int]] = []
+    header_line_starts: set = set()
+    prev_norm_line = ""
+    prev_tok_raw_end = 0
+
+    for line_m in _NON_LINEBREAK_RE.finditer(seg or ""):
+        line_offset = line_m.start()
+        tokens = list(_NON_WS_RE.finditer(line_m.group(0)))
+        if not tokens:
+            continue
+        if norm_chars:
+            norm_chars.append(" ")
+            char_spans.append((prev_tok_raw_end, line_offset + tokens[0].start()))
+            if _PURE_HEADER_WORD_RE.match(prev_norm_line):
+                header_line_starts.add(len(norm_chars))
+        line_parts: List[str] = []
+        for ti, tok in enumerate(tokens):
+            tok_str = tok.group(0)
+            tok_raw_start = line_offset + tok.start()
+            if ti > 0:
+                norm_chars.append(" ")
+                char_spans.append((prev_tok_raw_end, tok_raw_start))
+            for ci, ch in enumerate(tok_str):
+                norm_chars.append(ch)
+                char_spans.append((tok_raw_start + ci, tok_raw_start + ci + 1))
+            prev_tok_raw_end = line_offset + tok.end()
+            line_parts.append(tok_str)
+        prev_norm_line = " ".join(line_parts)
+
+    return "".join(norm_chars), char_spans, header_line_starts
+
+
+def _sentence_boundaries(seg: str) -> Tuple[str, Dict[int, int], Dict[int, int], List[Tuple[int, int]]]:
+    """구간 텍스트를 공백 정규화하고 문장 경계(유효 시작·종료 위치 -> 문장 번호)와 원문 offset 표를 추출한다."""
+    norm, char_spans, header_line_starts = _normalize_with_spans(seg)
+    if not norm:
+        return "", {}, {}, []
+
+    from packages.legal_engine.opinion_attribution import FULL_MARKER_RE, HEADING_MARKER_RE, SUMMARY_MARKER_RE
+
+    masked = _mask_inner_quotes(norm)
+    raw_spans: List[Tuple[int, int]] = []
+    pos = 0
+    for m in _SENTENCE_END_MARKER_RE.finditer(masked):
+        while pos < m.end() and norm[pos].isspace():
+            pos += 1
+        if pos < m.end():
+            raw_spans.append((pos, m.end()))
+        pos = m.end()
+    # 구간 전체가 문장 종결부호 없는 단일 단위(합성 단문 등)일 때만 전체 구간을 하나의 문장 단위로 인정한다.
+    while pos < len(norm) and norm[pos].isspace():
+        pos += 1
+    if pos < len(norm) and not raw_spans:
+        raw_spans.append((pos, len(norm)))
+
+    start_to_idx: Dict[int, int] = {}
+    end_to_idx: Dict[int, int] = {}
+    for idx, (s, e) in enumerate(raw_spans):
+        def _record_markers_from(anchor: int) -> None:
+            start_to_idx[anchor] = idx
+            cur = anchor
+            while cur < e:
+                lm = _LEADING_MARKER_RE.match(norm[cur:e])
+                if not lm or lm.end() == 0:
+                    break
+                cur += lm.end()
+                while cur < e and norm[cur].isspace():
+                    cur += 1
+                if cur < e:
+                    start_to_idx[cur] = idx
+
+        _record_markers_from(s)
+        for sm in _INLINE_SECTION_MARKER_RE.finditer(norm, s, e):
+            _record_markers_from(sm.start(1))
+        for marker_re in (HEADING_MARKER_RE, SUMMARY_MARKER_RE, FULL_MARKER_RE):
+            for om in marker_re.finditer(norm, s, e):
+                body_pos = om.end()
+                while body_pos < e and norm[body_pos].isspace():
+                    body_pos += 1
+                if body_pos < e:
+                    _record_markers_from(body_pos)
+        for h_start in header_line_starts:
+            if s < h_start < e:
+                _record_markers_from(h_start)
+        end_to_idx[e] = idx
+    return norm, start_to_idx, end_to_idx, char_spans
+
+
+def validate_quote_in_segments(quote: str, segments: Sequence[str]) -> Dict[str, Any]:
+    """인용이 단일 발췌 구간에 존재하고 문장 경계와 일치하는 완결 문장(들)인지 검증하며, 모든 일치 위치를 보존한다."""
+    if not isinstance(quote, str) or not quote.strip():
+        return {"valid": False, "reason": "EMPTY_QUOTE", "segment_index": None, "matched_spans": []}
+    if is_display_tag(quote):
+        return {"valid": False, "reason": "DISPLAY_TAG_FORBIDDEN", "segment_index": None, "matched_spans": []}
+    if _is_title_or_marker_only(quote):
+        return {"valid": False, "reason": "TITLE_OR_MARKER_ONLY", "segment_index": None, "matched_spans": []}
+
+    norm_q = _normalize_ws(quote)
+    # 1~2글자 부분 문자열(예: '다', '한다')은 완결된 법리 근거 문장이 될 수 없다.
+    if len(_CONTENT_CHAR_RE.findall(norm_q)) <= 2:
+        return {"valid": False, "reason": "INCOMPLETE_SENTENCE", "segment_index": None, "matched_spans": []}
+
+    found_incomplete = False
+    matched_spans: List[Dict[str, int]] = []
+    for idx, seg in enumerate(segments):
+        if not isinstance(seg, str) or not seg.strip():
+            continue
+        norm_seg, start_to_idx, end_to_idx, char_spans = _sentence_boundaries(seg)
+        if not norm_seg or norm_q not in norm_seg:
+            continue
+        pos = 0
+        seg_matched = False
+        while True:
+            at = norm_seg.find(norm_q, pos)
+            if at < 0:
+                break
+            end_at = at + len(norm_q)
+            s_idx = start_to_idx.get(at)
+            e_idx = end_to_idx.get(end_at)
+            if s_idx is not None and e_idx is not None and e_idx >= s_idx:
+                raw_start = char_spans[at][0]
+                raw_end = char_spans[end_at - 1][1]
+                matched_spans.append(
+                    {"segment_index": idx, "segment_start": raw_start, "segment_end": raw_end}
+                )
+                seg_matched = True
+            pos = at + 1
+        if not seg_matched:
+            found_incomplete = True
+
+    if matched_spans:
+        first = matched_spans[0]
+        return {
+            "valid": True,
+            "reason": "MATCHED_SEGMENT",
+            "segment_index": first["segment_index"],
+            "segment_start": first["segment_start"],
+            "segment_end": first["segment_end"],
+            "matched_spans": matched_spans,
+        }
+    if found_incomplete:
+        return {"valid": False, "reason": "INCOMPLETE_SENTENCE", "segment_index": None, "matched_spans": []}
+    return {"valid": False, "reason": "NOT_FOUND_IN_EXCERPT", "segment_index": None, "matched_spans": []}
+
+
 def quote_in_one_segment(quote: str, segments: Sequence[str]) -> bool:
-    """근거 인용이 보낸 구간 하나 안에 그대로 있는지. 구간을 이어 붙인 인용·생략 표시가 든 인용은 받지 않는다."""
-    return isinstance(quote, str) and bool(quote.strip()) and any(quote in seg for seg in segments)
+    """근거 인용이 보낸 구간 하나 안에 문장 경계에 맞는 완결 문장(들)로 있는지."""
+    return bool(validate_quote_in_segments(quote, segments)["valid"])
+
+
+def _resolve_segment_bases(
+    idx: int,
+    seg: str,
+    opinion_text: str,
+    segments_meta: Sequence[Dict[str, Any]],
+) -> List[int]:
+    """segments[idx]가 opinion_text에서 시작하는 원문 offset 후보를 찾는다."""
+    if not opinion_text or not seg:
+        return []
+    if idx < len(segments_meta):
+        meta = segments_meta[idx]
+        if meta.get("masked_start") is not None:
+            ms = int(meta["masked_start"])
+            me = int(meta.get("masked_end", ms + len(seg)))
+            if opinion_text[ms:me] == seg:
+                return [ms]
+        if meta.get("original_start") is not None:
+            os_ = int(meta["original_start"])
+            oe_ = int(meta.get("original_end", os_ + len(seg)))
+            if opinion_text[os_:oe_] == seg:
+                return [os_]
+    bases: List[int] = []
+    pos = 0
+    while True:
+        at = opinion_text.find(seg, pos)
+        if at < 0:
+            break
+        bases.append(at)
+        pos = at + max(1, len(seg))
+    return bases
+
+
+def validate_quotes_by_stage(
+    stages: Sequence[Dict[str, Any]],
+    segments: Sequence[str],
+    *,
+    opinion_text: str = "",
+    segments_meta: Sequence[Dict[str, Any]] = (),
+) -> Dict[str, Any]:
+    """모델 단계별·인용별 근거 일치 검증 및 위치 기반 의견 귀속을 수행한다. 전체 채택 기준(all)은 완화하지 않는다."""
+    from packages.legal_engine.opinion_attribution import classify_opinion_kinds, opinion_ranges, quote_opinion
+
+    stage_checks: List[Dict[str, Any]] = []
+    validated_quotes: List[Dict[str, Any]] = []
+    rejected_quotes: List[Dict[str, Any]] = []
+    seen_valid: set = set()
+    all_stages_grounded = True
+    has_model_verdict = False
+    minority_only = False
+    ambiguous_only = False
+    norm_full = _normalize_ws(opinion_text) if opinion_text else ""
+
+    source_ranges = opinion_ranges(opinion_text) if opinion_text else []
+    seg_ranges_cache = {
+        idx: opinion_ranges(seg)
+        for idx, seg in enumerate(segments)
+        if isinstance(seg, str) and seg.strip()
+    }
+    meta_has_minority = any(
+        k in {"DISSENT", "CONCURRING"}
+        for m in segments_meta
+        for k in (m.get("opinion_kinds") or [])
+    )
+    source_has_minority = any(k in {"DISSENT", "CONCURRING"} for _, _, k in source_ranges)
+    seg_has_minority = any(
+        k in {"DISSENT", "CONCURRING"}
+        for ranges in seg_ranges_cache.values()
+        for _, _, k in ranges
+    )
+    has_minority_in_source = source_has_minority or meta_has_minority or seg_has_minority
+
+    for stage in stages:
+        if not (stage.get("used") and isinstance(stage.get("verdict"), dict)):
+            continue
+        has_model_verdict = True
+        verdict = stage["verdict"]
+        stage_name = str(stage.get("name") or f"stage{stage.get('stage', '')}")
+        raw_quotes = verdict.get("evidence_quotes")
+        quote_list = raw_quotes if isinstance(raw_quotes, list) else []
+        checks: List[Dict[str, Any]] = []
+        if not quote_list:
+            all_stages_grounded = False
+            rejected_quotes.append({"stage": stage_name, "quote": "", "reason": "NO_QUOTES_PROVIDED"})
+        for raw_q in quote_list:
+            check = validate_quote_in_segments(raw_q, segments)
+            if not check["valid"]:
+                all_stages_grounded = False
+                reason = check["reason"]
+                if reason == "EMPTY_QUOTE":
+                    entry = {"quote": str(raw_q or ""), "valid": False, "reason": reason}
+                else:
+                    if reason == "NOT_FOUND_IN_EXCERPT" and norm_full:
+                        norm_q = _normalize_ws(raw_q)
+                        if norm_q and norm_q in norm_full:
+                            reason = "UNSENT_FULL_TEXT_QUOTE"
+                    entry = {"quote": raw_q[:160], "valid": False, "reason": reason}
+                checks.append(entry)
+                rejected_quotes.append({"stage": stage_name, **entry})
+                continue
+
+            matched_spans = check.get("matched_spans") or [
+                {
+                    "segment_index": int(check["segment_index"]),
+                    "segment_start": int(check.get("segment_start", 0)),
+                    "segment_end": int(check.get("segment_end", 0)),
+                }
+            ]
+            occurrences: List[Dict[str, Any]] = []
+            all_occ_kinds: set = set()
+            for sp in matched_spans:
+                seg_idx = int(sp["segment_index"])
+                raw_s = int(sp["segment_start"])
+                raw_e = int(sp["segment_end"])
+                seg = segments[seg_idx]
+                seg_id = (
+                    str(segments_meta[seg_idx].get("segment_id"))
+                    if seg_idx < len(segments_meta)
+                    else f"S{seg_idx}"
+                )
+                meta_kinds = (
+                    {k for k in (segments_meta[seg_idx].get("opinion_kinds") or []) if k}
+                    if seg_idx < len(segments_meta)
+                    else set()
+                )
+                bases = _resolve_segment_bases(seg_idx, seg, opinion_text, segments_meta) if opinion_text else []
+                if bases and source_ranges:
+                    for base in bases:
+                        src_s = base + raw_s
+                        src_e = base + raw_e
+                        occ_kinds = {k for rs, re_, k in source_ranges if rs < src_e and re_ > src_s}
+                        if not occ_kinds and not has_minority_in_source:
+                            occ_kinds = {"MAJORITY"}
+                        all_occ_kinds.update(occ_kinds)
+                        occurrences.append(
+                            {
+                                "segment_id": seg_id,
+                                "segment_index": seg_idx,
+                                "segment_start": raw_s,
+                                "segment_end": raw_e,
+                                "source_start": src_s,
+                                "source_end": src_e,
+                                "opinion_kinds": sorted(occ_kinds),
+                            }
+                        )
+                else:
+                    local_ranges = seg_ranges_cache.get(seg_idx, [])
+                    local_has_minority = any(k in {"DISSENT", "CONCURRING"} for _, _, k in local_ranges)
+                    if not has_minority_in_source:
+                        occ_kinds = {"MAJORITY"}
+                    elif len(meta_kinds) == 1:
+                        occ_kinds = set(meta_kinds)
+                    elif local_has_minority:
+                        occ_kinds = {k for rs, re_, k in local_ranges if rs < raw_e and re_ > raw_s}
+                    elif meta_kinds:
+                        occ_kinds = set(meta_kinds)
+                    elif opinion_text:
+                        fallback_kind = quote_opinion(raw_q, opinion_text)
+                        occ_kinds = {fallback_kind} if fallback_kind else set()
+                    else:
+                        occ_kinds = set()
+                    all_occ_kinds.update(occ_kinds)
+                    occurrences.append(
+                        {
+                            "segment_id": seg_id,
+                            "segment_index": seg_idx,
+                            "segment_start": raw_s,
+                            "segment_end": raw_e,
+                            "source_start": None,
+                            "source_end": None,
+                            "opinion_kinds": sorted(occ_kinds),
+                        }
+                    )
+
+            op_kind = "MAJORITY" if not has_minority_in_source else classify_opinion_kinds(all_occ_kinds)
+            first_seg_id = occurrences[0]["segment_id"]
+            entry = {
+                "quote": raw_q,
+                "valid": True,
+                "reason": "MATCHED_SEGMENT",
+                "segment_id": first_seg_id,
+                "opinion_kind": op_kind,
+                "opinion_occurrences": occurrences,
+            }
+            checks.append(entry)
+            if raw_q not in seen_valid:
+                seen_valid.add(raw_q)
+                validated_quotes.append(
+                    {k: entry[k] for k in ("quote", "segment_id", "opinion_kind", "opinion_occurrences")}
+                )
+
+        stage_all_valid = bool(checks) and all(c["valid"] for c in checks)
+        stage_minority_only = False
+        stage_ambiguous_opinion = False
+        verdict_status = str(verdict.get("status", "")).upper()
+        check_kinds = [c["opinion_kind"] for c in checks if c.get("valid")]
+        stage_opinion_kind = classify_opinion_kinds(check_kinds) if check_kinds else None
+        if stage_all_valid and verdict_status in {"VERIFIED", "SUPPORTED"}:
+            if all(k in {"DISSENT", "CONCURRING", "MINORITY"} for k in check_kinds):
+                stage_minority_only = True
+                minority_only = True
+                all_stages_grounded = False
+            elif any(k in {"AMBIGUOUS", "UNKNOWN"} for k in check_kinds):
+                stage_ambiguous_opinion = True
+                ambiguous_only = True
+                all_stages_grounded = False
+        stage_checks.append({
+            "stage": stage_name,
+            "status": str(verdict.get("status", "")),
+            "empty_quotes": not bool(quote_list),
+            "all_valid": stage_all_valid,
+            "minority_opinion_only": stage_minority_only,
+            "ambiguous_opinion": stage_ambiguous_opinion,
+            "opinion_kind": stage_opinion_kind,
+            "checks": checks,
+        })
+
+    grounded = has_model_verdict and all_stages_grounded and not minority_only and not ambiguous_only
+    return {
+        "grounded": grounded,
+        "minority_opinion_only": minority_only,
+        "ambiguous_opinion_only": ambiguous_only,
+        "validated_quotes": validated_quotes,
+        "rejected_quotes": rejected_quotes,
+        "stage_checks": stage_checks,
+    }
 
 
 def project_masked(full_text: str, mask_result, segments: Sequence[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]]]:
@@ -200,9 +684,12 @@ def project_masked(full_text: str, mask_result, segments: Sequence[Dict[str, Any
 
 
 def projected_token_spans(
-    mask_result, projected_segments: Sequence[Dict[str, Any]],
+    mask_result,
+    projected_segments: Sequence[Dict[str, Any]],
+    *,
+    segments_meta: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> Tuple[Tuple[int, int, str], ...]:
-    """Map MaskResult token spans onto render([seg['text'] for seg in projected_segments])."""
+    """Map MaskResult token spans onto render(...) or render_sections(segments_meta, ...)."""
     from packages.pii_engine.engine import slice_token_spans
 
     raw_spans = getattr(mask_result, "token_spans", ()) or ()
@@ -213,6 +700,15 @@ def projected_token_spans(
     for idx, seg in enumerate(projected_segments):
         if idx > 0:
             cursor += len(GAP_MARKER)
+        if segments_meta is not None:
+            meta = segments_meta[idx]
+            tag = segment_tag(
+                str(meta.get("segment_id") or f"S{idx}"),
+                meta.get("opinion_kinds") or ["MAJORITY"],
+                start=meta.get("original_start"),
+                end=meta.get("original_end"),
+            )
+            cursor += len(tag) + 1
         ms = int(seg["masked_start"])
         me = int(seg["masked_end"])
         for ts, te, token in slice_token_spans(raw_spans, ms, me):
