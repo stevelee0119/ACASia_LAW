@@ -44,7 +44,12 @@ def _context_review(verdict, reviews, mask=None):
               "reason": "공식 원문에 근거한 의미·맥락 검토가 완료되지 않아 취지 동일 여부는 판단 유보합니다."}
     source = str((verdict.get("official_record") or {}).get("full_text") or "")
     if mask and source:
-        source = mask(source)
+        from packages.pii_engine.pseudonym import PseudonymSequenceLimitError
+
+        try:
+            source = mask(source)
+        except PseudonymSequenceLimitError:
+            return result
     for review in reviews:
         if (review.get("citation_id") != verdict.get("citation_id")
                 or review.get("review_id") != verdict.get("review_id")):
@@ -938,7 +943,7 @@ def _answer_provider(answer) -> str:
 
 
 async def _retry_truncated_singly(router: Any, replies: List[Any], batch: List[Dict[str, Any]],
-                                  policy: ExternalAIPolicy, *, excerpt_pieces=None) -> List[Any]:
+                                  policy: ExternalAIPolicy, *, excerpt_pieces=None, item_provenance=None) -> List[Any]:
     if len(batch) < 2:
         return []
     providers = [p for p in (_answer_provider(a) for a in replies) if p]
@@ -951,6 +956,13 @@ async def _retry_truncated_singly(router: Any, replies: List[Any], batch: List[D
             single = LLMRequest(system=_OPINION_SYSTEM, user=json.dumps({"items": [item]}, ensure_ascii=False),
                                 temperature=0.1, max_tokens=4096, schema=_OPINION_SCHEMA,
                                 input_contract="argument_review_v1")
+            if item_provenance is not None:
+                from packages.llm_router.token_attestation import bind_masked_tokens
+                fields_for_item = item_provenance.get(item['item_id'], {})
+                single_prov = {
+                    f"user.items[0].{fname}": prov for fname, prov in fields_for_item.items()
+                }
+                single = bind_masked_tokens(single, single_prov)
             if excerpt_pieces is not None:
                 from packages.llm_router.excerpt_source import bind_argument_excerpts
                 single = bind_argument_excerpts(single, (excerpt_pieces[item['item_id']],))
@@ -968,13 +980,19 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
     """사용 가능한 모델 모두에게 묻고, 항목별 의견과 일치 여부를 행에 붙인다."""
     from packages.legal_engine.normalize import canonical_case_number, extract_all_case_numbers
     from packages.llm_router.providers import _extract_json
+    from packages.pii_engine.pseudonym import PseudonymSequenceLimitError
 
     from packages.llm_router.router import failure_summary
 
     hide = mask or (lambda text: text)
-    from packages.common.source_trace import render_argument_context
+    from packages.common.source_trace import _ModelInputRenderer, render_argument_context
     from packages.llm_router.excerpt_source import bind_argument_excerpts
+    from packages.llm_router.token_attestation import bind_masked_tokens
+
     excerpt_pieces = {}
+    use_renderer = type(hide) is _ModelInputRenderer
+    attach_attestation = use_renderer and not hide._is_original() and hide._uses_real_store()
+    item_provenance: Dict[int, Dict[str, Tuple[str, Tuple[Tuple[int, int, str], ...]]]] = {}
 
     # TK-138 관련 권위 판례 제공 목록 및 사건번호 집합 구성 (P4, P6, U3)
     precedents = (related_authorities or {}).get("precedents", [])
@@ -988,52 +1006,93 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
             else:
                 provided_case_numbers.add(str(cno).replace(" ", ""))
 
-    precedent_context_str = ""
-    if precedents:
-        prec_lines = []
-        for p in precedents[:3]:
-            kind_str = f" {p['case_kind']}" if p.get("case_kind") else ""
-            summary_str = f": {p['summary'][:150]}" if p.get("summary") else ""
-            prec_lines.append(f"- {p['case_number']} ({p['court']}{kind_str}){summary_str}")
-        precedent_context_str = "\n".join(prec_lines)
+    try:
+        precedent_context_str = ""
+        precedent_spans: Tuple[Tuple[int, int, str], ...] = ()
+        if precedents:
+            prec_lines = []
+            for p in precedents[:3]:
+                kind_str = f" {p['case_kind']}" if p.get("case_kind") else ""
+                summary_str = f": {p['summary'][:150]}" if p.get("summary") else ""
+                prec_lines.append(f"- {p['case_number']} ({p['court']}{kind_str}){summary_str}")
+            raw_prec = "\n".join(prec_lines)
+            if use_renderer:
+                precedent_context_str, precedent_spans = hide.mask_attested(raw_prec)
+            else:
+                precedent_context_str = hide(raw_prec)
 
-    def context_for(item_id, item):
-        raw_ctx = item.get("evaluation_context") or item.get("context") or ""
-        rendered, piece = render_argument_context(hide, raw_ctx)
-        excerpt_pieces[item_id] = piece
-        return rendered
+        def context_for(index, item):
+            raw_ctx = item.get("evaluation_context") or item.get("context") or ""
+            spans_out: list = []
+            if use_renderer:
+                rendered, piece = render_argument_context(hide, raw_ctx, spans_out=spans_out)
+            else:
+                rendered, piece = render_argument_context(hide, raw_ctx)
+            excerpt_pieces[index] = piece
+            item_provenance.setdefault(index, {})["surrounding_context_and_claim"] = (rendered, tuple(spans_out))
+            return rendered
 
-    items_by_id: Dict[int, Dict[str, Any]] = {}
-    items = []
-    for pos, item in enumerate(unverified_cases, 1):
-        item_id = int(item.get("item_id") or pos)
-        items_by_id[item_id] = item
-        items.append({
-            "item_id": item_id,
-            "page": item["citation"].page or 1,
-            "cited_case": hide(item["citation"].raw_text),
-            "확인 상태": _BASIS_LABEL.get(item.get("basis", "UNCONFIRMED"), _BASIS_LABEL["UNCONFIRMED"]),
-            "surrounding_context_and_claim": context_for(item_id, item),
-            **({"관련 권위 판례(참고)": hide(precedent_context_str)} if precedent_context_str else {}),
-            **({"원문 대조(어절 단위, 원문 기준)": hide(item["quote_diff"])} if item.get("quote_diff") else {}),
-        })
+        def mask_field(index: int, field_name: str, raw_text: str) -> str:
+            if use_renderer:
+                masked_val, spans = hide.mask_attested(raw_text)
+                item_provenance.setdefault(index, {})[field_name] = (masked_val, tuple(spans))
+                return masked_val
+            return hide(raw_text)
+
+        items_by_id: Dict[int, Dict[str, Any]] = {}
+        items = []
+        for pos, item in enumerate(unverified_cases, 1):
+            item_id = int(item.get("item_id") or pos)
+            items_by_id[item_id] = item
+            entry = {
+                "item_id": item_id,
+                "page": item["citation"].page or 1,
+                "cited_case": mask_field(item_id, "cited_case", item["citation"].raw_text),
+                "확인 상태": _BASIS_LABEL.get(item.get("basis", "UNCONFIRMED"), _BASIS_LABEL["UNCONFIRMED"]),
+                "surrounding_context_and_claim": context_for(item_id, item),
+            }
+            if precedent_context_str:
+                entry["관련 권위 판례(참고)"] = precedent_context_str
+                if use_renderer:
+                    item_provenance.setdefault(item_id, {})["관련 권위 판례(참고)"] = (
+                        precedent_context_str, precedent_spans,
+                    )
+            if item.get("quote_diff"):
+                entry["원문 대조(어절 단위, 원문 기준)"] = mask_field(
+                    item_id, "원문 대조(어절 단위, 원문 기준)", item["quote_diff"],
+                )
+            items.append(entry)
+    except PseudonymSequenceLimitError:
+        result.ai_summary = "가명 생성 상한(종류별 999건)을 초과하여 AI 교차검토를 수행하지 못함."
+        return
     # 한 번에 모두 물으면 인용이 많을 때 응답이 출력 한도에서 잘린다. 한국어 JSON은
     # 공급자마다 토큰 사용량이 달라, 잘리는 모델만 교차검증에서 빠졌다.
     answers = []
     for start in range(0, len(items), _OPINION_BATCH):
+        batch = items[start:start + _OPINION_BATCH]
         request = LLMRequest(system=_OPINION_SYSTEM,
-                             user=json.dumps({"items": items[start:start + _OPINION_BATCH]}, ensure_ascii=False),
+                             user=json.dumps({"items": batch}, ensure_ascii=False),
                              temperature=0.1, max_tokens=4096, schema=_OPINION_SCHEMA,
                              input_contract="argument_review_v1")
+        if attach_attestation:
+            batch_prov = {}
+            for pos, b_item in enumerate(batch):
+                fields_for_item = item_provenance.get(b_item["item_id"], {})
+                for fname, prov in fields_for_item.items():
+                    batch_prov[f"user.items[{pos}].{fname}"] = prov
+            request = bind_masked_tokens(request, batch_prov)
         request = bind_argument_excerpts(request, tuple(excerpt_pieces[item['item_id']]
-                                                       for item in items[start:start + _OPINION_BATCH]))
+                                                       for item in batch))
         try:
-            batch = items[start:start + _OPINION_BATCH]
             replies = await router.consult_all(LLMRole.PRIMARY_REASONER, request, policy=policy,
                                                expected_task="법률 주장 타당성 검토")
             answers += replies
             # 2건 묶음도 출력 한도에서 잘린 공급자(0.9.8 실제 실행 1건)에는 그 공급자에게만 1건씩 다시 묻는다.
-            answers += await _retry_truncated_singly(router, replies, batch, policy, excerpt_pieces=excerpt_pieces)
+            answers += await _retry_truncated_singly(
+                router, replies, batch, policy,
+                excerpt_pieces=excerpt_pieces,
+                item_provenance=item_provenance if attach_attestation else None,
+            )
         except Exception as exc:  # 참고 의견이 없어도 판정은 이미 끝났다.
             result.ai_summary = f"AI 교차검토를 수행하지 못함({type(exc).__name__})."
             return
