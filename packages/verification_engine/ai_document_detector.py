@@ -338,9 +338,31 @@ async def detect_ai_document(
 
     system_prompt = AI_DETECTOR_SYSTEM_PROMPT
 
-    sample = hide(sample_text)
+    from packages.common.source_trace import _ModelInputRenderer
+    from packages.llm_router.token_attestation import bind_masked_tokens
+    from packages.pii_engine.pseudonym import PseudonymSequenceLimitError
+
+    use_renderer = type(hide) is _ModelInputRenderer
+    provenance = {}
+    try:
+        if use_renderer:
+            sample, sample_spans = hide.mask_attested(sample_text)
+            masked_filename, filename_spans = hide.mask_attested(doc.filename)
+            provenance = {
+                "user.document_filename": (masked_filename, filename_spans),
+                "user.document_sample_text": (sample, sample_spans),
+            }
+        else:
+            sample = hide(sample_text)
+            masked_filename = hide(doc.filename)
+    except PseudonymSequenceLimitError:
+        sampling_info.update(inspected_chars=0, omitted_chars=total_chars, is_full_coverage=False)
+        rule_res.signals["llm_error"] = "PSEUDONYM_SEQUENCE_LIMIT_EXCEEDED"
+        rule_res.reasons.append("가명 생성 상한(종류별 999건)을 초과하여 AI 교차검토를 중단함")
+        return rule_res
+
     user_payload = {
-        "document_filename": hide(doc.filename),
+        "document_filename": masked_filename,
         "metadata_ai_hint": metadata_indications,
         "document_sample_text": sample,
         "document_coverage": sampling_info,
@@ -355,6 +377,8 @@ async def detect_ai_document(
         schema=_DETECTOR_SCHEMA,
         input_contract="ai_document_v1",
     )
+    if use_renderer and not hide._is_original() and hide._uses_real_store():
+        req = bind_masked_tokens(req, provenance)
     try:
         answers = await router.consult_all(LLMRole.PRIMARY_REASONER, req, policy=external_ai_policy,
                                            expected_task="AI 작성 여부 판별")
