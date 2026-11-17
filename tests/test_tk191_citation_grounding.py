@@ -602,3 +602,190 @@ def test_multistage_conservativeness_rejects_overall_grounding_when_one_stage_re
     assert [sc["all_valid"] for sc in review["quote_grounding"]["stage_checks"]] == [True, False, True]
 
 
+# --- 6. 짧은 완결 인용의 의견 귀속 및 다중 구간 모호성 차단 (PR #323 2차 보완) ----------------------------
+def test_short_complete_sentence_in_dissent_only_never_defaults_to_majority(tmp_path):
+    from packages.legal_engine.opinion_attribution import quote_opinion
+
+    # 다수의견 끝 단어('원심을 파기한다.')에는 '파기한다.'가 부분 문자열로만 있고, 독립 완결 문장 '파기한다.'는 반대의견에만 있음
+    text = (
+        "【이유】 다수의견은 원심을 유지하거나 일부 경우에만 원심을 파기한다.\n"
+        "대법관 가의 반대의견은 다음과 같다. 파기한다."
+    )
+    pack = build_evidence_pack(text, quotes=["파기한다."])
+    assert len(pack["segments"]) == 1
+    assert set(pack["segments"][0]["opinion_kinds"]) == {"DISSENT", "MAJORITY"}
+    assert quote_opinion("파기한다.", text) == "DISSENT"
+
+    primary = _QueuedProvider("anthropic", "claude-stub", lambda n, req: _verdict_json("VERIFIED", ["파기한다."]))
+    critic = _QueuedProvider("openai", "gpt-stub", lambda n, req: _verdict_json("VERIFIED", ["파기한다."]))
+    grounder = _QueuedProvider("gemini", "gemini-stub", lambda n, req: _verdict_json("VERIFIED", ["파기한다."]))
+
+    _, review, _ = _run_pipeline(
+        tmp_path,
+        full_text=text,
+        quoted_text="파기한다.",
+        case_number="2099다951",
+        providers={"anthropic": primary, "openai": critic, "gemini": grounder},
+    )
+    assert len(primary.calls) == 1
+    assert review["quote_grounding"]["section_map"][0]["opinion_kinds"] == ["DISSENT", "MAJORITY"]
+    assert review["quote_grounding"]["stage_checks"][0]["all_valid"] is True
+    assert review["quote_grounding"]["validated_quotes"][0]["quote"] == "파기한다."
+    assert review["quote_grounding"]["validated_quotes"][0]["opinion_kind"] == "DISSENT"
+    assert review["quote_grounding"]["rejected_quotes"] == []
+    assert review["minority_opinion_evidence"] is True
+    assert review["source_quotes_validated"] is False
+    assert review["status"] == "UNVERIFIED"
+    assert review["legal_principle_consensus"]["status"] == "UNVERIFIED"
+    assert review["evidence_quotes"] == []
+    assert review["quote_grounding"]["recheck_attempted"] is False
+
+
+@pytest.mark.parametrize("short_concurring", ["인용한다.", "인용함."])
+def test_short_complete_sentence_in_concurring_only_is_blocked_even_under_five_chars(tmp_path, short_concurring):
+    from packages.legal_engine.opinion_attribution import quote_opinion
+
+    text = (
+        f"【이유】 {RULE_A}\n"
+        f"2. 대법관 김철수의 별개의견   {short_concurring}"
+    )
+    pack = build_evidence_pack(text, quotes=[short_concurring])
+    assert len(pack["segments"]) == 1
+    assert set(pack["segments"][0]["opinion_kinds"]) == {"CONCURRING", "MAJORITY"}
+    assert quote_opinion(short_concurring, text) == "CONCURRING"
+
+    primary = _QueuedProvider("anthropic", "claude-stub", lambda n, req: _verdict_json("VERIFIED", [short_concurring]))
+    critic = _QueuedProvider("openai", "gpt-stub", lambda n, req: _verdict_json("VERIFIED", [short_concurring]))
+    grounder = _QueuedProvider("gemini", "gemini-stub", lambda n, req: _verdict_json("VERIFIED", [short_concurring]))
+
+    _, review, _ = _run_pipeline(
+        tmp_path,
+        full_text=text,
+        quoted_text=short_concurring,
+        case_number="2099다952",
+        providers={"anthropic": primary, "openai": critic, "gemini": grounder},
+    )
+    assert len(primary.calls) == 1
+    assert review["quote_grounding"]["stage_checks"][0]["all_valid"] is True
+    assert review["quote_grounding"]["validated_quotes"][0]["opinion_kind"] == "CONCURRING"
+    assert review["minority_opinion_evidence"] is True
+    assert review["source_quotes_validated"] is False
+    assert review["status"] == "UNVERIFIED"
+    assert review["legal_principle_consensus"]["status"] == "UNVERIFIED"
+    assert review["evidence_quotes"] == []
+    assert review["quote_grounding"]["recheck_attempted"] is False
+
+
+@pytest.mark.parametrize("short_majority", ["파기한다.", "인용함."])
+def test_short_complete_sentence_confirmed_in_majority_only_is_adopted_in_multi_opinion_judgment(tmp_path, short_majority):
+    from packages.legal_engine.opinion_attribution import quote_opinion
+
+    text = (
+        f"【이유】 다수의견의 결론은 다음과 같다. {short_majority}\n"
+        f"대법관 을의 반대의견은 다음과 같다. {DISSENT_C}"
+    )
+    pack = build_evidence_pack(text, quotes=[short_majority])
+    assert len(pack["segments"]) == 1
+    assert set(pack["segments"][0]["opinion_kinds"]) == {"DISSENT", "MAJORITY"}
+    assert quote_opinion(short_majority, text) == "MAJORITY"
+
+    providers = {
+        "anthropic": _QueuedProvider("anthropic", "claude-stub", lambda n, req: _verdict_json("VERIFIED", [short_majority])),
+        "openai": _QueuedProvider("openai", "gpt-stub", lambda n, req: _verdict_json("VERIFIED", [short_majority])),
+        "gemini": _QueuedProvider("gemini", "gemini-stub", lambda n, req: _verdict_json("VERIFIED", [short_majority])),
+    }
+    _, review, _ = _run_pipeline(
+        tmp_path,
+        full_text=text,
+        quoted_text=short_majority,
+        case_number="2099다953",
+        providers=providers,
+    )
+    assert review["quote_grounding"]["validated_quotes"][0]["quote"] == short_majority
+    assert review["quote_grounding"]["validated_quotes"][0]["opinion_kind"] == "MAJORITY"
+    assert review["minority_opinion_evidence"] is False
+    assert review["source_quotes_validated"] is True
+    assert review["status"] == "SUPPORTED"
+    assert review["legal_principle_consensus"]["status"] == "SUPPORTED"
+    assert short_majority in review["evidence_quotes"]
+
+
+def test_identical_complete_sentence_in_both_opinions_is_ambiguous_until_position_proves_majority(tmp_path):
+    from packages.legal_engine.opinion_attribution import quote_opinion
+
+    maj_part = "【이유】 다수의견의 결론은 다음과 같다. 파기한다."
+    dis_part = "대법관 가의 반대의견은 다음과 같다. 파기한다."
+    full_text = f"{maj_part}\n{dis_part}"
+    assert quote_opinion("파기한다.", full_text) == "AMBIGUOUS"
+
+    # 1) 단일 세그먼트 전체 전송 시: 문장 일치는 참이지만 다수·소수 양쪽에서 발견되어 AMBIGUOUS -> UNVERIFIED(차단)
+    providers = {
+        "anthropic": _QueuedProvider("anthropic", "claude-stub", lambda n, req: _verdict_json("VERIFIED", ["파기한다."])),
+        "openai": _QueuedProvider("openai", "gpt-stub", lambda n, req: _verdict_json("VERIFIED", ["파기한다."])),
+        "gemini": _QueuedProvider("gemini", "gemini-stub", lambda n, req: _verdict_json("VERIFIED", ["파기한다."])),
+    }
+    _, review, _ = _run_pipeline(
+        tmp_path,
+        full_text=full_text,
+        quoted_text="파기한다.",
+        case_number="2099다954",
+        providers=providers,
+    )
+    assert review["quote_grounding"]["stage_checks"][0]["all_valid"] is True
+    assert review["quote_grounding"]["rejected_quotes"] == []
+    vq = review["quote_grounding"]["validated_quotes"][0]
+    assert vq["quote"] == "파기한다."
+    assert vq["opinion_kind"] == "AMBIGUOUS"
+    assert [occ["opinion_kinds"] for occ in vq["opinion_occurrences"]] == [["MAJORITY"], ["DISSENT"]]
+    assert review["quote_grounding"]["ambiguous_opinion_only"] is True
+    assert review["minority_opinion_evidence"] is False
+    assert review["source_quotes_validated"] is False
+    assert review["status"] == "UNVERIFIED"
+    assert review["legal_principle_consensus"]["status"] == "UNVERIFIED"
+    assert review["evidence_quotes"] == []
+    assert review["quote_grounding"]["recheck_attempted"] is False
+
+    # 2) 다수의견 구간만 실제 검증 구간으로 전달되어 발생 위치가 다수의견임이 증명된 경우 -> MAJORITY 및 채택
+    stages = [{"used": True, "name": "primary", "verdict": {"status": "VERIFIED", "evidence_quotes": ["파기한다."]}}]
+    maj_meta = [{"segment_id": "S0", "original_start": 0, "original_end": len(maj_part), "opinion_kinds": ["MAJORITY"]}]
+    proven_maj = validate_quotes_by_stage(stages, [maj_part], opinion_text=full_text, segments_meta=maj_meta)
+    assert proven_maj["grounded"] is True
+    assert proven_maj["validated_quotes"][0]["opinion_kind"] == "MAJORITY"
+    assert proven_maj["validated_quotes"][0]["opinion_occurrences"][0]["opinion_kinds"] == ["MAJORITY"]
+
+    # 3) 복수 의견 메타만 있고 위치 판별이 불가능한 조각 구간에서도 UNKNOWN/AMBIGUOUS로 보수 보존(MAJORITY 기본 변환 금지)
+    uncertain = validate_quotes_by_stage(
+        stages,
+        ["파기한다."],
+        opinion_text="",
+        segments_meta=[{"segment_id": "S0", "opinion_kinds": ["DISSENT", "MAJORITY"]}],
+    )
+    assert uncertain["grounded"] is False
+    assert uncertain["validated_quotes"][0]["opinion_kind"] == "AMBIGUOUS"
+
+
+def test_masked_pii_shift_preserves_exact_short_quote_opinion_attribution(tmp_path):
+    # MASKED 정책으로 다수의견 앞부분 PII 길이가 변해도 masked_start/masked_end 대조로 정확한 의견 귀속 유지
+    text = (
+        "【이유】 당사자 홍길동(연락처 010-1234-5678)의 청구에 관하여 다수의견은 원심을 유지한다.\n"
+        "7. 대법관 박영희의 별개의견   인용함."
+    )
+    primary = _QueuedProvider("anthropic", "claude-stub", lambda n, req: _verdict_json("VERIFIED", ["인용함."]))
+    critic = _QueuedProvider("openai", "gpt-stub", lambda n, req: _verdict_json("VERIFIED", ["인용함."]))
+    grounder = _QueuedProvider("gemini", "gemini-stub", lambda n, req: _verdict_json("VERIFIED", ["인용함."]))
+
+    _, review, _ = _run_pipeline(
+        tmp_path,
+        full_text=text,
+        quoted_text="인용함.",
+        case_number="2099다955",
+        providers={"anthropic": primary, "openai": critic, "gemini": grounder},
+        policy=ExternalAIPolicy.MASKED,
+    )
+    assert review["quote_grounding"]["validated_quotes"][0]["opinion_kind"] == "CONCURRING"
+    assert review["minority_opinion_evidence"] is True
+    assert review["source_quotes_validated"] is False
+    assert review["status"] == "UNVERIFIED"
+
+
+

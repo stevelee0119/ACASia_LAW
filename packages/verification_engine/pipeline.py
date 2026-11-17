@@ -1707,8 +1707,20 @@ class VerificationPipeline:
                                 "input_budget": budget_note,
                                 "reason": f"공급자 입력 한도({input_cap})를 넘어 의미·적용 검토를 수행하지 않음"})
                 continue
+            grounding_segments_meta = (
+                [
+                    {
+                        **meta,
+                        "masked_start": projected[idx]["masked_start"],
+                        "masked_end": projected[idx]["masked_end"],
+                    }
+                    for idx, meta in enumerate(pack["segments"])
+                ]
+                if projected is not None
+                else pack["segments"]
+            )
             grounding = validate_quotes_by_stage(
-                outcome.stages, segments, opinion_text=opinion_text, segments_meta=pack["segments"])
+                outcome.stages, segments, opinion_text=opinion_text, segments_meta=grounding_segments_meta)
             recheck_meta = {"attempted": False, "recovered": False, "stages": []}
             if not grounding["grounded"] and not grounding["minority_opinion_only"]:
                 recheck_meta = self._recheck_stage_quotes(
@@ -1720,16 +1732,17 @@ class VerificationPipeline:
                     policy=context.external_ai_policy,
                     attested_tokens=attested_tokens,
                     opinion_text=opinion_text,
-                    segments_meta=pack["segments"],
+                    segments_meta=grounding_segments_meta,
                 )
                 if recheck_meta["attempted"]:
                     grounding = validate_quotes_by_stage(
-                        outcome.stages, segments, opinion_text=opinion_text, segments_meta=pack["segments"])
+                        outcome.stages, segments, opinion_text=opinion_text, segments_meta=grounding_segments_meta)
             result.engine_data.setdefault("model_executions", []).extend(e.to_dict() for e in outcome.executions)
             model_verdicts = [s["verdict"] for s in outcome.stages if s.get("used") and s.get("verdict")]
             quotes = [q for v in model_verdicts for q in v.get("evidence_quotes", [])]
             grounded = grounding["grounded"]
             minority_only = grounding["minority_opinion_only"]
+            ambiguous_opinion = bool(grounding.get("ambiguous_opinion_only"))
             # 모델이 한 번도 실행되지 않은 것과, 실행됐으나 근거 인용이 확인되지
             # 않은 것은 전혀 다르다. 둘을 같은 문구로 적으면 공급자 키·모델 ID가
             # 잘못되어 AI가 아무 일도 하지 않는 동안에도 "검토했으나 채택하지
@@ -1740,6 +1753,8 @@ class VerificationPipeline:
                 reason = outcome.rationale
             elif minority_only:
                 reason = "AI가 근거로 든 원문이 반대의견·별개의견 구간에만 있어 판시 근거로 채택하지 않음"
+            elif ambiguous_opinion:
+                reason = "AI가 근거로 든 인용의 의견 귀속이 다수·소수의견 사이에 모호하거나 확인되지 않아 판시 근거로 채택하지 않음"
             elif model_ran:
                 reason = "보낸 공식 원문 구간에 있는 근거 인용이 확인되지 않아 AI 의견을 채택하지 않음"
             else:
@@ -1779,6 +1794,7 @@ class VerificationPipeline:
                 "quote_grounding": {
                     "grounded": grounded,
                     "minority_opinion_only": minority_only,
+                    "ambiguous_opinion_only": ambiguous_opinion,
                     "validated_quotes": grounding["validated_quotes"],
                     "rejected_quotes": grounding["rejected_quotes"],
                     "stage_checks": grounding["stage_checks"],
