@@ -26,6 +26,9 @@ def authority_text(text):
     return re.sub(r"[「」『』]", "", compact_text(text))
 
 
+GENERIC_ADMIN_RULE_KINDS = ("훈령", "예규", "고시", "지침")
+
+
 def identifier(citation):
     raw = authority_text(value(citation, "raw_text") or value(citation, "cited_authority") or "")
     case = authority_text(value(citation, "canonical_case_number") or value(citation, "case_number") or "")
@@ -74,7 +77,8 @@ def identifier_match(citation, excerpt):
     separator = r"[\u0009-\u000D\u001C-\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF「」『』]*"
     attrs = value(citation, "attributes") or {}
     alias = authority_text(attrs.get("law_alias_candidate") or "") if isinstance(attrs, dict) else ""
-    keys = [key] + ([alias] if alias and alias != key else [])
+    # 종류명뿐인 행정규칙 이름(지침·훈령 등)은 다른 규칙 이름의 끝부분과 같아 특정 규칙으로 결속할 수 없다.
+    keys = ([] if key in GENERIC_ADMIN_RULE_KINDS else [key]) + ([alias] if alias and alias != key else [])
     positions = []
     for candidate_key in keys:
         law_pattern = (r"(?<![가-힣A-Za-z0-9])" + separator.join(re.escape(c) for c in candidate_key)

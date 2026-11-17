@@ -2427,7 +2427,9 @@ function referenceIdentifierMatch(citation, excerpt) {
   const original = String(excerpt || "");
   const separator = "[\\u0009-\\u000D\\u001C-\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF「」『』]*";
   const alias = referenceAuthorityText(citation.attributes?.law_alias_candidate);
-  const keys = alias && alias !== key ? [key, alias] : [key];
+  // 종류명뿐인 행정규칙 이름(지침·훈령 등)은 다른 규칙 이름의 끝부분과 같아 특정 규칙으로 결속할 수 없다.
+  const genericKey = ["훈령", "예규", "고시", "지침"].includes(key);
+  const keys = (genericKey ? [] : [key]).concat(alias && alias !== key ? [alias] : []);
   const positions = [];
   for (const candidateKey of keys) {
     const escaped = [...candidateKey].map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));

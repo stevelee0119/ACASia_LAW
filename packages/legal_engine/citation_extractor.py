@@ -574,6 +574,98 @@ class SpanTracker:
         self.add(*span)
 
 
+_AMBIGUOUS = object()
+_DEMONSTRATIVE_PREFIX_RE = re.compile(r"(?:위|동|해당|상기|전술한|앞서\s*본|앞의|이|그)\s*(?:행정)?\s*(?:규칙\s*)?$")
+_ORDINAL_PREFIX_RE = re.compile(r"(?:(?P<a>첫|두|세|네)\s*번째|(?P<b>첫째|둘째|셋째|넷째))\s*(?:행정)?\s*(?:규칙\s*)?$")
+_ORDINAL_STEMS = ("번째", "첫째", "둘째", "셋째", "넷째")
+_ORDINAL_INDEX = {"첫": 0, "첫째": 0, "두": 1, "둘째": 1, "세": 2, "셋째": 2, "네": 3, "넷째": 3}
+
+
+def _reading_span(citation) -> Optional[Tuple[int, int]]:
+    """본문 전체 좌표의 인용 위치. 블록 기준으로 되돌린 뒤에는 reading_span 속성에 남아 있다."""
+    attrs = getattr(citation, "attributes", None) or {}
+    span = attrs.get("reading_span") or citation.span
+    return (span[0], span[1]) if span else None
+
+
+def _alias_definitions(text: str, suffixes: Tuple[str, ...]) -> Dict[str, List[Tuple[int, str, str]]]:
+    """문서의 약칭 정의를 약칭별 (정의 끝 위치, 정식 명칭, 적힌 정식 명칭) 목록으로 모은다."""
+    defs: Dict[str, List[Tuple[int, str, str]]] = {}
+    for am in ALIAS_DEFINITION_RE.finditer(text):
+        raw_full = (am.group("full") or am.group("full_q") or "").strip()
+        full = canonical_law_name(raw_full)
+        abbr = " ".join(am.group("abbr").split()).replace(" ", "")
+        if full and abbr and full.endswith(suffixes) and full.replace(" ", "") != abbr:
+            defs.setdefault(abbr, []).append((am.end(), full, "".join(raw_full.split())))
+    return defs
+
+
+def _alias_lookup(defs: Dict[str, List[Tuple[int, str, str]]], abbr: str, pos: int):
+    """약칭이 pos보다 앞에서 정의된 경우만 (None, 정식명)을 돌려준다.
+
+    서로 다른 정식 명칭이 같은 약칭으로 정의되면 어느 쪽도 고르지 않고 _AMBIGUOUS를 돌려준다.
+    뒤쪽에서 처음 정의된 약칭은 앞선 인용에 소급하지 않는다(None, None).
+    """
+    entries = defs.get(abbr)
+    if not entries:
+        return None, None
+    if len({written for _, _, written in entries}) > 1:
+        return _AMBIGUOUS, None
+    preceding = [full for end, full, _ in entries if end <= pos]
+    return None, (preceding[0] if preceding else None)
+
+
+def _resolve_kind_only_rule(text, m, kind, bracket_index, alias_defs, citations, sentences) -> Optional[str]:
+    """종류명(지침·훈령 등)만 적힌 행정규칙 인용에 이름을 붙인다. 명시적 문맥 증거가 있을 때만 붙인다.
+
+    - 인용 위치 앞에서 끝난 후보만 본다(미래 인용·후행 별칭 정의는 소급하지 않는다).
+    - 증거: ① 앞서 정의된 약칭 ② 같은 문장 안의 유일한 정식 명칭 ③ '위/동/해당 …' 지시어 + 유일한 선행 후보
+      ④ '첫/두 번째 …' 서수 지시. 같은 접미(suffix)나 가장 가까운 선행 이름만으로는 잇지 않는다.
+    """
+    pos = m.start()
+    cands: List[Tuple[int, str]] = []
+    ends_list, names_list = bracket_index.get(kind, ([], []))
+    for end, name in zip(ends_list, names_list):
+        if end <= pos:
+            cands.append((end, name))
+    for c in citations:
+        if (c.type == CitationType.ADMIN_RULE and c.law_name and c.law_name != kind
+                and c.law_name.endswith(kind) and c.span and c.span[1] <= pos):
+            written = c.law_name.replace(" ", "")
+            a_status, a_full = _alias_lookup(alias_defs, written, c.span[0])
+            if a_status is _AMBIGUOUS or (a_full is None and written in alias_defs):
+                continue
+            cands.append((c.span[1], a_full or c.law_name))
+    cands.sort(key=lambda item: item[0])
+    ordered: List[str] = []
+    for _, name in cands:
+        if name not in ordered:
+            ordered.append(name)
+
+    status, defined = _alias_lookup(alias_defs, kind, pos)
+    if status is _AMBIGUOUS:
+        return None
+    if defined:
+        return defined
+
+    k = text.rfind(kind, m.start("law"), m.end("law") + 1)
+    prefix = text[max(0, (k if k >= 0 else m.start("law")) - 14):k if k >= 0 else m.start("law")]
+    ordinal = _ORDINAL_PREFIX_RE.search(prefix)
+    if ordinal:
+        index = _ORDINAL_INDEX.get(ordinal.group("a") or ordinal.group("b"))
+        return ordered[index] if index is not None and index < len(ordered) else None
+    if _DEMONSTRATIVE_PREFIX_RE.search(prefix):
+        return ordered[0] if len(ordered) == 1 else None
+    if sentences is not None:
+        before = bisect.bisect_right(sentences.ends, pos)
+        sentence_start = sentences.ends[before - 1] if before else 0
+        in_sentence = {name for end, name in cands if end > sentence_start}
+        if len(in_sentence) == 1:
+            return next(iter(in_sentence))
+    return None
+
+
+
 def extract_from_text(
     text: str, *, document_id: Optional[str] = None, block_id: Optional[str] = None, page: Optional[int] = None,
     _create=None, _select=None, _collection=None
@@ -724,6 +816,7 @@ def extract_from_text(
     # 4) 법령 (조문 "조"가 있을 때만 수행)
     previous_law: Optional[str] = None
     admin_bracket_index = None
+    alias_defs: Dict[str, List[Tuple[int, str, str]]] = {}
     if "조" in text:
         for m in _law_matches(text):
             if overlaps(m.start(), m.end()):
@@ -744,37 +837,25 @@ def extract_from_text(
             previous_law = base if same_law and same_law.group("sub") else law_name
             if law_name.endswith(ADMIN_RULE_KINDS):
                 kind = next(k for k in ADMIN_RULE_KINDS if law_name.endswith(k))
-                if law_name == kind:
+                if law_name == kind or law_name[:-len(kind)].replace(" ", "") in _ORDINAL_STEMS:
+                    law_name = kind
                     if admin_bracket_index is None:
-                        alias_by_abbr = {}
-                        for am in ALIAS_DEFINITION_RE.finditer(text):
-                            raw_full = (am.group("full") or am.group("full_q") or "").strip()
-                            full = canonical_law_name(raw_full)
-                            abbr = " ".join(am.group("abbr").split()).replace(" ", "")
-                            if full and abbr and full.endswith(_ADMIN_ALIAS_SUFFIXES):
-                                alias_by_abbr[abbr] = full
+                        alias_defs = _alias_definitions(text, _ADMIN_ALIAS_SUFFIXES)
                         admin_bracket_index = {}
                         for bm in BRACKET_NAME_RE.finditer(text):
                             b_name = canonical_law_name(bm.group("name").strip())
                             b_kind = next((k for k in ADMIN_RULE_KINDS if b_name.endswith(k)), None)
                             if b_kind and b_name != b_kind:
-                                resolved_b = alias_by_abbr.get(b_name.replace(" ", ""), b_name)
+                                status, resolved_b = _alias_lookup(alias_defs, b_name.replace(" ", ""), bm.start())
+                                if status is _AMBIGUOUS:
+                                    continue
+                                if resolved_b is None and b_name.replace(" ", "") in alias_defs:
+                                    continue  # 약칭 정의 자리 또는 정의 앞의 약칭 표기: 정식 명칭이 아니다
                                 ends_list, names_list = admin_bracket_index.setdefault(b_kind, ([], []))
                                 ends_list.append(bm.end())
-                                names_list.append(resolved_b)
-                    ends_list, names_list = admin_bracket_index.get(kind, ([], []))
-                    idx = bisect.bisect_right(ends_list, m.start()) - 1
-                    if idx >= 0:
-                        law_name = names_list[idx]
-                    else:
-                        prev_rule = next(
-                            (c.law_name for c in reversed(citations)
-                             if c.type == CitationType.ADMIN_RULE and c.law_name
-                             and c.law_name.endswith(kind) and c.law_name != kind),
-                            None,
-                        )
-                        if prev_rule:
-                            law_name = prev_rule
+                                names_list.append(resolved_b or b_name)
+                    law_name = _resolve_kind_only_rule(
+                        text, m, kind, admin_bracket_index, alias_defs, citations, admin_sentences) or law_name
                 citations.append(_admin_rule_citation(
                     text, m.start(), m.end(), kind=kind, name=law_name,
                     article=m.group("article"), sub=m.group("article_sub"), paragraph=m.group("paragraph"),
@@ -1570,33 +1651,35 @@ def _attach_law_alias_candidates(text: str, citations: List[Citation]) -> None:
     statutes = [c for c in citations if c.type in (CitationType.STATUTE, CitationType.ADMIN_RULE) and c.law_name]
     if not statutes:
         return
-    defined = {}
-    for m in ALIAS_DEFINITION_RE.finditer(text):
-        raw_full = (m.group("full") or m.group("full_q") or "").strip()
-        full = canonical_law_name(raw_full)
-        abbr = " ".join(m.group("abbr").split())
-        if (full and abbr and full.endswith(_ALIAS_RULE_SUFFIXES)
-                and full.replace(" ", "") != abbr.replace(" ", "")):
-            defined[abbr.replace(" ", "")] = full
+    defined = _alias_definitions(text, _ALIAS_RULE_SUFFIXES)
     statute_full_names = {c.law_name for c in statutes if c.type == CitationType.STATUTE and " " in c.law_name}
     clean_full_names = sorted((f.replace(" ", ""), f) for f in statute_full_names)
     clean_names = [clean for clean, _ in clean_full_names]
 
-    admin_full_names = {
-        canonical_law_name(c.law_name) for c in statutes
+    # 행정규칙 정식 명칭 후보: (끝 위치, 이름). 인용보다 앞에서 끝난 후보만 쓴다(미래 이름 비전파).
+    admin_full_names: List[Tuple[int, str]] = [
+        ((_reading_span(c) or (0, -1))[1], canonical_law_name(c.law_name)) for c in statutes
         if c.type == CitationType.ADMIN_RULE and " " in c.law_name
-    }
+    ]
     for m in BRACKET_NAME_RE.finditer(text):
         cand = " ".join(m.group("name").split())
         if " " in cand and cand.endswith(_ADMIN_ALIAS_SUFFIXES):
-            admin_full_names.add(canonical_law_name(cand))
+            admin_full_names.append((m.end(), canonical_law_name(cand)))
 
     prefix_candidates = {}
     for citation in statutes:
         written = citation.law_name.replace(" ", "")
+        cite_span = _reading_span(citation)
+        cite_start = cite_span[0] if cite_span else None
         if written in defined:
-            citation.attributes.update(law_alias_candidate=defined[written], law_alias_basis="DOCUMENT_DEFINITION")
-            continue
+            status, full = _alias_lookup(defined, written, cite_start if cite_start is not None else len(text))
+            if status is _AMBIGUOUS:
+                continue  # 같은 약칭이 서로 다른 정식 명칭으로 정의됨: 어느 쪽도 고르지 않는다
+            if full:
+                citation.attributes.update(law_alias_candidate=full, law_alias_basis="DOCUMENT_DEFINITION")
+                continue
+            if citation.type == CitationType.ADMIN_RULE:
+                continue  # 뒤쪽에서 처음 정의된 약칭은 앞선 인용에 소급하지 않는다
         if " " in citation.law_name:
             continue
         if citation.type == CitationType.STATUTE and written.endswith("법"):
@@ -1622,8 +1705,9 @@ def _attach_law_alias_candidates(text: str, citations: List[Citation]) -> None:
             if len(pre) < 2:
                 continue
             matches = sorted({
-                full for full in admin_full_names
-                if full.replace(" ", "") != written and full.endswith(kind)
+                full for end, full in admin_full_names
+                if (cite_start is None or end <= cite_start)
+                and full.replace(" ", "") != written and full.endswith(kind)
                 and (full.replace(" ", "").startswith(pre) or full.replace(" ", "").endswith(written))
             })
             if len(matches) == 1:
