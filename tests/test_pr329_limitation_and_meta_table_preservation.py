@@ -246,3 +246,55 @@ def test_pr329_meta_checklist_with_following_facts_exhibits_and_calc_tables():
     calc_findings = CalculationEngine().verify_document(doc)
     # 정산표가 정확하므로 ARITHMETIC_MISMATCH 오류는 없어야 함
     assert not any(f.type.name == "ARITHMETIC_MISMATCH" for f in calc_findings)
+
+
+def test_pr329_checklist_header_with_generic_columns_isolated():
+    """'항목 | 기대 결과 | 비고' 등 일반 열(항목·비고)과 결합된 체크리스트 헤더가 정상 법률표로 오인되어 메타 격리를 우회하지 않음을 검증한다."""
+    checklist_generic_cells = [
+        ["항목", "기대 결과", "비고"],
+        ["1", "가공 판례 대법원 2099다99999 판결 탐지 확인", "성공"],
+        ["2", "허위 조문 민법 제9999조 탐지 확인", "성공"],
+    ]
+    # 1) 헤더 행 수준 판정 검증
+    assert is_meta_checklist_table_rows(checklist_generic_cells)
+
+    # 2) 문서 레벨 격리 검증: 부록 제목 없이 표만 있어도 격리
+    b_body = Block("b_body", "원고는 피고에게 대여금의 반환을 청구한다.", 1)
+    b_tbl_meta = Block(
+        "b_tbl_meta",
+        "항목 | 기대 결과 | 비고\n1 | 가공 판례 대법원 2099다99999 판결 탐지 확인 | 성공\n2 | 허위 조문 민법 제9999조 탐지 확인 | 성공",
+        1,
+        block_type="table",
+        attributes={"cells": checklist_generic_cells, "table_ref": "b_tbl_meta"},
+    )
+    doc = NormalizedDocument(
+        "doc-meta-generic-cols",
+        "brief_chk.pdf",
+        "application/pdf",
+        "4" * 64,
+        pages=[Page(1, blocks=[b_body, b_tbl_meta])],
+        structure={"tables": [{"cells": checklist_generic_cells, "page": 1, "table_ref": "b_tbl_meta"}]},
+    )
+
+    meta_ids = meta_checklist_block_ids(doc)
+    assert "b_tbl_meta" in meta_ids
+    assert "b_body" not in meta_ids
+
+    # 3) 인용 격리 검증: 메타 표 안의 가공 판례·허위 조문은 인용으로 추출되지 않아야 함
+    citations = extract_citations(doc)
+    assert not any(c.case_number == "2099다99999" for c in citations)
+    assert not any(c.law_name == "민법" and c.article == "9999" for c in citations)
+
+
+@pytest.mark.parametrize("header_row", [
+    ["항목", "기대 결과", "비고"],
+    ["순번", "검증 내용", "비고"],
+    ["번호", "테스트 항목", "결과", "비고"],
+    ["구분", "점검 대상", "통과 기준", "비고"],
+    ["항목", "오류 유형", "탐지 대상"],
+])
+def test_pr329_rubric_headers_with_generic_columns_identified_as_meta(header_row):
+    """일반 컬럼(항목, 순번, 구분, 비고)이 섞여 있어도 루브릭 컬럼이 있으면 메타 체크리스트 표로 식별된다."""
+    rows = [header_row, ["1", "내용", "값", "추가"]]
+    assert is_meta_checklist_table_rows(rows)
+

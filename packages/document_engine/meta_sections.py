@@ -41,9 +41,9 @@ _RUBRIC_CELL_RE = re.compile(
 
 _REAL_LEGAL_TABLE_COL_RE = re.compile(
     r"^(?:호증|증거번호|증번|서증명|증거명|작성일|작성일자|입증취지|증명취지|"
-    r"일자|날짜|일시|사건일시|내용|주요내용|사실관계|법적근거|근거|관련조항|적용법조|관련법조|"
-    r"구분|항목|비목|산정기준|산정내역|청구금액|원금|이자|지연손해금|손해액|인정액|합계|금액|"
-    r"작성자|명의인|증거|서증|비고)$"
+    r"일자|날짜|일시|사건일시|사실관계|법적근거|근거|관련조항|적용법조|관련법조|"
+    r"산정기준|산정내역|청구금액|원금|이자|지연손해금|손해액|인정액|"
+    r"작성자|명의인|증거|서증)$"
 )
 
 _SENTENCE_TERMINAL_RE = re.compile(r"(?:다|요|습니다|ㅂ니다|한다|된다|이다)\s*[.!?。]\s*$")
@@ -73,6 +73,9 @@ def _has_real_legal_table_header(rows: Sequence[Sequence[Any]]) -> bool:
         nonempty = [c for c in cells if c]
         if len(nonempty) < 2:
             continue
+        # 루브릭/체크리스트 헤더 셀이 포함되어 있으면 정상 법률표 헤더로 보지 않는다.
+        if any(_STRONG_RUBRIC_CELL_RE.search(c) or _RUBRIC_CELL_RE.search(c) for c in nonempty):
+            return False
         if any(_REAL_LEGAL_TABLE_COL_RE.fullmatch(c) for c in nonempty):
             return True
     return False
