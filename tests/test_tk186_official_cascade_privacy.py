@@ -404,6 +404,16 @@ def test_known_fixed_fields_remain_readable_while_unknown_keys_are_tokenized():
             lambda pk, pv: {"items": [{pk: f"연락처 {pv}"}]},
             "[0]",
         ),
+        (
+            "key_prefix_raw_key",
+            lambda pk, pv: {pk: f"연락처 {pv}"},
+            None,
+        ),
+        (
+            "array_element_key_prefix_raw_key",
+            lambda pk, pv: {"items": [{"text": "일반 발췌"}, {pk: f"연락처 {pv}"}]},
+            "[1]",
+        ),
     ],
 )
 def test_bracketed_phone_keys_and_array_elements_never_leak_numeric_pii(
@@ -413,6 +423,8 @@ def test_bracketed_phone_keys_and_array_elements_never_leak_numeric_pii(
     secret_val_phone = "010-9876-5432"
     if "digit_only" in case_type:
         malicious_key = f"[{phone_digits}]"
+    elif "key_prefix" in case_type:
+        malicious_key = f"key_{phone_digits}"
     else:
         malicious_key = f"phone[{phone_digits}]"
 
@@ -450,3 +462,35 @@ def test_bracketed_phone_keys_and_array_elements_never_leak_numeric_pii(
             f"실제 리스트 인덱스({expected_array_index})는 배열 구조 식별을 위해 보존되어야 함: {paths}"
         )
 
+
+
+@pytest.mark.parametrize(
+    "raw_segment",
+    ["[01012345678]", "key_01012345678", "phone[01012345678]", "items[0]", "a.b[3]"],
+)
+def test_safe_diagnostic_path_never_trusts_string_shaped_segments(raw_segment):
+    from packages.llm_router.privacy import _safe_diagnostic_path
+
+    for raw in (raw_segment, ("user", raw_segment), ("user", "items", 0, raw_segment)):
+        out = _safe_diagnostic_path(raw)
+        last = out.rsplit(".", 1)[-1]
+        assert last.startswith("key_") and "[" not in last, out
+        assert raw_segment not in last
+        assert "01012345678" not in out
+
+
+@pytest.mark.parametrize(
+    "typed_path,expected",
+    [
+        (("user", "items", 0, "text"), "user.items[0].text"),
+        (("reference_sources", 2, "text"), "reference_sources[2].text"),
+        (("items", 1, "surrounding_context_and_claim"), "items[1].surrounding_context_and_claim"),
+    ],
+)
+def test_safe_diagnostic_path_preserves_real_int_indices_and_allowlisted_keys(typed_path, expected):
+    from packages.llm_router.privacy import _safe_diagnostic_path
+
+    assert _safe_diagnostic_path(typed_path) == expected
+    assert _safe_diagnostic_path(typed_path, prefix="excerpt_source") == f"excerpt_source.{expected}"
+    # bool은 정수 첨자로 취급하지 않는다
+    assert "[True]" not in _safe_diagnostic_path(("items", True))

@@ -634,59 +634,30 @@ def _safe_diagnostic_key(raw_key: Any) -> str:
 
 
 def _safe_diagnostic_path(raw_path: Any, *, prefix: str = "") -> str:
-    """내부 탐지 경로를 외부 진단·요약에 안전한 정규화 경로로 변환한다."""
+    """타입이 지정된 경로 구간(객체 키=str, 배열 첨자=int)만 받아 외부 진단용 경로로 직렬화한다.
+
+    문자열 경로를 사후 분할·추정하지 않는다. `key_` 접두나 `[숫자]` 모양의 문자열도 신뢰하지 않으며,
+    허용 목록 밖의 객체 키는 모양과 무관하게 항상 해시 토큰으로 바꾼다. 실제 정수(bool 제외)만
+    배열 첨자로 보존한다. 튜플/리스트가 아닌 입력은 구조를 알 수 없으므로 하나의 불투명 키로 해시한다.
+    """
     if isinstance(raw_path, (tuple, list)):
-        parts: list[str] = []
-        for elem in raw_path:
-            if isinstance(elem, int):
-                parts.append(f"[{elem}]")
-            elif isinstance(elem, str):
-                if elem in _SAFE_DIAGNOSTIC_KEYS:
-                    parts.append(f".{elem}")
-                elif elem in ("__siblings__", "__neighbors__"):
-                    parts.append(f".{elem}")
-                else:
-                    parts.append(f".{_safe_diagnostic_key(elem)}")
-            else:
-                parts.append(f".{_safe_diagnostic_key(elem)}")
-        normalized = ""
-        for p in parts:
-            if p.startswith("["):
-                normalized = f"{normalized}{p}" if normalized else p
-            elif p.startswith("."):
-                normalized = f"{normalized}{p}" if normalized else p[1:]
-            else:
-                normalized = f"{normalized}.{p}" if normalized else p
-        if not normalized:
-            normalized = "root"
+        segments = tuple(raw_path)
+    elif raw_path is None or raw_path == "":
+        segments = ()
     else:
-        text_path = str(raw_path or "").strip()
-        if not text_path:
-            normalized = "root"
+        segments = (raw_path,)
+    normalized = ""
+    for elem in segments:
+        if isinstance(elem, int) and not isinstance(elem, bool) and elem >= 0:
+            normalized = f"{normalized}[{elem}]" if normalized else f"[{elem}]"
         else:
-            segments = [seg for seg in text_path.split(".") if seg != ""]
-            if segments and segments[0] == "__original_system__":
-                segments = segments[1:]
-            safe_segments = []
-            for seg in segments:
-                if seg in _SAFE_DIAGNOSTIC_KEYS:
-                    safe_segments.append(seg)
-                elif seg.startswith("key_"):
-                    safe_segments.append(seg)
-                elif re.fullmatch(r"\[\d+\]", seg):
-                    safe_segments.append(seg)
-                elif re.fullmatch(r"__(?:siblings|neighbors)__\[\d+\]", seg):
-                    safe_segments.append(seg)
-                else:
-                    safe_segments.append(_safe_diagnostic_key(seg))
-            normalized = ".".join(safe_segments) if safe_segments else "root"
+            safe_k = _safe_diagnostic_key(elem)
+            normalized = f"{normalized}.{safe_k}" if normalized else safe_k
+    if not normalized:
+        normalized = "root"
     if prefix:
-        safe_prefix = prefix if prefix in _SAFE_DIAGNOSTIC_KEYS else _safe_diagnostic_key(prefix)
-        if normalized == "root":
-            return safe_prefix
-        if normalized == safe_prefix or normalized.startswith(f"{safe_prefix}."):
-            return normalized
-        return f"{safe_prefix}.{normalized}"
+        safe_prefix = _safe_diagnostic_key(prefix)
+        return safe_prefix if normalized == "root" else f"{safe_prefix}.{normalized}"
     return normalized
 
 
