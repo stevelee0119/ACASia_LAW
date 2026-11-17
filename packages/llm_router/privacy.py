@@ -399,27 +399,37 @@ def _collect_texts_with_spans(
     value,
     path: str = "",
     *,
+    diag_path: str = "",
     _uncertain_paths: List[str] | None = None,
+    _uncertain_diag_paths: List[str] | None = None,
     span_resolver=None,
-) -> List[Tuple[str, str, frozenset[Tuple[int, int, str]] | None]]:
-    """Collect (path, text, trusted_spans) triples with per-field provenance resolution."""
-    results: List[Tuple[str, str, frozenset[Tuple[int, int, str]] | None]] = []
+) -> List[Tuple[str, str, frozenset[Tuple[int, int, str]] | None, str]]:
+    """Collect (path, text, trusted_spans, diag_path) tuples with per-field provenance resolution."""
+    results: List[Tuple[str, str, frozenset[Tuple[int, int, str]] | None, str]] = []
 
     if isinstance(value, str):
         decoded = _try_json_parse(value)
         if decoded is not None:
             results.extend(_collect_texts_with_spans(
-                decoded, path, _uncertain_paths=_uncertain_paths, span_resolver=span_resolver,
+                decoded,
+                path,
+                diag_path=diag_path,
+                _uncertain_paths=_uncertain_paths,
+                _uncertain_diag_paths=_uncertain_diag_paths,
+                span_resolver=span_resolver,
             ))
         else:
             spans = span_resolver(path, value) if span_resolver is not None else None
-            results.append((path, value, spans))
+            results.append((path, value, spans, diag_path or "root"))
 
     elif isinstance(value, (dict, _JSONObjectPairs)):
         str_items: List[Tuple[str, str]] = []
         items = value.pairs if isinstance(value, _JSONObjectPairs) else value.items()
         for key, item in items:
-            current_path = f"{path}.{key}" if path else str(key)
+            key_str = str(key)
+            current_path = f"{path}.{key_str}" if path else key_str
+            safe_k = _safe_diagnostic_key(key_str)
+            current_diag = f"{diag_path}.{safe_k}" if diag_path else safe_k
             label = _person_label_for_key(key)
             marker = _has_name_field_marker(key)
             item_spans = (
@@ -436,24 +446,31 @@ def _collect_texts_with_spans(
             ):
                 if _uncertain_paths is not None:
                     _uncertain_paths.append(current_path)
+                if _uncertain_diag_paths is not None:
+                    _uncertain_diag_paths.append(current_diag)
 
             if isinstance(item, str):
                 decoded = _try_json_parse(item)
                 if decoded is not None:
                     results.extend(_collect_texts_with_spans(
-                        decoded, current_path, _uncertain_paths=_uncertain_paths, span_resolver=span_resolver,
+                        decoded,
+                        current_path,
+                        diag_path=current_diag,
+                        _uncertain_paths=_uncertain_paths,
+                        _uncertain_diag_paths=_uncertain_diag_paths,
+                        span_resolver=span_resolver,
                     ))
                 else:
-                    results.append((current_path, item, item_spans))
+                    results.append((current_path, item, item_spans, current_diag))
                     if key in _PII_TYPE_KEYS:
                         if item_spans:
-                            shift = len(str(key)) + 2
+                            shift = len(key_str) + 2
                             shifted_spans = frozenset(
                                 (ts + shift, te + shift, tok) for ts, te, tok in item_spans
                             )
                         else:
                             shifted_spans = item_spans
-                        results.append((current_path, f"{key}: {item}", shifted_spans))
+                        results.append((current_path, f"{key}: {item}", shifted_spans, current_diag))
                     else:
                         name = _name_like_value(item)
                         if (label or marker) and name:
@@ -461,47 +478,65 @@ def _collect_texts_with_spans(
                             detector_label = "이름" if label.isascii() else label
                             synth_text = f"{detector_label}: {name}"
                             synth_spans = span_resolver(current_path, synth_text) if span_resolver is not None else None
-                            results.append((current_path, synth_text, synth_spans))
+                            results.append((current_path, synth_text, synth_spans, current_diag))
                     str_items.append((key, item))
             else:
                 results.extend(_collect_texts_with_spans(
-                    item, current_path, _uncertain_paths=_uncertain_paths, span_resolver=span_resolver,
+                    item,
+                    current_path,
+                    diag_path=current_diag,
+                    _uncertain_paths=_uncertain_paths,
+                    _uncertain_diag_paths=_uncertain_diag_paths,
+                    span_resolver=span_resolver,
                 ))
 
         for i in range(len(str_items) - 1):
             (k1, v1), (k2, v2) = str_items[i], str_items[i + 1]
             if v1 in CONTEXT_LABEL_KEYS and v2 not in CONTEXT_LABEL_KEYS and is_valid_korean_name_structure(v2):
                 sibling_path = f"{path}.__siblings__[{i}]" if path else f"__siblings__[{i}]"
+                sibling_diag = f"{diag_path}.__siblings__[{i}]" if diag_path else f"__siblings__[{i}]"
                 synth_text = f"{v1} {v2}"
                 synth_spans = span_resolver(sibling_path, synth_text) if span_resolver is not None else None
-                results.append((sibling_path, synth_text, synth_spans))
+                results.append((sibling_path, synth_text, synth_spans, sibling_diag))
 
     elif isinstance(value, (list, tuple)):
         str_elements: List[str] = []
         for idx, item in enumerate(value):
             current_path = f"{path}[{idx}]"
+            current_diag = f"{diag_path}[{idx}]" if diag_path else f"[{idx}]"
             if isinstance(item, str):
                 decoded = _try_json_parse(item)
                 if decoded is not None:
                     results.extend(_collect_texts_with_spans(
-                        decoded, current_path, _uncertain_paths=_uncertain_paths, span_resolver=span_resolver,
+                        decoded,
+                        current_path,
+                        diag_path=current_diag,
+                        _uncertain_paths=_uncertain_paths,
+                        _uncertain_diag_paths=_uncertain_diag_paths,
+                        span_resolver=span_resolver,
                     ))
                 else:
                     elem_spans = span_resolver(current_path, item) if span_resolver is not None else None
-                    results.append((current_path, item, elem_spans))
+                    results.append((current_path, item, elem_spans, current_diag))
                     str_elements.append(item)
             else:
                 results.extend(_collect_texts_with_spans(
-                    item, current_path, _uncertain_paths=_uncertain_paths, span_resolver=span_resolver,
+                    item,
+                    current_path,
+                    diag_path=current_diag,
+                    _uncertain_paths=_uncertain_paths,
+                    _uncertain_diag_paths=_uncertain_diag_paths,
+                    span_resolver=span_resolver,
                 ))
 
         for i in range(len(str_elements) - 1):
             w1, w2 = str_elements[i], str_elements[i + 1]
             if w1 in CONTEXT_LABEL_KEYS and w2 not in CONTEXT_LABEL_KEYS and is_valid_korean_name_structure(w2):
                 neighbor_path = f"{path}.__neighbors__[{i}]" if path else f"__neighbors__[{i}]"
+                neighbor_diag = f"{diag_path}.__neighbors__[{i}]" if diag_path else f"__neighbors__[{i}]"
                 synth_text = f"{w1} {w2}"
                 synth_spans = span_resolver(neighbor_path, synth_text) if span_resolver is not None else None
-                results.append((neighbor_path, synth_text, synth_spans))
+                results.append((neighbor_path, synth_text, synth_spans, neighbor_diag))
 
     return results
 
@@ -526,7 +561,7 @@ def _collect_texts_from_value(
     """
     return [
         (collected_path, collected_text)
-        for collected_path, collected_text, _ in _collect_texts_with_spans(
+        for collected_path, collected_text, *_ in _collect_texts_with_spans(
             value, path, _uncertain_paths=_uncertain_paths,
         )
     ]
@@ -589,9 +624,6 @@ _SAFE_DIAGNOSTIC_CATEGORIES: frozenset[str] = frozenset({
     "MASKING_PII_DETECTED", "REQUEST_WIRING_CONTRACT", "INSPECTION_EXCEPTION",
 })
 _SAFE_PII_KIND_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,31}$")
-_ARRAY_SUFFIX_RE = re.compile(r"^(?P<head>.*?)(?P<indices>(?:\[\d+\])+)$")
-
-
 def _safe_diagnostic_key(raw_key: Any) -> str:
     """허용 목록 밖의 객체 키를 원문이 드러나지 않는 고정 토큰(key_<12자 해시>)으로 변환한다."""
     key_str = str(raw_key)
@@ -601,35 +633,32 @@ def _safe_diagnostic_key(raw_key: Any) -> str:
     return f"key_{digest}"
 
 
-def _safe_diagnostic_segment(segment: str) -> str:
-    """단일 경로 구간에서 배열 첨자와 합성 표지(__siblings__, __neighbors__)만 보존하고 임의 키는 해시 토큰화한다."""
-    if not segment:
-        return "key_empty"
-    idx_match = _ARRAY_SUFFIX_RE.match(segment)
-    if idx_match:
-        head = idx_match.group("head")
-        indices = idx_match.group("indices")
-    else:
-        head = segment
-        indices = ""
-    if not head:
-        return indices or "key_empty"
-    if head in ("__siblings__", "__neighbors__"):
-        return f"{head}{indices}"
-    return f"{_safe_diagnostic_key(head)}{indices}"
-
-
 def _safe_diagnostic_path(raw_path: Any, *, prefix: str = "") -> str:
     """내부 탐지 경로를 외부 진단·요약에 안전한 정규화 경로로 변환한다."""
-    if isinstance(raw_path, tuple):
-        parts = [_safe_diagnostic_segment(str(part)) if not isinstance(part, int) else f"[{part}]"
-                 for part in raw_path]
-        normalized = ""
-        for part in parts:
-            if part.startswith("["):
-                normalized = f"{normalized}{part}" if normalized else part
+    if isinstance(raw_path, (tuple, list)):
+        parts: list[str] = []
+        for elem in raw_path:
+            if isinstance(elem, int):
+                parts.append(f"[{elem}]")
+            elif isinstance(elem, str):
+                if elem in _SAFE_DIAGNOSTIC_KEYS:
+                    parts.append(f".{elem}")
+                elif elem in ("__siblings__", "__neighbors__"):
+                    parts.append(f".{elem}")
+                else:
+                    parts.append(f".{_safe_diagnostic_key(elem)}")
             else:
-                normalized = f"{normalized}.{part}" if normalized else part
+                parts.append(f".{_safe_diagnostic_key(elem)}")
+        normalized = ""
+        for p in parts:
+            if p.startswith("["):
+                normalized = f"{normalized}{p}" if normalized else p
+            elif p.startswith("."):
+                normalized = f"{normalized}{p}" if normalized else p[1:]
+            else:
+                normalized = f"{normalized}.{p}" if normalized else p
+        if not normalized:
+            normalized = "root"
     else:
         text_path = str(raw_path or "").strip()
         if not text_path:
@@ -638,9 +667,21 @@ def _safe_diagnostic_path(raw_path: Any, *, prefix: str = "") -> str:
             segments = [seg for seg in text_path.split(".") if seg != ""]
             if segments and segments[0] == "__original_system__":
                 segments = segments[1:]
-            normalized = ".".join(_safe_diagnostic_segment(seg) for seg in segments) if segments else "root"
+            safe_segments = []
+            for seg in segments:
+                if seg in _SAFE_DIAGNOSTIC_KEYS:
+                    safe_segments.append(seg)
+                elif seg.startswith("key_"):
+                    safe_segments.append(seg)
+                elif re.fullmatch(r"\[\d+\]", seg):
+                    safe_segments.append(seg)
+                elif re.fullmatch(r"__(?:siblings|neighbors)__\[\d+\]", seg):
+                    safe_segments.append(seg)
+                else:
+                    safe_segments.append(_safe_diagnostic_key(seg))
+            normalized = ".".join(safe_segments) if safe_segments else "root"
     if prefix:
-        safe_prefix = _safe_diagnostic_segment(prefix)
+        safe_prefix = prefix if prefix in _SAFE_DIAGNOSTIC_KEYS else _safe_diagnostic_key(prefix)
         if normalized == "root":
             return safe_prefix
         if normalized == safe_prefix or normalized.startswith(f"{safe_prefix}."):
@@ -706,28 +747,33 @@ def inspect_request(request, *, _original_system: str = None):
     # Even a mismatched context is inspected so PII keeps failure precedence.
     source_text = cascade_inspection_text(request)
     if source_text is not None:
-        uncertain_paths = []
-        for path, text, spans in _collect_texts_with_spans(
-            source_text, "cascade_source", _uncertain_paths=uncertain_paths, span_resolver=_user_span_resolver,
+        uncertain_diag_paths = []
+        for path, text, spans, diag_path in _collect_texts_with_spans(
+            source_text,
+            "cascade_source",
+            diag_path="cascade_source",
+            _uncertain_diag_paths=uncertain_diag_paths,
+            span_resolver=_user_span_resolver,
         ):
             matches = [m for m in detect(text, _trusted_spans=spans) if m.confidence >= 0.6]
             for match in matches:
                 safe_kind = match.kind if isinstance(match.kind, str) and _SAFE_PII_KIND_RE.fullmatch(match.kind) else "PII"
                 kinds[safe_kind] += 1
                 blocked_kinds[safe_kind] += 1
-                detected_paths.add(_safe_diagnostic_path(path, prefix="cascade_source"))
-        if uncertain_paths:
-            kinds["PERSON"] += len(uncertain_paths)
-            blocked_kinds["PERSON"] += len(uncertain_paths)
-            detected_paths.update(_safe_diagnostic_path(path, prefix="cascade_source")
-                                  for path in uncertain_paths)
+                detected_paths.add(diag_path)
+        if uncertain_diag_paths:
+            kinds["PERSON"] += len(uncertain_diag_paths)
+            blocked_kinds["PERSON"] += len(uncertain_diag_paths)
+            detected_paths.update(uncertain_diag_paths)
 
     # R8-A: 조립 전 원본 system이 있으면 별도 검사 (JSON 구조 보존)
     if _original_system is not None:
-        uncertain_paths = []
-        for path, text, spans in _collect_texts_with_spans(
-            {"__original_system__": _original_system},
-            _uncertain_paths=uncertain_paths,
+        uncertain_diag_paths = []
+        for path, text, spans, diag_path in _collect_texts_with_spans(
+            _original_system,
+            "original_system",
+            diag_path="original_system",
+            _uncertain_diag_paths=uncertain_diag_paths,
             span_resolver=_unattested_span_resolver,
         ):
             matches = [m for m in detect(text, _trusted_spans=spans) if m.confidence >= 0.6]
@@ -736,24 +782,29 @@ def inspect_request(request, *, _original_system: str = None):
                 kinds[safe_kind] += 1
                 # 원본 system은 사용자 제공 동적 값이므로 등록 상수 면책 없음
                 blocked_kinds[safe_kind] += 1
-                detected_paths.add(_safe_diagnostic_path(path, prefix="original_system"))
-        if uncertain_paths:
-            kinds["PERSON"] += len(uncertain_paths)
-            blocked_kinds["PERSON"] += len(uncertain_paths)
-            detected_paths.update(_safe_diagnostic_path(path, prefix="original_system") for path in uncertain_paths)
+                detected_paths.add(diag_path)
+        if uncertain_diag_paths:
+            kinds["PERSON"] += len(uncertain_diag_paths)
+            blocked_kinds["PERSON"] += len(uncertain_diag_paths)
+            detected_paths.update(uncertain_diag_paths)
 
     # 최상위 payload 필드를 개별 순회하여 경로 기반 등록 판정이 정확하게 동작하도록 함
     # (payload 전체를 _walk_fields에 넘기면 최상위 형제 결합이 경로 판정을 혼동시킴)
     for top_key, top_value in payload.items():
-        uncertain_paths = []
+        uncertain_diag_paths = []
         resolver = _user_span_resolver if top_key == "user" else _unattested_span_resolver
-        for path, text, spans in _collect_texts_with_spans(
-            top_value, top_key, _uncertain_paths=uncertain_paths, span_resolver=resolver,
+        top_diag = top_key if top_key in _SAFE_DIAGNOSTIC_KEYS else _safe_diagnostic_key(top_key)
+        for path, text, spans, diag_path in _collect_texts_with_spans(
+            top_value,
+            top_key,
+            diag_path=top_diag,
+            _uncertain_diag_paths=uncertain_diag_paths,
+            span_resolver=resolver,
         ):
             matches = [m for m in detect(text, _trusted_spans=spans) if m.confidence >= 0.6]
             if not matches:
                 continue
-            detected_paths.add(_safe_diagnostic_path(path))
+            detected_paths.add(diag_path)
             for m in matches:
                 safe_kind = m.kind if isinstance(m.kind, str) and _SAFE_PII_KIND_RE.fullmatch(m.kind) else "PII"
                 kinds[safe_kind] += 1
@@ -773,14 +824,14 @@ def inspect_request(request, *, _original_system: str = None):
                     # 등록되지 않은 영역(사용자 입력 또는 동적 값이 혼입된 시스템 프롬프트)에서의 탐지는
                     # PII 종류(PERSON, DOB, PHONE, EMAIL 등)와 무관하게 차단
                     blocked_kinds[safe_kind] += 1
-        if uncertain_paths:
-            kinds["PERSON"] += len(uncertain_paths)
-            detected_paths.update(_safe_diagnostic_path(p) for p in uncertain_paths)
+        if uncertain_diag_paths:
+            kinds["PERSON"] += len(uncertain_diag_paths)
+            detected_paths.update(uncertain_diag_paths)
             is_verified_static_source = (
                 top_key == "system" and is_registered_system_prompt(request.system)
             ) or (top_key == "schema" and is_registered_schema(request.schema))
             target = static_fp_kinds if is_verified_static_source else blocked_kinds
-            target["PERSON"] += len(uncertain_paths)
+            target["PERSON"] += len(uncertain_diag_paths)
 
     if blocked_kinds:
         status = "BLOCKED"

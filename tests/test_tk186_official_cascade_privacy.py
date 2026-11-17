@@ -380,3 +380,73 @@ def test_known_fixed_fields_remain_readable_while_unknown_keys_are_tokenized():
     assert all(secret_key not in p for p in paths)
     assert secret_key not in audit["safe_summary"]
 
+
+@pytest.mark.parametrize(
+    "case_type,payload_fn,expected_array_index",
+    [
+        (
+            "bracketed_phone_key",
+            lambda pk, pv: {pk: f"연락처 {pv}"},
+            None,
+        ),
+        (
+            "digit_only_bracket_key",
+            lambda pk, pv: {pk: f"연락처 {pv}"},
+            None,
+        ),
+        (
+            "array_element_bracketed_phone_key",
+            lambda pk, pv: {"items": [{pk: f"연락처 {pv}"}]},
+            "[0]",
+        ),
+        (
+            "array_element_digit_bracket_key",
+            lambda pk, pv: {"items": [{pk: f"연락처 {pv}"}]},
+            "[0]",
+        ),
+    ],
+)
+def test_bracketed_phone_keys_and_array_elements_never_leak_numeric_pii(
+    tmp_path, case_type, payload_fn, expected_array_index
+):
+    phone_digits = "01012345678"
+    secret_val_phone = "010-9876-5432"
+    if "digit_only" in case_type:
+        malicious_key = f"[{phone_digits}]"
+    else:
+        malicious_key = f"phone[{phone_digits}]"
+
+    payload = payload_fn(malicious_key, secret_val_phone)
+    req = LLMRequest(
+        system="일반 시스템 안내",
+        user=json.dumps(payload, ensure_ascii=False),
+    )
+
+    providers = {"anthropic": _StubProvider("anthropic", "claude-stub", lambda r: LLMResponse(True, text="{}"))}
+    router = _router(tmp_path, providers)
+
+    audit = inspect_request(req)
+    res = asyncio.run(router.run("PRIMARY_REASONER", req, policy=ExternalAIPolicy.MASKED))
+
+    assert audit["status"] == "BLOCKED"
+    assert audit["failure_code"] == "PII_INPUT_BLOCKED"
+    assert not res.used
+
+    # 1. 원래 전화번호 숫자 시퀀스(01012345678)와 값(010-9876-5432)이 전체 진단에서 완전 부재함을 검증
+    secrets = (phone_digits, secret_val_phone, malicious_key)
+    _assert_no_secret_in_diagnostics(audit, res, secrets)
+
+    # 2. detected_field_paths 검증
+    paths = audit.get("detected_field_paths", [])
+    assert paths, "차단된 경로 목록이 비어 있으면 안 됨"
+    for p in paths:
+        assert phone_digits not in p, f"진단 경로에 전화번호 숫자 시퀀스 노출: {p}"
+        assert malicious_key not in p, f"진단 경로에 원문 악성 키 노출: {p}"
+        assert "key_" in p, f"비허용 키는 정규화 토큰(key_<해시>)으로 변환되어야 함: {p}"
+
+    # 3. 실제 배열 인덱스는 안전하게 표시되는지 확인
+    if expected_array_index:
+        assert any(expected_array_index in p for p in paths), (
+            f"실제 리스트 인덱스({expected_array_index})는 배열 구조 식별을 위해 보존되어야 함: {paths}"
+        )
+
