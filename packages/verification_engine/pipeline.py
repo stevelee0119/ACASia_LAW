@@ -16,7 +16,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from packages.adversarial_engine import AdversarialScanner
 from packages.audit_engine import AuditChain
@@ -1470,12 +1470,14 @@ class VerificationPipeline:
         input_cap: int,
         policy: ExternalAIPolicy,
         attested_tokens: Any = None,
+        opinion_text: str = "",
+        segments_meta: Sequence[Dict[str, Any]] = (),
     ) -> Dict[str, Any]:
-        """빈 인용·표지 태그·미발견 인용으로 근거가 비어 있는 모델 단계에 한해 유한(단계당 최대 1회) 인용 재확인을 수행한다."""
+        """빈 인용·표지 태그·미완결 조각·미발견 인용으로 근거가 부족한 모델 단계에 한해 유한(단계당 최대 1회) 인용 재확인을 수행한다."""
         if not hasattr(self.router, "run"):
             return {"attempted": False, "recovered": False, "stages": []}
         from packages.common.enums import LLMRole
-        from packages.legal_engine.evidence_pack import quote_in_one_segment
+        from packages.legal_engine.evidence_pack import validate_quotes_by_stage
         from packages.llm_router.cascade_source import build_cascade_request
 
         stage_roles = {
@@ -1518,8 +1520,8 @@ class VerificationPipeline:
             recheck_question = (
                 f"직전 응답의 evidence_quotes 검증이 다음 사유로 통과하지 못했습니다({', '.join(failure_codes) or 'UNGROUNDED_QUOTES'}). "
                 "주장 대조 결과를 다시 확인하되, evidence_quotes에는 반드시 제공된 source_excerpt의 "
-                "한 구간 본문 안에 있는 실제 판결 문장만 글자 그대로 복사해 넣으십시오. "
-                "'[구간 S...]' 표지나 '…(공식 원문 일부 생략)…' 생략 표시는 절대 넣지 마십시오. "
+                "한 구간 본문 안에 있는 완결된 실제 판결 문장 전체(문장 시작부터 종결부호까지)만 글자 그대로 복사해 넣으십시오. "
+                "문장 일부 조각·제목·번호 표지·'[구간 S...]' 표지·'…(공식 원문 일부 생략)…' 생략 표시는 절대 넣지 마십시오. "
                 "직접 뒷받침·반박 문장을 찾을 수 없으면 status를 UNVERIFIED로, evidence_quotes를 []로 답하십시오."
             )
             if _request_bytes(recheck_question, official_doc_evidence) > input_cap:
@@ -1560,8 +1562,13 @@ class VerificationPipeline:
             stage["initial_verdict"] = dict(verdict)
             if getattr(retry_res, "used", False) and isinstance(getattr(retry_res, "parsed", None), dict):
                 stage["verdict"] = retry_res.parsed
-                new_quotes = retry_res.parsed.get("evidence_quotes") or []
-                recovered = bool(new_quotes) and all(quote_in_one_segment(q, segments) for q in new_quotes)
+                stage_grounding = validate_quotes_by_stage(
+                    [stage],
+                    segments,
+                    opinion_text=opinion_text,
+                    segments_meta=segments_meta,
+                )
+                recovered = bool(stage_grounding["grounded"])
                 if recovered:
                     any_recovered = True
                 stage["quote_recheck"] = {"attempted": True, "recovered": recovered, "failure_codes": failure_codes}
@@ -1712,6 +1719,8 @@ class VerificationPipeline:
                     input_cap=input_cap,
                     policy=context.external_ai_policy,
                     attested_tokens=attested_tokens,
+                    opinion_text=opinion_text,
+                    segments_meta=pack["segments"],
                 )
                 if recheck_meta["attempted"]:
                     grounding = validate_quotes_by_stage(

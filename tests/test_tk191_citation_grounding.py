@@ -16,6 +16,7 @@ from packages.legal_engine.evidence_pack import (
     quote_in_one_segment,
     render_sections,
     segment_tag,
+    validate_quote_in_segments,
     validate_quotes_by_stage,
 )
 from packages.llm_router.providers import LLMProvider, LLMResponse
@@ -370,7 +371,7 @@ def test_minority_opinion_only_supporting_verdict_never_triggers_recheck_and_sta
 def test_pii_is_masked_before_rendering_sections_and_never_leaks_into_grounding_diagnostics(tmp_path):
     raw_name = "홍길동"
     raw_phone = "010-9876-5432"
-    text = f"【이유】 당사자 {raw_name}(연락처 {raw_phone}) 사건에서 {RULE_A}"
+    text = f"【이유】 당사자 {raw_name}(연락처 {raw_phone}) 사건에 관하여 살핀다. {RULE_A}"
     providers = {
         "anthropic": _QueuedProvider("anthropic", "claude-stub", lambda n, req: _verdict_json("VERIFIED", [RULE_A])),
         "openai": _QueuedProvider("openai", "gpt-stub", lambda n, req: _verdict_json("VERIFIED", [RULE_A])),
@@ -417,4 +418,187 @@ def test_masked_render_sections_and_quote_recheck_pass_token_attestation(tmp_pat
     assert review["quote_grounding"]["recheck_attempted"] is True
     assert review["quote_grounding"]["recheck_recovered"] is True
     assert review["source_quotes_validated"] is True
+
+
+# --- 5. 문장 경계·의미 완결성 검증 회귀 시험 (PR #323 보완) --------------------------------------------------
+@pytest.mark.parametrize("tiny_fragment", ["다", "한다"])
+def test_one_or_two_char_substrings_are_rejected(tiny_fragment):
+    segments = [_synthetic_mixed_judgment(filler_repeat=1)]
+    assert quote_in_one_segment(tiny_fragment, segments) is False
+    out = validate_quotes_by_stage(
+        [{"used": True, "name": "primary", "verdict": {"status": "VERIFIED", "evidence_quotes": [tiny_fragment]}}],
+        segments,
+        opinion_text=segments[0],
+    )
+    assert out["grounded"] is False
+    assert out["stage_checks"][0]["all_valid"] is False
+    assert out["rejected_quotes"][0]["reason"] == "INCOMPLETE_SENTENCE"
+
+
+@pytest.mark.parametrize("generic_fragment", ["책임을 진다", "책임을 진다.", "면책된다", "해제할 수 있다."])
+def test_generic_endings_and_partial_legal_phrases_are_rejected(generic_fragment):
+    segments = [_synthetic_mixed_judgment(filler_repeat=1)]
+    assert quote_in_one_segment(generic_fragment, segments) is False
+    out = validate_quotes_by_stage(
+        [{"used": True, "name": "primary", "verdict": {"status": "VERIFIED", "evidence_quotes": [generic_fragment]}}],
+        segments,
+        opinion_text=segments[0],
+    )
+    assert out["grounded"] is False
+    assert out["rejected_quotes"][0]["reason"] == "INCOMPLETE_SENTENCE"
+
+
+@pytest.mark.parametrize(
+    "mid_fragment",
+    [
+        # 시작 경계 불일치(앞부분 절단)
+        "불가항력적 천재지변이 입증되지 않는 한 인도 지연 책임을 진다.",
+        # 종료 경계 불일치(뒷부분 절단)
+        "운송인은 불가항력적 천재지변이 입증되지 않는 한",
+        # 두 문장에 걸친 중간 절단 조각
+        "계약을 해제할 수 있다. 사건 기록상 당사자들의 주장과",
+    ],
+)
+def test_long_mid_sentence_fragments_misaligned_at_start_or_end_are_rejected(mid_fragment):
+    segments = [_synthetic_mixed_judgment(filler_repeat=1)]
+    assert quote_in_one_segment(mid_fragment, segments) is False
+    out = validate_quotes_by_stage(
+        [{"used": True, "name": "primary", "verdict": {"status": "VERIFIED", "evidence_quotes": [mid_fragment]}}],
+        segments,
+        opinion_text=segments[0],
+    )
+    assert out["grounded"] is False
+    assert out["rejected_quotes"][0]["reason"] == "INCOMPLETE_SENTENCE"
+
+
+def test_complete_long_sentence_and_consecutive_complete_sentences_are_accepted():
+    segments = [_synthetic_mixed_judgment(filler_repeat=1)]
+    assert quote_in_one_segment(RULE_A, segments) is True
+    assert quote_in_one_segment(f"{RULE_B} {EXCEPTION_B}", segments) is True
+    out = validate_quotes_by_stage(
+        [{"used": True, "name": "primary", "verdict": {"status": "VERIFIED", "evidence_quotes": [RULE_A, f"{RULE_B} {EXCEPTION_B}"]}}],
+        segments,
+        opinion_text=segments[0],
+    )
+    assert out["grounded"] is True
+    assert out["stage_checks"][0]["all_valid"] is True
+    assert out["rejected_quotes"] == []
+
+
+def test_short_complete_sentence_accepted_while_title_and_markers_rejected():
+    segments = [_synthetic_mixed_judgment(filler_repeat=1)]
+    assert quote_in_one_segment("상고를 기각한다.", segments) is True
+    ok = validate_quotes_by_stage(
+        [{"used": True, "name": "primary", "verdict": {"status": "VERIFIED", "evidence_quotes": ["상고를 기각한다."]}}],
+        segments,
+        opinion_text=segments[0],
+    )
+    assert ok["grounded"] is True
+    assert ok["validated_quotes"][0]["quote"] == "상고를 기각한다."
+
+    for title_or_marker in ("【주문】", "【이유】", "1.", "판결요지"):
+        res = validate_quote_in_segments(title_or_marker, segments)
+        assert res["valid"] is False
+        assert res["reason"] == "TITLE_OR_MARKER_ONLY"
+
+
+def test_whitespace_and_newline_differences_allowed_while_non_whitespace_tampering_rejected():
+    wrapped_seg = _synthetic_mixed_judgment(filler_repeat=1).replace("기한까지 잔금을", "기한까지\n  잔금을")
+    quote_with_newlines = RULE_A.replace("지급하지 아니하면 ", "지급하지\n  아니하면 ")
+    assert quote_in_one_segment(RULE_A, [wrapped_seg]) is True
+    assert quote_in_one_segment(quote_with_newlines, [wrapped_seg]) is True
+
+    # 비공백 문자 삭제(공백 제거 포함)·단어 재배열은 허용하지 않는다.
+    no_spaces = RULE_A.replace(" ", "")
+    deleted_char = RULE_A.replace("약정 기한까지 ", "약정 기한 ")
+    reordered = "계약을 해제할 수 있다. 매수인이 약정 기한까지 잔금을 지급하지 아니하면"
+    for tampered in (no_spaces, deleted_char, reordered):
+        res = validate_quote_in_segments(tampered, [wrapped_seg])
+        assert res["valid"] is False
+        assert res["reason"] == "NOT_FOUND_IN_EXCERPT"
+
+
+def test_recheck_enforces_same_sentence_completeness_and_recovers_only_on_complete_quote(tmp_path):
+    text = _synthetic_mixed_judgment(filler_repeat=2)
+    # 1) 최초·재확인 모두 미완결 조각이면 recovered=False 및 grounded=False 유지
+    bad_primary = _QueuedProvider(
+        "anthropic",
+        "claude-stub",
+        lambda n, req: _verdict_json("VERIFIED", ["책임을 진다"] if n == 1 else ["인도 지연 책임을 진다."]),
+    )
+    critic = _QueuedProvider("openai", "gpt-stub", lambda n, req: _verdict_json("VERIFIED", [RULE_B]))
+    grounder = _QueuedProvider("gemini", "gemini-stub", lambda n, req: _verdict_json("VERIFIED", [RULE_B]))
+
+    p1 = tmp_path / "still_incomplete"
+    p1.mkdir()
+    _, bad_review, _ = _run_pipeline(
+        p1,
+        full_text=text,
+        quoted_text=RULE_B,
+        case_number="2099다901",
+        providers={"anthropic": bad_primary, "openai": critic, "gemini": grounder},
+    )
+    assert len(bad_primary.calls) == 2
+    assert bad_review["quote_grounding"]["recheck_attempted"] is True
+    assert bad_review["quote_grounding"]["recheck_recovered"] is False
+    assert bad_review["source_quotes_validated"] is False
+    assert bad_review["status"] == "UNVERIFIED"
+    assert bad_review["evidence_quotes"] == []
+    assert any(r["reason"] == "INCOMPLETE_SENTENCE" for r in bad_review["quote_grounding"]["rejected_quotes"])
+
+    # 2) 최초 미완결 조각 → 재확인에서 완결 문장 반환 시에만 recovered=True 및 채택
+    fixed_primary = _QueuedProvider(
+        "anthropic",
+        "claude-stub",
+        lambda n, req: _verdict_json("VERIFIED", ["한다"] if n == 1 else [RULE_B]),
+    )
+    critic2 = _QueuedProvider("openai", "gpt-stub", lambda n, req: _verdict_json("VERIFIED", [RULE_B]))
+    grounder2 = _QueuedProvider("gemini", "gemini-stub", lambda n, req: _verdict_json("VERIFIED", [RULE_B]))
+
+    p2 = tmp_path / "recovered_complete"
+    p2.mkdir()
+    _, fixed_review, _ = _run_pipeline(
+        p2,
+        full_text=text,
+        quoted_text=RULE_B,
+        case_number="2099다902",
+        providers={"anthropic": fixed_primary, "openai": critic2, "gemini": grounder2},
+    )
+    assert len(fixed_primary.calls) == 2
+    assert fixed_review["quote_grounding"]["recheck_attempted"] is True
+    assert fixed_review["quote_grounding"]["recheck_recovered"] is True
+    assert fixed_review["source_quotes_validated"] is True
+    assert fixed_review["status"] == "SUPPORTED"
+
+
+def test_multistage_conservativeness_rejects_overall_grounding_when_one_stage_returns_fragment(tmp_path):
+    text = _synthetic_mixed_judgment(filler_repeat=2)
+    # validate_quotes_by_stage 직접 검증: primary·grounder가 완결 문장이어도 critic이 조각이면 grounded=False
+    stages = [
+        {"used": True, "name": "primary", "verdict": {"status": "VERIFIED", "evidence_quotes": [RULE_A]}},
+        {"used": True, "name": "critic", "verdict": {"status": "VERIFIED", "evidence_quotes": ["책임을 진다"]}},
+        {"used": True, "name": "grounder", "verdict": {"status": "VERIFIED", "evidence_quotes": ["상고를 기각한다."]}},
+    ]
+    out = validate_quotes_by_stage(stages, [text], opinion_text=text)
+    assert out["grounded"] is False
+    assert [sc["all_valid"] for sc in out["stage_checks"]] == [True, False, True]
+    assert out["rejected_quotes"] == [{"stage": "critic", "quote": "책임을 진다", "valid": False, "reason": "INCOMPLETE_SENTENCE"}]
+
+    # 파이프라인 통합 검증: 한 assertive 단계가 재확인 후에도 미완결 조각이면 전체 UNVERIFIED 유지
+    primary = _QueuedProvider("anthropic", "claude-stub", lambda n, req: _verdict_json("VERIFIED", [RULE_A]))
+    critic = _QueuedProvider("openai", "gpt-stub", lambda n, req: _verdict_json("VERIFIED", ["책임을 진다"]))
+    grounder = _QueuedProvider("gemini", "gemini-stub", lambda n, req: _verdict_json("VERIFIED", [RULE_A]))
+
+    _, review, _ = _run_pipeline(
+        tmp_path,
+        full_text=text,
+        quoted_text=RULE_A,
+        case_number="2099다903",
+        providers={"anthropic": primary, "openai": critic, "gemini": grounder},
+    )
+    assert review["source_quotes_validated"] is False
+    assert review["status"] == "UNVERIFIED"
+    assert review["evidence_quotes"] == []
+    assert [sc["all_valid"] for sc in review["quote_grounding"]["stage_checks"]] == [True, False, True]
+
 

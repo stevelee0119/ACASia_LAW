@@ -165,7 +165,7 @@ def test_projection_matches_whole_text_masking_and_expands_boundaries():
 def test_context_review_accepts_quotes_from_the_sent_masked_segments():
     from packages.legal_engine.argument_validity_verifier import _context_review
     from packages.common.enums import ExternalAIPolicy
-    text = judgment().replace(QUOTE, "담당자 홍길동(010-2345-6789)의 확인에 따르면 " + QUOTE)
+    text = judgment().replace(QUOTE, "담당자 홍길동(010-2345-6789)의 확인 내용은 다음과 같다. " + QUOTE)
     verdict = {"citation_id": "CIT_TK131", "review_id": None, "official_record": {"full_text": text}}
     with tempfile.TemporaryDirectory() as tmp:
         engine = masking_engine(tmp)

@@ -188,13 +188,168 @@ def is_display_tag(quote: Any) -> bool:
     return bool(SEGMENT_TAG_RE.search(quote) or any(tok in quote for tok in _GAP_MARKER_TOKENS))
 
 
-def quote_in_one_segment(quote: str, segments: Sequence[str]) -> bool:
-    """근거 인용이 보낸 구간 하나 안에 그대로 있는지. 구간을 이어 붙인 인용·생략 표시·표시용 태그는 받지 않는다."""
+def _normalize_ws(text: str) -> str:
+    """연속 공백·줄바꿈만 단일 공백으로 정규화한다(비공백 문자 삭제·재배열 금지)."""
+    return re.sub(r"\s+", " ", text or "").strip()
+
+
+# 문장 종결부호: 단일 음절 목록 표지(가. 나. 다.)·날짜(2024. 1. 15.)는 문장 끝이 아니다.
+_SENTENCE_END_MARKER_RE = re.compile(
+    r"(?:(?<=[가-힣A-Za-z]{2})|(?<=[)\]\x22\u201d\x27\u2019】」]))"
+    r"\s*[.!?。][\x22\u201d\x27\u2019)\]】」]*(?=\s|$)"
+)
+_INNER_SINGLE_QUOTE_RE = re.compile(
+    r"[‘']([^’'\n]{2,600})[’'](?=\s*(?:이?라고|고|이라는|라는))"
+)
+# 문장 머리의 구조 표지(【주문】, [1], 1., (1), 가., 판시사항 등) — [PERSON_001] 등 가명 토큰은 제외
+_LEADING_MARKER_RE = re.compile(
+    r"^(?:"
+    r"【[^】]{1,30}】"
+    r"|\[\s*(?:\d{1,3}|(?:[^\]]{0,60}의\s+)?(?:다수의견|반대보충의견|반대의견|별개의견|보충의견|판시사항|판결요지)(?:\s+[^\]]{0,40})?)\s*\]"
+    r"|(?:\d{1,2}|[가-하]|[ivxIVX]{1,5})\s*[.)](?!\s*\d{1,2}\.)"
+    r"|\(\s*(?:\d{1,2}|[가-하]|[ivxIVX]{1,5})\s*\)"
+    r"|(?:판시사항|판결요지|참조조문|참조판례)(?=\s)"
+    r")\s*"
+)
+_INLINE_SECTION_MARKER_RE = re.compile(r"(?:^|\s)(【[^】]{1,30}】)\s*")
+_PURE_HEADER_WORD_RE = re.compile(
+    r"^(?:판시사항|판결요지|주\s*문|이\s*유|결\s*론|참조조문|참조판례|전\s*문|"
+    r"다수의견|반대의견|별개의견|보충의견|반대보충의견)$"
+)
+_CONTENT_CHAR_RE = re.compile(r"[가-힣A-Za-z0-9]")
+
+
+def _mask_inner_quotes(text: str) -> str:
+    """인용 부호 안의 마침표가 바깥 문장을 끊지 않도록 같은 길이의 자리표시자로 가린다."""
+    from packages.document_engine.reading_text import QUOTE_SPAN_RE
+
+    masked = QUOTE_SPAN_RE.sub(lambda q: "“" + "x" * (len(q.group(0)) - 2) + "”", text)
+    return _INNER_SINGLE_QUOTE_RE.sub(
+        lambda q: "‘" + ("x" * len(q.group(1))) + q.group(0)[-1],
+        masked,
+    )
+
+
+def _is_title_or_marker_only(quote: str) -> bool:
+    """제목·조문/항목 표지·줄임표·기호만으로 구성된 비문장 인용인지 판별한다."""
+    norm = _normalize_ws(quote)
+    if not norm:
+        return True
+    cur = norm
+    while True:
+        m = _LEADING_MARKER_RE.match(cur)
+        if not m or m.end() == 0:
+            break
+        cur = cur[m.end():].strip()
+        if not cur:
+            return True
+    if not _CONTENT_CHAR_RE.search(cur):
+        return True
+    if _PURE_HEADER_WORD_RE.match(cur):
+        return True
+    return False
+
+
+def _sentence_boundaries(seg: str) -> Tuple[str, Dict[int, int], Dict[int, int]]:
+    """구간 텍스트를 공백 정규화하고 문장 경계(유효 시작·종료 위치 -> 문장 번호)를 추출한다."""
+    header_line_starts = set()
+    parts: List[str] = []
+    offset = 0
+    for ln in (_normalize_ws(line) for line in (seg or "").splitlines()):
+        if not ln:
+            continue
+        if parts:
+            offset += 1
+            if _PURE_HEADER_WORD_RE.match(parts[-1]):
+                header_line_starts.add(offset)
+        parts.append(ln)
+        offset += len(ln)
+    norm = " ".join(parts)
+    if not norm:
+        return "", {}, {}
+
+    masked = _mask_inner_quotes(norm)
+    raw_spans: List[Tuple[int, int]] = []
+    pos = 0
+    for m in _SENTENCE_END_MARKER_RE.finditer(masked):
+        while pos < m.end() and norm[pos].isspace():
+            pos += 1
+        if pos < m.end():
+            raw_spans.append((pos, m.end()))
+        pos = m.end()
+    # 구간 전체가 문장 종결부호 없는 단일 단위(합성 단문 등)일 때만 전체 구간을 하나의 문장 단위로 인정한다.
+    while pos < len(norm) and norm[pos].isspace():
+        pos += 1
+    if pos < len(norm) and not raw_spans:
+        raw_spans.append((pos, len(norm)))
+
+    start_to_idx: Dict[int, int] = {}
+    end_to_idx: Dict[int, int] = {}
+    for idx, (s, e) in enumerate(raw_spans):
+        def _record_markers_from(anchor: int) -> None:
+            start_to_idx[anchor] = idx
+            cur = anchor
+            while cur < e:
+                lm = _LEADING_MARKER_RE.match(norm[cur:e])
+                if not lm or lm.end() == 0:
+                    break
+                cur += lm.end()
+                while cur < e and norm[cur].isspace():
+                    cur += 1
+                if cur < e:
+                    start_to_idx[cur] = idx
+
+        _record_markers_from(s)
+        for sm in _INLINE_SECTION_MARKER_RE.finditer(norm, s, e):
+            _record_markers_from(sm.start(1))
+        for h_start in header_line_starts:
+            if s < h_start < e:
+                _record_markers_from(h_start)
+        end_to_idx[e] = idx
+    return norm, start_to_idx, end_to_idx
+
+
+def validate_quote_in_segments(quote: str, segments: Sequence[str]) -> Dict[str, Any]:
+    """인용이 단일 발췌 구간에 존재하고 문장 경계와 일치하는 완결 문장(들)인지 검증한다."""
     if not isinstance(quote, str) or not quote.strip():
-        return False
+        return {"valid": False, "reason": "EMPTY_QUOTE", "segment_index": None}
     if is_display_tag(quote):
-        return False
-    return any(quote in seg for seg in segments)
+        return {"valid": False, "reason": "DISPLAY_TAG_FORBIDDEN", "segment_index": None}
+    if _is_title_or_marker_only(quote):
+        return {"valid": False, "reason": "TITLE_OR_MARKER_ONLY", "segment_index": None}
+
+    norm_q = _normalize_ws(quote)
+    # 1~2글자 부분 문자열(예: '다', '한다')은 완결된 법리 근거 문장이 될 수 없다.
+    if len(_CONTENT_CHAR_RE.findall(norm_q)) <= 2:
+        return {"valid": False, "reason": "INCOMPLETE_SENTENCE", "segment_index": None}
+
+    found_incomplete = False
+    for idx, seg in enumerate(segments):
+        if not isinstance(seg, str) or not seg.strip():
+            continue
+        norm_seg, start_to_idx, end_to_idx = _sentence_boundaries(seg)
+        if not norm_seg or norm_q not in norm_seg:
+            continue
+        pos = 0
+        while True:
+            at = norm_seg.find(norm_q, pos)
+            if at < 0:
+                break
+            s_idx = start_to_idx.get(at)
+            e_idx = end_to_idx.get(at + len(norm_q))
+            if s_idx is not None and e_idx is not None and e_idx >= s_idx:
+                return {"valid": True, "reason": "MATCHED_SEGMENT", "segment_index": idx}
+            pos = at + 1
+        found_incomplete = True
+
+    if found_incomplete:
+        return {"valid": False, "reason": "INCOMPLETE_SENTENCE", "segment_index": None}
+    return {"valid": False, "reason": "NOT_FOUND_IN_EXCERPT", "segment_index": None}
+
+
+def quote_in_one_segment(quote: str, segments: Sequence[str]) -> bool:
+    """근거 인용이 보낸 구간 하나 안에 문장 경계에 맞는 완결 문장(들)로 있는지."""
+    return bool(validate_quote_in_segments(quote, segments)["valid"])
 
 
 def validate_quotes_by_stage(
@@ -214,6 +369,7 @@ def validate_quotes_by_stage(
     all_stages_grounded = True
     has_model_verdict = False
     minority_only = False
+    norm_full = _normalize_ws(opinion_text) if opinion_text else ""
 
     for stage in stages:
         if not (stage.get("used") and isinstance(stage.get("verdict"), dict)):
@@ -228,27 +384,22 @@ def validate_quotes_by_stage(
             all_stages_grounded = False
             rejected_quotes.append({"stage": stage_name, "quote": "", "reason": "NO_QUOTES_PROVIDED"})
         for raw_q in quote_list:
-            if not isinstance(raw_q, str) or not raw_q.strip():
+            check = validate_quote_in_segments(raw_q, segments)
+            if not check["valid"]:
                 all_stages_grounded = False
-                entry = {"quote": str(raw_q or ""), "valid": False, "reason": "EMPTY_QUOTE"}
+                reason = check["reason"]
+                if reason == "EMPTY_QUOTE":
+                    entry = {"quote": str(raw_q or ""), "valid": False, "reason": reason}
+                else:
+                    if reason == "NOT_FOUND_IN_EXCERPT" and norm_full:
+                        norm_q = _normalize_ws(raw_q)
+                        if norm_q and norm_q in norm_full:
+                            reason = "UNSENT_FULL_TEXT_QUOTE"
+                    entry = {"quote": raw_q[:160], "valid": False, "reason": reason}
                 checks.append(entry)
                 rejected_quotes.append({"stage": stage_name, **entry})
                 continue
-            if is_display_tag(raw_q):
-                all_stages_grounded = False
-                entry = {"quote": raw_q[:160], "valid": False, "reason": "DISPLAY_TAG_FORBIDDEN"}
-                checks.append(entry)
-                rejected_quotes.append({"stage": stage_name, **entry})
-                continue
-            matched_idx = next((idx for idx, seg in enumerate(segments) if raw_q in seg), None)
-            if matched_idx is None:
-                all_stages_grounded = False
-                in_full = bool(opinion_text and _find_quote(opinion_text, raw_q))
-                reason = "UNSENT_FULL_TEXT_QUOTE" if in_full else "NOT_FOUND_IN_EXCERPT"
-                entry = {"quote": raw_q[:160], "valid": False, "reason": reason}
-                checks.append(entry)
-                rejected_quotes.append({"stage": stage_name, **entry})
-                continue
+            matched_idx = int(check["segment_index"])
             seg_id = (
                 str(segments_meta[matched_idx].get("segment_id"))
                 if matched_idx < len(segments_meta) else f"S{matched_idx}"
