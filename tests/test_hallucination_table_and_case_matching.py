@@ -344,3 +344,214 @@ def test_verifier_fetch_case_constitutional_routing_and_contamination_guard():
     res3 = LegalVerifier(SimpleNamespace(law=LawConfirmsUnknownCode())).verify_citations([cit_unknown_code], current_date="2026-09-25")
     assert res3.data["verdicts"][0]["levels"]["number_format"] == "VALID"
     assert res3.data["verdicts"][0]["status"] != VerificationStatus.SUSPICIOUS.value
+
+
+@pytest.mark.parametrize(
+    "detail_record",
+    [
+        {"full_text": "잘못된 타사건 전문", "summary": "타사건 요약"},
+        {"case_number": None, "full_text": "잘못된 타사건 전문", "summary": "타사건 요약"},
+        {"case_number": "", "full_text": "잘못된 타사건 전문", "summary": "타사건 요약"},
+        {"case_number": "   ", "full_text": "잘못된 타사건 전문", "summary": "타사건 요약"},
+        {"case_number": "opaque-record-999", "source_id": "1001", "full_text": "잘못된 타사건 전문", "summary": "타사건 요약"},
+        {"case_number": "UNSUPPORTED-FORMAT-XYZ", "full_text": "잘못된 타사건 전문", "summary": "타사건 요약"},
+        {"case_number": "2021년 5월 14일", "full_text": "잘못된 타사건 전문", "summary": "타사건 요약"},
+        {"case_number": "2019다99999", "source_id": "1001", "full_text": "잘못된 타사건 전문", "summary": "타사건 요약"},
+    ],
+)
+def test_verifier_fetch_case_blocks_fail_open_and_preserves_search_record(detail_record):
+    cit = Citation(
+        citation_id="c_guard",
+        type=CitationType.CASE,
+        raw_text="대법원 2020. 5. 14. 선고 2020다12345 판결",
+        court="대법원",
+        decision_date="2020-05-14",
+        case_number="2020다12345",
+        canonical_case_number="2020다12345",
+        case_kind="판결",
+    )
+
+    class LawWithUntrustedDetail:
+        def search_case(self, query, court=None):
+            rec = {
+                "case_number": "2020다12345",
+                "court": "대법원",
+                "decision_date": "2020-05-14",
+                "case_name": "합성 손해배상",
+                "case_kind": "판결",
+                "summary": "검색 단계 공식 요지",
+                "source_id": "1001",
+                "raw": {"판례일련번호": "1001"},
+                "full_text": "",
+            }
+            return SimpleNamespace(status=AdapterStatus.READY, records=[rec], source_record=None, message="", found=True)
+
+        def fetch_case(self, case, *, constitutional=False):
+            return SimpleNamespace(status=AdapterStatus.READY, records=[detail_record], source_record=None)
+
+    res = LegalVerifier(SimpleNamespace(law=LawWithUntrustedDetail())).verify_citations([cit], current_date="2026-09-25")
+    verdict = res.data["verdicts"][0]
+    official = verdict["official_record"]
+    assert official["case_number"] == "2020다12345"
+    assert official["summary"] == "검색 단계 공식 요지"
+    assert not official.get("full_text")
+    assert "잘못된 타사건 전문" not in str(official)
+    assert "잘못된 타사건 전문" not in " ".join(verdict["notes"])
+    assert any("사건번호" in n and "건너뜀" in n for n in verdict["notes"])
+    assert verdict["status"] == VerificationStatus.VERIFIED.value
+
+
+def test_verifier_fetch_case_provider_linking_key_verification():
+    def _run_case(cit_kwargs, search_rec, detail_rec):
+        cit = Citation(**cit_kwargs)
+
+        class Adapter:
+            def search_case(self, query, court=None):
+                return SimpleNamespace(
+                    status=AdapterStatus.READY, records=[dict(search_rec)], source_record=None, message="", found=True
+                )
+
+            def fetch_case(self, case, *, constitutional=False):
+                return SimpleNamespace(status=AdapterStatus.READY, records=[dict(detail_rec)], source_record=None)
+
+        return LegalVerifier(SimpleNamespace(law=Adapter())).verify_citations([cit], current_date="2026-09-25").data["verdicts"][0]
+
+    base_cit = dict(
+        citation_id="c_prec",
+        type=CitationType.CASE,
+        raw_text="대법원 2020. 5. 14. 선고 2020다12345 판결",
+        court="대법원",
+        decision_date="2020-05-14",
+        case_number="2020다12345",
+        canonical_case_number="2020다12345",
+        case_kind="판결",
+    )
+    base_search = {
+        "case_number": "2020다12345",
+        "court": "대법원",
+        "decision_date": "2020-05-14",
+        "case_kind": "판결",
+        "summary": "검색 요지",
+        "source_id": "1001",
+        "raw": {"판례일련번호": "1001"},
+        "full_text": "",
+    }
+
+    # 양성 3건: 사건번호가 빈 상세 레코드라도 동등한 공식 공급자 일련번호면 병합 허용 + 기존 case_number 보존
+    v_prec_raw = _run_case(base_cit, base_search, {"case_number": "", "raw": {"판례정보일련번호": "1001"}, "full_text": "공식 판결 전문"})
+    assert v_prec_raw["official_record"]["full_text"] == "공식 판결 전문"
+    assert v_prec_raw["official_record"]["case_number"] == "2020다12345"
+
+    v_prec_sid = _run_case(
+        base_cit,
+        {**base_search, "raw": {}},
+        {"case_number": "", "source_id": "1001", "full_text": "source_id 일치 전문"},
+    )
+    assert v_prec_sid["official_record"]["full_text"] == "source_id 일치 전문"
+
+    const_cit = dict(
+        citation_id="c_detc",
+        type=CitationType.CONSTITUTIONAL,
+        raw_text="헌법재판소 2020. 4. 23. 2018헌바210 결정",
+        court="헌법재판소",
+        decision_date="2020-04-23",
+        case_number="2018헌바210",
+        canonical_case_number="2018헌바210",
+        case_kind="결정",
+    )
+    const_search = {
+        "case_number": "2018헌바210",
+        "court": "헌법재판소",
+        "decision_date": "2020-04-23",
+        "case_kind": "결정",
+        "summary": "헌재 검색 요지",
+        "source_id": "9001",
+        "raw": {"헌재결정례일련번호": "9001"},
+        "full_text": "",
+    }
+    v_detc_raw = _run_case(const_cit, const_search, {"case_number": "", "raw": {"헌재결정례일련번호": "9001"}, "full_text": "헌재 결정 전문"})
+    assert v_detc_raw["official_record"]["full_text"] == "헌재 결정 전문"
+
+    # 대조군 3건: 일련번호 불일치, 도메인(detc vs prec) 교차 충돌, 연결 키 누락 -> 모두 차단
+    v_mismatch_id = _run_case(base_cit, base_search, {"case_number": "", "raw": {"판례정보일련번호": "9999"}, "full_text": "타사건 전문"})
+    assert not v_mismatch_id["official_record"].get("full_text")
+    assert v_mismatch_id["official_record"]["summary"] == "검색 요지"
+
+    v_cross_domain = _run_case(const_cit, const_search, {"case_number": "", "raw": {"판례일련번호": "9001"}, "full_text": "타도메인 전문"})
+    assert not v_cross_domain["official_record"].get("full_text")
+    assert v_cross_domain["official_record"]["case_number"] == "2018헌바210"
+
+    v_no_key = _run_case(base_cit, {**base_search, "source_id": None, "raw": {}}, {"case_number": "", "source_id": "1001", "full_text": "미검증 전문"})
+    assert not v_no_key["official_record"].get("full_text")
+
+
+def test_verifier_fetch_case_official_format_variants_and_merged_cases():
+    from packages.legal_engine.normalize import same_case_number
+
+    # 양성 4건: 법원 접두사+구분자 변형 2건, 헌재 구분자 1건, 병합 사건번호 포함 1건
+    assert same_case_number("2021구합70769", "서울행정법원-2021-구합-70769")
+    assert same_case_number("2020다12345", "대법원 2020. 다. 12345")
+    assert same_case_number("2018헌바210", "헌법재판소-2018-헌바-210")
+    assert same_case_number("2020다12345", "2015다11111, 2020다12345")
+
+    # 대조군 4건: 구분자 변형이지만 사건번호 불일치, 병합 목록에 요청 번호 없음, 자릿수 확장, 부호 상이
+    assert not same_case_number("2021구합70769", "서울행정법원-2021-구합-99999")
+    assert not same_case_number("2020다12345", "2015다11111, 2019다88888")
+    assert not same_case_number("2020다12345", "2020다123456")
+    assert not same_case_number("2020다12345", "대법원-2020-나-12345")
+
+    def _verify_variant(requested_no, court, decision_date, detail_case_no):
+        kind = "결정" if "헌" in requested_no else "판결"
+        ctype = CitationType.CONSTITUTIONAL if "헌" in requested_no else CitationType.CASE
+        cit = Citation(
+            citation_id="c_var",
+            type=ctype,
+            raw_text=f"{court} {decision_date} {requested_no} {kind}",
+            court=court,
+            decision_date=decision_date,
+            case_number=requested_no,
+            canonical_case_number=requested_no,
+            case_kind=kind,
+        )
+
+        class VariantAdapter:
+            def search_case(self, query, court=None):
+                rec = {
+                    "case_number": requested_no,
+                    "court": court or "대법원",
+                    "decision_date": decision_date,
+                    "case_kind": kind,
+                    "summary": "검색 단계 공식 요지",
+                    "full_text": "",
+                }
+                return SimpleNamespace(status=AdapterStatus.READY, records=[rec], source_record=None, message="", found=True)
+
+            def fetch_case(self, case, *, constitutional=False):
+                return SimpleNamespace(
+                    status=AdapterStatus.READY,
+                    records=[{"case_number": detail_case_no, "full_text": "공식 변형 상세 전문"}],
+                    source_record=None,
+                )
+
+        return LegalVerifier(SimpleNamespace(law=VariantAdapter())).verify_citations([cit], current_date="2026-09-25").data["verdicts"][0]
+
+    for req_no, crt, dt, det_no in [
+        ("2021구합70769", "서울행정법원", "2021-08-12", "서울행정법원-2021-구합-70769"),
+        ("2020다12345", "대법원", "2020-05-14", "대법원 2020. 다. 12345"),
+        ("2018헌바210", "헌법재판소", "2020-04-23", "헌법재판소-2018-헌바-210"),
+        ("2020다12345", "대법원", "2020-05-14", "2015다11111, 2020다12345"),
+    ]:
+        v = _verify_variant(req_no, crt, dt, det_no)
+        assert v["official_record"].get("full_text") == "공식 변형 상세 전문", det_no
+
+    for req_no, crt, dt, det_no in [
+        ("2021구합70769", "서울행정법원", "2021-08-12", "서울행정법원-2021-구합-99999"),
+        ("2020다12345", "대법원", "2020-05-14", "2015다11111, 2019다88888"),
+        ("2020다12345", "대법원", "2020-05-14", "2020다123456"),
+        ("2020다12345", "대법원", "2020-05-14", "대법원-2020-나-12345"),
+    ]:
+        v = _verify_variant(req_no, crt, dt, det_no)
+        assert not v["official_record"].get("full_text"), det_no
+        assert v["official_record"]["case_number"] == req_no
+        assert v["official_record"]["summary"] == "검색 단계 공식 요지"
+

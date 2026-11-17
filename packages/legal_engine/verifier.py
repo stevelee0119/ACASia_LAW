@@ -46,7 +46,7 @@ from .opinion_attribution import (
 )
 from .verification_labels import citation_label
 from .quote_diff import categorize_quote_diff, quote_changes, quote_diff_summary, render_quote_diff
-from .normalize import canonical_article, case_number_possible, same_case_number, split_case_number
+from .normalize import canonical_article, case_number_possible, extract_all_case_numbers, same_case_number, split_case_number
 from .source_review import date_context, verify_admin_rule_source, verify_decision_source, verify_statute_source
 from .spec_mapping import spec_source_verdict
 from packages.source_adapters.legal_history import legal_date, today_korea
@@ -89,6 +89,95 @@ def _readable_source_message(message: str) -> str:
         if raw in text:
             text = text.replace(raw, readable + ".")
     return text
+
+
+def _safe_identifier_label(value: Any, *, limit: int = 48) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return "없음"
+    if len(text) > limit:
+        return text[:limit] + "…"
+    return text
+
+
+def _official_provider_linking_key(
+    rec: Any,
+    *,
+    default_domain: str,
+) -> Optional[Tuple[str, str]]:
+    """공식 검색·상세 레코드의 공급자 공식 일련번호 키를 (도메인, 식별자)로 추출한다."""
+    if not isinstance(rec, dict):
+        return None
+    raw = rec.get("raw") if isinstance(rec.get("raw"), dict) else {}
+    detc_serial = str(raw.get("헌재결정례일련번호") or "").strip()
+    prec_serial = str(raw.get("판례일련번호") or raw.get("판례정보일련번호") or "").strip()
+    if detc_serial and prec_serial:
+        return None
+    if detc_serial:
+        return ("detc", detc_serial)
+    if prec_serial:
+        return ("prec", prec_serial)
+    source_id = str(rec.get("source_id") or "").strip()
+    if not source_id:
+        return None
+    court = str(rec.get("court") or "")
+    if court:
+        domain = "detc" if "헌법재판소" in court else "prec"
+    else:
+        domain = default_domain
+    return (domain, source_id)
+
+
+def _detail_matches_official_case(
+    requested_case_no: str,
+    search_rec: Dict[str, Any],
+    detail_rec: Any,
+    *,
+    is_constitutional: bool,
+) -> Tuple[bool, str]:
+    """상세조회 레코드를 검색 단계 공식 레코드에 병합해도 되는지 fail-closed로 판정한다."""
+    if not isinstance(detail_rec, dict):
+        return False, "상세 조회 결과 형식이 올바르지 않아 본문 병합을 건너뜀(사건번호 확인 불가, 검색 레코드 유지)"
+
+    detail_case_no = str(detail_rec.get("case_number") or "")
+    stripped_detail = detail_case_no.strip()
+    detail_cases = extract_all_case_numbers(detail_case_no, allow_separators=True)
+
+    if detail_cases:
+        if same_case_number(requested_case_no, detail_case_no):
+            return True, "case_number_match"
+        return (
+            False,
+            f"상세 조회 결과({_safe_identifier_label(detail_case_no)})의 사건번호가 "
+            f"인용 사건번호({_safe_identifier_label(requested_case_no)})와 달라 본문 병합을 건너뜀(검색 레코드 유지)",
+        )
+
+    if stripped_detail:
+        return (
+            False,
+            f"상세 조회 결과 사건번호({_safe_identifier_label(detail_case_no)}) 형식을 확인할 수 없어 "
+            f"본문 병합을 건너뜀(인용 {_safe_identifier_label(requested_case_no)}, 검색 레코드 유지)",
+        )
+
+    default_domain = "detc" if is_constitutional else "prec"
+    search_key = _official_provider_linking_key(search_rec, default_domain=default_domain)
+    detail_key = _official_provider_linking_key(detail_rec, default_domain=default_domain)
+    if search_key is not None and detail_key is not None and search_key == detail_key:
+        return True, "provider_key_match"
+
+    return (
+        False,
+        "상세 조회 결과에 사건번호가 없고 검증된 공급자 연결 키도 일치하지 않아 "
+        "본문 병합을 건너뜀(검색 레코드 유지)",
+    )
+
+
+def _merge_detail_record(official: Dict[str, Any], detail_rec: Dict[str, Any]) -> Dict[str, Any]:
+    merged = {
+        k: v for k, v in detail_rec.items()
+        if v is not None and (v != "" or not official.get(k))
+    }
+    return {**official, **merged}
 
 
 class LegalVerifier:
@@ -445,15 +534,17 @@ class LegalVerifier:
                 verdict.source_records.append(detail.source_record)
             if detail.records:
                 detail_rec = detail.records[0]
-                detail_case_no = str(detail_rec.get("case_number") or "")
-                from .normalize import extract_all_case_numbers
-                if not extract_all_case_numbers(detail_case_no) or same_case_number(case_number, detail_case_no):
-                    official = {**official, **detail_rec}
+                matched, note_reason = _detail_matches_official_case(
+                    case_number,
+                    official,
+                    detail_rec,
+                    is_constitutional=bool(is_constitutional),
+                )
+                if matched:
+                    official = _merge_detail_record(official, detail_rec)
                     verdict.official_record = official
                 else:
-                    verdict.notes.append(
-                        f"상세 조회 결과({detail_case_no})의 사건번호가 인용 사건번호({case_number})와 달라 본문 병합을 건너뜀"
-                    )
+                    verdict.notes.append(note_reason)
         verdict.levels["level1"] = "VERIFIED"
 
         # --- Level 2: 메타데이터 대조 ------------------------------------

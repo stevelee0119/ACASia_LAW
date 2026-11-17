@@ -12,6 +12,14 @@ from typing import Dict, Optional
 # 1999년까지의 사건번호는 연도를 두 자리로 적는다(예: 94누4615). 네 자리 연도와 함께 받는다.
 CASE_NUMBER_RE = re.compile(r"(?<!\d)(?P<year>(?:19|20)\d{2}|\d{2})\s*(?P<code>[가-힣]{1,3})\s*(?P<serial>\d{1,6})")
 CONSTITUTIONAL_RE = re.compile(r"(?P<year>(?:19|20)\d{2})\s*(?P<code>헌[가-힣]{1,2})\s*(?P<serial>\d{1,4})")
+_CASE_SEP = r"[\s.\-–—−·･/]*"
+_OFFICIAL_CASE_NUMBER_RE = re.compile(
+    rf"(?<!\d)(?P<year>(?:19|20)\d{{2}}|\d{{2}}){_CASE_SEP}(?P<code>[가-힣]{{1,3}}){_CASE_SEP}(?P<serial>\d{{1,6}})(?!\d)"
+)
+_OFFICIAL_CONSTITUTIONAL_RE = re.compile(
+    rf"(?<!\d)(?P<year>(?:19|20)\d{{2}}|\d{{2}}){_CASE_SEP}(?P<code>헌[가-힣]{{1,2}}){_CASE_SEP}(?P<serial>\d{{1,5}})(?!\d)"
+)
+_NON_CASE_TOKENS = frozenset({"년", "월", "일", "제", "항", "호", "목"})
 
 _CASE_CODES_YAML = Path(__file__).resolve().parents[2] / "config" / "legal_rules" / "case_codes.yaml"
 
@@ -90,18 +98,27 @@ def canonical_case_number(raw: str) -> Optional[str]:
     return f"{m.group('year')}{m.group('code')}{int(m.group('serial'))}"
 
 
-def extract_all_case_numbers(text: str):
+def extract_all_case_numbers(text: str, *, allow_separators: bool = False):
     """문자열에 포함된 모든 사건번호를 (연도, 부호, 일련번호) 튜플 목록으로 추출한다.
 
     병합 판결(예: '2005가합100279, 2006가합62053')이나 복수 인용을 포괄한다.
+    ``allow_separators=True``는 공식 Source 표기('서울행정법원-2021-구합-70769',
+    '대법원 2020. 다. 12345')의 구분자 변형까지 함께 정규화한다.
     """
     if not text:
         return []
+    const_re = _OFFICIAL_CONSTITUTIONAL_RE if allow_separators else CONSTITUTIONAL_RE
+    case_re = _OFFICIAL_CASE_NUMBER_RE if allow_separators else CASE_NUMBER_RE
     results = []
-    for m in CONSTITUTIONAL_RE.finditer(text):
-        results.append((m.group("year"), m.group("code"), str(int(m.group("serial")))))
-    for m in CASE_NUMBER_RE.finditer(text):
+    for m in const_re.finditer(text):
         item = (m.group("year"), m.group("code"), str(int(m.group("serial"))))
+        if item not in results:
+            results.append(item)
+    for m in case_re.finditer(text):
+        code = m.group("code")
+        if allow_separators and code in _NON_CASE_TOKENS:
+            continue
+        item = (m.group("year"), code, str(int(m.group("serial"))))
         if item not in results:
             results.append(item)
     return results
@@ -115,8 +132,8 @@ def same_case_number(a: str, b: str) -> bool:
     어느 한쪽에 병합 사건번호가 포함된 경우에도 정확한 (연도, 부호, 일련번호) 단위의 교집합이 있으면
     동일 사건으로 인정한다. 부분 숫자만 같은 다른 사건의 오연결은 철저히 방지한다.
     """
-    left_cases = extract_all_case_numbers(a or "")
-    right_cases = extract_all_case_numbers(b or "")
+    left_cases = extract_all_case_numbers(a or "", allow_separators=True)
+    right_cases = extract_all_case_numbers(b or "", allow_separators=True)
     if not left_cases or not right_cases:
         return False
     return bool(set(left_cases) & set(right_cases))
