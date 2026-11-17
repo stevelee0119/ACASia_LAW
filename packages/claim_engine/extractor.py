@@ -62,9 +62,43 @@ _ADJACENT_SUBJECT_RE = re.compile(
     r"(?:원고|피고|피고인|상대방|신청인|피신청인|채권자|채무자|공급자|구매자|증인|참고인|당사자|소외|고소인|고발인)"
     r"(?:\s+[가-힣]{2,4})?(?:은|는|이|가)\b"
 )
+_ADJACENT_ROLE_RE = re.compile(
+    r"(?:원고|피고|피고인|상대방|신청인|피신청인|채권자|채무자|공급자|구매자|"
+    r"증인|참고인|당사자|소외|고소인|고발인|대리인|임대인|임차인|매도인|매수인|"
+    r"수급인|도급인|발주자|시공사|위탁사|피의자|망)(?!신문조서)"
+)
+_ADJACENT_ORG_RE = re.compile(
+    r"(?:주식회사|유한회사|합자회사|합명회사|재단법인|사단법인|학교법인|의료법인|법인|"
+    r"\(주\)|㈜|\(유\)|유한책임회사|"
+    r"[가-힣]{1,10}(?:회사|상사|은행|공사|공단|협회|병원|학교|학원|구청|시청|경찰서|검찰청|법원|위원회|재단|조합))\b"
+)
+_ADJACENT_ATTRIBUTION_WORDS_RE = re.compile(
+    r"(?:명의의|측의|소유|귀속|작성명의|제출명의|보관명의|발행명의)"
+)
+_ADJACENT_POSSESSIVE_RE = re.compile(
+    r"(?<![가-힣])의\b|[가-힣]+의(?:\s|[.,()\[\]{}:;/\-~–·'\"“”‘’「」『』【】]|$)"
+)
+_ALLOWED_UI_NOUN_STEMS = {"합", "결", "동", "협", "질", "이", "정", "명", "품", "건", "소", "주"}
+
 _ADJACENT_CASE_PARTICLE_START_RE = re.compile(
     r"^\s*(?:[은는이가을를]|으로|에는|에도|에서|에게|과의|와의|만으로는|만으로)\b"
 )
+_ADJACENT_PARTICLE_RE = re.compile(
+    r"(?:에서|에게|한테|으로|로써|로서|와의|과의|에는|에도|만을|만을위한|만으로는|만으로)\b|"
+    r"[가-힣]{2,15}(?:은|는|이|가|을|를)\b"
+)
+
+_ADJACENT_ACTION_PREDICATE_RE = re.compile(
+    r"(?:보관|소지|작성|날인|제출|교부|송부|수령|보유|은닉|폐기|인도|발급|위임|체결|"
+    r"송금|입금|지급|발송|촬영|회신|청구|통지|통보|반환|변제|공제|요청|진술|설명|주장|"
+    r"선고|판결|기소|고소|고발|신청|접수)(?:\s*[.!?。]|\s*$)"
+)
+_ACTION_WORDS = {
+    "보관", "소지", "작성", "날인", "제출", "교부", "송부", "수령", "보유", "은닉",
+    "폐기", "인도", "발급", "위임", "체결", "송금", "입금", "지급", "발송", "촬영",
+    "회신", "청구", "통지", "통보", "반환", "변제", "공제", "요청", "진술", "설명",
+    "주장", "선고", "판결", "기소", "고소", "고발", "신청", "접수",
+}
 _ADJACENT_FINITE_END_RE = re.compile(
     r"(?:하였다|했다|되었다|됐다|였다|었다|았다|이다|하다|되다|한다|된다|있다|없다|않다|니다|습니다|시오|까요|겠다)\s*[.!?。]?$"
 )
@@ -75,6 +109,29 @@ _ADJACENT_ATTACHMENT_RE = re.compile(
     r"(?:별첨|별지|첨부)\s*제?\s*\d+\s*호?(?:\s*의\s*\d+)*"
     r"(?:\s*[,\(]?\s*(?:제\s*|[pP]\.\s*)?\d+(?:\s*[~～\-–]\s*\d+)?\s*(?:쪽|면|페이지|[pP](?![A-Za-z]))\s*\)?)?"
 )
+
+_INDICATOR_TOKENS = {
+    "및", "내지", "외", "등", "각", "참조", "첨부", "호증", "호", "건", "부", "매",
+    "장", "쪽", "면", "페이지", "p", "P", "pp", "PP",
+}
+_DOCUMENT_NOUN_SUFFIXES = (
+    "서", "표", "증", "장", "록", "문", "지", "도", "면", "본",
+    "첩", "철", "권", "사본", "출력물", "캡처", "파일", "사진",
+    "영상", "녹음", "녹취", "자료", "내역", "목록", "명세", "조서",
+)
+_DOCUMENT_NOUNS = {
+    "내용증명", "문자", "메시지", "이메일", "메일", "카카오톡", "카톡",
+    "약정", "계약", "영수증", "공정표", "도면", "사진", "일지", "장부",
+    "전표", "세금계산서", "통장사본", "통화녹음", "녹취록", "보고서", "견적서",
+}
+_ALLOWED_TITLE_MODIFIERS = {
+    "수정", "최종", "초안", "변경", "추가", "보완", "임시", "공식", "표준", "약식",
+    "현장", "물품", "부동산", "토지", "건물", "차량", "거래", "정산", "매매", "임대차",
+    "도급", "근로", "고용", "합의", "확약", "세금", "공정", "검수", "측량", "촬영",
+    "발주", "문의", "제안", "회의", "상세", "요약", "관련", "별첨", "별지", "사본",
+    "원본", "출력", "출력물", "화면", "캡처", "사진", "도면", "녹음", "녹취", "동영상",
+    "영상", "파일", "명세", "내역", "목록", "정본", "등본", "초본", "계약서", "계약",
+}
 
 PARTY_ROLE_WORDS = {
     "원고", "피고", "피고인", "참고인", "피의자", "증인", "고소인", "고발인",
@@ -342,12 +399,85 @@ def _can_event_bind_adjacent(date_count: int, structure: dict) -> bool:
     return True
 
 
+def _is_allowed_evidence_residual(residual: str) -> bool:
+    """호증 참조 제거 후 잔여 구절이 허용된 증거 제목/표지 문법에 맞는지 엄격히 판정한다."""
+    if not residual:
+        return True
+    if ":" in residual or "：" in residual:
+        return False
+    if _ADJACENT_DISQUALIFY_RE.search(residual):
+        return False
+    if _ADJACENT_ROLE_RE.search(residual):
+        return False
+    if _ADJACENT_ORG_RE.search(residual):
+        return False
+    if _ADJACENT_ATTRIBUTION_WORDS_RE.search(residual):
+        return False
+    for match in _ADJACENT_POSSESSIVE_RE.finditer(residual):
+        word = match.group(0).strip(" .,()[]{}:;/-~–·'\"“”‘’「」『』【】")
+        if word == "의":
+            return False
+        if word.endswith("의"):
+            stem = word[:-1]
+            if stem not in _ALLOWED_UI_NOUN_STEMS:
+                return False
+    if _ADJACENT_CASE_PARTICLE_START_RE.search(residual):
+        return False
+    if _ADJACENT_PARTICLE_RE.search(residual):
+        return False
+    if _ADJACENT_ACTION_PREDICATE_RE.search(residual):
+        return False
+    if _ADJACENT_FINITE_END_RE.search(residual) or _ADJACENT_VERB_STEM_RE.search(residual):
+        return False
+    if any(pat.search(residual) for _, pat in ACTION_PATTERNS):
+        return False
+
+    tokens = [t.strip() for t in re.split(r"[\s.,()\[\]{}:;/\-~–·'\"“”‘’「」『』【】]+", residual) if t.strip()]
+    if not tokens:
+        return True
+
+    title_tokens = []
+    for t in tokens:
+        if t in _INDICATOR_TOKENS or re.match(r"^\d+(?:건|부|매|장|쪽|면|호)?$", t):
+            continue
+        title_tokens.append(t)
+
+    if not title_tokens:
+        return True
+
+    if len(title_tokens) > 4:
+        return False
+    if sum(len(t) for t in title_tokens) > 30:
+        return False
+
+    for t in title_tokens:
+        if not re.match(r"^[가-힣A-Za-z0-9]+$", t):
+            return False
+        if t in _ACTION_WORDS:
+            return False
+
+    if len(title_tokens) > 1:
+        for mod in title_tokens[:-1]:
+            if mod not in _ALLOWED_TITLE_MODIFIERS:
+                return False
+
+    last_token = title_tokens[-1]
+    ends_with_doc_suffix = any(last_token.endswith(sfx) for sfx in _DOCUMENT_NOUN_SUFFIXES)
+    is_doc_noun = last_token in _DOCUMENT_NOUNS
+    if not (ends_with_doc_suffix or is_doc_noun):
+        return False
+
+    return True
+
+
 def _adjacent_evidence_refs(
     next_sentence: str, *, document_id: str, block_id: str, page: Optional[int],
     source_run_id: Optional[str], document_sha256: str, offset: int,
 ) -> Optional[List[dict]]:
     """바로 뒤 문장이 새 사건/부정/전언/가정/주체/모호함 없는 호증 전용 구절일 때만 참조를 반환한다."""
     if not next_sentence or DATE_RE.search(next_sentence) or PARTIAL_DATE_RE.search(next_sentence):
+        return None
+    if ":" in next_sentence or "：" in next_sentence:
         return None
     refs = _collect_event_evidence_references(
         next_sentence, document_id=document_id, block_id=block_id,
@@ -375,17 +505,9 @@ def _adjacent_evidence_refs(
             chars[idx] = " "
     residual = " ".join("".join(chars).split())
 
-    if next_struct.get("quoted") and (_ADJACENT_FINITE_END_RE.search(residual) or _ADJACENT_VERB_STEM_RE.search(residual)):
+    if not _is_allowed_evidence_residual(residual):
         return None
-    if _ADJACENT_DISQUALIFY_RE.search(residual) or _ADJACENT_SUBJECT_RE.search(residual):
-        return None
-    if _ADJACENT_CASE_PARTICLE_START_RE.search(residual):
-        return None
-    if _ADJACENT_FINITE_END_RE.search(residual) or _ADJACENT_VERB_STEM_RE.search(residual):
-        return None
-    if any(pat.search(residual) for _, pat in ACTION_PATTERNS):
-        return None
-    compact_residual = re.sub(r"[\s.,()\[\]{}:;/\-~·'\"“”‘’「」『』]", "", residual)
+    compact_residual = re.sub(r"[\s.,()\[\]{}:;/\-~–·'\"“”‘’「」『』【】]", "", residual)
     if len(compact_residual) > 40:
         return None
     return refs

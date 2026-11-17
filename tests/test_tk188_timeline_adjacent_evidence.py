@@ -157,8 +157,19 @@ def test_attachment_adjacent_sentence_binds():
             1,
             ["[근거 미작성]"],
         ),
+        # 8) 콜론형 이름 표기·기업 소유/귀속·새 행위 서술(보관 등)이 포함된 구절은 앞 사건에 자동 결속하지 않는다.
         (
-            "만약 2025년 3월 1일 약정이 무효라면 정산이 필요하다. 갑 제7호증 계산표.",
+            "2025년 3월 1일 회의가 열렸다. 김철수: 갑 제1호증 계약서.",
+            1,
+            ["[근거 미작성]"],
+        ),
+        (
+            "2025년 3월 1일 회의가 열렸다. 주식회사 한빛의 갑 제1호증 계약서.",
+            1,
+            ["[근거 미작성]"],
+        ),
+        (
+            "2025년 3월 1일 회의가 열렸다. 증인 김철수 갑 제1호증 보관.",
             1,
             ["[근거 미작성]"],
         ),
@@ -170,6 +181,24 @@ def test_negative_controls_do_not_misbind_adjacent_evidence(body, expected_row_c
     timeline = build_timeline(events)
     assert len(timeline) == expected_row_count
     assert [row["evidence_summary"] for row in timeline] == expected_summaries
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "2025년 3월 1일 회의가 열렸다. 김철수: 갑 제1호증 계약서.",
+        "2025년 3월 1일 회의가 열렸다. 주식회사 한빛의 갑 제1호증 계약서.",
+        "2025년 3월 1일 회의가 열렸다. 증인 김철수 갑 제1호증 보관.",
+    ],
+)
+def test_adjacent_evidence_rejects_subject_attribution_and_action(body):
+    doc = _doc_from_text(body)
+    events = extract_events(doc, project_id="P-188")
+    assert len(events) == 1
+    _assert_all_ref_spans_exist(doc, events)
+    timeline = build_timeline(events)
+    assert len(timeline) == 1
+    assert timeline[0]["evidence_summary"] == "[근거 미작성]"
 
 
 def test_paired_documents_and_same_date_events_chronology_and_stance_preserved():
