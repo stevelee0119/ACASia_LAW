@@ -51,9 +51,10 @@ FULL_CASE_RE = re.compile(
 )
 # 법원명 없이 "2023도12345 판결"
 BARE_CASE_RE = re.compile(rf"(?P<case_no>{CASE_NO_RE})\s*(?P<kind>판결|결정|명령)")
-# 헌재 2020. 3. 26. 2018헌바123
+# 헌재 2020. 3. 26. 2018헌바123 / 헌법재판소 2020. 3. 26. 선고 2018헌바123 결정
 CONST_RE = re.compile(
-    rf"(?P<court>헌법\s?재판소|헌재)\s*(?P<date>{DATE_RE})?\s*"
+    rf"(?P<court>헌법\s?재판소|헌재)(?:\s*(?P<particle>은|는|도|이|가|의))?\s*(?P<date>{DATE_RE})?\s*"
+    rf"(?:(?:선고|자)\s*)?"
     # 일련번호 자릿수를 제한하면 뒷자리가 잘린 다른 사건번호가 된다(2018헌바 90044 → 2018헌바9004). 숫자 경계까지 읽는다.
     rf"(?P<case_no>(?:(?:19|20)\d{{2}}|\d{{2}})\s*헌\s*[가-힣]{{1,2}}\s*\d{{1,6}}(?!\d))"
     # 병합 표기: 2004헌마554·566(병합), 2011헌바379 등(병합), 2004헌마554, 2004헌마566(병합)
@@ -613,10 +614,15 @@ def extract_from_text(
     # 필수 문자/종결어가 없는 패턴만 생략한다. FULL_CASE에는 kind를 요구하지 않는다.
     # 1) 헌재
     for m in (CONST_RE.finditer(text) if "헌" in text else ()):
+        raw_cit = (
+            f"{_court_name(m.group('court'))} {text[m.end('particle'):m.end()].strip()}"
+            if m.groupdict().get("particle")
+            else m.group(0).strip()
+        )
         citations.append(
             _create(
                 CitationType.CONSTITUTIONAL,
-                m.group(0).strip(),
+                raw_cit,
                 document_id=document_id,
                 block_id=block_id,
                 page=page,
@@ -666,9 +672,10 @@ def extract_from_text(
         if overlaps(m.start(), m.end()):
             continue
         case_no = m.group("case_no")
+        is_const = bool(re.match(r"^\s*(?:(?:19|20)\d{2}|\d{2})\s*헌", case_no))
         citations.append(
             _create(
-                CitationType.CASE,
+                CitationType.CONSTITUTIONAL if is_const else CitationType.CASE,
                 m.group(0).strip(),
                 document_id=document_id,
                 block_id=block_id,

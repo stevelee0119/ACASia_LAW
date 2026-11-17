@@ -137,6 +137,7 @@ def validate_claim_request_payload(payload: Any) -> bool:
 
 def _match_citations_to_references(citations: list, sources: list) -> dict:
     """참고자료 본문과 인용(사건번호 또는 법령명+조) 간의 동일성 대조(U1)를 수행합니다."""
+    from . import relevance
     from .reference_binding import citation_excerpt, value
 
     matches = {}
@@ -150,10 +151,16 @@ def _match_citations_to_references(citations: list, sources: list) -> dict:
             excerpt = citation_excerpt(citation, source.get("text", ""))
             if not excerpt:
                 continue
+            fmt = source.get("format") or relevance.source_format(
+                source.get("title", ""), source.get("mime_type", ""))
             matches[cid] = {
                 "status": "SUPPORTED", "relationship": "SUPPORTS",
                 "source_id": source.get("source_id"), "source_title": source.get("title", ""),
-                "file_id": source.get("file_id", ""), "source_quote": excerpt,
+                "file_id": source.get("file_id", ""),
+                "source_format": fmt, "format": fmt,
+                "page": source.get("page"), "source_page": source.get("page"),
+                "start": source.get("start"),
+                "source_quote": excerpt,
                 "matched_authority": value(citation, "raw_text", ""),
             }
             break
@@ -186,6 +193,34 @@ def grounded_observations(parsed, document, sources, *, rejected=None):
         if item not in accepted:
             accepted.append(item)
     return accepted if accepted or not parsed["observations"] else None
+
+
+def _attach_observation_provenance(observations: list[dict], sources: list[dict]) -> list[dict]:
+    """모든 관찰 항목에 참고자료 파일 ID·제목·형식·쪽·시작 위치 출처를 부착한다."""
+    from . import relevance
+
+    by_id = {s.get("source_id"): s for s in sources if s.get("source_id")}
+    for obs in observations:
+        src = by_id.get(obs.get("source_id"))
+        if not src:
+            continue
+        fmt = src.get("format") or relevance.source_format(
+            src.get("title", ""), src.get("mime_type", ""))
+        obs.setdefault("file_id", src.get("file_id", ""))
+        obs.setdefault("source_title", src.get("title", ""))
+        if fmt:
+            obs.setdefault("source_format", fmt)
+        if src.get("page") is not None:
+            obs.setdefault("source_page", src.get("page"))
+        if src.get("start") is not None:
+            obs.setdefault("source_start", src.get("start"))
+        if src.get("sheet"):
+            obs.setdefault("source_sheet", src.get("sheet"))
+        if src.get("row") is not None:
+            obs.setdefault("source_row", src.get("row"))
+        if src.get("source_cell_range"):
+            obs.setdefault("source_cell_range", src.get("source_cell_range"))
+    return observations
 
 
 def _check_exhibit_facts(document: str, sources: list) -> list:
@@ -274,22 +309,94 @@ def review_document(result, library, router, context, pii):
         return review
     review["document_truncated"] = bool(review["input"]["omitted_chars"])
     korean_profile = bool(getattr(getattr(router, "settings", None), "korean_law_review_profile", False))
+    from packages.common.config import get_settings
+    settings = get_settings()
+    claim_multisearch = bool(getattr(settings, "rag_claim_multisearch", True))
+    max_claims = getattr(settings, "rag_claim_max_per_document", 30)
+    eligible = [c for c in getattr(result, "claims", []) if c.get("type") not in ("DOCUMENT_META", "ADVERSARIAL_INSTRUCTION")]
+    citations = getattr(result, "citations", []) or []
+    citation_by_id = {getattr(c, "citation_id", None) or (c.get("citation_id") if isinstance(c, dict) else None): c
+                      for c in citations}
+
+    from . import relevance
+
     selection = library.select(document + "\n" + "\n".join(context.requested_issues))
     hits = selection.pop("sources")
+    whole_doc_hits_count = len(hits)
     # Direct local identifier queries are independent of document-level relevance.
     search_citation = getattr(library, "search_citation", None)
+    seen = {(s.get("file_id"), s.get("page"), s.get("text")) for s in hits}
+    seen_fp_sid: dict[str, str] = {}
+    for h in hits:
+        fp_h = h.get("content_fingerprint") or relevance.content_fingerprint(h.get("text", ""))
+        if fp_h:
+            h.setdefault("content_fingerprint", fp_h)
+            if not h.get("duplicate_content"):
+                seen_fp_sid.setdefault(fp_h, h.get("source_id", ""))
+        if not h.get("format"):
+            h["format"] = relevance.source_format(h.get("title", ""), h.get("mime_type", ""))
+
+    def _append_hit(src: dict) -> bool:
+        key = (src.get("file_id"), src.get("page"), src.get("text"))
+        if key in seen:
+            return False
+        seen.add(key)
+        sid = "R" + str(len(hits) + 1)
+        fp_val = src.get("content_fingerprint") or relevance.content_fingerprint(src.get("text", ""))
+        fmt_val = src.get("format") or relevance.source_format(src.get("title", ""), src.get("mime_type", ""))
+        entry = {
+            **src,
+            "source_id": sid,
+            "format": fmt_val,
+            "content_fingerprint": fp_val,
+        }
+        if fp_val and fp_val in seen_fp_sid and not entry.get("duplicate_of_source_id"):
+            entry["duplicate_content"] = True
+            entry["duplicate_of_source_id"] = seen_fp_sid[fp_val]
+        elif fp_val and not entry.get("duplicate_content"):
+            seen_fp_sid.setdefault(fp_val, sid)
+        hits.append(entry)
+        return True
+
     if callable(search_citation):
-        seen = {(s.get("file_id"), s.get("page"), s.get("text")) for s in hits}
-        for citation in getattr(result, "citations", []) or []:
+        for citation in citations:
             for source in search_citation(citation):
-                key = (source.get("file_id"), source.get("page"), source.get("text"))
-                if key not in seen:
-                    hits.append({**source, "source_id": "R" + str(len(hits) + 1)})
-                    seen.add(key)
-    selection["sources_used"] = [{k: h.get(k) for k in ("source_id", "file_id", "title", "folder_path", "page",
+                _append_hit(source)
+
+    # TK-187: 전체 문서 select에서 누락된 소수 쟁점·무관 파일명 참고자료도 주장 단위 다중 경로 검색으로 회수한다.
+    claim_search_cache: dict[str, list[dict]] = {}
+    claim_hits_added = 0
+    paths_used: set[str] = set()
+    if hits:
+        paths_used.add("WHOLE_DOC_SELECT")
+    search_claim_fn = getattr(library, "search_claim", None)
+    if claim_multisearch and callable(search_claim_fn) and eligible:
+        pre_claims, _ = select_claims_for_review(eligible)
+        for claim_obj in pre_claims[:max_claims]:
+            c_id = claim_obj.get("claim_id")
+            c_raw_text = claim_obj.get("text", "")
+            if not c_id or not c_raw_text:
+                continue
+            claim_citation_ids = claim_obj.get("citation_ids") or []
+            if isinstance(claim_citation_ids, str):
+                claim_citation_ids = [claim_citation_ids]
+            linked_citations = [citation_by_id[cid] for cid in claim_citation_ids if cid in citation_by_id]
+            c_hits = search_claim_fn(c_raw_text, citations=linked_citations, limit=5) or []
+            claim_search_cache[c_id] = c_hits
+            for source in c_hits:
+                for p in source.get("retrieval_paths") or []:
+                    paths_used.add(p)
+                if _append_hit(source):
+                    claim_hits_added += 1
+
+    selection["sources_used"] = [{k: h.get(k) for k in ("source_id", "file_id", "title", "format",
+                                                       "folder_path", "page", "start",
                                                        "relevance", "text_coverage", "shared_terms",
                                                        "structured_case_table", "sheet", "row",
-                                                       "source_cell_range")} for h in hits]
+                                                       "source_cell_range", "retrieval_paths",
+                                                       "claim_search_matched", "content_fingerprint",
+                                                       "duplicate_content", "duplicate_of_source_id")}
+                                 for h in hits]
     review["selection"] = selection
     from packages.pii_engine.engine import slice_token_spans
     from packages.pii_engine.pseudonym import PseudonymSequenceLimitError, PseudonymStore
@@ -320,16 +427,58 @@ def review_document(result, library, router, context, pii):
             source_text_spans_by_id[sid] = text_spans
             source_title_spans_by_id[sid] = title_spans
         review["sources"] = sources
-        eligible = [c for c in getattr(result, "claims", []) if c.get("type") not in ("DOCUMENT_META", "ADVERSARIAL_INSTRUCTION")]
         review["claim_coverage"] = {"eligible_claims": len(eligible), "linked_claims": 0,
             "unreviewed": [{"claim_id": c.get("claim_id"), "reason": "NO_GROUNDED_COMPARISON"} for c in eligible],
             "all_claims_verified": False}
+
+        candidate_provenance = []
+        for cand in selection.get("candidates", []):
+            candidate_provenance.append({
+                "stage": "whole_doc_select",
+                "file_id": cand.get("file_id", ""),
+                "title": mask(cand.get("title", "")),
+                "format": cand.get("format") or relevance.source_format(
+                    cand.get("title", ""), cand.get("mime_type", "")),
+                "page": cand.get("page"),
+                "pages_matched": cand.get("pages_matched", []),
+                "selected": bool(cand.get("selected")),
+            })
+        seen_claim_cand: set[tuple[str, Any, Any]] = set()
+        for c_hits in claim_search_cache.values():
+            for src in c_hits:
+                ck = (src.get("file_id", ""), src.get("page"), src.get("start"))
+                if ck in seen_claim_cand:
+                    continue
+                seen_claim_cand.add(ck)
+                candidate_provenance.append({
+                    "stage": "claim_search",
+                    "file_id": src.get("file_id", ""),
+                    "title": mask(src.get("title", "")),
+                    "format": src.get("format") or relevance.source_format(
+                        src.get("title", ""), src.get("mime_type", "")),
+                    "page": src.get("page"),
+                    "start": src.get("start"),
+                    "retrieval_paths": src.get("retrieval_paths", []),
+                    "duplicate_content": bool(src.get("duplicate_content", False)),
+                })
+
+        review["search_scope"] = {
+            "whole_doc_candidates": selection.get("candidates_total", 0),
+            "whole_doc_selected": whole_doc_hits_count,
+            "duplicate_chunks_suppressed": selection.get("duplicate_chunks_suppressed", 0),
+            "claim_search_enabled": claim_multisearch,
+            "hybrid_semantic_enabled": bool(getattr(settings, "rag_hybrid_semantic", True)),
+            "claim_queries_run": len(claim_search_cache),
+            "claim_hits_added": claim_hits_added,
+            "retrieval_paths_used": sorted(paths_used),
+            "sources_total": len(sources),
+            "claims_eligible": len(eligible),
+            "claims_evaluated": 0,
+            "candidate_provenance": candidate_provenance,
+        }
         from .contract_facts import review_contract_calculations
         review["contract_review"] = review_contract_calculations(document, sources)
         review["coverage"] = selection.get("coverage")
-        citations = getattr(result, "citations", []) or []
-        citation_by_id = {getattr(c, "citation_id", None) or (c.get("citation_id") if isinstance(c, dict) else None): c
-                          for c in citations}
         reference_case_matches = {}
         table_info = getattr(library, "case_table_status", lambda: {"status": "NO_CASE_TABLE", "candidates": [], "indexed_rows": 0})()
         review["case_table_status"] = table_info.get("status", "NO_CASE_TABLE")
@@ -378,12 +527,19 @@ def review_document(result, library, router, context, pii):
         provision_obs = check_quoted_provisions(document, sources)
         from .reference_binding import value
         citation_observations = [{
+            "citation_id": cid,
             "claim_quote": mask(value(citation_by_id[cid], "raw_text", "") or match["matched_authority"]),
             "source_quote": match["source_quote"], "source_id": match["source_id"],
+            "file_id": match.get("file_id", ""),
+            "source_title": match.get("source_title", ""),
+            "source_format": match.get("source_format", ""),
+            "source_page": match.get("source_page"),
+            "source_start": match.get("start"),
             "relationship": "SUPPORTS", "method": "DETERMINISTIC_CITATION_COMPARISON",
             "explanation": "전체 인용 식별자가 참고문헌 발췌에 있습니다. 법리의 타당성이나 공식 확인을 뜻하지 않습니다.",
         } for cid, match in reference_matches.items()]
         provision_obs.extend(citation_observations)
+        _attach_observation_provenance(provision_obs, sources)
         review["deterministic_observations"] = len(provision_obs)
 
         # 3. QUICK 및 LOCAL_ONLY 분기 (외부 모델 호출 차단)
@@ -661,29 +817,84 @@ def review_document(result, library, router, context, pii):
                 # 1) 질의어 생성 (한국어 핵심어 추출, 단일 문장 주장 보충 지원)
                 salient = _claim_salient_words(c_raw_text)
 
-                # 2) 문서 최초 선택과 독립된 전체 구조화 판례 코퍼스 주장별 검색.
-                #    인용이 있으면 정확 사건번호 행을 우선하고, 없으면 쟁점/요지로 찾는다.
+                # 2) 문서 최초 선택과 독립된 전체 구조화 판례 코퍼스 + 일반 참고자료 주장별 검색
+                claim_citation_ids = claim_obj.get("citation_ids") or []
+                if isinstance(claim_citation_ids, str):
+                    claim_citation_ids = [claim_citation_ids]
+                linked_citations = [citation_by_id[cid] for cid in claim_citation_ids if cid in citation_by_id]
+
                 claim_case_sources = []
                 if getattr(library, "has_case_tables", lambda: False)():
-                    claim_citation_ids = claim_obj.get("citation_ids") or []
-                    if isinstance(claim_citation_ids, str):
-                        claim_citation_ids = [claim_citation_ids]
-                    linked_citations = [citation_by_id[cid] for cid in claim_citation_ids
-                                        if cid in citation_by_id]
                     claim_case_sources = library.search_case_table(c_raw_text, citations=linked_citations, limit=5)
 
-                # 3) 이미 읽은 sources와 행 단위 후보를 주장 핵심어 출현 빈도로 정렬
+                claim_prose_sources = []
+                if claim_multisearch and callable(search_claim_fn):
+                    claim_prose_sources = claim_search_cache.get(c_id)
+                    if claim_prose_sources is None:
+                        claim_prose_sources = search_claim_fn(c_raw_text, citations=linked_citations, limit=5) or []
+
+                # 3) 이미 읽은 sources와 주장별·행 단위 후보를 주장 적합성 순으로 정렬
                 claim_sources = list(sources)
+                existing_key_to_sid = {
+                    (s.get("file_id"), s.get("page"), s.get("text")): s.get("source_id")
+                    for s in sources
+                }
+                claim_direct_sids: set[str] = set()
+                claim_case_sids: set[str] = set()
                 next_source_id = len(claim_sources) + 1
+                for prose_src in claim_prose_sources:
+                    p_text, p_text_spans = _mask_with(prose_src.get("text", ""))
+                    p_title, p_title_spans = _mask_with(prose_src.get("title", ""))
+                    key = (prose_src.get("file_id"), prose_src.get("page"), p_text)
+                    sid = existing_key_to_sid.get(key)
+                    if sid:
+                        claim_direct_sids.add(sid)
+                        continue
+                    sid = f"R{next_source_id}"
+                    next_source_id += 1
+                    fp_p = prose_src.get("content_fingerprint") or relevance.content_fingerprint(p_text)
+                    fmt_p = prose_src.get("format") or relevance.source_format(
+                        prose_src.get("title", ""), prose_src.get("mime_type", ""))
+                    enriched = {
+                        **prose_src,
+                        "source_id": sid,
+                        "format": fmt_p,
+                        "content_fingerprint": fp_p,
+                        "text": p_text,
+                        "title": p_title,
+                    }
+                    if fp_p and fp_p in seen_fp_sid and not enriched.get("duplicate_of_source_id"):
+                        enriched["duplicate_content"] = True
+                        enriched["duplicate_of_source_id"] = seen_fp_sid[fp_p]
+                    elif fp_p and not enriched.get("duplicate_content"):
+                        seen_fp_sid.setdefault(fp_p, sid)
+                    source_text_spans_by_id[sid] = p_text_spans
+                    source_title_spans_by_id[sid] = p_title_spans
+                    existing_key_to_sid[key] = sid
+                    claim_direct_sids.add(sid)
+                    claim_sources.append(enriched)
+                    sources.append(enriched)
+                    review["sources"] = sources
+
                 for case_source in claim_case_sources:
+                    sid = f"R{next_source_id}"
+                    fmt_c = case_source.get("format") or relevance.source_format(
+                        case_source.get("title", ""), case_source.get("mime_type", ""))
                     c_text, c_text_spans = _mask_with(case_source.get("text", ""))
                     c_title, c_title_spans = _mask_with(case_source.get("title", ""))
-                    case_source = {**case_source, "source_id": f"R{next_source_id}",
-                                   "text": c_text,
-                                   "title": c_title}
+                    case_source = {
+                        **case_source,
+                        "source_id": sid,
+                        "format": fmt_c,
+                        "content_fingerprint": case_source.get("content_fingerprint")
+                        or relevance.content_fingerprint(c_text),
+                        "text": c_text,
+                        "title": c_title,
+                    }
                     next_source_id += 1
-                    source_text_spans_by_id[case_source["source_id"]] = c_text_spans
-                    source_title_spans_by_id[case_source["source_id"]] = c_title_spans
+                    source_text_spans_by_id[sid] = c_text_spans
+                    source_title_spans_by_id[sid] = c_title_spans
+                    claim_case_sids.add(sid)
                     claim_sources.append(case_source)
                     # Keep the source available to quote grounding and the final
                     # report.  The request itself still observes the existing
@@ -691,14 +902,80 @@ def review_document(result, library, router, context, pii):
                     if not any(s.get("source_id") == case_source["source_id"] for s in sources):
                         sources.append(case_source)
                         review["sources"] = sources
-                if salient:
-                    def _score_source(src):
-                        stext = src.get("text", "")
-                        return sum(1 for w in salient if w in stext)
-                    scored = sorted(claim_sources, key=lambda src: (src.get("structured_case_table", False), _score_source(src)), reverse=True)
-                    relevant_sources = scored[:5]
-                else:
-                    relevant_sources = claim_sources[:5]
+
+                def _score_source(src):
+                    stext = src.get("text", "")
+                    salient_hits = sum(1 for w in salient if w in stext) if salient else 0
+                    is_direct = src.get("source_id") in claim_direct_sids
+                    is_case_hit = (
+                        (src.get("source_id") in claim_case_sids or bool(src.get("case_table_candidate")))
+                        and (bool(src.get("structured_case_table", False)) or salient_hits >= 2)
+                    )
+                    return (
+                        is_case_hit,
+                        is_direct,
+                        salient_hits,
+                        float(src.get("relevance") or 0.0),
+                    )
+
+                ordered_claim_sources = (
+                    sorted(claim_sources, key=_score_source, reverse=True)
+                    if (salient or claim_direct_sids or claim_case_sids)
+                    else claim_sources
+                )
+
+                # 동일 내용(content_fingerprint)·동일 기본 파일명 다형식 중복이 주장별 5슬롯을 독점하지 않도록 2단계 선별
+                relevant_sources = []
+                picked_sids: set[str] = set()
+                seen_c_fp: set[str] = set()
+                seen_c_base: set[str] = set()
+                seen_c_file: set[str] = set()
+                deferred_unique = []
+                deferred_dup = []
+
+                for s in ordered_claim_sources:
+                    fp_s = s.get("content_fingerprint") or relevance.content_fingerprint(s.get("text", ""))
+                    fid_s = s.get("file_id", "")
+                    bkey_s = s.get("base_name") or (relevance.base_name(s.get("title", "")).lower() if s.get("title") else "") or fid_s
+                    if s.get("duplicate_content") or (fp_s and fp_s in seen_c_fp):
+                        deferred_dup.append((s, fp_s))
+                        continue
+                    if (bkey_s and bkey_s in seen_c_base) or (fid_s and fid_s in seen_c_file):
+                        deferred_unique.append((s, fp_s))
+                        continue
+                    relevant_sources.append(s)
+                    picked_sids.add(s.get("source_id", ""))
+                    if fp_s:
+                        seen_c_fp.add(fp_s)
+                    if bkey_s:
+                        seen_c_base.add(bkey_s)
+                    if fid_s:
+                        seen_c_file.add(fid_s)
+                    if len(relevant_sources) >= 5:
+                        break
+
+                if len(relevant_sources) < 5:
+                    for s, fp_s in deferred_unique:
+                        if s.get("source_id", "") in picked_sids:
+                            continue
+                        if fp_s and fp_s in seen_c_fp:
+                            deferred_dup.append((s, fp_s))
+                            continue
+                        relevant_sources.append(s)
+                        picked_sids.add(s.get("source_id", ""))
+                        if fp_s:
+                            seen_c_fp.add(fp_s)
+                        if len(relevant_sources) >= 5:
+                            break
+
+                if len(relevant_sources) < 5:
+                    for s, _fp_s in deferred_dup:
+                        if s.get("source_id", "") in picked_sids:
+                            continue
+                        relevant_sources.append(s)
+                        picked_sids.add(s.get("source_id", ""))
+                        if len(relevant_sources) >= 5:
+                            break
 
                 # 3) 발췌문 구성 (주장 관련 문맥 구간 추출, 최대 5개 항목, 항목당 800자 이내, 총합 4,000자 이내)
                 ref_sources_items = []
@@ -765,7 +1042,7 @@ def review_document(result, library, router, context, pii):
                     unreviewed_claims_map[c_id] = "REASON_SCHEMA_VALIDATION_FAILED"
                     continue
 
-                # 6) 모델 요청 생성 및 큐 적재
+                # 6) 모델 요청 생성 및 라우터 호출 (주장당 1회 호출, 내부 retry 포함 공급자 요청 최대 3회)
                 claim_req = LLMRequest(
                     system=RAG_REVIEW_SYSTEM_PROMPT,
                     user=json.dumps(claim_payload, ensure_ascii=False),
@@ -828,18 +1105,43 @@ def review_document(result, library, router, context, pii):
         review["model_executed"] = executed_any
         review["model_response_accepted"] = accepted_any
 
+        _attach_observation_provenance(all_observations, sources)
+        _attach_observation_provenance(claim_observations, sources)
+
         # 6. 결정적 중복 제거 (3.2절: 설명 길이 긴 쪽 우선, 같으면 주장 단위 우선)
+        def _merge_obs_provenance(winner: dict, other: dict) -> None:
+            if (other.get("file_id"), other.get("source_id")) == (winner.get("file_id"), winner.get("source_id")):
+                return
+            alt = {k: other.get(k) for k in ("source_id", "file_id", "source_title", "source_format", "source_page")
+                   if other.get(k) is not None and other.get(k) != ""}
+            if not alt:
+                return
+            existing_alts = winner.setdefault("alternate_sources", [])
+            if alt not in existing_alts:
+                existing_alts.append(alt)
+
         obs_map = {}
         for obs in all_observations:
-            key = (obs.get("claim_quote"), obs.get("source_quote"))
-            obs_map[key] = obs
+            key = (_clean_str(obs.get("claim_quote")), _clean_str(obs.get("source_quote")))
+            if key in obs_map:
+                existing = obs_map[key]
+                if len(obs.get("explanation", "")) > len(existing.get("explanation", "")):
+                    _merge_obs_provenance(obs, existing)
+                    obs_map[key] = obs
+                else:
+                    _merge_obs_provenance(existing, obs)
+            else:
+                obs_map[key] = obs
 
         for c_obs in claim_observations:
-            key = (c_obs.get("claim_quote"), c_obs.get("source_quote"))
+            key = (_clean_str(c_obs.get("claim_quote")), _clean_str(c_obs.get("source_quote")))
             if key in obs_map:
                 existing = obs_map[key]
                 if len(c_obs.get("explanation", "")) >= len(existing.get("explanation", "")):
+                    _merge_obs_provenance(c_obs, existing)
                     obs_map[key] = c_obs
+                else:
+                    _merge_obs_provenance(existing, c_obs)
             else:
                 obs_map[key] = c_obs
 
@@ -887,6 +1189,11 @@ def review_document(result, library, router, context, pii):
             },
         }
 
+        review["search_scope"].update({
+            "sources_total": len(sources),
+            "claims_evaluated": len(bounded_claims),
+            "budget_halt_reason": halt_reason,
+        })
         review["batches_evaluated"] = len(batches)
         review["total_sources_evaluated"] = len(sources)
         review["observation_limit_reached"] = False
@@ -927,7 +1234,6 @@ def review_document(result, library, router, context, pii):
         )
         return review
 
-
 # TK-174: Drive 대조가 끝나지 못한 실제 원인(review_completed=False의 두 조건)을 사람이 읽는 말로 적는다.
 def incomplete_reason(review) -> str:
     """review_completed가 False인 까닭: 버린 모델 의견(사유별 건수)과 서면 잘림. 둘 다 아니면 상태 사유를 한글로."""
@@ -965,6 +1271,12 @@ def report_lines(run_result):
         reasons = list(dict.fromkeys(filter(None, [item.get("reason"), *[
             i.get("reason") for i in library.get("issues", []) if i.get("file_id") == item.get("file_id")]])))
         coverage = f" / 텍스트 색인 {item.get('read_pages') or 0}/{item['pages']}쪽" if item.get("pages") else ""
+        if (
+            item.get("pages")
+            and item.get("completed_pages") is not None
+            and item.get("completed_pages") != (item.get("read_pages") or 0)
+        ):
+            coverage += f" (완독 검사 {item['completed_pages']}/{item['pages']}쪽)"
         missing = f" / 텍스트 미추출 쪽 {item['no_text_pages']}" if item.get("no_text_pages") else ""
         lines.append(f"자료별 처리: {item.get('folder_path', '')}/{item.get('name')} / "
                      f"{word(item.get('status'))} / {' · '.join(word(r) for r in reasons)}{coverage}{missing}")

@@ -11,6 +11,7 @@ When no file passes, the Drive library is not used for that document.
 from __future__ import annotations
 
 from collections import Counter
+import hashlib
 import math
 from pathlib import Path
 import re
@@ -31,6 +32,19 @@ TOPIC_STEP = 600
 COPY_MARK = re.compile(r"의\s*사본|\s*-\s*복사본|복사본|\s*\(\d{1,3}\)|^\s*사본\s*-\s*|^\s*copy of\s+|\s+-\s*copy\b",
                        re.IGNORECASE)
 EXTENSION = re.compile(r"\.[A-Za-z0-9]{1,5}$")
+_NORM_STRIP = re.compile(r"[\s|│·•\-_,.:;()\[\]{}「」『』'\"“”‘’]+")
+_MIME_TO_FORMAT = {
+    "application/pdf": "pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.google-apps.document": "gdoc",
+    "application/vnd.google-apps.spreadsheet": "gsheet",
+    "text/csv": "csv",
+    "text/plain": "txt",
+    "application/x-hwp": "hwp",
+    "application/haansofthwp": "hwp",
+    "application/hwp+zip": "hwpx",
+}
 
 
 def tokens(text):
@@ -60,6 +74,23 @@ def extension(name):
     return Path(COPY_MARK.sub("", str(name or "")).strip()).suffix.lower()
 
 
+def source_format(name: str = "", mime_type: str = "") -> str:
+    """파일명 확장자와 MIME에서 표준 형식 코드(pdf·docx·xlsx 등)를 돌려준다."""
+    ext = extension(name).lstrip(".").lower()
+    if ext:
+        return ext
+    mime = str(mime_type or "").split(";")[0].strip().lower()
+    return _MIME_TO_FORMAT.get(mime, "")
+
+
+def content_fingerprint(text: str) -> str:
+    """형식별 공백·표 구분자(|)·문장부호 차이를 정규화한 내용 지문(다형식 중복 판별용)."""
+    norm = _NORM_STRIP.sub("", str(text or "")).lower()
+    if not norm:
+        return ""
+    return hashlib.sha256(norm.encode("utf-8")).hexdigest()[:24]
+
+
 def name_terms(folder_path, name):
     return set(tokens((folder_path or "").replace("/", " ") + " " + base_name(name)))
 
@@ -85,12 +116,22 @@ def query_profile(text, document_frequency, total_chunks):
 def query_profiles(text, document_frequency, total_chunks):
     """Multi-issue pleadings need local queries; unrelated terms retain their weight in every window."""
     profiles = [query_profile(text, document_frequency, total_chunks)]
-    if len(text) > 1200:
-        for start in range(0, len(text), TOPIC_STEP):
+    length = len(text)
+    if length > 1200:
+        # 24,000자 이후 뒷부분 쟁점도 누락되지 않도록 문서 길이에 맞춰 윈도우 간격을 조정한다(상한 약 80구간).
+        step = TOPIC_STEP if length <= 48000 else max(TOPIC_STEP, (length - TOPIC_WINDOW) // 80)
+        seen_starts = set()
+        for start in range(0, length, step):
+            seen_starts.add(start)
             part = text[start:start + TOPIC_WINDOW]
             if len(part) < 160:
                 continue
             profile = query_profile(part, document_frequency, total_chunks)
+            if len(profile) >= MIN_MATCHED_TERMS:
+                profiles.append(profile)
+        tail_start = max(0, length - TOPIC_WINDOW)
+        if tail_start not in seen_starts and length - tail_start >= 160:
+            profile = query_profile(text[tail_start:length], document_frequency, total_chunks)
             if len(profile) >= MIN_MATCHED_TERMS:
                 profiles.append(profile)
     return profiles
@@ -312,3 +353,140 @@ def metadata_gate(items, queries, fulltext_hits=None):
 def gate_thresholds():
     return {"min_score": GATE_MIN_SCORE, "min_terms": GATE_MIN_TERMS, "max_candidates": GATE_MAX_CANDIDATES,
             "fulltext_terms": FULLTEXT_TERMS}
+
+
+_CLAUSE_VERB_END = re.compile(
+    r"(?:하였으며|하였으나|하였으므로|하였다|하였고|하여야|하여|하는|한다|했다|"
+    r"되었으나|되었으며|되었다|된다|되어|되는|이다|이며|이고|이나|이거나|"
+    r"않았다|않으며|않는다|않은|없다|없으며|없는|있다|있으며|있는)$"
+)
+
+
+def content_stems(text: str, *, limit: int = 32) -> list[str]:
+    """조사·어미와 형식 불용어를 제외한 한국어 어간 및 영문·숫자 핵심 토큰을 추출한다."""
+    cleaned = query_text(str(text or ""))
+    raw_words = re.findall(r"[가-힣]{2,}|[A-Za-z0-9]{2,}", cleaned.lower())
+    ko_prelim = []
+    other_words = []
+    for word in raw_words:
+        if re.fullmatch(r"[가-힣]+", word):
+            stem = JOSA_END.sub("", word)
+            stem = _CLAUSE_VERB_END.sub("", stem)
+            ko_prelim.append(stem)
+        elif word not in LATIN_NOISE and not word.isdigit():
+            other_words.append(word[:80])
+    known = set(ko_prelim)
+    ordered = []
+    seen = set()
+    for stem in ko_prelim:
+        if len(stem) >= 3 and stem[-1] in "이가의" and stem[:-1] in known:
+            stem = stem[:-1]
+        if (
+            len(stem) >= 2
+            and stem not in WORD_NOISE
+            and stem not in QUERY_NOISE
+            and not re.search(r"(?:습니다|니다|이다)$", stem)
+        ):
+            if stem not in seen:
+                seen.add(stem)
+                ordered.append(stem)
+    for word in other_words:
+        if word not in seen:
+            seen.add(word)
+            ordered.append(word)
+    return ordered[:limit]
+
+
+def _char_ngrams_counts(text: str, ns: tuple[int, ...] = (2, 3)) -> Counter:
+    compact = re.sub(r"[^가-힣a-z0-9]", "", str(text or "").lower())
+    counts: Counter = Counter()
+    length = len(compact)
+    for n in ns:
+        if length < n:
+            continue
+        weight = 1.0 if n == 3 else 0.5
+        for idx in range(length - n + 1):
+            counts[compact[idx:idx + n]] += weight
+    return counts
+
+
+def local_semantic_score(
+    query: str,
+    candidate: str,
+    *,
+    query_stems: set[str] | None = None,
+    candidate_stems: set[str] | None = None,
+) -> float:
+    """네트워크 없이 한국어 어간 겹침과 문자 n-gram 코사인 유사도를 결합한 로컬 의미 점수(0.0~1.0)."""
+    q_stems = query_stems if query_stems is not None else set(content_stems(query))
+    c_stems = candidate_stems if candidate_stems is not None else set(content_stems(candidate, limit=80))
+    if not q_stems or not c_stems:
+        return 0.0
+    shared = q_stems & c_stems
+    stem_cos = len(shared) / math.sqrt(len(q_stems) * len(c_stems))
+    q_grams = _char_ngrams_counts(query_text(query))
+    c_grams = _char_ngrams_counts(query_text(candidate))
+    if not q_grams or not c_grams:
+        return round(stem_cos, 4)
+    common_keys = set(q_grams) & set(c_grams)
+    dot = sum(q_grams[k] * c_grams[k] for k in common_keys)
+    q_norm = math.sqrt(sum(v * v for v in q_grams.values()))
+    c_norm = math.sqrt(sum(v * v for v in c_grams.values()))
+    ngram_cos = dot / (q_norm * c_norm) if q_norm and c_norm else 0.0
+    # 어간 일치가 전혀 없고 n-gram 유사도도 낮으면 무관 문헌 오탐을 막기 위해 0으로 처리한다.
+    if not shared and ngram_cos < 0.25:
+        return 0.0
+    return round(min(1.0, 0.55 * stem_cos + 0.45 * ngram_cos), 4)
+
+
+def extract_identifiers(text: str, citations=None) -> dict:
+    """본문 및 인용 목록에서 사건번호·법령명+조문 식별자를 정규화해 뽑아낸다."""
+    from .reference_binding import ARTICLE_RE, CASE_RE, authority_text, identifier, value
+
+    case_numbers = []
+    law_articles = []
+    law_names = []
+    seen_cases = set()
+    seen_laws = set()
+    seen_law_names = set()
+
+    for citation in citations or []:
+        ident = identifier(citation)
+        if not ident:
+            continue
+        kind, key, article = ident
+        if kind == "case" and key not in seen_cases:
+            seen_cases.add(key)
+            case_numbers.append(key)
+        elif kind == "law":
+            if (key, article) not in seen_laws:
+                seen_laws.add((key, article))
+                law_articles.append((key, article))
+            if key not in seen_law_names:
+                seen_law_names.add(key)
+                law_names.append(key)
+
+    compact = authority_text(text)
+    for m in CASE_RE.finditer(compact):
+        num = m.group(1)
+        if num not in seen_cases:
+            seen_cases.add(num)
+            case_numbers.append(num)
+    law_pat = re.compile(
+        r"([가-힣A-Za-z·]{2,30}(?:법률|법|령|규정|조례))"
+        r"(제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?)"
+    )
+    for m in law_pat.finditer(compact):
+        lname, art = m.group(1), m.group(2)
+        if ARTICLE_RE.fullmatch(art) and (lname, art) not in seen_laws:
+            seen_laws.add((lname, art))
+            law_articles.append((lname, art))
+        if lname not in seen_law_names:
+            seen_law_names.add(lname)
+            law_names.append(lname)
+    return {
+        "case_numbers": case_numbers,
+        "law_articles": law_articles,
+        "law_names": law_names,
+    }
+
