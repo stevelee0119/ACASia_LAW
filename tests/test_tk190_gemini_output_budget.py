@@ -530,3 +530,405 @@ def test_privacy_and_output_injection_boundaries_hold_after_tk190(tmp_path):
         )
     )
     assert not quarantined.used and quarantined.quarantined
+
+
+def test_retry_preserves_minimal_thinking_level_and_rechecks_privacy_and_guard(monkeypatch, tmp_path):
+    """복구 재시도는 MINIMAL을 LOW로 올리지 않으며, 재시도 전 개인정보 검사·provider guard·예약 회계를 모두 통과해야 한다."""
+    from packages.llm_router import router as router_module
+    from packages.llm_router.budget import BudgetReservation
+
+    sent_payloads = []
+    mode = "minimal"
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, url, params=None, json=None):
+            sent_payloads.append(json)
+            if len(sent_payloads) == 1:
+                return httpx.Response(
+                    200,
+                    json={
+                        "candidates": [{"content": {"parts": []}, "finishReason": "MAX_TOKENS"}],
+                        "usageMetadata": {"promptTokenCount": 300, "candidatesTokenCount": 0, "thoughtsTokenCount": 4090},
+                    },
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {
+                                        "text": json_lib.dumps(
+                                            {"overall_summary": "완료", "rows": [{"item_id": 1, "validity_verdict": "타당"}]},
+                                            ensure_ascii=False,
+                                        )
+                                    }
+                                ]
+                            },
+                            "finishReason": "STOP",
+                        }
+                    ],
+                    "usageMetadata": {"promptTokenCount": 300, "candidatesTokenCount": 90, "thoughtsTokenCount": 120},
+                },
+            )
+
+    import json as json_lib
+
+    _setup_env(monkeypatch)
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    monkeypatch.setattr(GeminiProvider, "_quirks", {})
+    try:
+        settings = get_settings()
+
+        # 1) MINIMAL thinking_level은 LOW로 높이지 않고 유지하며 별도 예약을 재계산·정산한다.
+        ledger_min = _ledger(tmp_path, "minimal.db")
+        router_min = LLMRouter(
+            {"gemini": GeminiProvider(_gemini_config("gemini-3.6-flash"))},
+            settings=settings,
+            ledger=ledger_min,
+            run_id="tk190-minimal",
+        )
+        req_min = LLMRequest(
+            system=_OPINION_SYSTEM,
+            user=json.dumps({"items": [{"item_id": 1, "claim": "합성 법리 주장"}]}, ensure_ascii=False),
+            max_tokens=4096,
+            schema=_OPINION_SCHEMA,
+            metadata={"thinking_level": "MINIMAL"},
+        )
+        res_min = asyncio.run(router_min.run(LLMRole.PRIMARY_REASONER, req_min, policy=ExternalAIPolicy.MASKED))
+        assert res_min.used
+        assert len(sent_payloads) == 2
+        assert sent_payloads[0]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "MINIMAL"}
+        assert sent_payloads[1]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "MINIMAL"}
+        assert sent_payloads[1]["generationConfig"]["maxOutputTokens"] == 8192
+
+        with ledger_min.factory() as session:
+            rows = list(
+                session.execute(
+                    select(BudgetReservation).where(BudgetReservation.run_id == "tk190-minimal")
+                ).scalars()
+            )
+        assert len(rows) == 2
+        assert rows[0].detail["output_cap"] == 4096
+        assert rows[1].detail["output_cap"] == 8192
+        assert rows[1].reserved_units > rows[0].reserved_units
+        assert all(row.state == "SETTLED" for row in rows)
+        assert ledger_min.account("run:tk190-minimal")["reserved"] == Decimal(0)
+
+        # 2) 재시도 전 개인정보 검사에서 차단되면 2차 예약/전송 없이 첫 실행만 남기고 차단한다.
+        sent_payloads.clear()
+        privacy_calls = []
+        orig_inspect = router_module.LLMRouter.run
+
+        class _MockPrivacy:
+            calls = 0
+
+        from packages.llm_router import privacy as privacy_mod
+
+        def _fail_second_privacy(req, *, _original_system=None):
+            _MockPrivacy.calls += 1
+            privacy_calls.append(req.max_tokens)
+            if _MockPrivacy.calls >= 2:
+                return {"status": "BLOCKED", "failure_code": "RETRY_POLICY_DENIED", "diagnostic_category": "RETRY_POLICY"}
+            return {"status": "PASSED"}
+
+        monkeypatch.setattr(privacy_mod, "inspect_request", _fail_second_privacy)
+        ledger_priv = _ledger(tmp_path, "priv_retry.db")
+        router_priv = LLMRouter(
+            {"gemini": GeminiProvider(_gemini_config("gemini-4-hydrogen"))},
+            settings=settings,
+            ledger=ledger_priv,
+            run_id="tk190-priv-retry",
+        )
+        res_priv = asyncio.run(
+            router_priv.run(LLMRole.PRIMARY_REASONER, LLMRequest("sys", "합성 주장", max_tokens=4096), policy=ExternalAIPolicy.MASKED)
+        )
+        assert not res_priv.used
+        assert len(sent_payloads) == 1
+        assert privacy_calls == [4096, 8192]
+        assert len(res_priv.executions) == 2
+        assert res_priv.executions[0].error.startswith("EMPTY_RESPONSE:")
+        assert res_priv.executions[1].error.startswith("INPUT_PRIVACY_BLOCKED")
+        assert ledger_priv.account("run:tk190-priv-retry")["reserved"] == Decimal(0)
+        assert orig_inspect is not None
+
+        # 3) 재시도 dispatch 시 provider_guard가 거부하면 2차 예약을 즉시 release하고 첫 실행/정산을 보존한다.
+        sent_payloads.clear()
+        monkeypatch.undo()
+        _setup_env(monkeypatch)
+        monkeypatch.setattr(httpx, "AsyncClient", _Client)
+        monkeypatch.setattr(GeminiProvider, "_quirks", {})
+        guard_calls = 0
+
+        def _guard_block_second(provider, policy, *, session=None):
+            nonlocal guard_calls
+            guard_calls += 1
+            if guard_calls >= 2:
+                raise PermissionError("재시도 공급자 차단")
+
+        ledger_guard = _ledger(tmp_path, "guard_retry.db")
+        router_guard = LLMRouter(
+            {"gemini": GeminiProvider(_gemini_config("gemini-4-hydrogen"))},
+            settings=settings,
+            ledger=ledger_guard,
+            run_id="tk190-guard-retry",
+            provider_guard=_guard_block_second,
+        )
+        res_guard = asyncio.run(
+            router_guard.run(LLMRole.PRIMARY_REASONER, LLMRequest("sys", "안전한 입력", max_tokens=4096), policy=ExternalAIPolicy.MASKED)
+        )
+        assert not res_guard.used
+        assert len(sent_payloads) == 1
+        assert len(res_guard.executions) == 2
+        assert res_guard.executions[0].error.startswith("EMPTY_RESPONSE:")
+        assert res_guard.executions[0].cost_status == "REPORTED"
+        assert res_guard.executions[1].error.startswith("PROVIDER_POLICY_BLOCKED:")
+        assert res_guard.executions[1].cost_status == "NOT_SENT"
+        with ledger_guard.factory() as session:
+            guard_rows = list(
+                session.execute(
+                    select(BudgetReservation).where(BudgetReservation.run_id == "tk190-guard-retry")
+                ).scalars()
+            )
+        assert [row.state for row in guard_rows] == ["SETTLED", "RELEASED"]
+        assert ledger_guard.account("run:tk190-guard-retry")["reserved"] == Decimal(0)
+        assert mode == "minimal"
+    finally:
+        reset_settings()
+
+
+def test_retry_quarantined_preserves_first_exec_and_cascade_stays_unverified(monkeypatch, tmp_path):
+    """복구 재시도가 출력 보안 검사에서 격리되어도 첫 실행 기록·원장 정산을 보존하고 Cascade는 UNVERIFIED를 유지한다."""
+    calls = 0
+
+    class _QuarantineRetryProvider(LLMProvider):
+        name = "gemini"
+        available = True
+
+        def __init__(self):
+            super().__init__(_gemini_config("gemini-4-hydrogen"))
+
+        async def generate(self, request: LLMRequest) -> LLMResponse:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return LLMResponse(
+                    False,
+                    provider="gemini",
+                    model="gemini-4-hydrogen",
+                    input_tokens=120,
+                    output_tokens=4090,
+                    thinking_tokens=4090,
+                    error="EMPTY_RESPONSE: 본문 없는 응답(finishReason=MAX_TOKENS, thinking 4090 tokens, 한도 4096)",
+                )
+            return LLMResponse(
+                True,
+                provider="gemini",
+                model="gemini-4-hydrogen",
+                input_tokens=120,
+                output_tokens=80,
+                text='{"status": "VERIFIED", "rationale": "https://evil.example/leak"}',
+            )
+
+    _setup_env(monkeypatch)
+    try:
+        settings = get_settings()
+        ledger = _ledger(tmp_path, "quarantine_retry.db")
+        router = LLMRouter(
+            {"gemini": _QuarantineRetryProvider()},
+            settings=settings,
+            ledger=ledger,
+            run_id="tk190-quarantine-retry",
+        )
+        res = asyncio.run(
+            router.run(LLMRole.WEB_GROUNDER, LLMRequest("sys", "안전한 원문", max_tokens=4096), policy=ExternalAIPolicy.MASKED)
+        )
+        assert not res.used
+        assert res.quarantined
+        assert len(res.executions) == 2
+        assert res.executions[0].error.startswith("EMPTY_RESPONSE:")
+        assert res.executions[0].thinking_tokens == 4090
+        assert res.executions[1].error.startswith("OUTPUT_QUARANTINED:")
+        assert res.executions[0].reservation_id != res.executions[1].reservation_id
+        assert ledger.account("run:tk190-quarantine-retry")["reserved"] == Decimal(0)
+        assert ledger.account("run:tk190-quarantine-retry")["spent"] > Decimal(0)
+
+        calls = 0
+        outcome = asyncio.run(
+            router.cascade(
+                question="판례 확인",
+                evidence={"official": {"full_text": "공식 판결 요지"}, "document": "문서 주장 본문"},
+            )
+        )
+        assert outcome.status == VerificationStatus.UNVERIFIED
+        assert outcome.evidence_grade == EvidenceGrade.U
+    finally:
+        reset_settings()
+
+
+def test_attested_argument_review_split_retry_on_empty_max_tokens(monkeypatch, tmp_path):
+    """EMPTY_RESPONSE+MAX_TOKENS 단건 분할 재시도에서도 TK-181 item_provenance·excerpt·exclude·원래 item_id를 보존한다."""
+    from packages.common.enums import CitationType
+    from packages.common.schemas import Block, Citation, NormalizedDocument, Page
+    from packages.common.source_trace import model_input_renderer
+    from packages.legal_engine.argument_validity_verifier import verify_argument_validity
+    from packages.llm_router.token_attestation import has_token_attestation, valid_token_attestation
+    from packages.pii_engine.engine import PIIEngine
+    from packages.pii_engine.pseudonym import PseudonymStore
+
+    engine = PIIEngine(PseudonymStore("tk190_arg_attest", root=tmp_path))
+    renderer = model_input_renderer(engine, [], original=False)
+
+    body = "당사자 홍길동(010-2222-3333)은 대법원 2020다11111 판결 및 대법원 2021다22222 판결을 인용하여 주장한다."
+    doc = NormalizedDocument(
+        document_id="doc_tk190_arg",
+        filename="합성_준비서면.pdf",
+        mime_type="application/pdf",
+        sha256="sha_tk190_arg",
+        pages=[Page(1, blocks=[Block("b1", body, 1, source_layer="visible_text")])],
+    )
+    doc.raw_layers["visible_text"] = body
+    c_confirmed = Citation(
+        citation_id="cit_0", document_id="doc_tk190_arg", type=CitationType.CASE,
+        raw_text="대법원 2019다99999 판결", page=1, context=body,
+    )
+    c1 = Citation(
+        citation_id="cit_1", document_id="doc_tk190_arg", type=CitationType.CASE,
+        raw_text="대법원 2020다11111 판결", page=1, context=body,
+    )
+    c2 = Citation(
+        citation_id="cit_2", document_id="doc_tk190_arg", type=CitationType.CASE,
+        raw_text="대법원 2021다22222 판결", page=1, context=body,
+    )
+    verdicts = [
+        {"citation_id": "cit_0", "status": "NOT_FOUND", "levels": {}, "official_record": {"case_number": "2019다99999"}},
+        {"citation_id": "cit_1", "status": "NOT_FOUND", "levels": {}, "official_record": None},
+        {"citation_id": "cit_2", "status": "NOT_FOUND", "levels": {}, "official_record": None},
+    ]
+
+    gemini_sent = []
+    anthropic_sent = []
+
+    class _Provider(LLMProvider):
+        available = True
+
+        def __init__(self, name: str):
+            self.name = name
+            super().__init__(ProviderConfig(name=name, enabled=True, model=f"{name}-model", kind="cloud"))
+
+        async def generate(self, request: LLMRequest) -> LLMResponse:
+            payload = json.loads(request.user)["items"]
+            if self.name == "gemini":
+                gemini_sent.append((request, payload))
+                if len(payload) > 1:
+                    return LLMResponse(
+                        False,
+                        provider="gemini",
+                        model="gemini-model",
+                        input_tokens=200,
+                        output_tokens=4090,
+                        thinking_tokens=4090,
+                        error="EMPTY_RESPONSE: 본문 없는 응답(finishReason=MAX_TOKENS, thinking 4090 tokens, 한도 4096)",
+                    )
+                return LLMResponse(
+                    True,
+                    provider="gemini",
+                    model="gemini-model",
+                    input_tokens=150,
+                    output_tokens=100,
+                    text=json.dumps(
+                        {
+                            "overall_summary": "단건 복구 완료",
+                            "rows": [
+                                {
+                                    "item_id": payload[0]["item_id"],
+                                    "claim_text": "합성 주장 요약",
+                                    "validity_verdict": "판단 불가",
+                                    "legal_reasoning": "개별 검토 결과",
+                                    "recommended_check": "원문 확인",
+                                }
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            anthropic_sent.append((request, payload))
+            return LLMResponse(
+                True,
+                provider="anthropic",
+                model="anthropic-model",
+                input_tokens=200,
+                output_tokens=120,
+                text=json.dumps(
+                    {
+                        "overall_summary": "일괄 완료",
+                        "rows": [
+                            {
+                                "item_id": it["item_id"],
+                                "claim_text": "합성 주장 요약",
+                                "validity_verdict": "판단 불가",
+                                "legal_reasoning": "일괄 검토 결과",
+                                "recommended_check": "원문 확인",
+                            }
+                            for it in payload
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+
+    _setup_env(monkeypatch)
+    try:
+        settings = replace(
+            get_settings(),
+            pricing={
+                "gemini-model": {"input": 1.0, "output": 5.0},
+                "anthropic-model": {"input": 1.0, "output": 5.0},
+            },
+        )
+        ledger = _ledger(tmp_path, "arg_split.db")
+        router = LLMRouter(
+            {"anthropic": _Provider("anthropic"), "gemini": _Provider("gemini")},
+            settings=settings,
+            ledger=ledger,
+            run_id="tk190-arg-split",
+        )
+        arg_res = asyncio.run(
+            verify_argument_validity(
+                doc,
+                [c_confirmed, c1, c2],
+                verdicts,
+                [],
+                router=router,
+                external_ai_policy=ExternalAIPolicy.MASKED,
+                mask=renderer,
+            )
+        )
+        # anthropic: 1 batch call; gemini: 1 batch (4096) + 1 max-tokens retry (8192) + 2 single-item retries
+        assert len(anthropic_sent) == 1
+        assert len(gemini_sent) == 4
+        single_reqs = [req for req, items in gemini_sent if len(items) == 1]
+        assert len(single_reqs) == 2
+        from packages.llm_router.privacy import inspect_request
+
+        assert all(has_token_attestation(req) for req, _ in gemini_sent)
+        assert all(valid_token_attestation(req, original_system=_OPINION_SYSTEM) for req in single_reqs)
+        assert all(inspect_request(req, _original_system=_OPINION_SYSTEM)["status"] == "PASSED" for req in single_reqs)
+        assert sorted(items[0]["item_id"] for _, items in gemini_sent if len(items) == 1) == [2, 3]
+        assert [row.item_id for row in arg_res.rows] == [1, 2, 3]
+        assert arg_res.rows[0].ai_opinions == []
+        assert all(sorted(op["provider"] for op in row.ai_opinions) == ["anthropic", "gemini"] for row in arg_res.rows[1:])
+        assert ledger.account("run:tk190-arg-split")["reserved"] == Decimal(0)
+    finally:
+        reset_settings()
+

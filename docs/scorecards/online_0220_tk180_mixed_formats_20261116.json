@@ -1,0 +1,91 @@
+{
+  "release": "0.22.0",
+  "format": "pdf",
+  "date_kst": "2026-11-16",
+  "commit": "183f3d22791bb01d4c8a39ce842e193000c663b8",
+  "report_sha256": "d85b630d64bc42a96ba8df44c0d66e785d9bc9abff4023992f06eb311ac7c0bc",
+  "input_sha256": "10e68461a2bf6c7d0a786fced772368e6d36dbdb9e8e4368a80a9de8f00b0ed6",
+  "reference_sha256": "b8c96c1b967553fb34b6bdfe1037669ad02af5eed7f409b404c34c2b3bcb2d19",
+  "spec_sha256": "8210cead7279738bba821c21e20c57ee568ebdd1fd2520cc45daecc74d546a61",
+  "state": "PARTIAL_COMPLETED",
+  "condition_checks": {
+    "same_input_as_txt": true,
+    "same_deployed_commit": true,
+    "only_expected_format_in_inventory": false,
+    "only_expected_format_in_indexed_sources": false,
+    "reference_bytes_match_fixture": false,
+    "selected_expected_format_without_old_txt": false,
+    "other_three_controls_present": true
+  },
+  "scores": [
+    {
+      "spec": "tk180_source_roles_normal",
+      "rule_version": "1",
+      "passed": 5,
+      "total": 5,
+      "failed": []
+    },
+    {
+      "spec": "pipeline_health_online",
+      "rule_version": "1",
+      "passed": 5,
+      "total": 6,
+      "failed": [
+        "H-REF"
+      ]
+    }
+  ],
+  "inventory": [
+    {
+      "name": "TK180_verified_reference_control.pdf",
+      "mimeType": "application/pdf",
+      "status": "INDEXED",
+      "reason": "TEXT_INDEXED",
+      "pages": 1,
+      "read_pages": 1,
+      "text_parser": "pypdfium2"
+    },
+    {
+      "name": "TK180_verified_reference_control.docx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "status": "INDEXED",
+      "reason": "TEXT_INDEXED",
+      "pages": 1,
+      "read_pages": 1,
+      "text_parser": "DocxParser"
+    },
+    {
+      "name": "TK180_verified_reference_control.xlsx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "status": "INDEXED",
+      "reason": "TEXT_INDEXED",
+      "pages": null,
+      "read_pages": null,
+      "text_parser": null
+    }
+  ],
+  "reference_status": "PARTIAL",
+  "files_seen": 41,
+  "files_indexed": 34,
+  "selected_reference_chunks": 5,
+  "model_calls": 9,
+  "model_failed": 0,
+  "model_errors": {},
+  "role_result": "FAIL_OR_INVALID_CONDITION",
+  "per_format_observations": {
+    "xlsx": {
+      "nonadvisory_CONTRADICTS": 1,
+      "advisory_SUPPORTS": 1,
+      "advisory_CONTEXT": 1,
+      "advisory_INSUFFICIENT": 1,
+      "advisory_CONTRADICTS": 1
+    },
+    "pdf": {
+      "advisory_CONTRADICTS": 1,
+      "advisory_CONTEXT": 1
+    }
+  },
+  "verdict": "MIXED_FORMAT_PASS_NOT_SINGLE_FORMAT_PASS",
+  "cleanup": "TRASH_VERIFIED",
+  "evidence_archive_sha256": "19dc4c8b56302e082febda95b7552137ccb4a61e53bb7c350ed87925c8eea31b"
+}

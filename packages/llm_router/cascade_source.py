@@ -27,14 +27,15 @@ class _CascadeRequest(LLMRequest):
 
 class _CascadeSource:
     # Only immutable strings are retained; no caller-owned dictionary survives.
-    __slots__ = ("__stage", "__snapshot", "__schema")
+    __slots__ = ("__stage", "__snapshot", "__schema", "__attestation")
 
-    def __init__(self, stage, snapshot, schema, *, capability):
+    def __init__(self, stage, snapshot, schema, *, capability, attestation=None):
         if capability is not _CAPABILITY:
             raise TypeError("Source must be constructed by the cascade consumer")
         object.__setattr__(self, "_CascadeSource__stage", stage)
         object.__setattr__(self, "_CascadeSource__snapshot", snapshot)
         object.__setattr__(self, "_CascadeSource__schema", schema)
+        object.__setattr__(self, "_CascadeSource__attestation", attestation)
 
     def __setattr__(self, name, value):
         raise AttributeError("Cascade inspection source is immutable")
@@ -49,6 +50,9 @@ class _CascadeSource:
         # dataclasses.asdict deep-copies non-dataclass fields. Its output must
         # contain neither a source object nor any additional source text.
         return _REDACTED
+
+    def _token_attestation(self):
+        return self.__attestation
 
     def _inspection_text(self):
         return self.__snapshot
@@ -82,6 +86,15 @@ class _CascadeSource:
                 and request.user == self._render())
 
 
+def _with_cascade_attestation(source: _CascadeSource, attestation) -> _CascadeSource:
+    cloned = _CascadeSource.__new__(_CascadeSource)
+    for slot in ("__stage", "__snapshot", "__schema"):
+        attr = "_CascadeSource" + slot
+        object.__setattr__(cloned, attr, object.__getattribute__(source, attr))
+    object.__setattr__(cloned, "_CascadeSource__attestation", attestation)
+    return cloned
+
+
 def build_cascade_request(stage, question, evidence, *, primary_verdict=None):
     """Render and inspect the same frozen source, without changing wire payloads."""
     from .router import _VERDICT_MAX_TOKENS, _VERDICT_SCHEMA
@@ -99,10 +112,12 @@ def build_cascade_request(stage, question, evidence, *, primary_verdict=None):
 
 def valid_cascade_source(request, *, original_system=None):
     from .excerpt_source import is_excerpt_request
+    from .token_attestation import _TokenAttestation
+
     if is_excerpt_request(request):
         return True  # Its independent additive validator runs at the same gate.
     source = request.inspection_source
-    if source is None:
+    if source is None or type(source) is _TokenAttestation:
         return not isinstance(request, _CascadeRequest)
     if type(request) is not _CascadeRequest or type(source) is not _CascadeSource:
         return False

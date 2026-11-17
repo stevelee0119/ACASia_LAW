@@ -44,7 +44,12 @@ def _context_review(verdict, reviews, mask=None):
               "reason": "공식 원문에 근거한 의미·맥락 검토가 완료되지 않아 취지 동일 여부는 판단 유보합니다."}
     source = str((verdict.get("official_record") or {}).get("full_text") or "")
     if mask and source:
-        source = mask(source)
+        from packages.pii_engine.pseudonym import PseudonymSequenceLimitError
+
+        try:
+            source = mask(source)
+        except PseudonymSequenceLimitError:
+            return result
     for review in reviews:
         if (review.get("citation_id") != verdict.get("citation_id")
                 or review.get("review_id") != verdict.get("review_id")):
@@ -461,10 +466,14 @@ async def verify_argument_validity(
             )
         )
 
-        # 3. 요약 전용 / 본문 미확보 판정 (SC2)
+        # 3. 요약 전용 / 본문 미확보 판정 (SC2) — 판례·헌재결정례에만 full_text 요구(법령·행정규칙 제외)
         has_official = bool(verdict.get("official_record"))
         has_full_text = bool((verdict.get("official_record") or {}).get("full_text"))
-        is_summary_only = has_official and not has_full_text
+        is_summary_only = (
+            citation.type in (CitationType.CASE, CitationType.CONSTITUTIONAL)
+            and has_official
+            and not has_full_text
+        )
 
         # 4. 부존재 / 미확인 상태
         is_unverified = (status in ("NOT_FOUND", "CONTRADICTED") or level1 == "NOT_FOUND"
@@ -507,7 +516,9 @@ async def verify_argument_validity(
             court_tier = get_court_tier(citation)
             is_cov = is_covered_precedent_scope(citation)
 
-            if not case_number_possible(citation.canonical_case_number or citation.case_number or ""):
+            if (citation.type in (CitationType.CASE, CitationType.CONSTITUTIONAL)
+                    and not has_official
+                    and not case_number_possible(citation.canonical_case_number or citation.case_number or "")):
                 basis = "FABRICATION_SUSPECTED"
                 auth_status = LegalVerificationStatus.SUSPICIOUS.value
             elif distortion_finding or sem_status == "CONTRADICTED":
@@ -573,6 +584,7 @@ async def verify_argument_validity(
     # 판례를 "가공의 판례"로 적어 두면 그 서면을 쓴 변호사에게 실제 손해가 간다.
     # 판정을 만든 verifier도 "'존재하지 않는 판례'라고 단정하지 않는다"고 적었다.
     for index, item in enumerate(unverified_cases, 1):
+        item["item_id"] = index
         c = item["citation"]
         basis = item.get("basis", "UNCONFIRMED")
         mismatch = basis == "CONTENT_MISMATCH"
@@ -591,8 +603,8 @@ async def verify_argument_validity(
             continue
 
         statute = c.type in (CitationType.STATUTE, CitationType.ADMIN_RULE)
-        noun = "법령" if statute else "판례"
-        # 받침에 맞는 조사(V1.0.0 D6: '판례을(를)' 같은 조사 오류 제거). 법령은 받침 있음, 판례는 받침 없음.
+        noun = "행정규칙" if c.type == CitationType.ADMIN_RULE else ("법령" if statute else "판례")
+        # 받침에 맞는 조사(V1.0.0 D6: '판례을(를)' 같은 조사 오류 제거). 법령·행정규칙은 받침 있음, 판례는 받침 없음.
         obj, subj = ("을", "이") if statute else ("를", "가")
 
         if contradiction:
@@ -667,30 +679,46 @@ async def verify_argument_validity(
                              "정정하거나 그 취지가 주장을 뒷받침하는지 다시 검토해야 함.")
         elif basis == "UNCONFIRMED_SOURCE_LIMIT":
             ai_basis = (
-                ("국가법령정보 법령 목록에서 같은 이름의 법령을 확인하지 못함. 자치법규 또는 행정규칙 약칭 "
+                (f"국가법령정보 목록에서 같은 이름의 {noun}{obj} 확인하지 못함. 자치법규 또는 행정규칙 약칭 "
                  "가능성이 있으므로 이 사실만으로 부존재로 단정하지 않음.") if statute else
                 ("하급심 판결(지방법원/고등법원) 또는 미공개 결정은 공식 판례 DB의 공개 수록 대상에서 제외될 수 있어, "
                  "공식 DB 미수록만으로 가짜 판례로 단정하지 않음.")
             )
-            verdict_text = "출처 한계 확인 불가 (판결문 사본 제출 필요)"
-            legal_reason = (f"하급심 판례는 공식 DB에 전문이 수록되지 않을 수 있으므로, 판결문 사본을 확보하기 전까지는 "
-                            f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 실재하지 않는다는 뜻은 아닙니다.")
-            counteraction = "상대방에게 판결문 사본 제출을 요청하거나 법원 판결서 열람 서비스를 통해 확인 후 변론할 것."
+            verdict_text = ("출처 한계 확인 불가 (원문 사본 확인 필요)" if statute
+                            else "출처 한계 확인 불가 (판결문 사본 제출 필요)")
+            legal_reason = (
+                (f"공개 국가법령정보 목록에서 확인되지 않는 규정·약칭·자치법규일 수 있으므로, 원문을 확보하기 전까지는 "
+                 f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 실재하지 않는다는 뜻은 아닙니다.") if statute else
+                (f"하급심 판례는 공식 DB에 전문이 수록되지 않을 수 있으므로, 판결문 사본을 확보하기 전까지는 "
+                 f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 실재하지 않는다는 뜻은 아닙니다.")
+            )
+            counteraction = (
+                "국가법령정보센터(law.go.kr) 또는 소관 규정집에서 정식 명칭과 조문 원문을 확인한 후 변론할 것." if statute
+                else "상대방에게 판결문 사본 제출을 요청하거나 법원 판결서 열람 서비스를 통해 확인 후 변론할 것."
+            )
             auth_status = LegalVerificationStatus.UNCONFIRMED_SOURCE_LIMIT.value
         elif basis == "CONFIRMED_NONEXISTENT":
             ai_basis = (
-                ("국가법령정보 법령 목록에서 해당 법령 및 조문 번호의 부존재가 확인됨.") if statute else
+                (f"국가법령정보 목록에서 해당 {noun} 및 조문 번호의 부존재가 확인됨.") if statute else
                 ("대법원 판례 공개 DB 검색 범위 내에서 일치하는 사건번호를 찾지 못함. "
                  "실재하지 않는 판례이거나 중대한 사건번호 오기 가능성이 높음.")
             )
-            verdict_text = "대법원 판례 부존재 (가짜 판례 의심)"
-            legal_reason = ("대법원 공식 판례 DB 검색 범위 내에서 일치하는 기록을 확인하지 못하였으므로, "
-                            "해당 판례를 근거로 한 주장은 법리적 타당성을 인정하기 어렵습니다.")
-            counteraction = "대법원 종합법률정보 등을 재확인하고, 단순 오기가 아닌 경우 허위 인용으로 반박하거나 석명을 요청할 것."
+            verdict_text = f"공식 {noun}·조문 미확인 (출처 석명 필요)" if statute else "대법원 판례 부존재 (가짜 판례 의심)"
+            legal_reason = (
+                (f"국가법령정보 공식 DB 검색 범위 내에서 일치하는 {noun} 또는 조문을 확인하지 못하였으므로, "
+                 f"정확한 출처 확인 전까지 해당 규정을 근거로 한 주장은 법리적 타당성을 인정하기 어렵습니다.") if statute else
+                ("대법원 공식 판례 DB 검색 범위 내에서 일치하는 기록을 확인하지 못하였으므로, "
+                 "해당 판례를 근거로 한 주장은 법리적 타당성을 인정하기 어렵습니다.")
+            )
+            counteraction = (
+                "국가법령정보센터(law.go.kr)에서 정식 명칭·조문 번호를 재확인하고, 확인되지 않을 경우 상대방에게 출처 석명을 요청할 것."
+                if statute else
+                "대법원 종합법률정보 등을 재확인하고, 단순 오기가 아닌 경우 허위 인용으로 반박하거나 석명을 요청할 것."
+            )
             auth_status = LegalVerificationStatus.CONFIRMED_NONEXISTENT.value
         else:
             ai_basis = (
-                ("국가법령정보 법령 목록에서 같은 이름의 법령·조문을 확인하지 못함. 법령명 오기·약칭·폐지 "
+                (f"국가법령정보 목록에서 같은 이름의 {noun}·조문을 확인하지 못함. 명칭 오기·약칭·폐지 "
                  "가능성이 있으므로 이 사실만으로 부존재나 임의 생성으로 단정하지 않음.") if statute else
                 ("국가법령정보 공식 DB 검색 결과 같은 사건번호의 기록을 확인하지 못함. "
                  "공식 DB는 모든 재판을 수록하지 않으므로(미공개·수록범위 밖) 이 사실만으로 "
@@ -700,7 +728,7 @@ async def verify_argument_validity(
             legal_reason = (f"공식 DB에서 찾지 못한 {noun}{obj} 근거로 삼고 있어, 원문을 확인하기 전까지 "
                             f"그 주장의 근거가 확정되지 않습니다. {noun}{subj} 실재하지 않는다는 의미는 아닙니다.")
             counteraction = (
-                ("정식 법령명·약칭·시행 여부를 국가법령정보센터에서 다시 확인하고, 조문 원문과 대조할 것."
+                (f"정식 {noun}명·약칭·시행 여부를 국가법령정보센터에서 다시 확인하고, 조문 원문과 대조할 것."
                  if statute else
                  "판결문 사본 또는 출처를 확인하고, 대법원 종합법률정보 등 다른 공식 경로에서도 "
                  "조회해 볼 것. 어느 경로에서도 확인되지 않을 때 비로소 부존재를 다툴 수 있음.")
@@ -723,6 +751,7 @@ async def verify_argument_validity(
             grounded_evidence_quote=item.get("grounded_evidence_quote") or "",
             quote_diff_categories=item.get("quote_diff_categories") or [],
             quote_diff_status=item.get("quote_diff_status"),
+            citation_type=c.type,
         )
 
         row = HallucinationTableRow(
@@ -921,7 +950,7 @@ def _is_output_exhaustion_error(error: Any) -> bool:
 
 
 async def _retry_truncated_singly(router: Any, replies: List[Any], batch: List[Dict[str, Any]],
-                                  policy: ExternalAIPolicy, *, excerpt_pieces=None) -> List[Any]:
+                                  policy: ExternalAIPolicy, *, excerpt_pieces=None, item_provenance=None) -> List[Any]:
     if len(batch) < 2:
         return []
     providers = [p for p in (_answer_provider(a) for a in replies) if p]
@@ -934,6 +963,13 @@ async def _retry_truncated_singly(router: Any, replies: List[Any], batch: List[D
             single = LLMRequest(system=_OPINION_SYSTEM, user=json.dumps({"items": [item]}, ensure_ascii=False),
                                 temperature=0.1, max_tokens=4096, schema=_OPINION_SCHEMA,
                                 input_contract="argument_review_v1")
+            if item_provenance is not None:
+                from packages.llm_router.token_attestation import bind_masked_tokens
+                fields_for_item = item_provenance.get(item['item_id'], {})
+                single_prov = {
+                    f"user.items[0].{fname}": prov for fname, prov in fields_for_item.items()
+                }
+                single = bind_masked_tokens(single, single_prov)
             if excerpt_pieces is not None:
                 from packages.llm_router.excerpt_source import bind_argument_excerpts
                 single = bind_argument_excerpts(single, (excerpt_pieces[item['item_id']],))
@@ -951,13 +987,19 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
     """사용 가능한 모델 모두에게 묻고, 항목별 의견과 일치 여부를 행에 붙인다."""
     from packages.legal_engine.normalize import canonical_case_number, extract_all_case_numbers
     from packages.llm_router.providers import _extract_json
+    from packages.pii_engine.pseudonym import PseudonymSequenceLimitError
 
     from packages.llm_router.router import failure_summary
 
     hide = mask or (lambda text: text)
-    from packages.common.source_trace import render_argument_context
+    from packages.common.source_trace import _ModelInputRenderer, render_argument_context
     from packages.llm_router.excerpt_source import bind_argument_excerpts
+    from packages.llm_router.token_attestation import bind_masked_tokens
+
     excerpt_pieces = {}
+    use_renderer = type(hide) is _ModelInputRenderer
+    attach_attestation = use_renderer and not hide._is_original() and hide._uses_real_store()
+    item_provenance: Dict[int, Dict[str, Tuple[str, Tuple[Tuple[int, int, str], ...]]]] = {}
 
     # TK-138 관련 권위 판례 제공 목록 및 사건번호 집합 구성 (P4, P6, U3)
     precedents = (related_authorities or {}).get("precedents", [])
@@ -971,46 +1013,93 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
             else:
                 provided_case_numbers.add(str(cno).replace(" ", ""))
 
-    precedent_context_str = ""
-    if precedents:
-        prec_lines = []
-        for p in precedents[:3]:
-            kind_str = f" {p['case_kind']}" if p.get("case_kind") else ""
-            summary_str = f": {p['summary'][:150]}" if p.get("summary") else ""
-            prec_lines.append(f"- {p['case_number']} ({p['court']}{kind_str}){summary_str}")
-        precedent_context_str = "\n".join(prec_lines)
+    try:
+        precedent_context_str = ""
+        precedent_spans: Tuple[Tuple[int, int, str], ...] = ()
+        if precedents:
+            prec_lines = []
+            for p in precedents[:3]:
+                kind_str = f" {p['case_kind']}" if p.get("case_kind") else ""
+                summary_str = f": {p['summary'][:150]}" if p.get("summary") else ""
+                prec_lines.append(f"- {p['case_number']} ({p['court']}{kind_str}){summary_str}")
+            raw_prec = "\n".join(prec_lines)
+            if use_renderer:
+                precedent_context_str, precedent_spans = hide.mask_attested(raw_prec)
+            else:
+                precedent_context_str = hide(raw_prec)
 
-    def context_for(index, item):
-        raw_ctx = item.get("evaluation_context") or item.get("context") or ""
-        rendered, piece = render_argument_context(hide, raw_ctx)
-        excerpt_pieces[index] = piece
-        return rendered
-    items = [{
-        "item_id": index,
-        "page": item["citation"].page or 1,
-        "cited_case": hide(item["citation"].raw_text),
-        "확인 상태": _BASIS_LABEL.get(item.get("basis", "UNCONFIRMED"), _BASIS_LABEL["UNCONFIRMED"]),
-        "surrounding_context_and_claim": context_for(index, item),
-        **({"관련 권위 판례(참고)": hide(precedent_context_str)} if precedent_context_str else {}),
-        **({"원문 대조(어절 단위, 원문 기준)": hide(item["quote_diff"])} if item.get("quote_diff") else {}),
-    } for index, item in enumerate(unverified_cases, 1)]
+        def context_for(index, item):
+            raw_ctx = item.get("evaluation_context") or item.get("context") or ""
+            spans_out: list = []
+            if use_renderer:
+                rendered, piece = render_argument_context(hide, raw_ctx, spans_out=spans_out)
+            else:
+                rendered, piece = render_argument_context(hide, raw_ctx)
+            excerpt_pieces[index] = piece
+            item_provenance.setdefault(index, {})["surrounding_context_and_claim"] = (rendered, tuple(spans_out))
+            return rendered
+
+        def mask_field(index: int, field_name: str, raw_text: str) -> str:
+            if use_renderer:
+                masked_val, spans = hide.mask_attested(raw_text)
+                item_provenance.setdefault(index, {})[field_name] = (masked_val, tuple(spans))
+                return masked_val
+            return hide(raw_text)
+
+        items_by_id: Dict[int, Dict[str, Any]] = {}
+        items = []
+        for pos, item in enumerate(unverified_cases, 1):
+            item_id = int(item.get("item_id") or pos)
+            items_by_id[item_id] = item
+            entry = {
+                "item_id": item_id,
+                "page": item["citation"].page or 1,
+                "cited_case": mask_field(item_id, "cited_case", item["citation"].raw_text),
+                "확인 상태": _BASIS_LABEL.get(item.get("basis", "UNCONFIRMED"), _BASIS_LABEL["UNCONFIRMED"]),
+                "surrounding_context_and_claim": context_for(item_id, item),
+            }
+            if precedent_context_str:
+                entry["관련 권위 판례(참고)"] = precedent_context_str
+                if use_renderer:
+                    item_provenance.setdefault(item_id, {})["관련 권위 판례(참고)"] = (
+                        precedent_context_str, precedent_spans,
+                    )
+            if item.get("quote_diff"):
+                entry["원문 대조(어절 단위, 원문 기준)"] = mask_field(
+                    item_id, "원문 대조(어절 단위, 원문 기준)", item["quote_diff"],
+                )
+            items.append(entry)
+    except PseudonymSequenceLimitError:
+        result.ai_summary = "가명 생성 상한(종류별 999건)을 초과하여 AI 교차검토를 수행하지 못함."
+        return
     # 한 번에 모두 물으면 인용이 많을 때 응답이 출력 한도에서 잘린다. 한국어 JSON은
     # 공급자마다 토큰 사용량이 달라, 잘리는 모델만 교차검증에서 빠졌다.
     answers = []
     for start in range(0, len(items), _OPINION_BATCH):
+        batch = items[start:start + _OPINION_BATCH]
         request = LLMRequest(system=_OPINION_SYSTEM,
-                             user=json.dumps({"items": items[start:start + _OPINION_BATCH]}, ensure_ascii=False),
+                             user=json.dumps({"items": batch}, ensure_ascii=False),
                              temperature=0.1, max_tokens=4096, schema=_OPINION_SCHEMA,
                              input_contract="argument_review_v1")
+        if attach_attestation:
+            batch_prov = {}
+            for pos, b_item in enumerate(batch):
+                fields_for_item = item_provenance.get(b_item["item_id"], {})
+                for fname, prov in fields_for_item.items():
+                    batch_prov[f"user.items[{pos}].{fname}"] = prov
+            request = bind_masked_tokens(request, batch_prov)
         request = bind_argument_excerpts(request, tuple(excerpt_pieces[item['item_id']]
-                                                       for item in items[start:start + _OPINION_BATCH]))
+                                                       for item in batch))
         try:
-            batch = items[start:start + _OPINION_BATCH]
             replies = await router.consult_all(LLMRole.PRIMARY_REASONER, request, policy=policy,
                                                expected_task="법률 주장 타당성 검토")
             answers += replies
             # 2건 묶음도 출력 한도에서 잘린 공급자(0.9.8 실제 실행 1건)에는 그 공급자에게만 1건씩 다시 묻는다.
-            answers += await _retry_truncated_singly(router, replies, batch, policy, excerpt_pieces=excerpt_pieces)
+            answers += await _retry_truncated_singly(
+                router, replies, batch, policy,
+                excerpt_pieces=excerpt_pieces,
+                item_provenance=item_provenance if attach_attestation else None,
+            )
         except Exception as exc:  # 참고 의견이 없어도 판정은 이미 끝났다.
             result.ai_summary = f"AI 교차검토를 수행하지 못함({type(exc).__name__})."
             return
@@ -1041,7 +1130,7 @@ async def _attach_ai_opinions(result: ArgumentValidityResult, unverified_cases: 
             # P6, U3: 관련 판례 목록을 모델에 준 때만 응답의 사건번호를 그 목록과 대조한다(평가 측 보완 D4).
             # 서면이 그 항목에서 인용한 사건번호는 제외한다(항목별, 평가 측 보완 D2).
             if provided_case_numbers:
-                own = (unverified_cases[item_id - 1] if 0 < item_id <= len(unverified_cases) else {}).get("citation")
+                own = items_by_id.get(item_id, {}).get("citation")
                 own_cases = {f"{y}{c}{n}" for y, c, n in extract_all_case_numbers(getattr(own, "raw_text", "") or "")}
                 for text in (claim_text, reasoning, check):
                     for y, c, n in extract_all_case_numbers(text):
