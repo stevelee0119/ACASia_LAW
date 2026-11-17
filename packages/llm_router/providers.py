@@ -317,8 +317,68 @@ class AnthropicProvider(LLMProvider):
         ), truncated=data.get("stop_reason") == "max_tokens", limit=request.max_tokens)
 
 
+_GEMINI_MINIMAL_LEVEL_PREFIXES = (
+    "gemini-3-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+)
+
+
+def _gemini_thinking_config(model: str, request: LLMRequest, quirks: set) -> Optional[Dict[str, Any]]:
+    """모델 계열별 공식 thinking 파라미터를 고른다(미지 모델 추측 금지, 거절 시 _quirks로 우회)."""
+    if "no_thinking_config" in quirks:
+        return None
+    m = (model or "").strip().lower()
+    meta = request.metadata or {}
+    requested_level = str(meta.get("thinking_level") or "").strip().upper()
+    raw_budget = meta.get("thinking_budget")
+
+    if m.startswith(("gemini-4", "gemini-3")):
+        if "no_thinking_level" in quirks:
+            return None
+        supports_minimal = any(m.startswith(prefix) for prefix in _GEMINI_MINIMAL_LEVEL_PREFIXES)
+        if requested_level:
+            if requested_level == "MINIMAL" and not supports_minimal:
+                level = "LOW"
+            elif requested_level == "XHIGH" and not m.startswith("gemini-4"):
+                level = "HIGH"
+            elif requested_level in {"MINIMAL", "LOW", "MEDIUM", "HIGH", "XHIGH"}:
+                level = requested_level
+            else:
+                level = "LOW"
+        else:
+            # 구조화 JSON·검토 호출은 추론 토큰이 출력 한도를 다 쓰지 않도록 LOW를 기본으로 쓴다.
+            level = "LOW" if (request.schema is not None or request.max_tokens <= 8192) else "MEDIUM"
+        return {"thinkingLevel": level}
+
+    if m.startswith("gemini-2.5"):
+        if "no_thinking_budget" in quirks or request.max_tokens < 512:
+            return None
+        floor = 128 if "pro" in m else 0
+        ceiling = max(128, request.max_tokens // 2)
+        if raw_budget is not None:
+            try:
+                budget = max(floor, min(int(raw_budget), ceiling))
+                return {"thinkingBudget": budget}
+            except (TypeError, ValueError):
+                pass
+        if requested_level == "LOW":
+            budget = min(512, max(128, request.max_tokens // 4))
+            return {"thinkingBudget": max(floor, budget)}
+        if request.schema is not None or request.max_tokens <= 8192:
+            budget = min(1024, max(128, request.max_tokens // 4))
+            return {"thinkingBudget": max(floor, budget)}
+        return None
+
+    return None
+
+
 class GeminiProvider(LLMProvider):
     name = "gemini"
+
+    # 공급자/모델별로 거절된 파라미터를 기억해 매 호출 HTTP 400을 반복하지 않는다.
+    _quirks: Dict[str, set] = {}
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
         if not self.available:
@@ -329,22 +389,52 @@ class GeminiProvider(LLMProvider):
 
         started = time.time()
         url = f"{self.config.base_url}/models/{self.config.model}:generateContent"
+        quirks = self._quirks.setdefault(self.config.model, set())
+
+        def body() -> Dict[str, Any]:
+            gen_cfg: Dict[str, Any] = {
+                "maxOutputTokens": request.max_tokens,
+                # 형식이 정해진 요청은 JSON으로만 답하게 한다(OpenAI의 json_object와 같은 역할).
+                **({"responseMimeType": "application/json"} if request.schema else {}),
+            }
+            if self.config.model != "gemini-4-hydrogen" and "no_temperature" not in quirks:
+                gen_cfg["temperature"] = request.temperature
+            thinking_cfg = _gemini_thinking_config(self.config.model, request, quirks)
+            if thinking_cfg is not None:
+                gen_cfg["thinkingConfig"] = thinking_cfg
+            return {
+                "systemInstruction": {"parts": [{"text": request.system}]},
+                "contents": [{"role": "user", "parts": [{"text": request.user}]}],
+                "generationConfig": gen_cfg,
+            }
+
         try:
             async with httpx.AsyncClient(timeout=self._timeout()) as client:
-                response = await client.post(
-                    url,
-                    params={"key": self.config.api_key},
-                    json={
-                        "systemInstruction": {"parts": [{"text": request.system}]},
-                        "contents": [{"role": "user", "parts": [{"text": request.user}]}],
-                        "generationConfig": {
-                            **({} if self.config.model == "gemini-4-hydrogen" else {"temperature": request.temperature}),
-                            "maxOutputTokens": request.max_tokens,
-                            # 형식이 정해진 요청은 JSON으로만 답하게 한다(OpenAI의 json_object와 같은 역할).
-                            **({"responseMimeType": "application/json"} if request.schema else {}),
-                        },
-                    },
-                )
+                for _ in range(3):
+                    payload = body()
+                    gen_cfg = payload["generationConfig"]
+                    response = await client.post(
+                        url,
+                        params={"key": self.config.api_key},
+                        json=payload,
+                    )
+                    if response.status_code != 400:
+                        break
+                    message = response.text.lower()
+                    thinking_cfg = gen_cfg.get("thinkingConfig") or {}
+                    if "thinking" in message and thinking_cfg:
+                        if "thinkingBudget" in thinking_cfg and "no_thinking_budget" not in quirks:
+                            quirks.add("no_thinking_budget")
+                        elif "thinkingLevel" in thinking_cfg and "no_thinking_level" not in quirks:
+                            quirks.add("no_thinking_level")
+                        elif "no_thinking_config" not in quirks:
+                            quirks.add("no_thinking_config")
+                        else:
+                            break
+                    elif "temperature" in message and "temperature" in gen_cfg and "no_temperature" not in quirks:
+                        quirks.add("no_temperature")
+                    else:
+                        break
             if response.status_code >= 400:
                 return LLMResponse(False, provider=self.name, model=self.config.model,
                                    error=f"HTTP {response.status_code}: {response.text[:200]}")
