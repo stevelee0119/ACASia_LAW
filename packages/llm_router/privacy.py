@@ -544,6 +544,111 @@ def _walk_fields(value, path="", *, _uncertain_paths=None):
         yield collected_path, collected_text
 
 
+# ===========================================================================
+# 진단 출력용 경로·코드 정규화 (TK-186 보완: 입력 유래 임의 키·값 원문 노출 차단)
+# ===========================================================================
+_SAFE_DIAGNOSTIC_KEYS: frozenset[str] = frozenset({
+    # LLMRequest 및 내부 감사 루트
+    "system", "user", "schema", "max_tokens", "temperature",
+    "metadata", "input_contract", "inspection_source",
+    "original_system", "__original_system__", "cascade_source", "excerpt_source",
+    # Cascade / Evidence 고정 필드
+    "question", "official", "document", "primary_verdict",
+    "case_number", "source_excerpt", "full_text", "excerpt_coverage",
+    "excerpt_sections", "opinion_sections", "confirmed_metadata", "metadata_scope",
+    "segment_id", "opinion_kinds", "original_start", "original_end",
+    "court", "decision_date", "decision_type", "case_name",
+    "masking", "attempted", "masked", "raw_chars", "masked_chars",
+    "raw_sha256", "masked_sha256", "masked_types",
+    "status", "confidence", "rationale", "evidence_quotes", "contradicts",
+    "stage",
+    # 1st-party input_contracts 고정 필드
+    "document_filename", "metadata_ai_hint", "document_sample_text", "document_coverage",
+    "total_chars", "inspected_chars", "sampling_mode", "is_full_coverage",
+    "omitted_chars", "char_limit", "quote_masked_chars", "scope",
+    "requested_chars", "model_executed",
+    "untrusted_references", "reference_sources", "system_instructions",
+    "jurisdiction", "reference_date", "reference_date_status",
+    "source_id", "title", "text", "page", "claim_id", "claim_text",
+    "items", "item_id", "cited_case", "surrounding_context_and_claim",
+    "확인 상태", "원문 대조(어절 단위, 원문 기준)", "관련 권위 판례(참고)",
+    # JSON Schema 고정 메타 키
+    "type", "properties", "required", "additionalProperties", "enum",
+    "minLength", "maxLength", "maxItems", "minItems", "pattern", "default",
+    "observations", "claim_quote", "source_quote", "relationship", "explanation",
+})
+_SAFE_CONTRACT_FAILURE_CODES: frozenset[str] = frozenset({
+    "input_contract", "cascade_source", "excerpt_source",
+    "token_attestation", "excerpt_invalid_trace",
+})
+_SAFE_FAILURE_CODES: frozenset[str] = frozenset({
+    "PII_INPUT_BLOCKED", "INPUT_CONTRACT_VIOLATION",
+    "STATIC_PROMPT_FALSE_POSITIVE", "INSPECTION_EXCEPTION", "INSPECTION_FAILED",
+})
+_SAFE_DIAGNOSTIC_CATEGORIES: frozenset[str] = frozenset({
+    "MASKING_PII_DETECTED", "REQUEST_WIRING_CONTRACT", "INSPECTION_EXCEPTION",
+})
+_SAFE_PII_KIND_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,31}$")
+_ARRAY_SUFFIX_RE = re.compile(r"^(?P<head>.*?)(?P<indices>(?:\[\d+\])+)$")
+
+
+def _safe_diagnostic_key(raw_key: Any) -> str:
+    """허용 목록 밖의 객체 키를 원문이 드러나지 않는 고정 토큰(key_<12자 해시>)으로 변환한다."""
+    key_str = str(raw_key)
+    if key_str in _SAFE_DIAGNOSTIC_KEYS:
+        return key_str
+    digest = hashlib.sha256(key_str.encode("utf-8")).hexdigest()[:12]
+    return f"key_{digest}"
+
+
+def _safe_diagnostic_segment(segment: str) -> str:
+    """단일 경로 구간에서 배열 첨자와 합성 표지(__siblings__, __neighbors__)만 보존하고 임의 키는 해시 토큰화한다."""
+    if not segment:
+        return "key_empty"
+    idx_match = _ARRAY_SUFFIX_RE.match(segment)
+    if idx_match:
+        head = idx_match.group("head")
+        indices = idx_match.group("indices")
+    else:
+        head = segment
+        indices = ""
+    if not head:
+        return indices or "key_empty"
+    if head in ("__siblings__", "__neighbors__"):
+        return f"{head}{indices}"
+    return f"{_safe_diagnostic_key(head)}{indices}"
+
+
+def _safe_diagnostic_path(raw_path: Any, *, prefix: str = "") -> str:
+    """내부 탐지 경로를 외부 진단·요약에 안전한 정규화 경로로 변환한다."""
+    if isinstance(raw_path, tuple):
+        parts = [_safe_diagnostic_segment(str(part)) if not isinstance(part, int) else f"[{part}]"
+                 for part in raw_path]
+        normalized = ""
+        for part in parts:
+            if part.startswith("["):
+                normalized = f"{normalized}{part}" if normalized else part
+            else:
+                normalized = f"{normalized}.{part}" if normalized else part
+    else:
+        text_path = str(raw_path or "").strip()
+        if not text_path:
+            normalized = "root"
+        else:
+            segments = [seg for seg in text_path.split(".") if seg != ""]
+            if segments and segments[0] == "__original_system__":
+                segments = segments[1:]
+            normalized = ".".join(_safe_diagnostic_segment(seg) for seg in segments) if segments else "root"
+    if prefix:
+        safe_prefix = _safe_diagnostic_segment(prefix)
+        if normalized == "root":
+            return safe_prefix
+        if normalized == safe_prefix or normalized.startswith(f"{safe_prefix}."):
+            return normalized
+        return f"{safe_prefix}.{normalized}"
+    return normalized
+
+
 def inspect_request(request, *, _original_system: str = None):
     """조립된 LLM 요청의 개인정보 포함 여부를 감사한다. 원문 PII는 기록하지 않는다.
 
@@ -592,9 +697,10 @@ def inspect_request(request, *, _original_system: str = None):
         if "excerpt_invalid_trace" not in contract_failures:
             contract_failures.append("excerpt_invalid_trace")
     for path, kind, _ in excerpt_matches:
-        kinds[kind] += 1
-        blocked_kinds[kind] += 1
-        detected_paths.add('excerpt_source.' + hashlib.sha256(repr(path).encode('utf-8')).hexdigest())
+        safe_kind = kind if isinstance(kind, str) and _SAFE_PII_KIND_RE.fullmatch(kind) else "PII"
+        kinds[safe_kind] += 1
+        blocked_kinds[safe_kind] += 1
+        detected_paths.add(_safe_diagnostic_path(path, prefix="excerpt_source"))
 
     # Additional source inspection never replaces the original/assembled scans.
     # Even a mismatched context is inspected so PII keeps failure precedence.
@@ -606,15 +712,14 @@ def inspect_request(request, *, _original_system: str = None):
         ):
             matches = [m for m in detect(text, _trusted_spans=spans) if m.confidence >= 0.6]
             for match in matches:
-                kinds[match.kind] += 1
-                blocked_kinds[match.kind] += 1
-                # Encoded evidence can contain arbitrary keys. Do not disclose
-                # those source strings through an otherwise safe receipt path.
-                detected_paths.add("cascade_source." + hashlib.sha256(path.encode("utf-8")).hexdigest())
+                safe_kind = match.kind if isinstance(match.kind, str) and _SAFE_PII_KIND_RE.fullmatch(match.kind) else "PII"
+                kinds[safe_kind] += 1
+                blocked_kinds[safe_kind] += 1
+                detected_paths.add(_safe_diagnostic_path(path, prefix="cascade_source"))
         if uncertain_paths:
             kinds["PERSON"] += len(uncertain_paths)
             blocked_kinds["PERSON"] += len(uncertain_paths)
-            detected_paths.update("cascade_source." + hashlib.sha256(path.encode("utf-8")).hexdigest()
+            detected_paths.update(_safe_diagnostic_path(path, prefix="cascade_source")
                                   for path in uncertain_paths)
 
     # R8-A: 조립 전 원본 system이 있으면 별도 검사 (JSON 구조 보존)
@@ -627,14 +732,15 @@ def inspect_request(request, *, _original_system: str = None):
         ):
             matches = [m for m in detect(text, _trusted_spans=spans) if m.confidence >= 0.6]
             for m in matches:
-                kinds[m.kind] += 1
+                safe_kind = m.kind if isinstance(m.kind, str) and _SAFE_PII_KIND_RE.fullmatch(m.kind) else "PII"
+                kinds[safe_kind] += 1
                 # 원본 system은 사용자 제공 동적 값이므로 등록 상수 면책 없음
-                blocked_kinds[m.kind] += 1
-                detected_paths.add(f"original_system.{path}")
+                blocked_kinds[safe_kind] += 1
+                detected_paths.add(_safe_diagnostic_path(path, prefix="original_system"))
         if uncertain_paths:
             kinds["PERSON"] += len(uncertain_paths)
             blocked_kinds["PERSON"] += len(uncertain_paths)
-            detected_paths.update(f"original_system.{path}" for path in uncertain_paths)
+            detected_paths.update(_safe_diagnostic_path(path, prefix="original_system") for path in uncertain_paths)
 
     # 최상위 payload 필드를 개별 순회하여 경로 기반 등록 판정이 정확하게 동작하도록 함
     # (payload 전체를 _walk_fields에 넘기면 최상위 형제 결합이 경로 판정을 혼동시킴)
@@ -647,9 +753,10 @@ def inspect_request(request, *, _original_system: str = None):
             matches = [m for m in detect(text, _trusted_spans=spans) if m.confidence >= 0.6]
             if not matches:
                 continue
-            detected_paths.add(path)
+            detected_paths.add(_safe_diagnostic_path(path))
             for m in matches:
-                kinds[m.kind] += 1
+                safe_kind = m.kind if isinstance(m.kind, str) and _SAFE_PII_KIND_RE.fullmatch(m.kind) else "PII"
+                kinds[safe_kind] += 1
                 is_system_path = path.startswith("system")
                 is_schema_path = path.startswith("schema")
 
@@ -661,14 +768,14 @@ def inspect_request(request, *, _original_system: str = None):
 
                 if is_verified_static_source:
                     # 출처가 확인된 등록 고정 상수 내에서의 탐지는 정적 안내문 오탐으로 면책
-                    static_fp_kinds[m.kind] += 1
+                    static_fp_kinds[safe_kind] += 1
                 else:
                     # 등록되지 않은 영역(사용자 입력 또는 동적 값이 혼입된 시스템 프롬프트)에서의 탐지는
                     # PII 종류(PERSON, DOB, PHONE, EMAIL 등)와 무관하게 차단
-                    blocked_kinds[m.kind] += 1
+                    blocked_kinds[safe_kind] += 1
         if uncertain_paths:
             kinds["PERSON"] += len(uncertain_paths)
-            detected_paths.update(uncertain_paths)
+            detected_paths.update(_safe_diagnostic_path(p) for p in uncertain_paths)
             is_verified_static_source = (
                 top_key == "system" and is_registered_system_prompt(request.system)
             ) or (top_key == "schema" and is_registered_schema(request.schema))
@@ -692,6 +799,11 @@ def inspect_request(request, *, _original_system: str = None):
         failure_code = None
         diagnostic_category = None
 
+    safe_contract_failures = [
+        cf if cf in _SAFE_CONTRACT_FAILURE_CODES else "contract_violation"
+        for cf in contract_failures
+    ]
+
     safe_masking = {}
     if source_text is not None:
         try:
@@ -707,7 +819,7 @@ def inspect_request(request, *, _original_system: str = None):
                         safe_masking[mk] = mv[:64]
                 if isinstance(raw_mask_meta.get("masked_types"), dict):
                     safe_masking["masked_types"] = {
-                        str(k)[:32]: int(v)
+                        (str(k) if _SAFE_PII_KIND_RE.fullmatch(str(k)) else "OTHER"): int(v)
                         for k, v in raw_mask_meta["masked_types"].items()
                         if isinstance(v, (int, float))
                     }
@@ -731,30 +843,38 @@ def inspect_request(request, *, _original_system: str = None):
                                     'source_char_limit': MAX_SOURCE_CHARS, 'trace_char_limit': MAX_TRACE_CHARS,
                                     'decoder_work_multiple': 8}
     if diagnostic_category:
-        res["diagnostic_category"] = diagnostic_category
-    if contract_failures:
-        res["contract_failures"] = contract_failures
+        res["diagnostic_category"] = (
+            diagnostic_category if diagnostic_category in _SAFE_DIAGNOSTIC_CATEGORIES else "INSPECTION_EXCEPTION"
+        )
+    if safe_contract_failures:
+        res["contract_failures"] = safe_contract_failures
     if failure_code:
-        res["failure_code"] = failure_code
+        res["failure_code"] = failure_code if failure_code in _SAFE_FAILURE_CODES else "INSPECTION_FAILED"
         res["detected_field_paths"] = sorted(detected_paths)
         res["retryable"] = failure_code == "STATIC_PROMPT_FALSE_POSITIVE"
         if failure_code == "STATIC_PROMPT_FALSE_POSITIVE":
             res["note"] = "출처가 확인된 등록 고정 상수의 정적 어휘 오탐으로 판정하여 호출을 허용함(동적 PII 없음)"
     if status != "PASSED":
-        types_str = ",".join(f"{k}:{v}" for k, v in sorted(blocked_kinds.items())) or "none"
+        safe_blocked = {
+            (k if isinstance(k, str) and _SAFE_PII_KIND_RE.fullmatch(k) else "PII"): int(v)
+            for k, v in blocked_kinds.items()
+        }
+        types_str = ",".join(f"{k}:{v}" for k, v in sorted(safe_blocked.items())) or "none"
         paths_list = sorted(detected_paths)
         paths_str = ",".join((p[:32] + ".." if len(p) > 34 else p) for p in paths_list[:4])
         if len(paths_list) > 4:
             paths_str += f"(+{len(paths_list) - 4})"
         mask_str = (
-            f"mask=yes({safe_masking.get('masked_chars', user_chars)})"
+            f"mask=yes({int(safe_masking.get('masked_chars', user_chars))})"
             if safe_masking.get("attempted") else f"mask=unrecorded(len={user_chars})"
         )
-        code_parts = [str(failure_code or "UNKNOWN")]
-        if contract_failures:
-            code_parts.append(",".join(str(x) for x in contract_failures))
+        safe_fc = res.get("failure_code") or "UNKNOWN"
+        safe_cat = res.get("diagnostic_category") or safe_fc
+        code_parts = [str(safe_fc)]
+        if safe_contract_failures:
+            code_parts.append(",".join(safe_contract_failures))
         res["safe_summary"] = (
-            f"[{diagnostic_category or failure_code}:{'/'.join(code_parts)}] "
+            f"[{safe_cat}:{'/'.join(code_parts)}] "
             f"types={types_str}; paths={paths_str or '-'}; {mask_str}; sha={res['request_sha256'][:12]}"
         )
     return res

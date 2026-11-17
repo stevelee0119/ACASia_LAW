@@ -246,3 +246,137 @@ def test_forged_cascade_source_wiring_is_still_blocked_even_with_local_only(tmp_
     assert providers["anthropic"].requests == []
     assert "INPUT_PRIVACY_BLOCKED" in res.executions[0].error
     assert "REQUEST_WIRING_CONTRACT" in res.executions[0].error
+
+
+# --- 3. 진단 경로에서 객체 키 PII 원문 노출 차단 회귀 테스트 (PR #324 재작업 지시사항) -------------
+def _assert_no_secret_in_diagnostics(audit: dict, res, secrets: tuple[str, ...]) -> None:
+    serialized_audit = json.dumps(audit, ensure_ascii=False, default=str)
+    exec_obj = res.executions[0]
+    serialized_exec = json.dumps(exec_obj.to_dict(), ensure_ascii=False, default=str)
+    desc = describe_failure(exec_obj.error)
+    pipe_reason = VerificationPipeline._provider_reason(exec_obj.error)
+    combined = "\n".join([
+        serialized_audit,
+        serialized_exec,
+        str(audit.get("detected_field_paths")),
+        str(audit.get("safe_summary")),
+        str(audit.get("contract_failures")),
+        str(exec_obj.error),
+        str(res.note),
+        desc,
+        pipe_reason,
+    ])
+    for secret in secrets:
+        assert secret not in combined, f"진단 출력에 민감 문자열 {secret!r} 노출됨: {combined}"
+
+
+@pytest.mark.parametrize(
+    "vector_kind",
+    [
+        "top_level_metadata",
+        "nested_object",
+        "json_string_user",
+        "duplicate_json_keys",
+        "original_system_json",
+        "cascade_source_evidence",
+        "uncertain_person_key",
+        "untrusted_stage_key",
+    ],
+)
+def test_pii_in_object_keys_never_leaks_into_diagnostics_or_summaries(tmp_path, vector_kind):
+    secret_key_phone = "010-9191-8282"
+    secret_key_name = "남궁도현"
+    secret_val_phone = "010-3434-5656"
+    secret_val_rrn = "880101-1234567"
+    malicious_key = f"연락처_{secret_key_name}_{secret_key_phone}"
+    secrets = (secret_key_phone, secret_key_name, secret_val_phone, secret_val_rrn, malicious_key)
+
+    providers = {"anthropic": _StubProvider("anthropic", "claude-stub", lambda req: LLMResponse(True, text="{}"))}
+    router = _router(tmp_path, providers)
+
+    if vector_kind == "top_level_metadata":
+        req = LLMRequest(
+            system="일반 시스템 안내",
+            user="일반 질문 본문",
+            metadata={malicious_key: f"전화 {secret_val_phone}"},
+        )
+    elif vector_kind == "nested_object":
+        req = LLMRequest(
+            system="일반 시스템 안내",
+            user="일반 질문 본문",
+            metadata={"outer": {f"내부키_{secret_key_name}": [{"항목_" + secret_key_phone: f"주민번호 {secret_val_rrn}"}]}},
+        )
+    elif vector_kind == "json_string_user":
+        req = LLMRequest(
+            system="일반 시스템 안내",
+            user=json.dumps({malicious_key: {"sub_" + secret_key_name: f"연락처 {secret_val_phone}"}}, ensure_ascii=False),
+        )
+    elif vector_kind == "duplicate_json_keys":
+        dup_json = (
+            '{"' + malicious_key + '":"' + f"전화 {secret_val_phone}" + '",'
+            '"' + malicious_key + '":"일반 안전 기록"}'
+        )
+        req = LLMRequest(system="일반 시스템 안내", user=dup_json)
+    elif vector_kind == "original_system_json":
+        req = LLMRequest(
+            system=json.dumps({malicious_key: f"주민번호 {secret_val_rrn}"}, ensure_ascii=False),
+            user="일반 질문 본문",
+        )
+    elif vector_kind == "cascade_source_evidence":
+        req = build_cascade_request(
+            "primary",
+            "인용된 판결 검토",
+            {
+                "official": {
+                    "case_number": "2099다777",
+                    malicious_key: f"피고인 연락처 {secret_val_phone}",
+                },
+                "document": "본문",
+            },
+        )
+    elif vector_kind == "uncertain_person_key":
+        # 값에는 번호 PII가 없고 키의 '성명' 접미사로 인해 uncertain_paths로만 잡히는 경로
+        uncertain_key = f"{secret_key_name}_{secret_key_phone}_성명"
+        secrets = (secret_key_phone, secret_key_name, uncertain_key)
+        req = LLMRequest(
+            system="일반 시스템 안내",
+            user=json.dumps({uncertain_key: "외국계미상표기!@#"}, ensure_ascii=False),
+        )
+    else:
+        req = LLMRequest(
+            system="일반 시스템 안내",
+            user=f"전화 {secret_val_phone}",
+            metadata={"stage": malicious_key},
+        )
+
+    audit = inspect_request(req, _original_system=req.system)
+    res = asyncio.run(router.run("PRIMARY_REASONER", req, policy=ExternalAIPolicy.MASKED))
+
+    assert audit["status"] == "BLOCKED"
+    assert audit["failure_code"] == "PII_INPUT_BLOCKED"
+    assert not res.used
+    assert providers["anthropic"].requests == []
+    assert audit.get("detected_field_paths"), "차단된 경로 목록이 비어 있으면 안 됨"
+    if vector_kind != "untrusted_stage_key":
+        assert any("key_" in p for p in audit["detected_field_paths"]), (
+            f"비허용 객체 키가 정규화 토큰(key_<해시>)으로 변환되어야 함: {audit['detected_field_paths']}"
+        )
+    _assert_no_secret_in_diagnostics(audit, res, secrets)
+
+
+def test_known_fixed_fields_remain_readable_while_unknown_keys_are_tokenized():
+    secret_key = "비밀당사자_김도윤_010-7777-1111"
+    payload = {
+        "document": "연락처 010-8888-9999 포함 본문",
+        "reference_sources": [{"text": "주민번호 900101-1234567 포함 발췌", secret_key: "010-1212-3434"}],
+    }
+    req = LLMRequest(system="일반 안내", user=json.dumps(payload, ensure_ascii=False))
+    audit = inspect_request(req)
+    assert audit["status"] == "BLOCKED"
+    paths = audit["detected_field_paths"]
+    assert "user.document" in paths
+    assert "user.reference_sources[0].text" in paths
+    assert any(p.startswith("user.reference_sources[0].key_") for p in paths)
+    assert all(secret_key not in p for p in paths)
+    assert secret_key not in audit["safe_summary"]
+

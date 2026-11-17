@@ -458,7 +458,14 @@ class LLMRouter:
                     }
                 if priv["status"] != "PASSED":
                     priv["sent"] = False
-                    priv["stage"] = str(target_request.metadata.get("stage") or target_request.input_contract or role)
+                    raw_stage = str(target_request.metadata.get("stage") or target_request.input_contract or role)
+                    safe_stage = raw_stage if re.fullmatch(r"[A-Za-z0-9_.:-]{1,48}", raw_stage) and raw_stage in {
+                        "primary", "critic", "grounder", "escalation",
+                        "drive_rag_advisory", "claim_rag_advisory",
+                        "ai_document_v1", "reference_review_v1", "claim_review_v1", "argument_review_v1",
+                        str(role), getattr(role, "value", str(role)),
+                    } else str(role)
+                    priv["stage"] = safe_stage
                     safe_summary = priv.get("safe_summary")
                     if not safe_summary:
                         code = priv.get("failure_code") or priv.get("reason") or "UNKNOWN"
