@@ -3185,6 +3185,7 @@ def _statement_start(doc_or_text: NormalizedDocument | str, reading_text: Option
 
 # 문서 종류 상수 (B-2 비진술서 복제 탐지용)
 DOC_KIND_FACT_CONFIRMATION = "FACT_CONFIRMATION"      # 사실경위서 등 원본 서증
+DOC_KIND_EVIDENCE_ORIGINAL = "EVIDENCE_ORIGINAL"      # 서술형 원본 서증(보고서·감정서·진단서 계열, TK-76 E)
 DOC_KIND_STATEMENT = "STATEMENT"                      # 진술서, 사실확인서 등 진술 서증
 DOC_KIND_EVIDENCE_EXPLANATION = "EVIDENCE_EXPLANATION"  # 증거설명서 (민사소송규칙 제106조 예외)
 DOC_KIND_PLEADING = "PLEADING"                        # 소장, 준비서면, 답변서, 의견서 등 소송서면
@@ -3233,6 +3234,36 @@ _FACT_CONFIRMATION_TITLE_RE = re.compile(
     r"\s*[(（【[].*?[)）】\]]"
     r"|"
     r"\s+(?:작\s*성\s*자|진\s*술\s*인|보\s*고\s*자|확\s*인\s*자)\s*[:：]?\s*[가-힣]{2,4}"
+    r")"
+)
+
+# 서술형 원본 서증 표제 (TK-76 E: 사실경위서 밖의 원본 서증으로 원문 범위를 넓힌다)
+# - 어휘는 '남이 쓴 서술'을 담은 원본 서증으로 한정한다: 보고서 계열·감정서·소견서·진단서·진료기록·시말서.
+# - 계약서·합의서·각서·영수증·명세서·증명서 등 정형 서증은 넣지 않는다. 그 문구를 서면에 옮기는 것은
+#   정상 인용이므로 원문 범위에 넣으면 오탐이 된다.
+# - '의견서'(소송서면)와 '소견서'(원본 서증)를 섞지 않는다.
+# - 뒤 낱말 제한과 파생 문서명 배제는 사실경위서 표제와 같은 엄격함을 쓴다.
+_EVIDENCE_ORIGINAL_TITLE_RE = re.compile(
+    r"^\s*(?:[A-Za-z0-9\-_]{1,15}\s*[|―—\-]\s*)?"
+    # 수식어는 띄어 쓸 수도 있고 붙여 쓸 수도 있다('상해 진단서'·'상해진단서'). 어휘로 끝나야 하므로
+    # '의견서'처럼 어휘에 없는 서면 표제는 수식어를 붙여도 매칭되지 않는다.
+    r"[\[【<「『―—\-]*\s*(?:[가-힣]{1,6}\s*)?"
+    r"(?:"
+    r"(?:사\s*고|상\s*황|조\s*사|점\s*검|감\s*사|사\s*실\s*조\s*사)\s*보\s*고\s*서"
+    r"|감\s*정\s*평\s*가\s*서|감\s*정\s*서"
+    r"|소\s*견\s*서"
+    r"|진\s*단\s*서"
+    r"|진\s*료\s*기\s*록(?:\s*부)?|의\s*무\s*기\s*록(?:\s*지)?"
+    r"|시\s*말\s*서"
+    r")\s*[\]】>」』]*"
+    r"(?:"
+    r"\s*$"
+    r"|"
+    r"\s*[|―—\-/:]\s*(?!(?:사\s*본|송\s*부|안\s*내|요\s*청|제\s*출|접\s*수|발\s*급|회\s*신)\b)[^\s.]+"
+    r"|"
+    r"\s*[(（【[].*?[)）】\]]"
+    r"|"
+    r"\s+(?:작\s*성\s*자|진\s*술\s*인|보\s*고\s*자|확\s*인\s*자|감\s*정\s*인|의\s*사)\s*[:：]?\s*[가-힣]{2,4}"
     r")"
 )
 
@@ -3382,6 +3413,13 @@ def _document_title_kind(doc: NormalizedDocument, reading_text: Optional[str] = 
             end_offset = (pos + len(line)) if pos != -1 else 0
             return DOC_KIND_FACT_CONFIRMATION, end_offset
 
+        # 서술형 원본 서증 단독 표제 (TK-76 E). 사실경위서 검사 뒤에 두어 기존 판정을 바꾸지 않는다.
+        m_evi = _EVIDENCE_ORIGINAL_TITLE_RE.match(stripped)
+        if m_evi:
+            pos = text.find(line)
+            end_offset = (pos + len(line)) if pos != -1 else 0
+            return DOC_KIND_EVIDENCE_ORIGINAL, end_offset
+
         # 소송 대리 서면 단독 표제 (단독·당사자 표기형 '소장', '청구의 소', '준비서면' 등)
         if _PLEADING_TITLE_RE.match(stripped):
             return DOC_KIND_PLEADING, 0
@@ -3429,9 +3467,10 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
     texts = {d.document_id: build_reading_text(d).text for d in docs}
     doc_kinds = {d.document_id: _document_title_kind(d, texts[d.document_id]) for d in docs}
 
-    # 진술서나 사실경위서가 포함되어 있지 않고 소송서면 간에도 복사 검사 대상이 없으면 종료
+    # 진술서나 원본 서증이 포함되어 있지 않고 소송서면 간에도 복사 검사 대상이 없으면 종료
     has_statements = any(k[0] == DOC_KIND_STATEMENT for k in doc_kinds.values())
-    has_facts = any(k[0] == DOC_KIND_FACT_CONFIRMATION for k in doc_kinds.values())
+    has_facts = any(k[0] in (DOC_KIND_FACT_CONFIRMATION, DOC_KIND_EVIDENCE_ORIGINAL)
+                    for k in doc_kinds.values())
     if not has_statements and not has_facts:
         return []
 
@@ -3482,8 +3521,11 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                     # 7순위: 소송서면 간 정상 재진술(소장 ↔ 준비서면)은 제외
                     if owner_kind == DOC_KIND_PLEADING and other_kind == DOC_KIND_PLEADING:
                         continue
-                    # 5순위: 소송서면(PLEADING) 및 증거설명서(EVIDENCE_EXPLANATION)는 other가 사실경위서(FACT_CONFIRMATION) 원본일 때만 통복제로 판정
-                    if owner_kind in (DOC_KIND_PLEADING, DOC_KIND_EVIDENCE_EXPLANATION) and other_kind != DOC_KIND_FACT_CONFIRMATION:
+                    # 5순위: 소송서면(PLEADING)·증거설명서(EVIDENCE_EXPLANATION)는 other가 서증 원본일 때만 통복제로
+                    # 판정한다. 원문 범위는 사실경위서와 서술형 원본 서증(TK-76 E)뿐이며, 표제로 적극 판별되지 않은
+                    # 문서(OTHER)는 들어오지 않는다.
+                    if owner_kind in (DOC_KIND_PLEADING, DOC_KIND_EVIDENCE_EXPLANATION) and other_kind not in (
+                            DOC_KIND_FACT_CONFIRMATION, DOC_KIND_EVIDENCE_ORIGINAL):
                         continue
 
                     pairs.setdefault(other_id, []).append((sentence, other_sentence, round(overlap, 2)))
@@ -3533,7 +3575,8 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                               "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
                                         for a, b, s in matched[:5]]}
                 ))
-            elif owner_kind in (DOC_KIND_PLEADING, DOC_KIND_EVIDENCE_EXPLANATION) and other_kind == DOC_KIND_FACT_CONFIRMATION:
+            elif owner_kind in (DOC_KIND_PLEADING, DOC_KIND_EVIDENCE_EXPLANATION) and other_kind in (
+                    DOC_KIND_FACT_CONFIRMATION, DOC_KIND_EVIDENCE_ORIGINAL):
                 # 5순위: 서증 원본(사실경위서) 통문단 복제 검출 (조건 2: EvidenceGrade.C 고정, 증거설명서는 호증 항목 밖만)
                 # VerificationPipeline._cross_check에서 서로 다른 owner 문서의 C등급 결과가 첫 1건으로 합쳐져
                 # 소실되지 않도록 C등급 결과에만 문서별 sources(owner.document_id)를 부여한다.
@@ -3546,8 +3589,13 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                     matched[0][0], status=VerificationStatus.SUSPICIOUS,
                     features={"other_document_id": other_id, "similarity": matched[0][2],
                               "sources": [{"document_id": owner.document_id}],
-                              "copy_category": "FACT_CONFIRMATION_REPLICATION",
-                              "rule_id": "EVI.COPY_FACT_CONFIRMATION", "human_review": True,
+                              # 기존 사실경위서 결과의 값은 그대로 두고, 새로 넓힌 원문 종류만 구분해 적는다(TK-76 E).
+                              "copy_category": ("FACT_CONFIRMATION_REPLICATION"
+                                                if other_kind == DOC_KIND_FACT_CONFIRMATION
+                                                else "EVIDENCE_ORIGINAL_REPLICATION"),
+                              "rule_id": ("EVI.COPY_FACT_CONFIRMATION"
+                                          if other_kind == DOC_KIND_FACT_CONFIRMATION
+                                          else "EVI.COPY_EVIDENCE_ORIGINAL"), "human_review": True,
                               "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
                                         for a, b, s in matched[:5]]}
                 ))
