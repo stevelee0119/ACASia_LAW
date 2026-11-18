@@ -28,7 +28,7 @@ from packages.pii_engine.name_stopwords import PERSON_CATEGORY_STOPWORDS
 
 from .calculation import parse_amounts
 from .classification import (classify_sentence, document_kind, segment_kind, assertion_mode,
-                             event_role, NOMINAL_FACT_RE, OPINION_RE as EXPLICIT_OPINION_RE)
+                             event_role, NOMINAL_FACT_RE, PAST_FACT_RE, OPINION_RE as EXPLICIT_OPINION_RE)
 from .entity_resolution import resolve_entities
 from .exhibits import parse_exhibits
 from .structure import ACTION_PATTERNS, extract_evidence_references, structure_claim_text
@@ -443,6 +443,95 @@ def extract_entities(doc: NormalizedDocument, *, project_id: Optional[str] = Non
     return list(found.values())
 
 
+_PRECEDENT_COURT_CUE_RE = re.compile(
+    r"(?:대법원|헌법재판소|전원합의체|[가-힣]{1,10}(?:지방|고등|가정|행정|회생|특허|군사)법원)"
+)
+_PRECEDENT_AFTER_RE = re.compile(
+    r"^\s*\.?\s*(?:(?:선고|자)\s*(?:전원재판부\s*|전원합의체\s*)?\d{2,4}[가-힣]{1,4}\d+|"
+    r"(?:전원합의체\s*)?\d{2,4}[가-힣]{1,4}\d+\s*(?:전원재판부\s*)?(?:판결|결정|명령))"
+)
+_PRECEDENT_AFTER_GENERIC_RE = re.compile(
+    r"^\s*\.?\s*(?:(?:전원합의체|전원재판부)\s*)?(?:판결|결정|명령|선고(?![가-힣]))"
+)
+_INSTANT_CASE_COURT_RE = re.compile(
+    r"이\s*사건\s*(?:원심|제?1심|제?2심|항소심|상고심|소송|사건)"
+)
+_CASE_CITATION_NUM_RE = re.compile(r"\d{2,4}[가-힣]{1,4}\d+")
+_STATUTE_AFTER_ACTION_RE = re.compile(
+    r"^\s*\.?\s*(?:(?:,|·)\s*)?(?:(?:자\s*)?(?:법률|대통령령|총리령|부령|시행령|시행규칙|조례)(?:\s*제\s*\d+\s*호|\s*(?:일부|전부)?\s*개정|\s*제정|\s*공포|\s*시행|로|으로|,)|"
+    r"(?:일부\s*개정|전부\s*개정|제정|개정|신설|삭제|공포)(?:된|되어|한|으로|법|조항)?)"
+)
+_STATUTE_EFFECTIVE_RE = re.compile(
+    r"^\s*\.?\s*(?:부터\s*)?(?:개정(?:되|된|되었)|공포(?:되|된|되었)|시행(?:하|일|되|된|되었)?)"
+)
+_STATUTE_CUE_RE = re.compile(
+    r"(?:법률\s*제\s*\d+\s*호|대통령령\s*제\s*\d+\s*호|총리령\s*제\s*\d+\s*호|부령\s*제\s*\d+\s*호|"
+    r"[가-힣]+(?:법률|법령|법|시행령|시행규칙|부칙|조례|규칙|훈령|예규|고시)|"
+    r"(?<![가-힣])(?:법률|법령|대통령령|총리령|부령|시행령|시행규칙|부칙|조례|훈령|예규)|"
+    r"(?:이|그|해당|동|위|개정|현행|구)\s*(?:법|규칙)|"
+    r"제\s*\d+\s*조)"
+)
+_PARTY_FACT_VERB_RE = re.compile(
+    r"(?:체결|약정|합의|지급|송금|입금|변제|교부|설립|개업|접수|제출|신청|고소|고발|기소|"
+    r"해지|해제|종료|파기|통지|통보|발송|수령|근무|입사|퇴직|퇴사|사망|출생|사고|발생|"
+    r"폭행|상해|침해|납품|인도|"
+    # 당사자 행위·채무 상태 표지 추가분. 설계 메모가 열거한 '당사자 행위 … 지체'를 포함하고,
+    # 법령·판례를 근거로 들며 당사자가 행위한 문장이 사건에서 탈락하지 않게 한다.
+    # 판단 주체가 법원인 동사(선고·판결·결정·처분)는 넣지 않는다.
+    r"청구|지체|이행|반환|최고|독촉|공탁)"
+)
+_PARTY_SUBJECT_CUE_RE = re.compile(
+    r"(?<![가-힣])(?:"
+    r"(?:원고|피고|피고인|신청인|피신청인|채권자|채무자|청구인|피청구인|항고인|상고인|"
+    r"고소인|고발인|피의자|피해자|상대방|당사자|소외|망|임대인|임차인|매도인|매수인|"
+    r"도급인|수급인|사용자|근로자|처분청|과세관청|관할청|피심인|소외인)"
+    r"(?:\s+[가-힣A-Za-z0-9()㈜]{1,12})?\s*(?:측)?(?:은|는|이|가|도|에게|에\s*대하여)(?![가-힣])"
+    r"|"
+    r"이\s*사건\s*(?:처분|부과|과세|계약|소|소송|청구|사고|합의|결의|해고|명령|통지)"
+    r")"
+)
+_PARTY_PAST_PREDICATE_RE = re.compile(
+    r"(?:하였|되었|받았|보냈|내렸|올렸|마쳤|거쳤|두었|주었|왔|갔|냈|쳤|웠|졌|렸|겼|녔|셨|였|었|았|했|됐)"
+    r"(?:다|습니다|음|고|으며|며|으나|지만)(?![가-힣])"
+)
+
+
+def _is_legal_authority_date(sentence: str, match_start: int, match_end: int) -> bool:
+    """판례 선고·결정일 또는 법령 제정·개정·시행일 등 법적 근거 날짜인지 판별한다."""
+    before = sentence[max(0, match_start - 35):match_start]
+    after = sentence[match_end:]
+
+    # 1) 판례/헌재 결정 인용 날짜 ("대법원 2021. 5. 13. 선고 2020다12345 판결", "2019. 7. 18.자 2018헌마100")
+    if _PRECEDENT_AFTER_RE.match(after):
+        return True
+    if _PRECEDENT_COURT_CUE_RE.search(before) and _PRECEDENT_AFTER_GENERIC_RE.match(after):
+        if _INSTANT_CASE_COURT_RE.search(before) and not _CASE_CITATION_NUM_RE.search(after[:30]):
+            return False
+        return True
+
+    # 2) 법령 제정·개정·공포·시행 날짜
+    if _STATUTE_AFTER_ACTION_RE.match(after):
+        return True
+    if _STATUTE_CUE_RE.search(before) and _STATUTE_EFFECTIVE_RE.match(after):
+        return True
+
+    return False
+
+
+def _has_party_fact_cue(sentence: str) -> bool:
+    """문장에 당사자 사이의 구체적 사건·행위 표지가 있는지 본다."""
+    if any(regex.search(sentence) for name, regex in EVENT_KIND_RE if name != "DECISION"):
+        return True
+    if _PARTY_FACT_VERB_RE.search(sentence):
+        return True
+    if _PARTY_SUBJECT_CUE_RE.search(sentence) and (
+        PAST_FACT_RE.search(sentence)
+        or NOMINAL_FACT_RE.search(sentence)
+        or _PARTY_PAST_PREDICATE_RE.search(sentence)
+    ):
+        return True
+    return False
+
 def _collect_event_evidence_references(
     sentence: str, *, document_id: str, block_id: str, page: Optional[int],
     source_run_id: Optional[str], document_sha256: str, offset: int,
@@ -644,7 +733,8 @@ def _adjacent_evidence_refs(
 
 def extract_events(doc: NormalizedDocument, *, project_id: Optional[str] = None,
                    source_run_id: Optional[str] = None) -> List[Event]:
-    """제11.4장 Timeline 입력. 날짜와 같은 문장 또는 바로 뒤 인접 호증 구절의 근거를 결합한다."""
+    """제11.4장 Timeline 입력. 판례·법령 인용 날짜를 걸러내고 사건 사실관계를 중심으로 추출하며,
+    날짜와 같은 문장 또는 바로 뒤 인접 호증 구절의 근거를 결합한다."""
     events: List[Event] = []
     meta_ids = meta_checklist_block_ids(doc)
     for block in doc.prose_blocks():
@@ -660,10 +750,20 @@ def extract_events(doc: NormalizedDocument, *, project_id: Optional[str] = None,
             sent_spans.append((sentence, start, cursor))
 
         for idx, (sentence, start, end) in enumerate(sent_spans):
+            # 판례·법령 인용 문장은 사건으로 뽑지 않는다(배치C). 다만 sent_spans에는 남겨 두어
+            # 바로 뒤 문장의 호증을 앞 사건에 결속하는 TK-188 경로가 그대로 동작하게 한다.
+            if not _has_party_fact_cue(sentence) and (
+                CASE_HOLDING_RE.search(sentence)
+                or classify_claim(sentence) in (ClaimType.CASE_HOLDING, ClaimType.LEGAL_RULE,
+                                                ClaimType.LEGAL_INTERPRETATION)
+            ):
+                continue
             structure = structure_claim_text(sentence)
             structure.pop("asserted_date")
             parsed_dates: List[Tuple[re.Match[str], date]] = []
             for m in DATE_RE.finditer(sentence):
+                if _is_legal_authority_date(sentence, m.start(), m.end()):
+                    continue
                 try:
                     value = date(int(m.group("y")), int(m.group("m")), int(m.group("d")))
                 except ValueError:

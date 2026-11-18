@@ -9,14 +9,13 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List
 
-EXTERNAL_AI_TITLE = "외부 AI 참고 의견 (사용자 입력, 공식 확인 아님)"
-EXTERNAL_AI_NOTICE = ("엘박스 등 외부 AI의 답변을 검토자가 표에 반영한 것입니다. 공식 DB 판정·등급·점수에는 쓰지 않았으며, "
-                      "판례·법령 원문은 판결서·국가법령정보센터로 확인해야 합니다.")
-EXTERNAL_AI_STATUS_LABEL = "공식 확인 아님 (참고 의견)"
-EXTERNAL_AI_HEADERS = ["번호", "대상", "판정", "근거", "요지", "반영 시각", "공식 여부"]
+EXTERNAL_AI_TITLE = "외부 AI 참고 의견"
+EXTERNAL_AI_NOTICE = ""
+EXTERNAL_AI_STATUS_LABEL = ""
+EXTERNAL_AI_HEADERS = ["번호", "AI 모델", "대상", "판정", "근거", "요지"]
 # 열 너비는 머리글과 같은 개수여야 한다. 개수가 다르면 Word는 남는 열에 너비·테두리가 없고 PDF 표는 본문 폭을 넘는다.
-EXTERNAL_AI_PDF_WIDTHS = [28, 100, 55, 125, 95, 47, 40]  # 합 490pt — A4 본문 폭(210mm − 좌우 18mm) 약 493pt 안
-EXTERNAL_AI_DOCX_WIDTHS = [0.4, 1.3, 0.8, 1.6, 1.4, 0.8, 0.7]  # 합 7.0in — Letter 본문 폭(8.5in − 좌우 0.75in)
+EXTERNAL_AI_PDF_WIDTHS = [28, 72, 105, 55, 130, 100]  # 합 490pt — A4 본문 폭(210mm − 좌우 18mm) 약 493pt 안
+EXTERNAL_AI_DOCX_WIDTHS = [0.4, 1.0, 1.4, 0.8, 1.8, 1.6]  # 합 7.0in — Letter 본문 폭(8.5in − 좌우 0.75in)
 CODE_PATTERN = re.compile(r"^[AB]\d{1,4}$")
 
 
@@ -152,10 +151,7 @@ def validate_answers(engine: Dict[str, Any], answers: List[Dict[str, Any]]) -> L
 
 
 def checked_answers(engine: Dict[str, Any], answers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """번호 순으로 정렬하고 대상 문구와 비공식성 메타데이터(official=False)를 채운다.
-
-    동일 번호는 마지막 답변으로 유지하며, 기계 판독 가능한 공식 여부 필드를 포함한다.
-    """
+    """번호 순으로 정렬하고 대상 문구와 출처 메타데이터(official=False)를 채운다."""
     targets = _targets(engine)
     by_code: Dict[str, Dict[str, Any]] = {}
     for answer in answers:
@@ -164,25 +160,24 @@ def checked_answers(engine: Dict[str, Any], answers: List[Dict[str, Any]]) -> Li
         if item_id and item_id in targets and code:
             by_code[code] = {
                 **answer,
+                "model_name": str(answer.get("model_name") or "").strip(),
                 "target": targets[item_id][:500],
                 "official": False,
                 "source": "external_ai",
-                "notice": EXTERNAL_AI_NOTICE,
             }
     return [by_code[c] for c in sorted(by_code, key=lambda c: (c[0], int(c[1:])))]
 
 
 def external_answer_rows(snapshot: Dict[str, Any]) -> List[List[str]]:
-    """XLSX, PDF, Word 렌더링에 사용할 행 목록(비공식 여부 열 포함)."""
+    """XLSX, PDF, Word 렌더링에 사용할 행 목록(AI 모델 포함)."""
     rows: List[List[str]] = []
     for a in (snapshot or {}).get("external_ai_answers", []) or []:
         rows.append([
             str(a.get("code", "")),
+            str(a.get("model_name") or "외부 AI"),
             str(a.get("target", "")),
             str(a.get("verdict", "")),
             str(a.get("basis", "")),
             str(a.get("summary", "")),
-            str(a.get("applied_at", "")),
-            EXTERNAL_AI_STATUS_LABEL,
         ])
     return rows

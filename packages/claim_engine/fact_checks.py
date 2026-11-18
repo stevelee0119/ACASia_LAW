@@ -88,7 +88,10 @@ def check_periods(doc: NormalizedDocument) -> List[Finding]:
                     doc, f"기간 일수가 날짜와 맞지 않는다: {excerpt}",
                     f"{_k(a)}부터 {_k(b)}까지는 초일을 넣으면 {inclusive}일, 빼면 {exclusive}일이다. 문서는 {n}일로 적었다.",
                     excerpt, {"rule_id": "CALC.DATE_RANGE_DAYS", "stated_days": n, "inclusive": inclusive,
-                              "exclusive": exclusive}))
+                              "exclusive": exclusive,
+                              "stated_claim": f"{excerpt} (서면 주장 일수: {n}일)",
+                              "lawful_calculation": f"{_k(a)}부터 {_k(b)}까지의 정당한 일수는 초일 산입 시 {inclusive}일, 초일 불산입 시 {exclusive}일입니다.",
+                              "verification_needed": "계약서·처분통지서 등에서 기산일·종료일 날짜와 초일 산입 약정(민법 제157조 예외) 여부를 확인해야 합니다."}))
             continue
         earliest = add_period(a, n, unit) - timedelta(days=1)  # 초일 산입 시 만료일
         if b < earliest:
@@ -97,7 +100,13 @@ def check_periods(doc: NormalizedDocument) -> List[Finding]:
                 doc, f"주장한 기간이 날짜 사이의 실제 기간보다 길다: {excerpt}",
                 f"{_k(a)}부터 {_k(b)}까지는 {_span(a, b)}이다. 문서가 적은 {n}{unit}에 이르려면 {_k(earliest)}"
                 f"(초일 산입) 또는 {_k(earliest + timedelta(days=1))}(초일 불산입)까지 가야 한다.",
-                excerpt, {"rule_id": "CALC.PERIOD_SPAN", "stated": f"{n}{unit}", "actual": _span(a, b)}))
+                excerpt, {"rule_id": "CALC.PERIOD_SPAN", "stated": f"{n}{unit}", "actual": _span(a, b),
+                          "stated_claim": f"{excerpt} (서면 주장 기간: {n}{unit})",
+                          "lawful_calculation": (
+                              f"{_k(a)}부터 {_k(b)}까지의 실제 역수 기간은 {_span(a, b)}이며, "
+                              f"{n}{unit} 만료일은 {_k(earliest)}(초일 산입) 또는 {_k(earliest + timedelta(days=1))}(초일 불산입)입니다."
+                          ),
+                          "verification_needed": "실제 기산일·기준일 날짜와 기간 단위가 원본 계약·처분서와 일치하는지 확인해야 합니다."}))
     for m in ELAPSED_RE.finditer(text):
         if m.start() in seen or m.group("approx"):
             continue
@@ -113,7 +122,13 @@ def check_periods(doc: NormalizedDocument) -> List[Finding]:
                 f"{_k(a)}부터 {n}{unit}의 만료일은 {_k(expiry_incl)}(초일 산입) 또는 {_k(expiry_excl)}(초일 불산입, "
                 f"민법 제157조)이다. {_k(b)}에는 아직 {n}{unit}이 경과하지 않았다.",
                 excerpt, {"rule_id": "CALC.ELAPSED_EXPIRY", "expiry_inclusive": expiry_incl.isoformat(),
-                          "expiry_exclusive": expiry_excl.isoformat(), "claimed_date": b.isoformat()}))
+                          "expiry_exclusive": expiry_excl.isoformat(), "claimed_date": b.isoformat(),
+                          "stated_claim": f"{excerpt} (서면 주장 경과 기준일: {_k(b)})",
+                          "lawful_calculation": (
+                              f"민법 제157조·제160조에 따른 {_k(a)}부터 {n}{unit}의 정당한 만료일은 "
+                              f"{_k(expiry_excl)}(초일 불산입) 또는 {_k(expiry_incl)}(초일 산입)이므로 {_k(b)}에는 아직 기간이 경과하지 않았습니다."
+                          ),
+                          "verification_needed": "기산일·초일 산입 여부 및 적용 법령의 기간 계산 기준을 원본 자료로 확인해야 합니다."}))
             continue
         after = text[m.end():m.end() + 30]
         if b > expiry_excl and EXPIRY_CLAIM_RE.search(after) and not NOT_EXPIRY_RE.search(after):
@@ -122,5 +137,11 @@ def check_periods(doc: NormalizedDocument) -> List[Finding]:
                 f"{_k(a)}부터 {n}{unit}의 만료일은 {_k(expiry_excl)}(초일 불산입, 민법 제157조·제160조) 또는 "
                 f"{_k(expiry_incl)}(초일 산입)이다. 문서는 {_k(b)}를 만료(소멸·완성)일로 적었다.",
                 excerpt, {"rule_id": "CALC.EXPIRY_DATE", "expiry_inclusive": expiry_incl.isoformat(),
-                          "expiry_exclusive": expiry_excl.isoformat(), "claimed_date": b.isoformat()}))
+                          "expiry_exclusive": expiry_excl.isoformat(), "claimed_date": b.isoformat(),
+                          "stated_claim": f"{excerpt} (서면 기재 만료일: {_k(b)})",
+                          "lawful_calculation": (
+                              f"민법 제157조·제160조 역수 계산에 따른 {_k(a)}부터 {n}{unit}의 정당한 만료일은 "
+                              f"{_k(expiry_excl)}(초일 불산입) 또는 {_k(expiry_incl)}(초일 산입)입니다."
+                          ),
+                          "verification_needed": "기산일, 초일 산입 여부 및 말일 공휴일 연장(민법 제161조) 또는 중단·정지 사유 여부를 확인해야 합니다."}))
     return out

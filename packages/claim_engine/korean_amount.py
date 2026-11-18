@@ -167,7 +167,13 @@ def words_digits_mismatches(doc: NormalizedDocument) -> List[Finding]:
 
         features = {"deterministic_rule": True, "arithmetic_proof": True, "rule_id": "AMOUNT.WORDS_MISMATCH",
                     "defect_code": "AMOUNT_WORDS_MISMATCH", "words": words.strip(), "words_value": str(word_value),
-                    "digits_value": str(digit_value), "difference": str(digit_value - word_value)}
+                    "digits_value": str(digit_value), "difference": str(digit_value - word_value),
+                    "stated_claim": f"{h_prefix}'{words.strip()}' ({word_value:,}원) / 숫자 '{digits}' ({digit_value:,}원)",
+                    "lawful_calculation": (
+                        f"한글 금액 표기({word_value:,}원)와 괄호 안 숫자 금액 표기({digit_value:,}원)가 "
+                        f"일치하지 않습니다(차이 {digit_value - word_value:+,}원)."
+                    ),
+                    "verification_needed": "계약서·영수증·송금확인증 등 원본 처분문서를 대조해 한글 표기와 숫자 표기 중 어느 금액이 정당한지 확인해야 합니다."}
         if eff_h:
             features["heading"] = eff_h
 

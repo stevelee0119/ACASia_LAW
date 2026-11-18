@@ -133,7 +133,7 @@ def _rule_based_ai_detection(
     dropped = set(exclude_block_ids or [])
     text = build_reading_text(doc, blocks=[b for b in doc.body_blocks() if b.block_id not in dropped]).text
     sents = sentences(text)
-    signals: Dict[str, Any] = {}
+    signals: Dict[str, Any] = {"rule_inspected_chars": len(text)}
     reasons: List[str] = []
     suspicious_excerpts: List[Dict[str, Any]] = []
 
@@ -276,7 +276,9 @@ async def detect_ai_document(
                        and router.has_available_provider(policy=external_ai_policy))
 
     if not can_use_llm:
+        rule_chars = int(rule_res.signals.get("rule_inspected_chars") or len(text))
         rule_res.signals["coverage"] = {"total_chars": len(text), "inspected_chars": 0,
+                                        "rule_inspected_chars": rule_chars,
                                         "sampling_mode": "not_run", "is_full_coverage": False,
                                         "omitted_chars": len(text), "model_executed": False}
         return rule_res
@@ -377,6 +379,8 @@ async def detect_ai_document(
         schema=_DETECTOR_SCHEMA,
         input_contract="ai_document_v1",
     )
+    # ai_document_v1 폐쇄 스키마 검증을 유지하기 위해 규칙 검사 글자 수는 payload 직렬화 이후에 기록한다.
+    sampling_info["rule_inspected_chars"] = int(rule_res.signals.get("rule_inspected_chars") or total_chars)
     if use_renderer and not hide._is_original() and hide._uses_real_store():
         req = bind_masked_tokens(req, provenance)
     try:

@@ -32,6 +32,7 @@ LEGAL_IDENTIFIER_PATTERNS = [
     re.compile(r"제\s*\d{1,5}(?:\s*-\s*\d{1,6})+\s*호(?:증)?"),
     re.compile(r"등기\s*번호|등록\s*번호\s*제"),
     re.compile(r"\d{4}\.\s*\d{1,2}\.\s*\d{1,2}\.?"),          # 선고일자
+    re.compile(r"(?<!\d)(?:19|20)\d{2}-\d{1,2}-\d{1,2}(?:\s*[~～]\s*(?:19|20)\d{2}-\d{1,2}-\d{1,2})?(?![-\d])"),  # 하이픈 달력 일자·기간
     re.compile(r"\b(19|20)\d{2}\b"),                            # 연도
     re.compile(r"(?:계약번호\s*)?제\s*[\d]{4}-[가-힣A-Za-z0-9]+-\d+호?"), # 계약번호
     re.compile(r"법인(?:등록)?번호\s*(?:[:：]\s*)?[\d\-]+"),         # 법인등록번호 라벨 문맥 (사건 검증용)
@@ -420,7 +421,12 @@ MILITARY_NOUN_AFTER_GUN_RE = re.compile(
 )
 DOB_RE = re.compile(
     r"(?:19|20)\d{2}\s*[.\-년]\s*\d{1,2}\s*[.\-월]\s*\d{1,2}\s*(?:[.\-일]\s*)?(?:생|출생|일생)|"
-    r"(?:생년월일|출생일)\s*(?::\s*)?(?:19|20)\d{2}\s*[.\-년]\s*\d{1,2}\s*[.\-월]\s*\d{1,2}\s*[.\-일]?"
+    # 라벨과 날짜 사이에 조사(은·는·이·가)나 괄호가 와도 생년월일로 잡는다.
+    # 종전에는 콜론과 공백만 허용해 "생년월일은 2001-12-31", "생년월일(1985-11-24)"을 놓쳤다.
+    # 라벨을 일치 구간에 포함시키는 구조는 그대로다: 날짜만 덮는 법률 식별자 가드보다
+    # 넓은 구간이 되어 가드에 걸러지지 않고 탐지·마스킹된다.
+    # 길이를 제한한 문자 집합 하나로 받아 역추적이 늘지 않게 한다.
+    r"(?:생년월일|출생일)[\s:：()\[\]은는이가]{0,6}(?:19|20)\d{2}\s*[.\-년]\s*\d{1,2}\s*[.\-월]\s*\d{1,2}\s*[.\-일]?"
 )
 # 지명 앞부분의 길이를 제한한다. '[가-힣]+' 뒤에 '시|군|구'를 찾게 하면 한글이 길게
 # 이어진 구간에서 시작 위치마다 끝까지 되짚어 비용이 길이의 제곱으로 늘었다.
@@ -1014,6 +1020,9 @@ def _contact_matches(
                 # The sixth digit may be followed by a separator; earlier symbols
                 # cannot form an RRN prefix. OCR whitespace has already been removed.
                 if "-" in candidate[:6]:
+                    # 슬래시·물결표로 나란히 적은 별개 전화번호(예: 010-1111-2222 / 02-345-6789)를 하나의 계좌로 합치지 않는다.
+                    if any(sep in raw for sep in ("/", "／", "~", "～")):
+                        continue
                     context_start = max(0, norm_start - 40)
                     has_account_label = any(
                         labelled_account.span(1) == (norm_start - context_start, norm_end - context_start)

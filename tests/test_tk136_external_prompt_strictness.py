@@ -88,4 +88,8 @@ def test_answer_parser_unchanged_for_rule_following_answer():
 const text = "본문 …\\n<<<ACAS_RESULT\\nA1 | 판정: 불명 | 근거: 확인 불가(사건번호 검색 0건) | 요지: 수록 범위 밖\\nACAS_RESULT>>>";
 process.stdout.write(JSON.stringify(parseExternalAnswers(text)));"""
     parsed = run(script)
-    assert parsed == [{"code": "A1", "verdict": "불명", "basis": "확인 불가(사건번호 검색 0건)", "summary": "수록 범위 밖"}]
+    # 261116 항목 7로 parseExternalAnswers 결과에 모델명 칸이 더해졌다(batch-a).
+    # 규칙을 지킨 답변의 기존 네 칸은 그대로여야 하고, 모델을 적지 않은 답변의 모델명은
+    # 빈 문자열이어야 한다. 정확일치 단언을 유지해 다른 칸의 변화도 계속 잡는다.
+    assert parsed == [{"code": "A1", "model_name": "", "verdict": "불명",
+                       "basis": "확인 불가(사건번호 검색 0건)", "summary": "수록 범위 밖"}]
