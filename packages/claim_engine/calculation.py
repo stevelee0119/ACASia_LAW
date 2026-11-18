@@ -143,7 +143,7 @@ _SUB_PRED = r"공제하[면여]|공제한|차감하[면여]|차감한|뺀|빼면
 _OP_PREDICATE_RE = re.compile(f"{_MUL_PRED}|{_ADD_PRED}|{_SUB_PRED}")
 # 연산 결과를 가리키는 명사('그 곱은'·'합은'·'차는')는 명시적 연산 표지다. 절 경계가 있어도 결과를 잇는다.
 _OP_RESULT_NOUN_RE = re.compile(r"(?:^|\s)(?:그\s*)?(?P<noun>곱|합|차)(?:은|는|이|가)(?=\s|$)")
-_TOTAL_MARK_RE = re.compile(r"(?:^|\s)(?:총|전체|모두|합계|합산)")
+_TOTAL_MARK_RE = re.compile(r"(?:^|\s)(?:총|전체|모두|합계|합산|도합)")
 # 절 경계: 연결 어미(-고·-며·-으나·-지만·-는데) 뒤 공백이나 쉼표가 결과 앞에 있으면 다른 절이다(메모 M4)
 _CLAUSE_BREAK_RE = re.compile(r"[가-힣](?:고|며|으나|지만|는데)(?:\s|,)|,")
 # 연산 서술어('더하면'·'빼면' 등) 뒤 결과 이름표 구간에서는 용언 어간 뒤 연결 어미만 절 경계로 본다.
@@ -496,7 +496,38 @@ _DIGIT_DURATION_RE = re.compile(
 )
 
 
-def _check_segment_rate_basis(segment: str, ops: List[dict], is_between: bool = False) -> bool:
+_TIME_OR_SHARE_RATE_BASES = frozenset({
+    "시간", "일", "월", "달", "년", "연", "주", "분기", "반기", "학기", "회", "번", "차", "기",
+})
+_AFTER_COUNT_NOUN_RE = re.compile(
+    r"^\s*(?:의\s*)?(?P<noun>[가-힣]{1,8}?)(?:에(?:게|서)?|로부터|마다|씩|의|을|를|은|는|이|가)(?=\s|$)"
+    r"|^\s*(?:의\s*)?(?P<noun_bare>[가-힣]{1,8}?)(?=\s|$)"
+)
+_BEFORE_COUNT_NOUN_RE = re.compile(r"(?P<noun>[가-힣]{1,8})\s*$")
+
+
+def _extract_counted_noun_context(ops: List[dict], between: str, before_ops: str) -> str:
+    """첫 피연산자(수+분류사) 바로 뒤('5개 업체에') 또는 바로 앞('협력업체 5곳에')의 피수식 대상 명사를 추출한다(D6)."""
+    parts: List[str] = []
+    m_after = _AFTER_COUNT_NOUN_RE.match(between)
+    if m_after:
+        noun = m_after.group("noun") or m_after.group("noun_bare") or ""
+        if noun and not noun.endswith("당") and noun not in _TIME_OR_SHARE_RATE_BASES:
+            parts.append(noun)
+    m_before = _BEFORE_COUNT_NOUN_RE.search(before_ops)
+    if m_before:
+        noun = m_before.group("noun") or ""
+        if noun and not noun.endswith("당") and noun not in _TIME_OR_SHARE_RATE_BASES:
+            parts.append(noun)
+    return " ".join(parts)
+
+
+def _check_segment_rate_basis(
+    segment: str,
+    ops: List[dict],
+    is_between: bool = False,
+    counted_context: str = "",
+) -> bool:
     """주어진 텍스트 구간(인원 앞, 인원~단가 사이, 단가 뒤)에 앞 개수와 다른 단가/기간 표지가 있는지 검사한다."""
     if not segment:
         return False
@@ -523,6 +554,8 @@ def _check_segment_rate_basis(segment: str, ops: List[dict], is_between: bool = 
             continue
         if base in count_token_text:
             continue
+        if base not in _TIME_OR_SHARE_RATE_BASES and counted_context and base in counted_context:
+            continue
         return True
     return False
 
@@ -530,11 +563,12 @@ def _check_segment_rate_basis(segment: str, ops: List[dict], is_between: bool = 
 def _other_rate_basis(ops: List[dict], text: str, after_ops: str = "", before_ops: str = "") -> bool:
     """동일 절 내 피연산자 앞, 사이, 뒤에 앞 개수와 다른 기준의 단가/기간 표지(시간당·1주당·매월·사흘 동안 등)가 있는지."""
     between = text[ops[0]["end"]:ops[1]["start"]]
-    if _check_segment_rate_basis(between, ops, is_between=True):
+    counted_context = _extract_counted_noun_context(ops, between, before_ops)
+    if _check_segment_rate_basis(between, ops, is_between=True, counted_context=counted_context):
         return True
-    if _check_segment_rate_basis(before_ops, ops, is_between=False):
+    if _check_segment_rate_basis(before_ops, ops, is_between=False, counted_context=counted_context):
         return True
-    if _check_segment_rate_basis(after_ops, ops, is_between=False):
+    if _check_segment_rate_basis(after_ops, ops, is_between=False, counted_context=counted_context):
         return True
     return False
 
