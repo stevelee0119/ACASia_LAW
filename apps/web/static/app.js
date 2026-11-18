@@ -523,8 +523,12 @@ function externalAnswersForReport(projectId, runId) {
 function writeLocalExternalStore(store, projectId = state.project?.id, runId = state.run?.id) {
   try { localStorage.setItem(externalStoreKey(projectId, runId), JSON.stringify(store)); } catch (e) { toast("이 브라우저에 답변을 저장하지 못했습니다. 화면을 새로 고치면 사라집니다."); }
 }
+// 서버 저장이 확인되지 않은 상태. 조용한 성공 처리를 막고 화면에 미동기화를 표시한다.
+let externalStoreSyncFailed = false;
+let externalStoreUnsynced = null;
 async function persistExternalStoreToServer(store, projectId = state.project?.id, runId = state.run?.id) {
-  if (!projectId || !runId) return;
+  // 프로젝트/실행이 없는 화면(로컬 전용 경로)은 서버 저장 대상이 아니므로 실패로 보지 않는다.
+  if (!projectId || !runId) return {synced: false, reason: "no-run"};
   try {
     const cleanAnswers = {};
     for (const [code, ans] of Object.entries(store.answers || {})) {
@@ -544,9 +548,31 @@ async function persistExternalStoreToServer(store, projectId = state.project?.id
       interactiveAuth: false,
       body: {codes: store.codes || {}, answers: cleanAnswers},
     });
+    externalStoreSyncFailed = false;
+    externalStoreUnsynced = null;
+    return {synced: true};
   } catch (e) {
-    /* 오프라인·단독 화면 시험 등에서는 로컬 저장소만 유지한다. */
+    // 오프라인·서버 오류에서는 로컬 저장소를 유지하되, 저장된 것처럼 보이지 않게 한다.
+    externalStoreSyncFailed = true;
+    externalStoreUnsynced = store;
+    return {synced: false, reason: "error", error: e};
   }
+}
+async function retryExternalStoreSync() {
+  const res = await persistExternalStoreToServer(externalStoreUnsynced || loadExternalStore());
+  toast(res && res.synced
+    ? "외부 AI 답변을 서버에 저장했습니다."
+    : "아직 서버에 저장하지 못했습니다. 이 브라우저에만 저장되어 있습니다.");
+  renderFindings();
+}
+function externalSyncStatusNode() {
+  if (!externalStoreSyncFailed) return null;
+  const wrap = node("span", null, "external-sync-warning warning-text");
+  wrap.append(
+    node("span", "⚠ 서버 저장 실패 — 이 브라우저에만 저장됨"),
+    button("서버에 다시 저장", () => retryExternalStoreSync(), "external-sync-retry-btn"),
+  );
+  return wrap;
 }
 async function loadExternalAnswersFromServer(projectId, runId, options = {}) {
   if (!projectId || !runId) return;
@@ -660,9 +686,11 @@ function previewExternalAnswers(answers, missing, rowsByCode, prefix = "") {
     }
     store.answers = nextAnswers;
     writeLocalExternalStore(store);
-    await persistExternalStoreToServer(store);
+    const sync = await persistExternalStoreToServer(store);
     renderFindings();
-    toast(`외부 AI 답변 ${answers.length}건을 표에 반영했습니다.`);
+    toast(sync && sync.reason === "error"
+      ? `외부 AI 답변 ${answers.length}건을 표에 반영했습니다. 다만 서버 저장에 실패해 이 브라우저에만 저장되었습니다.`
+      : `외부 AI 답변 ${answers.length}건을 표에 반영했습니다.`);
   }, true);
   view.submit.textContent = "표에 반영";
   if (!answers.length) view.submit.hidden = true;
@@ -3338,6 +3366,8 @@ function renderFindings() {
 
         const badge = node("span", `(미확인 판례·법령 ${unverifiedAuthorities.length}건)`, "muted small review-prompt-count");
         tableActions.append(promptBtn, externalAnswerButton("A", unverifiedAuthorities), badge);
+        const syncWarnA = externalSyncStatusNode();
+        if (syncWarnA) tableActions.append(syncWarnA);
         tableActions.hidden = false;
       } else {
         tableActions.hidden = true;
@@ -3367,6 +3397,8 @@ function renderFindings() {
       promptBtn.title = `이 표의 주장 ${tier3Items.length}건을 개인정보 가림 후 한 번에 질의하는 프롬프트를 복사합니다.`;
       legalActions.append(promptBtn, externalAnswerButton("B", tier3Items),
         node("span", `(검토 대상 주장 ${tier3Items.length}건)`, "muted small review-prompt-count"));
+      const syncWarnB = externalSyncStatusNode();
+      if (syncWarnB) legalActions.append(syncWarnB);
       legalActions.hidden = false;
     }
   }
