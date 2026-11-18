@@ -248,3 +248,117 @@ def test_axis_c2_internal_signer_document_nouns_controls(header_text: str, body_
         if f.confidence_features.get("inconsistency_type") == "SIGNER"
     ]
     assert findings == []
+
+
+# ==============================================================================
+# F1 보완: 수량 슬롯 미래·예정 서법 가드 (동사 축 × 미래 4꼴 대조 및 약정↔실제 양성 보존)
+# ==============================================================================
+
+
+@pytest.mark.parametrize("verb", [
+    "공급", "납품", "설치", "제작", "시공", "수령", "구입", "출고",
+])
+@pytest.mark.parametrize("future_tail", [
+    "할 예정이다",
+    "할 계획이다",
+    "할 것이다",
+    "될 예정이다",
+])
+def test_f1_quantity_future_modality_cross_verbs_controls(verb: str, future_tail: str):
+    """F1 대조(8동사 × 미래·예정 4꼴 = 32칸): 확정 수량과 아직 이행하지 않은 예정·계획 수량은 모순 아님(head 51546edd에서는 32칸 실패)."""
+    if future_tail.startswith("될"):
+        second_sentence = f"향후 위 기계 25대가 {verb}{future_tail}."
+    else:
+        second_sentence = f"향후 위 기계 25대를 {verb}{future_tail}."
+    text = f"원고는 현장에 기계 40대를 {verb}하였다. {second_sentence}"
+    doc = _make_doc(text)
+    findings = [
+        f for f in check_internal_inconsistency(doc)
+        if f.confidence_features.get("rule_id") == "EVI.INCONS_INTERNAL_QUANTITY"
+    ]
+    assert findings == []
+
+
+@pytest.mark.parametrize("text", [
+    # 양성 1: 공급 약정 수량 ↔ 실제 인도 수량 불일치
+    "원고는 피고에게 운동화 50켤레를 공급하기로 약정하였습니다. 그러나 실제 인도된 위 운동화 30켤레를 수령하는 데 그쳤습니다.",
+    # 양성 2: 설치 합의 수량 ↔ 실제 설치 수량 불일치
+    "피고는 이 사건 건물에 냉방기 40대를 설치하기로 합의하였습니다. 그러나 실제로는 위 냉방기 25대를 설치하였습니다.",
+    # 양성 3: 납품 약정 수량 ↔ 실제 납품 수량 불일치
+    "원고는 피고에게 부품 100상자를 납품하기로 약정하였습니다. 한편 후속 단락에서는 위 부품 70상자를 납품하였다고 기재하였습니다.",
+    # 양성 4: 제작 합의 수량 ↔ 실제 제작(피동) 수량 불일치
+    "피고는 현장에 철골구조물 60개를 제작하기로 합의하였습니다. 그러나 실제로는 위 철골구조물 35개가 제작되었습니다.",
+])
+def test_f1_agreed_vs_actual_quantity_positive_preserved(text: str):
+    """F1 양성 4건: '…하기로 약정/합의' 수량 대 실제 이행 수량 불일치는 계속 탐지됨."""
+    doc = _make_doc(text)
+    findings = [
+        f for f in check_internal_inconsistency(doc)
+        if f.confidence_features.get("rule_id") == "EVI.INCONS_INTERNAL_QUANTITY"
+    ]
+    assert len(findings) == 1
+    assert findings[0].evidence_grade == EvidenceGrade.C
+    assert findings[0].status == VerificationStatus.UNVERIFIED
+
+
+# ==============================================================================
+# F2 보완: 호증 앵커 키 접두 구분 (소갑 ≠ 갑, 소을 ≠ 을) 및 원문 라벨 보존
+# ==============================================================================
+
+
+@pytest.mark.parametrize("text_a, text_b, expected_label", [
+    # 양성 1: 갑 제3호증 ↔ 갑 제3호증 가액 불일치
+    ("갑 제3호증의 감정가액은 1억 2,000만 원이다.", "갑 제3호증의 감정가액은 1억 5,000만 원이다.", "갑 제3호증"),
+    # 양성 2: 소갑 제3호증 ↔ 소갑 제3호증 가액 불일치
+    ("소갑 제3호증의 감정가액은 1억 2,000만 원이다.", "소갑 제3호증의 감정가액은 1억 5,000만 원이다.", "소갑 제3호증"),
+    # 양성 3: 소을 제2호증 ↔ 소을 제2호증 공사비 불일치
+    ("소을 제2호증의 공사비는 5,000만 원이다.", "소을 제2호증의 공사비는 7,000만 원이다.", "소을 제2호증"),
+    # 양성 4: 병 제1호증 ↔ 병 제1호증 수수료 불일치
+    ("병 제1호증의 수수료는 800만 원이다.", "병 제1호증의 수수료는 1,200만 원이다.", "병 제1호증"),
+])
+def test_f2_same_exhibit_prefix_and_number_positive(text_a: str, text_b: str, expected_label: str):
+    """F2 양성 4건: 같은 종류·같은 번호 호증(갑↔갑, 소갑↔소갑, 소을↔소을, 병↔병) 값 불일치 탐지 및 원문 라벨 일치."""
+    d1 = _make_doc(text_a, doc_id="f2_pos_1", head=CASE_HEAD)
+    d2 = _make_doc(text_b, doc_id="f2_pos_2", head=CASE_HEAD)
+    findings = [
+        f for f in verify_cross_document_entities([d1, d2])
+        if (f.confidence_features or {}).get("rule_id") == "XDOC.ANCHORED_ATTRIBUTE"
+    ]
+    assert len(findings) == 1
+    assert findings[0].confidence_features["anchor"] == expected_label
+    assert f"'{expected_label}'" in findings[0].title
+
+
+@pytest.mark.parametrize("text_a, text_b, expected_label_a, expected_label_b", [
+    # 대조 1: 갑 제3호증 ↔ 소갑 제3호증 (head 51546edd에서는 같은 키 '갑3-'로 묶여 오탐 1건 발생)
+    ("갑 제3호증의 감정가액은 1억 2,000만 원이다.", "소갑 제3호증의 감정가액은 1억 5,000만 원이다.", "갑 제3호증", "소갑 제3호증"),
+    # 대조 2: 을 제2호증 ↔ 소을 제2호증 (head 51546edd에서는 같은 키 '을2-'로 묶여 오탐 1건 발생)
+    ("을 제2호증의 감정가액은 8,000만 원이다.", "소을 제2호증의 감정가액은 9,500만 원이다.", "을 제2호증", "소을 제2호증"),
+    # 대조 3: 병 제1호증 ↔ 갑 제1호증
+    ("병 제1호증의 공사비는 4,000만 원이다.", "갑 제1호증의 공사비는 6,000만 원이다.", "병 제1호증", "갑 제1호증"),
+    # 대조 4: 소갑 제3호증 ↔ 소갑 제4호증
+    ("소갑 제3호증의 감정가액은 1억 2,000만 원이다.", "소갑 제4호증의 감정가액은 1억 5,000만 원이다.", "소갑 제3호증", "소갑 제4호증"),
+])
+def test_f2_different_exhibit_prefix_same_number_controls(
+    text_a: str,
+    text_b: str,
+    expected_label_a: str,
+    expected_label_b: str,
+):
+    """F2 대조 4건: 종류가 다른 같은 번호(갑↔소갑, 을↔소을, 병↔갑) 및 다른 번호(소갑3↔소갑4) 오탐 0, 원문 라벨 보존."""
+    from packages.claim_engine.cross_document_entities import _anchored_items
+
+    d1 = _make_doc(text_a, doc_id="f2_ctrl_1", head=CASE_HEAD)
+    d2 = _make_doc(text_b, doc_id="f2_ctrl_2", head=CASE_HEAD)
+    items_1 = _anchored_items(d1)
+    items_2 = _anchored_items(d2)
+    assert len(items_1) == 1 and items_1[0]["label"] == expected_label_a
+    assert len(items_2) == 1 and items_2[0]["label"] == expected_label_b
+    assert items_1[0]["key"] != items_2[0]["key"]
+
+    findings = [
+        f for f in verify_cross_document_entities([d1, d2])
+        if (f.confidence_features or {}).get("rule_id") == "XDOC.ANCHORED_ATTRIBUTE"
+    ]
+    assert findings == []
+

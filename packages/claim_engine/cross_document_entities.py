@@ -349,8 +349,7 @@ def _anchored_items(doc: NormalizedDocument) -> List[Dict[str, Any]]:
             label = f"이 사건 {target}".rstrip()
         else:
             party_raw = m.group("party")
-            party_norm = party_raw[-1]
-            anchor = ("EXHIBIT", f"{party_norm}{m.group('no')}-{m.group('sub') or ''}")
+            anchor = ("EXHIBIT", f"{party_raw}{m.group('no')}-{m.group('sub') or ''}")
             label = f"{party_raw} 제{m.group('no')}호증" + (f"의 {m.group('sub')}" if m.group("sub") else "")
         tail = text[m.end():m.end() + 30]
         if attr.endswith("일"):

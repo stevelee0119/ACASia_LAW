@@ -271,6 +271,9 @@ _QUANTITY_APPROX_RE = re.compile(
 _QUANTITY_NEGATION_RE = re.compile(
     r"(?:하지\s*않|안\s*하|못하|사실이\s*없|바\s*없|적\s*없|일\s*없|아니다|아니었|아니며|아니고)"
 )
+_QUANTITY_FUTURE_RE = re.compile(
+    r"(?:예정|계획|하고자|(?:할|될)\s*것|하겠|되겠)"
+)
 _QUANTITY_ACTION_VERB_STEM = (
     r"(?:공급|납품|매매|인도|보유|제작|생산|설치|시공|수령|반입|출고|입고|"
     r"운송|배달|전달|교부|제공|매수|매도|구입|구매|판매|보관|적재)"
@@ -689,7 +692,7 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
             btext,
         )
         if ex_m:
-            ex_key = re.sub(r"^소", "", re.sub(r"\s+", "", ex_m.group("ex")))
+            ex_key = re.sub(r"\s+", "", ex_m.group("ex"))
             author_m = re.search(r"(?:작성자|발신인|작성인|명의인)(?:\s*(?:은|는))?\s*[:：]?\s*(?P<author>[가-힣]{2,4})", btext)
             if author_m:
                 author_val = author_m.group("author")
@@ -903,8 +906,6 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                     is_anaphora = bool(_SIGNER_DEMONSTRATIVE_RE.match(raw_target))
                     stripped_target = _SIGNER_DEMONSTRATIVE_RE.sub("", raw_target)
                     ex_target = re.sub(r"\s+", "", stripped_target)
-                    if re.match(r"^소(?:갑|을|병)제?\d+호증", ex_target):
-                        ex_target = ex_target[1:]
                     is_sole = bool(_SOLE_SIGNER_RE.search(clause) or _SOLE_SIGNER_RE.search(sentence))
                     for nm_match in _PARTY_TITLE_NAME_RE.finditer(clause):
                         s_name = nm_match.group("party_name") or nm_match.group("name") or nm_match.group("name2") or nm_match.group("alias")
@@ -916,6 +917,7 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                 not _QUANTITY_PARTIAL_RE.search(clause)
                 and not _QUANTITY_APPROX_RE.search(clause)
                 and not _QUANTITY_NEGATION_RE.search(clause)
+                and not _QUANTITY_FUTURE_RE.search(clause)
                 and not _QUANTITY_ARITHMETIC_EXCLUDE_RE.search(sentence)
                 and not _QUANTITY_ARITHMETIC_EXCLUDE_RE.search(clause)
             ):
