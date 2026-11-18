@@ -518,6 +518,76 @@ def review_document(result, library, router, context, pii):
             return review
         review["drive_used"] = True
 
+        # TK-209: 지지 의견 미생성 원인 분리를 위한 3단계 진단(발췌 전달·모델 응답·승격·부착)
+        def _empty_rel_counts() -> Dict[str, int]:
+            return {"SUPPORTS": 0, "CONTRADICTS": 0, "CONTEXT": 0, "INSUFFICIENT": 0, "OTHER": 0}
+
+        support_diagnostics: Dict[str, Any] = {
+            "excerpt_delivery": {
+                "batch_deliveries": [],
+                "claim_deliveries": [],
+                "unique_sources_delivered": [],
+            },
+            "model_responses": {
+                "raw_total": _empty_rel_counts(),
+                "batch_raw_total": _empty_rel_counts(),
+                "claim_raw_total": _empty_rel_counts(),
+                "by_source": {},
+                "rejected_count": 0,
+                "rejected_reasons": {},
+            },
+            "promotion_attachment": {
+                "after_grounding": _empty_rel_counts(),
+                "after_dedup": _empty_rel_counts(),
+                "after_link_issues": _empty_rel_counts(),
+                "deterministic_supports": 0,
+            },
+        }
+        review["support_diagnostics"] = support_diagnostics
+        _delivered_sids_seen: set[str] = set()
+
+        def _mark_delivered_sid(sid: str) -> None:
+            if sid and sid not in _delivered_sids_seen:
+                _delivered_sids_seen.add(sid)
+                support_diagnostics["excerpt_delivery"]["unique_sources_delivered"].append(sid)
+
+        def _record_raw_model_obs(parsed: Any, src_pool: List[Dict[str, Any]], stage_key: str) -> None:
+            if not isinstance(parsed, dict):
+                return
+            raw_obs = parsed.get("observations")
+            if not isinstance(raw_obs, list):
+                return
+            src_by_id = {str(s.get("source_id", "")): s for s in src_pool if s.get("source_id")}
+            for item in raw_obs:
+                if not isinstance(item, dict):
+                    support_diagnostics["model_responses"]["raw_total"]["OTHER"] += 1
+                    support_diagnostics["model_responses"][stage_key]["OTHER"] += 1
+                    continue
+                rel = str(item.get("relationship") or "").upper()
+                bucket = rel if rel in ("SUPPORTS", "CONTRADICTS", "CONTEXT", "INSUFFICIENT") else "OTHER"
+                support_diagnostics["model_responses"]["raw_total"][bucket] += 1
+                support_diagnostics["model_responses"][stage_key][bucket] += 1
+                sid = str(item.get("source_id") or "")
+                if sid:
+                    entry = support_diagnostics["model_responses"]["by_source"].get(sid)
+                    if entry is None:
+                        s_meta = src_by_id.get(sid) or {}
+                        entry = {
+                            "file_id": s_meta.get("file_id", ""),
+                            "title": s_meta.get("title", ""),
+                            **_empty_rel_counts(),
+                        }
+                        support_diagnostics["model_responses"]["by_source"][sid] = entry
+                    entry[bucket] += 1
+
+        def _record_grounded_obs(obs_list: Optional[List[Dict[str, Any]]]) -> None:
+            if not obs_list:
+                return
+            for item in obs_list:
+                rel = str(item.get("relationship") or "").upper()
+                bucket = rel if rel in ("SUPPORTS", "CONTRADICTS", "CONTEXT", "INSUFFICIENT") else "OTHER"
+                support_diagnostics["promotion_attachment"]["after_grounding"][bucket] += 1
+
         # 1. 인용 동일성 대조 (U1: 판례 사건번호 경계 일치, 법령명+조 근접 대조)
         reference_matches = _match_citations_to_references(citations, sources)
         review["reference_matches"] = reference_matches
@@ -541,6 +611,9 @@ def review_document(result, library, router, context, pii):
         provision_obs.extend(citation_observations)
         _attach_observation_provenance(provision_obs, sources)
         review["deterministic_observations"] = len(provision_obs)
+        support_diagnostics["promotion_attachment"]["deterministic_supports"] = sum(
+            1 for o in provision_obs if str(o.get("relationship") or "").upper() == "SUPPORTS"
+        )
 
         # 3. QUICK 및 LOCAL_ONLY 분기 (외부 모델 호출 차단)
         if (
@@ -668,6 +741,18 @@ def review_document(result, library, router, context, pii):
                 total_calls += 1
                 batch_no = orig_batch_no if orig_batch_no is not None else total_calls
                 wave_batch_nos.append(batch_no)
+                for s in s_batch:
+                    sid = str(s.get("source_id") or "")
+                    _mark_delivered_sid(sid)
+                    support_diagnostics["excerpt_delivery"]["batch_deliveries"].append({
+                        "batch": batch_no,
+                        "source_id": sid,
+                        "file_id": s.get("file_id", ""),
+                        "title": s.get("title", ""),
+                        "page": s.get("page"),
+                        "source_chars": len(s.get("text") or ""),
+                        "delivered_chars": len(s.get("text") or ""),
+                    })
                 request = LLMRequest(
                     system=RAG_REVIEW_SYSTEM_PROMPT,
                     user=json.dumps({"document": doc_chunk, "untrusted_references": [
@@ -724,8 +809,10 @@ def review_document(result, library, router, context, pii):
                 if batch_accepted:
                     evaluated_batches.append(s_batch)
                     if batch_outcome.parsed:
+                        _record_raw_model_obs(batch_outcome.parsed, s_batch, "batch_raw_total")
                         b_obs = grounded_observations(batch_outcome.parsed, document, s_batch,
                                                       rejected=review["rejected_observations"])
+                        _record_grounded_obs(b_obs)
                         if b_obs:
                             all_observations.extend(b_obs)
 
@@ -1021,6 +1108,18 @@ def review_document(result, library, router, context, pii):
                         "text": s_excerpt,
                         "page": int(s.get("page", 1)),
                     })
+                    _mark_delivered_sid(sid)
+                    support_diagnostics["excerpt_delivery"]["claim_deliveries"].append({
+                        "claim_id": c_id,
+                        "source_id": sid,
+                        "file_id": s.get("file_id", ""),
+                        "title": s.get("title", ""),
+                        "page": int(s.get("page", 1)),
+                        "source_chars": len(s_text),
+                        "delivered_chars": len(s_excerpt),
+                        "offset_start": start_pos,
+                        "offset_end": end_pos,
+                    })
 
                 if not ref_sources_items:
                     unreviewed_claims_map[c_id] = "NO_GROUNDED_COMPARISON"
@@ -1079,8 +1178,10 @@ def review_document(result, library, router, context, pii):
                 accepted_any |= c_accepted
 
                 if c_accepted and c_outcome.parsed:
+                    _record_raw_model_obs(c_outcome.parsed, claim_sources, "claim_raw_total")
                     c_obs = grounded_observations(c_outcome.parsed, document, claim_sources,
                                                   rejected=review["rejected_observations"])
+                    _record_grounded_obs(c_obs)
                     if c_obs:
                         for o in c_obs:
                             o["claim_id"] = c_id
@@ -1146,6 +1247,17 @@ def review_document(result, library, router, context, pii):
                 obs_map[key] = c_obs
 
         observations = list(obs_map.values())
+        for item in observations:
+            rel = str(item.get("relationship") or "").upper()
+            bucket = rel if rel in ("SUPPORTS", "CONTRADICTS", "CONTEXT", "INSUFFICIENT") else "OTHER"
+            support_diagnostics["promotion_attachment"]["after_dedup"][bucket] += 1
+
+        rej_reasons: Dict[str, int] = {}
+        for rej in review.get("rejected_observations") or []:
+            r = str((rej or {}).get("reason") or "UNKNOWN")
+            rej_reasons[r] = rej_reasons.get(r, 0) + 1
+        support_diagnostics["model_responses"]["rejected_count"] = len(review.get("rejected_observations") or [])
+        support_diagnostics["model_responses"]["rejected_reasons"] = rej_reasons
 
         if not observations and not accepted_any:
             review["reason"] = ("NO_GROUNDED_MODEL_ADVICE" if (outcome.used if outcome is not None else False) else
@@ -1155,6 +1267,10 @@ def review_document(result, library, router, context, pii):
         from .contract_facts import link_observations
         masked_claims = [{**c, "text": mask(c.get("text", ""))} for c in getattr(result, "claims", [])]
         review["issues"] = link_observations(observations, sources, masked_claims)
+        for issue in review["issues"]:
+            rel = str(issue.get("relationship") or "").upper()
+            bucket = rel if rel in ("SUPPORTS", "CONTRADICTS", "CONTEXT", "INSUFFICIENT") else "OTHER"
+            support_diagnostics["promotion_attachment"]["after_link_issues"][bucket] += 1
         linked = {claim_id for issue in review["issues"] for claim_id in issue["claim_ids"] if claim_id}
 
         # claim_coverage 업데이트 (T7 불변식: eligible_claims == linked_claims + len(unreviewed))
