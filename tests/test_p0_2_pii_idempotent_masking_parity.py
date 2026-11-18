@@ -931,15 +931,42 @@ def test_real_vehicle_and_contact_pii_still_detected():
 
 
 def test_privacy_masked_value_and_detect_redos_linear():
+    """가명 토큰 반복 입력의 ReDoS 선형성.
+
+    상한(0.1초·0.25초)은 그대로 두고, 측정 방식만 같은 엔진의 선형성 시험
+    `tests/test_pii_redos_linear.py`와 맞춘다: ROUNDS회 반복의 **최솟값**을 쓰고
+    측정 구간에는 GC를 멈춘다(TK-142에서 채택한 방식). 한 번만 재면 실행기 부하가
+    그 한 번에 몰릴 때 선형성과 무관하게 넘친다 — CI PostgreSQL 잡에서 단일 측정이
+    0.5612초로 넘쳤고, 같은 실행의 서비스 로그에 체크포인트 `write=66.498 s`가 찍혀
+    I/O 경합이 확인됐다(로컬 median 0.0125초, 한도 대비 20배 여유).
+    """
+    import gc
     import time
     from packages.llm_router.privacy import _uncertain_person_value
 
+    rounds = 5
+
+    def _best(func, arg):
+        """반복 측정 최솟값과 마지막 반환값. 측정 구간 GC 중지는 finally로 복구한다."""
+        best = float("inf")
+        result = None
+        gc.collect()
+        gc.disable()
+        try:
+            for _ in range(rounds):
+                started = time.perf_counter()
+                result = func(arg)
+                best = min(best, time.perf_counter() - started)
+        finally:
+            gc.enable()
+        return result, best
+
     adversarial_value = "[PERSON_001], " * 2000 + "박서준"
-    t0 = time.perf_counter()
-    assert _uncertain_person_value(adversarial_value, explicit_name=True) is True
-    assert time.perf_counter() - t0 < 0.1
+    verdict, elapsed_value = _best(
+        lambda value: _uncertain_person_value(value, explicit_name=True), adversarial_value)
+    assert verdict is True
+    assert elapsed_value < 0.1, f"가명 토큰 반복 값 판정 {elapsed_value:.4f}초"
 
     adversarial_text = ("[PERSON_01024681357] " * 200) + ("010-" + "[PERSON_001]-" * 50)
-    t1 = time.perf_counter()
-    detect(adversarial_text)
-    assert time.perf_counter() - t1 < 0.25
+    _, elapsed_detect = _best(detect, adversarial_text)
+    assert elapsed_detect < 0.25, f"가명 토큰 반복 본문 탐지 {elapsed_detect:.4f}초"
