@@ -5,11 +5,23 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
+from functools import lru_cache
+from pathlib import Path
+from typing import Dict, Optional
 
 # 1999년까지의 사건번호는 연도를 두 자리로 적는다(예: 94누4615). 네 자리 연도와 함께 받는다.
 CASE_NUMBER_RE = re.compile(r"(?<!\d)(?P<year>(?:19|20)\d{2}|\d{2})\s*(?P<code>[가-힣]{1,3})\s*(?P<serial>\d{1,6})")
 CONSTITUTIONAL_RE = re.compile(r"(?P<year>(?:19|20)\d{2})\s*(?P<code>헌[가-힣]{1,2})\s*(?P<serial>\d{1,4})")
+_CASE_SEP = r"[\s.\-–—−·･/]*"
+_OFFICIAL_CASE_NUMBER_RE = re.compile(
+    rf"(?<!\d)(?P<year>(?:19|20)\d{{2}}|\d{{2}}){_CASE_SEP}(?P<code>[가-힣]{{1,3}}){_CASE_SEP}(?P<serial>\d{{1,6}})(?!\d)"
+)
+_OFFICIAL_CONSTITUTIONAL_RE = re.compile(
+    rf"(?<!\d)(?P<year>(?:19|20)\d{{2}}|\d{{2}}){_CASE_SEP}(?P<code>헌[가-힣]{{1,2}}){_CASE_SEP}(?P<serial>\d{{1,5}})(?!\d)"
+)
+_NON_CASE_TOKENS = frozenset({"년", "월", "일", "제", "항", "호", "목"})
+
+_CASE_CODES_YAML = Path(__file__).resolve().parents[2] / "config" / "legal_rules" / "case_codes.yaml"
 
 # 대표 사건부호 (대법원 재판예규 기준 주요 항목)
 CASE_CODE_MEANING = {
@@ -24,7 +36,55 @@ CASE_CODE_MEANING = {
     "헌라": "권한쟁의심판", "헌마": "헌법소원(권리구제형)", "헌바": "헌법소원(위헌심사형)",
 }
 
-SUPREME_COURT_CODES = {"도", "다", "두", "무", "므", "후", "마", "재도", "재다"}
+# 구 사건부호 및 재심 사건부호 (재판예규 연혁·재심 접두 '재')
+HISTORICAL_CASE_CODE_MEANING = {
+    "다카": "민사 상고(구 부호)",
+    "나카": "민사 항소(구 부호)",
+    "재다": "민사 상고 재심",
+    "재도": "형사 상고 재심",
+    "재두": "행정 상고 재심",
+    "재나": "민사 항소 재심",
+    "재노": "형사 항소 재심",
+    "재누": "행정 항소 재심",
+    "재마": "민사 재항고 재심",
+    "재모": "형사 재항고 재심",
+    "재라": "민사 항고 재심",
+    "재로": "형사 항고 재심",
+    "재가합": "민사 1심 합의 재심",
+    "재가단": "민사 1심 단독 재심",
+    "재구합": "행정 1심 합의 재심",
+    "재구단": "행정 1심 단독 재심",
+    "재허": "특허 1심 재심",
+    "재후": "특허 상고 재심",
+    "재르": "가사 항소 재심",
+    "재므": "가사 상고 재심",
+    "재드단": "가사 단독 재심",
+    "재드합": "가사 합의 재심",
+    "재그": "민사 특별항고 재심",
+    "재바": "민사 준항고 재심",
+}
+
+SUPREME_COURT_CODES = {
+    "도", "다", "다카", "두", "무", "므", "후", "마",
+    "재도", "재다", "재두", "재므", "재후", "재마", "재모", "재그",
+}
+
+
+@lru_cache(maxsize=1)
+def _yaml_case_code_meaning() -> Dict[str, str]:
+    try:
+        import yaml
+        data = yaml.safe_load(_CASE_CODES_YAML.read_text(encoding="utf-8")) or {}
+    except (OSError, ValueError, ImportError):
+        return {}
+    out: Dict[str, str] = {}
+    for code, entry in (data.get("codes") or {}).items():
+        if isinstance(entry, dict) and entry.get("case_type"):
+            out[str(code)] = str(entry["case_type"])
+    for code, desc in (data.get("constitutional_codes") or {}).items():
+        if desc:
+            out[str(code)] = str(desc)
+    return out
 
 
 def canonical_case_number(raw: str) -> Optional[str]:
@@ -38,18 +98,27 @@ def canonical_case_number(raw: str) -> Optional[str]:
     return f"{m.group('year')}{m.group('code')}{int(m.group('serial'))}"
 
 
-def extract_all_case_numbers(text: str):
+def extract_all_case_numbers(text: str, *, allow_separators: bool = False):
     """문자열에 포함된 모든 사건번호를 (연도, 부호, 일련번호) 튜플 목록으로 추출한다.
 
     병합 판결(예: '2005가합100279, 2006가합62053')이나 복수 인용을 포괄한다.
+    ``allow_separators=True``는 공식 Source 표기('서울행정법원-2021-구합-70769',
+    '대법원 2020. 다. 12345')의 구분자 변형까지 함께 정규화한다.
     """
     if not text:
         return []
+    const_re = _OFFICIAL_CONSTITUTIONAL_RE if allow_separators else CONSTITUTIONAL_RE
+    case_re = _OFFICIAL_CASE_NUMBER_RE if allow_separators else CASE_NUMBER_RE
     results = []
-    for m in CONSTITUTIONAL_RE.finditer(text):
-        results.append((m.group("year"), m.group("code"), str(int(m.group("serial")))))
-    for m in CASE_NUMBER_RE.finditer(text):
+    for m in const_re.finditer(text):
         item = (m.group("year"), m.group("code"), str(int(m.group("serial"))))
+        if item not in results:
+            results.append(item)
+    for m in case_re.finditer(text):
+        code = m.group("code")
+        if allow_separators and code in _NON_CASE_TOKENS:
+            continue
+        item = (m.group("year"), code, str(int(m.group("serial"))))
         if item not in results:
             results.append(item)
     return results
@@ -63,8 +132,8 @@ def same_case_number(a: str, b: str) -> bool:
     어느 한쪽에 병합 사건번호가 포함된 경우에도 정확한 (연도, 부호, 일련번호) 단위의 교집합이 있으면
     동일 사건으로 인정한다. 부분 숫자만 같은 다른 사건의 오연결은 철저히 방지한다.
     """
-    left_cases = extract_all_case_numbers(a or "")
-    right_cases = extract_all_case_numbers(b or "")
+    left_cases = extract_all_case_numbers(a or "", allow_separators=True)
+    right_cases = extract_all_case_numbers(b or "", allow_separators=True)
     if not left_cases or not right_cases:
         return False
     return bool(set(left_cases) & set(right_cases))
@@ -99,7 +168,13 @@ def case_number_possible(raw: str) -> bool:
 
 
 def case_code_meaning(code: str) -> Optional[str]:
-    return CASE_CODE_MEANING.get(code)
+    if not code:
+        return None
+    return (
+        CASE_CODE_MEANING.get(code)
+        or HISTORICAL_CASE_CODE_MEANING.get(code)
+        or _yaml_case_code_meaning().get(code)
+    )
 
 
 def is_supreme_court_code(code: str) -> bool:
@@ -165,6 +240,8 @@ LAW_ALIASES = {
 # 법령명 앞에 붙어 나오기 쉬운 접속·부사어. 정규식이 함께 잡아도 법령명에서 제외한다.
 LAW_NAME_PREFIX_NOISE = [
     "또한", "그리고", "및", "한편", "따라서", "이에", "아울러", "특히", "나아가",
+    "최소한", "적어도", "단지", "단순히", "불과", "약", "결국", "즉", "가령",
+    "예컨대", "물론", "실제로", "사실상", "비록", "설령", "원래", "당초",
     "위", "본", "동", "구", "현행", "당시", "관련", "해당", "각", "위반한", "위반하여",
     "이상",  # "…위험이 배제된 이상 군사기밀보호법 제10조"
 ]
@@ -172,10 +249,29 @@ LAW_NAME_PREFIX_NOISE = [
 
 # 공백 없이 법령명에 붙어도 떼어 낼 수 있는 접속·부사어. 한 글자 접두("위", "구", "동")는
 # 법령명 첫 글자와 구별되지 않으므로(예: 위치정보법, 구강보건법, 동물보호법) 띄어 쓴 경우에만 뗀다.
-_GLUED_NOISE = {"또한", "그리고", "한편", "따라서", "아울러", "특히", "나아가"}
+_GLUED_NOISE = {
+    "또한", "그리고", "한편", "따라서", "아울러", "특히", "나아가",
+    "최소한", "적어도", "단지", "단순히", "불과", "결국", "가령",
+    "예컨대", "물론", "실제로", "사실상", "비록", "설령",
+}
 
 # 기본 주요 법전 (약칭 매핑과 별도로 단독 법령명으로 최우선 인식)
 CORE_LEGAL_CODES = {"민법", "형법", "상법", "헌법", "대한민국헌법", "민사소송법", "형사소송법", "행정소송법", "국가배상법", "근로기준법"}
+
+_KNOWN_LAWS_COMPACT = frozenset(
+    v.replace(" ", "")
+    for v in (set(LAW_ALIASES.keys()) | set(LAW_ALIASES.values()) | CORE_LEGAL_CODES)
+)
+
+# 공백 없이 조사 뒤에 붙은 법령명 분리를 허용하는 문장 성분(주어·행위·절차 명사) 어간.
+_GLUED_CLAUSE_STEMS = (
+    "행위", "규정", "사건", "처분", "계약", "원고", "피고", "피고인", "당사자",
+    "신청인", "채권자", "채무자", "조항", "조문", "법조", "판결", "사실", "청구",
+    "부분", "경우", "이유", "목적", "원칙", "기준", "절차", "내용", "책임", "의무",
+    "권리", "효력", "위반", "적용", "판단", "인정", "주장", "취지", "부대", "기관",
+    "회사", "단체", "서면", "증거", "조치", "명령", "요건", "결과", "문제",
+    "해석", "범위", "법원",
+)
 
 # 법령명 앞 토큰이 조사로 끝나면 법령명이 아니다(예: "적용법조는 테스트법" -> "테스트법").
 JOSA_TAILS = set("는은이가을를의에로과와도만며고서")
@@ -206,6 +302,46 @@ PREDICATE_TAIL_RE = re.compile(r"[가-힣]{2,}한$|[가-힣]+(?:된|던)$")
 # 띄어쓰기 없이 서술어에 붙은 법령명: "기망한형법", "제출함으로써민법". 서술어 부분이 법령명 연결어로 끝나면
 # (…에관한법률, 대한민국헌법) 나누지 않는다.
 GLUED_PREDICATE_RE = re.compile(r"^(?P<pre>[가-힣]{2,}?(?:한|써))(?P<law>[가-힣]{1,20}(?:법률|법|령|규칙))$")
+_GLUED_LAW_TAIL_RE = re.compile(r"^[가-힣]{1,20}(?:법률|법|령|규칙)$")
+
+
+def _split_glued_law_token(token: str) -> str:
+    """단일 어절 앞쪽에 공백 없이 붙은 접속·부사어나 서술어·조사를 안전하게 분리한다."""
+    current = token
+    for noise in _GLUED_NOISE:
+        if current.startswith(noise) and len(current) > len(noise) + 1:
+            rest = current[len(noise):]
+            if _GLUED_LAW_TAIL_RE.fullmatch(rest):
+                current = rest
+                break
+
+    compact = current.replace(" ", "")
+    if compact in _KNOWN_LAWS_COMPACT or any(
+        compact.endswith(kind) and compact[:-len(kind)] in _KNOWN_LAWS_COMPACT
+        for kind in ("시행규칙", "시행령")
+    ):
+        return current
+
+    glued = GLUED_PREDICATE_RE.match(current)
+    if glued and not any(glued.group("pre").endswith(link) for link in LAW_NAME_LINKS) \
+            and current not in LAW_ALIASES:
+        return glued.group("law")
+
+    for idx in range(2, len(current) - 2):
+        particle = current[idx]
+        if particle not in "은는이가을를":
+            continue
+        pre, tail = current[:idx], current[idx + 1:]
+        if not any(pre.endswith(stem) for stem in _GLUED_CLAUSE_STEMS):
+            continue
+        if not _GLUED_LAW_TAIL_RE.fullmatch(tail):
+            continue
+        tail_base = re.sub(r"시행(?:령|규칙)$", "", tail)
+        if tail in _KNOWN_LAWS_COMPACT or tail_base in _KNOWN_LAWS_COMPACT:
+            return tail
+        if particle in "은는을를" and len(tail) >= 3:
+            return tail
+    return current
 
 
 def law_name_suffix(raw: str) -> str:
@@ -221,7 +357,7 @@ def law_name_suffix(raw: str) -> str:
         return " ".join(bracketed.group(1).split())
 
     # 공식 제명 목록(LAW_ALIASES의 공식 명칭 및 주요 법전)이 raw 내에 완전 포함된 경우 최장 일치를 우선 보존한다
-    clean_raw = re.sub(r"[「」『』]", " ", raw or "")
+    clean_raw = re.sub(r"[「」『』'‘’\"“”]", " ", raw or "")
     matches = []
     targets = set(LAW_ALIASES.values()) | set(LAW_ALIASES.keys()) | CORE_LEGAL_CODES
     for official in targets:
@@ -273,10 +409,8 @@ def law_name_suffix(raw: str) -> str:
     while kept and (kept[0] in LAW_NAME_LINKS or kept[0][-1] in LAW_NAME_JOINING_TAILS) and len(kept) > 1 \
             and not _joins_forward(kept):
         kept.pop(0)
-    glued = GLUED_PREDICATE_RE.match(kept[0]) if len(kept) == 1 else None
-    if glued and not any(glued.group("pre").endswith(link) for link in LAW_NAME_LINKS) \
-            and " ".join(kept) not in LAW_ALIASES:
-        kept = [glued.group("law")]
+    if len(kept) == 1 or (len(kept) == 2 and kept[1] in ("시행령", "시행규칙")):
+        kept[0] = _split_glued_law_token(kept[0])
     return " ".join(kept)
 
 
@@ -314,7 +448,7 @@ def _joins_forward(tokens) -> bool:
 
 def canonical_law_name(raw: str) -> str:
     """법령명 앞에 붙은 문장 조각·접속어를 떼고 표준 법령명을 만든다."""
-    name = law_name_suffix(raw) or re.sub(r"[「」『』]", "", raw or "").strip()
+    name = law_name_suffix(raw) or re.sub(r"[「」『』'‘’\"“”]", "", raw or "").strip()
     changed = True
     while changed:
         changed = False

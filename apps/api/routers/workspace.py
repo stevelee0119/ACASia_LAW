@@ -364,6 +364,94 @@ def external_prompt_texts(project_id: str, payload: ExternalPromptTexts, session
         raise HTTPException(403, "이 프로젝트는 외부 AI 전송을 허용하지 않습니다")
     if policy == "ORIGINAL":
         return {"policy": policy, "texts": payload.texts}
-    from packages.pii_engine import PIIEngine, PseudonymStore
+    from packages.pii_engine import PIIEngine, PseudonymSequenceLimitError, PseudonymStore
     engine = PIIEngine(PseudonymStore(project_id=project_id))
-    return {"policy": "MASKED", "texts": [engine.mask_text(text).masked_text for text in payload.texts]}
+    try:
+        return {"policy": "MASKED", "texts": [engine.mask_text(text).masked_text for text in payload.texts]}
+    except PseudonymSequenceLimitError:
+        raise HTTPException(422, "가명 생성 상한(종류별 999건)을 초과하여 외부 AI 프롬프트 생성을 중단했습니다")
+
+
+class StoredExternalAiAnswer(BaseModel):
+    code: str = Field(pattern=r"^[AB]\d{1,3}$")
+    item_id: str = Field(min_length=1, max_length=300)
+    model_name: str = Field(default="", max_length=100)
+    verdict: str = Field(default="", max_length=1000)
+    basis: str = Field(default="", max_length=1000)
+    summary: str = Field(default="", max_length=1000)
+    applied_at: str = Field(default="", max_length=60)
+
+
+class ExternalAiStoreInput(BaseModel):
+    codes: dict[str, str] = Field(default_factory=dict, max_length=400)
+    answers: dict[str, StoredExternalAiAnswer] = Field(default_factory=dict, max_length=400)
+
+    @field_validator("codes")
+    @classmethod
+    def validate_codes(cls, value: dict[str, str]) -> dict[str, str]:
+        import re
+        cleaned: dict[str, str] = {}
+        for k, v in (value or {}).items():
+            key = str(k).strip().upper()
+            if not re.match(r"^[AB]\d{1,3}$", key):
+                raise ValueError(f"유효하지 않은 코드 형식입니다: {k}")
+            item_id = str(v or "").strip()
+            if item_id:
+                cleaned[key] = item_id[:300]
+        return cleaned
+
+
+def _latest_external_ai_store(session: Session, project_id: str, run_id: str):
+    return session.scalar(
+        select(ReviewRevision)
+        .where(
+            ReviewRevision.project_id == project_id,
+            ReviewRevision.subject_type == "EXTERNAL_AI_STORE",
+            ReviewRevision.subject_id == run_id,
+        )
+        .order_by(ReviewRevision.id.desc())
+        .limit(1)
+    )
+
+
+def _external_run_or_404(session: Session, project_id: str, run_id: str) -> VerificationRun:
+    run = session.get(VerificationRun, run_id)
+    if run is None or run.project_id != project_id:
+        raise HTTPException(404, "이 프로젝트의 검증 결과를 찾을 수 없습니다")
+    return run
+
+
+@router.get("/projects/{project_id}/runs/{run_id}/external-ai-answers")
+def get_external_ai_answers(project_id: str, run_id: str, session: Session = Depends(get_db)):
+    from ..identity import require_project
+    require_project(session, project_id)
+    _external_run_or_404(session, project_id, run_id)
+    rev = _latest_external_ai_store(session, project_id, run_id)
+    stored = (rev.after or {}) if rev else {}
+    return {
+        "run_id": run_id,
+        "saved": rev is not None,
+        "codes": dict(stored.get("codes") or {}),
+        "answers": dict(stored.get("answers") or {}),
+    }
+
+
+@router.put("/projects/{project_id}/runs/{run_id}/external-ai-answers")
+def put_external_ai_answers(project_id: str, run_id: str, payload: ExternalAiStoreInput, request: Request,
+                            session: Session = Depends(get_db)):
+    from ..identity import require_project
+    require_project(session, project_id, "MEMBER")
+    _external_run_or_404(session, project_id, run_id)
+    rev = _latest_external_ai_store(session, project_id, run_id)
+    before = dict(rev.after or {}) if rev else {}
+    answers = {}
+    for k, ans in (payload.answers or {}).items():
+        code_key = str(k).strip().upper()
+        data = ans.model_dump()
+        data["code"] = code_key
+        answers[code_key] = data
+    after = {"codes": payload.codes, "answers": answers}
+    who = actor(request)
+    history(session, project_id, "EXTERNAL_AI_STORE", run_id, who, before, after)
+    session.commit()
+    return {"run_id": run_id, "saved": True, **after}

@@ -205,8 +205,15 @@ def test_tk84_pipeline_entrypoint_reference_text_truncation(tmp_path, monkeypatc
     items = doc_res.review_items
     rag_item = next((it for it in items if f.finding_id in (it.finding_ids or [])), None)
     assert rag_item is not None
-    # 표 본문(claim_text)에 detail 전문이 포함되어 잘리지 않음
-    assert long_explanation in rag_item.claim_text
+    # 261116 항목 8-1로 검토 표의 열 역할이 나뉘었다(batch-c): 2열은 서면 원 주장 문장만,
+    # 분석 상세·근거는 3열(reasoning_sections)로 간다. TK-84가 지키려는 것은 '표에서 전문이
+    # 잘리지 않는다'이므로, 옮겨간 자리에서 세 문자열이 모두 온전한지 확인한다(원래 단언은
+    # long_explanation 하나만 봤다).
+    assert long_claim in rag_item.claim_text
+    table_detail = " ".join(str(v) for v in (rag_item.reasoning_sections or {}).values())
+    assert long_claim in table_detail
+    assert long_basis in table_detail
+    assert long_explanation in table_detail
 
 
 def test_tk84_gate_risk_index_excluded():

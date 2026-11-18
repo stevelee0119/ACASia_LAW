@@ -113,6 +113,9 @@ class Settings:
     rag_max_files: int = field(default_factory=lambda: max(1, min(5000, int(os.getenv("LV_RAG_MAX_FILES", "1000")))))
     rag_inventory_max_files: int = field(default_factory=lambda: max(1, min(100000, int(os.getenv("LV_RAG_INVENTORY_MAX_FILES", "20000")))))
     rag_metadata_first: bool = field(default_factory=lambda: os.getenv("LV_RAG_METADATA_FIRST", "1") == "1")
+    rag_decoupled_collection: bool = field(default_factory=lambda: _flag("LV_RAG_DECOUPLED_COLLECTION", True))
+    rag_claim_multisearch: bool = field(default_factory=lambda: _flag("LV_RAG_CLAIM_MULTISEARCH", True))
+    rag_hybrid_semantic: bool = field(default_factory=lambda: _flag("LV_RAG_HYBRID_SEMANTIC", True))
     rag_download_mb: int = field(default_factory=lambda: max(1, min(512, int(os.getenv("LV_RAG_DOWNLOAD_MB", "128")))))
     # --- RAG 주장 단위 대조 예산형 상한 (TK-63, 한국어 주석) ---
     rag_claim_max_per_document: int = field(

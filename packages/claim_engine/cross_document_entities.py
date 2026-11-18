@@ -314,8 +314,9 @@ def verify_cross_document_entities(docs: List[NormalizedDocument]) -> List[Findi
 # 속성 낱말은 닫힌 목록이 아니라 꼴로 정한다: 1~4자 + 날짜 접미(일·일자)·금액 접미(금액·대금)·수량 접미(수량·면적·인원).
 _ANCHOR_RE = re.compile(
     r"(?:(?P<unique>이\s*사건|본건)\s*(?:(?P<target>[가-힣]{1,8}?)(?:의\s*|\s+))?|"
-    r"(?P<party>갑|을|병)\s*(?:제\s*)?(?P<no>\d{1,3})\s*호\s*증(?:의\s*(?P<sub>\d{1,3}))?(?:\s*[(（][^)）]{1,20}[)）]|\s+[가-힣]{2,10}(?=의))?"
-    r"(?:의\s*|\s+))(?:기재\s*)?(?P<attr>[가-힣]{1,4}?(?:일자|일|금)|[가-힣]{0,4}?(?:금액|대금|수량|면적|인원))"
+    r"(?P<party>(?:소)?(?:갑|을)|병)\s*(?:제\s*)?(?P<no>\d{1,3})\s*호\s*증(?:의\s*(?P<sub>\d{1,3}))?(?:\s*[(（][^)）]{1,20}[)）]|\s+[가-힣]{2,10}(?=의))?"
+    r"(?:의\s*|\s+))(?:기재\s*)?(?P<attr>[가-힣]{1,4}?(?:일자|일|금)|"
+    r"[가-힣]{0,4}?(?:금액|대금|수량|면적|인원|공사비|수리비|관리비|설치비|철거비|운송비|보수비|시공비|제작비|비용|임대료|사용료|수수료|가액|위약벌))"
     # 속성 끝 경계: 한글이 더 이어지면('입금'+'일') 더 긴 속성으로 되짚는다(평가 측 보완 S1)
     r"(?=\s|[은는이가을를의에도과와으로:：]|$)"
     r"\s*(?:은|는|이|가|을|를|:|：)?\s*(?:모두\s*|각\s*)?")
@@ -347,8 +348,9 @@ def _anchored_items(doc: NormalizedDocument) -> List[Dict[str, Any]]:
             anchor = ("UNIQUE", target)
             label = f"이 사건 {target}".rstrip()
         else:
-            anchor = ("EXHIBIT", f"{m.group('party')}{m.group('no')}-{m.group('sub') or ''}")
-            label = f"{m.group('party')} 제{m.group('no')}호증" + (f"의 {m.group('sub')}" if m.group("sub") else "")
+            party_raw = m.group("party")
+            anchor = ("EXHIBIT", f"{party_raw}{m.group('no')}-{m.group('sub') or ''}")
+            label = f"{party_raw} 제{m.group('no')}호증" + (f"의 {m.group('sub')}" if m.group("sub") else "")
         tail = text[m.end():m.end() + 30]
         if attr.endswith("일"):
             dm = _ANCHOR_DATE_RE.match(tail)
@@ -359,7 +361,7 @@ def _anchored_items(doc: NormalizedDocument) -> List[Dict[str, Any]]:
             except ValueError:
                 continue
             raw, kind, vend = dm.group(0), "DATE", dm.end()
-        elif attr.endswith(("금액", "대금", "금")):
+        elif attr.endswith(("금액", "대금", "금", "비", "비용", "료", "가액", "위약벌")):
             # 값은 속성 바로 뒤의 금액만 읽는다('…금 중 300만 원'처럼 부분 금액은 읽지 않는다)
             amounts = [a for a in parse_amounts(tail) if a.start == 0 and a.raw.rstrip().endswith(("원", "원정"))]
             if not amounts:

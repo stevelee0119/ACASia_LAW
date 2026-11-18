@@ -116,7 +116,13 @@ def _finding(doc: NormalizedDocument, formula: Formula, stated: Decimal, compute
     features = {"arithmetic_proof": True, "deterministic_rule": True, "kind": "FORMULA",
                 "rule_id": f"CALC.FORMULA_GRAPH.{formula.name}", "formula": formula.label, "stated": str(stated),
                 "computed": str(computed), "difference": str(difference),
-                "table_ref": table.get("table_ref"), "table_column": f"formula:{formula.name}:{slot}"}
+                "table_ref": table.get("table_ref"), "table_column": f"formula:{formula.name}:{slot}",
+                "stated_claim": f"표({formula.label}) 기재 금액: {stated:,}원 ({parts})",
+                "lawful_calculation": (
+                    f"정당한 산식({formula.label}): {parts} = {computed:,}원입니다 "
+                    f"(기재 금액 {stated:,}원과 차이 {difference:+,}원). 근거: {formula.basis}."
+                ),
+                "verification_needed": "원본 세금계산서·원리금 정산내역·급여대장 등 기초 증빙과 표의 항목별 금액을 대조해 오기 또는 누락 여부를 확인해야 합니다."}
     return Finding.create(
         type=FindingType.ARITHMETIC_MISMATCH, status=VerificationStatus.CONTRADICTED, severity=Severity.HIGH,
         evidence_grade=EvidenceGrade.A,

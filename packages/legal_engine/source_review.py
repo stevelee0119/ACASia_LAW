@@ -874,7 +874,46 @@ def verify_admin_rule_source(verifier, citation):
         matched = [r for r in response.records if (not agency or agency in str(r.get("agency") or ""))
                    and (not kind or kind in str(r.get("rule_kind") or ""))]
     exact = [r for r in matched if not number or str(r.get("number") or "").replace(" ", "") == number]
+    alias = attrs.get("law_alias_candidate")
+    if (not matched or (number and not exact)) and alias and alias != name:
+        retried = search(alias)
+        verdict.source_records.extend(retried.source_records)
+        if retried.ok and retried.complete:
+            r_matched = [r for r in retried.records if _same_law_name(alias, r.get("rule_name"))]
+            r_exact = [r for r in r_matched if not number or str(r.get("number") or "").replace(" ", "") == number]
+            verdict.review["law_alias"] = {
+                "written": name, "resolved": alias, "basis": attrs.get("law_alias_basis"),
+                "found": bool(r_matched and (not number or r_exact)),
+            }
+            if r_matched and (not number or r_exact):
+                verdict.notes.append(f"'{name}'은(는) 목록에 없어 문서의 정식 행정규칙명 「{alias}」로 조회했다")
+                response, matched, exact = retried, r_matched, r_exact
     if not matched or (number and not exact):
+        matched_ref = find_matching_read_reference(name or "", verifier) or (
+            find_matching_read_reference(alias, verifier) if alias else None
+        )
+        if matched_ref:
+            verdict.status = VerificationStatus.PARTIALLY_VERIFIED
+            verdict.levels["existence"] = "FOUND_IN_USER_REFERENCES"
+            verdict.review["user_reference_match"] = matched_ref
+            verdict.notes.append(
+                f"공식 행정규칙 목록에는 없으나 읽은 사용자 참고자료(Drive) 「{matched_ref}」에서 확인되었다. "
+                "참고자료 원문과의 대조 대상으로 처리한다"
+            )
+            ids = [r.source_record_id for r in verdict.source_records]
+            verdict.findings.append(Finding.create(
+                type=FindingType.LAW_CITATION_ERROR, status=VerificationStatus.PARTIALLY_VERIFIED,
+                severity=Severity.INFO, evidence_grade=EvidenceGrade.B,
+                title=f"사용자 참고자료 대조 대상 행정규칙: {alias or name or citation.raw_text}",
+                detail=f"공식 행정규칙 목록에서 확인되지 않았으나, 읽은 참고자료 「{matched_ref}」와 제목이 일치하여 참고자료 원문 대조 대상으로 분류함.",
+                document_id=citation.document_id, block_id=citation.block_id, page=citation.page, span=citation.span,
+                engine="legal_engine", source_record_ids=ids, tags=["LEGAL", "ADMIN_RULE", "USER_REFERENCE_MATCH"],
+                confidence_features={"verdict_label": "FOUND_IN_USER_REFERENCES", "matched_reference": matched_ref,
+                                     "law_name": alias or name},
+                evidence=[Evidence.create(description="사용자 참고자료 일치", grade=EvidenceGrade.B,
+                                          excerpt=matched_ref, source_record_ids=ids)],
+            ))
+            return verdict
         verdict.status = VerificationStatus.NOT_FOUND
         verdict.levels["existence"] = "NOT_FOUND"
         verdict.notes.append(f"공식 행정규칙 목록 {len(response.records)}건에서 일치하는 규칙을 찾지 못했다"

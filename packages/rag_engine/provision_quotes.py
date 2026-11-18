@@ -14,12 +14,20 @@ from typing import Dict, List, Optional, Tuple
 
 # 항 번호 원숫자 1~50. ㉑(U+3251)부터는 ⑳(U+2473)와 코드 범위가 떨어져 있다(TK-130a, temporal_review.CIRCLED와 같은 범위).
 CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿"
-RULE_SUFFIX = r"(?:지침|규정|훈령|예규|규칙|내규|요령|기준|수칙|세칙|매뉴얼)"
-NAMED_RULE_RE = re.compile(r"[「『]\s*(?P<name>[^」』\n]{2,60}?" + RULE_SUFFIX + r")\s*[」』]")
+RULE_SUFFIX = r"(?:지침|규정|훈령|예규|고시|규칙|내규|요령|기준|수칙|세칙|매뉴얼)"
+_QUOTE_PAIRS = {"「": "」", "『": "』", "'": "'", "‘": "’", "\"": "\"", "“": "”"}
+NAMED_RULE_RE = re.compile(
+    r"(?P<qopen>[「『'‘\"“])\s*(?P<name>[^」』'’\"”\n]{2,60}?" + RULE_SUFFIX + r")\s*(?P<qclose>[」』'’\"”])"
+)
 PROVISION_RE = re.compile(
-    r"(?:[「『]\s*(?P<named>[^」』\n]{2,60}?" + RULE_SUFFIX + r")\s*[」』]|"
+    r"(?:(?P<qopen>[「『'‘\"“])\s*(?P<named>[^」』'’\"”\n]{2,60}?" + RULE_SUFFIX + r")\s*(?P<qclose>[」』'’\"”])|"
     r"(?<![가-힣])(?:위|동|같은|해당)\s*(?P<anaphor>" + RULE_SUFFIX + r"))\s*(?:의\s*)?"
-    r"제\s*(?P<art>\d+)\s*조(?:\s*의\s*(?P<sub>\d+))?(?:\s*제\s*(?P<para>\d+)\s*항)?")
+    r"제\s*(?P<art>\d+)\s*조(?:\s*의\s*(?P<sub>\d+))?(?:\s*제\s*(?P<para>\d+)\s*항)?"
+)
+ALIAS_DEF_RE = re.compile(
+    r"(?P<qopen>[「『'‘\"“])\s*(?P<full>[^」』'’\"”\n]{2,80}?" + RULE_SUFFIX + r")\s*(?P<qclose>[」』'’\"”])\s*"
+    r"[(（]\s*(?:이하\s*)?[‘'\"“「『]?(?P<abbr>[가-힣A-Za-z· ]{2,30}?)[’'\"”」』]?\s*(?:이?라\s*(?:한다|함|칭한다|약칭한다))?\s*[)）]"
+)
 OPEN_QUOTES = {"\"": "\"", "“": "”", "'": "'", "‘": "’"}
 # 서술어 어간 + 허용·금지 어미. 어간(예: '반출')이 두 문장에 함께 있어야 같은 행위로 본다.
 PERMIT_RE = re.compile(r"(?P<stem>[가-힣]{2,})(?:[하되]|할|될)?\s*수\s*있(?:다|음|으며|고)|(?P<stem2>[가-힣]{2,})(?:이|을|를)?\s*"
@@ -123,13 +131,46 @@ def _modal_sentences(paragraph: str) -> List[Tuple[str, str, str]]:
     return out
 
 
-def _resolve_name(document: str, match: re.Match) -> Optional[str]:
-    if match.group("named"):
-        return match.group("named").strip()
+def _extract_alias_map(document: str) -> Dict[str, str]:
+    aliases: Dict[str, str] = {}
+    for m in ALIAS_DEF_RE.finditer(document or ""):
+        if _QUOTE_PAIRS.get(m.group("qopen")) != m.group("qclose"):
+            continue
+        full = " ".join(m.group("full").split())
+        abbr = " ".join(m.group("abbr").split())
+        if full and abbr and _key(full) != _key(abbr):
+            aliases[abbr] = full
+            aliases[_key(abbr)] = full
+    return aliases
+
+
+def _resolve_alias(name: str, alias_map: Dict[str, str]) -> str:
+    cleaned = " ".join((name or "").split())
+    return alias_map.get(cleaned) or alias_map.get(_key(cleaned)) or cleaned
+
+
+def _resolve_name(document: str, match: re.Match, alias_map: Dict[str, str]) -> Optional[str]:
+    if match.groupdict().get("named"):
+        if match.groupdict().get("qopen") and _QUOTE_PAIRS.get(match.group("qopen")) != match.group("qclose"):
+            return None
+        return _resolve_alias(match.group("named").strip(), alias_map)
+    if match.groupdict().get("alias_literal"):
+        return _resolve_alias(match.group("alias_literal").strip(), alias_map)
     suffix = match.group("anaphor")
-    earlier = [m.group("name").strip() for m in NAMED_RULE_RE.finditer(document, 0, match.start())
-               if m.group("name").strip().endswith(suffix)]
-    return earlier[-1] if earlier else None
+    earlier = [
+        m.group("name").strip()
+        for m in NAMED_RULE_RE.finditer(document, 0, match.start())
+        if _QUOTE_PAIRS.get(m.group("qopen")) == m.group("qclose")
+        and m.group("name").strip().endswith(suffix)
+    ]
+    if earlier:
+        return _resolve_alias(earlier[-1], alias_map)
+    # Fallback: if a document-level alias ending in suffix was defined explicitly before match.start()
+    earlier_aliases = [
+        full for abbr, full in alias_map.items()
+        if " " not in abbr and abbr.endswith(suffix) and document.find(abbr, 0, match.start()) != -1
+    ]
+    return earlier_aliases[-1] if len(set(earlier_aliases)) == 1 else None
 
 
 def check_quoted_provisions(document: str, sources: List[Dict]) -> List[Dict]:
@@ -137,14 +178,30 @@ def check_quoted_provisions(document: str, sources: List[Dict]) -> List[Dict]:
     by_file: Dict[str, List[Dict]] = {}
     for source in sources:
         by_file.setdefault(str(source.get("file_id") or source.get("source_id")), []).append(source)
+    doc = document or ""
+    alias_map = _extract_alias_map(doc)
+    matches = list(PROVISION_RE.finditer(doc))
+    covered_spans = {m.span() for m in matches}
+    abbr_keys = sorted({k for k in alias_map if any(k.endswith(s) for s in ("지침", "규정", "훈령", "예규", "고시", "규칙", "내규", "요령", "기준", "수칙", "세칙", "매뉴얼"))}, key=len, reverse=True)
+    if abbr_keys:
+        abbr_alt = "|".join(re.escape(k) for k in abbr_keys)
+        unbracketed_re = re.compile(
+            rf"(?<![가-힣A-Za-z0-9])(?P<alias_literal>{abbr_alt})\s*(?:의\s*)?"
+            r"제\s*(?P<art>\d+)\s*조(?:\s*의\s*(?P<sub>\d+))?(?:\s*제\s*(?P<para>\d+)\s*항)?"
+        )
+        for m in unbracketed_re.finditer(doc):
+            if not any(s <= m.start() and m.end() <= e for s, e in covered_spans):
+                matches.append(m)
+        matches.sort(key=lambda m: m.start())
+
     out: List[Dict] = []
     seen = set()
-    for m in PROVISION_RE.finditer(document or ""):
-        name = _resolve_name(document, m)
-        span = _claim_quote(document, m.end())
+    for m in matches:
+        name = _resolve_name(doc, m, alias_map)
+        span = _claim_quote(doc, m.end())
         if not name or not span:
             continue
-        claim_quote = document[span[0]:span[1]]
+        claim_quote = doc[span[0]:span[1]]
         claim_modal = _modal(claim_quote)
         if not claim_modal:
             continue

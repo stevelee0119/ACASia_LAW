@@ -1,0 +1,587 @@
+{
+  "release": "0.22.0",
+  "baseline": "0.21.0",
+  "measured_commit": "183f3d22791bb01d4c8a39ce842e193000c663b8",
+  "date_kst": "2026-11-16",
+  "verdict": "PARTIAL_EVALUATION_NOT_ACCEPTED",
+  "phase": "TXT reference role, input attacks, original documents, functional API/UI",
+  "runs": {
+    "single_document": 15,
+    "multi_document_local_only": 1
+  },
+  "answer_key": {
+    "baseline": {
+      "passed": 46,
+      "total": 47,
+      "failed": [
+        "D-hwpx:D-C2"
+      ]
+    },
+    "current": {
+      "passed": 45,
+      "total": 47,
+      "failed": [
+        "B:B-P1",
+        "B:B-P4"
+      ]
+    },
+    "compatibility_baseline": {
+      "passed": 47,
+      "total": 47
+    },
+    "compatibility_current": {
+      "passed": 45,
+      "total": 47
+    },
+    "sha256": "84c059b851eb5b1a8c5c1cc2dc75668ede64a717b7002bb1c92af96327eb9e2c",
+    "structure_check_version": "paragraph-boundary-representation-v2"
+  },
+  "reports": [
+    {
+      "label": "D_hwpx",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "8115fd3f831a994f23a647b90ecd4253032c05f3c29909ab7022dea6fc6a10d5",
+      "scores": [
+        {
+          "spec": "pipeline_health_online",
+          "rule_version": "1",
+          "passed": 5,
+          "total": 6,
+          "failed": [
+            "H-REF"
+          ]
+        }
+      ],
+      "model_calls": 2,
+      "model_failed": 0,
+      "reference_status": "PARTIAL",
+      "files_seen": 35,
+      "files_indexed": 16,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 10
+      }
+    },
+    {
+      "label": "D_docx",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "161c98c5ea871fe517695a4c98f55adc2f106ab22ee5cf75448258cdc6a85f42",
+      "scores": [
+        {
+          "spec": "pipeline_health_online",
+          "rule_version": "1",
+          "passed": 5,
+          "total": 6,
+          "failed": [
+            "H-REF"
+          ]
+        }
+      ],
+      "model_calls": 2,
+      "model_failed": 0,
+      "reference_status": "PARTIAL",
+      "files_seen": 35,
+      "files_indexed": 16,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 10
+      }
+    },
+    {
+      "label": "D_hwp",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "a4c44500a222fba04d767eb71fa157a916587801f3545885e6a32d50af7aa9da",
+      "scores": [
+        {
+          "spec": "pipeline_health_online",
+          "rule_version": "1",
+          "passed": 5,
+          "total": 6,
+          "failed": [
+            "H-REF"
+          ]
+        }
+      ],
+      "model_calls": 2,
+      "model_failed": 0,
+      "reference_status": "PARTIAL",
+      "files_seen": 35,
+      "files_indexed": 16,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 10
+      }
+    },
+    {
+      "label": "A",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "bf929ddf9018b43d6fa107f5df2b78d53ee9b055404c887218e231766c1017af",
+      "scores": [
+        {
+          "spec": "pipeline_health_online",
+          "rule_version": "1",
+          "passed": 5,
+          "total": 6,
+          "failed": [
+            "H-REF"
+          ]
+        }
+      ],
+      "model_calls": 4,
+      "model_failed": 0,
+      "reference_status": "PARTIAL",
+      "files_seen": 39,
+      "files_indexed": 25,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 15
+      }
+    },
+    {
+      "label": "tk180_normal_txt",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "fb9dbc2656bdb97e1c027516db68ef7691e48b9e2caecd259c3d4d187903af78",
+      "scores": [
+        {
+          "spec": "tk180_source_roles_normal",
+          "rule_version": "1",
+          "passed": 5,
+          "total": 5,
+          "failed": []
+        },
+        {
+          "spec": "pipeline_health_online",
+          "rule_version": "1",
+          "passed": 5,
+          "total": 6,
+          "failed": [
+            "H-REF"
+          ]
+        }
+      ],
+      "model_calls": 9,
+      "model_failed": 0,
+      "reference_status": "PARTIAL",
+      "files_seen": 39,
+      "files_indexed": 30,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 17
+      }
+    },
+    {
+      "label": "case9_r1",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "d12d96daaf6466cf7bb3c442111be81f48a00070a59b7a040e6413f5ccede602",
+      "scores": [
+        {
+          "spec": "case9_state_compensation_online",
+          "rule_version": "2",
+          "passed": 23,
+          "total": 23,
+          "failed": []
+        },
+        {
+          "spec": "case9_state_compensation_health_online",
+          "rule_version": "1",
+          "passed": 1,
+          "total": 1,
+          "failed": []
+        },
+        {
+          "spec": "case9_state_compensation_rag_controls_online",
+          "rule_version": "1",
+          "passed": 3,
+          "total": 5,
+          "failed": [
+            "RAGC-S1",
+            "RAGC-S3"
+          ]
+        },
+        {
+          "spec": "pipeline_health_online",
+          "rule_version": "1",
+          "passed": 5,
+          "total": 6,
+          "failed": [
+            "H-REF"
+          ]
+        }
+      ],
+      "model_calls": 26,
+      "model_failed": 0,
+      "reference_status": "PARTIAL",
+      "files_seen": 39,
+      "files_indexed": 31,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 18
+      }
+    },
+    {
+      "label": "case9_r2",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "20b192ab792ed515ba0688e2b9201e80691ab976b039c6fc77dad39c8740c1c1",
+      "scores": [
+        {
+          "spec": "case9_state_compensation_online",
+          "rule_version": "2",
+          "passed": 23,
+          "total": 23,
+          "failed": []
+        },
+        {
+          "spec": "case9_state_compensation_health_online",
+          "rule_version": "1",
+          "passed": 1,
+          "total": 1,
+          "failed": []
+        },
+        {
+          "spec": "case9_state_compensation_rag_controls_online",
+          "rule_version": "1",
+          "passed": 3,
+          "total": 5,
+          "failed": [
+            "RAGC-S1",
+            "RAGC-S3"
+          ]
+        },
+        {
+          "spec": "pipeline_health_online",
+          "rule_version": "1",
+          "passed": 5,
+          "total": 6,
+          "failed": [
+            "H-REF"
+          ]
+        }
+      ],
+      "model_calls": 27,
+      "model_failed": 0,
+      "reference_status": "PARTIAL",
+      "files_seen": 39,
+      "files_indexed": 31,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 18
+      }
+    },
+    {
+      "label": "case9_r3",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "71cf4d0cebc08f25f754d2e3cdd2f769638d818780e98b9effd609684dcd94a5",
+      "scores": [
+        {
+          "spec": "case9_state_compensation_online",
+          "rule_version": "2",
+          "passed": 23,
+          "total": 23,
+          "failed": []
+        },
+        {
+          "spec": "case9_state_compensation_health_online",
+          "rule_version": "1",
+          "passed": 1,
+          "total": 1,
+          "failed": []
+        },
+        {
+          "spec": "case9_state_compensation_rag_controls_online",
+          "rule_version": "1",
+          "passed": 3,
+          "total": 5,
+          "failed": [
+            "RAGC-S1",
+            "RAGC-S3"
+          ]
+        },
+        {
+          "spec": "pipeline_health_online",
+          "rule_version": "1",
+          "passed": 5,
+          "total": 6,
+          "failed": [
+            "H-REF"
+          ]
+        }
+      ],
+      "model_calls": 27,
+      "model_failed": 0,
+      "reference_status": "PARTIAL",
+      "files_seen": 39,
+      "files_indexed": 31,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 18
+      }
+    },
+    {
+      "label": "case9_r4",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "fb83686170aa662ec58a4f3ebd8ef87c96784a87d4a5b136b4b81dd575937070",
+      "scores": [
+        {
+          "spec": "case9_state_compensation_online",
+          "rule_version": "2",
+          "passed": 23,
+          "total": 23,
+          "failed": []
+        },
+        {
+          "spec": "case9_state_compensation_health_online",
+          "rule_version": "1",
+          "passed": 1,
+          "total": 1,
+          "failed": []
+        },
+        {
+          "spec": "case9_state_compensation_rag_controls_online",
+          "rule_version": "1",
+          "passed": 3,
+          "total": 5,
+          "failed": [
+            "RAGC-S1",
+            "RAGC-S3"
+          ]
+        },
+        {
+          "spec": "pipeline_health_online",
+          "rule_version": "1",
+          "passed": 5,
+          "total": 6,
+          "failed": [
+            "H-REF"
+          ]
+        }
+      ],
+      "model_calls": 28,
+      "model_failed": 0,
+      "reference_status": "PARTIAL",
+      "files_seen": 39,
+      "files_indexed": 31,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 18
+      }
+    },
+    {
+      "label": "tk180_visible",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "de72ed7bf8c13d28069e914bfc7e8de9bee8a042a5c49ef02c4fb2e95a0b1e7a",
+      "scores": [
+        {
+          "spec": "tk180_source_roles_visible",
+          "rule_version": "1",
+          "passed": 1,
+          "total": 1,
+          "failed": []
+        }
+      ],
+      "model_calls": 2,
+      "model_failed": 0,
+      "reference_status": "PARTIAL",
+      "files_seen": 39,
+      "files_indexed": 31,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 18
+      }
+    },
+    {
+      "label": "tk180_metadata",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "f11a4c1dc8e468f388ca8f2f67d2b06877d8331b8c445fffbea3a5810fc8c258",
+      "scores": [
+        {
+          "spec": "tk180_source_roles_metadata",
+          "rule_version": "1",
+          "passed": 1,
+          "total": 1,
+          "failed": []
+        }
+      ],
+      "model_calls": 9,
+      "model_failed": 0,
+      "reference_status": "PARTIAL",
+      "files_seen": 39,
+      "files_indexed": 31,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 18
+      }
+    },
+    {
+      "label": "tk180_hidden",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "f19ac41bd5eca193e23b8047e2e24b4bf7cf68b80d5a496cdfa8aacf6fdac51c",
+      "scores": [
+        {
+          "spec": "tk180_source_roles_hidden",
+          "rule_version": "1",
+          "passed": 1,
+          "total": 1,
+          "failed": []
+        }
+      ],
+      "model_calls": 9,
+      "model_failed": 0,
+      "reference_status": "PARTIAL",
+      "files_seen": 39,
+      "files_indexed": 31,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 18
+      }
+    },
+    {
+      "label": "tk180_encoded",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "097af1ab01a977e8fc37cfd9dc31435bb1a27e6f6af3b122bcc1ddcfc979fad9",
+      "scores": [
+        {
+          "spec": "tk180_source_roles_encoded",
+          "rule_version": "1",
+          "passed": 1,
+          "total": 1,
+          "failed": []
+        }
+      ],
+      "model_calls": 11,
+      "model_failed": 1,
+      "reference_status": "PARTIAL",
+      "files_seen": 39,
+      "files_indexed": 31,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 18
+      }
+    },
+    {
+      "label": "B",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "3b3628aa4a43a5c579724b3c18fcf865552585f20c4f8d7812e3ea0fce275c5c",
+      "scores": [
+        {
+          "spec": "pipeline_health_online",
+          "rule_version": "1",
+          "passed": 5,
+          "total": 6,
+          "failed": [
+            "H-REF"
+          ]
+        }
+      ],
+      "model_calls": 69,
+      "model_failed": 5,
+      "reference_status": "PARTIAL",
+      "files_seen": 39,
+      "files_indexed": 32,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 19
+      }
+    },
+    {
+      "label": "C",
+      "state": "PARTIAL_COMPLETED",
+      "report_sha256": "afdb45bac6521c5bef0a6975626e9b7e483705a0d259e23ef54ce5c7fb7e094e",
+      "scores": [
+        {
+          "spec": "pipeline_health_online",
+          "rule_version": "1",
+          "passed": 5,
+          "total": 6,
+          "failed": [
+            "H-REF"
+          ]
+        }
+      ],
+      "model_calls": 2,
+      "model_failed": 0,
+      "reference_status": "PARTIAL",
+      "files_seen": 39,
+      "files_indexed": 32,
+      "reference_issue_counts": {
+        "REFERENCE_PARTIALLY_READ": 19
+      }
+    }
+  ],
+  "model_calls": 229,
+  "model_failed": 6,
+  "ai_repeat": {
+    "runs": 4,
+    "commits": [
+      "183f3d22791bb01d4c8a39ce842e193000c663b8"
+    ],
+    "same_condition": true,
+    "condition_status": "SAME",
+    "different_conditions": [],
+    "missing_conditions": [],
+    "comparable_agreement": 1.0,
+    "verdict_counts": {
+      "AI_PARTIAL_GENERATION": 4
+    },
+    "agreement": 1.0,
+    "modal_verdict": "AI_PARTIAL_GENERATION",
+    "uncertain_runs": 0,
+    "expected_ratio": 1.0,
+    "provider_score_range": {
+      "anthropic": [
+        0.5,
+        0.5,
+        1
+      ],
+      "gemini": [
+        0.62,
+        0.72,
+        4
+      ],
+      "openai": [
+        0.72,
+        0.88,
+        4
+      ]
+    }
+  },
+  "drive": {
+    "comparable_paginated_files": 25,
+    "before_missing_pages": 148,
+    "after_missing_pages": 134,
+    "blank_pages": 127,
+    "scanned_pages": 7,
+    "ocr_pages": 14,
+    "error_pages": 0,
+    "unprocessed_pages": 0
+  },
+  "source_workflow": {
+    "run": 43763383773,
+    "result": "failure",
+    "cascade_privacy_blocked": 3
+  },
+  "integration_workflow": {
+    "run": 43763420560,
+    "result": "success",
+    "passed": 6,
+    "unreachable": 1
+  },
+  "open_fixes": [
+    "TK-182",
+    "TK-186",
+    "TK-187",
+    "TK-188",
+    "TK-189",
+    "TK-190",
+    "TK-191"
+  ],
+  "not_completed": [
+    "normal_reference_pdf",
+    "normal_reference_docx",
+    "normal_reference_xlsx",
+    "native_browser_tls",
+    "real_mobile",
+    "cross_role_cross_org_access",
+    "independent_ai_authorship_accuracy",
+    "online_sealed",
+    "all_supported_format_boundary_cases"
+  ],
+  "citation_regression": {
+    "items": [
+      "B-P1",
+      "B-P4"
+    ],
+    "wrong_citation_findings": 0,
+    "status": "UNVERIFIED",
+    "code_only_causality": "NOT_ESTABLISHED"
+  },
+  "model_failures_by_reason": {
+    "MAX_TOKENS_EMPTY_RESPONSE": 5,
+    "OTHER_EMPTY_RESPONSE": 1
+  }
+}

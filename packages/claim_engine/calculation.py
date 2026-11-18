@@ -143,7 +143,7 @@ _SUB_PRED = r"공제하[면여]|공제한|차감하[면여]|차감한|뺀|빼면
 _OP_PREDICATE_RE = re.compile(f"{_MUL_PRED}|{_ADD_PRED}|{_SUB_PRED}")
 # 연산 결과를 가리키는 명사('그 곱은'·'합은'·'차는')는 명시적 연산 표지다. 절 경계가 있어도 결과를 잇는다.
 _OP_RESULT_NOUN_RE = re.compile(r"(?:^|\s)(?:그\s*)?(?P<noun>곱|합|차)(?:은|는|이|가)(?=\s|$)")
-_TOTAL_MARK_RE = re.compile(r"(?:^|\s)(?:총|전체|모두|합계|합산)")
+_TOTAL_MARK_RE = re.compile(r"(?:^|\s)(?:총|전체|모두|합계|합산|도합)")
 # 절 경계: 연결 어미(-고·-며·-으나·-지만·-는데) 뒤 공백이나 쉼표가 결과 앞에 있으면 다른 절이다(메모 M4)
 _CLAUSE_BREAK_RE = re.compile(r"[가-힣](?:고|며|으나|지만|는데)(?:\s|,)|,")
 # 연산 서술어('더하면'·'빼면' 등) 뒤 결과 이름표 구간에서는 용언 어간 뒤 연결 어미만 절 경계로 본다.
@@ -496,7 +496,38 @@ _DIGIT_DURATION_RE = re.compile(
 )
 
 
-def _check_segment_rate_basis(segment: str, ops: List[dict], is_between: bool = False) -> bool:
+_TIME_OR_SHARE_RATE_BASES = frozenset({
+    "시간", "일", "월", "달", "년", "연", "주", "분기", "반기", "학기", "회", "번", "차", "기",
+})
+_AFTER_COUNT_NOUN_RE = re.compile(
+    r"^\s*(?:의\s*)?(?P<noun>[가-힣]{1,8}?)(?:에(?:게|서)?|로부터|마다|씩|의|을|를|은|는|이|가)(?=\s|$)"
+    r"|^\s*(?:의\s*)?(?P<noun_bare>[가-힣]{1,8}?)(?=\s|$)"
+)
+_BEFORE_COUNT_NOUN_RE = re.compile(r"(?P<noun>[가-힣]{1,8})\s*$")
+
+
+def _extract_counted_noun_context(ops: List[dict], between: str, before_ops: str) -> str:
+    """첫 피연산자(수+분류사) 바로 뒤('5개 업체에') 또는 바로 앞('협력업체 5곳에')의 피수식 대상 명사를 추출한다(D6)."""
+    parts: List[str] = []
+    m_after = _AFTER_COUNT_NOUN_RE.match(between)
+    if m_after:
+        noun = m_after.group("noun") or m_after.group("noun_bare") or ""
+        if noun and not noun.endswith("당") and noun not in _TIME_OR_SHARE_RATE_BASES:
+            parts.append(noun)
+    m_before = _BEFORE_COUNT_NOUN_RE.search(before_ops)
+    if m_before:
+        noun = m_before.group("noun") or ""
+        if noun and not noun.endswith("당") and noun not in _TIME_OR_SHARE_RATE_BASES:
+            parts.append(noun)
+    return " ".join(parts)
+
+
+def _check_segment_rate_basis(
+    segment: str,
+    ops: List[dict],
+    is_between: bool = False,
+    counted_context: str = "",
+) -> bool:
     """주어진 텍스트 구간(인원 앞, 인원~단가 사이, 단가 뒤)에 앞 개수와 다른 단가/기간 표지가 있는지 검사한다."""
     if not segment:
         return False
@@ -523,6 +554,8 @@ def _check_segment_rate_basis(segment: str, ops: List[dict], is_between: bool = 
             continue
         if base in count_token_text:
             continue
+        if base not in _TIME_OR_SHARE_RATE_BASES and counted_context and base in counted_context:
+            continue
         return True
     return False
 
@@ -530,11 +563,12 @@ def _check_segment_rate_basis(segment: str, ops: List[dict], is_between: bool = 
 def _other_rate_basis(ops: List[dict], text: str, after_ops: str = "", before_ops: str = "") -> bool:
     """동일 절 내 피연산자 앞, 사이, 뒤에 앞 개수와 다른 기준의 단가/기간 표지(시간당·1주당·매월·사흘 동안 등)가 있는지."""
     between = text[ops[0]["end"]:ops[1]["start"]]
-    if _check_segment_rate_basis(between, ops, is_between=True):
+    counted_context = _extract_counted_noun_context(ops, between, before_ops)
+    if _check_segment_rate_basis(between, ops, is_between=True, counted_context=counted_context):
         return True
-    if _check_segment_rate_basis(before_ops, ops, is_between=False):
+    if _check_segment_rate_basis(before_ops, ops, is_between=False, counted_context=counted_context):
         return True
-    if _check_segment_rate_basis(after_ops, ops, is_between=False):
+    if _check_segment_rate_basis(after_ops, ops, is_between=False, counted_context=counted_context):
         return True
     return False
 
@@ -862,6 +896,16 @@ class CalculationEngine:
                           and f.confidence_features.get("table_column") == col), None) if derived else None
             if cause is not None:
                 cause.confidence_features.setdefault("derived_effects", []).extend(derived)
+            all_items_text = "; ".join((wrong + derived)[:4])
+            stated_pct_desc = f"기재 비율 목록({len(wrong + derived)}행): {all_items_text}"
+            if derived and not wrong:
+                lawful_pct_desc = (
+                    f"세부 금액 합산액({computed:,}원)을 분모로 재계산하면 각 항목 비율이 표 기재 비율과 다릅니다. "
+                    f"표 기재 비율은 잘못된 기재 합계({stated:,}원)를 분모로 계산된 것으로 원인은 합계 칸 오류입니다."
+                )
+            else:
+                lawful_pct_desc = f"세부 금액 합산액({computed:,}원) 기준 정당한 비율 계산 결과: {all_items_text}"
+            pct_verif = "표의 각 항목 금액과 합계 칸 수치를 재확인하고, 비율 산정의 분모가 되는 기준 총액이 정당한지 원본 표로 확인해야 합니다."
             features = {"arithmetic_proof": True, "deterministic_rule": True, "rule_id": "CALC.PERCENT_MISMATCH",
                         "rows": wrong + derived, "row_evidence": row_evidence,
                         "table_ref": table_ref, "table_column": pct_col, "amount_column": col,
@@ -869,7 +913,10 @@ class CalculationEngine:
                         "computed_total": str(computed),
                         "stated_total": str(stated) if stated is not None else None,
                         "cause": "STATED_TOTAL" if derived and not wrong else "PERCENT_CALCULATION",
-                        "cause_finding": cause.finding_id if cause is not None else None}
+                        "cause_finding": cause.finding_id if cause is not None else None,
+                        "stated_claim": stated_pct_desc,
+                        "lawful_calculation": lawful_pct_desc,
+                        "verification_needed": pct_verif}
             title = ("비율(%)이 틀린 합계를 기준으로 계산되었다(원인: 합계 칸 오류)" if derived and not wrong
                      else "비율(%)이 금액으로 다시 계산한 값과 다르다")
             evidences = [
@@ -969,6 +1016,13 @@ class CalculationEngine:
                     "computed_total": str(total_amt.value),
                     "stated_total": str(total_amt.value),
                     "cause": "PERCENT_CALCULATION",
+                    "stated_claim": f"{sent[:140]} (기재 비율: {raw_pct}%)",
+                    "lawful_calculation": (
+                        f"전체 {total_amt.value:,}원 중 {part_amt.value:,}원의 정당한 비율은 "
+                        f"{part_amt.value:,} ÷ {total_amt.value:,} × 100 = {computed_pct:.2f}%입니다 "
+                        f"(기재 비율 {raw_pct}%와 차이)."
+                    ),
+                    "verification_needed": "문장에 기재된 전체 금액과 해당 항목 금액 및 산정 비율(%)의 오기 여부를 원본 자료로 확인해야 합니다.",
                 }
                 out.append(Finding.create(
                     type=FindingType.ARITHMETIC_MISMATCH,
@@ -1292,9 +1346,18 @@ class CalculationEngine:
     @staticmethod
     def _formula_finding(doc: NormalizedDocument, check: CalculationCheck, block_id, page, excerpt: str) -> Finding:
         difference = check.stated - check.computed
+        unit = "" if check.kind == "QUANTITY_FORMULA" else "원"
+        stated_claim = f"{excerpt.strip()[:160]} (서면 기재 결과: {check.stated:,}{unit})"
+        lawful_calc = (
+            f"정당한 산식 검산: {check.detail}. "
+            f"피연산자 기준 정당한 계산 결과는 {check.computed:,}{unit}입니다 "
+            f"(기재값 {check.stated:,}{unit}과 차이 {difference:+,}{unit})."
+        )
+        verification_needed = "서면 산식의 각 피연산자(단가·수량·일수·공제액) 수치와 최종 결과 기재의 오기 여부를 원본 증빙으로 확인해야 합니다."
         features = {"arithmetic_proof": True, "deterministic_rule": True, "stated": str(check.stated),
                     "computed": str(check.computed), "difference": str(difference), "kind": "FORMULA",
-                    "rule_id": "CALC.FORMULA"}
+                    "rule_id": "CALC.FORMULA", "stated_claim": stated_claim,
+                    "lawful_calculation": lawful_calc, "verification_needed": verification_needed}
         return Finding.create(
             type=FindingType.ARITHMETIC_MISMATCH, status=VerificationStatus.CONTRADICTED, severity=Severity.HIGH,
             evidence_grade=EvidenceGrade.A,
@@ -1310,6 +1373,21 @@ class CalculationEngine:
     def _mismatch_finding(doc: NormalizedDocument, check: CalculationCheck, block_id, page, excerpt: str,
                           label: str = "합계") -> Finding:
         difference = check.stated - check.computed
+        rows_used = list(getattr(check, "rows", []) or [f"{a.raw}" for a in check.items])
+        snippet_head = " / ".join(line.strip() for line in (excerpt or "").splitlines() if line.strip())[:120]
+        stated_claim = f"{label} 기재 금액: {check.stated:,}원" + (f" ({snippet_head})" if snippet_head else "")
+        if check.kind == "NET_PAY":
+            lawful_calc = (
+                f"{check.detail.split(' / ')[0]}이므로 정당한 계산 결과는 {check.computed:,}원입니다 "
+                f"(기재 금액 {check.stated:,}원과 차이 {difference:+,}원)."
+            )
+        else:
+            preview_items = ", ".join(rows_used[:5]) + (f" 외 {len(rows_used) - 5}건" if len(rows_used) > 5 else "")
+            lawful_calc = (
+                f"세부 {len(check.items)}개 항목({preview_items})의 정당한 합산 금액은 {check.computed:,}원입니다 "
+                f"(서면 기재 {check.stated:,}원과 차액 {difference:+,}원)."
+            )
+        verification_needed = "원본 계산서·세금계산서·입출금 내역 등 세부 증빙을 대조해 누락·중복 항목이나 합산 오기가 있는지 확인해야 합니다."
         features = {
             "arithmetic_proof": True,
             "deterministic_rule": True,
@@ -1318,7 +1396,10 @@ class CalculationEngine:
             "difference": str(difference),
             "item_count": len(check.items),
             # 판정 근거에 쓴 행(J3). 산식 행은 '=' 뒤 최종 금액으로 셌다.
-            "rows_used": list(getattr(check, "rows", []) or [f"{a.raw}" for a in check.items]),
+            "rows_used": rows_used,
+            "stated_claim": stated_claim,
+            "lawful_calculation": lawful_calc,
+            "verification_needed": verification_needed,
         }
         return Finding.create(
             type=FindingType.ARITHMETIC_MISMATCH,

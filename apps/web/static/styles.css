@@ -2986,7 +2986,8 @@ dialog.admin-detail[open] {display:flex; flex-direction:column;}
   background: #fdecea; color: #b42318; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
 
 /* TK-160·163: 주장 3분류 배지와 원문 대조 보기 */
-.claim-verdict { margin-left: 4px; }
+.review-verdict-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-bottom: 4px; }
+.claim-verdict { margin-left: 0; }
 .source-compare { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: #f8fafc; }
 .source-compare > summary { cursor: pointer; font-weight: 600; }
 .source-compare-meta { margin: 6px 0; overflow-wrap: anywhere; }

@@ -141,10 +141,10 @@ _SIGNER_PREDICATE_RE = re.compile(
 # 단독/유일 서명 표지 (T7: 단독, 유일, 한 명, 만, 만이, 혼자, 외에는)
 _SOLE_SIGNER_RE = re.compile(r"(?:단독(?:으로)?|유일(?:한|하게)?|한\s*명(?:만)?|1명(?:만)?|만이?|혼자|외에는\s*(?:없|않))")
 
-# 당사자 호칭 및 직책 결합 서명자 성명 정규식 (T7: 원고 김민수, 피고 박지훈 등 호칭+이름 포함)
+# 당사자 호칭 및 직책 결합 서명자 성명 정규식 (T7: 원고 김민수, 피고 박지훈, 채무자/보증인/소외 + 성명 등 호칭+이름 포함)
 _PARTY_TITLE_NAME_RE = re.compile(
     r"(?:"
-    r"(?P<role_party>원고|피고(?:인)?|신청인|피신청인)\s+(?P<party_name>[가-힣]{2,4})"
+    r"(?P<role_party>원고|피고(?:인)?|신청인|피신청인|채권자|채무자|보증인|연대보증인|위임인|수임인|임대인|임차인|매도인|매수인|도급인|수급인|대주|차주|대리인|소외(?:인)?|증인)\s+(?P<party_name>[가-힣]{2,4})(?=[이가은는을를의]|입니다|이고|이며|\s|$)"
     r"|"
     r"(?P<role>원고|피고(?:인)?|신청인|피신청인)"
     r"|"
@@ -156,9 +156,24 @@ _PARTY_TITLE_NAME_RE = re.compile(
     r")"
 )
 
-# 서증 및 확인서류 문서 대상 패턴 (지시어 포함)
+# 서증 및 확인서류 문서 대상 접미 사전 (지시어 결속 및 일반 문서명 포괄)
+_SIGNER_DOC_SUFFIXES: Tuple[str, ...] = (
+    "연대보증서", "현금보관증", "사실확인서", "차용증서",
+    "계약서", "확인서", "동의서", "각서", "합의서",
+    "약정서", "협약서", "보증서", "위임장", "차용증",
+    "영수증", "인수증", "보관증", "진술서", "경위서",
+    "신청서", "청구서", "결의서", "의결서", "회의록", "의사록", "증서",
+)
+_SIGNER_DOC_SUFFIX_ALT = "|".join(_SIGNER_DOC_SUFFIXES)
+
+# 서증 및 확인서류 문서 대상 패턴 (지시어·소갑/소을/병·가지번호 포함)
 _EXHIBIT_TARGET_RE = re.compile(
-    r"(?P<ex>(?:갑|을)\s*제?\s*\d+\s*호증|(?:이\s*사건|위|본건|해당)?\s*[가-힣]{0,8}(?:계약서|확인서|동의서|각서|합의서))"
+    r"(?P<ex>(?:소)?(?:갑|을|병)\s*제?\s*\d+\s*호증(?:의\s*\d+)?|"
+    r"(?:(?:이\s*사건|위|본건|해당|동)\s+)?[가-힣]{0,8}(?:" + _SIGNER_DOC_SUFFIX_ALT + r"))"
+)
+_SIGNER_DEMONSTRATIVE_RE = re.compile(r"^(?:이\s*사건|위|본건|해당|동)\s+")
+_SIGNER_NEGATION_RE = re.compile(
+    r"(?:서명|날인|기명|작성|조인)[^.,;]{0,15}?(?:하지\s*않|안\s*하|못하|사실이\s*없|바\s*없|적\s*없|일\s*없|아니|없)"
 )
 
 # 날짜 패턴 (YYYY. M. D. 또는 YYYY년 M월 D일)
@@ -247,16 +262,55 @@ _QUANTITY_ARITHMETIC_EXCLUDE_RE = re.compile(
     r"(?:[+=×÷*\/]|합계|총계|더한|합한|합쳐|산출|공제한|각\s*\d+|배수|곱한|정정값)"
 )
 _QUANTITY_PARTIAL_RE = re.compile(
-    r"(?:그중|그\s*가운데|일부|나머지|추가로|1차|2차|3차|분할|선지급|선납|선인도)"
+    r"(?:그중|그\s*가운데|일부|나머지|추가로|1차|2차|3차|분할|선지급|선납|선인도|"
+    r"반품|폐기|회수|잔여|남은|미납|미인도|부족)"
 )
-# Q3, QQ2: 수량 값 바로 뒤에 붙는 확정 서술 정규식 (앞에서부터 re.match 매칭, 공백만 허용)
-_QUANTITY_DEFINITIVE_MATCH_RE = re.compile(
-    r"^\s*(?:"
-    r"(?:(?:이|였|이었)(?:다|습니다|음)|입니다|이다|임)|"
-    r"(?:(?:으)?로\s*(?:정하|약정|합의|기재|명시))|"
-    r"(?:(?:을|를)\s*(?:공급|납품|매매|인도|보유))"
+_QUANTITY_APPROX_RE = re.compile(
+    r"(?:(?<![가-힣])(?:약|대략)\s*\d|\d[\d,.]*\s*[가-힣A-Za-z㎡㎏ℓ²³]{0,4}?\s*(?:가량|내외|남짓|이상|이하|미만|초과))"
+)
+_QUANTITY_NEGATION_RE = re.compile(
+    r"(?:하지\s*않|안\s*하|못하|사실이\s*없|바\s*없|적\s*없|일\s*없|아니다|아니었|아니며|아니고)"
+)
+_QUANTITY_FUTURE_RE = re.compile(
+    r"(?:"
+    r"(?:할|될|을|ㄹ)\s*(?:예정|계획|방침|터|참)|"
+    r"(?:예정|계획|방침)(?:\s*)(?:이다|입니다|이었|이며|이고|임|으로)|"
+    r"하고자|(?:하려|려)\s*(?:고)?\s*(?:한|했|합니)|"
+    r"(?:할|될)\s*것|"
+    r"하겠|되겠|"
+    r"기로\s*되어\s*있"
     r")"
 )
+_QUANTITY_ACTION_VERB_STEM = (
+    r"(?:공급|납품|매매|인도|보유|제작|생산|설치|시공|수령|반입|출고|입고|"
+    r"운송|배달|전달|교부|제공|매수|매도|구입|구매|판매|보관|적재)"
+)
+# Q3, QQ2: 수량 값 바로 뒤에 붙는 확정 서술 정규식 (앞에서부터 re.match 매칭, 능동·피동 이행 동사 포괄)
+_QUANTITY_DEFINITIVE_MATCH_RE = re.compile(
+    r"^(?:"
+    r"\s*(?:(?:이|였|이었)(?:다|습니다|음)|입니다|이다|임)|"
+    r"\s*(?:(?:으)?로\s*(?:정하|약정|합의|기재|명시))|"
+    r"(?:\s*(?:을|를|만|만을)\s*|\s+)" + _QUANTITY_ACTION_VERB_STEM + r"(?:하|했|하였|한|하고|하여|함|합니다|했습니다|받|받았|받은)?|"
+    r"(?:\s*(?:이|가|은|는|만|만이)\s*|\s+)" + _QUANTITY_ACTION_VERB_STEM + r"(?:되|되었|된|받|받았|받은)"
+    r")"
+)
+
+
+def _classify_quantity_stage(following_q: str) -> str:
+    """수량 확정 서술어의 거래·이행 단계를 분류한다 (서로 다른 단계 간 오탐 방지)."""
+    if re.match(r"^(?:\s*(?:을|를|이|가|은|는|만|만을|만이)\s*|\s+)(?:공급|납품|인도|수령|운송|배달|전달|교부|제공)", following_q):
+        return "DELIVERY"
+    if re.match(r"^(?:\s*(?:을|를|이|가|은|는|만|만을|만이)\s*|\s+)(?:제작|생산|설치|시공)", following_q):
+        return "MAKE_INSTALL"
+    if re.match(r"^(?:\s*(?:을|를|이|가|은|는|만|만을|만이)\s*|\s+)(?:매매|매수|매도|구입|구매|판매)", following_q):
+        return "TRADE"
+    if re.match(r"^(?:\s*(?:을|를|이|가|은|는|만|만을|만이)\s*|\s+)(?:입고|반입)", following_q):
+        return "STOCK_IN"
+    if re.match(r"^(?:\s*(?:을|를|이|가|은|는|만|만을|만이)\s*|\s+)(?:출고)", following_q):
+        return "STOCK_OUT"
+    if re.match(r"^(?:\s*(?:을|를|이|가|은|는|만|만을|만이)\s*|\s+)(?:보유|보관|적재)", following_q):
+        return "HOLD"
+    return "GENERAL"
 
 # Q2: 수량 대상 명사 구조적 추출 관련 정규식
 _PARTY_TITLE_EXCLUDE_PAT = re.compile(
@@ -531,6 +585,7 @@ class _SignerStatement:
     is_sole: bool
     sentence: str
     page: int
+    is_anaphora: bool = False
 
 
 @dataclass
@@ -541,6 +596,7 @@ class _QuantityStatement:
     unit: str
     sentence: str
     page: int
+    stage: str = "GENERAL"
 
 
 def _make_incons_finding(
@@ -632,16 +688,30 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
     # Y4: 서면 작성 당사자 식별
     author_party = _detect_author_party(doc)
 
-    # 서증 목록 사전 구축 (서증명/번호 -> 작성자 속성)
+    # 서증 목록 사전 구축 (서증명/번호 -> 작성자 속성, 유일한 괄호 문서명 포함)
     exhibit_author_map: Dict[str, str] = {}
+    title_author_candidates: Dict[str, List[str]] = defaultdict(list)
     for block in doc.body_blocks():
         btext = block.text or ""
-        ex_m = re.search(r"(?P<ex>(?:갑|을)\s*제?\s*\d+\s*호증)", btext)
+        ex_m = re.search(
+            r"(?P<ex>(?:소)?(?:갑|을|병)\s*제?\s*\d+\s*호증(?:의\s*\d+)?)"
+            r"(?:\s*[(（](?P<title>[가-힣\s]{2,15})[)）])?",
+            btext,
+        )
         if ex_m:
             ex_key = re.sub(r"\s+", "", ex_m.group("ex"))
-            author_m = re.search(r"(?:작성자|발신인|작성인)(?:\s*(?:은|는))?\s*[:：]?\s*(?P<author>[가-힣]{2,4})", btext)
+            author_m = re.search(r"(?:작성자|발신인|작성인|명의인)(?:\s*(?:은|는))?\s*[:：]?\s*(?P<author>[가-힣]{2,4})", btext)
             if author_m:
-                exhibit_author_map[ex_key] = author_m.group("author")
+                author_val = author_m.group("author")
+                exhibit_author_map[ex_key] = author_val
+                if ex_m.group("title"):
+                    raw_t = _SIGNER_DEMONSTRATIVE_RE.sub("", ex_m.group("title").strip())
+                    t_key = re.sub(r"\s+", "", raw_t)
+                    if t_key:
+                        title_author_candidates[t_key].append(author_val)
+    for t_key, authors in title_author_candidates.items():
+        if len(set(authors)) == 1:
+            exhibit_author_map.setdefault(t_key, authors[0])
 
     # T6, Y8, Q2: 단락(block) 단위 직전 절대 일자, 직전 단락 일자, 주어 및 수량 대상 유지 변수
     current_block_id: Optional[str] = None
@@ -835,20 +905,29 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                     if not re.search(r"법원|청|위원회|기준|당시|관련|사건|원고|피고|이유|오직|내내", loc):
                         location_stmts.append(_LocationStatement(last_subject, last_date, loc, is_excl, clause, page))
 
-            # (3-6) 서명자 슬롯 추출 (조건 4 & T7: 호칭+이름 및 단독 표지 확장)
-            if _SIGNER_PREDICATE_RE.search(clause):
+            # (3-6) 서명자 슬롯 추출 (조건 4 & T7: 호칭+이름 및 단독 표지 확장, 부정 서술 제외)
+            if _SIGNER_PREDICATE_RE.search(clause) and not _SIGNER_NEGATION_RE.search(clause):
                 ex_m = _EXHIBIT_TARGET_RE.search(clause) or _EXHIBIT_TARGET_RE.search(sentence)
                 if ex_m:
-                    raw_target = ex_m.group("ex")
-                    ex_target = re.sub(r"^(?:이\s*사건|위|본건|해당)\s*", "", re.sub(r"\s+", "", raw_target))
+                    raw_target = ex_m.group("ex").strip()
+                    is_anaphora = bool(_SIGNER_DEMONSTRATIVE_RE.match(raw_target))
+                    stripped_target = _SIGNER_DEMONSTRATIVE_RE.sub("", raw_target)
+                    ex_target = re.sub(r"\s+", "", stripped_target)
                     is_sole = bool(_SOLE_SIGNER_RE.search(clause) or _SOLE_SIGNER_RE.search(sentence))
                     for nm_match in _PARTY_TITLE_NAME_RE.finditer(clause):
                         s_name = nm_match.group("party_name") or nm_match.group("name") or nm_match.group("name2") or nm_match.group("alias")
                         if s_name and s_name not in ("피고", "원고", "피고인", "작성", "서명", "확인", "사건"):
-                            signer_stmts.append(_SignerStatement(ex_target, s_name, is_sole, clause, page))
+                            signer_stmts.append(_SignerStatement(ex_target, s_name, is_sole, clause, page, is_anaphora=is_anaphora))
 
             # (3-7) 수량 슬롯 추출 (Y6, Q1~Q3, QQ1~QQ3: 구조적 대상·단위 추출, 단위 조사 축소, 값 직후 확정 서술 매칭)
-            if not _QUANTITY_PARTIAL_RE.search(clause) and not _QUANTITY_ARITHMETIC_EXCLUDE_RE.search(sentence) and not _QUANTITY_ARITHMETIC_EXCLUDE_RE.search(clause):
+            if (
+                not _QUANTITY_PARTIAL_RE.search(clause)
+                and not _QUANTITY_APPROX_RE.search(clause)
+                and not _QUANTITY_NEGATION_RE.search(clause)
+                and not _QUANTITY_FUTURE_RE.search(clause)
+                and not _QUANTITY_ARITHMETIC_EXCLUDE_RE.search(sentence)
+                and not _QUANTITY_ARITHMETIC_EXCLUDE_RE.search(clause)
+            ):
                 for q_m in _QUANTITY_RE.finditer(clause):
                     u = q_m.group("unit")
                     q_end = q_m.end()
@@ -873,7 +952,8 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                                 last_quantity_target = target_noun
                                 block_last_quantity_target = target_noun
                                 q_key = f"quantity_{target_noun}_{u}"
-                                quantity_stmts.append(_QuantityStatement(q_key, target_noun, q_val, u, clause, page))
+                                q_stage = _classify_quantity_stage(following_q)
+                                quantity_stmts.append(_QuantityStatement(q_key, target_noun, q_val, u, clause, page, stage=q_stage))
                         except InvalidOperation:
                             pass
 
@@ -1066,6 +1146,17 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                 break
 
     # (6) 서명자 모순 판정 (조건 4 & T7)
+    # 지시어('위 계약서' 등)로 단독 접미 문서명을 가리킬 때 앞서 나온 유일한 복합 문서명('금전소비대차계약서' 등)에 결속
+    seen_compound_signer_targets: List[str] = []
+    for s in signer_stmts:
+        if s.exhibit_or_target not in _SIGNER_DOC_SUFFIXES:
+            if s.exhibit_or_target not in seen_compound_signer_targets:
+                seen_compound_signer_targets.append(s.exhibit_or_target)
+        elif s.is_anaphora:
+            cands = [t for t in seen_compound_signer_targets if t.endswith(s.exhibit_or_target)]
+            if len(cands) == 1:
+                s.exhibit_or_target = cands[0]
+
     # (6-1) 서증 목록 작성자 vs 본문 서술 불일치 (B등급 / CONTRADICTED)
     for s in signer_stmts:
         norm_key = re.sub(r"\s+", "", s.exhibit_or_target)
@@ -1127,7 +1218,7 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                 ))
                 break
 
-    # (7) 수량 모순 판정 (Y6: C등급 / UNVERIFIED)
+    # (7) 수량 모순 판정 (Y6: C등급 / UNVERIFIED, 이행 단계 호환 시에만 대조)
     quantity_by_key = defaultdict(list)
     for qs in quantity_stmts:
         quantity_by_key[qs.target_key].append(qs)
@@ -1135,32 +1226,38 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
     for key, stmts in quantity_by_key.items():
         if len(stmts) < 2:
             continue
-        first = stmts[0]
-        for other in stmts[1:]:
-            if first.quantity != other.quantity:
-                title = f"문서 내 동일 목적물 수량 진술 불일치: {first.quantity}{first.unit} ↔ {other.quantity}{other.unit}"
-                detail = (
-                    f"동일한 {first.target_noun}에 관하여 확정 수량을 서로 다르게 진술하였습니다. "
-                    f"단순 오기이거나 주장 변경인지 사람이 확인해야 합니다."
-                )
-                excerpt = f"[{first.page}쪽] {first.sentence[:120]} ↔ [{other.page}쪽] {other.sentence[:120]}"
-                findings.append(_make_incons_finding(
-                    doc=doc,
-                    kind=FindingType.FACT_CONTRADICTION,
-                    grade=EvidenceGrade.C,
-                    severity=Severity.MEDIUM,
-                    status=VerificationStatus.UNVERIFIED,
-                    title=title,
-                    detail=detail,
-                    excerpt=excerpt,
-                    page=first.page,
-                    features={
-                        "rule_id": "EVI.INCONS_INTERNAL_QUANTITY",
-                        "inconsistency_type": "QUANTITY",
-                        "statements": [first.sentence[:200], other.sentence[:200]],
-                        "human_review": True,
-                    },
-                ))
+        emitted_q = False
+        for idx, first in enumerate(stmts):
+            for other in stmts[idx + 1:]:
+                if first.quantity != other.quantity and (
+                    first.stage == other.stage or "GENERAL" in (first.stage, other.stage)
+                ):
+                    title = f"문서 내 동일 목적물 수량 진술 불일치: {first.quantity}{first.unit} ↔ {other.quantity}{other.unit}"
+                    detail = (
+                        f"동일한 {first.target_noun}에 관하여 확정 수량을 서로 다르게 진술하였습니다. "
+                        f"단순 오기이거나 주장 변경인지 사람이 확인해야 합니다."
+                    )
+                    excerpt = f"[{first.page}쪽] {first.sentence[:120]} ↔ [{other.page}쪽] {other.sentence[:120]}"
+                    findings.append(_make_incons_finding(
+                        doc=doc,
+                        kind=FindingType.FACT_CONTRADICTION,
+                        grade=EvidenceGrade.C,
+                        severity=Severity.MEDIUM,
+                        status=VerificationStatus.UNVERIFIED,
+                        title=title,
+                        detail=detail,
+                        excerpt=excerpt,
+                        page=first.page,
+                        features={
+                            "rule_id": "EVI.INCONS_INTERNAL_QUANTITY",
+                            "inconsistency_type": "QUANTITY",
+                            "statements": [first.sentence[:200], other.sentence[:200]],
+                            "human_review": True,
+                        },
+                    ))
+                    emitted_q = True
+                    break
+            if emitted_q:
                 break
 
     # (8) TK-76 3주기 EVI-INCONS C: 문서 안 같은 대상(단일 사건)의 두 날짜·시각 모순 (C등급 / SUSPICIOUS)

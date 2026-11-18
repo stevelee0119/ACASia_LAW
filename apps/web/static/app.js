@@ -418,8 +418,6 @@ function buildExternalAiPromptForUnverifiedAuthorities(items, incidentDate = "",
 당신은 대한민국 법률 및 판례 검증 전문 AI입니다.
 아래 소송 서면에서 인용되었으나 공식 DB에서 출처가 확인되지 않은 [판례·법령 목록 ${items.length}건]에 대해 실재 여부와 판결요지/조문 내용을 정밀 검증해 주세요.
 
-※ 고지: 외부 AI 답변은 법적 효력이 있는 공식 확인이 아니며, 실제 변론 및 증거 제출 시에는 법원 판결서 사본 또는 국가법령정보센터 공식 원문으로 반드시 확인해야 합니다.
-
 [기준 시점]
 - ${dateStr}
 
@@ -445,41 +443,64 @@ ${itemsListText}
 - 각 항목별 상세 확인 내용
 
 [결과 블록 — 답변 맨 끝에 반드시 아래 형식 그대로]
-항목마다 한 줄씩, 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
+첫 줄에 사용한 AI 모델 또는 서비스 이름(예: 모델: 엘박스, 모델: Gemini 2.5 Pro)을 적고, 이어서 항목마다 한 줄씩 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
 <<<ACAS_RESULT
+모델: 사용한 AI 모델 또는 서비스명
 ${prefix}1 | 판정: 확인/부존재/불일치/불명 | 근거: 사건번호·선고일 또는 법령·조문(확인 방법) | 요지: 한두 문장
 ACAS_RESULT>>>`;
 }
 
 // 2026-10-25 사용자 요구: 엘박스 등 외부 AI 답변을 다시 붙여넣어 표에 반영한다.
-// 번호(A1·B1)와 고정 결과 블록으로 답변을 행에 연결하며, 외부 AI 답변은 공식 확인 상태를 바꾸지 않는다.
+// 번호(A1·B1)와 고정 결과 블록으로 답변을 행에 연결한다.
 const EXTERNAL_ANSWER_OPEN = "<<<ACAS_RESULT", EXTERNAL_ANSWER_CLOSE = "ACAS_RESULT>>>";
 function externalAnswerFormat(prefix) {
   return `
 [결과 블록 — 답변 맨 끝에 반드시 아래 형식 그대로]
-항목마다 한 줄씩, 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
+첫 줄에 사용한 AI 모델 또는 서비스 이름(예: 모델: 엘박스, 모델: Gemini 2.5 Pro)을 적고, 이어서 항목마다 한 줄씩 위 목록 번호(${prefix}1, ${prefix}2 …)를 그대로 쓰고 칸은 | 로 나눕니다.
 ${EXTERNAL_ANSWER_OPEN}
+모델: 사용한 AI 모델 또는 서비스명
 ${prefix}1 | 판정: 확인/부존재/불일치/불명 | 근거: 사건번호·선고일 또는 법령·조문(확인 방법) | 요지: 한두 문장
 ${EXTERNAL_ANSWER_CLOSE}`;
+}
+function cleanExternalModelName(raw) {
+  return String(raw || "")
+    .replace(/^[*`\s"'「『]+|[*`\s"'」』]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
 }
 function parseExternalAnswers(text) {
   const raw = String(text || "");
   const start = raw.lastIndexOf(EXTERNAL_ANSWER_OPEN), end = raw.lastIndexOf(EXTERNAL_ANSWER_CLOSE);
   const body = start >= 0 && end > start ? raw.slice(start + EXTERNAL_ANSWER_OPEN.length, end) : raw;
   const answers = new Map();
+  let defaultModel = "";
   for (const line of body.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const modelLine = trimmed.match(/^(?:모델명?|AI\s*모델|서비스명?|MODEL)\s*[:：]\s*(.+)$/i);
+    if (modelLine && !/^[|*\s]*[AB]\d{1,3}\b/i.test(trimmed)) {
+      const parsedModel = cleanExternalModelName(modelLine[1]);
+      if (parsedModel && !parsedModel.includes("사용한 AI 모델")) defaultModel = parsedModel;
+      continue;
+    }
     const cells = line.replace(/^\s*\|/, "").split(/[|｜]/).map(c => c.trim());
     const code = (cells[0] || "").replace(/[*`\s.]/g, "").toUpperCase();
     if (!/^[AB]\d{1,3}$/.test(code)) continue;
-    const answer = {code, verdict: "", basis: "", summary: ""};
+    const answer = {code, model_name: "", verdict: "", basis: "", summary: ""};
     for (const cell of cells.slice(1)) {
-      const m = cell.match(/^(판정|근거|요지)\s*[:：]\s*(.*)$/);
-      if (m) answer[{판정: "verdict", 근거: "basis", 요지: "summary"}[m[1]]] = m[2].slice(0, 1000);
-      else if (cell) answer.summary = [answer.summary, cell].filter(Boolean).join(" ").slice(0, 1000);
+      const m = cell.match(/^(모델명?|모델|판정|근거|요지)\s*[:：]\s*(.*)$/i);
+      if (m) {
+        const key = m[1].toLowerCase();
+        if (key === "모델" || key === "모델명") answer.model_name = cleanExternalModelName(m[2]);
+        else answer[{판정: "verdict", 근거: "basis", 요지: "summary"}[m[1]]] = m[2].slice(0, 1000);
+      } else if (cell) {
+        answer.summary = [answer.summary, cell].filter(Boolean).join(" ").slice(0, 1000);
+      }
     }
     if (answer.verdict || answer.basis || answer.summary) answers.set(code, answer);
   }
-  return [...answers.values()];
+  return [...answers.values()].map(a => ({...a, model_name: a.model_name || defaultModel}));
 }
 function externalStoreKey(projectId = state.project?.id, runId = state.run?.id) { return `acas.externalAi.${projectId || "none"}.${runId || "none"}`; }
 function loadExternalStore(projectId, runId) {
@@ -496,16 +517,245 @@ function externalAnswersForReport(projectId, runId) {
       return Boolean(a.item_id && boundItemId && a.item_id === boundItemId);
     })
     .map(([code, a]) => ({
-      code, item_id: a.item_id,
+      code, item_id: a.item_id, model_name: a.model_name || "",
       verdict: a.verdict || "", basis: a.basis || "", summary: a.summary || "", applied_at: a.applied_at || ""}));
 }
+function writeLocalExternalStore(store, projectId = state.project?.id, runId = state.run?.id) {
+  try { localStorage.setItem(externalStoreKey(projectId, runId), JSON.stringify(store)); } catch (e) { toast("이 브라우저에 답변을 저장하지 못했습니다. 화면을 새로 고치면 사라집니다."); }
+}
+// 서버 저장이 확인되지 않은 상태. 로컬 개정 번호(rev)와 직렬화 동기화 큐로 단일 상태 소유자를 보장하고,
+// 실제 PUT 실패 시에만 unsynced 표식을 남겨 새로고침 뒤에도 로컬 변경이 구 서버 스냅샷에 덮이지 않게 한다.
+let externalStoreSyncFailed = false;
+let externalStoreUnsynced = null;
+let externalStoreRevCounter = 0;
+let externalStoreSyncQueue = Promise.resolve();
+function bumpExternalStoreRev(store) {
+  const current = Number(store?.rev) || 0;
+  externalStoreRevCounter = Math.max(externalStoreRevCounter, current) + 1;
+  if (store && typeof store === "object") store.rev = externalStoreRevCounter;
+  return externalStoreRevCounter;
+}
+function cleanExternalAnswersMap(answers) {
+  const cleanAnswers = {};
+  for (const [code, ans] of Object.entries(answers || {})) {
+    if (!ans || !ans.item_id) continue;
+    cleanAnswers[code] = {
+      code,
+      item_id: String(ans.item_id),
+      model_name: String(ans.model_name || ""),
+      verdict: String(ans.verdict || ""),
+      basis: String(ans.basis || ""),
+      summary: String(ans.summary || ""),
+      applied_at: String(ans.applied_at || ""),
+    };
+  }
+  return cleanAnswers;
+}
+function externalAnswerSnapshotsEqual(a, b) {
+  const aMap = cleanExternalAnswersMap(a);
+  const bMap = cleanExternalAnswersMap(b);
+  const aKeys = Object.keys(aMap).sort();
+  const bKeys = Object.keys(bMap).sort();
+  if (aKeys.length !== bKeys.length) return false;
+  for (let i = 0; i < aKeys.length; i += 1) {
+    const k = aKeys[i];
+    if (k !== bKeys[i]) return false;
+    const av = aMap[k];
+    const bv = bMap[k];
+    if (av.item_id !== bv.item_id
+      || av.verdict !== bv.verdict
+      || av.basis !== bv.basis
+      || av.summary !== bv.summary
+      || av.model_name !== bv.model_name) {
+      return false;
+    }
+  }
+  return true;
+}
+function externalCodeSnapshotsEqual(a, b) {
+  const aMap = a && typeof a === "object" ? a : {};
+  const bMap = b && typeof b === "object" ? b : {};
+  const aKeys = Object.keys(aMap).sort();
+  const bKeys = Object.keys(bMap).sort();
+  if (aKeys.length !== bKeys.length) return false;
+  for (let i = 0; i < aKeys.length; i += 1) {
+    const k = aKeys[i];
+    if (k !== bKeys[i] || String(aMap[k] || "") !== String(bMap[k] || "")) return false;
+  }
+  return true;
+}
+function isExternalStoreUnsynced(projectId = state.project?.id, runId = state.run?.id) {
+  const local = loadExternalStore(projectId, runId);
+  return Boolean(externalStoreSyncFailed || local.unsynced);
+}
+async function persistExternalStoreToServer(store, projectId = state.project?.id, runId = state.run?.id, options = {}) {
+  // 프로젝트/실행이 없는 화면(로컬 전용 경로)은 서버 저장 대상이 아니므로 실패로 보지 않는다.
+  if (!projectId || !runId) return {synced: false, reason: "no-run"};
+  const cleanAnswers = cleanExternalAnswersMap(store?.answers);
+  const allowEmpty = Boolean(options?.allowEmpty || store?.allowEmptySync);
+  // 답변이 한 번도 없던 프롬프트 번호 전용 스냅샷은 서버 판본(saved=true)으로 승격하지 않는다.
+  // 단, 코드 재할당 등으로 기존 답변이 삭제되어 빈 객체가 된 경우(allowEmpty)에는 서버 판본도 비운다.
+  if (!Object.keys(cleanAnswers).length && !allowEmpty) return {synced: false, reason: "empty-answers"};
+  const targetRev = Number(store?.rev) || bumpExternalStoreRev(store);
+  const payloadCodes = {...(store?.codes || {})};
+  const task = externalStoreSyncQueue.then(async () => {
+    try {
+      await api(`/projects/${projectId}/runs/${runId}/external-ai-answers`, {
+        method: "PUT",
+        interactiveAuth: false,
+        body: {codes: payloadCodes, answers: cleanAnswers},
+      });
+      const latest = loadExternalStore(projectId, runId);
+      const latestRev = Number(latest?.rev) || 0;
+      // 비행 중 더 새로운 로컬 개정(rev > targetRev)이 이미 기록된 경우 과거 스냅샷으로 덮어쓰지 않는다(CAS).
+      if (latestRev <= targetRev) {
+        externalStoreSyncFailed = false;
+        externalStoreUnsynced = null;
+        if (latest && (latest.unsynced || latest.pendingSync || latest.allowEmptySync)) {
+          const cleaned = {...latest};
+          delete cleaned.unsynced;
+          delete cleaned.pendingSync;
+          delete cleaned.allowEmptySync;
+          writeLocalExternalStore(cleaned, projectId, runId);
+        }
+      }
+      return {synced: true};
+    } catch (e) {
+      // 오프라인·서버 오류에서는 최신 개정이 아직 targetRev일 때만 로컬 저장소에 미동기화 표식(unsynced: true)을 남겨
+      // 새로고침 뒤에도 구 서버 스냅샷이 로컬 답변을 덮어쓰지 못하게 한다.
+      const latest = loadExternalStore(projectId, runId);
+      const latestRev = Number(latest?.rev) || 0;
+      if (latestRev <= targetRev) {
+        externalStoreSyncFailed = true;
+        const base = (latest && Object.keys(latest).length) ? latest : store;
+        const unsyncedStore = {
+          ...base,
+          codes: base?.codes || payloadCodes,
+          answers: base?.answers || cleanAnswers,
+          rev: targetRev,
+          unsynced: true,
+        };
+        delete unsyncedStore.pendingSync;
+        if (allowEmpty) unsyncedStore.allowEmptySync = true;
+        externalStoreUnsynced = unsyncedStore;
+        writeLocalExternalStore(unsyncedStore, projectId, runId);
+      }
+      return {synced: false, reason: "error", error: e};
+    }
+  });
+  externalStoreSyncQueue = task.catch(() => {});
+  return task;
+}
+async function retryExternalStoreSync() {
+  const current = loadExternalStore();
+  const target = (current && Object.keys(current.answers || {}).length) || current?.allowEmptySync
+    ? current
+    : (externalStoreUnsynced || current);
+  const res = await persistExternalStoreToServer(target);
+  toast(res && res.synced
+    ? "외부 AI 답변을 서버에 저장했습니다."
+    : "아직 서버에 저장하지 못했습니다. 이 브라우저에만 저장되어 있습니다.");
+  renderFindings();
+}
+function externalSyncStatusNode() {
+  if (!isExternalStoreUnsynced()) return null;
+  const wrap = node("span", null, "external-sync-warning warning-text");
+  wrap.append(
+    node("span", "⚠ 서버 저장 실패 — 이 브라우저에만 저장됨"),
+    button("서버에 다시 저장", () => retryExternalStoreSync(), "external-sync-retry-btn"),
+  );
+  return wrap;
+}
+async function loadExternalAnswersFromServer(projectId, runId, options = {}) {
+  const local = loadExternalStore(projectId, runId);
+  if (Number(local?.rev) > externalStoreRevCounter) {
+    externalStoreRevCounter = Number(local.rev);
+  }
+  if (!projectId || !runId) {
+    externalStoreSyncFailed = Boolean(local && local.unsynced);
+    externalStoreUnsynced = externalStoreSyncFailed ? local : null;
+    return;
+  }
+  let res = null;
+  try {
+    res = await api(`/projects/${projectId}/runs/${runId}/external-ai-answers`, {
+      ...options,
+      interactiveAuth: false,
+    });
+  } catch (e) {
+    /* 조회 실패 시 기존 브라우저 저장소 값을 그대로 둔다. */
+    if (local && local.unsynced) {
+      externalStoreSyncFailed = true;
+      externalStoreUnsynced = local;
+    }
+    return;
+  }
+  const hasSavedServer = Boolean(res && typeof res === "object" && !Array.isArray(res) && res.saved);
+  const serverCodes = hasSavedServer && res.codes && typeof res.codes === "object" ? res.codes : {};
+  const serverAnswers = hasSavedServer && res.answers && typeof res.answers === "object" ? res.answers : {};
+  const serverMatchesLocalAnswers = hasSavedServer && externalAnswerSnapshotsEqual(local?.answers, serverAnswers);
+  const serverMatchesLocalAll = serverMatchesLocalAnswers && externalCodeSnapshotsEqual(local?.codes, serverCodes);
+
+  // 1) 이전 PUT이 실패해 unsynced 표식이 남은 경우:
+  //    서버에 이미 동일한 답변 스냅샷이 반영되어 있으면 표식을 해제하고, 아니면 로컬 최신본과 경고를 보존한다.
+  if (local && local.unsynced) {
+    if (serverMatchesLocalAnswers) {
+      externalStoreSyncFailed = false;
+      externalStoreUnsynced = null;
+      const cleaned = {...local, codes: {...serverCodes, ...(local.codes || {})}, answers: local.answers || {}};
+      delete cleaned.unsynced;
+      delete cleaned.pendingSync;
+      delete cleaned.allowEmptySync;
+      writeLocalExternalStore(cleaned, projectId, runId);
+      return;
+    }
+    externalStoreSyncFailed = true;
+    externalStoreUnsynced = local;
+    return;
+  }
+
+  // 2) PUT 비행 중 새로고침되어 pendingSync 표식이 남은 경우:
+  //    서버에 이미 반영되었으면 표식만 정리하고, 아직 반영 전이면 중단된 PUT을 재전송해 완결한다.
+  if (local && local.pendingSync) {
+    if (serverMatchesLocalAll) {
+      externalStoreSyncFailed = false;
+      externalStoreUnsynced = null;
+      const cleaned = {...local};
+      delete cleaned.pendingSync;
+      delete cleaned.allowEmptySync;
+      writeLocalExternalStore(cleaned, projectId, runId);
+      return;
+    }
+    await persistExternalStoreToServer(local, projectId, runId, {allowEmpty: Boolean(local.allowEmptySync)});
+    return;
+  }
+
+  // 3) 로컬 미동기화/비행 중 변경이 없는 정상 상태: 서버 저장본(saved=true)을 로컬에 반영한다.
+  externalStoreSyncFailed = false;
+  externalStoreUnsynced = null;
+  if (!hasSavedServer) return;
+  const nextStore = {
+    codes: serverCodes,
+    answers: serverAnswers,
+    rev: Math.max(Number(local?.rev) || 0, externalStoreRevCounter) + 1,
+  };
+  externalStoreRevCounter = nextStore.rev;
+  writeLocalExternalStore(nextStore, projectId, runId);
+}
 function saveExternalStore(store) {
-  try { localStorage.setItem(externalStoreKey(), JSON.stringify(store)); } catch (e) { toast("이 브라우저에 답변을 저장하지 못했습니다. 화면을 새로 고치면 사라집니다."); }
+  bumpExternalStoreRev(store);
+  const hasAnswers = Object.keys(store.answers || {}).length > 0;
+  if (hasAnswers) store.pendingSync = true;
+  writeLocalExternalStore(store);
+  if (hasAnswers) {
+    void persistExternalStoreToServer(store);
+  }
 }
 function rememberPromptCodes(prefix, items) {
   const store = loadExternalStore();
   store.codes = {...(store.codes || {})};
   store.answers = {...(store.answers || {})};
+  let removedAnswer = false;
   for (const key of Object.keys(store.codes)) if (key.startsWith(prefix)) delete store.codes[key];
   items.forEach((item, index) => {
     const code = `${prefix}${index + 1}`;
@@ -513,9 +763,27 @@ function rememberPromptCodes(prefix, items) {
     // 코드가 다른 항목에 재할당된 경우 또는 item_id가 없는 구형 답변인 경우 기존 답변을 삭제하여 오염을 방지한다.
     if (store.answers[code] && (!store.answers[code].item_id || store.answers[code].item_id !== item.item_id)) {
       delete store.answers[code];
+      removedAnswer = true;
     }
   });
-  saveExternalStore(store);
+  for (const key of Object.keys(store.answers)) {
+    if (key.startsWith(prefix) && (!store.codes[key] || !store.answers[key]?.item_id || store.answers[key].item_id !== store.codes[key])) {
+      delete store.answers[key];
+      removedAnswer = true;
+    }
+  }
+  bumpExternalStoreRev(store);
+  if (removedAnswer) {
+    // 기존 답변이 코드 재할당으로 삭제된 경우(남은 답변이 0건이어도) 서버 판본에도 즉시 반영해
+    // 새로고침이나 다른 문맥에서 삭제된 구 답변이 되살아나지 않게 한다.
+    store.pendingSync = true;
+    store.allowEmptySync = true;
+    writeLocalExternalStore(store);
+    void persistExternalStoreToServer(store, state.project?.id, state.run?.id, {allowEmpty: true});
+    return;
+  }
+  // 답변 삭제 없이 프롬프트 번호만 생성할 때는 로컬에만 기록해 답변 없는 스냅샷이 서버 판본(saved=true)이 되지 않게 한다.
+  writeLocalExternalStore(store);
 }
 function applyStoredExternalAnswers(items) {
   const store = loadExternalStore();
@@ -541,32 +809,41 @@ function applyStoredExternalAnswers(items) {
 }
 function externalAnswerBlock(answer) {
   const box = node("div", null, "external-ai-answer");
-  box.append(node("strong", `외부 AI 답변 ${answer.code} (공식 확인 아님)`));
+  const modelName = cleanExternalModelName(answer.model_name);
+  box.append(node("strong", modelName ? `${modelName} 답변 ${answer.code}` : `외부 AI 답변 ${answer.code}`));
   if (answer.verdict) box.append(node("p", `판정: ${answer.verdict}`));
   if (answer.basis) box.append(node("p", `근거: ${answer.basis}`));
   if (answer.summary) box.append(node("p", `요지: ${answer.summary}`));
-  box.append(node("small", `${answer.applied_at || ""} 반영 · 참고용이며 위 공식 DB 판정은 바뀌지 않습니다. 원문은 판결서·국가법령정보센터로 확인하십시오.`, "muted"));
   return box;
 }
 function openExternalAnswerImport(prefix, rowsByCode) {
+  const modelInput = workflowUI.field("model_name", "사용한 외부 AI 모델명 (선택)", "", "text");
+  modelInput.classList.add("full");
+  const modelEl = modelInput.querySelector("input");
+  if (modelEl) modelEl.placeholder = "예: 엘박스, Gemini 2.5 Pro (결과 블록의 '모델:' 줄이 있으면 자동 반영)";
   const input = workflowUI.field("answer", "엘박스 등 외부 AI 답변 전문", "", "textarea");
   input.classList.add("full");
   input.querySelector("textarea").rows = 12;
-  const hint = node("p", `프롬프트 끝의 결과 블록(${EXTERNAL_ANSWER_OPEN} … ${EXTERNAL_ANSWER_CLOSE})을 읽어 ${prefix}1, ${prefix}2 … 번호의 행에 붙입니다. 외부 AI 답변은 공식 확인이 아닙니다.`, "muted full");
-  workflowUI.modal("외부 AI 답변 붙여넣기", [hint, input], async values => {
-    const parsed = parseExternalAnswers(values.answer).filter(a => a.code.startsWith(prefix));
+  const hint = node("p", `프롬프트 끝의 결과 블록(${EXTERNAL_ANSWER_OPEN} … ${EXTERNAL_ANSWER_CLOSE})을 읽어 ${prefix}1, ${prefix}2 … 번호의 행에 붙입니다. 새로 반영하면 기존 ${prefix} 답변은 대체됩니다.`, "muted full");
+  workflowUI.modal("외부 AI 답변 붙여넣기", [hint, modelInput, input], async values => {
+    const manualModel = cleanExternalModelName(values.model_name);
+    const parsed = parseExternalAnswers(values.answer)
+      .filter(a => a.code.startsWith(prefix))
+      .map(a => ({...a, model_name: manualModel || a.model_name || ""}));
     if (!parsed.length) throw new Error(`결과 블록에서 ${prefix} 번호 항목을 찾지 못했습니다. 프롬프트의 결과 블록 형식으로 다시 요청하세요.`);
     const matched = parsed.filter(a => rowsByCode.has(a.code));
     const missing = parsed.filter(a => !rowsByCode.has(a.code)).map(a => a.code);
-    setTimeout(() => previewExternalAnswers(matched, missing, rowsByCode), 0);
+    setTimeout(() => previewExternalAnswers(matched, missing, rowsByCode, prefix), 0);
   }, true);
 }
-function previewExternalAnswers(answers, missing, rowsByCode) {
+function previewExternalAnswers(answers, missing, rowsByCode, prefix = "") {
+  const effectivePrefix = prefix || (answers[0]?.code?.[0] || "");
   const list = node("div", null, "full external-answer-preview");
   for (const a of answers) {
     const row = rowsByCode.get(a.code);
     const card = node("div", null, "external-answer-preview-item");
-    card.append(node("strong", `${a.code} → ${row.cited_authority || friendlyText(row.claim_text || "") || row.item_id}`),
+    const prefixLabel = a.model_name ? `[${a.model_name}] ` : "";
+    card.append(node("strong", `${prefixLabel}${a.code} → ${row.cited_authority || friendlyText(row.claim_text || "") || row.item_id}`),
       node("p", [a.verdict && `판정: ${a.verdict}`, a.basis && `근거: ${a.basis}`, a.summary && `요지: ${a.summary}`].filter(Boolean).join(" · ")));
     list.append(card);
   }
@@ -574,16 +851,29 @@ function previewExternalAnswers(answers, missing, rowsByCode) {
   if (!answers.length) list.append(node("p", "반영할 항목이 없습니다.", "muted"));
   const view = workflowUI.modal(`표에 반영할 답변 ${answers.length}건 확인`, [list], async () => {
     const store = loadExternalStore();
-    store.answers = {...(store.answers || {})};
+    const nextAnswers = {};
+    for (const [key, value] of Object.entries(store.answers || {})) {
+      if (!effectivePrefix || !key.startsWith(effectivePrefix)) {
+        nextAnswers[key] = value;
+      }
+    }
     const appliedAt = new Date().toLocaleString("ko-KR");
     for (const a of answers) {
       const row = rowsByCode.get(a.code);
       // 답변 저장 시 원래 item_id를 함께 보존하여 코드 재할당 시 오염을 방지한다.
-      store.answers[a.code] = {...a, item_id: row?.item_id || a.item_id || "", applied_at: appliedAt};
+      nextAnswers[a.code] = {...a, item_id: row?.item_id || a.item_id || "", applied_at: appliedAt};
     }
-    saveExternalStore(store);
+    store.answers = nextAnswers;
+    delete store.unsynced;
+    delete store.allowEmptySync;
+    store.pendingSync = true;
+    bumpExternalStoreRev(store);
+    writeLocalExternalStore(store);
+    const sync = await persistExternalStoreToServer(store);
     renderFindings();
-    toast(`외부 AI 답변 ${answers.length}건을 표에 반영했습니다(공식 확인 아님).`);
+    toast(sync && sync.reason === "error"
+      ? `외부 AI 답변 ${answers.length}건을 표에 반영했습니다. 다만 서버 저장에 실패해 이 브라우저에만 저장되었습니다.`
+      : `외부 AI 답변 ${answers.length}건을 표에 반영했습니다.`);
   }, true);
   view.submit.textContent = "표에 반영";
   if (!answers.length) view.submit.hidden = true;
@@ -598,7 +888,7 @@ function externalAnswerButton(prefix, items) {
     if (!rowsByCode.size) { toast("먼저 이 표의 '엘박스/AI 검증 프롬프트 만들기'로 번호가 붙은 프롬프트를 만드세요."); return; }
     openExternalAnswerImport(prefix, rowsByCode);
   }, "external-ai-import-btn");
-  b.title = "엘박스 등에서 받은 답변을 붙여넣어 번호별로 표의 행에 반영합니다. 공식 확인 상태는 바뀌지 않습니다.";
+  b.title = "엘박스 등에서 받은 답변을 붙여넣어 번호별로 표의 행에 반영합니다.";
   return b;
 }
 function buildExternalAiPromptForLegalClaims(entries, incidentDate = "") {
@@ -607,7 +897,6 @@ function buildExternalAiPromptForLegalClaims(entries, incidentDate = "") {
 당신은 대한민국 법률 및 판례 검증 전문 AI입니다.
 아래는 소송 서면에서 법리상 무리하거나 판례 취지와 맞지 않을 수 있다고 표시된 [주장 ${entries.length}건]입니다. 각 주장이 인용한 판례·법령의 취지에 비추어 성립하는지 검토해 주세요.
 
-※ 고지: 외부 AI 답변은 법적 효력이 있는 공식 확인이 아니며, 실제 변론 및 증거 제출 시에는 법원 판결서 사본 또는 국가법령정보센터 공식 원문으로 반드시 확인해야 합니다.
 ※ 개인정보는 프로젝트 정책에 따라 가림 처리되었습니다.
 
 [기준 시점]
@@ -1388,6 +1677,29 @@ function authorshipVerdict(verdict) {
   }[verdict] || ["판단 보류", "badge INFO"];
 }
 
+const MODEL_FAILURE_KOREAN = [
+  { match: /MASKING_PII_DETECTED|PII_INPUT_BLOCKED/, text: "개인정보 비식별 확인 단계에서 가려지지 않은 식별 정보 가능성이 탐지되어 외부 AI 전송을 차단했습니다." },
+  { match: /REQUEST_WIRING_CONTRACT|INPUT_CONTRACT_VIOLATION/, text: "외부 AI 입력 형식 검증 기준을 충족하지 못해 전송을 보류했습니다." },
+  { match: /STATIC_PROMPT_FALSE_POSITIVE/, text: "시스템 프롬프트 보호 점검 중 오탐이 발생해 전송을 보류했습니다." },
+  { match: /INSPECTION_EXCEPTION/, text: "개인정보 보호 점검 중 오류가 발생해 안전을 위해 외부 AI 전송을 차단했습니다." },
+  { match: /INPUT_PRIVACY_BLOCKED/, text: "개인정보 보호 입력 점검을 통과하지 못해 외부 AI 전송을 차단했습니다." },
+  { match: /PROVIDER_POLICY_BLOCKED/, text: "프로젝트 또는 기관의 외부 AI 이용 정책에 따라 호출이 제한되었습니다." },
+  { match: /PROVIDER_TIMEOUT/, text: "AI 모델 응답 시간이 초과되어 이번 교차검증에 참여하지 못했습니다." },
+  { match: /PROVIDER_EXCEPTION/, text: "AI 모델 호출 중 통신 오류가 발생해 이번 교차검증에 참여하지 못했습니다." },
+  { match: /EMPTY_RESPONSE/, text: "AI 모델이 빈 응답을 반환해 판정에 반영하지 못했습니다." },
+  { match: /\bHTTP\s*429\b/i, text: "AI 서비스 호출 한도를 일시적으로 초과해 응답하지 못했습니다." },
+];
+
+function humanizeModelFailureReason(why) {
+  const raw = String(why || "").trim();
+  if (!raw) return "AI 모델이 응답하지 못해 이번 교차검증에 참여하지 못했습니다.";
+  for (const rule of MODEL_FAILURE_KOREAN) {
+    if (rule.match.test(raw)) return rule.text;
+  }
+  const cleaned = friendlyText(raw).replace(/\b[A-Z][A-Z0-9_]{3,}\b/g, code => labels[code] || "내부 점검 항목");
+  return cleaned;
+}
+
 // 교차검증에 참여한 모델마다 결론·점수·설명을 모두 보인다. 응답하지 못한 모델은 사유와 함께 둔다.
 function modelOpinions(opinions, failures, failureModels = {}) {
   const box = node("div", null, "model-opinions");
@@ -1421,7 +1733,7 @@ function modelOpinions(opinions, failures, failureModels = {}) {
     const block = node("div", null, "model-opinion model-opinion-failed");
     const head = node("div", null, "model-opinion-head");
     head.append(node("strong", modelTitle(provider, failureModels[provider])), node("span", "응답 없음", "badge INFO"));
-    block.append(head, node("p", why, "muted"));
+    block.append(head, node("p", humanizeModelFailureReason(why), "muted"));
     grid.append(block);
   }
   return box;
@@ -1446,18 +1758,18 @@ function injectionCard(docs, hasQuarantine, findings) {
     return card;
   }
   card.append(hasQuarantine
-    ? node("p", "프롬프트 인젝션 속임수 검증: AI 판단 왜곡 지시문 탐지 — 이 문서는 AI 검토에서 제외", "danger-text")
+    ? node("p", "프롬프트 인젝션 속임수 검증: AI 판단 왜곡 지시문이 탐지되어 지시문 구간만 AI 입력·참고자료 자동 등록에서 격리하고, 나머지 본문 내용 검토는 정상 수행했습니다.", "danger-text")
     : node("p", "정상: 문서를 왜곡하려는 악의적 프롬프트 인젝션이 발견되지 않았습니다.", "safe-text"));
   const basis = node("div", null, "injection-basis");
   basis.append(node("h4", "판정 근거"));
-  basis.append(node("p", `검사 항목: ${INJECTION_CHECKS.join(" · ")}. 격리 기준: 기계 지시문 중 심각도 높음 이상이 1건이라도 있으면 격리합니다.`, "muted"));
+  basis.append(node("p", `검사 항목: ${INJECTION_CHECKS.join(" · ")}. 격리 기준: 기계 지시문 중 심각도 높음 이상이 1건이라도 있으면 지시문 구간을 격리하고 나머지 본문만 검토합니다.`, "muted"));
   for (const d of docs) {
     const adversarial = d.engine_data?.adversarial || {};
     const found = (d.findings || []).filter(f => f.engine === "adversarial_engine");
     const block = node("div", null, "injection-doc");
     const layers = (adversarial.scanned_layers || []).map(l => LAYER_NAMES[l] || l).join(", ") || "기록 없음";
     block.append(node("strong", d.filename || "문서"),
-      node("p", `검사한 층: ${layers} · 탐지 후보 ${found.length}건 · 위험도 ${RISK_NAMES[adversarial.adversarial_risk] || adversarial.adversarial_risk || "기록 없음"} · ${d.quarantined ? "격리됨" : "격리 안 함"}`));
+      node("p", `검사한 층: ${layers} · 탐지 후보 ${found.length}건 · 위험도 ${RISK_NAMES[adversarial.adversarial_risk] || adversarial.adversarial_risk || "기록 없음"} · ${d.quarantined ? "지시문 구간 격리됨 (본문 검토 진행)" : "격리 안 함"}`));
     if (found.length) {
       const list = node("ul", null, "reason-list");
       for (const f of found) {
@@ -1545,7 +1857,7 @@ function referenceSection(docs) {
     section.append(node("p", `연결 점검 · 인증 ${CREDENTIAL_MODES[health.credential_mode] || health.credential_mode || "없음"} · 목록 조회 ${health.listing_succeeded ? "성공" : "실패"} · API 호출 ${health.http_calls}건(오류 ${health.http_errors}건) · 동기화 ${Math.round((health.sync_ms || 0) / 100) / 10}초`, "muted"));
   }
   if (library.duplicates?.length) {
-    const details = node("details");
+    const details = bindReferenceDetails(node("details"), "duplicates");
     const bytes = library.duplicates.reduce((sum, g) => sum + (g.reclaimable_bytes || 0), 0);
     details.append(node("summary", `중복 사본 ${library.duplicates.length}묶음 · 삭제 시 ${Math.round(bytes / 1048576)}MB 절약 (내용 동일, 보존본 1개만 색인)`));
     for (const group of library.duplicates) {
@@ -1565,13 +1877,13 @@ function referenceSection(docs) {
   const recordedIds = new Set((library.inventory || []).map(item => item.file_id).filter(Boolean));
   const generalIssues = (library.issues || []).filter(issue => !issue.file_id || !recordedIds.has(issue.file_id));
   if (generalIssues.length) {
-    const details = node("details");
+    const details = bindReferenceDetails(node("details"), "general-issues");
     details.append(node("summary", `공통·기타 제한 ${generalIssues.length}건`));
     for (const issue of generalIssues) details.append(node("p", `${issue.name || issue.file_id || "Drive"}: ${friendlyText(issue.reason)}`));
     section.append(details);
   }
   if (library.inventory?.length) {
-    const details = node("details");
+    const details = bindReferenceDetails(node("details"), "inventory");
     details.append(node("summary", `자료별 처리 기록 ${library.inventory.length}건`));
     for (const item of library.inventory.slice(0, 100)) {
       const reasons = [...new Set([item.reason, ...(library.issues || []).filter(i => i.file_id === item.file_id).map(i => i.reason)].filter(Boolean))];
@@ -1583,10 +1895,11 @@ function referenceSection(docs) {
     if (library.inventory.length > 100) details.append(node("p", "전체 자료별 처리 기록은 결과 JSON에 보존되어 있습니다.", "muted"));
     section.append(details);
   }
-  for (const doc of docs) {
+  for (let docIdx = 0; docIdx < docs.length; docIdx++) {
+    const doc = docs[docIdx];
     const review = doc.engine_data?.rag;
     if (!review) continue;
-    const details = node("details");
+    const details = bindReferenceDetails(node("details"), `doc:${doc.document_id || doc.id || doc.filename || docIdx}`);
     details.append(node("summary", `${doc.filename}: ${statuses[review.status] || review.status}`));
     if (review.claim_coverage && typeof review.claim_coverage.eligible_claims === "number") {
       const c = review.claim_coverage;
@@ -2206,6 +2519,7 @@ async function loadResults(generation, options = {}) {
   const findings = await api(`/projects/${state.project.id}/findings?run_id=${state.run.id}`, options);
   // TK-155 보완 4: 표시 표(코드→한글)를 받은 뒤에 결과를 상태에 넣는다. 그 사이 탭 전환으로 다시 그려도 코드가 보이지 않는다.
   await loadFindingCategories(options);
+  await loadExternalAnswersFromServer(state.project.id, state.run.id, options);
   if (generation !== state.generation) return;
   state.result = result;
   state.findings = findings;
@@ -2269,7 +2583,7 @@ function isSecurityCardFinding(f) {
 
 function securityCard(docs, findings) {
   const secFindings = (findings || []).filter(isSecurityCardFinding);
-  const card = node("div", null, "summary-card security-card");
+  const card = node("div", null, "summary-card summary-card-wide security-card");
   card.append(node("h3", "보안 및 파일 진단"));
   if (secFindings.length > 0) {
     const list = node("ul", null, "security-finding-list");
@@ -2407,7 +2721,7 @@ function referenceIdentifier(citation) {
     if (part) article += part.startsWith("제") ? part : `제${part}${suffix}`;
   }
   if (!law) {
-    const found = raw.match(/([가-힣A-Za-z·]+(?:법률|법|령|규정|조례))(제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?)/);
+    const found = raw.match(/([가-힣A-Za-z·]+(?:법률|법|령|규정|규칙|조례|훈령|예규|고시|지침|요령|기준|수칙|세칙|내규))(제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?)/);
     if (found) [law, article] = [found[1], found[2]];
   }
   return law && /^제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?$/.test(article) ? ["law", law, article] : null;
@@ -2425,13 +2739,22 @@ function referenceIdentifierMatch(citation, excerpt) {
   }
   const original = String(excerpt || "");
   const separator = "[\\u0009-\\u000D\\u001C-\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF「」『』]*";
-  const escaped = [...key].map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const lawPattern = new RegExp("(?<![가-힣A-Za-z0-9])" + escaped.join(separator) + "(?:(?![가-힣A-Za-z0-9])|(?=제" + separator + "[0-9]))", "g");
-  const positions = [...original.matchAll(lawPattern)].map(m => referenceTextLength(referenceAuthorityText(original.slice(0, m.index))));
+  const alias = referenceAuthorityText(citation.attributes?.law_alias_candidate);
+  // 종류명뿐인 행정규칙 이름(지침·훈령 등)은 다른 규칙 이름의 끝부분과 같아 특정 규칙으로 결속할 수 없다.
+  const genericKey = ["훈령", "예규", "고시", "지침"].includes(key);
+  const keys = (genericKey ? [] : [key]).concat(alias && alias !== key ? [alias] : []);
+  const positions = [];
+  for (const candidateKey of keys) {
+    const escaped = [...candidateKey].map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const lawPattern = new RegExp("(?<![가-힣A-Za-z0-9])" + escaped.join(separator) + "(?:(?![가-힣A-Za-z0-9])|(?=제" + separator + "[0-9]))", "g");
+    for (const m of original.matchAll(lawPattern)) {
+      positions.push([referenceTextLength(referenceAuthorityText(original.slice(0, m.index))), referenceTextLength(candidateKey)]);
+    }
+  }
   // 조문 표기는 가장 길게 읽고, 뒤에 숫자가 이어지면 잘린 표기라 어느 조문과도 같지 않다(Python과 같은 규칙).
   const articles = [...text.matchAll(/제[0-9]+조(?:의[0-9]+)?(?:제[0-9]+항)?(?:제[0-9]+호)?/g)].map(m =>
     ({index:m.index, token:/[0-9]/.test(text.charAt(m.index + m[0].length)) ? null : m[0]}));
-  const nearby = m => positions.some(p => Math.abs(referenceTextLength(text.slice(0, m.index)) - p - referenceTextLength(key)) <= 100);
+  const nearby = m => positions.some(([p, klen]) => Math.abs(referenceTextLength(text.slice(0, m.index)) - p - klen) <= 100);
   const conflict = articles.some(m => !referenceArticleCompatible(m.token, article) && nearby(m));
   const full = positions.length > 0 && articles.some(m => referenceArticleCompatible(m.token, article)) && !conflict;
   return {full, proximate:full && articles.some(m => referenceArticleCompatible(m.token, article) && nearby(m)), conflict};
@@ -2514,14 +2837,52 @@ function referenceObservationBlock(observations) {
   }
   return box;
 }
+const referenceDetailsState = { contextKey: "", openKeys: new Set() };
+function referenceDetailsContextKey() {
+  const projectId = state.project?.id || "";
+  const runId = state.run?.id || "";
+  return projectId ? `${projectId}:${runId}` : "";
+}
+function syncReferenceDetailsContext() {
+  const nextKey = referenceDetailsContextKey();
+  if (nextKey !== referenceDetailsState.contextKey) {
+    referenceDetailsState.contextKey = nextKey;
+    referenceDetailsState.openKeys.clear();
+  }
+  return nextKey;
+}
+function captureReferenceDetailsState(container) {
+  const prevKey = referenceDetailsState.contextKey;
+  const nextKey = syncReferenceDetailsContext();
+  if (!nextKey || nextKey !== prevKey || !container) return;
+  for (const el of container.querySelectorAll("details[data-ref-detail-key]")) {
+    const detailKey = el.dataset.refDetailKey;
+    if (!detailKey) continue;
+    if (el.open) referenceDetailsState.openKeys.add(detailKey);
+    else referenceDetailsState.openKeys.delete(detailKey);
+  }
+}
+function bindReferenceDetails(details, detailKey) {
+  if (!details || !detailKey) return details;
+  details.dataset.refDetailKey = detailKey;
+  const key = syncReferenceDetailsContext();
+  if (key && referenceDetailsState.openKeys.has(detailKey)) details.open = true;
+  details.addEventListener("toggle", () => {
+    const activeKey = referenceDetailsContextKey();
+    if (!activeKey || activeKey !== referenceDetailsState.contextKey) return;
+    if (details.open) referenceDetailsState.openKeys.add(detailKey);
+    else referenceDetailsState.openKeys.delete(detailKey);
+  });
+  return details;
+}
 function referenceStatusLine(docs, unmatchedCount, withDetails = true) {
   const library = state.result?.run_manifest?.reference_library;
   if (!library) return null;
   const linked = docs.reduce((n, d) => n + (d.engine_data?.rag?.observations || []).length, 0) - unmatchedCount;
-  const details = node("details", null, "reference-status-line");
   const text = library.status === "DISABLED" ? "주요 참고문헌 대조: 사용 안 함(폴더 설정 없음) · 표의 행은 공식 DB 기준으로만 작성"
     : `주요 참고문헌 대조: 색인 ${library.files_indexed || 0}/${library.files_seen || 0}건 · 표의 행에 반영한 의견 ${linked}건` + (unmatchedCount ? ` · 행과 연결되지 않아 별도 행으로 추가 ${unmatchedCount}건` : "");
   if (!withDetails) return node("p", `${text} · 처리 기록은 '출처가 확인되지 않는 항목' 탭에서 펼쳐 봅니다.`, "muted reference-status-brief");
+  const details = bindReferenceDetails(node("details", null, "reference-status-line"), "outer");
   details.append(node("summary", text));
   const full = referenceSection(docs);
   if (full) details.append(full);
@@ -2774,17 +3135,40 @@ function renderReviewRow(item, tier, findingsMap) {
   } else if (String(item.verdict_label).includes("부당") || String(item.verdict_label).includes("결여")) {
     verdictCls = "badge CRITICAL";
   }
-  tdBasis.append(
+  const badges = node("div", null, "review-verdict-badges");
+  badges.append(
     node("span", label(item.severity), `badge ${item.severity}`),
     node("span", friendlyText(item.verdict_label) || "확인 필요", `${verdictCls} validity-verdict`)
   );
+  const claimBadge = claimVerdictBadge(item.claim_verdict);
+  if (claimBadge) badges.append(claimBadge);
+  tdBasis.append(badges);
+  const leadF = (item.finding_ids && item.finding_ids.length && findingsMap) ? findingsMap.get(item.finding_ids[0]) : null;
+
   // V1.0.0 6-3·7-2: 판정 배지와 겹치는 상태 코드 줄은 쓰지 않는다. 설명 문장만 둔다.
   const basisText = item.ai_generation_basis ? friendlyText(item.ai_generation_basis) : "";
   if (basisText) {
     tdBasis.append(node("p", basisText, "basis-text clamp"));
   }
-  const claimBadge = claimVerdictBadge(item.claim_verdict);
-  if (claimBadge) tdBasis.append(claimBadge);
+  // 261116 8·8-1: 3단(법률적으로 무리한 주장) 3열에는 정당한 계산 방식·액수 또는 정당한 법리 결론·근거를 직접 표시한다.
+  if (tier === 3) {
+    const rawConclusion = (
+      item.reasoning_sections?.review ||
+      item.legal_reasoning ||
+      (leadF && leadF.detail && leadF.detail !== item.claim_text ? leadF.detail : "") ||
+      ""
+    ).trim();
+    const conclusionText = rawConclusion ? friendlyText(rawConclusion) : "";
+    const claimPlain = item.claim_text ? friendlyText(item.claim_text).trim() : "";
+    if (conclusionText && conclusionText !== basisText && conclusionText !== claimPlain) {
+      tdBasis.append(node("p", conclusionText, "basis-text legal-conclusion-basis clamp"));
+    }
+    const legalSources = (Array.isArray(item.evidence_sources) ? item.evidence_sources : [])
+      .filter(s => s && !String(s).includes("구속력 없음"));
+    if (legalSources.length) {
+      tdBasis.append(node("p", `법적 근거: ${legalSources.slice(0, 3).map(s => friendlyText(s)).join(" · ")}`, "basis-text legal-basis-sources muted"));
+    }
+  }
   const comparisonBlock = sourceComparisonBlock(item.source_comparison);
   if (comparisonBlock) tdBasis.append(comparisonBlock);
   if (item.reference_case_match && item.reference_case_match !== "NOT_IN_REFERENCE") {
@@ -2812,7 +3196,6 @@ function renderReviewRow(item, tier, findingsMap) {
   // 4열: 확인이 필요한 내용 요약 (TK-87)
   const tdSummary = node("td", null, "review-summary-cell");
   const summaryBox = node("div", null, "review-summary-box");
-  const leadF = (item.finding_ids && item.finding_ids.length && findingsMap) ? findingsMap.get(item.finding_ids[0]) : null;
 
   // 1) 대상
   const targetText = item.cited_authority || (item.claim_text ? friendlyText(item.claim_text) : "") || (leadF ? friendlyText(leadF.title) : "");
@@ -2822,21 +3205,29 @@ function renderReviewRow(item, tier, findingsMap) {
     summaryBox.append(targetLine);
   }
 
-  // 2) 사유 축약
+  // 2) 사유 / 확인 필요 사항
+  const verificationText = (tier === 3 && item.counteraction) ? friendlyText(String(item.counteraction).trim()) : "";
   const rawReason = (item.reasoning_sections?.review || item.legal_reasoning || item.ai_generation_basis || (leadF ? leadF.detail : "") || item.verdict_label || "").trim();
   // V1.0.0 7-5: 사유를 자르지 않으면서 '확인 대상'과 같은 글이 두 번 나오지 않게 한다(한쪽이 다른 쪽을 담으면 생략).
   const squash = t => friendlyText(t).replace(/\s+/g, "").replace(/[.…]+$/, "");
   const sameAsTarget = targetText && rawReason && (squash(targetText).includes(squash(rawReason)) || squash(rawReason).includes(squash(targetText)));
-  // 사유가 대상 글을 담고 더 길면 대상 줄을 사유 전문으로 바꿔 정보가 빠지지 않게 한다.
-  if (sameAsTarget && squash(rawReason).length > squash(targetText).length) {
-    const targetLine = summaryBox.querySelector(".summary-target");
-    if (targetLine) targetLine.lastChild.textContent = friendlyText(rawReason);
-  }
-  if (rawReason && !sameAsTarget) {
-    // V1.0.0 7-5: 문장을 자르지 않는다. 길면 4줄까지 보이고 '더보기'로 펼친다.
-    const reasonLine = node("p", null, "summary-line summary-reason clamp");
-    reasonLine.append(node("strong", "의심 사유: "), document.createTextNode(friendlyText(rawReason)));
-    summaryBox.append(reasonLine);
+  if (verificationText) {
+    // 261116 8·8-1: 3단 4열에는 3열 결론 검증을 위해 확인해야 할 구체적 사실·자료·근거를 우선 제시한다.
+    const verifLine = node("p", null, "summary-line summary-verification clamp");
+    verifLine.append(node("strong", "확인 필요 사항: "), document.createTextNode(verificationText));
+    summaryBox.append(verifLine);
+  } else {
+    // 사유가 대상 글을 담고 더 길면 대상 줄을 사유 전문으로 바꿔 정보가 빠지지 않게 한다.
+    if (sameAsTarget && squash(rawReason).length > squash(targetText).length) {
+      const targetLine = summaryBox.querySelector(".summary-target");
+      if (targetLine) targetLine.lastChild.textContent = friendlyText(rawReason);
+    }
+    if (rawReason && !sameAsTarget) {
+      // V1.0.0 7-5: 문장을 자르지 않는다. 길면 4줄까지 보이고 '더보기'로 펼친다.
+      const reasonLine = node("p", null, "summary-line summary-reason clamp");
+      reasonLine.append(node("strong", "의심 사유: "), document.createTextNode(friendlyText(rawReason)));
+      summaryBox.append(reasonLine);
+    }
   }
 
   // 4) 상세 법리 의견
@@ -2987,21 +3378,36 @@ function renderFindings() {
         if (attachedFindingIds.has(fid)) continue;
         if (f.document_id && docId && f.document_id !== docId) continue;
         attachedFindingIds.add(fid);
+        const cf = f.confidence_features || {};
+        const primaryEv = (Array.isArray(f.evidence) ? f.evidence : []).find(
+          ev => ev && ev.excerpt && !String(ev.description || "").startsWith("근거:") && ev.description !== "세부 금액"
+        );
+        const statedClaim = String(cf.stated_claim || cf.claim || cf.claim_quote || primaryEv?.excerpt || "").trim();
+        const claimText = statedClaim || f.detail || f.title;
+        let rawVerdict = String(cf.judgment || cf.verdict || f.title || f.type || "").trim();
+        if (statedClaim && rawVerdict.includes(" — '")) {
+          rawVerdict = rawVerdict.split(" — '", 1)[0].trim();
+        }
+        const lawfulReview = String(cf.lawful_calculation || (f.detail && f.detail !== claimText ? f.detail : "") || "").trim();
+        const basisSources = (Array.isArray(cf.basis) ? cf.basis : [])
+          .filter(b => b && b.name)
+          .map(b => b.url ? `${b.name} (${b.url})` : b.name);
         allReviewItems.push({
           doc: d,
           item_id: `${docId}_FINDING_${fid}`,
           kind: "FACT",
           document_id: docId,
           location: { page: f.page },
-          claim_text: f.detail || f.title,
-          cited_authority: null,
+          claim_text: claimText,
+          cited_authority: cf.cited_authority || cf.compared || null,
           official_status: "NOT_ASSESSED",
           reference_status: "NOT_CHECKED",
-          verdict_label: f.title,
+          verdict_label: rawVerdict,
           severity: f.severity,
+          evidence_sources: basisSources,
           finding_ids: [fid],
-          reasoning_sections: null,
-          counteraction: f.recommendation,
+          reasoning_sections: lawfulReview ? { review: lawfulReview, ai_label: "", opinions: [] } : null,
+          counteraction: cf.verification_needed || f.recommendation || null,
         });
       }
     }
@@ -3139,11 +3545,12 @@ function renderFindings() {
             "엘박스/법률 AI 검증 프롬프트가 복사되었습니다."
           );
         }, "primary external-ai-prompt-btn");
-        promptBtn.title = `미확인 판례·법령 ${unverifiedAuthorities.length}건을 엘박스 등 법률 AI에 한 번에 질의할 수 있는 일괄 프롬프트를 복사합니다. (외부 AI 답변은 공식 확인이 아닙니다)`;
+        promptBtn.title = `미확인 판례·법령 ${unverifiedAuthorities.length}건을 엘박스 등 법률 AI에 한 번에 질의할 수 있는 일괄 프롬프트를 복사합니다.`;
 
         const badge = node("span", `(미확인 판례·법령 ${unverifiedAuthorities.length}건)`, "muted small review-prompt-count");
-        const notice = node("span", "※ 외부 AI 답변은 공식 확인이 아니므로 원문 확인이 필요합니다.", "muted small review-prompt-notice");
-        tableActions.append(promptBtn, externalAnswerButton("A", unverifiedAuthorities), badge, notice);
+        tableActions.append(promptBtn, externalAnswerButton("A", unverifiedAuthorities), badge);
+        const syncWarnA = externalSyncStatusNode();
+        if (syncWarnA) tableActions.append(syncWarnA);
         tableActions.hidden = false;
       } else {
         tableActions.hidden = true;
@@ -3170,16 +3577,18 @@ function renderFindings() {
         rememberPromptCodes("B", tier3Items);
         await copyToClipboard(buildExternalAiPromptForLegalClaims(entries, state.project?.incident_date), "엘박스/법률 AI 검토 프롬프트가 복사되었습니다.");
       }), "primary external-ai-prompt-btn");
-      promptBtn.title = `이 표의 주장 ${tier3Items.length}건을 개인정보 가림 후 한 번에 질의하는 프롬프트를 복사합니다. (외부 AI 답변은 공식 확인이 아닙니다)`;
+      promptBtn.title = `이 표의 주장 ${tier3Items.length}건을 개인정보 가림 후 한 번에 질의하는 프롬프트를 복사합니다.`;
       legalActions.append(promptBtn, externalAnswerButton("B", tier3Items),
-        node("span", `(검토 대상 주장 ${tier3Items.length}건)`, "muted small review-prompt-count"),
-        node("span", "※ 외부 AI 답변은 공식 확인이 아니므로 원문 확인이 필요합니다.", "muted small review-prompt-notice"));
+        node("span", `(검토 대상 주장 ${tier3Items.length}건)`, "muted small review-prompt-count"));
+      const syncWarnB = externalSyncStatusNode();
+      if (syncWarnB) legalActions.append(syncWarnB);
       legalActions.hidden = false;
     }
   }
   for (const id of ["referenceStatus", "legalReferenceStatus"]) {
     const box = $(id);
     if (!box) continue;
+    if (id === "referenceStatus") captureReferenceDetailsState(box);
     box.replaceChildren();
     const line = referenceStatusLine(docs, unmatchedReferences.length, id === "referenceStatus");
     if (line) box.append(line);
@@ -3312,7 +3721,26 @@ function renderAIVerification() {
       if (dist.length) item.append(node("p", `모델별 판단 분포: ${dist.map(([v, n]) => `${authorshipVerdict(v)[0]} ${n}`).join(", ")}`, "muted"));
       if (res.signals?.score_definition) item.append(node("p", friendlyText(`추정치: ${res.signals.score_definition} 신뢰도: ${res.signals.confidence_definition}`), "muted metric-definition"));
       const coverage = res.signals?.coverage;
-      if (coverage) item.append(node("p", `작성 주체 검토 범위: ${coverage.inspected_chars || 0}/${coverage.total_chars || 0}자 · ${coverage.is_full_coverage ? "대상 본문 전체" : "일부 표본 또는 미실행"}. 직접 인용·문서 속 지시문은 작성 주체 근거에서 제외합니다.`, "muted"));
+      if (coverage) {
+        const total = coverage.total_chars || 0;
+        const inspected = coverage.inspected_chars || 0;
+        const ruleChars = coverage.rule_inspected_chars;
+        let scopeText;
+        if (!coverage.model_executed) {
+          const rulePart = ruleChars != null
+            ? `규칙 기반 ${ruleChars}자 전수 검사 완료`
+            : "규칙 기반 1차 진단 수행";
+          const aiState = coverage.sampling_mode === "not_run" ? "미실행" : "호출 실패·차단";
+          scopeText = `작성 주체 검토 범위: ${rulePart} · 외부 AI 모델 ${inspected}/${total}자 (${aiState}). 직접 인용·문서 속 지시문은 작성 주체 근거에서 제외합니다.`;
+        } else if (coverage.is_full_coverage) {
+          const ruleNote = ruleChars != null ? ` (규칙 전수 ${ruleChars}자)` : "";
+          scopeText = `작성 주체 검토 범위: ${inspected}/${total}자 · 대상 본문 전체${ruleNote}. 직접 인용·문서 속 지시문은 작성 주체 근거에서 제외합니다.`;
+        } else {
+          const ruleNote = ruleChars != null ? ` (규칙 기반 ${ruleChars}자 전수 검사 완료)` : "";
+          scopeText = `작성 주체 검토 범위: 외부 AI 모델 표본 ${inspected}/${total}자 · 일부 표본${ruleNote}. 직접 인용·문서 속 지시문은 작성 주체 근거에서 제외합니다.`;
+        }
+        item.append(node("p", scopeText, "muted"));
+      }
       const opinions = res.signals?.llm_opinions || res.model_opinions || res.opinions || [];
       const failures = Object.entries(res.signals?.llm_failures || {});
       const summary = (res.reasons || []).filter(r => !opinions.length || !/^\[[a-z]+\] /.test(r));
