@@ -15,11 +15,14 @@ from packages.common.textutil import sentences
 
 from packages.document_engine.meta_sections import meta_checklist_block_ids
 from packages.pii_engine.detector import (
+    COMPANY_STOPWORDS,
+    LEGAL_MILITARY_STOPWORDS,
     MILITARY_NOUNS,
     PARTY_HEADER_STOPWORDS,
     REPRESENTATIVE_NAME_STOPWORDS,
     _CATEGORY_JOSA_TAIL_RE,
     _has_category_name_ambiguity,
+    is_valid_korean_name_structure,
 )
 from packages.pii_engine.name_stopwords import PERSON_CATEGORY_STOPWORDS
 
@@ -167,6 +170,9 @@ _PERSON_STOPWORDS = (
     | PARTY_HEADER_STOPWORDS
     | REPRESENTATIVE_NAME_STOPWORDS
     | PERSON_CATEGORY_STOPWORDS
+    # 개인정보 엔진과 같은 직책·처분·계약 명사 목록을 쓴다(P2-1②). 성씨로 시작하는
+    # 직책 명사('사단장' 등)는 성씨 체계 검사만으로는 걸러지지 않는다.
+    | LEGAL_MILITARY_STOPWORDS
     | set(MILITARY_NOUNS)
     | {
         "측", "원고측", "피고측", "상대측", "회사측",
@@ -183,7 +189,7 @@ _NON_NAME_VERB_ADNOMINAL_SUFFIXES = (
     "하며", "되며", "하고", "되고", "하여", "되어", "하지", "되지", "하다", "되다",
 )
 
-COMPANY_MODIFIER_STOPWORDS = PARTY_ROLE_WORDS | ORG_WORDS | {
+COMPANY_MODIFIER_STOPWORDS = PARTY_ROLE_WORDS | ORG_WORDS | COMPANY_STOPWORDS | {
     "민간", "국영", "공영", "공공", "일반", "기존", "신규", "당해", "해당", "관련", "특정",
     "외국", "국내", "해외", "대형", "중소", "주요", "영리", "비영리", "선정", "협력", "하도급",
     "모회사", "자회사", "계열", "관계", "모든", "다른", "어느", "각", "본", "위", "동",
@@ -198,7 +204,10 @@ _COMPANY_MODIFIER_VERB_SUFFIXES = (
 )
 _AFTER_COMPANY_WORD_RE = re.compile(r"\s+([가-힣A-Za-z0-9]{1,20})")
 _ORG_MARKER_RE = re.compile(r"(?:주식회사|㈜)")
-_COMPANY_JOSA_TAIL_RE = re.compile(r"(?:으로|에서|에게|과의|와의|은|는|이|가|을|를|과|와|에|의|도)$")
+# 복합 조사를 먼저 본다('…상사로부터'의 '로부터'를 떼지 못하면 조사가 법인명에 남아
+# 같은 법인이 두 엔티티로 갈린다). 대안 순서가 곧 우선순위다.
+_COMPANY_JOSA_TAIL_RE = re.compile(
+    r"(?:으로부터|로부터|에게서|으로|에서|에게|과의|와의|은|는|이|가|을|를|과|와|에|의|도)$")
 
 
 def _strip_company_josa(name: str) -> str:
@@ -218,8 +227,12 @@ PERSON_CONTEXT_RE = re.compile(
 )
 
 
-def is_person_name(token: str, *, full_token: str = "") -> bool:
-    """당사자 표기 뒤에 잡힌 토큰이 사람 이름일 수 있는지 본다."""
+def is_person_name(token: str, *, full_token: str = "", after_text: str = "") -> bool:
+    """당사자 표기 뒤에 잡힌 토큰이 사람 이름일 수 있는지 본다.
+
+    개인정보 엔진의 `is_valid_korean_name_structure`를 그대로 쓴다(P2-1②). 두 엔진이 같은
+    이름 구조 규칙을 쓰므로, 개인정보 엔진이 성명으로 보지 않는 토큰은 여기서도 엔티티가 되지 않는다.
+    """
     name = (token or "").strip()
     if len(name) < 2 or len(name) > 4:
         return False
@@ -245,6 +258,10 @@ def is_person_name(token: str, *, full_token: str = "") -> bool:
         stem = name[:particle.start()]
         if stem in _PERSON_STOPWORDS and not _has_category_name_ambiguity(name):
             return False
+    # PERSON_CONTEXT_RE는 '원고·피고·증인·소외' 등 명시적 당사자 표기 직후만 잡으므로
+    # 명시적 라벨로 본다(후행 문맥으로 정상 성명을 지우지 않는다, TK-39와 같은 취급).
+    if not is_valid_korean_name_structure(name, after_text, is_explicit_label=True):
+        return False
     return True
 
 
@@ -397,7 +414,8 @@ def extract_entities(doc: NormalizedDocument, *, project_id: Optional[str] = Non
         if block.block_id in meta_ids:
             continue
         for m in PERSON_CONTEXT_RE.finditer(block.text):
-            if not is_person_name(m.group(1), full_token=block.text[m.start(1):m.end()]):
+            if not is_person_name(m.group(1), full_token=block.text[m.start(1):m.end()],
+                                  after_text=block.text[m.end():m.end() + 20]):
                 continue
             add(EntityType.PERSON, m.group(1), block, (m.start(1), m.end(1)))
         for m in COMPANY_CONTEXT_RE.finditer(block.text):
