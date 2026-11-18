@@ -57,7 +57,9 @@ def _apply_answer(page):
     dlg = page.get_by_role("dialog", name="외부 AI 답변 붙여넣기")
     dlg.locator("textarea").fill(_ANSWER)
     dlg.get_by_role("button", name="저장").click()
-    page.get_by_role("dialog", name="표에 반영할 답변 1건 확인").get_by_role("button", name="표에 반영").click()
+    confirm_dlg = page.get_by_role("dialog", name="표에 반영할 답변 1건 확인")
+    confirm_dlg.get_by_role("button", name="표에 반영").click()
+    expect(confirm_dlg).to_have_count(0)
 
 
 def _fail_put(route):
@@ -279,4 +281,85 @@ def test_reload_and_fresh_context_restore_synced_server_snapshot():
                .locator(".external-ai-answer")).to_contain_text("합성모델 답변 A1")
         expect(page2.locator(".external-sync-warning")).to_have_count(0)
         browser2.close()
+
+
+def test_code_reassignment_deletes_last_answer_from_local_and_server_without_resurrection():
+    """R1 변별: 코드 재할당으로 마지막 답변이 삭제되면 로컬과 서버 모두에서 삭제되어 새로고침·새 문맥에서도 되살아나지 않는다."""
+    from frontend_helpers import select_first_project
+
+    store: dict = {"saved": False, "codes": {}, "answers": {}}
+    with sync_playwright() as p:
+        browser1, _ctx1, page1 = _mount_page(p, result_data=_RESULT, server_store=store)
+        page1.locator('.tabs [data-tab="review"]').click()
+        bar = page1.locator("#reviewTableActions")
+
+        # ③ 대조군: 답변이 한 번도 없던 상태에서 프롬프트 번호만 생성할 때는 서버에 빈 스냅샷을 저장하지 않는다
+        bar.get_by_role("button", name="📋 엘박스/AI 검증 프롬프트 만들기").click()
+        assert store["saved"] is False
+
+        # 답변 1건 반영(대화상자 클릭 직후 비행 중 바로 코드 재할당이 일어나는 경합 경로 포함)
+        bar.get_by_role("button", name="📥 외부 AI 답변 붙여넣기").click()
+        dlg = page1.get_by_role("dialog", name="외부 AI 답변 붙여넣기")
+        dlg.locator("textarea").fill(_ANSWER)
+        dlg.get_by_role("button", name="저장").click()
+        page1.get_by_role("dialog", name="표에 반영할 답변 1건 확인").get_by_role("button", name="표에 반영").click()
+
+        # ① 반영 클릭 직후 코드가 다른 항목(item_other)으로 재할당되어 마지막 답변 삭제
+        page1.evaluate("() => { rememberPromptCodes('A', [{item_id: 'item_other'}]); renderFindings(); }")
+        expect(page1.locator("#aiVerificationRows .external-ai-answer")).to_have_count(0)
+        page1.wait_for_function("() => !loadExternalStore().pendingSync")
+        assert page1.evaluate("() => externalAnswersForReport().length") == 0
+        assert store["saved"] is True
+        assert store["answers"] == {}
+        assert store["codes"] == {"A1": "item_other"}
+
+        # ② 새로고침 뒤에도 옛 답변이 되살아나지 않는다
+        page1.reload()
+        select_first_project(page1)
+        page1.locator('.tabs [data-tab="review"]').click()
+        expect(page1.locator("#aiVerificationRows .external-ai-answer")).to_have_count(0)
+        expect(page1.locator(".external-sync-warning")).to_have_count(0)
+        assert page1.evaluate("() => externalAnswersForReport().length") == 0
+        browser1.close()
+
+        # ② 새 브라우저 문맥(빈 localStorage)에서도 서버 판본이 비어 있어 옛 답변이 되살아나지 않는다
+        browser2, _ctx2, page2 = _mount_page(p, result_data=_RESULT, server_store=store)
+        page2.locator('.tabs [data-tab="review"]').click()
+        expect(page2.locator("#aiVerificationRows .external-ai-answer")).to_have_count(0)
+        expect(page2.locator(".external-sync-warning")).to_have_count(0)
+        assert page2.evaluate("() => externalAnswersForReport().length") == 0
+        browser2.close()
+
+
+def test_server_save_and_reload_repeated_ten_times_never_shows_false_unsynced_warning():
+    """R2 변별: 서버 저장 성공 직후 새로고침을 10회 연속 반복해도 미동기화 경고가 뜨지 않고 unsynced가 남지 않는다."""
+    from frontend_helpers import select_first_project
+
+    store: dict = {"saved": False, "codes": {}, "answers": {}}
+    with sync_playwright() as p:
+        browser, _ctx, page = _mount_page(p, result_data=_RESULT, server_store=store)
+        for i in range(10):
+            page.locator('.tabs [data-tab="review"]').click()
+            bar = page.locator("#reviewTableActions")
+            bar.get_by_role("button", name="📋 엘박스/AI 검증 프롬프트 만들기").click()
+            bar.get_by_role("button", name="📥 외부 AI 답변 붙여넣기").click()
+            dlg = page.get_by_role("dialog", name="외부 AI 답변 붙여넣기")
+            dlg.locator("textarea").fill(
+                f"<<<ACAS_RESULT\n모델: 합성모델\nA1 | 판정: 불명 | 근거: 합성 근거 {i} | 요지: 합성 요지 {i}\nACAS_RESULT>>>"
+            )
+            dlg.get_by_role("button", name="저장").click()
+            confirm_dlg = page.get_by_role("dialog", name="표에 반영할 답변 1건 확인")
+            confirm_dlg.get_by_role("button", name="표에 반영").click()
+            if i % 2 == 0:
+                expect(confirm_dlg).to_have_count(0)
+            page.reload()
+            select_first_project(page)
+            page.locator('.tabs [data-tab="review"]').click()
+            expect(page.locator("#aiVerificationRows tr", has_text="2097다30001")
+                   .locator(".external-ai-answer")).to_contain_text(f"합성 요지 {i}")
+            expect(page.locator(".external-sync-warning")).to_have_count(0)
+            assert page.evaluate("() => Boolean(loadExternalStore().unsynced)") is False
+            assert store["saved"] is True
+        browser.close()
+
 

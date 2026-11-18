@@ -523,19 +523,21 @@ function externalAnswersForReport(projectId, runId) {
 function writeLocalExternalStore(store, projectId = state.project?.id, runId = state.run?.id) {
   try { localStorage.setItem(externalStoreKey(projectId, runId), JSON.stringify(store)); } catch (e) { toast("이 브라우저에 답변을 저장하지 못했습니다. 화면을 새로 고치면 사라집니다."); }
 }
-// 서버 저장이 확인되지 않은 상태. 브라우저 저장소에 unsynced 표식을 함께 남겨
-// 새로고침 뒤에도 로컬 변경이 서버 스냅샷으로 덮어써지지 않고 미동기화 표시가 유지되게 한다.
+// 서버 저장이 확인되지 않은 상태. 로컬 개정 번호(rev)와 직렬화 동기화 큐로 단일 상태 소유자를 보장하고,
+// 실제 PUT 실패 시에만 unsynced 표식을 남겨 새로고침 뒤에도 로컬 변경이 구 서버 스냅샷에 덮이지 않게 한다.
 let externalStoreSyncFailed = false;
 let externalStoreUnsynced = null;
-function isExternalStoreUnsynced(projectId = state.project?.id, runId = state.run?.id) {
-  const local = loadExternalStore(projectId, runId);
-  return Boolean(externalStoreSyncFailed || local.unsynced);
+let externalStoreRevCounter = 0;
+let externalStoreSyncQueue = Promise.resolve();
+function bumpExternalStoreRev(store) {
+  const current = Number(store?.rev) || 0;
+  externalStoreRevCounter = Math.max(externalStoreRevCounter, current) + 1;
+  if (store && typeof store === "object") store.rev = externalStoreRevCounter;
+  return externalStoreRevCounter;
 }
-async function persistExternalStoreToServer(store, projectId = state.project?.id, runId = state.run?.id) {
-  // 프로젝트/실행이 없는 화면(로컬 전용 경로)은 서버 저장 대상이 아니므로 실패로 보지 않는다.
-  if (!projectId || !runId) return {synced: false, reason: "no-run"};
+function cleanExternalAnswersMap(answers) {
   const cleanAnswers = {};
-  for (const [code, ans] of Object.entries(store.answers || {})) {
+  for (const [code, ans] of Object.entries(answers || {})) {
     if (!ans || !ans.item_id) continue;
     cleanAnswers[code] = {
       code,
@@ -547,32 +549,109 @@ async function persistExternalStoreToServer(store, projectId = state.project?.id
       applied_at: String(ans.applied_at || ""),
     };
   }
-  // 답변이 하나도 없는 프롬프트 번호 전용 스냅샷은 서버 판본(saved=true)으로 승격하지 않는다.
-  if (!Object.keys(cleanAnswers).length) return {synced: false, reason: "empty-answers"};
-  try {
-    await api(`/projects/${projectId}/runs/${runId}/external-ai-answers`, {
-      method: "PUT",
-      interactiveAuth: false,
-      body: {codes: store.codes || {}, answers: cleanAnswers},
-    });
-    externalStoreSyncFailed = false;
-    externalStoreUnsynced = null;
-    const syncedStore = {...store, codes: store.codes || {}, answers: store.answers || {}, unsynced: false};
-    delete syncedStore.unsynced;
-    writeLocalExternalStore(syncedStore, projectId, runId);
-    return {synced: true};
-  } catch (e) {
-    // 오프라인·서버 오류에서는 로컬 저장소에 미동기화 표식(unsynced: true)을 영구 보존해
-    // 새로고침 뒤에도 서버 스냅샷이 로컬 답변을 덮어쓰지 못하게 한다.
-    externalStoreSyncFailed = true;
-    const unsyncedStore = {...store, codes: store.codes || {}, answers: store.answers || {}, unsynced: true};
-    externalStoreUnsynced = unsyncedStore;
-    writeLocalExternalStore(unsyncedStore, projectId, runId);
-    return {synced: false, reason: "error", error: e};
+  return cleanAnswers;
+}
+function externalAnswerSnapshotsEqual(a, b) {
+  const aMap = cleanExternalAnswersMap(a);
+  const bMap = cleanExternalAnswersMap(b);
+  const aKeys = Object.keys(aMap).sort();
+  const bKeys = Object.keys(bMap).sort();
+  if (aKeys.length !== bKeys.length) return false;
+  for (let i = 0; i < aKeys.length; i += 1) {
+    const k = aKeys[i];
+    if (k !== bKeys[i]) return false;
+    const av = aMap[k];
+    const bv = bMap[k];
+    if (av.item_id !== bv.item_id
+      || av.verdict !== bv.verdict
+      || av.basis !== bv.basis
+      || av.summary !== bv.summary
+      || av.model_name !== bv.model_name) {
+      return false;
+    }
   }
+  return true;
+}
+function externalCodeSnapshotsEqual(a, b) {
+  const aMap = a && typeof a === "object" ? a : {};
+  const bMap = b && typeof b === "object" ? b : {};
+  const aKeys = Object.keys(aMap).sort();
+  const bKeys = Object.keys(bMap).sort();
+  if (aKeys.length !== bKeys.length) return false;
+  for (let i = 0; i < aKeys.length; i += 1) {
+    const k = aKeys[i];
+    if (k !== bKeys[i] || String(aMap[k] || "") !== String(bMap[k] || "")) return false;
+  }
+  return true;
+}
+function isExternalStoreUnsynced(projectId = state.project?.id, runId = state.run?.id) {
+  const local = loadExternalStore(projectId, runId);
+  return Boolean(externalStoreSyncFailed || local.unsynced);
+}
+async function persistExternalStoreToServer(store, projectId = state.project?.id, runId = state.run?.id, options = {}) {
+  // 프로젝트/실행이 없는 화면(로컬 전용 경로)은 서버 저장 대상이 아니므로 실패로 보지 않는다.
+  if (!projectId || !runId) return {synced: false, reason: "no-run"};
+  const cleanAnswers = cleanExternalAnswersMap(store?.answers);
+  const allowEmpty = Boolean(options?.allowEmpty || store?.allowEmptySync);
+  // 답변이 한 번도 없던 프롬프트 번호 전용 스냅샷은 서버 판본(saved=true)으로 승격하지 않는다.
+  // 단, 코드 재할당 등으로 기존 답변이 삭제되어 빈 객체가 된 경우(allowEmpty)에는 서버 판본도 비운다.
+  if (!Object.keys(cleanAnswers).length && !allowEmpty) return {synced: false, reason: "empty-answers"};
+  const targetRev = Number(store?.rev) || bumpExternalStoreRev(store);
+  const payloadCodes = {...(store?.codes || {})};
+  const task = externalStoreSyncQueue.then(async () => {
+    try {
+      await api(`/projects/${projectId}/runs/${runId}/external-ai-answers`, {
+        method: "PUT",
+        interactiveAuth: false,
+        body: {codes: payloadCodes, answers: cleanAnswers},
+      });
+      const latest = loadExternalStore(projectId, runId);
+      const latestRev = Number(latest?.rev) || 0;
+      // 비행 중 더 새로운 로컬 개정(rev > targetRev)이 이미 기록된 경우 과거 스냅샷으로 덮어쓰지 않는다(CAS).
+      if (latestRev <= targetRev) {
+        externalStoreSyncFailed = false;
+        externalStoreUnsynced = null;
+        if (latest && (latest.unsynced || latest.pendingSync || latest.allowEmptySync)) {
+          const cleaned = {...latest};
+          delete cleaned.unsynced;
+          delete cleaned.pendingSync;
+          delete cleaned.allowEmptySync;
+          writeLocalExternalStore(cleaned, projectId, runId);
+        }
+      }
+      return {synced: true};
+    } catch (e) {
+      // 오프라인·서버 오류에서는 최신 개정이 아직 targetRev일 때만 로컬 저장소에 미동기화 표식(unsynced: true)을 남겨
+      // 새로고침 뒤에도 구 서버 스냅샷이 로컬 답변을 덮어쓰지 못하게 한다.
+      const latest = loadExternalStore(projectId, runId);
+      const latestRev = Number(latest?.rev) || 0;
+      if (latestRev <= targetRev) {
+        externalStoreSyncFailed = true;
+        const base = (latest && Object.keys(latest).length) ? latest : store;
+        const unsyncedStore = {
+          ...base,
+          codes: base?.codes || payloadCodes,
+          answers: base?.answers || cleanAnswers,
+          rev: targetRev,
+          unsynced: true,
+        };
+        delete unsyncedStore.pendingSync;
+        if (allowEmpty) unsyncedStore.allowEmptySync = true;
+        externalStoreUnsynced = unsyncedStore;
+        writeLocalExternalStore(unsyncedStore, projectId, runId);
+      }
+      return {synced: false, reason: "error", error: e};
+    }
+  });
+  externalStoreSyncQueue = task.catch(() => {});
+  return task;
 }
 async function retryExternalStoreSync() {
-  const res = await persistExternalStoreToServer(externalStoreUnsynced || loadExternalStore());
+  const current = loadExternalStore();
+  const target = (current && Object.keys(current.answers || {}).length) || current?.allowEmptySync
+    ? current
+    : (externalStoreUnsynced || current);
+  const res = await persistExternalStoreToServer(target);
   toast(res && res.synced
     ? "외부 AI 답변을 서버에 저장했습니다."
     : "아직 서버에 저장하지 못했습니다. 이 브라우저에만 저장되어 있습니다.");
@@ -589,33 +668,86 @@ function externalSyncStatusNode() {
 }
 async function loadExternalAnswersFromServer(projectId, runId, options = {}) {
   const local = loadExternalStore(projectId, runId);
-  // 로컬에 아직 서버와 맞추지 못한 변경(unsynced)이 있으면 서버 스냅샷으로 덮지 않고 경고를 유지한다.
+  if (Number(local?.rev) > externalStoreRevCounter) {
+    externalStoreRevCounter = Number(local.rev);
+  }
+  if (!projectId || !runId) {
+    externalStoreSyncFailed = Boolean(local && local.unsynced);
+    externalStoreUnsynced = externalStoreSyncFailed ? local : null;
+    return;
+  }
+  let res = null;
+  try {
+    res = await api(`/projects/${projectId}/runs/${runId}/external-ai-answers`, {
+      ...options,
+      interactiveAuth: false,
+    });
+  } catch (e) {
+    /* 조회 실패 시 기존 브라우저 저장소 값을 그대로 둔다. */
+    if (local && local.unsynced) {
+      externalStoreSyncFailed = true;
+      externalStoreUnsynced = local;
+    }
+    return;
+  }
+  const hasSavedServer = Boolean(res && typeof res === "object" && !Array.isArray(res) && res.saved);
+  const serverCodes = hasSavedServer && res.codes && typeof res.codes === "object" ? res.codes : {};
+  const serverAnswers = hasSavedServer && res.answers && typeof res.answers === "object" ? res.answers : {};
+  const serverMatchesLocalAnswers = hasSavedServer && externalAnswerSnapshotsEqual(local?.answers, serverAnswers);
+  const serverMatchesLocalAll = serverMatchesLocalAnswers && externalCodeSnapshotsEqual(local?.codes, serverCodes);
+
+  // 1) 이전 PUT이 실패해 unsynced 표식이 남은 경우:
+  //    서버에 이미 동일한 답변 스냅샷이 반영되어 있으면 표식을 해제하고, 아니면 로컬 최신본과 경고를 보존한다.
   if (local && local.unsynced) {
+    if (serverMatchesLocalAnswers) {
+      externalStoreSyncFailed = false;
+      externalStoreUnsynced = null;
+      const cleaned = {...local, codes: {...serverCodes, ...(local.codes || {})}, answers: local.answers || {}};
+      delete cleaned.unsynced;
+      delete cleaned.pendingSync;
+      delete cleaned.allowEmptySync;
+      writeLocalExternalStore(cleaned, projectId, runId);
+      return;
+    }
     externalStoreSyncFailed = true;
     externalStoreUnsynced = local;
     return;
   }
+
+  // 2) PUT 비행 중 새로고침되어 pendingSync 표식이 남은 경우:
+  //    서버에 이미 반영되었으면 표식만 정리하고, 아직 반영 전이면 중단된 PUT을 재전송해 완결한다.
+  if (local && local.pendingSync) {
+    if (serverMatchesLocalAll) {
+      externalStoreSyncFailed = false;
+      externalStoreUnsynced = null;
+      const cleaned = {...local};
+      delete cleaned.pendingSync;
+      delete cleaned.allowEmptySync;
+      writeLocalExternalStore(cleaned, projectId, runId);
+      return;
+    }
+    await persistExternalStoreToServer(local, projectId, runId, {allowEmpty: Boolean(local.allowEmptySync)});
+    return;
+  }
+
+  // 3) 로컬 미동기화/비행 중 변경이 없는 정상 상태: 서버 저장본(saved=true)을 로컬에 반영한다.
   externalStoreSyncFailed = false;
   externalStoreUnsynced = null;
-  if (!projectId || !runId) return;
-  try {
-    const res = await api(`/projects/${projectId}/runs/${runId}/external-ai-answers`, {
-      ...options,
-      interactiveAuth: false,
-    });
-    if (!res || typeof res !== "object" || Array.isArray(res) || !res.saved) return;
-    const serverAnswers = res.answers && typeof res.answers === "object" ? res.answers : {};
-    const localAnswers = local && local.answers && typeof local.answers === "object" ? local.answers : {};
-    // 답변이 비어 있는 서버 스냅샷으로 로컬의 기존 답변을 지우지 않는다.
-    if (!Object.keys(serverAnswers).length && Object.keys(localAnswers).length) return;
-    writeLocalExternalStore({codes: res.codes || {}, answers: serverAnswers}, projectId, runId);
-  } catch (e) {
-    /* 조회 실패 시 기존 브라우저 저장소 값을 그대로 둔다. */
-  }
+  if (!hasSavedServer) return;
+  const nextStore = {
+    codes: serverCodes,
+    answers: serverAnswers,
+    rev: Math.max(Number(local?.rev) || 0, externalStoreRevCounter) + 1,
+  };
+  externalStoreRevCounter = nextStore.rev;
+  writeLocalExternalStore(nextStore, projectId, runId);
 }
 function saveExternalStore(store) {
+  bumpExternalStoreRev(store);
+  const hasAnswers = Object.keys(store.answers || {}).length > 0;
+  if (hasAnswers) store.pendingSync = true;
   writeLocalExternalStore(store);
-  if (Object.keys(store.answers || {}).length) {
+  if (hasAnswers) {
     void persistExternalStoreToServer(store);
   }
 }
@@ -634,11 +766,24 @@ function rememberPromptCodes(prefix, items) {
       removedAnswer = true;
     }
   });
-  // 프롬프트 번호만 생성할 때는 로컬에만 기록해 답변 없는 스냅샷이 서버 판본(saved=true)이 되지 않게 한다.
-  writeLocalExternalStore(store);
-  if (removedAnswer && Object.keys(store.answers).length) {
-    void persistExternalStoreToServer(store);
+  for (const key of Object.keys(store.answers)) {
+    if (key.startsWith(prefix) && (!store.codes[key] || !store.answers[key]?.item_id || store.answers[key].item_id !== store.codes[key])) {
+      delete store.answers[key];
+      removedAnswer = true;
+    }
   }
+  bumpExternalStoreRev(store);
+  if (removedAnswer) {
+    // 기존 답변이 코드 재할당으로 삭제된 경우(남은 답변이 0건이어도) 서버 판본에도 즉시 반영해
+    // 새로고침이나 다른 문맥에서 삭제된 구 답변이 되살아나지 않게 한다.
+    store.pendingSync = true;
+    store.allowEmptySync = true;
+    writeLocalExternalStore(store);
+    void persistExternalStoreToServer(store, state.project?.id, state.run?.id, {allowEmpty: true});
+    return;
+  }
+  // 답변 삭제 없이 프롬프트 번호만 생성할 때는 로컬에만 기록해 답변 없는 스냅샷이 서버 판본(saved=true)이 되지 않게 한다.
+  writeLocalExternalStore(store);
 }
 function applyStoredExternalAnswers(items) {
   const store = loadExternalStore();
@@ -719,7 +864,10 @@ function previewExternalAnswers(answers, missing, rowsByCode, prefix = "") {
       nextAnswers[a.code] = {...a, item_id: row?.item_id || a.item_id || "", applied_at: appliedAt};
     }
     store.answers = nextAnswers;
-    store.unsynced = true;
+    delete store.unsynced;
+    delete store.allowEmptySync;
+    store.pendingSync = true;
+    bumpExternalStoreRev(store);
     writeLocalExternalStore(store);
     const sync = await persistExternalStoreToServer(store);
     renderFindings();

@@ -44,8 +44,24 @@
   - 단, 단독 `법`(예: '방법', '사법')이나 단독 `규칙`(예: '생활 규칙')의 오탐을 막기 위해 단독 명사는 2음절 이상 법령 종별어(`법률|법령|시행령|시행규칙|부칙|조례|훈령|예규`)이거나 지시·관형어(`(?:이|그|해당|동|위|개정|현행|구)\s*(?:법|규칙)`)가 앞에 결합한 경우로 한정한다.
 - 날짜 단위 판정이므로 `원고는 개정 시행령에 따라 2024. 3. 15. 영업을 개시하였다`에서 날짜 뒤는 `영업을 개시하였다`여서 `_STATUTE_EFFECTIVE_RE`와 매칭되지 않아 사실 날짜가 보존된다.
 
+### 2-3. P2(R1·R2) — 외부 AI 답변 저장소 단일 상태 소유자·단조 증가 개정 번호(CAS)·직렬화 동기화 큐
+- **원인**:
+  1. `previewExternalAnswers()`가 `PUT` 요청 전에 `store.unsynced = true`를 낙관적으로 먼저 기록하고, `persistExternalStoreToServer(store)`는 `await api(...)` 완료 뒤 호출 시점의 옛 `store` 인자를 그대로 `localStorage`에 다시 덮어썼다.
+  2. 이 때문에 `PUT` 비행 중 `rememberPromptCodes()`로 코드가 재할당되어 답변이 삭제되면, 뒤늦게 도착한 이전 `PUT` 응답 후처리가 삭제 전 스냅샷(`rev` 이전 값)을 `localStorage`에 되살렸다(R1). 또한 마지막 답변이 삭제되어 `answers`가 빈 객체(`{}`)가 된 경우 서버에 `PUT`을 보내지 않아 서버의 옛 답변이 남았다.
+  3. 아울러 `PUT` 응답이 서버에는 반영되었으나 브라우저 후처리 마이크로태스크가 돌기 직전 `page.reload()`가 실행되면, 선행 기록된 `unsynced: true`가 남아 새로고침 뒤 `loadExternalAnswersFromServer()`가 서버와 이미 일치하는 스냅샷인데도 `'⚠ 서버 저장 실패'` 경고를 띄웠다(R2).
+- **구조적 해법**:
+  1. **단조 증가 개정 번호(`rev`)와 Compare-And-Set(CAS)**: 모든 로컬 상태 변경(`previewExternalAnswers`, `rememberPromptCodes`, `saveExternalStore`)은 `bumpExternalStoreRev(store)`로 `store.rev`를 1씩 증가시켜 `localStorage`에 기록한다. `persistExternalStoreToServer()`는 완료/실패 후처리 시점에 `latest = loadExternalStore()`를 다시 읽어 `latest.rev <= targetRev`일 때만 동기화 표식을 갱신하고, 비행 중 더 새로운 로컬 개정이 기록된 경우 과거 클로저 객체로 `localStorage`를 절대 덮어쓰지 않는다.
+  2. **직렬화 동기화 큐(`externalStoreSyncQueue`)**: 모든 서버 `PUT` 요청을 단일 Promise 체인으로 직렬화해 반영 직후 코드 재할당 삭제가 뒤따르더라도 서버에 항상 인과 순서(`rev` 오름차순)대로 도달하게 한다.
+  3. **초기 프롬프트 번호 생성과 코드 재할당 답변 삭제의 구분(`allowEmpty`)**:
+     - `rememberPromptCodes()`에서 기존 답변 삭제가 전혀 없고(`removedAnswer === false`) `answers`가 비어 있을 때는 로컬에만 `codes`를 기록하고 서버 `PUT`을 생략한다(`saved=false` 유지).
+     - 기존 답변이 코드 재할당으로 삭제된 경우(`removedAnswer === true`)에는 남은 답변이 0건이어도 `allowEmpty: true`로 서버에 `PUT`을 전송해 로컬과 서버 모두에서 구 답변을 제거한다.
+  4. **비행 중 표식(`pendingSync`)과 실제 실패 표식(`unsynced`) 분리 및 새로고침 대조**:
+     - `PUT` 시작 시점에는 실패 경고를 유발하지 않는 `pendingSync: true`만 기록하고, `unsynced: true`는 실제 `PUT` 예외(`catch`)에서만 기록한다.
+     - `loadExternalAnswersFromServer()`는 서버 조회(`GET`) 결과와 로컬 스냅샷을 대조(`externalAnswerSnapshotsEqual`)하여, 서버에 이미 동일 스냅샷이 저장되어 있으면 `unsynced`/`pendingSync`를 즉시 해제하고, `pendingSync`가 미완결 상태로 새로고침된 경우 중단된 `PUT`을 재전송해 완결한다.
+
 ---
 
 ## 3. 수용 및 대조 검증 계획
 - **P1 변별 시험**: 행정처분·조세·소송절차·민사/신분 등 24개 동사(`~법 제N조에 따라` 동반) 양성 ≥ 12건 + 대조 ≥ 6건(판례 선고일, 헌재 결정일, 법령 제정일, 법령 시행일, 날짜 없는 당사자 법리 주장, 당해 사건 원심 경과).
 - **P3 변별 시험**: 법령 시행일 축 7칸 전수 제외 + 당사자가 개정 시행령·조례에 따라 행위한 사실 날짜 보존 양성 3건 + 시행·공포·개정일 제외 대조 3건.
+- **P2(R1·R2) 변별 시험**: 코드 재할당 시 마지막 답변 로컬·서버 동시 삭제 및 새로고침·새 문맥 비부활 검증, 초기 프롬프트 생성 시 `saved=false` 대조군, 서버 저장 성공 직후 새로고침 10회 연속 반복 시 미동기화 경고(`0건`) 및 `unsynced` 미잔류 검증.
