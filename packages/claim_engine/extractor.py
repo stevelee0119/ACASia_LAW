@@ -28,7 +28,7 @@ from packages.pii_engine.name_stopwords import PERSON_CATEGORY_STOPWORDS
 
 from .calculation import parse_amounts
 from .classification import (classify_sentence, document_kind, segment_kind, assertion_mode,
-                             event_role, NOMINAL_FACT_RE, OPINION_RE as EXPLICIT_OPINION_RE)
+                             event_role, NOMINAL_FACT_RE, PAST_FACT_RE, OPINION_RE as EXPLICIT_OPINION_RE)
 from .entity_resolution import resolve_entities
 from .exhibits import parse_exhibits
 from .structure import ACTION_PATTERNS, extract_evidence_references, structure_claim_text
@@ -466,7 +466,10 @@ _STATUTE_EFFECTIVE_RE = re.compile(
 )
 _STATUTE_CUE_RE = re.compile(
     r"(?:법률\s*제\s*\d+\s*호|대통령령\s*제\s*\d+\s*호|총리령\s*제\s*\d+\s*호|부령\s*제\s*\d+\s*호|"
-    r"[가-힣]+(?:법률|법|시행령|시행규칙|부칙|조례|규칙)|제\s*\d+\s*조)"
+    r"[가-힣]+(?:법률|법령|법|시행령|시행규칙|부칙|조례|규칙|훈령|예규|고시)|"
+    r"(?<![가-힣])(?:법률|법령|대통령령|총리령|부령|시행령|시행규칙|부칙|조례|훈령|예규)|"
+    r"(?:이|그|해당|동|위|개정|현행|구)\s*(?:법|규칙)|"
+    r"제\s*\d+\s*조)"
 )
 _PARTY_FACT_VERB_RE = re.compile(
     r"(?:체결|약정|합의|지급|송금|입금|변제|교부|설립|개업|접수|제출|신청|고소|고발|기소|"
@@ -476,6 +479,20 @@ _PARTY_FACT_VERB_RE = re.compile(
     # 법령·판례를 근거로 들며 당사자가 행위한 문장이 사건에서 탈락하지 않게 한다.
     # 판단 주체가 법원인 동사(선고·판결·결정·처분)는 넣지 않는다.
     r"청구|지체|이행|반환|최고|독촉|공탁)"
+)
+_PARTY_SUBJECT_CUE_RE = re.compile(
+    r"(?<![가-힣])(?:"
+    r"(?:원고|피고|피고인|신청인|피신청인|채권자|채무자|청구인|피청구인|항고인|상고인|"
+    r"고소인|고발인|피의자|피해자|상대방|당사자|소외|망|임대인|임차인|매도인|매수인|"
+    r"도급인|수급인|사용자|근로자|처분청|과세관청|관할청|피심인|소외인)"
+    r"(?:\s+[가-힣A-Za-z0-9()㈜]{1,12})?\s*(?:측)?(?:은|는|이|가|도|에게|에\s*대하여)(?![가-힣])"
+    r"|"
+    r"이\s*사건\s*(?:처분|부과|과세|계약|소|소송|청구|사고|합의|결의|해고|명령|통지)"
+    r")"
+)
+_PARTY_PAST_PREDICATE_RE = re.compile(
+    r"(?:하였|되었|받았|보냈|내렸|올렸|마쳤|거쳤|두었|주었|왔|갔|냈|쳤|웠|졌|렸|겼|녔|셨|였|었|았|했|됐)"
+    r"(?:다|습니다|음|고|으며|며|으나|지만)(?![가-힣])"
 )
 
 
@@ -505,7 +522,15 @@ def _has_party_fact_cue(sentence: str) -> bool:
     """문장에 당사자 사이의 구체적 사건·행위 표지가 있는지 본다."""
     if any(regex.search(sentence) for name, regex in EVENT_KIND_RE if name != "DECISION"):
         return True
-    return bool(_PARTY_FACT_VERB_RE.search(sentence))
+    if _PARTY_FACT_VERB_RE.search(sentence):
+        return True
+    if _PARTY_SUBJECT_CUE_RE.search(sentence) and (
+        PAST_FACT_RE.search(sentence)
+        or NOMINAL_FACT_RE.search(sentence)
+        or _PARTY_PAST_PREDICATE_RE.search(sentence)
+    ):
+        return True
+    return False
 
 def _collect_event_evidence_references(
     sentence: str, *, document_id: str, block_id: str, page: Optional[int],
