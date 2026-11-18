@@ -265,6 +265,18 @@ class ReferenceLibrary:
         files_partial = 0
         files_failed = 0
         files_not_selected = 0
+        unread_cause_pages: dict[str, int] = {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "CONTENT_NO_TEXT": 0,
+        }
+        unread_cause_files: dict[str, int] = {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "CONTENT_NO_TEXT": 0,
+        }
         for item in self.summary["inventory"]:
             if item["reason"] == "NOT_PROCESSED":
                 item["reason"] = "SYNC_INTERRUPTED"
@@ -290,6 +302,15 @@ class ReferenceLibrary:
             )
             for k, v in (item.get("page_state_counts") or {}).items():
                 page_states[k] = page_states.get(k, 0) + int(v or 0)
+            by_cause = item.get("unread_pages_by_cause") or {}
+            if by_cause:
+                for cause_key, plist in by_cause.items():
+                    if plist:
+                        unread_cause_pages[cause_key] = unread_cause_pages.get(cause_key, 0) + len(plist)
+                        unread_cause_files[cause_key] = unread_cause_files.get(cause_key, 0) + 1
+            elif item.get("unread_cause"):
+                c = item["unread_cause"]
+                unread_cause_files[c] = unread_cause_files.get(c, 0) + 1
         self.summary["coverage_ledger"] = {
             "collection_mode": diagnostics.get("collection_mode"),
             "global_library": {
@@ -304,7 +325,13 @@ class ReferenceLibrary:
                 "extracted_text_pages": extracted_text_pages,
                 "completed_pages": completed_pages,
                 "page_states": page_states,
+                "unread_cause_pages": unread_cause_pages,
+                "unread_cause_files": unread_cause_files,
             },
+        }
+        diagnostics["unread_cause_counts"] = {
+            "pages": unread_cause_pages,
+            "files": unread_cause_files,
         }
         for issue in self.summary["issues"]:
             counts[issue.get("reason", "")] = counts.get(issue.get("reason", ""), 0) + 1
@@ -446,23 +473,41 @@ class ReferenceLibrary:
                     if (mime not in EXPORTS and mime != "application/pdf"
                             and relevance.extension(item.get("name")) not in SUPPORTED):
                         raise ReferenceError("UNSUPPORTED_REFERENCE_FORMAT")
-                    limit = min(96 * 1024 * 1024, self.settings.rag_download_mb * 1024 * 1024 - downloaded)
-                    if limit <= 0 or int(item.get("size") or 0) > limit:
-                        raise ReferenceError("DOWNLOAD_BUDGET_EXHAUSTED")
-                    data, filename, mime = client.download(item, max_bytes=limit)
-                    downloaded += len(data)
-                    diagnostics["downloads"]["count"] += 1
-                    diagnostics["downloads"]["bytes"] += len(data)
-                    after = client.metadata(file_id)
-                    after_problem = access_problem(item, after)
-                    if after_problem:
-                        _purge_file(file_id)
-                        self._access_detail(item, after, after_problem)
-                        raise ReferenceError(after_problem)
-                    if revision(after) != revision(item):
-                        raise ReferenceError("REFERENCE_CHANGED_DURING_DOWNLOAD")
-                    if item.get("md5Checksum") and hashlib.md5(data).hexdigest() != item["md5Checksum"]:
-                        raise ReferenceError("REFERENCE_CHECKSUM_MISMATCH")
+                    cache_dir = self.directory / "raw_cache"
+                    cache_path = cache_dir / f"{file_id}.bin"
+                    reused_local_bytes = False
+                    if (
+                        prior
+                        and continuation
+                        and prior.get("sha256")
+                        and cache_path.is_file()
+                    ):
+                        cached_bytes = cache_path.read_bytes()
+                        if hashlib.sha256(cached_bytes).hexdigest() == prior.get("sha256"):
+                            data = cached_bytes
+                            filename = prior.get("cached_filename") or item.get("name") or "reference"
+                            mime = prior.get("cached_mime") or mime
+                            reused_local_bytes = True
+                    if not reused_local_bytes:
+                        limit = min(96 * 1024 * 1024, self.settings.rag_download_mb * 1024 * 1024 - downloaded)
+                        if limit <= 0 or int(item.get("size") or 0) > limit:
+                            raise ReferenceError("DOWNLOAD_BUDGET_EXHAUSTED")
+                        data, filename, mime = client.download(item, max_bytes=limit)
+                        downloaded += len(data)
+                        diagnostics["downloads"]["count"] += 1
+                        diagnostics["downloads"]["bytes"] += len(data)
+                        after = client.metadata(file_id)
+                        after_problem = access_problem(item, after)
+                        if after_problem:
+                            _purge_file(file_id)
+                            self._access_detail(item, after, after_problem)
+                            raise ReferenceError(after_problem)
+                        if revision(after) != revision(item):
+                            raise ReferenceError("REFERENCE_CHANGED_DURING_DOWNLOAD")
+                        if item.get("md5Checksum") and hashlib.md5(data).hexdigest() != item["md5Checksum"]:
+                            raise ReferenceError("REFERENCE_CHECKSUM_MISMATCH")
+                        cache_dir.mkdir(parents=True, exist_ok=True)
+                        cache_path.write_bytes(data)
                     if client.remaining() < 30:
                         raise ReferenceError("SYNC_BUDGET_EXHAUSTED")
                     mark = time.monotonic()
@@ -500,6 +545,8 @@ class ReferenceLibrary:
                     append_batch = bool(prior and parsed.get("resumed") and prior.get("sha256") == parsed.get("sha256")
                                         and parsed.get("reason") != "REFERENCE_QUARANTINED")
                     parsed["chunk_count"] = len(chunks) + (prior.get("chunk_count", 0) if append_batch else 0)
+                    parsed["cached_filename"] = filename
+                    parsed["cached_mime"] = mime
                     # Cache terminal parse outcomes, too; a large unreadable file must not starve later files.
                     with db:
                         if not append_batch:
@@ -529,25 +576,38 @@ class ReferenceLibrary:
                 is_case_table = bool(parsed.get("structured_case_table"))
                 raw_reason = parsed.get("reason") or ""
                 has_continuation = bool(parsed.get("continuation"))
-                has_unfinished_pages = bool(
-                    parsed.get("incomplete_pages")
-                    or parsed.get("scanned_pages")
-                    or parsed.get("ocr_low_quality_pages")
-                    or parsed.get("error_pages")
-                    or parsed.get("unprocessed_pages")
-                )
-                blank_only_complete = bool(
-                    parsed.get("coverage_complete")
-                    and not has_unfinished_pages
-                    and not has_continuation
-                    and parsed.get("blank_pages")
-                    and raw_reason in ("", "VERIFIED_BLANK_PAGES", "VERIFIED_BLANK_DOCUMENT")
-                )
-                is_partial = (
-                    has_unfinished_pages
-                    or has_continuation
-                    or (bool(parsed.get("partial")) and not blank_only_complete)
-                )
+                if "coverage_complete" in parsed and "content_readable_complete" in parsed:
+                    exec_coverage_complete = bool(parsed.get("coverage_complete")) and not has_continuation
+                    content_readable_complete = bool(parsed.get("content_readable_complete"))
+                    is_partial = not exec_coverage_complete
+                    blank_only_complete = bool(
+                        exec_coverage_complete
+                        and not content_readable_complete
+                        and parsed.get("blank_pages")
+                        and raw_reason in ("", "VERIFIED_BLANK_PAGES", "VERIFIED_BLANK_DOCUMENT")
+                    )
+                    content_only_incomplete = bool(exec_coverage_complete and not content_readable_complete)
+                else:
+                    has_unfinished_pages = bool(
+                        parsed.get("incomplete_pages")
+                        or parsed.get("scanned_pages")
+                        or parsed.get("ocr_low_quality_pages")
+                        or parsed.get("error_pages")
+                        or parsed.get("unprocessed_pages")
+                    )
+                    blank_only_complete = bool(
+                        parsed.get("coverage_complete")
+                        and not has_unfinished_pages
+                        and not has_continuation
+                        and parsed.get("blank_pages")
+                        and raw_reason in ("", "VERIFIED_BLANK_PAGES", "VERIFIED_BLANK_DOCUMENT")
+                    )
+                    is_partial = (
+                        has_unfinished_pages
+                        or has_continuation
+                        or (bool(parsed.get("partial")) and not blank_only_complete)
+                    )
+                    content_only_incomplete = False
                 chunk_count = int(parsed.get("chunk_count", 0))
 
                 # 파싱 중 오류·시간초과·격리 또는 미완료(이어 읽기 대기) 여부 판정 (TK-74 한국어 주석)
@@ -612,19 +672,22 @@ class ReferenceLibrary:
                         # 정상적으로 완전히 읽었으나 판례표 요건을 충족하지 못한 경우: 정상 음성 판별
                         entry.update(status="NOT_A_CASE_TABLE", reason="NOT_A_CASE_TABLE")
                 else:
-                    # 3. 일반 문서(모든 쪽이 시각적으로 빈 쪽으로 검증된 문서는 오류/부분으로 부풀리지 않는다)
+                    # 3. 일반 문서(실행 문제 없이 자료 성질 쪽만 남은 경우는 INDEXED + CONTENT_UNREADABLE_PAGES로 분리)
                     verified_blank_doc = bool(blank_only_complete and not chunk_count)
-                    if is_partial or (not chunk_count and not verified_blank_doc):
-                        self.summary["issues"].append({
+                    if is_partial or (not chunk_count and not verified_blank_doc and not content_only_incomplete):
+                        issue_obj = {
                             "file_id": file_id,
                             "name": item.get("name"),
                             "reason": raw_reason or "REFERENCE_EMPTY",
                             "read_pages": parsed.get("read_pages"),
                             "pages": parsed.get("pages"),
-                        })
+                        }
+                        if parsed.get("unread_pages_by_cause"):
+                            issue_obj["unread_pages_by_cause"] = parsed["unread_pages_by_cause"]
+                        self.summary["issues"].append(issue_obj)
                     cand_status = (
                         ("INDEXED_PARTIAL" if is_partial else "INDEXED")
-                        if (chunk_count or verified_blank_doc)
+                        if (chunk_count or verified_blank_doc or content_only_incomplete)
                         else "PARSE_FAILED"
                     )
                     entry.update(
@@ -634,9 +697,13 @@ class ReferenceLibrary:
                         read_pages=parsed.get("read_pages"),
                     )
 
+                for bool_key in ("coverage_complete", "content_readable_complete"):
+                    if bool_key in parsed:
+                        entry[bool_key] = bool(parsed[bool_key])
                 for key in ("excluded_pages", "scan_findings", "no_text_pages", "unprocessed_pages", "coverage_note",
                             "page_diagnostics", "ocr_pages", "ocr_low_quality_pages", "blank_pages", "scanned_pages",
                             "error_pages", "incomplete_pages", "page_state_counts", "text_parser", "fallback_pages",
+                            "unread_pages", "unread_pages_by_cause", "execution_incomplete_pages", "content_unreadable_pages",
                             "stats", "read_ranges", "excluded_rows", "table_version"):
                     if parsed.get(key):
                         entry[key] = parsed[key]
@@ -673,24 +740,33 @@ class ReferenceLibrary:
                 reason_detail = code
                 if code == "DRIVE_NETWORK_ERROR" and getattr(client, "last_error_reason", ""):
                     reason_detail = f"DRIVE_NETWORK_ERROR ({client.last_error_reason})"
-                entry.update(status="UNSUPPORTED_TYPE" if code == "UNSUPPORTED_REFERENCE_FORMAT" else
-                             "SELECTED_PENDING" if "BUDGET" in code else "UNAVAILABLE", reason=reason_detail)
+                unread_cause = (
+                    "BUDGET_EXHAUSTED" if "BUDGET" in code
+                    else "READ_TIMEOUT" if "TIMEOUT" in code
+                    else "PARSE_FAILED"
+                )
+                entry.update(
+                    status="UNSUPPORTED_TYPE" if code == "UNSUPPORTED_REFERENCE_FORMAT" else
+                    "SELECTED_PENDING" if "BUDGET" in code else "UNAVAILABLE",
+                    reason=reason_detail,
+                    unread_cause=unread_cause,
+                )
                 if str(exc) in ("DRIVE_HTTP_401", "DRIVE_HTTP_429"):
                     raise
-                self.summary["issues"].append({"file_id": file_id, "name": item.get("name"), "reason": reason_detail})
+                self.summary["issues"].append({"file_id": file_id, "name": item.get("name"), "reason": reason_detail, "unread_cause": unread_cause})
                 if str(exc) == "SYNC_BUDGET_EXHAUSTED":
                     # 미룬 파일 수는 열기로 한 후보 중 남은 것만 센다(선정되지 않은 파일은 미룬 것이 아니다).
                     diagnostics["deferred"] = sum(1 for later in ordered[index:] if chosen(later["id"]))
                     self.summary["issues"].append({"reason": "FILES_DEFERRED", "count": diagnostics["deferred"]})
                     for later in ordered[index + 1:]:
                         if chosen(later["id"]):
-                            audit[later["id"]].update(status="SELECTED_PENDING", reason="SYNC_BUDGET_EXHAUSTED")
+                            audit[later["id"]].update(status="SELECTED_PENDING", reason="SYNC_BUDGET_EXHAUSTED", unread_cause="BUDGET_EXHAUSTED")
                         else:
                             audit[later["id"]].update(status="NOT_SELECTED_METADATA", reason=gate[later["id"]]["reason"])
                     break
             except Exception:
-                entry.update(status="PARSE_FAILED", reason="REFERENCE_PROCESSING_FAILED")
-                self.summary["issues"].append({"file_id": file_id, "reason": "REFERENCE_PROCESSING_FAILED"})
+                entry.update(status="PARSE_FAILED", reason="REFERENCE_PROCESSING_FAILED", unread_cause="PARSE_FAILED")
+                self.summary["issues"].append({"file_id": file_id, "reason": "REFERENCE_PROCESSING_FAILED", "unread_cause": "PARSE_FAILED"})
 
     def _access_detail(self, listed, fresh, problem):
         """Record the fields behind an access decision (IDs and flags only) for the run JSON."""
