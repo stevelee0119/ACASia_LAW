@@ -282,11 +282,23 @@ def test_review_verdict_badges_left_aligned_when_wrapped():
         row = page.locator("#aiVerificationRows tr", has_text="대법원 2098다55555 판결")
         container = row.locator(".review-verdict-badges")
         expect(container).to_be_visible()
+        # 배지 묶음이 모두 붙고 레이아웃이 잡힌 뒤에 박스를 잰다. 1~2코어 실행기에서 렌더가
+        # 늦어지면 bounding_box()가 None을 돌려주어 측정이 깨지므로, 자동 대기 단언으로 고정한다.
+        # (단언 내용은 그대로이고 대기만 추가한다)
+        expect(container.locator("span.badge").first).to_be_visible()
+        expect(row.locator(".claim-verdict")).to_be_visible()
         first_badge = container.locator("span.badge").first.bounding_box()
         claim_badge = row.locator(".claim-verdict").bounding_box()
         assert first_badge and claim_badge
         # 같은 줄이든 다음 줄로 래핑되든 좌측 x 또는 1줄 내 정렬 검증; 1024에서 래핑 강제 확인을 위해 폭 190px로 좁혀도 좌측 정렬 일치
         container.evaluate("el => { el.style.maxWidth = '190px'; }")
+        # 폭을 좁힌 뒤 재배치가 끝나기를 기다린 다음 다시 잰다.
+        page.wait_for_function(
+            "() => { const c = document.querySelector('#aiVerificationRows .review-verdict-badges');"
+            " if (!c) return false; const b = c.querySelector('span.badge');"
+            " const v = c.querySelector('.claim-verdict');"
+            " return !!(b && v && b.getBoundingClientRect().height && v.getBoundingClientRect().top"
+            " > b.getBoundingClientRect().top + 4); }")
         wrapped_first = container.locator("span.badge").first.bounding_box()
         wrapped_claim = row.locator(".claim-verdict").bounding_box()
         assert wrapped_claim["y"] > wrapped_first["y"] + 4, "테스트 조건상 2번째 줄로 줄바꿈되어야 함"
