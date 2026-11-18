@@ -259,7 +259,7 @@ def build_report_pdf(
         story.append(table([["문서", "모델", "판정", "점수", "근거"], *opinion_rows], [80, 70, 70, 30, 240]))
 
     from .reference_opinions import REPORT_NOTICE, compare_text, row_basis, table_additions
-    from .review_tiers import classify_row_tier
+    from .review_tiers import classify_row_tier, tier3_review_item_entries
     tier2_rows = []
     tier3_rows = []
     for d in run_result.documents:
@@ -284,6 +284,7 @@ def build_report_pdf(
             else:
                 tier3_rows.append(formatted_entry)
         tier2_rows.extend(table_additions(d, getattr(d, "ai_hallucination_table", []) or []))
+        tier3_rows.extend(tier3_review_item_entries(d, limit=900))
 
     story.append(Spacer(1, 4))
     story.append(Paragraph(_escape("2. 판례·법령·주요참고문헌 인용 오류·미확인 검토 (AI 작성 여부 판단과 별개)"), styles["h2"]))
@@ -309,7 +310,8 @@ def build_report_pdf(
     if external_rows:
         story.append(Spacer(1, 4))
         story.append(Paragraph(_escape(EXTERNAL_AI_TITLE), styles["h2"]))
-        story.append(Paragraph(_escape(EXTERNAL_AI_NOTICE), styles["small"]))
+        if EXTERNAL_AI_NOTICE:
+            story.append(Paragraph(_escape(EXTERNAL_AI_NOTICE), styles["small"]))
         story.append(table([EXTERNAL_AI_HEADERS, *external_rows], EXTERNAL_AI_PDF_WIDTHS))
 
     from packages.legal_engine.related_authorities import report_lines as related_lines

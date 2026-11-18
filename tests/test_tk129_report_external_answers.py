@@ -32,9 +32,9 @@ import test_tk126_flat_tabs_answer_import as screen
 SYNTHETIC_CITATION = "예시 판례 인용구"
 
 ANSWERS = [
-    {"code": "A1", "item_id": "d1_CITATION_cit_1", "verdict": "부존재", "basis": "해당 판례 없음",
-     "summary": "같은 쟁점의 실제 판례 확인 필요", "applied_at": "2026. 10. 25. 오후 1:00"},
-    {"code": "B1", "item_id": "d1_REFERENCE_c1", "verdict": "불일치", "basis": "민법 제543조",
+    {"code": "A1", "item_id": "d1_CITATION_cit_1", "model_name": "Gemini 2.5 Pro", "verdict": "부존재",
+     "basis": "해당 판례 없음", "summary": "같은 쟁점의 실제 판례 확인 필요", "applied_at": "2026. 10. 25. 오후 1:00"},
+    {"code": "B1", "item_id": "d1_REFERENCE_c1", "model_name": "", "verdict": "불일치", "basis": "민법 제543조",
      "summary": "=HYPERLINK(\"https://invalid.example\") 해지 의사표시 필요", "applied_at": ""},
 ]
 
@@ -58,7 +58,7 @@ def _create(case, answers, formats, audience="INTERNAL"):
 
 
 def test_answers_are_frozen_into_every_format_and_survive_finalize(report_case):  # noqa: F811
-    """모든 지원 포맷(PDF, Word, Excel, JSON)에 비공식성 표시가 일관되게 포함되는지 검증."""
+    """모든 지원 포맷(PDF, Word, Excel, JSON)에 AI 모델명과 답변이 수록되고 불필요한 비공식 고지가 제외되는지 검증."""
     case = report_case
     _with_table_items(case)
     draft = _create(case, ANSWERS, ["pdf", "docx", "xlsx", "json"])
@@ -70,46 +70,43 @@ def test_answers_are_frozen_into_every_format_and_survive_finalize(report_case):
         workbook = openpyxl.load_workbook(io.BytesIO(download(case, report, "xlsx")))
         payload = json.loads(download(case, report, "json"))
 
-        # PDF 및 DOCX 비공식성 표시 검증
+        # PDF 및 DOCX 수록 및 비공식 고지 삭제 검증
         for text in (pdf, xml):
-            assert EXTERNAL_AI_TITLE in text and "부존재" in text and "민법 제543조" in text
-            assert EXTERNAL_AI_NOTICE in text or "공식 확인 아님" in text
+            assert EXTERNAL_AI_TITLE in text and "Gemini 2.5 Pro" in text and "부존재" in text and "민법 제543조" in text
+            assert "공식 확인 아님" not in text
+            assert "원문은 판결서" not in text
 
-        # XLSX 안내 행 및 안내 열 검증
+        # XLSX 헤더 및 AI 모델 열 검증 (상단 고지 행 없음)
         sheet = workbook["외부AI참고의견"]
         rows = [[c.value for c in row] for row in sheet.iter_rows()]
-        # 1행: 비공식성 안내 행
-        assert rows[0][0] == f"[안내] {EXTERNAL_AI_TITLE}: {EXTERNAL_AI_NOTICE}"
-        # 2행: 헤더 (공식 여부 안내 열 포함)
-        assert rows[1] == EXTERNAL_AI_HEADERS
-        # 3행: 첫 번째 데이터 행
-        assert rows[2][:3] == ["A1", SYNTHETIC_CITATION, "부존재"]
-        assert rows[2][6] == EXTERNAL_AI_STATUS_LABEL
-        assert rows[3][1] == "참고문헌과 다른 주장 문장"
-        assert str(rows[3][4]).startswith("'=")  # 수식 인젝션 방지
-        assert rows[3][6] == EXTERNAL_AI_STATUS_LABEL
+        assert rows[0] == EXTERNAL_AI_HEADERS
+        assert rows[1][:4] == ["A1", "Gemini 2.5 Pro", SYNTHETIC_CITATION, "부존재"]
+        assert rows[2][1] == "외부 AI"
+        assert rows[2][2] == "참고문헌과 다른 주장 문장"
+        assert str(rows[2][5]).startswith("'=")  # 수식 인젝션 방지
 
-        # JSON official=false 메타데이터 및 안내문 검증
+        # JSON official=false 메타데이터 및 고지문 제외 검증
         snapshot = payload["review_snapshot"]
         assert snapshot["external_ai_metadata"]["official"] is False
-        assert snapshot["external_ai_metadata"]["notice"] == EXTERNAL_AI_NOTICE
+        assert "notice" not in snapshot["external_ai_metadata"]
+        assert "공식 확인 아님" not in snapshot["external_ai_metadata"]["title"]
         answers = snapshot["external_ai_answers"]
         assert len(answers) == 2
         for a in answers:
             assert a["official"] is False
             assert a["source"] == "external_ai"
-            assert a["notice"] == EXTERNAL_AI_NOTICE
+            assert "notice" not in a
 
 
 def test_csv_scope_and_notice_included_in_metadata(report_case):  # noqa: F811
-    """CSV 지원 범위(단일 표 특성상 제외됨) 및 비공식성 안내가 메타데이터에 명시되는지 검증."""
+    """CSV 지원 범위(단일 표 특성상 제외됨)가 메타데이터에 명시되고 비공식 고지는 제외되는지 검증."""
     case = report_case
     _with_table_items(case)
     draft = _create(case, ANSWERS, ["csv"])
     csv_bytes = download(case, draft, "csv")
     csv_text = csv_bytes.decode("utf-8-sig")
     assert "external_ai_scope" in csv_text
-    assert "공식 확인 아님" in csv_text
+    assert "공식 확인 아님" not in csv_text
 
 
 def test_legacy_fallback_items_and_observation_without_claim_id_are_accepted(report_case):  # noqa: F811
@@ -299,7 +296,7 @@ def test_report_dialog_sends_answers_reflected_in_table():
         page.get_by_role("dialog", name="표에 반영할 답변 1건 확인").get_by_role("button", name="표에 반영").click()
         page.locator("#reportBtn").click()
         report = page.get_by_role("dialog", name="검토 보고서 초안")
-        checkbox = report.get_by_label("표에 반영한 외부 AI 답변 1건을 '외부 AI 참고 의견(공식 확인 아님)'으로 함께 싣기")
+        checkbox = report.get_by_label("표에 반영한 외부 AI 답변 1건을 '외부 AI 참고 의견'으로 함께 싣기")
         expect(checkbox).to_be_checked()
         report.get_by_role("button", name="초안 생성").click()
         page.wait_for_timeout(500)
@@ -390,7 +387,7 @@ console.log(JSON.stringify(rows.map(r => [r.item_id, r.claim_text])));
 
 
 def test_external_section_columns_have_widths_inside_page_in_docx_and_pdf(report_case):  # noqa: F811
-    """'공식 여부' 열을 더한 뒤에도 Word·PDF 표의 모든 열에 너비가 있고 본문 폭 안에 든다."""
+    """'AI 모델' 열을 포함한 Word·PDF 표의 모든 열에 너비가 있고 본문 폭 안에 든다."""
     from docx import Document
     from packages.report_engine.external_answers import (EXTERNAL_AI_DOCX_WIDTHS, EXTERNAL_AI_HEADERS,
                                                          EXTERNAL_AI_PDF_WIDTHS)
@@ -407,8 +404,8 @@ def test_external_section_columns_have_widths_inside_page_in_docx_and_pdf(report
     from docx.oxml.ns import qn
     from docx.shared import Inches
     for row in external.rows:
-        # 표 서식(너비·셀 여백)이 7열 모두에 적용되어야 한다. 너비 목록이 짧으면 마지막 열만 서식 없이 남는다.
+        # 표 서식(너비·셀 여백)이 6열 모두에 적용되어야 한다. 너비 목록이 짧으면 마지막 열만 서식 없이 남는다.
         assert [cell.width for cell in row.cells] == [Inches(w) for w in EXTERNAL_AI_DOCX_WIDTHS]
         assert all(cell._tc.tcPr.find(qn("w:tcMar")) is not None for cell in row.cells)
     pdf_text = "".join(page.extract_text() for page in PdfReader(io.BytesIO(download(case, draft, "pdf"))).pages)
-    assert "공식 여부" in pdf_text
+    assert "AI 모델" in pdf_text

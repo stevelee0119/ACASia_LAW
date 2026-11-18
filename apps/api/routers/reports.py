@@ -110,6 +110,7 @@ class _DocumentView:
         self.engine_data = entry.get("engine_data", {})
         self.ai_detector_result = entry.get("ai_detector_result", self.engine_data.get("ai_detector_result", {}))
         self.ai_hallucination_table = entry.get("ai_hallucination_table", self.engine_data.get("ai_hallucination_table", []))
+        self.review_items = entry.get("review_items", [])
         self.argument_validity_summary = entry.get("argument_validity_summary", self.engine_data.get("argument_validity_summary", ""))
         self.findings = findings
         self.source_records = entry.get("source_records", [])
@@ -565,9 +566,7 @@ def _snapshot(session, project, run, engine, metadata, manifest, human=None, ext
         frozen["external_ai_metadata"] = {
             "official": False,
             "source": "external_ai",
-            "title": "외부 AI 참고 의견 (사용자 입력, 공식 확인 아님)",
-            "notice": ("엘박스 등 외부 AI의 답변을 검토자가 표에 반영한 것입니다. 공식 DB 판정·등급·점수에는 쓰지 않았으며, "
-                       "판례·법령 원문은 판결서·국가법령정보센터로 확인해야 합니다."),
+            "title": "외부 AI 참고 의견",
             "count": len(external),
         }
     return remove_sealed(frozen)

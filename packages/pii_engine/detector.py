@@ -32,6 +32,7 @@ LEGAL_IDENTIFIER_PATTERNS = [
     re.compile(r"제\s*\d{1,5}(?:\s*-\s*\d{1,6})+\s*호(?:증)?"),
     re.compile(r"등기\s*번호|등록\s*번호\s*제"),
     re.compile(r"\d{4}\.\s*\d{1,2}\.\s*\d{1,2}\.?"),          # 선고일자
+    re.compile(r"(?<!\d)(?:19|20)\d{2}-\d{1,2}-\d{1,2}(?:\s*[~～]\s*(?:19|20)\d{2}-\d{1,2}-\d{1,2})?(?![-\d])"),  # 하이픈 달력 일자·기간
     re.compile(r"\b(19|20)\d{2}\b"),                            # 연도
     re.compile(r"(?:계약번호\s*)?제\s*[\d]{4}-[가-힣A-Za-z0-9]+-\d+호?"), # 계약번호
     re.compile(r"법인(?:등록)?번호\s*(?:[:：]\s*)?[\d\-]+"),         # 법인등록번호 라벨 문맥 (사건 검증용)
@@ -1014,6 +1015,9 @@ def _contact_matches(
                 # The sixth digit may be followed by a separator; earlier symbols
                 # cannot form an RRN prefix. OCR whitespace has already been removed.
                 if "-" in candidate[:6]:
+                    # 슬래시·물결표로 나란히 적은 별개 전화번호(예: 010-1111-2222 / 02-345-6789)를 하나의 계좌로 합치지 않는다.
+                    if any(sep in raw for sep in ("/", "／", "~", "～")):
+                        continue
                     context_start = max(0, norm_start - 40)
                     has_account_label = any(
                         labelled_account.span(1) == (norm_start - context_start, norm_end - context_start)

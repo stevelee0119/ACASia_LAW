@@ -397,6 +397,8 @@ def build_document_review_items(
         f for f in review_findings if f.finding_id not in assigned_finding_ids
     ]
 
+    from packages.common.display_text import readable
+
     for f in unassigned_findings:
         fid = f.finding_id
         item_id = f"{doc_id}_FINDING_{fid}"
@@ -408,14 +410,104 @@ def build_document_review_items(
         seen_item_ids.add(item_id)
 
         kind = _kind_for_finding_type(f.type)
-        verdict_label = f.title or str(f.type)
-        claim_text = f.detail or f.title or "검토 필요 항목"
+        features = f.confidence_features or {}
+
+        # 1) 2열(문서 주장 및 인용 내용): 서면이 실제로 주장한 원문·계산 방식과 금액
+        primary_evidence_excerpt = ""
+        for ev in getattr(f, "evidence", None) or []:
+            desc = str(getattr(ev, "description", "") or "")
+            ex = str(getattr(ev, "excerpt", "") or "").strip()
+            if ex and not desc.startswith("근거:") and desc != "세부 금액":
+                primary_evidence_excerpt = ex
+                break
+
+        stated_claim = (
+            str(features.get("stated_claim") or "").strip()
+            or str(features.get("claim") or "").strip()
+            or str(features.get("claim_quote") or "").strip()
+            or primary_evidence_excerpt
+        )
+        claim_text = stated_claim or f.detail or f.title or "검토 필요 항목"
+
+        # 2) 판정 배지 라벨(verdict_label)
+        raw_verdict = (
+            str(features.get("judgment") or "").strip()
+            or str(features.get("verdict") or "").strip()
+            or f.title
+            or str(f.type)
+        )
+        if stated_claim and " — '" in raw_verdict:
+            raw_verdict = raw_verdict.split(" — '", 1)[0].strip()
+        verdict_label = readable(raw_verdict) if raw_verdict else str(f.type)
+
+        # 3) 법적·사실적 근거 출처(evidence_sources)
+        basis_list = [b for b in (features.get("basis") or []) if isinstance(b, dict)]
+        basis_names = [str(b["name"]).strip() for b in basis_list if b.get("name")]
+        evidence_sources: List[str] = []
+        for b in basis_list:
+            name = str(b.get("name") or "").strip()
+            if not name:
+                continue
+            url = str(b.get("url") or "").strip()
+            evidence_sources.append(f"{name} ({url})" if url else name)
+        basis_pending = [str(x).strip() for x in (features.get("basis_pending") or []) if str(x).strip()]
+        for pname in basis_pending:
+            label_p = f"{pname} (공식 원문 미수집)"
+            if label_p not in evidence_sources:
+                evidence_sources.append(label_p)
+
+        # 4) 3열(법리 검토 결과 및 근거): 정당한 계산 방식·액수 또는 정당한 법리 결론·근거
+        lawful_calc = str(features.get("lawful_calculation") or "").strip()
+        if lawful_calc:
+            lawful_review = readable(lawful_calc)
+        elif f.detail and f.detail != claim_text:
+            lawful_review = readable(str(f.detail).strip())
+            basis_texts = [
+                f"{b['name']}: {str(b.get('text')).strip()[:180]}"
+                for b in basis_list
+                if b.get("name") and b.get("text") and str(b.get("text")).strip() not in lawful_review
+            ]
+            if basis_texts:
+                lawful_review = lawful_review + "\n[근거 요지] " + " / ".join(basis_texts[:2])
+        else:
+            lawful_review = ""
+
+        reasoning_sections: Optional[Dict[str, Any]] = None
+        if lawful_review and lawful_review != verdict_label and lawful_review != claim_text:
+            reasoning_sections = {"review": lawful_review, "ai_label": "", "opinions": []}
+
+        # 5) 4열(확인이 필요한 내용): 결론 검증을 위해 확인해야 할 구체적 사실·자료·근거
+        verification_needed = str(features.get("verification_needed") or "").strip()
+        counteraction: Optional[str] = verification_needed or getattr(f, "recommendation", None)
+        if not counteraction and kind != ReviewItemKind.PROCESSING_QUALITY:
+            rule_id = str(features.get("rule_id") or "")
+            if basis_pending:
+                counteraction = (
+                    f"미수집 조문({', '.join(basis_pending)})의 공식 원문을 확인하고, "
+                    "서면 주장의 법적 요건 충족 여부를 대조해야 합니다."
+                )
+            elif "ADMIN." in rule_id:
+                counteraction = "원처분일·이의신청 접수일·결과 통지일 및 소제기일 등 기산 자료와 개별 법률의 제소기간 특례를 확인해야 합니다."
+            elif (
+                "CLAIM." in rule_id
+                or rule_id
+                or f.type in (FindingType.LEGAL_ARGUMENT_INVALID, FindingType.UNSUPPORTED_GENERALIZATION, FindingType.OVERCLAIM)
+            ):
+                if basis_names:
+                    counteraction = (
+                        f"근거 법령·판례({', '.join(basis_names[:3])})와 서면상 요건사실·예외 사유 입증 자료가 "
+                        "실제로 부합하는지 확인해야 합니다."
+                    )
+                else:
+                    counteraction = "서면 주장을 뒷받침하는 구체적 법령 조문·판례 및 사실관계 입증 서증을 확인해야 합니다."
+            elif kind in (ReviewItemKind.FACT, ReviewItemKind.TEMPORAL):
+                counteraction = "서면 내 관련 기재와 첨부 서증의 일자·당사자·금액 일치 여부를 원본 자료로 확인해야 합니다."
 
         # 공식 상태 결정
         if f.status == VerificationStatus.UNVERIFIED or kind == ReviewItemKind.UNVERIFIED_SCOPE:
             off_status = OfficialConfirmationStatus.UNVERIFIED_SCOPE
             # 사유 변환 적용
-            reason_raw = (f.confidence_features or {}).get("reason") or f.title
+            reason_raw = features.get("reason") or f.title
             if reason_raw:
                 verdict_label = humanize_unverified_reason(str(reason_raw))
         else:
@@ -438,13 +530,13 @@ def build_document_review_items(
             verdict_label=verdict_label,
             severity=f.severity,  # 순수 파생 (단일 finding이므로 동일, T1)
             location=loc,
-            cited_authority=(f.confidence_features or {}).get("cited_authority"),
-            evidence_sources=[],
+            cited_authority=features.get("cited_authority") or features.get("compared"),
+            evidence_sources=evidence_sources,
             finding_ids=[fid],
             citation_id=None,  # 인용 행이 아니므로 None 유지 (T1 citation_id 중복 방지)
             advisory_only=f.advisory_only,
-            reasoning_sections=None,
-            counteraction=getattr(f, "recommendation", None),
+            reasoning_sections=reasoning_sections,
+            counteraction=counteraction,
         )
         items.append(item)
         assigned_finding_ids.add(fid)

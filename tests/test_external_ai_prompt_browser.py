@@ -221,10 +221,9 @@ def test_external_ai_prompt_button_visible_when_masked_with_notice():
         expect(badge).to_be_visible()
         expect(badge).to_contain_text("(미확인 판례·법령 1건)")
 
-        # 공식 확인 필수 고지 문구 확인
+        # 불필요한 비공식 고지 문구 제거 확인 (항목 7-1)
         notice = actions.locator(".review-prompt-notice")
-        expect(notice).to_be_visible()
-        expect(notice).to_contain_text("※ 외부 AI 답변은 공식 확인이 아니므로 원문 확인이 필요합니다.")
+        expect(notice).to_have_count(0)
 
         browser.close()
 
@@ -269,8 +268,8 @@ def test_external_ai_prompt_copy_fallback_dialog_on_failure():
         # 프롬프트 필수 구성요소 검증
         assert "대법원 2022다99999 판결" in val
         assert "2024-05-01" in val
-        assert "외부 AI 답변은 법적 효력이 있는 공식 확인이 아니며" in val
-        assert "법원 판결서 사본 또는 국가법령정보센터 공식 원문으로 반드시 확인" in val
+        assert "모델: 사용한 AI 모델 또는 서비스명" in val
+        assert "<<<ACAS_RESULT" in val
 
         # 닫기 버튼 클릭 시 대화상자 닫힘 검증
         dialog.get_by_role("button", name="닫기").first.click()

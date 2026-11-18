@@ -197,7 +197,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
         table(["문서", "모델", "판정", "점수", "근거"], opinion_rows, [1.3, 1.2, 1.1, 0.5, 2.9])
 
     from .reference_opinions import REPORT_NOTICE, compare_text, row_basis, table_additions
-    from .review_tiers import classify_row_tier
+    from .review_tiers import classify_row_tier, tier3_review_item_entries
     tier2_rows = []
     tier3_rows = []
     for d in run_result.documents:
@@ -221,6 +221,7 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
             else:
                 tier3_rows.append(formatted_entry)
         tier2_rows.extend(table_additions(d, getattr(d, "ai_hallucination_table", []) or []))
+        tier3_rows.extend(tier3_review_item_entries(d))
 
     doc.add_heading("2. 판례·법령·주요참고문헌 인용 오류·미확인 검토 (AI 작성 여부 판단과 별개)", 2)
     if tier2_rows:
@@ -243,7 +244,8 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
     external_rows = external_answer_rows(snapshot)
     if external_rows:
         doc.add_heading(EXTERNAL_AI_TITLE, 2)
-        paragraph(EXTERNAL_AI_NOTICE)
+        if EXTERNAL_AI_NOTICE:
+            paragraph(EXTERNAL_AI_NOTICE)
         table(EXTERNAL_AI_HEADERS, external_rows, EXTERNAL_AI_DOCX_WIDTHS)
 
     from packages.legal_engine.related_authorities import report_lines as related_lines

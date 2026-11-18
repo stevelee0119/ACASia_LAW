@@ -172,9 +172,10 @@ class RevealRequest(BaseModel):
 
 
 class ExternalAiAnswer(BaseModel):
-    """TK-129: 화면에서 표에 반영한 외부 AI 답변(사용자 입력, 공식 확인 아님)."""
+    """TK-129: 화면에서 표에 반영한 외부 AI 답변."""
     code: str = Field(pattern=r"^[AB]\d{1,3}$")
     item_id: str = Field(min_length=1, max_length=300)
+    model_name: str = Field(default="", max_length=100)
     verdict: str = Field(default="", max_length=1000)
     basis: str = Field(default="", max_length=1000)
     summary: str = Field(default="", max_length=1000)
