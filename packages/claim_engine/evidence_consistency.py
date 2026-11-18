@@ -3407,21 +3407,26 @@ def _document_title_kind(doc: NormalizedDocument, reading_text: Optional[str] = 
         if len(stripped) > 80 or stripped.endswith((".", ",", ";", "!", "?", "다", "함", "음", "요")):
             continue
 
+        # 파생 문서명('… 사본'·'…(송부)'·'…[접수]' 등)은 그 문서 자체가 아니라 송부·접수 과정의
+        # 파생 문서다. 서증 종류 세 분기(증거설명서·사실경위서·서술형 원본 서증)를 분류 전에 건너뛴다.
+        # 기존 정규식의 뒤 낱말 제한은 구분자 뒤·공백 접미만 막아 괄호·대괄호 안이 통과했다(TK-76 E 후속).
+        # 소송서면(PLEADING)과 진술서(STATEMENT) 판별은 그대로 둔다 — '소장(사본)'도 내용은 그 서면이다.
+        derived_title = bool(_DERIVED_DOC_NAME_RE.search(stripped))
+
         # 증거설명서 단독 표제
-        if _EVIDENCE_EXPLANATION_TITLE_RE.match(stripped):
+        if _EVIDENCE_EXPLANATION_TITLE_RE.match(stripped) and not derived_title:
             return DOC_KIND_EVIDENCE_EXPLANATION, 0
 
         # 사실경위서 단독 표제 (원본 서증)
         m_fact = _FACT_CONFIRMATION_TITLE_RE.match(stripped)
-        if m_fact:
+        if m_fact and not derived_title:
             pos = text.find(line)
             end_offset = (pos + len(line)) if pos != -1 else 0
             return DOC_KIND_FACT_CONFIRMATION, end_offset
 
         # 서술형 원본 서증 단독 표제 (TK-76 E). 사실경위서 검사 뒤에 두어 기존 판정을 바꾸지 않는다.
-        # 표제 줄에 파생 문서명 낱말이 있으면 분류 전에 배제한다(붙여쓴 수식어·괄호·대괄호·구분자 모두).
         m_evi = _EVIDENCE_ORIGINAL_TITLE_RE.match(stripped)
-        if m_evi and _DERIVED_DOC_NAME_RE.search(stripped):
+        if m_evi and derived_title:
             continue
         if m_evi:
             pos = text.find(line)
