@@ -20,6 +20,7 @@
 
 - [health.md](health.md): 배포 SHA·DB 확인과 응답 전문
 - [standard_23.md](standard_23.md): 23개 개별 항목, 실행 건강, 조건 차이, AI 반복
+- [api_derived_sanitized.json](api_derived_sanitized.json): 서면9 3회 API 보고서에서 추출한 항목별 참·거짓과 원본 SHA-256
 - [features.md](features.md): TK-199·203·204·205·206·76 실측과 안전한 합성 화면 캡처
 - [issues.md](issues.md): 재현 절차·입력 규모·기대·실제·심각도
 - [재사용 합성 시험자료](../materials/README.md): 자료 파일·SHA 명세·재실행·정리 절차

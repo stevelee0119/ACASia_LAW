@@ -10,6 +10,8 @@
 
 다음은 **규칙 2판의 23개 개별 항목**이다. 세 실행 모두 각 항목을 충족했다. 근거는 세 원본 보고서의 `documents[].findings`, `ai_detector_result`, `masked_preview.kinds`, `engine_data.rag.observations`와 명세를 읽기 전용 `scripts/score_report.py --json`으로 대조한 결과다. 구체적 사건 발췌는 비공개 보고서에만 보존한다. `충족`은 이 공개 개발 자료에서의 관찰이며 일반적 정확도 판정은 아니다.
 
+각 행의 API 결과 기반 참·거짓 값과 원본 보고서 SHA-256은 식별자를 제거한 [파생 JSON](api_derived_sanitized.json)에 실행별로 담았다. 화면에 원본 사건 문구가 보이는 캡처는 공개하지 않았다.
+
 | ID | 확인 대상 | 1 | 2 | 3 | 근거 종류 |
 |---|---|---|---|---|---|
 | AI-1 | 문서 AI 판정 | 충족 | 충족 | 충족 | 문서 판정 값 |

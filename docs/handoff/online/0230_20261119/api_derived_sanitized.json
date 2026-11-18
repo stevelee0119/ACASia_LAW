@@ -1,0 +1,228 @@
+{
+  "source": "sanitized extraction of live API result and read-only score_report.py --json output",
+  "deployment_commit": "32d9c485bc04ef0487fc4c6a32a91c9d39d29948",
+  "runs": [
+    {
+      "repeat": 1,
+      "state": "PARTIAL_COMPLETED",
+      "commit": "32d9c485bc04ef0487fc4c6a32a91c9d39d29948",
+      "spec_results": {
+        "case9_state_compensation_online": {
+          "rule_version": "2",
+          "report_sha256": "c1f54e7e235fb036ff03dc94b4f79c4b1cd40f9ee9c0f58440b5aa888499fbbe",
+          "passed": 23,
+          "total": 23,
+          "rows": {
+            "AI-1": true,
+            "AI-2": true,
+            "AI-3": true,
+            "AI-4": true,
+            "EX-1": true,
+            "EX-2": true,
+            "EX-2s": true,
+            "TMP-1": true,
+            "LEG-1": true,
+            "LEG-2": true,
+            "INJ-1": true,
+            "FA-1": true,
+            "FP-1": true,
+            "RAG-1": true,
+            "RAG-2": true,
+            "PII-K1": true,
+            "PII-K2": true,
+            "PII-K3": true,
+            "PII-K4": true,
+            "PII-K5": true,
+            "PII-K6": true,
+            "PII-K7": true,
+            "PII-K8": true
+          }
+        },
+        "case9_state_compensation_health_online": {
+          "rule_version": "1",
+          "report_sha256": "c1f54e7e235fb036ff03dc94b4f79c4b1cd40f9ee9c0f58440b5aa888499fbbe",
+          "passed": 1,
+          "total": 1,
+          "rows": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "case9_state_compensation_rag_controls_online": {
+          "rule_version": "1",
+          "report_sha256": "c1f54e7e235fb036ff03dc94b4f79c4b1cd40f9ee9c0f58440b5aa888499fbbe",
+          "passed": 4,
+          "total": 5,
+          "rows": {
+            "RAGC-S1": true,
+            "RAGC-S2": true,
+            "RAGC-S3": false,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health_online": {
+          "rule_version": "1",
+          "report_sha256": "c1f54e7e235fb036ff03dc94b4f79c4b1cd40f9ee9c0f58440b5aa888499fbbe",
+          "passed": 5,
+          "total": 6,
+          "rows": {
+            "H-COMMIT": true,
+            "H-ENGINE": true,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": false
+          }
+        }
+      }
+    },
+    {
+      "repeat": 2,
+      "state": "PARTIAL_COMPLETED",
+      "commit": "32d9c485bc04ef0487fc4c6a32a91c9d39d29948",
+      "spec_results": {
+        "case9_state_compensation_online": {
+          "rule_version": "2",
+          "report_sha256": "8b87df582250ad1ef1eec7e600d440be9542d9e6d432d3e9bfe399684ce1caaf",
+          "passed": 23,
+          "total": 23,
+          "rows": {
+            "AI-1": true,
+            "AI-2": true,
+            "AI-3": true,
+            "AI-4": true,
+            "EX-1": true,
+            "EX-2": true,
+            "EX-2s": true,
+            "TMP-1": true,
+            "LEG-1": true,
+            "LEG-2": true,
+            "INJ-1": true,
+            "FA-1": true,
+            "FP-1": true,
+            "RAG-1": true,
+            "RAG-2": true,
+            "PII-K1": true,
+            "PII-K2": true,
+            "PII-K3": true,
+            "PII-K4": true,
+            "PII-K5": true,
+            "PII-K6": true,
+            "PII-K7": true,
+            "PII-K8": true
+          }
+        },
+        "case9_state_compensation_health_online": {
+          "rule_version": "1",
+          "report_sha256": "8b87df582250ad1ef1eec7e600d440be9542d9e6d432d3e9bfe399684ce1caaf",
+          "passed": 1,
+          "total": 1,
+          "rows": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "case9_state_compensation_rag_controls_online": {
+          "rule_version": "1",
+          "report_sha256": "8b87df582250ad1ef1eec7e600d440be9542d9e6d432d3e9bfe399684ce1caaf",
+          "passed": 4,
+          "total": 5,
+          "rows": {
+            "RAGC-S1": true,
+            "RAGC-S2": true,
+            "RAGC-S3": false,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health_online": {
+          "rule_version": "1",
+          "report_sha256": "8b87df582250ad1ef1eec7e600d440be9542d9e6d432d3e9bfe399684ce1caaf",
+          "passed": 5,
+          "total": 6,
+          "rows": {
+            "H-COMMIT": true,
+            "H-ENGINE": true,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": false
+          }
+        }
+      }
+    },
+    {
+      "repeat": 3,
+      "state": "PARTIAL_COMPLETED",
+      "commit": "32d9c485bc04ef0487fc4c6a32a91c9d39d29948",
+      "spec_results": {
+        "case9_state_compensation_online": {
+          "rule_version": "2",
+          "report_sha256": "7c3a0056376d69e45e638c612a527c33c5f9ad110394569d35c4b222680a2990",
+          "passed": 23,
+          "total": 23,
+          "rows": {
+            "AI-1": true,
+            "AI-2": true,
+            "AI-3": true,
+            "AI-4": true,
+            "EX-1": true,
+            "EX-2": true,
+            "EX-2s": true,
+            "TMP-1": true,
+            "LEG-1": true,
+            "LEG-2": true,
+            "INJ-1": true,
+            "FA-1": true,
+            "FP-1": true,
+            "RAG-1": true,
+            "RAG-2": true,
+            "PII-K1": true,
+            "PII-K2": true,
+            "PII-K3": true,
+            "PII-K4": true,
+            "PII-K5": true,
+            "PII-K6": true,
+            "PII-K7": true,
+            "PII-K8": true
+          }
+        },
+        "case9_state_compensation_health_online": {
+          "rule_version": "1",
+          "report_sha256": "7c3a0056376d69e45e638c612a527c33c5f9ad110394569d35c4b222680a2990",
+          "passed": 1,
+          "total": 1,
+          "rows": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "case9_state_compensation_rag_controls_online": {
+          "rule_version": "1",
+          "report_sha256": "7c3a0056376d69e45e638c612a527c33c5f9ad110394569d35c4b222680a2990",
+          "passed": 4,
+          "total": 5,
+          "rows": {
+            "RAGC-S1": true,
+            "RAGC-S2": true,
+            "RAGC-S3": false,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health_online": {
+          "rule_version": "1",
+          "report_sha256": "7c3a0056376d69e45e638c612a527c33c5f9ad110394569d35c4b222680a2990",
+          "passed": 5,
+          "total": 6,
+          "rows": {
+            "H-COMMIT": true,
+            "H-ENGINE": true,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": false
+          }
+        }
+      }
+    }
+  ]
+}
