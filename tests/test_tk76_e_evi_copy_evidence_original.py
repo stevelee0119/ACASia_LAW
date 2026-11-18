@@ -180,3 +180,69 @@ def test_tk76e_control_no_evidence_original_means_no_work():
     second = _make_doc("p2", "준 비 서 면\n\n2. 주장\n" + _COPIED_BODY, "brief2.pdf")
     assert _document_title_kind(first)[0] == DOC_KIND_PLEADING
     assert _copies([first, second]) == []
+
+
+# ---------------------------------------------------------------------------
+# 보완(평가 측 1차 판정): 파생 문서명은 축을 가리지 않고 모두 배제된다
+# 공백·붙여쓰기·괄호·대괄호·구분자 네 축을 양성/음성으로 함께 본다.
+# ---------------------------------------------------------------------------
+
+_DERIVED_TITLE_AXES = [
+    # (표제, 축)
+    ("사본진단서", "붙여쓴 수식어"),
+    ("송부진단서", "붙여쓴 수식어"),
+    ("사 본 진단서", "띄어쓴 수식어"),
+    ("진단서 사본", "공백 접미"),
+    ("점검보고서 사본 송부", "공백 접미 2낱말"),
+    ("진단서(사본)", "괄호"),
+    ("진단서(송부)", "괄호"),
+    ("진단서(발급)", "괄호"),
+    ("감정서[회신]", "대괄호"),
+    ("진단서[송부]", "대괄호"),
+    ("진단서 - 사본", "구분자"),
+    ("감정서 / 제출", "구분자"),
+    ("소견서: 안내", "구분자"),
+    ("사고보고서(접수)", "괄호"),
+    ("시말서(요청)", "괄호"),
+]
+
+
+@pytest.mark.parametrize("title, axis", _DERIVED_TITLE_AXES)
+def test_tk76e_derived_titles_are_excluded_on_every_axis(title, axis):
+    kind, _ = _document_title_kind(_make_doc("d", f"{title}\n\n1. 내용\n{_COPIED_BODY}"))
+    assert kind != DOC_KIND_EVIDENCE_ORIGINAL, f"{axis}: {title}이 원본 서증으로 분류됐다"
+
+
+@pytest.mark.parametrize("title, axis", _DERIVED_TITLE_AXES)
+def test_tk76e_derived_titles_produce_no_copy_finding(title, axis):
+    """분류만이 아니라 실제 cross_document_copies 결과도 0건이어야 한다."""
+    pleading = _make_doc("p1", "준 비 서 면\n\n1. 주장의 요지\n" + _COPIED_BODY, "brief.pdf")
+    derived = _make_doc("d1", f"{title}\n\n1. 내용\n{_COPIED_BODY}", "derived.pdf")
+    assert _copies([pleading, derived]) == [], f"{axis}: {title}에서 경고가 생겼다"
+
+
+_NORMAL_TITLE_AXES = [
+    ("상해진단서", "붙여쓴 수식어"),
+    ("후유장해진단서", "붙여쓴 수식어"),
+    ("상해 진단서", "띄어쓴 수식어"),
+    ("진단서(원본)", "괄호"),
+    ("감정서(부동산)", "괄호"),
+    ("사고보고서", "붙여쓴 수식어"),
+    ("점 검 보 고 서", "자간"),
+    ("시 말 서", "자간"),
+]
+
+
+@pytest.mark.parametrize("title, axis", _NORMAL_TITLE_AXES)
+def test_tk76e_normal_titles_survive_the_derived_filter(title, axis):
+    kind, _ = _document_title_kind(_make_doc("d", f"{title}\n\n1. 확인 내용\n{_COPIED_BODY}"))
+    assert kind == DOC_KIND_EVIDENCE_ORIGINAL, f"{axis}: 정상 양성 {title}이 배제됐다"
+
+
+@pytest.mark.parametrize("title", ["상해진단서", "진단서(원본)", "사고보고서"])
+def test_tk76e_normal_titles_still_produce_copy_finding(title):
+    pleading = _make_doc("p1", "준 비 서 면\n\n1. 주장의 요지\n" + _COPIED_BODY, "brief.pdf")
+    evidence = _make_doc("e1", f"{title}\n\n1. 확인 내용\n{_COPIED_BODY}", "ev.pdf")
+    findings = _copies([pleading, evidence])
+    assert findings, f"정상 양성 {title}의 통복제가 검출되지 않았다"
+    assert findings[0].confidence_features["rule_id"] == "EVI.COPY_EVIDENCE_ORIGINAL"

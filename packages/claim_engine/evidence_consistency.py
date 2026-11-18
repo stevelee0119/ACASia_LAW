@@ -3237,6 +3237,11 @@ _FACT_CONFIRMATION_TITLE_RE = re.compile(
     r")"
 )
 
+# 파생 문서명 낱말 (TK-76 E 보완). 표제 줄 어디에 있든 원본 서증이 아니라 그 파생 문서다.
+# 수식어를 붙여 쓴 경우('사본진단서'), 괄호·대괄호 안('진단서(사본)'·'진단서[송부]'), 구분자 앞뒤 모두
+# 한 곳에서 걸러야 한다. 표제 정규식 안의 뒤 낱말 제한만으로는 앞·괄호 축이 남는다.
+_DERIVED_DOC_NAME_RE = re.compile(r"사\s*본|송\s*부|안\s*내|요\s*청|제\s*출|접\s*수|발\s*급|회\s*신")
+
 # 서술형 원본 서증 표제 (TK-76 E: 사실경위서 밖의 원본 서증으로 원문 범위를 넓힌다)
 # - 어휘는 '남이 쓴 서술'을 담은 원본 서증으로 한정한다: 보고서 계열·감정서·소견서·진단서·진료기록·시말서.
 # - 계약서·합의서·각서·영수증·명세서·증명서 등 정형 서증은 넣지 않는다. 그 문구를 서면에 옮기는 것은
@@ -3414,7 +3419,10 @@ def _document_title_kind(doc: NormalizedDocument, reading_text: Optional[str] = 
             return DOC_KIND_FACT_CONFIRMATION, end_offset
 
         # 서술형 원본 서증 단독 표제 (TK-76 E). 사실경위서 검사 뒤에 두어 기존 판정을 바꾸지 않는다.
+        # 표제 줄에 파생 문서명 낱말이 있으면 분류 전에 배제한다(붙여쓴 수식어·괄호·대괄호·구분자 모두).
         m_evi = _EVIDENCE_ORIGINAL_TITLE_RE.match(stripped)
+        if m_evi and _DERIVED_DOC_NAME_RE.search(stripped):
+            continue
         if m_evi:
             pos = text.find(line)
             end_offset = (pos + len(line)) if pos != -1 else 0
