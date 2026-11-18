@@ -284,13 +284,13 @@ def test_f1_quantity_future_modality_cross_verbs_controls(verb: str, future_tail
     "원고는 피고에게 운동화 50켤레를 공급하기로 약정하였습니다. 그러나 실제 인도된 위 운동화 30켤레를 수령하는 데 그쳤습니다.",
     # 양성 2: 설치 합의 수량 ↔ 실제 설치 수량 불일치
     "피고는 이 사건 건물에 냉방기 40대를 설치하기로 합의하였습니다. 그러나 실제로는 위 냉방기 25대를 설치하였습니다.",
-    # 양성 3: 납품 약정 수량 ↔ 실제 납품 수량 불일치
-    "원고는 피고에게 부품 100상자를 납품하기로 약정하였습니다. 한편 후속 단락에서는 위 부품 70상자를 납품하였다고 기재하였습니다.",
+    # 양성 3: 납품 계약 수량 ↔ 실제 납품 수량 불일치
+    "원고는 피고에게 부품 100상자를 납품하기로 계약하였습니다. 한편 후속 단락에서는 위 부품 70상자를 납품하였다고 기재하였습니다.",
     # 양성 4: 제작 합의 수량 ↔ 실제 제작(피동) 수량 불일치
     "피고는 현장에 철골구조물 60개를 제작하기로 합의하였습니다. 그러나 실제로는 위 철골구조물 35개가 제작되었습니다.",
 ])
 def test_f1_agreed_vs_actual_quantity_positive_preserved(text: str):
-    """F1 양성 4건: '…하기로 약정/합의' 수량 대 실제 이행 수량 불일치는 계속 탐지됨."""
+    """F1/G1/G2 양성 4건: '…하기로 약정/합의/계약' 수량 대 실제 이행 수량 불일치는 계속 탐지됨."""
     doc = _make_doc(text)
     findings = [
         f for f in check_internal_inconsistency(doc)
@@ -299,6 +299,65 @@ def test_f1_agreed_vs_actual_quantity_positive_preserved(text: str):
     assert len(findings) == 1
     assert findings[0].evidence_grade == EvidenceGrade.C
     assert findings[0].status == VerificationStatus.UNVERIFIED
+
+
+# ==============================================================================
+# G1·G2 보완: 낱말 내부 '예정·계획·방침' 보존 및 서술어 미래·의도 서법 전수 확장
+# ==============================================================================
+
+
+@pytest.mark.parametrize("compound_word, verb", [
+    ("사업계획서", "납품"),
+    ("납품예정표", "인도"),
+    ("구매계획안", "구입"),
+    ("공사예정지", "설치"),
+    ("입주예정자", "교부"),
+    ("운영방침서", "보관"),
+    ("인도예정일", "수령"),
+])
+def test_g1_inside_word_planned_nouns_preserve_quantity_contradiction(compound_word: str, verb: str):
+    """G1 대조 ①(낱말 내부 7꼴): 계획서·예정표·계획안·예정지·예정자·방침서·예정일이 포함된 확정 수량 모순은 계속 탐지됨(head a739fbf1에서 실패)."""
+    text = (
+        f"원고는 {compound_word} 기재에 따라 현장에 자재 80개를 {verb}하였습니다. "
+        f"그러나 다른 단락에서는 위 자재 50개를 {verb}하였다고 기재하였습니다."
+    )
+    doc = _make_doc(text)
+    findings = [
+        f for f in check_internal_inconsistency(doc)
+        if f.confidence_features.get("rule_id") == "EVI.INCONS_INTERNAL_QUANTITY"
+    ]
+    assert len(findings) == 1
+    assert findings[0].evidence_grade == EvidenceGrade.C
+    assert findings[0].status == VerificationStatus.UNVERIFIED
+
+
+@pytest.mark.parametrize("verb", [
+    "공급", "납품", "설치", "제작",
+])
+@pytest.mark.parametrize("future_expr", [
+    "할 예정입니다",
+    "될 계획입니다",
+    "하려 한다",
+    "할 방침이다",
+    "할 터이다",
+    "할 참이다",
+    "기로 되어 있다",
+    "할 것입니다",
+    "하겠습니다",
+])
+def test_g2_predicate_future_intention_modalities_controls(verb: str, future_expr: str):
+    """G2 대조 ②(서술어 미래·의도 9꼴 × 4동사 = 36칸): 서술어 자리의 미래·의도·방침 서법은 오탐 0(head a739fbf1에서 일부 실패)."""
+    if future_expr.startswith("될"):
+        second_sentence = f"향후 위 기계 25대가 {verb}{future_expr}."
+    else:
+        second_sentence = f"향후 위 기계 25대를 {verb}{future_expr}."
+    text = f"원고는 현장에 기계 40대를 {verb}하였다. {second_sentence}"
+    doc = _make_doc(text)
+    findings = [
+        f for f in check_internal_inconsistency(doc)
+        if f.confidence_features.get("rule_id") == "EVI.INCONS_INTERNAL_QUANTITY"
+    ]
+    assert findings == []
 
 
 # ==============================================================================
