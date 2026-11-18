@@ -113,3 +113,108 @@ def test_advisory_is_reported_in_markdown():
 
 def test_default_is_not_advisory():
     assert _result("x", status="HTTP 404", ok=False).advisory is False
+
+
+# ==============================================================================
+# 사후 검토(Sourcery, PR #341) 지적 3건의 재발 방지
+# ==============================================================================
+
+
+class _FakeResponse:
+    """`_gemini_quota_detail`·`_raw_error_message`가 읽는 최소 응답."""
+
+    def __init__(self, payload, text="", status_code=404):
+        self._payload = payload
+        self.text = text
+        self.status_code = status_code
+
+    def json(self):
+        if self._payload is None:
+            raise ValueError("not json")
+        return self._payload
+
+
+_RETIREMENT_MESSAGE = "This model models/example is no longer available to new users."
+
+
+def test_retirement_is_classified_from_raw_message_not_display_summary():
+    """표시용 요약이 메타데이터로 덮여도 은퇴로 분류해야 한다.
+
+    `_gemini_quota_detail`은 429 진단을 위해 `details[].metadata`가 있으면 그것만 돌려주고
+    `error.message`를 버린다. 그 요약으로 분류하면 메타데이터를 동반한 은퇴 404가
+    치명적 실패가 되어 strict가 실패했다.
+    """
+    response = _FakeResponse({"error": {
+        "code": 404,
+        "message": _RETIREMENT_MESSAGE,
+        "details": [{"metadata": {"consumer": "projects/123456",
+                                  "service": "generativelanguage.googleapis.com"}}],
+    }})
+    display = lsc._gemini_quota_detail(response)
+    assert _RETIREMENT_MESSAGE not in display  # 요약에는 은퇴 문구가 없다
+    assert lsc._is_retired_model(404, display) is False  # 요약으로는 못 가린다
+    raw = lsc._raw_error_message(response)
+    assert raw == _RETIREMENT_MESSAGE
+    assert lsc._is_retired_model(404, raw) is True
+
+
+@pytest.mark.parametrize("payload,text,expected", [
+    ({"error": {"message": "m"}}, "", "m"),
+    ({"error": {"status": "NOT_FOUND"}}, "", "NOT_FOUND"),  # message 없으면 status
+    ({"error": {}}, "fallback", "fallback"),
+    ({}, "fallback", "fallback"),
+    ([], "fallback", "fallback"),                            # dict가 아닌 JSON
+    (None, "plain text body", "plain text body"),            # JSON 아님
+    (None, "", ""),
+])
+def test_raw_error_message_sources(payload, text, expected):
+    assert lsc._raw_error_message(_FakeResponse(payload, text=text)) == expected
+
+
+def test_advisory_row_is_not_marked_as_failure():
+    """같은 실행에서 '실패'와 '모두 정상'이 함께 보이지 않아야 한다."""
+    groups = {
+        "secret": [],
+        "adapter_status": [],
+        "gemini_models": [
+            _result("gemini:기본 (현재 설정)", status="OK", ok=True),
+            _result("gemini:구형-후보", status="HTTP 404", ok=False, advisory=True),
+        ],
+    }
+    text = lsc.render_markdown(groups)
+    advisory_row = [line for line in text.splitlines() if "구형-후보" in line and line.startswith("|")]
+    assert advisory_row, "알림 행이 표에 있어야 한다"
+    assert "❌" not in advisory_row[0]
+    # 알림이 있을 때는 '설정된 Source가 모두 정상'이라고 적지 않는다
+    assert "설정된 Source가 모두 정상 응답했다" not in text
+    assert "판정 대상 Source가 모두 정상 응답했다" in text
+
+
+def test_all_healthy_message_unchanged_without_advisories():
+    groups = {"secret": [], "adapter_status": [],
+              "gemini_models": [_result("gemini:기본 (현재 설정)", status="OK", ok=True)]}
+    text = lsc.render_markdown(groups)
+    assert "설정된 Source가 모두 정상 응답했다" in text
+
+
+def test_strict_exit_code_ignores_advisories():
+    """버킷 분류가 아니라 명령의 종료 코드로 고정한다."""
+    advisory_only = {"gemini_models": [_result("gemini:구형-후보", status="HTTP 404",
+                                               ok=False, advisory=True)]}
+    assert lsc.strict_exit_code(advisory_only, True) == 0
+    assert lsc.strict_exit_code(advisory_only, False) == 0
+
+
+def test_strict_exit_code_still_fails_on_real_failure():
+    fatal_present = {"gemini_models": [
+        _result("gemini:기본 (현재 설정)", status="HTTP 429", ok=False),
+        _result("gemini:구형-후보", status="HTTP 404", ok=False, advisory=True),
+    ]}
+    assert lsc.strict_exit_code(fatal_present, True) == 1
+    assert lsc.strict_exit_code(fatal_present, False) == 0
+
+
+def test_strict_exit_code_ignores_public_source_warning():
+    warning_only = {"live_academic": [_result("공개 Source", status="RATE_LIMITED", ok=False,
+                                              requires_key=False, category="live_academic")]}
+    assert lsc.strict_exit_code(warning_only, True) == 0
