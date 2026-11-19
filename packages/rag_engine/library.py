@@ -642,12 +642,25 @@ class ReferenceLibrary:
                     parsed["cached_filename"] = filename
                     parsed["cached_mime"] = mime
                     if retry_reason == "retryable_unread" and prior:
-                        prior_sig = (prior.get("read_pages"), prior.get("unread_pages_by_cause"), prior.get("reason"))
-                        new_sig = (parsed.get("read_pages"), parsed.get("unread_pages_by_cause"), parsed.get("reason"))
-                        if new_sig == prior_sig and not parsed.get("continuation"):
-                            parsed["retry_attempts"] = 2
-                        else:
+                        prior_best = int(
+                            prior.get("best_read_pages")
+                            if prior.get("best_read_pages") is not None
+                            else (prior.get("read_pages") or 0)
+                        )
+                        cur_read = int(parsed.get("read_pages") or 0)
+                        if cur_read > prior_best:
+                            parsed["best_read_pages"] = cur_read
                             parsed["retry_attempts"] = 0
+                        else:
+                            parsed["best_read_pages"] = prior_best
+                            parsed["retry_attempts"] = int(prior.get("retry_attempts") or 0) + 1
+                    elif parsed.get("read_pages") is not None:
+                        prior_best = int(
+                            (prior or {}).get("best_read_pages")
+                            if (prior or {}).get("best_read_pages") is not None
+                            else ((prior or {}).get("read_pages") or 0)
+                        )
+                        parsed["best_read_pages"] = max(prior_best, int(parsed.get("read_pages") or 0))
                     if parsed.get("confirmed_unreadable_pages"):
                         attempts = int((prior or {}).get("unreadable_confirm_attempts") or 0) + 1
                         parsed["unreadable_confirm_attempts"] = attempts
@@ -844,7 +857,7 @@ class ReferenceLibrary:
                             "stats", "read_ranges", "excluded_rows", "table_version"):
                     if parsed.get(key):
                         entry[key] = parsed[key]
-                for count_key in ("extracted_text_pages", "completed_pages"):
+                for count_key in ("extracted_text_pages", "completed_pages", "best_read_pages"):
                     if count_key in parsed and parsed[count_key] is not None:
                         entry[count_key] = parsed[count_key]
                 if parsed.get("structured_case_table"):

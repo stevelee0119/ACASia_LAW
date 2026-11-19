@@ -539,13 +539,61 @@ def test_tk208_d2_retryable_unread_without_token_retries_and_stops_when_unchange
 
     lib.sync()
     assert extract_calls == 1
-    # 2차: 토큰이 없어도 재시도됨
+    # 2차: 토큰이 없어도 재시도됨 (retry_attempts=1)
     lib.sync()
     assert extract_calls == 2
-    # 3차: 같은 결과가 반복됐으므로 더는 무한 재다운로드·재추출하지 않음
-    s3 = lib.sync()
-    assert extract_calls == 2
-    assert s3["inventory"][0].get("reused") is True
+    # 3차: 최대 2회 재시도 (retry_attempts=2)
+    lib.sync()
+    assert extract_calls == 3
+    # 4차: 상한에 도달했으므로 더는 무한 재다운로드·재추출하지 않음
+    s4 = lib.sync()
+    assert extract_calls == 3
+    assert s4["inventory"][0].get("reused") is True
+
+
+def test_tk208_d2_alternating_retryable_unread_stops_at_max_attempts(tmp_path):
+    """N1: 읽은 쪽 수가 오르내리며 서명이 번갈아 바뀌어도 best_read_pages 기준으로 retry_attempts를 누적해 3회 추출에서 멈춘다."""
+    pdf_path = _write_dummy_pdf(tmp_path / "alternating.pdf", "alternating")
+    pdf_bytes = pdf_path.read_bytes()
+    digest = hashlib.sha256(pdf_bytes).hexdigest()
+    client = _StubDrive({"f_alt": ("합성변동자료.pdf", pdf_bytes, "application/pdf")})
+    extract_calls = 0
+
+    def alternating_extractor(path, filename, mime, **kwargs):
+        nonlocal extract_calls
+        extract_calls += 1
+        read_pages = 2 if extract_calls % 2 == 1 else 1
+        unread = [3] if read_pages == 2 else [2, 3]
+        return {
+            "chunks": [{"page": 1, "start": 0, "text": "제1쪽 본문"}],
+            "sha256": digest,
+            "partial": True,
+            "coverage_complete": False,
+            "content_readable_complete": False,
+            "reason": "REFERENCE_PARTIALLY_READ",
+            "pages": 3,
+            "read_pages": read_pages,
+            "unread_pages": unread,
+            "unread_pages_by_cause": {"BUDGET_EXHAUSTED": unread},
+            "execution_incomplete_pages": unread,
+            "retryable_unread_pages": unread,
+            "continuation": None,
+        }
+
+    settings = replace(
+        get_settings(),
+        storage_root=tmp_path / "lib",
+        rag_drive_folder_id=ROOT,
+        allow_network=True,
+        rag_metadata_first=False,
+        rag_sync_seconds=60,
+    )
+    lib = ReferenceLibrary(settings, client_factory=client, extractor=alternating_extractor)
+
+    for _ in range(6):
+        s = lib.sync()
+    assert extract_calls <= 3
+    assert s["inventory"][0].get("reused") is True
 
 
 def test_tk208_d2_fluctuating_confirmed_unreadable_stops_after_one_retry(tmp_path):
