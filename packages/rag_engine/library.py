@@ -32,6 +32,9 @@ CASE_TABLE_MIMES = {
     "text/csv",
 }
 CASE_TABLE_MAX_BYTES = 96 * 1024 * 1024
+# 이어 읽기(continuation) 중인 파일만 임시 보관하는 raw_cache 총량 상한:
+# 단일 파일 상한(96 MiB) 기준 최대 2~3건 동시 이어 읽기를 수용하되 디스크 점유를 256 MiB 이하로 제한한다.
+MAX_RAW_CACHE_BYTES = 256 * 1024 * 1024
 
 
 def is_case_table_candidate(item: dict) -> bool:
@@ -269,12 +272,16 @@ class ReferenceLibrary:
             "BUDGET_EXHAUSTED": 0,
             "READ_TIMEOUT": 0,
             "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
             "CONTENT_NO_TEXT": 0,
         }
         unread_cause_files: dict[str, int] = {
             "BUDGET_EXHAUSTED": 0,
             "READ_TIMEOUT": 0,
             "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
             "CONTENT_NO_TEXT": 0,
         }
         for item in self.summary["inventory"]:
@@ -378,11 +385,46 @@ class ReferenceLibrary:
         return gate
 
     def _sync_files(self, client, db, items, skip, gate=None):
+        cache_dir = self.directory / "raw_cache"
+
+        def _delete_raw_cache(target_id: str) -> None:
+            try:
+                (cache_dir / f"{target_id}.bin").unlink(missing_ok=True)
+            except OSError:
+                pass
+
+        def _enforce_raw_cache_limit(protect_path: Path | None = None) -> None:
+            if not cache_dir.is_dir():
+                return
+            entries: list[tuple[float, str, int, Path]] = []
+            total_bytes = 0
+            for p in cache_dir.glob("*.bin"):
+                try:
+                    st = p.stat()
+                except OSError:
+                    continue
+                total_bytes += st.st_size
+                entries.append((st.st_mtime, p.name, st.st_size, p))
+            limit_bytes = max(0, int(getattr(self, "max_raw_cache_bytes", MAX_RAW_CACHE_BYTES)))
+            if total_bytes <= limit_bytes:
+                return
+            for _, _, sz, p in sorted(entries, key=lambda x: (x[0], x[1])):
+                if total_bytes <= limit_bytes:
+                    break
+                if protect_path is not None and p == protect_path:
+                    continue
+                try:
+                    p.unlink(missing_ok=True)
+                    total_bytes -= sz
+                except OSError:
+                    pass
+
         def _purge_file(target_id: str) -> None:
             db.execute("DELETE FROM chunks WHERE file_id=?", (target_id,))
             db.execute("DELETE FROM case_rows WHERE file_id=?", (target_id,))
             db.execute("DELETE FROM files WHERE id=?", (target_id,))
             db.commit()
+            _delete_raw_cache(target_id)
 
         diagnostics = self.summary["diagnostics"]
         seen = {item["id"] for item in items}
@@ -392,6 +434,7 @@ class ReferenceLibrary:
                 db.execute("DELETE FROM chunks WHERE file_id=?", (file_id,))
                 db.execute("DELETE FROM case_rows WHERE file_id=?", (file_id,))
                 db.execute("DELETE FROM files WHERE id=?", (file_id,))
+                _delete_raw_cache(file_id)
         db.commit()
         downloaded = 0
         new_files = 0
@@ -473,7 +516,6 @@ class ReferenceLibrary:
                     if (mime not in EXPORTS and mime != "application/pdf"
                             and relevance.extension(item.get("name")) not in SUPPORTED):
                         raise ReferenceError("UNSUPPORTED_REFERENCE_FORMAT")
-                    cache_dir = self.directory / "raw_cache"
                     cache_path = cache_dir / f"{file_id}.bin"
                     reused_local_bytes = False
                     if (
@@ -506,8 +548,6 @@ class ReferenceLibrary:
                             raise ReferenceError("REFERENCE_CHANGED_DURING_DOWNLOAD")
                         if item.get("md5Checksum") and hashlib.md5(data).hexdigest() != item["md5Checksum"]:
                             raise ReferenceError("REFERENCE_CHECKSUM_MISMATCH")
-                        cache_dir.mkdir(parents=True, exist_ok=True)
-                        cache_path.write_bytes(data)
                     if client.remaining() < 30:
                         raise ReferenceError("SYNC_BUDGET_EXHAUSTED")
                     mark = time.monotonic()
@@ -529,6 +569,7 @@ class ReferenceLibrary:
                             if failed_batch["resume_failures"] >= 2:
                                 failed_batch["continuation"] = None
                                 failed_batch.update(partial=True, reason=str(exc))
+                                _delete_raw_cache(file_id)
                             with db:
                                 db.execute("UPDATE files SET payload=? WHERE id=? AND revision=?",
                                            (json.dumps(failed_batch), file_id, version))
@@ -547,6 +588,22 @@ class ReferenceLibrary:
                     parsed["chunk_count"] = len(chunks) + (prior.get("chunk_count", 0) if append_batch else 0)
                     parsed["cached_filename"] = filename
                     parsed["cached_mime"] = mime
+                    if parsed.get("continuation"):
+                        limit_bytes = max(0, int(getattr(self, "max_raw_cache_bytes", MAX_RAW_CACHE_BYTES)))
+                        if len(data) <= limit_bytes:
+                            cache_dir.mkdir(parents=True, exist_ok=True)
+                            try:
+                                os.chmod(cache_dir, 0o700)
+                            except OSError:
+                                pass
+                            cache_path.write_bytes(data)
+                            try:
+                                os.chmod(cache_path, 0o600)
+                            except OSError:
+                                pass
+                            _enforce_raw_cache_limit(protect_path=cache_path)
+                    else:
+                        _delete_raw_cache(file_id)
                     # Cache terminal parse outcomes, too; a large unreadable file must not starve later files.
                     with db:
                         if not append_batch:

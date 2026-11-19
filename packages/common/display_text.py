@@ -160,6 +160,8 @@ CODE_WORDS: Dict[str, str] = {
     "RAG_CAUSE_BUDGET_EXHAUSTED": "예산 소진",
     "RAG_CAUSE_READ_TIMEOUT": "읽기 시간 초과",
     "RAG_CAUSE_PARSE_FAILED": "파서 실패",
+    "RAG_CAUSE_OCR_UNAVAILABLE": "OCR 미가용",
+    "RAG_CAUSE_OCR_LOW_QUALITY": "OCR 품질 미달",
     "RAG_CAUSE_CONTENT_NO_TEXT": "자료 성질상 텍스트 없음",
     # TK-174: Drive 대조·참고자료 처리 사유 가운데 한글 이름이 없던 코드(rag_engine·pipeline이 실제로 내는 값)
     "QUOTE_NOT_GROUNDED": "인용 발췌가 원문에서 확인되지 않음",

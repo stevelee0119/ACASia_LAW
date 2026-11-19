@@ -24,6 +24,8 @@ EXCLUDE_MAX_PAGES = 3        # 그리고 3쪽까지만 해당 쪽을 빼고 색�
 CAUSE_BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
 CAUSE_READ_TIMEOUT = "READ_TIMEOUT"
 CAUSE_PARSE_FAILED = "PARSE_FAILED"
+CAUSE_OCR_UNAVAILABLE = "OCR_UNAVAILABLE"
+CAUSE_OCR_LOW_QUALITY = "OCR_LOW_QUALITY"
 CAUSE_CONTENT_NO_TEXT = "CONTENT_NO_TEXT"
 
 _PAGE_STATE_BY_STATUS = {
@@ -334,11 +336,13 @@ def extract(path, filename, mime, *, continuation=None):
     ocr_low_quality_pages = sorted(int(p) for p, d in page_diagnostics.items() if d.get("status") == "ocr_low_quality")
     error_pages = sorted(int(p) for p, d in page_diagnostics.items() if d.get("status") == "error")
 
-    # TK-208: 쪽별 미완독 사유를 4종(예산 소진·읽기 시간 초과·파서 실패·자료 성질상 텍스트 없음)으로 분리한다.
+    # TK-208: 쪽별 미완독 사유를 실행·품질 사유와 자료 성질상 텍스트 없음(시각적 빈 쪽 확인)으로 엄격히 분리한다.
     unread_pages_by_cause: dict[str, list[int]] = {
         CAUSE_BUDGET_EXHAUSTED: [],
         CAUSE_READ_TIMEOUT: [],
         CAUSE_PARSE_FAILED: [],
+        CAUSE_OCR_UNAVAILABLE: [],
+        CAUSE_OCR_LOW_QUALITY: [],
         CAUSE_CONTENT_NO_TEXT: [],
     }
     if page_diagnostics:
@@ -358,10 +362,18 @@ def extract(path, filename, mime, *, continuation=None):
                 st = diag.get("status")
                 if st in ("text", "ocr_applied"):
                     continue
-                if st == "error":
-                    unread_pages_by_cause[CAUSE_PARSE_FAILED].append(p)
-                elif st in ("scanned", "ocr_low_quality", "blank"):
-                    unread_pages_by_cause[CAUSE_CONTENT_NO_TEXT].append(p)
+                if st == "blank":
+                    if diag.get("blank_verified", True):
+                        unread_pages_by_cause[CAUSE_CONTENT_NO_TEXT].append(p)
+                    else:
+                        unread_pages_by_cause[CAUSE_PARSE_FAILED].append(p)
+                elif st == "scanned":
+                    if diag.get("ocr_available") is False:
+                        unread_pages_by_cause[CAUSE_OCR_UNAVAILABLE].append(p)
+                    else:
+                        unread_pages_by_cause[CAUSE_BUDGET_EXHAUSTED].append(p)
+                elif st == "ocr_low_quality":
+                    unread_pages_by_cause[CAUSE_OCR_LOW_QUALITY].append(p)
                 else:
                     unread_pages_by_cause[CAUSE_PARSE_FAILED].append(p)
     else:
@@ -379,6 +391,8 @@ def extract(path, filename, mime, *, continuation=None):
             unread_pages_by_cause[CAUSE_BUDGET_EXHAUSTED]
             + unread_pages_by_cause[CAUSE_READ_TIMEOUT]
             + unread_pages_by_cause[CAUSE_PARSE_FAILED]
+            + unread_pages_by_cause[CAUSE_OCR_UNAVAILABLE]
+            + unread_pages_by_cause[CAUSE_OCR_LOW_QUALITY]
         )
     )
     content_unreadable_pages = sorted(set(unread_pages_by_cause[CAUSE_CONTENT_NO_TEXT]))
@@ -387,16 +401,16 @@ def extract(path, filename, mime, *, continuation=None):
     )
     unread_pages = sorted(set(execution_incomplete_pages + content_unreadable_pages))
 
-    # TK-208: 실행 문제 없음(coverage_complete)과 자료 성질상 미판독 없음(content_readable_complete)을 분리한다.
+    # TK-208: 실행 문제 없음(coverage_complete, UNVERIFIED/OCR_LOW_QUALITY 포함)과 자료 성질상 미판독 없음(content_readable_complete) 분리
     coverage_complete = (
         not execution_incomplete_pages
         and not next_continuation
+        and not coverage_missing
         and not doc.parse_warnings
     )
     content_readable_complete = (
         coverage_complete
         and not content_unreadable_pages
-        and not coverage_missing
         and read_pages >= total
     )
     partial = not content_readable_complete
@@ -419,10 +433,10 @@ def extract(path, filename, mime, *, continuation=None):
     else:
         reason = ""
     coverage_note = (
-        "예산·시간 초과·파서 오류·미처리 등 실행 문제로 못 읽은 쪽이 남아 있음"
+        "예산·OCR 미가용·저품질 OCR·시간 초과·파서 오류 등 실행 문제로 못 읽은 쪽이 남아 있음"
         if not coverage_complete
         else (
-            "실행 문제 없이 전체 쪽을 검사했으나 자료 성질상 텍스트가 없는 쪽(스캔·저품질 OCR·빈 쪽)이 포함됨"
+            "시각적 객체가 없는 빈 쪽 확인을 포함해 전체 쪽 검사를 마침"
             if not content_readable_complete
             else ""
         )
