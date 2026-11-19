@@ -273,6 +273,23 @@ def source_get(adapter, url, *, params=None, headers=None, timeout=12):
             cached, status = True, AdapterStatus.READY
             session.cache.move_to_end(key)
             return session.cache[key]
+        from .cassette import (
+            CassetteError,
+            load_cassette_response,
+            record_cassette_entry,
+            record_mode_active,
+            replay_mode_active,
+        )
+
+        if replay_mode_active():
+            try:
+                response = load_cassette_response(adapter, url, params=params, headers=headers)
+            except CassetteError as exc:
+                raise SourceRequestStopped(str(exc), AdapterStatus.DISABLED, retryable=False) from exc
+            cached = True
+            status = AdapterStatus.READY if 200 <= response.status_code < 300 else AdapterStatus.ERROR
+            session.remember(key, response)
+            return response
         if adapter in session.blocked:
             until = session.blocked_until.get(adapter)
             if until is None:
@@ -325,6 +342,8 @@ def source_get(adapter, url, *, params=None, headers=None, timeout=12):
                 if status == AdapterStatus.READY:
                     session.blocked.pop(adapter, None)
                     session.blocked_until.pop(adapter, None)
+                    if record_mode_active():
+                        record_cassette_entry(adapter, url, params=params, headers=headers, response=response)
                 session.remember(key, response)
                 return response
             if attempt + 1 < session.max_attempts:
