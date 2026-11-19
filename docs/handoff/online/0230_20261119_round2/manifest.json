@@ -1,0 +1,21 @@
+{
+  "deployment_commit": "aaf51806cec24e75c478fd894a5289c3f99a59cb",
+  "artifacts": {
+    "README.md": "30e201c46834861fa4011d1513e1555fa4f9be3a61e27835977773da2f66fde6",
+    "captures/tk198_scope_large_synthetic.png": "a007e4eb423b568c4ad020f16e0d0269c59b433e3358622e1be482581bda4ca5",
+    "captures/tk198_scope_preflight_synthetic.png": "876be56a4c944937f2dfeca8cd2cb3f61ffc98e5102b0bc7c89c85ce8ae1a0e7",
+    "captures/tk206_timeline_preflight_synthetic.png": "53dd3173914b72d80c557b728106f9108f99852d5814fcecd2927c489b1de514",
+    "issues.md": "f58edeae290c3bc08a712f96e8fd33e051a7ddaa73768d5b8b4e8e1b8dbf25a3",
+    "result.json": "4ad5342806555b3bf758e54cce08416eee62241a2c5837c732333a5854685540",
+    "tk208_per_reference.json": "c3b192196222f7cc773f7811993dee73167b0b48c6f057121e29dd8122adc1f4",
+    "tk209_diagnostics.json": "adbceacf47dc3a1e056912579592a1ac27c0991109df59ad9af60bec407ca99f"
+  },
+  "public_input_references": {
+    "tests/fixtures/case9_state_compensation_google_docs.pdf": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92",
+    "tests/fixtures/probes/case9_state_compensation_online.json": "7002901263974bf6fbe424a3653cb127b69dc88e9b7ade4a7552708545590d2b",
+    "tests/fixtures/probes/case9_state_compensation_rag_controls_online.json": "ada7baa1dcfe2d08a4d6984331cc9b270d9bc194480fa4c4a0f0f1600fa74752",
+    "tests/fixtures/probes/pipeline_health_online.json": "ec014a819834058e59a2c700fa4cdc68d15a56a61d77dc0e6b02cda1eb0970dc",
+    "docs/handoff/online/materials/v1/synthetic_features.docx": "d2f601c4307e0ac118a84073cbae6572b701ae272b0d035a435acf71876c56e3",
+    "docs/handoff/online/materials/v1/synthetic_35674.docx": "324188e6dbfba70b16f8ca76bb140063cbefe13fc089a2adf73debd5f9b226b8"
+  }
+}
