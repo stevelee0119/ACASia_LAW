@@ -61,6 +61,12 @@ class CheckResult:
     fields: List[str] = field(default_factory=list)
     requires_key: bool = False
     """키가 필요한 Source의 실패는 키 문제일 가능성이 높아 판정을 가른다."""
+    advisory: bool = False
+    """운영에 쓰지 않는 대상의 호환성 알림. 실패로 세지 않는다(TK-210).
+
+    보기: 공급자 모델 목록에는 남아 있으나 신규 호출이 막힌 구형 모델. 운영 기본 모델이 아니므로
+    이 실패는 운영 상태를 뜻하지 않는다. 운영 기본 모델의 실패는 advisory가 아니다.
+    """
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -428,6 +434,46 @@ async def check_model_catalog(include: bool) -> List[CheckResult]:
     return out
 
 
+_MODEL_RETIRED_RE = re.compile(
+    r"(?:no longer available|not available to new users|deprecat|has been (?:retired|removed)|"
+    r"is not supported|unsupported model|not found for API version)",
+    re.IGNORECASE,
+)
+
+
+def _raw_error_message(response) -> str:
+    """응답의 원문 오류 메시지를 꺼낸다(표시용 요약과 분리).
+
+    `_gemini_quota_detail`은 429 진단을 위해 `details[].metadata`가 있으면 그것만 돌려주고
+    `error.message`를 버린다. 그 요약으로 은퇴를 판별하면 메타데이터를 동반한 은퇴 404가
+    치명적 실패로 분류된다. 분류는 반드시 이 원문으로 한다.
+    """
+    try:
+        payload = response.json()
+    except ValueError:
+        return response.text or ""
+    if not isinstance(payload, dict):
+        return response.text or ""
+    error = payload.get("error")
+    if isinstance(error, dict):
+        message = error.get("message")
+        if isinstance(message, str) and message:
+            return message
+        status = error.get("status")
+        if isinstance(status, str) and status:
+            return status
+    return response.text or ""
+
+
+def _is_retired_model(status_code: int, detail: str) -> bool:
+    """공급자가 '이 모델은 더 못 쓴다'고 답한 꼴인지 본다.
+
+    낱말 하나가 아니라 문구 축으로 받는다. 공급자가 표현을 바꿔도 같은 뜻이면 걸리게 하려는 것이다.
+    상태 코드만으로 판단하지 않는다(404는 경로 오류일 수도 있다).
+    """
+    return 400 <= status_code < 500 and bool(_MODEL_RETIRED_RE.search(detail or ""))
+
+
 def _gemini_quota_detail(response) -> str:
     """Google 429 응답에서 어느 프로젝트의 어떤 한도에 걸렸는지 꺼낸다.
 
@@ -506,10 +552,18 @@ async def check_gemini_models(include: bool) -> List[CheckResult]:
                     "generationConfig": {"maxOutputTokens": 256}})
                 ok = reply.status_code < 400
                 message = "" if ok else _gemini_quota_detail(reply)
+                # 여기서 시험하는 것은 '현재 설정'이 아닌 후보 모델이다(ordered에서 current를 뺐다).
+                # 공급자가 은퇴·미지원이라고 답한 것은 운영 상태가 아니라 목록의 낡음이므로
+                # 호환성 알림으로 분리한다. 쿼터 초과·권한 오류는 그대로 실패로 둔다.
+                advisory = (not ok) and _is_retired_model(
+                    reply.status_code, _raw_error_message(reply))
                 out.append(CheckResult(
                     name=f"gemini:{name}", category="gemini_models",
                     configured=True, requires_key=True, status="OK" if ok else f"HTTP {reply.status_code}",
-                    ok=ok, detail="호출 가능" if ok else message))
+                    ok=ok, advisory=advisory,
+                    detail="호출 가능" if ok else (
+                        message + " — 운영 기본 모델이 아니다. 목록에만 남은 구형 모델이므로 판정을 실패로 보지 않는다."
+                        if advisory else message)))
     except Exception as exc:  # 키가 담긴 URL이 메시지에 있을 수 있어 예외 이름만 남긴다
         out.append(CheckResult(name="gemini:모델 점검", category="gemini_models", configured=True,
                                requires_key=True, status="ERROR", ok=False, detail=type(exc).__name__))
@@ -582,17 +636,34 @@ async def check_model_consensus(include: bool) -> List[CheckResult]:
 
 # ---------------------------------------------------------------------------
 def partition_failures(groups: Dict[str, List[CheckResult]]):
-    """치명적 실패(키 문제)와 경고(공개 Source 일시 장애)를 나눈다."""
+    """치명적 실패(키 문제)·경고(공개 Source 일시 장애)·호환성 알림을 나눈다.
+
+    호환성 알림은 운영에 쓰지 않는 대상의 실패이므로 strict 판정에 넣지 않는다(TK-210).
+    """
     fatal: List[CheckResult] = []
     warnings: List[CheckResult] = []
+    advisories: List[CheckResult] = []
     for items in groups.values():
         for item in items:
             if item.category == "secret" or item.ok or item.status == "SKIPPED":
                 continue
             if not item.configured:
                 continue
-            (fatal if item.requires_key else warnings).append(item)
-    return fatal, warnings
+            if item.advisory:
+                advisories.append(item)
+            else:
+                (fatal if item.requires_key else warnings).append(item)
+    return fatal, warnings, advisories
+
+
+def strict_exit_code(groups: Dict[str, List[CheckResult]], strict: bool) -> int:
+    """strict 종료 코드. 호환성 알림은 실패로 세지 않는다(TK-210).
+
+    main()에서 분리해 둔다. 종료 코드를 직접 시험할 수 있어야 '알림이 strict를 실패시키지
+    않는다'는 성질이 버킷 분류만이 아니라 명령 결과로 고정된다.
+    """
+    fatal, _warnings, _advisories = partition_failures(groups)
+    return 1 if (fatal and strict) else 0
 
 
 def render_markdown(groups: Dict[str, List[CheckResult]]) -> str:
@@ -651,10 +722,12 @@ def render_markdown(groups: Dict[str, List[CheckResult]]) -> str:
                   "쿼터가 남은 모델이 있으면 `LV_GEMINI_MODEL`에 그 ID를 넣으면 된다.", "",
                   "| 모델 | 결과 | 비고 |", "|---|---|---|"]
         for item in groups["gemini_models"]:
-            mark = "✅" if item.ok else "❌"
+            # 호환성 알림은 판정에 넣지 않으므로 실패 표시(❌)로 적지 않는다.
+            # 같은 실행에서 '실패'와 '모두 정상'이 함께 보이던 모순을 없앤다.
+            mark = "✅" if item.ok else ("ℹ️" if item.advisory else "❌")
             lines.append(f"| `{item.name}` | {mark} {item.status} | {item.detail} |")
 
-    fatal, warnings = partition_failures(groups)
+    fatal, warnings, advisories = partition_failures(groups)
     lines += ["", "## 판정", ""]
     if fatal:
         lines.append(f"❌ **키가 설정되었는데도 실패한 항목 {len(fatal)}건** — 키 값·권한·모델 ID를 확인한다.")
@@ -669,8 +742,22 @@ def render_markdown(groups: Dict[str, List[CheckResult]]) -> str:
         for item in warnings:
             lines.append(f"- `{item.name}` — {item.status}: {item.detail}")
         lines.append("")
+    if advisories:
+        lines.append(
+            f"ℹ️ 호환성 알림 {len(advisories)}건. 운영에 쓰지 않는 대상이고 공급자가 은퇴·미지원이라고 "
+            "답한 것이므로 판정에 넣지 않는다. 운영 기본 모델의 실패는 여기 들어오지 않는다."
+        )
+        for item in advisories:
+            lines.append(f"- `{item.name}` — {item.status}: {item.detail}")
+        lines.append("")
     if not fatal and not warnings:
-        lines.append("✅ 설정된 Source가 모두 정상 응답했다. 키 미설정 항목은 설계대로 UNVERIFIED로 남는다.")
+        if advisories:
+            lines.append(
+                "✅ 판정 대상 Source가 모두 정상 응답했다. 위 호환성 알림은 운영에 쓰지 않는 대상이다. "
+                "키 미설정 항목은 설계대로 UNVERIFIED로 남는다."
+            )
+        else:
+            lines.append("✅ 설정된 Source가 모두 정상 응답했다. 키 미설정 항목은 설계대로 UNVERIFIED로 남는다.")
     elif not fatal:
         lines.append("✅ 키가 설정된 Source는 모두 정상 응답했다.")
     lines += [
@@ -721,8 +808,7 @@ def main() -> int:
         payload = {key: [item.to_dict() for item in items] for key, items in groups.items()}
         Path(args.json_out).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    fatal, _warnings = partition_failures(groups)
-    return 1 if (fatal and args.strict) else 0
+    return strict_exit_code(groups, args.strict)
 
 
 if __name__ == "__main__":

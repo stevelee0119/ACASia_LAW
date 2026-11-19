@@ -16,10 +16,17 @@ from packages.document_engine.registry import parse_document
 
 MAX_CHARS = 3_000_000
 MAX_PAGES = 1500
-EXTRACTOR_VERSION = "drive-text-v9-tk182"  # TK-182: visual blank verification, OCR quality states, completed vs text-extracted counts
+EXTRACTOR_VERSION = "drive-text-v10-tk208"  # TK-208: separate execution coverage vs content readability, cause-classified unread pages
 EXCLUDE_MIN_TOTAL = 10       # 이보다 짧은 파일은 쪽 단위로 빼지 않고 전체를 격리한다
 EXCLUDE_MAX_SHARE = 0.02     # 전체 쪽수의 2%까지(최소 1쪽)
 EXCLUDE_MAX_PAGES = 3        # 그리고 3쪽까지만 해당 쪽을 빼고 색인한다
+
+CAUSE_BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
+CAUSE_READ_TIMEOUT = "READ_TIMEOUT"
+CAUSE_PARSE_FAILED = "PARSE_FAILED"
+CAUSE_OCR_UNAVAILABLE = "OCR_UNAVAILABLE"
+CAUSE_OCR_LOW_QUALITY = "OCR_LOW_QUALITY"
+CAUSE_CONTENT_NO_TEXT = "CONTENT_NO_TEXT"
 
 _PAGE_STATE_BY_STATUS = {
     "text": "NATIVE_TEXT",
@@ -267,7 +274,14 @@ def extract(path, filename, mime, *, continuation=None):
                     page_diagnostics[str(number)] = _page_diag("blank", blank_verified=True)
 
                 count += len(text)
-                if count > MAX_CHARS:
+                if count - prev_chars > MAX_CHARS:
+                    page_diagnostics.pop(str(number), None)
+                    next_continuation = {
+                        "next_page": number,
+                        "chars": count - len(text),
+                        "fallback_pages": fallback_pages,
+                        "page_diagnostics": page_diagnostics,
+                    }
                     break
                 last_processed = number
                 doc.pages.append(Page(number, blocks=[Block(f"p{number}", text, number)]))
@@ -322,30 +336,84 @@ def extract(path, filename, mime, *, continuation=None):
     ocr_low_quality_pages = sorted(int(p) for p, d in page_diagnostics.items() if d.get("status") == "ocr_low_quality")
     error_pages = sorted(int(p) for p, d in page_diagnostics.items() if d.get("status") == "error")
 
+    # TK-208: 쪽별 미완독 사유를 실행·품질 사유와 자료 성질상 텍스트 없음(시각적 빈 쪽 확인)으로 엄격히 분리한다.
+    unread_pages_by_cause: dict[str, list[int]] = {
+        CAUSE_BUDGET_EXHAUSTED: [],
+        CAUSE_READ_TIMEOUT: [],
+        CAUSE_PARSE_FAILED: [],
+        CAUSE_OCR_UNAVAILABLE: [],
+        CAUSE_OCR_LOW_QUALITY: [],
+        CAUSE_CONTENT_NO_TEXT: [],
+    }
     if page_diagnostics:
         completed_statuses = {"text", "ocr_applied", "blank"}
         completed_pages = sum(
             1 for p in range(1, min(total, MAX_PAGES) + 1)
             if page_diagnostics.get(str(p), {}).get("status") in completed_statuses
         )
-        incomplete_pages = sorted(
-            p for p in range(1, total + 1)
-            if page_diagnostics.get(str(p), {}).get("status") not in completed_statuses
-        )
-        coverage_complete = (
-            not incomplete_pages
-            and not next_continuation
-            and not coverage_missing
-            and not doc.parse_warnings
-        )
-        # Keep `partial` aligned with unreadable/no-text page disclosure while
-        # `coverage_complete` distinguishes visually verified blank pages from unfinished reads.
-        partial = (read_pages < total) or (not coverage_complete)
+        for p in range(1, total + 1):
+            diag = page_diagnostics.get(str(p))
+            if diag is None:
+                if next_continuation or total > MAX_PAGES:
+                    unread_pages_by_cause[CAUSE_BUDGET_EXHAUSTED].append(p)
+                else:
+                    unread_pages_by_cause[CAUSE_PARSE_FAILED].append(p)
+            else:
+                st = diag.get("status")
+                if st in ("text", "ocr_applied"):
+                    continue
+                if st == "blank":
+                    if diag.get("blank_verified", True):
+                        unread_pages_by_cause[CAUSE_CONTENT_NO_TEXT].append(p)
+                    else:
+                        unread_pages_by_cause[CAUSE_PARSE_FAILED].append(p)
+                elif st == "scanned":
+                    if diag.get("ocr_available") is False:
+                        unread_pages_by_cause[CAUSE_OCR_UNAVAILABLE].append(p)
+                    else:
+                        unread_pages_by_cause[CAUSE_BUDGET_EXHAUSTED].append(p)
+                elif st == "ocr_low_quality":
+                    unread_pages_by_cause[CAUSE_OCR_LOW_QUALITY].append(p)
+                else:
+                    unread_pages_by_cause[CAUSE_PARSE_FAILED].append(p)
     else:
         completed_pages = read_pages
-        incomplete_pages = unprocessed_pages
-        partial = read_pages < total or bool(next_continuation) or coverage_missing or bool(doc.parse_warnings)
-        coverage_complete = not partial
+        for p in sorted(set(no_text_pages)):
+            unread_pages_by_cause[CAUSE_CONTENT_NO_TEXT].append(p)
+        for p in unprocessed_pages:
+            if next_continuation or total > MAX_PAGES:
+                unread_pages_by_cause[CAUSE_BUDGET_EXHAUSTED].append(p)
+            else:
+                unread_pages_by_cause[CAUSE_PARSE_FAILED].append(p)
+
+    execution_incomplete_pages = sorted(
+        set(
+            unread_pages_by_cause[CAUSE_BUDGET_EXHAUSTED]
+            + unread_pages_by_cause[CAUSE_READ_TIMEOUT]
+            + unread_pages_by_cause[CAUSE_PARSE_FAILED]
+            + unread_pages_by_cause[CAUSE_OCR_UNAVAILABLE]
+            + unread_pages_by_cause[CAUSE_OCR_LOW_QUALITY]
+        )
+    )
+    content_unreadable_pages = sorted(set(unread_pages_by_cause[CAUSE_CONTENT_NO_TEXT]))
+    incomplete_pages = sorted(
+        set(execution_incomplete_pages + [p for p in content_unreadable_pages if p not in blank_pages])
+    )
+    unread_pages = sorted(set(execution_incomplete_pages + content_unreadable_pages))
+
+    # TK-208: 실행 문제 없음(coverage_complete, UNVERIFIED/OCR_LOW_QUALITY 포함)과 자료 성질상 미판독 없음(content_readable_complete) 분리
+    coverage_complete = (
+        not execution_incomplete_pages
+        and not next_continuation
+        and not coverage_missing
+        and not doc.parse_warnings
+    )
+    content_readable_complete = (
+        coverage_complete
+        and not content_unreadable_pages
+        and read_pages >= total
+    )
+    partial = not content_readable_complete
 
     page_state_counts = {}
     for p in range(1, total + 1):
@@ -357,19 +425,29 @@ def extract(path, filename, mime, *, continuation=None):
         reason = "REFERENCE_INSTRUCTION_PAGES_EXCLUDED"
     elif not coverage_complete:
         reason = "REFERENCE_PARTIALLY_READ"
-    elif partial and blank_pages:
-        reason = "VERIFIED_BLANK_PAGES" if read_pages > 0 else "VERIFIED_BLANK_DOCUMENT"
-    elif partial:
-        reason = "REFERENCE_PARTIALLY_READ"
+    elif not content_readable_complete:
+        if blank_pages and not scanned_pages and not ocr_low_quality_pages and not [p for p in no_text_pages if p not in blank_pages]:
+            reason = "VERIFIED_BLANK_PAGES" if read_pages > 0 else "VERIFIED_BLANK_DOCUMENT"
+        else:
+            reason = "CONTENT_UNREADABLE_PAGES"
     else:
         reason = ""
     coverage_note = (
-        "스캔·저품질 OCR·오류·미처리 쪽이 남아 있어 전문 완독으로 간주하지 않음"
+        "예산·OCR 미가용·저품질 OCR·시간 초과·파서 오류 등 실행 문제로 못 읽은 쪽이 남아 있음"
         if not coverage_complete
-        else ("시각적 객체가 없는 빈 쪽 확인을 포함해 전체 쪽 검사를 마침" if blank_pages else "")
+        else (
+            "시각적 객체가 없는 빈 쪽 확인을 포함해 전체 쪽 검사를 마침"
+            if not content_readable_complete
+            else ""
+        )
     )
     return {"chunks": chunks, "sha256": digest, "partial": partial,
             "coverage_complete": coverage_complete,
+            "content_readable_complete": content_readable_complete,
+            "unread_pages": unread_pages,
+            "unread_pages_by_cause": unread_pages_by_cause,
+            "execution_incomplete_pages": execution_incomplete_pages,
+            "content_unreadable_pages": content_unreadable_pages,
             "excluded_pages": sorted(pages_hit), "scan_findings": evidence,
             "no_text_pages": no_text_pages,
             "page_diagnostics": page_diagnostics,

@@ -1,0 +1,45 @@
+{
+  "set": "online-023-synthetic-v1",
+  "materials": [
+    {
+      "name": "synthetic_35674.docx",
+      "sha256": "324188e6dbfba70b16f8ca76bb140063cbefe13fc089a2adf73debd5f9b226b8",
+      "paragraph_characters": 35674,
+      "bytes": 38596
+    },
+    {
+      "name": "synthetic_features.docx",
+      "sha256": "d2f601c4307e0ac118a84073cbae6572b701ae272b0d035a435acf71876c56e3",
+      "paragraph_characters": 432,
+      "bytes": 37323
+    },
+    {
+      "name": "synthetic_inconsistency.docx",
+      "sha256": "076c7dfe7f157ae1cf63eda1828cb07a4e1283d8ee9378e80456ed35f3a7020c",
+      "paragraph_characters": 253,
+      "bytes": 36964
+    }
+  ],
+  "repository_references": [
+    {
+      "path": "tests/fixtures/case9_state_compensation_google_docs.pdf",
+      "sha256": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92"
+    },
+    {
+      "path": "tests/fixtures/probes/case9_state_compensation_online.json",
+      "sha256": "7002901263974bf6fbe424a3653cb127b69dc88e9b7ade4a7552708545590d2b"
+    },
+    {
+      "path": "tests/fixtures/probes/case9_state_compensation_health_online.json",
+      "sha256": "33d270e2bef7d5a3d03ead04ea22ea4babfbd6740962dd990c45e0ac75c86b1b"
+    },
+    {
+      "path": "tests/fixtures/probes/case9_state_compensation_rag_controls_online.json",
+      "sha256": "ada7baa1dcfe2d08a4d6984331cc9b270d9bc194480fa4c4a0f0f1600fa74752"
+    },
+    {
+      "path": "tests/fixtures/probes/pipeline_health_online.json",
+      "sha256": "ec014a819834058e59a2c700fa4cdc68d15a56a61d77dc0e6b02cda1eb0970dc"
+    }
+  ]
+}

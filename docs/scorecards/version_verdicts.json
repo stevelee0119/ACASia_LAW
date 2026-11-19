@@ -526,9 +526,40 @@
   "rer": 0.0,
   "decided_by": "Claude Code 평가 세션 (2026-10-17 사용자 지시로 평가 업무 승계)",
   "decided_at": "2026-11-18",
-  "release_status": "SCOPE_CHANGED_PENDING_FINAL_CANDIDATE",
+  "release_status": "INTERIM_DEPLOYED_ONLINE_ROUND1_JUDGED",
   "release_commit": null,
   "release_tag": null,
-  "deployment_evidence": null
+  "deployment_evidence": null,
+  "online_round1_20261119": {
+   "deployed_commit": "32d9c485bc04ef0487fc4c6a32a91c9d39d29948",
+   "record_pr": 340,
+   "verdict": "기록 수용. 운영 표준 23항목 3회 모두 23/23이나 TK75 ON으로 지정 조건(OFF) 실행이 없어 2026-10-10의 21/23과 증감 비교하지 않는다.",
+   "regression_reopened": [
+    "TK-206"
+   ],
+   "new_tickets": [
+    "TK-208",
+    "TK-209"
+   ],
+   "preexisting_not_regression": [
+    "law_go_kr 사건번호조회 2015모2524 일치 0건",
+    "gemini 2.5-flash/-lite HTTP 404(평가 측 점검 도구 결함)",
+    "semantic_scholar RATE_LIMITED"
+   ],
+   "tk199_evidence": "같은 워크플로 0.21.0 기록 대비 2011모1839 전문 30,211자에서 cascade:stage2:primary의 INPUT_PRIVACY_BLOCKED 소멸, 참여 공급자 0개→3개. 사용자 실제 문서는 여전히 미측정.",
+   "scope_decision": "2026-11-19 사용자: I-1·I-2를 0.23.0에 넣고 온라인 회차를 한 번 더 돌린다.",
+   "evaluator_defects": [
+    "PR #335 3차 판정이 TK-206을 충족으로 적었다. 점검표에 재판행위 어간의 활용 축이 없었다.",
+    "온라인 지시문이 RELEASE_PROCEDURE 경로를 docs/RELEASE_PROCEDURE.md로 잘못 적었다. 실제는 docs/scorecards/RELEASE_PROCEDURE.md다."
+   ],
+   "unmeasured": [
+    "사용자 실제 문서의 TK-199",
+    "TK75 OFF 조건의 표준 23항목",
+    "U1 봉인 온라인·U4 봉인 출제",
+    "실무 법률 정확도·검색/주장 타당성·검토 효율",
+    "TK-208 주원인·TK-209 끊기는 지점(운영 접근 필요)"
+   ],
+   "record": "docs/scorecards/online_round1_0230_verdict_20261119.md"
+  }
  }
 ]
