@@ -20,6 +20,8 @@ from packages.legal_engine.citation_extractor import (
 
 from tests.perf_scaling import best_of, fastest_of
 
+from tests.perf_scaling import assert_within
+
 
 def _make_doc(text: str, doc_id: str = "doc_synthetic") -> NormalizedDocument:
     """합성 텍스트를 담은 NormalizedDocument 실제 객체를 생성한다."""
@@ -46,7 +48,7 @@ def test_repeated_short_input_performance():
             tracker.add(i * 10, i * 10 + 5)
 
     elapsed_tracker = best_of(_tracker_round)
-    assert elapsed_tracker < 0.1, f"구간 추적기 2,500회 반복 초과: {elapsed_tracker:.4f}초"
+    assert_within(elapsed_tracker, 0.1, f'구간 추적기 2,500회 반복 초과: {elapsed_tracker:.4f}초')
 
     # 2) 법령명 시작 위치 탐색(캐시) 2,500회 반복 < 0.1초
     m = LAW_RE.search("원고는 「근로기준법」 제23조를 위반하였다.")
@@ -55,7 +57,7 @@ def test_repeated_short_input_performance():
             _law_name_start(m)
 
     elapsed_law = best_of(_law_round)
-    assert elapsed_law < 0.1, f"법령명 시작 위치 2,500회 반복 초과: {elapsed_law:.4f}초"
+    assert_within(elapsed_law, 0.1, f'법령명 시작 위치 2,500회 반복 초과: {elapsed_law:.4f}초')
 
     # 3) 법령명 정규화 캐시 2,500회 반복 < 0.1초
     names = ["근로기준법", "「민법」", "형법", "상법", "행정소송법"] * 500
@@ -66,7 +68,7 @@ def test_repeated_short_input_performance():
             canonical_law_name(name)
 
     elapsed_cache = best_of(_cache_round)
-    assert elapsed_cache < 0.1, f"캐시 조회 2,500회 초과: {elapsed_cache:.4f}초"
+    assert_within(elapsed_cache, 0.1, f'캐시 조회 2,500회 초과: {elapsed_cache:.4f}초')
 
     # 4) 텍스트 인용 추출 100회 반복 < 0.1초
     text = "원고는 「근로기준법」 제23조 제1항을 근거로 해고무효를 주장한다."
@@ -76,7 +78,7 @@ def test_repeated_short_input_performance():
         for _ in range(100):
             extract_from_text(text)
         best = min(best, time.perf_counter() - started)
-    assert best < 0.1, f"단문 추출 100회 반복 초과: {best:.4f}초"
+    assert_within(best, 0.1, f'단문 추출 100회 반복 초과: {best:.4f}초')
 
 
 def test_canonical_law_name_cache_performance():
@@ -90,7 +92,7 @@ def test_canonical_law_name_cache_performance():
     elapsed, results = fastest_of(lambda: [canonical_law_name(name) for name in names])
     assert len(results) == 2500
     assert results[0] == "근로기준법"
-    assert elapsed < 0.1, f"캐시 조회 시간이 0.1초를 초과함: {elapsed:.4f}초"
+    assert_within(elapsed, 0.1, f'캐시 조회 시간이 0.1초를 초과함: {elapsed:.4f}초')
 
 
 def test_case_whitespace_tail_is_linear():
@@ -106,7 +108,7 @@ def test_case_whitespace_tail_is_linear():
     assert citations[0].law_name == "근로기준법"
     assert citations[0].article == "23"
     assert citations[0].attributes.get("subitem") == "가"
-    assert elapsed < 1.0, f"공백 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초"
+    assert_within(elapsed, 1.0, f'공백 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초')
 
 
 def test_subitem_repeated_notation_is_linear():
@@ -119,7 +121,7 @@ def test_subitem_repeated_notation_is_linear():
 
     assert len(citations) == 1
     assert citations[0].law_name == "근로기준법"
-    assert elapsed < 1.0, f"·나목 반복 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초"
+    assert_within(elapsed, 1.0, f'·나목 반복 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초')
 
 
 def test_subitem_repeated_conjunction_is_linear():
@@ -132,7 +134,7 @@ def test_subitem_repeated_conjunction_is_linear():
 
     assert len(citations) == 1
     assert citations[0].law_name == "근로기준법"
-    assert elapsed < 1.0, f" 및  반복 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초"
+    assert_within(elapsed, 1.0, f' 및  반복 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초')
 
 
 def test_academic_dots_backtracking_linear():
@@ -147,7 +149,7 @@ def test_academic_dots_backtracking_linear():
     assert citations[0].type == CitationType.ACADEMIC
     assert citations[0].authors == ["홍길동"]
     assert citations[0].title == "합성 학술 논문 제목"
-    assert elapsed < 1.0, f"학술 가운뎃점 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초"
+    assert_within(elapsed, 1.0, f'학술 가운뎃점 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초')
 
 
 def test_academic_authors_preservation_11_and_12():
@@ -205,7 +207,7 @@ def test_repeated_statute_citations_are_linear():
 
     # 4배 크기(2,000 -> 8,000건) 증가 시 시간 비가 8 미만이어야 함 (제곱 시간 16 배제)
     ratio_4x = time_8k / max(time_2k, 1e-4)
-    assert ratio_4x < 8.0, f"인용 수 4배 증가 시 시간 증가비가 8 이상임 (제곱 시간 의심): {ratio_4x:.2f}배"
+    assert ratio_4x < 8.0, f'인용 수 4배 증가 시 시간 증가비가 8 이상임 (제곱 시간 의심): {ratio_4x:.2f}배'
 
     # 실제 경로(extract_citations) 8,000건 처리 시간 검증 (Linux CI 1.5초 이내, Windows 5.0초 이내)
     doc_8k = _make_doc(line * 8000, "doc_8k")
@@ -242,7 +244,7 @@ def test_statute_citations_32k_linear_performance():
     time_2k = measure_cold(2000)
     time_8k = measure_cold(8000)
     ratio_4x = time_8k / max(time_2k, 1e-4)
-    assert ratio_4x < 8.0, f"인용 수 4배 증가 시 시간 증가비가 8 이상임 (제곱 시간 의심): {ratio_4x:.2f}배"
+    assert ratio_4x < 8.0, f'인용 수 4배 증가 시 시간 증가비가 8 이상임 (제곱 시간 의심): {ratio_4x:.2f}배'
 
     # 요구 크기: 32,000건 (960,000자, UTF-8 2MB 이상) 실제 경로(extract_citations) 시간 검증
     synthetic_32k = line * 32000

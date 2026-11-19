@@ -38,6 +38,8 @@ from packages.pii_engine.detector import detect
 
 from tests.perf_scaling import best_of
 
+from tests.perf_scaling import assert_within
+
 def make_synthetic_doc(*lines: str) -> NormalizedDocument:
     """합성 텍스트 라인들로 구성된 단일 페이지 NormalizedDocument 생성."""
     page = Page(page_number=1)
@@ -385,12 +387,12 @@ def test_tk38_redos_mitigation_and_meaning_preservation():
     adv_pdf = b">> BDC" + b" 0 Tm  " * 30 + b"X"
     # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
     dur_pdf = best_of(lambda: _is_line_break_marker("\u200b", adv_pdf, 0))
-    assert dur_pdf < 1.0, f"PDF 위치 지정 연산자 반복 검사가 너무 느림: {dur_pdf:.4f}초"
+    assert_within(dur_pdf, 1.0, f'PDF 위치 지정 연산자 반복 검사가 너무 느림: {dur_pdf:.4f}초')
 
     # B: '원정' 30회 반복 입력
     adv_amt = "일금 삼천" + "원정" * 30 + "만"
     dur_amt = best_of(lambda: parse_korean_amount(adv_amt))
-    assert dur_amt < 1.0, f"금액 접미사 반복 검사가 너무 느림: {dur_amt:.4f}초"
+    assert_within(dur_amt, 1.0, f'금액 접미사 반복 검사가 너무 느림: {dur_amt:.4f}초')
 
     # (나) 정상 입력 의미 보존 대조군
     hit = SINGLE_GLYPH_SHOW_RE.match(b" /F4 12 Tf 1 0 0 1 10 20 Tm <0003> Tj EMC")

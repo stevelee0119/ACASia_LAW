@@ -21,6 +21,8 @@ from packages.legal_engine.temporal_review import (
 
 from tests.perf_scaling import fastest_of
 
+from tests.perf_scaling import assert_within
+
 
 def _cit(raw_text: str, item: str | None = None, claim_text: str | None = None):
     attrs = {"claim_text": claim_text} if claim_text else {}
@@ -49,7 +51,7 @@ def test_tk69_item_subitem_regex_timing_polynomial_growth_eliminated():
     # TK-214: 한 번 재면 실행기 지연 한 번에 상한을 넘는다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
     elapsed, res = fastest_of(lambda: ITEM_SUBITEM_RE.search(bad_input_mismatch))
     assert res is None
-    assert elapsed < 0.1, f"정규식 백트래킹 지연 발생: {elapsed:.4f}초 (한도: 0.1초)"
+    assert_within(elapsed, 0.1, f'정규식 백트래킹 지연 발생: {elapsed:.4f}초 (한도: 0.1초)')
 
     # 일치 패턴 (제1호 + 공백 4,000개 + 가목)
     input_match = "제1호" + " " * 4000 + "가목"
@@ -57,7 +59,7 @@ def test_tk69_item_subitem_regex_timing_polynomial_growth_eliminated():
     assert res2 is not None
     assert res2.group("item") == "1"
     assert res2.group("subitem") == "가"
-    assert elapsed2 < 0.1, f"정규식 매칭 지연 발생: {elapsed2:.4f}초 (한도: 0.1초)"
+    assert_within(elapsed2, 0.1, f'정규식 매칭 지연 발생: {elapsed2:.4f}초 (한도: 0.1초)')
 
 
 def test_tk69_next_subitem_trailing_spaces_timing_quadratic_eliminated():
@@ -68,21 +70,21 @@ def test_tk69_next_subitem_trailing_spaces_timing_quadratic_eliminated():
     # 1) NEXT_SUBITEM_RE 자체의 단일 매칭 속도 검증
     elapsed_re, res_re = fastest_of(lambda: NEXT_SUBITEM_RE.match(trailing_spaces_input))
     assert res_re is None
-    assert elapsed_re < 0.1, f"NEXT_SUBITEM_RE 백트래킹 지연 발생: {elapsed_re:.4f}초 (한도: 0.1초)"
+    assert_within(elapsed_re, 0.1, f'NEXT_SUBITEM_RE 백트래킹 지연 발생: {elapsed_re:.4f}초 (한도: 0.1초)')
 
     # 2) parse_subitem_sequence 유한 창 상한 및 지연 없는 처리 검증
     elapsed_parse, (subitems, consumed) = fastest_of(
         lambda: parse_subitem_sequence(trailing_spaces_input, "가"))
     assert subitems == ["가"]
     assert consumed == 0
-    assert elapsed_parse < 0.1, f"parse_subitem_sequence 지연 발생: {elapsed_parse:.4f}초 (한도: 0.1초)"
+    assert_within(elapsed_parse, 0.1, f'parse_subitem_sequence 지연 발생: {elapsed_parse:.4f}초 (한도: 0.1초)')
 
     # 3) extract_subitems_info 함수 전체 경로의 속도 검증
     cit_large = _cit("제1호 가목" + trailing_spaces_input)
     elapsed_func, (item, extracted) = fastest_of(lambda: extract_subitems_info(cit_large))
     assert item == "1"
     assert extracted == ["가"]
-    assert elapsed_func < 0.1, f"extract_subitems_info 지연 발생: {elapsed_func:.4f}초 (한도: 0.1초)"
+    assert_within(elapsed_func, 0.1, f'extract_subitems_info 지연 발생: {elapsed_func:.4f}초 (한도: 0.1초)')
 
 
 # ======================================================================================

@@ -8,6 +8,8 @@ import test_tk132_hwpx_tables as hx
 import test_tk133_hwp_tables as hw
 from packages.document_engine.registry import parse_document
 
+from tests.perf_scaling import assert_within
+
 
 def raw_section(tmp_path, body, name="raw.hwpx"):
     path = tmp_path / name
@@ -61,7 +63,7 @@ def test_many_nested_tables_get_parent_refs_without_rescanning(tmp_path):
     nested = [t for t in doc.structure["tables"] if t["nested"]]
     assert len(nested) == 400
     assert all(t["parent_table_ref"] == f"hwpx_s0t{t['table_index'] - 1}" for t in nested)
-    assert elapsed < 10.0, elapsed
+    assert_within(elapsed, 10.0, elapsed)
 
 
 def test_default_budgets_do_not_change_ordinary_documents(tmp_path):

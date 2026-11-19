@@ -13,6 +13,8 @@ from scripts.audit.corpus import build_pdf
 
 from tests.perf_scaling import fastest_of
 
+from tests.perf_scaling import assert_within
+
 
 def _doc(tmp_path: Path, name: str, body):
     """합성 PDF 문서를 생성하고 파싱된 NormalizedDocument를 반환한다."""
@@ -273,7 +275,7 @@ def test_tk66_exhibit_section_head_regex_redos_prevention():
     # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
         elapsed, res = fastest_of(lambda c=case: _EXHIBIT_SECTION_HEAD_RE.search(c))
         assert res is None, "악의적 패턴 매칭 실패 보장"
-        assert elapsed < 0.1, f"ReDoS 발생: {elapsed:.4f}초 소요 (한도: 0.1초)"
+        assert_within(elapsed, 0.1, f'ReDoS 발생: {elapsed:.4f}초 소요 (한도: 0.1초)')
 
 
 def test_tk66_exhibit_section_head_regex_13_contrasts():

@@ -14,6 +14,8 @@ from playwright.sync_api import expect, sync_playwright
 from packages.common.display_text import _drop_paren_codes, readable
 from tests.frontend_helpers import privacy_notice_mock_payload
 
+from tests.perf_scaling import assert_within
+
 ROOT = Path(__file__).resolve().parents[1]
 OLD = re.compile(r"\s*\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)")
 CASES = [
@@ -32,7 +34,7 @@ def test_long_whitespace_without_parenthesis_is_linear():
     text = "\t" * 200_000 + "x"
     started = time.perf_counter()
     assert readable(text) == text
-    assert time.perf_counter() - started < 1.0  # 옛 규칙은 길이 40,000에서 이미 1초를 넘는다(평가 측 측정)
+    assert_within(time.perf_counter() - started, 1.0)
 
 
 @pytest.fixture
@@ -72,5 +74,6 @@ def test_screen_rule_matches_server_and_stays_linear(browser):
     elapsed = page.evaluate("""() => { const text = '\\t'.repeat(200000) + 'x';
         const started = performance.now(); const out = friendlyText(text);
         return [out === text, performance.now() - started]; }""")
-    assert elapsed[0] and elapsed[1] < 1000
+    assert elapsed[0]
+    assert_within(elapsed[1] / 1000, 1.0, "브라우저 안 friendlyText 20만 탭")
     assert errors == []

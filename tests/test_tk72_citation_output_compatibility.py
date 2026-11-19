@@ -24,6 +24,8 @@ from packages.legal_engine.citation_extractor import (
 
 from tests.perf_scaling import fastest_of
 
+from tests.perf_scaling import assert_within
+
 def _samples():
     cases={}
     for i,ws in enumerate((' ', '  ', '\t', '\n', '\r', '\u3000')):
@@ -433,7 +435,7 @@ def test_interpretation_keyword_after_long_whitespace(suffix):
         lambda: extract_citations(_doc(" " * 80_000 + suffix)))
     assert len(citations) == 1
     assert citations[0].type == CitationType.INTERPRETATION
-    assert elapsed < 1.0
+    assert_within(elapsed, 1.0)
 
 
 def test_new_index_and_matcher_short_repetitions():
@@ -443,7 +445,7 @@ def test_new_index_and_matcher_short_repetitions():
     for _ in range(2500):
         assert _author_start(text, body, 0) == 0
         assert next(_interpretation_matches("법제처 법령해석례 24-0001")).group("authority") == "법제처"
-    assert time.perf_counter() - started < 0.1
+    assert_within(time.perf_counter() - started, 0.1)
 
 
 def test_academic_repetition_actual_path_growth():
@@ -455,7 +457,7 @@ def test_academic_repetition_actual_path_growth():
         times.append(time.perf_counter() - started)
         assert len(citations) == 1
         assert citations[0].authors == ["김가나"]
-    assert times[-1] < 1.0
+    assert_within(times[-1], 1.0)
     assert times[-1] / max(times[-2], 1e-4) < 8.0
 
 
@@ -493,7 +495,7 @@ def test_academic_negative_public_searches_with_long_whitespace_are_bounded():
     started = time.perf_counter()
     assert not list(ACADEMIC_RE.finditer(text))
     assert not extract_citations(_doc(text))
-    assert time.perf_counter() - started < 1.0
+    assert_within(time.perf_counter() - started, 1.0)
 
 
 @pytest.mark.parametrize("text", [
@@ -516,7 +518,7 @@ def test_claim_line_join_long_whitespace_actual_path(tail):
         lambda: extract_citations(_doc("「민법」 제750조" + tail)))
     assert len(citations) == 1
     assert citations[0].attributes["claim_text"] == tail.strip()[:400]
-    assert elapsed < 1.0
+    assert_within(elapsed, 1.0)
 
 
 def test_claim_line_join_short_repetitions():
@@ -524,4 +526,4 @@ def test_claim_line_join_short_repetitions():
     started = time.perf_counter()
     for _ in range(2500):
         assert _unwrap_claim_lines("본문\n\n 1. 항목\n계속") == "본문\n\n 1. 항목 계속"
-    assert time.perf_counter() - started < 0.1
+    assert_within(time.perf_counter() - started, 0.1)

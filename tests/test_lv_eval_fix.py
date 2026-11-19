@@ -96,7 +96,7 @@ def test_e10_reversed_remand_linear_time():
     big = "원심은 피고가 원고에게 대금을 지급할 의무가 있다고 판단하였다 " * 2000
     t = time.time()
     oa.detect_reversed_remand_confusion("대법원은 피고가 원고에게 대금을 지급할 의무가 있다고 판단하였다.", big, "")
-    assert time.time() - t < 3.0
+    assert_within(time.time() - t, 3.0)
 
 
 # E11 LV-06: 채무불이행 손해배상의 귀책사유는 원고의 요건사실이 아니다(민법 제390조 단서 — 채무자 항변)
@@ -143,6 +143,8 @@ import json
 from packages.common.enums import CitationType
 from packages.common.schemas import Block, Citation, NormalizedDocument, Page
 from packages.legal_engine.verifier import LegalVerifier
+
+from tests.perf_scaling import assert_within
 
 
 def test_e16_verdict_data_is_json_serializable():

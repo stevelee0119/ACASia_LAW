@@ -21,6 +21,8 @@ from packages.claim_engine import (
 )
 from packages.pii_engine import PIIEngine, PseudonymStore, detect, validate_rrn
 
+from tests.perf_scaling import assert_within
+
 
 def make_doc(*texts: str, block_type: str = "paragraph") -> NormalizedDocument:
     doc = NormalizedDocument(document_id="D", filename="f.txt", mime_type="text/plain", sha256="x")
@@ -285,6 +287,6 @@ def test_address_detection_stays_linear_on_long_korean_runs():
     from packages.pii_engine.detector import ADDRESS_RE, detect
     started = time.perf_counter()
     assert not list(ADDRESS_RE.finditer("가" * 64000))
-    assert time.perf_counter() - started < 1.0
+    assert_within(time.perf_counter() - started, 1.0)
     found = [m.kind for m in detect("주소: 서울특별시 서초구 서초대로 219, 경기도 수원시 장안구 정자동 123-4번지")]
     assert found.count("ADDRESS") == 2

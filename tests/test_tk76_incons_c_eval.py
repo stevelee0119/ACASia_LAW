@@ -22,6 +22,8 @@ from packages.common.schemas import Block, NormalizedDocument, Page
 
 from tests.perf_scaling import growth_exponent, timings_interleaved
 
+from tests.perf_scaling import assert_within
+
 
 def _doc(text: str) -> NormalizedDocument:
     block = Block(block_id="b1", text=text, page=1, visible=True, source_layer="visible_text")
@@ -200,6 +202,6 @@ def test_linear_time_on_20k_chars():
 
     timings = timings_interleaved(run, _LINEAR_SIZES)
     # 폭주를 잡는 절대 상한은 남긴다. 단발이 아니라 교차 측정의 최솟값이므로 부하로 깨지지 않는다.
-    assert timings[-1] < 0.5, f"Too slow on 20k chars: {timings[-1]:.3f}s (전체 {timings})"
+    assert_within(timings[-1], 0.5, f'Too slow on 20k chars: {timings[-1]:.3f}s (전체 {timings})')
     exponent = growth_exponent(_LINEAR_SIZES, timings)
     assert exponent < _MAX_GROWTH_EXPONENT, (round(exponent, 3), timings)

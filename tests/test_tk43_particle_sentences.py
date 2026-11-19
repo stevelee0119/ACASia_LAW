@@ -18,6 +18,8 @@ from packages.llm_router.providers import LLMRequest, LLMResponse
 from packages.pii_engine import PIIEngine, PseudonymStore, detect
 from packages.pii_engine import detector
 
+from tests.perf_scaling import assert_within
+
 # Three distinct examples per distinguishable grammatical shape.
 NOUN_SENTENCES = [
     ('multi-particle', '소득으로', '자료를 정리하였다.'),
@@ -186,7 +188,7 @@ def test_original_word_path_repeated_sentence_input_time():
             gc.enable()
     elapsed = min(timings)
     print(f'TK-43 sentence word path 6,000 calls: {elapsed:.6f}s (min of 3 runs, GC disabled)')
-    assert elapsed < 0.1
+    assert_within(elapsed, 0.1)
 
 
 def test_label_regex_repeated_sentence_input_time():
@@ -212,4 +214,4 @@ def test_label_regex_repeated_sentence_input_time():
             gc.enable()
     elapsed = min(timings)
     print(f'TK-43 label regex 2,000 sentences: {elapsed:.6f}s (min of 3 runs, GC disabled)')
-    assert elapsed < 0.1
+    assert_within(elapsed, 0.1)

@@ -29,6 +29,8 @@ from packages.verification_engine.pipeline import (
     VerificationPipeline,
 )
 
+from tests.perf_scaling import assert_within
+
 
 def _make_doc(text: str, doc_id: str = "doc-tk76-date-t2-t3") -> NormalizedDocument:
     block = Block(block_id="b1", text=text, page=1, visible=True, source_layer="visible_text")
@@ -392,5 +394,5 @@ def test_new_regexes_linear_time_on_20k_chars():
 
     t1 = min(time.perf_counter() - (st := time.perf_counter()) or _run_regexes(text_5k) and (time.perf_counter() - st) for _ in range(3))
     t4 = min(time.perf_counter() - (st := time.perf_counter()) or _run_regexes(text_20k) and (time.perf_counter() - st) for _ in range(3))
-    assert t4 < 1.0
+    assert_within(t4, 1.0)
     assert t4 / max(t1, 1e-6) < 8.0

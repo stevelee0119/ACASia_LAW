@@ -24,6 +24,8 @@ from packages.verification_engine.pipeline import (
     VerificationPipeline,
 )
 
+from tests.perf_scaling import assert_within
+
 
 # --- 1. 실제 진입점 시험 1: LegalVerifier.verify_citations ---
 def test_src_unverified_entrypoint():
@@ -255,8 +257,8 @@ def test_report_citation_regex_performance():
     min_4x = min(times_4x)
     ratio = min_4x / min_1x
 
-    assert min_4x < 1.0, f"4배 입력 처리시간 1초 미만이어야 함: {min_4x:.6f}s"
-    assert ratio < 8.0, f"1배 대비 4배 처리시간 비 8배 미만이어야 함: {ratio:.2f}배 (1x: {min_1x:.6f}s, 4x: {min_4x:.6f}s)"
+    assert_within(min_4x, 1.0, f'4배 입력 처리시간 1초 미만이어야 함: {min_4x:.6f}s')
+    assert ratio < 8.0, f'1배 대비 4배 처리시간 비 8배 미만이어야 함: {ratio:.2f}배 (1x: {min_1x:.6f}s, 4x: {min_4x:.6f}s)'
 
 
 def test_indicator_stat_regex_performance():
@@ -292,5 +294,5 @@ def test_indicator_stat_regex_performance():
     min_4x = min(times_4x)
     ratio = min_4x / min_1x
 
-    assert min_4x < 1.0, f"4배 입력 처리시간 1초 미만이어야 함: {min_4x:.6f}s"
-    assert ratio < 8.0, f"1배 대비 4배 처리시간 비 8배 미만이어야 함: {ratio:.2f}배 (1x: {min_1x:.6f}s, 4x: {min_4x:.6f}s)"
+    assert_within(min_4x, 1.0, f'4배 입력 처리시간 1초 미만이어야 함: {min_4x:.6f}s')
+    assert ratio < 8.0, f'1배 대비 4배 처리시간 비 8배 미만이어야 함: {ratio:.2f}배 (1x: {min_1x:.6f}s, 4x: {min_4x:.6f}s)'
