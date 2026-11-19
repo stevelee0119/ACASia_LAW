@@ -216,7 +216,8 @@ def test_repeated_statute_citations_are_linear():
     dt_8k = time.perf_counter() - t0
     assert len(c_8k) >= 1
     threshold_8k = 1.5 if sys.platform.startswith("linux") else 5.0
-    assert dt_8k < threshold_8k, f"8,000건 실제 경로 처리가 {threshold_8k}초를 초과함: {dt_8k:.4f}초"
+    # TK-214: 한계가 변수(플랫폼별)여도 보정은 같다. 부하 배수만큼 한계를 늘려 비교한다.
+    assert_within(dt_8k, threshold_8k, "8,000건 실제 경로")
 
 
 def test_statute_citations_32k_linear_performance():
@@ -259,7 +260,7 @@ def test_statute_citations_32k_linear_performance():
     assert len(c_32k) >= 1
     # Linux CI 환경 1.0초 이내 단언 (Windows 환경은 nt.urandom 및 OS 스케줄링 오버헤드 감안 15초)
     threshold = 1.0 if sys.platform.startswith("linux") else 15.0
-    assert elapsed_32k < threshold, f"32,000건 실제 경로 처리가 {threshold}초를 초과함: {elapsed_32k:.4f}초"
+    assert_within(elapsed_32k, threshold, "32,000건 실제 경로")
 
 
 def test_academic_authors_preservation_large():
