@@ -247,6 +247,27 @@ def test_security_card_width_model_failure_korean_and_injection_banner():
         browser.close()
 
 
+# TK-211: 배지와 근거 배지의 좌표를 한 번에 읽는 JS. 둘 다 레이아웃 박스를 가질 때만 값을
+# 돌려주므로 wait_for_function이 재그리기를 기다려 준다. 두 번 나눠 재면 그 사이 패널이 다시
+# 그려져 display:none이 되는 창이 남는다(평가 측 실측 근거는 시험 본문 주석에 있다).
+_READ_BOXES_JS = """() => {
+  const c = document.querySelector('#aiVerificationRows .review-verdict-badges');
+  if (!c) return null;
+  const b = c.querySelector('span.badge');
+  const v = document.querySelector('#aiVerificationRows .claim-verdict');
+  if (!b || !v) return null;
+  const rb = b.getBoundingClientRect(), rv = v.getBoundingClientRect();
+  if (!rb.height || !rv.height) return null;
+  return {badge_x: rb.x, badge_y: rb.y, claim_x: rv.x, claim_y: rv.y};
+}"""
+_BADGE_AND_CLAIM_BOXES = _READ_BOXES_JS
+# 래핑된 뒤에는 근거 배지가 배지보다 아래 줄에 있을 때만 값을 돌려준다(재배치 완료 조건).
+_BADGE_AND_CLAIM_BOXES_WRAPPED = _READ_BOXES_JS.replace(
+    "  return {badge_x",
+    "  if (!(rv.top > rb.top + 4)) return null;\n  return {badge_x",
+)
+
+
 def test_review_verdict_badges_left_aligned_when_wrapped():
     """항목 7-2: 데스크톱 표 3열에서 배지가 다음 줄로 넘어갈 때도 1줄 '매우 높음'과 좌측 정렬이 맞아야 함."""
     result_data = {
@@ -282,27 +303,21 @@ def test_review_verdict_badges_left_aligned_when_wrapped():
         row = page.locator("#aiVerificationRows tr", has_text="대법원 2098다55555 판결")
         container = row.locator(".review-verdict-badges")
         expect(container).to_be_visible()
-        # 배지 묶음이 모두 붙고 레이아웃이 잡힌 뒤에 박스를 잰다. 1~2코어 실행기에서 렌더가
-        # 늦어지면 bounding_box()가 None을 돌려주어 측정이 깨지므로, 자동 대기 단언으로 고정한다.
-        # (단언 내용은 그대로이고 대기만 추가한다)
-        expect(container.locator("span.badge").first).to_be_visible()
-        expect(row.locator(".claim-verdict")).to_be_visible()
-        first_badge = container.locator("span.badge").first.bounding_box()
-        claim_badge = row.locator(".claim-verdict").bounding_box()
-        assert first_badge and claim_badge
+        # TK-211: 두 좌표를 한 번의 evaluate로 함께 읽는다.
+        # 평가 측 실측(2026-11-19): bounding_box()가 None을 돌려주는 것은 그 요소에 레이아웃 박스가
+        # 없을 때 — 곧 display:none(또는 그 조상)일 때 — 뿐이다. 0 크기도 visibility:hidden도 박스를
+        # 돌려주고, 요소가 떨어진 경우는 None이 아니라 시간초과다. 즉 전에 이 시험이 `assert (None)`로
+        # 깨진 것은 가시성 단언이 통과한 뒤 측정 순간에 탭 패널이 다시 그려져 display:none이 된 것이다.
+        # 가시성 단언을 앞에 더 놓는 것으로는 그 창을 없앨 수 없다(단언과 측정이 별개 호출이다).
+        # 그래서 '둘 다 박스를 가질 때까지 기다려 같은 호출에서 읽기'로 바꾼다. 단언 내용은 같다.
+        boxes = page.wait_for_function(_BADGE_AND_CLAIM_BOXES).json_value()
+        assert boxes, "배지와 근거 배지의 좌표를 읽지 못했다"
         # 같은 줄이든 다음 줄로 래핑되든 좌측 x 또는 1줄 내 정렬 검증; 1024에서 래핑 강제 확인을 위해 폭 190px로 좁혀도 좌측 정렬 일치
         container.evaluate("el => { el.style.maxWidth = '190px'; }")
-        # 폭을 좁힌 뒤 재배치가 끝나기를 기다린 다음 다시 잰다.
-        page.wait_for_function(
-            "() => { const c = document.querySelector('#aiVerificationRows .review-verdict-badges');"
-            " if (!c) return false; const b = c.querySelector('span.badge');"
-            " const v = c.querySelector('.claim-verdict');"
-            " return !!(b && v && b.getBoundingClientRect().height && v.getBoundingClientRect().top"
-            " > b.getBoundingClientRect().top + 4); }")
-        wrapped_first = container.locator("span.badge").first.bounding_box()
-        wrapped_claim = row.locator(".claim-verdict").bounding_box()
-        assert wrapped_claim["y"] > wrapped_first["y"] + 4, "테스트 조건상 2번째 줄로 줄바꿈되어야 함"
-        assert abs(wrapped_first["x"] - wrapped_claim["x"]) < 1.5
+        # 폭을 좁혀 2번째 줄로 넘어간 뒤의 좌표도 같은 방식으로 한 번에 읽는다.
+        wrapped = page.wait_for_function(_BADGE_AND_CLAIM_BOXES_WRAPPED).json_value()
+        assert wrapped["claim_y"] > wrapped["badge_y"] + 4, "테스트 조건상 2번째 줄로 줄바꿈되어야 함"
+        assert abs(wrapped["badge_x"] - wrapped["claim_x"]) < 1.5
         browser.close()
 
 
