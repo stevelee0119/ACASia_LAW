@@ -546,3 +546,52 @@ def test_tk208_d2_retryable_unread_without_token_retries_and_stops_when_unchange
     s3 = lib.sync()
     assert extract_calls == 2
     assert s3["inventory"][0].get("reused") is True
+
+
+def test_tk208_d2_fluctuating_confirmed_unreadable_stops_after_one_retry(tmp_path):
+    """F2: 확정 미독 쪽 집합이 회차마다 달라져도 1회 재시도(총 2회 추출) 후 확정해 무한 재다운로드를 막는다."""
+    pdf_path = _write_dummy_pdf(tmp_path / "fluctuating.pdf", "fluctuating")
+    pdf_bytes = pdf_path.read_bytes()
+    digest = hashlib.sha256(pdf_bytes).hexdigest()
+    client = _StubDrive({"f_fluc": ("합성경계자료.pdf", pdf_bytes, "application/pdf")})
+    extract_calls = 0
+
+    def fluctuating_extractor(path, filename, mime, **kwargs):
+        nonlocal extract_calls
+        extract_calls += 1
+        unread = [2] if extract_calls % 2 == 1 else [3]
+        return {
+            "chunks": [{"page": 1, "start": 0, "text": "제1쪽 정상 본문"}],
+            "sha256": digest,
+            "partial": True,
+            "coverage_complete": True,
+            "content_readable_complete": False,
+            "read_completeness": "READABLE_COMPLETE_WITH_UNREADABLE",
+            "reason": "CONTENT_UNREADABLE_PAGES",
+            "pages": 3,
+            "read_pages": 2,
+            "unread_pages": unread,
+            "unread_pages_by_cause": {"OCR_LOW_QUALITY": unread},
+            "confirmed_unreadable_pages": unread,
+            "confirmed_unreadable_causes": {"OCR_LOW_QUALITY": 1},
+            "execution_incomplete_pages": [],
+            "continuation": None,
+        }
+
+    settings = replace(
+        get_settings(),
+        storage_root=tmp_path / "lib",
+        rag_drive_folder_id=ROOT,
+        allow_network=True,
+        rag_metadata_first=False,
+        rag_sync_seconds=60,
+    )
+    lib = ReferenceLibrary(settings, client_factory=client, extractor=fluctuating_extractor)
+
+    for _ in range(6):
+        s = lib.sync()
+    assert extract_calls == 2
+    assert s["status"] == "READY"
+    assert s["read_completeness"] == "READY_WITH_UNREADABLE"
+    assert s["inventory"][0].get("reused") is True
+

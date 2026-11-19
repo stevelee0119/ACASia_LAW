@@ -514,11 +514,11 @@ class ReferenceLibrary:
                     by_cause = p.get("unread_pages_by_cause") or {}
                     config_blocked = set(p.get("config_blocked_pages") or [])
                     confirmed = set(p.get("confirmed_unreadable_pages") or [])
-                    for cause_key in ("BUDGET_EXHAUSTED", "READ_TIMEOUT", "PARSE_FAILED"):
+                    for cause_key in ("BUDGET_EXHAUSTED", "READ_TIMEOUT"):
                         pages_for_cause = [pg for pg in (by_cause.get(cause_key) or []) if pg not in config_blocked and pg not in confirmed]
                         if pages_for_cause:
                             return True
-                    return p.get("reason") in ("REFERENCE_PARSE_TIMEOUT", "REFERENCE_PARSE_FAILED")
+                    return False
 
                 def _needs_unreadable_confirmation(p: dict) -> bool:
                     return bool(
@@ -649,15 +649,15 @@ class ReferenceLibrary:
                         else:
                             parsed["retry_attempts"] = 0
                     if parsed.get("confirmed_unreadable_pages"):
+                        attempts = int((prior or {}).get("unreadable_confirm_attempts") or 0) + 1
+                        parsed["unreadable_confirm_attempts"] = attempts
                         if (
                             retry_reason == "confirm_unreadable"
                             and prior
                             and sorted(parsed.get("confirmed_unreadable_pages") or []) == sorted(prior.get("confirmed_unreadable_pages") or [])
-                        ):
-                            parsed["unreadable_confirm_attempts"] = int(prior.get("unreadable_confirm_attempts") or 1) + 1
+                        ) or attempts >= 2:
                             parsed["unreadable_confirmed"] = True
                         elif parsed.get("unreadable_confirmed") is not True:
-                            parsed["unreadable_confirm_attempts"] = 1
                             parsed["unreadable_confirmed"] = False
                     if parsed.get("continuation"):
                         limit_bytes = max(0, int(getattr(self, "max_raw_cache_bytes", MAX_RAW_CACHE_BYTES)))
