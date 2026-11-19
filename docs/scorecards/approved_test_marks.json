@@ -1,5 +1,5 @@
 {
-  "note": "평가 측이 승인한 시험 표시 목록. scripts/check_test_edits.py가 이 목록의 (시험, 표시)만 승인으로 본다. 이 파일은 평가 측 커밋(Agent: evaluator)으로만 바꾼다. · 2026-11-19 TK-208 3건(PR #343 내부 시험 교체)은 평가 측 승인으로 올렸고 사용자 확인 대기 상태다. 지워진 세 시험은 Steve_ACASiaLAW에 없던 PR 내부 시험이며 그중 하나는 F1의 잘못된 동작을 단언하고 있었다. 상세는 docs/scorecards/round2_verdicts_20261119.md 8·9절.",
+  "note": "평가 측이 승인한 시험 표시 목록. scripts/check_test_edits.py가 이 목록의 (시험, 표시)만 승인으로 본다. 이 파일은 평가 측 커밋(Agent: evaluator)으로만 바꾼다. · 2026-11-19 TK-208 3건(PR #343 내부 시험 교체)은 평가 측 승인으로 올렸고 2026-11-19 사용자 확인을 받았다(원문 \"(나) 시험 교체 삭제 승인도 권고대로 할께. 평가측 승인으로 하자\") — 평가 측 승인으로 둔다. 지워진 세 시험은 Steve_ACASiaLAW에 없던 PR 내부 시험이며 그중 하나는 F1의 잘못된 동작을 단언하고 있었다. 상세는 docs/scorecards/round2_verdicts_20261119.md 8·9절.",
   "approved": [
     {"test": "tests/regression/test_r8d_key_context.py::test_name_fields_outside_exact_label_vocabulary_fail_closed", "mark": "xfail", "ticket": "TK-56", "approved": "2026-10-04", "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"},
     {"test": "tests/regression/test_r8d_key_context.py::test_name_key_values_with_spacing_lists_titles_or_particles_are_blocked", "mark": "xfail", "ticket": "TK-56", "approved": "2026-10-04", "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"},
