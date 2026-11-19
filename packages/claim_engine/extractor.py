@@ -444,18 +444,20 @@ def extract_entities(doc: NormalizedDocument, *, project_id: Optional[str] = Non
 
 
 _PRECEDENT_COURT_CUE_RE = re.compile(
-    r"(?:대법원|헌법재판소|전원합의체|[가-힣]{1,10}(?:지방|고등|가정|행정|회생|특허|군사)법원)"
+    # 종류어 앞 수식어는 선택이다. 앞에 지명이 붙지 않는 이름도 받는다.
+    r"(?:대법원|헌법재판소|전원합의체|[가-힣]{0,10}(?:지방|고등|가정|행정|회생|특허|군사)법원)"
 )
 _PRECEDENT_AFTER_RE = re.compile(
     r"^\s*\.?\s*(?:(?:선고|자)\s*(?:전원재판부\s*|전원합의체\s*)?\d{2,4}[가-힣]{1,4}\d+|"
     r"(?:전원합의체\s*)?\d{2,4}[가-힣]{1,4}\d+\s*(?:전원재판부\s*)?(?:판결|결정|명령))"
 )
 _PRECEDENT_AFTER_GENERIC_RE = re.compile(
-    r"^\s*\.?\s*(?:(?:전원합의체|전원재판부)\s*)?(?:"
-    r"판결|결정|명령|"
-    # 재판 주체의 재판 행위 어간 + 활용. 어미를 낱말로 열거하지 않고
-    # '하/되' 결합과 그 뒤에 이어지는 한글 활용 전체를 범위로 받는다.
-    r"(?:선고|판시|설시|판단|결정)(?:\s*(?:하|되))?[가-힣]*"
+    r"^\s*\.?\s*자?\s*(?:(?:전원합의체|전원재판부)\s*)?(?:"
+    # 재판 결과 명사. 뒤에 한글이 붙어 복합명사가 되는 꼴(결정문·판결문)은 받지 않고 조사만 허용한다.
+    r"(?:판결|결정|명령)(?:(?![가-힣])|(?=[은는이가을를에의으로와과도만부까]))|"
+    # 재판 행위 어간 + '하다/되다' 활용. 어간 바로 뒤 음절이 '하'/'되'의 활용인지로 가른다.
+    # 복합명사(선고기일·판단자료)는 그 음절이 아니므로 빠진다.
+    r"(?:선고|판시|설시|판단|결정)\s*[하한할함합해했되된될됨됩돼][가-힣]*"
     r")"
 )
 _INSTANT_CASE_COURT_RE = re.compile(
@@ -511,6 +513,10 @@ def _is_legal_authority_date(sentence: str, match_start: int, match_end: int) ->
         return True
     if _PRECEDENT_COURT_CUE_RE.search(before) and _PRECEDENT_AFTER_GENERIC_RE.match(after):
         if _INSTANT_CASE_COURT_RE.search(before) and not _CASE_CITATION_NUM_RE.search(after[:30]):
+            return False
+        # 법원 표지와 날짜 사이에 당사자 주격이 오면 법원은 수식어이고 행위 주체는 당사자다.
+        court_last = max((m.end() for m in _PRECEDENT_COURT_CUE_RE.finditer(before)), default=0)
+        if _PARTY_SUBJECT_CUE_RE.search(before[court_last:]):
             return False
         return True
 
