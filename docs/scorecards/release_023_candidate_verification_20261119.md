@@ -26,7 +26,7 @@ CI가 3.11에서 모두 통과시켰으므로(아래 4절) 이 불일치는 기�
 | acceptance | 통과 | 통과 1,276 · 실제 실패 0 · strict XPASS 0 (143.9초) |
 | regression_ledger | 통과 | 통과 2,357 · 실제 실패 0 · strict XPASS 0 (31.9초) |
 | score_gate | 통과 | 점수 게이트 통과(고정 세트 하락 없음) |
-| regression_gate | 통과 | **회귀 없음** — 명세 전 항목 base=head |
+| regression_gate | **실패(exit 2)** | 측정하지 못한 항목이 있다 — 아래 설명. 같은 SHA를 CI 동등 조건에서 다시 재 '회귀 없음'을 받았다 |
 | hardcoding_diff | 통과 | 추가된 줄 8,222개에 시험 입력의 값·낱말·조문 번호 없음 |
 | test_edits | 통과 | 기존 시험의 삭제·표시 변경 없음 |
 | protected_paths | 통과 | 바뀐 보호 경로 34개 모두 평가 측 커밋 또는 승인 |
@@ -35,6 +35,8 @@ CI가 3.11에서 모두 통과시켰으므로(아래 4절) 이 불일치는 기�
 | browser_tests | 통과 | 통과 200 · 실제 실패 0 |
 
 ### 회귀 게이트 항목별
+
+아래는 **이 verify_all 실행의 결과가 아니라**, 같은 SHA `2b8b4bd`를 CI 동등 조건(`HOME`이 저장소를 품는 조건)에서 따로 돌린 `regression_gate --base v.0.22.0 --head-scorecard artifacts/scorecard.json`의 결과다. verify_all 안의 같은 단계는 exit 2로 끝났고 그 원인은 TK-219다. 두 결과는 **실행과 조건이 다르다**.
 
 base → head, 전 항목 동일:
 
