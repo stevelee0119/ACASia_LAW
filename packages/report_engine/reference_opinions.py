@@ -7,6 +7,35 @@ LEGEND = "주요 참고문헌은 등록된 검증 자료입니다. 판례·법�
 REPORT_NOTICE = ("본 참고문헌 대조 의견은 사설 Google Drive 자료를 기반으로 한 보조 검토 의견이며, "
                  "공식 판정·등급·점수 또는 공식 확인(OFFICIAL_CONFIRMED)이 아닙니다. " + LEGEND)
 
+_UNREADABLE_CAUSE_LABELS = {
+    "OCR_UNAVAILABLE": "OCR 미가용",
+    "OCR_LOW_QUALITY": "OCR 저품질",
+    "BUDGET_EXHAUSTED": "예산 소진",
+    "READ_TIMEOUT": "읽기 시간 초과",
+    "PARSE_FAILED": "파서 오류",
+    "CONTENT_NO_TEXT": "텍스트 없음",
+}
+
+
+def format_unreadable_summary(run_manifest: dict | None) -> str:
+    """참고자료 미독 요약 문구를 생성한다(Drive 식별자·파일명·본문 제외)."""
+    if not isinstance(run_manifest, dict):
+        return ""
+    lib = run_manifest.get("reference_library") or {}
+    unreadable = lib.get("unreadable_summary") or {}
+    pages = int(unreadable.get("pages") or 0)
+    files = int(unreadable.get("files") or 0)
+    if pages <= 0 or files <= 0:
+        return ""
+    by_cause = unreadable.get("by_cause") or {}
+    parts = [
+        f"{_UNREADABLE_CAUSE_LABELS.get(k, k)} {int(v)}쪽"
+        for k, v in by_cause.items()
+        if int(v or 0) > 0
+    ]
+    suffix = f" ({', '.join(parts)})" if parts else ""
+    return f"자료 {files}건의 {pages}쪽은 읽을 수 없습니다{suffix}."
+
 
 def reference_rows(document):
     if not value(document, "engine_data", {}).get("rag", {}).get("observations"):
