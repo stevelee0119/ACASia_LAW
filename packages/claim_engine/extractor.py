@@ -453,10 +453,7 @@ _PRECEDENT_AFTER_RE = re.compile(
 )
 _PRECEDENT_AFTER_GENERIC_RE = re.compile(
     r"^\s*\.?\s*자?\s*(?:(?:전원합의체|전원재판부)\s*)?(?:"
-    # 재판 결과 명사. 뒤에 한글이 붙어 복합명사가 되는 꼴(결정문·판결문)은 받지 않고 조사만 허용한다.
-    r"(?:판결|결정|명령)(?:(?![가-힣])|(?=[은는이가을를에의으로와과도만부까]))|"
-    # 재판 행위 어간 + '하다/되다' 활용. 어간 바로 뒤 음절이 '하'/'되'의 활용인지로 가른다.
-    # 복합명사(선고기일·판단자료)는 그 음절이 아니므로 빠진다.
+    r"(?:판결|결정|명령)[가-힣]*|"
     r"(?:선고|판시|설시|판단|결정)\s*[하한할함합해했되된될됨됩돼][가-힣]*"
     r")"
 )
@@ -503,6 +500,24 @@ _PARTY_PAST_PREDICATE_RE = re.compile(
 )
 
 
+# 행위 주체 판정용. 주격 조사만 받는다(에게·에 대하여는 목적어·부사어이므로 주체가 아니다).
+_PARTY_NOMINATIVE_CUE_RE = re.compile(
+    r"(?<![가-힣])(?:"
+    r"(?:원고|피고|피고인|신청인|피신청인|채권자|채무자|청구인|피청구인|항고인|상고인|"
+    r"고소인|고발인|피의자|피해자|상대방|당사자|소외|망|임대인|임차인|매도인|매수인|"
+    r"도급인|수급인|사용자|근로자|처분청|과세관청|관할청|피심인|소외인)"
+    r"(?:\s+[가-힣A-Za-z0-9()㈜]{1,12})?\s*(?:측)?(?:은|는|이|가)(?![가-힣])"
+    r")"
+)
+# 주격과 날짜 사이에 서술어가 있으면 그 주격은 내포절의 것이다.
+_EMBEDDED_PREDICATE_RE = re.compile(
+    # 인용·간접화법 어미. 어간을 열거하지 않고 어미만 본다.
+    r"(?:다고|라고|냐고|자고|다며|다는|라며|느냐고)(?![가-힣])"
+    # 관형형이 뒤 명사를 꾸미는 꼴(주격이 그 명사절 안에 있다는 표지)
+    r"|[가-힣](?:한|던|는|된)\s"
+)
+
+
 def _is_legal_authority_date(sentence: str, match_start: int, match_end: int) -> bool:
     """판례 선고·결정일 또는 법령 제정·개정·시행일 등 법적 근거 날짜인지 판별한다."""
     before = sentence[max(0, match_start - 35):match_start]
@@ -514,9 +529,12 @@ def _is_legal_authority_date(sentence: str, match_start: int, match_end: int) ->
     if _PRECEDENT_COURT_CUE_RE.search(before) and _PRECEDENT_AFTER_GENERIC_RE.match(after):
         if _INSTANT_CASE_COURT_RE.search(before) and not _CASE_CITATION_NUM_RE.search(after[:30]):
             return False
-        # 법원 표지와 날짜 사이에 당사자 주격이 오면 법원은 수식어이고 행위 주체는 당사자다.
         court_last = max((m.end() for m in _PRECEDENT_COURT_CUE_RE.finditer(before)), default=0)
-        if _PARTY_SUBJECT_CUE_RE.search(before[court_last:]):
+        tail = before[court_last:]
+        party = None
+        for m in _PARTY_NOMINATIVE_CUE_RE.finditer(tail):
+            party = m
+        if party is not None and not _EMBEDDED_PREDICATE_RE.search(tail[party.end():]):
             return False
         return True
 
