@@ -38,6 +38,8 @@ from packages.rag_engine.review import review_document
 from packages.source_adapters.base import AdapterResponse
 from packages.verification_engine.pipeline import DocumentResult, ProjectContext
 
+from tests.perf_scaling import assert_within
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -252,7 +254,7 @@ def test_review_document_claim_wave_runs_concurrently_bounded():
 
     assert rev["status"] == "REVIEWED_NO_ADVICE"
     assert peak_claims[0] == 4  # Semaphore caps claim wave concurrency at 4
-    assert elapsed < 0.5
+    assert_within(elapsed, 0.5)
 
 
 # ---------------------------------------------------------------------------

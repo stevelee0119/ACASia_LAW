@@ -32,6 +32,8 @@ from packages.common.storage import LocalObjectStorage, sha256_bytes
 from packages.common.terminology import TERMINOLOGY_VERSION, term_label
 from packages.report_engine.snapshot import canonical_hash
 
+from tests.perf_scaling import assert_within
+
 
 def test_cid_glyph_substitution_does_not_corrupt_embedded_korean_font(monkeypatch):
     from packages.report_engine import pdf_report
@@ -523,7 +525,7 @@ def test_word_and_pdf_appendix_scale_with_many_entries(report_case, monkeypatch)
                for i in range(3000)]
     started = time.perf_counter()
     blocks = _appendix_blocks(entries, style, 470)
-    assert time.perf_counter() - started < 10
+    assert_within(time.perf_counter() - started, 10)
     lines = [line for block in blocks for line in block.lines]
     assert max(stringWidth(line, style.fontName, style.fontSize) for line in lines) <= 470
     assert "".join(line.strip() for line in lines).count("https://official.example/full/source") == 3000
@@ -533,7 +535,7 @@ def test_word_and_pdf_appendix_scale_with_many_entries(report_case, monkeypatch)
     response = report_case.client.post("/api/projects/p1/reports", json={"formats": ["docx"], "detail_level": "FULL"})
     assert response.status_code == 201, response.text
     draft = response.json()
-    assert time.perf_counter() - started < 20
+    assert_within(time.perf_counter() - started, 20)
     word = WordDocument(io.BytesIO(download(report_case, draft, "docx")))
     texts = [p.text for p in word.paragraphs]
     assert texts.index("항목 0") < texts.index("항목 4999")

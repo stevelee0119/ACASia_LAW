@@ -19,6 +19,8 @@ from packages.llm_router.providers import LLMRequest, LLMResponse
 from packages.pii_engine import PIIEngine, PseudonymStore, detect
 from packages.pii_engine.detector import _is_category_person_stopword
 
+from tests.perf_scaling import assert_within
+
 
 # Synthetic examples chosen by category, not extracted from protected tests.
 CATEGORY_EXAMPLES = [
@@ -153,4 +155,4 @@ def test_category_candidate_repeated_input_time():
             gc.enable()
     elapsed = min(timings)
     print(f"TK-43 supplemental path 6,000 synthetic candidates: {elapsed:.6f}s (min of 3 runs, GC disabled)")
-    assert elapsed < 0.1
+    assert_within(elapsed, 0.1)

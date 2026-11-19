@@ -10,12 +10,20 @@
 평가 측이 표시를 지시하고 구현 측이 붙인 경우(예: 알려진 미해결 strict xfail)는 `docs/scorecards/approved_test_marks.json`에
 적힌 시험·표시만 승인으로 본다. 평가 측이 지시한 시험 교체(삭제)는 `"mark": "delete"`로 적는다(2026-10-04).
 그 파일을 마지막으로 바꾼 커밋이 `Agent: evaluator`일 때만 목록을 믿는다.
+
+승인의 적용 범위 (TK-215, 2026-11-19): 승인 항목은 `"scope": {"body": "<16자리>"}`로
+**그 시험의 본문 지문**에 한정한다. 이름만으로 걸면 같은 이름의 시험이 나중에 다시 만들어진 뒤
+또 지워질 때 새 검토 없이 통과한다. 지문은 이름을 뺀 정의(표시·인자·본문)의 SHA-256 앞 16자리다.
+`python scripts/check_test_edits.py --digest <경로> <시험이름> --ref <커밋>`으로 뽑는다.
+경과 조치: `approved`가 2026-11-19 이전인 옛 항목은 범위 없이도 그대로 쓰되 경고로 센다.
+그 날짜 이후 항목은 범위가 없으면 승인으로 보지 않는다.
 사용: python scripts/check_test_edits.py --base <기준 커밋>
 """
 from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import json
 import subprocess
 import sys
@@ -23,6 +31,8 @@ from typing import Dict, List, Optional, Tuple
 
 MARKS = ("skip", "skipif", "xfail")
 APPROVALS = "docs/scorecards/approved_test_marks.json"
+# 이 날짜(포함) 이후에 올린 승인은 적용 범위(`scope.body`)가 없으면 승인으로 보지 않는다.
+SCOPE_REQUIRED_FROM = "2026-11-19"
 
 
 def _git(*args: str) -> str:
@@ -87,6 +97,13 @@ def signatures(source: Optional[str]) -> Dict[str, str]:
     return out
 
 
+def body_digest(signature: Optional[str]) -> str:
+    """시험 본문 지문. signatures()가 돌려준 정의 문자열의 SHA-256 앞 16자리."""
+    if not signature:
+        return ""
+    return hashlib.sha256(signature.encode("utf-8")).hexdigest()[:16]
+
+
 def all_evaluator_commits(base: str) -> bool:
     log = _git("log", f"{base}..HEAD", "--format=%H%x00%B%x01")
     commits = [c for c in log.split("\x01") if c.strip()]
@@ -95,26 +112,77 @@ def all_evaluator_commits(base: str) -> bool:
     return all("Agent: evaluator" in c for c in commits)
 
 
-def approved_marks() -> set:
-    """평가 측이 승인한 (경로::시험, 표시) 쌍. 파일을 마지막으로 바꾼 커밋이 평가 측일 때만 믿는다."""
+def approved_marks() -> Dict[Tuple[str, str], List[dict]]:
+    """평가 측이 승인한 (경로::시험, 표시) -> 항목 목록.
+
+    파일을 마지막으로 바꾼 커밋이 평가 측일 때만 믿는다. 같은 (시험, 표시)에 항목이 여럿일 수
+    있으므로(본문이 다른 시점의 승인) 집합이 아니라 목록으로 돌려준다.
+    """
+    out: Dict[Tuple[str, str], List[dict]] = {}
     source = _show("HEAD", APPROVALS)
     if source is None:
-        return set()
+        return out
     last = _git("log", "-1", "--format=%B", "HEAD", "--", APPROVALS)
     if "Agent: evaluator" not in last:
         print(f"  [주의] {APPROVALS}를 마지막으로 바꾼 커밋이 평가 측이 아니라 승인 목록을 쓰지 않는다")
-        return set()
+        return out
     try:
         entries = json.loads(source).get("approved", [])
     except (ValueError, AttributeError):
-        return set()
-    return {(e.get("test", ""), e.get("mark", "")) for e in entries if isinstance(e, dict)}
+        return out
+    for e in entries:
+        if isinstance(e, dict):
+            out.setdefault((e.get("test", ""), e.get("mark", "")), []).append(e)
+    return out
+
+
+def match_approval(
+    entries: List[dict], digest: str, scope_required_from: str = SCOPE_REQUIRED_FROM
+) -> Tuple[Optional[dict], str]:
+    """(승인 항목 또는 None, 이유). 적용 범위를 대조한다 (TK-215).
+
+    - `scope.body`가 있으면 그 지문과 같을 때만 승인이다
+    - 범위가 없고 `approved`가 scope_required_from 이전이면 경과 조치로 승인한다(경고)
+    - 범위가 없고 그 날짜 이후면 승인으로 보지 않는다
+    """
+    legacy: Optional[dict] = None
+    for e in entries:
+        scope = e.get("scope")
+        want = (scope or {}).get("body") if isinstance(scope, dict) else None
+        if want:
+            if digest and want == digest:
+                return e, "범위 일치"
+            continue
+        approved_on = str(e.get("approved", ""))
+        if approved_on and approved_on >= scope_required_from:
+            continue
+        legacy = e
+    if legacy is not None:
+        return legacy, "범위 없는 옛 승인(경과 조치)"
+    if entries:
+        return None, "승인 항목이 있으나 적용 범위가 맞지 않는다"
+    return None, "승인 항목 없음"
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--base", required=True)
+    ap.add_argument("--base")
+    ap.add_argument("--digest", nargs=2, metavar=("경로", "시험이름"),
+                    help="그 시험의 본문 지문을 출력한다(승인 항목의 scope.body에 넣는다)")
+    ap.add_argument("--ref", default="HEAD", help="--digest가 읽을 커밋 (기본 HEAD)")
     args = ap.parse_args(argv)
+
+    if args.digest:
+        path, name = args.digest
+        sigs = signatures(_show(args.ref, path))
+        if name not in sigs:
+            print(f"{args.ref}:{path}에 시험 {name}이 없다", file=sys.stderr)
+            return 2
+        print(body_digest(sigs[name]))
+        return 0
+
+    if not args.base:
+        ap.error("--base 또는 --digest 가운데 하나가 필요하다")
 
     if all_evaluator_commits(args.base):
         print(f"시험 삭제·약화 점검 — 기준 {args.base}: 범위의 모든 커밋이 `Agent: evaluator`라 건너뜀")
@@ -128,6 +196,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     approved_seen: List[str] = []
     weakened: List[str] = []
     renamed: List[str] = []
+    legacy_scope: List[str] = []
     for path in changed:
         before_src, after_src = _show(args.base, path), _show("HEAD", path)
         before = collect(before_src)
@@ -141,14 +210,25 @@ def main(argv: Optional[List[str]] = None) -> int:
                     new_names.remove(twin)
                     renamed.append(f"{path}::{name} → {twin}")
                     continue
-                if (f"{path}::{name}", "delete") in approvals:
-                    approved_seen.append(f"{path}::{name} (삭제)")
+                digest = body_digest(before_sig.get(name))
+                entry, why = match_approval(approvals.get((f"{path}::{name}", "delete"), []), digest)
+                if entry is not None:
+                    approved_seen.append(f"{path}::{name} (삭제, {why})")
+                    if why.startswith("범위 없는"):
+                        legacy_scope.append(f"{path}::{name} (삭제) — 지문 {digest}")
                 else:
-                    removed.append(f"{path}::{name}")
+                    removed.append(f"{path}::{name}" + ("" if why == "승인 항목 없음" else f" — {why}, 지문 {digest}"))
                 continue
             a_asserts, a_marks = after[name]
             added = a_marks - marks
-            unapproved = {m for m in added if (f"{path}::{name}", m) not in approvals}
+            digest = body_digest(after_sig.get(name))
+            unapproved = set()
+            for m in added:
+                entry, why = match_approval(approvals.get((f"{path}::{name}", m), []), digest)
+                if entry is None:
+                    unapproved.add(m)
+                elif why.startswith("범위 없는"):
+                    legacy_scope.append(f"{path}::{name} (+{m}) — 지문 {digest}")
             if added - unapproved:
                 approved_seen.append(f"{path}::{name} (+{', '.join(sorted(added - unapproved))})")
             if unapproved:
@@ -170,12 +250,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"  [승인] 평가 측 승인 목록({APPROVALS})에 있는 표시 {len(approved_seen)}개")
         for it in approved_seen:
             print(f"    - {it}")
+    if legacy_scope:
+        print(f"  [경고] 적용 범위 없는 옛 승인으로 통과한 항목 {len(legacy_scope)}개 (TK-215 경과 조치)")
+        for it in legacy_scope:
+            print(f"    - {it}")
+        print(f"    범위를 넣으려면 {APPROVALS}의 해당 항목에 \"scope\": {{\"body\": \"<지문>\"}}를 적는다")
     if weakened:
         print(f"  [경고] assert가 줄어든 시험 {len(weakened)}개(약화 의심, 사람이 확인)")
         for it in weakened:
             print(f"    - {it}")
     if removed or newly_marked:
         print("기존 시험을 지우거나 표시를 바꾸려면 먼저 docs/handoff/requests/로 사유를 올리고 평가 측 승인을 받는다.")
+        print(f"승인은 적용 범위에 한정된다(TK-215). 승인 항목에 \"scope\": {{\"body\": \"<지문>\"}}를 적고,")
+        print("지문은 `python scripts/check_test_edits.py --digest <경로> <시험이름> --ref <기준 커밋>`으로 뽑는다.")
         return 1
     print("  기존 시험의 삭제·표시 변경 없음")
     return 0

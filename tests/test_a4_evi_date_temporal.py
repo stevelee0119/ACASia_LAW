@@ -41,6 +41,8 @@ from packages.verification_engine.pipeline import (
     VerificationPipeline,
 )
 
+from tests.perf_scaling import assert_within
+
 
 def _make_doc(*texts: str, doc_id: str = "synth_date_doc") -> NormalizedDocument:
     """합성 테스트용 정규화 문서를 생성한다 (한국어 주석)."""
@@ -570,8 +572,8 @@ def test_temporal_event_inversion_performance_scaling():
 
     ratio = min_4x / max(min_1x, 0.0005)
 
-    assert min_4x < 1.0, f"4배 길이 최솟값이 1초 이상입니다: {min_4x:.4f}s"
-    assert ratio < 8.0, f"4배/1배 최솟값 비율이 8배 이상입니다: {ratio:.2f}x (1x: {min_1x:.4f}s, 4x: {min_4x:.4f}s)"
+    assert_within(min_4x, 1.0, f'4배 길이 최솟값이 1초 이상입니다: {min_4x:.4f}s')
+    assert ratio < 8.0, f'4배/1배 최솟값 비율이 8배 이상입니다: {ratio:.2f}x (1x: {min_1x:.4f}s, 4x: {min_4x:.4f}s)'
 
 
 # ==============================================================================

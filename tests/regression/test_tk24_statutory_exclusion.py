@@ -9,6 +9,10 @@ from packages.common.schemas import Block, NormalizedDocument, Page
 from packages.legal_engine.claim_review import classify_claims, review_claims
 from packages.legal_engine.statutory_exclusion import exclusion_clauses
 
+from tests.perf_scaling import fastest_of
+
+from tests.perf_scaling import assert_within
+
 RULE = "CLAIM.STATUTORY_RULE_EXCLUSION"
 
 # All positive arguments are synthetic, and vary both the legal target and rationale.
@@ -164,18 +168,12 @@ def test_synthetic_repeated_input_finishes_within_tenth_second():
     examples = [POSITIVES[0], POSITIVES[2], CONTROLS[0], "형평 " + "가" * 100 + " 법정 기간 검토"]
     # 2026-10-25 평가 측: 전체 시험 세션의 큰 힙에서 2세대 GC 한 번이 0.2~0.4초 걸려(로컬 재현 0.385초)
     # PR CI에서 0.25·0.23초로 두 번 실패했다. 재는 것은 정규식·절 분석 시간이므로 측정 구간만 GC를 멈춘다(기준 0.1초 유지).
-    import gc
-
-    gc.collect()
-    gc.disable()
-    try:
-        start = perf_counter()
-        results = [exclusion_clauses(examples[i % 4]) for i in range(2000)]
-        elapsed = perf_counter() - start
-    finally:
-        gc.enable()
+    # TK-214: GC 중지와 반복 최솟값은 fastest_of가 함께 한다(예외가 나도 GC를 되살린다).
+    # 대상에 캐시가 있으나 2,000회 가운데 처음 4회만 적재이므로 회차 간 측정 대상이 같다.
+    elapsed, results = fastest_of(
+        lambda: [exclusion_clauses(examples[i % 4]) for i in range(2000)])
     assert sum(bool(v) for v in results) == 1000
-    assert elapsed < 0.1
+    assert_within(elapsed, 0.1)
 
 
 def test_synthetic_long_sentence_and_repeated_prefixes_are_linear():
@@ -190,7 +188,7 @@ def test_synthetic_long_sentence_and_repeated_prefixes_are_linear():
         started = perf_counter()
         for _ in range(2000):
             exclusion_clauses(prefix + "적용이 배제되어야 한다.")
-        assert perf_counter() - started < 0.1
+        assert_within(perf_counter() - started, 0.1)
     # 긴 문장은 절대 시간 대신 길이 4배의 시간 비로 선형을 본다(2026-10-10 평가 측: CI 실행기 부하로
     # 0.1초 단일 측정이 0.244초가 되어 실패). 캐시를 비운 3회 중 최소값을 쓴다. 제곱 시간이면 비가 16 근처다.
     from packages.legal_engine.statutory_exclusion import _exclusion_clauses_cached
@@ -206,12 +204,12 @@ def test_synthetic_long_sentence_and_repeated_prefixes_are_linear():
 
     quarter = "소멸시효는 정의에 따라 적용이 배제되어야 하므로, " + "그 적용은 법정 기간의 취지에 반한다. " * 1125
     long_time = cold(long_sentence)
-    assert long_time < 1.0
+    assert_within(long_time, 1.0, "긴 문장 냉시작")
     assert long_time / max(cold(quarter), 1e-4) < 8
     started = perf_counter()
     for _ in range(2000):
         classify_claims("소멸시효의 적용을 배제하여 달라.")
-    assert perf_counter() - started < 0.1
+    assert_within(perf_counter() - started, 0.1)
 
 
 @pytest.mark.parametrize('prefix,expected', [
@@ -239,7 +237,7 @@ def test_synthetic_single_sentence_2000_repetitions_cold_budget(prefix, expected
     finally:
         if gc_enabled:
             gc.enable()
-    assert min(timings) < 0.1
+    assert_within(min(timings), 0.1)
 
 
 def test_synthetic_previous_citation_is_scanned_once_per_sentence(monkeypatch):

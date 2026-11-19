@@ -14,6 +14,8 @@ from packages.llm_router import router as router_module
 from packages.llm_router.providers import LLMRequest, LLMResponse
 from packages.pii_engine import PIIEngine, PseudonymStore, detector
 
+from tests.perf_scaling import assert_within
+
 
 SYNTHETIC_ACCOUNTS = [
     ("계좌번호: ", "357-8246-1357-92"),
@@ -134,4 +136,4 @@ def test_synthetic_repeated_separator_input_is_fast():
         if gc_was_enabled:
             gc.enable()
     elapsed = min(timings)
-    assert elapsed < 0.1
+    assert_within(elapsed, 0.1)

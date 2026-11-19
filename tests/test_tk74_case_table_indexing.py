@@ -18,6 +18,8 @@ from packages.rag_engine.library import ReferenceLibrary, is_case_table_candidat
 from packages.rag_engine.review import review_document
 from packages.verification_engine.pipeline import DocumentResult, ProjectContext
 
+from tests.perf_scaling import assert_within
+
 
 def test_is_case_table_candidate_repeated_performance():
     """표 후보 판별 반복 입력 시간 시험 (2,500회 0.1초 이내)."""
@@ -37,7 +39,7 @@ def test_is_case_table_candidate_repeated_performance():
     assert results[2] is True
     assert results[3] is True
     assert results[4] is False  # 96MB 초과
-    assert (t1 - t0) < 0.1
+    assert_within(t1 - t0, 0.1)
 
 
 def test_case_table_indexed_without_name_match_real_path(tmp_path, monkeypatch):

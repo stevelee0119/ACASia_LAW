@@ -14,6 +14,10 @@ from packages.legal_engine.citation_extractor import (
     BARE_PARAGRAPH_REF_RE, LAW_RE, SpanTracker, _law_matches, extract_citations, extract_from_text,
 )
 
+from tests.perf_scaling import fastest_of
+
+from tests.perf_scaling import assert_within
+
 
 def _matches(matches):
     return [(m.span(), m.groupdict(), m.groups()) for m in matches]
@@ -42,13 +46,12 @@ def test_anchored_law_search_preserves_order_across_overlapping_grammar():
 @pytest.mark.parametrize("space", [" ", "\n", "\t"])
 def test_law_name_anchor_does_not_limit_intervening_whitespace(space):
     text = "「합성법률」" + space * 80000 + "부칙" + space * 80000 + "제17조 제3항"
-    started = time.perf_counter()
-    matches = list(_law_matches(text))
-    elapsed = time.perf_counter() - started
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+    elapsed, matches = fastest_of(lambda: list(_law_matches(text)))
     assert len(matches) == 1
     assert matches[0].span() == (0, len(text))
     assert matches[0].group("law", "article", "paragraph") == ("「합성법률」", "17", "3")
-    assert elapsed < 1.0
+    assert_within(elapsed, 1.0)
 
 
 @pytest.mark.parametrize("prefix", ["", " ", "다.", "조", "조 ", "조\t", "조  ", "1", "９", "가"])
@@ -111,7 +114,7 @@ def test_anchor_and_sentence_short_repetitions():
     for _ in range(2500):
         assert len(list(_law_matches(text))) == 1
         assert sentence_bounds(text) == expected
-    assert time.perf_counter() - started < 0.1
+    assert_within(time.perf_counter() - started, 0.1)
 
 
 @pytest.mark.parametrize("text", [
