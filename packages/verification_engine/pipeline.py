@@ -538,9 +538,22 @@ class VerificationPipeline:
                     try:
                         review = review_document(document_result, references, self.router, context, pii)
                     except Exception as exc:
-                        review = {"status": "UNVERIFIED", "reason": "REFERENCE_REVIEW_FAILED", "advisory_only": True,
-                                  "drive_used": False, "error": type(exc).__name__}
+                        err_name = type(exc).__name__
+                        review = {
+                            "status": "UNVERIFIED",
+                            "reason": "REFERENCE_REVIEW_FAILED",
+                            "advisory_only": True,
+                            "drive_used": False,
+                            "review_completed": False,
+                            "error": err_name,
+                            "error_detail": str(exc)[:200],
+                            "unreviewed_scope": "DOCUMENT_REFERENCE_REVIEW",
+                        }
                         document_result.engine_data["rag"] = review
+                        stage.error = err_name
+                    if review.get("status") == "UNVERIFIED" or review.get("reason") == "REFERENCE_REVIEW_FAILED":
+                        stage.error = stage.error or str(review.get("error") or review.get("reason") or "REFERENCE_REVIEW_FAILED")
+                        review.setdefault("unreviewed_scope", "DOCUMENT_REFERENCE_REVIEW")
                     stage.note = review["status"]
                     # 실제 모델 비교를 실행한 경우 executed=True가 되도록 하고, 미실행 시에만 skip_reason 부여
                     if not review.get("model_executed") and review["status"] not in ("ADVISORY_REVIEWED", "REVIEWED_NO_ADVICE"):
