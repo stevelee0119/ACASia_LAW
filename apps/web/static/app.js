@@ -1900,7 +1900,14 @@ function referenceSection(docs) {
     const review = doc.engine_data?.rag;
     if (!review) continue;
     const details = bindReferenceDetails(node("details"), `doc:${doc.document_id || doc.id || doc.filename || docIdx}`);
-    details.append(node("summary", `${doc.filename}: ${statuses[review.status] || review.status}`));
+    const isReviewFailed = review.status === "UNVERIFIED" || review.reason === "REFERENCE_REVIEW_FAILED";
+    const statusLabel = isReviewFailed ? "대조 실패(미검토)" : (statuses[review.status] || review.status);
+    details.append(node("summary", `${doc.filename}: ${statusLabel}`));
+    if (isReviewFailed) {
+      const errSuffix = review.error ? ` (${review.error})` : "";
+      details.append(node("p", `참고자료 대조 자체가 실패했습니다 — 사유: ${friendlyText(review.reason || "REFERENCE_REVIEW_FAILED")}${errSuffix}`, "warning-text"));
+      details.append(node("p", "미검토 범위: 이 문서의 Drive 참고자료 대조 전체가 완료되지 않았습니다('검토했으나 근거 없음'과 다름).", "warning-text"));
+    }
     if (review.claim_coverage && typeof review.claim_coverage.eligible_claims === "number") {
       const c = review.claim_coverage;
       const pct = c.eligible_claims > 0 ? Math.round(((c.linked_claims || 0) / c.eligible_claims) * 100) : 0;
