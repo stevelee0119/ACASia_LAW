@@ -444,14 +444,18 @@ def extract_entities(doc: NormalizedDocument, *, project_id: Optional[str] = Non
 
 
 _PRECEDENT_COURT_CUE_RE = re.compile(
-    r"(?:대법원|헌법재판소|전원합의체|[가-힣]{1,10}(?:지방|고등|가정|행정|회생|특허|군사)법원)"
+    # 종류어 앞 수식어는 선택이다. 앞에 지명이 붙지 않는 이름도 받는다.
+    r"(?:대법원|헌법재판소|전원합의체|[가-힣]{0,10}(?:지방|고등|가정|행정|회생|특허|군사)법원)"
 )
 _PRECEDENT_AFTER_RE = re.compile(
     r"^\s*\.?\s*(?:(?:선고|자)\s*(?:전원재판부\s*|전원합의체\s*)?\d{2,4}[가-힣]{1,4}\d+|"
     r"(?:전원합의체\s*)?\d{2,4}[가-힣]{1,4}\d+\s*(?:전원재판부\s*)?(?:판결|결정|명령))"
 )
 _PRECEDENT_AFTER_GENERIC_RE = re.compile(
-    r"^\s*\.?\s*(?:(?:전원합의체|전원재판부)\s*)?(?:판결|결정|명령|선고(?![가-힣]))"
+    r"^\s*\.?\s*자?\s*(?:(?:전원합의체|전원재판부)\s*)?(?:"
+    r"(?:판결|결정|명령)[가-힣]*|"
+    r"(?:선고|판시|설시|판단|결정)\s*[하한할함합해했되된될됨됩돼][가-힣]*"
+    r")"
 )
 _INSTANT_CASE_COURT_RE = re.compile(
     r"이\s*사건\s*(?:원심|제?1심|제?2심|항소심|상고심|소송|사건)"
@@ -496,6 +500,24 @@ _PARTY_PAST_PREDICATE_RE = re.compile(
 )
 
 
+# 행위 주체 판정용. 주격 조사만 받는다(에게·에 대하여는 목적어·부사어이므로 주체가 아니다).
+_PARTY_NOMINATIVE_CUE_RE = re.compile(
+    r"(?<![가-힣])(?:"
+    r"(?:원고|피고|피고인|신청인|피신청인|채권자|채무자|청구인|피청구인|항고인|상고인|"
+    r"고소인|고발인|피의자|피해자|상대방|당사자|소외|망|임대인|임차인|매도인|매수인|"
+    r"도급인|수급인|사용자|근로자|처분청|과세관청|관할청|피심인|소외인)"
+    r"(?:\s+[가-힣A-Za-z0-9()㈜]{1,12})?\s*(?:측)?(?:은|는|이|가)(?![가-힣])"
+    r")"
+)
+# 주격과 날짜 사이에 서술어가 있으면 그 주격은 내포절의 것이다.
+_EMBEDDED_PREDICATE_RE = re.compile(
+    # 인용·간접화법 어미. 어간을 열거하지 않고 어미만 본다.
+    r"(?:다고|라고|냐고|자고|다며|다는|라며|느냐고)(?![가-힣])"
+    # 관형형이 뒤 명사를 꾸미는 꼴(주격이 그 명사절 안에 있다는 표지)
+    r"|[가-힣](?:한|던|는|된)\s"
+)
+
+
 def _is_legal_authority_date(sentence: str, match_start: int, match_end: int) -> bool:
     """판례 선고·결정일 또는 법령 제정·개정·시행일 등 법적 근거 날짜인지 판별한다."""
     before = sentence[max(0, match_start - 35):match_start]
@@ -506,6 +528,13 @@ def _is_legal_authority_date(sentence: str, match_start: int, match_end: int) ->
         return True
     if _PRECEDENT_COURT_CUE_RE.search(before) and _PRECEDENT_AFTER_GENERIC_RE.match(after):
         if _INSTANT_CASE_COURT_RE.search(before) and not _CASE_CITATION_NUM_RE.search(after[:30]):
+            return False
+        court_last = max((m.end() for m in _PRECEDENT_COURT_CUE_RE.finditer(before)), default=0)
+        tail = before[court_last:]
+        party = None
+        for m in _PARTY_NOMINATIVE_CUE_RE.finditer(tail):
+            party = m
+        if party is not None and not _EMBEDDED_PREDICATE_RE.search(tail[party.end():]):
             return False
         return True
 
