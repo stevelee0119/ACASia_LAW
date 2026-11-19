@@ -1,0 +1,225 @@
+{
+  "source": "sanitized live support_diagnostics; no excerpts or source, file, claim identifiers",
+  "runs": [
+    {
+      "repeat": 1,
+      "target_source_chunks_selected": 1,
+      "excerpt_delivery": [
+        {
+          "source_chars": 387,
+          "delivered_chars": 387,
+          "offset_start": 0,
+          "offset_end": 387
+        },
+        {
+          "source_chars": 387,
+          "delivered_chars": 387,
+          "offset_start": 0,
+          "offset_end": 387
+        },
+        {
+          "source_chars": 387,
+          "delivered_chars": 387,
+          "offset_start": 0,
+          "offset_end": 387
+        },
+        {
+          "source_chars": 387,
+          "delivered_chars": 387,
+          "offset_start": 0,
+          "offset_end": 387
+        }
+      ],
+      "model_responses": {
+        "target_raw": {
+          "SUPPORTS": 0,
+          "CONTRADICTS": 0,
+          "CONTEXT": 3,
+          "INSUFFICIENT": 4,
+          "OTHER": 0
+        },
+        "global_rejected_count": 3,
+        "global_rejected_reasons": {
+          "QUOTE_NOT_GROUNDED": 3
+        }
+      },
+      "promotion_attachment": {
+        "global": {
+          "after_grounding": {
+            "SUPPORTS": 0,
+            "CONTRADICTS": 6,
+            "CONTEXT": 28,
+            "INSUFFICIENT": 9,
+            "OTHER": 0
+          },
+          "after_dedup": {
+            "SUPPORTS": 3,
+            "CONTRADICTS": 5,
+            "CONTEXT": 27,
+            "INSUFFICIENT": 9,
+            "OTHER": 0
+          },
+          "after_link_issues": {
+            "SUPPORTS": 3,
+            "CONTRADICTS": 5,
+            "CONTEXT": 27,
+            "INSUFFICIENT": 9,
+            "OTHER": 0
+          },
+          "deterministic_supports": 4
+        },
+        "target_final_relationships": {
+          "CONTEXT": 2,
+          "INSUFFICIENT": 4
+        }
+      }
+    },
+    {
+      "repeat": 2,
+      "target_source_chunks_selected": 1,
+      "excerpt_delivery": [
+        {
+          "source_chars": 387,
+          "delivered_chars": 387,
+          "offset_start": 0,
+          "offset_end": 387
+        },
+        {
+          "source_chars": 387,
+          "delivered_chars": 387,
+          "offset_start": 0,
+          "offset_end": 387
+        },
+        {
+          "source_chars": 387,
+          "delivered_chars": 387,
+          "offset_start": 0,
+          "offset_end": 387
+        },
+        {
+          "source_chars": 387,
+          "delivered_chars": 387,
+          "offset_start": 0,
+          "offset_end": 387
+        }
+      ],
+      "model_responses": {
+        "target_raw": {
+          "SUPPORTS": 0,
+          "CONTRADICTS": 0,
+          "CONTEXT": 3,
+          "INSUFFICIENT": 2,
+          "OTHER": 0
+        },
+        "global_rejected_count": 2,
+        "global_rejected_reasons": {
+          "QUOTE_NOT_GROUNDED": 1,
+          "INVALID_ITEM_SCHEMA": 1
+        }
+      },
+      "promotion_attachment": {
+        "global": {
+          "after_grounding": {
+            "SUPPORTS": 0,
+            "CONTRADICTS": 5,
+            "CONTEXT": 28,
+            "INSUFFICIENT": 11,
+            "OTHER": 0
+          },
+          "after_dedup": {
+            "SUPPORTS": 3,
+            "CONTRADICTS": 5,
+            "CONTEXT": 28,
+            "INSUFFICIENT": 11,
+            "OTHER": 0
+          },
+          "after_link_issues": {
+            "SUPPORTS": 3,
+            "CONTRADICTS": 5,
+            "CONTEXT": 28,
+            "INSUFFICIENT": 11,
+            "OTHER": 0
+          },
+          "deterministic_supports": 4
+        },
+        "target_final_relationships": {
+          "CONTEXT": 3,
+          "INSUFFICIENT": 2
+        }
+      }
+    },
+    {
+      "repeat": 3,
+      "target_source_chunks_selected": 1,
+      "excerpt_delivery": [
+        {
+          "source_chars": 387,
+          "delivered_chars": 387,
+          "offset_start": 0,
+          "offset_end": 387
+        },
+        {
+          "source_chars": 387,
+          "delivered_chars": 387,
+          "offset_start": 0,
+          "offset_end": 387
+        },
+        {
+          "source_chars": 387,
+          "delivered_chars": 387,
+          "offset_start": 0,
+          "offset_end": 387
+        },
+        {
+          "source_chars": 387,
+          "delivered_chars": 387,
+          "offset_start": 0,
+          "offset_end": 387
+        }
+      ],
+      "model_responses": {
+        "target_raw": {
+          "SUPPORTS": 0,
+          "CONTRADICTS": 0,
+          "CONTEXT": 3,
+          "INSUFFICIENT": 4,
+          "OTHER": 0
+        },
+        "global_rejected_count": 2,
+        "global_rejected_reasons": {
+          "QUOTE_NOT_GROUNDED": 2
+        }
+      },
+      "promotion_attachment": {
+        "global": {
+          "after_grounding": {
+            "SUPPORTS": 0,
+            "CONTRADICTS": 6,
+            "CONTEXT": 29,
+            "INSUFFICIENT": 13,
+            "OTHER": 0
+          },
+          "after_dedup": {
+            "SUPPORTS": 3,
+            "CONTRADICTS": 6,
+            "CONTEXT": 29,
+            "INSUFFICIENT": 13,
+            "OTHER": 0
+          },
+          "after_link_issues": {
+            "SUPPORTS": 3,
+            "CONTRADICTS": 6,
+            "CONTEXT": 29,
+            "INSUFFICIENT": 13,
+            "OTHER": 0
+          },
+          "deterministic_supports": 4
+        },
+        "target_final_relationships": {
+          "CONTEXT": 3,
+          "INSUFFICIENT": 4
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,519 @@
+{
+  "deployment": {
+    "expected_main_commit": "aaf51806cec24e75c478fd894a5289c3f99a59cb",
+    "version_string": "0.22.0",
+    "health_commit": "aaf51806cec24e75c478fd894a5289c3f99a59cb",
+    "database_status": "ok",
+    "health_checked_kst": "2026-11-19T23:26:15.434684+09:00",
+    "measurement_recorded_kst": "2026-11-19T16:17:24.410354+09:00",
+    "off_restored_after_on": {
+      "checked_kst": "2026-11-19T16:17:03.678131+09:00",
+      "health_commit": "aaf51806cec24e75c478fd894a5289c3f99a59cb",
+      "database_status": "ok",
+      "prompt_version": "v0.2"
+    }
+  },
+  "execution_conditions": {
+    "rule_version": "2026.09.30.1",
+    "case9_spec_rule_version": "2",
+    "case9_input_sha256": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92",
+    "api_tk75_off_prompt_version": "v0.2",
+    "worker_tk75_off_verified": true,
+    "off_prompt_versions": [
+      "v0.2"
+    ],
+    "model_config_version": "anthropic:claude-opus-5-5|gemini:gemini-4-hydrogen|openai:gpt-6-luna|routing:729b7931ceda",
+    "network_allowed": true,
+    "reference_library_hash": "8800062ef538fdce45715f3e12c6036b395f365d136f7859578f83c897f0e7a2",
+    "reference_status": "PARTIAL",
+    "reference_completed_pages": 8807,
+    "reference_total_pages": 8823
+  },
+  "standard_23": {
+    "prior_2026_10_10": {
+      "passed": 21,
+      "total": 23,
+      "failed_items": [
+        "LEG-2",
+        "RAG-2"
+      ]
+    },
+    "off_runs": [
+      {
+        "repeat": 1,
+        "result_state": "PARTIAL_COMPLETED",
+        "started_kst": "2026-11-19T14:33:32.728740+09:00",
+        "finished_kst": "2026-11-19T14:39:37.939503+09:00",
+        "report_sha256": "7c45eeddfe92ec040c1294a99701febd4eb86bf72b5a71f237a0dafcedd26e91",
+        "worker_tk75_enabled": false,
+        "prompt_version": "v0.2",
+        "reference_status": "PARTIAL",
+        "reference_library_hash": "8800062ef538fdce45715f3e12c6036b395f365d136f7859578f83c897f0e7a2",
+        "reference_files_indexed": 41,
+        "reference_files_seen": 41,
+        "scores": {
+          "case9_state_compensation_online": {
+            "passed": 23,
+            "total": 23,
+            "items": {
+              "AI-1": true,
+              "AI-2": true,
+              "AI-3": true,
+              "AI-4": true,
+              "EX-1": true,
+              "EX-2": true,
+              "EX-2s": true,
+              "TMP-1": true,
+              "LEG-1": true,
+              "LEG-2": true,
+              "INJ-1": true,
+              "FA-1": true,
+              "FP-1": true,
+              "RAG-1": true,
+              "RAG-2": true,
+              "PII-K1": true,
+              "PII-K2": true,
+              "PII-K3": true,
+              "PII-K4": true,
+              "PII-K5": true,
+              "PII-K6": true,
+              "PII-K7": true,
+              "PII-K8": true
+            }
+          },
+          "case9_state_compensation_health_online": {
+            "passed": 1,
+            "total": 1,
+            "items": {
+              "H-LOOKUP-C9": true
+            }
+          },
+          "case9_state_compensation_rag_controls_online": {
+            "passed": 4,
+            "total": 5,
+            "items": {
+              "RAGC-S1": true,
+              "RAGC-S2": true,
+              "RAGC-S3": false,
+              "RAGC-N1": true,
+              "RAGC-N2": true
+            }
+          },
+          "pipeline_health_online": {
+            "passed": 5,
+            "total": 6,
+            "items": {
+              "H-COMMIT": true,
+              "H-ENGINE": true,
+              "H-LAWDB": true,
+              "H-LOOKUP": true,
+              "H-MODEL": true,
+              "H-REF": false
+            }
+          }
+        }
+      },
+      {
+        "repeat": 2,
+        "result_state": "PARTIAL_COMPLETED",
+        "started_kst": "2026-11-19T14:41:27.567531+09:00",
+        "finished_kst": "2026-11-19T14:47:33.161649+09:00",
+        "report_sha256": "c1c003d0020dcd90cf055e92832caa55d0867b6148fdcfd2e91fdb1afd3e5a2f",
+        "worker_tk75_enabled": false,
+        "prompt_version": "v0.2",
+        "reference_status": "PARTIAL",
+        "reference_library_hash": "8800062ef538fdce45715f3e12c6036b395f365d136f7859578f83c897f0e7a2",
+        "reference_files_indexed": 41,
+        "reference_files_seen": 41,
+        "scores": {
+          "case9_state_compensation_online": {
+            "passed": 23,
+            "total": 23,
+            "items": {
+              "AI-1": true,
+              "AI-2": true,
+              "AI-3": true,
+              "AI-4": true,
+              "EX-1": true,
+              "EX-2": true,
+              "EX-2s": true,
+              "TMP-1": true,
+              "LEG-1": true,
+              "LEG-2": true,
+              "INJ-1": true,
+              "FA-1": true,
+              "FP-1": true,
+              "RAG-1": true,
+              "RAG-2": true,
+              "PII-K1": true,
+              "PII-K2": true,
+              "PII-K3": true,
+              "PII-K4": true,
+              "PII-K5": true,
+              "PII-K6": true,
+              "PII-K7": true,
+              "PII-K8": true
+            }
+          },
+          "case9_state_compensation_health_online": {
+            "passed": 1,
+            "total": 1,
+            "items": {
+              "H-LOOKUP-C9": true
+            }
+          },
+          "case9_state_compensation_rag_controls_online": {
+            "passed": 4,
+            "total": 5,
+            "items": {
+              "RAGC-S1": true,
+              "RAGC-S2": true,
+              "RAGC-S3": false,
+              "RAGC-N1": true,
+              "RAGC-N2": true
+            }
+          },
+          "pipeline_health_online": {
+            "passed": 5,
+            "total": 6,
+            "items": {
+              "H-COMMIT": true,
+              "H-ENGINE": true,
+              "H-LAWDB": true,
+              "H-LOOKUP": true,
+              "H-MODEL": true,
+              "H-REF": false
+            }
+          }
+        }
+      },
+      {
+        "repeat": 3,
+        "result_state": "PARTIAL_COMPLETED",
+        "started_kst": "2026-11-19T14:47:33.818821+09:00",
+        "finished_kst": "2026-11-19T14:53:40.676654+09:00",
+        "report_sha256": "c3a099053d04198a1254d786ae78df7b606071ee4c9ee2b0a8772c4be3a54455",
+        "worker_tk75_enabled": false,
+        "prompt_version": "v0.2",
+        "reference_status": "PARTIAL",
+        "reference_library_hash": "8800062ef538fdce45715f3e12c6036b395f365d136f7859578f83c897f0e7a2",
+        "reference_files_indexed": 41,
+        "reference_files_seen": 41,
+        "scores": {
+          "case9_state_compensation_online": {
+            "passed": 23,
+            "total": 23,
+            "items": {
+              "AI-1": true,
+              "AI-2": true,
+              "AI-3": true,
+              "AI-4": true,
+              "EX-1": true,
+              "EX-2": true,
+              "EX-2s": true,
+              "TMP-1": true,
+              "LEG-1": true,
+              "LEG-2": true,
+              "INJ-1": true,
+              "FA-1": true,
+              "FP-1": true,
+              "RAG-1": true,
+              "RAG-2": true,
+              "PII-K1": true,
+              "PII-K2": true,
+              "PII-K3": true,
+              "PII-K4": true,
+              "PII-K5": true,
+              "PII-K6": true,
+              "PII-K7": true,
+              "PII-K8": true
+            }
+          },
+          "case9_state_compensation_health_online": {
+            "passed": 1,
+            "total": 1,
+            "items": {
+              "H-LOOKUP-C9": true
+            }
+          },
+          "case9_state_compensation_rag_controls_online": {
+            "passed": 4,
+            "total": 5,
+            "items": {
+              "RAGC-S1": true,
+              "RAGC-S2": true,
+              "RAGC-S3": false,
+              "RAGC-N1": true,
+              "RAGC-N2": true
+            }
+          },
+          "pipeline_health_online": {
+            "passed": 5,
+            "total": 6,
+            "items": {
+              "H-COMMIT": true,
+              "H-ENGINE": true,
+              "H-LAWDB": true,
+              "H-LOOKUP": true,
+              "H-MODEL": true,
+              "H-REF": false
+            }
+          }
+        }
+      }
+    ],
+    "item_disagreements": [],
+    "repeat_condition_status": "SAME",
+    "repeat_comparable_agreement": 1.0,
+    "comparison_to_2026_10_10": "INCONCLUSIVE: current Drive status PARTIAL and model/reference conditions differ",
+    "drive_ready_requirement_met": false,
+    "on_initial_execution": {
+      "started_kst": "2026-11-19T15:54:28.346956+09:00",
+      "finished_kst": "2026-11-19T15:56:15.850504+09:00",
+      "report_sha256": "2b9dad52c446e48cf31a4041eff0a985b7d63f3b856d766f78b5b12740256f41",
+      "passed": 21,
+      "total": 23,
+      "failed_items": [
+        "RAG-1",
+        "RAG-2"
+      ],
+      "worker_tk75_enabled": true,
+      "prompt_version": "v0.2+kr2",
+      "reference_status": "PARTIAL",
+      "reference_library_hash": "8800062ef538fdce45715f3e12c6036b395f365d136f7859578f83c897f0e7a2",
+      "rag_status": "UNVERIFIED",
+      "rag_reason": "REFERENCE_REVIEW_FAILED",
+      "rag_error_class": "OperationalError",
+      "supplemental_scores": {
+        "case9_state_compensation_health_online": {
+          "passed": 1,
+          "total": 1,
+          "items": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "case9_state_compensation_rag_controls_online": {
+          "passed": 3,
+          "total": 5,
+          "items": {
+            "RAGC-S1": false,
+            "RAGC-S2": true,
+            "RAGC-S3": false,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health_online": {
+          "passed": 5,
+          "total": 6,
+          "items": {
+            "H-COMMIT": true,
+            "H-ENGINE": true,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": false
+          }
+        }
+      },
+      "comparison_use": "EXCLUDED_FROM_QUALITY_PAIR: reference review failed"
+    },
+    "on_run": {
+      "started_kst": "2026-11-19T15:57:26.386074+09:00",
+      "finished_kst": "2026-11-19T16:04:02.519388+09:00",
+      "report_sha256": "13408549e9174bad6f713bb298990017bacb26a0277a577e4eeaf2855a1c308e",
+      "worker_tk75_enabled": true,
+      "prompt_version": "v0.2+kr2",
+      "reference_status": "PARTIAL",
+      "reference_library_hash": "8800062ef538fdce45715f3e12c6036b395f365d136f7859578f83c897f0e7a2",
+      "passed": 23,
+      "total": 23,
+      "items": {
+        "AI-1": true,
+        "AI-2": true,
+        "AI-3": true,
+        "AI-4": true,
+        "EX-1": true,
+        "EX-2": true,
+        "EX-2s": true,
+        "TMP-1": true,
+        "LEG-1": true,
+        "LEG-2": true,
+        "INJ-1": true,
+        "FA-1": true,
+        "FP-1": true,
+        "RAG-1": true,
+        "RAG-2": true,
+        "PII-K1": true,
+        "PII-K2": true,
+        "PII-K3": true,
+        "PII-K4": true,
+        "PII-K5": true,
+        "PII-K6": true,
+        "PII-K7": true,
+        "PII-K8": true
+      },
+      "supplemental_scores": {
+        "case9_state_compensation_health_online": {
+          "passed": 1,
+          "total": 1,
+          "items": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "case9_state_compensation_rag_controls_online": {
+          "passed": 4,
+          "total": 5,
+          "items": {
+            "RAGC-S1": true,
+            "RAGC-S2": true,
+            "RAGC-S3": false,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health_online": {
+          "passed": 5,
+          "total": 6,
+          "items": {
+            "H-COMMIT": true,
+            "H-ENGINE": true,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": false
+          }
+        }
+      }
+    },
+    "off_on_item_differences": [],
+    "off_on_same_reference_hash": true,
+    "off_on_same_document_sha256": true,
+    "off_on_same_model_config": true,
+    "off_on_same_rule_version": true,
+    "off_on_same_network_setting": true
+  },
+  "observations": {
+    "TK-206": {
+      "synthetic_timeline_rows": 6,
+      "synthetic_judicial_date_in_timeline": false,
+      "synthetic_party_fact_dates_present": true,
+      "case9_real_timeline_rows": 3,
+      "case9_real_incident_rows": 1,
+      "case9_real_judicial_rows": 0,
+      "case9_real_law_effective_candidate_rows": 1,
+      "real_B": {
+        "report_sha256": "5e0125c36b87c419841c5ab3329c2c3f56d548ed9d20f7472e663d95e8f46540",
+        "state": "PARTIAL_COMPLETED",
+        "timeline_rows": 1,
+        "source_judicial_date_pattern_present": true,
+        "same_input_sha256_as_022_baseline": true,
+        "ui_judicial_rows": 0,
+        "model_calls": 120,
+        "model_failures": 0,
+        "gemini_calls": 10,
+        "gemini_failures": 0
+      },
+      "synthetic_capture": "captures/tk206_timeline_preflight_synthetic.png"
+    },
+    "TK-208": {
+      "preflight_syncs": 2,
+      "first_sync_status": "PARTIAL",
+      "second_sync_status": "PARTIAL",
+      "second_unread_causes": {
+        "pages": {
+          "BUDGET_EXHAUSTED": 11,
+          "READ_TIMEOUT": 0,
+          "PARSE_FAILED": 0,
+          "OCR_UNAVAILABLE": 0,
+          "OCR_LOW_QUALITY": 5,
+          "CONTENT_NO_TEXT": 146
+        },
+        "files": {
+          "BUDGET_EXHAUSTED": 4,
+          "READ_TIMEOUT": 0,
+          "PARSE_FAILED": 0,
+          "OCR_UNAVAILABLE": 0,
+          "OCR_LOW_QUALITY": 4,
+          "CONTENT_NO_TEXT": 17
+        }
+      },
+      "H-REF_all_off_runs": [
+        false,
+        false,
+        false
+      ],
+      "per_reference_file": "tk208_per_reference.json",
+      "server_raw_cache_cleanup": "NOT_MEASURED: no API exposure or server filesystem access"
+    },
+    "TK-209": {
+      "RAGC-S3_all_off_runs": [
+        false,
+        false,
+        false
+      ],
+      "diagnostics_file": "tk209_diagnostics.json",
+      "observed_break_stage": "model_responses: target excerpt delivered, target model SUPPORTS count zero"
+    },
+    "TK-198": {
+      "synthetic_scope_count": 1,
+      "synthetic_scope_text": [
+        "작성 주체 검토 범위: 500/500자 · 대상 본문 전체 (규칙 전수 500자). 직접 인용·문서 속 지시문은 작성 주체 근거에서 제외합니다."
+      ],
+      "large_35674": {
+        "report_sha256": "9d83696194634df58896b0226d905fa59f19e4d7312c015b3957fdae31bb8a7d",
+        "state": "PARTIAL_COMPLETED",
+        "worker_tk75_enabled": false,
+        "model_calls": 36,
+        "model_failures": 0,
+        "coverage": {
+          "total_chars": 35771,
+          "inspected_chars": 24000,
+          "rule_inspected_chars": 35771,
+          "omitted_chars": 11771,
+          "sampling_mode": "head_middle_tail",
+          "is_full_coverage": false,
+          "model_executed": true
+        },
+        "scope_texts": [
+          "작성 주체 검토 범위: 외부 AI 모델 표본 24000/35771자 · 일부 표본 (규칙 기반 35771자 전수 검사 완료). 직접 인용·문서 속 지시문은 작성 주체 근거에서 제외합니다."
+        ],
+        "capture": "captures/tk198_scope_large_synthetic.png"
+      },
+      "model_not_executed_screen": "NOT_MEASURED",
+      "synthetic_capture": "captures/tk198_scope_preflight_synthetic.png"
+    },
+    "TK-210": {
+      "deployment_commit": "aaf51806cec24e75c478fd894a5289c3f99a59cb",
+      "workflow_run": 44464122735,
+      "strict_exit_code": 1,
+      "fatal_count": 1,
+      "warning_count": 2,
+      "advisory_count": 2,
+      "fatal_categories": [
+        "live_legal"
+      ],
+      "warning_sources": [
+        "openalex",
+        "semantic_scholar"
+      ],
+      "advisory_model_count": 2,
+      "operational_llm_success": 3,
+      "cascade_success": 4,
+      "artifact_sha256": "aba3561950148c02b5980ec04022df91b603d5bb7ebc9ec406fb4514c8af0da3"
+    }
+  },
+  "limitations": [
+    "Drive READY precondition not met",
+    "server temporary cache cleanup not observable through API",
+    "TK-198 model-not-executed screen not sampled",
+    "real user original 35,674-character document unavailable"
+  ],
+  "evaluation_project_cleanup": {
+    "operation": "TRASH_ONLY",
+    "archive_sha256": "93b3f4d9b20815fcfe20fa56ce4b960a1cfa0fcd2b6b7b0946ccb02454129be1",
+    "purge_performed": false,
+    "project_count": 4,
+    "trash_verified_count": 4
+  }
+}
