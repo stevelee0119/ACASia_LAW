@@ -284,6 +284,9 @@ class ReferenceLibrary:
             "OCR_LOW_QUALITY": 0,
             "CONTENT_NO_TEXT": 0,
         }
+        confirmed_unreadable_files = 0
+        confirmed_unreadable_pages = 0
+        confirmed_unreadable_by_cause: dict[str, int] = {}
         for item in self.summary["inventory"]:
             if item["reason"] == "NOT_PROCESSED":
                 item["reason"] = "SYNC_INTERRUPTED"
@@ -318,6 +321,24 @@ class ReferenceLibrary:
             elif item.get("unread_cause"):
                 c = item["unread_cause"]
                 unread_cause_files[c] = unread_cause_files.get(c, 0) + 1
+            item_unreadable = item.get("confirmed_unreadable_pages") or []
+            if item_unreadable and item.get("unreadable_confirmed"):
+                confirmed_unreadable_files += 1
+                confirmed_unreadable_pages += len(item_unreadable)
+                for ck, cv in (item.get("confirmed_unreadable_causes") or {}).items():
+                    if cv:
+                        confirmed_unreadable_by_cause[ck] = confirmed_unreadable_by_cause.get(ck, 0) + int(cv)
+        self.summary["unreadable_summary"] = {
+            "files": confirmed_unreadable_files,
+            "pages": confirmed_unreadable_pages,
+            "by_cause": confirmed_unreadable_by_cause,
+        }
+        if self.summary["status"] == "READY":
+            self.summary["read_completeness"] = (
+                "READY_WITH_UNREADABLE" if confirmed_unreadable_pages > 0 else "FULL"
+            )
+        else:
+            self.summary["read_completeness"] = self.summary["status"]
         self.summary["coverage_ledger"] = {
             "collection_mode": diagnostics.get("collection_mode"),
             "global_library": {
@@ -334,6 +355,9 @@ class ReferenceLibrary:
                 "page_states": page_states,
                 "unread_cause_pages": unread_cause_pages,
                 "unread_cause_files": unread_cause_files,
+                "confirmed_unreadable_files": confirmed_unreadable_files,
+                "confirmed_unreadable_pages": confirmed_unreadable_pages,
+                "confirmed_unreadable_by_cause": confirmed_unreadable_by_cause,
             },
         }
         diagnostics["unread_cause_counts"] = {
@@ -482,10 +506,39 @@ class ReferenceLibrary:
                 row = db.execute("SELECT payload FROM files WHERE id=? AND revision=?", (file_id, version)).fetchone()
                 if row and stale_quarantine(json.loads(row[0])):
                     row = None                    # 예전 규칙(파일 전체 격리, 근거 미기록)의 결과는 다시 읽는다
+                def _has_retryable_unread(p: dict) -> bool:
+                    if int(p.get("retry_attempts") or 0) >= 2:
+                        return False
+                    if p.get("retryable_unread_pages"):
+                        return True
+                    by_cause = p.get("unread_pages_by_cause") or {}
+                    config_blocked = set(p.get("config_blocked_pages") or [])
+                    confirmed = set(p.get("confirmed_unreadable_pages") or [])
+                    for cause_key in ("BUDGET_EXHAUSTED", "READ_TIMEOUT", "PARSE_FAILED"):
+                        pages_for_cause = [pg for pg in (by_cause.get(cause_key) or []) if pg not in config_blocked and pg not in confirmed]
+                        if pages_for_cause:
+                            return True
+                    return p.get("reason") in ("REFERENCE_PARSE_TIMEOUT", "REFERENCE_PARSE_FAILED")
+
+                def _needs_unreadable_confirmation(p: dict) -> bool:
+                    return bool(
+                        p.get("confirmed_unreadable_pages")
+                        and not p.get("unreadable_confirmed")
+                        and int(p.get("unreadable_confirm_attempts") or 0) < 2
+                    )
+
                 prior = json.loads(row[0]) if row else None
                 continuation = prior.get("continuation") if prior else None
+                retry_reason = None
                 if continuation:
                     row = None  # Only a progressing structured table or bounded OCR is retried at the same revision.
+                    retry_reason = "continuation"
+                elif prior and _has_retryable_unread(prior):
+                    row = None
+                    retry_reason = "retryable_unread"
+                elif prior and _needs_unreadable_confirmation(prior):
+                    row = None
+                    retry_reason = "confirm_unreadable"
                 if row:
                     parsed = json.loads(row[0])
                     self.summary["files_reused"] += 1
@@ -508,7 +561,7 @@ class ReferenceLibrary:
                         raise ReferenceError(problem)
                     item = {**fresh, "folder_path": folder_path, "listed_parent": item.get("listed_parent")}
                     version = revision(item) + ":" + EXTRACTOR_VERSION
-                    if prior and continuation:
+                    if prior and (continuation or retry_reason in ("retryable_unread", "confirm_unreadable")):
                         stored = db.execute("SELECT revision FROM files WHERE id=?", (file_id,)).fetchone()
                         if not stored or stored[0] != version:
                             prior, continuation = None, None
@@ -520,7 +573,7 @@ class ReferenceLibrary:
                     reused_local_bytes = False
                     if (
                         prior
-                        and continuation
+                        and (continuation or retry_reason in ("retryable_unread", "confirm_unreadable"))
                         and prior.get("sha256")
                         and cache_path.is_file()
                     ):
@@ -588,6 +641,24 @@ class ReferenceLibrary:
                     parsed["chunk_count"] = len(chunks) + (prior.get("chunk_count", 0) if append_batch else 0)
                     parsed["cached_filename"] = filename
                     parsed["cached_mime"] = mime
+                    if retry_reason == "retryable_unread" and prior:
+                        prior_sig = (prior.get("read_pages"), prior.get("unread_pages_by_cause"), prior.get("reason"))
+                        new_sig = (parsed.get("read_pages"), parsed.get("unread_pages_by_cause"), parsed.get("reason"))
+                        if new_sig == prior_sig and not parsed.get("continuation"):
+                            parsed["retry_attempts"] = 2
+                        else:
+                            parsed["retry_attempts"] = 0
+                    if parsed.get("confirmed_unreadable_pages"):
+                        if (
+                            retry_reason == "confirm_unreadable"
+                            and prior
+                            and sorted(parsed.get("confirmed_unreadable_pages") or []) == sorted(prior.get("confirmed_unreadable_pages") or [])
+                        ):
+                            parsed["unreadable_confirm_attempts"] = int(prior.get("unreadable_confirm_attempts") or 1) + 1
+                            parsed["unreadable_confirmed"] = True
+                        elif parsed.get("unreadable_confirmed") is not True:
+                            parsed["unreadable_confirm_attempts"] = 1
+                            parsed["unreadable_confirmed"] = False
                     if parsed.get("continuation"):
                         limit_bytes = max(0, int(getattr(self, "max_raw_cache_bytes", MAX_RAW_CACHE_BYTES)))
                         if len(data) <= limit_bytes:
@@ -634,7 +705,14 @@ class ReferenceLibrary:
                 raw_reason = parsed.get("reason") or ""
                 has_continuation = bool(parsed.get("continuation"))
                 if "coverage_complete" in parsed and "content_readable_complete" in parsed:
-                    exec_coverage_complete = bool(parsed.get("coverage_complete")) and not has_continuation
+                    unconfirmed_unreadable = bool(
+                        parsed.get("confirmed_unreadable_pages") and not parsed.get("unreadable_confirmed")
+                    )
+                    exec_coverage_complete = (
+                        bool(parsed.get("coverage_complete"))
+                        and not has_continuation
+                        and not unconfirmed_unreadable
+                    )
                     content_readable_complete = bool(parsed.get("content_readable_complete"))
                     is_partial = not exec_coverage_complete
                     blank_only_complete = bool(
@@ -754,13 +832,15 @@ class ReferenceLibrary:
                         read_pages=parsed.get("read_pages"),
                     )
 
-                for bool_key in ("coverage_complete", "content_readable_complete"):
+                for bool_key in ("coverage_complete", "content_readable_complete", "unreadable_confirmed"):
                     if bool_key in parsed:
                         entry[bool_key] = bool(parsed[bool_key])
                 for key in ("excluded_pages", "scan_findings", "no_text_pages", "unprocessed_pages", "coverage_note",
                             "page_diagnostics", "ocr_pages", "ocr_low_quality_pages", "blank_pages", "scanned_pages",
                             "error_pages", "incomplete_pages", "page_state_counts", "text_parser", "fallback_pages",
                             "unread_pages", "unread_pages_by_cause", "execution_incomplete_pages", "content_unreadable_pages",
+                            "retryable_unread_pages", "config_blocked_pages", "confirmed_unreadable_pages",
+                            "confirmed_unreadable_causes", "native_open_error", "read_completeness",
                             "stats", "read_ranges", "excluded_rows", "table_version"):
                     if parsed.get(key):
                         entry[key] = parsed[key]

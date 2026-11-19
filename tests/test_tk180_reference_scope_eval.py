@@ -50,7 +50,7 @@ def test_reference_paths_never_call_scanner(tmp_path, monkeypatch, text):
 def test_old_reference_versions_are_invalidated():
     from packages.rag_engine.extract import EXTRACTOR_VERSION
     from packages.rag_engine.case_table import CASE_TABLE_VERSION
-    assert EXTRACTOR_VERSION == 'drive-text-v10-tk208'
+    assert EXTRACTOR_VERSION == 'drive-text-v11-tk208'
     assert CASE_TABLE_VERSION == 'case-table-v4-tk180'
 
 

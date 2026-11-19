@@ -143,6 +143,10 @@ def build_report_pdf(
     story.append(Paragraph("ACASia_LAW 법률문서 검증시스템", styles["title"]))
     story.append(Paragraph("법률문서 검증보고서", styles["h1"]))
     story.append(Paragraph(_escape(f"개인정보 보장 범위: {REPORT_HEADER_NOTICE}"), styles["small"]))
+    from .reference_opinions import format_unreadable_summary
+    unreadable_notice = format_unreadable_summary(manifest or getattr(run_result, "run_manifest", None))
+    if unreadable_notice:
+        story.append(Paragraph(_escape(f"참고자료 미독 안내: {unreadable_notice}"), styles["small"]))
     metadata = getattr(run_result, "report_metadata", {})
     if metadata:
         story.append(Paragraph(_escape(metadata["label"]), styles["h1"]))

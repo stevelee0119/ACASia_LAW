@@ -387,3 +387,162 @@ def test_tk208_timeout_and_budget_causes_in_library_sync(tmp_path):
     by_id = {item["file_id"]: item for item in summary["inventory"]}
     assert by_id["f_timeout"]["status"] == "PARSE_FAILED"
     assert by_id["f_budget"]["unread_cause"] == "BUDGET_EXHAUSTED"
+
+
+def test_tk208_d1_native_open_failure_classified_as_ocr_unavailable_and_logged(tmp_path, monkeypatch):
+    """D1: pypdfium2.PdfDocument 실패 시 BUDGET_EXHAUSTED가 아닌 OCR_UNAVAILABLE + ocr_blocked + 예외 진단을 남긴다."""
+    pdf_path = _write_dummy_pdf(tmp_path / "native_fail.pdf", "native_fail")
+
+    class _FakeReader:
+        def __init__(self, path):
+            self.is_encrypted = False
+            self.metadata = {}
+            self.pages = [
+                _FakePdfPage("제1쪽 정상 본문"),
+                _FakePdfPage("", visual_objects=True),
+                _FakePdfPage("", visual_objects=True),
+            ]
+
+    class _BrokenPdfDocument:
+        def __init__(self, path):
+            raise RuntimeError("synthetic pdfium open failure")
+
+    fake_pypdf = types.ModuleType("pypdf")
+    fake_pypdf.PdfReader = _FakeReader
+    fake_pdfium = types.ModuleType("pypdfium2")
+    fake_pdfium.PdfDocument = _BrokenPdfDocument
+    monkeypatch.setitem(sys.modules, "pypdf", fake_pypdf)
+    monkeypatch.setitem(sys.modules, "pypdfium2", fake_pdfium)
+    monkeypatch.setenv("LV_REFERENCE_OCR_MAX_PAGES", "5")
+
+    out = rag_extract.extract(pdf_path, "native_fail.pdf", "application/pdf")
+    assert out["unread_pages_by_cause"]["OCR_UNAVAILABLE"] == [2, 3]
+    assert out["unread_pages_by_cause"]["BUDGET_EXHAUSTED"] == []
+    assert out["page_diagnostics"]["2"]["ocr_available"] is False
+    assert out["page_diagnostics"]["2"]["ocr_blocked"] == "NATIVE_RENDERER_UNAVAILABLE"
+    assert out["page_diagnostics"]["2"]["ocr_blocked_error"] == "RuntimeError"
+    assert out["native_open_error"]["error_type"] == "RuntimeError"
+    assert "synthetic pdfium open failure" in out["native_open_error"]["message"]
+    assert out["coverage_complete"] is True
+    assert out["confirmed_unreadable_pages"] == [2, 3]
+    assert out["read_completeness"] == "READABLE_COMPLETE_WITH_UNREADABLE"
+
+
+def test_tk208_d2_confirmed_unreadable_retries_once_then_distinguishes_ready_library(tmp_path):
+    """(다) 도구 미독 쪽은 1회 재시도 후 확정되고, 라이브러리/자료에 진짜 완독과 구분되는 표식 및 문구가 생성된다."""
+    pdf_path = _write_dummy_pdf(tmp_path / "unreadable_confirm.pdf", "unreadable_confirm")
+    pdf_bytes = pdf_path.read_bytes()
+    digest = hashlib.sha256(pdf_bytes).hexdigest()
+    client = _StubDrive({"f_unreadable": ("합성스캔자료_식별불가.pdf", pdf_bytes, "application/pdf")})
+    extract_calls = 0
+
+    def tool_unreadable_extractor(path, filename, mime, **kwargs):
+        nonlocal extract_calls
+        extract_calls += 1
+        return {
+            "chunks": [{"page": 1, "start": 0, "text": "제1쪽 판시 요약"}],
+            "sha256": digest,
+            "partial": True,
+            "coverage_complete": True,
+            "content_readable_complete": False,
+            "read_completeness": "READABLE_COMPLETE_WITH_UNREADABLE",
+            "reason": "CONTENT_UNREADABLE_PAGES",
+            "pages": 3,
+            "read_pages": 1,
+            "unread_pages": [2, 3],
+            "unread_pages_by_cause": {"OCR_UNAVAILABLE": [2, 3]},
+            "execution_incomplete_pages": [],
+            "content_unreadable_pages": [],
+            "confirmed_unreadable_pages": [2, 3],
+            "confirmed_unreadable_causes": {"OCR_UNAVAILABLE": 2},
+            "continuation": None,
+        }
+
+    settings = replace(
+        get_settings(),
+        storage_root=tmp_path / "lib",
+        rag_drive_folder_id=ROOT,
+        allow_network=True,
+        rag_metadata_first=False,
+        rag_sync_seconds=60,
+    )
+    lib = ReferenceLibrary(settings, client_factory=client, extractor=tool_unreadable_extractor)
+
+    # 1차 동기화: 즉시 종결하지 않고 INDEXED_PARTIAL로 1회 재시도 대기
+    s1 = lib.sync()
+    assert extract_calls == 1
+    assert s1["status"] == "PARTIAL"
+    assert s1["inventory"][0]["status"] == "INDEXED_PARTIAL"
+    assert s1["inventory"][0]["unreadable_confirmed"] is False
+
+    # 2차 동기화: 1회 재시도 후 동일 결과이면 확정 -> INDEXED + READY_WITH_UNREADABLE
+    s2 = lib.sync()
+    assert extract_calls == 2
+    assert s2["status"] == "READY"
+    assert s2["read_completeness"] == "READY_WITH_UNREADABLE"
+    assert s2["inventory"][0]["status"] == "INDEXED"
+    assert s2["inventory"][0]["unreadable_confirmed"] is True
+    assert s2["inventory"][0]["read_completeness"] == "READABLE_COMPLETE_WITH_UNREADABLE"
+    assert s2["unreadable_summary"] == {"files": 1, "pages": 2, "by_cause": {"OCR_UNAVAILABLE": 2}}
+
+    # 3차 동기화: 확정 후에는 재추출 없이 재사용
+    s3 = lib.sync()
+    assert extract_calls == 2
+    assert s3["inventory"][0].get("reused") is True
+
+    # 보고서 요약 문구 검증: 파일 ID·파일명·본문 없이 건수·사유만 표시
+    from packages.report_engine.reference_opinions import format_unreadable_summary
+    msg = format_unreadable_summary({"reference_library": s2})
+    assert "자료 1건의 2쪽은 읽을 수 없습니다" in msg
+    assert "OCR 미가용 2쪽" in msg
+    assert "f_unreadable" not in msg
+    assert "합성스캔자료_식별불가" not in msg
+    assert "판시 요약" not in msg
+
+
+def test_tk208_d2_retryable_unread_without_token_retries_and_stops_when_unchanged(tmp_path):
+    """(가) 토큰 없는 재시도 가능 미완독 쪽은 다음 동기화에서 재시도되고, 동일 결과 반복 시 무한 재시도를 멈춘다."""
+    pdf_path = _write_dummy_pdf(tmp_path / "retry_no_token.pdf", "retry_no_token")
+    pdf_bytes = pdf_path.read_bytes()
+    digest = hashlib.sha256(pdf_bytes).hexdigest()
+    client = _StubDrive({"f_retry": ("재시도대상.pdf", pdf_bytes, "application/pdf")})
+    extract_calls = 0
+
+    def stuck_budget_extractor(path, filename, mime, **kwargs):
+        nonlocal extract_calls
+        extract_calls += 1
+        return {
+            "chunks": [{"page": 1, "start": 0, "text": "제1쪽 본문"}],
+            "sha256": digest,
+            "partial": True,
+            "coverage_complete": False,
+            "content_readable_complete": False,
+            "reason": "REFERENCE_PARTIALLY_READ",
+            "pages": 2,
+            "read_pages": 1,
+            "unread_pages": [2],
+            "unread_pages_by_cause": {"BUDGET_EXHAUSTED": [2]},
+            "execution_incomplete_pages": [2],
+            "retryable_unread_pages": [2],
+            "continuation": None,
+        }
+
+    settings = replace(
+        get_settings(),
+        storage_root=tmp_path / "lib",
+        rag_drive_folder_id=ROOT,
+        allow_network=True,
+        rag_metadata_first=False,
+        rag_sync_seconds=60,
+    )
+    lib = ReferenceLibrary(settings, client_factory=client, extractor=stuck_budget_extractor)
+
+    lib.sync()
+    assert extract_calls == 1
+    # 2차: 토큰이 없어도 재시도됨
+    lib.sync()
+    assert extract_calls == 2
+    # 3차: 같은 결과가 반복됐으므로 더는 무한 재다운로드·재추출하지 않음
+    s3 = lib.sync()
+    assert extract_calls == 2
+    assert s3["inventory"][0].get("reused") is True

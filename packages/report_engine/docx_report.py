@@ -122,6 +122,10 @@ def build_report_docx(run_result, *, project=None, manifest=None, reveal_sealed=
         paragraph(f"source_run_id: {run_result.run_id}")
     summary = detail_level(run_result) == SUMMARY
     paragraph("보고서 분량: " + ("요약본 — 전체 기술 기록은 검증 상세(JSON)에 보존" if summary else "전체 기술 기록 포함"))
+    from .reference_opinions import format_unreadable_summary
+    unreadable_notice = format_unreadable_summary(getattr(run_result, "run_manifest", None))
+    if unreadable_notice:
+        paragraph(f"참고자료 미독 안내: {unreadable_notice}")
     doc.add_heading("검증 결과", 1)
     # 모든 판정 항목에 문서명을 적고 문서별로 묶는다(v3 D8). 여러 문서에 걸친 판정은 '문서 간' 묶음에 관련 문서를 모두 적는다.
     names = {getattr(d, "document_id", None): getattr(d, "filename", None) or getattr(d, "document_id", "-")

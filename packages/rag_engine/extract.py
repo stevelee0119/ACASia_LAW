@@ -16,7 +16,7 @@ from packages.document_engine.registry import parse_document
 
 MAX_CHARS = 3_000_000
 MAX_PAGES = 1500
-EXTRACTOR_VERSION = "drive-text-v10-tk208"  # TK-208: separate execution coverage vs content readability, cause-classified unread pages
+EXTRACTOR_VERSION = "drive-text-v11-tk208"  # TK-208 보완: D1 ocr_blocked 분리, D2 3갈래 미완독 분류, pypdfium2 예외 기록
 EXCLUDE_MIN_TOTAL = 10       # 이보다 짧은 파일은 쪽 단위로 빼지 않고 전체를 격리한다
 EXCLUDE_MAX_SHARE = 0.02     # 전체 쪽수의 2%까지(최소 1쪽)
 EXCLUDE_MAX_PAGES = 3        # 그리고 3쪽까지만 해당 쪽을 빼고 색인한다
@@ -114,7 +114,7 @@ def _ocr_pdf_page(pdfium_page, page_number: int) -> tuple[str, dict]:
     settings = get_settings()
     adapter = get_ocr_adapter()
     if not getattr(adapter, "available", False):
-        return "", _page_diag("scanned", ocr_available=False)
+        return "", _page_diag("scanned", ocr_available=False, ocr_blocked="OCR_ENGINE_UNAVAILABLE")
     try:
         scale = 2.0
         with closing(pdfium_page.render(scale=scale)) as bitmap:
@@ -186,12 +186,16 @@ def extract(path, filename, mime, *, continuation=None):
         max_ocr_pages = max(0, int(os.getenv("LV_REFERENCE_OCR_MAX_PAGES", os.getenv("LV_OCR_MAX_PAGES", "5"))))
         ocr_used = 0
         native, fallback_pages = None, list(prev_fallback_pages)
+        native_open_error = None
         last_processed = start_page - 1
         try:
             import pypdfium2 as pdfium
             native = pdfium.PdfDocument(path)
-        except Exception:
-            pass  # Retain the existing parser if the native engine cannot open this PDF.
+        except Exception as exc:
+            native_open_error = {
+                "error_type": type(exc).__name__,
+                "message": str(exc)[:300],
+            }
         try:
             for number in range(start_page, min(total, MAX_PAGES) + 1):
                 text = None
@@ -263,7 +267,15 @@ def extract(path, filename, mime, *, continuation=None):
                         text = ocr_text
                         page_diagnostics[str(number)] = diag
                     else:
-                        page_diagnostics[str(number)] = _page_diag("scanned", ocr_available=max_ocr_pages > 0)
+                        ocr_blocked = "NATIVE_RENDERER_UNAVAILABLE" if native is None else "OCR_BUDGET_ZERO"
+                        extra = {
+                            "ocr_available": (max_ocr_pages > 0 and native is not None),
+                            "ocr_blocked": ocr_blocked,
+                        }
+                        if ocr_blocked == "NATIVE_RENDERER_UNAVAILABLE" and native_open_error:
+                            extra["ocr_blocked_error"] = native_open_error["error_type"]
+                            extra["ocr_blocked_detail"] = native_open_error["message"]
+                        page_diagnostics[str(number)] = _page_diag("scanned", **extra)
                 elif page_error or not object_check_ok:
                     page_diagnostics[str(number)] = _page_diag(
                         "error",
@@ -291,6 +303,7 @@ def extract(path, filename, mime, *, continuation=None):
         doc.structure.update(text_parser="pypdfium2" if native is not None else "pypdf",
                              fallback_pages=fallback_pages)
     else:
+        native_open_error = None
         # Structured precedent tables use a bounded row reader.  This keeps a
         # large workbook out of the ordinary visible-text limit while retaining
         # sheet/row/case-head provenance for exact lookup.
@@ -345,6 +358,11 @@ def extract(path, filename, mime, *, continuation=None):
         CAUSE_OCR_LOW_QUALITY: [],
         CAUSE_CONTENT_NO_TEXT: [],
     }
+    retryable_unread_pages: list[int] = []
+    config_blocked_pages: list[int] = []
+    confirmed_unreadable_pages: list[int] = []
+    confirmed_unreadable_causes: dict[str, int] = {}
+
     if page_diagnostics:
         completed_statuses = {"text", "ocr_applied", "blank"}
         completed_pages = sum(
@@ -356,8 +374,10 @@ def extract(path, filename, mime, *, continuation=None):
             if diag is None:
                 if next_continuation or total > MAX_PAGES:
                     unread_pages_by_cause[CAUSE_BUDGET_EXHAUSTED].append(p)
+                    retryable_unread_pages.append(p)
                 else:
                     unread_pages_by_cause[CAUSE_PARSE_FAILED].append(p)
+                    retryable_unread_pages.append(p)
             else:
                 st = diag.get("status")
                 if st in ("text", "ocr_applied"):
@@ -367,15 +387,29 @@ def extract(path, filename, mime, *, continuation=None):
                         unread_pages_by_cause[CAUSE_CONTENT_NO_TEXT].append(p)
                     else:
                         unread_pages_by_cause[CAUSE_PARSE_FAILED].append(p)
+                        retryable_unread_pages.append(p)
                 elif st == "scanned":
                     if diag.get("ocr_available") is False:
                         unread_pages_by_cause[CAUSE_OCR_UNAVAILABLE].append(p)
+                        if diag.get("ocr_blocked") == "NATIVE_RENDERER_UNAVAILABLE":
+                            confirmed_unreadable_pages.append(p)
+                            confirmed_unreadable_causes[CAUSE_OCR_UNAVAILABLE] = confirmed_unreadable_causes.get(CAUSE_OCR_UNAVAILABLE, 0) + 1
+                        else:
+                            config_blocked_pages.append(p)
+                    elif diag.get("ocr_attempted") and diag.get("ocr_empty"):
+                        unread_pages_by_cause[CAUSE_OCR_LOW_QUALITY].append(p)
+                        confirmed_unreadable_pages.append(p)
+                        confirmed_unreadable_causes[CAUSE_OCR_LOW_QUALITY] = confirmed_unreadable_causes.get(CAUSE_OCR_LOW_QUALITY, 0) + 1
                     else:
                         unread_pages_by_cause[CAUSE_BUDGET_EXHAUSTED].append(p)
+                        retryable_unread_pages.append(p)
                 elif st == "ocr_low_quality":
                     unread_pages_by_cause[CAUSE_OCR_LOW_QUALITY].append(p)
+                    confirmed_unreadable_pages.append(p)
+                    confirmed_unreadable_causes[CAUSE_OCR_LOW_QUALITY] = confirmed_unreadable_causes.get(CAUSE_OCR_LOW_QUALITY, 0) + 1
                 else:
                     unread_pages_by_cause[CAUSE_PARSE_FAILED].append(p)
+                    retryable_unread_pages.append(p)
     else:
         completed_pages = read_pages
         for p in sorted(set(no_text_pages)):
@@ -383,25 +417,22 @@ def extract(path, filename, mime, *, continuation=None):
         for p in unprocessed_pages:
             if next_continuation or total > MAX_PAGES:
                 unread_pages_by_cause[CAUSE_BUDGET_EXHAUSTED].append(p)
+                retryable_unread_pages.append(p)
             else:
                 unread_pages_by_cause[CAUSE_PARSE_FAILED].append(p)
+                retryable_unread_pages.append(p)
 
-    execution_incomplete_pages = sorted(
-        set(
-            unread_pages_by_cause[CAUSE_BUDGET_EXHAUSTED]
-            + unread_pages_by_cause[CAUSE_READ_TIMEOUT]
-            + unread_pages_by_cause[CAUSE_PARSE_FAILED]
-            + unread_pages_by_cause[CAUSE_OCR_UNAVAILABLE]
-            + unread_pages_by_cause[CAUSE_OCR_LOW_QUALITY]
-        )
-    )
+    retryable_unread_pages = sorted(set(retryable_unread_pages))
+    config_blocked_pages = sorted(set(config_blocked_pages))
+    confirmed_unreadable_pages = sorted(set(confirmed_unreadable_pages))
+    execution_incomplete_pages = sorted(set(retryable_unread_pages + config_blocked_pages))
     content_unreadable_pages = sorted(set(unread_pages_by_cause[CAUSE_CONTENT_NO_TEXT]))
     incomplete_pages = sorted(
-        set(execution_incomplete_pages + [p for p in content_unreadable_pages if p not in blank_pages])
+        set(execution_incomplete_pages + confirmed_unreadable_pages + [p for p in content_unreadable_pages if p not in blank_pages])
     )
-    unread_pages = sorted(set(execution_incomplete_pages + content_unreadable_pages))
+    unread_pages = sorted(set(execution_incomplete_pages + content_unreadable_pages + confirmed_unreadable_pages))
 
-    # TK-208: 실행 문제 없음(coverage_complete, UNVERIFIED/OCR_LOW_QUALITY 포함)과 자료 성질상 미판독 없음(content_readable_complete) 분리
+    # TK-208: 실행 문제 없음(coverage_complete)과 자료 성질상 미판독 없음(content_readable_complete) 분리
     coverage_complete = (
         not execution_incomplete_pages
         and not next_continuation
@@ -411,9 +442,16 @@ def extract(path, filename, mime, *, continuation=None):
     content_readable_complete = (
         coverage_complete
         and not content_unreadable_pages
+        and not confirmed_unreadable_pages
         and read_pages >= total
     )
     partial = not content_readable_complete
+    if not coverage_complete:
+        read_completeness = "INCOMPLETE"
+    elif confirmed_unreadable_pages:
+        read_completeness = "READABLE_COMPLETE_WITH_UNREADABLE"
+    else:
+        read_completeness = "FULL"
 
     page_state_counts = {}
     for p in range(1, total + 1):
@@ -426,7 +464,7 @@ def extract(path, filename, mime, *, continuation=None):
     elif not coverage_complete:
         reason = "REFERENCE_PARTIALLY_READ"
     elif not content_readable_complete:
-        if blank_pages and not scanned_pages and not ocr_low_quality_pages and not [p for p in no_text_pages if p not in blank_pages]:
+        if blank_pages and not scanned_pages and not ocr_low_quality_pages and not confirmed_unreadable_pages and not [p for p in no_text_pages if p not in blank_pages]:
             reason = "VERIFIED_BLANK_PAGES" if read_pages > 0 else "VERIFIED_BLANK_DOCUMENT"
         else:
             reason = "CONTENT_UNREADABLE_PAGES"
@@ -436,18 +474,28 @@ def extract(path, filename, mime, *, continuation=None):
         "예산·OCR 미가용·저품질 OCR·시간 초과·파서 오류 등 실행 문제로 못 읽은 쪽이 남아 있음"
         if not coverage_complete
         else (
-            "시각적 객체가 없는 빈 쪽 확인을 포함해 전체 쪽 검사를 마침"
-            if not content_readable_complete
-            else ""
+            "읽을 수 있는 쪽을 모두 읽었으나 이 자료·도구로 읽을 수 없는 미독 쪽이 남아 있음"
+            if confirmed_unreadable_pages
+            else (
+                "시각적 객체가 없는 빈 쪽 확인을 포함해 전체 쪽 검사를 마침"
+                if not content_readable_complete
+                else ""
+            )
         )
     )
     return {"chunks": chunks, "sha256": digest, "partial": partial,
             "coverage_complete": coverage_complete,
             "content_readable_complete": content_readable_complete,
+            "read_completeness": read_completeness,
             "unread_pages": unread_pages,
             "unread_pages_by_cause": unread_pages_by_cause,
             "execution_incomplete_pages": execution_incomplete_pages,
             "content_unreadable_pages": content_unreadable_pages,
+            "retryable_unread_pages": retryable_unread_pages,
+            "config_blocked_pages": config_blocked_pages,
+            "confirmed_unreadable_pages": confirmed_unreadable_pages,
+            "confirmed_unreadable_causes": confirmed_unreadable_causes,
+            "native_open_error": native_open_error,
             "excluded_pages": sorted(pages_hit), "scan_findings": evidence,
             "no_text_pages": no_text_pages,
             "page_diagnostics": page_diagnostics,
