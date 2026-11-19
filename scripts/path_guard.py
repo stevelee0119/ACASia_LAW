@@ -17,28 +17,30 @@ WORK_ROOTS = (ROOT, Path(tempfile.gettempdir()))
 
 
 def _main_checkout() -> Optional[Path]:
-    """이 파일이 속한 저장소의 주 작업 폴더. 없으면 None(TK-219).
+    """이 파일이 속한 저장소의 주 작업 폴더. 알 수 없으면 None(TK-219).
 
     기준 커밋 worktree에서 돌 때 ROOT는 임시 폴더이고, 시험 명세·입력은 현재 저장소에 있다. 저장소가
     홈 밖에 있으면 그 입력이 어느 허용 폴더에도 들지 않아 전 항목이 '측정 못 함'이 됐다. 허용 폴더를
-    환경변수가 아니라 git이 알려주는 공통 폴더에서 끌어내 같은 저장소의 주 작업 폴더만 받는다.
+    환경변수가 아니라 git에게 묻는다. `worktree list`의 첫 항목이 주 작업 폴더이며, 공통 git 폴더의
+    이름이 `.git`이 아니어도(분리된 git 폴더·GIT_DIR 지정) 맞게 나온다. 알 수 없으면 넓히지 않는다.
     """
     try:
-        out = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        out = subprocess.run(["git", "-C", str(ROOT), "worktree", "list", "--porcelain"],
                              capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
         return None
-    line = out.stdout.strip()
-    if out.returncode != 0 or not line:
+    if out.returncode != 0:
         return None
-    common = Path(os.path.realpath(line))  # <주 작업 폴더>/.git
-    return common.parent if common.name == ".git" else None
+    for line in out.stdout.splitlines():  # 첫 'worktree <경로>'가 주 작업 폴더다
+        if line.startswith("worktree "):
+            return Path(os.path.realpath(line[len("worktree "):].strip()))
+    return None
 
 
 # 평가 측이 받은 서면(사용자 업로드)을 탐침할 때: 저장소·임시 폴더에 더해 사용자 홈 아래(TK-175)와
 # 같은 저장소의 주 작업 폴더(TK-219). 주 작업 폴더는 worktree가 아닐 때 이미 ROOT로 허용되던 곳이다.
 MAIN_CHECKOUT = _main_checkout()
-INPUT_ROOTS = tuple(r for r in (*WORK_ROOTS, Path.home(), MAIN_CHECKOUT) if r is not None)
+INPUT_ROOTS = tuple(dict.fromkeys(r for r in (*WORK_ROOTS, Path.home(), MAIN_CHECKOUT) if r is not None))
 # 한국어 OCR 모델(tessdata) 위치: 배포판 패키지·로컬 설치·저장소 안.
 TESSDATA_ROOTS = ("/usr/share", "/usr/local/share", "/opt", ROOT)
 

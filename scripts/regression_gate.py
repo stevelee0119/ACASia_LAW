@@ -39,6 +39,11 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+try:  # 모듈로 읽을 때(시험)와 스크립트로 돌릴 때(sys.path[0] = scripts/) 모두
+    from scripts.path_guard import INPUT_ROOTS, contained_path
+except ImportError:  # pragma: no cover - 스크립트 실행 경로
+    from path_guard import INPUT_ROOTS, contained_path
+
 ROOT = Path(__file__).resolve().parents[1]
 PROBE = ROOT / "scripts" / "probe_document.py"
 SPECS = ROOT / "tests" / "fixtures" / "probes"
@@ -161,57 +166,80 @@ def remove_worktree(tree: Path) -> None:
     subprocess.run(["git", "worktree", "prune"], cwd=ROOT, capture_output=True)
 
 
-_STAGE_LOCK = threading.Lock()
-_STAGE: List[Path] = []
+class Stage:
+    """기준 커밋 쪽으로 보낼 명세·입력을 담는 임시 폴더(TK-219). 게이트 실행 하나가 하나를 갖는다.
 
-
-def stage_root() -> Path:
-    """기준 커밋 쪽 입력을 둘 임시 폴더(TK-219). 처음 부를 때 만든다."""
-    with _STAGE_LOCK:
-        if not _STAGE:
-            _STAGE.append(Path(tempfile.mkdtemp(prefix="regress_inputs_")))
-        return _STAGE[0]
-
-
-def remove_stage() -> None:
-    with _STAGE_LOCK:
-        while _STAGE:
-            shutil.rmtree(_STAGE.pop(), ignore_errors=True)
-
-
-def stage_spec(spec: Path) -> Path:
-    """명세와 그 입력을 임시 폴더에 같은 상대 경로로 복사하고 복사본 명세 경로를 돌려준다(TK-219).
-
-    기준 커밋 worktree에서 도는 것은 그 커밋의 탐침 도구다. 옛 `path_guard`는 저장소·임시 폴더·홈만
-    허용하므로, 저장소가 홈 밖에 있으면 현재 저장소의 입력을 열지 못해 전 항목이 '측정 못 함'이 됐다.
-    입력을 임시 폴더로 옮기면 어느 커밋의 도구든 열 수 있다(임시 폴더는 늘 허용 폴더다).
+    기준 커밋 worktree에서 도는 것은 **그 커밋의** 탐침 도구다. 옛 `path_guard`의 허용 폴더는
+    저장소(worktree)·임시 폴더·홈뿐이라, 저장소가 홈 밖에 있으면 현재 저장소의 입력을 열지 못해
+    전 항목이 '측정 못 함'이 됐다. 입력을 임시 폴더로 옮기면 어느 커밋의 도구든 열 수 있다.
     """
-    base = stage_root()
-    rels = [spec.relative_to(ROOT)]
-    try:
-        data = json.loads(spec.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        data = {}
-    for key in ("input", "text_input"):
-        value = data.get(key)
-        if isinstance(value, str) and value and not Path(value).is_absolute():
-            rels.append(Path(value))
-    with _STAGE_LOCK:
-        for rel in rels:
-            src = ROOT / rel
-            dst = base / rel
-            if not src.is_file() or dst.exists():
-                continue
+
+    def __init__(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="regress_inputs_"))
+        self._lock = threading.Lock()
+
+    def close(self) -> None:
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def _copy(self, rel: Path) -> bool:
+        """저장소 안의 rel을 같은 상대 경로로 복사한다. 허용 폴더 밖이면 복사하지 않는다."""
+        try:
+            src = contained_path(ROOT / rel, *INPUT_ROOTS)          # 심볼릭 링크·'..'를 편 실제 경로
+            dst = contained_path(self.root / rel, self.root)  # 복사 대상은 임시 폴더 안만
+        except ValueError:
+            return False
+        if not src.is_file():
+            return False
+        with self._lock:
+            if dst.exists():
+                return True
             dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst)
-    return base / spec.relative_to(ROOT)
+            shutil.copy2(src, dst, follow_symlinks=True)  # src는 이미 실제 경로라 링크를 넘지 않는다
+        return True
+
+    def put(self, spec: Path) -> Path:
+        """명세와 그 입력을 복사하고, 복사본 명세의 경로를 돌려준다.
+
+        입력이 절대 경로여도 저장소 안이면 상대 경로로 바꿔 복사하고 복사본 명세를 그 상대 경로로
+        고쳐 쓴다. 그러지 않으면 기준 커밋의 옛 `path_guard`가 그 절대 경로를 거부해 측정이 비는데,
+        그것이 바로 이 티켓이 없애려던 증상이다.
+        """
+        spec_rel = spec.resolve().relative_to(ROOT)
+        try:
+            data = json.loads(spec.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        changed = False
+        for key in ("input", "text_input"):
+            value = data.get(key)
+            if not isinstance(value, str) or not value:
+                continue
+            rel = Path(value)
+            if rel.is_absolute():
+                try:
+                    rel = Path(os.path.realpath(value)).relative_to(ROOT)
+                except ValueError:
+                    continue  # 저장소 밖 절대 경로는 손대지 않는다(원래 경로 그대로 둔다)
+                if self._copy(rel):
+                    data[key] = str(rel)
+                    changed = True
+                continue
+            self._copy(rel)
+        staged_spec = self.root / spec_rel
+        with self._lock:
+            staged_spec.parent.mkdir(parents=True, exist_ok=True)
+            if changed:
+                staged_spec.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            elif not staged_spec.exists():
+                shutil.copy2(ROOT / spec_rel, staged_spec)
+        return staged_spec
 
 
-def probe_run(spec: Path, text: bool, tree: Optional[Path]) -> Tuple[Dict[str, bool], List[str]]:
+def probe_run(spec: Path, text: bool, tree: Optional[Path], stage: Optional[Stage] = None) -> Tuple[Dict[str, bool], List[str]]:
     """({항목 id: 통과 여부}, 처리 오류 목록). 하위 프로세스 실패·시간 초과는 예외로 올린다."""
     spec_arg, doc_root = spec, ROOT
-    if tree is not None:
-        spec_arg, doc_root = stage_spec(spec), stage_root()
+    if tree is not None and stage is not None:
+        spec_arg, doc_root = stage.put(spec), stage.root
     cmd = [sys.executable, str(PROBE), "run", "--spec", str(spec_arg), "--json"] + (["--text"] if text else [])
     env = dict(os.environ, LV_ALLOW_NETWORK="0")
     cwd = ROOT
@@ -356,6 +384,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     need_tree = args.pytest or not use_cache or cached_score is None or any(v is None for v in cached.values())
     try:
         base_tree = worktree(args.base) if need_tree else None
+        stage = Stage() if need_tree else None
     except (OSError, subprocess.CalledProcessError) as exc:
         print(f"기준 커밋을 열 수 없다: {exc}", file=sys.stderr)
         return 2
@@ -364,7 +393,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         hit = cached.get(job)
         if hit is not None:
             return {str(k): bool(v) for k, v in hit["rows"].items()}, list(hit["errors"])
-        rows, errors = probe_run(job[0], job[1], base_tree)
+        rows, errors = probe_run(job[0], job[1], base_tree, stage)
         if use_cache and rows and not errors:
             cache_put(probe_keys[job], {"rows": rows, "errors": errors}, f"{base_ref} {job[0].name} {'text' if job[1] else 'primary'}")
         return rows, errors
@@ -423,7 +452,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     finally:
         if base_tree is not None:
             remove_worktree(base_tree)
-        remove_stage()
+        if stage is not None:
+            stage.close()
     bad = bool(report["regressions"] or report["new_test_failures"])
     code = 1 if bad else (2 if unmeasured_reasons else 0)
     if args.json:
