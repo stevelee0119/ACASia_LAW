@@ -18,6 +18,8 @@ from packages.legal_engine.citation_extractor import (
     extract_from_text,
 )
 
+from tests.perf_scaling import best_of, fastest_of
+
 
 def _make_doc(text: str, doc_id: str = "doc_synthetic") -> NormalizedDocument:
     """합성 텍스트를 담은 NormalizedDocument 실제 객체를 생성한다."""
@@ -35,30 +37,35 @@ def test_repeated_short_input_performance():
     from packages.legal_engine.citation_extractor import LAW_RE, SpanTracker, _law_name_start
 
     # 1) 구간 추적기(이진 탐색/투포인터) 2,500회 반복 < 0.1초
-    tracker = SpanTracker()
-    started = time.perf_counter()
-    for i in range(2500):
-        tracker.overlaps(i * 10, i * 10 + 5)
-        tracker.add(i * 10, i * 10 + 5)
-    elapsed_tracker = time.perf_counter() - started
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+    # 추적기는 회차마다 새로 만든다 — 같은 것을 재사용하면 2회차부터 더 큰 상태를 재게 된다.
+    def _tracker_round():
+        tracker = SpanTracker()
+        for i in range(2500):
+            tracker.overlaps(i * 10, i * 10 + 5)
+            tracker.add(i * 10, i * 10 + 5)
+
+    elapsed_tracker = best_of(_tracker_round)
     assert elapsed_tracker < 0.1, f"구간 추적기 2,500회 반복 초과: {elapsed_tracker:.4f}초"
 
     # 2) 법령명 시작 위치 탐색(캐시) 2,500회 반복 < 0.1초
     m = LAW_RE.search("원고는 「근로기준법」 제23조를 위반하였다.")
-    started = time.perf_counter()
-    for _ in range(2500):
-        _law_name_start(m)
-    elapsed_law = time.perf_counter() - started
+    def _law_round():
+        for _ in range(2500):
+            _law_name_start(m)
+
+    elapsed_law = best_of(_law_round)
     assert elapsed_law < 0.1, f"법령명 시작 위치 2,500회 반복 초과: {elapsed_law:.4f}초"
 
     # 3) 법령명 정규화 캐시 2,500회 반복 < 0.1초
     names = ["근로기준법", "「민법」", "형법", "상법", "행정소송법"] * 500
     for n in names[:5]:
         canonical_law_name(n)
-    started = time.perf_counter()
-    for name in names:
-        canonical_law_name(name)
-    elapsed_cache = time.perf_counter() - started
+    def _cache_round():
+        for name in names:
+            canonical_law_name(name)
+
+    elapsed_cache = best_of(_cache_round)
     assert elapsed_cache < 0.1, f"캐시 조회 2,500회 초과: {elapsed_cache:.4f}초"
 
     # 4) 텍스트 인용 추출 100회 반복 < 0.1초
@@ -79,9 +86,8 @@ def test_canonical_law_name_cache_performance():
     for n in names[:5]:
         canonical_law_name(n)
 
-    started = time.perf_counter()
-    results = [canonical_law_name(name) for name in names]
-    elapsed = time.perf_counter() - started
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+    elapsed, results = fastest_of(lambda: [canonical_law_name(name) for name in names])
     assert len(results) == 2500
     assert results[0] == "근로기준법"
     assert elapsed < 0.1, f"캐시 조회 시간이 0.1초를 초과함: {elapsed:.4f}초"
@@ -93,9 +99,8 @@ def test_case_whitespace_tail_is_linear():
     synthetic_text = "원고는 「근로기준법」 제23조 제1항 제1호 가목" + " " * 80000 + "x"
     doc = _make_doc(synthetic_text, "doc_whitespace")
 
-    started = time.perf_counter()
-    citations = extract_citations(doc)
-    elapsed = time.perf_counter() - started
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+    elapsed, citations = fastest_of(lambda: extract_citations(doc))
 
     assert len(citations) == 1
     assert citations[0].law_name == "근로기준법"
@@ -110,9 +115,7 @@ def test_subitem_repeated_notation_is_linear():
     synthetic_text = "원고는 「근로기준법」 제23조 제1항 제1호 가목" + "·나목" * 20000
     doc = _make_doc(synthetic_text, "doc_subitem_dots")
 
-    started = time.perf_counter()
-    citations = extract_citations(doc)
-    elapsed = time.perf_counter() - started
+    elapsed, citations = fastest_of(lambda: extract_citations(doc))
 
     assert len(citations) == 1
     assert citations[0].law_name == "근로기준법"
@@ -125,9 +128,7 @@ def test_subitem_repeated_conjunction_is_linear():
     synthetic_text = "원고는 「근로기준법」 제23조 제1항 제1호 가목" + " 및 " * 20000
     doc = _make_doc(synthetic_text, "doc_subitem_and")
 
-    started = time.perf_counter()
-    citations = extract_citations(doc)
-    elapsed = time.perf_counter() - started
+    elapsed, citations = fastest_of(lambda: extract_citations(doc))
 
     assert len(citations) == 1
     assert citations[0].law_name == "근로기준법"
@@ -140,9 +141,7 @@ def test_academic_dots_backtracking_linear():
     synthetic_text = "·" * 80000 + "홍길동, 「합성 학술 논문 제목」, 합성법학논총 제1권 제1호, 2024"
     doc = _make_doc(synthetic_text, "doc_academic_dots")
 
-    started = time.perf_counter()
-    citations = extract_citations(doc)
-    elapsed = time.perf_counter() - started
+    elapsed, citations = fastest_of(lambda: extract_citations(doc))
 
     assert len(citations) == 1
     assert citations[0].type == CitationType.ACADEMIC

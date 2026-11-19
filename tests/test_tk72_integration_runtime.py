@@ -14,6 +14,8 @@ from packages.legal_engine.citation_extractor import (
     BARE_PARAGRAPH_REF_RE, LAW_RE, SpanTracker, _law_matches, extract_citations, extract_from_text,
 )
 
+from tests.perf_scaling import fastest_of
+
 
 def _matches(matches):
     return [(m.span(), m.groupdict(), m.groups()) for m in matches]
@@ -42,9 +44,8 @@ def test_anchored_law_search_preserves_order_across_overlapping_grammar():
 @pytest.mark.parametrize("space", [" ", "\n", "\t"])
 def test_law_name_anchor_does_not_limit_intervening_whitespace(space):
     text = "「합성법률」" + space * 80000 + "부칙" + space * 80000 + "제17조 제3항"
-    started = time.perf_counter()
-    matches = list(_law_matches(text))
-    elapsed = time.perf_counter() - started
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+    elapsed, matches = fastest_of(lambda: list(_law_matches(text)))
     assert len(matches) == 1
     assert matches[0].span() == (0, len(text))
     assert matches[0].group("law", "article", "paragraph") == ("「합성법률」", "17", "3")

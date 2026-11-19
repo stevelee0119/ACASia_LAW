@@ -22,6 +22,8 @@ from packages.legal_engine.citation_extractor import (
     extract_citations, extract_from_text,
 )
 
+from tests.perf_scaling import fastest_of
+
 def _samples():
     cases={}
     for i,ws in enumerate((' ', '  ', '\t', '\n', '\r', '\u3000')):
@@ -426,9 +428,9 @@ def test_interpretation_near_misses_are_not_extracted(suffix):
 
 @pytest.mark.parametrize("suffix", ["법령해석", "유권해석", "법령해석례 24-0001"])
 def test_interpretation_keyword_after_long_whitespace(suffix):
-    started = time.perf_counter()
-    citations = extract_citations(_doc(" " * 80_000 + suffix))
-    elapsed = time.perf_counter() - started
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+    elapsed, citations = fastest_of(
+        lambda: extract_citations(_doc(" " * 80_000 + suffix)))
     assert len(citations) == 1
     assert citations[0].type == CitationType.INTERPRETATION
     assert elapsed < 1.0
@@ -509,9 +511,9 @@ def test_claim_line_join_keeps_original_positive_and_negative_contract(text):
 @pytest.mark.parametrize("tail", ["\n" * 80_000 + "x", "\n " * 40_000 + "x",
                                   "\n" * 80_000 + "1" * 20_000 + "x"])
 def test_claim_line_join_long_whitespace_actual_path(tail):
-    started = time.perf_counter()
-    citations = extract_citations(_doc("「민법」 제750조" + tail))
-    elapsed = time.perf_counter() - started
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+    elapsed, citations = fastest_of(
+        lambda: extract_citations(_doc("「민법」 제750조" + tail)))
     assert len(citations) == 1
     assert citations[0].attributes["claim_text"] == tail.strip()[:400]
     assert elapsed < 1.0

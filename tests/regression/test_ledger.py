@@ -26,6 +26,8 @@ from packages.legal_engine.citation_extractor import (
 from packages.legal_engine.legal_rules import review_legal_rules
 from packages.pii_engine.detector import detect
 
+from tests.perf_scaling import best_of
+
 
 # ---------------------------------------------------------------------------
 # 헬퍼 함수: 합성 테스트 문서 생성
@@ -1948,16 +1950,13 @@ def test_tk38_redos_mitigation_and_meaning_preservation():
     # (가) 공격 입력 방어: 대규모 반복 입력에 대해 백트래킹 지수 증가 없이 1초 미만 종료
     # A: 위치 지정 연산자 30회 반복 입력
     adv_pdf = b">> BDC" + b" 0 Tm  " * 30 + b"X"
-    t0 = time.perf_counter()
-    _is_line_break_marker("\u200b", adv_pdf, 0)
-    dur_pdf = time.perf_counter() - t0
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+    dur_pdf = best_of(lambda: _is_line_break_marker("\u200b", adv_pdf, 0))
     assert dur_pdf < 1.0, f"PDF 위치 지정 연산자 반복 검사가 너무 느림: {dur_pdf:.4f}초"
 
     # B: '원정' 30회 반복 입력
     adv_amt = "일금 삼천" + "원정" * 30 + "만"
-    t0 = time.perf_counter()
-    parse_korean_amount(adv_amt)
-    dur_amt = time.perf_counter() - t0
+    dur_amt = best_of(lambda: parse_korean_amount(adv_amt))
     assert dur_amt < 1.0, f"금액 접미사 반복 검사가 너무 느림: {dur_amt:.4f}초"
 
     # (나) 정상 입력 의미 보존 대조군

@@ -9,6 +9,8 @@ from packages.common.schemas import Block, NormalizedDocument, Page
 from packages.legal_engine.claim_review import classify_claims, review_claims
 from packages.legal_engine.statutory_exclusion import exclusion_clauses
 
+from tests.perf_scaling import fastest_of
+
 RULE = "CLAIM.STATUTORY_RULE_EXCLUSION"
 
 # All positive arguments are synthetic, and vary both the legal target and rationale.
@@ -164,16 +166,10 @@ def test_synthetic_repeated_input_finishes_within_tenth_second():
     examples = [POSITIVES[0], POSITIVES[2], CONTROLS[0], "형평 " + "가" * 100 + " 법정 기간 검토"]
     # 2026-10-25 평가 측: 전체 시험 세션의 큰 힙에서 2세대 GC 한 번이 0.2~0.4초 걸려(로컬 재현 0.385초)
     # PR CI에서 0.25·0.23초로 두 번 실패했다. 재는 것은 정규식·절 분석 시간이므로 측정 구간만 GC를 멈춘다(기준 0.1초 유지).
-    import gc
-
-    gc.collect()
-    gc.disable()
-    try:
-        start = perf_counter()
-        results = [exclusion_clauses(examples[i % 4]) for i in range(2000)]
-        elapsed = perf_counter() - start
-    finally:
-        gc.enable()
+    # TK-214: GC 중지와 반복 최솟값은 fastest_of가 함께 한다(예외가 나도 GC를 되살린다).
+    # 대상에 캐시가 있으나 2,000회 가운데 처음 4회만 적재이므로 회차 간 측정 대상이 같다.
+    elapsed, results = fastest_of(
+        lambda: [exclusion_clauses(examples[i % 4]) for i in range(2000)])
     assert sum(bool(v) for v in results) == 1000
     assert elapsed < 0.1
 

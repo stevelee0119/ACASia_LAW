@@ -20,6 +20,8 @@ from packages.claim_engine.internal_inconsistency import (
 from packages.common.enums import EvidenceGrade, FindingType, Severity, VerificationStatus
 from packages.common.schemas import Block, NormalizedDocument, Page
 
+from tests.perf_scaling import growth_exponent, timings_interleaved
+
 
 def _doc(text: str) -> NormalizedDocument:
     block = Block(block_id="b1", text=text, page=1, visible=True, source_layer="visible_text")
@@ -174,14 +176,30 @@ def test_yields_to_existing_internal_date_rule():
     assert "EVI.INCONS_SAME_EVENT_DATETIME" not in rule_ids
 
 
+# TK-214: 선형성을 한 점의 절대 시간으로 재던 자리를 길이 묶음·교차 측정·log-log 기울기로 바꾼다.
+# 2026-11-19 CI에서 한계 0.5초에 0.751초로 실패했으나 같은 커밋의 다른 실행에서는 통과했고
+# 평가 측 7회 측정 중앙값은 0.041초(한계의 1/10 아래)였다. 단발 측정은 코드가 아니라 부하를 잰다.
+# 엄격도는 TK-142와 같다: 길이 4배에 시간 비 8 = 지수 log(8)/log(4) = 1.5.
+_LINEAR_SIZES = (2500, 5000, 10000, 20000)
+_MAX_GROWTH_EXPONENT = 1.5
+
+
+def _evil_pair(size: int):
+    """길이 size의 악성 입력 두 개. 반복 단위가 같아 길이만 달라진다."""
+    return (("위그해당이사건본건동 통지서 회신서 시정명령 " * 600)[:size],
+            ("단 한 차례 단 한 번도 회신 통지 발송 " * 600)[:size])
+
+
 def test_linear_time_on_20k_chars():
     """2만 자 악성 입력 선형 시간 검증."""
-    evil_1 = ("위그해당이사건본건동 통지서 회신서 시정명령 " * 600)[:20000]
-    evil_2 = ("단 한 차례 단 한 번도 회신 통지 발송 " * 600)[:20000]
+    def run(size: int):
+        evil_1, evil_2 = _evil_pair(size)
+        _ANAPHORA_EVENT_RE.findall(evil_1)
+        _UNIQUENESS_MARKER_RE.findall(evil_2)
+        check_internal_inconsistency(_doc(evil_1))
 
-    t0 = time.perf_counter()
-    _ANAPHORA_EVENT_RE.findall(evil_1)
-    _UNIQUENESS_MARKER_RE.findall(evil_2)
-    check_internal_inconsistency(_doc(evil_1))
-    elapsed = time.perf_counter() - t0
-    assert elapsed < 0.5, f"Too slow on 20k chars: {elapsed:.3f}s"
+    timings = timings_interleaved(run, _LINEAR_SIZES)
+    # 폭주를 잡는 절대 상한은 남긴다. 단발이 아니라 교차 측정의 최솟값이므로 부하로 깨지지 않는다.
+    assert timings[-1] < 0.5, f"Too slow on 20k chars: {timings[-1]:.3f}s (전체 {timings})"
+    exponent = growth_exponent(_LINEAR_SIZES, timings)
+    assert exponent < _MAX_GROWTH_EXPONENT, (round(exponent, 3), timings)

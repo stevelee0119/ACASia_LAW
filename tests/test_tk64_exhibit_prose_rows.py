@@ -11,6 +11,8 @@ from packages.claim_engine.evidence_consistency import check_document, check_exh
 from packages.document_engine.registry import parse_document
 from scripts.audit.corpus import build_pdf
 
+from tests.perf_scaling import fastest_of
+
 
 def _doc(tmp_path: Path, name: str, body):
     """합성 PDF 문서를 생성하고 파싱된 NormalizedDocument를 반환한다."""
@@ -268,9 +270,8 @@ def test_tk66_exhibit_section_head_regex_redos_prevention():
         "1." + " 1." * 2000 + "x",
     ]
     for case in cases:
-        t0 = time.perf_counter()
-        res = _EXHIBIT_SECTION_HEAD_RE.search(case)
-        elapsed = time.perf_counter() - t0
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+        elapsed, res = fastest_of(lambda c=case: _EXHIBIT_SECTION_HEAD_RE.search(c))
         assert res is None, "악의적 패턴 매칭 실패 보장"
         assert elapsed < 0.1, f"ReDoS 발생: {elapsed:.4f}초 소요 (한도: 0.1초)"
 
