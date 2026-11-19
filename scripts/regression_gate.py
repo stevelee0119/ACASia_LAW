@@ -35,6 +35,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -160,15 +161,64 @@ def remove_worktree(tree: Path) -> None:
     subprocess.run(["git", "worktree", "prune"], cwd=ROOT, capture_output=True)
 
 
+_STAGE_LOCK = threading.Lock()
+_STAGE: List[Path] = []
+
+
+def stage_root() -> Path:
+    """기준 커밋 쪽 입력을 둘 임시 폴더(TK-219). 처음 부를 때 만든다."""
+    with _STAGE_LOCK:
+        if not _STAGE:
+            _STAGE.append(Path(tempfile.mkdtemp(prefix="regress_inputs_")))
+        return _STAGE[0]
+
+
+def remove_stage() -> None:
+    with _STAGE_LOCK:
+        while _STAGE:
+            shutil.rmtree(_STAGE.pop(), ignore_errors=True)
+
+
+def stage_spec(spec: Path) -> Path:
+    """명세와 그 입력을 임시 폴더에 같은 상대 경로로 복사하고 복사본 명세 경로를 돌려준다(TK-219).
+
+    기준 커밋 worktree에서 도는 것은 그 커밋의 탐침 도구다. 옛 `path_guard`는 저장소·임시 폴더·홈만
+    허용하므로, 저장소가 홈 밖에 있으면 현재 저장소의 입력을 열지 못해 전 항목이 '측정 못 함'이 됐다.
+    입력을 임시 폴더로 옮기면 어느 커밋의 도구든 열 수 있다(임시 폴더는 늘 허용 폴더다).
+    """
+    base = stage_root()
+    rels = [spec.relative_to(ROOT)]
+    try:
+        data = json.loads(spec.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    for key in ("input", "text_input"):
+        value = data.get(key)
+        if isinstance(value, str) and value and not Path(value).is_absolute():
+            rels.append(Path(value))
+    with _STAGE_LOCK:
+        for rel in rels:
+            src = ROOT / rel
+            dst = base / rel
+            if not src.is_file() or dst.exists():
+                continue
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+    return base / spec.relative_to(ROOT)
+
+
 def probe_run(spec: Path, text: bool, tree: Optional[Path]) -> Tuple[Dict[str, bool], List[str]]:
     """({항목 id: 통과 여부}, 처리 오류 목록). 하위 프로세스 실패·시간 초과는 예외로 올린다."""
-    cmd = [sys.executable, str(PROBE), "run", "--spec", str(spec), "--json"] + (["--text"] if text else [])
+    spec_arg, doc_root = spec, ROOT
+    if tree is not None:
+        spec_arg, doc_root = stage_spec(spec), stage_root()
+    cmd = [sys.executable, str(PROBE), "run", "--spec", str(spec_arg), "--json"] + (["--text"] if text else [])
     env = dict(os.environ, LV_ALLOW_NETWORK="0")
     cwd = ROOT
     if tree is not None:
         cmd += ["--tree", str(tree)]
         cwd = tree
-        env.update(PYTHONPATH=str(tree), PROBE_DOC_ROOT=str(ROOT))
+        env.update(PYTHONPATH=str(tree), PROBE_DOC_ROOT=str(doc_root))
     label = f"{spec.name} {'text' if text else 'primary'}"
     try:
         proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=900, env=env)
@@ -373,6 +423,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     finally:
         if base_tree is not None:
             remove_worktree(base_tree)
+        remove_stage()
     bad = bool(report["regressions"] or report["new_test_failures"])
     code = 1 if bad else (2 if unmeasured_reasons else 0)
     if args.json:
