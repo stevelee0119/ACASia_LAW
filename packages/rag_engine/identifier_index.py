@@ -22,12 +22,32 @@ from packages.rag_engine.relevance import tokens as bigram_tokens
 
 
 _STATUTE_CITE_RE = re.compile(
-    r"(?P<law>[가-힣]{2,20}(?:\s+[가-힣]{1,10}){0,3}?(?:법률|법|헌법|령|규칙))\s*"
+    r"(?P<law>[가-힣]{1,20}(?:\s+[가-힣]{1,10}){0,3}?(?:법률|법|헌법|령|규칙))\s*"
     r"제\s*(?P<art>\d+)\s*조(?:\s*의\s*(?P<sub>\d+))?(?:\s*제\s*(?P<para>\d+)\s*항)?"
 )
 _EXHIBIT_RE = re.compile(
     r"(?P<side>[갑을병정])\s*제\s*(?P<num>\d+)\s*호증(?:\s*의\s*(?P<sub>\d+))?"
 )
+
+_PARTICLE_END_RE = re.compile(r"(?:은|는|이|가|을|를|에|도|로|와|과|께서|에서|에게|인|된|한|던|적인)$")
+_NON_LAW_PREFIX_TOKENS = frozenset({
+    "관련", "해당", "위", "동", "같은", "본", "이", "그", "현행", "구", "신", "각", "위반", "적용",
+    "및", "또는", "혹은", "등",
+})
+
+
+def _clean_law_name(raw_law: str) -> str:
+    tokens = raw_law.split()
+    kept: List[str] = []
+    for token in reversed(tokens):
+        inside_name = bool(kept) and (
+            (kept[0] in ("관한", "대한", "따른", "의한") and token.endswith("에"))
+            or token in ("관한", "대한", "따른", "의한")
+        )
+        if kept and not inside_name and (token in _NON_LAW_PREFIX_TOKENS or _PARTICLE_END_RE.search(token)):
+            break
+        kept.insert(0, token)
+    return re.sub(r"\s+", "", "".join(kept))
 
 
 @dataclass(frozen=True)
@@ -53,7 +73,9 @@ def extract_legal_identifiers(text: str) -> List[LegalIdentifier]:
             found.append(LegalIdentifier(kind="CASE", canonical=canon))
 
     for m in _STATUTE_CITE_RE.finditer(raw):
-        law = re.sub(r"\s+", "", m.group("law"))
+        law = _clean_law_name(m.group("law"))
+        if not law:
+            continue
         art = canonical_article(
             f"제{m.group('art')}조"
             + (f"의{m.group('sub')}" if m.group("sub") else "")
@@ -97,13 +119,13 @@ class IdentifierIndex:
 
     def index_chunk(self, chunk_id: str, file_id: str, text: str) -> List[LegalIdentifier]:
         idents = extract_legal_identifiers(text)
-        if not idents:
-            return []
         with self.conn:
-            self.conn.executemany(
-                "INSERT OR IGNORE INTO chunk_identifiers (kind, canonical, chunk_id, file_id) VALUES (?, ?, ?, ?)",
-                [(ident.kind, ident.canonical, chunk_id, file_id) for ident in idents],
-            )
+            self.conn.execute("DELETE FROM chunk_identifiers WHERE chunk_id = ?", (chunk_id,))
+            if idents:
+                self.conn.executemany(
+                    "INSERT OR IGNORE INTO chunk_identifiers (kind, canonical, chunk_id, file_id) VALUES (?, ?, ?, ?)",
+                    [(ident.kind, ident.canonical, chunk_id, file_id) for ident in idents],
+                )
         return idents
 
     def lookup(self, query_text: str) -> Dict[str, List[LegalIdentifier]]:

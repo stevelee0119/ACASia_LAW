@@ -46,3 +46,22 @@ def test_identifier_index_pins_exact_match_above_lexical_noise():
     assert ranked[0]["chunk_id"] == "c_target"
     assert ranked[0]["tier1_pinned"] is True
     assert ranked[1]["tier1_pinned"] is False
+
+
+def test_statute_normalization_and_reindex_removes_deleted_identifiers():
+    bare = extract_legal_identifiers("민법 제10조")
+    prefixed = extract_legal_identifiers("관련 민법 제10조")
+    assert len(bare) == 1
+    assert bare == prefixed
+    assert bare[0].canonical == "민법:10"
+
+    idx = IdentifierIndex()
+    idx.index_chunk("c1", "f1", "원고는 갑 제2호증 및 민법 제10조를 인용한다.")
+    assert "c1" in idx.lookup("갑 제2호증")
+    assert "c1" in idx.lookup("민법 제10조")
+
+    # Re-index same chunk with exhibit removed
+    idx.index_chunk("c1", "f1", "원고는 민법 제10조만 인용한다.")
+    assert "c1" not in idx.lookup("갑 제2호증")
+    assert "c1" in idx.lookup("민법 제10조")
+
