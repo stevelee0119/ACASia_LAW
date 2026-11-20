@@ -1294,13 +1294,14 @@ class VerificationPipeline:
         active_graph = None
         if graph_mode != "off":
             try:
-                from packages.evidence_graph import analyze_evidence_graph, build_evidence_graph
+                from packages.evidence_graph import analyze_evidence_graph, build_evidence_graph, default_requirement_rules
                 active_graph = build_evidence_graph(
                     document.document_id,
                     claims=getattr(result, "claims", None) or result.engine_data.get("claims") or [],
                     citations=getattr(result, "citations", None) or result.engine_data.get("citations") or [],
                     exhibits=getattr(result, "exhibits", None) or result.engine_data.get("exhibits") or [],
                     findings=result.findings,
+                    requirement_rules=default_requirement_rules(),
                 )
                 result.engine_data["evidence_graph"] = active_graph.to_dict()
                 result.engine_data["evidence_graph_analysis"] = analyze_evidence_graph(active_graph)

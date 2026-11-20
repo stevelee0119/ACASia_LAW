@@ -236,12 +236,80 @@ def test_review_items_attach_prerequisite_checklist_only_when_enabled(monkeypatc
     assert shadow_items
     assert not (shadow_items[0].reasoning_sections or {}).get("prerequisite_checklist")
 
-    # Canary mode: prerequisite_checklist is attached
-    monkeypatch.setenv("LV_EVIDENCE_GRAPH_MODE", "canary")
+    # Canary & Default modes: prerequisite_checklist is attached and Settings reads env var
+    for mode in ("canary", "default"):
+        monkeypatch.setenv("LV_EVIDENCE_GRAPH_MODE", mode)
+        reset_settings()
+        from packages.common.config import get_settings
+        assert get_settings().evidence_graph_mode == mode
+        items = build_document_review_items(doc_result, doc, ctx)
+        checklist = (items[0].reasoning_sections or {}).get("prerequisite_checklist") or []
+        rules = {c["rule"] for c in checklist}
+        assert "BROKEN_AUTHORITY_CHAIN" in rules
+        assert "MISSING_PREREQUISITE_ELEMENT" in rules
     reset_settings()
-    canary_items = build_document_review_items(doc_result, doc, ctx)
-    checklist = (canary_items[0].reasoning_sections or {}).get("prerequisite_checklist") or []
-    rules = {c["rule"] for c in checklist}
-    assert "BROKEN_AUTHORITY_CHAIN" in rules
-    assert "MISSING_PREREQUISITE_ELEMENT" in rules
+
+
+def test_default_requirement_rules_wire_into_graph_and_review_items(monkeypatch: pytest.MonkeyPatch) -> None:
+    from packages.evidence_graph import default_requirement_rules
+
+    rules = default_requirement_rules()
+    assert rules
+
+    graph = build_evidence_graph(
+        "doc-default-rules",
+        citations=[{"citation_id": "CIT_1", "raw_text": "민법 제750조", "status": "NOT_FOUND"}],
+        claims=[
+            {
+                "claim_id": "CLM_1",
+                "type": "LEGAL_ARGUMENT",
+                "text": "불법행위 손해배상 책임이 성립한다.",
+                "citation_ids": ["CIT_1"],
+            },
+            {
+                "claim_id": "CLM_F",
+                "type": "FACT",
+                "text": "상대방의 고의로 위법행위가 있었다.",
+            },
+        ],
+        findings=[
+            _make_finding("FND_1", citation_id="CIT_1", status=VerificationStatus.CONTRADICTED, grade=EvidenceGrade.A),
+            _make_finding("FND_2", claim_id="CLM_1", status=VerificationStatus.NOT_FOUND, grade=EvidenceGrade.B),
+        ],
+        requirement_rules=rules,
+    )
+    analysis = analyze_evidence_graph(graph)
+    missing_labels = {m["element_label"] for m in analysis["missing_prerequisite_elements"]}
+    assert "손해 발생" in missing_labels
+    assert "인과관계" in missing_labels
+
+    monkeypatch.setenv("LV_EVIDENCE_GRAPH_MODE", "default")
+    reset_settings()
+    finalized = finalize_document_findings(
+        [
+            _make_finding("FND_1", citation_id="CIT_1", status=VerificationStatus.CONTRADICTED, grade=EvidenceGrade.A),
+            _make_finding("FND_2", claim_id="CLM_1", status=VerificationStatus.NOT_FOUND, grade=EvidenceGrade.B),
+        ],
+        None,
+        "doc-default-rules",
+        evidence_graph=graph,
+    )
+    assert [f.finding_id for f in finalized] == ["FND_1"]
+
+    doc = NormalizedDocument(document_id="doc-default-rules", filename="sample.txt", mime_type="text/plain", sha256="0" * 64)
+    doc_result = SimpleNamespace(
+        document_id="doc-default-rules",
+        filename="sample.txt",
+        findings=finalized,
+        citations=[{"citation_id": "CIT_1", "raw_text": "민법 제750조", "type": "STATUTE"}],
+        claims=[],
+        exhibits=[],
+        engine_data={
+            "legal_verdicts": [{"citation_id": "CIT_1", "status": "NOT_FOUND"}],
+            "evidence_graph_analysis": analysis,
+        },
+    )
+    items = build_document_review_items(doc_result, doc, SimpleNamespace())
+    checklist = (items[0].reasoning_sections or {}).get("prerequisite_checklist") or []
+    assert any(c["rule"] == "MISSING_PREREQUISITE_ELEMENT" and c["target"] == "손해 발생" for c in checklist)
     reset_settings()

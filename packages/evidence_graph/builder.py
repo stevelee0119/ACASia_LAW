@@ -207,9 +207,19 @@ def build_evidence_graph(
 
         if is_legal:
             for trigger_kw, elem_labels in req_rules.items():
-                if trigger_kw in text:
-                    for elem_label in elem_labels:
+                matched = (
+                    bool(trigger_kw.search(text))
+                    if isinstance(trigger_kw, re.Pattern)
+                    else str(trigger_kw) in text
+                )
+                if matched:
+                    for elem_spec in elem_labels:
+                        if isinstance(elem_spec, tuple) and len(elem_spec) == 2:
+                            elem_label, elem_pat = str(elem_spec[0]), elem_spec[1]
+                        else:
+                            elem_label, elem_pat = str(elem_spec), None
                         elem_id = "REQ_" + sha256(f"{node.node_id}|{elem_label}".encode("utf-8")).hexdigest()[:10]
+                        attrs = {"pattern": elem_pat} if elem_pat is not None else {}
                         graph.add_node(
                             GraphNode(
                                 node_id=elem_id,
@@ -217,17 +227,24 @@ def build_evidence_graph(
                                 label=elem_label,
                                 document_id=document_id,
                                 status="PENDING",
+                                attributes=attrs,
                             )
                         )
                         graph.add_edge(EdgeKind.REQUIRES_ELEMENT, node.node_id, elem_id)
 
-    # 4. Link FACT_ASSERTION nodes to REQUIREMENT_ELEMENT nodes by keyword overlap
+    # 4. Link FACT_ASSERTION nodes to REQUIREMENT_ELEMENT nodes by pattern or keyword overlap
     for req_node in [n for n in graph.nodes.values() if n.kind == NodeKind.REQUIREMENT_ELEMENT]:
+        elem_pat = req_node.attributes.get("pattern")
         raw_toks = [re.sub(r"(?:은|는|이|가|을|를|의|에|도)$", "", tok) for tok in re.split(r"\s+", req_node.label)]
         kw_tokens = [tok for tok in raw_toks if len(tok) >= 2 and tok not in ("존재", "여부", "사실")]
         for f_node in fact_nodes:
             f_text = str(f_node.attributes.get("full_text") or f_node.label)
-            if kw_tokens and all(tok in f_text for tok in kw_tokens):
+            satisfied = (
+                bool(elem_pat.search(f_text))
+                if isinstance(elem_pat, re.Pattern)
+                else (bool(kw_tokens) and all(tok in f_text for tok in kw_tokens))
+            )
+            if satisfied:
                 graph.add_edge(EdgeKind.ASSERTS_SATISFACTION, f_node.node_id, req_node.node_id)
                 req_node.status = "ASSERTED"
 
@@ -294,4 +311,19 @@ def build_evidence_graph(
                 graph.add_edge(EdgeKind.CONTRADICTS, src_nid, dst_nid, finding_id=f_id, reason="CLAIM_CONTRADICTION")
 
     return graph
+
+
+def default_requirement_rules() -> Dict[Any, List[Any]]:
+    """Build requirement_rules mapping from `CAUSE_OF_ACTION_RULES`."""
+    try:
+        from packages.legal_engine.actionable_guidance import CAUSE_OF_ACTION_RULES
+    except Exception:  # pragma: no cover - defensive
+        return {}
+    rules: Dict[Any, List[Any]] = {}
+    for rule in CAUSE_OF_ACTION_RULES:
+        trigger = rule.get("trigger")
+        elems = [(str(label), pat) for label, pat in (rule.get("elements") or []) if label]
+        if trigger is not None and elems:
+            rules[trigger] = elems
+    return rules
 

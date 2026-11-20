@@ -4,7 +4,7 @@ from .analyzer import (
     build_prerequisite_checklist,
     deduplicate_findings_by_graph,
 )
-from .builder import build_evidence_graph
+from .builder import build_evidence_graph, default_requirement_rules
 from .schema import (
     EdgeKind,
     GraphEdge,
@@ -23,4 +23,5 @@ __all__ = [
     "build_evidence_graph",
     "build_prerequisite_checklist",
     "deduplicate_findings_by_graph",
+    "default_requirement_rules",
 ]

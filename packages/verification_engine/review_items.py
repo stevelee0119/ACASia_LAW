@@ -547,10 +547,17 @@ def build_document_review_items(
     if graph_mode in ("canary", "default") and isinstance(graph_analysis, dict):
         from packages.evidence_graph.analyzer import build_prerequisite_checklist
         for item in items:
+            expanded_fids = list(item.finding_ids or [])
+            for fid in item.finding_ids or []:
+                f_obj = finding_by_id.get(fid)
+                merged = ((getattr(f_obj, "confidence_features", None) or {}).get("merged_findings") or []) if f_obj else []
+                for m in merged:
+                    if isinstance(m, dict) and m.get("finding_id"):
+                        expanded_fids.append(str(m["finding_id"]))
             checklist = build_prerequisite_checklist(
                 graph_analysis,
                 citation_id=item.citation_id,
-                finding_ids=item.finding_ids,
+                finding_ids=expanded_fids,
             )
             if checklist:
                 sections = dict(item.reasoning_sections) if isinstance(item.reasoning_sections, dict) else {}

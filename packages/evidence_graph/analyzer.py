@@ -195,10 +195,13 @@ def build_prerequisite_checklist(
     """Return structured prerequisite/chain checklist items matching a ReviewItem."""
     fid_set = {str(x) for x in finding_ids if x}
     checklist: List[Dict[str, Any]] = []
+    linked_claim_nids: Set[str] = set()
 
     for item in analysis.get("broken_authority_chains") or []:
         item_fids = {str(x) for x in (item.get("finding_ids") or [])}
         if (citation_id and item.get("citation_id") == citation_id) or (fid_set & item_fids):
+            if item.get("claim_node_id"):
+                linked_claim_nids.add(str(item["claim_node_id"]))
             checklist.append({
                 "rule": "BROKEN_AUTHORITY_CHAIN",
                 "status": "FAILED",
@@ -208,7 +211,7 @@ def build_prerequisite_checklist(
 
     for item in analysis.get("missing_prerequisite_elements") or []:
         item_fids = {str(x) for x in (item.get("finding_ids") or [])}
-        if not item_fids or (fid_set & item_fids):
+        if not item_fids or (fid_set & item_fids) or (item.get("claim_node_id") in linked_claim_nids):
             checklist.append({
                 "rule": "MISSING_PREREQUISITE_ELEMENT",
                 "status": "MISSING",
