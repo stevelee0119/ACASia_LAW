@@ -129,3 +129,16 @@ def test_omitted_subject_uncertainty_and_document_spans():
     assert doc.visible_text[s0:e0] == clauses[0].raw_text
     assert "normalized_clauses" in doc.structure
     assert doc.structure["clause_normalizer_backend"] == "regex_fallback"
+
+
+def test_clause_normalizer_settings_flag(monkeypatch):
+    from packages.common.config import get_settings, reset_settings
+
+    monkeypatch.setenv("LV_USE_CLAUSE_NORMALIZER", "canary")
+    reset_settings()
+    assert get_settings().use_clause_normalizer == "canary"
+
+    monkeypatch.setenv("LV_USE_CLAUSE_NORMALIZER", "off")
+    reset_settings()
+    assert get_settings().use_clause_normalizer == "off"
+    reset_settings()
