@@ -195,6 +195,9 @@ class Settings:
     evidence_graph_mode: str = field(
         default_factory=lambda: (os.getenv("LV_EVIDENCE_GRAPH_MODE", "shadow") or "shadow").strip().lower()
     )
+    use_clause_normalizer: str = field(
+        default_factory=lambda: (os.getenv("LV_USE_CLAUSE_NORMALIZER", "shadow") or "shadow").strip().lower()
+    )
     providers: Dict[str, ProviderConfig] = field(default_factory=dict)
     pricing: Dict[str, Any] = field(default_factory=dict)
 
