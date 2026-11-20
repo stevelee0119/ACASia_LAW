@@ -149,41 +149,62 @@ def attach_table_grids(doc: NormalizedDocument) -> List[TableGrid]:
     return grids
 
 
+_SUBTOTAL_LABEL_RE = re.compile(r"^소\s*계\b")
+
+
 def check_column_totals(grid: TableGrid) -> List[Dict[str, Any]]:
-    """Verify numeric column sums against any detected total/summary rows in `TableGrid`."""
+    """Verify numeric column sums against all detected subtotal and grand-total rows."""
     mismatches: List[Dict[str, Any]] = []
     if not grid.total_row_indices or grid.num_rows < 3:
         return mismatches
 
-    first_total = min(grid.total_row_indices)
-    for col_idx in range(1, grid.num_cols):
-        total_cell = grid.cell(first_total, col_idx)
-        if not total_cell:
-            continue
-        tot_match = _AMOUNT_RE.search(total_cell.text.replace(",", ""))
-        if not tot_match:
-            continue
-        expected_total = int(tot_match.group(0))
+    total_set = set(grid.total_row_indices)
+    sorted_totals = sorted(grid.total_row_indices)
+    last_section_end = 0
 
-        item_values: List[int] = []
-        for r_idx in range(1, first_total):
-            c = grid.cell(r_idx, col_idx)
-            if not c or c.is_header:
+    for total_row_idx in sorted_totals:
+        label_cell = grid.cell(total_row_idx, 0)
+        row_label = label_cell.text if label_cell else ""
+        is_subtotal = bool(_SUBTOTAL_LABEL_RE.match(row_label))
+        start_row = (last_section_end + 1) if is_subtotal else 1
+
+        for col_idx in range(1, grid.num_cols):
+            total_cell = grid.cell(total_row_idx, col_idx)
+            if not total_cell:
                 continue
-            m = _AMOUNT_RE.search(c.text.replace(",", ""))
-            if m:
-                item_values.append(int(m.group(0)))
+            tot_match = _AMOUNT_RE.search(total_cell.text.replace(",", ""))
+            if not tot_match:
+                continue
+            expected_total = int(tot_match.group(0))
 
-        if len(item_values) >= 2:
-            actual_sum = sum(item_values)
-            if actual_sum != expected_total:
-                mismatches.append({
-                    "block_id": grid.block_id,
-                    "page": grid.page,
-                    "col_idx": col_idx,
-                    "header": grid.headers[col_idx] if col_idx < len(grid.headers) else f"col_{col_idx}",
-                    "sum_of_rows": actual_sum,
-                    "stated_total": expected_total,
-                    "difference": actual_sum - expected_total,
-                })
+            item_values: List[int] = []
+            for r_idx in range(start_row, total_row_idx):
+                if r_idx in total_set:
+                    continue
+                c = grid.cell(r_idx, col_idx)
+                if not c or c.is_header:
+                    continue
+                m = _AMOUNT_RE.search(c.text.replace(",", ""))
+                if m:
+                    item_values.append(int(m.group(0)))
+
+            min_items = 1 if is_subtotal else 2
+            if len(item_values) >= min_items:
+                actual_sum = sum(item_values)
+                if actual_sum != expected_total:
+                    mismatches.append({
+                        "block_id": grid.block_id,
+                        "page": grid.page,
+                        "row_idx": total_row_idx,
+                        "row_label": row_label,
+                        "col_idx": col_idx,
+                        "header": grid.headers[col_idx] if col_idx < len(grid.headers) else f"col_{col_idx}",
+                        "sum_of_rows": actual_sum,
+                        "stated_total": expected_total,
+                        "difference": actual_sum - expected_total,
+                    })
+
+        if is_subtotal:
+            last_section_end = total_row_idx
     return mismatches
+

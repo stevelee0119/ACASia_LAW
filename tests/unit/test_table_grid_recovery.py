@@ -57,3 +57,21 @@ def test_attach_table_grids_and_detect_total_mismatch():
     assert mismatches[0]["header"] == "청구액"
     assert mismatches[0]["sum_of_rows"] == 1_500_000
     assert mismatches[0]["stated_total"] == 2_000_000
+
+
+def test_check_column_totals_detects_grand_total_mismatch_after_subtotal():
+    rows = [
+        ["항목", "금액"],
+        ["항목A", "10"],
+        ["소계", "10"],
+        ["항목B", "20"],
+        ["총계", "999"],
+    ]
+    grid = build_table_grid_from_rows(rows, block_id="tbl_sub", page=3)
+    assert grid.total_row_indices == [2, 4]
+    mismatches = check_column_totals(grid)
+    assert len(mismatches) == 1
+    assert mismatches[0]["row_label"] == "총계"
+    assert mismatches[0]["sum_of_rows"] == 30
+    assert mismatches[0]["stated_total"] == 999
+
