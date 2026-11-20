@@ -76,9 +76,9 @@ def sliding_window_passages(
     top_k: int = 3,
 ) -> List[PassageCandidate]:
     """Locate the highest-overlap 1..3 sentence windows in `official_text` for `claim_or_quote`."""
-    src = (official_text or "").strip()
+    src = official_text or ""
     hyp = (claim_or_quote or "").strip()
-    if not src or not hyp:
+    if not src.strip() or not hyp:
         return []
 
     bounds = sentence_bounds(src)
@@ -95,14 +95,19 @@ def sliding_window_passages(
         if win <= 0 or win > len(bounds):
             continue
         for idx in range(0, len(bounds) - win + 1):
-            start = bounds[idx][0]
-            end = bounds[idx + win - 1][1]
+            raw_start = bounds[idx][0]
+            raw_end = bounds[idx + win - 1][1]
+            raw_seg = src[raw_start:raw_end]
+            segment = raw_seg.strip()
+            if not segment:
+                continue
+            lead_ws = len(raw_seg) - len(raw_seg.lstrip())
+            trail_ws = len(raw_seg) - len(raw_seg.rstrip())
+            start = raw_start + lead_ws
+            end = raw_end - trail_ws
             if (start, end) in seen_spans:
                 continue
             seen_spans.add((start, end))
-            segment = src[start:end].strip()
-            if not segment:
-                continue
             seg_tokens = _token_set(segment)
             if not seg_tokens:
                 continue
@@ -214,23 +219,23 @@ def evaluate_citation_nli_stage2(
     )
 
     if signal.label == "CONTRADICTION" and signal.contradict_prob >= contradict_threshold:
-        if combined_reasons:
+        if structural_reasons:
             return Stage2VerificationResult(
                 verdict="CONTRADICTED",
                 located_passage=best,
                 nli_signal=enriched_signal,
                 structural_changes=changes,
-                reason="공식 원문 대응 구간이 특정되었고 구조적 반전 및 NLI 모순 신호가 함께 확인되었습니다.",
+                reason="공식 원문 대응 구간이 특정되었고 독립 검증된 구조적 반전 및 NLI 모순 신호가 함께 확인되었습니다.",
             )
         return Stage2VerificationResult(
             verdict="PENDING_REVIEW",
             located_passage=best,
             nli_signal=enriched_signal,
             structural_changes=changes,
-            reason="NLI 모순 점수가 높으나 명확한 구조적 반전 표지가 없어 전문가/LLM 교차 검토로 보류합니다.",
+            reason="NLI 모순 점수가 높으나 독립 확인된 구조적 반전 표지가 없어 전문가/LLM 교차 검토로 보류합니다.",
         )
 
-    if signal.label == "ENTAILMENT" and not combined_reasons:
+    if signal.label == "ENTAILMENT" and not structural_reasons:
         return Stage2VerificationResult(
             verdict="SUPPORTED",
             located_passage=best,

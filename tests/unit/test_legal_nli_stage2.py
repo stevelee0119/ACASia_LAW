@@ -52,9 +52,16 @@ def test_stage2_nli_controls_entailment_insufficient_and_never_auto_contradicts_
     assert aligned.verdict == "SUPPORTED"
     assert aligned.located_passage is not None
 
-    # 4. Neural NLI high contradiction WITHOUT structural inversion -> PENDING_REVIEW (never solo CONTRADICTED)
+    # 4. Neural NLI high contradiction WITHOUT independent structural inversion -> PENDING_REVIEW
+    #    even if the external scorer supplies its own structural_reasons.
     def _opaque_contradict_scorer(premise: str, hypothesis: str) -> NLISignal:
-        return NLISignal(label="CONTRADICTION", entail_prob=0.02, contradict_prob=0.95, neutral_prob=0.03)
+        return NLISignal(
+            label="CONTRADICTION",
+            entail_prob=0.02,
+            contradict_prob=0.95,
+            neutral_prob=0.03,
+            structural_reasons=["MODEL_CLAIMED_INVERSION"],
+        )
 
     guarded = evaluate_citation_nli_stage2(
         "당사자는 계약 내용을 성실히 이행할 의무를 부담한다.",
@@ -66,11 +73,19 @@ def test_stage2_nli_controls_entailment_insufficient_and_never_auto_contradicts_
 
 def test_sliding_window_passages_locates_best_sentence_in_multi_sentence_judgment():
     doc = (
-        "원심은 이 사건 매매계약이 적법하게 체결되었다고 보았다. "
+        "  원심은 이 사건 매매계약이 적법하게 체결되었다고 보았다. "
         "그러나 매도인이 기망행위를 한 사실이 인정되면 매수인은 계약을 취소할 수 있다. "
         "소송비용은 패소자의 부담으로 한다."
     )
     passages = sliding_window_passages(doc, "기망행위가 인정되면 매수인이 계약을 취소할 수 있다.", top_k=2)
     assert passages
     assert "기망행위" in passages[0].text
-    assert doc[passages[0].start:passages[0].end].strip() == passages[0].text
+    assert doc[passages[0].start:passages[0].end] == passages[0].text
+
+    res = evaluate_citation_nli_stage2(
+        "  당사자는 계약 내용을 성실히 이행할 의무를 부담한다.",
+        "당사자는 계약 내용을 성실히 이행할 의무를 부담한다.",
+    )
+    assert res.located_passage is not None
+    assert "  당사자는 계약 내용을 성실히 이행할 의무를 부담한다."[res.located_passage.start:res.located_passage.end] == res.located_passage.text
+
