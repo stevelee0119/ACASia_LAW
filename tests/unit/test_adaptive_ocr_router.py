@@ -110,3 +110,59 @@ def test_composite_ocr_accepts_smaller_low_quality_improvement_and_recovers_prim
     assert rapid_adapter.available is True
     assert rapid_adapter.recognize_image(None, page=1)[0].text == "계약 체결일 확인"
 
+
+def test_fallback_adapters_recognize_multipage_pdf_and_preserve_pages_and_scale(tmp_path, monkeypatch):
+    import sys
+    import types
+    import pypdf
+    from packages.document_engine.ocr import PaddleOCRAdapter, RapidOCRAdapter
+
+    pdf_path = tmp_path / "multipage.pdf"
+    writer = pypdf.PdfWriter()
+    for _ in range(3):
+        writer.add_blank_page(width=200, height=300)
+    with pdf_path.open("wb") as fh:
+        writer.write(fh)
+
+    monkeypatch.setenv("LV_OCR_DPI", "144")  # scale = 2.0
+    from packages.common.config import reset_settings
+    reset_settings()
+
+    fake_rapid_mod = types.ModuleType("rapidocr_onnxruntime")
+    rapid_calls = []
+
+    class _FakeRapidPDF:
+        def __call__(self, image):
+            rapid_calls.append(image.size)
+            idx = len(rapid_calls)
+            return ([[[[20, 40], [100, 40], [100, 80], [20, 80]], f"제{idx}회차 본문", 0.91]], None)
+
+    fake_rapid_mod.RapidOCR = _FakeRapidPDF
+    monkeypatch.setitem(sys.modules, "rapidocr_onnxruntime", fake_rapid_mod)
+
+    rapid = RapidOCRAdapter()
+    lines_r = rapid.recognize(str(pdf_path), page_numbers=[2, 3])
+    assert [ln.page for ln in lines_r] == [2, 3]
+    assert lines_r[0].bbox is not None
+    assert lines_r[0].bbox.as_tuple() == (10.0, 20.0, 50.0, 40.0)
+
+    fake_paddle_mod = types.ModuleType("paddleocr")
+
+    class _FakePaddlePDF:
+        def __init__(self, **kwargs):
+            pass
+
+        def ocr(self, image):
+            return [[[[[20, 40], [100, 40], [100, 80], [20, 80]], ("판결 요지 확인", 0.94)]]]
+
+    fake_paddle_mod.PaddleOCR = _FakePaddlePDF
+    monkeypatch.setitem(sys.modules, "paddleocr", fake_paddle_mod)
+
+    paddle = PaddleOCRAdapter()
+    lines_p = paddle.recognize(str(pdf_path), page_numbers=[1, 3])
+    assert [ln.page for ln in lines_p] == [1, 3]
+    assert lines_p[1].bbox is not None
+    assert lines_p[1].bbox.as_tuple() == (10.0, 20.0, 50.0, 40.0)
+    reset_settings()
+
+

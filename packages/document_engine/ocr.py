@@ -321,6 +321,45 @@ def _fallback_improved(
     return _quality_rank(q_fb) > _quality_rank(q_pri)
 
 
+def _recognize_path_via_adapter(
+    adapter: OCRAdapter,
+    path: str,
+    page_numbers: Optional[List[int]] = None,
+) -> List[OCRLine]:
+    """Recognize either a multi-page PDF (rendering requested pages at canonical scale) or an image file."""
+    from contextlib import closing
+    from pathlib import Path
+    from PIL import Image
+
+    if Path(path).suffix.lower() == ".pdf":
+        import pypdfium2 as pdfium  # type: ignore
+
+        dpi = max(72, int(get_settings().ocr_dpi or 200))
+        scale = dpi / 72.0
+        lines: List[OCRLine] = []
+        with closing(pdfium.PdfDocument(path)) as pdf:
+            total_pages = len(pdf)
+            targets = (
+                [p for p in page_numbers if 1 <= int(p) <= total_pages]
+                if page_numbers is not None
+                else list(range(1, total_pages + 1))
+            )
+            for page_no in targets:
+                with closing(pdf[page_no - 1]) as page:
+                    bitmap = page.render(scale=scale)
+                    pil_img = bitmap.to_pil()
+                    try:
+                        lines.extend(adapter.recognize_image(pil_img.convert("RGB"), page=int(page_no), scale=scale))
+                    finally:
+                        if hasattr(pil_img, "close"):
+                            pil_img.close()
+        return lines
+
+    page_no = int(page_numbers[0]) if page_numbers else 1
+    with Image.open(path) as img:
+        return adapter.recognize_image(img.convert("RGB"), page=page_no, scale=1.0)
+
+
 class RapidOCRAdapter(OCRAdapter):
     """Optional RapidOCR ONNX fallback adapter."""
 
@@ -339,10 +378,7 @@ class RapidOCRAdapter(OCRAdapter):
     def recognize(self, path: str, page_numbers: Optional[List[int]] = None) -> List[OCRLine]:
         if not self.available:
             return []
-        from PIL import Image
-
-        with Image.open(path) as img:
-            return self.recognize_image(img.convert("RGB"), page=1)
+        return _recognize_path_via_adapter(self, path, page_numbers=page_numbers)
 
     def recognize_image(self, image: Any, *, page: int = 1, scale: float = 1.0) -> List[OCRLine]:
         if not self.available or self._engine is None:
@@ -380,10 +416,7 @@ class PaddleOCRAdapter(OCRAdapter):
     def recognize(self, path: str, page_numbers: Optional[List[int]] = None) -> List[OCRLine]:
         if not self.available:
             return []
-        from PIL import Image
-
-        with Image.open(path) as img:
-            return self.recognize_image(img.convert("RGB"), page=1)
+        return _recognize_path_via_adapter(self, path, page_numbers=page_numbers)
 
     def recognize_image(self, image: Any, *, page: int = 1, scale: float = 1.0) -> List[OCRLine]:
         if not self.available or self._engine is None:
