@@ -49,31 +49,30 @@ NOMINAL_FACT_RE = re.compile(r"(?:체결|납품|인수|검수|공제|지급|수�
 
 
 def assertion_mode(text):
+    if re.search(r"예비적(?:으로|인)|별도(?:의)?\s*(?:가정|전제)|가사", text):
+        return "ALTERNATIVE"
+
     try:
         from packages.korean_nlp import normalize_sentence
         clauses = normalize_sentence(text)
     except Exception:  # pragma: no cover - defensive fallback
         clauses = []
 
-    if clauses:
-        if any(c.modality == "ALTERNATIVE" for c in clauses):
-            return "ALTERNATIVE"
-        if any(c.modality == "HYPOTHETICAL" for c in clauses):
-            return "HYPOTHETICAL"
-        if any(
-            c.attribution_type == "OPPONENT_SUMMARY" or c.speaker_role == "OPPONENT"
-            for c in clauses
-        ) and (
-            any(c.attribution_type == "OPPONENT_SUMMARY" for c in clauses)
-            or all(c.speaker_role == "OPPONENT" for c in clauses)
-            or re.search(r"(?:라고|다고|라는|다는)\s*(?:취지로\s*)?(?:주장|항변|다투|다툰)", text)
-        ):
-            return "QUOTED_OTHER"
-
-    if re.search(r"예비적(?:으로|인)|별도(?:의)?\s*(?:가정|전제)|가사", text):
-        return "ALTERNATIVE"
-    if re.search(r"가정(?:하면|하더라도|하여)|만약|설령|하였다고\s*(?:보더라도|가정)|일\s*경우", text):
+    if re.search(r"가정(?:하면|하더라도|하여)|만약|설령|하였다고\s*(?:보더라도|가정)|일\s*경우", text) or any(
+        c.modality == "HYPOTHETICAL" for c in clauses
+    ):
         return "HYPOTHETICAL"
+
+    if any(
+        c.attribution_type == "OPPONENT_SUMMARY" or c.speaker_role == "OPPONENT"
+        for c in clauses
+    ) and (
+        any(c.attribution_type == "OPPONENT_SUMMARY" for c in clauses)
+        or all(c.speaker_role == "OPPONENT" for c in clauses)
+        or re.search(r"(?:라고|다고|라는|다는)\s*(?:취지로\s*)?(?:주장|항변|다투|다툰)", text)
+    ):
+        return "QUOTED_OTHER"
+
     if re.search(r"(?:피고|원고|상대방)[은는이가]?[^.]{0,100}(?:라고|다고)\s*주장", text):
         return "QUOTED_OTHER"
     if LEGAL_ARGUMENT_RE.search(text):
