@@ -110,3 +110,25 @@ def test_preindex_does_not_report_complete_on_failed_only_or_unknown_pages():
     assert unknown_report.files_complete == 1
     assert unknown_report.page_completion_rate is None
 
+    class _MixedCompleteAndUnknownFailedLibrary:
+        def __init__(self, settings, **kwargs):
+            pass
+
+        def sync(self, query="", *, collect_all=None):
+            return {
+                "status": "PARTIAL",
+                "files": [
+                    {"file_id": "f_ok", "status": "INDEXED", "continuation": False, "pages": 2, "read_pages": 2},
+                    {"file_id": "f_fail", "status": "PARSE_FAILED", "continuation": False, "pages": None, "read_pages": None},
+                ],
+                "coverage_ledger": {"total_files": 2},
+                "issues": [{"file_id": "f_fail", "reason": "REFERENCE_PARSE_FAILED"}],
+            }
+
+    mixed_report = preindex_drive_library(settings, max_rounds=2, library_factory=_MixedCompleteAndUnknownFailedLibrary)
+    assert mixed_report.converged is False
+    assert mixed_report.files_complete == 1
+    assert mixed_report.files_failed == 1
+    assert mixed_report.page_completion_rate is None
+
+

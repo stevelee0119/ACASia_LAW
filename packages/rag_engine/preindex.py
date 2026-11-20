@@ -67,20 +67,19 @@ def _has_pending_work(summary: Dict[str, Any]) -> tuple[int, int]:
     return continuations, partials
 
 
-def _compute_page_stats(summary: Dict[str, Any]) -> tuple[int, int, int, int, int]:
-    files_total = 0
+def _compute_page_stats(summary: Dict[str, Any]) -> tuple[int, int, int, int, int, bool]:
     files_complete = 0
     files_partial = 0
     files_failed = 0
     pages_total = 0
     pages_read = 0
+    has_unknown_pages = False
     for item in summary.get("files") or []:
         if not isinstance(item, dict):
             continue
         status = str(item.get("status") or "")
         if status in ("NOT_SELECTED_METADATA", "DUPLICATE_REUSED"):
             continue
-        files_total += 1
         if status == "INDEXED":
             files_complete += 1
         elif status == "INDEXED_PARTIAL":
@@ -95,7 +94,9 @@ def _compute_page_stats(summary: Dict[str, Any]) -> tuple[int, int, int, int, in
                 pages_read += min(p_read, p_tot)
             elif status == "INDEXED":
                 pages_read += p_tot
-    return files_complete, files_partial, files_failed, pages_total, pages_read
+        else:
+            has_unknown_pages = True
+    return files_complete, files_partial, files_failed, pages_total, pages_read, has_unknown_pages
 
 
 def preindex_drive_library(
@@ -137,16 +138,18 @@ def preindex_drive_library(
                 # No active continuation cursor remains; further identical rounds will not advance.
                 break
 
-    files_complete, files_partial, files_failed, pages_total, pages_read = _compute_page_stats(last_summary)
+    files_complete, files_partial, files_failed, pages_total, pages_read, has_unknown_pages = _compute_page_stats(last_summary)
     continuations, _ = _has_pending_work(last_summary)
     files_total = files_complete + files_partial + files_failed
     converged = converged and files_partial == 0 and files_failed == 0 and continuations == 0
-    if pages_total > 0:
-        completion_rate: Optional[float] = round(pages_read / pages_total, 4)
-    elif files_failed > 0 and files_complete == 0:
-        completion_rate = 0.0
+    if files_failed > 0 and files_complete == 0 and pages_total == 0:
+        completion_rate: Optional[float] = 0.0
+    elif has_unknown_pages:
+        # At least one file (e.g., failed or unmeasured) has unknown page count; never report 100%.
+        completion_rate = None
+    elif pages_total > 0:
+        completion_rate = round(pages_read / pages_total, 4)
     else:
-        # Page counts are unknown (or empty folder); never report 100% page completion without page counts.
         completion_rate = None
 
     return PreindexReport(
