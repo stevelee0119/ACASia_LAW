@@ -235,9 +235,18 @@ class CompositeOCRAdapter(OCRAdapter):
         self.last_route: dict = {}
 
     def recognize(self, path: str, page_numbers: Optional[List[int]] = None) -> List[OCRLine]:
-        lines = self.primary.recognize(path, page_numbers=page_numbers) if self.primary.available else []
+        self.last_error = None
+        lines: List[OCRLine] = []
+        pri_err: Optional[str] = None
+        if self.primary.available:
+            try:
+                lines = self.primary.recognize(path, page_numbers=page_numbers)
+                pri_err = getattr(self.primary, "last_error", None)
+            except Exception as exc:
+                lines = []
+                pri_err = type(exc).__name__
         q_pri = page_quality(lines)
-        if self.fallback and self.fallback.available and (not lines or q_pri["low_quality"]):
+        if self.fallback and self.fallback.available and (not lines or q_pri["low_quality"] or pri_err):
             try:
                 fb_lines = self.fallback.recognize(path, page_numbers=page_numbers)
             except Exception:
@@ -247,14 +256,23 @@ class CompositeOCRAdapter(OCRAdapter):
                 self.last_route = {"selected": self.fallback.name, "primary": q_pri, "fallback": q_fb}
                 return fb_lines
             self.last_route = {"selected": self.primary.name, "primary": q_pri, "fallback": q_fb}
+            self.last_error = pri_err
             return lines
+        self.last_error = pri_err
         self.last_route = {"selected": self.primary.name, "primary": q_pri}
         return lines
 
     def recognize_image(self, image: Any, *, page: int = 1, scale: float = 1.0, **kwargs: Any) -> List[OCRLine]:
         self.last_error = None
-        lines = self.primary.recognize_image(image, page=page, scale=scale, **kwargs) if self.primary.available else []
-        pri_err = getattr(self.primary, "last_error", None)
+        lines: List[OCRLine] = []
+        pri_err: Optional[str] = None
+        if self.primary.available:
+            try:
+                lines = self.primary.recognize_image(image, page=page, scale=scale, **kwargs)
+                pri_err = getattr(self.primary, "last_error", None)
+            except Exception as exc:
+                lines = []
+                pri_err = type(exc).__name__
         q_pri = page_quality(lines)
         if self.fallback and self.fallback.available and (not lines or q_pri["low_quality"] or pri_err):
             try:
@@ -273,6 +291,15 @@ class CompositeOCRAdapter(OCRAdapter):
         return lines
 
 
+def _quality_rank(q: dict) -> tuple[bool, float, float, int]:
+    return (
+        not bool(q.get("low_quality")),
+        float(q.get("hangul_ratio") or 0.0),
+        float(q.get("confidence") or 0.0),
+        int(q.get("lines") or 0),
+    )
+
+
 def _fallback_improved(
     pri_lines: List[OCRLine],
     q_pri: dict,
@@ -285,7 +312,99 @@ def _fallback_improved(
         return True
     if q_pri["low_quality"] and not q_fb["low_quality"]:
         return True
-    return float(q_fb.get("confidence") or 0.0) > float(q_pri.get("confidence") or 0.0) + 0.05
+    if not q_pri["low_quality"] and q_fb["low_quality"]:
+        return False
+    fb_conf = float(q_fb.get("confidence") or 0.0)
+    pri_conf = float(q_pri.get("confidence") or 0.0)
+    if fb_conf > pri_conf and float(q_fb.get("hangul_ratio") or 0.0) >= float(q_pri.get("hangul_ratio") or 0.0):
+        return True
+    return _quality_rank(q_fb) > _quality_rank(q_pri)
+
+
+class RapidOCRAdapter(OCRAdapter):
+    """Optional RapidOCR ONNX fallback adapter."""
+
+    name = "rapidocr"
+
+    def __init__(self) -> None:
+        try:
+            from rapidocr_onnxruntime import RapidOCR  # type: ignore
+
+            self._engine = RapidOCR()
+            self.available = True
+        except Exception:
+            self._engine = None
+            self.available = False
+
+    def recognize(self, path: str, page_numbers: Optional[List[int]] = None) -> List[OCRLine]:
+        if not self.available:
+            return []
+        from PIL import Image
+
+        with Image.open(path) as img:
+            return self.recognize_image(img.convert("RGB"), page=1)
+
+    def recognize_image(self, image: Any, *, page: int = 1, scale: float = 1.0) -> List[OCRLine]:
+        if not self.available or self._engine is None:
+            return []
+        result, _ = self._engine(image)
+        lines: List[OCRLine] = []
+        for entry in result or []:
+            if not isinstance(entry, (list, tuple)) or len(entry) < 3:
+                continue
+            pts, text, conf = entry[0], str(entry[1] or "").strip(), float(entry[2] or 0.0)
+            norm = normalize_ocr_spacing(text)
+            if not norm or is_noise(norm):
+                continue
+            xs = [float(p[0]) / scale for p in pts]
+            ys = [float(p[1]) / scale for p in pts]
+            lines.append(OCRLine(text=norm, page=page, bbox=BBox(min(xs), min(ys), max(xs), max(ys)), confidence=conf))
+        return lines
+
+
+class PaddleOCRAdapter(OCRAdapter):
+    """Optional PaddleOCR fallback adapter."""
+
+    name = "paddleocr"
+
+    def __init__(self, lang: str = "korean") -> None:
+        try:
+            from paddleocr import PaddleOCR  # type: ignore
+
+            self._engine = PaddleOCR(lang=lang, show_log=False)
+            self.available = True
+        except Exception:
+            self._engine = None
+            self.available = False
+
+    def recognize(self, path: str, page_numbers: Optional[List[int]] = None) -> List[OCRLine]:
+        if not self.available:
+            return []
+        from PIL import Image
+
+        with Image.open(path) as img:
+            return self.recognize_image(img.convert("RGB"), page=1)
+
+    def recognize_image(self, image: Any, *, page: int = 1, scale: float = 1.0) -> List[OCRLine]:
+        if not self.available or self._engine is None:
+            return []
+        raw = self._engine.ocr(image) or []
+        items = raw[0] if raw and isinstance(raw[0], list) else raw
+        lines: List[OCRLine] = []
+        for entry in items or []:
+            if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+                continue
+            pts = entry[0]
+            txt_conf = entry[1]
+            if not isinstance(txt_conf, (list, tuple)) or len(txt_conf) < 2:
+                continue
+            norm = normalize_ocr_spacing(str(txt_conf[0] or "").strip())
+            if not norm or is_noise(norm):
+                continue
+            xs = [float(p[0]) / scale for p in pts]
+            ys = [float(p[1]) / scale for p in pts]
+            lines.append(OCRLine(text=norm, page=page, bbox=BBox(min(xs), min(ys), max(xs), max(ys)), confidence=float(txt_conf[1] or 0.0)))
+        return lines
 
 
 def _build_optional_fallback(engine_name: str) -> Optional[OCRAdapter]:
@@ -293,16 +412,13 @@ def _build_optional_fallback(engine_name: str) -> Optional[OCRAdapter]:
     if name in ("", "none", "off"):
         return None
     if name == "rapidocr":
-        try:
-            import rapidocr_onnxruntime  # type: ignore # noqa: F401
-        except Exception:
-            return None
+        adapter = RapidOCRAdapter()
+        return adapter if adapter.available else None
     if name == "paddleocr":
-        try:
-            import paddleocr  # type: ignore # noqa: F401
-        except Exception:
-            return None
+        adapter = PaddleOCRAdapter()
+        return adapter if adapter.available else None
     return None
+
 
 
 _adapter: Optional[OCRAdapter] = None
