@@ -195,6 +195,9 @@ class Settings:
     evidence_graph_mode: str = field(
         default_factory=lambda: (os.getenv("LV_EVIDENCE_GRAPH_MODE", "shadow") or "shadow").strip().lower()
     )
+    legal_nli_mode: str = field(
+        default_factory=lambda: (os.getenv("LV_LEGAL_NLI_MODE", "shadow") or "shadow").strip().lower()
+    )
     providers: Dict[str, ProviderConfig] = field(default_factory=dict)
     pricing: Dict[str, Any] = field(default_factory=dict)
 
