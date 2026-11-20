@@ -193,7 +193,13 @@ class Settings:
     )
     """TK-70 Drive 참고자료 '모순' 의견의 조건부 LOW/C등급 Finding 승격 여부 (기본 켬: True)."""
     evidence_graph_mode: str = field(
-        default_factory=lambda: (os.getenv("LV_EVIDENCE_GRAPH_MODE", "shadow") or "shadow").strip().lower()
+        default_factory=lambda: (os.getenv("LV_EVIDENCE_GRAPH_MODE", "default") or "default").strip().lower()
+    )
+    legal_nli_mode: str = field(
+        default_factory=lambda: (os.getenv("LV_LEGAL_NLI_MODE", "shadow") or "shadow").strip().lower()
+    )
+    use_clause_normalizer: str = field(
+        default_factory=lambda: (os.getenv("LV_USE_CLAUSE_NORMALIZER", "shadow") or "shadow").strip().lower()
     )
     providers: Dict[str, ProviderConfig] = field(default_factory=dict)
     pricing: Dict[str, Any] = field(default_factory=dict)

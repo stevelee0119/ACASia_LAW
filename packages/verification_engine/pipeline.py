@@ -783,6 +783,18 @@ class VerificationPipeline:
                 attach_table_grids(doc)
             except Exception:  # pragma: no cover - defensive
                 pass
+            clause_norm_mode = str(getattr(get_settings(), "use_clause_normalizer", "shadow") or "shadow").strip().lower()
+            if clause_norm_mode != "off":
+                try:
+                    from packages.korean_nlp import normalize_document_clauses
+                    norm_clauses = normalize_document_clauses(doc)
+                    result.engine_data["clause_normalizer"] = {
+                        "mode": clause_norm_mode,
+                        "clause_count": len(norm_clauses),
+                        "backend": doc.structure.get("clause_normalizer_backend"),
+                    }
+                except Exception:  # pragma: no cover - defensive
+                    pass
             stage.inputs = len(doc.pages)
             stage.note = doc.parser_name
 

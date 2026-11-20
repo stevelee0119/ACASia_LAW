@@ -119,7 +119,7 @@ def deduplicate_findings_by_graph(
     analysis = analyze_evidence_graph(graph)
     finding_to_comp: Dict[str, int] = analysis["finding_to_component"]
 
-    groups: Dict[Tuple[int, str], List[Any]] = defaultdict(list)
+    groups: Dict[Tuple[Any, ...], List[Any]] = defaultdict(list)
     for finding in findings:
         if getattr(finding, "advisory_only", False):
             continue
@@ -128,11 +128,20 @@ def deduplicate_findings_by_graph(
         if comp_id is None:
             continue
         ftype = str(getattr(getattr(finding, "type", ""), "value", getattr(finding, "type", "")))
-        groups[(comp_id, ftype)].append(finding)
+        feats = getattr(finding, "confidence_features", None) or {}
+        val_key = (
+            (feats.get("compared"), feats.get("stated"), feats.get("exhibit"))
+            if any(feats.get(k) is not None for k in ("compared", "stated", "exhibit"))
+            else None
+        )
+        f_block = getattr(finding, "block_id", None)
+        f_span = getattr(finding, "span", None)
+        loc_key = (f_block, tuple(f_span) if f_span else None) if (f_block or f_span) else None
+        groups[(comp_id, ftype, val_key, loc_key)].append(finding)
 
     dropped: Set[str] = set()
     merged_count = 0
-    for (_comp_id, _ftype), members in groups.items():
+    for _group_key, members in groups.items():
         if len(members) < 2:
             continue
         members.sort(key=_finding_rank_key, reverse=True)
