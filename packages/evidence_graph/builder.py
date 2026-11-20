@@ -131,6 +131,7 @@ def build_evidence_graph(
     fact_nodes: List[GraphNode] = []
     claim_nodes_by_id: Dict[str, List[str]] = {}
     req_rules = requirement_rules or {}
+    req_patterns: Dict[str, re.Pattern] = {}
 
     for idx, clm in enumerate(claims):
         clm_id = str(_get(clm, "claim_id") or f"CLM_{idx + 1}")
@@ -219,7 +220,8 @@ def build_evidence_graph(
                         else:
                             elem_label, elem_pat = str(elem_spec), None
                         elem_id = "REQ_" + sha256(f"{node.node_id}|{elem_label}".encode("utf-8")).hexdigest()[:10]
-                        attrs = {"pattern": elem_pat} if elem_pat is not None else {}
+                        if isinstance(elem_pat, re.Pattern):
+                            req_patterns[elem_id] = elem_pat
                         graph.add_node(
                             GraphNode(
                                 node_id=elem_id,
@@ -227,14 +229,13 @@ def build_evidence_graph(
                                 label=elem_label,
                                 document_id=document_id,
                                 status="PENDING",
-                                attributes=attrs,
                             )
                         )
                         graph.add_edge(EdgeKind.REQUIRES_ELEMENT, node.node_id, elem_id)
 
     # 4. Link FACT_ASSERTION nodes to REQUIREMENT_ELEMENT nodes by pattern or keyword overlap
     for req_node in [n for n in graph.nodes.values() if n.kind == NodeKind.REQUIREMENT_ELEMENT]:
-        elem_pat = req_node.attributes.get("pattern")
+        elem_pat = req_patterns.get(req_node.node_id)
         raw_toks = [re.sub(r"(?:은|는|이|가|을|를|의|에|도)$", "", tok) for tok in re.split(r"\s+", req_node.label)]
         kw_tokens = [tok for tok in raw_toks if len(tok) >= 2 and tok not in ("존재", "여부", "사실")]
         for f_node in fact_nodes:

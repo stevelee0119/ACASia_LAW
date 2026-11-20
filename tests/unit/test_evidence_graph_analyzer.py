@@ -278,6 +278,8 @@ def test_default_requirement_rules_wire_into_graph_and_review_items(monkeypatch:
         ],
         requirement_rules=rules,
     )
+    import json
+    assert json.dumps(graph.to_dict(), ensure_ascii=False)
     analysis = analyze_evidence_graph(graph)
     missing_labels = {m["element_label"] for m in analysis["missing_prerequisite_elements"]}
     assert "손해 발생" in missing_labels
