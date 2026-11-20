@@ -88,3 +88,108 @@ def test_applicability_filter_blocks_repealed_overruled_and_procedure_mismatch()
     )
     assert v_ok.eligible_for_support is True
     assert v_ok.warnings == []
+
+
+def test_hybrid_retriever_degrades_gracefully_on_embedding_timeout():
+    chunks = [
+        {"chunk_id": "c1", "file_id": "f1", "text": "임대차 보증금 반환 지연 이자"},
+        {"chunk_id": "c2", "file_id": "f2", "text": "매매 대금 지급 기한 도과"},
+    ]
+
+    def _timeout_embed(texts):
+        raise TimeoutError("embedding model timed out")
+
+    res = retrieve_hybrid_chunks(
+        "임대차 보증금 반환",
+        chunks,
+        embedding_adapter=CallableEmbeddingAdapter(_timeout_embed),
+        top_k=2,
+    )
+    assert res["retrieval_mode"] == "LEXICAL_ONLY"
+    assert "EMBEDDING_FALLBACK:TimeoutError" in res["retrieval_warnings"]
+    assert len(res["chunks"]) == 2
+    assert res["chunks"][0]["chunk_id"] == "c1"
+
+
+def test_reference_library_select_surfaces_applicability_and_excludes_invalid(tmp_path):
+    from types import SimpleNamespace
+    from packages.rag_engine import relevance
+    from packages.rag_engine.library import ReferenceLibrary
+
+    settings = SimpleNamespace(
+        storage_root=str(tmp_path),
+        rag_drive_folder_id="folder_hybrid_test",
+        rag_hybrid_semantic=False,
+    )
+    lib = ReferenceLibrary(settings)
+    lib.directory.mkdir(parents=True, exist_ok=True)
+    q_text = "손해배상 청구권 소멸시효 기산점 판례 기준 불법행위 채무불이행"
+    text_overruled = q_text + " 폐기된 기존 법리"
+    text_valid = q_text + " 유효한 현행 법리"
+    text_bg = "특허권 침해 금지 청구 등록 청구범위 기술 분야"
+    with lib.connect() as db:
+        db.execute(
+            "INSERT INTO chunks (file_id, revision, page, start, text, terms) VALUES (?, ?, ?, ?, ?, ?)",
+            ("f_overruled", "r1", 1, 0, text_overruled, " ".join(relevance.tokens(text_overruled))),
+        )
+        db.execute(
+            "INSERT INTO chunks (file_id, revision, page, start, text, terms) VALUES (?, ?, ?, ?, ?, ?)",
+            ("f_valid", "r1", 1, 0, text_valid, " ".join(relevance.tokens(text_valid))),
+        )
+        db.execute(
+            "INSERT INTO chunks (file_id, revision, page, start, text, terms) VALUES (?, ?, ?, ?, ?, ?)",
+            ("f_bg", "r1", 1, 0, text_bg, " ".join(relevance.tokens(text_bg))),
+        )
+        db.execute(
+            "INSERT INTO chunks (file_id, revision, page, start, text, terms) VALUES (?, ?, ?, ?, ?, ?)",
+            ("f_bg2", "r1", 1, 0, "조세 부과 처분 취소 소송 기간", " ".join(relevance.tokens("조세 부과 처분 취소 소송 기간"))),
+        )
+        db.execute(
+            "INSERT INTO chunks (file_id, revision, page, start, text, terms) VALUES (?, ?, ?, ?, ?, ?)",
+            ("f_bg3", "r1", 1, 0, "근로 기준 임금 체불 퇴직금 산정", " ".join(relevance.tokens("근로 기준 임금 체불 퇴직금 산정"))),
+        )
+        db.commit()
+
+    lib.eligible = {
+        "f_overruled": {
+            "file_id": "f_overruled",
+            "title": "폐기판례.pdf",
+            "revision": "r1",
+            "chunk_count": 1,
+            "authority_status": "OVERRULED",
+        },
+        "f_valid": {
+            "file_id": "f_valid",
+            "title": "유효판례.pdf",
+            "revision": "r1",
+            "chunk_count": 1,
+        },
+        "f_bg": {
+            "file_id": "f_bg",
+            "title": "배경문서.pdf",
+            "revision": "r1",
+            "chunk_count": 1,
+        },
+        "f_bg2": {
+            "file_id": "f_bg2",
+            "title": "배경문서2.pdf",
+            "revision": "r1",
+            "chunk_count": 1,
+        },
+        "f_bg3": {
+            "file_id": "f_bg3",
+            "title": "배경문서3.pdf",
+            "revision": "r1",
+            "chunk_count": 1,
+        },
+    }
+
+    log = lib.select(q_text)
+    assert log["decision"] == "USED"
+    delivered_ids = [s["file_id"] for s in log["sources"]]
+    assert "f_valid" in delivered_ids
+    assert "f_overruled" not in delivered_ids
+    assert len(log["applicability_warnings"]) == 1
+    assert log["applicability_warnings"][0]["file_id"] == "f_overruled"
+    assert "APPLICABILITY_WARNING:AUTHORITY_INVALIDATED" in log["applicability_warnings"][0]["warnings"]
+

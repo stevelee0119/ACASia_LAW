@@ -114,19 +114,25 @@ def retrieve_hybrid_chunks(
     ranked_lists: List[List[str]] = [lex_order]
     dense_scores: Dict[str, float] = {}
     retrieval_mode = "LEXICAL_ONLY"
+    retrieval_warnings: List[str] = []
 
     emb = embedding_adapter or NullEmbeddingAdapter()
     if emb.available:
-        texts = [str(c.get("text") or "") for c in chunks]
-        vecs = emb.embed([query] + texts)
-        if len(vecs) == len(texts) + 1:
-            q_vec, doc_vecs = vecs[0], vecs[1:]
-            for ch, d_vec in zip(chunks, doc_vecs):
-                cid = str(ch.get("chunk_id") or "")
-                dense_scores[cid] = round(cosine_similarity(q_vec, d_vec), 4)
-            dense_order = sorted(dense_scores, key=lambda cid: (-dense_scores[cid], cid))
-            ranked_lists.append(dense_order)
-            retrieval_mode = "RRF_DENSE"
+        try:
+            texts = [str(c.get("text") or "") for c in chunks]
+            vecs = emb.embed([query] + texts)
+            if len(vecs) == len(texts) + 1:
+                q_vec, doc_vecs = vecs[0], vecs[1:]
+                for ch, d_vec in zip(chunks, doc_vecs):
+                    cid = str(ch.get("chunk_id") or "")
+                    dense_scores[cid] = round(cosine_similarity(q_vec, d_vec), 4)
+                dense_order = sorted(dense_scores, key=lambda cid: (-dense_scores[cid], cid))
+                ranked_lists.append(dense_order)
+                retrieval_mode = "RRF_DENSE"
+        except Exception as exc:
+            retrieval_warnings.append(f"EMBEDDING_FALLBACK:{type(exc).__name__}")
+            dense_scores.clear()
+            retrieval_mode = "LEXICAL_ONLY"
 
     rrf_scores = reciprocal_rank_fusion(ranked_lists)
     by_id = {str(c.get("chunk_id") or ""): c for c in lexical_ranked}
@@ -144,21 +150,24 @@ def retrieve_hybrid_chunks(
 
     reranker = reranker_adapter or NullRerankerAdapter()
     if reranker.available and fused:
-        head = fused[:max(1, rerank_top_n)]
-        tail = fused[max(1, rerank_top_n):]
-        r_scores = reranker.score(query, [str(c.get("text") or "") for c in head])
-        if len(r_scores) == len(head):
-            for item, sc in zip(head, r_scores):
-                item["rerank_score"] = round(float(sc), 4)
-            head.sort(
-                key=lambda r: (
-                    -int(bool(r.get("tier1_pinned"))),
-                    -float(r.get("rerank_score") or 0.0),
-                    -float(r.get("rrf_score") or 0.0),
+        try:
+            head = fused[:max(1, rerank_top_n)]
+            tail = fused[max(1, rerank_top_n):]
+            r_scores = reranker.score(query, [str(c.get("text") or "") for c in head])
+            if len(r_scores) == len(head):
+                for item, sc in zip(head, r_scores):
+                    item["rerank_score"] = round(float(sc), 4)
+                head.sort(
+                    key=lambda r: (
+                        -int(bool(r.get("tier1_pinned"))),
+                        -float(r.get("rerank_score") or 0.0),
+                        -float(r.get("rrf_score") or 0.0),
+                    )
                 )
-            )
-            fused = head + tail
-            retrieval_mode = "RRF_RERANK"
+                fused = head + tail
+                retrieval_mode = "RRF_RERANK"
+        except Exception as exc:
+            retrieval_warnings.append(f"RERANKER_FALLBACK:{type(exc).__name__}")
 
     annotated = annotate_applicability(
         fused,
@@ -168,5 +177,6 @@ def retrieve_hybrid_chunks(
     )
     return {
         "retrieval_mode": retrieval_mode,
+        "retrieval_warnings": retrieval_warnings,
         "chunks": annotated[:max(1, top_k)],
     }
