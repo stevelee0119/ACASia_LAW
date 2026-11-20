@@ -1504,7 +1504,7 @@ def _table_grid_findings(doc: NormalizedDocument, existing: Sequence[Finding]) -
     )
 
     already_exact = set()
-    legacy_block_stated: Dict[Tuple[Optional[str], Any], int] = {}
+    legacy_block_stated: Dict[Tuple[Optional[str], str], int] = {}
     for f in existing:
         if f.type != FindingType.ARITHMETIC_MISMATCH:
             continue
@@ -1512,15 +1512,19 @@ def _table_grid_findings(doc: NormalizedDocument, existing: Sequence[Finding]) -
         stated_val = feats.get("stated")
         if stated_val is None:
             continue
+        stated_str = str(stated_val)
         if feats.get("col_idx") is not None and feats.get("row_idx") is not None:
-            already_exact.add((f.block_id, int(feats["col_idx"]), int(feats["row_idx"]), stated_val))
+            already_exact.add((f.block_id, int(feats["col_idx"]), int(feats["row_idx"]), stated_str))
         else:
-            k = (f.block_id, stated_val)
+            k = (f.block_id, stated_str)
             legacy_block_stated[k] = legacy_block_stated.get(k, 0) + 1
 
+    has_structured_tables = bool((doc.structure or {}).get("tables"))
     out: List[Finding] = []
     for block in doc.body_blocks():
         if block.block_type not in ("table", "table_line"):
+            continue
+        if has_structured_tables and (block.attributes or {}).get("table_ref"):
             continue
         raw_grid = (block.attributes or {}).get("table_grid")
         if isinstance(raw_grid, dict) and raw_grid.get("cells"):
@@ -1554,13 +1558,14 @@ def _table_grid_findings(doc: NormalizedDocument, existing: Sequence[Finding]) -
 
         for mismatch in check_column_totals(grid):
             stated = mismatch["stated_total"]
+            stated_str = str(stated)
             computed = mismatch["sum_of_rows"]
             col_idx = int(mismatch["col_idx"])
             row_idx = int(mismatch["row_idx"])
-            exact_key = (block.block_id, col_idx, row_idx, stated)
+            exact_key = (block.block_id, col_idx, row_idx, stated_str)
             if exact_key in already_exact:
                 continue
-            legacy_key = (block.block_id, stated)
+            legacy_key = (block.block_id, stated_str)
             if legacy_block_stated.get(legacy_key, 0) > 0:
                 legacy_block_stated[legacy_key] -= 1
                 already_exact.add(exact_key)
