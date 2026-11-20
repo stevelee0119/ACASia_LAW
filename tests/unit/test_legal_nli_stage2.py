@@ -89,3 +89,71 @@ def test_sliding_window_passages_locates_best_sentence_in_multi_sentence_judgmen
     assert res.located_passage is not None
     assert "  당사자는 계약 내용을 성실히 이행할 의무를 부담한다."[res.located_passage.start:res.located_passage.end] == res.located_passage.text
 
+
+def test_legal_verifier_verify_case_stage2_nli_shadow_and_assist(monkeypatch):
+    from types import SimpleNamespace
+    from packages.common.config import reset_settings
+    from packages.common.enums import AdapterStatus, CitationType, VerificationStatus
+    from packages.common.schemas import Citation
+    from packages.legal_engine.verifier import LegalVerifier
+
+    class _MockLawAdapter:
+        def search_case(self, case_number, court=None):
+            return SimpleNamespace(
+                found=True,
+                source="mock_db",
+                status=AdapterStatus.READY,
+                message="",
+                error=None,
+                source_record=None,
+                source_url=None,
+                meta={},
+                records=[{
+                    "case_number": case_number,
+                    "date": "2022. 5. 10.",
+                    "court": "대법원",
+                    "full_text": "매수인은 기망행위를 이유로 매매계약을 취소할 수 있다. 다만 손해배상은 별도다.",
+                    "holding": "매수인은 기망행위를 이유로 매매계약을 취소할 수 있다.",
+                    "summary": "",
+                }],
+            )
+
+    verifier = LegalVerifier(registry=SimpleNamespace(law=_MockLawAdapter()))
+    # Paraphrased inverted quote: similar tokens (high ratio -> MODIFIED in Stage 1), inverted polarity ("할 수 없다")
+    cit_inverted = Citation(
+        citation_id="CIT_NLI_1",
+        type=CitationType.CASE,
+        raw_text="대법원 2022다10001 판결",
+        canonical_case_number="2022다10001",
+        quoted_text="기망행위 사유로 매수인은 그 계약을 취소할 수 없다.",
+    )
+
+    # 1) Shadow mode (default): records stage2_nli without changing level3
+    monkeypatch.setenv("LV_LEGAL_NLI_MODE", "shadow")
+    reset_settings()
+    verdict_shadow = verifier.verify_case(cit_inverted)
+    assert "stage2_nli" in verdict_shadow.review
+    assert verdict_shadow.review["stage2_nli"]["verdict"] == "CONTRADICTED"
+    assert not verdict_shadow.review.get("stage2_nli_assisted")
+
+    # 2) Assist mode: ensures CONTRADICTED when full_text + structural inversion confirmed
+    monkeypatch.setenv("LV_LEGAL_NLI_MODE", "assist")
+    reset_settings()
+    verdict_assist = verifier.verify_case(cit_inverted)
+    assert verdict_assist.levels["level3"] == "CONTRADICTED"
+    assert verdict_assist.status == VerificationStatus.CONTRADICTED
+    assert verdict_assist.review["stage2_nli"]["verdict"] == "CONTRADICTED"
+
+    # 3) Control in assist mode: non-inverted quote must NOT be escalated to CONTRADICTED
+    cit_valid = Citation(
+        citation_id="CIT_NLI_2",
+        type=CitationType.CASE,
+        raw_text="대법원 2022다10001 판결",
+        canonical_case_number="2022다10001",
+        quoted_text="매수인은 기망행위를 이유로 매매계약을 취소할 수 있다.",
+    )
+    verdict_ctrl = verifier.verify_case(cit_valid)
+    assert verdict_ctrl.levels["level3"] != "CONTRADICTED"
+    assert not verdict_ctrl.review.get("stage2_nli_assisted")
+    reset_settings()
+
