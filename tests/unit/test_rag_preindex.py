@@ -68,3 +68,45 @@ def test_preindex_loops_until_continuations_converge():
     assert report.pages_read == 15
     assert report.page_completion_rate == 1.0
     assert report.remaining_continuations == 0
+
+
+def test_preindex_does_not_report_complete_on_failed_only_or_unknown_pages():
+    class _FailedOnlyLibrary:
+        def __init__(self, settings, **kwargs):
+            pass
+
+        def sync(self, query="", *, collect_all=None):
+            return {
+                "status": "PARTIAL",
+                "files": [
+                    {"file_id": "f_fail", "status": "PARSE_FAILED", "continuation": False, "pages": None, "read_pages": None},
+                ],
+                "coverage_ledger": {"total_files": 1},
+                "issues": [{"file_id": "f_fail", "reason": "REFERENCE_PARSE_FAILED"}],
+            }
+
+    settings = SimpleNamespace(rag_drive_folder_id="folder_fail")
+    failed_report = preindex_drive_library(settings, max_rounds=2, library_factory=_FailedOnlyLibrary)
+    assert failed_report.converged is False
+    assert failed_report.files_failed == 1
+    assert failed_report.page_completion_rate == 0.0
+
+    class _UnknownPagesLibrary:
+        def __init__(self, settings, **kwargs):
+            pass
+
+        def sync(self, query="", *, collect_all=None):
+            return {
+                "status": "READY",
+                "files": [
+                    {"file_id": "f_ok", "status": "INDEXED", "continuation": False, "pages": None, "read_pages": None},
+                ],
+                "coverage_ledger": {"total_files": 1},
+                "issues": [],
+            }
+
+    unknown_report = preindex_drive_library(settings, max_rounds=2, library_factory=_UnknownPagesLibrary)
+    assert unknown_report.converged is True
+    assert unknown_report.files_complete == 1
+    assert unknown_report.page_completion_rate is None
+

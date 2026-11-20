@@ -140,7 +140,14 @@ def preindex_drive_library(
     files_complete, files_partial, files_failed, pages_total, pages_read = _compute_page_stats(last_summary)
     continuations, _ = _has_pending_work(last_summary)
     files_total = files_complete + files_partial + files_failed
-    completion_rate = round(pages_read / pages_total, 4) if pages_total > 0 else (1.0 if files_total > 0 and files_partial == 0 else None)
+    converged = converged and files_partial == 0 and files_failed == 0 and continuations == 0
+    if pages_total > 0:
+        completion_rate: Optional[float] = round(pages_read / pages_total, 4)
+    elif files_failed > 0 and files_complete == 0:
+        completion_rate = 0.0
+    else:
+        # Page counts are unknown (or empty folder); never report 100% page completion without page counts.
+        completion_rate = None
 
     return PreindexReport(
         status=str(last_summary.get("status") or "UNKNOWN"),
