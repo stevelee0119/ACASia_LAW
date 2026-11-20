@@ -32,14 +32,18 @@ _EXHIBIT_RE = re.compile(
 _PARTICLE_END_RE = re.compile(r"(?:은|는|이|가|을|를|에|도|로|와|과|께서|에서|에게|인|된|한|던|적인)$")
 _NON_LAW_PREFIX_TOKENS = frozenset({
     "관련", "해당", "위", "동", "같은", "본", "이", "그", "현행", "구", "신", "각", "위반", "적용",
-    "및", "또는", "혹은", "등",
+    "및", "또는", "혹은", "등", "참조", "참고", "인용", "원용", "준용", "비교", "별지", "별표", "개정", "종전",
 })
+_STANDALONE_CODES = frozenset({"민법", "형법", "상법", "헌법"})
 
 
 def _clean_law_name(raw_law: str) -> str:
     tokens = raw_law.split()
     kept: List[str] = []
     for token in reversed(tokens):
+        if kept and kept[0] in _STANDALONE_CODES:
+            if not (kept[0] == "헌법" and token == "대한민국"):
+                break
         inside_name = bool(kept) and (
             (kept[0] in ("관한", "대한", "따른", "의한") and token.endswith("에"))
             or token in ("관한", "대한", "따른", "의한")
