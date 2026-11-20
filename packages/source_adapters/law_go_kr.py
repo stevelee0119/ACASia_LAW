@@ -32,7 +32,9 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
 
     @property
     def api_key(self) -> Optional[str]:
-        return self.settings.law_go_kr_oc
+        from .cassette import replay_mode_active
+
+        return self.settings.law_go_kr_oc or ("CASSETTE_REPLAY" if replay_mode_active() else None)
 
     def _record_matches_case_number(self, record: dict, wanted: tuple) -> bool:
         """레코드의 사건번호(병합 판결 포함) 중 하나라도 wanted 사건번호와 일치하는지 확인한다."""
