@@ -247,6 +247,10 @@ def test_review_items_attach_prerequisite_checklist_only_when_enabled(monkeypatc
         rules = {c["rule"] for c in checklist}
         assert "BROKEN_AUTHORITY_CHAIN" in rules
         assert "MISSING_PREREQUISITE_ELEMENT" in rules
+    monkeypatch.delenv("LV_EVIDENCE_GRAPH_MODE", raising=False)
+    reset_settings()
+    from packages.common.config import get_settings
+    assert get_settings().evidence_graph_mode == "default"
     reset_settings()
 
 
