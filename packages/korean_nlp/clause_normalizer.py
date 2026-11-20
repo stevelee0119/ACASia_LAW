@@ -22,7 +22,10 @@ from .tokenizer import LegalTokenizer, get_tokenizer
 
 # --- Clause boundary & grammatical markers ---------------------------------------------
 _CLAUSE_SPLIT_RE = re.compile(
-    r"(?:으므로|므로|기\s*때문에|지만|는데|으나|더라도|하더라도|라면|다면|한다면|된다면|(?<!\d),|;)\s*"
+    r"(?:으므로|므로|기\s*때문에|지만|는데|으나|더라도|하더라도|라면|다면|한다면|된다면|"
+    r"(?<=[가-힣])(?:았|었|였)(?:고|으며)\s+|"
+    r"(?:지|하지|되지)\s*않(?:고|으며)\s+|"
+    r"(?<!\d),|;)\s*"
 )
 _QUOTED_BREAK_RE = re.compile(
     r"(?:라고|다고|라는|다는)\s*(?:취지로\s*)?(?:주장|항변|다투|판시|설시|판단)"
@@ -58,7 +61,7 @@ _CASE_CITE_MARKER_RE = re.compile(r"(?:19|20)?\d{2}\s*(?:헌[가-힣]|[가-힣]{
 # Negation markers (avoid matching inside positive words like '아니라' vs '아니한다')
 _NEGATION_RE = re.compile(
     r"아니(?:다|라|며|고|므로|어서|었|기|한다|하다|하고|하였|함|오|지|에요)|아닙|아님|아닐|"
-    r"(?:지|하지|되지|치|하지는|되지는|지는)\s*(?:않|아니하|못하)|"
+    r"(?:하지|되지|지|치)(?:는|도|만)?\s*(?:않|아니하|못하)|"
     r"(?:할|볼|될|인정할|인정될|단정할|말할|해석할|이해할)\s*수\s*(?:는|도)?\s*없|"
     r"(?:가|이|은|는|도)?\s*없(?:다|고|으며|으나|으므로|어|었|음|지)|"
     r"불가(?:능)?(?:하|라|이)"
@@ -183,13 +186,23 @@ def _detect_speaker(clause: str, previous_sentence: str) -> Tuple[str, Optional[
     return ("AUTHOR", None, "DIRECT_ASSERTION", reasons)
 
 
+_TRUE_DOUBLE_NEG_RE = re.compile(
+    r"(?:지|하지|되지|않는다고|없다고|아니라고|않음을|없음을)\s*(?:볼|할|인정할|단정할|말할|해석할|이해할)\s*수\s*(?:는|도)?\s*없|"
+    r"(?:지|없지)\s*(?:않|아니하)|"
+    r"(?:아니할|않을|없을)\s*수\s*(?:는|도)?\s*없|"
+    r"부정할\s*수\s*없"
+)
+
+
 def _detect_polarity(clause: str) -> Tuple[str, int]:
     neg_count = len(_NEGATION_RE.findall(clause))
     if neg_count == 0:
         return ("ASSERTED", 0)
     if neg_count % 2 == 1:
         return ("NEGATED", neg_count)
-    return ("DOUBLE_NEGATED_ASSERTED", neg_count)
+    if _TRUE_DOUBLE_NEG_RE.search(clause):
+        return ("DOUBLE_NEGATED_ASSERTED", neg_count)
+    return ("NEGATED", neg_count)
 
 
 def _detect_modality(clause: str) -> str:

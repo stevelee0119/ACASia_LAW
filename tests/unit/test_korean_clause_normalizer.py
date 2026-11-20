@@ -30,6 +30,17 @@ def test_polarity_and_double_negation_resolution():
         clauses = normalize_sentence(sent, sentence_index=idx)
         assert clauses[0].polarity == "NEGATED"
 
+    # Parallel / coordinated negations must split and stay NEGATED (never DOUBLE_NEGATED_ASSERTED)
+    parallel_negated = [
+        "피고는 서명하지 않았고 날인하지 않았다.",
+        "당사자는 통지하지 않고 이행하지도 않았다.",
+        "신청인은 출석하지 않았으며 답변서도 제출하지 않았다.",
+    ]
+    for idx, sent in enumerate(parallel_negated):
+        clauses = normalize_sentence(sent, sentence_index=idx)
+        assert len(clauses) >= 2
+        assert all(c.polarity == "NEGATED" for c in clauses)
+
 
 def test_speaker_attribution_and_opponent_summary():
     # 3 opponent / court reported speech cases
