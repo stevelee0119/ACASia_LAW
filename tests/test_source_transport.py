@@ -9,6 +9,8 @@ import pytest
 from packages.common.enums import AdapterStatus
 from packages.source_adapters import transport
 
+from tests.perf_scaling import assert_within
+
 
 def install_mock(monkeypatch, handler):
     original = httpx.AsyncClient
@@ -110,7 +112,7 @@ def test_wall_clock_timeout_cancels_slow_response_body_and_closes_stream(monkeyp
     started = time.monotonic()
     with pytest.raises(transport.SourceRequestStopped):
         transport.source_get("law", "https://source.test/", timeout=0.06)
-    assert time.monotonic() - started < 2
+    assert_within(time.monotonic() - started, 2)
     assert stream.closed
 
 
@@ -263,7 +265,8 @@ def test_cancel_interrupts_inflight_request_and_closes_stream(monkeypatch):
     with transport.source_lookup_session(120, check=check):
         with pytest.raises(JobOwnershipLost):
             transport.source_get("law", "https://source.test/", timeout=45)
-    assert stream.closed and time.monotonic() - started < 5
+    assert stream.closed
+    assert_within(time.monotonic() - started, 5, "소유권 상실 뒤 스트림 정리")
 
 
 def test_hanging_response_is_cancelled_before_retry(monkeypatch):
@@ -308,7 +311,7 @@ def test_cancel_during_backoff_does_not_wait_for_delay():
         started = time.monotonic()
         with pytest.raises(JobOwnershipLost):
             transport._wait(session, 30)
-        assert time.monotonic() - started < 2
+        assert_within(time.monotonic() - started, 2)
 
 
 def test_retry_after_http_date_and_invalid_values():

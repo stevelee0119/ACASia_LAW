@@ -1,0 +1,1658 @@
+{
+  "source": "sanitized live reference_library; reference labels are per-snapshot ordinals",
+  "syncs": [
+    {
+      "sync": 1,
+      "status": "PARTIAL",
+      "snapshot_hash": "5ada17777d7c7fda797b4576ade3c8e7991a00e162188b841ff9eb6b86f5967e",
+      "files_seen": 41,
+      "files_indexed": 40,
+      "files_reused": 25,
+      "download_count": 15,
+      "download_bytes": 114504316,
+      "unread_cause_counts": {
+        "pages": {
+          "BUDGET_EXHAUSTED": 11,
+          "READ_TIMEOUT": 0,
+          "PARSE_FAILED": 0,
+          "OCR_UNAVAILABLE": 0,
+          "OCR_LOW_QUALITY": 5,
+          "CONTENT_NO_TEXT": 146
+        },
+        "files": {
+          "BUDGET_EXHAUSTED": 5,
+          "READ_TIMEOUT": 0,
+          "PARSE_FAILED": 0,
+          "OCR_UNAVAILABLE": 0,
+          "OCR_LOW_QUALITY": 4,
+          "CONTENT_NO_TEXT": 17
+        }
+      },
+      "global_library": {
+        "files_seen": 41,
+        "files_indexed": 40,
+        "files_reused": 25,
+        "files_complete": 33,
+        "files_partial": 7,
+        "files_failed_or_unavailable": 0,
+        "files_not_selected_metadata": 0,
+        "pages_total": 8702,
+        "extracted_text_pages": 8545,
+        "completed_pages": 8686,
+        "page_states": {
+          "NATIVE_TEXT": 8531,
+          "VERIFIED_BLANK": 146,
+          "SCAN_UNEXTRACTED": 11,
+          "OCR_LOW_QUALITY": 5,
+          "OCR_TEXT": 9
+        },
+        "unread_cause_pages": {
+          "BUDGET_EXHAUSTED": 11,
+          "READ_TIMEOUT": 0,
+          "PARSE_FAILED": 0,
+          "OCR_UNAVAILABLE": 0,
+          "OCR_LOW_QUALITY": 5,
+          "CONTENT_NO_TEXT": 146
+        },
+        "unread_cause_files": {
+          "BUDGET_EXHAUSTED": 5,
+          "READ_TIMEOUT": 0,
+          "PARSE_FAILED": 0,
+          "OCR_UNAVAILABLE": 0,
+          "OCR_LOW_QUALITY": 4,
+          "CONTENT_NO_TEXT": 17
+        }
+      },
+      "files": [
+        {
+          "reference": "ref_01",
+          "status": "INDEXED",
+          "pages_total": 710,
+          "pages_read": 704,
+          "pages_unread": 6,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 6
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 6
+        },
+        {
+          "reference": "ref_02",
+          "status": "INDEXED",
+          "pages_total": 6,
+          "pages_read": 6,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_03",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 418,
+          "pages_read": 411,
+          "pages_unread": 7,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 4,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 3
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 4,
+          "verified_blank_pages": 3
+        },
+        {
+          "reference": "ref_04",
+          "status": "INDEXED",
+          "pages_total": null,
+          "pages_read": null,
+          "pages_unread": 0,
+          "unread_by_cause": {},
+          "coverage_complete": null,
+          "content_readable_complete": null,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_05",
+          "status": "INDEXED",
+          "pages_total": 181,
+          "pages_read": 166,
+          "pages_unread": 15,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 15
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 15
+        },
+        {
+          "reference": "ref_06",
+          "status": "INDEXED",
+          "pages_total": 41,
+          "pages_read": 41,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_07",
+          "status": "INDEXED",
+          "pages_total": 44,
+          "pages_read": 44,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_08",
+          "status": "INDEXED",
+          "pages_total": 262,
+          "pages_read": 254,
+          "pages_unread": 8,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 8
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 8
+        },
+        {
+          "reference": "ref_09",
+          "status": "INDEXED",
+          "pages_total": 14,
+          "pages_read": 14,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_10",
+          "status": "INDEXED",
+          "pages_total": 795,
+          "pages_read": 780,
+          "pages_unread": 15,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 15
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 15
+        },
+        {
+          "reference": "ref_11",
+          "status": "INDEXED",
+          "pages_total": 44,
+          "pages_read": 43,
+          "pages_unread": 1,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 1
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 1
+        },
+        {
+          "reference": "ref_12",
+          "status": "INDEXED",
+          "pages_total": null,
+          "pages_read": null,
+          "pages_unread": 0,
+          "unread_by_cause": {},
+          "coverage_complete": null,
+          "content_readable_complete": null,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_13",
+          "status": "SELECTED_PENDING",
+          "pages_total": null,
+          "pages_read": null,
+          "pages_unread": 0,
+          "unread_by_cause": {},
+          "coverage_complete": null,
+          "content_readable_complete": null,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_14",
+          "status": "INDEXED",
+          "pages_total": 268,
+          "pages_read": 256,
+          "pages_unread": 12,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 12
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 12
+        },
+        {
+          "reference": "ref_15",
+          "status": "INDEXED",
+          "pages_total": 85,
+          "pages_read": 85,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_16",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 786,
+          "pages_read": 772,
+          "pages_unread": 15,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 1,
+            "CONTENT_NO_TEXT": 14
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 1,
+          "verified_blank_pages": 14
+        },
+        {
+          "reference": "ref_17",
+          "status": "INDEXED",
+          "pages_total": 129,
+          "pages_read": 117,
+          "pages_unread": 12,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 12
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 12
+        },
+        {
+          "reference": "ref_18",
+          "status": "INDEXED",
+          "pages_total": 1,
+          "pages_read": 1,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_19",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 253,
+          "pages_read": 248,
+          "pages_unread": 5,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 3,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 2
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 3,
+          "verified_blank_pages": 2
+        },
+        {
+          "reference": "ref_20",
+          "status": "INDEXED",
+          "pages_total": 82,
+          "pages_read": 71,
+          "pages_unread": 11,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 11
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 11
+        },
+        {
+          "reference": "ref_21",
+          "status": "INDEXED",
+          "pages_total": 1,
+          "pages_read": 1,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_22",
+          "status": "INDEXED",
+          "pages_total": 1,
+          "pages_read": 1,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_23",
+          "status": "INDEXED",
+          "pages_total": 7,
+          "pages_read": 7,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_24",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 455,
+          "pages_read": 455,
+          "pages_unread": 1,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 1,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 1,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_25",
+          "status": "INDEXED",
+          "pages_total": 1,
+          "pages_read": 1,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_26",
+          "status": "INDEXED",
+          "pages_total": 24,
+          "pages_read": 24,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_27",
+          "status": "INDEXED",
+          "pages_total": 1,
+          "pages_read": 1,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_28",
+          "status": "INDEXED",
+          "pages_total": 50,
+          "pages_read": 50,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_29",
+          "status": "INDEXED",
+          "pages_total": 504,
+          "pages_read": 504,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_30",
+          "status": "INDEXED",
+          "pages_total": 701,
+          "pages_read": 699,
+          "pages_unread": 2,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 2
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 2
+        },
+        {
+          "reference": "ref_31",
+          "status": "INDEXED",
+          "pages_total": 74,
+          "pages_read": 74,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_32",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 216,
+          "pages_read": 213,
+          "pages_unread": 3,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 3,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 3,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_33",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 330,
+          "pages_read": 323,
+          "pages_unread": 9,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 2,
+            "CONTENT_NO_TEXT": 7
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 2,
+          "verified_blank_pages": 7
+        },
+        {
+          "reference": "ref_34",
+          "status": "INDEXED",
+          "pages_total": 330,
+          "pages_read": 321,
+          "pages_unread": 9,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 9
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 9
+        },
+        {
+          "reference": "ref_35",
+          "status": "INDEXED",
+          "pages_total": 692,
+          "pages_read": 683,
+          "pages_unread": 9,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 9
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 9
+        },
+        {
+          "reference": "ref_36",
+          "status": "INDEXED",
+          "pages_total": 1,
+          "pages_read": 1,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_37",
+          "status": "INDEXED",
+          "pages_total": 274,
+          "pages_read": 271,
+          "pages_unread": 3,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 3
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 3
+        },
+        {
+          "reference": "ref_38",
+          "status": "INDEXED",
+          "pages_total": 6,
+          "pages_read": 6,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_39",
+          "status": "INDEXED",
+          "pages_total": 668,
+          "pages_read": 651,
+          "pages_unread": 17,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 17
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 17
+        },
+        {
+          "reference": "ref_40",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 178,
+          "pages_read": 177,
+          "pages_unread": 2,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 1,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 1,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 2,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_41",
+          "status": "INDEXED",
+          "pages_total": 69,
+          "pages_read": 69,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        }
+      ]
+    },
+    {
+      "sync": 2,
+      "status": "PARTIAL",
+      "snapshot_hash": "8800062ef538fdce45715f3e12c6036b395f365d136f7859578f83c897f0e7a2",
+      "files_seen": 41,
+      "files_indexed": 41,
+      "files_reused": 40,
+      "download_count": 1,
+      "download_bytes": 42685405,
+      "unread_cause_counts": {
+        "pages": {
+          "BUDGET_EXHAUSTED": 11,
+          "READ_TIMEOUT": 0,
+          "PARSE_FAILED": 0,
+          "OCR_UNAVAILABLE": 0,
+          "OCR_LOW_QUALITY": 5,
+          "CONTENT_NO_TEXT": 146
+        },
+        "files": {
+          "BUDGET_EXHAUSTED": 4,
+          "READ_TIMEOUT": 0,
+          "PARSE_FAILED": 0,
+          "OCR_UNAVAILABLE": 0,
+          "OCR_LOW_QUALITY": 4,
+          "CONTENT_NO_TEXT": 17
+        }
+      },
+      "global_library": {
+        "files_seen": 41,
+        "files_indexed": 41,
+        "files_reused": 40,
+        "files_complete": 34,
+        "files_partial": 7,
+        "files_failed_or_unavailable": 0,
+        "files_not_selected_metadata": 0,
+        "pages_total": 8823,
+        "extracted_text_pages": 8666,
+        "completed_pages": 8807,
+        "page_states": {
+          "NATIVE_TEXT": 8652,
+          "VERIFIED_BLANK": 146,
+          "SCAN_UNEXTRACTED": 11,
+          "OCR_LOW_QUALITY": 5,
+          "OCR_TEXT": 9
+        },
+        "unread_cause_pages": {
+          "BUDGET_EXHAUSTED": 11,
+          "READ_TIMEOUT": 0,
+          "PARSE_FAILED": 0,
+          "OCR_UNAVAILABLE": 0,
+          "OCR_LOW_QUALITY": 5,
+          "CONTENT_NO_TEXT": 146
+        },
+        "unread_cause_files": {
+          "BUDGET_EXHAUSTED": 4,
+          "READ_TIMEOUT": 0,
+          "PARSE_FAILED": 0,
+          "OCR_UNAVAILABLE": 0,
+          "OCR_LOW_QUALITY": 4,
+          "CONTENT_NO_TEXT": 17
+        }
+      },
+      "files": [
+        {
+          "reference": "ref_01",
+          "status": "INDEXED",
+          "pages_total": 710,
+          "pages_read": 704,
+          "pages_unread": 6,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 6
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 6
+        },
+        {
+          "reference": "ref_02",
+          "status": "INDEXED",
+          "pages_total": 6,
+          "pages_read": 6,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_03",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 418,
+          "pages_read": 411,
+          "pages_unread": 7,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 4,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 3
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 4,
+          "verified_blank_pages": 3
+        },
+        {
+          "reference": "ref_04",
+          "status": "INDEXED",
+          "pages_total": null,
+          "pages_read": null,
+          "pages_unread": 0,
+          "unread_by_cause": {},
+          "coverage_complete": null,
+          "content_readable_complete": null,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_05",
+          "status": "INDEXED",
+          "pages_total": 181,
+          "pages_read": 166,
+          "pages_unread": 15,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 15
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 15
+        },
+        {
+          "reference": "ref_06",
+          "status": "INDEXED",
+          "pages_total": 41,
+          "pages_read": 41,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_07",
+          "status": "INDEXED",
+          "pages_total": 44,
+          "pages_read": 44,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_08",
+          "status": "INDEXED",
+          "pages_total": 262,
+          "pages_read": 254,
+          "pages_unread": 8,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 8
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 8
+        },
+        {
+          "reference": "ref_09",
+          "status": "INDEXED",
+          "pages_total": 14,
+          "pages_read": 14,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_10",
+          "status": "INDEXED",
+          "pages_total": 795,
+          "pages_read": 780,
+          "pages_unread": 15,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 15
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 15
+        },
+        {
+          "reference": "ref_11",
+          "status": "INDEXED",
+          "pages_total": 44,
+          "pages_read": 43,
+          "pages_unread": 1,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 1
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 1
+        },
+        {
+          "reference": "ref_12",
+          "status": "INDEXED",
+          "pages_total": null,
+          "pages_read": null,
+          "pages_unread": 0,
+          "unread_by_cause": {},
+          "coverage_complete": null,
+          "content_readable_complete": null,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_13",
+          "status": "INDEXED",
+          "pages_total": 121,
+          "pages_read": 121,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_14",
+          "status": "INDEXED",
+          "pages_total": 268,
+          "pages_read": 256,
+          "pages_unread": 12,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 12
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 12
+        },
+        {
+          "reference": "ref_15",
+          "status": "INDEXED",
+          "pages_total": 85,
+          "pages_read": 85,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_16",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 786,
+          "pages_read": 772,
+          "pages_unread": 15,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 1,
+            "CONTENT_NO_TEXT": 14
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 1,
+          "verified_blank_pages": 14
+        },
+        {
+          "reference": "ref_17",
+          "status": "INDEXED",
+          "pages_total": 129,
+          "pages_read": 117,
+          "pages_unread": 12,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 12
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 12
+        },
+        {
+          "reference": "ref_18",
+          "status": "INDEXED",
+          "pages_total": 1,
+          "pages_read": 1,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_19",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 253,
+          "pages_read": 248,
+          "pages_unread": 5,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 3,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 2
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 3,
+          "verified_blank_pages": 2
+        },
+        {
+          "reference": "ref_20",
+          "status": "INDEXED",
+          "pages_total": 82,
+          "pages_read": 71,
+          "pages_unread": 11,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 11
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 11
+        },
+        {
+          "reference": "ref_21",
+          "status": "INDEXED",
+          "pages_total": 1,
+          "pages_read": 1,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_22",
+          "status": "INDEXED",
+          "pages_total": 1,
+          "pages_read": 1,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_23",
+          "status": "INDEXED",
+          "pages_total": 7,
+          "pages_read": 7,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_24",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 455,
+          "pages_read": 455,
+          "pages_unread": 1,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 1,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 1,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_25",
+          "status": "INDEXED",
+          "pages_total": 1,
+          "pages_read": 1,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_26",
+          "status": "INDEXED",
+          "pages_total": 24,
+          "pages_read": 24,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_27",
+          "status": "INDEXED",
+          "pages_total": 1,
+          "pages_read": 1,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_28",
+          "status": "INDEXED",
+          "pages_total": 50,
+          "pages_read": 50,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_29",
+          "status": "INDEXED",
+          "pages_total": 504,
+          "pages_read": 504,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_30",
+          "status": "INDEXED",
+          "pages_total": 701,
+          "pages_read": 699,
+          "pages_unread": 2,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 2
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 2
+        },
+        {
+          "reference": "ref_31",
+          "status": "INDEXED",
+          "pages_total": 74,
+          "pages_read": 74,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_32",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 216,
+          "pages_read": 213,
+          "pages_unread": 3,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 3,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 3,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_33",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 330,
+          "pages_read": 323,
+          "pages_unread": 9,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 2,
+            "CONTENT_NO_TEXT": 7
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 2,
+          "verified_blank_pages": 7
+        },
+        {
+          "reference": "ref_34",
+          "status": "INDEXED",
+          "pages_total": 330,
+          "pages_read": 321,
+          "pages_unread": 9,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 9
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 9
+        },
+        {
+          "reference": "ref_35",
+          "status": "INDEXED",
+          "pages_total": 692,
+          "pages_read": 683,
+          "pages_unread": 9,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 9
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 9
+        },
+        {
+          "reference": "ref_36",
+          "status": "INDEXED",
+          "pages_total": 1,
+          "pages_read": 1,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_37",
+          "status": "INDEXED",
+          "pages_total": 274,
+          "pages_read": 271,
+          "pages_unread": 3,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 3
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 3
+        },
+        {
+          "reference": "ref_38",
+          "status": "INDEXED",
+          "pages_total": 6,
+          "pages_read": 6,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_39",
+          "status": "INDEXED",
+          "pages_total": 668,
+          "pages_read": 651,
+          "pages_unread": 17,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 17
+          },
+          "coverage_complete": true,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 17
+        },
+        {
+          "reference": "ref_40",
+          "status": "INDEXED_PARTIAL",
+          "pages_total": 178,
+          "pages_read": 177,
+          "pages_unread": 2,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 1,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 1,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": false,
+          "content_readable_complete": false,
+          "execution_incomplete_pages": 2,
+          "verified_blank_pages": 0
+        },
+        {
+          "reference": "ref_41",
+          "status": "INDEXED",
+          "pages_total": 69,
+          "pages_read": 69,
+          "pages_unread": 0,
+          "unread_by_cause": {
+            "BUDGET_EXHAUSTED": 0,
+            "READ_TIMEOUT": 0,
+            "PARSE_FAILED": 0,
+            "OCR_UNAVAILABLE": 0,
+            "OCR_LOW_QUALITY": 0,
+            "CONTENT_NO_TEXT": 0
+          },
+          "coverage_complete": true,
+          "content_readable_complete": true,
+          "execution_incomplete_pages": 0,
+          "verified_blank_pages": 0
+        }
+      ]
+    }
+  ]
+}

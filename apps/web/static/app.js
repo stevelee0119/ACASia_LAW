@@ -1850,8 +1850,25 @@ function referenceSection(docs) {
     NOT_RELEVANT: "관련 자료 없음 · Drive 자료 미활용",
     INCOMPLETE_COVERAGE: "관련 자료 검토 범위 미완결",
     RETRIEVED_ONLY: "검색 완료 · AI 대조 미실행", UNVERIFIED: "대조 미완료", SKIPPED: "대조 제외"};
-  section.append(node("h3", "주요 참고문헌 검토 결과(RAG)"), node("p", `${statuses[library.status] || library.status} · 색인 ${library.files_indexed || 0}/${library.files_seen || 0}건 · 조회 ${koreanTime(library.checked_at)}`));
+  const completenessLabel = library.read_completeness === "READY_WITH_UNREADABLE" ? " (읽을 수 있는 쪽 완독 · 확인된 미독 있음)" : "";
+  section.append(node("h3", "주요 참고문헌 검토 결과(RAG)"), node("p", `${statuses[library.status] || library.status}${completenessLabel} · 색인 ${library.files_indexed || 0}/${library.files_seen || 0}건 · 조회 ${koreanTime(library.checked_at)}`));
   section.append(node("p", "색인은 검색 가능한 텍스트 범위이며 책 전체에 대한 AI 검토를 뜻하지 않습니다. 실제 대조에 사용한 발췌문은 문서별 결과에 표시합니다.", "muted"));
+  const unreadable = library.unreadable_summary;
+  if (unreadable && unreadable.pages > 0) {
+    const causeLabels = {
+      OCR_UNAVAILABLE: "OCR 미가용",
+      OCR_LOW_QUALITY: "OCR 저품질",
+      BUDGET_EXHAUSTED: "예산 소진",
+      READ_TIMEOUT: "읽기 시간 초과",
+      PARSE_FAILED: "파서 오류",
+      CONTENT_NO_TEXT: "텍스트 없음",
+    };
+    const parts = Object.entries(unreadable.by_cause || {})
+      .filter(([, cnt]) => cnt > 0)
+      .map(([k, cnt]) => `${causeLabels[k] || k} ${cnt}쪽`);
+    const causeText = parts.length ? ` (${parts.join(", ")})` : "";
+    section.append(node("p", `자료 ${unreadable.files}건의 ${unreadable.pages}쪽은 읽을 수 없습니다${causeText}`, "warning-text"));
+  }
   const health = library.health;
   if (health) {
     section.append(node("p", `연결 점검 · 인증 ${CREDENTIAL_MODES[health.credential_mode] || health.credential_mode || "없음"} · 목록 조회 ${health.listing_succeeded ? "성공" : "실패"} · API 호출 ${health.http_calls}건(오류 ${health.http_errors}건) · 동기화 ${Math.round((health.sync_ms || 0) / 100) / 10}초`, "muted"));
@@ -1900,7 +1917,14 @@ function referenceSection(docs) {
     const review = doc.engine_data?.rag;
     if (!review) continue;
     const details = bindReferenceDetails(node("details"), `doc:${doc.document_id || doc.id || doc.filename || docIdx}`);
-    details.append(node("summary", `${doc.filename}: ${statuses[review.status] || review.status}`));
+    const isReviewFailed = review.status === "UNVERIFIED" || review.reason === "REFERENCE_REVIEW_FAILED";
+    const statusLabel = isReviewFailed ? "대조 실패(미검토)" : (statuses[review.status] || review.status);
+    details.append(node("summary", `${doc.filename}: ${statusLabel}`));
+    if (isReviewFailed) {
+      const errSuffix = review.error ? ` (${review.error})` : "";
+      details.append(node("p", `참고자료 대조 자체가 실패했습니다 — 사유: ${friendlyText(review.reason || "REFERENCE_REVIEW_FAILED")}${errSuffix}`, "warning-text"));
+      details.append(node("p", "미검토 범위: 이 문서의 Drive 참고자료 대조 전체가 완료되지 않았습니다('검토했으나 근거 없음'과 다름).", "warning-text"));
+    }
     if (review.claim_coverage && typeof review.claim_coverage.eligible_claims === "number") {
       const c = review.claim_coverage;
       const pct = c.eligible_claims > 0 ? Math.round(((c.linked_claims || 0) / c.eligible_claims) * 100) : 0;

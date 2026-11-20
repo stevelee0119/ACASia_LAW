@@ -14,6 +14,8 @@ from packages.common.enums import Severity
 from packages.common.schemas import (OfficialConfirmationStatus, ReferenceSupportStatus,
                                       ReviewItem, ReviewItemKind)
 
+from tests.perf_scaling import assert_within
+
 
 def _workbook(path: Path) -> None:
     book = Workbook()
@@ -96,8 +98,8 @@ def test_case_number_normalization_repeated_input_is_bounded():
     min_4x = min(times_4x)
     ratio = min_4x / min_1x
     # 실측: 1x 0.007~0.015s, 4x 0.028~0.060s, ratio 3.7~4.5배
-    assert ratio < 8.0, f"입력 길이 4배 처리시간 비는 8배 미만이어야 함: {ratio:.2f}배 (1x: {min_1x:.4f}s, 4x: {min_4x:.4f}s)"
-    assert min_4x < 1.0, f"4배 길이 최솟값 처리시간은 1초 미만이어야 함: {min_4x:.4f}s"
+    assert ratio < 8.0, f'입력 길이 4배 처리시간 비는 8배 미만이어야 함: {ratio:.2f}배 (1x: {min_1x:.4f}s, 4x: {min_4x:.4f}s)'
+    assert_within(min_4x, 1.0, f'4배 길이 최솟값 처리시간은 1초 미만이어야 함: {min_4x:.4f}s')
 
 
 def test_row_security_prefilter_repeated_input_is_bounded():
@@ -147,8 +149,8 @@ def test_row_security_prefilter_repeated_input_is_bounded():
     min_4x = min(times_4x)
     ratio = min_4x / min_1x
     # 실측: 1x 0.005~0.012s, 4x 0.018~0.045s, ratio 3.5~4.2배
-    assert ratio < 8.0, f"본문 길이 4배 처리시간 비는 8배 미만이어야 함: {ratio:.2f}배 (1x: {min_1x:.4f}s, 4x: {min_4x:.4f}s)"
-    assert min_4x < 1.0, f"4배 본문 최솟값 처리시간은 1초 미만이어야 함: {min_4x:.4f}s"
+    assert ratio < 8.0, f'본문 길이 4배 처리시간 비는 8배 미만이어야 함: {ratio:.2f}배 (1x: {min_1x:.4f}s, 4x: {min_4x:.4f}s)'
+    assert_within(min_4x, 1.0, f'4배 본문 최솟값 처리시간은 1초 미만이어야 함: {min_4x:.4f}s')
 
 
 def test_row_injection_is_quarantined_without_dropping_other_rows():
@@ -212,7 +214,7 @@ def test_large_synthetic_table_is_indexed_within_bounded_budget():
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 directory=Path(directory), timeout=30, continuation=continuation)
             elapsed = time.perf_counter() - started
-            assert elapsed < 30
+            assert_within(elapsed, 30)
             assert parsed["stats"]["discovered"] == parsed["stats"]["status_total"] == 4000
             records.extend(parsed["case_records"])
             batches.append((elapsed, parsed["stats"]["indexed"]))
@@ -316,8 +318,8 @@ def test_case_row_cache_and_claim_routing_keep_exact_priority_separate():
         min_1x = max(min(times_1x), 0.0001)
         min_4x = min(times_4x)
         ratio = min_4x / min_1x
-        assert ratio < 8.0, f"캐시 조회 4배 시간 비는 8배 미만이어야 함: {ratio:.2f}배 (1x: {min_1x:.4f}s, 4x: {min_4x:.4f}s)"
-        assert min_4x < 2.0, f"캐시 조회 8,000회 최솟값은 2초 미만이어야 함: {min_4x:.4f}s"
+        assert ratio < 8.0, f'캐시 조회 4배 시간 비는 8배 미만이어야 함: {ratio:.2f}배 (1x: {min_1x:.4f}s, 4x: {min_4x:.4f}s)'
+        assert_within(min_4x, 2.0, f'캐시 조회 8,000회 최솟값은 2초 미만이어야 함: {min_4x:.4f}s')
         sources = library.search_case_table("계약 해석", citations=[{"case_number": "2099다123"}], limit=2)
     assert sources[0]["case_record_id"] == "exact"
     assert sources[0]["structured_case_table"] is True

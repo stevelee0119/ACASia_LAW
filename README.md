@@ -1,6 +1,6 @@
 # ACAS AegisLAW
 
-[![Version](https://img.shields.io/badge/운영%20버전-0.22.0-blue.svg)](#버전별-성능-발전-추이)
+[![Version](https://img.shields.io/badge/운영%20버전-0.23.0-blue.svg)](#버전별-성능-발전-추이)
 [![Inspection Domains](https://img.shields.io/badge/검증%20영역-7대%20영역%20(결정론%20검사%20%2B%20AI%20참고%20의견)-green.svg)](#무엇을-검사하나-7대-검증-영역)
 [![Official Sources](https://img.shields.io/badge/공식%20출처-국가법령정보%20%C2%B7%20KCI%20%C2%B7%20Drive-0A66C2.svg)](#무엇을-검사하나-7대-검증-영역)
 [![Cross Check](https://img.shields.io/badge/AI%20교차검증-GPT%20%C2%B7%20Claude%20%C2%B7%20Gemini-purple.svg)](#환경변수)
@@ -16,7 +16,7 @@
 - **법률 판단을 대신하지 않습니다.** 진정성립·위조·고의와 주장의 당부는 사용자가 최종 판단합니다.
 - **AI 모델의 의견은 참고입니다.** 판정은 공식 출처 조회와 결정론적 구조 검사가 먼저 정합니다.
 
-**현재 운영 버전:** 0.22.0 (2026-11-16 배포). 버전별 성능 추이는 [아래 그래프](#버전별-성능-발전-추이), 버전별 변경은 [변경 이력](docs/RELEASE_HISTORY.md), 개발 중인 변경과 평가 결과는 [일자별 추이표](docs/scorecards/DAILY_TREND.md)를 보세요.
+**현재 운영 버전:** 0.23.0 (2026-11-19 배포). 버전별 성능 추이는 [아래 그래프](#버전별-성능-발전-추이), 버전별 변경은 [변경 이력](docs/RELEASE_HISTORY.md), 개발 중인 변경과 평가 결과는 [일자별 추이표](docs/scorecards/DAILY_TREND.md)를 보세요.
 
 ---
 
@@ -259,7 +259,7 @@ docker compose up --build
 
 ![버전별 성능 발전 추이](docs/assets/performance_trend.png)
 
-> **벤치마크 기준** — ACAS AegisLAW 내부 회귀 벤치마크(공개 벤치마크 아님). 고정 7세트(개발 dev·홀드아웃 holdout·은퇴 봉인 5세트) 51문서의 결함·확인불가 **365항목**(그중 법률 결함 123항목)을 v0.10~v0.22 각 릴리스 코드에 같은 조건(오프라인, 공식 DB·LLM 호출 없음, 한국어 OCR 포함)으로 공급해 2026-11-13~2026-11-15에 다시 측정했다.<br>
+> **벤치마크 기준** — ACAS AegisLAW 내부 회귀 벤치마크(공개 벤치마크 아님). 고정 7세트(개발 dev·홀드아웃 holdout·은퇴 봉인 5세트) 51문서의 결함·확인불가 **365항목**(그중 법률 결함 123항목)을 v0.10~v0.23 각 릴리스 코드에 같은 조건(오프라인, 공식 DB·LLM 호출 없음, 한국어 OCR 포함)으로 공급해 2026-11-13~2026-11-19에 다시 측정했다.<br>
 > **왼쪽** 같은 항목을 같은 규칙으로 일대일 재채점한 재현율(%) · **오른쪽** 기존 산식 회귀 점수(/100). 두 패널은 분모·산식이 달라 서로 합산·비교하지 않는다.<br>
 > 실무 법률 정확도나 KBL 등 공개 벤치마크 점수가 아니다. 공식 DB를 조회하지 않으므로 법률 결함 재현율은 원문 대조 성능을 대표하지 않는다. 측정 방법: [평가 기준 감사](docs/scorecards/benchmark_audit_2026-11-13.md) · [평가 v2 규약](docs/scorecards/EVALUATION_V2.md) · 자료: [version_performance.csv](docs/scorecards/version_performance.csv)
 

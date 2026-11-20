@@ -13,6 +13,8 @@ import pytest
 from packages.adversarial_engine.classifier import classify
 from packages.common.enums import AdversarialClass
 
+from tests.perf_scaling import assert_within
+
 
 def _cold_minimum(func, *args, repeat: int = 3) -> float:
     """콜드 캐시 지연 및 환경 노이즈를 배제하기 위해 독립 3회 측정 최솟값을 반환한다."""
@@ -36,8 +38,8 @@ def test_unbroken_text_classification_is_linear():
     time_4x = _cold_minimum(classify, text_4x)
 
     ratio = time_4x / max(time_1x, 1e-4)
-    assert ratio < 8.0, f"시간 비가 8.0 미만이어야 함 (실측 비: {ratio:.2f}, 1x={time_1x:.4f}s, 4x={time_4x:.4f}s)"
-    assert time_4x < 1.0, f"4배 길이 최솟값 수행 시간이 1.0초 미만이어야 함 (실측: {time_4x:.4f}s)"
+    assert ratio < 8.0, f'시간 비가 8.0 미만이어야 함 (실측 비: {ratio:.2f}, 1x={time_1x:.4f}s, 4x={time_4x:.4f}s)'
+    assert_within(time_4x, 1.0, f'4배 길이 최솟값 수행 시간이 1.0초 미만이어야 함 (실측: {time_4x:.4f}s)')
 
 
 def test_unbroken_text_classification_matches_punctuated_text():

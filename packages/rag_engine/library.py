@@ -284,6 +284,9 @@ class ReferenceLibrary:
             "OCR_LOW_QUALITY": 0,
             "CONTENT_NO_TEXT": 0,
         }
+        confirmed_unreadable_files = 0
+        confirmed_unreadable_pages = 0
+        confirmed_unreadable_by_cause: dict[str, int] = {}
         for item in self.summary["inventory"]:
             if item["reason"] == "NOT_PROCESSED":
                 item["reason"] = "SYNC_INTERRUPTED"
@@ -318,6 +321,24 @@ class ReferenceLibrary:
             elif item.get("unread_cause"):
                 c = item["unread_cause"]
                 unread_cause_files[c] = unread_cause_files.get(c, 0) + 1
+            item_unreadable = item.get("confirmed_unreadable_pages") or []
+            if item_unreadable and item.get("unreadable_confirmed"):
+                confirmed_unreadable_files += 1
+                confirmed_unreadable_pages += len(item_unreadable)
+                for ck, cv in (item.get("confirmed_unreadable_causes") or {}).items():
+                    if cv:
+                        confirmed_unreadable_by_cause[ck] = confirmed_unreadable_by_cause.get(ck, 0) + int(cv)
+        self.summary["unreadable_summary"] = {
+            "files": confirmed_unreadable_files,
+            "pages": confirmed_unreadable_pages,
+            "by_cause": confirmed_unreadable_by_cause,
+        }
+        if self.summary["status"] == "READY":
+            self.summary["read_completeness"] = (
+                "READY_WITH_UNREADABLE" if confirmed_unreadable_pages > 0 else "FULL"
+            )
+        else:
+            self.summary["read_completeness"] = self.summary["status"]
         self.summary["coverage_ledger"] = {
             "collection_mode": diagnostics.get("collection_mode"),
             "global_library": {
@@ -334,6 +355,9 @@ class ReferenceLibrary:
                 "page_states": page_states,
                 "unread_cause_pages": unread_cause_pages,
                 "unread_cause_files": unread_cause_files,
+                "confirmed_unreadable_files": confirmed_unreadable_files,
+                "confirmed_unreadable_pages": confirmed_unreadable_pages,
+                "confirmed_unreadable_by_cause": confirmed_unreadable_by_cause,
             },
         }
         diagnostics["unread_cause_counts"] = {
@@ -482,10 +506,39 @@ class ReferenceLibrary:
                 row = db.execute("SELECT payload FROM files WHERE id=? AND revision=?", (file_id, version)).fetchone()
                 if row and stale_quarantine(json.loads(row[0])):
                     row = None                    # 예전 규칙(파일 전체 격리, 근거 미기록)의 결과는 다시 읽는다
+                def _has_retryable_unread(p: dict) -> bool:
+                    if int(p.get("retry_attempts") or 0) >= 2:
+                        return False
+                    if p.get("retryable_unread_pages"):
+                        return True
+                    by_cause = p.get("unread_pages_by_cause") or {}
+                    config_blocked = set(p.get("config_blocked_pages") or [])
+                    confirmed = set(p.get("confirmed_unreadable_pages") or [])
+                    for cause_key in ("BUDGET_EXHAUSTED", "READ_TIMEOUT"):
+                        pages_for_cause = [pg for pg in (by_cause.get(cause_key) or []) if pg not in config_blocked and pg not in confirmed]
+                        if pages_for_cause:
+                            return True
+                    return False
+
+                def _needs_unreadable_confirmation(p: dict) -> bool:
+                    return bool(
+                        p.get("confirmed_unreadable_pages")
+                        and not p.get("unreadable_confirmed")
+                        and int(p.get("unreadable_confirm_attempts") or 0) < 2
+                    )
+
                 prior = json.loads(row[0]) if row else None
                 continuation = prior.get("continuation") if prior else None
+                retry_reason = None
                 if continuation:
                     row = None  # Only a progressing structured table or bounded OCR is retried at the same revision.
+                    retry_reason = "continuation"
+                elif prior and _has_retryable_unread(prior):
+                    row = None
+                    retry_reason = "retryable_unread"
+                elif prior and _needs_unreadable_confirmation(prior):
+                    row = None
+                    retry_reason = "confirm_unreadable"
                 if row:
                     parsed = json.loads(row[0])
                     self.summary["files_reused"] += 1
@@ -508,7 +561,7 @@ class ReferenceLibrary:
                         raise ReferenceError(problem)
                     item = {**fresh, "folder_path": folder_path, "listed_parent": item.get("listed_parent")}
                     version = revision(item) + ":" + EXTRACTOR_VERSION
-                    if prior and continuation:
+                    if prior and (continuation or retry_reason in ("retryable_unread", "confirm_unreadable")):
                         stored = db.execute("SELECT revision FROM files WHERE id=?", (file_id,)).fetchone()
                         if not stored or stored[0] != version:
                             prior, continuation = None, None
@@ -520,7 +573,7 @@ class ReferenceLibrary:
                     reused_local_bytes = False
                     if (
                         prior
-                        and continuation
+                        and (continuation or retry_reason in ("retryable_unread", "confirm_unreadable"))
                         and prior.get("sha256")
                         and cache_path.is_file()
                     ):
@@ -588,6 +641,37 @@ class ReferenceLibrary:
                     parsed["chunk_count"] = len(chunks) + (prior.get("chunk_count", 0) if append_batch else 0)
                     parsed["cached_filename"] = filename
                     parsed["cached_mime"] = mime
+                    if retry_reason == "retryable_unread" and prior:
+                        prior_best = int(
+                            prior.get("best_read_pages")
+                            if prior.get("best_read_pages") is not None
+                            else (prior.get("read_pages") or 0)
+                        )
+                        cur_read = int(parsed.get("read_pages") or 0)
+                        if cur_read > prior_best:
+                            parsed["best_read_pages"] = cur_read
+                            parsed["retry_attempts"] = 0
+                        else:
+                            parsed["best_read_pages"] = prior_best
+                            parsed["retry_attempts"] = int(prior.get("retry_attempts") or 0) + 1
+                    elif parsed.get("read_pages") is not None:
+                        prior_best = int(
+                            (prior or {}).get("best_read_pages")
+                            if (prior or {}).get("best_read_pages") is not None
+                            else ((prior or {}).get("read_pages") or 0)
+                        )
+                        parsed["best_read_pages"] = max(prior_best, int(parsed.get("read_pages") or 0))
+                    if parsed.get("confirmed_unreadable_pages"):
+                        attempts = int((prior or {}).get("unreadable_confirm_attempts") or 0) + 1
+                        parsed["unreadable_confirm_attempts"] = attempts
+                        if (
+                            retry_reason == "confirm_unreadable"
+                            and prior
+                            and sorted(parsed.get("confirmed_unreadable_pages") or []) == sorted(prior.get("confirmed_unreadable_pages") or [])
+                        ) or attempts >= 2:
+                            parsed["unreadable_confirmed"] = True
+                        elif parsed.get("unreadable_confirmed") is not True:
+                            parsed["unreadable_confirmed"] = False
                     if parsed.get("continuation"):
                         limit_bytes = max(0, int(getattr(self, "max_raw_cache_bytes", MAX_RAW_CACHE_BYTES)))
                         if len(data) <= limit_bytes:
@@ -634,7 +718,14 @@ class ReferenceLibrary:
                 raw_reason = parsed.get("reason") or ""
                 has_continuation = bool(parsed.get("continuation"))
                 if "coverage_complete" in parsed and "content_readable_complete" in parsed:
-                    exec_coverage_complete = bool(parsed.get("coverage_complete")) and not has_continuation
+                    unconfirmed_unreadable = bool(
+                        parsed.get("confirmed_unreadable_pages") and not parsed.get("unreadable_confirmed")
+                    )
+                    exec_coverage_complete = (
+                        bool(parsed.get("coverage_complete"))
+                        and not has_continuation
+                        and not unconfirmed_unreadable
+                    )
                     content_readable_complete = bool(parsed.get("content_readable_complete"))
                     is_partial = not exec_coverage_complete
                     blank_only_complete = bool(
@@ -754,17 +845,19 @@ class ReferenceLibrary:
                         read_pages=parsed.get("read_pages"),
                     )
 
-                for bool_key in ("coverage_complete", "content_readable_complete"):
+                for bool_key in ("coverage_complete", "content_readable_complete", "unreadable_confirmed"):
                     if bool_key in parsed:
                         entry[bool_key] = bool(parsed[bool_key])
                 for key in ("excluded_pages", "scan_findings", "no_text_pages", "unprocessed_pages", "coverage_note",
                             "page_diagnostics", "ocr_pages", "ocr_low_quality_pages", "blank_pages", "scanned_pages",
                             "error_pages", "incomplete_pages", "page_state_counts", "text_parser", "fallback_pages",
                             "unread_pages", "unread_pages_by_cause", "execution_incomplete_pages", "content_unreadable_pages",
+                            "retryable_unread_pages", "config_blocked_pages", "confirmed_unreadable_pages",
+                            "confirmed_unreadable_causes", "native_open_error", "read_completeness",
                             "stats", "read_ranges", "excluded_rows", "table_version"):
                     if parsed.get(key):
                         entry[key] = parsed[key]
-                for count_key in ("extracted_text_pages", "completed_pages"):
+                for count_key in ("extracted_text_pages", "completed_pages", "best_read_pages"):
                     if count_key in parsed and parsed[count_key] is not None:
                         entry[count_key] = parsed[count_key]
                 if parsed.get("structured_case_table"):
@@ -964,11 +1057,50 @@ class ReferenceLibrary:
                                "_name": name_score, "_chunks": entry["chunks"]})
         candidates.sort(key=lambda c: (-c["file_score"], c["file_id"]))
         chosen = [c for c in candidates if c["selected"]]
+        chunk_outcomes: dict[int, dict[str, Any]] = {}
+        for candidate in candidates:
+            fid_cand = candidate["file_id"]
+            cand_chunks = sorted(
+                candidate["_chunks"],
+                key=lambda c: (
+                    not (c[0] >= relevance.MIN_CHUNK_COVERAGE and c[1] >= required),
+                    -c[0],
+                    c[2],
+                    c[3],
+                ),
+            )
+            q_rank = 0
+            for c in cand_chunks:
+                is_qual = c[0] >= relevance.MIN_CHUNK_COVERAGE and c[1] >= required
+                if is_qual:
+                    q_rank += 1
+                chunk_outcomes[id(c)] = {
+                    "file_id": fid_cand,
+                    "rank_in_file": q_rank if is_qual else None,
+                    "page": int(c[2]),
+                    "length": len(c[4]),
+                    "text_coverage": round(c[0], 3),
+                    "shared_terms": int(c[1]),
+                    "qualified": is_qual,
+                    "delivered": False,
+                    "source_id": None,
+                    "drop_reason": (
+                        "BELOW_THRESHOLD"
+                        if not is_qual
+                        else ("FILE_NOT_QUALIFIED" if not candidate["selected"] else None)
+                    ),
+                }
+
         excerpts = []
         for candidate in chosen:
-            usable = sorted((c for c in candidate["_chunks"]
-                             if c[0] >= relevance.MIN_CHUNK_COVERAGE and c[1] >= required),
-                            key=lambda c: (-c[0], c[2], c[3]))[:relevance.PER_FILE_EXCERPTS]
+            qual_sorted = sorted(
+                (c for c in candidate["_chunks"]
+                 if c[0] >= relevance.MIN_CHUNK_COVERAGE and c[1] >= required),
+                key=lambda c: (-c[0], c[2], c[3]),
+            )
+            usable = qual_sorted[:relevance.PER_FILE_EXCERPTS]
+            for c in qual_sorted[relevance.PER_FILE_EXCERPTS:]:
+                chunk_outcomes[id(c)]["drop_reason"] = "EXCEEDED_PER_FILE_EXCERPTS"
             excerpts.extend((c[0] + relevance.META_WEIGHT * candidate["_name"] + candidate["metadata_bonus"],
                              candidate["file_id"], c) for c in usable)
         excerpts.sort(key=lambda e: (-e[0], e[1], e[2][2], e[2][3]))
@@ -1008,14 +1140,22 @@ class ReferenceLibrary:
                 item_dict["duplicate_content"] = True
                 item_dict["duplicate_of_source_id"] = duplicate_of
             result.append(item_dict)
+            outcome = chunk_outcomes.get(id(chunk_tuple))
+            if outcome is not None:
+                outcome["delivered"] = True
+                outcome["source_id"] = sid
+                outcome["drop_reason"] = None
             return sid, fp_val
 
         # 1차 패스: 서로 다른 내용(content_fingerprint)·파일명 묶음·파일에 각 1슬롯씩 먼저 배정해 중복 청크 독점 차단
+        pass1_visited = 0
         for score, file_id, chunk in excerpts:
+            pass1_visited += 1
             excerpt = chunk[4]
             digest = hashlib.sha256(excerpt.encode()).hexdigest()
             if digest in seen_exact:
                 dup_suppressed += 1
+                chunk_outcomes[id(chunk)]["drop_reason"] = "DUPLICATE_FINGERPRINT_SUPPRESSED"
                 continue
             seen_exact.add(digest)
             fp = relevance.content_fingerprint(excerpt)
@@ -1025,6 +1165,7 @@ class ReferenceLibrary:
                         or file_id)
             if fp and fp in seen_fp:
                 dup_suppressed += 1
+                chunk_outcomes[id(chunk)]["drop_reason"] = "DUPLICATE_FINGERPRINT_SUPPRESSED"
                 leftover_dup.append((score, file_id, chunk, fp))
                 continue
             if per_file_picked.get(file_id, 0) >= 1 or per_base_picked.get(base_key, 0) >= 1:
@@ -1037,12 +1178,18 @@ class ReferenceLibrary:
             per_base_picked[base_key] = per_base_picked.get(base_key, 0) + 1
             if limit is not None and len(result) >= limit:
                 break
+        for _score, _fid, rem_chunk in excerpts[pass1_visited:]:
+            if chunk_outcomes[id(rem_chunk)]["drop_reason"] is None:
+                chunk_outcomes[id(rem_chunk)]["drop_reason"] = "GLOBAL_LIMIT_REACHED"
 
         # 2차 패스: 고유 내용 추가 청크 채우기
         if limit is None or len(result) < limit:
+            pass2_visited = 0
             for score, file_id, chunk, fp in leftover_unique:
+                pass2_visited += 1
                 if fp and fp in seen_fp:
                     dup_suppressed += 1
+                    chunk_outcomes[id(chunk)]["drop_reason"] = "DUPLICATE_FINGERPRINT_SUPPRESSED"
                     leftover_dup.append((score, file_id, chunk, fp))
                     continue
                 sid, fp_val = _append_excerpt(score, file_id, chunk)
@@ -1050,6 +1197,13 @@ class ReferenceLibrary:
                     seen_fp.setdefault(fp_val, sid)
                 if limit is not None and len(result) >= limit:
                     break
+            for _score, _fid, rem_chunk, _fp in leftover_unique[pass2_visited:]:
+                if chunk_outcomes[id(rem_chunk)]["drop_reason"] is None:
+                    chunk_outcomes[id(rem_chunk)]["drop_reason"] = "GLOBAL_LIMIT_REACHED"
+        else:
+            for _score, _fid, rem_chunk, _fp in leftover_unique:
+                if chunk_outcomes[id(rem_chunk)]["drop_reason"] is None:
+                    chunk_outcomes[id(rem_chunk)]["drop_reason"] = "GLOBAL_LIMIT_REACHED"
 
         # 3차 패스: 슬롯이 아직 남았을 때만 타 형식 중복 청크를 보조 기록으로 포함(출처 표기 포함)
         if limit is None or len(result) < limit:
@@ -1058,13 +1212,104 @@ class ReferenceLibrary:
                 if limit is not None and len(result) >= limit:
                     break
 
+        selected_ids = {s["file_id"] for s in result}
+        drop_reason_counts: dict[str, int] = {}
+        file_obs_list = []
+        delivered_obs_by_sid: dict[str, dict[str, Any]] = {}
+        file_index_by_id = {c["file_id"]: idx for idx, c in enumerate(candidates)}
+        for idx, candidate in enumerate(candidates):
+            cand_chunks = sorted(
+                candidate["_chunks"],
+                key=lambda c: (
+                    not (c[0] >= relevance.MIN_CHUNK_COVERAGE and c[1] >= required),
+                    -c[0],
+                    c[2],
+                    c[3],
+                ),
+            )
+            lengths = sorted(len(c[4]) for c in cand_chunks)
+            n_len = len(lengths)
+            if n_len == 0:
+                dist = {"min": 0, "median": 0, "max": 0}
+            elif n_len % 2 == 1:
+                dist = {"min": lengths[0], "median": lengths[n_len // 2], "max": lengths[-1]}
+            else:
+                med = (lengths[n_len // 2 - 1] + lengths[n_len // 2]) / 2
+                dist = {"min": lengths[0], "median": int(med) if med.is_integer() else med, "max": lengths[-1]}
+            chunk_entries = []
+            qual_count = 0
+            below_count = 0
+            for c in cand_chunks:
+                o = chunk_outcomes[id(c)]
+                if o["qualified"]:
+                    qual_count += 1
+                else:
+                    below_count += 1
+                if o["drop_reason"]:
+                    drop_reason_counts[o["drop_reason"]] = drop_reason_counts.get(o["drop_reason"], 0) + 1
+                entry_public = {
+                    "rank_in_file": o["rank_in_file"],
+                    "page": o["page"],
+                    "length": o["length"],
+                    "text_coverage": o["text_coverage"],
+                    "shared_terms": o["shared_terms"],
+                    "qualified": o["qualified"],
+                    "delivered": o["delivered"],
+                    "source_id": o["source_id"],
+                    "drop_reason": o["drop_reason"],
+                }
+                chunk_entries.append(entry_public)
+                if o["delivered"] and o["source_id"]:
+                    delivered_obs_by_sid[o["source_id"]] = {
+                        "source_id": o["source_id"],
+                        "file_index": idx,
+                        "rank_in_file": o["rank_in_file"],
+                        "page": o["page"],
+                        "length": o["length"],
+                        "text_coverage": o["text_coverage"],
+                        "shared_terms": o["shared_terms"],
+                    }
+            file_obs_list.append({
+                "file_index": idx,
+                "qualified": bool(candidate["selected"]),
+                "selected": candidate["file_id"] in selected_ids,
+                "candidate_chunks_total": len(cand_chunks),
+                "qualified_chunks_count": qual_count,
+                "below_threshold_chunks_count": below_count,
+                "chunk_length_distribution": dist,
+                "chunks": chunk_entries,
+            })
+
+        delivered_excerpts_obs = []
+        for s in result:
+            sid = s["source_id"]
+            d_obs = dict(delivered_obs_by_sid.get(sid, {"source_id": sid}))
+            f_idx = d_obs.get("file_index", file_index_by_id.get(s["file_id"]))
+            d_len = d_obs.get("length", len(s.get("text") or ""))
+            longer_dropped = []
+            if f_idx is not None and 0 <= f_idx < len(file_obs_list):
+                longer_dropped = [
+                    {
+                        "rank_in_file": ce["rank_in_file"],
+                        "page": ce["page"],
+                        "length": ce["length"],
+                        "text_coverage": ce["text_coverage"],
+                        "shared_terms": ce["shared_terms"],
+                        "drop_reason": ce["drop_reason"],
+                    }
+                    for ce in file_obs_list[f_idx]["chunks"]
+                    if not ce["delivered"] and ce["length"] > d_len
+                ]
+            d_obs["duplicate_content"] = bool(s.get("duplicate_content"))
+            d_obs["longer_dropped_chunks_in_file"] = longer_dropped
+            delivered_excerpts_obs.append(d_obs)
+
         for candidate in candidates:
             candidate.pop("_name"), candidate.pop("_chunks")
         log["candidates"] = candidates
         log["candidates_total"] = len(candidates)
         log["files_qualified"] = len(chosen)
         log["duplicate_chunks_suppressed"] = dup_suppressed
-        selected_ids = {s["file_id"] for s in result}
         log["files_selected"] = len(selected_ids)
         for candidate in candidates:
             candidate["qualified"] = candidate["selected"]
@@ -1073,6 +1318,16 @@ class ReferenceLibrary:
                 candidate["rejected_because"] = ["EXCERPT_BUDGET_OR_DUPLICATE"]
         for item in log["priority_references"]:
             item["selected"] = item["file_id"] in selected_ids
+        log["excerpt_selection_observability"] = {
+            "candidate_files_total": len(candidates),
+            "selected_files_count": len(selected_ids),
+            "delivered_excerpts_count": len(result),
+            "per_file_excerpts_cap": relevance.PER_FILE_EXCERPTS,
+            "global_limit": limit,
+            "drop_reason_counts": drop_reason_counts,
+            "delivered_excerpts": delivered_excerpts_obs,
+            "files": file_obs_list,
+        }
         log["sources"] = result
         log["decision"] = "USED" if result else "INCOMPLETE_COVERAGE" if pending else "NOT_USED"
         log["reason"] = "RELEVANT_REFERENCE_FOUND" if result else (

@@ -1,9 +1,14 @@
 name: CI
 
+# 트리거 (TK-212, 2026-11-19 사용자 결정 B-1): push는 통합·배포 브랜치만 받는다.
+# 6차 독립 감사가 지적한 것은 '구현 브랜치 푸시에 점수 게이트만 돌아 기존 시험의 새 실패가
+# 가려지는 것'이었고, 그 지적은 pull_request 실행이 이 워크플로 전체를 돌리는 것으로 막힌다.
+# 모든 브랜치의 push를 함께 받으면 PR 브랜치 푸시 하나가 실행을 둘 만들어 필수 확인 결론이
+# 엇갈렸다(#339·#341 병합 차단, #343 게이트 분기). 자세한 근거는 score-gate.yml 머리와
+# docs/handoff/TK-212_ci_duplicate_runs.md에 있다.
 on:
   push:
-    # 모든 브랜치의 푸시에서 전체 시험을 돈다(6차 독립 감사: 구현 브랜치 푸시에는 `점수 게이트`만 돌아 기존 시험의 새 실패가 가려졌다).
-    branches: ["**"]
+    branches: [main, Steve_ACASiaLAW]
   pull_request:
   workflow_dispatch:
 

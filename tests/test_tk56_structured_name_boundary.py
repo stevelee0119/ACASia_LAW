@@ -14,6 +14,8 @@ from packages.llm_router import privacy, router as router_module
 from packages.llm_router.providers import LLMRequest, LLMResponse
 from packages.pii_engine.pseudonym import PseudonymStore
 
+from tests.perf_scaling import assert_within
+
 
 NAMES = ("한예솔", "유다린", "남궁서율")
 KEYS = ("fullName", "담당관 성함", "수탁명의자", "custodianNm")
@@ -264,7 +266,7 @@ def test_synthetic_key_classification_thousands_under_point_one_second():
 
     elapsed, _ = _fastest_of(run)
     print(f"TK-56 key grammar 3,000 pairs: {elapsed:.6f}s")
-    assert elapsed < 0.1
+    assert_within(elapsed, 0.1)
 
 
 def test_synthetic_value_paths_thousands_under_point_one_second():
@@ -277,7 +279,7 @@ def test_synthetic_value_paths_thousands_under_point_one_second():
 
     elapsed, _ = _fastest_of(run)
     print(f"TK-56 value boundary 3,000 pairs: {elapsed:.6f}s")
-    assert elapsed < 0.1
+    assert_within(elapsed, 0.1)
 
 
 def test_synthetic_field_collection_thousands_under_point_one_second():
@@ -290,7 +292,7 @@ def test_synthetic_field_collection_thousands_under_point_one_second():
     elapsed, (texts, blocked) = _fastest_of(run)
     print(f"TK-56 collector 2,000 fields: {elapsed:.6f}s")
     assert len(blocked) == 1000 and len(texts) == 2000
-    assert elapsed < 0.1
+    assert_within(elapsed, 0.1)
 
 
 def test_synthetic_unknown_name_value_windows_thousands_under_point_one_second():
@@ -299,7 +301,7 @@ def test_synthetic_unknown_name_value_windows_thousands_under_point_one_second()
         lambda: [privacy._uncertain_person_value(value, explicit_name=False, name_field=True) for value in values])
     assert results == [True, True, True, False, False] * 600
     print(f"TK-56 unknown name windows 3,000 values: {elapsed:.6f}s")
-    assert elapsed < 0.1
+    assert_within(elapsed, 0.1)
 
 
 def test_synthetic_shared_korean_value_boundary_thousands_under_point_one_second():
@@ -308,7 +310,7 @@ def test_synthetic_shared_korean_value_boundary_thousands_under_point_one_second
         lambda: [privacy._uncertain_person_value(value, explicit_name=True, name_field=True) for value in values])
     assert results == [False, False, False, True, True, True, True] * 500
     print(f"TK-56 shared Korean value boundary 3,500 values: {elapsed:.6f}s")
-    assert elapsed < 0.1
+    assert_within(elapsed, 0.1)
 
 
 def test_synthetic_long_key_and_value_paths_are_linear():
@@ -319,4 +321,4 @@ def test_synthetic_long_key_and_value_paths_are_linear():
     assert label == "claimant"
     assert uncertain
     print(f"TK-56 repeated long key/value: {elapsed:.6f}s")
-    assert elapsed < 0.1
+    assert_within(elapsed, 0.1)

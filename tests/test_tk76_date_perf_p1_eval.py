@@ -6,6 +6,8 @@ import time
 from packages.claim_engine.date_verifier import verify_dates_in_document
 from packages.common.schemas import Block, NormalizedDocument, Page
 
+from tests.perf_scaling import assert_within
+
 
 def _doc(text):
     b = Block(block_id="b1", text=text, page=1, visible=True, source_layer="visible_text")
@@ -18,7 +20,7 @@ def test_p1_long_hangul_run_without_spaces_is_linear():
     text = "나" * 20000 + " 통지는 2024. 2. 5. 도달하였다. 피고는 2024. 2. 13. 원고에 대한 감급처분을 결정하였다."
     t0 = time.time()
     verify_dates_in_document(_doc(text))
-    assert time.time() - t0 < 5.0
+    assert_within(time.time() - t0, 5.0)
 
 
 def test_p1_order_connective_still_read():

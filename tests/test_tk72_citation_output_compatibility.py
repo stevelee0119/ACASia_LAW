@@ -22,6 +22,10 @@ from packages.legal_engine.citation_extractor import (
     extract_citations, extract_from_text,
 )
 
+from tests.perf_scaling import fastest_of
+
+from tests.perf_scaling import assert_within
+
 def _samples():
     cases={}
     for i,ws in enumerate((' ', '  ', '\t', '\n', '\r', '\u3000')):
@@ -426,12 +430,12 @@ def test_interpretation_near_misses_are_not_extracted(suffix):
 
 @pytest.mark.parametrize("suffix", ["법령해석", "유권해석", "법령해석례 24-0001"])
 def test_interpretation_keyword_after_long_whitespace(suffix):
-    started = time.perf_counter()
-    citations = extract_citations(_doc(" " * 80_000 + suffix))
-    elapsed = time.perf_counter() - started
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+    elapsed, citations = fastest_of(
+        lambda: extract_citations(_doc(" " * 80_000 + suffix)))
     assert len(citations) == 1
     assert citations[0].type == CitationType.INTERPRETATION
-    assert elapsed < 1.0
+    assert_within(elapsed, 1.0)
 
 
 def test_new_index_and_matcher_short_repetitions():
@@ -441,7 +445,7 @@ def test_new_index_and_matcher_short_repetitions():
     for _ in range(2500):
         assert _author_start(text, body, 0) == 0
         assert next(_interpretation_matches("법제처 법령해석례 24-0001")).group("authority") == "법제처"
-    assert time.perf_counter() - started < 0.1
+    assert_within(time.perf_counter() - started, 0.1)
 
 
 def test_academic_repetition_actual_path_growth():
@@ -453,7 +457,7 @@ def test_academic_repetition_actual_path_growth():
         times.append(time.perf_counter() - started)
         assert len(citations) == 1
         assert citations[0].authors == ["김가나"]
-    assert times[-1] < 1.0
+    assert_within(times[-1], 1.0)
     assert times[-1] / max(times[-2], 1e-4) < 8.0
 
 
@@ -491,7 +495,7 @@ def test_academic_negative_public_searches_with_long_whitespace_are_bounded():
     started = time.perf_counter()
     assert not list(ACADEMIC_RE.finditer(text))
     assert not extract_citations(_doc(text))
-    assert time.perf_counter() - started < 1.0
+    assert_within(time.perf_counter() - started, 1.0)
 
 
 @pytest.mark.parametrize("text", [
@@ -509,12 +513,12 @@ def test_claim_line_join_keeps_original_positive_and_negative_contract(text):
 @pytest.mark.parametrize("tail", ["\n" * 80_000 + "x", "\n " * 40_000 + "x",
                                   "\n" * 80_000 + "1" * 20_000 + "x"])
 def test_claim_line_join_long_whitespace_actual_path(tail):
-    started = time.perf_counter()
-    citations = extract_citations(_doc("「민법」 제750조" + tail))
-    elapsed = time.perf_counter() - started
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+    elapsed, citations = fastest_of(
+        lambda: extract_citations(_doc("「민법」 제750조" + tail)))
     assert len(citations) == 1
     assert citations[0].attributes["claim_text"] == tail.strip()[:400]
-    assert elapsed < 1.0
+    assert_within(elapsed, 1.0)
 
 
 def test_claim_line_join_short_repetitions():
@@ -522,4 +526,4 @@ def test_claim_line_join_short_repetitions():
     started = time.perf_counter()
     for _ in range(2500):
         assert _unwrap_claim_lines("본문\n\n 1. 항목\n계속") == "본문\n\n 1. 항목 계속"
-    assert time.perf_counter() - started < 0.1
+    assert_within(time.perf_counter() - started, 0.1)

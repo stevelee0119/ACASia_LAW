@@ -18,6 +18,10 @@ from packages.legal_engine.citation_extractor import (
     extract_from_text,
 )
 
+from tests.perf_scaling import best_of, fastest_of
+
+from tests.perf_scaling import assert_within
+
 
 def _make_doc(text: str, doc_id: str = "doc_synthetic") -> NormalizedDocument:
     """합성 텍스트를 담은 NormalizedDocument 실제 객체를 생성한다."""
@@ -35,31 +39,36 @@ def test_repeated_short_input_performance():
     from packages.legal_engine.citation_extractor import LAW_RE, SpanTracker, _law_name_start
 
     # 1) 구간 추적기(이진 탐색/투포인터) 2,500회 반복 < 0.1초
-    tracker = SpanTracker()
-    started = time.perf_counter()
-    for i in range(2500):
-        tracker.overlaps(i * 10, i * 10 + 5)
-        tracker.add(i * 10, i * 10 + 5)
-    elapsed_tracker = time.perf_counter() - started
-    assert elapsed_tracker < 0.1, f"구간 추적기 2,500회 반복 초과: {elapsed_tracker:.4f}초"
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+    # 추적기는 회차마다 새로 만든다 — 같은 것을 재사용하면 2회차부터 더 큰 상태를 재게 된다.
+    def _tracker_round():
+        tracker = SpanTracker()
+        for i in range(2500):
+            tracker.overlaps(i * 10, i * 10 + 5)
+            tracker.add(i * 10, i * 10 + 5)
+
+    elapsed_tracker = best_of(_tracker_round)
+    assert_within(elapsed_tracker, 0.1, f'구간 추적기 2,500회 반복 초과: {elapsed_tracker:.4f}초')
 
     # 2) 법령명 시작 위치 탐색(캐시) 2,500회 반복 < 0.1초
     m = LAW_RE.search("원고는 「근로기준법」 제23조를 위반하였다.")
-    started = time.perf_counter()
-    for _ in range(2500):
-        _law_name_start(m)
-    elapsed_law = time.perf_counter() - started
-    assert elapsed_law < 0.1, f"법령명 시작 위치 2,500회 반복 초과: {elapsed_law:.4f}초"
+    def _law_round():
+        for _ in range(2500):
+            _law_name_start(m)
+
+    elapsed_law = best_of(_law_round)
+    assert_within(elapsed_law, 0.1, f'법령명 시작 위치 2,500회 반복 초과: {elapsed_law:.4f}초')
 
     # 3) 법령명 정규화 캐시 2,500회 반복 < 0.1초
     names = ["근로기준법", "「민법」", "형법", "상법", "행정소송법"] * 500
     for n in names[:5]:
         canonical_law_name(n)
-    started = time.perf_counter()
-    for name in names:
-        canonical_law_name(name)
-    elapsed_cache = time.perf_counter() - started
-    assert elapsed_cache < 0.1, f"캐시 조회 2,500회 초과: {elapsed_cache:.4f}초"
+    def _cache_round():
+        for name in names:
+            canonical_law_name(name)
+
+    elapsed_cache = best_of(_cache_round)
+    assert_within(elapsed_cache, 0.1, f'캐시 조회 2,500회 초과: {elapsed_cache:.4f}초')
 
     # 4) 텍스트 인용 추출 100회 반복 < 0.1초
     text = "원고는 「근로기준법」 제23조 제1항을 근거로 해고무효를 주장한다."
@@ -69,7 +78,7 @@ def test_repeated_short_input_performance():
         for _ in range(100):
             extract_from_text(text)
         best = min(best, time.perf_counter() - started)
-    assert best < 0.1, f"단문 추출 100회 반복 초과: {best:.4f}초"
+    assert_within(best, 0.1, f'단문 추출 100회 반복 초과: {best:.4f}초')
 
 
 def test_canonical_law_name_cache_performance():
@@ -79,12 +88,11 @@ def test_canonical_law_name_cache_performance():
     for n in names[:5]:
         canonical_law_name(n)
 
-    started = time.perf_counter()
-    results = [canonical_law_name(name) for name in names]
-    elapsed = time.perf_counter() - started
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+    elapsed, results = fastest_of(lambda: [canonical_law_name(name) for name in names])
     assert len(results) == 2500
     assert results[0] == "근로기준법"
-    assert elapsed < 0.1, f"캐시 조회 시간이 0.1초를 초과함: {elapsed:.4f}초"
+    assert_within(elapsed, 0.1, f'캐시 조회 시간이 0.1초를 초과함: {elapsed:.4f}초')
 
 
 def test_case_whitespace_tail_is_linear():
@@ -93,15 +101,14 @@ def test_case_whitespace_tail_is_linear():
     synthetic_text = "원고는 「근로기준법」 제23조 제1항 제1호 가목" + " " * 80000 + "x"
     doc = _make_doc(synthetic_text, "doc_whitespace")
 
-    started = time.perf_counter()
-    citations = extract_citations(doc)
-    elapsed = time.perf_counter() - started
+    # TK-214: 단발 측정은 코드가 아니라 실행기 부하를 잰다. 상한은 그대로 두고 N회 중 최솟값으로 잰다.
+    elapsed, citations = fastest_of(lambda: extract_citations(doc))
 
     assert len(citations) == 1
     assert citations[0].law_name == "근로기준법"
     assert citations[0].article == "23"
     assert citations[0].attributes.get("subitem") == "가"
-    assert elapsed < 1.0, f"공백 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초"
+    assert_within(elapsed, 1.0, f'공백 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초')
 
 
 def test_subitem_repeated_notation_is_linear():
@@ -110,13 +117,11 @@ def test_subitem_repeated_notation_is_linear():
     synthetic_text = "원고는 「근로기준법」 제23조 제1항 제1호 가목" + "·나목" * 20000
     doc = _make_doc(synthetic_text, "doc_subitem_dots")
 
-    started = time.perf_counter()
-    citations = extract_citations(doc)
-    elapsed = time.perf_counter() - started
+    elapsed, citations = fastest_of(lambda: extract_citations(doc))
 
     assert len(citations) == 1
     assert citations[0].law_name == "근로기준법"
-    assert elapsed < 1.0, f"·나목 반복 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초"
+    assert_within(elapsed, 1.0, f'·나목 반복 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초')
 
 
 def test_subitem_repeated_conjunction_is_linear():
@@ -125,13 +130,11 @@ def test_subitem_repeated_conjunction_is_linear():
     synthetic_text = "원고는 「근로기준법」 제23조 제1항 제1호 가목" + " 및 " * 20000
     doc = _make_doc(synthetic_text, "doc_subitem_and")
 
-    started = time.perf_counter()
-    citations = extract_citations(doc)
-    elapsed = time.perf_counter() - started
+    elapsed, citations = fastest_of(lambda: extract_citations(doc))
 
     assert len(citations) == 1
     assert citations[0].law_name == "근로기준법"
-    assert elapsed < 1.0, f" 및  반복 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초"
+    assert_within(elapsed, 1.0, f' 및  반복 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초')
 
 
 def test_academic_dots_backtracking_linear():
@@ -140,15 +143,13 @@ def test_academic_dots_backtracking_linear():
     synthetic_text = "·" * 80000 + "홍길동, 「합성 학술 논문 제목」, 합성법학논총 제1권 제1호, 2024"
     doc = _make_doc(synthetic_text, "doc_academic_dots")
 
-    started = time.perf_counter()
-    citations = extract_citations(doc)
-    elapsed = time.perf_counter() - started
+    elapsed, citations = fastest_of(lambda: extract_citations(doc))
 
     assert len(citations) == 1
     assert citations[0].type == CitationType.ACADEMIC
     assert citations[0].authors == ["홍길동"]
     assert citations[0].title == "합성 학술 논문 제목"
-    assert elapsed < 1.0, f"학술 가운뎃점 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초"
+    assert_within(elapsed, 1.0, f'학술 가운뎃점 80KB 처리가 1.0초를 초과함: {elapsed:.4f}초')
 
 
 def test_academic_authors_preservation_11_and_12():
@@ -206,7 +207,7 @@ def test_repeated_statute_citations_are_linear():
 
     # 4배 크기(2,000 -> 8,000건) 증가 시 시간 비가 8 미만이어야 함 (제곱 시간 16 배제)
     ratio_4x = time_8k / max(time_2k, 1e-4)
-    assert ratio_4x < 8.0, f"인용 수 4배 증가 시 시간 증가비가 8 이상임 (제곱 시간 의심): {ratio_4x:.2f}배"
+    assert ratio_4x < 8.0, f'인용 수 4배 증가 시 시간 증가비가 8 이상임 (제곱 시간 의심): {ratio_4x:.2f}배'
 
     # 실제 경로(extract_citations) 8,000건 처리 시간 검증 (Linux CI 1.5초 이내, Windows 5.0초 이내)
     doc_8k = _make_doc(line * 8000, "doc_8k")
@@ -215,7 +216,8 @@ def test_repeated_statute_citations_are_linear():
     dt_8k = time.perf_counter() - t0
     assert len(c_8k) >= 1
     threshold_8k = 1.5 if sys.platform.startswith("linux") else 5.0
-    assert dt_8k < threshold_8k, f"8,000건 실제 경로 처리가 {threshold_8k}초를 초과함: {dt_8k:.4f}초"
+    # TK-214: 한계가 변수(플랫폼별)여도 보정은 같다. 부하 배수만큼 한계를 늘려 비교한다.
+    assert_within(dt_8k, threshold_8k, "8,000건 실제 경로")
 
 
 def test_statute_citations_32k_linear_performance():
@@ -243,7 +245,7 @@ def test_statute_citations_32k_linear_performance():
     time_2k = measure_cold(2000)
     time_8k = measure_cold(8000)
     ratio_4x = time_8k / max(time_2k, 1e-4)
-    assert ratio_4x < 8.0, f"인용 수 4배 증가 시 시간 증가비가 8 이상임 (제곱 시간 의심): {ratio_4x:.2f}배"
+    assert ratio_4x < 8.0, f'인용 수 4배 증가 시 시간 증가비가 8 이상임 (제곱 시간 의심): {ratio_4x:.2f}배'
 
     # 요구 크기: 32,000건 (960,000자, UTF-8 2MB 이상) 실제 경로(extract_citations) 시간 검증
     synthetic_32k = line * 32000
@@ -258,7 +260,7 @@ def test_statute_citations_32k_linear_performance():
     assert len(c_32k) >= 1
     # Linux CI 환경 1.0초 이내 단언 (Windows 환경은 nt.urandom 및 OS 스케줄링 오버헤드 감안 15초)
     threshold = 1.0 if sys.platform.startswith("linux") else 15.0
-    assert elapsed_32k < threshold, f"32,000건 실제 경로 처리가 {threshold}초를 초과함: {elapsed_32k:.4f}초"
+    assert_within(elapsed_32k, threshold, "32,000건 실제 경로")
 
 
 def test_academic_authors_preservation_large():

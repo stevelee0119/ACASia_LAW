@@ -17,6 +17,8 @@ import pytest
 
 from packages.pii_engine.detector import detect
 
+from tests.perf_scaling import assert_within
+
 LABELS = ["", "사업자번호", "계좌번호", "주민등록번호", "법인등록번호", "군번", "생년월일",
           "2020년 3월 2", "처방", "복용약", "진단", "의뢰인 홍길동 상병"]
 
@@ -54,7 +56,7 @@ def _growth_exponent(sizes, timings) -> float:
 @pytest.mark.parametrize("label", LABELS)
 def test_label_followed_by_long_whitespace_is_linear(label):
     timings = _timings(detect, [label + " " * n for n in SIZES])
-    assert timings[SIZES.index(8000)] < 2.0, (label, timings)   # 기존 절대 상한(8,000자 2초) 유지
+    assert_within(timings[SIZES.index(8000)], 2.0, (label, timings))
     exponent = _growth_exponent(SIZES, timings)
     assert exponent < MAX_EXPONENT, (label, round(exponent, 3), timings)
 

@@ -33,6 +33,8 @@ from packages.claim_engine.internal_inconsistency import (
     _QUANTITY_RE,
 )
 
+from tests.perf_scaling import assert_within
+
 
 def _make_doc(*texts: str, doc_id: str = "synth_doc") -> NormalizedDocument:
     """합성 테스트용 NormalizedDocument 생성 헬퍼."""
@@ -330,8 +332,8 @@ def test_internal_inconsistency_linear_performance():
     min_4x = min(timings_4x)
 
     ratio = min_4x / max(min_1x, 1e-6)
-    assert min_4x < 1.0, f"4배 텍스트 실행 시간이 1초를 초과함: {min_4x:.4f}s"
-    assert ratio < 8.0, f"4배/1배 성능 비가 8배를 초과함 (비선형 의심): {ratio:.2f}배"
+    assert_within(min_4x, 1.0, f'4배 텍스트 실행 시간이 1초를 초과함: {min_4x:.4f}s')
+    assert ratio < 8.0, f'4배/1배 성능 비가 8배를 초과함 (비선형 의심): {ratio:.2f}배'
 
 
 # ==============================================================================

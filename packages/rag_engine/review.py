@@ -524,6 +524,7 @@ def review_document(result, library, router, context, pii):
 
         support_diagnostics: Dict[str, Any] = {
             "excerpt_delivery": {
+                "selection_observability": selection.get("excerpt_selection_observability") or {},
                 "batch_deliveries": [],
                 "claim_deliveries": [],
                 "unique_sources_delivered": [],

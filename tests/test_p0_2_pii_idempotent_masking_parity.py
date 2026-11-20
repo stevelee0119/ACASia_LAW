@@ -20,6 +20,8 @@ from packages.pii_engine.engine import PIIEngine
 from packages.pii_engine.pseudonym import PSEUDONYM_PREFIXES, PseudonymStore
 from packages.verification_engine.ai_document_detector import detect_ai_document
 
+from tests.perf_scaling import assert_within
+
 
 # ---------------------------------------------------------------------------
 # 양성 1: 가명 토큰 인접 숫자·날짜가 2차 전화번호로 재결합되지 않음
@@ -965,8 +967,8 @@ def test_privacy_masked_value_and_detect_redos_linear():
     verdict, elapsed_value = _best(
         lambda value: _uncertain_person_value(value, explicit_name=True), adversarial_value)
     assert verdict is True
-    assert elapsed_value < 0.1, f"가명 토큰 반복 값 판정 {elapsed_value:.4f}초"
+    assert_within(elapsed_value, 0.1, f'가명 토큰 반복 값 판정 {elapsed_value:.4f}초')
 
     adversarial_text = ("[PERSON_01024681357] " * 200) + ("010-" + "[PERSON_001]-" * 50)
     _, elapsed_detect = _best(detect, adversarial_text)
-    assert elapsed_detect < 0.25, f"가명 토큰 반복 본문 탐지 {elapsed_detect:.4f}초"
+    assert_within(elapsed_detect, 0.25, f'가명 토큰 반복 본문 탐지 {elapsed_detect:.4f}초')
