@@ -169,8 +169,11 @@ def check_column_totals(grid: TableGrid) -> List[Dict[str, Any]]:
         start_row = (last_section_end + 1) if is_subtotal else 1
 
         for col_idx in range(1, grid.num_cols):
+            header_text = grid.headers[col_idx] if col_idx < len(grid.headers) else ""
+            if "%" in header_text or any(k in header_text for k in ("비율", "구성비")):
+                continue
             total_cell = grid.cell(total_row_idx, col_idx)
-            if not total_cell:
+            if not total_cell or "%" in total_cell.text or "." in total_cell.text:
                 continue
             tot_match = _AMOUNT_RE.search(total_cell.text.replace(",", ""))
             if not tot_match:
@@ -178,15 +181,22 @@ def check_column_totals(grid: TableGrid) -> List[Dict[str, Any]]:
             expected_total = int(tot_match.group(0))
 
             item_values: List[int] = []
+            has_pct_or_decimal = False
             for r_idx in range(start_row, total_row_idx):
                 if r_idx in total_set:
                     continue
                 c = grid.cell(r_idx, col_idx)
                 if not c or c.is_header:
                     continue
+                if "%" in c.text or "." in c.text:
+                    has_pct_or_decimal = True
+                    break
                 m = _AMOUNT_RE.search(c.text.replace(",", ""))
                 if m:
                     item_values.append(int(m.group(0)))
+
+            if has_pct_or_decimal:
+                continue
 
             if item_values:
                 actual_sum = sum(item_values)

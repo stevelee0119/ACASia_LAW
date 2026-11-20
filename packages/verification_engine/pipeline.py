@@ -778,6 +778,11 @@ class VerificationPipeline:
                 mime_type=document.mime_type,
                 sha256=document.sha256,
             )
+            try:
+                from packages.document_engine.table_structure import attach_table_grids
+                attach_table_grids(doc)
+            except Exception:  # pragma: no cover - defensive
+                pass
             clause_norm_mode = str(getattr(get_settings(), "use_clause_normalizer", "shadow") or "shadow").strip().lower()
             if clause_norm_mode != "off":
                 try:
