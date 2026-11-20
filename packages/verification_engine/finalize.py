@@ -113,8 +113,12 @@ def enforce_consistency(findings: List[Finding], statuses: Dict[str, str]) -> tu
 
 
 def finalize_document_findings(findings: List[Finding], doc: Optional[NormalizedDocument],
-                               document_id: str, statuses: Optional[Dict[str, str]] = None) -> List[Finding]:
+                               document_id: str, statuses: Optional[Dict[str, str]] = None,
+                               evidence_graph: Optional[object] = None) -> List[Finding]:
     out = consolidate_citation_findings(findings)
+    if evidence_graph is not None:
+        from packages.evidence_graph.analyzer import deduplicate_findings_by_graph
+        out, _analysis = deduplicate_findings_by_graph(out, evidence_graph)
     if statuses:
         out, _issues = enforce_consistency(out, statuses)
     fill_required_fields(out, doc, document_id)

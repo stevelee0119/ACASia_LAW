@@ -541,6 +541,29 @@ def build_document_review_items(
         items.append(item)
         assigned_finding_ids.add(fid)
 
+    from packages.common.config import get_settings
+    graph_mode = str(getattr(get_settings(), "evidence_graph_mode", "shadow") or "shadow").strip().lower()
+    graph_analysis = (doc_result.engine_data or {}).get("evidence_graph_analysis")
+    if graph_mode in ("canary", "default") and isinstance(graph_analysis, dict):
+        from packages.evidence_graph.analyzer import build_prerequisite_checklist
+        for item in items:
+            expanded_fids = list(item.finding_ids or [])
+            for fid in item.finding_ids or []:
+                f_obj = finding_by_id.get(fid)
+                merged = ((getattr(f_obj, "confidence_features", None) or {}).get("merged_findings") or []) if f_obj else []
+                for m in merged:
+                    if isinstance(m, dict) and m.get("finding_id"):
+                        expanded_fids.append(str(m["finding_id"]))
+            checklist = build_prerequisite_checklist(
+                graph_analysis,
+                citation_id=item.citation_id,
+                finding_ids=expanded_fids,
+            )
+            if checklist:
+                sections = dict(item.reasoning_sections) if isinstance(item.reasoning_sections, dict) else {}
+                sections["prerequisite_checklist"] = checklist
+                item.reasoning_sections = sections
+
     from packages.rag_engine.reference_binding import bind_observations
 
     serialized = [item.to_dict() for item in items]
