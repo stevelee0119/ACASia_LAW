@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 from typing import Optional, Tuple
 
@@ -46,8 +47,7 @@ def _clause_after(sentence: str, end: int) -> str:
     return rest[:stop.start()] if stop else rest
 
 
-def polarity(sentence: str, span: Tuple[int, int], *, previous: str = "") -> str:
-    """sentence에서 span(규칙이 맞힌 부분)이 작성자의 단정인지 판별한다."""
+def _legacy_polarity(sentence: str, span: Tuple[int, int], *, previous: str = "") -> str:
     start, end = span
     clause = _clause_after(sentence, end)
     negations = len(NEGATION_RE.findall(clause))
@@ -62,6 +62,42 @@ def polarity(sentence: str, span: Tuple[int, int], *, previous: str = "") -> str
     if CONDITIONAL_LEAD_RE.search(sentence[:start]) and CONDITIONAL_TAIL_RE.search(clause + " "):
         return CONDITIONAL
     return ASSERTED
+
+
+def clause_normalizer_polarity(sentence: str, span: Tuple[int, int], *, previous: str = "") -> str:
+    """Delegate tail-clause polarity/attribution/modality analysis to `packages.korean_nlp`."""
+    from packages.korean_nlp import get_tokenizer, normalize_sentence
+
+    start, end = span
+    rest = sentence[end:]
+    if not rest.strip():
+        return ASSERTED
+    tok = get_tokenizer(use_kiwi=False)
+    tail_clauses = normalize_sentence(rest, previous_sentence=previous, tokenizer=tok)
+    if not tail_clauses:
+        return ASSERTED
+    first = tail_clauses[0]
+    if first.attribution_type == "OPPONENT_SUMMARY":
+        return REPORTED
+    if first.attribution_type == "QUOTED_PRECEDENT" and (
+        CASE_CITE_RE.search(sentence) or CASE_CITE_RE.search(previous or "")
+    ):
+        return REPORTED
+    if first.polarity == "NEGATED":
+        return NEGATED
+    if CONDITIONAL_LEAD_RE.search(sentence[:start]) and first.modality == "HYPOTHETICAL":
+        return CONDITIONAL
+    return ASSERTED
+
+
+def polarity(sentence: str, span: Tuple[int, int], *, previous: str = "") -> str:
+    """sentence에서 span(규칙이 맞힌 부분)이 작성자의 단정인지 판별한다."""
+    mode = (os.getenv("LV_CLAUSE_NORMALIZER_MODE") or "shadow").strip().lower()
+    if mode in ("canary", "default"):
+        delegated = clause_normalizer_polarity(sentence, span, previous=previous)
+        if delegated != ASSERTED:
+            return delegated
+    return _legacy_polarity(sentence, span, previous=previous)
 
 
 def _shortest(pattern: "re.Pattern[str]") -> "re.Pattern[str]":
