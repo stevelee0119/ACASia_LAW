@@ -2,7 +2,7 @@
 
 먼저 [docs/AGENT_ROLES.md](docs/AGENT_ROLES.md)를 읽는다. 아래는 그 요약이다.
 
-- 담당(2026-10-17 사용자 지시): 새 구현은 **Antigravity**가 맡는다. 지시는 [NEXT_FOR_ANTIGRAVITY](docs/handoff/NEXT_FOR_ANTIGRAVITY.md) 하나로 받는다. **Codex**는 전환 시점에 열린 TK-44·45·49·55·73만 마무리하고 새 티켓을 받지 않는다([NEXT_FOR_CODEX](docs/handoff/NEXT_FOR_CODEX.md)). 평가는 Claude Code 평가 세션이 한다.
+- 담당(2026-10-17 사용자 지시): 새 구현은 **Antigravity**가 맡는다. 신규 지시는 [티켓 양식](docs/handoff/tickets/_TEMPLATE.md)을 따르는 `docs/handoff/tickets/TK-*.md`에서 받는다. 이전 전달문은 [아카이브](docs/handoff/archive/NEXT_FOR_ANTIGRAVITY.md)에 보존한다. **Codex**는 전환 시점에 열린 TK-44·45·49·55·73만 마무리하고 새 티켓을 받지 않는다([NEXT_FOR_CODEX](docs/handoff/NEXT_FOR_CODEX.md)). 평가는 Claude Code 평가 세션이 한다.
 - 한시 대행(2026-10-28 사용자 지시): #185(TK-129 보완)·#190(TK-127 2단계)과 그 릴리스까지는 **Codex 별도 세션**이 Antigravity 대신 구현한다. 2026-10-31부터, 그리고 다음 릴리스의 구현은 다시 Antigravity다. 대행 세션도 이 문서의 구현자 규칙을 그대로 따르고 자기 PR을 판정하지 않는다([AGENT_ROLES](docs/AGENT_ROLES.md)).
 - 한시 대행 2차(2026-11-02 사용자 지시): lexdiff 비교 후속 개선(TK-130a·130b·131·132, 전달문 NEXT_FOR_ANTIGRAVITY 2-7절)은 **Codex 별도 세션**이 구현한다. 규칙은 1차 대행과 같다.
 
@@ -12,11 +12,13 @@
   필요하면 `docs/handoff/`에 요청 티켓을 남긴다. 이 경로를 평가 측이 아닌 커밋이 바꾸면 CI의 '보호 경로 변경 점검'이 실패한다(평가 측이 검토해 승인 목록에 적으면 통과).
 - **사건 고유 값(당사자명, 사건번호, 금액, 수치), 서면 문구(한글 열 글자 이상 그대로 따온 것), 서면의 영문 대문자 식별자(12자 이상)를 코드에 넣지 않는다.** `tests/acceptance/test_no_case_literals.py`가 막는다. 숫자만 빼고 서면의 문구로 정규식을 짜는 것도 맞춤 수정이다.
 - 새 규칙은 값·문장이 다른 양성 예시 3건 이상, 대조군 3건 이상의 시험과 함께 낸다.
-- 작업은 `docs/handoff/`의 티켓 단위로 한다. 티켓의 수용 기준은 측정 도구 출력이다. 서면 한 건에 맞춘 수정은 하지 않는다.
+- 작업은 개별 티켓 단위로 한다. 평가자가 문제 현상·결함 범주·정량 수용 기준·불변식을 명시한다. 구현자는 P0~P3 공용 설계와 일반화 시험을 책임진다. 서면 한 건에 맞춘 수정은 하지 않는다.
 - 커밋 전에는 **바꾼 파일과 관련 시험만** 돌린다. `verify_all`(`--quick` 포함)은 돌리지 않아도 된다. 같은 점검을 CI가 같은 SHA에서 돈다(2026-10-04 사용자 승인 '구현·평가 중복 제거').
   푸시 뒤 CI가 실패하면 그 job 로그 끝의 '실패 시험 목록'을 보고 고친다. 보고는 PR 코멘트 3줄(바꾼 것·남은 것·'검토 요청')로 한다. 완료 보고서 파일은 라운드 첫 완료와 탐지 규칙 변경 때만 쓴다. 커밋 메시지에는 점수 변화(아는 경우)와 `Agent: implementer`를 적는다.
 - 판정은 같은 SHA의 CI(Linux, Python 3.11, tesseract 5.3.4)로 한다. 로컬 환경이 달라도 된다.
 - 검출 휴리스틱(개인정보·법리 규칙)을 바꾸면 코드보다 먼저 `docs/handoff/requests/`에 1쪽 이내 설계 메모를 낸다. 같은 접근이 두 번 실패하면 접근을 바꾼다.
 - 평가 측 비공개 세트의 수치는 알 수 없으므로 보고서에 적지 않는다. 보고서의 diff stat·시험 결과는 최종 커밋 SHA 기준이어야 한다(미커밋 트리 금지).
 - 브랜치 규칙: 작업은 새 브랜치에서 하고 PR로 올린다. 병합 전 CI 필수 확인 3개(점수 하락 게이트·테스트·Docker OCR readiness)가 같은 SHA에서 성공해야 한다. 강제 푸시, 통합 브랜치(`Steve_ACASiaLAW`·`main`)에 직접 푸시하는 것은 금지다.
+- 일반 PR의 1차 판정은 점수 게이트, 사건 리터럴, 보호 경로, SQLite·PostgreSQL 테스트, Docker OCR readiness 및 CodeQL을 사용한다. 평가·감사의 비공개·봉인 세트 수동 검증은 P0~P3 마일스톤 완료 시점 또는 릴리스 후보 SHA에 집중한다.
+- PR 코멘트 3줄과 HISTORY 1행을 원본으로 삼는다.
 - 점수 기준선을 낮추지 않는다.
