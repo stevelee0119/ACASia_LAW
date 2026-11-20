@@ -75,3 +75,19 @@ def test_check_column_totals_detects_grand_total_mismatch_after_subtotal():
     assert mismatches[0]["sum_of_rows"] == 30
     assert mismatches[0]["stated_total"] == 999
 
+
+def test_check_column_totals_detects_single_detail_row_grand_total_mismatch():
+    rows = [
+        ["항목", "금액"],
+        ["단일항목", "10"],
+        ["총계", "999"],
+    ]
+    grid = build_table_grid_from_rows(rows, block_id="tbl_single", page=1)
+    assert grid.total_row_indices == [2]
+    mismatches = check_column_totals(grid)
+    assert len(mismatches) == 1
+    assert mismatches[0]["row_label"] == "총계"
+    assert mismatches[0]["sum_of_rows"] == 10
+    assert mismatches[0]["stated_total"] == 999
+
+

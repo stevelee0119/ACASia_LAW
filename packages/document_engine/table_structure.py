@@ -188,8 +188,7 @@ def check_column_totals(grid: TableGrid) -> List[Dict[str, Any]]:
                 if m:
                     item_values.append(int(m.group(0)))
 
-            min_items = 1 if is_subtotal else 2
-            if len(item_values) >= min_items:
+            if item_values:
                 actual_sum = sum(item_values)
                 if actual_sum != expected_total:
                     mismatches.append({
