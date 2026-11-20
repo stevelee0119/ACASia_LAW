@@ -36,3 +36,13 @@ def test_clause_normalizer_delegation_matches_core_cases(monkeypatch):
 
     s_ass3 = "피고의 책임이 인정된다."
     assert polarity(s_ass3, (s_ass3.index("책임"), s_ass3.index("책임") + 2)) == ASSERTED
+
+    # Double negation: canary/default preserves ASSERTED, while shadow preserves legacy behavior
+    s_dbl = "채무가 없지 않다"
+    span_dbl = (0, 2)
+    assert polarity(s_dbl, span_dbl) == ASSERTED
+    monkeypatch.setenv("LV_CLAUSE_NORMALIZER_MODE", "canary")
+    assert polarity(s_dbl, span_dbl) == ASSERTED
+    monkeypatch.setenv("LV_CLAUSE_NORMALIZER_MODE", "shadow")
+    assert polarity(s_dbl, span_dbl) == NEGATED
+

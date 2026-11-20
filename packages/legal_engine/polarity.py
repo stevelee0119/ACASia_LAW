@@ -64,38 +64,45 @@ def _legacy_polarity(sentence: str, span: Tuple[int, int], *, previous: str = ""
     return ASSERTED
 
 
-def clause_normalizer_polarity(sentence: str, span: Tuple[int, int], *, previous: str = "") -> str:
-    """Delegate tail-clause polarity/attribution/modality analysis to `packages.korean_nlp`."""
+def _clause_normalizer_detail(sentence: str, span: Tuple[int, int], *, previous: str = "") -> Tuple[str, bool]:
+    """Return (mapped_polarity, is_confident_double_negation) from `packages.korean_nlp`."""
     from packages.korean_nlp import get_tokenizer, normalize_sentence
 
     start, end = span
     rest = sentence[end:]
     if not rest.strip():
-        return ASSERTED
+        return (ASSERTED, False)
     tok = get_tokenizer(use_kiwi=False)
     tail_clauses = normalize_sentence(rest, previous_sentence=previous, tokenizer=tok)
     if not tail_clauses:
-        return ASSERTED
+        return (ASSERTED, False)
     first = tail_clauses[0]
     if first.attribution_type == "OPPONENT_SUMMARY":
-        return REPORTED
+        return (REPORTED, False)
     if first.attribution_type == "QUOTED_PRECEDENT" and (
         CASE_CITE_RE.search(sentence) or CASE_CITE_RE.search(previous or "")
     ):
-        return REPORTED
+        return (REPORTED, False)
+    if first.polarity == "DOUBLE_NEGATED_ASSERTED":
+        return (ASSERTED, True)
     if first.polarity == "NEGATED":
-        return NEGATED
+        return (NEGATED, False)
     if CONDITIONAL_LEAD_RE.search(sentence[:start]) and first.modality == "HYPOTHETICAL":
-        return CONDITIONAL
-    return ASSERTED
+        return (CONDITIONAL, False)
+    return (ASSERTED, False)
+
+
+def clause_normalizer_polarity(sentence: str, span: Tuple[int, int], *, previous: str = "") -> str:
+    """Delegate tail-clause polarity/attribution/modality analysis to `packages.korean_nlp`."""
+    return _clause_normalizer_detail(sentence, span, previous=previous)[0]
 
 
 def polarity(sentence: str, span: Tuple[int, int], *, previous: str = "") -> str:
     """sentence에서 span(규칙이 맞힌 부분)이 작성자의 단정인지 판별한다."""
     mode = (os.getenv("LV_CLAUSE_NORMALIZER_MODE") or "shadow").strip().lower()
     if mode in ("canary", "default"):
-        delegated = clause_normalizer_polarity(sentence, span, previous=previous)
-        if delegated != ASSERTED:
+        delegated, is_double_neg = _clause_normalizer_detail(sentence, span, previous=previous)
+        if is_double_neg or delegated != ASSERTED:
             return delegated
     return _legacy_polarity(sentence, span, previous=previous)
 
