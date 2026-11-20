@@ -91,3 +91,55 @@ def test_check_column_totals_detects_single_detail_row_grand_total_mismatch():
     assert mismatches[0]["stated_total"] == 999
 
 
+def test_calculation_engine_verifies_attached_table_grid_subtotal_and_grand_total():
+    from packages.claim_engine.calculation import CalculationEngine
+    from packages.common.enums import FindingType
+
+    table_text = (
+        "구분 | 손해액\n"
+        "항목1 | 10\n"
+        "소계 | 10\n"
+        "항목2 | 20\n"
+        "총계 | 999"
+    )
+    blk = Block(block_id="blk_tbl_1", text=table_text, page=1, block_type="table")
+    doc = NormalizedDocument(
+        document_id="doc_calc_grid",
+        filename="calc.txt",
+        mime_type="text/plain",
+        sha256="0" * 64,
+        pages=[Page(page_number=1, blocks=[blk])],
+    )
+    attach_table_grids(doc)
+    assert "table_grid" in blk.attributes
+
+    findings = CalculationEngine().verify_document(doc)
+    mismatches = [f for f in findings if f.type == FindingType.ARITHMETIC_MISMATCH]
+    assert any((f.confidence_features or {}).get("stated") == 999 for f in mismatches)
+
+
+def test_calculation_engine_control_valid_table_grid_emits_no_mismatch():
+    from packages.claim_engine.calculation import CalculationEngine
+    from packages.common.enums import FindingType
+
+    table_text = (
+        "구분 | 손해액\n"
+        "항목1 | 10\n"
+        "소계 | 10\n"
+        "항목2 | 20\n"
+        "총계 | 30"
+    )
+    blk = Block(block_id="blk_tbl_ok", text=table_text, page=1, block_type="table")
+    doc = NormalizedDocument(
+        document_id="doc_calc_grid_ok",
+        filename="calc_ok.txt",
+        mime_type="text/plain",
+        sha256="0" * 64,
+        pages=[Page(page_number=1, blocks=[blk])],
+    )
+    attach_table_grids(doc)
+    findings = CalculationEngine().verify_document(doc)
+    mismatches = [f for f in findings if f.type == FindingType.ARITHMETIC_MISMATCH]
+    assert mismatches == []
+
+

@@ -747,6 +747,7 @@ class CalculationEngine:
                 seen_blocks.add(block.block_id)
             findings.extend(found)
         findings.extend(self._verify_table_totals(doc))
+        findings.extend(_table_grid_findings(doc, findings))
         # 한 행·한 열 안의 표준 산식(공급가액+세액=합계, 원금+이자−변제=잔액, 지급총액−공제=실지급액)
         from .table_formulas import formula_graph_findings
 
@@ -1488,4 +1489,110 @@ def merge_same_total(findings: List[Finding]) -> List[Finding]:
                 {"computed": f.confidence_features.get("computed"), "item_count": f.confidence_features.get("item_count"),
                  "title": f.title} for f in others]
         out.append(best)
+    return out
+
+
+def _table_grid_findings(doc: NormalizedDocument, existing: Sequence[Finding]) -> List[Finding]:
+    """Verify subtotal/total column sums on TableGrid blocks not already flagged."""
+    from packages.document_engine.table_structure import (
+        TableCell,
+        TableGrid,
+        check_column_totals,
+        parse_pipe_table_block,
+    )
+
+    already_flagged = {
+        (f.block_id, (f.confidence_features or {}).get("stated"))
+        for f in existing
+        if f.type == FindingType.ARITHMETIC_MISMATCH and (f.confidence_features or {}).get("stated") is not None
+    }
+    already_stated = {
+        (f.confidence_features or {}).get("stated")
+        for f in existing
+        if f.type == FindingType.ARITHMETIC_MISMATCH and (f.confidence_features or {}).get("stated") is not None
+    }
+
+    out: List[Finding] = []
+    for block in doc.body_blocks():
+        if block.block_type not in ("table", "table_line"):
+            continue
+        raw_grid = (block.attributes or {}).get("table_grid")
+        if isinstance(raw_grid, dict) and raw_grid.get("cells"):
+            hydrated_cells = [
+                TableCell(
+                    row_idx=int(c["row_idx"]),
+                    col_idx=int(c["col_idx"]),
+                    text=str(c.get("text") or ""),
+                    row_span=int(c.get("row_span") or 1),
+                    col_span=int(c.get("col_span") or 1),
+                    is_header=bool(c.get("is_header", False)),
+                    header_path=list(c.get("header_path") or []),
+                    row_label=c.get("row_label"),
+                )
+                if isinstance(c, dict) else c
+                for c in (raw_grid.get("cells") or [])
+            ]
+            grid = TableGrid(
+                block_id=raw_grid.get("block_id") or block.block_id,
+                page=raw_grid.get("page") or block.page,
+                num_rows=int(raw_grid.get("num_rows") or 0),
+                num_cols=int(raw_grid.get("num_cols") or 0),
+                headers=list(raw_grid.get("headers") or []),
+                cells=hydrated_cells,
+                total_row_indices=list(raw_grid.get("total_row_indices") or []),
+            )
+        else:
+            grid = parse_pipe_table_block(block)
+        if grid is None:
+            continue
+
+        for mismatch in check_column_totals(grid):
+            stated = mismatch["stated_total"]
+            computed = mismatch["sum_of_rows"]
+            if (block.block_id, stated) in already_flagged or stated in already_stated:
+                continue
+            already_flagged.add((block.block_id, stated))
+            already_stated.add(stated)
+            header = mismatch.get("header") or f"열 {mismatch['col_idx'] + 1}"
+            row_label = mismatch.get("row_label") or "합계"
+            title = f"표 열 합계 불일치 ({header} · {row_label}): 세부 합계 {computed:,} ≠ 기재 {stated:,}"
+            detail = (
+                f"표 '{header}' 열의 '{row_label}' 행 기재 금액({stated:,})이 "
+                f"세부 행 합산({computed:,})과 {abs(mismatch['difference']):,}만큼 다릅니다."
+            )
+            out.append(
+                Finding.create(
+                    type=FindingType.ARITHMETIC_MISMATCH,
+                    title=title,
+                    detail=detail,
+                    severity=Severity.HIGH,
+                    evidence_grade=EvidenceGrade.A,
+                    status=VerificationStatus.CONTRADICTED,
+                    document_id=doc.document_id,
+                    page=block.page,
+                    block_id=block.block_id,
+                    bbox=block.bbox,
+                    engine=ENGINE_NAME,
+                    tags=["CALCULATION", "TABLE_GRID"],
+                    confidence_features={
+                        "rule_id": f"{ENGINE_NAME}:TABLE_GRID_COLUMN_SUM",
+                        "stated": stated,
+                        "computed": computed,
+                        "difference": mismatch["difference"],
+                        "table_header": header,
+                        "row_label": row_label,
+                    },
+                    evidence=[
+                        Evidence.create(
+                            description=f"표 구조 검산 ({header} / {row_label})",
+                            grade=EvidenceGrade.A,
+                            document_id=doc.document_id,
+                            page=block.page,
+                            block_id=block.block_id,
+                            excerpt=(block.text or "")[:240],
+                            supports=False,
+                        )
+                    ],
+                )
+            )
     return out
