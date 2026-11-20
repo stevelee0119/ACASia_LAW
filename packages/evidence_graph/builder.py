@@ -129,6 +129,7 @@ def build_evidence_graph(
 
     # 3. Index Claim nodes (LEGAL_CLAIM vs FACT_ASSERTION) and link authorities/exhibits/elements
     fact_nodes: List[GraphNode] = []
+    claim_nodes_by_id: Dict[str, List[str]] = {}
     req_rules = requirement_rules or {}
 
     for idx, clm in enumerate(claims):
@@ -138,9 +139,17 @@ def build_evidence_graph(
         status = str(_get(clm, "status") or "UNVERIFIED").upper()
         is_legal = clm_type in ("LEGAL_ARGUMENT", "LEGAL_RULE", "CASE_HOLDING", "LEGAL_INTERPRETATION")
         kind = NodeKind.LEGAL_CLAIM if is_legal else NodeKind.FACT_ASSERTION
+
+        base_nid = f"CLM_{clm_id}"
+        node_id = base_nid
+        occ = 2
+        while node_id in graph.nodes:
+            node_id = f"{base_nid}__{occ}"
+            occ += 1
+
         node = graph.add_node(
             GraphNode(
-                node_id=f"CLM_{clm_id}",
+                node_id=node_id,
                 kind=kind,
                 label=text[:120],
                 document_id=document_id,
@@ -152,6 +161,7 @@ def build_evidence_graph(
                 },
             )
         )
+        claim_nodes_by_id.setdefault(clm_id, []).append(node.node_id)
         _attach_span(
             graph,
             node.node_id,
@@ -170,6 +180,8 @@ def build_evidence_graph(
                 auth_status = graph.nodes[auth_nid].status
                 if auth_status in _BROKEN_STATUSES:
                     graph.add_edge(EdgeKind.UNDERMINES, auth_nid, node.node_id, reason=f"AUTHORITY_{auth_status}")
+                    if auth_status == "CONTRADICTED":
+                        graph.add_edge(EdgeKind.CONTRADICTS, auth_nid, node.node_id, reason="AUTHORITY_CONTRADICTED")
 
         for m in _EXHIBIT_REF_RE.finditer(text):
             canon = f"{m.group(1)}제{m.group(2)}호증" + (f"의{m.group(3)}" if m.group(3) else "")
@@ -190,6 +202,8 @@ def build_evidence_graph(
             graph.add_edge(EdgeKind.PROVED_BY_EXHIBIT, node.node_id, exh_nid)
             if graph.nodes[exh_nid].status in ("UNATTACHED", "MISSING", "CONTRADICTED"):
                 graph.add_edge(EdgeKind.UNDERMINES, exh_nid, node.node_id, reason=f"EXHIBIT_{graph.nodes[exh_nid].status}")
+                if graph.nodes[exh_nid].status == "CONTRADICTED":
+                    graph.add_edge(EdgeKind.CONTRADICTS, exh_nid, node.node_id, reason="EXHIBIT_CONTRADICTED")
 
         if is_legal:
             for trigger_kw, elem_labels in req_rules.items():
@@ -217,22 +231,67 @@ def build_evidence_graph(
                 graph.add_edge(EdgeKind.ASSERTS_SATISFACTION, f_node.node_id, req_node.node_id)
                 req_node.status = "ASSERTED"
 
-    # 5. Annotate findings onto matching authority/claim nodes for downstream deduplication
+    # 5. Annotate findings onto matching authority/claim nodes and link CONTRADICTS edges
     for fnd in findings:
         if _get(fnd, "advisory_only"):
             continue
         feats = _get(fnd, "confidence_features") or {}
-        cit_id = feats.get("citation_id") if isinstance(feats, dict) else None
+        if not isinstance(feats, dict):
+            feats = {}
+        cit_id = feats.get("citation_id") or _get(fnd, "citation_id")
         f_status = str(_get(fnd, "status") or "").upper()
         f_id = str(_get(fnd, "finding_id") or "")
+
         if cit_id and str(cit_id) in citation_node_by_id:
             auth_nid = citation_node_by_id[str(cit_id)]
             if f_status in _BROKEN_STATUSES:
                 graph.nodes[auth_nid].status = f_status
                 for edge in graph.incoming(auth_nid, kind=EdgeKind.GROUNDED_IN_AUTHORITY):
                     graph.add_edge(EdgeKind.UNDERMINES, auth_nid, edge.source_id, finding_id=f_id, reason=f_status)
+                    if f_status == "CONTRADICTED":
+                        graph.add_edge(EdgeKind.CONTRADICTS, auth_nid, edge.source_id, finding_id=f_id, reason=f_status)
             attached_findings = graph.nodes[auth_nid].attributes.setdefault("finding_ids", [])
             if f_id:
                 attached_findings.append(f_id)
 
+        # Collect any claim_ids referenced by the finding (top-level or confidence_features)
+        raw_cids: List[str] = []
+        for key in ("claim_id", "target_claim_id", "contradicting_claim_id", "other_claim_id"):
+            val = _get(fnd, key) or feats.get(key)
+            if val:
+                raw_cids.append(str(val))
+        for container in (_get(fnd, "claim_ids"), feats.get("claim_ids")):
+            if isinstance(container, (list, tuple)):
+                raw_cids.extend(str(x) for x in container if x)
+
+        matched_claim_nids: List[str] = []
+        for cid in dict.fromkeys(raw_cids):
+            matched_claim_nids.extend(claim_nodes_by_id.get(cid, []))
+
+        if not matched_claim_nids:
+            # Fallback: match by exact block_id + overlapping span if claim_id wasn't supplied
+            f_block = _get(fnd, "block_id")
+            if f_block:
+                for nid, node in graph.nodes.items():
+                    if node.kind in (NodeKind.LEGAL_CLAIM, NodeKind.FACT_ASSERTION):
+                        for spn_edge in graph.outgoing(nid, kind=EdgeKind.LOCATED_AT):
+                            spn_node = graph.nodes.get(spn_edge.target_id)
+                            if spn_node and spn_node.attributes.get("block_id") == f_block:
+                                matched_claim_nids.append(nid)
+
+        for cnid in dict.fromkeys(matched_claim_nids):
+            cnode = graph.nodes[cnid]
+            cnode.attributes.setdefault("finding_ids", [])
+            if f_id and f_id not in cnode.attributes["finding_ids"]:
+                cnode.attributes["finding_ids"].append(f_id)
+            if f_status in _BROKEN_STATUSES:
+                cnode.status = f_status
+
+        unique_cnids = list(dict.fromkeys(matched_claim_nids))
+        if f_status == "CONTRADICTED" and len(unique_cnids) >= 2:
+            src_nid = unique_cnids[0]
+            for dst_nid in unique_cnids[1:]:
+                graph.add_edge(EdgeKind.CONTRADICTS, src_nid, dst_nid, finding_id=f_id, reason="CLAIM_CONTRADICTION")
+
     return graph
+

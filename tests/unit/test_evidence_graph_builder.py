@@ -79,3 +79,40 @@ def test_build_evidence_graph_connects_claims_elements_authorities_exhibits_and_
     # All nodes belong to one connected component when ignoring SOURCE_SPAN hubs
     comps = graph.connected_components()
     assert len(comps) == 1
+
+
+def test_duplicate_claim_ids_preserved_and_contradicted_findings_linked():
+    claims = [
+        {"claim_id": "dup_1", "type": "FACT", "text": "원고는 대금을 전액 지급하였다.", "page": 1, "block_id": "b1"},
+        {"claim_id": "dup_1", "type": "FACT", "text": "원고는 대금을 지급하지 않았다.", "page": 3, "block_id": "b9"},
+        {"claim_id": "c_unatt", "type": "FACT", "text": "을 제5호증으로 입증한다.", "page": 4, "block_id": "b12"},
+    ]
+    findings = [
+        {
+            "finding_id": "F_CONTRA",
+            "status": "CONTRADICTED",
+            "confidence_features": {"claim_ids": ["dup_1"]},
+        }
+    ]
+    graph = build_evidence_graph("doc_graph_2", claims=claims, findings=findings)
+
+    # Both duplicate claim_id entries must exist as separate nodes with their own texts
+    fact_texts = {
+        n.attributes["full_text"]
+        for n in graph.nodes.values()
+        if n.kind == NodeKind.FACT_ASSERTION
+    }
+    assert "원고는 대금을 전액 지급하였다." in fact_texts
+    assert "원고는 대금을 지급하지 않았다." in fact_texts
+
+    # CONTRADICTED finding links the two claims via CONTRADICTS edge and sets status
+    contradicts_edges = [e for e in graph.edges if e.kind == EdgeKind.CONTRADICTS]
+    assert len(contradicts_edges) == 1
+    assert graph.nodes["CLM_dup_1"].status == "CONTRADICTED"
+    assert graph.nodes["CLM_dup_1__2"].status == "CONTRADICTED"
+
+    # Unattached exhibit undermines c_unatt
+    unattached_edges = graph.outgoing("EXH_을제5호증", kind=EdgeKind.UNDERMINES)
+    assert len(unattached_edges) == 1
+    assert unattached_edges[0].target_id == "CLM_c_unatt"
+
