@@ -222,14 +222,101 @@ class TesseractOCRAdapter(OCRAdapter):
         return lines
 
 
+class CompositeOCRAdapter(OCRAdapter):
+    """Adaptive OCR router: runs primary adapter, checks `page_quality()`, and falls back only on low quality."""
+
+    name = "composite"
+
+    def __init__(self, primary: OCRAdapter, fallback: Optional[OCRAdapter] = None) -> None:
+        self.primary = primary
+        self.fallback = fallback
+        self.available = bool(primary.available or (fallback and fallback.available))
+        self.last_error: Optional[str] = None
+        self.last_route: dict = {}
+
+    def recognize(self, path: str, page_numbers: Optional[List[int]] = None) -> List[OCRLine]:
+        lines = self.primary.recognize(path, page_numbers=page_numbers) if self.primary.available else []
+        q_pri = page_quality(lines)
+        if self.fallback and self.fallback.available and (not lines or q_pri["low_quality"]):
+            try:
+                fb_lines = self.fallback.recognize(path, page_numbers=page_numbers)
+            except Exception:
+                fb_lines = []
+            q_fb = page_quality(fb_lines)
+            if _fallback_improved(lines, q_pri, fb_lines, q_fb):
+                self.last_route = {"selected": self.fallback.name, "primary": q_pri, "fallback": q_fb}
+                return fb_lines
+            self.last_route = {"selected": self.primary.name, "primary": q_pri, "fallback": q_fb}
+            return lines
+        self.last_route = {"selected": self.primary.name, "primary": q_pri}
+        return lines
+
+    def recognize_image(self, image: Any, *, page: int = 1, scale: float = 1.0, **kwargs: Any) -> List[OCRLine]:
+        self.last_error = None
+        lines = self.primary.recognize_image(image, page=page, scale=scale, **kwargs) if self.primary.available else []
+        pri_err = getattr(self.primary, "last_error", None)
+        q_pri = page_quality(lines)
+        if self.fallback and self.fallback.available and (not lines or q_pri["low_quality"] or pri_err):
+            try:
+                fb_lines = self.fallback.recognize_image(image, page=page, scale=scale)
+            except Exception:
+                fb_lines = []
+            q_fb = page_quality(fb_lines)
+            if _fallback_improved(lines, q_pri, fb_lines, q_fb):
+                self.last_route = {"selected": self.fallback.name, "primary": q_pri, "fallback": q_fb}
+                return fb_lines
+            self.last_route = {"selected": self.primary.name, "primary": q_pri, "fallback": q_fb}
+            self.last_error = pri_err
+            return lines
+        self.last_error = pri_err
+        self.last_route = {"selected": self.primary.name, "primary": q_pri}
+        return lines
+
+
+def _fallback_improved(
+    pri_lines: List[OCRLine],
+    q_pri: dict,
+    fb_lines: List[OCRLine],
+    q_fb: dict,
+) -> bool:
+    if not fb_lines:
+        return False
+    if not pri_lines:
+        return True
+    if q_pri["low_quality"] and not q_fb["low_quality"]:
+        return True
+    return float(q_fb.get("confidence") or 0.0) > float(q_pri.get("confidence") or 0.0) + 0.05
+
+
+def _build_optional_fallback(engine_name: str) -> Optional[OCRAdapter]:
+    name = (engine_name or "none").strip().lower()
+    if name in ("", "none", "off"):
+        return None
+    if name == "rapidocr":
+        try:
+            import rapidocr_onnxruntime  # type: ignore # noqa: F401
+        except Exception:
+            return None
+    if name == "paddleocr":
+        try:
+            import paddleocr  # type: ignore # noqa: F401
+        except Exception:
+            return None
+    return None
+
+
 _adapter: Optional[OCRAdapter] = None
 
 
 def get_ocr_adapter() -> OCRAdapter:
     global _adapter
     if _adapter is None:
+        import os
+
         candidate = TesseractOCRAdapter()
-        _adapter = candidate if candidate.available else NullOCRAdapter(candidate.diagnostics)
+        primary: OCRAdapter = candidate if candidate.available else NullOCRAdapter(candidate.diagnostics)
+        fallback = _build_optional_fallback(os.getenv("LV_OCR_FALLBACK_ENGINE", "none"))
+        _adapter = CompositeOCRAdapter(primary, fallback) if fallback is not None else primary
     return _adapter
 
 
@@ -241,3 +328,4 @@ def set_ocr_adapter(adapter: OCRAdapter) -> None:
 def reset_ocr_adapter() -> None:
     global _adapter
     _adapter = None
+
