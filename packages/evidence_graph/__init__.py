@@ -1,4 +1,9 @@
 """Legal Evidence Graph package (P3 PR-12): Claim <-> Element <-> Authority <-> Exhibit <-> Span."""
+from .analyzer import (
+    analyze_evidence_graph,
+    build_prerequisite_checklist,
+    deduplicate_findings_by_graph,
+)
 from .builder import build_evidence_graph
 from .schema import (
     EdgeKind,
@@ -14,5 +19,8 @@ __all__ = [
     "GraphNode",
     "LegalEvidenceGraph",
     "NodeKind",
+    "analyze_evidence_graph",
     "build_evidence_graph",
+    "build_prerequisite_checklist",
+    "deduplicate_findings_by_graph",
 ]
