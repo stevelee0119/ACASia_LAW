@@ -143,3 +143,51 @@ def test_calculation_engine_control_valid_table_grid_emits_no_mismatch():
     assert mismatches == []
 
 
+def test_calculation_engine_preserves_same_wrong_total_across_tables_and_columns():
+    from packages.claim_engine.calculation import CalculationEngine
+    from packages.common.enums import FindingType
+
+    # Two separate tables both misstating total as 999
+    blk_1 = Block(
+        block_id="blk_tbl_a",
+        text="구분 | 손해액\n항목1 | 10\n항목2 | 20\n합계 | 999",
+        page=1,
+        block_type="table",
+    )
+    blk_2 = Block(
+        block_id="blk_tbl_b",
+        text="구분 | 지연손해금\n항목1 | 40\n항목2 | 50\n합계 | 999",
+        page=2,
+        block_type="table",
+    )
+    doc_two_tables = NormalizedDocument(
+        document_id="doc_two_tbls",
+        filename="two.txt",
+        mime_type="text/plain",
+        sha256="0" * 64,
+        pages=[Page(page_number=1, blocks=[blk_1]), Page(page_number=2, blocks=[blk_2])],
+    )
+    attach_table_grids(doc_two_tables)
+    f_two = [f for f in CalculationEngine().verify_document(doc_two_tables) if f.type == FindingType.ARITHMETIC_MISMATCH]
+    assert {f.block_id for f in f_two} == {"blk_tbl_a", "blk_tbl_b"}
+
+    # Single table with two columns both misstating total as 999
+    blk_multi_col = Block(
+        block_id="blk_tbl_cols",
+        text="구분 | 원금 | 이자\n항목1 | 10 | 5\n항목2 | 20 | 15\n총계 | 999 | 999",
+        page=1,
+        block_type="table",
+    )
+    doc_multi_col = NormalizedDocument(
+        document_id="doc_multi_col",
+        filename="cols.txt",
+        mime_type="text/plain",
+        sha256="0" * 64,
+        pages=[Page(page_number=1, blocks=[blk_multi_col])],
+    )
+    attach_table_grids(doc_multi_col)
+    f_cols = [f for f in CalculationEngine().verify_document(doc_multi_col) if f.type == FindingType.ARITHMETIC_MISMATCH]
+    assert len(f_cols) == 2
+    assert {f.confidence_features.get("col_idx") for f in f_cols} == {1, 2}
+
+

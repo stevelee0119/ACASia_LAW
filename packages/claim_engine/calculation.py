@@ -1452,8 +1452,10 @@ def is_total_label(label: str) -> bool:
 
 def _calculation_scope(finding: Finding) -> tuple:
     features = finding.confidence_features or {}
-    return (finding.document_id, finding.page, features.get("table_ref") or finding.block_id,
-            features.get("table_column"))
+    col = features.get("table_column")
+    if col is None:
+        col = features.get("col_idx")
+    return (finding.document_id, finding.page, features.get("table_ref") or finding.block_id, col)
 
 
 def merge_same_total(findings: List[Finding]) -> List[Finding]:
@@ -1501,16 +1503,20 @@ def _table_grid_findings(doc: NormalizedDocument, existing: Sequence[Finding]) -
         parse_pipe_table_block,
     )
 
-    already_flagged = {
-        (f.block_id, (f.confidence_features or {}).get("stated"))
-        for f in existing
-        if f.type == FindingType.ARITHMETIC_MISMATCH and (f.confidence_features or {}).get("stated") is not None
-    }
-    already_stated = {
-        (f.confidence_features or {}).get("stated")
-        for f in existing
-        if f.type == FindingType.ARITHMETIC_MISMATCH and (f.confidence_features or {}).get("stated") is not None
-    }
+    already_exact = set()
+    legacy_block_stated: Dict[Tuple[Optional[str], Any], int] = {}
+    for f in existing:
+        if f.type != FindingType.ARITHMETIC_MISMATCH:
+            continue
+        feats = f.confidence_features or {}
+        stated_val = feats.get("stated")
+        if stated_val is None:
+            continue
+        if feats.get("col_idx") is not None and feats.get("row_idx") is not None:
+            already_exact.add((f.block_id, int(feats["col_idx"]), int(feats["row_idx"]), stated_val))
+        else:
+            k = (f.block_id, stated_val)
+            legacy_block_stated[k] = legacy_block_stated.get(k, 0) + 1
 
     out: List[Finding] = []
     for block in doc.body_blocks():
@@ -1549,11 +1555,18 @@ def _table_grid_findings(doc: NormalizedDocument, existing: Sequence[Finding]) -
         for mismatch in check_column_totals(grid):
             stated = mismatch["stated_total"]
             computed = mismatch["sum_of_rows"]
-            if (block.block_id, stated) in already_flagged or stated in already_stated:
+            col_idx = int(mismatch["col_idx"])
+            row_idx = int(mismatch["row_idx"])
+            exact_key = (block.block_id, col_idx, row_idx, stated)
+            if exact_key in already_exact:
                 continue
-            already_flagged.add((block.block_id, stated))
-            already_stated.add(stated)
-            header = mismatch.get("header") or f"열 {mismatch['col_idx'] + 1}"
+            legacy_key = (block.block_id, stated)
+            if legacy_block_stated.get(legacy_key, 0) > 0:
+                legacy_block_stated[legacy_key] -= 1
+                already_exact.add(exact_key)
+                continue
+            already_exact.add(exact_key)
+            header = mismatch.get("header") or f"열 {col_idx + 1}"
             row_label = mismatch.get("row_label") or "합계"
             title = f"표 열 합계 불일치 ({header} · {row_label}): 세부 합계 {computed:,} ≠ 기재 {stated:,}"
             detail = (
@@ -1581,6 +1594,9 @@ def _table_grid_findings(doc: NormalizedDocument, existing: Sequence[Finding]) -
                         "difference": mismatch["difference"],
                         "table_header": header,
                         "row_label": row_label,
+                        "table_column": col_idx,
+                        "col_idx": col_idx,
+                        "row_idx": row_idx,
                     },
                     evidence=[
                         Evidence.create(
