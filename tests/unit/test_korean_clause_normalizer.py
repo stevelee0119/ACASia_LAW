@@ -15,6 +15,7 @@ def test_polarity_and_double_negation_resolution():
         "당사자 사이의 약정은 유효하다.",
         "이 조항이 적용되지 않는다고 볼 수 없다.",
         "책임을 면할 수 있는 사유가 전혀 없지 아니하다.",
+        "채무가 없지 않다.",
     ]
     for idx, sent in enumerate(asserted):
         clauses = normalize_sentence(sent, sentence_index=idx)
