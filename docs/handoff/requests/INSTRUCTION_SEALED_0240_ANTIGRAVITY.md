@@ -7,7 +7,8 @@ Agent: evaluator. 2026-11-21. 이 문서는 **시험 실행만** 요청한다. �
 - 직전 운영 `main`: `f7a7f49056fa4fc6239ffdad803eed53443d9045` (0.23.0).
 - 후보 `Steve_ACASiaLAW`: `0055fa728202c2d4b500099fa2b6c29d8258c07e` (버전 판정 전 코드).
 - 동일한 **사용자 보관 봉인 폴더 한 벌**, 동일한 Python 환경·Tesseract `kor+eng`·채점기를 두 SHA에서 각 1회만 쓴다. 두 실행은 한 번의 짝 비교이며, 점수를 본 뒤 제품을 고쳐 같은 봉인 세트를 다시 돌리지 않는다.
-- 봉인 폴더는 저장소·PR·대화·에이전트 첨부에 올리지 않는다. 원문 PDF, `ground_truth.json`, `match_spec.json` 및 `.sealed_out/` 상세는 열람·전송·인용하지 않는다. 상세 출력은 봉인 폴더 안에만 남긴다. 구현 세션에서 실행하므로 이 평가 후 해당 세트는 개발에 재사용하지 않고 교체한다.
+- 봉인 원본 폴더는 저장소·PR·대화·에이전트 첨부에 올리지 않는다. 원문 PDF, `ground_truth.json`, `match_spec.json` 및 `.sealed_out/` 상세는 열람·전송·인용하지 않는다. 구현 세션에서 실행하므로 이 평가 후 해당 세트는 개발에 재사용하지 않고 교체한다.
+- **2026-11-21 운영본 첫 실행 오류 정정:** `scripts/evaluation_v2.py`는 봉인 폴더가 저장소·시스템 임시 폴더 밖에 있으면 `scripts/path_guard.py:57`에서 `ValueError`를 낸다. 기존 지시의 원본 경로 직접 전달은 동작하지 않았다. 아래 명령은 원본을 변경하지 않고 **같은 Python의 시스템 임시 폴더 안에 일회용 사본**을 만든 뒤 두 SHA에 같은 사본을 전달한다. 두 실행의 상세 출력은 일회용 사본 안에만 생기며, 성공·실패와 관계없이 종료 시 그 사본을 지운다. 첫 시도는 집계 JSON 없이 중단됐으므로 점수 확인 뒤 재시험에 해당하지 않는다.
 
 ## 실행
 
@@ -23,6 +24,26 @@ git fetch origin main Steve_ACASiaLAW
 ACAS_MAIN_SHA=f7a7f49056fa4fc6239ffdad803eed53443d9045
 ACAS_CANDIDATE_SHA=0055fa728202c2d4b500099fa2b6c29d8258c07e
 ACAS_RUN_DIR=$(mktemp -d)
+ACAS_STAGE_DIR=$("$ACAS_PYTHON" - <<'PY'
+from pathlib import Path
+import tempfile
+print(Path(tempfile.mkdtemp(prefix="acas_sealed_stage_")) / "sealed")
+PY
+)
+cleanup_stage() {
+  "$ACAS_PYTHON" - "$ACAS_STAGE_DIR" <<'PY'
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+
+stage = Path(sys.argv[1]).resolve()
+if (stage.name == "sealed" and stage.parent.name.startswith("acas_sealed_stage_")
+        and stage.parent.parent == Path(tempfile.gettempdir()).resolve()):
+    shutil.rmtree(stage.parent, ignore_errors=True)
+PY
+}
+trap cleanup_stage EXIT
 git worktree add --detach "$ACAS_RUN_DIR/main" "$ACAS_MAIN_SHA"
 git worktree add --detach "$ACAS_RUN_DIR/candidate" "$ACAS_CANDIDATE_SHA"
 test "$(git -C "$ACAS_RUN_DIR/main" rev-parse HEAD)" = "$ACAS_MAIN_SHA"
@@ -33,8 +54,42 @@ tesseract --list-langs
 tesseract --list-langs | rg -x kor
 tesseract --list-langs | rg -x eng
 
-(cd "$ACAS_RUN_DIR/main" && "$ACAS_PYTHON" scripts/scorecard.py --sets dev --sealed-dir "$ACAS_SEALED_DIR" --out "$ACAS_RUN_DIR/main_scorecard.json")
-(cd "$ACAS_RUN_DIR/candidate" && "$ACAS_PYTHON" scripts/scorecard.py --sets dev --sealed-dir "$ACAS_SEALED_DIR" --out "$ACAS_RUN_DIR/candidate_scorecard.json")
+"$ACAS_PYTHON" - "$ACAS_SEALED_DIR" "$ACAS_STAGE_DIR" <<'PY'
+from hashlib import sha256
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+
+source, stage = (Path(p).resolve() for p in sys.argv[1:])
+temp_root = Path(tempfile.gettempdir()).resolve()
+if temp_root not in stage.parents or source == stage or not source.is_dir():
+    raise ValueError("봉인 원본·임시 사본 경로 조건 불충족")
+
+def digest(root):
+    h = sha256()
+    for p in sorted(root.rglob("*")):
+        if ".sealed_out" in p.relative_to(root).parts:
+            continue
+        if p.is_symlink():
+            raise ValueError("봉인 폴더에 심볼릭 링크가 있음")
+        if not p.is_file():
+            continue
+        h.update(p.relative_to(root).as_posix().encode("utf-8"))
+        with p.open("rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(chunk)
+    return h.digest()
+
+before = digest(source)
+shutil.copytree(source, stage, ignore=shutil.ignore_patterns(".sealed_out"))
+if before != digest(stage) or before != digest(source):
+    raise ValueError("봉인 원본·임시 사본 무결성 불일치")
+print("봉인 임시 사본 무결성 확인")
+PY
+
+(cd "$ACAS_RUN_DIR/main" && "$ACAS_PYTHON" scripts/scorecard.py --sets dev --sealed-dir "$ACAS_STAGE_DIR" --out "$ACAS_RUN_DIR/main_scorecard.json")
+(cd "$ACAS_RUN_DIR/candidate" && "$ACAS_PYTHON" scripts/scorecard.py --sets dev --sealed-dir "$ACAS_STAGE_DIR" --out "$ACAS_RUN_DIR/candidate_scorecard.json")
 
 "$ACAS_PYTHON" - "$ACAS_RUN_DIR/main_scorecard.json" "$ACAS_RUN_DIR/candidate_scorecard.json" <<'PY'
 import json
