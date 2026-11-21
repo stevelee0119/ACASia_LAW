@@ -109,7 +109,7 @@ def scan_evidence(finding):
 def _ocr_pdf_page(pdfium_page, page_number: int) -> tuple[str, dict]:
     """Run bounded OCR on a single rendered PDF page and return (text, diagnostic)."""
     from packages.common.config import get_settings
-    from packages.document_engine.ocr import get_ocr_adapter, is_noise, page_quality
+    from packages.document_engine.ocr import build_ocr_page_telemetry, get_ocr_adapter, is_noise, page_quality
 
     settings = get_settings()
     adapter = get_ocr_adapter()
@@ -121,18 +121,22 @@ def _ocr_pdf_page(pdfium_page, page_number: int) -> tuple[str, dict]:
             image = bitmap.to_pil()
         lines = adapter.recognize_image(image, page=page_number, scale=scale)
     except Exception as exc:
-        return "", _page_diag("error", error=type(exc).__name__)
+        fb_tel = build_ocr_page_telemetry(adapter, {"lines": 0, "confidence": 0.0, "low_quality": True}, page=page_number)
+        return "", _page_diag("error", error=type(exc).__name__, ocr_fallback=fb_tel)
     last_error = getattr(adapter, "last_error", None)
     if last_error:
-        return "", _page_diag("error", error=str(last_error))
+        fb_tel = build_ocr_page_telemetry(adapter, {"lines": 0, "confidence": 0.0, "low_quality": True}, page=page_number)
+        return "", _page_diag("error", error=str(last_error), ocr_fallback=fb_tel)
     raw_lines = [line for line in (lines or []) if (getattr(line, "text", "") or "").strip()]
     if not raw_lines:
-        return "", _page_diag("scanned", ocr_attempted=True, ocr_empty=True)
+        fb_tel = build_ocr_page_telemetry(adapter, {"lines": 0, "confidence": 0.0, "low_quality": True}, page=page_number)
+        return "", _page_diag("scanned", ocr_attempted=True, ocr_empty=True, ocr_fallback=fb_tel)
     quality = page_quality(
         raw_lines,
         min_confidence=settings.ocr_quality_min_confidence,
         min_hangul_ratio=0.0,
     )
+    fb_tel = build_ocr_page_telemetry(adapter, quality, page=page_number)
     kept = [
         line for line in raw_lines
         if float(getattr(line, "confidence", 0.0) or 0.0) >= settings.ocr_min_confidence
@@ -147,8 +151,9 @@ def _ocr_pdf_page(pdfium_page, page_number: int) -> tuple[str, dict]:
             ocr_attempted=True,
             lines=len(kept) if kept else len(raw_lines),
             ocr_quality=quality,
+            ocr_fallback=fb_tel,
         )
-    return ocr_text, _page_diag("ocr_applied", lines=len(kept), ocr_quality=quality)
+    return ocr_text, _page_diag("ocr_applied", lines=len(kept), ocr_quality=quality, ocr_fallback=fb_tel)
 
 
 def extract(path, filename, mime, *, continuation=None):
@@ -483,6 +488,16 @@ def extract(path, filename, mime, *, continuation=None):
             )
         )
     )
+    ocr_fallback_per_page = {
+        p: d["ocr_fallback"]
+        for p, d in page_diagnostics.items()
+        if isinstance(d, dict) and isinstance(d.get("ocr_fallback"), dict)
+    }
+    ocr_fallback_summary = None
+    if ocr_fallback_per_page:
+        from packages.document_engine.ocr import summarize_ocr_fallback_telemetry
+        ocr_fallback_summary = summarize_ocr_fallback_telemetry(ocr_fallback_per_page)
+    searchable_pages = len({int(c["page"]) for c in chunks if c.get("page") is not None})
     return {"chunks": chunks, "sha256": digest, "partial": partial,
             "coverage_complete": coverage_complete,
             "content_readable_complete": content_readable_complete,
@@ -503,6 +518,7 @@ def extract(path, filename, mime, *, continuation=None):
             "scanned_pages": scanned_pages,
             "ocr_pages": ocr_pages,
             "ocr_low_quality_pages": ocr_low_quality_pages,
+            **({"ocr_fallback_summary": ocr_fallback_summary} if ocr_fallback_summary else {}),
             "error_pages": error_pages,
             "incomplete_pages": incomplete_pages,
             "page_state_counts": page_state_counts,
@@ -517,6 +533,7 @@ def extract(path, filename, mime, *, continuation=None):
             "pages": total,
             "read_pages": read_pages,
             "extracted_text_pages": read_pages,
+            "searchable_pages": searchable_pages,
             "completed_pages": completed_pages,
             "reason": reason}
 
