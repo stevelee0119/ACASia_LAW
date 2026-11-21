@@ -8,7 +8,8 @@ AcademicSourceAdapter
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 from packages.common.enums import AdapterStatus
 
@@ -21,6 +22,74 @@ class AcademicSourceAdapter(SourceAdapter):
     def search_work(self, title: str, *, authors: Optional[List[str]] = None, year: Optional[int] = None,
                     doi: Optional[str] = None) -> AdapterResponse:
         return self.search(title, authors=authors, year=year, doi=doi)
+
+    def _http_get_with_retry(
+        self,
+        query: str,
+        url: str,
+        *,
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        max_retries: int = 2,
+        base_backoff: float = 0.15,
+        allow_404: bool = False,
+    ) -> Tuple[Optional[Any], Optional[AdapterResponse], Dict[str, Any]]:
+        """Retry transient academic API failures (429/5xx/timeout) and separate failure causes."""
+        attempts = 0
+        last_code: Optional[int] = None
+        for attempt in range(max_retries + 1):
+            attempts += 1
+            try:
+                response = self._http_get(url, params=params, headers=headers)
+            except Exception as exc:
+                err_resp = self._transport_unavailable(query, exc)
+                retryable = err_resp.status in (AdapterStatus.TIMEOUT, AdapterStatus.RATE_LIMITED, AdapterStatus.ERROR)
+                cause = (
+                    "TIMEOUT" if err_resp.status == AdapterStatus.TIMEOUT
+                    else "RATE_LIMITED" if err_resp.status == AdapterStatus.RATE_LIMITED
+                    else "TRANSPORT_ERROR"
+                )
+                if retryable and attempt < max_retries:
+                    time.sleep(min(2.0, base_backoff * (2 ** attempt)))
+                    continue
+                err_resp.diagnostics = {
+                    "attempts": attempts,
+                    "error_cause": cause,
+                    "error_type": type(exc).__name__,
+                    "retryable": retryable,
+                }
+                return None, err_resp, err_resp.diagnostics
+
+            code = int(getattr(response, "status_code", 0) or 0)
+            last_code = code
+            if code == 404 and allow_404:
+                return response, None, {"attempts": attempts, "http_status": code, "error_cause": "NOT_FOUND"}
+            if 200 <= code < 300:
+                return response, None, {"attempts": attempts, "http_status": code, "error_cause": None}
+
+            retryable = code in (408, 429) or (500 <= code < 600)
+            if retryable and attempt < max_retries:
+                retry_after = None
+                try:
+                    raw_ra = (getattr(response, "headers", None) or {}).get("Retry-After")
+                    if raw_ra is not None:
+                        retry_after = min(2.0, max(0.0, float(raw_ra)))
+                except (TypeError, ValueError):
+                    retry_after = None
+                time.sleep(retry_after if retry_after is not None else min(2.0, base_backoff * (2 ** attempt)))
+                continue
+
+            if code == 429:
+                diag = {"attempts": attempts, "http_status": code, "error_cause": "RATE_LIMITED", "retryable": True}
+                return None, self._unavailable(query, AdapterStatus.RATE_LIMITED, "요청 한도 초과", diagnostics=diag), diag
+            if 500 <= code < 600:
+                diag = {"attempts": attempts, "http_status": code, "error_cause": "UPSTREAM_5XX", "retryable": True}
+                return None, self._unavailable(query, AdapterStatus.ERROR, f"HTTP {code}", diagnostics=diag), diag
+            diag = {"attempts": attempts, "http_status": code, "error_cause": "HTTP_4XX", "retryable": False}
+            return None, self._unavailable(query, AdapterStatus.ERROR, f"HTTP {code}", diagnostics=diag), diag
+
+        diag = {"attempts": attempts, "http_status": last_code, "error_cause": "UNKNOWN_ERROR", "retryable": False}
+        return None, self._unavailable(query, AdapterStatus.ERROR, "조회를 수행하지 못했다", diagnostics=diag), diag
 
 
 class KCIAdapter(AcademicSourceAdapter):
@@ -37,17 +106,15 @@ class KCIAdapter(AcademicSourceAdapter):
     def search(self, query: str, **kwargs: Any) -> AdapterResponse:
         status = self.status()
         if status != AdapterStatus.READY:
-            return self._unavailable(query, status, "KCI API Key가 없어 해당 항목은 UNVERIFIED로 표시한다.")
-        try:
-            response = self._http_get(
-                self.ENDPOINT,
-                params={"apiCode": "articleSearch", "key": self.api_key, "title": query, "displayCount": 10},
-            )
-            if response.status_code >= 400:
-                return self._unavailable(query, AdapterStatus.ERROR, f"HTTP {response.status_code}")
-            body = response.text
-        except Exception as exc:
-            return self._transport_unavailable(query, exc)
+            return self._unavailable(query, status, "KCI API Key가 없어 해당 항목은 UNVERIFIED로 표시한다.", diagnostics={"error_cause": str(status)})
+        response, err_resp, diag = self._http_get_with_retry(
+            query,
+            self.ENDPOINT,
+            params={"apiCode": "articleSearch", "key": self.api_key, "title": query, "displayCount": 10},
+        )
+        if err_resp is not None or response is None:
+            return err_resp  # type: ignore[return-value]
+        body = response.text
 
         records = _parse_kci_xml(body)
         return AdapterResponse(
@@ -55,6 +122,7 @@ class KCIAdapter(AcademicSourceAdapter):
             records,
             self._record(query, AdapterStatus.READY, payload={"body_len": len(body)}, url=self.ENDPOINT,
                          used_fields=["title", "authors", "year", "journal"]),
+            diagnostics=diag,
         )
 
 
@@ -67,20 +135,27 @@ class OpenAlexAdapter(AcademicSourceAdapter):
     def search(self, query: str, **kwargs: Any) -> AdapterResponse:
         status = self.status()
         if status != AdapterStatus.READY:
-            return self._unavailable(query, status, "네트워크 비활성")
+            return self._unavailable(query, status, "네트워크 비활성", diagnostics={"error_cause": str(status)})
         doi = kwargs.get("doi")
         params: Dict[str, Any] = {"per-page": 5}
         if doi:
             params["filter"] = f"doi:{doi}"
         else:
             params["search"] = query
+        response, err_resp, diag = self._http_get_with_retry(
+            query,
+            self.ENDPOINT,
+            params=params,
+            headers={"User-Agent": "legal-verifier/0.2"},
+        )
+        if err_resp is not None or response is None:
+            return err_resp  # type: ignore[return-value]
         try:
-            response = self._http_get(self.ENDPOINT, params=params, headers={"User-Agent": "legal-verifier/0.2"})
-            if response.status_code >= 400:
-                return self._unavailable(query, AdapterStatus.ERROR, f"HTTP {response.status_code}")
             payload = response.json()
         except Exception as exc:
-            return self._transport_unavailable(query, exc)
+            resp = self._transport_unavailable(query, exc)
+            resp.diagnostics = {"attempts": diag.get("attempts", 1), "error_cause": "INVALID_JSON", "retryable": False}
+            return resp
 
         records = []
         for item in (payload.get("results") or [])[:5]:
@@ -103,6 +178,7 @@ class OpenAlexAdapter(AcademicSourceAdapter):
             records,
             self._record(query, AdapterStatus.READY, payload=payload, url=self.ENDPOINT,
                          used_fields=["title", "publication_year", "doi", "authorships"]),
+            diagnostics=diag,
         )
 
 
@@ -119,21 +195,22 @@ class SemanticScholarAdapter(AcademicSourceAdapter):
     def search(self, query: str, **kwargs: Any) -> AdapterResponse:
         status = self.status()
         if status != AdapterStatus.READY:
-            return self._unavailable(query, status, "네트워크 비활성")
+            return self._unavailable(query, status, "네트워크 비활성", diagnostics={"error_cause": str(status)})
         headers = {"x-api-key": self.api_key} if self.api_key else {}
+        response, err_resp, diag = self._http_get_with_retry(
+            query,
+            self.ENDPOINT,
+            params={"query": query, "limit": 5, "fields": "title,year,authors,venue,externalIds"},
+            headers=headers,
+        )
+        if err_resp is not None or response is None:
+            return err_resp  # type: ignore[return-value]
         try:
-            response = self._http_get(
-                self.ENDPOINT,
-                params={"query": query, "limit": 5, "fields": "title,year,authors,venue,externalIds"},
-                headers=headers,
-            )
-            if response.status_code == 429:
-                return self._unavailable(query, AdapterStatus.RATE_LIMITED, "요청 한도 초과")
-            if response.status_code >= 400:
-                return self._unavailable(query, AdapterStatus.ERROR, f"HTTP {response.status_code}")
             payload = response.json()
         except Exception as exc:
-            return self._transport_unavailable(query, exc)
+            resp = self._transport_unavailable(query, exc)
+            resp.diagnostics = {"attempts": diag.get("attempts", 1), "error_cause": "INVALID_JSON", "retryable": False}
+            return resp
 
         records = [
             {
@@ -150,6 +227,7 @@ class SemanticScholarAdapter(AcademicSourceAdapter):
             records,
             self._record(query, AdapterStatus.READY, payload=payload, url=self.ENDPOINT,
                          used_fields=["title", "year", "authors", "venue"]),
+            diagnostics=diag,
         )
 
 
@@ -162,23 +240,32 @@ class CrossrefAdapter(AcademicSourceAdapter):
     def search(self, query: str, **kwargs: Any) -> AdapterResponse:
         status = self.status()
         if status != AdapterStatus.READY:
-            return self._unavailable(query, status, "네트워크 비활성")
+            return self._unavailable(query, status, "네트워크 비활성", diagnostics={"error_cause": str(status)})
         doi = kwargs.get("doi")
         url = f"{self.ENDPOINT}/{doi}" if doi else self.ENDPOINT
         params = None if doi else {"query.bibliographic": query, "rows": 5}
         headers = {"User-Agent": f"legal-verifier/0.2 (mailto:{self.settings.crossref_mailto or 'unknown'})"}
+        response, err_resp, diag = self._http_get_with_retry(
+            query,
+            url,
+            params=params,
+            headers=headers,
+            allow_404=True,
+        )
+        if err_resp is not None or response is None:
+            return err_resp  # type: ignore[return-value]
+        if response.status_code == 404:
+            return AdapterResponse(
+                AdapterStatus.READY, [], self._record(query, AdapterStatus.READY, payload={"found": False}, url=url),
+                "DOI를 찾지 못했다",
+                diagnostics=diag,
+            )
         try:
-            response = self._http_get(url, params=params, headers=headers)
-            if response.status_code == 404:
-                return AdapterResponse(
-                    AdapterStatus.READY, [], self._record(query, AdapterStatus.READY, payload={"found": False}, url=url),
-                    "DOI를 찾지 못했다",
-                )
-            if response.status_code >= 400:
-                return self._unavailable(query, AdapterStatus.ERROR, f"HTTP {response.status_code}")
             payload = response.json()
         except Exception as exc:
-            return self._transport_unavailable(query, exc)
+            resp = self._transport_unavailable(query, exc)
+            resp.diagnostics = {"attempts": diag.get("attempts", 1), "error_cause": "INVALID_JSON", "retryable": False}
+            return resp
 
         message = payload.get("message", {})
         items = message.get("items") if isinstance(message.get("items"), list) else [message]
@@ -203,6 +290,7 @@ class CrossrefAdapter(AcademicSourceAdapter):
             records,
             self._record(query, AdapterStatus.READY, payload=payload, url=url,
                          used_fields=["title", "issued", "author", "DOI"]),
+            diagnostics=diag,
         )
 
 

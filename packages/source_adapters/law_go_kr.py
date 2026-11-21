@@ -37,10 +37,10 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
         return self.settings.law_go_kr_oc or ("CASSETTE_REPLAY" if replay_mode_active() else None)
 
     def _record_matches_case_number(self, record: dict, wanted: tuple) -> bool:
-        """레코드의 사건번호(병합 판결 포함) 중 하나라도 wanted 사건번호와 일치하는지 확인한다."""
+        """레코드의 사건번호(병합 판결·구분자 변형 포함) 중 하나라도 wanted 사건번호와 일치하는지 확인한다."""
         from packages.legal_engine.normalize import extract_all_case_numbers
         raw = str(record.get("case_number") or "")
-        all_cases = extract_all_case_numbers(raw)
+        all_cases = extract_all_case_numbers(raw, allow_separators=True)
         return wanted in all_cases
 
     # -- 판례 -------------------------------------------------------------
@@ -57,7 +57,19 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                 used_fields=["case_number", "court", "decision_date", "holding"],
             )
             record.adapter = f"{self.name}:mirror"
-            return AdapterResponse(AdapterStatus.READY, [mirrored], record, "내부 Mirror에서 확인")
+            return AdapterResponse(
+                AdapterStatus.READY,
+                [mirrored],
+                record,
+                "내부 Mirror에서 확인",
+                diagnostics={
+                    "target": "mirror",
+                    "provider_raw_count": 1,
+                    "matched_count": 1,
+                    "filtered_out_count": 0,
+                    "cause": "MATCHED",
+                },
+            )
 
         status = self.status()
         if status != AdapterStatus.READY:
@@ -65,29 +77,36 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                 case_number,
                 status,
                 "국가법령정보 OC가 없거나 네트워크가 비활성이다. 해당 항목은 UNVERIFIED로 표시한다.",
+                diagnostics={"cause": str(status)},
             )
         # legal_engine이 source_adapters를 불러오므로 모듈 최상단에서 가져오지 않는다.
-        from packages.legal_engine.normalize import split_case_number
+        from packages.legal_engine.normalize import extract_all_case_numbers, split_case_number
 
-        wanted = split_case_number(case_number)
+        extracted_wanted = extract_all_case_numbers(case_number, allow_separators=True)
+        wanted = extracted_wanted[0] if extracted_wanted else split_case_number(case_number)
+        canonical = f"{wanted[0]}{wanted[1]}{wanted[2]}" if wanted else case_number.strip()
         # 조회할 DB는 사건부호가 정한다(헌가·헌바·헌마 … → 헌재결정례). 문서의 법원 표시가 틀려도(예: '대법원 …
         # 2005헌바28 판결') 부호가 가리키는 DB에서 찾는다. 부호가 없으면 문서의 법원 표시를 따른다.
         constitutional = wanted[1].startswith("헌") if wanted else court == "헌법재판소"
         target = "detc" if constitutional else "prec"
 
-        # 사건번호 지정 조회(nb) → 본문검색(search=2) 순서로 시도한다. 본문검색은 사건번호가 본문에 인용된 다른
-        # 결정까지 수백 건 돌려주므로(공식 원문 수집에서 확인: 2008헌가23 → 590건) 뒤에 둔다. 기본 검색은 nb와
-        # 같은 결과를 돌려줘(실존 결정 11건 모두 동일) 요청만 늘리므로 쓰지 않는다. 채택 조건은 "사건번호
-        # 완전일치"뿐이라 시도 순서가 오탐을 만들지 않는다. 법원·선고일을 덧붙인 재검색 질의에는 nb를 쓰지 않는다.
-        bare = wanted is not None and re.fullmatch(r"\s*[\d가-힣]+\s*", case_number) is not None
+        # 사건번호 지정 조회(nb) → 본문검색(search=2) 순서로 시도한다.
+        # 구분자 변형('2019-다-54321', '2019. 다. 54321')도 정규화된 사건번호로 nb·search=2를 조회하고,
+        # 채택 조건은 "사건번호 완전일치(allow_separators=True)"뿐이라 오탐을 만들지 않는다.
+        bare = wanted is not None and re.fullmatch(r"\s*\d{4}[\s.\-]*[가-힣]{1,3}[\s.\-]*\d+\s*", case_number) is not None
         attempts: List[Dict[str, Any]] = []
         if bare:
-            attempts.append({"nb": case_number.strip()})
-        attempts.append({"search": 2, "query": case_number, "display": CASE_PAGE_SIZE})
+            attempts.append({"nb": canonical})
+            attempts.append({"search": 2, "query": canonical, "display": CASE_PAGE_SIZE})
+        else:
+            attempts.append({"search": 2, "query": case_number, "display": CASE_PAGE_SIZE})
 
         first: Optional[AdapterResponse] = None
         first_skipped = 0
+        total_provider_raw = 0
+        total_filtered_out = 0
         tried: List[str] = []
+        attempt_diags: List[Dict[str, Any]] = []
         for extra in attempts:
             label = ",".join(f"{k}={v}" for k, v in extra.items() if k not in ("query", "display")) or "query"
             # 헌재결정례는 정확한 결정이 첫 페이지 밖에 있을 수 있어 페이지를 넘겨 본다(추가지시 J1).
@@ -98,21 +117,71 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                 try:
                     response = self._http_get(SEARCH_URL, params=params)
                     if response.status_code == 429:
-                        return self._unavailable(case_number, AdapterStatus.RATE_LIMITED, "요청 한도 초과")
+                        return self._unavailable(
+                            case_number,
+                            AdapterStatus.RATE_LIMITED,
+                            "요청 한도 초과",
+                            diagnostics={
+                                "target": target,
+                                "normalized_case_number": canonical if wanted else None,
+                                "provider_raw_count": total_provider_raw,
+                                "matched_count": 0,
+                                "filtered_out_count": total_filtered_out,
+                                "cause": "RATE_LIMITED",
+                                "attempts": attempt_diags,
+                            },
+                        )
                     if response.status_code >= 400:
                         if first is not None:
                             break
-                        return self._unavailable(case_number, AdapterStatus.ERROR, f"HTTP {response.status_code}")
+                        return self._unavailable(
+                            case_number,
+                            AdapterStatus.ERROR,
+                            f"HTTP {response.status_code}",
+                            diagnostics={
+                                "target": target,
+                                "normalized_case_number": canonical if wanted else None,
+                                "provider_raw_count": total_provider_raw,
+                                "matched_count": 0,
+                                "filtered_out_count": total_filtered_out,
+                                "cause": "PROVIDER_ERROR",
+                                "http_status": response.status_code,
+                                "attempts": attempt_diags,
+                            },
+                        )
                     payload = response.json()
                 except Exception as exc:  # 네트워크·파싱 오류는 Job을 실패시키지 않는다
                     if first is not None:
                         break
-                    return self._transport_unavailable(case_number, exc)
+                    resp = self._transport_unavailable(case_number, exc)
+                    resp.diagnostics = {
+                        "target": target,
+                        "normalized_case_number": canonical if wanted else None,
+                        "provider_raw_count": total_provider_raw,
+                        "matched_count": 0,
+                        "filtered_out_count": total_filtered_out,
+                        "cause": "TRANSIENT_ERROR",
+                        "error_type": type(exc).__name__,
+                        "attempts": attempt_diags,
+                    }
+                    return resp
                 if not _case_payload_shape_ok(payload):
                     # 빈 결과와 형식이 다른 응답을 구분한다. 형식 이상은 '찾지 못함'이 아니라 조회 실패다.
                     keys = list(payload)[:5] if isinstance(payload, dict) else type(payload).__name__
-                    return self._unavailable(case_number, AdapterStatus.ERROR,
-                                             f"{target} 응답 형식이 예상과 다름(최상위 {keys})")
+                    return self._unavailable(
+                        case_number,
+                        AdapterStatus.ERROR,
+                        f"{target} 응답 형식이 예상과 다름(최상위 {keys})",
+                        diagnostics={
+                            "target": target,
+                            "normalized_case_number": canonical if wanted else None,
+                            "provider_raw_count": total_provider_raw,
+                            "matched_count": 0,
+                            "filtered_out_count": total_filtered_out,
+                            "cause": "INVALID_PAYLOAD_SHAPE",
+                            "attempts": attempt_diags,
+                        },
+                    )
                 listed = _normalize_case_payload(payload)
                 total = _total_count(payload, len(listed))
                 tried.append(f"{target}:{label}{'' if page == 1 else f' p{page}'} {total}건")
@@ -123,13 +192,34 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                 else:
                     records = [r for r in listed if self._record_matches_case_number(r, wanted)]
                     skipped = len(listed) - len(records)
+                total_provider_raw += len(listed)
+                total_filtered_out += skipped
+                attempt_diags.append({
+                    "attempt": label,
+                    "page": page,
+                    "provider_total": total,
+                    "provider_raw_count": len(listed),
+                    "matched_count": len(records),
+                    "filtered_out_count": skipped,
+                })
                 matched = wanted is not None and bool(records)
+                diag = {
+                    "target": target,
+                    "normalized_case_number": canonical if wanted else None,
+                    "provider_raw_count": len(listed) if matched else total_provider_raw,
+                    "provider_total": total,
+                    "matched_count": len(records),
+                    "filtered_out_count": skipped if matched else total_filtered_out,
+                    "cause": "MATCHED" if matched else ("FILTER_REJECTED_ALL" if total_provider_raw > 0 else "NO_PROVIDER_RESULTS"),
+                    "attempts": list(attempt_diags),
+                }
                 result = AdapterResponse(
                     AdapterStatus.READY, records,
                     self._record(case_number, AdapterStatus.READY, payload=payload,
                                  result_id=records[0].get("case_number") if records else None, url=SEARCH_URL,
                                  used_fields=["사건번호", "법원명", "선고일자", "종국일자", "판시사항", "판결요지"]),
                     f"{target} 조회 방식 {label}에서 사건번호 일치" if matched else "",
+                    diagnostics=diag,
                 )
                 if matched:
                     return result
@@ -141,11 +231,34 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                     break
 
         if first is not None and not first.message:
-            first = AdapterResponse(first.status, first.records, first.source_record,
-                                    f"사건번호 일치 없음(조회 DB {target}, 시도: {' → '.join(tried)}; "
-                                    f"다른 사건 {first_skipped}건은 채택하지 않음)")
+            overall_cause = "FILTER_REJECTED_ALL" if total_provider_raw > 0 else "NO_PROVIDER_RESULTS"
+            overall_diag = {
+                "target": target,
+                "normalized_case_number": canonical if wanted else None,
+                "provider_raw_count": total_provider_raw,
+                "matched_count": 0,
+                "filtered_out_count": total_filtered_out,
+                "cause": overall_cause,
+                "attempts": attempt_diags,
+            }
+            cause_detail = (
+                f"공급자 원응답 {total_provider_raw}건 수신, 후보 필터 후 일치 0건(필터 탈락 {total_filtered_out}건)"
+                if total_provider_raw > 0
+                else "공급자 원응답 0건(색인 부재)"
+            )
+            first = AdapterResponse(
+                first.status,
+                first.records,
+                first.source_record,
+                f"사건번호 일치 없음(조회 DB {target}, 시도: {' → '.join(tried)}; {cause_detail})",
+                diagnostics=overall_diag,
+            )
         return first if first is not None else self._unavailable(
-            case_number, AdapterStatus.ERROR, "조회를 수행하지 못했다")
+            case_number,
+            AdapterStatus.ERROR,
+            "조회를 수행하지 못했다",
+            diagnostics={"target": target, "cause": "NO_ATTEMPTS"},
+        )
 
     def search_cases_by_query(
         self,
