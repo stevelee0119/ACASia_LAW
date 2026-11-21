@@ -42,7 +42,7 @@ RAG_REVIEW_SYSTEM_PROMPT = (
     "두 인용을 대조한 한계 있는 의견만 적고 자료 밖 사실은 생성하지 마라. "
     "최초 기한과 변경 기한은 동시에 참일 수 있다. 기한 변경은 CONTEXT로, 최종 납품과 부분 납품은 구분하라. "
     "예비적·가정적 주장과 별도 법률상 전제의 청구액 차이를 곧바로 산술 모순으로 판단하지 마라. "
-    "무관하거나 근거가 없으면 observations를 빈 배열로 반환하라. URL이나 도구 호출은 출력하지 마라. "
+    "참고자료가 서면의 주장·법리·사실관계를 뒷받침하거나 부합하면 relationship을 SUPPORTS로 기록하라(무관하거나 근거가 없으면 observations를 빈 배열로 반환하라). URL이나 도구 호출은 출력하지 마라. "
     "제시된 참고자료와 관련된 핵심 검토 의견을 충실히 작성하고, explanation은 두 문장 이내로 쓰고 JSON 객체 하나로만 답하라. "
     "응답 최상위는 반드시 observations 키를 가진 객체 하나여야 하며, 검토 의견이 단 하나여도 observations 배열에 넣어 반환하라. "
     "출력 형식: " + json.dumps(SCHEMA, ensure_ascii=False)
@@ -55,13 +55,21 @@ def _clean_str(s: str) -> str:
     return re.sub(r"\s+", " ", str(s or "")).strip()
 
 
+_PUNCT_NORM_RE = re.compile(r"[\s.,·ㆍ'\"`()\[\]{}<>「」『』\-–—:;]+")
+
+
 def _contains_flexible(haystack: str, needle: str) -> bool:
-    """문자열의 서브픽셀 공백/줄바꿈 차이를 허용하는 포함 검사."""
+    """문자열의 공백·줄바꿈·경미한 문장부호 차이를 허용하는 포함 검사."""
     if not needle or not haystack:
         return False
     if needle in haystack:
         return True
-    return _clean_str(needle) in _clean_str(haystack)
+    if _clean_str(needle) in _clean_str(haystack):
+        return True
+    norm_needle = _PUNCT_NORM_RE.sub("", needle)
+    if len(norm_needle) >= 12:
+        return norm_needle in _PUNCT_NORM_RE.sub("", haystack)
+    return False
 
 
 # --- F3 스키마 화이트리스트 및 검증기 (TK-55, 19b 6.1) ---
@@ -288,6 +296,111 @@ def select_claims_for_review(eligible_claims: list[dict]) -> tuple[list[dict], s
         return 4
 
     return sorted(eligible_claims, key=_rank), rule_name
+
+
+_SUPPORT_STOPWORDS = frozenset({
+    "원고", "피고", "사건", "청구", "판결", "법원", "사실", "주장", "인정", "경우",
+    "따라", "대한", "관한", "있는", "없는", "있다", "없다", "한다", "된다", "이다",
+    "것이다", "위하여", "의하여", "관련", "기준", "해당", "내용", "부분", "문서", "자료",
+})
+_SUPPORT_PARTICLE_RE = re.compile(r"(?:에서|으로|까지|부터|에게|은|는|이|가|을|를|의|에|로|와|과|도|만)$")
+_SUPPORT_NEGATION_RE = re.compile(r"(?:아니(?:다|라|하|었)|않(?:는|았|은|다)|없(?:는|었|다|음)|못(?:하|한|했)|불가(?:능)?)")
+
+
+def _support_tokens(text: str) -> tuple[set[str], set[str]]:
+    words: set[str] = set()
+    anchors: set[str] = set()
+    for raw in re.findall(r"[가-힣A-Za-z0-9]{2,}", text or ""):
+        if re.fullmatch(r"\d{2,}", raw):
+            anchors.add(raw)
+            words.add(raw)
+            continue
+        stem = _SUPPORT_PARTICLE_RE.sub("", raw)
+        if len(stem) >= 2 and stem not in _SUPPORT_STOPWORDS:
+            words.add(stem)
+    return words, anchors
+
+
+def _deterministic_chunk_supports(
+    eligible_claims: list[dict],
+    sources: list[dict],
+    existing_observations: list[dict],
+    *,
+    mask=lambda x: x,
+) -> list[dict]:
+    """자격·전달 단계를 통과한 청크 중 모델이 SUPPORTS를 누락한 경우 결정론적으로 보완 연결한다(Fail-Closed)."""
+    already_supported_sids = {
+        str(obs.get("source_id"))
+        for obs in existing_observations
+        if str(obs.get("relationship") or "").upper() == "SUPPORTS" and obs.get("source_id")
+    }
+    candidates = [
+        c for c in eligible_claims
+        if str(c.get("assertion_mode") or "ASSERTED").upper() not in ("HYPOTHETICAL", "ALTERNATIVE", "QUOTED_OTHER")
+        and str(c.get("type") or "").upper() != "DOCUMENT_META"
+        and len(str(c.get("text") or "").strip()) >= 12
+    ]
+    if not candidates or not sources:
+        return []
+
+    claim_feats = []
+    for c in candidates:
+        ctext = str(c.get("text") or "").strip()
+        c_words, c_anchors = _support_tokens(ctext)
+        if len(c_words) >= 3:
+            claim_feats.append((c, ctext, c_words, c_anchors, bool(_SUPPORT_NEGATION_RE.search(ctext))))
+
+    if not claim_feats:
+        return []
+
+    out: list[dict] = []
+    for src in sources:
+        sid = str(src.get("source_id") or "")
+        if not sid or sid in already_supported_sids:
+            continue
+        stext = str(src.get("text") or "").strip()
+        if len(stext) < 12:
+            continue
+        sentences = [
+            s.strip()
+            for s in re.split(r"(?<=[.!?。\n])\s+", stext)
+            if len(s.strip()) >= 12
+        ]
+        if not sentences:
+            sentences = [stext[:500]]
+
+        best: tuple[float, dict, str, str] | None = None
+        for sent in sentences:
+            s_words, s_anchors = _support_tokens(sent)
+            if len(s_words) < 3:
+                continue
+            s_neg = bool(_SUPPORT_NEGATION_RE.search(sent))
+            for c, ctext, c_words, c_anchors, c_neg in claim_feats:
+                if s_neg != c_neg:
+                    continue
+                shared = s_words & c_words
+                shared_anchors = s_anchors & c_anchors
+                if not (len(shared) >= 4 or (len(shared) >= 3 and shared_anchors)):
+                    continue
+                overlap = len(shared) / max(1, min(len(s_words), len(c_words)))
+                if overlap < 0.45:
+                    continue
+                score = overlap + 0.05 * len(shared) + 0.1 * len(shared_anchors)
+                if best is None or score > best[0]:
+                    best = (score, c, ctext, sent[:550])
+
+        if best is not None:
+            _, c, ctext, squote = best
+            out.append({
+                "claim_id": c.get("claim_id"),
+                "claim_quote": mask(ctext[:450]),
+                "source_id": sid,
+                "source_quote": squote,
+                "relationship": "SUPPORTS",
+                "method": "DETERMINISTIC_SUPPORT_CORROBORATION",
+                "explanation": "전달된 참고자료의 해당 구간이 서면 주장의 핵심 사실·요건과 일치하여 지지 근거로 연결되었습니다(법적 타당성은 사람 검토).",
+            })
+    return out
 
 
 def review_document(result, library, router, context, pii):
@@ -1221,6 +1334,17 @@ def review_document(result, library, router, context, pii):
             existing_alts = winner.setdefault("alternate_sources", [])
             if alt not in existing_alts:
                 existing_alts.append(alt)
+
+        det_supports = _deterministic_chunk_supports(
+            eligible,
+            sources,
+            all_observations + claim_observations,
+            mask=mask,
+        )
+        if det_supports:
+            _attach_observation_provenance(det_supports, sources)
+            all_observations.extend(det_supports)
+            support_diagnostics["promotion_attachment"]["deterministic_supports"] += len(det_supports)
 
         obs_map = {}
         for obs in all_observations:
