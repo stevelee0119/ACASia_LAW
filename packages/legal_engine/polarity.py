@@ -67,7 +67,7 @@ def _legacy_polarity(sentence: str, span: Tuple[int, int], *, previous: str = ""
 def _clause_normalizer_detail(sentence: str, span: Tuple[int, int], *, previous: str = "") -> Tuple[str, bool]:
     """Return (mapped_polarity, is_confident_double_negation) from `packages.korean_nlp`."""
     start, end = span
-    rest = sentence[end:]
+    rest = sentence[end : end + 400]
     if len(rest.strip()) <= 2:
         return (ASSERTED, False)
 
