@@ -588,17 +588,31 @@ class VerificationPipeline:
                         }
                         document_result.engine_data["rag"] = review
                         stage.error = err_name
+                    if review.get("search_interrupted"):
+                        if review.get("status") == "NOT_RELEVANT":
+                            review["status"] = "UNVERIFIED"
+                            review["reason"] = "SQLITE_QUERY_INTERRUPTED"
+                            review["review_completed"] = False
+                            stage.error = stage.error or "SQLITE_QUERY_INTERRUPTED"
+                        else:
+                            review["review_completed"] = False
                     if review.get("status") == "UNVERIFIED" or review.get("reason") == "REFERENCE_REVIEW_FAILED":
                         stage.error = stage.error or str(review.get("error") or review.get("reason") or "REFERENCE_REVIEW_FAILED")
                         review.setdefault("unreviewed_scope", "DOCUMENT_REFERENCE_REVIEW")
-                    stage.note = review["status"]
+                    stage.note = f"{review['status']} (PARTIAL_SEARCH_INTERRUPTED)" if review.get("search_interrupted") else review["status"]
                     # 실제 모델 비교를 실행한 경우 executed=True가 되도록 하고, 미실행 시에만 skip_reason 부여
                     if not review.get("model_executed") and review["status"] not in ("ADVISORY_REVIEWED", "REVIEWED_NO_ADVICE"):
                         stage.skip_reason = review.get("reason", "NOT_EXECUTED")
                     if not review.get("review_completed", True) and review["status"] != "NOT_RELEVANT":
+                        reason_msg = (
+                            "Drive 참고자료 SQLite 조회 시간 제한 초과로 일부 검색만 수행됨(SQLITE_QUERY_INTERRUPTED)"
+                            if review.get("search_interrupted")
+                            else "Drive 참고자료 AI 대조 미완료: " + incomplete_reason(review)
+                        )
                         document_result.unverified_items.append({"kind": "reference_review",
                             "document_id": document_result.document_id,
-                            "reason": "Drive 참고자료 AI 대조 미완료: " + incomplete_reason(review)})
+                            "reason": reason_msg,
+                            **({"search_diagnostics": review.get("search_diagnostics")} if review.get("search_diagnostics") else {})})
                     # TK-70: Drive 참고자료 '모순' 의견의 조건부 finding 승격 (D4 개정, 사용자 결정: 기본 켬)
                     from packages.common.config import get_settings
                     settings = get_settings()
