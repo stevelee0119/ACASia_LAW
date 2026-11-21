@@ -86,7 +86,7 @@ def _clause_normalizer_detail(sentence: str, span: Tuple[int, int], *, previous:
         return (REPORTED, False)
     if first.polarity == "DOUBLE_NEGATED_ASSERTED":
         return (ASSERTED, True)
-    if first.polarity == "NEGATED" and NEGATION_RE.search(_clause_after(sentence, end)):
+    if first.polarity == "NEGATED" and len(NEGATION_RE.findall(_clause_after(sentence, end))) % 2 == 1:
         return (NEGATED, False)
     if CONDITIONAL_LEAD_RE.search(sentence[:start]) and first.modality == "HYPOTHETICAL":
         return (CONDITIONAL, False)

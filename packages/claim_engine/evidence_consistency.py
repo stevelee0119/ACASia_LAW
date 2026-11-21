@@ -1872,7 +1872,7 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
                                 "지각 범위를 넘는 단정: 지각하지 못했다고 하면서 사실을 확실하다고 한다",
                                 "같은 문장에서 보거나 듣지 못했다고 하면서 그 사실을 확실하다고 한다. "
                                 "진술의 신빙성은 사람이 판단한다.",
-                                shown, status=VerificationStatus.SUSPICIOUS,
+                                shown, status=VerificationStatus.UNVERIFIED,
                                 features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION"}))
         else:
             pattern = perception_conflict(sentence)

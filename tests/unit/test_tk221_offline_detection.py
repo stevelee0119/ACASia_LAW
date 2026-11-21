@@ -204,8 +204,8 @@ def test_medical_purpose_mismatch_and_beyond_perception_status() -> None:
     doc_ok = _doc("증거목록\n1. 갑 제1호증 상해진단서 | 2023. 5. 1. | 원고의 상해 및 치료 사실\n")
     assert not [f for f in check_exhibits(doc_ok) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
 
-    # 양성: 지각 불능 + 단정 결합 시 SUSPICIOUS
+    # 양성: 지각 불능 + 단정 결합 시 기존 계약대로 UNVERIFIED 유지
     doc_bp = _doc("진술서\n저는 당시 직접 보지 못했으나 그 사실은 틀림없다.")
     from packages.claim_engine.evidence_consistency import check_statements
     bp_f = [f for f in check_statements(doc_bp) if f.type == FindingType.STATEMENT_BEYOND_PERCEPTION]
-    assert bp_f and bp_f[0].status == VerificationStatus.SUSPICIOUS
+    assert bp_f and bp_f[0].status == VerificationStatus.UNVERIFIED
