@@ -647,6 +647,19 @@
   },
   "rer": 0.0761,
   "decided_by": "Antigravity 평가 세션 (사용자 릴리스 진행 지시)",
-  "decided_at": "2026-11-21"
+  "decided_at": "2026-11-21",
+  "release_status": "DEPLOYED_ONLINE_EVALUATED",
+  "release_commit": "023fc33ced8c8080629c743a2e9fcb0e6b0b0850",
+  "online_eval_20261122": {
+   "deployed_commit": "023fc33ced8c8080629c743a2e9fcb0e6b0b0850",
+   "verdict": "기록 수용(부분 개선 확인·I-1 P1 안정성 보완 필수). case9 정상 2회 23/23·RAG 5/5(RAGC-S3 개선)·건강 6/6·INJ-1 4/4, 중단 2회(interrupted) 21/23·RAG 3/5·건강 5/6. live_integration 7/7, U2 공식 5/6·학술 3/4. Legal NLI Stage 2 반전 인용 SUPPORTED 오분류(I-2), OCR 폴백 미구성(I-3), Dense/Reranker·로컬 모델 미연결(I-4) 확인.",
+   "unmeasured": [
+    "안정된 RAG 3회 연속 5/5 (I-1 해결 후 재측정)",
+    "적응형 OCR 폴백 복구 효과 (I-3)",
+    "Hybrid RAG Dense·Reranker 및 로컬 LLM (I-4)",
+    "Source 카세트 운영 RECORD/REPLAY 및 근거 그래프 법률 정확도"
+   ],
+   "record": "docs/scorecards/online_0250_20261122.md"
+  }
  }
 ]
