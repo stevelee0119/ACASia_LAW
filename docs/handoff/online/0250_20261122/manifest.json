@@ -1,0 +1,11 @@
+{
+  "schema": "online_025_manifest_v1",
+  "created_at_kst": "2026-11-22T07:25:11.264033+09:00",
+  "files_sha256": {
+    "README.md": "9cab1dca293ced1cb178a7d00d9f926ca78118281987812abd1c2bbfb1db9f61",
+    "issues.md": "cca2ef687097aab6f8598b087b33bd12603b534f653b7e8b4ab9fab2c8ba995b",
+    "results.json": "3b0c017c023ff466ee4a9cc57b9b9fbfaa8b984440b5285b3b397ce8f63581c0"
+  },
+  "private_archive_sha256": "4e2fac5c0f29196045ee690d5aafd7d3698411b604282b4da67ef70f3865ec16",
+  "private_archive_committed": false
+}
