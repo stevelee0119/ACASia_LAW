@@ -872,13 +872,25 @@
       "status": "open",
       "priority": "P2",
       "kind": "new",
-      "note": "0.25.0 온라인(023fc33c, I-3): 운영 Docker 이미지 OCR 폴백 엔진 의존성(rapidocr 등) 부재로 저품질 0.611에서 FALLBACK_NOT_CONFIGURED."
+      "note": "0.25.0 온라인(023fc33c, I-3): 한국어 OCR 폴백 운영 활성화 — requirements.in/해시 고정/Docker 이미지 반영, Render 메모리·기동 시험, LV_OCR_FALLBACK_MODE 실연동, 저품질 0.611·Drive 16쪽 전후 비교."
     },
     "TK-228": {
       "status": "open",
       "priority": "P2",
       "kind": "new",
-      "note": "0.25.0 온라인(023fc33c, I-4): Dense·Reranker 엔드포인트 진단만 읽히고 실제 검색 어댑터 미연결, 로컬 모델 공급자 비활성."
+      "note": "0.25.0 온라인(023fc33c, I-4): 임베딩·재순위 서버 실제 RAG 연결(TK-225 선행 후 확대) — 청크 리비전별 임베딩 저장·재사용, 어휘 폴백, effective_mode 실요청 산출, ON/OFF 비교."
+    },
+    "TK-229": {
+      "status": "open",
+      "priority": "P2",
+      "kind": "new",
+      "note": "0.25.0 온라인(023fc33c, I-4): 로컬 모델 설정·라우팅 활성화 — config/providers.json 안전 설정·인증·연결·스키마 검증·호출 기록, LOCAL_ONLY 짝 비교 및 교차검토 감소 영향 평가."
+    },
+    "TK-230": {
+      "status": "open",
+      "priority": "P1",
+      "kind": "existing",
+      "note": "0.25.0 후속 객관지표 상승(dev > 83.9, holdout > 83.3): 도달 가능 미충족 범주(AIGEN, CIT-META, EVI-LOGIC, EVI-COPY, LAW-MIS, OVR/LAW-NX) 일반화 수정, 회귀·오탐 0."
     }
   },
   "updated_on": "2026-11-22"
