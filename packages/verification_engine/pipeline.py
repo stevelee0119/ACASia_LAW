@@ -263,6 +263,43 @@ def execution_summary(log):
     return summary
 
 
+def _summarize_legal_nli(documents: List[DocumentResult], *, mode: str = "shadow") -> Dict[str, Any]:
+    """보고서 매니페스트용 Stage 2 Legal NLI 실행 건수·원문 확보 현황 집계 (TK-223, 비밀값·원문 미포함)."""
+    executed_count = 0
+    assisted_count = 0
+    full_text_available_count = 0
+    full_text_missing_count = 0
+    verdict_counts: Dict[str, int] = {}
+
+    for doc in documents:
+        verdicts = (getattr(doc, "engine_data", None) or {}).get("legal_verdicts") or []
+        for v in verdicts:
+            vtype = str(v.get("type") or "")
+            review = v.get("review") or {}
+            official = v.get("official_record") or {}
+            if vtype in ("CASE", "CONSTITUTIONAL", "CitationType.CASE", "CitationType.CONSTITUTIONAL"):
+                if official.get("full_text"):
+                    full_text_available_count += 1
+                else:
+                    full_text_missing_count += 1
+            stage2 = review.get("stage2_nli")
+            if isinstance(stage2, dict) and stage2:
+                executed_count += 1
+                nli_verdict = str(stage2.get("verdict") or "UNKNOWN")
+                verdict_counts[nli_verdict] = verdict_counts.get(nli_verdict, 0) + 1
+            if review.get("stage2_nli_assisted"):
+                assisted_count += 1
+
+    return {
+        "mode": mode,
+        "executed_count": executed_count,
+        "assisted_count": assisted_count,
+        "full_text_available_count": full_text_available_count,
+        "full_text_missing_count": full_text_missing_count,
+        "verdict_counts": verdict_counts,
+    }
+
+
 def source_lookup_summary(documents: List[DocumentResult]) -> Dict[str, Any]:
     """공식 DB(출처)별 조회 수·HTTP 시도·캐시 적중·상태별 건수·소요 시간 실행 단위 집계 (TK-78).
 
@@ -710,14 +747,24 @@ class VerificationPipeline:
         result.model_executions = [execution for d in result.documents
                                    for execution in d.engine_data.get("model_executions", [])]
         result.scores = aggregate_scores(result)
+        env_info = preflight(self.settings, self.registry, self.router)
         result.run_manifest = manifest.to_dict(versions={
             "program": self.settings.version, "rule": self.settings.rule_version,
             "prompt": self.settings.prompt_version, "model_config": self.settings.model_config_version()},
-            environment=preflight(self.settings, self.registry, self.router))
+            environment=env_info)
         result.run_manifest["reference_library"] = references.summary
         result.run_manifest["reference_library"]["health"] = reference_health(
             references.summary, result.documents, self.settings)
         result.run_manifest["source_lookup_summary"] = source_lookup_summary(result.documents)
+        result.run_manifest["legal_nli_summary"] = _summarize_legal_nli(
+            result.documents, mode=str(getattr(self.settings, "legal_nli_mode", "shadow") or "shadow").strip().lower()
+        )
+        next_gen_diag = env_info.get("next_gen_features") or {}
+        result.run_manifest["source_cassette"] = next_gen_diag.get("source_cassette") or {}
+        rag_diag = dict(next_gen_diag.get("rag") or {})
+        if references.summary.get("retrieval_mode"):
+            rag_diag["effective_mode"] = references.summary.get("retrieval_mode")
+        result.run_manifest["rag_retrieval_diagnostics"] = rag_diag
         result.timeline = build_timeline(
             [e for d in result.documents for e in _events_from(d)]
         )
