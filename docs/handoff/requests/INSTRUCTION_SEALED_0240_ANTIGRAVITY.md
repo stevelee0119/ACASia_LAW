@@ -112,6 +112,7 @@ for label, path in zip(("main", "candidate"), sys.argv[1:]):
         "weighted_recall": sealed["weighted_recall"],
         "false_positives": sealed["false_positives"],
         "a_grade_false_positives": sealed["a_grade_fp"],
+        "injection_defended": sealed["injection_defended"],
         "regression_v2_items": proxy["items"],
         "regression_v2_hits": proxy["hits"],
         "regression_v2_recall": proxy["recall"],
