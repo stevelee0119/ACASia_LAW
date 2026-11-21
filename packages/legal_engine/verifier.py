@@ -839,7 +839,8 @@ class LegalVerifier:
 
             for v in group:
                 if any(
-                    f.type in (FindingType.CASE_METADATA_MISMATCH, FindingType.INVALID_FORMAT)
+                    f.type == FindingType.CASE_METADATA_MISMATCH
+                    or (f.confidence_features or {}).get("format_violation")
                     for f in v.findings
                 ):
                     continue
