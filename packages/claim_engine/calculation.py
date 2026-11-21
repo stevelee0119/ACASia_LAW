@@ -747,6 +747,7 @@ class CalculationEngine:
                 seen_blocks.add(block.block_id)
             findings.extend(found)
         findings.extend(self._verify_table_totals(doc))
+        findings.extend(_table_grid_findings(doc, findings))
         # 한 행·한 열 안의 표준 산식(공급가액+세액=합계, 원금+이자−변제=잔액, 지급총액−공제=실지급액)
         from .table_formulas import formula_graph_findings
 
@@ -1451,8 +1452,10 @@ def is_total_label(label: str) -> bool:
 
 def _calculation_scope(finding: Finding) -> tuple:
     features = finding.confidence_features or {}
-    return (finding.document_id, finding.page, features.get("table_ref") or finding.block_id,
-            features.get("table_column"))
+    col = features.get("table_column")
+    if col is None:
+        col = features.get("col_idx")
+    return (finding.document_id, finding.page, features.get("table_ref") or finding.block_id, col)
 
 
 def merge_same_total(findings: List[Finding]) -> List[Finding]:
@@ -1488,4 +1491,129 @@ def merge_same_total(findings: List[Finding]) -> List[Finding]:
                 {"computed": f.confidence_features.get("computed"), "item_count": f.confidence_features.get("item_count"),
                  "title": f.title} for f in others]
         out.append(best)
+    return out
+
+
+def _table_grid_findings(doc: NormalizedDocument, existing: Sequence[Finding]) -> List[Finding]:
+    """Verify subtotal/total column sums on TableGrid blocks not already flagged."""
+    from packages.document_engine.table_structure import (
+        TableCell,
+        TableGrid,
+        check_column_totals,
+        parse_pipe_table_block,
+    )
+
+    already_exact = set()
+    legacy_block_stated: Dict[Tuple[Optional[str], str], int] = {}
+    for f in existing:
+        if f.type != FindingType.ARITHMETIC_MISMATCH:
+            continue
+        feats = f.confidence_features or {}
+        stated_val = feats.get("stated")
+        if stated_val is None:
+            continue
+        stated_str = str(stated_val)
+        if feats.get("col_idx") is not None and feats.get("row_idx") is not None:
+            already_exact.add((f.block_id, int(feats["col_idx"]), int(feats["row_idx"]), stated_str))
+        else:
+            k = (f.block_id, stated_str)
+            legacy_block_stated[k] = legacy_block_stated.get(k, 0) + 1
+
+    has_structured_tables = bool((doc.structure or {}).get("tables"))
+    out: List[Finding] = []
+    for block in doc.body_blocks():
+        if block.block_type not in ("table", "table_line"):
+            continue
+        if has_structured_tables and (block.attributes or {}).get("table_ref"):
+            continue
+        raw_grid = (block.attributes or {}).get("table_grid")
+        if isinstance(raw_grid, dict) and raw_grid.get("cells"):
+            hydrated_cells = [
+                TableCell(
+                    row_idx=int(c["row_idx"]),
+                    col_idx=int(c["col_idx"]),
+                    text=str(c.get("text") or ""),
+                    row_span=int(c.get("row_span") or 1),
+                    col_span=int(c.get("col_span") or 1),
+                    is_header=bool(c.get("is_header", False)),
+                    header_path=list(c.get("header_path") or []),
+                    row_label=c.get("row_label"),
+                )
+                if isinstance(c, dict) else c
+                for c in (raw_grid.get("cells") or [])
+            ]
+            grid = TableGrid(
+                block_id=raw_grid.get("block_id") or block.block_id,
+                page=raw_grid.get("page") or block.page,
+                num_rows=int(raw_grid.get("num_rows") or 0),
+                num_cols=int(raw_grid.get("num_cols") or 0),
+                headers=list(raw_grid.get("headers") or []),
+                cells=hydrated_cells,
+                total_row_indices=list(raw_grid.get("total_row_indices") or []),
+            )
+        else:
+            grid = parse_pipe_table_block(block)
+        if grid is None:
+            continue
+
+        for mismatch in check_column_totals(grid):
+            stated = mismatch["stated_total"]
+            stated_str = str(stated)
+            computed = mismatch["sum_of_rows"]
+            col_idx = int(mismatch["col_idx"])
+            row_idx = int(mismatch["row_idx"])
+            exact_key = (block.block_id, col_idx, row_idx, stated_str)
+            if exact_key in already_exact:
+                continue
+            legacy_key = (block.block_id, stated_str)
+            if legacy_block_stated.get(legacy_key, 0) > 0:
+                legacy_block_stated[legacy_key] -= 1
+                already_exact.add(exact_key)
+                continue
+            already_exact.add(exact_key)
+            header = mismatch.get("header") or f"열 {col_idx + 1}"
+            row_label = mismatch.get("row_label") or "합계"
+            title = f"표 열 합계 불일치 ({header} · {row_label}): 세부 합계 {computed:,} ≠ 기재 {stated:,}"
+            detail = (
+                f"표 '{header}' 열의 '{row_label}' 행 기재 금액({stated:,})이 "
+                f"세부 행 합산({computed:,})과 {abs(mismatch['difference']):,}만큼 다릅니다."
+            )
+            out.append(
+                Finding.create(
+                    type=FindingType.ARITHMETIC_MISMATCH,
+                    title=title,
+                    detail=detail,
+                    severity=Severity.HIGH,
+                    evidence_grade=EvidenceGrade.A,
+                    status=VerificationStatus.CONTRADICTED,
+                    document_id=doc.document_id,
+                    page=block.page,
+                    block_id=block.block_id,
+                    bbox=block.bbox,
+                    engine=ENGINE_NAME,
+                    tags=["CALCULATION", "TABLE_GRID"],
+                    confidence_features={
+                        "rule_id": f"{ENGINE_NAME}:TABLE_GRID_COLUMN_SUM",
+                        "stated": stated,
+                        "computed": computed,
+                        "difference": mismatch["difference"],
+                        "table_header": header,
+                        "row_label": row_label,
+                        "table_column": col_idx,
+                        "col_idx": col_idx,
+                        "row_idx": row_idx,
+                    },
+                    evidence=[
+                        Evidence.create(
+                            description=f"표 구조 검산 ({header} / {row_label})",
+                            grade=EvidenceGrade.A,
+                            document_id=doc.document_id,
+                            page=block.page,
+                            block_id=block.block_id,
+                            excerpt=(block.text or "")[:240],
+                            supports=False,
+                        )
+                    ],
+                )
+            )
     return out

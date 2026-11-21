@@ -568,5 +568,41 @@
    ],
    "record": "docs/scorecards/online_round1_0230_verdict_20261119.md"
   }
+ },
+ {
+  "version": "0.24.0",
+  "from": "0.23.0",
+  "level": "minor",
+  "basis": [
+   "added"
+  ],
+  "measured_commit": "0055fa728202c2d4b500099fa2b6c29d8258c07e",
+  "conditions": {
+   "network": false,
+   "python": "3.11.17",
+   "tesseract": "5.3.4 kor/eng",
+   "os": "Linux 6.18.57 (glibc 2.41)",
+   "baseline_commit": "f7a7f49056fa4fc6239ffdad803eed53443d9045",
+   "scoring": "운영 main과 통합 후보를 같은 채점기·고정/은퇴 자료·오프라인 조건에서 비교. 봉인은 사용자 제공 동일 세트 짝 비교 집계.",
+   "verification": "후보 깨끗한 트리에서 verify_all 전체 종료 0. CI 버전 Python·OCR, 한글 글꼴과 호스트 Chromium을 격리 환경에 결합. 제품·시험·채점기 변경 없음.",
+   "measured_on": "2026-11-21"
+  },
+  "evidence": {
+   "M1": "dev 82.6→82.6, holdout 81.9→81.9; 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 세트별·합산 RER 0. score_gate·regression_gate 종료 0.",
+   "M2": "사용자 제공 신규 봉인 짝 비교: 동일 입력 지문 4b9c00017908d038cf03e5c8f018d2fa85ae43c1c2493d19fa1b533cf118792f, 10문서·60결함, main·후보 종료 0, 종합 37.9, 가중 재현율 0.379, v2 22/60, 오탐·A등급 오탐·엔진 오류 0, injection_defended 양쪽 true. 원본 무결성·임시 사본 삭제 확인. 재채점하지 않음.",
+   "M3": "은퇴 5세트 후퇴 0, 항목별 회귀 0. 후보 전체 verify_all 종료 0: 수용 1,278·회귀 원장 2,357·일반 11,470·브라우저 200 통과, 실제 실패·strict XPASS 0. 집계 SHA-256 35116076386ae9590a2bbc9af66f97b0830c8c21db6574d70e8f27b0c6a50602.",
+   "M4": "Added: 로컬 LLM·공식 Source 카세트, RAG 식별자/Dense·Reranker, 법률 절 정규화, 인용 NLI, 표 구조·OCR 폴백, 증거 그래프. 기능 진입점과 기본 shadow/none 설정은 포함 PR의 시험·CI로 확인. 오프라인 점수 순증이나 기존 결함 감소 수치 주장은 없음.",
+   "CI": "제품 후보와 동일 Git tree의 마지막 제품 PR #371 필수 CI 성공; 평가 기록 PR #375의 79a9b93a 필수 CI 전부 성공. 판정 문서 추가 후 새 head CI는 병합 전 재확인.",
+   "open_p1_regression": 0,
+   "unmeasured": "고정 비공개 벤치마크 NOT_MEASURED(참고 지표). 공식 DB·Drive·모델을 포함한 운영 온라인 실측 NOT_RUN, 실무 법률 정확도·검색/주장 타당성·검토 효율 NOT_MEASURED. 새 기능 릴리스이므로 배포 뒤 온라인 점검.",
+   "record": "docs/scorecards/release_024_candidate_20261121.md"
+  },
+  "rer": 0.0,
+  "decided_by": "Codex 평가 세션 (사용자 진행 지시)",
+  "decided_at": "2026-11-21",
+  "release_status": "CANDIDATE_VERIFIED_AWAITING_VERSION_COMMIT",
+  "release_commit": null,
+  "release_tag": null,
+  "deployment_evidence": null
  }
 ]

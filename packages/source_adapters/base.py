@@ -62,6 +62,10 @@ class SourceAdapter(ABC):
     def status(self) -> AdapterStatus:
         if not self.enabled:
             return AdapterStatus.DISABLED
+        from .cassette import replay_mode_active
+
+        if replay_mode_active():
+            return AdapterStatus.READY
         if self.requires_key and not self.api_key:
             return AdapterStatus.MISSING_KEY
         if not self.settings.allow_network:

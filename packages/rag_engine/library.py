@@ -928,7 +928,17 @@ class ReferenceLibrary:
                             "fresh_trashed": fresh.get("trashed"),
                             "fresh_can_download": (fresh.get("capabilities") or {}).get("canDownload")})
 
-    def select(self, text, limit=12):
+    def select(
+        self,
+        text,
+        limit=12,
+        *,
+        target_date=None,
+        case_type=None,
+        embedding_adapter=None,
+        reranker_adapter=None,
+        exclude_inapplicable=True,
+    ):
         """Choose relevant files (text match plus folder/file-name bonus), then their best excerpts.
 
         Returns the decision log; `sources` is empty when nothing is relevant, and then the Drive
@@ -1328,10 +1338,63 @@ class ReferenceLibrary:
             "delivered_excerpts": delivered_excerpts_obs,
             "files": file_obs_list,
         }
+        from packages.rag_engine.applicability_filter import annotate_applicability
+        from packages.rag_engine.hybrid_retriever import retrieve_hybrid_chunks
+
+        retrieval_mode = "LEXICAL_ONLY"
+        retrieval_warnings: list[str] = []
+        if result and (embedding_adapter is not None or reranker_adapter is not None):
+            hybrid_input = [
+                {**s, "chunk_id": s.get("source_id") or f"R{idx + 1}"}
+                for idx, s in enumerate(result)
+            ]
+            hybrid_out = retrieve_hybrid_chunks(
+                scan_text[:6000],
+                hybrid_input,
+                embedding_adapter=embedding_adapter,
+                reranker_adapter=reranker_adapter,
+                target_date=target_date,
+                case_type=case_type,
+                exclude_inapplicable=False,
+                top_k=len(hybrid_input),
+            )
+            retrieval_mode = hybrid_out["retrieval_mode"]
+            retrieval_warnings = hybrid_out["retrieval_warnings"]
+            result = hybrid_out["chunks"]
+        else:
+            result = annotate_applicability(
+                result,
+                target_date=target_date,
+                case_type=case_type,
+                exclude_inapplicable=False,
+            )
+
+        inapplicable = [s for s in result if not s.get("eligible_for_support", True)]
+        applicability_warnings = [
+            {
+                "source_id": s.get("source_id"),
+                "file_id": s.get("file_id"),
+                "title": s.get("title"),
+                "warnings": s.get("applicability_warnings") or [],
+                "reasons": s.get("applicability_reasons") or [],
+            }
+            for s in inapplicable
+        ]
+        if exclude_inapplicable and inapplicable:
+            result = [s for s in result if s.get("eligible_for_support", True)]
+
+        log["retrieval_mode"] = retrieval_mode
+        log["retrieval_warnings"] = retrieval_warnings
+        log["applicability_warnings"] = applicability_warnings
+        log["inapplicable_sources"] = inapplicable
         log["sources"] = result
         log["decision"] = "USED" if result else "INCOMPLETE_COVERAGE" if pending else "NOT_USED"
-        log["reason"] = "RELEVANT_REFERENCE_FOUND" if result else (
-            "NO_CANDIDATE_CHUNK" if not candidates else "BELOW_RELEVANCE_THRESHOLD")
+        if result:
+            log["reason"] = "RELEVANT_REFERENCE_FOUND"
+        elif inapplicable:
+            log["reason"] = "NO_APPLICABLE_REFERENCE"
+        else:
+            log["reason"] = "NO_CANDIDATE_CHUNK" if not candidates else "BELOW_RELEVANCE_THRESHOLD"
         log["ms"] = round((time.monotonic() - mark) * 1000)
         return log
 

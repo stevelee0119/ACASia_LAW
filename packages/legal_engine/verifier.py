@@ -614,6 +614,28 @@ class LegalVerifier:
                 level3 = "UNVERIFIED"
                 verdict.notes.append("공식 판결문 본문 미확보로 직접 인용 대조 불가 (요약본만 확보되어 본문 인용 대조 유보)")
             verdict.levels["level3"] = level3
+
+            from packages.common.config import get_settings
+            nli_mode = str(getattr(get_settings(), "legal_nli_mode", "shadow") or "shadow").strip().lower()
+            if nli_mode != "off" and official_text.strip():
+                try:
+                    from .nli_verifier import evaluate_citation_nli_stage2
+                    stage2 = evaluate_citation_nli_stage2(official_text, citation.quoted_text)
+                    verdict.review["stage2_nli"] = stage2.to_dict()
+                    if (
+                        nli_mode == "assist"
+                        and has_full_text
+                        and level3 in ("MODIFIED", "UNVERIFIED", "TRUNCATED")
+                        and stage2.verdict == "CONTRADICTED"
+                    ):
+                        level3 = "CONTRADICTED"
+                        verdict.levels["level3"] = "CONTRADICTED"
+                        verdict.review["stage2_nli_assisted"] = True
+                    elif nli_mode == "assist" and stage2.verdict == "PENDING_REVIEW":
+                        verdict.notes.append("Stage 2 Legal NLI 보류: 구조적 반전 표지 미확인으로 검토 필요")
+                except Exception:  # pragma: no cover - defensive
+                    pass
+
             # TK-159: 인용 대조에 쓴 공식 원문 구간(정규화 기준)을 남긴다.
             span = quote_span(citation.quoted_text, official_text)
             if span is not None:

@@ -95,3 +95,68 @@ class PredictionRecord(Record):
         if (self.cost is None) != (self.cost_currency is None):
             raise ValueError("Cost and its currency must be supplied together")
         return self
+
+
+AdjudicationVerdict = Literal[
+    "TRUE_DEFECT_UNLISTED",
+    "TRUE_DEFECT_TOKEN_MISMATCH",
+    "DUPLICATE_FINDING",
+    "OVERREACH_FALSE_POSITIVE",
+    "ADVISORY_MISCLASSIFIED",
+]
+
+OfflineReachability = Literal[
+    "OFFLINE_VERIFIABLE",
+    "EXTERNAL_SOURCE_REQUIRED",
+    "SOURCE_AVAILABLE_MISSED",
+]
+
+
+class UnadjudicatedAlertCandidate(Record):
+    schema_version: Literal[1] = 1
+    alert_id: str = Field(min_length=1)
+    document_key: str = Field(min_length=1)
+    finding_id: str = Field(default="")
+    finding_type: str = Field(min_length=1)
+    status: str = Field(min_length=1)
+    severity: str = Field(min_length=1)
+    evidence_grade: str = Field(min_length=1)
+    engine: str = Field(default="")
+    page: int | None = Field(default=None, ge=1)
+    block_id: str | None = Field(default=None)
+    span: tuple[int, int] | None = Field(default=None)
+    title: str = Field(min_length=1)
+    excerpt: str = Field(default="")
+    cluster_id: str = Field(min_length=1)
+    is_duplicate_in_cluster: bool = False
+
+
+class AlertAdjudicationRecord(Record):
+    schema_version: Literal[1] = 1
+    alert_id: str = Field(min_length=1)
+    document_key: str = Field(min_length=1)
+    finding_type: str = Field(min_length=1)
+    verdict: AdjudicationVerdict
+    cluster_id: str = Field(min_length=1)
+    reviewer_ids: list[str] = Field(min_length=1)
+    adjudicated: bool = True
+    rationale: str = Field(min_length=1)
+    target_engine: str = Field(default="")
+
+    @field_validator("reviewer_ids")
+    @classmethod
+    def valid_reviewers(cls, values: list[str]) -> list[str]:
+        if any(not v.strip() for v in values) or len(set(values)) != len(values):
+            raise ValueError("Reviewer identifiers must be distinct and nonempty")
+        return values
+
+
+class ReachabilityItemRecord(Record):
+    schema_version: Literal[1] = 1
+    item_key: str = Field(min_length=1)
+    document_key: str = Field(min_length=1)
+    defect_type: str = Field(min_length=1)
+    hit: bool
+    reachability: OfflineReachability
+    reason: str = Field(min_length=1)
+

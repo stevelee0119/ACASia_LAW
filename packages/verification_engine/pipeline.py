@@ -778,6 +778,23 @@ class VerificationPipeline:
                 mime_type=document.mime_type,
                 sha256=document.sha256,
             )
+            try:
+                from packages.document_engine.table_structure import attach_table_grids
+                attach_table_grids(doc)
+            except Exception:  # pragma: no cover - defensive
+                pass
+            clause_norm_mode = str(getattr(get_settings(), "use_clause_normalizer", "shadow") or "shadow").strip().lower()
+            if clause_norm_mode != "off":
+                try:
+                    from packages.korean_nlp import normalize_document_clauses
+                    norm_clauses = normalize_document_clauses(doc)
+                    result.engine_data["clause_normalizer"] = {
+                        "mode": clause_norm_mode,
+                        "clause_count": len(norm_clauses),
+                        "backend": doc.structure.get("clause_normalizer_backend"),
+                    }
+                except Exception:  # pragma: no cover - defensive
+                    pass
             stage.inputs = len(doc.pages)
             stage.note = doc.parser_name
 
@@ -1290,7 +1307,31 @@ class VerificationPipeline:
             else:
                 stage.skip_reason = "AI 모델의 사실 모순 지적이 없음"
         statuses = {v.get("citation_id"): v.get("status") for v in result.engine_data.get("legal_verdicts", [])}
-        result.findings = finalize_document_findings(result.findings, doc, document.document_id, statuses)
+        graph_mode = str(getattr(get_settings(), "evidence_graph_mode", "shadow") or "shadow").strip().lower()
+        active_graph = None
+        if graph_mode != "off":
+            try:
+                from packages.evidence_graph import analyze_evidence_graph, build_evidence_graph, default_requirement_rules
+                active_graph = build_evidence_graph(
+                    document.document_id,
+                    claims=getattr(result, "claims", None) or result.engine_data.get("claims") or [],
+                    citations=getattr(result, "citations", None) or result.engine_data.get("citations") or [],
+                    exhibits=getattr(result, "exhibits", None) or result.engine_data.get("exhibits") or [],
+                    findings=result.findings,
+                    requirement_rules=default_requirement_rules(),
+                )
+                result.engine_data["evidence_graph"] = active_graph.to_dict()
+                result.engine_data["evidence_graph_analysis"] = analyze_evidence_graph(active_graph)
+            except Exception as exc:  # pragma: no cover - defensive
+                result.warnings.append(f"증거 그래프 구축 경고: {exc}")
+                active_graph = None
+        result.findings = finalize_document_findings(
+            result.findings,
+            doc,
+            document.document_id,
+            statuses,
+            evidence_graph=active_graph if graph_mode in ("canary", "default") else None,
+        )
         # F2: 통합 검토 항목(review_items) 생성 (단일 판정 및 Finding 누락 0 보장)
         from .review_items import build_document_review_items
         result.review_items = build_document_review_items(result, doc, context)
