@@ -214,9 +214,8 @@ def _rule_based_ai_detection(
     # 객관적 본문 작성 흔적(objective_hits >= 1), 복합 정황(synthetic_cluster), 또는
     # 문체 통계 경고 + 개조식 나열 + 다수 문체/메타 정황이 동시에 충족될 때 AI_PARTIAL_GENERATION으로 판정한다.
     multi_signal_cluster = (
-        bool(stylometry.get("stylometry_alert"))
-        and bool(signals.get("heavy_listing"))
-        and (style_hits >= 2 or metadata_indications)
+        (bool(stylometry.get("stylometry_alert")) and (style_hits >= 2 or metadata_indications or bool(signals.get("heavy_listing"))))
+        or (metadata_indications and (style_hits >= 1 or bool(signals.get("heavy_listing"))))
     )
     score = min(1.0, score)
     signals["objective_traces"] = objective_hits

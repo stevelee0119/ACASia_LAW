@@ -185,3 +185,27 @@ def test_aigen_placeholder_and_control() -> None:
     ]
     ai_res = asyncio.run(detect_ai_document(doc, impossible_findings, router=None))
     assert ai_res.verdict == "AI_PARTIAL_GENERATION"
+
+
+def test_polarity_default_preserves_concessive_defense_overclaim() -> None:
+    # 양성(단정 유지): 양보절이 앞에 오고 뒤 절이 전면적 책임 부정(과대주장)인 경우 ASSERTED 유지
+    sent = "가사 일부 손해가 인정되더라도, 민법 제460조 변제 완료로 의무가 소멸하였으므로 어떠한 책임도 질 수 없다."
+    assert polarity(sent, (18, 45)) == ASSERTED
+
+
+def test_medical_purpose_mismatch_and_beyond_perception_status() -> None:
+    from packages.claim_engine.evidence_consistency import check_exhibits
+    # 양성: 의료 문서로 비의료 사실 입증 시 SUSPICIOUS
+    doc_med = _doc("증거목록\n1. 갑 제1호증 상해진단서 | 2023. 5. 1. | 매매계약 체결 사실\n")
+    med_f = [f for f in check_exhibits(doc_med) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+    assert med_f and med_f[0].status == VerificationStatus.SUSPICIOUS
+
+    # 대조군: 의료 문서로 상해·치료 사실 입증 시 미발생
+    doc_ok = _doc("증거목록\n1. 갑 제1호증 상해진단서 | 2023. 5. 1. | 원고의 상해 및 치료 사실\n")
+    assert not [f for f in check_exhibits(doc_ok) if f.type == FindingType.EVIDENCE_PURPOSE_MISMATCH]
+
+    # 양성: 지각 불능 + 단정 결합 시 SUSPICIOUS
+    doc_bp = _doc("진술서\n저는 당시 직접 보지 못했으나 그 사실은 틀림없다.")
+    from packages.claim_engine.evidence_consistency import check_statements
+    bp_f = [f for f in check_statements(doc_bp) if f.type == FindingType.STATEMENT_BEYOND_PERCEPTION]
+    assert bp_f and bp_f[0].status == VerificationStatus.SUSPICIOUS

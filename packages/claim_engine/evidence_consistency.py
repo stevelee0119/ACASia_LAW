@@ -633,7 +633,7 @@ def check_exhibits(doc: NormalizedDocument) -> List[Finding]:
                                 f"입증취지가 서증 성격 범위를 벗어날 수 있다: {where} → '{row['purpose']}'",
                                 "의료 문서로 의료와 무관한 사실을 입증하려 한다. 증명력은 법원이 판단하므로 사람이 확인한다.",
                                 f"{where} | {row.get('purpose')}", page=row.get("page"),
-                                status=VerificationStatus.UNVERIFIED,
+                                status=VerificationStatus.SUSPICIOUS,
                                 features={"exhibit": row["label"], "human_review": True}))
     out.extend(_numbering(doc, rows))
     out.extend(_attached_originals(doc, rows))
@@ -1502,7 +1502,7 @@ def check_evidence_overreach(
             else:
                 grade = EvidenceGrade.C
                 severity = Severity.MEDIUM
-                status = VerificationStatus.UNVERIFIED
+                status = VerificationStatus.UNVERIFIED if (matched_cat == "일방통지" and not is_own_sender) else VerificationStatus.SUSPICIOUS
 
             cat_map = {
                 "일방통지": "NOTICE_OVERREACH",
@@ -1872,7 +1872,7 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
                                 "지각 범위를 넘는 단정: 지각하지 못했다고 하면서 사실을 확실하다고 한다",
                                 "같은 문장에서 보거나 듣지 못했다고 하면서 그 사실을 확실하다고 한다. "
                                 "진술의 신빙성은 사람이 판단한다.",
-                                shown, status=VerificationStatus.UNVERIFIED,
+                                shown, status=VerificationStatus.SUSPICIOUS,
                                 features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION"}))
         else:
             pattern = perception_conflict(sentence)
