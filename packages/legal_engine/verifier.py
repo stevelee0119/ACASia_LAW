@@ -800,7 +800,7 @@ class LegalVerifier:
 
     @staticmethod
     def _check_internal_citation_meta_conflicts(verdicts: List[CitationVerdict]) -> None:
-        """같은 문서 내에서 동일 사건번호를 서로 다른 선고일·법원으로 인용한 내부 메타데이터 모순을 검출한다."""
+        """한 문서에서 같은 사건번호를 서로 다른 선고일·법원으로 인용한 내부 서지 모순을 검출한다."""
         from collections import defaultdict
 
         groups: Dict[Tuple[str, str], List[CitationVerdict]] = defaultdict(list)
@@ -857,8 +857,8 @@ class LegalVerifier:
                         status=VerificationStatus.SUSPICIOUS,
                         severity=Severity.MEDIUM,
                         evidence_grade=EvidenceGrade.B,
-                        title=f"문서 내 동일 판례 메타데이터 모순: {case_num}",
-                        detail=f"같은 문서에서 동일 사건번호({case_num})를 {detail}로 서로 다르게 기재하였다.",
+                        title=f"문서 내 판례 서지 모순: {case_num}",
+                        detail=f"한 문서 안에서 같은 사건번호({case_num})를 {detail}로 서로 다르게 기재하였다.",
                         confidence=confidence_score(features),
                         confidence_features=features,
                         document_id=v.citation.document_id,
