@@ -263,6 +263,10 @@ class ReferenceLibrary:
         pages_total = 0
         extracted_text_pages = 0
         completed_pages = 0
+        searchable_pages = 0
+        searchable_pages_delta = 0
+        ocr_fallback_attempted_pages = 0
+        ocr_fallback_adopted_pages = 0
         page_states: dict[str, int] = {}
         files_complete = 0
         files_partial = 0
@@ -310,6 +314,21 @@ class ReferenceLibrary:
                 if item.get("completed_pages") is not None
                 else (item.get("read_pages") or 0)
             )
+            searchable_pages += int(
+                item.get("searchable_pages")
+                if item.get("searchable_pages") is not None
+                else (
+                    item.get("extracted_text_pages")
+                    if item.get("extracted_text_pages") is not None
+                    else (item.get("read_pages") or 0)
+                )
+            )
+            if item.get("searchable_pages_delta") is not None:
+                searchable_pages_delta += int(item.get("searchable_pages_delta") or 0)
+            fb_sum = item.get("ocr_fallback_summary")
+            if isinstance(fb_sum, dict):
+                ocr_fallback_attempted_pages += len(fb_sum.get("attempted_pages") or [])
+                ocr_fallback_adopted_pages += len(fb_sum.get("adopted_pages") or [])
             for k, v in (item.get("page_state_counts") or {}).items():
                 page_states[k] = page_states.get(k, 0) + int(v or 0)
             by_cause = item.get("unread_pages_by_cause") or {}
@@ -351,6 +370,10 @@ class ReferenceLibrary:
                 "files_not_selected_metadata": files_not_selected,
                 "pages_total": pages_total,
                 "extracted_text_pages": extracted_text_pages,
+                "searchable_pages": searchable_pages,
+                "searchable_pages_delta": searchable_pages_delta,
+                "ocr_fallback_attempted_pages": ocr_fallback_attempted_pages,
+                "ocr_fallback_adopted_pages": ocr_fallback_adopted_pages,
                 "completed_pages": completed_pages,
                 "page_states": page_states,
                 "unread_cause_pages": unread_cause_pages,
@@ -503,6 +526,8 @@ class ReferenceLibrary:
                     raise ReferenceError(problem)
                 folder_path = item.get("folder_path", "")
                 version = revision(item) + ":" + EXTRACTOR_VERSION
+                prior_any_row = db.execute("SELECT payload FROM files WHERE id=?", (file_id,)).fetchone()
+                prior_any = json.loads(prior_any_row[0]) if prior_any_row else None
                 row = db.execute("SELECT payload FROM files WHERE id=? AND revision=?", (file_id, version)).fetchone()
                 if row and stale_quarantine(json.loads(row[0])):
                     row = None                    # 예전 규칙(파일 전체 격리, 근거 미기록)의 결과는 다시 읽는다
@@ -661,6 +686,22 @@ class ReferenceLibrary:
                             else ((prior or {}).get("read_pages") or 0)
                         )
                         parsed["best_read_pages"] = max(prior_best, int(parsed.get("read_pages") or 0))
+                    cur_searchable = parsed.get("searchable_pages")
+                    if cur_searchable is None:
+                        cur_searchable = len({int(c["page"]) for c in chunks if isinstance(c, dict) and c.get("page") is not None})
+                        parsed["searchable_pages"] = cur_searchable
+                    prior_for_searchable = prior or prior_any
+                    if prior_for_searchable:
+                        prev_searchable = prior_for_searchable.get("searchable_pages")
+                        if prev_searchable is None:
+                            prev_searchable = (
+                                prior_for_searchable.get("extracted_text_pages")
+                                if prior_for_searchable.get("extracted_text_pages") is not None
+                                else prior_for_searchable.get("read_pages")
+                            )
+                        if prev_searchable is not None:
+                            parsed["previous_searchable_pages"] = int(prev_searchable)
+                            parsed["searchable_pages_delta"] = int(cur_searchable) - int(prev_searchable)
                     if parsed.get("confirmed_unreadable_pages"):
                         attempts = int((prior or {}).get("unreadable_confirm_attempts") or 0) + 1
                         parsed["unreadable_confirm_attempts"] = attempts
@@ -849,7 +890,8 @@ class ReferenceLibrary:
                     if bool_key in parsed:
                         entry[bool_key] = bool(parsed[bool_key])
                 for key in ("excluded_pages", "scan_findings", "no_text_pages", "unprocessed_pages", "coverage_note",
-                            "page_diagnostics", "ocr_pages", "ocr_low_quality_pages", "blank_pages", "scanned_pages",
+                            "page_diagnostics", "ocr_pages", "ocr_low_quality_pages", "ocr_fallback_summary",
+                            "blank_pages", "scanned_pages",
                             "error_pages", "incomplete_pages", "page_state_counts", "text_parser", "fallback_pages",
                             "unread_pages", "unread_pages_by_cause", "execution_incomplete_pages", "content_unreadable_pages",
                             "retryable_unread_pages", "config_blocked_pages", "confirmed_unreadable_pages",
@@ -857,7 +899,8 @@ class ReferenceLibrary:
                             "stats", "read_ranges", "excluded_rows", "table_version"):
                     if parsed.get(key):
                         entry[key] = parsed[key]
-                for count_key in ("extracted_text_pages", "completed_pages", "best_read_pages"):
+                for count_key in ("extracted_text_pages", "completed_pages", "best_read_pages",
+                                  "searchable_pages", "previous_searchable_pages", "searchable_pages_delta"):
                     if count_key in parsed and parsed[count_key] is not None:
                         entry[count_key] = parsed[count_key]
                 if parsed.get("structured_case_table"):

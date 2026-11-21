@@ -862,6 +862,9 @@ class VerificationPipeline:
         missing_pages = [item for item in coverage if item["status"] == "UNVERIFIED"]
         attempted = doc.structure.get("ocr_attempted_pages") or []
         failures = doc.structure.get("ocr_failures") or {}
+        ocr_fallback_summary = doc.structure.get("ocr_fallback_summary")
+        if ocr_fallback_summary:
+            result.engine_data["ocr_fallback_summary"] = ocr_fallback_summary
         with manifest.stage("ocr", result.findings, inputs=len(attempted) or len(ocr_pages), unit="쪽(본문 OCR)",
                             document_id=document.document_id) as stage:
             if not ocr_pages and not attempted:
@@ -871,11 +874,19 @@ class VerificationPipeline:
             if failures:
                 # 실행했으나 읽지 못한 쪽(시간 초과·엔진 오류·신뢰도 미달). 그 쪽은 미검증으로 남는다.
                 stage.error = "OCR 실패: " + ", ".join(f"{page}면 {reason}" for page, reason in sorted(failures.items()))
-            stage.note = f"저품질 {len(low_pages)}쪽" if low_pages else None
+            note_parts = []
+            if low_pages:
+                note_parts.append(f"저품질 {len(low_pages)}쪽")
+            if ocr_fallback_summary and ocr_fallback_summary.get("attempted_pages"):
+                note_parts.append(
+                    f"폴백 시도 {len(ocr_fallback_summary['attempted_pages'])}쪽(채택 {len(ocr_fallback_summary.get('adopted_pages') or [])}쪽)"
+                )
+            stage.note = ", ".join(note_parts) if note_parts else None
         if low_pages:
             pages = ", ".join(str(item["page"]) for item in low_pages[:20])
             reasons = "; ".join(f"{item['page']}면 " + ", ".join((item.get("ocr_quality") or {}).get("reasons") or [])
                                 for item in low_pages[:5])
+            fb_features = {str(i["page"]): i.get("ocr_fallback") for i in low_pages if i.get("ocr_fallback")}
             result.findings.append(Finding.create(
                 type=FindingType.OCR_LOW_QUALITY, status=VerificationStatus.UNVERIFIED, severity=Severity.MEDIUM,
                 evidence_grade=EvidenceGrade.U,
@@ -884,7 +895,8 @@ class VerificationPipeline:
                         "했지만, 이 쪽에 대한 '결함 없음'은 결론이 아니라 '확인하지 못함'이다. 원본 대조나 더 선명한 "
                         "스캔으로 다시 검증해야 한다."),
                 confidence=0.9, confidence_features={"pages": [item["page"] for item in low_pages],
-                                                     "ocr_quality": {str(i["page"]): i.get("ocr_quality") for i in low_pages}},
+                                                     "ocr_quality": {str(i["page"]): i.get("ocr_quality") for i in low_pages},
+                                                     **({"ocr_fallback": fb_features} if fb_features else {})},
                 document_id=doc.document_id, engine=ENGINE_NAME, tags=["UNVERIFIED", "OCR_QUALITY"]))
         self.audit.record(
             AuditEventType.OCR if doc.structure.get("scanned_pdf") else AuditEventType.UPLOAD,
