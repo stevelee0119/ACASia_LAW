@@ -48,14 +48,22 @@ EVIDENCE_NOUN_RE = re.compile(r"(녹음|녹취|파일|해시|점수표|사진|�
 NOMINAL_FACT_RE = re.compile(r"(?:체결|납품|인수|검수|공제|지급|수령|통보|제출|변경|완료)(?:하였음|되었음|했음|함|됨)[.!。]?$")
 
 
+_ASSERTION_CLAUSE_CUE_RE = re.compile(
+    r"(?:가정|만약|만일|설령|설사|가령|하더라도|더라도|라면|일\s*경우|주장|항변|다투|다툰|판시|설시)"
+)
+
+
 def assertion_mode(text):
     if re.search(r"예비적(?:으로|인)|별도(?:의)?\s*(?:가정|전제)|가사", text):
         return "ALTERNATIVE"
 
-    try:
-        from packages.korean_nlp import normalize_sentence
-        clauses = normalize_sentence(text)
-    except Exception:  # pragma: no cover - defensive fallback
+    if _ASSERTION_CLAUSE_CUE_RE.search(text):
+        try:
+            from packages.korean_nlp import normalize_sentence
+            clauses = normalize_sentence(text)
+        except Exception:  # pragma: no cover - defensive fallback
+            clauses = []
+    else:
         clauses = []
 
     if re.search(r"가정(?:하면|하더라도|하여)|만약|설령|하였다고\s*(?:보더라도|가정)|일\s*경우", text) or any(

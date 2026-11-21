@@ -169,4 +169,46 @@ def format_violations(citation: Any, *, today: Optional[date] = None,
         out.append({"rule_id": "FMT.DECIDED_BEFORE_FILED", "kind": "YEAR", "field": "date", "value": written,
                     "reason": f"선고연도({decided.year})가 사건번호의 접수연도({full_year})보다 앞선다"})
     out += _court_code_violations(citation, code, full_year, official_record)
+    out += _trial_kind_violations(citation, code)
     return out
+
+
+_DECISION_ONLY_CODES = frozenset({
+    "라", "마", "그", "로", "모", "부", "아", "스", "즈",
+    "카", "카합", "카단", "카기", "재마", "재라", "재모", "재로",
+    "감로", "감모", "초사", "초기",
+})
+_JUDGMENT_ONLY_CODES = frozenset({
+    "가합", "가단", "가소", "나", "다",
+    "고합", "고단", "노", "도",
+    "구합", "구단", "누", "두",
+})
+
+
+def _trial_kind_violations(citation: Any, code: str) -> List[Dict[str, Any]]:
+    """사건부호가 결정 전용인지 판결 전용인지에 따라 재판유형(판결/결정) 불일치를 검출한다."""
+    kind_raw = getattr(citation, "case_kind", None) or ""
+    kind_norm = re.sub(r"\s+", "", str(kind_raw))
+    if not kind_norm:
+        return []
+    table = case_code_table()
+    constitutional = set((table.get("constitutional_codes") or {}).keys())
+    decision_codes = _DECISION_ONLY_CODES | constitutional
+    if code in decision_codes and "판결" in kind_norm and "결정" not in kind_norm:
+        return [{
+            "rule_id": "FMT.TRIAL_KIND_MISMATCH",
+            "kind": "TRIAL_KIND",
+            "field": "case_kind",
+            "value": f"{code} {kind_raw}",
+            "reason": f"사건부호 '{code}'는 결정(또는 명령) 사건 부호이므로 '{kind_raw}' 표기와 맞지 않는다",
+        }]
+    if code in _JUDGMENT_ONLY_CODES and "결정" in kind_norm and "판결" not in kind_norm:
+        return [{
+            "rule_id": "FMT.TRIAL_KIND_MISMATCH",
+            "kind": "TRIAL_KIND",
+            "field": "case_kind",
+            "value": f"{code} {kind_raw}",
+            "reason": f"사건부호 '{code}'는 본안 판결 사건 부호이므로 '{kind_raw}' 표기와 맞지 않는다",
+        }]
+    return []
+

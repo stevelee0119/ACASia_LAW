@@ -633,7 +633,7 @@ def check_exhibits(doc: NormalizedDocument) -> List[Finding]:
                                 f"입증취지가 서증 성격 범위를 벗어날 수 있다: {where} → '{row['purpose']}'",
                                 "의료 문서로 의료와 무관한 사실을 입증하려 한다. 증명력은 법원이 판단하므로 사람이 확인한다.",
                                 f"{where} | {row.get('purpose')}", page=row.get("page"),
-                                status=VerificationStatus.UNVERIFIED,
+                                status=VerificationStatus.SUSPICIOUS,
                                 features={"exhibit": row["label"], "human_review": True}))
     out.extend(_numbering(doc, rows))
     out.extend(_attached_originals(doc, rows))
@@ -1489,7 +1489,7 @@ def check_evidence_overreach(
             if matched_cat in ("진단상태", "진술확인"):
                 grade = EvidenceGrade.C
                 severity = Severity.MEDIUM
-                status = VerificationStatus.UNVERIFIED
+                status = VerificationStatus.SUSPICIOUS if is_direct_proof else VerificationStatus.UNVERIFIED
             elif is_direct_proof:
                 if matched_cat == "일방통지":
                     grade = EvidenceGrade.B if is_own_sender else EvidenceGrade.C
@@ -1502,7 +1502,7 @@ def check_evidence_overreach(
             else:
                 grade = EvidenceGrade.C
                 severity = Severity.MEDIUM
-                status = VerificationStatus.UNVERIFIED
+                status = VerificationStatus.UNVERIFIED if (matched_cat == "일방통지" and not is_own_sender) else VerificationStatus.SUSPICIOUS
 
             cat_map = {
                 "일방통지": "NOTICE_OVERREACH",
@@ -3023,6 +3023,27 @@ def _l1_enabled() -> bool:
     return os.environ.get("LV_ENABLE_PERCEPTION_STRUCTURE_L1", "0") == "1"
 
 
+_L1_EXPLICIT_ABSENCE_RE = re.compile(
+    r"(?:현장|그\s?곳|사건\s?장소|당시\s?자리)(?:에|에는)\s?(?:[가-힣]+\s){0,3}?(?:없었|있지\s?않았|불참|참석하지\s?않)"
+    r"|(?:해외|외국|타지|교도소|구치소|군\s?복무|입원)(?:\s?(?:체류|수감|복무))?\s?(?:에|에서|중)(?:이었|있었|체류)"
+)
+
+
+def _l1_explicit_absence_author(segment: str) -> bool:
+    m = _L1_EXPLICIT_ABSENCE_RE.search(segment)
+    if not m:
+        return False
+    before = segment[:m.end()]
+    others = [
+        m2 for m2 in _OTHER_SUBJECT_RE.finditer(before)
+        if not (m2.group(0).rstrip().endswith("이") and m2.group(1) in _ADVERB_I)
+        and not _FIRST_PERSON_RE.match(m2.group(0))
+    ]
+    if not others and _POSSESSED_SUBJECT_RE.search(before):
+        others = [True]
+    return bool(_FIRST_PERSON_RE.search(before)) or not others
+
+
 def check_reasoning_structure(doc: NormalizedDocument) -> List[Finding]:
     out: List[Finding] = []
     l1_on = _l1_enabled()
@@ -3035,27 +3056,41 @@ def check_reasoning_structure(doc: NormalizedDocument) -> List[Finding]:
         if not sent.strip():
             continue
         shown = " ".join(sent.split())[:250]
-        # L1
+        # L1 (일반 체재는 플래그 활성 시, 명시적 부재·불능은 상시 적용)
         pair = None
-        if l1_on and prev and not _L1_OTHER_TIME_RE.search(sent):
-            # 줄 나뉨: 앞 줄이 '체재 + 연결어미(,)'로 끝나면(PDF 줄바꿈) 그 체재 절을 앞 문장으로 본다
-            m_tail = _L1_INLINE_RE.search(prev.rstrip() + " ")
-            prev_n = (prev[:m_tail.start("conn")] + "습니다.") if (m_tail and not prev.rstrip()[m_tail.end() - 1:].strip()) else prev
-            pair = (prev_n, sent, "ELSEWHERE_PREV_SENTENCE")
+        explicit_absence_hit = False
+        if prev and not _L1_OTHER_TIME_RE.search(sent):
+            if l1_on:
+                m_tail = _L1_INLINE_RE.search(prev.rstrip() + " ")
+                prev_n = (prev[:m_tail.start("conn")] + "습니다.") if (m_tail and not prev.rstrip()[m_tail.end() - 1:].strip()) else prev
+                pair = (prev_n, sent, "ELSEWHERE_PREV_SENTENCE")
+            elif _l1_explicit_absence_author(prev):
+                pair = (prev, sent, "EXPLICIT_ABSENCE_PREV_SENTENCE")
+                explicit_absence_hit = True
         m_in = _L1_INLINE_RE.search(sent) if l1_on else None
-        if (pair is None or not _l1_elsewhere_stay(prev, sent)) and m_in:
+        if (pair is None or (l1_on and not _l1_elsewhere_stay(prev, sent))) and m_in:
             rest = sent[m_in.end():]
             if not _L1_OTHER_TIME_RE.search(rest):
                 pair = (sent[:m_in.start("conn")] + "습니다.", rest, "ELSEWHERE_IN_SENTENCE")
-        if pair and _l1_elsewhere_stay(pair[0], pair[1]) and _L1_TIME_RE.search(pair[0] + " " + pair[1][:30]) \
+                explicit_absence_hit = False
+        if pair is None and not l1_on:
+            m_abs = _L1_EXPLICIT_ABSENCE_RE.search(sent)
+            if m_abs and _l1_explicit_absence_author(sent[:m_abs.end()]):
+                rest = sent[m_abs.end():]
+                if not _L1_OTHER_TIME_RE.search(rest):
+                    pair = (sent[:m_abs.end()], rest, "EXPLICIT_ABSENCE_IN_SENTENCE")
+                    explicit_absence_hit = True
+        l1_stay_ok = explicit_absence_hit or (pair is not None and _l1_elsewhere_stay(pair[0], pair[1]))
+        if pair and l1_stay_ok and _L1_TIME_RE.search(pair[0] + " " + pair[1][:30]) \
                 and not _L1_MOVE_RE.search(pair[0] + pair[1]) \
                 and not _MEDIATED_RE.search(pair[1]) and _PERC_RE.search(pair[1]) and _DIRECT_RE.search(pair[1]) and not perception_conflict(sent):
-            out.append(_finding(doc, FindingType.STATEMENT_BEYOND_PERCEPTION, EvidenceGrade.C, Severity.MEDIUM,
+            grade = EvidenceGrade.B if explicit_absence_hit else EvidenceGrade.C
+            out.append(_finding(doc, FindingType.STATEMENT_BEYOND_PERCEPTION, grade, Severity.MEDIUM,
                                 "지각할 수 없던 조건과 직접 지각 주장이 함께 있다: "
-                                + ("앞 문장의" if pair[2] == "ELSEWHERE_PREV_SENTENCE" else "같은 문장 안의") + " 다른 장소 체재와 같은 때의 직접 목격",
-                                ("앞 문장에서 같은 때 다른 장소에 있었다고 하면서 다음 문장에서" if pair[2] == "ELSEWHERE_PREV_SENTENCE"
-                                 else "같은 문장에서 같은 때 다른 장소에 있었다고 하면서") + " 직접 지각했다고 진술한다. 진술의 신빙성은 사람이 판단한다.",
-                                ((" ".join(prev.split()) + " / " + shown) if pair[2] == "ELSEWHERE_PREV_SENTENCE" else shown)[:250],
+                                + ("앞 문장의" if pair[2].endswith("PREV_SENTENCE") else "같은 문장 안의") + " 다른 장소 체재·부재와 같은 때의 직접 목격",
+                                ("앞 문장에서 같은 때 현장에 없거나 다른 곳에 있었다고 하면서 다음 문장에서" if pair[2].endswith("PREV_SENTENCE")
+                                 else "같은 문장에서 같은 때 현장에 없거나 다른 곳에 있었다고 하면서") + " 직접 지각했다고 진술한다. 진술의 신빙성은 사람이 판단한다.",
+                                ((" ".join(prev.split()) + " / " + shown) if pair[2].endswith("PREV_SENTENCE") else shown)[:250],
                                 status=VerificationStatus.SUSPICIOUS,
                                 features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION_STRUCTURE", "pattern": pair[2]}))
         # L2
