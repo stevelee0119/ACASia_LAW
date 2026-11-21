@@ -40,7 +40,10 @@ import tempfile
 stage = Path(sys.argv[1]).resolve()
 if (stage.name == "sealed" and stage.parent.name.startswith("acas_sealed_stage_")
         and stage.parent.parent == Path(tempfile.gettempdir()).resolve()):
-    shutil.rmtree(stage.parent, ignore_errors=True)
+    shutil.rmtree(stage.parent)
+    assert not stage.parent.exists(), "임시 봉인 사본 삭제를 확인하지 못함"
+else:
+    raise ValueError("임시 봉인 사본 삭제 경로 확인 실패")
 PY
 }
 trap cleanup_stage EXIT
