@@ -1,0 +1,11 @@
+{
+  "purpose": "synthetic OCR positive and low-quality control for repeated online evaluation",
+  "files": {
+    "clean_scanned.pdf": "4b062f823ffce93c028134f1eb996eafd41b27f56a12f20a1dffed6523063e26",
+    "low_quality_scanned.pdf": "8d0347b7691ae3d25d5686fb40751521319fbe0d35114892699272f3162b4c2f"
+  },
+  "expected_in_684f3469": {
+    "clean_scanned.pdf": "OCR_EXTRACTED",
+    "low_quality_scanned.pdf": "OCR_LOW_QUALITY"
+  }
+}
