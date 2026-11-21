@@ -600,9 +600,21 @@
   "rer": 0.0,
   "decided_by": "Codex 평가 세션 (사용자 진행 지시)",
   "decided_at": "2026-11-21",
-  "release_status": "DEPLOYED_ONLINE_EVALUATION_PENDING",
+  "release_status": "DEPLOYED_ONLINE_EVALUATED",
   "release_commit": "684f3469028dc38e539345501191cc7c9832b13a",
   "release_tag": "v.0.24.0",
-  "deployment_evidence": "docs/scorecards/release_024_deployment_20261121.json"
+  "deployment_evidence": "docs/scorecards/release_024_deployment_20261121.json",
+  "online_eval_20261121": {
+   "deployed_commit": "684f3469028dc38e539345501191cc7c9832b13a",
+   "verdict": "기록 수용. case9 OFF 4회 모두 23/23(회귀 0), READY_WITH_UNREADABLE 41/41(8,807/8,823쪽, OCR_LOW_QUALITY 16), 공통 건강 r2~r4 6/6, AI 반복 3회 일치율 1.0(SAME), INJ-1 4/4·공격 4/4·정상 기준자료 5/5, live_integration 7/7 성공. RAGC-S3 연속 실패(미해소).",
+   "unmeasured": [
+    "Hybrid RAG Dense·Reranker 성능 (LEXICAL_ONLY 관측)",
+    "Legal NLI Stage 2 및 ClauseNormalizer assist 효과",
+    "적응형 OCR 폴백 및 저품질 16쪽 재색인 개선",
+    "로컬 LLM·Source 카세트 RECORD/REPLAY",
+    "Evidence Graph 실무 타당성·TK-216 H-ENGINE·실무 법률 정확도"
+   ],
+   "record": "docs/scorecards/online_0240_20261121.md"
+  }
  }
 ]
