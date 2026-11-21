@@ -95,7 +95,7 @@ class ProviderConfig:
 @dataclass
 class Settings:
     app_name: str = "ACASia_LAW"
-    version: str = "0.24.0"  # 버전 0.24.0 (평가 측 판정서 및 VERSION_POLICY 기준)
+    version: str = "0.25.0"  # 버전 0.25.0 (평가 측 판정서 및 VERSION_POLICY 기준)
     database_url: str = field(default_factory=resolve_database_url)
     storage_root: Path = field(
         default_factory=lambda: Path(os.getenv("LV_STORAGE_ROOT") or str(data_dir() / "storage"))
@@ -199,7 +199,7 @@ class Settings:
         default_factory=lambda: (os.getenv("LV_LEGAL_NLI_MODE", "shadow") or "shadow").strip().lower()
     )
     use_clause_normalizer: str = field(
-        default_factory=lambda: (os.getenv("LV_USE_CLAUSE_NORMALIZER", "shadow") or "shadow").strip().lower()
+        default_factory=lambda: (os.getenv("LV_USE_CLAUSE_NORMALIZER", "default") or "default").strip().lower()
     )
     providers: Dict[str, ProviderConfig] = field(default_factory=dict)
     pricing: Dict[str, Any] = field(default_factory=dict)

@@ -1,0 +1,26 @@
+{
+  "deployment_commit": "684f3469028dc38e539345501191cc7c9832b13a",
+  "artifacts": {
+    "README.md": "abe5c4c92d44a5cefa0b18c11f5feb9bb75c161df7fa24cd4f2255b18e208885",
+    "result.json": "1a34c2e8f4a1172a4773121fc8ab81de8c39fd055756ab217cca4fd8153e5e3e"
+  },
+  "public_input_references": {
+    "tests/fixtures/case9_state_compensation_google_docs.pdf": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92",
+    "tests/fixtures/probes/case9_state_compensation_online.json": "7002901263974bf6fbe424a3653cb127b69dc88e9b7ade4a7552708545590d2b",
+    "tests/fixtures/probes/case9_state_compensation_health_online.json": "33d270e2bef7d5a3d03ead04ea22ea4babfbd6740962dd990c45e0ac75c86b1b",
+    "tests/fixtures/probes/case9_state_compensation_rag_controls_online.json": "ada7baa1dcfe2d08a4d6984331cc9b270d9bc194480fa4c4a0f0f1600fa74752",
+    "tests/fixtures/probes/pipeline_health_online.json": "ec014a819834058e59a2c700fa4cdc68d15a56a61d77dc0e6b02cda1eb0970dc",
+    "docs/handoff/online/materials/v1/synthetic_features.docx": "d2f601c4307e0ac118a84073cbae6572b701ae272b0d035a435acf71876c56e3",
+    "tests/fixtures/online/tk180/input_normal.docx": "10e68461a2bf6c7d0a786fced772368e6d36dbdb9e8e4368a80a9de8f00b0ed6",
+    "tests/fixtures/online/tk180/spec_normal.json": "8210cead7279738bba821c21e20c57ee568ebdd1fd2520cc45daecc74d546a61",
+    "tests/fixtures/online/tk180/input_visible.docx": "a16e29c032e2256fa79d782235b3aae0676dfa2116ff4c850ad52779595d22fb",
+    "tests/fixtures/online/tk180/spec_visible.json": "8438e9cb49fff4c828e7479315293790275448a680a4cfdb5dc2d5875849ba8f",
+    "tests/fixtures/online/tk180/input_metadata.docx": "5c899116c85fa47a42d2010e9d9af6cfff0b41bd9a0a104ec38607eac603619b",
+    "tests/fixtures/online/tk180/spec_metadata.json": "e54e64e692707999729c678e309e304768f462c0c34a4fa7652ade78ac0d771b",
+    "tests/fixtures/online/tk180/input_hidden.docx": "288d4d95ddb5f02c25d4943563896c8e2e8c908a7ba315eac44c2726324156bb",
+    "tests/fixtures/online/tk180/spec_hidden.json": "12b0805518143d0adb7bdd713afa7c564cb9f8af24d73d85feef104350a7a224",
+    "tests/fixtures/online/tk180/input_encoded.docx": "a65b596e97932b660fb0151a878ee052de5842e320ac0a893698190c857fd74d",
+    "tests/fixtures/online/tk180/spec_encoded.json": "a385e66bc4b40bb4c46e2ba1640f5bcf680b69632261946d6c93049386355268"
+  },
+  "private_table_input_sha256": "c8f9a65b571d11caaa45c0436cf069d14f18354d338870aa4b4721f60aed3f2c"
+}

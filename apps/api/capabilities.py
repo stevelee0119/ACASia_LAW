@@ -149,6 +149,8 @@ def _llm_state() -> Dict[str, Any]:
     return {
         "providers": providers,
         "usable_count": len(usable),
+        "local_count": sum(1 for p in providers if p["kind"] == "local"),
+        "cloud_count": sum(1 for p in providers if p["kind"] != "local"),
         # 교차검증 범위. 공급자 수만큼 호출 비용이 늘어난다.
         "cross_check": mode,
         "cross_check_note": {
@@ -173,6 +175,7 @@ def _llm_state() -> Dict[str, Any]:
 def runtime_capabilities() -> Dict[str, Any]:
     from .durability import durability_report
     from .session_policy import analysis_lifetimes, session_lifetimes
+    from packages.verification_engine.environment import next_gen_feature_diagnostics
 
     settings = get_settings()
     idle, absolute = session_lifetimes()
@@ -189,6 +192,7 @@ def runtime_capabilities() -> Dict[str, Any]:
         "worker": _worker_state(),
         # AI가 실제로 쓰이는지. 설정만으로는 알 수 없어 화면에 드러나야 한다.
         "llm": _llm_state(),
+        "next_gen_features": next_gen_feature_diagnostics(settings),
         "reference_library": {
             "enabled": bool(settings.rag_drive_folder_id),
             "credentials_present": bool(os.getenv("LV_DRIVE_API_KEY") or os.getenv("LV_DRIVE_SERVICE_ACCOUNT_FILE")),

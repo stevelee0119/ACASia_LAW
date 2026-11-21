@@ -1,0 +1,518 @@
+{
+  "deployment": {
+    "commit": "684f3469028dc38e539345501191cc7c9832b13a",
+    "version": "0.24.0",
+    "database_status": "ok",
+    "measured_kst": "2026-11-21T22:41:28.940621+09:00"
+  },
+  "conditions": {
+    "prompt_version": "v0.2",
+    "rule_version": "2026.09.30.1",
+    "model_config_version": "anthropic:claude-opus-5-5|gemini:gemini-4-hydrogen|openai:gpt-6-luna|routing:729b7931ceda",
+    "network_allowed": true,
+    "case9_input_sha256": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92"
+  },
+  "case9": {
+    "runs": [
+      {
+        "label": "case9_r1",
+        "report_sha256": "f6c7d56ed3dcc0831da51eabbce0c18a6347e6d5dd420da2aeb7f3727b68e722",
+        "state": "PARTIAL_COMPLETED",
+        "worker_profile": false,
+        "prompt_version": "v0.2",
+        "reference": {
+          "status": "PARTIAL",
+          "read_completeness": "PARTIAL",
+          "snapshot_hash": "3019169644779579c5a8bb1781849063f33275ed49a3442d4b036606921be4de",
+          "files_indexed": 38,
+          "files_seen": 41,
+          "pages_total": 7780,
+          "completed_pages": 7768,
+          "confirmed_unreadable_pages": 0,
+          "confirmed_unreadable_by_cause": {}
+        },
+        "scores": {
+          "case9_state_compensation_online": {
+            "passed": 23,
+            "total": 23,
+            "items": {
+              "AI-1": true,
+              "AI-2": true,
+              "AI-3": true,
+              "AI-4": true,
+              "EX-1": true,
+              "EX-2": true,
+              "EX-2s": true,
+              "TMP-1": true,
+              "LEG-1": true,
+              "LEG-2": true,
+              "INJ-1": true,
+              "FA-1": true,
+              "FP-1": true,
+              "RAG-1": true,
+              "RAG-2": true,
+              "PII-K1": true,
+              "PII-K2": true,
+              "PII-K3": true,
+              "PII-K4": true,
+              "PII-K5": true,
+              "PII-K6": true,
+              "PII-K7": true,
+              "PII-K8": true
+            }
+          },
+          "case9_state_compensation_health_online": {
+            "passed": 1,
+            "total": 1,
+            "items": {
+              "H-LOOKUP-C9": true
+            }
+          },
+          "case9_state_compensation_rag_controls_online": {
+            "passed": 4,
+            "total": 5,
+            "items": {
+              "RAGC-S1": true,
+              "RAGC-S2": true,
+              "RAGC-S3": false,
+              "RAGC-N1": true,
+              "RAGC-N2": true
+            }
+          },
+          "pipeline_health_online": {
+            "passed": 5,
+            "total": 6,
+            "items": {
+              "H-COMMIT": true,
+              "H-ENGINE": true,
+              "H-LAWDB": true,
+              "H-LOOKUP": true,
+              "H-MODEL": true,
+              "H-REF": false
+            }
+          }
+        },
+        "new_feature_observation": {
+          "clause_mode": "shadow",
+          "clause_count": 46,
+          "graph_nodes": 114,
+          "graph_edges": 70,
+          "graph_broken_authority_chains": 3,
+          "rag_retrieval_mode": "LEXICAL_ONLY",
+          "rag_candidate_files": 16,
+          "rag_qualified_files": 5,
+          "rag_selected_chunks": 9
+        }
+      },
+      {
+        "label": "case9_r2",
+        "report_sha256": "0d2040d3b73ba8182977c7fc21fa5ba4f2346202bb6a216270fcc4519ee155d5",
+        "state": "PARTIAL_COMPLETED",
+        "worker_profile": false,
+        "prompt_version": "v0.2",
+        "reference": {
+          "status": "READY",
+          "read_completeness": "READY_WITH_UNREADABLE",
+          "snapshot_hash": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+          "files_indexed": 41,
+          "files_seen": 41,
+          "pages_total": 8823,
+          "completed_pages": 8807,
+          "confirmed_unreadable_pages": 16,
+          "confirmed_unreadable_by_cause": {
+            "OCR_LOW_QUALITY": 16
+          }
+        },
+        "scores": {
+          "case9_state_compensation_online": {
+            "passed": 23,
+            "total": 23,
+            "items": {
+              "AI-1": true,
+              "AI-2": true,
+              "AI-3": true,
+              "AI-4": true,
+              "EX-1": true,
+              "EX-2": true,
+              "EX-2s": true,
+              "TMP-1": true,
+              "LEG-1": true,
+              "LEG-2": true,
+              "INJ-1": true,
+              "FA-1": true,
+              "FP-1": true,
+              "RAG-1": true,
+              "RAG-2": true,
+              "PII-K1": true,
+              "PII-K2": true,
+              "PII-K3": true,
+              "PII-K4": true,
+              "PII-K5": true,
+              "PII-K6": true,
+              "PII-K7": true,
+              "PII-K8": true
+            }
+          },
+          "case9_state_compensation_health_online": {
+            "passed": 1,
+            "total": 1,
+            "items": {
+              "H-LOOKUP-C9": true
+            }
+          },
+          "case9_state_compensation_rag_controls_online": {
+            "passed": 4,
+            "total": 5,
+            "items": {
+              "RAGC-S1": true,
+              "RAGC-S2": true,
+              "RAGC-S3": false,
+              "RAGC-N1": true,
+              "RAGC-N2": true
+            }
+          },
+          "pipeline_health_online": {
+            "passed": 6,
+            "total": 6,
+            "items": {
+              "H-COMMIT": true,
+              "H-ENGINE": true,
+              "H-LAWDB": true,
+              "H-LOOKUP": true,
+              "H-MODEL": true,
+              "H-REF": true
+            }
+          }
+        },
+        "new_feature_observation": {
+          "clause_mode": "shadow",
+          "clause_count": 46,
+          "graph_nodes": 114,
+          "graph_edges": 70,
+          "graph_broken_authority_chains": 3,
+          "rag_retrieval_mode": "LEXICAL_ONLY",
+          "rag_candidate_files": 18,
+          "rag_qualified_files": 5,
+          "rag_selected_chunks": 9
+        }
+      },
+      {
+        "label": "case9_r3",
+        "report_sha256": "feaf8bf7aedac802a47d2a93105087dd630c7dbb3b919a0eccf0e5f901e29e70",
+        "state": "PARTIAL_COMPLETED",
+        "worker_profile": false,
+        "prompt_version": "v0.2",
+        "reference": {
+          "status": "READY",
+          "read_completeness": "READY_WITH_UNREADABLE",
+          "snapshot_hash": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+          "files_indexed": 41,
+          "files_seen": 41,
+          "pages_total": 8823,
+          "completed_pages": 8807,
+          "confirmed_unreadable_pages": 16,
+          "confirmed_unreadable_by_cause": {
+            "OCR_LOW_QUALITY": 16
+          }
+        },
+        "scores": {
+          "case9_state_compensation_online": {
+            "passed": 23,
+            "total": 23,
+            "items": {
+              "AI-1": true,
+              "AI-2": true,
+              "AI-3": true,
+              "AI-4": true,
+              "EX-1": true,
+              "EX-2": true,
+              "EX-2s": true,
+              "TMP-1": true,
+              "LEG-1": true,
+              "LEG-2": true,
+              "INJ-1": true,
+              "FA-1": true,
+              "FP-1": true,
+              "RAG-1": true,
+              "RAG-2": true,
+              "PII-K1": true,
+              "PII-K2": true,
+              "PII-K3": true,
+              "PII-K4": true,
+              "PII-K5": true,
+              "PII-K6": true,
+              "PII-K7": true,
+              "PII-K8": true
+            }
+          },
+          "case9_state_compensation_health_online": {
+            "passed": 1,
+            "total": 1,
+            "items": {
+              "H-LOOKUP-C9": true
+            }
+          },
+          "case9_state_compensation_rag_controls_online": {
+            "passed": 4,
+            "total": 5,
+            "items": {
+              "RAGC-S1": true,
+              "RAGC-S2": true,
+              "RAGC-S3": false,
+              "RAGC-N1": true,
+              "RAGC-N2": true
+            }
+          },
+          "pipeline_health_online": {
+            "passed": 6,
+            "total": 6,
+            "items": {
+              "H-COMMIT": true,
+              "H-ENGINE": true,
+              "H-LAWDB": true,
+              "H-LOOKUP": true,
+              "H-MODEL": true,
+              "H-REF": true
+            }
+          }
+        },
+        "new_feature_observation": {
+          "clause_mode": "shadow",
+          "clause_count": 46,
+          "graph_nodes": 114,
+          "graph_edges": 70,
+          "graph_broken_authority_chains": 3,
+          "rag_retrieval_mode": "LEXICAL_ONLY",
+          "rag_candidate_files": 18,
+          "rag_qualified_files": 5,
+          "rag_selected_chunks": 9
+        }
+      },
+      {
+        "label": "case9_r4",
+        "report_sha256": "32adbdd45f94317bac92a500dbc6a1166034739e5bcf96cd5601f5e9f3687569",
+        "state": "PARTIAL_COMPLETED",
+        "worker_profile": false,
+        "prompt_version": "v0.2",
+        "reference": {
+          "status": "READY",
+          "read_completeness": "READY_WITH_UNREADABLE",
+          "snapshot_hash": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+          "files_indexed": 41,
+          "files_seen": 41,
+          "pages_total": 8823,
+          "completed_pages": 8807,
+          "confirmed_unreadable_pages": 16,
+          "confirmed_unreadable_by_cause": {
+            "OCR_LOW_QUALITY": 16
+          }
+        },
+        "scores": {
+          "case9_state_compensation_online": {
+            "passed": 23,
+            "total": 23,
+            "items": {
+              "AI-1": true,
+              "AI-2": true,
+              "AI-3": true,
+              "AI-4": true,
+              "EX-1": true,
+              "EX-2": true,
+              "EX-2s": true,
+              "TMP-1": true,
+              "LEG-1": true,
+              "LEG-2": true,
+              "INJ-1": true,
+              "FA-1": true,
+              "FP-1": true,
+              "RAG-1": true,
+              "RAG-2": true,
+              "PII-K1": true,
+              "PII-K2": true,
+              "PII-K3": true,
+              "PII-K4": true,
+              "PII-K5": true,
+              "PII-K6": true,
+              "PII-K7": true,
+              "PII-K8": true
+            }
+          },
+          "case9_state_compensation_health_online": {
+            "passed": 1,
+            "total": 1,
+            "items": {
+              "H-LOOKUP-C9": true
+            }
+          },
+          "case9_state_compensation_rag_controls_online": {
+            "passed": 4,
+            "total": 5,
+            "items": {
+              "RAGC-S1": true,
+              "RAGC-S2": true,
+              "RAGC-S3": false,
+              "RAGC-N1": true,
+              "RAGC-N2": true
+            }
+          },
+          "pipeline_health_online": {
+            "passed": 6,
+            "total": 6,
+            "items": {
+              "H-COMMIT": true,
+              "H-ENGINE": true,
+              "H-LAWDB": true,
+              "H-LOOKUP": true,
+              "H-MODEL": true,
+              "H-REF": true
+            }
+          }
+        },
+        "new_feature_observation": {
+          "clause_mode": "shadow",
+          "clause_count": 46,
+          "graph_nodes": 114,
+          "graph_edges": 70,
+          "graph_broken_authority_chains": 3,
+          "rag_retrieval_mode": "LEXICAL_ONLY",
+          "rag_candidate_files": 18,
+          "rag_qualified_files": 5,
+          "rag_selected_chunks": 9
+        }
+      }
+    ],
+    "ready_repeat": {
+      "runs": 3,
+      "commits": [
+        "684f3469028dc38e539345501191cc7c9832b13a"
+      ],
+      "same_condition": true,
+      "condition_status": "SAME",
+      "different_conditions": [],
+      "missing_conditions": [],
+      "comparable_agreement": 1.0,
+      "verdict_counts": {
+        "AI_PARTIAL_GENERATION": 3
+      },
+      "agreement": 1.0,
+      "modal_verdict": "AI_PARTIAL_GENERATION",
+      "uncertain_runs": 0,
+      "expected_ratio": 1.0,
+      "provider_score_range": {
+        "anthropic": [
+          0.55,
+          0.55,
+          1
+        ],
+        "gemini": [
+          0.65,
+          0.75,
+          3
+        ],
+        "openai": [
+          0.76,
+          0.86,
+          3
+        ]
+      }
+    },
+    "target_support_chunk_observation": [
+      {
+        "run": "case9_r2",
+        "target_file_rows": [
+          {
+            "candidate_chunks": 1,
+            "qualified_chunks": 1,
+            "delivered_chunks": 1
+          }
+        ]
+      },
+      {
+        "run": "case9_r3",
+        "target_file_rows": [
+          {
+            "candidate_chunks": 1,
+            "qualified_chunks": 1,
+            "delivered_chunks": 1
+          }
+        ]
+      },
+      {
+        "run": "case9_r4",
+        "target_file_rows": [
+          {
+            "candidate_chunks": 1,
+            "qualified_chunks": 1,
+            "delivered_chunks": 1
+          }
+        ]
+      }
+    ]
+  },
+  "features": {
+    "table_grid": {
+      "input_sha256": "c8f9a65b571d11caaa45c0436cf069d14f18354d338870aa4b4721f60aed3f2c",
+      "table_count": 2,
+      "arithmetic_mismatch_count": 1,
+      "model_calls": 9
+    },
+    "tk180": {
+      "visible": {
+        "passed": 1,
+        "total": 1
+      },
+      "metadata": {
+        "passed": 1,
+        "total": 1
+      },
+      "hidden": {
+        "passed": 1,
+        "total": 1
+      },
+      "encoded": {
+        "passed": 1,
+        "total": 1
+      },
+      "normal": {
+        "passed": 5,
+        "total": 5
+      }
+    },
+    "reference_ui": {
+      "visible": true,
+      "readable_label": true,
+      "ocr_low_quality_count": 1,
+      "mentions_unreadable": true,
+      "page_errors": []
+    },
+    "live_source": {
+      "workflow_run": 44906110384,
+      "status": "failure",
+      "legal_checks_ok": 5,
+      "legal_checks_total": 6,
+      "academic_checks_ok": 2,
+      "academic_checks_total": 4,
+      "default_llm_ok": 3,
+      "default_llm_total": 3
+    },
+    "live_integration": {
+      "workflow_run": 44908014518,
+      "status": "success",
+      "passed_checks": [
+        "J2",
+        "R10",
+        "G1",
+        "J1",
+        "R4",
+        "R3",
+        "R6"
+      ]
+    }
+  },
+  "cleanup": {
+    "project_count": 8,
+    "trash_verified_count": 8,
+    "archive_sha256": "93ea97c637282d930e5d8a3fb0332bb1ac667cc23bea9f9e79e16089caf90de3",
+    "permanent_purge": false
+  }
+}

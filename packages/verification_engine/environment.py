@@ -127,9 +127,110 @@ def preflight(settings: Any = None, registry: Any = None, router: Any = None) ->
         "missing_required": missing,
         "incomparable_areas": [area for name in missing for area in AREAS[name]],
         "runtime": _runtime_info(),
+        "next_gen_features": next_gen_feature_diagnostics(settings),
     }
     environment["fingerprint"] = fingerprint(environment)
     return environment
+
+
+def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
+    """차세대 실행 경로의 유효 설정·활성 어댑터·폴백 사유를 비밀값 없이 반환한다(TK-223)."""
+    from packages.common.config import get_settings
+
+    settings = settings or get_settings()
+    clause_mode = (
+        os.getenv("LV_CLAUSE_NORMALIZER_MODE")
+        or getattr(settings, "use_clause_normalizer", "default")
+        or "default"
+    ).strip().lower()
+    nli_mode = str(getattr(settings, "legal_nli_mode", "shadow") or "shadow").strip().lower()
+    graph_mode = str(getattr(settings, "evidence_graph_mode", "default") or "default").strip().lower()
+
+    ocr_engine = (os.getenv("LV_OCR_FALLBACK_ENGINE") or "none").strip().lower()
+    ocr_mode = (
+        os.getenv("LV_OCR_FALLBACK_MODE")
+        or ("auto" if ocr_engine != "none" else "off")
+    ).strip().lower()
+    ocr_available = False
+    if ocr_engine != "none":
+        try:
+            from packages.document_engine.ocr import _build_optional_fallback
+            fb = _build_optional_fallback(ocr_engine)
+            ocr_available = bool(fb is not None and getattr(fb, "available", False))
+        except Exception:
+            ocr_available = False
+    ocr_reason = None if ocr_available else ("NOT_CONFIGURED" if ocr_engine == "none" else "ENGINE_UNAVAILABLE")
+
+    rag_flag = bool(getattr(settings, "rag_hybrid_semantic", True))
+    rag_env_mode = (os.getenv("LV_RAG_RETRIEVAL_MODE") or "").strip().upper()
+    dense_enabled = bool(os.getenv("LV_EMBEDDING_MODEL") or os.getenv("LV_RAG_EMBEDDING_ENDPOINT"))
+    reranker_enabled = bool(os.getenv("LV_RERANKER_MODEL") or os.getenv("LV_RAG_RERANKER_ENDPOINT"))
+    if not rag_flag or rag_env_mode == "LEXICAL_ONLY":
+        rag_configured = "LEXICAL_ONLY"
+        rag_effective = "LEXICAL_ONLY"
+        rag_reason: Optional[str] = "HYBRID_DISABLED_BY_FLAG"
+    else:
+        rag_configured = "HYBRID"
+        if dense_enabled:
+            rag_effective = "HYBRID"
+            rag_reason = None
+        else:
+            rag_effective = "LEXICAL_ONLY"
+            rag_reason = "NO_EMBEDDING_ADAPTER_CONFIGURED"
+
+    try:
+        from packages.source_adapters.cassette import get_replay_mode
+        cassette_mode = get_replay_mode()
+    except Exception:
+        cassette_mode = (os.getenv("LV_SOURCE_REPLAY_MODE") or "LIVE").strip().upper()
+        if cassette_mode not in ("LIVE", "RECORD", "REPLAY"):
+            cassette_mode = "LIVE"
+
+    local_providers: List[Dict[str, Any]] = []
+    for name, cfg in sorted((getattr(settings, "providers", {}) or {}).items()):
+        if getattr(cfg, "kind", "") == "local" and getattr(cfg, "enabled", False):
+            local_providers.append({
+                "name": name,
+                "model": getattr(cfg, "model", ""),
+                "enabled": True,
+                "endpoint_configured": bool(getattr(cfg, "base_url", None) or os.getenv("LV_LOCAL_LLM_URL")),
+            })
+    local_backend = (os.getenv("LV_LOCAL_LLM_BACKEND") or "openai_compat").strip().lower()
+
+    return {
+        "feature_modes": {
+            "clause_normalizer_mode": clause_mode,
+            "legal_nli_mode": nli_mode,
+            "evidence_graph_mode": graph_mode,
+            "ocr_fallback_mode": ocr_mode,
+            "rag_retrieval_mode": rag_effective,
+            "source_replay_mode": cassette_mode,
+        },
+        "rag": {
+            "configured_mode": rag_configured,
+            "effective_mode": rag_effective,
+            "dense_enabled": dense_enabled,
+            "reranker_enabled": reranker_enabled,
+            "fallback_reason": rag_reason,
+        },
+        "ocr_fallback": {
+            "engine": ocr_engine,
+            "mode": ocr_mode,
+            "available": ocr_available,
+            "fallback_reason": ocr_reason,
+        },
+        "source_cassette": {
+            "mode": cassette_mode,
+            "cassette_dir_configured": bool((os.getenv("LV_SOURCE_CASSETTE_DIR") or "").strip()),
+            "allow_network": os.getenv("LV_ALLOW_NETWORK", "1") != "0",
+        },
+        "local_llm": {
+            "registered": bool(local_providers),
+            "provider_count": len(local_providers),
+            "backend": local_backend,
+            "providers": local_providers,
+        },
+    }
 
 
 def fingerprint(environment: Dict[str, Any]) -> str:

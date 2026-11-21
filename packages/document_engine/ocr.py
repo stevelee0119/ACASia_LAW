@@ -222,6 +222,119 @@ class TesseractOCRAdapter(OCRAdapter):
         return lines
 
 
+def _adapter_version(adapter: Optional[OCRAdapter]) -> Optional[str]:
+    if adapter is None:
+        return None
+    ver = getattr(adapter, "version", None)
+    if ver:
+        return str(ver)
+    pkg_map = {
+        "rapidocr": "rapidocr-onnxruntime",
+        "paddleocr": "paddleocr",
+        "tesseract": "pytesseract",
+    }
+    pkg = pkg_map.get(str(getattr(adapter, "name", "") or "").lower())
+    if pkg:
+        try:
+            from importlib.metadata import version as pkg_version
+
+            return str(pkg_version(pkg))
+        except Exception:
+            return None
+    return None
+
+
+def build_ocr_page_telemetry(adapter: Any, quality: dict, *, page: Optional[int] = None) -> dict:
+    """Return sanitized per-page OCR fallback telemetry for reports and diagnostics."""
+    route = getattr(adapter, "last_route", None) if adapter is not None else None
+    if isinstance(route, dict) and route.get("decision_reason"):
+        telemetry = {
+            "primary_engine": route.get("primary_engine"),
+            "primary_version": route.get("primary_version"),
+            "primary_confidence": route.get("primary_confidence"),
+            "fallback_attempted": bool(route.get("fallback_attempted")),
+            "fallback_adopted": bool(route.get("fallback_adopted")),
+            "fallback_engine": route.get("fallback_engine"),
+            "fallback_version": route.get("fallback_version"),
+            "fallback_confidence": route.get("fallback_confidence"),
+            "fallback_error": route.get("fallback_error"),
+            "decision_reason": route.get("decision_reason"),
+            "selected_engine": route.get("selected_engine") or route.get("selected"),
+            "selected_version": route.get("selected_version"),
+            "selected_confidence": route.get("selected_confidence"),
+        }
+    else:
+        engine_name = getattr(adapter, "name", None) or "unknown"
+        engine_ver = _adapter_version(adapter)
+        conf = round(float((quality or {}).get("confidence") or 0.0), 3)
+        low_q = bool((quality or {}).get("low_quality")) or not int((quality or {}).get("lines") or 0)
+        telemetry = {
+            "primary_engine": engine_name,
+            "primary_version": engine_ver,
+            "primary_confidence": conf,
+            "fallback_attempted": False,
+            "fallback_adopted": False,
+            "fallback_engine": None,
+            "fallback_version": None,
+            "fallback_confidence": None,
+            "fallback_error": None,
+            "decision_reason": "FALLBACK_NOT_CONFIGURED" if low_q else "PRIMARY_QUALITY_SUFFICIENT",
+            "selected_engine": engine_name,
+            "selected_version": engine_ver,
+            "selected_confidence": conf,
+        }
+    if page is not None:
+        telemetry["page"] = int(page)
+    return telemetry
+
+
+def summarize_ocr_fallback_telemetry(per_page: dict[str, dict]) -> dict:
+    """Aggregate per-page OCR fallback telemetry without exposing secrets or raw text."""
+    attempted_pages: list[int] = []
+    adopted_pages: list[int] = []
+    rejected_pages: list[int] = []
+    failed_pages: list[int] = []
+    unconfigured_pages: list[int] = []
+    sufficient_pages: list[int] = []
+    engines: dict[str, Optional[str]] = {}
+    reason_counts: dict[str, int] = {}
+    for page_key, item in sorted((per_page or {}).items(), key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 0):
+        if not isinstance(item, dict):
+            continue
+        pno = int(item.get("page") if item.get("page") is not None else page_key) if str(page_key).isdigit() or item.get("page") is not None else None
+        reason = str(item.get("decision_reason") or "")
+        if reason:
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+        if item.get("primary_engine"):
+            engines[str(item["primary_engine"])] = item.get("primary_version")
+        if item.get("fallback_engine"):
+            engines[str(item["fallback_engine"])] = item.get("fallback_version")
+        if item.get("fallback_attempted") and pno is not None:
+            attempted_pages.append(pno)
+        if item.get("fallback_adopted") and pno is not None:
+            adopted_pages.append(pno)
+        elif reason in ("FALLBACK_NOT_IMPROVED", "FALLBACK_EMPTY") and pno is not None:
+            rejected_pages.append(pno)
+        elif reason == "FALLBACK_FAILED" and pno is not None:
+            failed_pages.append(pno)
+        elif reason in ("FALLBACK_NOT_CONFIGURED", "FALLBACK_UNAVAILABLE") and pno is not None:
+            unconfigured_pages.append(pno)
+        elif reason == "PRIMARY_QUALITY_SUFFICIENT" and pno is not None:
+            sufficient_pages.append(pno)
+    return {
+        "total_pages": len(per_page or {}),
+        "attempted_pages": attempted_pages,
+        "adopted_pages": adopted_pages,
+        "rejected_pages": rejected_pages,
+        "failed_pages": failed_pages,
+        "unconfigured_pages": unconfigured_pages,
+        "sufficient_pages": sufficient_pages,
+        "reason_counts": reason_counts,
+        "engines": engines,
+        "pages": dict(per_page or {}),
+    }
+
+
 class CompositeOCRAdapter(OCRAdapter):
     """Adaptive OCR router: runs primary adapter, checks `page_quality()`, and falls back only on low quality."""
 
@@ -234,61 +347,135 @@ class CompositeOCRAdapter(OCRAdapter):
         self.last_error: Optional[str] = None
         self.last_route: dict = {}
 
-    def recognize(self, path: str, page_numbers: Optional[List[int]] = None) -> List[OCRLine]:
+    def _route(self, pri_fn, fb_fn) -> List[OCRLine]:
         self.last_error = None
         lines: List[OCRLine] = []
         pri_err: Optional[str] = None
         if self.primary.available:
             try:
-                lines = self.primary.recognize(path, page_numbers=page_numbers)
+                lines = pri_fn()
                 pri_err = getattr(self.primary, "last_error", None)
             except Exception as exc:
                 lines = []
                 pri_err = type(exc).__name__
         q_pri = page_quality(lines)
-        if self.fallback and self.fallback.available and (not lines or q_pri["low_quality"] or pri_err):
-            try:
-                fb_lines = self.fallback.recognize(path, page_numbers=page_numbers)
-            except Exception:
-                fb_lines = []
-            q_fb = page_quality(fb_lines)
-            if _fallback_improved(lines, q_pri, fb_lines, q_fb):
-                self.last_route = {"selected": self.fallback.name, "primary": q_pri, "fallback": q_fb}
-                return fb_lines
-            self.last_route = {"selected": self.primary.name, "primary": q_pri, "fallback": q_fb}
+        pri_ver = _adapter_version(self.primary)
+        fb_ver = _adapter_version(self.fallback)
+        needs_fallback = bool(not lines or q_pri["low_quality"] or pri_err)
+
+        if not needs_fallback:
             self.last_error = pri_err
+            self.last_route = {
+                "selected": self.primary.name,
+                "primary": q_pri,
+                "primary_engine": self.primary.name,
+                "primary_version": pri_ver,
+                "primary_confidence": round(float(q_pri.get("confidence") or 0.0), 3),
+                "primary_error": pri_err,
+                "fallback_attempted": False,
+                "fallback_adopted": False,
+                "fallback_engine": self.fallback.name if self.fallback else None,
+                "fallback_version": fb_ver,
+                "fallback_confidence": None,
+                "fallback_error": None,
+                "decision_reason": "PRIMARY_QUALITY_SUFFICIENT",
+                "selected_engine": self.primary.name,
+                "selected_version": pri_ver,
+                "selected_confidence": round(float(q_pri.get("confidence") or 0.0), 3),
+            }
             return lines
+
+        if self.fallback is None or not self.fallback.available:
+            reason = "FALLBACK_NOT_CONFIGURED" if self.fallback is None else "FALLBACK_UNAVAILABLE"
+            self.last_error = pri_err
+            self.last_route = {
+                "selected": self.primary.name,
+                "primary": q_pri,
+                "primary_engine": self.primary.name,
+                "primary_version": pri_ver,
+                "primary_confidence": round(float(q_pri.get("confidence") or 0.0), 3),
+                "primary_error": pri_err,
+                "fallback_attempted": False,
+                "fallback_adopted": False,
+                "fallback_engine": self.fallback.name if self.fallback else None,
+                "fallback_version": fb_ver,
+                "fallback_confidence": None,
+                "fallback_error": None,
+                "decision_reason": reason,
+                "selected_engine": self.primary.name,
+                "selected_version": pri_ver,
+                "selected_confidence": round(float(q_pri.get("confidence") or 0.0), 3),
+            }
+            return lines
+
+        fb_lines: List[OCRLine] = []
+        fb_err: Optional[str] = None
+        try:
+            fb_lines = fb_fn()
+            fb_err = getattr(self.fallback, "last_error", None)
+        except Exception as exc:
+            fb_lines = []
+            fb_err = type(exc).__name__
+        q_fb = page_quality(fb_lines)
+        fb_conf = round(float(q_fb.get("confidence") or 0.0), 3)
+
+        if not fb_err and _fallback_improved(lines, q_pri, fb_lines, q_fb):
+            self.last_error = None
+            self.last_route = {
+                "selected": self.fallback.name,
+                "primary": q_pri,
+                "fallback": q_fb,
+                "primary_engine": self.primary.name,
+                "primary_version": pri_ver,
+                "primary_confidence": round(float(q_pri.get("confidence") or 0.0), 3),
+                "primary_error": pri_err,
+                "fallback_attempted": True,
+                "fallback_adopted": True,
+                "fallback_engine": self.fallback.name,
+                "fallback_version": fb_ver,
+                "fallback_confidence": fb_conf,
+                "fallback_error": None,
+                "decision_reason": "FALLBACK_IMPROVED_QUALITY",
+                "selected_engine": self.fallback.name,
+                "selected_version": fb_ver,
+                "selected_confidence": fb_conf,
+            }
+            return fb_lines
+
+        reason = "FALLBACK_FAILED" if fb_err else ("FALLBACK_EMPTY" if not fb_lines else "FALLBACK_NOT_IMPROVED")
         self.last_error = pri_err
-        self.last_route = {"selected": self.primary.name, "primary": q_pri}
+        self.last_route = {
+            "selected": self.primary.name,
+            "primary": q_pri,
+            "fallback": q_fb,
+            "primary_engine": self.primary.name,
+            "primary_version": pri_ver,
+            "primary_confidence": round(float(q_pri.get("confidence") or 0.0), 3),
+            "primary_error": pri_err,
+            "fallback_attempted": True,
+            "fallback_adopted": False,
+            "fallback_engine": self.fallback.name,
+            "fallback_version": fb_ver,
+            "fallback_confidence": fb_conf,
+            "fallback_error": fb_err,
+            "decision_reason": reason,
+            "selected_engine": self.primary.name,
+            "selected_version": pri_ver,
+            "selected_confidence": round(float(q_pri.get("confidence") or 0.0), 3),
+        }
         return lines
 
+    def recognize(self, path: str, page_numbers: Optional[List[int]] = None) -> List[OCRLine]:
+        return self._route(
+            lambda: self.primary.recognize(path, page_numbers=page_numbers),
+            lambda: self.fallback.recognize(path, page_numbers=page_numbers),  # type: ignore[union-attr]
+        )
+
     def recognize_image(self, image: Any, *, page: int = 1, scale: float = 1.0, **kwargs: Any) -> List[OCRLine]:
-        self.last_error = None
-        lines: List[OCRLine] = []
-        pri_err: Optional[str] = None
-        if self.primary.available:
-            try:
-                lines = self.primary.recognize_image(image, page=page, scale=scale, **kwargs)
-                pri_err = getattr(self.primary, "last_error", None)
-            except Exception as exc:
-                lines = []
-                pri_err = type(exc).__name__
-        q_pri = page_quality(lines)
-        if self.fallback and self.fallback.available and (not lines or q_pri["low_quality"] or pri_err):
-            try:
-                fb_lines = self.fallback.recognize_image(image, page=page, scale=scale)
-            except Exception:
-                fb_lines = []
-            q_fb = page_quality(fb_lines)
-            if _fallback_improved(lines, q_pri, fb_lines, q_fb):
-                self.last_route = {"selected": self.fallback.name, "primary": q_pri, "fallback": q_fb}
-                return fb_lines
-            self.last_route = {"selected": self.primary.name, "primary": q_pri, "fallback": q_fb}
-            self.last_error = pri_err
-            return lines
-        self.last_error = pri_err
-        self.last_route = {"selected": self.primary.name, "primary": q_pri}
-        return lines
+        return self._route(
+            lambda: self.primary.recognize_image(image, page=page, scale=scale, **kwargs),
+            lambda: self.fallback.recognize_image(image, page=page, scale=scale),  # type: ignore[union-attr]
+        )
 
 
 def _quality_rank(q: dict) -> tuple[bool, float, float, int]:

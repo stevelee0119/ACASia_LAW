@@ -600,9 +600,53 @@
   "rer": 0.0,
   "decided_by": "Codex 평가 세션 (사용자 진행 지시)",
   "decided_at": "2026-11-21",
-  "release_status": "CANDIDATE_VERIFIED_AWAITING_VERSION_COMMIT",
-  "release_commit": null,
-  "release_tag": null,
-  "deployment_evidence": null
+  "release_status": "DEPLOYED_ONLINE_EVALUATED",
+  "release_commit": "684f3469028dc38e539345501191cc7c9832b13a",
+  "release_tag": "v.0.24.0",
+  "deployment_evidence": "docs/scorecards/release_024_deployment_20261121.json",
+  "online_eval_20261121": {
+   "deployed_commit": "684f3469028dc38e539345501191cc7c9832b13a",
+   "verdict": "기록 수용. case9 OFF 4회 모두 23/23(회귀 0), READY_WITH_UNREADABLE 41/41(8,807/8,823쪽, OCR_LOW_QUALITY 16), 공통 건강 r2~r4 6/6, AI 반복 3회 일치율 1.0(SAME), INJ-1 4/4·공격 4/4·정상 기준자료 5/5, live_integration 7/7 성공. RAGC-S3 연속 실패(미해소).",
+   "unmeasured": [
+    "Hybrid RAG Dense·Reranker 성능 (LEXICAL_ONLY 관측)",
+    "Legal NLI Stage 2 및 ClauseNormalizer assist 효과",
+    "적응형 OCR 폴백 및 저품질 16쪽 재색인 개선",
+    "로컬 LLM·Source 카세트 RECORD/REPLAY",
+    "Evidence Graph 실무 타당성·TK-216 H-ENGINE·실무 법률 정확도"
+   ],
+   "record": "docs/scorecards/online_0240_20261121.md"
+  }
+ },
+ {
+  "version": "0.25.0",
+  "from": "0.24.0",
+  "level": "minor",
+  "basis": [
+   "added",
+   "fixed",
+   "performance_patch"
+  ],
+  "measured_commit": "02d3a5c0e312c5f8139bcf11e52ac1c9836c1f83",
+  "conditions": {
+   "network": false,
+   "python": "3.11 (GitHub Actions)",
+   "tesseract": "5.3.4 kor/eng",
+   "os": "Linux (GitHub Actions)",
+   "baseline_commit": "684f3469028dc38e539345501191cc7c9832b13a",
+   "scoring": "CI 점수 하락 게이트 및 은퇴 세트 비교(PR #387 동일 트리 02d3a5c0, run 44930911547) 기준."
+  },
+  "evidence": {
+   "M1": "dev 82.6→83.9(v2 43/56), holdout 81.9→83.3(v2 42/54); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 합산 RER 7.61%(dev 7.47%, holdout 7.73%).",
+   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+   "M3": "은퇴 5세트 후퇴 0(sealed_20261008b 48.6→50.0 v2 25/54, 나머지 4세트 53.3/56.9/45.8/34.1 유지, 전 세트 오탐 0·A등급 0).",
+   "M4": "포함 PR #383(TK-221)~#387(TK-224): ClauseNormalizer 승격·메타/논리/증거/AI 탐지 일반화, 실행 경로 진단 가시성(/api/diagnostics·run_manifest), 전달 청크 SUPPORTS 보강(RAGC-S3), OCR 폴백 텔레메트리·재색인 델타, law_go_kr 정규화 진단 및 학술 Source 오류 원인 분리.",
+   "CI": "PR #387(e4757ee5 / 병합 02d3a5c0) 필수 CI 11개 전수 통과(점수 하락 게이트, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis).",
+   "open_p1_regression": 0,
+   "unmeasured": "격리 봉인 세트, 운영 온라인 실측(Hybrid RAG Dense·Reranker, Legal NLI Stage 2, 운영 OCR 폴백 채택, 로컬 LLM·카세트 RECORD/REPLAY, RAGC-S3 운영 재현, 실무 법률 정확도).",
+   "record": "docs/scorecards/release_025_candidate_20261121.md"
+  },
+  "rer": 0.0761,
+  "decided_by": "Antigravity 평가 세션 (사용자 릴리스 진행 지시)",
+  "decided_at": "2026-11-21"
  }
 ]

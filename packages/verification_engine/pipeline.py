@@ -263,6 +263,43 @@ def execution_summary(log):
     return summary
 
 
+def _summarize_legal_nli(documents: List[DocumentResult], *, mode: str = "shadow") -> Dict[str, Any]:
+    """보고서 매니페스트용 Stage 2 Legal NLI 실행 건수·원문 확보 현황 집계 (TK-223, 비밀값·원문 미포함)."""
+    executed_count = 0
+    assisted_count = 0
+    full_text_available_count = 0
+    full_text_missing_count = 0
+    verdict_counts: Dict[str, int] = {}
+
+    for doc in documents:
+        verdicts = (getattr(doc, "engine_data", None) or {}).get("legal_verdicts") or []
+        for v in verdicts:
+            vtype = str(v.get("type") or "")
+            review = v.get("review") or {}
+            official = v.get("official_record") or {}
+            if vtype in ("CASE", "CONSTITUTIONAL", "CitationType.CASE", "CitationType.CONSTITUTIONAL"):
+                if official.get("full_text"):
+                    full_text_available_count += 1
+                else:
+                    full_text_missing_count += 1
+            stage2 = review.get("stage2_nli")
+            if isinstance(stage2, dict) and stage2:
+                executed_count += 1
+                nli_verdict = str(stage2.get("verdict") or "UNKNOWN")
+                verdict_counts[nli_verdict] = verdict_counts.get(nli_verdict, 0) + 1
+            if review.get("stage2_nli_assisted"):
+                assisted_count += 1
+
+    return {
+        "mode": mode,
+        "executed_count": executed_count,
+        "assisted_count": assisted_count,
+        "full_text_available_count": full_text_available_count,
+        "full_text_missing_count": full_text_missing_count,
+        "verdict_counts": verdict_counts,
+    }
+
+
 def source_lookup_summary(documents: List[DocumentResult]) -> Dict[str, Any]:
     """공식 DB(출처)별 조회 수·HTTP 시도·캐시 적중·상태별 건수·소요 시간 실행 단위 집계 (TK-78).
 
@@ -710,14 +747,24 @@ class VerificationPipeline:
         result.model_executions = [execution for d in result.documents
                                    for execution in d.engine_data.get("model_executions", [])]
         result.scores = aggregate_scores(result)
+        env_info = preflight(self.settings, self.registry, self.router)
         result.run_manifest = manifest.to_dict(versions={
             "program": self.settings.version, "rule": self.settings.rule_version,
             "prompt": self.settings.prompt_version, "model_config": self.settings.model_config_version()},
-            environment=preflight(self.settings, self.registry, self.router))
+            environment=env_info)
         result.run_manifest["reference_library"] = references.summary
         result.run_manifest["reference_library"]["health"] = reference_health(
             references.summary, result.documents, self.settings)
         result.run_manifest["source_lookup_summary"] = source_lookup_summary(result.documents)
+        result.run_manifest["legal_nli_summary"] = _summarize_legal_nli(
+            result.documents, mode=str(getattr(self.settings, "legal_nli_mode", "shadow") or "shadow").strip().lower()
+        )
+        next_gen_diag = env_info.get("next_gen_features") or {}
+        result.run_manifest["source_cassette"] = next_gen_diag.get("source_cassette") or {}
+        rag_diag = dict(next_gen_diag.get("rag") or {})
+        if references.summary.get("retrieval_mode"):
+            rag_diag["effective_mode"] = references.summary.get("retrieval_mode")
+        result.run_manifest["rag_retrieval_diagnostics"] = rag_diag
         result.timeline = build_timeline(
             [e for d in result.documents for e in _events_from(d)]
         )
@@ -815,6 +862,9 @@ class VerificationPipeline:
         missing_pages = [item for item in coverage if item["status"] == "UNVERIFIED"]
         attempted = doc.structure.get("ocr_attempted_pages") or []
         failures = doc.structure.get("ocr_failures") or {}
+        ocr_fallback_summary = doc.structure.get("ocr_fallback_summary")
+        if ocr_fallback_summary:
+            result.engine_data["ocr_fallback_summary"] = ocr_fallback_summary
         with manifest.stage("ocr", result.findings, inputs=len(attempted) or len(ocr_pages), unit="쪽(본문 OCR)",
                             document_id=document.document_id) as stage:
             if not ocr_pages and not attempted:
@@ -824,11 +874,19 @@ class VerificationPipeline:
             if failures:
                 # 실행했으나 읽지 못한 쪽(시간 초과·엔진 오류·신뢰도 미달). 그 쪽은 미검증으로 남는다.
                 stage.error = "OCR 실패: " + ", ".join(f"{page}면 {reason}" for page, reason in sorted(failures.items()))
-            stage.note = f"저품질 {len(low_pages)}쪽" if low_pages else None
+            note_parts = []
+            if low_pages:
+                note_parts.append(f"저품질 {len(low_pages)}쪽")
+            if ocr_fallback_summary and ocr_fallback_summary.get("attempted_pages"):
+                note_parts.append(
+                    f"폴백 시도 {len(ocr_fallback_summary['attempted_pages'])}쪽(채택 {len(ocr_fallback_summary.get('adopted_pages') or [])}쪽)"
+                )
+            stage.note = ", ".join(note_parts) if note_parts else None
         if low_pages:
             pages = ", ".join(str(item["page"]) for item in low_pages[:20])
             reasons = "; ".join(f"{item['page']}면 " + ", ".join((item.get("ocr_quality") or {}).get("reasons") or [])
                                 for item in low_pages[:5])
+            fb_features = {str(i["page"]): i.get("ocr_fallback") for i in low_pages if i.get("ocr_fallback")}
             result.findings.append(Finding.create(
                 type=FindingType.OCR_LOW_QUALITY, status=VerificationStatus.UNVERIFIED, severity=Severity.MEDIUM,
                 evidence_grade=EvidenceGrade.U,
@@ -837,7 +895,8 @@ class VerificationPipeline:
                         "했지만, 이 쪽에 대한 '결함 없음'은 결론이 아니라 '확인하지 못함'이다. 원본 대조나 더 선명한 "
                         "스캔으로 다시 검증해야 한다."),
                 confidence=0.9, confidence_features={"pages": [item["page"] for item in low_pages],
-                                                     "ocr_quality": {str(i["page"]): i.get("ocr_quality") for i in low_pages}},
+                                                     "ocr_quality": {str(i["page"]): i.get("ocr_quality") for i in low_pages},
+                                                     **({"ocr_fallback": fb_features} if fb_features else {})},
                 document_id=doc.document_id, engine=ENGINE_NAME, tags=["UNVERIFIED", "OCR_QUALITY"]))
         self.audit.record(
             AuditEventType.OCR if doc.structure.get("scanned_pdf") else AuditEventType.UPLOAD,

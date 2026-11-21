@@ -656,6 +656,11 @@ class PdfParser(DocumentParser):
                     lines, quality, angle = rotated
                     coverage[raster.page_number]["rotation_corrected"] = angle
                     doc.structure.setdefault("ocr_rotation", {})[str(raster.page_number)] = angle
+            from .ocr import build_ocr_page_telemetry, summarize_ocr_fallback_telemetry
+            fallback_telemetry = build_ocr_page_telemetry(adapter, quality, page=raster.page_number)
+            if raster.page_number in missing_pages:
+                coverage[raster.page_number]["ocr_fallback"] = fallback_telemetry
+                doc.structure.setdefault("ocr_fallback_telemetry", {})[str(raster.page_number)] = fallback_telemetry
             # 신뢰도 미달 라인은 버린다. 남은 것이 없으면 그 면은 인식 실패로 취급한다.
             kept = [line for line in lines if line.confidence >= settings.ocr_min_confidence]
             if not kept:
@@ -667,12 +672,13 @@ class PdfParser(DocumentParser):
                 continue
             recognized_pages += 1
             page = next((p for p in doc.pages if p.page_number == raster.page_number), None)
+            selected_engine = fallback_telemetry.get("selected_engine") or adapter.name
             for line in kept:
                 if raster.page_number not in missing_pages:
                     independent_parts.append(line.text)
                 if raster.page_number in missing_pages and page is not None:
                     body_parts.append(line.text)
-                    coverage[raster.page_number] .update(status="OCR_EXTRACTED", reason="")
+                    coverage[raster.page_number].update(status="OCR_EXTRACTED", reason="")
                     page.blocks.append(
                         Block(
                             block_id=new_id("B"),
@@ -680,7 +686,7 @@ class PdfParser(DocumentParser):
                             page=raster.page_number,
                             bbox=line.bbox,
                             source_layer="ocr_layer",
-                            attributes={"ocr_confidence": round(line.confidence, 3), "ocr_engine": adapter.name},
+                            attributes={"ocr_confidence": round(line.confidence, 3), "ocr_engine": selected_engine},
                         )
                     )
             if raster.page_number in missing_pages:
@@ -691,6 +697,9 @@ class PdfParser(DocumentParser):
 
         # OCR을 시도한 쪽과 실패 사유. 매니페스트가 '실행하지 않음'과 '실행했으나 읽지 못함'을 구분하는 근거다.
         doc.structure["ocr_attempted_pages"] = attempted
+        if doc.structure.get("ocr_fallback_telemetry"):
+            from .ocr import summarize_ocr_fallback_telemetry as _summarize_ocr_fb
+            doc.structure["ocr_fallback_summary"] = _summarize_ocr_fb(doc.structure["ocr_fallback_telemetry"])
         if failures:
             doc.structure["ocr_failures"] = failures
         doc.structure["body_extraction_failed"] = not has_visible_text and not body_parts

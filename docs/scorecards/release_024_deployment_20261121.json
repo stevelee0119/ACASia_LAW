@@ -1,0 +1,53 @@
+{
+  "release": "0.24.0",
+  "release_pr": 377,
+  "release_commit": "684f3469028dc38e539345501191cc7c9832b13a",
+  "tag": "v.0.24.0",
+  "verified_on": "2026-11-21",
+  "verification_source": "사용자가 제공한 /api/health 응답",
+  "health": {
+    "status": "ok",
+    "app": "ACASia_LAW",
+    "version": "0.24.0",
+    "commit": "684f3469028dc38e539345501191cc7c9832b13a",
+    "principles": [
+      "Source First",
+      "Evidence First",
+      "Human Final Decision"
+    ],
+    "database": {
+      "status": "ok"
+    }
+  },
+  "release_ci": {
+    "head": "ae87795acebdfc5da75b1bd10c92b91aa8f422ee",
+    "checks": {
+      "score_gate": "success",
+      "retired_set_comparison": "success",
+      "sqlite_tests": "success",
+      "postgresql_pgvector_celery_tests": "success",
+      "docker_ocr_readiness": "success",
+      "pip_audit": "success",
+      "codeql": "success"
+    }
+  },
+  "u2_live_source_check": {
+    "run_id": 44905643700,
+    "ref": "main",
+    "with_llm": true,
+    "strict": true,
+    "conclusion": "failure",
+    "llm_cascade": "OK (anthropic claude-opus-5-5, openai gpt-6-luna, gemini gemini-4-hydrogen)",
+    "llm_consensus": "OK (3/3 providers for ai_detection and claim_validity)",
+    "preexisting_or_external_failures": [
+      "law_go_kr:사건번호조회(2015모2524) — READY 사건번호 일치 0건 (공식 DB 색인 범위, 기존과 동일)",
+      "openalex — RATE_LIMITED (공개 Source 요청한도)",
+      "semantic_scholar — RATE_LIMITED (공개 Source 요청한도)"
+    ],
+    "advisory": [
+      "gemini:gemini-2.5-flash HTTP 404 (은퇴 구형 모델)",
+      "gemini:gemini-2.5-flash-lite HTTP 404 (은퇴 구형 모델)"
+    ]
+  },
+  "online_evaluation": "PENDING_SEPARATE_SESSION"
+}
