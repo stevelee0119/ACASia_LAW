@@ -519,5 +519,16 @@
       "Added: P2·P3 표 구조(TableGrid) 복원 및 열 합계 검산 연동(#361·#371), 적응형 OCR 폴백 라우터(CompositeOCRAdapter, #367), Legal Evidence Graph 빌더·분석·중복 경고 병합 및 ReviewItem 선행 요건 목록 기본 활성화(#366·#369·#374)",
       "평가·거버넌스: 거버넌스 v3·차세대 평가 명세(#362) 및 릴리스 후 온라인 실측 + 카세트 리플레이 평가 절차 요청(#368). 오프라인 점수 순증이나 기존 결함 감소는 주장하지 않으며, 공식 DB·Drive·모델을 포함한 운영 온라인 실측 및 실무 법률 정확도·검색/주장 타당성·검토 효율은 배포 뒤 온라인 평가 계획(FEATURE_ONLINE_EVALUATION.md)에 따라 실측 예정(NOT_RUN/NOT_MEASURED)"
     ]
+  },
+  {
+    "version": "0.25.0",
+    "date": "2026-11-21",
+    "changes": [
+      "평가 측 minor 판정(0.24.0 → 0.25.0, 02d3a5c0 기준, 분류 added·fixed·performance_patch, 합산 RER 7.61%): PR #387 필수 CI 11개 전수 통과. 운영 main(684f3469) 대비 고정 dev 82.6→83.9(v2 43/56)·holdout 81.9→83.3(v2 42/54)·확인 오탐 0·A등급 오탐 0·인젝션 방어 유지, 은퇴 5세트 후퇴 0(sealed_20261008b 48.6→50.0 v2 25/54). 포함 범위 #383(TK-221)~#387(TK-224)",
+      "Added·Performance: 오프라인 메타·논리·증거·AI 탐지 일반화 개선 및 ClauseNormalizer 승격(TK-221, #383), 차세대 실행 경로 진단 가시성(next_gen_feature_diagnostics·/api/diagnostics·run_manifest, TK-223, #384)",
+      "Added: 적응형 OCR 폴백 텔레메트리 및 재색인 searchable_pages_delta 추적(TK-222, #386), 공식 Source 원응답·필터 일치 진단(TK-224, #387)",
+      "Fixed: 전달 청크 SUPPORTS 의견 생성·근거 연결 보강(RAGC-S3, TK-220, #385), law_go_kr 구분자 변형 및 2자리 연도 사건번호 정규화·AcademicSourceAdapter 429 RATE_LIMITED 원인 분리(TK-224, #387)",
+      "미측정: 격리 봉인 세트 및 운영 온라인 실측(Hybrid RAG Dense·Reranker, Legal NLI Stage 2, 운영 OCR 폴백 채택, 로컬 LLM·카세트 RECORD/REPLAY, RAGC-S3 운영 재현, 실무 법률 정확도) — 배포 후 온라인 점검 시행"
+    ]
   }
 ]

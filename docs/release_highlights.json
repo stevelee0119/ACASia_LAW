@@ -1,4 +1,10 @@
 {
+  "0.25": [
+    "Added·Performance: 오프라인 메타·논리·증거·AI 탐지 일반화 및 ClauseNormalizer 승격(TK-221, #383), 고정 dev 82.6→83.9·holdout 81.9→83.3(합산 RER 7.61%)·은퇴 08b 48.6→50.0",
+    "Added: 차세대 실행 경로 진단 API/매니페스트(TK-223, #384), 적응형 OCR 폴백 텔레메트리·재색인 델타(TK-222, #386)",
+    "Fixed: 전달 청크 SUPPORTS 의견 생성·근거 연결(TK-220, #385), law_go_kr 정규화 진단 및 학술 Source 429 RATE_LIMITED 분리(TK-224, #387)",
+    "평가·미측정: 확인 오탐 0·A등급 0·인젝션 방어 유지(PR #387 CI 11개 통과), 격리 봉인·운영 온라인 실측은 배포 후 시행"
+  ],
   "0.24": [
     "Added: P0 기반(LocalLLM 스키마·절단, Drive preindex, 공식 Source 카세트 RECORD/REPLAY, 3분류 평가 도구, #353)",
     "Added: P1 법률 절 정규화기·위임(#359·#363·#370·#373), 하이브리드 RAG Tier 1~4·적용성 필터(#360·#365), Stage 2 Legal NLI(#364·#372)",
