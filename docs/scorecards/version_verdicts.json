@@ -600,9 +600,9 @@
   "rer": 0.0,
   "decided_by": "Codex 평가 세션 (사용자 진행 지시)",
   "decided_at": "2026-11-21",
-  "release_status": "CANDIDATE_VERIFIED_AWAITING_VERSION_COMMIT",
-  "release_commit": null,
-  "release_tag": null,
-  "deployment_evidence": null
+  "release_status": "DEPLOYED_ONLINE_EVALUATION_PENDING",
+  "release_commit": "684f3469028dc38e539345501191cc7c9832b13a",
+  "release_tag": "v.0.24.0",
+  "deployment_evidence": "docs/scorecards/release_024_deployment_20261121.json"
  }
 ]
