@@ -24,6 +24,7 @@ class AdapterResponse:
     message: str = ""
     source_records: List[SourceRecord] = field(default_factory=list)
     complete: bool = False
+    diagnostics: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.source_record and not any(
@@ -102,12 +103,20 @@ class SourceAdapter(ABC):
             payload=payload if isinstance(payload, dict) else ({"data": payload} if payload is not None else {}),
         )
 
-    def _unavailable(self, query: str, status: AdapterStatus, message: str) -> AdapterResponse:
+    def _unavailable(
+        self,
+        query: str,
+        status: AdapterStatus,
+        message: str,
+        *,
+        diagnostics: Optional[Dict[str, Any]] = None,
+    ) -> AdapterResponse:
         return AdapterResponse(
             status=status,
             records=[],
             source_record=self._record(query, status),
             message=message,
+            diagnostics=dict(diagnostics or {}),
         )
 
     def _http_get(self, url: str, *, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None,
