@@ -61,4 +61,12 @@ rules:
     label: 영문 직역 및 번역투 관용구
     objective: true
     pattern: '(다각적인\s*렌즈|사법적\s*렌즈|다면적\s*렌즈|법적\s*풍경|사법적\s*지형|legal\s+landscape|조화로운\s*조망)'
+  - category: PLACEHOLDER
+    label: 미치환 초안 입력 안내 표기
+    objective: false
+    report: true
+    report_min_kinds: 2
+    min_kinds: 2
+    pattern: '(\[[가-힣A-Za-z0-9_\s]{2,20}(?:입력|기재|작성|명시|삽입|선택)\]|<[가-힣A-Za-z0-9_\s]{2,20}(?:입력|기재|작성|명시)>|\{\{[가-힣A-Za-z0-9_\s]{2,25}\}\})'
+
 

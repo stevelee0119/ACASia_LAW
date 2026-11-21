@@ -99,7 +99,7 @@ def clause_normalizer_polarity(sentence: str, span: Tuple[int, int], *, previous
 
 def polarity(sentence: str, span: Tuple[int, int], *, previous: str = "") -> str:
     """sentence에서 span(규칙이 맞힌 부분)이 작성자의 단정인지 판별한다."""
-    mode = (os.getenv("LV_CLAUSE_NORMALIZER_MODE") or "shadow").strip().lower()
+    mode = (os.getenv("LV_CLAUSE_NORMALIZER_MODE") or "default").strip().lower()
     if mode in ("canary", "default"):
         delegated, is_double_neg = _clause_normalizer_detail(sentence, span, previous=previous)
         if is_double_neg or delegated != ASSERTED:

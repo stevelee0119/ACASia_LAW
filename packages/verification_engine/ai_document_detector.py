@@ -183,10 +183,13 @@ def _rule_based_ai_detection(
     signals["impossible_case_numbers"] = [str(f.confidence_features["case_number"]) for f in impossible]
     signals["citation_errors_used_for_authorship"] = False
 
-    # 가상 판례·고시 3건 이상 미발견 + 영문 직역 번역투 또는 프롬프트 인젝션 결합 복합 정황
+    # 가상 판례·고시 다수 + 영문 직역 번역투/인젝션/객관적 잔재, 또는 성립 불가능 사건번호 2건 이상 + 문체/번역투 정황
     has_calque = any(r.category in ("TRANSLATION_CALQUE", "ENGLISH_GLOSS") for r in residues)
     has_injection_directive = bool(exclude_texts)
-    synthetic_cluster = len(unconfirmed) >= 3 and (has_calque or has_injection_directive or objective_hits >= 1)
+    synthetic_cluster = (
+        (len(unconfirmed) >= 3 and (has_calque or has_injection_directive or objective_hits >= 1))
+        or (len(impossible) >= 2 and (has_calque or has_injection_directive or style_hits >= 1 or bool(stylometry.get("stylometry_alert"))))
+    )
     if synthetic_cluster:
         score += 0.35
         signals["synthetic_citation_cluster"] = True
@@ -208,11 +211,16 @@ def _rule_based_ai_detection(
 
     # 종합 판정 도출
     #
-    # 객관적 본문 작성 흔적(objective_hits >= 1) 또는 복합 정황(synthetic_cluster)이 실존해야만 AI 판정을 도출한다.
-    # 단순 메타데이터 힌트나 마크다운 서식만으로는 AI 작성을 단정하지 않는다.
+    # 객관적 본문 작성 흔적(objective_hits >= 1), 복합 정황(synthetic_cluster), 또는
+    # 문체 통계 경고 + 개조식 나열 + 다수 문체/메타 정황이 동시에 충족될 때 AI_PARTIAL_GENERATION으로 판정한다.
+    multi_signal_cluster = (
+        bool(stylometry.get("stylometry_alert"))
+        and bool(signals.get("heavy_listing"))
+        and (style_hits >= 2 or metadata_indications)
+    )
     score = min(1.0, score)
     signals["objective_traces"] = objective_hits
-    if score >= 0.40 and (objective_hits >= 1 or synthetic_cluster):
+    if score >= 0.40 and (objective_hits >= 1 or synthetic_cluster or multi_signal_cluster):
         verdict = "AI_PARTIAL_GENERATION"
     else:
         verdict = "UNCERTAIN"

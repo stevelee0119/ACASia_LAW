@@ -199,7 +199,7 @@ class Settings:
         default_factory=lambda: (os.getenv("LV_LEGAL_NLI_MODE", "shadow") or "shadow").strip().lower()
     )
     use_clause_normalizer: str = field(
-        default_factory=lambda: (os.getenv("LV_USE_CLAUSE_NORMALIZER", "shadow") or "shadow").strip().lower()
+        default_factory=lambda: (os.getenv("LV_USE_CLAUSE_NORMALIZER", "default") or "default").strip().lower()
     )
     providers: Dict[str, ProviderConfig] = field(default_factory=dict)
     pricing: Dict[str, Any] = field(default_factory=dict)

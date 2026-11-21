@@ -59,6 +59,7 @@ FORMAT_RULE_LABELS = {
     "FMT.DATE_NOT_ON_CALENDAR": "날짜 불가능", "FMT.FUTURE_DATE": "날짜 불가능(미래 날짜)",
     "FMT.FUTURE_CASE_YEAR": "연도 불가능(미래 접수연도)", "FMT.DECIDED_BEFORE_FILED": "연도 역전",
     "FMT.COURT_CODE_MISMATCH": "법원–부호 불일치", "FMT.CODE_OUT_OF_PERIOD": "법원–부호 불일치(사용 기간 밖)",
+    "FMT.TRIAL_KIND_MISMATCH": "재판유형–부호 불일치",
 }
 QUOTE_FUZZY_THRESHOLD = 0.88
 
@@ -261,6 +262,8 @@ class LegalVerifier:
                         ids = {r.source_record_id for r in verdict.source_records}
                         verdict.source_records.extend(r for r in prior.source_records if r.source_record_id not in ids)
                         verdicts[index] = verdict
+
+        self._check_internal_citation_meta_conflicts(verdicts)
 
         for verdict in verdicts:
             if verdict.lookup.get("retryable"):
@@ -794,6 +797,81 @@ class LegalVerifier:
             if doc_kind and off_kind and doc_kind not in off_kind and off_kind not in doc_kind:
                 mismatches.append(("재판유형", citation.case_kind, off_kind))
         return mismatches
+
+    @staticmethod
+    def _check_internal_citation_meta_conflicts(verdicts: List[CitationVerdict]) -> None:
+        """같은 문서 내에서 동일 사건번호를 서로 다른 선고일·법원으로 인용한 내부 메타데이터 모순을 검출한다."""
+        from collections import defaultdict
+
+        groups: Dict[Tuple[str, str], List[CitationVerdict]] = defaultdict(list)
+        for v in verdicts:
+            c = v.citation
+            if c.type not in (CitationType.CASE, CitationType.CONSTITUTIONAL):
+                continue
+            num = re.sub(r"\s+", "", c.canonical_case_number or c.case_number or "")
+            if not num:
+                continue
+            groups[(c.document_id or "", num)].append(v)
+
+        for (_doc_id, case_num), group in groups.items():
+            if len(group) < 2:
+                continue
+            dates = sorted({
+                v.citation.decision_date for v in group
+                if v.citation.decision_date and re.fullmatch(r"\d{4}-\d{2}-\d{2}", v.citation.decision_date)
+            })
+            courts_raw = [
+                (v.citation.court, re.sub(r"\s+", "", v.citation.court))
+                for v in group if v.citation.court
+            ]
+            distinct_courts: List[Tuple[str, str]] = []
+            for raw, norm in courts_raw:
+                if not any(norm in c_norm or c_norm in norm for _, c_norm in distinct_courts):
+                    distinct_courts.append((raw, norm))
+
+            conflicts: List[str] = []
+            if len(dates) >= 2:
+                conflicts.append(f"선고일 불일치({', '.join(dates)})")
+            if len(distinct_courts) >= 2:
+                conflicts.append(f"법원 불일치({', '.join(r for r, _ in distinct_courts)})")
+            if not conflicts:
+                continue
+
+            for v in group:
+                if any(
+                    f.type in (FindingType.CASE_METADATA_MISMATCH, FindingType.INVALID_FORMAT)
+                    for f in v.findings
+                ):
+                    continue
+                detail = "; ".join(conflicts)
+                features = {
+                    "metadata_mismatch": True,
+                    "internal_meta_conflict": True,
+                    "deterministic_rule": True,
+                    "canonical_case_number": case_num,
+                    "defect_summary": detail,
+                }
+                v.findings.append(
+                    Finding.create(
+                        type=FindingType.CASE_METADATA_MISMATCH,
+                        status=VerificationStatus.SUSPICIOUS,
+                        severity=Severity.MEDIUM,
+                        evidence_grade=EvidenceGrade.B,
+                        title=f"문서 내 동일 판례 메타데이터 모순: {case_num}",
+                        detail=f"같은 문서에서 동일 사건번호({case_num})를 {detail}로 서로 다르게 기재하였다.",
+                        confidence=confidence_score(features),
+                        confidence_features=features,
+                        document_id=v.citation.document_id,
+                        block_id=v.citation.block_id,
+                        page=v.citation.page,
+                        span=v.citation.span,
+                        engine=ENGINE_NAME,
+                        tags=["LEGAL", "CASE", "INTERNAL_META_CONFLICT"],
+                    )
+                )
+                if v.status == VerificationStatus.NOT_FOUND or v.status == VerificationStatus.UNVERIFIED:
+                    v.status = VerificationStatus.SUSPICIOUS
+                break
 
     @staticmethod
     def _compare_quote(quoted: str, official_text: str) -> Tuple[str, float]:
