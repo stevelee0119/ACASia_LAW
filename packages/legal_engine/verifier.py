@@ -624,6 +624,10 @@ class LegalVerifier:
                 try:
                     from .nli_verifier import evaluate_citation_nli_stage2
                     stage2 = evaluate_citation_nli_stage2(official_text, citation.quoted_text)
+                    reversal_cats = {"NEGATION", "MODALITY", "PARTY_SWAP", "PROVISO_OMISSION", "DEGREE", "PROVISION_QUALIFIER", "NUMERIC"}
+                    if stage2.verdict == "SUPPORTED" and (level3 == "CONTRADICTED" or bool(set(diff_cats or []) & reversal_cats)):
+                        stage2.verdict = "PENDING_REVIEW"
+                        stage2.reason = "1차 대조에서 의미 반전/변형 표지가 확인되어 Stage 2 SUPPORTED를 보류합니다."
                     verdict.review["stage2_nli"] = stage2.to_dict()
                     if (
                         nli_mode == "assist"
