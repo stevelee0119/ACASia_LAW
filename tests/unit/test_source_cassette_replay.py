@@ -228,8 +228,8 @@ def test_cassette_toctou_symlink_swap_blocks_record_replay_and_root_escape(tmp_p
 
     def _swap_root(cdir):
         resolved = orig_resolve(cdir)
-        resolved.rmdir()
-        resolved.symlink_to(outside_dir)
+        swappable.rmdir()
+        swappable.symlink_to(outside_dir)
         return resolved
 
     monkeypatch.setattr(cassette_mod, "_resolve_cassette_root", _swap_root)
@@ -243,3 +243,14 @@ def test_cassette_toctou_symlink_swap_blocks_record_replay_and_root_escape(tmp_p
             cassette_dir=swappable,
         )
     assert list(outside_dir.iterdir()) == []
+
+    # 4) Reject cassette root outside allowed roots (/etc, /var, root symlink to /etc)
+    monkeypatch.undo()
+    monkeypatch.setenv("LV_SOURCE_CASSETTE_DIR", "/etc")
+    with pytest.raises(CassetteError):
+        load_cassette_response("law_go_kr", url, params=params)
+    etc_link = tmp_path / "etc_link"
+    etc_link.symlink_to("/etc")
+    monkeypatch.setenv("LV_SOURCE_CASSETTE_DIR", str(etc_link))
+    with pytest.raises(CassetteError):
+        load_cassette_response("law_go_kr", url, params=params)

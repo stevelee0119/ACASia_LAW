@@ -47,10 +47,17 @@ REDACTED_HEADER_KEYS = frozenset({
     "set-cookie",
 })
 
+import tempfile
+
 # High-risk PII patterns (RRN / Foreigner Reg No) that must never be stored in a shared test cassette.
 _HIGH_RISK_PII_RE = re.compile(r"\b\d{6}-[1-8]\d{6}\b")
 _SAFE_ADAPTER_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _SAFE_HEX_RE = re.compile(r"^[0-9a-f]{24}$")
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_CASSETTE_ALLOWED_ROOTS = tuple(
+    dict.fromkeys((_REPO_ROOT, Path(tempfile.gettempdir()), Path.home()))
+)
 
 
 class CassetteError(RuntimeError):
@@ -68,16 +75,26 @@ def _validate_adapter_id(adapter: str) -> str:
     return clean
 
 
-def _resolve_cassette_root(cassette_dir: Optional[Path]) -> Path:
-    raw_dir = cassette_dir if cassette_dir is not None else get_cassette_dir()
-    if raw_dir is None:
-        raise CassetteError("LV_SOURCE_CASSETTE_DIR가 설정되지 않았습니다")
-    raw_str = str(raw_dir)
+def _contained_cassette_root(raw_path: str | Path) -> Path:
+    """Validate and resolve a cassette directory within `_CASSETTE_ALLOWED_ROOTS` (CodeQL py/path-injection)."""
+    raw_str = os.fspath(raw_path)
     if "\x00" in raw_str or ".." in Path(raw_str).parts:
         raise CassetteError("허용되지 않는 카세트 루트 경로입니다")
-    if Path(raw_str).is_symlink():
-        raise CassetteError("심볼릭 링크 카세트 루트 경로는 허용되지 않습니다")
-    return Path(os.path.realpath(os.path.normpath(raw_str)))
+    full = os.path.realpath(raw_str)
+    for root in _CASSETTE_ALLOWED_ROOTS:
+        prefix = os.path.join(os.path.realpath(os.fspath(root)), "")
+        if full.startswith(prefix):
+            return Path(full)
+    raise CassetteError("허용된 루트 폴더 밖의 카세트 경로입니다")
+
+
+def _resolve_cassette_root(cassette_dir: Optional[Path]) -> Path:
+    if cassette_dir is not None:
+        return _contained_cassette_root(cassette_dir)
+    env_dir = get_cassette_dir()
+    if env_dir is None:
+        raise CassetteError("LV_SOURCE_CASSETTE_DIR가 설정되지 않았습니다")
+    return env_dir
 
 
 def _safe_cassette_file(root_dir: Path, adapter: str, req_key: str) -> Path:
@@ -85,14 +102,11 @@ def _safe_cassette_file(root_dir: Path, adapter: str, req_key: str) -> Path:
     key_prefix = str(req_key or "")[:24].lower()
     if not _SAFE_HEX_RE.fullmatch(key_prefix):
         raise CassetteError("유효하지 않은 카세트 요청 키입니다")
-    base_str = os.path.realpath(str(root_dir))
-    candidate_str = os.path.join(base_str, f"{safe_adapter}_{key_prefix}.json")
-    if os.path.islink(candidate_str):
-        raise CassetteError("심볼릭 링크 카세트 파일은 허용되지 않습니다")
-    resolved_str = os.path.realpath(candidate_str)
-    if os.path.commonpath([base_str, resolved_str]) != base_str or not resolved_str.startswith(base_str + os.sep):
+    base = os.path.realpath(os.fspath(root_dir))
+    full = os.path.realpath(os.path.join(base, f"{safe_adapter}_{key_prefix}.json"))
+    if not full.startswith(os.path.join(base, "")):
         raise CassetteError("카세트 파일 경로가 허용된 디렉터리 경계를 벗어났습니다")
-    return Path(resolved_str)
+    return Path(full)
 
 
 def get_replay_mode() -> str:
@@ -104,11 +118,7 @@ def get_cassette_dir() -> Optional[Path]:
     raw = (os.getenv("LV_SOURCE_CASSETTE_DIR") or "").strip()
     if not raw:
         return None
-    if "\x00" in raw or ".." in Path(raw).parts:
-        raise CassetteError("유효하지 않은 LV_SOURCE_CASSETTE_DIR 경로입니다")
-    if Path(raw).is_symlink():
-        raise CassetteError("심볼릭 링크 LV_SOURCE_CASSETTE_DIR 경로는 허용되지 않습니다")
-    return Path(os.path.realpath(os.path.normpath(raw)))
+    return _contained_cassette_root(raw)
 
 
 def get_max_age_days() -> Optional[float]:
