@@ -822,30 +822,30 @@
       "note": "2026-11-19 발견(평가 세션, 0.23.0 릴리스 후보 2b8b4bd의 verify_all 전체 실행). 평가 측 게이트 자산 결함이며 제품 결함이 아니다. scripts/regression_gate.py는 기준 커밋을 임시 worktree에 펴고 그 커밋의 탐침 도구로 현재 저장소의 명세·입력을 읽는데, 옛 scripts/path_guard.py의 허용 폴더는 저장소(worktree)·임시 폴더·홈뿐이다. 저장소가 홈 밖에 있는 환경에서는 현재 저장소의 입력이 어느 허용 폴더에도 들지 않아 전 항목이 '측정 못 함'이 되고 게이트가 exit 2로 끝난다. PROBE_DOC_ROOT로 위치는 넘기면서 허용 목록에는 넣지 않은 것이 원인이다. 검출 여부가 $HOME 위치에 달려 CI(저장소가 홈 아래)에서는 통과하고 저장소가 홈 밖인 환경에서는 매번 실패하므로, 겉으로는 회귀가 있는 것처럼 보인다. 평가 측이 worktree로 직접 재현해 확인했고, 같은 SHA를 CI 동등 조건에서 다시 재 '회귀 없음'을 받아 제품에 회귀가 없음을 분리 확인했다. 고친 방향: (1) regression_gate가 기준 커밋 쪽으로 보낼 명세와 그 입력을 임시 폴더에 같은 상대 경로로 복사하고 PROBE_DOC_ROOT를 그 폴더로 준다 — 임시 폴더는 어느 커밋의 path_guard에서도 허용 폴더이므로 기준 커밋 코드를 고치지 않고 풀린다. (2) path_guard가 같은 저장소의 주 작업 폴더를 허용 폴더에 넣되, 환경변수가 아니라 git이 알려주는 공통 폴더에서 끌어내고 git을 쓸 수 없으면 넓히지 않는다. 확인: HOME=/root(저장소가 홈 밖)에서 '회귀 없음'(exit 0)으로 전 항목 측정, 이전에는 같은 조건에서 exit 2. 새 시험 tests/test_tk219_path_guard_main_checkout.py 4건 추가. 근거: docs/scorecards/DAILY_TREND.md 2026-11-19 릴리스 후보 행."
     },
     "TK-220": {
-      "status": "open",
+      "status": "merged",
       "kind": "existing",
-      "note": "0.24.0 온라인: RAGC-S3 청크 전달 후 지지 의견 미생성 (TK-209 후속)"
+      "note": "0.24.0 온라인: RAGC-S3 청크 전달 후 지지 의견 미생성 (TK-209 후속). 해소: #385(64a2f66d) 병합 60fe72a5 (_deterministic_chunk_supports 보강, CI 11개 통과)."
     },
     "TK-221": {
-      "status": "open",
+      "status": "merged",
       "kind": "existing",
-      "note": "오프라인 dev/holdout/은퇴 세트 객관 지표 향상 (EVI-LOGIC/OVR/COPY, CIT-META, LAW-MIS, AIGEN)"
+      "note": "오프라인 dev/holdout/은퇴 세트 객관 지표 향상 (EVI-LOGIC/OVR/COPY, CIT-META, LAW-MIS, AIGEN). 해소: #383(c7ee592c) 병합 fa986c1f (dev 82.6→83.9, holdout 81.9→83.3, sealed_20261008b 48.6→50.0, 오탐 0, CI 11개 통과)."
     },
     "TK-222": {
-      "status": "open",
+      "status": "merged",
       "kind": "existing",
-      "note": "0.24.0 온라인/재점검: 저품질 스캔 OCR 폴백·재색인 및 채택 관측성"
+      "note": "0.24.0 온라인/재점검: 저품질 스캔 OCR 폴백·재색인 및 채택 관측성. 해소: #386(bf7fb4d3) 병합 4477e026 (CompositeOCRAdapter 텔레메트리·searchable_pages_delta, CI 11개 통과)."
     },
     "TK-223": {
-      "status": "open",
+      "status": "merged",
       "kind": "existing",
-      "note": "0.24.0 재점검: 차세대 실행 경로 진단 가시성 및 NLI/Hybrid RAG/카세트/로컬 LLM 시험 가능성"
+      "note": "0.24.0 재점검: 차세대 실행 경로 진단 가시성 및 NLI/Hybrid RAG/카세트/로컬 LLM 시험 가능성. 해소: #384(24796319) 병합 d60ffb0d (next_gen_feature_diagnostics·/api/diagnostics·run_manifest, CI 11개 통과)."
     },
     "TK-224": {
-      "status": "open",
+      "status": "merged",
       "kind": "existing",
-      "note": "0.24.0 U2 실연동: law_go_kr 정확 조회 일치 개선 및 학술 Source 오류 원인 분리"
+      "note": "0.24.0 U2 실연동: law_go_kr 정확 조회 일치 개선 및 학술 Source 오류 원인 분리. 해소: #387(e4757ee5) 병합 02d3a5c0 (원응답/일치 진단·구분자 및 2자리 연도 정규화·429 RATE_LIMITED 분리, CI 11개 통과)."
     }
   },
-  "updated_on": "2026-11-19"
+  "updated_on": "2026-11-21"
 }
