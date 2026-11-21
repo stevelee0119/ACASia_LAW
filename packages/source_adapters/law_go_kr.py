@@ -93,7 +93,7 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
         # 사건번호 지정 조회(nb) → 본문검색(search=2) 순서로 시도한다.
         # 구분자 변형('2019-다-54321', '2019. 다. 54321')도 정규화된 사건번호로 nb·search=2를 조회하고,
         # 채택 조건은 "사건번호 완전일치(allow_separators=True)"뿐이라 오탐을 만들지 않는다.
-        bare = wanted is not None and re.fullmatch(r"\s*\d{4}[\s.\-]*[가-힣]{1,3}[\s.\-]*\d+\s*", case_number) is not None
+        bare = wanted is not None and re.fullmatch(r"\s*\d{2,4}[\s.\-]*[가-힣]{1,3}[\s.\-]*\d+\s*", case_number) is not None
         attempts: List[Dict[str, Any]] = []
         if bare:
             attempts.append({"nb": canonical})
