@@ -46,6 +46,8 @@ REDACTED_HEADER_KEYS = frozenset({
 
 # High-risk PII patterns (RRN / Foreigner Reg No) that must never be stored in a shared test cassette.
 _HIGH_RISK_PII_RE = re.compile(r"\b\d{6}-[1-8]\d{6}\b")
+_SAFE_ADAPTER_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_SAFE_HEX_RE = re.compile(r"^[0-9a-f]{24}$")
 
 
 class CassetteError(RuntimeError):
@@ -54,6 +56,40 @@ class CassetteError(RuntimeError):
 
 class CassettePIIError(CassetteError):
     """Raised when high-risk PII is detected in a query or payload during cassette recording."""
+
+
+def _validate_adapter_id(adapter: str) -> str:
+    clean = str(adapter or "").strip()
+    if not _SAFE_ADAPTER_RE.fullmatch(clean):
+        raise CassetteError(f"유효하지 않은 카세트 어댑터 식별자입니다: {adapter!r}")
+    return clean
+
+
+def _resolve_cassette_root(cassette_dir: Optional[Path]) -> Path:
+    raw_dir = cassette_dir if cassette_dir is not None else get_cassette_dir()
+    if raw_dir is None:
+        raise CassetteError("LV_SOURCE_CASSETTE_DIR가 설정되지 않았습니다")
+    raw_str = str(raw_dir)
+    if "\x00" in raw_str or ".." in Path(raw_str).parts:
+        raise CassetteError("허용되지 않는 카세트 루트 경로입니다")
+    if Path(raw_str).is_symlink():
+        raise CassetteError("심볼릭 링크 카세트 루트 경로는 허용되지 않습니다")
+    return Path(os.path.realpath(os.path.normpath(raw_str)))
+
+
+def _safe_cassette_file(root_dir: Path, adapter: str, req_key: str) -> Path:
+    safe_adapter = _validate_adapter_id(adapter)
+    key_prefix = str(req_key or "")[:24].lower()
+    if not _SAFE_HEX_RE.fullmatch(key_prefix):
+        raise CassetteError("유효하지 않은 카세트 요청 키입니다")
+    base_str = os.path.realpath(str(root_dir))
+    candidate_str = os.path.join(base_str, f"{safe_adapter}_{key_prefix}.json")
+    if os.path.islink(candidate_str):
+        raise CassetteError("심볼릭 링크 카세트 파일은 허용되지 않습니다")
+    resolved_str = os.path.realpath(candidate_str)
+    if os.path.commonpath([base_str, resolved_str]) != base_str or not resolved_str.startswith(base_str + os.sep):
+        raise CassetteError("카세트 파일 경로가 허용된 디렉터리 경계를 벗어났습니다")
+    return Path(resolved_str)
 
 
 def get_replay_mode() -> str:
@@ -65,7 +101,11 @@ def get_cassette_dir() -> Optional[Path]:
     raw = (os.getenv("LV_SOURCE_CASSETTE_DIR") or "").strip()
     if not raw:
         return None
-    return Path(raw).resolve()
+    if "\x00" in raw or ".." in Path(raw).parts:
+        raise CassetteError("유효하지 않은 LV_SOURCE_CASSETTE_DIR 경로입니다")
+    if Path(raw).is_symlink():
+        raise CassetteError("심볼릭 링크 LV_SOURCE_CASSETTE_DIR 경로는 허용되지 않습니다")
+    return Path(os.path.realpath(os.path.normpath(raw)))
 
 
 def get_max_age_days() -> Optional[float]:
@@ -146,9 +186,8 @@ def record_cassette_entry(
     cassette_dir: Optional[Path] = None,
 ) -> Path:
     """Persist a sanitized HTTP response into the cassette directory."""
-    target_dir = cassette_dir or get_cassette_dir()
-    if target_dir is None:
-        raise CassetteError("LV_SOURCE_CASSETTE_DIR가 설정되지 않았습니다")
+    safe_adapter = _validate_adapter_id(adapter)
+    target_dir = _resolve_cassette_root(cassette_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
 
     clean_params = sanitize_params(params)
@@ -159,7 +198,7 @@ def record_cassette_entry(
     text_preview = raw_bytes.decode("utf-8", errors="ignore")
     _check_no_pii(text_preview)
 
-    req_key = compute_cassette_key(adapter, url, params=params, headers=headers)
+    req_key = compute_cassette_key(safe_adapter, url, params=params, headers=headers)
     content_hash = hashlib.sha256(raw_bytes).hexdigest()
     resp_headers = {
         k: v
@@ -170,7 +209,7 @@ def record_cassette_entry(
     entry = {
         "schema_version": CASSETTE_SCHEMA_VERSION,
         "request_key": req_key,
-        "adapter": adapter,
+        "adapter": safe_adapter,
         "url": url,
         "params": clean_params,
         "request_headers": clean_headers,
@@ -180,7 +219,7 @@ def record_cassette_entry(
         "body_b64": base64.b64encode(raw_bytes).decode("ascii"),
         "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
-    file_path = target_dir / f"{adapter}_{req_key[:24]}.json"
+    file_path = _safe_cassette_file(target_dir, safe_adapter, req_key)
     file_path.write_text(json.dumps(entry, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     return file_path
 
@@ -198,14 +237,13 @@ def load_cassette_response(
 
     Raises `CassetteError` on missing file, integrity hash mismatch, or expired snapshot.
     """
-    target_dir = cassette_dir or get_cassette_dir()
-    if target_dir is None:
-        raise CassetteError("LV_SOURCE_CASSETTE_DIR가 설정되지 않았습니다")
+    safe_adapter = _validate_adapter_id(adapter)
+    target_dir = _resolve_cassette_root(cassette_dir)
 
-    req_key = compute_cassette_key(adapter, url, params=params, headers=headers)
-    file_path = target_dir / f"{adapter}_{req_key[:24]}.json"
+    req_key = compute_cassette_key(safe_adapter, url, params=params, headers=headers)
+    file_path = _safe_cassette_file(target_dir, safe_adapter, req_key)
     if not file_path.is_file():
-        raise CassetteError(f"REPLAY_MISS: 카세트 스냅샷을 찾을 수 없습니다 ({adapter}, key={req_key[:12]})")
+        raise CassetteError(f"REPLAY_MISS: 카세트 스냅샷을 찾을 수 없습니다 ({safe_adapter}, key={req_key[:12]})")
 
     try:
         data = json.loads(file_path.read_text(encoding="utf-8"))

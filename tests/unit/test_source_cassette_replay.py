@@ -89,14 +89,91 @@ def test_cassette_detects_tampered_hash_and_expiration(tmp_path):
         cassette_dir=tmp_path,
     )
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    req_key = compute_cassette_key("law_go_kr", url, params=params)
+    expected_path = tmp_path / f"law_go_kr_{req_key[:24]}.json"
+    assert path.resolve() == expected_path.resolve()
+
+    data = json.loads(expected_path.read_text(encoding="utf-8"))
     data["recorded_at"] = "2020-01-01T00:00:00+00:00"
-    path.write_text(json.dumps(data), encoding="utf-8")
+    expected_path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(CassetteError, match="REPLAY_EXPIRED"):
         load_cassette_response("law_go_kr", url, params=params, cassette_dir=tmp_path, max_age_days=7.0)
 
     data["recorded_at"] = "2099-01-01T00:00:00+00:00"
     data["content_sha256"] = "0" * 64
-    path.write_text(json.dumps(data), encoding="utf-8")
+    expected_path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(CassetteError, match="REPLAY_HASH_MISMATCH"):
         load_cassette_response("law_go_kr", url, params=params, cassette_dir=tmp_path)
+
+
+@pytest.mark.parametrize("adapter_id", ["law_go_kr", "scourt-precedent", "moleg_01"])
+def test_cassette_allows_valid_adapter_identifiers(tmp_path, adapter_id):
+    inside = tmp_path / "inside"
+    url = "https://www.law.go.kr/DRF/lawSearch.do"
+    params = {"target": "prec", "nb": "2022다10001"}
+    written = record_cassette_entry(
+        adapter_id,
+        url,
+        params=params,
+        headers=None,
+        response=httpx.Response(200, content=b'{"ok": true}'),
+        cassette_dir=inside,
+    )
+    assert written.parent == inside.resolve()
+    loaded = load_cassette_response(adapter_id, url, params=params, cassette_dir=inside)
+    assert loaded.status_code == 200
+    assert loaded.content == b'{"ok": true}'
+
+
+@pytest.mark.parametrize(
+    "bad_adapter",
+    ["../escape", "../../etc/passwd", "a/b", "a\\b", "", "bad adapter!"],
+)
+def test_cassette_blocks_path_traversal_and_invalid_adapters(tmp_path, bad_adapter):
+    inside = tmp_path / "inside"
+    inside.mkdir()
+    url = "https://www.law.go.kr/DRF/lawSearch.do"
+    params = {"target": "prec", "nb": "2022다10001"}
+
+    with pytest.raises(CassetteError):
+        record_cassette_entry(
+            bad_adapter,
+            url,
+            params=params,
+            headers=None,
+            response=httpx.Response(200, content=b"escaped"),
+            cassette_dir=inside,
+        )
+    with pytest.raises(CassetteError):
+        load_cassette_response(bad_adapter, url, params=params, cassette_dir=inside)
+    assert list(tmp_path.iterdir()) == [inside]
+
+
+def test_cassette_blocks_symlink_escape_and_traversal_env_dir(tmp_path, monkeypatch):
+    inside = tmp_path / "inside"
+    inside.mkdir()
+    outside_secret = tmp_path / "outside_secret.json"
+    outside_secret.write_text('{"secret": true}', encoding="utf-8")
+
+    url = "https://www.law.go.kr/DRF/lawSearch.do"
+    params = {"target": "prec", "nb": "2022다10002"}
+    req_key = compute_cassette_key("law_go_kr", url, params=params)
+    symlink_path = inside / f"law_go_kr_{req_key[:24]}.json"
+    symlink_path.symlink_to(outside_secret)
+
+    with pytest.raises(CassetteError):
+        load_cassette_response("law_go_kr", url, params=params, cassette_dir=inside)
+    with pytest.raises(CassetteError):
+        record_cassette_entry(
+            "law_go_kr",
+            url,
+            params=params,
+            headers=None,
+            response=httpx.Response(200, content=b"overwrite"),
+            cassette_dir=inside,
+        )
+    assert outside_secret.read_text(encoding="utf-8") == '{"secret": true}'
+
+    monkeypatch.setenv("LV_SOURCE_CASSETTE_DIR", str(inside / ".." / "outside"))
+    with pytest.raises(CassetteError):
+        load_cassette_response("law_go_kr", url, params=params)
