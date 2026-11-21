@@ -1,0 +1,62 @@
+{
+  "deployment_commit": "684f3469028dc38e539345501191cc7c9832b13a",
+  "measured_kst": "2026-11-21T22:53:58.175835+09:00",
+  "ocr_live_scans": {
+    "scan_clean_024": {
+      "report_sha256": "fd096da15a56e84af64135815f0ffb70e498d5840dd05a72e7f7cec50628d59e",
+      "input_sha256": "4b062f823ffce93c028134f1eb996eafd41b27f56a12f20a1dffed6523063e26",
+      "state": "COMPLETED",
+      "page_status": "OCR_EXTRACTED",
+      "ocr_quality": {
+        "lines": 4,
+        "confidence": 0.89,
+        "hangul_ratio": 1.0,
+        "low_quality": false,
+        "reasons": []
+      },
+      "model_calls": 12
+    },
+    "scan_low_024": {
+      "report_sha256": "f11e55b197863810837bec1aa9908000a109c513b661bbdf8115a52cba56870d",
+      "input_sha256": "8d0347b7691ae3d25d5686fb40751521319fbe0d35114892699272f3162b4c2f",
+      "state": "PARTIAL_COMPLETED",
+      "page_status": "OCR_LOW_QUALITY",
+      "ocr_quality": {
+        "lines": 3,
+        "confidence": 0.611,
+        "hangul_ratio": 0.429,
+        "low_quality": true,
+        "reasons": [
+          "평균 신뢰도 0.61 < 0.70"
+        ]
+      },
+      "model_calls": 2
+    }
+  },
+  "cassette_component_live_source_and_replay": {
+    "record_status": 200,
+    "replay_status": 200,
+    "same_body_sha256": "46c9fb57b8bf4a43f41e21ece34a4a79f93a55276fa749a80dbd8fedb939c177",
+    "cassette_count": 1,
+    "network_used_during_replay": false,
+    "cassette_file_sha256": "a0d6b25da761d61ae2da77b940a041e185f5f6b3e07a3f4c01d3b0005b7137cb"
+  },
+  "legal_nli_assist": {
+    "case9_case_citation_count": 1,
+    "case9_case_lookup_status": "NOT_FOUND",
+    "stage2_record_count": 0,
+    "assist_mode_operational_run": "NOT_RUN"
+  },
+  "local_llm": {
+    "operational_capabilities_cloud_providers": 3,
+    "operational_capabilities_local_providers": 0,
+    "local_provider_call_count": 0,
+    "operational_effect": "NOT_MEASURED"
+  },
+  "cleanup": {
+    "archive_sha256": "3ac214eb87f3a7d18ad0e015eec8e9453238e10f3032cd65a0ccd9a1be386bc8",
+    "project_count": 2,
+    "trash_verified": 2,
+    "permanent_purge": false
+  }
+}

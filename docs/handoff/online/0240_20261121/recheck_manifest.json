@@ -1,0 +1,12 @@
+{
+  "deployment_commit": "684f3469028dc38e539345501191cc7c9832b13a",
+  "artifacts": {
+    "recheck_procedure.md": "000a12712de40e47a2f89e36f53ec5799f1c1e0cbe92dd60f12bfcac5ce244bf",
+    "recheck_result.json": "932378217231ba31198c458c6d8de85c6cc02f5273c886bf383f45b6bb271b8c"
+  },
+  "private_synthetic_inputs": {
+    "clean.pdf": "4b062f823ffce93c028134f1eb996eafd41b27f56a12f20a1dffed6523063e26",
+    "low_quality.pdf": "8d0347b7691ae3d25d5686fb40751521319fbe0d35114892699272f3162b4c2f"
+  },
+  "private_evidence_archive_sha256": "3ac214eb87f3a7d18ad0e015eec8e9453238e10f3032cd65a0ccd9a1be386bc8"
+}
