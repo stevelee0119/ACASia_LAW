@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime, timezone
+import errno
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import stat
 from typing import Any, Dict, Mapping, Optional
+from uuid import uuid4
 
 import httpx
 
@@ -176,6 +179,27 @@ def _check_no_pii(text: str) -> None:
         raise CassettePIIError("카세트 스냅샷에 주민등록번호 형식의 민감 개인정보가 포함되어 저장을 거부합니다")
 
 
+def _open_cassette_dir_fd(target_dir: Path, *, create: bool) -> int:
+    if create:
+        target_dir.mkdir(parents=True, exist_ok=True)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        dir_fd = os.open(str(target_dir), flags)
+    except FileNotFoundError as exc:
+        raise CassetteError(f"REPLAY_MISS: 카세트 디렉터리를 찾을 수 없습니다 ({target_dir.name})") from exc
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise CassetteError("심볼릭 링크 카세트 루트 경로는 허용되지 않습니다") from exc
+        raise CassetteError(f"카세트 디렉터리 열기 실패: {exc}") from exc
+    try:
+        if not stat.S_ISDIR(os.fstat(dir_fd).st_mode):
+            raise CassetteError("카세트 루트 경로가 디렉터리가 아닙니다")
+        return dir_fd
+    except Exception:
+        os.close(dir_fd)
+        raise
+
+
 def record_cassette_entry(
     adapter: str,
     url: str,
@@ -188,7 +212,6 @@ def record_cassette_entry(
     """Persist a sanitized HTTP response into the cassette directory."""
     safe_adapter = _validate_adapter_id(adapter)
     target_dir = _resolve_cassette_root(cassette_dir)
-    target_dir.mkdir(parents=True, exist_ok=True)
 
     clean_params = sanitize_params(params)
     clean_headers = sanitize_headers(headers)
@@ -220,7 +243,49 @@ def record_cassette_entry(
         "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     file_path = _safe_cassette_file(target_dir, safe_adapter, req_key)
-    file_path.write_text(json.dumps(entry, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    filename = file_path.name
+    payload_bytes = json.dumps(entry, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
+
+    dir_fd = _open_cassette_dir_fd(target_dir, create=True)
+    tmp_name = f".{filename}.{os.getpid()}.{uuid4().hex[:8]}.tmp"
+    tmp_created = False
+    try:
+        try:
+            existing_st = os.lstat(filename, dir_fd=dir_fd)
+            if stat.S_ISLNK(existing_st.st_mode):
+                raise CassetteError("심볼릭 링크 카세트 파일은 허용되지 않습니다")
+        except FileNotFoundError:
+            pass
+
+        tmp_flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(tmp_name, tmp_flags, 0o600, dir_fd=dir_fd)
+        tmp_created = True
+        try:
+            view = memoryview(payload_bytes)
+            written = 0
+            while written < len(view):
+                written += os.write(fd, view[written:])
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+        try:
+            existing_st = os.lstat(filename, dir_fd=dir_fd)
+            if stat.S_ISLNK(existing_st.st_mode):
+                raise CassetteError("심볼릭 링크 카세트 파일은 허용되지 않습니다")
+        except FileNotFoundError:
+            pass
+
+        os.replace(tmp_name, filename, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+        tmp_created = False
+    finally:
+        if tmp_created:
+            try:
+                os.unlink(tmp_name, dir_fd=dir_fd)
+            except OSError:
+                pass
+        os.close(dir_fd)
+
     return file_path
 
 
@@ -242,13 +307,38 @@ def load_cassette_response(
 
     req_key = compute_cassette_key(safe_adapter, url, params=params, headers=headers)
     file_path = _safe_cassette_file(target_dir, safe_adapter, req_key)
-    if not file_path.is_file():
-        raise CassetteError(f"REPLAY_MISS: 카세트 스냅샷을 찾을 수 없습니다 ({safe_adapter}, key={req_key[:12]})")
+    filename = file_path.name
+
+    dir_fd = _open_cassette_dir_fd(target_dir, create=False)
+    try:
+        open_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            fd = os.open(filename, open_flags, dir_fd=dir_fd)
+        except FileNotFoundError as exc:
+            raise CassetteError(
+                f"REPLAY_MISS: 카세트 스냅샷을 찾을 수 없습니다 ({safe_adapter}, key={req_key[:12]})"
+            ) from exc
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                raise CassetteError("심볼릭 링크 카세트 파일은 허용되지 않습니다") from exc
+            raise CassetteError(f"REPLAY_OPEN_ERROR: 카세트 파일 열기 실패 ({filename})") from exc
+
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise CassetteError(f"REPLAY_CORRUPT: 일반 파일이 아닙니다 ({filename})")
+            with os.fdopen(fd, "r", encoding="utf-8") as handle:
+                fd = -1
+                raw_text = handle.read()
+        finally:
+            if fd >= 0:
+                os.close(fd)
+    finally:
+        os.close(dir_fd)
 
     try:
-        data = json.loads(file_path.read_text(encoding="utf-8"))
+        data = json.loads(raw_text)
     except Exception as exc:
-        raise CassetteError(f"REPLAY_CORRUPT: 카세트 JSON 파싱 실패 ({file_path.name})") from exc
+        raise CassetteError(f"REPLAY_CORRUPT: 카세트 JSON 파싱 실패 ({filename})") from exc
 
     if data.get("request_key") != req_key:
         raise CassetteError(f"REPLAY_KEY_MISMATCH: 요청 서명이 일치하지 않습니다 ({file_path.name})")

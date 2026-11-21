@@ -177,3 +177,69 @@ def test_cassette_blocks_symlink_escape_and_traversal_env_dir(tmp_path, monkeypa
     monkeypatch.setenv("LV_SOURCE_CASSETTE_DIR", str(inside / ".." / "outside"))
     with pytest.raises(CassetteError):
         load_cassette_response("law_go_kr", url, params=params)
+
+
+def test_cassette_toctou_symlink_swap_blocks_record_replay_and_root_escape(tmp_path, monkeypatch):
+    import packages.source_adapters.cassette as cassette_mod
+
+    inside = tmp_path / "inside"
+    inside.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"secret": "untouched"}', encoding="utf-8")
+
+    url = "https://www.law.go.kr/DRF/lawSearch.do"
+    params = {"target": "prec", "nb": "2022다10003"}
+    req_key = compute_cassette_key("law_go_kr", url, params=params)
+    target_link = inside / f"law_go_kr_{req_key[:24]}.json"
+
+    # 1) RECORD TOCTOU: plant symlink right after _safe_cassette_file passes
+    orig_safe = cassette_mod._safe_cassette_file
+
+    def _swap_after_check(root_dir, adapter, rkey):
+        res = orig_safe(root_dir, adapter, rkey)
+        if not target_link.exists() and not target_link.is_symlink():
+            target_link.symlink_to(outside)
+        return res
+
+    monkeypatch.setattr(cassette_mod, "_safe_cassette_file", _swap_after_check)
+    with pytest.raises(CassetteError):
+        record_cassette_entry(
+            "law_go_kr",
+            url,
+            params=params,
+            headers=None,
+            response=httpx.Response(200, content=b'{"hijack": true}'),
+            cassette_dir=inside,
+        )
+    assert outside.read_text(encoding="utf-8") == '{"secret": "untouched"}'
+
+    # 2) REPLAY TOCTOU: O_NOFOLLOW blocks symlink planted right after _safe_cassette_file
+    with pytest.raises(CassetteError):
+        load_cassette_response("law_go_kr", url, params=params, cassette_dir=inside)
+    monkeypatch.undo()
+    target_link.unlink()
+
+    # 3) Root swap TOCTOU: swap root dir to a symlink after _resolve_cassette_root
+    outside_dir = tmp_path / "outside_dir"
+    outside_dir.mkdir()
+    swappable = tmp_path / "swappable"
+    swappable.mkdir()
+    orig_resolve = cassette_mod._resolve_cassette_root
+
+    def _swap_root(cdir):
+        resolved = orig_resolve(cdir)
+        resolved.rmdir()
+        resolved.symlink_to(outside_dir)
+        return resolved
+
+    monkeypatch.setattr(cassette_mod, "_resolve_cassette_root", _swap_root)
+    with pytest.raises(CassetteError):
+        record_cassette_entry(
+            "law_go_kr",
+            url,
+            params=params,
+            headers=None,
+            response=httpx.Response(200, content=b'{"root_escape": true}'),
+            cassette_dir=swappable,
+        )
+    assert list(outside_dir.iterdir()) == []
