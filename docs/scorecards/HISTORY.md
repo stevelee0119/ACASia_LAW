@@ -2061,3 +2061,8 @@ Claude 입력122627/출력30466/총153093, 이전OFF 대비+10.76%/+8.52%/+10.31
 ## 2026-11-21 0.24.0 운영 배포 확인
 
 사용자 제공 `/api/health` 응답에서 `status=ok`, `version=0.24.0`, `commit=684f3469028dc38e539345501191cc7c9832b13a`(`main` 병합 PR #377 SHA와 일치), `database.status=ok`를 확인했다. 보안 보완(#378·#379)이 반영된 릴리스 PR #377 head `ae87795a`에서 점수 하락 게이트·은퇴 세트 비교·SQLite/PostgreSQL 테스트·Docker OCR readiness·pip-audit·CodeQL이 모두 성공했다. 태그 `v.0.24.0`을 `684f3469028dc38e539345501191cc7c9832b13a`에 생성·푸시했다. U2 `외부 Source 실연동 점검`(run `44905643700`, `with_llm=true`, `strict=true`)에서 `llm_cascade`(3공급자)와 `llm_consensus`(AI 작성 판별·주장 타당성 각 3공급자)는 모두 OK였고, `law_go_kr` 2015모2524(공식 DB 색인 범위) 및 `openalex`·`semantic_scholar`(공개 Source 요청한도)는 기존/외부 한계로 실패했다. 온라인 기능 평가는 별도 실행 대상이며 완료·통과로 계산하지 않는다. 근거 `release_024_deployment_20261121.json`.
+
+
+## 2026-11-21 0.24.0 운영 온라인 평가 기록
+
+운영 `684f3469028dc38e539345501191cc7c9832b13a`(`0.24.0`, `v.0.24.0`)에서 `case9` 4회(r1 `PARTIAL`, r2~r4 `READY_WITH_UNREADABLE` 41/41·8,807/8,823쪽·`OCR_LOW_QUALITY` 16쪽) 모두 표준 23/23, 공격 4/4·정상 기준자료 5/5, AI 반복 3회 일치율 1.0(`condition_status=SAME`, `AI_PARTIAL_GENERATION`), 공통 건강 r2~r4 6/6을 확인했다. `RAGC-S3`는 목표 청크 1개 전달 후에도 4회 모두 실패(4/5)해 미해소로 남았다. 신규 기능은 `ClauseNormalizer` `shadow` 46절, `TableGrid` 합성 표 2개(오류 1·정상 0), `Evidence Graph` 노드 114·엣지 70·단절 후보 3건, `Hybrid RAG` `LEXICAL_ONLY` 관측을 확인했으며, Dense/Reranker·Legal NLI Stage 2·적응형 OCR 폴백·로컬 LLM/카세트·실무 정확도는 `NOT_MEASURED`로 분리했다. `live_source`(`44906110384`) 공식 5/6·학술 2/4·기본 LLM 3/3, `live_integration`(`44908014518`) 7/7 성공. 평가 8프로젝트 휴지통 삭제(8/8, 영구삭제 없음), 비공개 ZIP SHA-256 `93ea97c6...`. 상세 `online_0240_20261121.md`.
