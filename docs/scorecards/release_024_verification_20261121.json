@@ -1,0 +1,142 @@
+{
+ "head": "0055fa72",
+ "base": "f7a7f49056fa4fc6239ffdad803eed53443d9045",
+ "env": {
+  "python": "3.11.17",
+  "os": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "tesseract": "5.3.4",
+  "matches_ci": true
+ },
+ "steps": {
+  "environment": {
+   "ok": true,
+   "matches_ci": true,
+   "tail": [
+    "python 3.11.17, tesseract 5.3.4"
+   ]
+  },
+  "acceptance": {
+   "cmd": "/workspace/eval-venv-311/bin/python -m pytest -q -p no:cacheprovider -p verify_all_plugin --tb=no tests/acceptance",
+   "code": 0,
+   "tail": [
+    "........................................................................ [ 94%]",
+    "........................................................................ [ 99%]",
+    "......                                                                   [100%]"
+   ],
+   "seconds": 400.9,
+   "passed": 1278,
+   "real_failures": [],
+   "strict_xpass": 0,
+   "ok": true
+  },
+  "regression_ledger": {
+   "cmd": "/workspace/eval-venv-311/bin/python -m pytest -q -p no:cacheprovider -p verify_all_plugin --tb=no tests/regression",
+   "code": 0,
+   "tail": [
+    "........................................................................ [ 94%]",
+    "........................................................................ [ 97%]",
+    ".....................................................                    [100%]"
+   ],
+   "seconds": 51.5,
+   "passed": 2357,
+   "real_failures": [],
+   "strict_xpass": 0,
+   "ok": true
+  },
+  "score_gate": {
+   "cmd": "/workspace/eval-venv-311/bin/python scripts/score_gate.py --current artifacts/scorecard.json --strict-env",
+   "code": 0,
+   "tail": [
+    "점수 게이트 통과"
+   ],
+   "seconds": 0.1,
+   "scorecard_tail": [
+    "Could not get FontBBox from font descriptor because None cannot be parsed as 4 floats",
+    "Could not get FontBBox from font descriptor because None cannot be parsed as 4 floats",
+    "Could not get FontBBox from font descriptor because None cannot be parsed as 4 floats"
+   ],
+   "ok": true
+  },
+  "regression_gate": {
+   "cmd": "/workspace/eval-venv-311/bin/python scripts/regression_gate.py --base f7a7f49056fa4fc6239ffdad803eed53443d9045 --head-scorecard artifacts/scorecard.json",
+   "code": 0,
+   "tail": [
+    "  variant2_food_license/primary                   21/21 → 21/21  ",
+    "  variant2_food_license/text                      21/21 → 21/21  ",
+    "회귀 없음"
+   ],
+   "seconds": 87.5,
+   "ok": true
+  },
+  "hardcoding_diff": {
+   "cmd": "/workspace/eval-venv-311/bin/python scripts/check_hardcoding_diff.py --base f7a7f49056fa4fc6239ffdad803eed53443d9045",
+   "code": 0,
+   "tail": [
+    "하드코딩 변경분 점검 — 기준 f7a7f49056fa4fc6239ffdad803eed53443d9045, 추가된 줄 3754개",
+    "  새로 추가된 줄에 시험 입력의 값·낱말·조문 번호 없음"
+   ],
+   "seconds": 0.2,
+   "ok": true
+  },
+  "test_edits": {
+   "cmd": "/workspace/eval-venv-311/bin/python scripts/check_test_edits.py --base f7a7f49056fa4fc6239ffdad803eed53443d9045",
+   "code": 0,
+   "tail": [
+    "시험 삭제·약화 점검 — 기준 f7a7f49056fa4fc6239ffdad803eed53443d9045, 변경된 시험 파일 14개",
+    "  기존 시험의 삭제·표시 변경 없음"
+   ],
+   "seconds": 0.2,
+   "ok": true
+  },
+  "protected_paths": {
+   "cmd": "/workspace/eval-venv-311/bin/python scripts/check_protected_paths.py --base f7a7f49056fa4fc6239ffdad803eed53443d9045",
+   "code": 0,
+   "tail": [
+    "  [평가 측] docs/AGENT_ROLES.md — 0dbbba9 docs(evaluation): adopt governance v3 and next-generation scorecard",
+    "  [평가 측] docs/scorecards/NEXT_GEN_EVALUATION.md — 0dbbba9 docs(evaluation): adopt governance v3 and next-generation scorecard",
+    "보호 경로 점검: 바뀐 보호 경로 3개 모두 평가 측 커밋 또는 승인"
+   ],
+   "seconds": 0.1,
+   "ok": true
+  },
+  "version_policy": {
+   "cmd": "/workspace/eval-venv-311/bin/python scripts/check_version_policy.py --base f7a7f49056fa4fc6239ffdad803eed53443d9045",
+   "code": 0,
+   "tail": [
+    "버전 정책: 위반 없음 (버전 변경 없음)"
+   ],
+   "seconds": 0.7,
+   "ok": true
+  },
+  "full_tests": {
+   "cmd": "/workspace/eval-venv-311/bin/python -m pytest -q -p no:cacheprovider -p verify_all_plugin --tb=no --ignore=tests/acceptance --ignore=tests/test_analysis_completion.py --ignore=tests/test_drive_rag_relevance.py --ignore=tests/test_frontend_admin.py --ignore=tests/test_frontend_auth.py --ignore=tests/test_frontend_citation_groups.py --ignore=tests/test_frontend_diagnostics.py --ignore=tests/test_frontend_emblem.py --ignore=tests/test_frontend_footer.py --ignore=tests/test_frontend_gate.py --ignore=tests/test_frontend_metric_explain.py --ignore=tests/test_frontend_mobile_projects_sync.py --ignore=tests/test_frontend_model_opinions.py --ignore=tests/test_frontend_progress.py --ignore=tests/test_frontend_project_open.py --ignore=tests/test_frontend_project_tools.py --ignore=tests/test_frontend_report_button.py --ignore=tests/test_frontend_report_progress.py --ignore=tests/test_frontend_retry.py --ignore=tests/test_frontend_summary_compact.py --ignore=tests/test_frontend_trash_bulk.py --ignore=tests/test_frontend_upload.py --ignore=tests/test_reasoning_layout.py",
+   "code": 0,
+   "tail": [
+    "........................................................................ [ 99%]",
+    ".......................................s................................ [ 99%]",
+    ".................................                                        [100%]"
+   ],
+   "seconds": 865.5,
+   "passed": 11470,
+   "real_failures": [],
+   "strict_xpass": 0,
+   "ok": true
+  },
+  "browser_tests": {
+   "cmd": "/workspace/eval-venv-311/bin/python -m pytest -q -p no:cacheprovider -p verify_all_plugin --tb=no tests/test_analysis_completion.py tests/test_drive_rag_relevance.py tests/test_frontend_admin.py tests/test_frontend_auth.py tests/test_frontend_citation_groups.py tests/test_frontend_diagnostics.py tests/test_frontend_emblem.py tests/test_frontend_footer.py tests/test_frontend_gate.py tests/test_frontend_metric_explain.py tests/test_frontend_mobile_projects_sync.py tests/test_frontend_model_opinions.py tests/test_frontend_progress.py tests/test_frontend_project_open.py tests/test_frontend_project_tools.py tests/test_frontend_report_button.py tests/test_frontend_report_progress.py tests/test_frontend_retry.py tests/test_frontend_summary_compact.py tests/test_frontend_trash_bulk.py tests/test_frontend_upload.py tests/test_reasoning_layout.py",
+   "code": 0,
+   "tail": [
+    "........................................................................ [ 36%]",
+    "........................................................................ [ 72%]",
+    "........................................................                 [100%]"
+   ],
+   "seconds": 244.8,
+   "passed": 200,
+   "real_failures": [],
+   "strict_xpass": 0,
+   "ok": true
+  }
+ },
+ "failed_steps": [],
+ "mode": "full"
+}
