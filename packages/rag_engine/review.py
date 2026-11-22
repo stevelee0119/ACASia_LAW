@@ -482,6 +482,7 @@ def review_document(result, library, router, context, pii):
     paths_used: set[str] = set()
     if hits:
         paths_used.add("WHOLE_DOC_SELECT")
+    claim_search_diags: list[dict] = []
     search_claim_fn = getattr(library, "search_claim", None)
     if claim_multisearch and callable(search_claim_fn) and eligible:
         pre_claims, _ = select_claims_for_review(eligible)
@@ -495,12 +496,40 @@ def review_document(result, library, router, context, pii):
                 claim_citation_ids = [claim_citation_ids]
             linked_citations = [citation_by_id[cid] for cid in claim_citation_ids if cid in citation_by_id]
             c_hits = search_claim_fn(c_raw_text, citations=linked_citations, limit=5) or []
+            c_diag = getattr(library, "_last_claim_search_diag", None)
+            if isinstance(c_diag, dict):
+                claim_search_diags.append(c_diag)
             claim_search_cache[c_id] = c_hits
             for source in c_hits:
                 for p in source.get("retrieval_paths") or []:
                     paths_used.add(p)
                 if _append_hit(source):
                     claim_hits_added += 1
+
+    claim_search_summary = {
+        "query_kind": "claim_search",
+        "queries": len(claim_search_diags),
+        "interrupted": any(bool(d.get("interrupted")) for d in claim_search_diags),
+        "interrupted_queries": sum(1 for d in claim_search_diags if d.get("interrupted")),
+        "retried_queries": sum(int(d.get("retried_queries") or 0) for d in claim_search_diags),
+        "total_ms": sum(int(d.get("ms") or 0) for d in claim_search_diags),
+        "candidate_count": sum(int(d.get("candidate_count") or 0) for d in claim_search_diags),
+        "interrupted_phases": sorted({p for d in claim_search_diags for p in (d.get("interrupted_phases") or [])}),
+    }
+    doc_interrupted = bool(selection.get("search_interrupted"))
+    claim_interrupted = claim_search_summary["interrupted_queries"] > 0
+    search_interrupted = doc_interrupted or claim_interrupted
+    if search_interrupted:
+        selection["search_interrupted"] = True
+        selection["coverage"] = "INCOMPLETE_COVERAGE"
+    selection["claim_search_diagnostics"] = claim_search_summary
+    review["search_diagnostics"] = {
+        "document_select": selection.get("search_diagnostics"),
+        "claim_search": claim_search_summary,
+    }
+    if search_interrupted:
+        review["search_interrupted"] = True
+        review["incomplete_reason"] = "SQLITE_QUERY_INTERRUPTED"
 
     selection["sources_used"] = [{k: h.get(k) for k in ("source_id", "file_id", "title", "format",
                                                        "folder_path", "page", "start",
