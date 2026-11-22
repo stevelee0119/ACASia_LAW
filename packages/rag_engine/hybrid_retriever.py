@@ -5,11 +5,43 @@ Gracefully degrades to `LEXICAL_ONLY` when no embedding or reranker model is con
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import ipaddress
 import math
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from urllib.parse import urlsplit
 
 from packages.rag_engine.applicability_filter import annotate_applicability
 from packages.rag_engine.identifier_index import IdentifierIndex, LegalIdentifier, bm25_score_chunks
+
+
+def _split_validated_http_endpoint(endpoint: str) -> Optional[Tuple[str, str]]:
+    """Validate an HTTP(S) endpoint against SSRF sinks and split into (base_url, path)."""
+    raw = (endpoint or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        return None
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return None
+    if not parsed.hostname or parsed.username or parsed.password:
+        return None
+    try:
+        ip = ipaddress.ip_address(parsed.hostname)
+        if ip.is_link_local or ip.is_multicast or ip.is_unspecified:
+            return None
+    except ValueError:
+        pass
+    port_part = f":{parsed.port}" if parsed.port else ""
+    host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+    base_url = f"{parsed.scheme.lower()}://{host}{port_part}"
+    path = parsed.path or "/"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    return base_url, path
 
 
 class EmbeddingAdapter(ABC):
@@ -85,7 +117,9 @@ class HttpEmbeddingAdapter(EmbeddingAdapter):
         self._api_key = (api_key or "").strip() or None
         self.timeout = max(0.5, float(timeout))
         self._post_fn = post_fn
-        self.available = bool(self.endpoint)
+        split = _split_validated_http_endpoint(self.endpoint)
+        self._base_url, self._path = split if split else ("", "")
+        self.available = bool(split)
 
     def embed(self, texts: Sequence[str]) -> List[List[float]]:
         if not self.available or not texts:
@@ -100,8 +134,8 @@ class HttpEmbeddingAdapter(EmbeddingAdapter):
             resp = self._post_fn(self.endpoint, json=payload, headers=headers, timeout=self.timeout)
         else:
             import httpx
-            with httpx.Client(timeout=self.timeout) as client:
-                resp = client.post(self.endpoint, json=payload, headers=headers)
+            with httpx.Client(base_url=self._base_url, timeout=self.timeout) as client:
+                resp = client.post(self._path, json=payload, headers=headers)
         if getattr(resp, "status_code", 200) >= 400:
             raise RuntimeError(f"EMBEDDING_HTTP_{getattr(resp, 'status_code', 500)}")
         data = resp.json()
@@ -133,7 +167,9 @@ class HttpRerankerAdapter(RerankerAdapter):
         self._api_key = (api_key or "").strip() or None
         self.timeout = max(0.5, float(timeout))
         self._post_fn = post_fn
-        self.available = bool(self.endpoint)
+        split = _split_validated_http_endpoint(self.endpoint)
+        self._base_url, self._path = split if split else ("", "")
+        self.available = bool(split)
 
     def score(self, query: str, passages: Sequence[str]) -> List[float]:
         if not self.available or not passages:
@@ -148,8 +184,8 @@ class HttpRerankerAdapter(RerankerAdapter):
             resp = self._post_fn(self.endpoint, json=payload, headers=headers, timeout=self.timeout)
         else:
             import httpx
-            with httpx.Client(timeout=self.timeout) as client:
-                resp = client.post(self.endpoint, json=payload, headers=headers)
+            with httpx.Client(base_url=self._base_url, timeout=self.timeout) as client:
+                resp = client.post(self._path, json=payload, headers=headers)
         if getattr(resp, "status_code", 200) >= 400:
             raise RuntimeError(f"RERANKER_HTTP_{getattr(resp, 'status_code', 500)}")
         data = resp.json()
