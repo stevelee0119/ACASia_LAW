@@ -1897,6 +1897,8 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
             elif (
                 sent_idx - prev_limit_idx <= 2
                 and has_cert_or_perc
+                and not has_limit
+                and not re.search(r"(?:특정|단정|판단|확인)할\s*수(?:는)?\s*없", sentence)
                 and not _TRANSITION_RE.search(sentence)
                 and not _ATTR_QUOTE_RE.search(sentence)
             ):
