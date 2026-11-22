@@ -661,5 +661,37 @@
    ],
    "record": "docs/scorecards/online_0250_20261122.md"
   }
+ },
+ {
+  "version": "0.26.0",
+  "from": "0.25.0",
+  "level": "minor",
+  "basis": [
+   "added",
+   "fixed",
+   "performance_patch"
+  ],
+  "measured_commit": "40396ff6",
+  "conditions": {
+   "network": false,
+   "python": "3.11 (GitHub Actions)",
+   "tesseract": "5.3.4 kor/eng",
+   "os": "Linux (GitHub Actions)",
+   "baseline_commit": "023fc33ced8c8080629c743a2e9fcb0e6b0b0850",
+   "scoring": "CI 점수 하락 게이트 및 은퇴 세트 비교(PR #395·#398, run 44986035521·44986769790) 기준."
+  },
+  "evidence": {
+   "M1": "dev 83.9→84.8(v2 43/56, RER 5.59%), holdout 83.3→83.8(v2 42/54, RER 2.99%); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 합산 RER 4.27%.",
+   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+   "M3": "은퇴 5세트 후퇴 0(53.3/50.0/56.9/45.8/34.1, 전 세트 오탐 0·A등급 0).",
+   "M4": "포함 PR #393(TK-225)~#398(TK-227): RAG interrupted 복원력, NLI Stage 2 반전 수정, AI 문체 잔재 교차 보강 일반화, Dense/Reranker HTTP 어댑터·청크 리비전 캐시, 로컬 LLM 안전 설정·스키마 검증, 한국어 RapidOCR 의존성·모드 제어.",
+   "CI": "PR #393~#398 전량 필수 CI(점수 하락 게이트, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis, pip-audit) 통과.",
+   "open_p1_regression": 0,
+   "unmeasured": "격리 봉인 세트, 운영 온라인 실측(case9 3회 연속 5/5·6/6, RapidOCR 저품질 0.611/Drive 16쪽, Dense/Reranker 실서버 ON/OFF, LOCAL_ONLY 로컬 모델 짝 비교, NLI assist 반전 재측정).",
+   "record": "docs/scorecards/release_026_candidate_20261122.md"
+  },
+  "rer": 0.0427,
+  "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
+  "decided_at": "2026-11-22"
  }
 ]

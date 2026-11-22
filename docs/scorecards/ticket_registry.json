@@ -857,40 +857,40 @@
       "note": "0.24.0 U2 실연동: law_go_kr 정확 조회 일치 개선 및 학술 Source 오류 원인 분리. 해소: #387(e4757ee5) 병합 02d3a5c0, 0.25.0(023fc33c) 배포 후 U2 학술 2/4→3/4·2015모2524 원응답 3/일치 0 진단 분리 확인."
     },
     "TK-225": {
-      "status": "open",
+      "status": "merged",
       "priority": "P1",
       "kind": "regression",
-      "note": "0.25.0 온라인(023fc33c, I-1): case9 4회 중 2회 reference_review 약 5.1초에 sqlite3.OperationalError: interrupted로 중단(21/23, RAG 3/5, H-ENGINE 5/6). 3s/5s progress handler 초과 시 부분 복구/사유 기록 필요."
+      "note": "0.25.0 온라인(023fc33c, I-1): case9 4회 중 2회 reference_review 약 5.1초에 sqlite3.OperationalError: interrupted로 중단. 해소: #393(9b18219d) 병합(구간별 축소 재시도·부분 보존·UNVERIFIED 노출, CI 11개 통과)."
     },
     "TK-226": {
-      "status": "open",
+      "status": "merged",
       "priority": "P2",
       "kind": "new",
-      "note": "0.25.0 온라인(023fc33c, I-2): Legal NLI Stage 2가 의미 반전 인용을 SUPPORTED(0.9508)로 오분류(1차 대조가 CONTRADICTED로 방어)."
+      "note": "0.25.0 온라인(023fc33c, I-2): Legal NLI Stage 2가 의미 반전 인용을 SUPPORTED(0.9508)로 오분류. 해소: #394(8601d44d) 병합(부정 활용형·반의어·다문장 정렬·짝수 패리티 보강, CI 11개 통과)."
     },
     "TK-227": {
-      "status": "open",
+      "status": "merged",
       "priority": "P2",
       "kind": "new",
-      "note": "0.25.0 온라인(023fc33c, I-3): 한국어 OCR 폴백 운영 활성화 — requirements.in/해시 고정/Docker 이미지 반영, Render 메모리·기동 시험, LV_OCR_FALLBACK_MODE 실연동, 저품질 0.611·Drive 16쪽 전후 비교."
+      "note": "0.25.0 온라인(023fc33c, I-3): 한국어 OCR 폴백 운영 활성화. 해소: #398(fd926b5f) 병합(RapidOCR requirements.in/해시 고정/Docker 반영 및 LV_OCR_FALLBACK_MODE 연동, CI 12개 통과)."
     },
     "TK-228": {
-      "status": "open",
+      "status": "merged",
       "priority": "P2",
       "kind": "new",
-      "note": "0.25.0 온라인(023fc33c, I-4): 임베딩·재순위 서버 실제 RAG 연결(TK-225 선행 후 확대) — 청크 리비전별 임베딩 저장·재사용, 어휘 폴백, effective_mode 실요청 산출, ON/OFF 비교."
+      "note": "0.25.0 온라인(023fc33c, I-4): 임베딩·재순위 서버 실제 RAG 연결. 해소: #396(df3fe2e8) 병합(HTTP 어댑터·청크 리비전 캐시·실요청 effective_mode, CI 11개 통과)."
     },
     "TK-229": {
-      "status": "open",
+      "status": "merged",
       "priority": "P2",
       "kind": "new",
-      "note": "0.25.0 온라인(023fc33c, I-4): 로컬 모델 설정·라우팅 활성화 — config/providers.json 안전 설정·인증·연결·스키마 검증·호출 기록, LOCAL_ONLY 짝 비교 및 교차검토 감소 영향 평가."
+      "note": "0.25.0 온라인(023fc33c, I-4): 로컬 모델 설정·라우팅 활성화. 해소: #397(f2ec9fd0) 병합(providers.json 안전 설정·헬스체크·스키마 검증·호출 계측, CI 11개 통과)."
     },
     "TK-230": {
-      "status": "open",
+      "status": "merged",
       "priority": "P1",
       "kind": "existing",
-      "note": "0.25.0 후속 객관지표 상승(dev > 83.9, holdout > 83.3): 도달 가능 미충족 범주(AIGEN, CIT-META, EVI-LOGIC, EVI-COPY, LAW-MIS, OVR/LAW-NX) 일반화 수정, 회귀·오탐 0."
+      "note": "0.25.0 후속 객관지표 상승(dev > 83.9, holdout > 83.3). 해소: #395(39b253db) 병합(AI 문체 잔재 교차 보강 일반화, dev 83.9→84.8, holdout 83.3→83.8, 오탐 0, CI 11개 통과)."
     }
   },
   "updated_on": "2026-11-22"
