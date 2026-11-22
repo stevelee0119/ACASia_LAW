@@ -905,28 +905,28 @@
       "note": "0.25.0 후속 객관지표 상승(dev > 83.9, holdout > 83.3). 해소: #395(39b253db) 병합(dev 83.9→84.8, holdout 83.3→83.8), 0.26.0(19efff6a, v.0.26.0) 배포 및 health 확인 완료."
     },
     "TK-231": {
-      "status": "open",
+      "status": "merged",
       "priority": "P1",
       "kind": "new",
-      "note": "0.27.0 트랙 1(실전화): 한국어 RapidOCR 저품질 이미지 전처리(그레이스케일·대비/이진화·샤프닝) 및 Drive 기존 OCR_LOW_QUALITY 16쪽 선택 재색인·전후 델타 계측."
+      "note": "0.27.0 트랙 1(실전화): PR #410 병합 완료. 한국어 RapidOCR 저품질 이미지 전처리(그레이스케일·대비/이진화·샤프닝, 정상 스캔 재처리 0건) 및 Drive 기존 OCR_LOW_QUALITY 선택 재색인·전후 델타 계측."
     },
     "TK-232": {
-      "status": "open",
+      "status": "merged",
       "priority": "P1",
       "kind": "new",
-      "note": "0.27.0 트랙 1(코드 삭제·실전화): 미운영 로컬 LLM·원격 Reranker 서버 코드 삭제, /api/diagnostics configured_mode=lexical_only 정합화, 기존 OpenAI/Gemini API 키 기반 상용 임베딩 캐시 연결."
+      "note": "0.27.0 트랙 1(코드 삭제·실전화): PR #409 병합 완료. 미운영 로컬 LLM·원격 Reranker 서버 코드 삭제, /api/diagnostics configured_mode=lexical_only 정합화, 기존 OpenAI/Gemini API 키 기반 상용 임베딩 캐시 연결."
     },
     "TK-233": {
-      "status": "open",
+      "status": "merged",
       "priority": "P1",
       "kind": "existing",
-      "note": "0.27.0 트랙 2(점수 상승 1축): 한국 법제 형식 불변식(CIT-META 법원급-사건부호/선고일 역전, LAW-NX 기본법 조문 상한) 및 ClauseNormalizer 기반 복합 법리 절대 단정 양태(LAW-MIS/OVR) 일반화 탐지."
+      "note": "0.27.0 트랙 2(점수 상승 1축): PR #411 병합 완료. 한국 법제 형식 불변식(CIT-META 법원급-사건부호/선고일 역전, LAW-NX 기본법 조문 상한) 및 ClauseNormalizer 기반 복합 법리 절대 단정 양태(LAW-MIS/OVR) 일반화 탐지."
     },
     "TK-234": {
-      "status": "open",
+      "status": "merged",
       "priority": "P1",
       "kind": "existing",
-      "note": "0.27.0 트랙 2(점수 상승 2축): 내용어 shingle 유사도·어미 변환(EVI-COPY), 인지 양립 불가(EVI-LOGIC), 개체 튜플 충돌(EVI-INCONS/OVR), 인젝션 스팬 매핑(INJ-ZWSP/META/OFFPAGE), AIGEN 클러스터 배출 정밀화(dev > 84.8, holdout > 83.8, 은퇴 2세트+ 상승)."
+      "note": "0.27.0 트랙 2(점수 상승 2축): PR #412 병합 완료. 내용어 shingle 유사도·어미 변환(EVI-COPY), 인지 양립 불가(EVI-LOGIC), 내심 단정(EVI-OVR), 인젝션 스팬 매핑(INJ-ZWSP/META), AIGEN 클러스터 배출 정밀화(dev 86.2, holdout 86.6, 은퇴 4/5세트 상승)."
     }
   },
   "updated_on": "2026-11-22"
