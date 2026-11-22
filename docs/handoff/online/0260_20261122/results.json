@@ -1,0 +1,874 @@
+{
+  "schema": "online_026_summary_v1",
+  "captured_at_kst": "2026-11-22T23:54:00.634832+09:00",
+  "deployment": {
+    "status": "ok",
+    "app": "ACASia_LAW",
+    "version": "0.26.0",
+    "commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+    "principles": [
+      "Source First",
+      "Evidence First",
+      "Human Final Decision"
+    ],
+    "database": {
+      "status": "ok"
+    }
+  },
+  "private_raw_archive_sha256": "96f9e18bd41cfb24aba17f1a1e3558c5e3a99fff323954e958bb0a26e4a8ed1c",
+  "case9_fixture_sha256": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92",
+  "conditions": {
+    "runtime_version": "0.26.0",
+    "prompt_version": "v0.2",
+    "score_rule_version": "2",
+    "network": true,
+    "feature_modes": {
+      "clause_normalizer_mode": "default",
+      "legal_nli_mode": "assist",
+      "evidence_graph_mode": "default",
+      "ocr_fallback_mode": "auto",
+      "rag_retrieval_mode": "LEXICAL_ONLY",
+      "source_replay_mode": "LIVE"
+    },
+    "rag": {
+      "configured_mode": "HYBRID",
+      "effective_mode": "LEXICAL_ONLY",
+      "dense_enabled": false,
+      "reranker_enabled": true,
+      "fallback_reason": "NO_EMBEDDING_ADAPTER_CONFIGURED"
+    },
+    "ocr_fallback": {
+      "engine": "rapidocr",
+      "mode": "auto",
+      "available": true,
+      "fallback_reason": null
+    },
+    "local_llm": {
+      "registered": false,
+      "provider_count": 0,
+      "backend": "openai_compat"
+    }
+  },
+  "case9_runs": [
+    {
+      "label": "case9_post_r1",
+      "run_state": "PARTIAL_COMPLETED",
+      "report_sha256": "375a8efcb7c11b08cb88eb3205df7c41eafe82ecac21ea2d20cf6d9379b880ee",
+      "error_count": 0,
+      "unverified_count": 8,
+      "unverified_scopes": [
+        "incident"
+      ],
+      "started_at_utc": "2026-11-22T14:22:22.325005",
+      "finished_at_utc": "2026-11-22T14:28:22.162155",
+      "deployment_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+      "prompt_version": "v0.2",
+      "ai_verdict": "AI_PARTIAL_GENERATION",
+      "scores": {
+        "standard_23": {
+          "passed": 23,
+          "total": 23,
+          "items": {
+            "AI-1": true,
+            "AI-2": true,
+            "AI-3": true,
+            "AI-4": true,
+            "EX-1": true,
+            "EX-2": true,
+            "EX-2s": true,
+            "TMP-1": true,
+            "LEG-1": true,
+            "LEG-2": true,
+            "INJ-1": true,
+            "FA-1": true,
+            "FP-1": true,
+            "RAG-1": true,
+            "RAG-2": true,
+            "PII-K1": true,
+            "PII-K2": true,
+            "PII-K3": true,
+            "PII-K4": true,
+            "PII-K5": true,
+            "PII-K6": true,
+            "PII-K7": true,
+            "PII-K8": true
+          }
+        },
+        "case9_source_health": {
+          "passed": 1,
+          "total": 1,
+          "items": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "rag_controls": {
+          "passed": 5,
+          "total": 5,
+          "items": {
+            "RAGC-S1": true,
+            "RAGC-S2": true,
+            "RAGC-S3": true,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health": {
+          "passed": 6,
+          "total": 6,
+          "items": {
+            "H-COMMIT": true,
+            "H-ENGINE": true,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": true
+          }
+        }
+      },
+      "reference": {
+        "status": "READY",
+        "snapshot_hash": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+        "files_indexed": 41,
+        "unreadable_pages": 16,
+        "unreadable_by_cause": {
+          "OCR_LOW_QUALITY": 16
+        },
+        "ocr_fallback_attempted_pages": 0,
+        "ocr_fallback_adopted_pages": 0
+      },
+      "reference_review_seconds": 280.017,
+      "search": {
+        "interrupted": false,
+        "incomplete_reason": null,
+        "document_select": {
+          "query_kind": "document_select",
+          "ms": 529,
+          "candidate_chunks": 425,
+          "interrupted": false,
+          "interrupted_phases": [],
+          "retried_queries": 0,
+          "partial_results": false,
+          "incomplete_reason": null
+        },
+        "claim_search": {
+          "query_kind": "claim_search",
+          "queries": 19,
+          "interrupted": false,
+          "interrupted_queries": 0,
+          "retried_queries": 0,
+          "total_ms": 6530,
+          "candidate_count": 2446,
+          "interrupted_phases": []
+        },
+        "retrieval": {
+          "effective_mode": "LEXICAL_ONLY",
+          "embedding_requests": 0,
+          "embedding_successes": 0,
+          "embedding_failures": 0,
+          "reranker_requests": 0,
+          "reranker_successes": 0,
+          "reranker_failures": 0,
+          "cache_hits": 0,
+          "cache_misses": 0,
+          "fallback_reasons": [
+            "EMBEDDING_ENDPOINT_UNCONFIGURED",
+            "RERANKER_ENDPOINT_UNCONFIGURED"
+          ]
+        }
+      },
+      "rag_effective_mode": "LEXICAL_ONLY",
+      "model_calls": 49,
+      "model_provider_calls": {
+        "anthropic": 45,
+        "openai": 2,
+        "gemini": 2
+      }
+    },
+    {
+      "label": "case9_post_r2",
+      "run_state": "PARTIAL_COMPLETED",
+      "report_sha256": "d8065937d9786d555b472713dbd8976118791191daba587a1cf57a9acc6c0c57",
+      "error_count": 0,
+      "unverified_count": 7,
+      "unverified_scopes": [
+        "incident"
+      ],
+      "started_at_utc": "2026-11-22T14:28:39.798300",
+      "finished_at_utc": "2026-11-22T14:35:01.352119",
+      "deployment_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+      "prompt_version": "v0.2",
+      "ai_verdict": "AI_PARTIAL_GENERATION",
+      "scores": {
+        "standard_23": {
+          "passed": 23,
+          "total": 23,
+          "items": {
+            "AI-1": true,
+            "AI-2": true,
+            "AI-3": true,
+            "AI-4": true,
+            "EX-1": true,
+            "EX-2": true,
+            "EX-2s": true,
+            "TMP-1": true,
+            "LEG-1": true,
+            "LEG-2": true,
+            "INJ-1": true,
+            "FA-1": true,
+            "FP-1": true,
+            "RAG-1": true,
+            "RAG-2": true,
+            "PII-K1": true,
+            "PII-K2": true,
+            "PII-K3": true,
+            "PII-K4": true,
+            "PII-K5": true,
+            "PII-K6": true,
+            "PII-K7": true,
+            "PII-K8": true
+          }
+        },
+        "case9_source_health": {
+          "passed": 1,
+          "total": 1,
+          "items": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "rag_controls": {
+          "passed": 5,
+          "total": 5,
+          "items": {
+            "RAGC-S1": true,
+            "RAGC-S2": true,
+            "RAGC-S3": true,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health": {
+          "passed": 6,
+          "total": 6,
+          "items": {
+            "H-COMMIT": true,
+            "H-ENGINE": true,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": true
+          }
+        }
+      },
+      "reference": {
+        "status": "READY",
+        "snapshot_hash": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+        "files_indexed": 41,
+        "unreadable_pages": 16,
+        "unreadable_by_cause": {
+          "OCR_LOW_QUALITY": 16
+        },
+        "ocr_fallback_attempted_pages": 0,
+        "ocr_fallback_adopted_pages": 0
+      },
+      "reference_review_seconds": 299.279,
+      "search": {
+        "interrupted": false,
+        "incomplete_reason": null,
+        "document_select": {
+          "query_kind": "document_select",
+          "ms": 965,
+          "candidate_chunks": 425,
+          "interrupted": false,
+          "interrupted_phases": [],
+          "retried_queries": 0,
+          "partial_results": false,
+          "incomplete_reason": null
+        },
+        "claim_search": {
+          "query_kind": "claim_search",
+          "queries": 19,
+          "interrupted": false,
+          "interrupted_queries": 0,
+          "retried_queries": 0,
+          "total_ms": 8111,
+          "candidate_count": 2446,
+          "interrupted_phases": []
+        },
+        "retrieval": {
+          "effective_mode": "LEXICAL_ONLY",
+          "embedding_requests": 0,
+          "embedding_successes": 0,
+          "embedding_failures": 0,
+          "reranker_requests": 0,
+          "reranker_successes": 0,
+          "reranker_failures": 0,
+          "cache_hits": 0,
+          "cache_misses": 0,
+          "fallback_reasons": [
+            "EMBEDDING_ENDPOINT_UNCONFIGURED",
+            "RERANKER_ENDPOINT_UNCONFIGURED"
+          ]
+        }
+      },
+      "rag_effective_mode": "LEXICAL_ONLY",
+      "model_calls": 48,
+      "model_provider_calls": {
+        "anthropic": 45,
+        "openai": 2,
+        "gemini": 1
+      }
+    },
+    {
+      "label": "case9_post_r3",
+      "run_state": "PARTIAL_COMPLETED",
+      "report_sha256": "74d9110982f0712ed736849c211e3d009862f6a10654f708b04e8f14e104e345",
+      "error_count": 0,
+      "unverified_count": 7,
+      "unverified_scopes": [
+        "incident"
+      ],
+      "started_at_utc": "2026-11-22T14:35:18.394058",
+      "finished_at_utc": "2026-11-22T14:41:49.898407",
+      "deployment_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+      "prompt_version": "v0.2",
+      "ai_verdict": "AI_PARTIAL_GENERATION",
+      "scores": {
+        "standard_23": {
+          "passed": 23,
+          "total": 23,
+          "items": {
+            "AI-1": true,
+            "AI-2": true,
+            "AI-3": true,
+            "AI-4": true,
+            "EX-1": true,
+            "EX-2": true,
+            "EX-2s": true,
+            "TMP-1": true,
+            "LEG-1": true,
+            "LEG-2": true,
+            "INJ-1": true,
+            "FA-1": true,
+            "FP-1": true,
+            "RAG-1": true,
+            "RAG-2": true,
+            "PII-K1": true,
+            "PII-K2": true,
+            "PII-K3": true,
+            "PII-K4": true,
+            "PII-K5": true,
+            "PII-K6": true,
+            "PII-K7": true,
+            "PII-K8": true
+          }
+        },
+        "case9_source_health": {
+          "passed": 1,
+          "total": 1,
+          "items": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "rag_controls": {
+          "passed": 5,
+          "total": 5,
+          "items": {
+            "RAGC-S1": true,
+            "RAGC-S2": true,
+            "RAGC-S3": true,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health": {
+          "passed": 6,
+          "total": 6,
+          "items": {
+            "H-COMMIT": true,
+            "H-ENGINE": true,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": true
+          }
+        }
+      },
+      "reference": {
+        "status": "READY",
+        "snapshot_hash": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+        "files_indexed": 41,
+        "unreadable_pages": 16,
+        "unreadable_by_cause": {
+          "OCR_LOW_QUALITY": 16
+        },
+        "ocr_fallback_attempted_pages": 0,
+        "ocr_fallback_adopted_pages": 0
+      },
+      "reference_review_seconds": 306.746,
+      "search": {
+        "interrupted": false,
+        "incomplete_reason": null,
+        "document_select": {
+          "query_kind": "document_select",
+          "ms": 908,
+          "candidate_chunks": 425,
+          "interrupted": false,
+          "interrupted_phases": [],
+          "retried_queries": 0,
+          "partial_results": false,
+          "incomplete_reason": null
+        },
+        "claim_search": {
+          "query_kind": "claim_search",
+          "queries": 19,
+          "interrupted": false,
+          "interrupted_queries": 0,
+          "retried_queries": 0,
+          "total_ms": 6908,
+          "candidate_count": 2446,
+          "interrupted_phases": []
+        },
+        "retrieval": {
+          "effective_mode": "LEXICAL_ONLY",
+          "embedding_requests": 0,
+          "embedding_successes": 0,
+          "embedding_failures": 0,
+          "reranker_requests": 0,
+          "reranker_successes": 0,
+          "reranker_failures": 0,
+          "cache_hits": 0,
+          "cache_misses": 0,
+          "fallback_reasons": [
+            "EMBEDDING_ENDPOINT_UNCONFIGURED",
+            "RERANKER_ENDPOINT_UNCONFIGURED"
+          ]
+        }
+      },
+      "rag_effective_mode": "LEXICAL_ONLY",
+      "model_calls": 48,
+      "model_provider_calls": {
+        "anthropic": 45,
+        "openai": 2,
+        "gemini": 1
+      }
+    },
+    {
+      "label": "case9_r1",
+      "run_state": "PARTIAL_COMPLETED",
+      "report_sha256": "f3a842352a563c16c4a86f9049542cb2f64bbb88433820851a5d8c449bfe7563",
+      "error_count": 0,
+      "unverified_count": 8,
+      "unverified_scopes": [
+        "incident"
+      ],
+      "started_at_utc": "2026-11-22T13:57:15.484841",
+      "finished_at_utc": "2026-11-22T14:04:06.659252",
+      "deployment_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+      "prompt_version": "v0.2",
+      "ai_verdict": "AI_PARTIAL_GENERATION",
+      "scores": {
+        "standard_23": {
+          "passed": 23,
+          "total": 23,
+          "items": {
+            "AI-1": true,
+            "AI-2": true,
+            "AI-3": true,
+            "AI-4": true,
+            "EX-1": true,
+            "EX-2": true,
+            "EX-2s": true,
+            "TMP-1": true,
+            "LEG-1": true,
+            "LEG-2": true,
+            "INJ-1": true,
+            "FA-1": true,
+            "FP-1": true,
+            "RAG-1": true,
+            "RAG-2": true,
+            "PII-K1": true,
+            "PII-K2": true,
+            "PII-K3": true,
+            "PII-K4": true,
+            "PII-K5": true,
+            "PII-K6": true,
+            "PII-K7": true,
+            "PII-K8": true
+          }
+        },
+        "case9_source_health": {
+          "passed": 1,
+          "total": 1,
+          "items": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "rag_controls": {
+          "passed": 5,
+          "total": 5,
+          "items": {
+            "RAGC-S1": true,
+            "RAGC-S2": true,
+            "RAGC-S3": true,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health": {
+          "passed": 6,
+          "total": 6,
+          "items": {
+            "H-COMMIT": true,
+            "H-ENGINE": true,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": true
+          }
+        }
+      },
+      "reference": {
+        "status": "READY",
+        "snapshot_hash": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+        "files_indexed": 41,
+        "unreadable_pages": 16,
+        "unreadable_by_cause": {
+          "OCR_LOW_QUALITY": 16
+        },
+        "ocr_fallback_attempted_pages": 0,
+        "ocr_fallback_adopted_pages": 0
+      },
+      "reference_review_seconds": 321.165,
+      "search": {
+        "interrupted": true,
+        "incomplete_reason": "SQLITE_QUERY_INTERRUPTED",
+        "document_select": {
+          "query_kind": "document_select",
+          "ms": 7161,
+          "candidate_chunks": 175,
+          "interrupted": true,
+          "interrupted_phases": [
+            "main_fts",
+            "window_fts"
+          ],
+          "retried_queries": 1,
+          "partial_results": true,
+          "incomplete_reason": "SQLITE_QUERY_INTERRUPTED"
+        },
+        "claim_search": {
+          "query_kind": "claim_search",
+          "queries": 19,
+          "interrupted": false,
+          "interrupted_queries": 0,
+          "retried_queries": 0,
+          "total_ms": 6101,
+          "candidate_count": 2446,
+          "interrupted_phases": []
+        },
+        "retrieval": {
+          "effective_mode": "LEXICAL_ONLY",
+          "embedding_requests": 0,
+          "embedding_successes": 0,
+          "embedding_failures": 0,
+          "reranker_requests": 0,
+          "reranker_successes": 0,
+          "reranker_failures": 0,
+          "cache_hits": 0,
+          "cache_misses": 0,
+          "fallback_reasons": [
+            "EMBEDDING_ENDPOINT_UNCONFIGURED",
+            "RERANKER_ENDPOINT_UNCONFIGURED"
+          ]
+        }
+      },
+      "rag_effective_mode": "LEXICAL_ONLY",
+      "model_calls": 49,
+      "model_provider_calls": {
+        "anthropic": 45,
+        "openai": 2,
+        "gemini": 2
+      }
+    }
+  ],
+  "ai_repeat_u5": {
+    "tool_exit_code": 0,
+    "runs": 3,
+    "commits": [
+      "19efff6a4acb11a22b9e8311dc04680a984aa76b"
+    ],
+    "same_condition": true,
+    "condition_status": "SAME",
+    "different_conditions": [],
+    "missing_conditions": [],
+    "comparable_agreement": 1.0,
+    "verdict_counts": {
+      "AI_PARTIAL_GENERATION": 3
+    },
+    "agreement": 1.0,
+    "modal_verdict": "AI_PARTIAL_GENERATION",
+    "uncertain_runs": 0,
+    "expected_ratio": 1.0,
+    "provider_score_range": {
+      "gemini": [
+        0.65,
+        0.72,
+        3
+      ],
+      "openai": [
+        0.72,
+        0.78,
+        3
+      ]
+    }
+  },
+  "ocr_runs": [
+    {
+      "label": "ocr_clean_026",
+      "run_state": "COMPLETED",
+      "report_sha256": "6b99a34e9edc816f5e83fa3545ccec2d425bbb13ca5d39bd2dcc603beb7fc16f",
+      "attempted_pages": [],
+      "adopted_pages": [],
+      "reason_counts": {
+        "PRIMARY_QUALITY_SUFFICIENT": 1
+      },
+      "page_coverage_status": [
+        "OCR_EXTRACTED"
+      ],
+      "page_coverage_quality": [
+        {
+          "lines": 4,
+          "confidence": 0.89,
+          "hangul_ratio": 1.0,
+          "low_quality": false,
+          "reasons": []
+        }
+      ],
+      "block_text_chars": [
+        88
+      ],
+      "claims_count": 4,
+      "pages": {
+        "1": {
+          "primary_confidence": 0.89,
+          "fallback_attempted": false,
+          "fallback_adopted": false,
+          "fallback_confidence": null,
+          "fallback_error": null,
+          "decision_reason": "PRIMARY_QUALITY_SUFFICIENT",
+          "selected_engine": "tesseract",
+          "selected_confidence": 0.89
+        }
+      }
+    },
+    {
+      "label": "ocr_low_026",
+      "run_state": "PARTIAL_COMPLETED",
+      "report_sha256": "7db867bfc295860d4f650b8228f80316c39a3469cbc2f1bb2c759ed3387b4c45",
+      "attempted_pages": [
+        1
+      ],
+      "adopted_pages": [
+        1
+      ],
+      "reason_counts": {
+        "FALLBACK_IMPROVED_QUALITY": 1
+      },
+      "page_coverage_status": [
+        "OCR_LOW_QUALITY"
+      ],
+      "page_coverage_quality": [
+        {
+          "lines": 3,
+          "confidence": 0.632,
+          "hangul_ratio": 0.464,
+          "low_quality": true,
+          "reasons": [
+            "평균 신뢰도 0.63 < 0.70",
+            "한글 비율 0.46 < 0.50"
+          ]
+        }
+      ],
+      "block_text_chars": [
+        25
+      ],
+      "claims_count": 2,
+      "pages": {
+        "1": {
+          "primary_confidence": 0.483,
+          "fallback_attempted": true,
+          "fallback_adopted": true,
+          "fallback_confidence": 0.582,
+          "fallback_error": null,
+          "decision_reason": "FALLBACK_IMPROVED_QUALITY",
+          "selected_engine": "rapidocr",
+          "selected_confidence": 0.582
+        }
+      }
+    }
+  ],
+  "nli_runs": [
+    {
+      "label": "nli_exact_026",
+      "run_state": "PARTIAL_COMPLETED",
+      "report_sha256": "7ec8b693c02d5eae48950c1beb9d7b42f53b888c14a6e8f6fe500da4f6a24d11",
+      "nli_summary": {
+        "mode": "assist",
+        "executed_count": 1,
+        "assisted_count": 0,
+        "full_text_available_count": 1,
+        "full_text_missing_count": 0,
+        "verdict_counts": {
+          "SUPPORTED": 1
+        }
+      },
+      "verdicts": [
+        {
+          "stage2_verdict": "SUPPORTED",
+          "passage_offset": {
+            "start": 5615,
+            "end": 5816
+          },
+          "passage_length": 201,
+          "located_start": 5615,
+          "located_end": 5816,
+          "final_level3": "VERIFIED",
+          "final_status": "VERIFIED"
+        }
+      ]
+    },
+    {
+      "label": "nli_inverted_026",
+      "run_state": "COMPLETED",
+      "report_sha256": "635d65312f72715d015afbe1a3dff4964d67684b8063a3b47a9e134a8eb5c9bc",
+      "nli_summary": {
+        "mode": "assist",
+        "executed_count": 1,
+        "assisted_count": 1,
+        "full_text_available_count": 1,
+        "full_text_missing_count": 0,
+        "verdict_counts": {
+          "CONTRADICTED": 1
+        }
+      },
+      "verdicts": [
+        {
+          "stage2_verdict": "CONTRADICTED",
+          "passage_offset": {
+            "start": 5379,
+            "end": 5816
+          },
+          "passage_length": 437,
+          "located_start": 5379,
+          "located_end": 5816,
+          "final_level3": "CONTRADICTED",
+          "final_status": "CONTRADICTED"
+        }
+      ]
+    }
+  ],
+  "dense_reranker_on_off": {
+    "status": "NOT_MEASURED",
+    "reason": "embedding_and_reranker_servers_not_provisioned"
+  },
+  "local_only_pair": {
+    "status": "NOT_MEASURED",
+    "reason": "local_llm_server_not_provisioned"
+  },
+  "cleanup": {
+    "case9_026": "TRASH_VERIFIED",
+    "nli_exact_026": "TRASH_VERIFIED",
+    "nli_inverted_026": "TRASH_VERIFIED",
+    "ocr_clean_026": "TRASH_VERIFIED",
+    "ocr_low_026": "TRASH_VERIFIED"
+  },
+  "comparison_025": {
+    "source_report_sha256": "3b0c017c023ff466ee4a9cc57b9b9fbfaa8b984440b5285b3b397ce8f63581c0",
+    "deployment_commit": "023fc33ced8c8080629c743a2e9fcb0e6b0b0850",
+    "case9_last_stable_single_run": {
+      "scores": {
+        "standard_23": {
+          "passed": 23,
+          "total": 23,
+          "items": {
+            "AI-1": true,
+            "AI-2": true,
+            "AI-3": true,
+            "AI-4": true,
+            "EX-1": true,
+            "EX-2": true,
+            "EX-2s": true,
+            "TMP-1": true,
+            "LEG-1": true,
+            "LEG-2": true,
+            "INJ-1": true,
+            "FA-1": true,
+            "FP-1": true,
+            "RAG-1": true,
+            "RAG-2": true,
+            "PII-K1": true,
+            "PII-K2": true,
+            "PII-K3": true,
+            "PII-K4": true,
+            "PII-K5": true,
+            "PII-K6": true,
+            "PII-K7": true,
+            "PII-K8": true
+          }
+        },
+        "case9_source_health": {
+          "passed": 1,
+          "total": 1,
+          "items": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "rag_controls": {
+          "passed": 5,
+          "total": 5,
+          "items": {
+            "RAGC-S1": true,
+            "RAGC-S2": true,
+            "RAGC-S3": true,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health": {
+          "passed": 6,
+          "total": 6,
+          "items": {
+            "H-COMMIT": true,
+            "H-ENGINE": true,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": true
+          }
+        }
+      },
+      "reference_review_error": null
+    },
+    "unreadable_drive_pages": 16,
+    "ocr_clean": {
+      "primary_confidence": 0.89,
+      "fallback_attempted": false,
+      "fallback_adopted": false
+    },
+    "ocr_low": {
+      "primary_confidence": 0.611,
+      "fallback_attempted": false,
+      "fallback_adopted": false,
+      "block_text_chars": [
+        9
+      ],
+      "claims_count": 0
+    },
+    "nli_exact_stage2": "SUPPORTED",
+    "nli_inverted_stage2": "SUPPORTED",
+    "conditions_differ": [
+      "ocr_fallback_mode",
+      "legal_nli_implementation",
+      "deployment_commit"
+    ]
+  }
+}
