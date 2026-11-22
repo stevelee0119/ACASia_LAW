@@ -960,7 +960,8 @@ class LegalVerifier:
             verdict.source_records.append(response.source_record)
 
         if response.status != AdapterStatus.READY:
-            if form_impossible or range_error is not None:
+            _outage_statuses = (AdapterStatus.TIMEOUT, AdapterStatus.RATE_LIMITED, AdapterStatus.ERROR)
+            if form_impossible or (range_error is not None and response.status not in _outage_statuses):
                 verdict.status = VerificationStatus.CONTRADICTED if form_impossible else VerificationStatus.NOT_FOUND
                 rule_id = form_impossible[0]["rule_id"] if form_impossible else range_error["rule_id"]
                 detail_msg = form_impossible[0]["reason"] if form_impossible else range_error["message"]
