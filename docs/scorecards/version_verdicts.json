@@ -692,6 +692,10 @@
   },
   "rer": 0.0427,
   "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
-  "decided_at": "2026-11-22"
+  "decided_at": "2026-11-22",
+  "release_status": "DEPLOYED_PENDING_ONLINE_CHECK",
+  "release_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+  "release_tag": "v.0.26.0",
+  "deployment_evidence": "docs/scorecards/release_026_deployment_20261122.json"
  }
 ]
