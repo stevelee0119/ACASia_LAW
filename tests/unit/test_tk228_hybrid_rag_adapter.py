@@ -7,8 +7,8 @@ from types import SimpleNamespace
 from packages.common.config import get_settings
 from packages.rag_engine import relevance
 from packages.rag_engine.hybrid_retriever import (
+    DeterministicLegalReranker,
     HttpEmbeddingAdapter,
-    HttpRerankerAdapter,
     build_rag_adapters_from_env,
     retrieve_hybrid_chunks,
 )
@@ -21,7 +21,7 @@ from packages.rag_engine.library import ReferenceLibrary
 
 
 def test_tk228_pos1_http_embedding_and_reranker_execute_and_report_effective_mode() -> None:
-    """HttpEmbeddingAdapter + HttpRerankerAdapter execute real requests and report HYBRID_RERANK."""
+    """HttpEmbeddingAdapter + DeterministicLegalReranker execute and report HYBRID_RERANK."""
     def _emb_post(url, *, json=None, headers=None, timeout=None):
         texts = json["input"]
         vecs = [[1.0, 0.0] if "손해배상" in t or i == 0 else [0.1, 0.9] for i, t in enumerate(texts)]
@@ -30,20 +30,8 @@ def test_tk228_pos1_http_embedding_and_reranker_execute_and_report_effective_mod
             json=lambda: {"data": [{"index": i, "embedding": v} for i, v in enumerate(vecs)]},
         )
 
-    def _rerank_post(url, *, json=None, headers=None, timeout=None):
-        docs = json["documents"]
-        return SimpleNamespace(
-            status_code=200,
-            json=lambda: {
-                "results": [
-                    {"index": i, "relevance_score": 0.95 if "손해배상" in d else 0.15}
-                    for i, d in enumerate(docs)
-                ]
-            },
-        )
-
     emb = HttpEmbeddingAdapter("https://emb.example.com/v1/embeddings", model="bge-m3", api_key="secret", post_fn=_emb_post)
-    rerank = HttpRerankerAdapter("https://rerank.example.com/v1/rerank", model="bge-reranker", post_fn=_rerank_post)
+    rerank = DeterministicLegalReranker()
 
     chunks = [
         {"chunk_id": "c1", "text": "임대차 목적물 인도 지연에 관한 일반 절차입니다."},
@@ -132,12 +120,14 @@ def test_tk228_pos3_build_rag_adapters_from_env_connects_without_leaking_keys(mo
 
 
 def test_tk228_ctrl1_unconfigured_endpoints_stay_lexical_only(monkeypatch) -> None:
-    """When no endpoints are configured, effective_mode is LEXICAL_ONLY with 0 HTTP requests."""
+    """When no endpoints or API keys are configured, effective_mode is LEXICAL_ONLY with 0 HTTP requests."""
     monkeypatch.delenv("LV_RAG_EMBEDDING_ENDPOINT", raising=False)
     monkeypatch.delenv("LV_RAG_RERANKER_ENDPOINT", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     emb, rerank, diag = build_rag_adapters_from_env(allow_network=True)
     assert emb is None and rerank is None
-    assert "EMBEDDING_ENDPOINT_UNCONFIGURED" in diag["fallback_reasons"]
+    assert "NO_EMBEDDING_ADAPTER_CONFIGURED" in diag["fallback_reasons"]
 
     out = retrieve_hybrid_chunks(
         "손해배상",
@@ -155,11 +145,14 @@ def test_tk228_ctrl2_endpoint_failures_fallback_safely_and_preserve_tier1_pin() 
     def _fail_post(*_a, **_kw):
         return SimpleNamespace(status_code=503, json=lambda: {})
 
-    def _timeout_post(*_a, **_kw):
-        raise TimeoutError("rerank timeout")
+    class _FailingReranker:
+        available = True
+
+        def score(self, query, passages):
+            raise TimeoutError("rerank timeout")
 
     emb = HttpEmbeddingAdapter("https://emb.example.com/v1/embeddings", post_fn=_fail_post)
-    rerank = HttpRerankerAdapter("https://rerank.example.com/v1/rerank", post_fn=_timeout_post)
+    rerank = _FailingReranker()
 
     chunks = [
         {"chunk_id": "c1", "text": "손해배상 일반론"},
