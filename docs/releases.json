@@ -530,5 +530,16 @@
       "Fixed: 전달 청크 SUPPORTS 의견 생성·근거 연결 보강(RAGC-S3, TK-220, #385), law_go_kr 구분자 변형 및 2자리 연도 사건번호 정규화·AcademicSourceAdapter 429 RATE_LIMITED 원인 분리(TK-224, #387)",
       "미측정: 격리 봉인 세트 및 운영 온라인 실측(Hybrid RAG Dense·Reranker, Legal NLI Stage 2, 운영 OCR 폴백 채택, 로컬 LLM·카세트 RECORD/REPLAY, RAGC-S3 운영 재현, 실무 법률 정확도) — 배포 후 온라인 점검 시행"
     ]
+  },
+  {
+    "version": "0.26.0",
+    "date": "2026-11-22",
+    "changes": [
+      "평가 측 minor 판정(0.25.0 → 0.26.0, 40396ff6 기준, 분류 added·fixed·performance_patch, 합산 RER 4.27%): #393~#398 필수 CI 전수 통과. 운영 main(023fc33c) 대비 고정 dev 83.9→84.8(RER 5.59%, v2 43/56)·holdout 83.3→83.8(RER 2.99%, v2 42/54)·확인 오탐 0·A등급 오탐 0·인젝션 방어 유지, 은퇴 5세트(53.3/50.0/56.9/45.8/34.1) 후퇴 0. 포함 범위 #393(TK-225)~#398(TK-227)",
+      "Added: 한국어 RapidOCR 폴백 의존성(requirements.in/해시 고정/Docker) 및 LV_OCR_FALLBACK_MODE 제어 연동(TK-227, #398), 임베딩·재순위 HTTP 어댑터·청크 리비전 캐시·실요청 기반 effective_mode(TK-228, #396), 로컬 모델 운영 안전 설정·헬스체크·스키마 검증·호출 계측(TK-229, #397)",
+      "Fixed: ReferenceLibrary SQLite interrupted 구간별 축소 재시도·부분 보존 및 UNVERIFIED 노출(TK-225, #393), Legal NLI Stage 2 부정 활용형·반의어·다문장 정렬·짝수 패리티 누락 해소(TK-226, #394)",
+      "Performance: AI 문체 잔재 교차 보강 일반화로 dev 83.9→84.8·holdout 83.3→83.8 상승(TK-230, #395)",
+      "미측정: 격리 봉인 세트 및 운영 온라인 실측(case9 3회 연속 5/5·6/6, RapidOCR 저품질 0.611/Drive 16쪽, Dense/Reranker 실서버 ON/OFF, LOCAL_ONLY 로컬 모델 짝 비교, Legal NLI assist 반전 재측정) — 배포 후 온라인 점검 시행"
+    ]
   }
 ]

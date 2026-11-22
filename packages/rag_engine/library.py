@@ -131,6 +131,9 @@ class ReferenceLibrary:
         page_size = db.execute("PRAGMA page_size").fetchone()[0]
         db.execute(f"PRAGMA max_page_count={512 * 1024 * 1024 // page_size}")
         db.execute("CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, revision TEXT, payload TEXT)")
+        db.execute("CREATE TABLE IF NOT EXISTS chunk_embeddings ("
+                   "file_id TEXT, revision TEXT, page INTEGER, start INTEGER, model TEXT, vector_json TEXT, "
+                   "PRIMARY KEY (file_id, revision, page, start, model))")
         db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5("
                    "file_id UNINDEXED, revision UNINDEXED, page UNINDEXED, start UNINDEXED, text UNINDEXED, terms)")
         db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS chunk_terms USING fts5vocab(chunks, 'row')")
@@ -1012,15 +1015,44 @@ class ReferenceLibrary:
         log["priority_references"] = [{"file_id": k, "title": prose_eligible[k].get("title"),
                                       "searched": False, "search_reason": "NOT_EXECUTED" if i < 12 else "SEARCH_LIMIT"}
                                      for i, k in enumerate(priority_ids)]
+        interrupted_phases: list[str] = []
+        retried_queries = 0
+        partial_results = False
+        rows: list[tuple] = []
+        frequency: dict[str, int] = {}
+        profiles: list = []
+        profile: dict = {}
+        present: list[str] = []
+
+        def _is_interrupted(exc: Exception) -> bool:
+            return "interrupted" in str(exc).lower()
+
         with self.connect() as db:
             deadline = time.monotonic() + 5
             db.set_progress_handler(lambda: int(time.monotonic() > deadline), 10000)
-            frequency = {}
             terms = sorted(counts)
-            for offset in range(0, len(terms), 500):
-                batch = terms[offset:offset + 500]
-                frequency.update(db.execute("SELECT term, doc FROM chunk_terms WHERE term IN ("
-                                            + ",".join("?" for _ in batch) + ")", batch).fetchall())
+            try:
+                for offset in range(0, len(terms), 500):
+                    batch = terms[offset:offset + 500]
+                    frequency.update(db.execute("SELECT term, doc FROM chunk_terms WHERE term IN ("
+                                                + ",".join("?" for _ in batch) + ")", batch).fetchall())
+            except Exception as exc:
+                if not _is_interrupted(exc):
+                    raise
+                interrupted_phases.append("term_frequency")
+                partial_results = True
+                retried_queries += 1
+                deadline = time.monotonic() + 2
+                try:
+                    for offset in range(0, min(len(terms), 250), 250):
+                        batch = terms[offset:offset + 250]
+                        frequency.update(db.execute("SELECT term, doc FROM chunk_terms WHERE term IN ("
+                                                    + ",".join("?" for _ in batch) + ")", batch).fetchall())
+                except Exception as retry_exc:
+                    if not _is_interrupted(retry_exc):
+                        raise
+                    interrupted_phases.append("term_frequency_retry")
+
             profiles = relevance.query_profiles(scan_text, frequency, total)
             profile = profiles[0]
             # Round-robin window terms keeps one issue from consuming the query budget.
@@ -1032,37 +1064,115 @@ class ReferenceLibrary:
             log["query_terms"] = [{"term": t, "weight": round(profile[t], 3), "chunks": frequency.get(t, 0)}
                                   for t in list(profile)[:20] if t in frequency]
             if not present:
-                if pending:
+                if pending or interrupted_phases:
                     log["decision"] = "INCOMPLETE_COVERAGE"
-                log["reason"] = "NO_SHARED_KEY_TERMS"
+                if interrupted_phases:
+                    log["coverage"] = "INCOMPLETE_COVERAGE"
+                    log["search_interrupted"] = True
+                    log["reason"] = "SQLITE_QUERY_INTERRUPTED"
+                else:
+                    log["reason"] = "NO_SHARED_KEY_TERMS"
                 for item in log["priority_references"]:
-                    item["search_reason"] = "NO_SHARED_KEY_TERMS"
+                    item["search_reason"] = "SQLITE_QUERY_INTERRUPTED" if interrupted_phases else "NO_SHARED_KEY_TERMS"
                 log["ms"] = round((time.monotonic() - mark) * 1000)
+                log["search_diagnostics"] = {
+                    "query_kind": "document_select",
+                    "ms": log["ms"],
+                    "candidate_chunks": 0,
+                    "interrupted": bool(interrupted_phases),
+                    "interrupted_phases": interrupted_phases,
+                    "retried_queries": retried_queries,
+                    "partial_results": partial_results,
+                    "incomplete_reason": "SQLITE_QUERY_INTERRUPTED" if interrupted_phases else None,
+                }
                 return log
+
             db.execute("CREATE TEMP TABLE eligible (id TEXT PRIMARY KEY, revision TEXT)")
             db.executemany("INSERT INTO eligible VALUES (?,?)", [(k, v["revision"]) for k, v in prose_eligible.items()])
-            rows = db.execute("SELECT file_id, page, start, text, terms FROM chunks "
-                "JOIN eligible e ON e.id=chunks.file_id AND e.revision=chunks.revision "
-                "WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT ?",
-                (" OR ".join('"' + term + '"' for term in present), relevance.CANDIDATE_CHUNKS)).fetchall()
+            try:
+                rows = db.execute("SELECT file_id, page, start, text, terms FROM chunks "
+                    "JOIN eligible e ON e.id=chunks.file_id AND e.revision=chunks.revision "
+                    "WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT ?",
+                    (" OR ".join('"' + term + '"' for term in present), relevance.CANDIDATE_CHUNKS)).fetchall()
+            except Exception as exc:
+                if not _is_interrupted(exc):
+                    raise
+                interrupted_phases.append("main_fts")
+                partial_results = True
+                reduced_present = present[:40]
+                if reduced_present:
+                    retried_queries += 1
+                    deadline = time.monotonic() + 2
+                    try:
+                        rows = db.execute("SELECT file_id, page, start, text, terms FROM chunks "
+                            "JOIN eligible e ON e.id=chunks.file_id AND e.revision=chunks.revision "
+                            "WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT ?",
+                            (" OR ".join('"' + term + '"' for term in reduced_present), min(100, relevance.CANDIDATE_CHUNKS))).fetchall()
+                    except Exception as retry_exc:
+                        if not _is_interrupted(retry_exc):
+                            raise
+                        interrupted_phases.append("main_fts_retry")
+
             # 뒷부분 소수 쟁점이 전체 상위 300청크 밖으로 밀리지 않도록 구간별 보조 조회를 병행한다.
             if len(profiles) > 1:
                 step_win = max(1, (len(profiles) - 1) // 16)
                 for p_win in profiles[1::step_win][:16]:
+                    if time.monotonic() >= deadline:
+                        interrupted_phases.append("window_fts_budget")
+                        partial_results = True
+                        break
                     win_terms = [t for t in p_win if t in frequency][:24]
                     if not win_terms:
                         continue
-                    rows.extend(db.execute("SELECT file_id, page, start, text, terms FROM chunks "
-                        "JOIN eligible e ON e.id=chunks.file_id AND e.revision=chunks.revision "
-                        "WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT 25",
-                        (" OR ".join('"' + term + '"' for term in win_terms),)).fetchall())
+                    try:
+                        rows.extend(db.execute("SELECT file_id, page, start, text, terms FROM chunks "
+                            "JOIN eligible e ON e.id=chunks.file_id AND e.revision=chunks.revision "
+                            "WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT 25",
+                            (" OR ".join('"' + term + '"' for term in win_terms),)).fetchall())
+                    except Exception as exc:
+                        if not _is_interrupted(exc):
+                            raise
+                        interrupted_phases.append("window_fts")
+                        partial_results = True
+                        break
+
             # A large, relevant casebook must not disappear behind the global top-chunk limit.
             for index, file_id in enumerate(priority_ids[:12]):
-                rows.extend(db.execute("SELECT file_id, page, start, text, terms FROM chunks "
-                    "WHERE chunks MATCH ? AND file_id=? AND revision=? ORDER BY bm25(chunks) LIMIT 40",
-                    (" OR ".join('"' + term + '"' for term in present), file_id,
-                     prose_eligible[file_id]["revision"])).fetchall())
-                log["priority_references"][index].update(searched=True, search_reason="SEARCH_COMPLETED")
+                if time.monotonic() >= deadline:
+                    interrupted_phases.append("priority_fts_budget")
+                    partial_results = True
+                    for rem in log["priority_references"][index:12]:
+                        rem["search_reason"] = "SEARCH_INTERRUPTED"
+                    break
+                try:
+                    rows.extend(db.execute("SELECT file_id, page, start, text, terms FROM chunks "
+                        "WHERE chunks MATCH ? AND file_id=? AND revision=? ORDER BY bm25(chunks) LIMIT 40",
+                        (" OR ".join('"' + term + '"' for term in present[:80]), file_id,
+                         prose_eligible[file_id]["revision"])).fetchall())
+                    log["priority_references"][index].update(searched=True, search_reason="SEARCH_COMPLETED")
+                except Exception as exc:
+                    if not _is_interrupted(exc):
+                        raise
+                    interrupted_phases.append("priority_fts")
+                    partial_results = True
+                    for rem in log["priority_references"][index:12]:
+                        rem["search_reason"] = "SEARCH_INTERRUPTED"
+                    break
+
+        if interrupted_phases:
+            log["coverage"] = "INCOMPLETE_COVERAGE"
+            log["decision"] = "INCOMPLETE_COVERAGE"
+            log["search_interrupted"] = True
+        log["search_diagnostics"] = {
+            "query_kind": "document_select",
+            "ms": round((time.monotonic() - mark) * 1000),
+            "candidate_chunks": len(rows),
+            "interrupted": bool(interrupted_phases),
+            "interrupted_phases": interrupted_phases,
+            "retried_queries": retried_queries,
+            "partial_results": partial_results,
+            "incomplete_reason": "SQLITE_QUERY_INTERRUPTED" if interrupted_phases else None,
+        }
         # A short query cannot share more terms than it has.
         required = min(relevance.MIN_MATCHED_TERMS, len(profile))
         log["required_shared_terms"] = required
@@ -1382,27 +1492,91 @@ class ReferenceLibrary:
             "files": file_obs_list,
         }
         from packages.rag_engine.applicability_filter import annotate_applicability
-        from packages.rag_engine.hybrid_retriever import retrieve_hybrid_chunks
+        from packages.rag_engine.hybrid_retriever import build_rag_adapters_from_env, retrieve_hybrid_chunks
+
+        env_diag: dict[str, Any] = {}
+        if embedding_adapter is None and reranker_adapter is None:
+            embedding_adapter, reranker_adapter, env_diag = build_rag_adapters_from_env(
+                allow_network=bool(getattr(self.settings, "allow_network", False))
+            )
 
         retrieval_mode = "LEXICAL_ONLY"
         retrieval_warnings: list[str] = []
+        retrieval_telemetry: dict[str, Any] = {
+            "effective_mode": "LEXICAL_ONLY",
+            "embedding_requests": 0,
+            "embedding_successes": 0,
+            "embedding_failures": 0,
+            "reranker_requests": 0,
+            "reranker_successes": 0,
+            "reranker_failures": 0,
+            "cache_hits": 0,
+            "cache_misses": 0,
+            "fallback_reasons": list(
+                env_diag.get("fallback_reasons")
+                or ([env_diag["fallback_reason"]] if env_diag.get("fallback_reason") else [])
+            ),
+        }
         if result and (embedding_adapter is not None or reranker_adapter is not None):
             hybrid_input = [
                 {**s, "chunk_id": s.get("source_id") or f"R{idx + 1}"}
                 for idx, s in enumerate(result)
             ]
+            emb_model_key = str(getattr(embedding_adapter, "model", "") or getattr(embedding_adapter, "name", "default"))
+            cached_vectors: dict[str, list[float]] = {}
+            chunk_meta_by_cid: dict[str, tuple[str, str, int, int]] = {}
+            if embedding_adapter is not None and getattr(embedding_adapter, "available", False):
+                for ch in hybrid_input:
+                    fid = str(ch.get("file_id") or "")
+                    rev = str((self.eligible.get(fid) or {}).get("revision") or "")
+                    pg = int(ch.get("page") or 0)
+                    st = int(ch.get("start") or 0)
+                    cid = str(ch.get("chunk_id") or "")
+                    if fid and rev and cid:
+                        chunk_meta_by_cid[cid] = (fid, rev, pg, st)
+                if chunk_meta_by_cid:
+                    try:
+                        with self.connect() as db:
+                            for cid, (fid, rev, pg, st) in chunk_meta_by_cid.items():
+                                row_vec = db.execute(
+                                    "SELECT vector_json FROM chunk_embeddings "
+                                    "WHERE file_id=? AND revision=? AND page=? AND start=? AND model=?",
+                                    (fid, rev, pg, st, emb_model_key),
+                                ).fetchone()
+                                if row_vec and row_vec[0]:
+                                    cached_vectors[cid] = json.loads(row_vec[0])
+                    except Exception:
+                        cached_vectors = {}
             hybrid_out = retrieve_hybrid_chunks(
                 scan_text[:6000],
                 hybrid_input,
                 embedding_adapter=embedding_adapter,
                 reranker_adapter=reranker_adapter,
+                chunk_vectors=cached_vectors,
                 target_date=target_date,
                 case_type=case_type,
                 exclude_inapplicable=False,
                 top_k=len(hybrid_input),
             )
+            computed_vecs = hybrid_out.get("computed_chunk_vectors") or {}
+            if computed_vecs and chunk_meta_by_cid:
+                try:
+                    with self.connect() as db:
+                        db.executemany(
+                            "INSERT OR REPLACE INTO chunk_embeddings (file_id, revision, page, start, model, vector_json) "
+                            "VALUES (?,?,?,?,?,?)",
+                            [
+                                (*chunk_meta_by_cid[cid], emb_model_key, json.dumps(vec))
+                                for cid, vec in computed_vecs.items()
+                                if cid in chunk_meta_by_cid and vec
+                            ],
+                        )
+                        db.commit()
+                except Exception:
+                    pass
             retrieval_mode = hybrid_out["retrieval_mode"]
             retrieval_warnings = hybrid_out["retrieval_warnings"]
+            retrieval_telemetry = hybrid_out.get("retrieval_telemetry") or retrieval_telemetry
             result = hybrid_out["chunks"]
         else:
             result = annotate_applicability(
@@ -1428,10 +1602,11 @@ class ReferenceLibrary:
 
         log["retrieval_mode"] = retrieval_mode
         log["retrieval_warnings"] = retrieval_warnings
+        log["retrieval_telemetry"] = retrieval_telemetry
         log["applicability_warnings"] = applicability_warnings
         log["inapplicable_sources"] = inapplicable
         log["sources"] = result
-        log["decision"] = "USED" if result else "INCOMPLETE_COVERAGE" if pending else "NOT_USED"
+        log["decision"] = "USED" if result else "INCOMPLETE_COVERAGE" if (pending or interrupted_phases) else "NOT_USED"
         if result:
             log["reason"] = "RELEVANT_REFERENCE_FOUND"
         elif inapplicable:
@@ -1550,6 +1725,14 @@ class ReferenceLibrary:
                           "EXACT_IDENTIFIER", exact=True)
 
         # 경로 2: 한국어 어간 + 2-gram FTS5 검색 (+ 필요 시 로컬 하이브리드 폴백)
+        claim_mark = time.monotonic()
+        claim_interrupted_phases: list[str] = []
+        claim_retried = 0
+        claim_partial = False
+
+        def _is_claim_interrupted(exc: Exception) -> bool:
+            return "interrupted" in str(exc).lower()
+
         with self.connect() as db:
             deadline = time.monotonic() + 3
             db.set_progress_handler(lambda: int(time.monotonic() > deadline), 10000)
@@ -1559,45 +1742,108 @@ class ReferenceLibrary:
                            [(k, v["revision"]) for k, v in prose_eligible.items()])
 
             if q_tokens:
-                fts_rows = db.execute(
-                    "SELECT c.file_id, c.page, c.start, c.text, c.terms FROM chunks c "
-                    "JOIN claim_eligible e ON e.id=c.file_id AND e.revision=c.revision "
-                    "WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT 60",
-                    (" OR ".join('"' + t + '"' for t in q_tokens),),
-                ).fetchall()
+                fts_rows: list[tuple] = []
+                try:
+                    fts_rows = db.execute(
+                        "SELECT c.file_id, c.page, c.start, c.text, c.terms FROM chunks c "
+                        "JOIN claim_eligible e ON e.id=c.file_id AND e.revision=c.revision "
+                        "WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT 60",
+                        (" OR ".join('"' + t + '"' for t in q_tokens),),
+                    ).fetchall()
+                except Exception as exc:
+                    if not _is_claim_interrupted(exc):
+                        raise
+                    claim_interrupted_phases.append("claim_fts")
+                    claim_partial = True
+                    reduced_tokens = q_tokens[:16]
+                    if reduced_tokens:
+                        claim_retried += 1
+                        deadline = time.monotonic() + 1.5
+                        try:
+                            fts_rows = db.execute(
+                                "SELECT c.file_id, c.page, c.start, c.text, c.terms FROM chunks c "
+                                "JOIN claim_eligible e ON e.id=c.file_id AND e.revision=c.revision "
+                                "WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT 20",
+                                (" OR ".join('"' + t + '"' for t in reduced_tokens),),
+                            ).fetchall()
+                        except Exception as retry_exc:
+                            if not _is_claim_interrupted(retry_exc):
+                                raise
+                            claim_interrupted_phases.append("claim_fts_retry")
                 for rank_idx, (fid, page, start, ctext, cterms) in enumerate(fts_rows):
                     _register(fid, int(page), int(start), ctext, "LEXICAL_STEM_FTS",
                               fts_rank=rank_idx, c_terms=set(cterms.split()))
 
             stem_probes = [s for s in stems if len(s) >= 2][:10]
-            if stem_probes:
+            if stem_probes and time.monotonic() < deadline:
                 where_clause = " OR ".join("instr(c.text, ?) > 0" for _ in stem_probes)
-                stem_rows = db.execute(
-                    f"SELECT c.file_id, c.page, c.start, c.text, c.terms FROM chunks c "
-                    f"JOIN claim_eligible e ON e.id=c.file_id AND e.revision=c.revision "
-                    f"WHERE ({where_clause}) LIMIT 80",
-                    stem_probes,
-                ).fetchall()
+                stem_rows: list[tuple] = []
+                try:
+                    stem_rows = db.execute(
+                        f"SELECT c.file_id, c.page, c.start, c.text, c.terms FROM chunks c "
+                        f"JOIN claim_eligible e ON e.id=c.file_id AND e.revision=c.revision "
+                        f"WHERE ({where_clause}) LIMIT 80",
+                        stem_probes,
+                    ).fetchall()
+                except Exception as exc:
+                    if not _is_claim_interrupted(exc):
+                        raise
+                    claim_interrupted_phases.append("claim_stem_scan")
+                    claim_partial = True
+                    if not candidates and stem_probes[:3]:
+                        claim_retried += 1
+                        deadline = time.monotonic() + 1.5
+                        small_where = " OR ".join("instr(c.text, ?) > 0" for _ in stem_probes[:3])
+                        try:
+                            stem_rows = db.execute(
+                                f"SELECT c.file_id, c.page, c.start, c.text, c.terms FROM chunks c "
+                                f"JOIN claim_eligible e ON e.id=c.file_id AND e.revision=c.revision "
+                                f"WHERE ({small_where}) LIMIT 20",
+                                stem_probes[:3],
+                            ).fetchall()
+                        except Exception as retry_exc:
+                            if not _is_claim_interrupted(retry_exc):
+                                raise
+                            claim_interrupted_phases.append("claim_stem_scan_retry")
                 for fid, page, start, ctext, cterms in stem_rows:
                     _register(fid, int(page), int(start), ctext, "LEXICAL_STEM_FTS",
                               c_terms=set(cterms.split()))
+            elif stem_probes and time.monotonic() >= deadline:
+                claim_interrupted_phases.append("claim_stem_scan_budget")
+                claim_partial = True
 
             # 경로 3 보충: 표현이 크게 달라 어휘 겹침 후보가 적을 때 현재 유효 청크 일부를 의미 유사도로 직접 탐색
-            if hybrid_enabled and len(candidates) < 12 and (stems or q_tokens):
-                scan_rows = db.execute(
-                    "SELECT c.file_id, c.page, c.start, c.text, c.terms FROM chunks c "
-                    "JOIN claim_eligible e ON e.id=c.file_id AND e.revision=c.revision LIMIT 120"
-                ).fetchall()
-                for fid, page, start, ctext, cterms in scan_rows:
-                    key = (fid, int(page), int(start))
-                    if key in candidates:
-                        continue
-                    c_stems = set(relevance.content_stems(ctext, limit=80))
-                    sem = relevance.local_semantic_score(query, ctext, query_stems=stems_set, candidate_stems=c_stems)
-                    if sem >= 0.24:
-                        _register(fid, int(page), int(start), ctext, "HYBRID_SEMANTIC",
-                                  c_terms=set(cterms.split()))
+            if hybrid_enabled and len(candidates) < 12 and (stems or q_tokens) and time.monotonic() < deadline:
+                try:
+                    scan_rows = db.execute(
+                        "SELECT c.file_id, c.page, c.start, c.text, c.terms FROM chunks c "
+                        "JOIN claim_eligible e ON e.id=c.file_id AND e.revision=c.revision LIMIT 120"
+                    ).fetchall()
+                    for fid, page, start, ctext, cterms in scan_rows:
+                        key = (fid, int(page), int(start))
+                        if key in candidates:
+                            continue
+                        c_stems = set(relevance.content_stems(ctext, limit=80))
+                        sem = relevance.local_semantic_score(query, ctext, query_stems=stems_set, candidate_stems=c_stems)
+                        if sem >= 0.24:
+                            _register(fid, int(page), int(start), ctext, "HYBRID_SEMANTIC",
+                                      c_terms=set(cterms.split()))
+                except Exception as exc:
+                    if not _is_claim_interrupted(exc):
+                        raise
+                    claim_interrupted_phases.append("claim_hybrid_scan")
+                    claim_partial = True
 
+        self._last_claim_search_diag = {
+            "query_kind": "claim_search",
+            "ms": round((time.monotonic() - claim_mark) * 1000),
+            "candidate_count": len(candidates),
+            "interrupted": bool(claim_interrupted_phases),
+            "interrupted_phases": claim_interrupted_phases,
+            "retried_queries": claim_retried,
+            "partial_results": claim_partial,
+            "incomplete_reason": "SQLITE_QUERY_INTERRUPTED" if claim_interrupted_phases else None,
+        }
         if not candidates:
             return []
 

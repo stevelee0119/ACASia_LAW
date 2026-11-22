@@ -1,0 +1,460 @@
+{
+  "schema": "online_025_summary_v1",
+  "captured_at_kst": "2026-11-22T07:22:04.973223+09:00",
+  "deployment": {
+    "status": "ok",
+    "version": "0.25.0",
+    "commit": "023fc33ced8c8080629c743a2e9fcb0e6b0b0850"
+  },
+  "database_status": "ok",
+  "case9_fixture_sha256": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92",
+  "conditions": {
+    "score_rule_version": "2",
+    "network": true,
+    "tk75_profile": "OFF",
+    "reference_snapshot_sha256": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+    "reference_indexed_files": 41,
+    "reference_unreadable_pages": 16,
+    "source_replay_mode": "LIVE",
+    "rag_effective_mode": "LEXICAL_ONLY",
+    "ocr_fallback_mode": "off"
+  },
+  "case9_runs": [
+    {
+      "label": "case9_r1",
+      "period": "before",
+      "run_state": "PARTIAL_COMPLETED",
+      "report_sha256": "eaedd27c726c28518a1e8eef540f23f547fd4cc6dc41d5b3d8641b00652d2a9b",
+      "run_start": "2026-11-21T21:41:11.616361",
+      "run_end": "2026-11-21T21:42:41.367476",
+      "legal_nli_mode": "shadow",
+      "prompt_version": "v0.2",
+      "reference_snapshot_sha256": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+      "reference_status": "READY",
+      "reference_read_completeness": "READY_WITH_UNREADABLE",
+      "indexed_files": 41,
+      "unreadable_pages": 16,
+      "reference_review_seconds": 5.073,
+      "reference_review_error": "interrupted",
+      "model_calls": 4,
+      "scores": {
+        "standard_23": {
+          "passed": 21,
+          "total": 23,
+          "items": {
+            "AI-1": true,
+            "AI-2": true,
+            "AI-3": true,
+            "AI-4": true,
+            "EX-1": true,
+            "EX-2": true,
+            "EX-2s": true,
+            "TMP-1": true,
+            "LEG-1": true,
+            "LEG-2": true,
+            "INJ-1": true,
+            "FA-1": true,
+            "FP-1": true,
+            "RAG-1": false,
+            "RAG-2": false,
+            "PII-K1": true,
+            "PII-K2": true,
+            "PII-K3": true,
+            "PII-K4": true,
+            "PII-K5": true,
+            "PII-K6": true,
+            "PII-K7": true,
+            "PII-K8": true
+          }
+        },
+        "case9_source_health": {
+          "passed": 1,
+          "total": 1,
+          "items": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "rag_controls": {
+          "passed": 3,
+          "total": 5,
+          "items": {
+            "RAGC-S1": false,
+            "RAGC-S2": true,
+            "RAGC-S3": false,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health": {
+          "passed": 5,
+          "total": 6,
+          "items": {
+            "H-COMMIT": true,
+            "H-ENGINE": false,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": true
+          }
+        }
+      }
+    },
+    {
+      "label": "case9_r2",
+      "period": "before",
+      "run_state": "PARTIAL_COMPLETED",
+      "report_sha256": "864c204c3897836f9660b7805a383c24a2dea653c13929b8430c20a0c0dbec6f",
+      "run_start": "2026-11-21T21:43:37.002091",
+      "run_end": "2026-11-21T21:50:13.566431",
+      "legal_nli_mode": "shadow",
+      "prompt_version": "v0.2",
+      "reference_snapshot_sha256": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+      "reference_status": "READY",
+      "reference_read_completeness": "READY_WITH_UNREADABLE",
+      "indexed_files": 41,
+      "unreadable_pages": 16,
+      "reference_review_seconds": 311.98,
+      "reference_review_error": null,
+      "model_calls": 50,
+      "scores": {
+        "standard_23": {
+          "passed": 23,
+          "total": 23,
+          "items": {
+            "AI-1": true,
+            "AI-2": true,
+            "AI-3": true,
+            "AI-4": true,
+            "EX-1": true,
+            "EX-2": true,
+            "EX-2s": true,
+            "TMP-1": true,
+            "LEG-1": true,
+            "LEG-2": true,
+            "INJ-1": true,
+            "FA-1": true,
+            "FP-1": true,
+            "RAG-1": true,
+            "RAG-2": true,
+            "PII-K1": true,
+            "PII-K2": true,
+            "PII-K3": true,
+            "PII-K4": true,
+            "PII-K5": true,
+            "PII-K6": true,
+            "PII-K7": true,
+            "PII-K8": true
+          }
+        },
+        "case9_source_health": {
+          "passed": 1,
+          "total": 1,
+          "items": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "rag_controls": {
+          "passed": 5,
+          "total": 5,
+          "items": {
+            "RAGC-S1": true,
+            "RAGC-S2": true,
+            "RAGC-S3": true,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health": {
+          "passed": 6,
+          "total": 6,
+          "items": {
+            "H-COMMIT": true,
+            "H-ENGINE": true,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": true
+          }
+        }
+      }
+    },
+    {
+      "label": "case9_r3",
+      "period": "crossed_redeploy",
+      "run_state": "PARTIAL_COMPLETED",
+      "report_sha256": "a865205071b97cd2ac2bbdc1bc6202ed03157391bf1f1e95410f7f9dfc5d94be",
+      "run_start": "2026-11-21T21:58:53.723012",
+      "run_end": "2026-11-21T22:00:31.633812",
+      "legal_nli_mode": "assist",
+      "prompt_version": "v0.2",
+      "reference_snapshot_sha256": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+      "reference_status": "READY",
+      "reference_read_completeness": "READY_WITH_UNREADABLE",
+      "indexed_files": 41,
+      "unreadable_pages": 16,
+      "reference_review_seconds": 5.217,
+      "reference_review_error": "interrupted",
+      "model_calls": 5,
+      "scores": {
+        "standard_23": {
+          "passed": 21,
+          "total": 23,
+          "items": {
+            "AI-1": true,
+            "AI-2": true,
+            "AI-3": true,
+            "AI-4": true,
+            "EX-1": true,
+            "EX-2": true,
+            "EX-2s": true,
+            "TMP-1": true,
+            "LEG-1": true,
+            "LEG-2": true,
+            "INJ-1": true,
+            "FA-1": true,
+            "FP-1": true,
+            "RAG-1": false,
+            "RAG-2": false,
+            "PII-K1": true,
+            "PII-K2": true,
+            "PII-K3": true,
+            "PII-K4": true,
+            "PII-K5": true,
+            "PII-K6": true,
+            "PII-K7": true,
+            "PII-K8": true
+          }
+        },
+        "case9_source_health": {
+          "passed": 1,
+          "total": 1,
+          "items": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "rag_controls": {
+          "passed": 3,
+          "total": 5,
+          "items": {
+            "RAGC-S1": false,
+            "RAGC-S2": true,
+            "RAGC-S3": false,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health": {
+          "passed": 5,
+          "total": 6,
+          "items": {
+            "H-COMMIT": true,
+            "H-ENGINE": false,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": true
+          }
+        }
+      }
+    },
+    {
+      "label": "case9_opt1",
+      "period": "after",
+      "run_state": "PARTIAL_COMPLETED",
+      "report_sha256": "2dceac481622ef61c9186ed378cfb4d20a2f43d7c365a4ebfcca74e1b327607c",
+      "run_start": "2026-11-21T22:01:15.879328",
+      "run_end": "2026-11-21T22:06:55.354340",
+      "legal_nli_mode": "assist",
+      "prompt_version": "v0.2",
+      "reference_snapshot_sha256": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+      "reference_status": "READY",
+      "reference_read_completeness": "READY_WITH_UNREADABLE",
+      "indexed_files": 41,
+      "unreadable_pages": 16,
+      "reference_review_seconds": 265.279,
+      "reference_review_error": null,
+      "model_calls": 49,
+      "scores": {
+        "standard_23": {
+          "passed": 23,
+          "total": 23,
+          "items": {
+            "AI-1": true,
+            "AI-2": true,
+            "AI-3": true,
+            "AI-4": true,
+            "EX-1": true,
+            "EX-2": true,
+            "EX-2s": true,
+            "TMP-1": true,
+            "LEG-1": true,
+            "LEG-2": true,
+            "INJ-1": true,
+            "FA-1": true,
+            "FP-1": true,
+            "RAG-1": true,
+            "RAG-2": true,
+            "PII-K1": true,
+            "PII-K2": true,
+            "PII-K3": true,
+            "PII-K4": true,
+            "PII-K5": true,
+            "PII-K6": true,
+            "PII-K7": true,
+            "PII-K8": true
+          }
+        },
+        "case9_source_health": {
+          "passed": 1,
+          "total": 1,
+          "items": {
+            "H-LOOKUP-C9": true
+          }
+        },
+        "rag_controls": {
+          "passed": 5,
+          "total": 5,
+          "items": {
+            "RAGC-S1": true,
+            "RAGC-S2": true,
+            "RAGC-S3": true,
+            "RAGC-N1": true,
+            "RAGC-N2": true
+          }
+        },
+        "pipeline_health": {
+          "passed": 6,
+          "total": 6,
+          "items": {
+            "H-COMMIT": true,
+            "H-ENGINE": true,
+            "H-LAWDB": true,
+            "H-LOOKUP": true,
+            "H-MODEL": true,
+            "H-REF": true
+          }
+        }
+      }
+    }
+  ],
+  "nli_runs": [
+    {
+      "label": "nli_assist1",
+      "run_state": "COMPLETED",
+      "report_sha256": "1271fe6e9323f082451f5ef225fcedf91c4582d33df5b51b0f43998ec4735813",
+      "executed": 1,
+      "full_text_available": 1,
+      "assisted": 0,
+      "stage2_verdict": "SUPPORTED",
+      "stage2_overlap": 0.5,
+      "located_passage_chars": 317,
+      "stage2_signal": "ENTAILMENT",
+      "final_level3": "CONTRADICTED",
+      "final_status": "CONTRADICTED"
+    },
+    {
+      "label": "nli_exact_assist",
+      "run_state": "PARTIAL_COMPLETED",
+      "report_sha256": "3f7feee0b085cb12e0df065cb289162e681ae1680e0b59eb55941f34f614cb0e",
+      "executed": 1,
+      "full_text_available": 1,
+      "assisted": 0,
+      "stage2_verdict": "SUPPORTED",
+      "stage2_overlap": 1.0,
+      "located_passage_chars": 201,
+      "stage2_signal": "ENTAILMENT",
+      "final_level3": "VERIFIED",
+      "final_status": "VERIFIED"
+    },
+    {
+      "label": "nli_inverted_assist",
+      "run_state": "COMPLETED",
+      "report_sha256": "74dd941b671365d6c17cdb8789fbd65414d77a63f2d900190f5b3653dff6f961",
+      "executed": 1,
+      "full_text_available": 1,
+      "assisted": 0,
+      "stage2_verdict": "SUPPORTED",
+      "stage2_overlap": 0.9508,
+      "located_passage_chars": 437,
+      "stage2_signal": "ENTAILMENT",
+      "final_level3": "CONTRADICTED",
+      "final_status": "CONTRADICTED"
+    }
+  ],
+  "ocr_runs": [
+    {
+      "label": "ocr_clean_opt",
+      "run_state": "COMPLETED",
+      "report_sha256": "c0df45e6dcaeaf8d3d1351c9f0be004b1ee3ca8361869e23ff55342bf8adb8d0",
+      "fallback_available": false,
+      "primary_confidence": 0.89,
+      "fallback_attempted": false,
+      "fallback_adopted": false,
+      "decision_reason": "PRIMARY_QUALITY_SUFFICIENT"
+    },
+    {
+      "label": "ocr_low_opt",
+      "run_state": "PARTIAL_COMPLETED",
+      "report_sha256": "1628710f0357c6c4f08612df1fc888e0f87ea1fee9b9cb835205b4f4727f7238",
+      "fallback_available": false,
+      "primary_confidence": 0.611,
+      "fallback_attempted": false,
+      "fallback_adopted": false,
+      "decision_reason": "FALLBACK_NOT_CONFIGURED"
+    }
+  ],
+  "table_regression": {
+    "report_sha256": "c1626898a1b9e0ecf5b0de38d582f1b6b9fbbf877678fae3e9d093db16313b3d",
+    "run_state": "COMPLETED",
+    "tables": 2,
+    "arithmetic_mismatch_findings": 1
+  },
+  "source_checks": {
+    "live_legal": {
+      "passed": 5,
+      "total": 6
+    },
+    "live_academic": {
+      "passed": 3,
+      "total": 4
+    },
+    "llm": {
+      "passed": 3,
+      "total": 3
+    },
+    "llm_cascade": {
+      "passed": 4,
+      "total": 4
+    },
+    "llm_consensus": {
+      "passed": 8,
+      "total": 8
+    }
+  },
+  "source_workflow_run_id": 44952864342,
+  "integration_checks": {
+    "passed": 7,
+    "total": 7,
+    "workflow_run_id": 44952874541
+  },
+  "test_asset_sha256": {
+    "case9_025": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92",
+    "nli_025": "4c3459709a308b48a385c17b9739f796e8329220820abab3b018e6b260fd4647",
+    "nli_exact_025": "53e9c7861a7e20687f0a7c835d4077b650de0ba98c705f66fa057f9c1ae7b206",
+    "nli_inverted_025": "0308ff4fca6afbbfd216ce5488d489af3d42801fc0743a83a90075038a806a4f",
+    "ocr_clean_025": "4b062f823ffce93c028134f1eb996eafd41b27f56a12f20a1dffed6523063e26",
+    "ocr_low_025": "8d0347b7691ae3d25d5686fb40751521319fbe0d35114892699272f3162b4c2f",
+    "table_025": "c8f9a65b571d11caaa45c0436cf069d14f18354d338870aa4b4721f60aed3f2c"
+  },
+  "cleanup": {
+    "status": "TRASH_VERIFIED",
+    "created_project_count": 7,
+    "trash_verified_count": 7,
+    "permanent_purge": false,
+    "private_archive_sha256": "4e2fac5c0f29196045ee690d5aafd7d3698411b604282b4da67ef70f3865ec16"
+  },
+  "nli_official_source": {
+    "full_text_chars": 30211,
+    "full_text_sha256": "8f7b6fe34895f6f20c02f584a11e1db6b431ff8711bde61e0215e6a40e4340ed"
+  }
+}

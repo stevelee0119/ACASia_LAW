@@ -19,10 +19,17 @@ from packages.legal_engine.quote_diff import quote_changes
 
 _CONTENT_TOKEN_RE = re.compile(r"[가-힣A-Za-z0-9]{2,}")
 _NEG_SURFACE_RE = re.compile(
-    r"(?:않|아니하|아니라|아니다|아닙|없다|없고|없으며|없음|불허|금지|무효|부인|배척|부정)"
+    r"(?:않[가-힣]*|아니(?:하[가-힣]*|되[가-힣]*|라|다|ㄴ|ㄴ가|ㅂ니다|므로|면)?|아닌|없(?:다|는|고|으며|음|이|을|어|으나|다고|다는)?|못(?:하[가-힣]*|되[가-힣]*)?|불허|금지|무효|부인|배척|부정|불가(?:능)?|불인정|불성립|위법)"
 )
 _OBLIGATION_RE = re.compile(r"(?:하여야\s*한다|해야\s*한다|의무가\s*있다|필수적이다)")
 _DISCRETION_RE = re.compile(r"(?:할\s*수\s*있다|허용된다|가능하다|재량에\s*속한다|무방하다)")
+_ANTONYM_PAIRS = (
+    (re.compile(r"유효"), re.compile(r"무효")),
+    (re.compile(r"적법"), re.compile(r"위법")),
+    (re.compile(r"성립(?:한다|된다|함)"), re.compile(r"(?:불성립|성립하지\s*아니|성립하지\s*않)")),
+    (re.compile(r"허용(?:된다|한다|함)"), re.compile(r"(?:불허|금지|허용되지\s*아니|허용되지\s*않)")),
+    (re.compile(r"인정(?:된다|한다|함)"), re.compile(r"(?:부인|배척|부정|불인정|인정되지\s*아니|인정되지\s*않)")),
+)
 
 
 @dataclass(frozen=True)
@@ -54,6 +61,12 @@ class Stage2VerificationResult:
         return {
             "verdict": self.verdict,
             "located_passage": asdict(self.located_passage) if self.located_passage else None,
+            "passage_offset": (
+                {"start": self.located_passage.start, "end": self.located_passage.end}
+                if self.located_passage
+                else None
+            ),
+            "passage_length": len(self.located_passage.text) if self.located_passage else 0,
             "nli_signal": asdict(self.nli_signal) if self.nli_signal else None,
             "structural_changes": self.structural_changes,
             "reason": self.reason,
@@ -121,24 +134,62 @@ def sliding_window_passages(
     return candidates[:top_k]
 
 
+def _aligned_premise_span(premise: str, hypothesis: str) -> str:
+    """When `premise` spans multiple sentences, align `hypothesis` to its closest sentence(s) for polarity checks."""
+    bounds = sentence_bounds(premise or "")
+    if len(bounds) <= 1:
+        return premise
+    hyp_tokens = _token_set(hypothesis)
+    if not hyp_tokens:
+        return premise
+    hyp_bounds = sentence_bounds(hypothesis or "")
+    target_win = max(1, min(len(bounds), len(hyp_bounds) or 1))
+    best_seg = premise
+    best_score = -1.0
+    for idx in range(0, len(bounds) - target_win + 1):
+        seg = premise[bounds[idx][0]:bounds[idx + target_win - 1][1]].strip()
+        if not seg:
+            continue
+        seg_toks = _token_set(seg)
+        score = len(hyp_tokens & seg_toks) / max(1, len(hyp_tokens))
+        if score > best_score:
+            best_score = score
+            best_seg = seg
+    return best_seg
+
+
+_CONDITIONAL_PROVISO_RE = re.compile(r"(?:특별한\s*(?:사정|약정|규정|합의)이\s*없는\s*한|달리\s*정한\s*바가\s*없는\s*한)")
+
+
 def _structural_inversion_reasons(premise: str, hypothesis: str) -> Tuple[List[str], List[Dict[str, Any]]]:
     reasons: List[str] = []
-    prem_neg = len(_NEG_SURFACE_RE.findall(premise)) % 2 == 1
-    hyp_neg = len(_NEG_SURFACE_RE.findall(hypothesis)) % 2 == 1
-    diff_res = quote_changes(hypothesis, premise) or {}
+    aligned = _aligned_premise_span(premise, hypothesis)
+    aligned_core = _CONDITIONAL_PROVISO_RE.sub("", aligned)
+    hyp_core = _CONDITIONAL_PROVISO_RE.sub("", hypothesis)
+    prem_neg_cnt = len(_NEG_SURFACE_RE.findall(aligned_core))
+    hyp_neg_cnt = len(_NEG_SURFACE_RE.findall(hyp_core))
+
+    diff_res = quote_changes(hypothesis, aligned) or quote_changes(hypothesis, premise) or {}
     changes = list(diff_res.get("changes") or [])
     for kind in diff_res.get("diff_categories") or []:
-        if kind == "NEGATION" and prem_neg == hyp_neg:
+        if kind == "NEGATION" and prem_neg_cnt == hyp_neg_cnt:
             continue
-        if kind in {"NEGATION", "MODALITY", "PARTY_SWAP", "PROVISO_OMISSION", "NUMERIC"}:
+        if kind in {"NEGATION", "MODALITY", "PARTY_SWAP", "PROVISO_OMISSION", "NUMERIC", "DEGREE", "PROVISION_QUALIFIER"}:
             reasons.append(f"QUOTE_DIFF_{kind}")
 
-    if prem_neg != hyp_neg:
+    if prem_neg_cnt != hyp_neg_cnt:
         reasons.append("POLARITY_INVERSION")
 
-    prem_obl = bool(_OBLIGATION_RE.search(premise))
+    for pos_re, neg_re in _ANTONYM_PAIRS:
+        p_pos, p_neg = bool(pos_re.search(aligned)), bool(neg_re.search(aligned))
+        h_pos, h_neg = bool(pos_re.search(hypothesis)), bool(neg_re.search(hypothesis))
+        if (p_pos and not p_neg and h_neg and not h_pos) or (p_neg and not p_pos and h_pos and not h_neg):
+            reasons.append("ANTONYM_POLARITY_SWAP")
+            break
+
+    prem_obl = bool(_OBLIGATION_RE.search(aligned))
     hyp_obl = bool(_OBLIGATION_RE.search(hypothesis))
-    prem_disc = bool(_DISCRETION_RE.search(premise))
+    prem_disc = bool(_DISCRETION_RE.search(aligned))
     hyp_disc = bool(_DISCRETION_RE.search(hypothesis))
     if (prem_obl and hyp_disc) or (prem_disc and hyp_obl):
         reasons.append("MODALITY_OBLIGATION_DISCRETION_SWAP")

@@ -149,17 +149,24 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
     ocr_engine = (os.getenv("LV_OCR_FALLBACK_ENGINE") or "none").strip().lower()
     ocr_mode = (
         os.getenv("LV_OCR_FALLBACK_MODE")
-        or ("auto" if ocr_engine != "none" else "off")
+        or ("auto" if ocr_engine not in ("", "none", "off") else "off")
     ).strip().lower()
     ocr_available = False
-    if ocr_engine != "none":
+    if ocr_engine not in ("", "none", "off") and ocr_mode != "off":
         try:
             from packages.document_engine.ocr import _build_optional_fallback
             fb = _build_optional_fallback(ocr_engine)
             ocr_available = bool(fb is not None and getattr(fb, "available", False))
         except Exception:
             ocr_available = False
-    ocr_reason = None if ocr_available else ("NOT_CONFIGURED" if ocr_engine == "none" else "ENGINE_UNAVAILABLE")
+    if ocr_available:
+        ocr_reason = None
+    elif ocr_mode == "off" and ocr_engine not in ("", "none", "off"):
+        ocr_reason = "DISABLED_BY_MODE"
+    elif ocr_engine in ("", "none", "off"):
+        ocr_reason = "NOT_CONFIGURED"
+    else:
+        ocr_reason = "ENGINE_UNAVAILABLE"
 
     rag_flag = bool(getattr(settings, "rag_hybrid_semantic", True))
     rag_env_mode = (os.getenv("LV_RAG_RETRIEVAL_MODE") or "").strip().upper()

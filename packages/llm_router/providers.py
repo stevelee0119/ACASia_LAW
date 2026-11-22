@@ -482,9 +482,48 @@ class LocalLLMProvider(LLMProvider):
     name = "local"
     _quirks: Dict[str, set] = {}
 
+    def __init__(self, config: Any) -> None:
+        super().__init__(config)
+        self.call_stats: Dict[str, int] = {
+            "calls": 0,
+            "successes": 0,
+            "failures": 0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "total_latency_ms": 0,
+        }
+
     @property
     def available(self) -> bool:
-        return self.config.enabled  # 로컬은 네트워크 정책·키와 무관
+        return bool(self.config.enabled and (self.config.base_url or "").strip())
+
+    async def health_check(self) -> Dict[str, Any]:
+        """Verify local inference server connectivity without exposing credentials."""
+        if not self.available:
+            return {"ok": False, "error": "LOCAL_LLM_DISABLED_OR_UNCONFIGURED"}
+        import time
+        import httpx
+
+        headers = {"Authorization": f"Bearer {self.config.api_key}"} if self.config.api_key else None
+        base = self.config.base_url.rstrip("/")
+        started = time.time()
+        try:
+            async with httpx.AsyncClient(timeout=min(5.0, self._timeout())) as client:
+                resp = await client.get(f"{base}/models", headers=headers)
+            latency_ms = int((time.time() - started) * 1000)
+            return {
+                "ok": 200 <= resp.status_code < 300,
+                "status_code": resp.status_code,
+                "latency_ms": latency_ms,
+                "error": None if 200 <= resp.status_code < 300 else f"HTTP_{resp.status_code}",
+            }
+        except Exception as exc:
+            return {
+                "ok": False,
+                "status_code": None,
+                "latency_ms": int((time.time() - started) * 1000),
+                "error": type(exc).__name__,
+            }
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
         if not self.available:
@@ -494,6 +533,7 @@ class LocalLLMProvider(LLMProvider):
 
         import httpx
 
+        self.call_stats["calls"] += 1
         backend = (os.getenv("LV_LOCAL_LLM_BACKEND") or "openai_compat").strip().lower()
         quirks = self._quirks.setdefault(self.config.model, set())
 
@@ -539,7 +579,7 @@ class LocalLLMProvider(LLMProvider):
             async with httpx.AsyncClient(timeout=self._timeout()) as client:
                 for _ in range(4):
                     response = await client.post(
-                        f"{self.config.base_url}/chat/completions",
+                        f"{self.config.base_url.rstrip('/')}/chat/completions",
                         headers=headers or None,
                         json=body(),
                     )
@@ -559,6 +599,7 @@ class LocalLLMProvider(LLMProvider):
                     else:
                         break
             if response.status_code >= 400:
+                self.call_stats["failures"] += 1
                 return LLMResponse(
                     False,
                     provider=self.name,
@@ -567,10 +608,12 @@ class LocalLLMProvider(LLMProvider):
                 )
             data = response.json()
         except Exception as exc:
+            self.call_stats["failures"] += 1
             return LLMResponse(False, provider=self.name, model=self.config.model, error=_exc_error(exc))
 
         choices = data.get("choices") or []
         if not choices or not isinstance(choices[0], dict):
+            self.call_stats["failures"] += 1
             return LLMResponse(False, provider=self.name, model=self.config.model, error="INVALID_RESPONSE: choices 누락")
         choice = choices[0]
         message_obj = choice.get("message") if isinstance(choice.get("message"), dict) else {}
@@ -585,7 +628,36 @@ class LocalLLMProvider(LLMProvider):
             ("prompt_tokens" in usage and "completion_tokens" in usage)
             or ("input_tokens" in usage and "output_tokens" in usage)
         )
-        return _checked(
+        latency_ms = int((time.time() - started) * 1000)
+
+        if request.schema and isinstance(request.schema, dict):
+            parsed_obj = _extract_json(text)
+            if parsed_obj is None:
+                self.call_stats["failures"] += 1
+                return LLMResponse(
+                    ok=False,
+                    text=text,
+                    provider=self.name,
+                    model=self.config.model,
+                    latency_ms=latency_ms,
+                    error="LOCAL_SCHEMA_VALIDATION_FAILED: JSON_NOT_FOUND",
+                )
+            if "properties" in request.schema or request.schema.get("type") == "object":
+                try:
+                    import jsonschema
+                    jsonschema.validate(instance=parsed_obj, schema=request.schema)
+                except Exception as schema_exc:
+                    self.call_stats["failures"] += 1
+                    return LLMResponse(
+                        ok=False,
+                        text=text,
+                        provider=self.name,
+                        model=self.config.model,
+                        latency_ms=latency_ms,
+                        error=f"LOCAL_SCHEMA_VALIDATION_FAILED: {type(schema_exc).__name__}",
+                    )
+
+        checked = _checked(
             LLMResponse(
                 ok=True,
                 text=text,
@@ -596,11 +668,19 @@ class LocalLLMProvider(LLMProvider):
                 thinking_tokens=thinking_tokens,
                 cache_read_tokens=cache_read_tokens,
                 usage_complete=usage_complete,
-                latency_ms=int((time.time() - started) * 1000),
+                latency_ms=latency_ms,
             ),
             truncated=finish_reason in ("length", "max_tokens"),
             limit=request.max_tokens,
         )
+        if checked.ok:
+            self.call_stats["successes"] += 1
+            self.call_stats["total_input_tokens"] += input_tokens
+            self.call_stats["total_output_tokens"] += output_tokens
+            self.call_stats["total_latency_ms"] += latency_ms
+        else:
+            self.call_stats["failures"] += 1
+        return checked
 
 
 

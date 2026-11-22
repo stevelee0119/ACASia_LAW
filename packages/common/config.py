@@ -95,7 +95,7 @@ class ProviderConfig:
 @dataclass
 class Settings:
     app_name: str = "ACASia_LAW"
-    version: str = "0.25.0"  # 버전 0.25.0 (평가 측 판정서 및 VERSION_POLICY 기준)
+    version: str = "0.26.0"  # 버전 0.26.0 (평가 측 판정서 및 VERSION_POLICY 기준)
     database_url: str = field(default_factory=resolve_database_url)
     storage_root: Path = field(
         default_factory=lambda: Path(os.getenv("LV_STORAGE_ROOT") or str(data_dir() / "storage"))
@@ -240,6 +240,20 @@ def _default_providers() -> Dict[str, ProviderConfig]:
         override = os.getenv(f"LV_{name.upper()}_MODEL")
         if override:
             config.model = override
+        if config.kind == "local":
+            local_url = (os.getenv("LV_LOCAL_LLM_URL") or os.getenv("LV_LOCAL_BASE_URL") or "").strip()
+            if local_url:
+                config.base_url = local_url.rstrip("/")
+            local_model = (os.getenv("LV_LOCAL_LLM_MODEL") or "").strip()
+            if local_model:
+                config.model = local_model
+            enabled_raw = (os.getenv("LV_LOCAL_LLM_ENABLED") or "").strip().lower()
+            if enabled_raw in ("1", "true", "yes", "on"):
+                config.enabled = True
+            elif enabled_raw in ("0", "false", "no", "off"):
+                config.enabled = False
+            elif local_url:
+                config.enabled = True
         out[name] = config
     return out
 
