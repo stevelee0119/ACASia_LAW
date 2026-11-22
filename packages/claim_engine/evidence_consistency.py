@@ -1863,11 +1863,20 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
     statement_start = _statement_start(doc, text)
     proximity: List[str] = []
     distance: List[str] = []
+    _ABSENCE_PREMISE_RE = re.compile(r"(?:그\s*자리에\s*없|현장에\s*없|부재중|해외에\s*있|잠들어\s*있|출입하지\s*못)")
+    _TRANSITION_RE = re.compile(r"(?:그\s*후|다음\s*날|나중에|이후에|사후에|전해\s*들)")
+    _INNER_STATE_RE = re.compile(r"(?:속마음|내심|고의로|일부러|악의로|기망할\s*의사|속일\s*의도)")
+    _ATTR_QUOTE_RE = re.compile(r"(?:(?:원고|피고|상대방)(?:은|는|이|가)\s+[^.!?\n]{0,40}(?:주장|진술|항변)|라고\s*주장|주장에\s*따르면)")
+    prev_limit_idx = -10
+    prev_limit_shown = ""
+    sent_idx = 0
     for start, end in sentence_bounds(text):
         sentence = text[start:end]
         # 발췌는 원래 줄 글자를 띄어 이어 붙인다(읽기 본문은 줄바꿈 자리를 붙여 쓴다).
         shown = " ".join(b.text.strip() for b in reading.blocks_between(start, end)) or sentence.strip()
-        if LIMITATION_RE.search(sentence) and CERTAINTY_RE.search(sentence):
+        has_limit = bool(LIMITATION_RE.search(sentence) or _ABSENCE_PREMISE_RE.search(sentence))
+        has_cert_or_perc = bool(CERTAINTY_RE.search(sentence) or _PERC_RE.search(sentence))
+        if has_limit and has_cert_or_perc:
             out.append(_finding(doc, FindingType.STATEMENT_BEYOND_PERCEPTION, EvidenceGrade.C, Severity.MEDIUM,
                                 "지각 범위를 넘는 단정: 지각하지 못했다고 하면서 사실을 확실하다고 한다",
                                 "같은 문장에서 보거나 듣지 못했다고 하면서 그 사실을 확실하다고 한다. "
@@ -1885,6 +1894,39 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
                                     shown, status=VerificationStatus.SUSPICIOUS,
                                     features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION_STRUCTURE",
                                               "pattern": pattern}))
+            elif (
+                sent_idx - prev_limit_idx <= 2
+                and (
+                    CERTAINTY_RE.search(sentence)
+                    or re.search(r"(?:직접\s*(?:보았|봤|들었|목격)|목격(?:하였|했))", sentence)
+                )
+                and not has_limit
+                and not re.search(r"(?:특정|단정|판단|확인)할\s*수(?:는)?\s*없", sentence)
+                and not _TRANSITION_RE.search(sentence)
+                and not _ATTR_QUOTE_RE.search(sentence)
+            ):
+                out.append(_finding(doc, FindingType.STATEMENT_BEYOND_PERCEPTION, EvidenceGrade.C, Severity.MEDIUM,
+                                    "전제-결론 지각 모순: 지각 불가·부재 전제 직후 직접 지각 또는 단정 진술",
+                                    "앞선 문장에서 지각할 수 없거나 현장에 없었다고 진술한 직후, 전환 설명 없이 "
+                                    "직접 지각했거나 확실하다고 단정하고 있다. 진술의 신빙성은 사람이 판단한다.",
+                                    f"{prev_limit_shown} / {shown}",
+                                    status=VerificationStatus.SUSPICIOUS,
+                                    features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION_ADJACENT"}))
+        if has_limit and not has_cert_or_perc:
+            prev_limit_idx = sent_idx
+            prev_limit_shown = shown
+        if (
+            (statement_start is None or start >= statement_start)
+            and _INNER_STATE_RE.search(sentence)
+            and not _ATTR_QUOTE_RE.search(sentence)
+        ):
+            out.append(_finding(doc, FindingType.EVIDENCE_PURPOSE_MISMATCH, EvidenceGrade.C, Severity.MEDIUM,
+                                "일방 진술서의 상대방 내심·의도 단정",
+                                "진술서 등 일방 작성 문서에서 객관적 외형 사실에 대한 설명 없이 상대방의 내심이나 "
+                                "고의·의도를 직접 단정하고 있다. 증명력 범위는 사람이 확인한다.",
+                                shown, status=VerificationStatus.SUSPICIOUS,
+                                features={"human_review": True, "rule_id": "EVI.INNER_STATE_OVERCLAIM"}))
+        sent_idx += 1
         if statement_start is not None and start >= statement_start:
             if PROXIMITY_RE.search(sentence):
                 proximity.append(shown)
@@ -3578,31 +3620,57 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
 
                     pairs.setdefault(other_id, []).append((sentence, other_sentence, round(overlap, 2)))
 
-        # C1: 진술 문서가 다른 서면 문장을 어미·조사만 바꿔 옮긴 경우 — 어절 어간(앞 두 글자) 순서열의 최장 공통 부분열 비율로 본다.
-        # 같은 사건을 자기 말로 쓴 진술과 가르려고, 긴 문장(어간 8개 이상) 두 쌍 이상이 같은 상대 문서에 모일 때만 낸다.
-        if owner_kind == DOC_KIND_STATEMENT:
+        # C1: 어미·조사만 바꿔 옮긴 경우 — 어절 어간(앞 두 글자) LCS 및 조사·어미 정규화 내용어 3-shingle로 본다.
+        # 진술서뿐 아니라 소송서면/증거설명서 ↔ 사실경위서/원본서증 간에도 동일 기준을 적용한다.
+        _is_stmt = owner_kind == DOC_KIND_STATEMENT
+        _is_pleading_copy = owner_kind in (DOC_KIND_PLEADING, DOC_KIND_EVIDENCE_EXPLANATION)
+        if _is_stmt or _is_pleading_copy:
+            _PARTICLE_END_RE = re.compile(
+                r"(?:하였습니다|했습니다|하였다|했다|입니다|이다|습니다|ㅂ니다|었다|았다|였다|"
+                r"에서|으로|에게|까지|부터|에도|만은|과는|와는|은|는|이|가|을|를|에|로|와|과|도|만|의)$"
+            )
+
+            def _content_shingles(s: str) -> set:
+                toks = [_PARTICLE_END_RE.sub("", t) for t in _EOJEOL_RE.findall(_QUOTED_RE.sub("", s))]
+                toks = [t for t in toks if len(t) >= 2]
+                if len(toks) < 3:
+                    return set()
+                return {tuple(toks[i:i + 3]) for i in range(len(toks) - 2)}
+
             stem_cache: Dict[str, List[str]] = {}
+            csh_cache: Dict[str, set] = {}
             own = [(sent, _stem_seq(sent)) for sent, _ in prepared[owner.document_id]
                    if start is None or texts[owner.document_id].find(sent, start) != -1]
             for other in docs:
                 if other.document_id == owner.document_id:
+                    continue
+                other_kind = doc_kinds[other.document_id][0]
+                if _is_pleading_copy and other_kind not in (DOC_KIND_FACT_CONFIRMATION, DOC_KIND_EVIDENCE_ORIGINAL):
                     continue
                 found = {a for a, _, _ in pairs.get(other.document_id, [])}
                 extra = []
                 for sent, seq in own:
                     if sent in found or len(seq) < 8:
                         continue
+                    c_own = csh_cache.setdefault(sent, _content_shingles(sent))
                     for o_sent, _ in prepared[other.document_id]:
                         o_seq = stem_cache.setdefault(o_sent, _stem_seq(o_sent))
                         if len(o_seq) < 8:
                             continue
                         floor = min(len(seq), len(o_seq))
-                        # 최장 공통 부분열은 공통 어간 수를 넘지 못하므로, 집합 겹침이 모자라면 계산하지 않는다
-                        if sum(min(seq.count(t), o_seq.count(t)) for t in set(seq) & set(o_seq)) < 0.85 * floor:
-                            continue
-                        ratio = _lcs_len(seq, o_seq) / floor
-                        if ratio >= 0.85:
-                            extra.append((sent, o_sent, round(ratio, 2)))
+                        matched_ratio = 0.0
+                        if c_own:
+                            c_oth = csh_cache.setdefault(o_sent, _content_shingles(o_sent))
+                            if c_oth:
+                                sh_ov = len(c_own & c_oth) / max(1, min(len(c_own), len(c_oth)))
+                                if sh_ov >= 0.72:
+                                    matched_ratio = sh_ov
+                        if matched_ratio == 0.0 and sum(min(seq.count(t), o_seq.count(t)) for t in set(seq) & set(o_seq)) >= 0.85 * floor:
+                            ratio = _lcs_len(seq, o_seq) / floor
+                            if ratio >= 0.85:
+                                matched_ratio = ratio
+                        if matched_ratio > 0.0:
+                            extra.append((sent, o_sent, round(matched_ratio, 2)))
                             break
                 if len(extra) + len(pairs.get(other.document_id, [])) >= 2 and extra:
                     pairs.setdefault(other.document_id, []).extend(extra)
