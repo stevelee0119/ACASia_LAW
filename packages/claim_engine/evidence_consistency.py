@@ -1896,7 +1896,10 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
                                               "pattern": pattern}))
             elif (
                 sent_idx - prev_limit_idx <= 2
-                and has_cert_or_perc
+                and (
+                    CERTAINTY_RE.search(sentence)
+                    or re.search(r"(?:직접\s*(?:보았|봤|들었|목격)|목격(?:하였|했))", sentence)
+                )
                 and not has_limit
                 and not re.search(r"(?:특정|단정|판단|확인)할\s*수(?:는)?\s*없", sentence)
                 and not _TRANSITION_RE.search(sentence)
