@@ -66,6 +66,35 @@ class CallableRerankerAdapter(RerankerAdapter):
         return self._fn(query, passages)
 
 
+def _parse_safe_endpoint(endpoint: str) -> Tuple[str, str]:
+    """Validate an HTTP(S) RAG endpoint and split into (base_url, request_path)."""
+    from ipaddress import ip_address
+    from urllib.parse import urlsplit
+
+    raw = (endpoint or "").strip()
+    if not raw:
+        return "", ""
+    parsed = urlsplit(raw)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc or not parsed.hostname:
+        raise ValueError("INVALID_RAG_ENDPOINT_URL")
+    if parsed.username or parsed.password:
+        raise ValueError("INVALID_RAG_ENDPOINT_CREDENTIALS")
+    try:
+        ip = ip_address(parsed.hostname)
+        if ip.is_link_local or ip.is_multicast or ip.is_unspecified:
+            raise ValueError("BLOCKED_RAG_ENDPOINT_IP")
+    except ValueError as exc:
+        if "RAG_ENDPOINT" in str(exc):
+            raise
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
+    path = parsed.path or "/"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    return base_url, path
+
+
 class HttpEmbeddingAdapter(EmbeddingAdapter):
     """HTTP client adapter for OpenAI-compatible /embeddings endpoints."""
 
@@ -85,7 +114,8 @@ class HttpEmbeddingAdapter(EmbeddingAdapter):
         self._api_key = (api_key or "").strip() or None
         self.timeout = max(0.5, float(timeout))
         self._post_fn = post_fn
-        self.available = bool(self.endpoint)
+        self._base_url, self._request_path = _parse_safe_endpoint(self.endpoint) if self.endpoint else ("", "")
+        self.available = bool(self._base_url)
 
     def embed(self, texts: Sequence[str]) -> List[List[float]]:
         if not self.available or not texts:
@@ -100,8 +130,8 @@ class HttpEmbeddingAdapter(EmbeddingAdapter):
             resp = self._post_fn(self.endpoint, json=payload, headers=headers, timeout=self.timeout)
         else:
             import httpx
-            with httpx.Client(timeout=self.timeout) as client:
-                resp = client.post(self.endpoint, json=payload, headers=headers)
+            with httpx.Client(base_url=self._base_url, timeout=self.timeout) as client:
+                resp = client.post(self._request_path, json=payload, headers=headers)
         if getattr(resp, "status_code", 200) >= 400:
             raise RuntimeError(f"EMBEDDING_HTTP_{getattr(resp, 'status_code', 500)}")
         data = resp.json()
@@ -133,7 +163,8 @@ class HttpRerankerAdapter(RerankerAdapter):
         self._api_key = (api_key or "").strip() or None
         self.timeout = max(0.5, float(timeout))
         self._post_fn = post_fn
-        self.available = bool(self.endpoint)
+        self._base_url, self._request_path = _parse_safe_endpoint(self.endpoint) if self.endpoint else ("", "")
+        self.available = bool(self._base_url)
 
     def score(self, query: str, passages: Sequence[str]) -> List[float]:
         if not self.available or not passages:
@@ -148,8 +179,8 @@ class HttpRerankerAdapter(RerankerAdapter):
             resp = self._post_fn(self.endpoint, json=payload, headers=headers, timeout=self.timeout)
         else:
             import httpx
-            with httpx.Client(timeout=self.timeout) as client:
-                resp = client.post(self.endpoint, json=payload, headers=headers)
+            with httpx.Client(base_url=self._base_url, timeout=self.timeout) as client:
+                resp = client.post(self._request_path, json=payload, headers=headers)
         if getattr(resp, "status_code", 200) >= 400:
             raise RuntimeError(f"RERANKER_HTTP_{getattr(resp, 'status_code', 500)}")
         data = resp.json()
