@@ -229,18 +229,19 @@ def _adapter_version(adapter: Optional[OCRAdapter]) -> Optional[str]:
     if ver:
         return str(ver)
     pkg_map = {
-        "rapidocr": "rapidocr-onnxruntime",
-        "paddleocr": "paddleocr",
-        "tesseract": "pytesseract",
+        "rapidocr": ("rapidocr", "rapidocr-onnxruntime"),
+        "paddleocr": ("paddleocr",),
+        "tesseract": ("pytesseract",),
     }
-    pkg = pkg_map.get(str(getattr(adapter, "name", "") or "").lower())
-    if pkg:
-        try:
-            from importlib.metadata import version as pkg_version
+    pkgs = pkg_map.get(str(getattr(adapter, "name", "") or "").lower(), ())
+    if pkgs:
+        from importlib.metadata import version as pkg_version
 
-            return str(pkg_version(pkg))
-        except Exception:
-            return None
+        for pkg in pkgs:
+            try:
+                return str(pkg_version(pkg))
+            except Exception:
+                continue
     return None
 
 
@@ -340,9 +341,10 @@ class CompositeOCRAdapter(OCRAdapter):
 
     name = "composite"
 
-    def __init__(self, primary: OCRAdapter, fallback: Optional[OCRAdapter] = None) -> None:
+    def __init__(self, primary: OCRAdapter, fallback: Optional[OCRAdapter] = None, *, mode: str = "auto") -> None:
         self.primary = primary
         self.fallback = fallback
+        self.mode = (mode or "auto").strip().lower()
         self.available = bool(primary.available or (fallback and fallback.available))
         self.last_error: Optional[str] = None
         self.last_route: dict = {}
@@ -363,7 +365,29 @@ class CompositeOCRAdapter(OCRAdapter):
         fb_ver = _adapter_version(self.fallback)
         needs_fallback = bool(not lines or q_pri["low_quality"] or pri_err)
 
-        if not needs_fallback:
+        if self.mode == "off":
+            self.last_error = pri_err
+            self.last_route = {
+                "selected": self.primary.name,
+                "primary": q_pri,
+                "primary_engine": self.primary.name,
+                "primary_version": pri_ver,
+                "primary_confidence": round(float(q_pri.get("confidence") or 0.0), 3),
+                "primary_error": pri_err,
+                "fallback_attempted": False,
+                "fallback_adopted": False,
+                "fallback_engine": self.fallback.name if self.fallback else None,
+                "fallback_version": fb_ver,
+                "fallback_confidence": None,
+                "fallback_error": None,
+                "decision_reason": "FALLBACK_DISABLED_BY_MODE",
+                "selected_engine": self.primary.name,
+                "selected_version": pri_ver,
+                "selected_confidence": round(float(q_pri.get("confidence") or 0.0), 3),
+            }
+            return lines
+
+        if not needs_fallback and self.mode != "force":
             self.last_error = pri_err
             self.last_route = {
                 "selected": self.primary.name,
@@ -418,6 +442,29 @@ class CompositeOCRAdapter(OCRAdapter):
             fb_err = type(exc).__name__
         q_fb = page_quality(fb_lines)
         fb_conf = round(float(q_fb.get("confidence") or 0.0), 3)
+
+        if self.mode == "shadow":
+            self.last_error = pri_err
+            self.last_route = {
+                "selected": self.primary.name,
+                "primary": q_pri,
+                "fallback": q_fb,
+                "primary_engine": self.primary.name,
+                "primary_version": pri_ver,
+                "primary_confidence": round(float(q_pri.get("confidence") or 0.0), 3),
+                "primary_error": pri_err,
+                "fallback_attempted": True,
+                "fallback_adopted": False,
+                "fallback_engine": self.fallback.name,
+                "fallback_version": fb_ver,
+                "fallback_confidence": fb_conf,
+                "fallback_error": fb_err,
+                "decision_reason": "SHADOW_MODE",
+                "selected_engine": self.primary.name,
+                "selected_version": pri_ver,
+                "selected_confidence": round(float(q_pri.get("confidence") or 0.0), 3),
+            }
+            return lines
 
         if not fb_err and _fallback_improved(lines, q_pri, fb_lines, q_fb):
             self.last_error = None
@@ -548,19 +595,74 @@ def _recognize_path_via_adapter(
 
 
 class RapidOCRAdapter(OCRAdapter):
-    """Optional RapidOCR ONNX fallback adapter."""
+    """Optional RapidOCR ONNX fallback adapter (lazy-loaded to avoid startup RAM overhead)."""
 
     name = "rapidocr"
 
-    def __init__(self) -> None:
-        try:
-            from rapidocr_onnxruntime import RapidOCR  # type: ignore
+    def __init__(self, *, lazy: bool = True) -> None:
+        import importlib.util
+        import sys
 
-            self._engine = RapidOCR()
-            self.available = True
-        except Exception:
-            self._engine = None
+        self._engine: Any = None
+        self._v3_api = False
+        has_legacy_mock = "rapidocr_onnxruntime" in sys.modules
+        if has_legacy_mock and sys.modules["rapidocr_onnxruntime"] is None and "rapidocr" not in sys.modules:
             self.available = False
+        elif has_legacy_mock and sys.modules["rapidocr_onnxruntime"] is not None:
+            self.available = True
+        elif "rapidocr" in sys.modules:
+            self.available = sys.modules["rapidocr"] is not None
+        else:
+            self.available = bool(
+                importlib.util.find_spec("rapidocr") is not None
+                or importlib.util.find_spec("rapidocr_onnxruntime") is not None
+            )
+        if not lazy and self.available:
+            self._ensure_engine()
+
+    def _ensure_engine(self) -> bool:
+        import importlib.util
+        import sys
+
+        if self._engine is not None:
+            return True
+        if not self.available:
+            return False
+        # Respect test mocks or explicit legacy module in sys.modules["rapidocr_onnxruntime"]
+        if sys.modules.get("rapidocr_onnxruntime") is not None:
+            try:
+                from rapidocr_onnxruntime import RapidOCR as LegacyRapidOCR  # type: ignore
+
+                self._engine = LegacyRapidOCR()
+                self._v3_api = False
+                return True
+            except Exception:
+                self._engine = None
+                self.available = False
+                return False
+        try:
+            from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR  # type: ignore
+
+            self._engine = RapidOCR(
+                params={
+                    "Rec.lang_type": LangRec.KOREAN,
+                    "Rec.ocr_version": OCRVersion.PPOCRV5,
+                    "Rec.model_type": ModelType.MOBILE,
+                }
+            )
+            self._v3_api = True
+            return True
+        except Exception:
+            try:
+                from rapidocr_onnxruntime import RapidOCR as LegacyRapidOCR  # type: ignore
+
+                self._engine = LegacyRapidOCR()
+                self._v3_api = False
+                return True
+            except Exception:
+                self._engine = None
+                self.available = False
+                return False
 
     def recognize(self, path: str, page_numbers: Optional[List[int]] = None) -> List[OCRLine]:
         if not self.available:
@@ -568,11 +670,22 @@ class RapidOCRAdapter(OCRAdapter):
         return _recognize_path_via_adapter(self, path, page_numbers=page_numbers)
 
     def recognize_image(self, image: Any, *, page: int = 1, scale: float = 1.0) -> List[OCRLine]:
-        if not self.available or self._engine is None:
+        if not self._ensure_engine() or self._engine is None:
             return []
-        result, _ = self._engine(image)
+        raw = self._engine(image)
+        entries = []
+        if hasattr(raw, "boxes") and hasattr(raw, "txts") and hasattr(raw, "scores"):
+            boxes = raw.boxes if raw.boxes is not None else []
+            txts = raw.txts if raw.txts is not None else []
+            scores = raw.scores if raw.scores is not None else []
+            entries = list(zip(boxes, txts, scores))
+        elif isinstance(raw, tuple) and raw and isinstance(raw[0], list):
+            entries = raw[0]
+        elif isinstance(raw, list):
+            entries = raw
+
         lines: List[OCRLine] = []
-        for entry in result or []:
+        for entry in entries:
             if not isinstance(entry, (list, tuple)) or len(entry) < 3:
                 continue
             pts, text, conf = entry[0], str(entry[1] or "").strip(), float(entry[2] or 0.0)
@@ -651,8 +764,13 @@ def get_ocr_adapter() -> OCRAdapter:
 
         candidate = TesseractOCRAdapter()
         primary: OCRAdapter = candidate if candidate.available else NullOCRAdapter(candidate.diagnostics)
-        fallback = _build_optional_fallback(os.getenv("LV_OCR_FALLBACK_ENGINE", "none"))
-        _adapter = CompositeOCRAdapter(primary, fallback) if fallback is not None else primary
+        engine_name = (os.getenv("LV_OCR_FALLBACK_ENGINE") or "none").strip().lower()
+        mode = (
+            os.getenv("LV_OCR_FALLBACK_MODE")
+            or ("auto" if engine_name not in ("", "none", "off") else "off")
+        ).strip().lower()
+        fallback = None if mode == "off" else _build_optional_fallback(engine_name)
+        _adapter = CompositeOCRAdapter(primary, fallback, mode=mode) if fallback is not None else primary
     return _adapter
 
 
