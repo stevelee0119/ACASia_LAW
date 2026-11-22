@@ -376,6 +376,7 @@ class AdversarialScanner:
             features = {"deterministic_rule": True, "cross_layer_mismatch": True, **classification.features,
                         "observed_text": text[:2000], "normalized_text": normalized[:2000] if kinds else None,
                         "injection_path": path, "obfuscation": kinds, "field_name": name}
+            meta_tag = ["INJ-META"] if ("META" in path or "PROPERTY" in path) else []
             out.append(Finding.create(
                 type=FindingType.HIDDEN_INSTRUCTION, status=VerificationStatus.SUSPICIOUS,
                 severity=severity_for(classification), evidence_grade=EvidenceGrade.A,
@@ -386,11 +387,14 @@ class AdversarialScanner:
                         "본 문자열은 자료로만 취급되며 시스템 지침이나 Tool 권한을 변경하지 않는다."),
                 confidence=confidence_score(features), confidence_features=features,
                 document_id=doc.document_id, engine=ENGINE_NAME,
+                span=(0, min(len(text), 300)) if text else None,
                 meta_message_type=MetaMessageType.MM1_MACHINE_INSTRUCTION,
                 adversarial_class=classification.label, forensic_level=self._forensic_level(classification),
-                tags=[str(i) for i in classification.intents] + [path] + kinds,
+                tags=[str(i) for i in classification.intents] + [path] + meta_tag + kinds,
                 evidence=[Evidence.create(description=label, grade=EvidenceGrade.A,
-                                          document_id=doc.document_id, excerpt=_excerpt(text))],
+                                          document_id=doc.document_id,
+                                          span=(0, min(len(text), 300)) if text else None,
+                                          excerpt=_excerpt(text))],
             ))
         return out
 
@@ -409,7 +413,7 @@ class AdversarialScanner:
                         "지시문을 키워드 검사에서 숨기는 데 쓰인다. 본 문자열은 자료로만 취급된다."),
                 confidence=0.85, confidence_features=features, document_id=doc.document_id, engine=ENGINE_NAME,
                 meta_message_type=MetaMessageType.MM1_MACHINE_INSTRUCTION, forensic_level=ForensicLevel.NOTABLE,
-                tags=["ZERO_WIDTH"]))
+                tags=["ZERO_WIDTH", "INJ-ZWSP"]))
         has_page_layers = any(k.startswith("pypdf_page_") for k in doc.raw_layers)
         for layer_name, text in doc.raw_layers.items():
             if not text:
@@ -438,6 +442,7 @@ class AdversarialScanner:
                 p_match = re.search(r"_p(?:age_)?(\d+)\b", layer_name)
                 if p_match:
                     page_no = int(p_match.group(1))
+                sig_span = (0, len(signal.sample)) if signal.sample else None
 
                 out.append(
                     Finding.create(
@@ -446,6 +451,7 @@ class AdversarialScanner:
                         severity=severity,
                         evidence_grade=EvidenceGrade.A,
                         page=page_no,
+                        span=sig_span,
                         title=f"Unicode 은닉 신호: {signal.kind}" + (f" — {signal.detail}" if signal.kind == "ZERO_WIDTH" else ""),
                         detail=f"{layer_name} 레이어. {signal.detail}"
                         + (" 복원된 문자열에 지시형 표현이 있다." if hidden_instruction else ""),
@@ -456,13 +462,14 @@ class AdversarialScanner:
                         meta_message_type=MetaMessageType.MM1_MACHINE_INSTRUCTION,
                         forensic_level=ForensicLevel.SUSPICIOUS if hidden_instruction else ForensicLevel.NOTABLE,
                         sealed_excerpt=recovered or signal.sample,
-                        tags=[signal.kind] + (["ZERO_WIDTH"] if signal.kind == "ZERO_WIDTH" else []),
+                        tags=[signal.kind] + (["ZERO_WIDTH", "INJ-ZWSP"] if signal.kind == "ZERO_WIDTH" else []),
                         evidence=[
                             Evidence.create(
                                 description=f"{layer_name} 레이어 Unicode 신호",
                                 grade=EvidenceGrade.A,
                                 document_id=doc.document_id,
                                 page=page_no,
+                                span=sig_span,
                                 excerpt=_excerpt(signal.sample),
                                 sealed=True,
                             )
