@@ -170,19 +170,28 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
 
     rag_flag = bool(getattr(settings, "rag_hybrid_semantic", True))
     rag_env_mode = (os.getenv("LV_RAG_RETRIEVAL_MODE") or "").strip().upper()
-    dense_enabled = bool(os.getenv("LV_EMBEDDING_MODEL") or os.getenv("LV_RAG_EMBEDDING_ENDPOINT"))
-    reranker_enabled = bool(os.getenv("LV_RERANKER_MODEL") or os.getenv("LV_RAG_RERANKER_ENDPOINT"))
-    if not rag_flag or rag_env_mode == "LEXICAL_ONLY":
+    has_commercial_emb_key = bool((os.getenv("OPENAI_API_KEY") or "").strip() or (os.getenv("GEMINI_API_KEY") or "").strip())
+    has_emb_endpoint = bool((os.getenv("LV_RAG_EMBEDDING_ENDPOINT") or "").strip())
+    if not rag_flag or rag_env_mode in ("OFF", "LEXICAL", "LEXICAL_ONLY"):
         rag_configured = "LEXICAL_ONLY"
         rag_effective = "LEXICAL_ONLY"
-        rag_reason: Optional[str] = "HYBRID_DISABLED_BY_FLAG"
+        dense_enabled = False
+        reranker_enabled = False
+        rag_reason: Optional[str] = (
+            "LEXICAL_MODE_CONFIGURED"
+            if rag_env_mode in ("OFF", "LEXICAL", "LEXICAL_ONLY")
+            else "HYBRID_DISABLED_BY_FLAG"
+        )
     else:
         rag_configured = "HYBRID"
+        dense_enabled = has_emb_endpoint or has_commercial_emb_key
         if dense_enabled:
             rag_effective = "HYBRID"
+            reranker_enabled = True
             rag_reason = None
         else:
             rag_effective = "LEXICAL_ONLY"
+            reranker_enabled = False
             rag_reason = "NO_EMBEDDING_ADAPTER_CONFIGURED"
 
     try:
@@ -192,17 +201,6 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
         cassette_mode = (os.getenv("LV_SOURCE_REPLAY_MODE") or "LIVE").strip().upper()
         if cassette_mode not in ("LIVE", "RECORD", "REPLAY"):
             cassette_mode = "LIVE"
-
-    local_providers: List[Dict[str, Any]] = []
-    for name, cfg in sorted((getattr(settings, "providers", {}) or {}).items()):
-        if getattr(cfg, "kind", "") == "local" and getattr(cfg, "enabled", False):
-            local_providers.append({
-                "name": name,
-                "model": getattr(cfg, "model", ""),
-                "enabled": True,
-                "endpoint_configured": bool(getattr(cfg, "base_url", None) or os.getenv("LV_LOCAL_LLM_URL")),
-            })
-    local_backend = (os.getenv("LV_LOCAL_LLM_BACKEND") or "openai_compat").strip().lower()
 
     return {
         "feature_modes": {
@@ -218,6 +216,7 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
             "effective_mode": rag_effective,
             "dense_enabled": dense_enabled,
             "reranker_enabled": reranker_enabled,
+            "reranker_mode": "deterministic_legal" if reranker_enabled else "off",
             "fallback_reason": rag_reason,
         },
         "ocr_fallback": {
@@ -228,14 +227,15 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
         },
         "source_cassette": {
             "mode": cassette_mode,
+            "evaluation_only": True,
             "cassette_dir_configured": bool((os.getenv("LV_SOURCE_CASSETTE_DIR") or "").strip()),
             "allow_network": os.getenv("LV_ALLOW_NETWORK", "1") != "0",
         },
         "local_llm": {
-            "registered": bool(local_providers),
-            "provider_count": len(local_providers),
-            "backend": local_backend,
-            "providers": local_providers,
+            "registered": False,
+            "provider_count": 0,
+            "operational": False,
+            "status": "REMOVED_NOT_OPERATIONAL",
         },
     }
 

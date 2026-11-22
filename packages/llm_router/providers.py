@@ -477,129 +477,39 @@ class GeminiProvider(LLMProvider):
 
 
 class LocalLLMProvider(LLMProvider):
-    """폐쇄망용. OpenAI 호환 엔드포인트(vLLM·Ollama·LocalAI 등)를 가정한다(제23장)."""
+    """호환성 유지용 로컬 공급자 어댑터(운영 기본 비활성, TK-232 정리)."""
 
     name = "local"
-    _quirks: Dict[str, set] = {}
-
-    def __init__(self, config: Any) -> None:
-        super().__init__(config)
-        self.call_stats: Dict[str, int] = {
-            "calls": 0,
-            "successes": 0,
-            "failures": 0,
-            "total_input_tokens": 0,
-            "total_output_tokens": 0,
-            "total_latency_ms": 0,
-        }
 
     @property
     def available(self) -> bool:
-        return bool(self.config.enabled and (self.config.base_url or "").strip())
-
-    async def health_check(self) -> Dict[str, Any]:
-        """Verify local inference server connectivity without exposing credentials."""
-        if not self.available:
-            return {"ok": False, "error": "LOCAL_LLM_DISABLED_OR_UNCONFIGURED"}
-        import time
-        import httpx
-
-        headers = {"Authorization": f"Bearer {self.config.api_key}"} if self.config.api_key else None
-        base = self.config.base_url.rstrip("/")
-        started = time.time()
-        try:
-            async with httpx.AsyncClient(timeout=min(5.0, self._timeout())) as client:
-                resp = await client.get(f"{base}/models", headers=headers)
-            latency_ms = int((time.time() - started) * 1000)
-            return {
-                "ok": 200 <= resp.status_code < 300,
-                "status_code": resp.status_code,
-                "latency_ms": latency_ms,
-                "error": None if 200 <= resp.status_code < 300 else f"HTTP_{resp.status_code}",
-            }
-        except Exception as exc:
-            return {
-                "ok": False,
-                "status_code": None,
-                "latency_ms": int((time.time() - started) * 1000),
-                "error": type(exc).__name__,
-            }
+        return bool(getattr(self.config, "enabled", False) and (getattr(self.config, "base_url", "") or "").strip())
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
         if not self.available:
             return LLMResponse(False, provider=self.name, error="Local LLM 비활성")
-        import os
         import time
-
         import httpx
 
-        self.call_stats["calls"] += 1
-        backend = (os.getenv("LV_LOCAL_LLM_BACKEND") or "openai_compat").strip().lower()
-        quirks = self._quirks.setdefault(self.config.model, set())
-
-        def body() -> Dict[str, Any]:
-            system = request.system
-            if request.schema and "json" not in (system + request.user).lower():
-                system += "\nRespond with a single JSON object."
-            payload: Dict[str, Any] = {
-                "model": self.config.model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": request.user},
-                ],
-            }
-            payload["max_completion_tokens" if "completion_tokens" in quirks else "max_tokens"] = request.max_tokens
-            if "no_temperature" not in quirks:
-                payload["temperature"] = request.temperature
-            if request.schema and "no_response_format" not in quirks:
-                is_full_schema = isinstance(request.schema, dict) and (
-                    "properties" in request.schema or request.schema.get("type") == "object"
-                )
-                if backend == "ollama" and "no_ollama_format" not in quirks:
-                    payload["format"] = request.schema if is_full_schema else "json"
-                elif is_full_schema and "no_json_schema" not in quirks:
-                    payload["response_format"] = {
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": "structured_response",
-                            "strict": True,
-                            "schema": request.schema,
-                        },
-                    }
-                else:
-                    payload["response_format"] = {"type": "json_object"}
-            return payload
-
-        headers: Dict[str, str] = {}
-        if self.config.api_key:
-            headers["Authorization"] = f"Bearer {self.config.api_key}"
-
+        payload: Dict[str, Any] = {
+            "model": self.config.model,
+            "messages": [
+                {"role": "system", "content": request.system},
+                {"role": "user", "content": request.user},
+            ],
+            "max_tokens": request.max_tokens,
+            "temperature": request.temperature,
+        }
+        headers = {"Authorization": f"Bearer {self.config.api_key}"} if getattr(self.config, "api_key", None) else None
         started = time.time()
         try:
             async with httpx.AsyncClient(timeout=self._timeout()) as client:
-                for _ in range(4):
-                    response = await client.post(
-                        f"{self.config.base_url.rstrip('/')}/chat/completions",
-                        headers=headers or None,
-                        json=body(),
-                    )
-                    if response.status_code != 400:
-                        break
-                    message = response.text.lower()
-                    if "max_tokens" in message and "completion_tokens" not in quirks:
-                        quirks.add("completion_tokens")
-                    elif "temperature" in message and "no_temperature" not in quirks:
-                        quirks.add("no_temperature")
-                    elif "format" in message and backend == "ollama" and "no_ollama_format" not in quirks:
-                        quirks.add("no_ollama_format")
-                    elif ("json_schema" in message or "response_format" in message) and "no_json_schema" not in quirks:
-                        quirks.add("no_json_schema")
-                    elif "response_format" in message and "no_response_format" not in quirks:
-                        quirks.add("no_response_format")
-                    else:
-                        break
+                response = await client.post(
+                    f"{self.config.base_url.rstrip('/')}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
             if response.status_code >= 400:
-                self.call_stats["failures"] += 1
                 return LLMResponse(
                     False,
                     provider=self.name,
@@ -608,56 +518,19 @@ class LocalLLMProvider(LLMProvider):
                 )
             data = response.json()
         except Exception as exc:
-            self.call_stats["failures"] += 1
             return LLMResponse(False, provider=self.name, model=self.config.model, error=_exc_error(exc))
 
         choices = data.get("choices") or []
         if not choices or not isinstance(choices[0], dict):
-            self.call_stats["failures"] += 1
             return LLMResponse(False, provider=self.name, model=self.config.model, error="INVALID_RESPONSE: choices 누락")
         choice = choices[0]
         message_obj = choice.get("message") if isinstance(choice.get("message"), dict) else {}
         text = message_obj.get("content") or ""
-        finish_reason = str(choice.get("finish_reason") or choice.get("stop_reason") or "").lower()
         usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
         input_tokens = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
         output_tokens = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
-        thinking_tokens = int((usage.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0)
-        cache_read_tokens = int((usage.get("prompt_tokens_details") or {}).get("cached_tokens") or 0)
-        usage_complete = (
-            ("prompt_tokens" in usage and "completion_tokens" in usage)
-            or ("input_tokens" in usage and "output_tokens" in usage)
-        )
         latency_ms = int((time.time() - started) * 1000)
-
-        if request.schema and isinstance(request.schema, dict):
-            parsed_obj = _extract_json(text)
-            if parsed_obj is None:
-                self.call_stats["failures"] += 1
-                return LLMResponse(
-                    ok=False,
-                    text=text,
-                    provider=self.name,
-                    model=self.config.model,
-                    latency_ms=latency_ms,
-                    error="LOCAL_SCHEMA_VALIDATION_FAILED: JSON_NOT_FOUND",
-                )
-            if "properties" in request.schema or request.schema.get("type") == "object":
-                try:
-                    import jsonschema
-                    jsonschema.validate(instance=parsed_obj, schema=request.schema)
-                except Exception as schema_exc:
-                    self.call_stats["failures"] += 1
-                    return LLMResponse(
-                        ok=False,
-                        text=text,
-                        provider=self.name,
-                        model=self.config.model,
-                        latency_ms=latency_ms,
-                        error=f"LOCAL_SCHEMA_VALIDATION_FAILED: {type(schema_exc).__name__}",
-                    )
-
-        checked = _checked(
+        return _checked(
             LLMResponse(
                 ok=True,
                 text=text,
@@ -665,22 +538,11 @@ class LocalLLMProvider(LLMProvider):
                 model=self.config.model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
-                thinking_tokens=thinking_tokens,
-                cache_read_tokens=cache_read_tokens,
-                usage_complete=usage_complete,
                 latency_ms=latency_ms,
             ),
-            truncated=finish_reason in ("length", "max_tokens"),
+            truncated=str(choice.get("finish_reason") or "").lower() in ("length", "max_tokens"),
             limit=request.max_tokens,
         )
-        if checked.ok:
-            self.call_stats["successes"] += 1
-            self.call_stats["total_input_tokens"] += input_tokens
-            self.call_stats["total_output_tokens"] += output_tokens
-            self.call_stats["total_latency_ms"] += latency_ms
-        else:
-            self.call_stats["failures"] += 1
-        return checked
 
 
 
