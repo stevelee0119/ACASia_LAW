@@ -526,6 +526,7 @@ def review_document(result, library, router, context, pii):
     review["search_diagnostics"] = {
         "document_select": selection.get("search_diagnostics"),
         "claim_search": claim_search_summary,
+        "retrieval": selection.get("retrieval_telemetry"),
     }
     if search_interrupted:
         review["search_interrupted"] = True
