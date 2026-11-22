@@ -18,6 +18,8 @@ from filelock import FileLock, Timeout
 from packages.common.config import REPO_ROOT
 from .drive import DriveClient, EXPORTS, ReferenceError, access_problem, revision, valid_id
 from .extract import EXTRACTOR_VERSION
+
+OCR_REPROCESS_VERSION = "tk231-rapidocr-preproc-v1"
 from . import relevance
 from .relevance import tokens
 from .case_table import lookup_records
@@ -155,7 +157,7 @@ class ReferenceLibrary:
         finally:
             db.close()
 
-    def sync(self, query="", *, collect_all: bool | None = None):
+    def sync(self, query="", *, collect_all: bool | None = None, reprocess_low_quality: Optional[bool] = None):
         started = time.monotonic()
         self.eligible = {}
         self._case_rows_cache = None
@@ -232,7 +234,7 @@ class ReferenceLibrary:
                         entry["gate"] = gate[entry["file_id"]]
                 mark = time.monotonic()
                 with self.connect() as db:
-                    self._sync_files(client, db, items, skip, gate)
+                    self._sync_files(client, db, items, skip, gate, reprocess_low_quality=reprocess_low_quality)
                 self._stage("files", mark, indexed=len(self.eligible))
                 self.summary["sources"] = list(self.eligible.values())
                 self.summary["files_indexed"] = len(self.eligible)
@@ -270,6 +272,10 @@ class ReferenceLibrary:
         searchable_pages_delta = 0
         ocr_fallback_attempted_pages = 0
         ocr_fallback_adopted_pages = 0
+        low_quality_pages_before = 0
+        low_quality_pages_after = 0
+        reprocessed_pages = 0
+        recovered_pages = 0
         page_states: dict[str, int] = {}
         files_complete = 0
         files_partial = 0
@@ -328,6 +334,11 @@ class ReferenceLibrary:
             )
             if item.get("searchable_pages_delta") is not None:
                 searchable_pages_delta += int(item.get("searchable_pages_delta") or 0)
+            if item.get("low_quality_pages_before") is not None:
+                low_quality_pages_before += int(item.get("low_quality_pages_before") or 0)
+                low_quality_pages_after += int(item.get("low_quality_pages_after") or 0)
+                reprocessed_pages += int(item.get("reprocessed_pages") or 0)
+                recovered_pages += int(item.get("recovered_pages") or 0)
             fb_sum = item.get("ocr_fallback_summary")
             if isinstance(fb_sum, dict):
                 ocr_fallback_attempted_pages += len(fb_sum.get("attempted_pages") or [])
@@ -377,6 +388,10 @@ class ReferenceLibrary:
                 "searchable_pages_delta": searchable_pages_delta,
                 "ocr_fallback_attempted_pages": ocr_fallback_attempted_pages,
                 "ocr_fallback_adopted_pages": ocr_fallback_adopted_pages,
+                "low_quality_pages_before": low_quality_pages_before,
+                "low_quality_pages_after": low_quality_pages_after,
+                "reprocessed_pages": reprocessed_pages,
+                "recovered_pages": recovered_pages,
                 "completed_pages": completed_pages,
                 "page_states": page_states,
                 "unread_cause_pages": unread_cause_pages,
@@ -434,7 +449,7 @@ class ReferenceLibrary:
         self.summary["diagnostics"]["metadata_gate"] = info
         return gate
 
-    def _sync_files(self, client, db, items, skip, gate=None):
+    def _sync_files(self, client, db, items, skip, gate=None, *, reprocess_low_quality: Optional[bool] = None):
         cache_dir = self.directory / "raw_cache"
 
         def _delete_raw_cache(target_id: str) -> None:
@@ -555,6 +570,23 @@ class ReferenceLibrary:
                         and int(p.get("unreadable_confirm_attempts") or 0) < 2
                     )
 
+                auto_reprocess = bool(
+                    reprocess_low_quality
+                    if reprocess_low_quality is not None
+                    else (
+                        (os.getenv("LV_OCR_FALLBACK_ENGINE") or "").strip().lower() not in ("", "none", "off")
+                        and (os.getenv("LV_OCR_FALLBACK_MODE") or "auto").strip().lower() != "off"
+                    )
+                )
+
+                def _needs_low_quality_ocr_reprocess(p: dict) -> bool:
+                    low_pages = p.get("ocr_low_quality_pages") or []
+                    if not low_pages:
+                        return False
+                    if reprocess_low_quality is True:
+                        return True
+                    return auto_reprocess and p.get("low_quality_reprocess_version") != OCR_REPROCESS_VERSION
+
                 prior = json.loads(row[0]) if row else None
                 continuation = prior.get("continuation") if prior else None
                 retry_reason = None
@@ -567,6 +599,9 @@ class ReferenceLibrary:
                 elif prior and _needs_unreadable_confirmation(prior):
                     row = None
                     retry_reason = "confirm_unreadable"
+                elif prior and _needs_low_quality_ocr_reprocess(prior):
+                    row = None
+                    retry_reason = "reprocess_low_quality"
                 if row:
                     parsed = json.loads(row[0])
                     self.summary["files_reused"] += 1
@@ -589,7 +624,7 @@ class ReferenceLibrary:
                         raise ReferenceError(problem)
                     item = {**fresh, "folder_path": folder_path, "listed_parent": item.get("listed_parent")}
                     version = revision(item) + ":" + EXTRACTOR_VERSION
-                    if prior and (continuation or retry_reason in ("retryable_unread", "confirm_unreadable")):
+                    if prior and (continuation or retry_reason in ("retryable_unread", "confirm_unreadable", "reprocess_low_quality")):
                         stored = db.execute("SELECT revision FROM files WHERE id=?", (file_id,)).fetchone()
                         if not stored or stored[0] != version:
                             prior, continuation = None, None
@@ -705,6 +740,15 @@ class ReferenceLibrary:
                         if prev_searchable is not None:
                             parsed["previous_searchable_pages"] = int(prev_searchable)
                             parsed["searchable_pages_delta"] = int(cur_searchable) - int(prev_searchable)
+                    if retry_reason == "reprocess_low_quality" and prior_for_searchable:
+                        prev_low_pages = len(prior_for_searchable.get("ocr_low_quality_pages") or [])
+                        cur_low_pages = len(parsed.get("ocr_low_quality_pages") or [])
+                        parsed["low_quality_pages_before"] = prev_low_pages
+                        parsed["low_quality_pages_after"] = cur_low_pages
+                        parsed["reprocessed_pages"] = prev_low_pages
+                        parsed["recovered_pages"] = max(0, prev_low_pages - cur_low_pages)
+                    if parsed.get("ocr_low_quality_pages") or retry_reason == "reprocess_low_quality":
+                        parsed["low_quality_reprocess_version"] = OCR_REPROCESS_VERSION
                     if parsed.get("confirmed_unreadable_pages"):
                         attempts = int((prior or {}).get("unreadable_confirm_attempts") or 0) + 1
                         parsed["unreadable_confirm_attempts"] = attempts
@@ -903,7 +947,9 @@ class ReferenceLibrary:
                     if parsed.get(key):
                         entry[key] = parsed[key]
                 for count_key in ("extracted_text_pages", "completed_pages", "best_read_pages",
-                                  "searchable_pages", "previous_searchable_pages", "searchable_pages_delta"):
+                                  "searchable_pages", "previous_searchable_pages", "searchable_pages_delta",
+                                  "low_quality_pages_before", "low_quality_pages_after",
+                                  "reprocessed_pages", "recovered_pages"):
                     if count_key in parsed and parsed[count_key] is not None:
                         entry[count_key] = parsed[count_key]
                 if parsed.get("structured_case_table"):
