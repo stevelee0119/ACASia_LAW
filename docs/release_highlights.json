@@ -1,4 +1,10 @@
 {
+  "0.27": [
+    "Performance: 법리·인용 불변식(CIT-META/LAW-NX/OVR, TK-233 #411) 및 EVI-COPY/LOGIC/OVR·INJ·AIGEN 클러스터 일반화(TK-234 #412)로 dev 84.8→86.2·holdout 83.8→86.6(합산 RER 13.38%), 은퇴 5세트 중 4세트 상승·후퇴 0·오탐 0",
+    "Changed·Added: 미운영 로컬 LLM/HTTP Reranker 코드 삭제 및 상용 API 임베딩·lexical_only 진단 일치화(TK-232 #409)",
+    "Added: RapidOCR 저품질 전처리(정상 스캔 재처리 0) 및 Drive OCR_LOW_QUALITY 선택 재색인·델타 기록(TK-231 #410)",
+    "평가·미측정: 필수 CI 전수 통과, 격리 봉인 및 운영 온라인 실측(Drive 16쪽 델타·RapidOCR 저품질·상용 임베딩·case9)은 배포 후 시행"
+  ],
   "0.26": [
     "Performance·Added: AI 문체 잔재 교차 보강 일반화(TK-230, #395)로 고정 dev 83.9→84.8·holdout 83.3→83.8(합산 RER 4.27%), 확인/A등급 오탐 0",
     "Fixed: RAG SQLite interrupted 구간별 축소 재시도·부분 보존(TK-225, #393), Legal NLI Stage 2 부정·반의어·정렬 반전 오분류 수정(TK-226, #394)",
