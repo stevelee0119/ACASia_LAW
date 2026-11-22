@@ -18,14 +18,18 @@ RUN pip install --no-cache-dir --require-hashes -r requirements.txt
 COPY . .
 
 # Render Secret File(/etc/secrets/...)을 읽기 위해 appuser를 GID 1000 그룹의 보조 구성원으로 등록한다 (TK-79)
-RUN (getent group 1000 || groupadd -g 1000 rendersecrets) \
+# RapidOCR 한국어 ONNX 모델을 빌드 시점에 미리 내려받아 무네트워크 기동을 보장한다 (TK-227)
+RUN python -c "import numpy as np; from rapidocr import RapidOCR, LangRec, OCRVersion, ModelType; r = RapidOCR(params={'Rec.lang_type': LangRec.KOREAN, 'Rec.ocr_version': OCRVersion.PPOCRV5, 'Rec.model_type': ModelType.MOBILE}); r(np.full((32, 128, 3), 255, dtype=np.uint8), use_det=False, use_cls=False, use_rec=True)" \
+    && (getent group 1000 || groupadd -g 1000 rendersecrets) \
     && useradd -m -u 10001 -G 1000 appuser \
     && mkdir -p /data && chown -R appuser:appuser /app /data
 USER appuser
 
 ENV LV_DATA_DIR=/data \
     LV_OCR_LANG=kor+eng \
-    LV_REQUIRE_OCR=1
+    LV_REQUIRE_OCR=1 \
+    LV_OCR_FALLBACK_ENGINE=rapidocr \
+    LV_OCR_FALLBACK_MODE=auto
 
 RUN python -m scripts.check_ocr_runtime
 EXPOSE 8000

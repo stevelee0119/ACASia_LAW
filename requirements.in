@@ -25,6 +25,8 @@ olefile>=0.47,<0.48      # HWP 5.x CFB streams
 
 # OCR — 시스템에 tesseract-ocr, tesseract-ocr-kor 설치 필요
 pytesseract>=0.3.13
+rapidocr>=3.0,<4
+onnxruntime>=1.18
 
 # 데이터베이스 — PostgreSQL + pgvector
 psycopg[binary]>=3.1
