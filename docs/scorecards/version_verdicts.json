@@ -693,9 +693,19 @@
   "rer": 0.0427,
   "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
   "decided_at": "2026-11-22",
-  "release_status": "DEPLOYED_PENDING_ONLINE_CHECK",
+  "release_status": "DEPLOYED_ONLINE_EVALUATED",
   "release_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
   "release_tag": "v.0.26.0",
-  "deployment_evidence": "docs/scorecards/release_026_deployment_20261122.json"
+  "deployment_evidence": "docs/scorecards/release_026_deployment_20261122.json",
+  "online_eval_20261122": {
+   "deployed_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+   "verdict": "기록 수용. case9 동일 조건 3회 연속 23/23·RAG 5/5·건강 6/6·검색 중단 0/3(TK-225), AI 반복 U5 3/3 일치(SAME, 유보 0), Legal NLI Stage 2 반전 인용 CONTRADICTED 해소(TK-226), 저품질 스캔 RapidOCR 채택 9자→25자(TK-227). Drive 16쪽 캐시 재사용(TK-231)·configured_mode=HYBRID 표시 불일치(TK-232) 후속 발행.",
+   "unmeasured": [
+    "Drive 저품질 16쪽 명시적 재색인 개선 (TK-231)",
+    "Hybrid RAG Dense·Reranker ON/OFF 실서버 비교 (TK-228, 서버 미구축)",
+    "로컬 모델 LOCAL_ONLY 실호출 짝 비교 (TK-229, 서버 미구축)"
+   ],
+   "record": "docs/scorecards/online_0260_20261122.md"
+  }
  }
 ]

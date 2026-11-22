@@ -903,6 +903,18 @@
       "deployed_on": "2026-11-22",
       "deployed_sha": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
       "note": "0.25.0 후속 객관지표 상승(dev > 83.9, holdout > 83.3). 해소: #395(39b253db) 병합(dev 83.9→84.8, holdout 83.3→83.8), 0.26.0(19efff6a, v.0.26.0) 배포 및 health 확인 완료."
+    },
+    "TK-231": {
+      "status": "open",
+      "priority": "P2",
+      "kind": "new",
+      "note": "0.26.0 온라인(19efff6a, PR #406): Drive 41/41 캐시 재사용으로 기존 OCR_LOW_QUALITY 16쪽 재처리 0건. 저품질 쪽만 선택 재OCR·재색인하는 명시적 갱신 절차 필요."
+    },
+    "TK-232": {
+      "status": "open",
+      "priority": "P2",
+      "kind": "new",
+      "note": "0.26.0 온라인(19efff6a, PR #406): LV_RAG_RETRIEVAL_MODE=lexical_only 설정에도 /api/diagnostics configured_mode=HYBRID·reranker_enabled=true 표시 불일치."
     }
   },
   "updated_on": "2026-11-22"
