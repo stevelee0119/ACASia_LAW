@@ -1,4 +1,10 @@
 {
+  "0.26": [
+    "Performance·Added: AI 문체 잔재 교차 보강 일반화(TK-230, #395)로 고정 dev 83.9→84.8·holdout 83.3→83.8(합산 RER 4.27%), 확인/A등급 오탐 0",
+    "Fixed: RAG SQLite interrupted 구간별 축소 재시도·부분 보존(TK-225, #393), Legal NLI Stage 2 부정·반의어·정렬 반전 오분류 수정(TK-226, #394)",
+    "Added: 한국어 RapidOCR 폴백 의존성·모드 제어(TK-227, #398), 임베딩·재순위 HTTP 어댑터·청크 리비전 캐시(TK-228, #396), 로컬 LLM 안전 설정·스키마 검증(TK-229, #397)",
+    "평가·미측정: 은퇴 5세트 후퇴 0·필수 CI 전수 통과, 격리 봉인 및 운영 온라인(case9 3회 연속·RapidOCR·Dense/Reranker·LOCAL_ONLY)은 배포 후 시행"
+  ],
   "0.25": [
     "Added·Performance: 오프라인 메타·논리·증거·AI 탐지 일반화 및 ClauseNormalizer 승격(TK-221, #383), 고정 dev 82.6→83.9·holdout 81.9→83.3(합산 RER 7.61%)·은퇴 08b 48.6→50.0",
     "Added: 차세대 실행 경로 진단 API/매니페스트(TK-223, #384), 적응형 OCR 폴백 텔레메트리·재색인 델타(TK-222, #386)",
