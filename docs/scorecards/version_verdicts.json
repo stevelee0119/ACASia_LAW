@@ -712,6 +712,11 @@
   "version": "0.27.0",
   "from": "0.26.0",
   "level": "minor",
+  "basis": [
+   "added",
+   "fixed",
+   "performance_minor"
+  ],
   "measured_commit": "c26df11300a11d7b8b1865dc20a4f3aded8cc3c8",
   "conditions": {
    "network": false,
