@@ -760,9 +760,13 @@ def _author_asserts(match: ClaimMatch, previous: str) -> bool:
 def _to_finding(doc: NormalizedDocument, match: ClaimMatch, reading) -> Finding:
     block, _ = reading.locate(match.start)
     kind = (FindingType.UNSUPPORTED_GENERALIZATION if match.claim_type == "UNSUPPORTED_GENERALIZATION"
+            else FindingType.OVERCLAIM if match.claim_type == "UNCONDITIONAL_LEGAL_OVERCLAIM"
+            else FindingType.LAW_CITATION_ERROR if match.claim_type == "UNVERIFIED_ADMIN_INTERPRETATION"
             else FindingType.LEGAL_ARGUMENT_INVALID)
-    grade = {"A": EvidenceGrade.A, "B": EvidenceGrade.B, "C": EvidenceGrade.C}.get(match.grade, EvidenceGrade.C)
-    human = match.grade == "C" or match.status in ("SUSPICIOUS", "UNVERIFIED")
+    grade = {"A": EvidenceGrade.A, "B": EvidenceGrade.B, "C": EvidenceGrade.C, "U": EvidenceGrade.U}.get(
+        match.grade, EvidenceGrade.C
+    )
+    human = match.grade in ("C", "U") or match.status in ("SUSPICIOUS", "UNVERIFIED")
     evidence = [Evidence.create(description="서면의 주장", grade=EvidenceGrade.B, document_id=doc.document_id,
                                 excerpt=match.sentence[:300], supports=False,
                                 page=block.page if block else None, block_id=block.block_id if block else None)]
@@ -770,13 +774,16 @@ def _to_finding(doc: NormalizedDocument, match: ClaimMatch, reading) -> Finding:
         evidence.append(Evidence.create(description=f"근거: {source['name']}" + (f" ({source['url']})" if source.get("url") else ""),
                                         grade=EvidenceGrade.A if source.get("text") else EvidenceGrade.U,
                                         excerpt=str(source.get("text") or source.get("note") or "")[:300]))
+    sev = (Severity.HIGH if match.grade in ("A", "B") and match.status == "CONTRADICTED"
+           else Severity.INFO if match.status == "UNVERIFIED"
+           else Severity.MEDIUM)
     return Finding.create(
         type=kind, status=VerificationStatus(match.status),
-        severity=Severity.HIGH if match.grade in ("A", "B") and match.status == "CONTRADICTED" else Severity.MEDIUM,
+        severity=sev,
         evidence_grade=grade,
         title=f"법리 검토({_TYPE_LABELS[match.claim_type]}): {match.judgment} — '{match.sentence[:70]}'",
         detail=match.detail + (" 근거: " + "; ".join(b["name"] for b in match.basis) if match.basis else ""),
-        confidence={"A": 0.9, "B": 0.75, "C": 0.5}.get(match.grade, 0.5),
+        confidence={"A": 0.9, "B": 0.75, "C": 0.5, "U": 0.3}.get(match.grade, 0.5),
         confidence_features={"deterministic_rule": True, "rule_id": f"CLAIM.{match.claim_type}",
                              "claim_type": match.claim_type, "judgment": match.judgment, "claim": match.sentence[:300],
                              "basis": match.basis, "human_review": human, **match.extra},
@@ -785,6 +792,7 @@ def _to_finding(doc: NormalizedDocument, match: ClaimMatch, reading) -> Finding:
         tags=["LEGAL_CLAIM", f"CLAIM.{match.claim_type}"]
         + ([match.extra["defect_type"]] if match.extra.get("defect_type") else [])
         + (["BURDEN_INVERSION"] if match.extra.get("defect_type") == "BURDEN_OF_PROOF_INVERSION" else [])
+        + (["UNVERIFIED"] if match.status == "UNVERIFIED" else [])
         + (["HUMAN_REVIEW"] if human else []),
         evidence=evidence)
 
@@ -799,7 +807,97 @@ _TYPE_LABELS = {"LIMITATION_PERIOD_DISTORTION": "소멸시효 기간 왜곡",
                 "UNCONSTITUTIONALITY": "위헌 주장", "UNSUPPORTED_GENERALIZATION": "전칭 일반화",
                 "NO_BASIS_REMEDY": "근거 없는 청구 유형", "REQUIREMENT_MISMATCH": "조문 요건 불일치",
                 "STATUTORY_RULE_EXCLUSION": "법정 규정 적용 배제",
-                "UNSOURCED_STANDARD": "출처 불명 기준", "LITIGATION_REQUIREMENT_EXCLUSION": "소송요건 배제"}
+                "UNSOURCED_STANDARD": "출처 불명 기준", "LITIGATION_REQUIREMENT_EXCLUSION": "소송요건 배제",
+                "UNCONDITIONAL_LEGAL_OVERCLAIM": "요건 생략 절대 단정",
+                "UNVERIFIED_ADMIN_INTERPRETATION": "행정해석·유권해석 미확인"}
+
+
+_ABSOLUTE_MODALITY_RE = re.compile(r"(?:무조건|당연히|자동으로|예외\s*없이|어떠한\s*경우에도|언제나|반드시|절대로)")
+_QUOTED_ATTRIBUTION_RE = re.compile(r"(?:원고는|피고는|상대방은|라고\s*주장|주장에\s*따르면|에\s*의하면)")
+
+
+def _clause_normalizer_overclaims(text: str) -> List[ClaimMatch]:
+    """Use ClauseNormalizer discourse_role/modality to flag multi-factor doctrines asserted unconditionally."""
+    if not text:
+        return []
+    try:
+        from packages.korean_nlp.clause_normalizer import normalize_sentence
+    except Exception:
+        return []
+
+    out: List[ClaimMatch] = []
+    for m in re.finditer(r"[^.!?\n]+[.!?]?", text):
+        sentence = m.group(0).strip()
+        if len(sentence) < 12 or _QUOTED_ATTRIBUTION_RE.search(sentence):
+            continue
+        clauses = normalize_sentence(sentence)
+        if not clauses:
+            continue
+        if any(
+            c.discourse_relation in ("CONDITION", "EXCEPTION_PROVISO", "CONCESSION")
+            or c.modality in ("HYPOTHETICAL", "INTERROGATIVE", "PERMISSIVE")
+            for c in clauses
+        ):
+            continue
+        main_clauses = [c for c in clauses if c.discourse_relation == "MAIN" and c.polarity in ("ASSERTED", "NEGATED")]
+        if not main_clauses:
+            continue
+        has_abs = any(c.modality == "MANDATORY" or _ABSOLUTE_MODALITY_RE.search(c.raw_text) for c in main_clauses)
+        if not has_abs:
+            continue
+
+        # Multi-element / discretionary doctrines (short category tokens only)
+        has_doctrine = (
+            ("위법성" in sentence and "조각" in sentence)
+            or ("과실상계" in sentence)
+            or ("손해배상" in sentence and ("자동" in sentence or "무조건" in sentence or "당연" in sentence))
+            or (("소멸시효" in sentence or "제소기간" in sentence) and ("무조건" in sentence or "예외" in sentence or "당연" in sentence))
+            or (("입증책임" in sentence or "증명책임" in sentence) and ("전부" in sentence or "전가" in sentence or "무조건" in sentence or "항상" in sentence))
+            or ("법률" in sentence and "개정" in sentence and ("소급" in sentence or "면책" in sentence))
+            or ("기본권" in sentence and ("절대" in sentence or "어떠한" in sentence))
+        )
+        if not has_doctrine:
+            continue
+        out.append(ClaimMatch(
+            claim_type="UNCONDITIONAL_LEGAL_OVERCLAIM",
+            sentence=sentence,
+            start=m.start(),
+            judgment="복합 요건·예외·재량 검토 없이 절대 단정",
+            grade="B",
+            status="SUSPICIOUS",
+            basis=[],
+            detail="법률상 복합 요건·예외 단서 또는 법원 재량이 필요한 법리를 조건·예외 검토 없이 무조건·당연 성립/배제로 단정하고 있다.",
+            extra={"defect_type": "OVERCLAIM", "clause_normalizer": True},
+        ))
+    return out
+
+
+_ADMIN_INTERP_RE = re.compile(r"(?:유권해석|행정해석|질의회신|법령해석)")
+_ADMIN_CONTEXT_RE = re.compile(r"(?:\d{4}\s*\.\s*\d{1,2}\s*\.|(?:부|청|처|위원회|관리관실|법제처)\b)")
+
+
+def _unverified_admin_interpretations(text: str) -> List[ClaimMatch]:
+    """Flag administrative/authoritative interpretation citations as UNVERIFIED (SRC-UNV)."""
+    if not text:
+        return []
+    out: List[ClaimMatch] = []
+    for start, end in sentence_bounds(text):
+        sentence = text[start:end].strip()
+        if len(sentence) < 10:
+            continue
+        if _ADMIN_INTERP_RE.search(sentence) and _ADMIN_CONTEXT_RE.search(sentence):
+            out.append(ClaimMatch(
+                claim_type="UNVERIFIED_ADMIN_INTERPRETATION",
+                sentence=sentence,
+                start=start,
+                judgment="행정해석·유권해석 공식 출처 미확인",
+                grade="U",
+                status="UNVERIFIED",
+                basis=[],
+                detail="행정기관의 유권해석·질의회신·법령해석 인용은 공식 원문 데이터베이스 대조가 완료되지 않아 미확인(UNVERIFIED)으로 표시한다.",
+                extra={"defect_type": "SRC-UNV"},
+            ))
+    return out
 
 
 def review_claims(doc: NormalizedDocument, *, lookup: Optional[HistoryLookup] = None,
@@ -808,7 +906,13 @@ def review_claims(doc: NormalizedDocument, *, lookup: Optional[HistoryLookup] = 
     reading = build_reading_text(doc)
     text = reading.text
     skip = {re.sub(r"\s+", "", s) for s in skip_sentences if s}
-    matches = classify_claims(text, lookup) + requirement_mismatches(doc, provisions) + _provisional_relief_references(text)
+    matches = (
+        classify_claims(text, lookup)
+        + requirement_mismatches(doc, provisions)
+        + _provisional_relief_references(text)
+        + _clause_normalizer_overclaims(text)
+        + _unverified_admin_interpretations(text)
+    )
     out, seen = [], set()
     for match in matches:
         sentence_key = re.sub(r"\s+", "", match.sentence)
