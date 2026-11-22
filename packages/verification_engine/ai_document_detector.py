@@ -970,27 +970,37 @@ def create_ai_detector_findings(doc: NormalizedDocument, result: AIDetectorResul
         )
 
     # AI 응답 잔재: 객관적 흔적은 ai_residue.residue_findings가 '생성 초안 흔적(DRAFT_ARTIFACT)'으로 싣는다.
-    # 여기서는 사람도 쓰는 문체 신호만 참고 부록(advisory)으로 싣는다(v4 P6 약한 신호 분리).
-    for residue in [r for r in result.signals.get("residues") or [] if not r["objective"]]:
+    # 여기서는 사람도 쓰는 문체 신호만 참고 부록(advisory)으로 싣되, 같은 문서에 객관적 AI 흔적이 2종 이상
+    # 동반된 경우에만 교차 보강된 의심 신호(SUSPICIOUS/B)로 승격한다(TK-230).
+    all_residues = list(result.signals.get("residues") or [])
+    objective_cats = {r.get("category") for r in all_residues if r.get("objective") and r.get("category")}
+    corroborated_style = len(objective_cats) >= 2
+    for residue in [r for r in all_residues if not r["objective"]]:
         sample = residue["matches"][0]
+        elevated = bool(corroborated_style)
         findings.append(Finding.create(
             type=FindingType.AI_AUTHORSHIP_LIKELY,
-            # 잔재 문구가 문서에 있다는 것은 관찰된 사실(의심 신호)이다. 문체 신호는 약하므로 미확인으로 둔다.
-            status=VerificationStatus.SUSPICIOUS if residue["objective"] else VerificationStatus.UNVERIFIED,
-            severity=Severity.LOW if residue["objective"] else Severity.INFO,
-            evidence_grade=EvidenceGrade.B if residue["objective"] else EvidenceGrade.C,
+            # 잔재 문구가 문서에 있다는 것은 관찰된 사실(의심 신호)이다. 단독 문체 신호는 약하므로 미확인으로 둔다.
+            status=VerificationStatus.SUSPICIOUS if (residue["objective"] or elevated) else VerificationStatus.UNVERIFIED,
+            severity=Severity.LOW if (residue["objective"] or elevated) else Severity.INFO,
+            evidence_grade=EvidenceGrade.B if (residue["objective"] or elevated) else EvidenceGrade.C,
             advisory_only=True,
-            title=f"AI 응답 잔재 신호: {residue['label']} — '{sample[:60]}' (참고용, 확정 불가)",
+            title=f"AI 응답 잔재 신호: {residue['label']} — '{sample[:60]}'" + (
+                " (객관적 AI 흔적 다중 동반)" if elevated else " (참고용, 확정 불가)"
+            ),
             detail=("발견 문구: " + " / ".join(f"'{m[:80]}'" for m in residue["matches"]) + ". "
-                    + ("서면 작성 관행에 없는 AI 답변 표지다. " if residue["objective"] else
+                    + ("서면 작성 관행에 없는 AI 답변 표지가 복수로 동반되어 의심 신호로 승격한다. " if elevated else
                        "사람도 쓰는 표현이므로 문체 신호로만 표시한다. ")
                     + "이 신호만으로 AI 작성이나 사람 작성을 단정하지 않는다."),
-            confidence=0.6 if residue["objective"] else 0.3,
+            confidence=0.6 if (residue["objective"] or elevated) else 0.3,
             confidence_features={**features, "residue_category": residue["category"],
-                                 "rule_id": f"AIGEN.{residue['category']}", "objective": residue["objective"]},
+                                 "rule_id": f"AIGEN.{residue['category']}", "objective": residue["objective"],
+                                 "corroborated_by_objective_residue": elevated,
+                                 "objective_residue_categories": sorted(objective_cats)},
             document_id=doc.document_id, engine=ENGINE_NAME,
             tags=["AUTHORSHIP", "AI_RESIDUE", residue["category"]],
-            evidence=[Evidence.create(description=f"{residue['label']} 발췌", grade=EvidenceGrade.C,
+            evidence=[Evidence.create(description=f"{residue['label']} 발췌",
+                                      grade=EvidenceGrade.B if elevated else EvidenceGrade.C,
                                       document_id=doc.document_id, excerpt=" / ".join(residue["matches"])[:300],
                                       supports=False)],
         ))
