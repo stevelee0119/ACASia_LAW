@@ -131,6 +131,9 @@ class ReferenceLibrary:
         page_size = db.execute("PRAGMA page_size").fetchone()[0]
         db.execute(f"PRAGMA max_page_count={512 * 1024 * 1024 // page_size}")
         db.execute("CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, revision TEXT, payload TEXT)")
+        db.execute("CREATE TABLE IF NOT EXISTS chunk_embeddings ("
+                   "file_id TEXT, revision TEXT, page INTEGER, start INTEGER, model TEXT, vector_json TEXT, "
+                   "PRIMARY KEY (file_id, revision, page, start, model))")
         db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5("
                    "file_id UNINDEXED, revision UNINDEXED, page UNINDEXED, start UNINDEXED, text UNINDEXED, terms)")
         db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS chunk_terms USING fts5vocab(chunks, 'row')")
@@ -1489,27 +1492,91 @@ class ReferenceLibrary:
             "files": file_obs_list,
         }
         from packages.rag_engine.applicability_filter import annotate_applicability
-        from packages.rag_engine.hybrid_retriever import retrieve_hybrid_chunks
+        from packages.rag_engine.hybrid_retriever import build_rag_adapters_from_env, retrieve_hybrid_chunks
+
+        env_diag: dict[str, Any] = {}
+        if embedding_adapter is None and reranker_adapter is None:
+            embedding_adapter, reranker_adapter, env_diag = build_rag_adapters_from_env(
+                allow_network=bool(getattr(self.settings, "allow_network", False))
+            )
 
         retrieval_mode = "LEXICAL_ONLY"
         retrieval_warnings: list[str] = []
+        retrieval_telemetry: dict[str, Any] = {
+            "effective_mode": "LEXICAL_ONLY",
+            "embedding_requests": 0,
+            "embedding_successes": 0,
+            "embedding_failures": 0,
+            "reranker_requests": 0,
+            "reranker_successes": 0,
+            "reranker_failures": 0,
+            "cache_hits": 0,
+            "cache_misses": 0,
+            "fallback_reasons": list(
+                env_diag.get("fallback_reasons")
+                or ([env_diag["fallback_reason"]] if env_diag.get("fallback_reason") else [])
+            ),
+        }
         if result and (embedding_adapter is not None or reranker_adapter is not None):
             hybrid_input = [
                 {**s, "chunk_id": s.get("source_id") or f"R{idx + 1}"}
                 for idx, s in enumerate(result)
             ]
+            emb_model_key = str(getattr(embedding_adapter, "model", "") or getattr(embedding_adapter, "name", "default"))
+            cached_vectors: dict[str, list[float]] = {}
+            chunk_meta_by_cid: dict[str, tuple[str, str, int, int]] = {}
+            if embedding_adapter is not None and getattr(embedding_adapter, "available", False):
+                for ch in hybrid_input:
+                    fid = str(ch.get("file_id") or "")
+                    rev = str((self.eligible.get(fid) or {}).get("revision") or "")
+                    pg = int(ch.get("page") or 0)
+                    st = int(ch.get("start") or 0)
+                    cid = str(ch.get("chunk_id") or "")
+                    if fid and rev and cid:
+                        chunk_meta_by_cid[cid] = (fid, rev, pg, st)
+                if chunk_meta_by_cid:
+                    try:
+                        with self.connect() as db:
+                            for cid, (fid, rev, pg, st) in chunk_meta_by_cid.items():
+                                row_vec = db.execute(
+                                    "SELECT vector_json FROM chunk_embeddings "
+                                    "WHERE file_id=? AND revision=? AND page=? AND start=? AND model=?",
+                                    (fid, rev, pg, st, emb_model_key),
+                                ).fetchone()
+                                if row_vec and row_vec[0]:
+                                    cached_vectors[cid] = json.loads(row_vec[0])
+                    except Exception:
+                        cached_vectors = {}
             hybrid_out = retrieve_hybrid_chunks(
                 scan_text[:6000],
                 hybrid_input,
                 embedding_adapter=embedding_adapter,
                 reranker_adapter=reranker_adapter,
+                chunk_vectors=cached_vectors,
                 target_date=target_date,
                 case_type=case_type,
                 exclude_inapplicable=False,
                 top_k=len(hybrid_input),
             )
+            computed_vecs = hybrid_out.get("computed_chunk_vectors") or {}
+            if computed_vecs and chunk_meta_by_cid:
+                try:
+                    with self.connect() as db:
+                        db.executemany(
+                            "INSERT OR REPLACE INTO chunk_embeddings (file_id, revision, page, start, model, vector_json) "
+                            "VALUES (?,?,?,?,?,?)",
+                            [
+                                (*chunk_meta_by_cid[cid], emb_model_key, json.dumps(vec))
+                                for cid, vec in computed_vecs.items()
+                                if cid in chunk_meta_by_cid and vec
+                            ],
+                        )
+                        db.commit()
+                except Exception:
+                    pass
             retrieval_mode = hybrid_out["retrieval_mode"]
             retrieval_warnings = hybrid_out["retrieval_warnings"]
+            retrieval_telemetry = hybrid_out.get("retrieval_telemetry") or retrieval_telemetry
             result = hybrid_out["chunks"]
         else:
             result = annotate_applicability(
@@ -1535,6 +1602,7 @@ class ReferenceLibrary:
 
         log["retrieval_mode"] = retrieval_mode
         log["retrieval_warnings"] = retrieval_warnings
+        log["retrieval_telemetry"] = retrieval_telemetry
         log["applicability_warnings"] = applicability_warnings
         log["inapplicable_sources"] = inapplicable
         log["sources"] = result

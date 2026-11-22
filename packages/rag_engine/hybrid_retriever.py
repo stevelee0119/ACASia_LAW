@@ -66,6 +66,136 @@ class CallableRerankerAdapter(RerankerAdapter):
         return self._fn(query, passages)
 
 
+class HttpEmbeddingAdapter(EmbeddingAdapter):
+    """HTTP client adapter for OpenAI-compatible /embeddings endpoints."""
+
+    name = "http_embedding"
+
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        model: str = "",
+        api_key: Optional[str] = None,
+        timeout: float = 5.0,
+        post_fn: Optional[Callable[..., Any]] = None,
+    ) -> None:
+        self.endpoint = (endpoint or "").strip()
+        self.model = (model or "").strip()
+        self._api_key = (api_key or "").strip() or None
+        self.timeout = max(0.5, float(timeout))
+        self._post_fn = post_fn
+        self.available = bool(self.endpoint)
+
+    def embed(self, texts: Sequence[str]) -> List[List[float]]:
+        if not self.available or not texts:
+            return []
+        headers: Dict[str, str] = {"Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        payload: Dict[str, Any] = {"input": list(texts)}
+        if self.model:
+            payload["model"] = self.model
+        if self._post_fn is not None:
+            resp = self._post_fn(self.endpoint, json=payload, headers=headers, timeout=self.timeout)
+        else:
+            import httpx
+            with httpx.Client(timeout=self.timeout) as client:
+                resp = client.post(self.endpoint, json=payload, headers=headers)
+        if getattr(resp, "status_code", 200) >= 400:
+            raise RuntimeError(f"EMBEDDING_HTTP_{getattr(resp, 'status_code', 500)}")
+        data = resp.json()
+        items = data.get("data") if isinstance(data, dict) else None
+        if isinstance(items, list):
+            ordered = sorted(items, key=lambda x: int(x.get("index", 0)) if isinstance(x, dict) else 0)
+            return [list(map(float, x.get("embedding") or [])) for x in ordered if isinstance(x, dict)]
+        if isinstance(data, dict) and isinstance(data.get("embeddings"), list):
+            return [list(map(float, v)) for v in data["embeddings"]]
+        return []
+
+
+class HttpRerankerAdapter(RerankerAdapter):
+    """HTTP client adapter for /rerank endpoints (Cohere/BGE/Jina compatible)."""
+
+    name = "http_reranker"
+
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        model: str = "",
+        api_key: Optional[str] = None,
+        timeout: float = 5.0,
+        post_fn: Optional[Callable[..., Any]] = None,
+    ) -> None:
+        self.endpoint = (endpoint or "").strip()
+        self.model = (model or "").strip()
+        self._api_key = (api_key or "").strip() or None
+        self.timeout = max(0.5, float(timeout))
+        self._post_fn = post_fn
+        self.available = bool(self.endpoint)
+
+    def score(self, query: str, passages: Sequence[str]) -> List[float]:
+        if not self.available or not passages:
+            return [0.0 for _ in passages]
+        headers: Dict[str, str] = {"Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        payload: Dict[str, Any] = {"query": query, "documents": list(passages)}
+        if self.model:
+            payload["model"] = self.model
+        if self._post_fn is not None:
+            resp = self._post_fn(self.endpoint, json=payload, headers=headers, timeout=self.timeout)
+        else:
+            import httpx
+            with httpx.Client(timeout=self.timeout) as client:
+                resp = client.post(self.endpoint, json=payload, headers=headers)
+        if getattr(resp, "status_code", 200) >= 400:
+            raise RuntimeError(f"RERANKER_HTTP_{getattr(resp, 'status_code', 500)}")
+        data = resp.json()
+        results = data.get("results") if isinstance(data, dict) else None
+        if not isinstance(results, list):
+            return [0.0 for _ in passages]
+        scores = [0.0 for _ in passages]
+        for idx, item in enumerate(results):
+            if not isinstance(item, dict):
+                continue
+            pos = int(item.get("index", idx))
+            if 0 <= pos < len(scores):
+                scores[pos] = float(item.get("relevance_score", item.get("score", 0.0)) or 0.0)
+        return scores
+
+
+def build_rag_adapters_from_env(
+    *,
+    allow_network: bool = True,
+) -> Tuple[Optional[EmbeddingAdapter], Optional[RerankerAdapter], Dict[str, Any]]:
+    """Build configured HTTP embedding & reranker adapters from environment settings."""
+    import os
+
+    mode = (os.getenv("LV_RAG_RETRIEVAL_MODE") or "auto").strip().lower()
+    emb_endpoint = (os.getenv("LV_RAG_EMBEDDING_ENDPOINT") or "").strip()
+    emb_model = (os.getenv("LV_EMBEDDING_MODEL") or "").strip()
+    emb_key = (os.getenv("LV_RAG_EMBEDDING_API_KEY") or "").strip() or None
+    rerank_endpoint = (os.getenv("LV_RAG_RERANKER_ENDPOINT") or "").strip()
+    rerank_model = (os.getenv("LV_RERANKER_MODEL") or "").strip()
+    rerank_key = (os.getenv("LV_RAG_RERANKER_API_KEY") or "").strip() or None
+
+    if mode in ("off", "lexical", "lexical_only"):
+        return None, None, {"configured_mode": mode, "fallback_reason": "LEXICAL_MODE_CONFIGURED"}
+    if not allow_network:
+        return None, None, {"configured_mode": mode, "fallback_reason": "NETWORK_DISABLED"}
+
+    emb = HttpEmbeddingAdapter(emb_endpoint, model=emb_model, api_key=emb_key) if emb_endpoint else None
+    rerank = HttpRerankerAdapter(rerank_endpoint, model=rerank_model, api_key=rerank_key) if rerank_endpoint else None
+    reasons: List[str] = []
+    if not emb_endpoint:
+        reasons.append("EMBEDDING_ENDPOINT_UNCONFIGURED")
+    if not rerank_endpoint:
+        reasons.append("RERANKER_ENDPOINT_UNCONFIGURED")
+    return emb, rerank, {"configured_mode": mode, "fallback_reasons": reasons}
+
+
 def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
@@ -97,6 +227,7 @@ def retrieve_hybrid_chunks(
     identifier_index: Optional[IdentifierIndex] = None,
     embedding_adapter: Optional[EmbeddingAdapter] = None,
     reranker_adapter: Optional[RerankerAdapter] = None,
+    chunk_vectors: Optional[Dict[str, List[float]]] = None,
     target_date: Optional[str] = None,
     case_type: Optional[str] = None,
     exclude_inapplicable: bool = False,
@@ -105,7 +236,24 @@ def retrieve_hybrid_chunks(
 ) -> Dict[str, Any]:
     """Execute 4-tier hybrid retrieval and return ranked chunks with retrieval mode telemetry."""
     if not chunks:
-        return {"retrieval_mode": "EMPTY", "chunks": []}
+        return {
+            "retrieval_mode": "EMPTY",
+            "retrieval_warnings": [],
+            "chunks": [],
+            "computed_chunk_vectors": {},
+            "retrieval_telemetry": {
+                "effective_mode": "LEXICAL_ONLY",
+                "embedding_requests": 0,
+                "embedding_successes": 0,
+                "embedding_failures": 0,
+                "reranker_requests": 0,
+                "reranker_successes": 0,
+                "reranker_failures": 0,
+                "cache_hits": 0,
+                "cache_misses": 0,
+                "fallback_reasons": ["EMPTY_CHUNKS"],
+            },
+        }
 
     id_hits: Dict[str, List[LegalIdentifier]] = identifier_index.lookup(query) if identifier_index else {}
     lexical_ranked = bm25_score_chunks(query, chunks, identifier_hits=id_hits)
@@ -115,21 +263,53 @@ def retrieve_hybrid_chunks(
     dense_scores: Dict[str, float] = {}
     retrieval_mode = "LEXICAL_ONLY"
     retrieval_warnings: List[str] = []
+    computed_chunk_vectors: Dict[str, List[float]] = {}
+    emb_requests = 0
+    emb_successes = 0
+    emb_failures = 0
+    rerank_requests = 0
+    rerank_successes = 0
+    rerank_failures = 0
+    cache_hits = 0
+    cache_misses = 0
+    cached_map = dict(chunk_vectors or {})
 
     emb = embedding_adapter or NullEmbeddingAdapter()
     if emb.available:
         try:
-            texts = [str(c.get("text") or "") for c in chunks]
-            vecs = emb.embed([query] + texts)
-            if len(vecs) == len(texts) + 1:
-                q_vec, doc_vecs = vecs[0], vecs[1:]
-                for ch, d_vec in zip(chunks, doc_vecs):
+            missing_chunks: List[Dict[str, Any]] = []
+            for ch in chunks:
+                cid = str(ch.get("chunk_id") or "")
+                if cid in cached_map and cached_map[cid]:
+                    cache_hits += 1
+                else:
+                    cache_misses += 1
+                    missing_chunks.append(ch)
+            texts_to_embed = [query] + [str(ch.get("text") or "") for ch in missing_chunks]
+            emb_requests += 1
+            vecs = emb.embed(texts_to_embed)
+            if len(vecs) == len(texts_to_embed) and vecs[0]:
+                emb_successes += 1
+                q_vec = vecs[0]
+                for ch, d_vec in zip(missing_chunks, vecs[1:]):
                     cid = str(ch.get("chunk_id") or "")
-                    dense_scores[cid] = round(cosine_similarity(q_vec, d_vec), 4)
-                dense_order = sorted(dense_scores, key=lambda cid: (-dense_scores[cid], cid))
-                ranked_lists.append(dense_order)
-                retrieval_mode = "RRF_DENSE"
+                    if d_vec:
+                        cached_map[cid] = d_vec
+                        computed_chunk_vectors[cid] = d_vec
+                for ch in chunks:
+                    cid = str(ch.get("chunk_id") or "")
+                    d_vec = cached_map.get(cid)
+                    if d_vec:
+                        dense_scores[cid] = round(cosine_similarity(q_vec, d_vec), 4)
+                if dense_scores:
+                    dense_order = sorted(dense_scores, key=lambda cid: (-dense_scores[cid], cid))
+                    ranked_lists.append(dense_order)
+                    retrieval_mode = "RRF_DENSE"
+            else:
+                emb_failures += 1
+                retrieval_warnings.append("EMBEDDING_FALLBACK:EMPTY_OR_MISMATCHED_VECTORS")
         except Exception as exc:
+            emb_failures += 1
             retrieval_warnings.append(f"EMBEDDING_FALLBACK:{type(exc).__name__}")
             dense_scores.clear()
             retrieval_mode = "LEXICAL_ONLY"
@@ -153,8 +333,10 @@ def retrieve_hybrid_chunks(
         try:
             head = fused[:max(1, rerank_top_n)]
             tail = fused[max(1, rerank_top_n):]
+            rerank_requests += 1
             r_scores = reranker.score(query, [str(c.get("text") or "") for c in head])
             if len(r_scores) == len(head):
+                rerank_successes += 1
                 for item, sc in zip(head, r_scores):
                     item["rerank_score"] = round(float(sc), 4)
                 head.sort(
@@ -165,8 +347,12 @@ def retrieve_hybrid_chunks(
                     )
                 )
                 fused = head + tail
-                retrieval_mode = "RRF_RERANK"
+                retrieval_mode = "RRF_RERANK" if emb_successes > 0 else "LEXICAL_RERANK"
+            else:
+                rerank_failures += 1
+                retrieval_warnings.append("RERANKER_FALLBACK:SCORE_COUNT_MISMATCH")
         except Exception as exc:
+            rerank_failures += 1
             retrieval_warnings.append(f"RERANKER_FALLBACK:{type(exc).__name__}")
 
     annotated = annotate_applicability(
@@ -175,8 +361,27 @@ def retrieve_hybrid_chunks(
         case_type=case_type,
         exclude_inapplicable=exclude_inapplicable,
     )
+    effective_mode = (
+        "HYBRID_RERANK" if (emb_successes > 0 and rerank_successes > 0)
+        else "HYBRID_DENSE" if emb_successes > 0
+        else "LEXICAL_RERANK" if rerank_successes > 0
+        else "LEXICAL_ONLY"
+    )
     return {
         "retrieval_mode": retrieval_mode,
         "retrieval_warnings": retrieval_warnings,
         "chunks": annotated[:max(1, top_k)],
+        "computed_chunk_vectors": computed_chunk_vectors,
+        "retrieval_telemetry": {
+            "effective_mode": effective_mode,
+            "embedding_requests": emb_requests,
+            "embedding_successes": emb_successes,
+            "embedding_failures": emb_failures,
+            "reranker_requests": rerank_requests,
+            "reranker_successes": rerank_successes,
+            "reranker_failures": rerank_failures,
+            "cache_hits": cache_hits,
+            "cache_misses": cache_misses,
+            "fallback_reasons": list(retrieval_warnings),
+        },
     }
