@@ -519,9 +519,15 @@ class CompositeOCRAdapter(OCRAdapter):
         )
 
     def recognize_image(self, image: Any, *, page: int = 1, scale: float = 1.0, **kwargs: Any) -> List[OCRLine]:
+        def _fb_call() -> List[OCRLine]:
+            try:
+                return self.fallback.recognize_image(image, page=page, scale=scale, preprocess=True)  # type: ignore[union-attr]
+            except TypeError:
+                return self.fallback.recognize_image(image, page=page, scale=scale)  # type: ignore[union-attr]
+
         return self._route(
             lambda: self.primary.recognize_image(image, page=page, scale=scale, **kwargs),
-            lambda: self.fallback.recognize_image(image, page=page, scale=scale),  # type: ignore[union-attr]
+            _fb_call,
         )
 
 
@@ -664,15 +670,7 @@ class RapidOCRAdapter(OCRAdapter):
                 self.available = False
                 return False
 
-    def recognize(self, path: str, page_numbers: Optional[List[int]] = None) -> List[OCRLine]:
-        if not self.available:
-            return []
-        return _recognize_path_via_adapter(self, path, page_numbers=page_numbers)
-
-    def recognize_image(self, image: Any, *, page: int = 1, scale: float = 1.0) -> List[OCRLine]:
-        if not self._ensure_engine() or self._engine is None:
-            return []
-        raw = self._engine(image)
+    def _parse_raw_output(self, raw: Any, *, page: int, scale: float) -> List[OCRLine]:
         entries = []
         if hasattr(raw, "boxes") and hasattr(raw, "txts") and hasattr(raw, "scores"):
             boxes = raw.boxes if raw.boxes is not None else []
@@ -696,6 +694,67 @@ class RapidOCRAdapter(OCRAdapter):
             ys = [float(p[1]) / scale for p in pts]
             lines.append(OCRLine(text=norm, page=page, bbox=BBox(min(xs), min(ys), max(xs), max(ys)), confidence=conf))
         return lines
+
+    @staticmethod
+    def _preprocess_low_quality_image(image: Any) -> Tuple[Any, float]:
+        """Apply grayscale + upscale + CLAHE contrast + mild sharpening for low-quality scans."""
+        try:
+            import cv2  # type: ignore
+            import numpy as np  # type: ignore
+
+            arr = np.asarray(image)
+            if arr.ndim == 2:
+                gray = arr
+            elif arr.ndim == 3 and arr.shape[2] >= 3:
+                gray = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2GRAY)
+            else:
+                return image, 1.0
+
+            h, w = gray.shape[:2]
+            up = 1.0
+            if min(h, w) > 0 and max(h, w) < 1800:
+                up = min(2.0, 1800.0 / float(max(h, w)))
+                if up > 1.05:
+                    gray = cv2.resize(gray, (int(round(w * up)), int(round(h * up))), interpolation=cv2.INTER_CUBIC)
+                else:
+                    up = 1.0
+
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray)
+            blurred = cv2.GaussianBlur(enhanced, (0, 0), sigmaX=1.2)
+            sharpened = cv2.addWeighted(enhanced, 1.45, blurred, -0.45, 0)
+            rgb = cv2.cvtColor(sharpened, cv2.COLOR_GRAY2RGB)
+            return rgb, up
+        except Exception:
+            return image, 1.0
+
+    def recognize(self, path: str, page_numbers: Optional[List[int]] = None) -> List[OCRLine]:
+        if not self.available:
+            return []
+        return _recognize_path_via_adapter(self, path, page_numbers=page_numbers)
+
+    def recognize_image(
+        self,
+        image: Any,
+        *,
+        page: int = 1,
+        scale: float = 1.0,
+        preprocess: bool = False,
+    ) -> List[OCRLine]:
+        if not self._ensure_engine() or self._engine is None:
+            return []
+        raw_lines = self._parse_raw_output(self._engine(image), page=page, scale=scale)
+        if not preprocess or image is None:
+            return raw_lines
+        pre_img, up = self._preprocess_low_quality_image(image)
+        if pre_img is image and up == 1.0:
+            return raw_lines
+        pre_lines = self._parse_raw_output(self._engine(pre_img), page=page, scale=scale * up)
+        if not pre_lines:
+            return raw_lines
+        if not raw_lines:
+            return pre_lines
+        return pre_lines if _quality_rank(page_quality(pre_lines)) > _quality_rank(page_quality(raw_lines)) else raw_lines
 
 
 class PaddleOCRAdapter(OCRAdapter):
