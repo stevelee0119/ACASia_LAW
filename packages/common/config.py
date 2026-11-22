@@ -240,6 +240,20 @@ def _default_providers() -> Dict[str, ProviderConfig]:
         override = os.getenv(f"LV_{name.upper()}_MODEL")
         if override:
             config.model = override
+        if config.kind == "local":
+            local_url = (os.getenv("LV_LOCAL_LLM_URL") or os.getenv("LV_LOCAL_BASE_URL") or "").strip()
+            if local_url:
+                config.base_url = local_url.rstrip("/")
+            local_model = (os.getenv("LV_LOCAL_LLM_MODEL") or "").strip()
+            if local_model:
+                config.model = local_model
+            enabled_raw = (os.getenv("LV_LOCAL_LLM_ENABLED") or "").strip().lower()
+            if enabled_raw in ("1", "true", "yes", "on"):
+                config.enabled = True
+            elif enabled_raw in ("0", "false", "no", "off"):
+                config.enabled = False
+            elif local_url:
+                config.enabled = True
         out[name] = config
     return out
 
