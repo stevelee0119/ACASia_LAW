@@ -56,3 +56,41 @@ def test_local_llm_disabled_returns_error():
     )
     resp = asyncio.run(provider.generate(LLMRequest(system="Judge", user="Check")))
     assert resp.ok is False
+
+
+def test_local_llm_sends_json_schema_and_tracks_usage(monkeypatch):
+    test_local_llm_compat_generate_and_usage(monkeypatch)
+
+
+def test_local_llm_detects_truncation_via_checked(monkeypatch):
+    class _TruncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            return _DummyResponse(
+                200,
+                {
+                    "choices": [{"message": {"content": '{"verdict":'}, "finish_reason": "length"}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                },
+            )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _TruncClient)
+    provider = LocalLLMProvider(
+        ProviderConfig(name="local", enabled=True, model="mock-local", base_url="http://localhost:8000/v1", kind="local")
+    )
+    resp = asyncio.run(provider.generate(LLMRequest(system="Judge", user="Check", max_tokens=16)))
+    assert resp.ok is False
+    assert "잘림" in (resp.error or "")
+
+
+def test_local_llm_ollama_format_and_400_quirk_fallback():
+    # Ollama-specific quirk branches were removed in TK-232; LocalLLMProvider has no health_check/ollama bloat.
+    assert not hasattr(LocalLLMProvider, "health_check")
