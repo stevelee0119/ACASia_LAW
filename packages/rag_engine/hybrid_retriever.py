@@ -198,6 +198,13 @@ class GeminiEmbeddingAdapter(EmbeddingAdapter):
 
     name = "gemini_embedding"
     _BASE_URL = "https://generativelanguage.googleapis.com"
+    _DEFAULT_MODEL = "text-embedding-004"
+    _ALLOWED_MODEL_PATHS = {
+        "text-embedding-004": "/v1beta/models/text-embedding-004:batchEmbedContents",
+        "gemini-embedding-001": "/v1beta/models/gemini-embedding-001:batchEmbedContents",
+        "gemini-embedding-exp-03-07": "/v1beta/models/gemini-embedding-exp-03-07:batchEmbedContents",
+        "embedding-001": "/v1beta/models/embedding-001:batchEmbedContents",
+    }
 
     def __init__(
         self,
@@ -208,10 +215,13 @@ class GeminiEmbeddingAdapter(EmbeddingAdapter):
         post_fn: Optional[Callable[..., Any]] = None,
     ) -> None:
         self._api_key = (api_key or "").strip()
-        clean_model = (model or "text-embedding-004").strip()
+        clean_model = (model or self._DEFAULT_MODEL).strip()
         if clean_model.startswith("models/"):
             clean_model = clean_model[len("models/"):]
+        if clean_model not in self._ALLOWED_MODEL_PATHS:
+            clean_model = self._DEFAULT_MODEL
         self.model = clean_model
+        self._path = self._ALLOWED_MODEL_PATHS[clean_model]
         self.timeout = max(0.5, float(timeout))
         self._post_fn = post_fn
         self.available = bool(self._api_key and self.model)
@@ -219,7 +229,7 @@ class GeminiEmbeddingAdapter(EmbeddingAdapter):
     def embed(self, texts: Sequence[str]) -> List[List[float]]:
         if not self.available or not texts:
             return []
-        path = f"/v1beta/models/{self.model}:batchEmbedContents"
+        path = self._path
         headers = {
             "Content-Type": "application/json",
             "x-goog-api-key": self._api_key,
