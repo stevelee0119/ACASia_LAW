@@ -1,4 +1,10 @@
 {
+  "0.28": [
+    "Performance·Added: 은퇴 세트 구조적 일반화 규칙(DRAFT_ARTIFACT·EVI-LOGIC/NUM/INCONS·OVR·다중 줄 합계·ZWSP/메타 지시어, #420)으로 은퇴 5세트 평균 51.48→53.22(sealed_20261025 37.5→44.3, sealed_20261010 51.9→53.8, 후퇴 0·오탐 0)",
+    "Added: EVALUATION_V2 4차원(identity/quote/claim_applicability/source_retrieval) PII-free 구조화 출력 계약(eval_contract.py, #419)",
+    "Fixed: law_go_kr NFKC/제로폭·사건명 fallback 매칭 및 학술 429 백오프 단축(#417)",
+    "Changed: 미운영 LV_RAG_EMBEDDING_ENDPOINT 분기 제거 및 3중 진단 일치 계약 강제(#418)"
+  ],
   "0.27": [
     "Performance: 법리·인용 불변식(CIT-META/LAW-NX/OVR, TK-233 #411) 및 EVI-COPY/LOGIC/OVR·INJ·AIGEN 클러스터 일반화(TK-234 #412)로 dev 84.8→86.2·holdout 83.8→86.6(합산 RER 13.38%), 은퇴 5세트 중 4세트 상승·후퇴 0·오탐 0",
     "Changed·Added: 미운영 로컬 LLM/HTTP Reranker 코드 삭제 및 상용 API 임베딩·lexical_only 진단 일치화(TK-232 #409)",

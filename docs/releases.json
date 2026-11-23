@@ -552,5 +552,16 @@
       "Performance: 법원급-사건부호(행정심판 포함)·불가 선고일·핵심 법전 상한/형식 불가(LAW-NX)·ClauseNormalizer 절대 단정(OVR) 일반화(TK-233, #411), 내용어 3-shingle/어미 변환 복제(EVI-COPY)·전제-결론 지각 모순(EVI-LOGIC)·내심 단정(EVI-OVR)·인젝션 매핑(INJ-ZWSP/META)·복수 객관적 AI 잔재 클러스터(AIGEN) 정밀화(TK-234, #412)",
       "미측정: 격리 봉인 세트 및 운영 온라인 실측(Drive 저품질 16쪽 재색인 델타, RapidOCR 저품질 회복, lexical_only 진단 일치, 상용 API 임베딩 캐시, case9) — 배포 후 온라인 점검 시행"
     ]
+  },
+  {
+    "version": "0.28.0",
+    "date": "2026-11-23",
+    "changes": [
+      "평가 측 minor 판정(0.27.0 → 0.28.0, d5241370 기준, 분류 added·fixed·changed): #417~#420 필수 CI 전수 통과. 운영 main(12be4fa5) 대비 고정 dev 86.2(v2 44/56)·holdout 86.6(v2 44/54)·확인 오탐 0·A등급 오탐 0·인젝션 방어 유지, 은퇴 5세트 평균 51.48→53.22(+1.74, 56.5/54.6/56.9/51.9→53.8/37.5→44.3, 후퇴 0). 포함 범위 #417~#420",
+      "Added (과제 1·4): 은퇴 세트 구조적 일반화 규칙(초안/AI 메모 DRAFT_ARTIFACT·내심 단정 EVI-LOGIC·서증명-호증번호 불일치 EVI-NUM·다중 줄 합계 내역·앵커 스칼라 불일치 EVI-INCONS·법리 과장 단언 OVR·메타데이터 지시어/ZWSP, #420) 및 EVALUATION_V2 4차원 PII-free 구조화 출력 계약(eval_contract.py, #419)",
+      "Fixed (과제 3): law_go_kr NFKC/제로폭 정규화·사건명 fallback 매칭(완전 튜플 일치만 허용) 및 SemanticScholar 키 미설정 시 429 백오프 단축(#417), 선고일 기준일 오분류 배제(#420)",
+      "Changed (과제 2): 미운영 HttpEmbeddingAdapter/LV_RAG_EMBEDDING_ENDPOINT 분기 제거 및 next_gen_feature_diagnostics() configured_mode/effective_mode/actual_calls 3중 일치 계약 강제(#418)",
+      "미측정: 격리 봉인 세트 및 운영 온라인 실측(U2 2015모2524 해소, Drive 16쪽 재색인, 상용 임베딩 실호출, case9, 4차원 출력 실측) — 배포 후 온라인 점검 시행"
+    ]
   }
 ]
