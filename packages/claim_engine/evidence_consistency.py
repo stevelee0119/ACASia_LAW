@@ -1619,7 +1619,7 @@ def check_evidence_overreach(
     )
     for s_start, s_end in sentence_bounds(text):
         sent_in = " ".join(text[s_start:s_end].split()).strip()
-        if len(sent_in) < 12 or _INLINE_NEG_OR_REBUT_RE.search(sent_in):
+        if len(sent_in) < 12 or _ovr_parse_exhibits(sent_in) or _INLINE_NEG_OR_REBUT_RE.search(sent_in):
             continue
         if not _INLINE_PROOF_ASSERT_RE.search(sent_in):
             continue
@@ -1873,7 +1873,6 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
             start_num = 1
         gaps = [n for n in range(start_num, max(target_nums) + 1) if n not in target_nums]
         if gaps:
-            gap_labels = [f"{party} 제{g}호증" for g in gaps]
             omitted_snippets = " / ".join(
                 f"{r['label']} {r.get('name', '')}".strip()
                 for r in rows
@@ -1881,11 +1880,14 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
             )
             base_exc = ", ".join(f"{party} 제{n}호증" for n in sorted(target_nums))
             full_exc = f"{base_exc} — {omitted_snippets}" if omitted_snippets else base_exc
+            gap_features: Dict[str, Any] = {"party": party, "missing": gaps}
+            if omitted_snippets:
+                gap_features["missing_labels"] = [f"{party} 제{g}호증" for g in gaps]
             out.append(_finding(doc, FindingType.EVIDENCE_NUMBERING_GAP, EvidenceGrade.B, Severity.MEDIUM,
                                 f"호증 번호가 비어 있다: {party} 제{', '.join(map(str, gaps))}호증 결번",
                                 "증거 목록의 번호가 연속하지 않는다. 누락된 증거가 있는지 확인해야 한다.",
                                 full_exc,
-                                features={"party": party, "missing": gaps, "missing_labels": gap_labels}))
+                                features=gap_features))
     text = build_reading_text(doc).text
     # 목록 밖 인용에서 뺄 것(E1): 목록이 N번부터 시작하면 그보다 작은 번호(앞 서면에서 낸 호증),
     # 같은 문장에 앞서 제출·추후 제출 표지가 있는 인용.
@@ -3986,6 +3988,14 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
         for d_other in docs:
             d_kind = doc_kinds[d_other.document_id][0]
             if d_kind not in (DOC_KIND_OTHER, DOC_KIND_EVIDENCE_EXPLANATION):
+                continue
+            head_lines = [ln.strip() for ln in texts[d_other.document_id][:400].splitlines() if ln.strip()][:5]
+            if any(
+                len(ln) <= 80
+                and not _HEADING_LIST_ITEM_RE.search(ln)
+                and _DERIVED_DOC_NAME_RE.search(ln)
+                for ln in head_lines
+            ):
                 continue
             top_head = texts[d_other.document_id][:400]
             is_evi_expl = (d_kind == DOC_KIND_EVIDENCE_EXPLANATION) or ("증거설명서" in top_head) or ("증거목록" in top_head)
