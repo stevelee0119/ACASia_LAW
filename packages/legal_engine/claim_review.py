@@ -886,17 +886,8 @@ def _clause_normalizer_overclaims(text: str) -> List[ClaimMatch]:
             # 3) 단순 착오/누락/지연/불이행 -> 곧바로 고의·기망·범죄 성립 단정
             elif (
                 re.search(r"(?:단순\s*)?(?:누락|착오|오류|지연|미지급|불일치|미기재|채무불이행)", sentence)
-                and (
-                    (
-                        re.search(r"(?:곧바로|당연히|자동으로|그\s*자체로|즉시)\s*[^.!?]{0,20}?(?:고의|기망|사기|배임|악의|범의|불법영득)", sentence)
-                        and re.search(r"(?:성립|인정|추정|단정|해당)", sentence)
-                    )
-                    or (
-                        re.search(r"단순\s*(?:지급\s*지연|채무불이행|미지급)", sentence)
-                        and re.search(r"(?:사기죄|횡령죄|배임죄|형사\s*책임)", sentence)
-                        and re.search(r"(?:성립|인정|해당|책임|져야|면할\s*수\s*없)", sentence)
-                    )
-                )
+                and re.search(r"(?:곧바로|당연히|자동으로|그\s*자체로|즉시)\s*[^.!?]{0,20}?(?:고의|기망|사기|배임|악의|범의|불법영득)", sentence)
+                and re.search(r"(?:성립|인정|추정|단정|해당)", sentence)
             ):
                 doctrinal_ovr = True
 

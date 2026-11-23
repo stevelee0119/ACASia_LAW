@@ -685,7 +685,7 @@ EVIDENCE_KIND_CATEGORIES: Dict[str, Tuple[str, ...]] = {
 # B-1 2. 4대 주장 술어 닫힌 범주 사전 (S1: '의사' 단독 삭제, '과실·불법행위' 법률 평가 삭제, 계약성립 술어 추가)
 CLAIM_PREDICATE_CATEGORIES: Dict[str, Tuple[str, ...]] = {
     "전칭_전기간": (
-        "항상", "매번", "모든", "계속", "내내", "줄곧", "일체", "전액", "전부", "전기간", "계속하여",
+        "항상", "매번", "모든", "계속", "내내", "줄곧", "일체", "전기간", "계속하여",
         "전 공정", "전 구간", "계속적으로", "상시", "항시",
     ),
     "내심의상태": (
@@ -2198,7 +2198,7 @@ def check_evidence_numbering_mismatches(
     # 목록 머리글 괄호 안의 완결 선언이 괄호 제거 등으로 유실되지 않도록 원문 text 전체에서 최우선 판정
     has_completion = bool(_COMPLETE_DECLARATION_RE.search(text))
 
-    if has_completion or (has_formal_section and len(list_keys) >= 2):
+    if has_completion:
         for raw_sentence in re.split(r"[.\n]+", body_text):
             sentence = raw_sentence
             # 이전 제출 호증 재인용 제외 (규칙 레벨 제외)
