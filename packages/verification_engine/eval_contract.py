@@ -42,7 +42,12 @@ def _map_claim_judgment(status: str) -> str:
 
 def build_evaluation_dimensions(doc_result: Any, *, doc_sha256: str = "") -> Dict[str, List[Dict[str, Any]]]:
     """Extract 4 independent, PII-free evaluation dimensions from a DocumentResult."""
-    sha = doc_sha256 or getattr(getattr(doc_result, "normalized", None), "sha256", "") or ""
+    sha = (
+        doc_sha256
+        or getattr(getattr(doc_result, "normalized", None), "sha256", "")
+        or getattr(doc_result, "sha256", "")
+        or ""
+    )
     doc_id = str(getattr(doc_result, "document_id", "") or "")
     engine_data = getattr(doc_result, "engine_data", None) or {}
     citations_by_id = {
@@ -50,6 +55,12 @@ def build_evaluation_dimensions(doc_result: Any, *, doc_sha256: str = "") -> Dic
         for c in (getattr(doc_result, "citations", None) or [])
         if isinstance(c, dict) and c.get("citation_id")
     }
+    doc_source_by_id: Dict[str, Dict[str, Any]] = {}
+    for sr in (getattr(doc_result, "source_records", None) or []):
+        sr_dict = sr.to_dict() if hasattr(sr, "to_dict") else (sr if isinstance(sr, dict) else {})
+        if sr_dict.get("source_record_id"):
+            doc_source_by_id[str(sr_dict["source_record_id"])] = sr_dict
+
     verdicts = engine_data.get("legal_verdicts") or []
     applicability = engine_data.get("case_applicability_reviews") or []
 
@@ -92,18 +103,42 @@ def build_evaluation_dimensions(doc_result: Any, *, doc_sha256: str = "") -> Dic
                 "text_sha256": text_hash,
                 "dimension": "quote",
             }
+            quote_errors = [
+                str(f.get("type"))
+                for f in (v.get("findings") or [])
+                if isinstance(f, dict) and f.get("type") in ("CASE_QUOTE_MISMATCH", "LAW_CITATION_ERROR")
+            ]
             quote_items.append({
                 "item_id": "quote-" + _sha256_json(q_anchor),
                 "citation_id": cid,
                 "page": page,
                 "span": span,
                 "status": str(levels.get("level3") or levels.get("content") or "UNVERIFIED"),
-                "errors": [],
+                "errors": quote_errors,
             })
 
         sl = v.get("source_lookup") or {}
-        src_records = v.get("source_records") or []
-        src_name = str(sl.get("source") or (src_records[0].get("adapter") if src_records and isinstance(src_records[0], dict) else "") or "unknown")
+        sl_reqs = sl.get("requests") if isinstance(sl.get("requests"), list) else []
+        src_records = [
+            doc_source_by_id[str(sid)]
+            for sid in (v.get("source_record_ids") or [])
+            if str(sid) in doc_source_by_id
+        ] or (v.get("source_records") or [])
+        first_src = src_records[0] if src_records and isinstance(src_records[0], dict) else {}
+        first_req = sl_reqs[0] if sl_reqs and isinstance(sl_reqs[0], dict) else {}
+        src_name = str(
+            sl.get("source")
+            or first_src.get("adapter")
+            or first_req.get("adapter")
+            or "unknown"
+        )
+        raw_src_status = str(
+            sl.get("status")
+            or first_src.get("status")
+            or first_req.get("status")
+            or v.get("status")
+            or "UNVERIFIED"
+        ).replace("AdapterStatus.", "")
         s_anchor = {
             "document_sha256": sha,
             "citation_id": cid,
@@ -114,7 +149,7 @@ def build_evaluation_dimensions(doc_result: Any, *, doc_sha256: str = "") -> Dic
             "item_id": "source-" + _sha256_json(s_anchor),
             "citation_id": cid,
             "source_name": src_name,
-            "status": str(sl.get("status") or v.get("status") or "UNVERIFIED"),
+            "status": raw_src_status,
             "matched_count": int(sl.get("matched_count") or (1 if v.get("official_record") else 0)),
             "cause": sl.get("cause"),
             "official_span": {
@@ -125,6 +160,8 @@ def build_evaluation_dimensions(doc_result: Any, *, doc_sha256: str = "") -> Dic
             },
         })
 
+    verdict_by_cid = {str(v.get("citation_id")): v for v in verdicts if isinstance(v, dict) and v.get("citation_id")}
+    app_by_cid = {str(a.get("citation_id")): a for a in applicability if isinstance(a, dict) and a.get("citation_id")}
     claim_items: List[Dict[str, Any]] = []
     claims = getattr(doc_result, "claims", None) or []
     for idx, cl in enumerate(claims):
@@ -140,8 +177,21 @@ def build_evaluation_dimensions(doc_result: Any, *, doc_sha256: str = "") -> Dic
             "claim_sha256": _sha256_text(claim_text or f"claim:{idx}"),
             "dimension": "claim_applicability",
         }
+        linked_statuses: List[str] = []
+        for cid in (cl.get("citation_ids") or []):
+            cid_str = str(cid)
+            if cid_str in app_by_cid and app_by_cid[cid_str].get("verdict"):
+                linked_statuses.append(str(app_by_cid[cid_str]["verdict"]))
+            elif cid_str in verdict_by_cid and verdict_by_cid[cid_str].get("status"):
+                linked_statuses.append(str(verdict_by_cid[cid_str]["status"]))
         app_match = applicability[idx] if idx < len(applicability) and isinstance(applicability[idx], dict) else {}
-        judgment = _map_claim_judgment(app_match.get("verdict") or cl.get("status") or "UNVERIFIED")
+        raw_claim_status = (
+            app_match.get("verdict")
+            or (linked_statuses[0] if linked_statuses else None)
+            or cl.get("status")
+            or "UNVERIFIED"
+        )
+        judgment = _map_claim_judgment(raw_claim_status)
         claim_items.append({
             "item_id": "claim-" + _sha256_json(c_anchor),
             "claim_id": str(cl.get("claim_id") or f"C_{idx}"),

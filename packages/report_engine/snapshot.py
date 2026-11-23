@@ -81,8 +81,9 @@ def shareable_snapshot(snapshot):
             return value
         if key in {"created_by", "finalized_by", "updated_by", "reviewed_by", "actor", "sha256",
                    "source_run_hash", "source_snapshot_hash", "snapshot_hash", "response_hash", "head_hash",
-                   "preflight_hash", "verification_key", "run_id", "source_run_id", "report_id", "source_report_id"}:
-            return value  # Authenticated accountability identifiers are intentional.
+                   "preflight_hash", "verification_key", "run_id", "source_run_id", "report_id", "source_report_id",
+                   "item_id", "citation_id", "claim_id", "document_id"}:
+            return value  # Authenticated accountability identifiers and deterministic evaluation item IDs are intentional.
         for name in ordered_names:
             value = value.replace(name, "[당사자]")
         for match in sorted(detect(value), key=lambda m: m.start, reverse=True):

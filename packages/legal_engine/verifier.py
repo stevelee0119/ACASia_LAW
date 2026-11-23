@@ -732,6 +732,19 @@ class LegalVerifier:
             if verdict.levels["opinion"] == "CONTRADICTED":
                 verdict.status = VerificationStatus.CONTRADICTED
 
+        if "stage2_nli" not in verdict.review:
+            case_claim = str((citation.attributes or {}).get("case_claim") or "").strip()
+            official_text = " ".join(str(official.get(key) or "") for key in ("full_text", "holding", "summary")).strip()
+            if case_claim and official_text:
+                try:
+                    from packages.common.config import get_settings
+                    nli_mode = str(getattr(get_settings(), "legal_nli_mode", "shadow") or "shadow").strip().lower()
+                    if nli_mode != "off":
+                        from .nli_verifier import evaluate_citation_nli_stage2
+                        verdict.review["stage2_nli"] = evaluate_citation_nli_stage2(official_text, case_claim).to_dict()
+                except Exception:  # pragma: no cover - defensive
+                    pass
+
         # Level 4·5는 LLM 담당. 공식 Source가 있어야만 의미 비교를 수행한다.
         verdict.levels.setdefault("level4", "PENDING_LLM")
         verdict.levels.setdefault("level5", "PENDING_LLM")
@@ -923,14 +936,7 @@ class LegalVerifier:
         if resolver is not None and not mirrored:
             verdict = verify_statute_source(self, citation, as_of=as_of,
                                             incident_date=incident_date, current_date=current_date)
-            _core_laws = frozenset({
-                "대한민국헌법", "헌법", "민법", "형법", "상법", "민사소송법", "형사소송법",
-                "행정소송법", "행정기본법", "국가배상법", "근로기준법",
-            })
-            _norm_law = re.sub(r"[\s\-_ㆍ·「」『』\[\]()]+", "", citation.law_name or "")
-            _clear_range_exceeded = range_error is not None and (
-                _norm_law in _core_laws or int(range_error.get("excess") or 0) >= 20
-            )
+            _clear_range_exceeded = range_error is not None
             if verdict.status == VerificationStatus.UNVERIFIED and (form_impossible or _clear_range_exceeded):
                 if form_impossible:
                     verdict.status = VerificationStatus.CONTRADICTED
@@ -951,6 +957,15 @@ class LegalVerifier:
                         page=citation.page,
                         engine=ENGINE_NAME,
                         tags=["LEGAL", "LAW_CITATION_ERROR", "LAW_NX"],
+                        evidence=[
+                            Evidence.create(
+                                description="원문 인용 문맥",
+                                grade=EvidenceGrade.B,
+                                document_id=citation.document_id,
+                                block_id=citation.block_id,
+                                excerpt=self._citation_sentence_excerpt(citation),
+                            )
+                        ],
                     )
                 )
             return verdict
@@ -980,6 +995,15 @@ class LegalVerifier:
                         page=citation.page,
                         engine=ENGINE_NAME,
                         tags=["LEGAL", "LAW_CITATION_ERROR", "LAW_NX"],
+                        evidence=[
+                            Evidence.create(
+                                description="원문 인용 문맥",
+                                grade=EvidenceGrade.B,
+                                document_id=citation.document_id,
+                                block_id=citation.block_id,
+                                excerpt=self._citation_sentence_excerpt(citation),
+                            )
+                        ],
                     )
                 )
                 return verdict
@@ -1462,6 +1486,31 @@ class LegalVerifier:
         )
 
     @staticmethod
+    def _citation_sentence_excerpt(citation: Citation) -> str:
+        raw = (citation.raw_text or "").strip()
+        ctx = (citation.context or "").strip()
+        if not ctx or not raw:
+            return raw or ctx
+        idx = ctx.find(raw)
+        if idx == -1:
+            return raw
+        # 인용 표기를 포함한 단일 문장/줄만 추출하여 인접 문장(FP-TRAP 등) 침범 차단
+        left = ctx[:idx]
+        s_start = 0
+        for m in re.finditer(r"(?:[다요함음임]\.|[!?]|\n)\s+", left):
+            s_start = m.end()
+        nl_l = left.rfind("\n")
+        if nl_l != -1:
+            s_start = max(s_start, nl_l + 1)
+        right = ctx[idx + len(raw):]
+        s_end = len(ctx)
+        m_r = re.search(r"(?:[다요함음임]\.|[!?]|\n)", right)
+        if m_r:
+            s_end = idx + len(raw) + m_r.end()
+        sent = ctx[s_start:s_end].strip()
+        return f"{raw} — {sent}" if sent and sent != raw else raw
+
+    @staticmethod
     def _invalid_format_finding(citation: Citation, violations: List[Dict[str, Any]],
                                 verdict: "CitationVerdict") -> Finding:
         lookup = "UNAVAILABLE" if not verdict.official_record and verdict.levels.get("level1") in (None, "UNVERIFIED") \
@@ -1496,7 +1545,7 @@ class LegalVerifier:
             source_record_ids=[r.source_record_id for r in verdict.source_records], tags=["LEGAL", "FORMAT"],
             evidence=[Evidence.create(description="문서의 인용 표기", grade=EvidenceGrade.A,
                                       document_id=citation.document_id, block_id=citation.block_id,
-                                      excerpt=citation.raw_text)],
+                                      excerpt=LegalVerifier._citation_sentence_excerpt(citation))],
         )
 
     @staticmethod
@@ -1513,6 +1562,9 @@ class LegalVerifier:
             document_id=citation.document_id, block_id=citation.block_id, page=citation.page,
             span=citation.span, engine=ENGINE_NAME,
             source_record_ids=[r.source_record_id for r in verdict.source_records], tags=["LEGAL", "CASE"],
+            evidence=[Evidence.create(description="문서의 인용 표기", grade=EvidenceGrade.B,
+                                      document_id=citation.document_id, block_id=citation.block_id,
+                                      excerpt=LegalVerifier._citation_sentence_excerpt(citation))],
         )
 
     @staticmethod

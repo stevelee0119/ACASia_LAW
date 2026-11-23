@@ -107,16 +107,21 @@ def preflight(settings: Any = None, registry: Any = None, router: Any = None) ->
             usable = None
     ai_ready = [n for n, p in providers.items() if p["key"] and p["enabled"] and network
                 and (usable is None or n in usable)]
+    try:
+        from packages.source_adapters.cassette import replay_mode_active
+        cassette_replay = replay_mode_active()
+    except Exception:
+        cassette_replay = False
     ocr = _ocr_state(getattr(settings, "ocr_lang", None) or "kor+eng")
     resources = {
-        "law_db": law_key and network and sources.get("law_go_kr", "READY") == "READY",
+        "law_db": ((law_key and network) or cassette_replay) and sources.get("law_go_kr", "READY") == "READY",
         "ai_models": len(ai_ready) == len(AI_PROVIDERS),
         "korean_ocr": bool(ocr.get("kor")) and ocr.get("status") == "READY",
     }
     missing = [name for name, ok in resources.items() if not ok]
     environment = {
         "network": network,
-        "law_db": {"key": law_key, "status": sources.get("law_go_kr") or ("READY" if law_key and network else
+        "law_db": {"key": law_key or cassette_replay, "status": sources.get("law_go_kr") or ("READY" if (law_key and network) or cassette_replay else
                                                                           "MISSING_KEY" if not law_key else "NETWORK_DISABLED")},
         "ai_providers": providers,
         "ai_providers_ready": ai_ready,

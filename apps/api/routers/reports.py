@@ -524,6 +524,8 @@ def _preflight(project, engine, human):
             unavailable_stages.append({"path": path, "record": value})
         elif isinstance(value, dict):
             for name, item in value.items():
+                if name in {"evaluation_dimensions", "fact_triples"}:
+                    continue
                 recorded_limits(item, f"{path}.{name}", name)
         elif isinstance(value, list):
             for index, item in enumerate(value):

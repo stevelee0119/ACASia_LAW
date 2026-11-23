@@ -1584,6 +1584,69 @@ def check_evidence_overreach(
             if debug_counters is not None:
                 debug_counters["pos_emitted"] += 1
 
+    # 인라인 증거명사(호증 번호 미병기 또는 비정형 표기) 증명력 한계 초과 원용 검사 (C등급, SUSPICIOUS)
+    _INLINE_EVI_OVR_RULES: Tuple[Tuple[str, re.Pattern[str], re.Pattern[str], str], ...] = (
+        (
+            "PHOTO_OVERREACH",
+            re.compile(r"(?:현장\s*사진|외형\s*사진|정지\s*사진|사진|복도의?\s*소리|발소리|음성|녹음)"),
+            re.compile(r"(?:전\s*기간|내내|항상|지속적|전\s*과정|고의|기망|의도|합의|동의|승낙|완납|전액|전체\s*계약)"),
+            "단편적 시각·청각 자료만으로 연속 기간·내심 의사·계약 합의 전체를 단정",
+        ),
+        (
+            "RECEIPT_OVERREACH",
+            re.compile(r"(?:영수증|입금증|입금\s*확인증|이체\s*내역|송금\s*내역)"),
+            re.compile(r"(?:모든\s*채무|일체의?\s*(?:채무|책임|정산)|전액\s*(?:완납|소멸|변제)|완전(?:히|한)\s*(?:정산|종결|소멸)|합의(?:가|를)?\s*성립)"),
+            "단순 수령·입금 자료만으로 별개 채무의 전면 소멸이나 포괄적 합의를 단정",
+        ),
+        (
+            "IDENTIFIER_OVERREACH",
+            re.compile(r"(?:지문|접속표|접속\s*기록|로그\s*기록|출입\s*기록|재직\s*증명서)"),
+            re.compile(r"(?:거래\s*(?:조건|성립|내용|약정)|편취|고의|기망|유출\s*(?:행위|사실|고의)|전\s*과정|계약\s*조건)"),
+            "신원·접속·재직 식별 자료만으로 실질 거래 조건이나 유출·편취 고의를 직접 단정",
+        ),
+        (
+            "NOTICE_OVERREACH",
+            re.compile(r"(?:일방(?:적)?\s*통지(?:서|자료)?|통지서|내용증명|최고서|발송\s*내역)"),
+            re.compile(r"(?:상대방(?:의)?\s*(?:동의|승낙|수락|합의)|합의(?:가|를)?\s*(?:성립|완성)|계약(?:이|을)?\s*성립)"),
+            "일방의 통지·발송 자료만으로 상대방의 의사 합치나 합의 성립을 단정",
+        ),
+    )
+    _INLINE_PROOF_ASSERT_RE = re.compile(
+        r"(?:증명|입증|확인|인정|확정|뒷받침|보여\s*줍|드러납)(?:된다|됩니다|한다|합니다|되었다|되었습니다|할\s*수\s*있|되므로|하므로|다)"
+    )
+    _INLINE_NEG_OR_REBUT_RE = re.compile(
+        r"(?:않는다|않았다|아니다|아니며|부족|어렵|어려우|불가|없다|수\s*없|(?:라고|다고)\s*(?:주장|항변|다투)|주장은\s*부당)"
+    )
+    for s_start, s_end in sentence_bounds(text):
+        sent_in = " ".join(text[s_start:s_end].split()).strip()
+        if len(sent_in) < 12 or _ovr_parse_exhibits(sent_in) or _INLINE_NEG_OR_REBUT_RE.search(sent_in):
+            continue
+        if not _INLINE_PROOF_ASSERT_RE.search(sent_in):
+            continue
+        for cat_tag, evi_re, over_re, desc_summary in _INLINE_EVI_OVR_RULES:
+            m_evi = evi_re.search(sent_in)
+            if m_evi and over_re.search(sent_in):
+                evi_word = m_evi.group(0).strip()
+                out.append(
+                    _finding(
+                        doc,
+                        FindingType.EVIDENCE_PURPOSE_MISMATCH,
+                        EvidenceGrade.C,
+                        Severity.MEDIUM,
+                        f"서증 증명력 한계 초과 원용: {evi_word} → {desc_summary}",
+                        f"'{evi_word}'의 객관적 증명 범위를 넘어 '{desc_summary}' 사실까지 직접 증명된다고 주장하고 있다.",
+                        sent_in[:240],
+                        status=VerificationStatus.SUSPICIOUS,
+                        features={
+                            "exhibit": evi_word,
+                            "category": cat_tag,
+                            "human_review": True,
+                            "rule_id": f"claim_engine.evidence_consistency:{cat_tag}",
+                        },
+                    )
+                )
+                break
+
     # 중복 제거 (동일 호증·동일 범주에 대한 동일 문맥 중복 방지)
     dedup: List[Finding] = []
     seen_keys = set()
@@ -1769,8 +1832,11 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
                             features={"rule_id": "EVI.EVIDENCE_NUMBER_DUPLICATE",
                                       "defect_code": "EVIDENCE_NUMBER_DUPLICATE", "exhibit": label,
                                       "names": [r.get("name") for r in same]}))
+    _OMITTED_ROW_RE = re.compile(r"(?:누락|결번|빠짐|빠져)")
     listed: Dict[str, set] = {}
     for row in rows:
+        if _OMITTED_ROW_RE.search(row.get("name") or ""):
+            continue
         listed.setdefault(row["party"], set()).add(row["number"])
     # 가지번호: '의 2'만 있고 '의 1'이 없으면 결번이다(G5). 범위 표기('의 1 내지 3')는 모두 있는 것으로 본다.
     branches: Dict[tuple, set] = {}
@@ -1791,7 +1857,9 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
     for party, numbers in listed.items():
         sec_nums = {
             r["number"] for r in rows
-            if r["party"] == party and r.get("in_section", not r.get("from_lines", False))
+            if r["party"] == party
+            and r.get("in_section", not r.get("from_lines", False))
+            and not _OMITTED_ROW_RE.search(r.get("name") or "")
         }
         if has_any_section:
             if not sec_nums:
@@ -1805,11 +1873,21 @@ def _numbering(doc: NormalizedDocument, rows: List[Dict[str, Any]]) -> List[Find
             start_num = 1
         gaps = [n for n in range(start_num, max(target_nums) + 1) if n not in target_nums]
         if gaps:
+            omitted_snippets = " / ".join(
+                f"{r['label']} {r.get('name', '')}".strip()
+                for r in rows
+                if r["party"] == party and _OMITTED_ROW_RE.search(r.get("name") or "")
+            )
+            base_exc = ", ".join(f"{party} 제{n}호증" for n in sorted(target_nums))
+            full_exc = f"{base_exc} — {omitted_snippets}" if omitted_snippets else base_exc
+            gap_features: Dict[str, Any] = {"party": party, "missing": gaps}
+            if omitted_snippets:
+                gap_features["missing_labels"] = [f"{party} 제{g}호증" for g in gaps]
             out.append(_finding(doc, FindingType.EVIDENCE_NUMBERING_GAP, EvidenceGrade.B, Severity.MEDIUM,
                                 f"호증 번호가 비어 있다: {party} 제{', '.join(map(str, gaps))}호증 결번",
                                 "증거 목록의 번호가 연속하지 않는다. 누락된 증거가 있는지 확인해야 한다.",
-                                ", ".join(f"{party} 제{n}호증" for n in sorted(target_nums)),
-                                features={"party": party, "missing": gaps}))
+                                full_exc,
+                                features=gap_features))
     text = build_reading_text(doc).text
     # 목록 밖 인용에서 뺄 것(E1): 목록이 N번부터 시작하면 그보다 작은 번호(앞 서면에서 낸 호증),
     # 같은 문장에 앞서 제출·추후 제출 표지가 있는 인용.
@@ -1972,7 +2050,12 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
             and _INNER_STATE_RE.search(sentence)
             and not _ATTR_QUOTE_RE.search(sentence)
         ):
-            out.append(_finding(doc, FindingType.EVIDENCE_PURPOSE_MISMATCH, EvidenceGrade.C, Severity.MEDIUM,
+            inner_kind = (
+                FindingType.OVERCLAIM
+                if statement_start is None and _document_title_kind(doc, text)[0] == DOC_KIND_PLEADING
+                else FindingType.EVIDENCE_PURPOSE_MISMATCH
+            )
+            out.append(_finding(doc, inner_kind, EvidenceGrade.C, Severity.MEDIUM,
                                 "일방 진술서의 상대방 내심·의도 단정",
                                 "진술서 등 일방 작성 문서에서 객관적 외형 사실에 대한 설명 없이 상대방의 내심이나 "
                                 "고의·의도를 직접 단정하고 있다. 증명력 범위는 사람이 확인한다.",
@@ -2145,7 +2228,7 @@ def check_evidence_numbering_mismatches(
         rf"(?P<party>[갑을병정증])\s*제\s*(?P<num>\d+)\s*호증(?!\s*의\s*\d+)(?:\s*의\s*|\s*\(\s*|\s+)(?P<title>{_TITLE_CORE})(?=[이가은는을를의로에와과,.\s\(\)]|$)"
         rf"|(?P<title2>{_TITLE_CORE})\s*\(\s*(?P<party2>[갑을병정증])\s*제\s*(?P<num2>\d+)\s*호증(?!\s*의\s*\d+)\s*\)"
     )
-    body_title_nums: Dict[Tuple[str, str], List[Tuple[int, str]]] = {}
+    body_title_nums: Dict[Tuple[str, str], List[Tuple[int, str, str]]] = {}
     for bm in _BODY_TITLE_RE.finditer(body_text):
         bp = bm.group("party") or bm.group("party2")
         bn = int(bm.group("num") or bm.group("num2"))
@@ -2159,16 +2242,18 @@ def check_evidence_numbering_mismatches(
             _, ln = list_name_by_key[(bp, bn)]
             if ln and bt != ln and bt not in ln and ln not in bt:
                 continue
-        body_title_nums.setdefault((bp, bt), []).append((bn, f"{bp} 제{bn}호증"))
+        ctx_win = body_text[max(0, bm.start() - 60) : min(len(body_text), bm.end() + 60)].strip()
+        body_title_nums.setdefault((bp, bt), []).append((bn, f"{bp} 제{bn}호증", ctx_win))
     for (bp, bt), occs in body_title_nums.items():
         distinct = []
         seen_n = set()
-        for bn, blbl in occs:
+        for bn, blbl, bctx in occs:
             if bn not in seen_n:
                 seen_n.add(bn)
-                distinct.append((bn, blbl))
+                distinct.append((bn, blbl, bctx))
         if len(distinct) >= 2:
             l1, l2 = distinct[0][1], distinct[1][1]
+            c1, c2 = distinct[0][2], distinct[1][2]
             out.append(
                 _finding(
                     doc,
@@ -2177,7 +2262,7 @@ def check_evidence_numbering_mismatches(
                     Severity.MEDIUM,
                     f"본문 내 동일 서증명의 호증 번호가 일치하지 않는다: '{bt}' ({l1} ↔ {l2})",
                     f"같은 서증명 '{bt}'에 대해 본문에서 {l1}과 {l2}로 서로 다른 번호를 기재하였다.",
-                    f"{l1} {bt} ↔ {l2} {bt}",
+                    f"{l1} {bt} ↔ {l2} {bt} — {c1} / {c2}",
                     status=VerificationStatus.SUSPICIOUS,
                     features={
                         "rule_id": "EVI.EXHIBIT_NUMBER_NAME_MISMATCH_BODY",
@@ -2185,6 +2270,36 @@ def check_evidence_numbering_mismatches(
                         "body_exhibit": l1,
                         "list_exhibit": l2,
                         "name": bt,
+                    },
+                )
+            )
+
+    # 3-3. 한 문장 안에서 동일 호증 번호를 서로 다른 두 서류('A'와 'B')에 중복 부여했다고 명시한 경우
+    _PROSE_DUP_EXHIBIT_RE = re.compile(
+        r"(?P<lbl>(?:피고인\s*증|[갑을병정증고수설])\s*제\s*\d+\s*호증(?:의\s*\d+)?)[이가은는을를]?\s*"
+        r"['\"‘“「『](?P<n1>[^'\"’”」』]{2,30})['\"’”」』]\s*(?:와|과|및)\s*"
+        r"['\"‘“「『](?P<n2>[^'\"’”」』]{2,30})['\"’”」』][^.\n]{0,50}?"
+        r"(?:서로\s*다른|두\s*개|별개|중복)"
+    )
+    for pm in _PROSE_DUP_EXHIBIT_RE.finditer(text):
+        p_lbl = re.sub(r"\s+", " ", pm.group("lbl")).strip()
+        n1, n2 = pm.group("n1").strip(), pm.group("n2").strip()
+        if n1 != n2:
+            p_ctx = text[max(0, pm.start() - 30) : min(len(text), pm.end() + 60)].strip()
+            out.append(
+                _finding(
+                    doc,
+                    FindingType.EVIDENCE_LIST_MISMATCH,
+                    EvidenceGrade.A,
+                    Severity.MEDIUM,
+                    f"같은 호증 번호가 두 번 쓰였다: {p_lbl} — {n1}, {n2}",
+                    "서증 목록에 같은 호증 번호를 서로 다른 증거에 중복 부여하였다.",
+                    p_ctx,
+                    features={
+                        "rule_id": "EVI.EVIDENCE_NUMBER_DUPLICATE",
+                        "defect_code": "EVIDENCE_NUMBER_DUPLICATE",
+                        "exhibit": p_lbl,
+                        "names": [n1, n2],
                     },
                 )
             )
@@ -2586,17 +2701,18 @@ def _detect_author_party(
         elif re.search(r"(?:^|\n)\s*(?:소\s*장|신\s*청\s*서|고\s*소\s*장|준비서면\s*\(원고\)|원고\s+준비서면)", head_text):
             author_party = "원고"
 
-    # 목록에 실제 등장하는 부호 수집 (#126 호환)
+    # 목록에 실제 등장하는 부호 수집 (#126 호환; 고·설·수·행·증 등 비정형 부호 보존)
     listed_parties = {r.get("party") for r in exhibits if r.get("party")}
+    non_standard_listed = {p for p in listed_parties if p not in ("갑", "소갑", "을", "소을")}
 
     if author_party == "원고":
-        my_party_chars = {"갑", "소갑"}
+        my_party_chars = {"갑", "소갑"} | non_standard_listed
     elif author_party == "피고":
-        my_party_chars = {"을", "소을"}
+        my_party_chars = {"을", "소을"} | non_standard_listed
     elif listed_parties:
         my_party_chars = set(listed_parties)
     else:
-        my_party_chars = {"갑", "을"}
+        my_party_chars = {"갑", "을", "증", "고", "수", "행", "설"}
 
     return author_party, my_party_chars
 
@@ -2933,14 +3049,15 @@ _STATEMENT_TITLE_RE = re.compile(r"^(?:사 ?실 ?)?(?:확 ?인 ?서|진 ?술 ?�
 _RIEUL_FINAL = "".join(chr(c) for c in range(0xAC00, 0xD7A4) if (c - 0xAC00) % 28 == 8)
 _FORM_ELEMENT_RE = re.compile(
     r"(?:작성자|작성인|명의인|서명자|확인자|진술인|누가 ?(?:작성|썼|만들)|(?:작성|확인|진술|서명|날인)(?:한|하는|할) ?사람(?:의)? ?(?:이름|성명)?|작성일|날짜|일자|언제 ?(?:작성|썼|만들)|"
-    r"서명|날인|도장|인영|무인|지장|원본|원래 ?(?:문서|서류)|정본|실물)"
+    r"서명|날인|도장|인영|무인|지장|원본|원래 ?(?:문서|서류)|정본|실물|파일|링크|경로|음성|녹음)"
 )
 # 판독성 요소: 기재 대상 명사는 지각 동사(판독·식별·해독·알아보·읽)와 함께일 때만 형식 요소로 본다
-_LEGIBILITY_RE = re.compile(r"(?:글씨|글자|숫자|금액|기재 ?내용)[^,.]{0,15}?(?:판독|식별|해독|알아보|읽)")
+_LEGIBILITY_RE = re.compile(r"(?:글씨|글자|숫자|금액|기재 ?내용|화면|음성|내용)[^,.]{0,15}?(?:판독|식별|해독|알아보|읽|청취|재생|접근|열람)")
 _INABILITY_RE = re.compile(
     r"(?:[" + _RIEUL_FINAL + r"] ?수 ?(?:가 |는 )?없"
     r"|[가-힣]기 ?(?:가 |는 )?(?:어렵|어려|힘들|힘드|곤란)"
-    r"|(?:판독|식별|확인|해독)(?:이|은|도)? ?(?:곤란|불가|어렵|어려|힘들|힘드)"
+    r"|(?:판독|식별|확인|해독|접근|열람|재생|청취|복원)(?:이|은|도)? ?(?:곤란|불가|어렵|어려|힘들|힘드)"
+    r"|(?:파일명|제목|표지|목록)만 ?남"
     r"|남아 ?있지 ?(?:않|아니)|(?:가지고|갖고|보관하고|소지하고) ?있지 ?(?:않|못|아니)|잃어버|분실|없어(?:졌|져|지)|사라(?:졌|져)|(?:되어|적혀|찍혀) ?있지 ?(?:않|아니)|"
     r"(?:이|가) ?없(?:고|으며|으나|지만|는데|어))"
 )
@@ -3079,6 +3196,33 @@ def check_evidence_form_structure(doc: NormalizedDocument, exhibits: Sequence[Di
                                 f"{l}의 작성 명의·작성일·원본·판독 가능성 가운데 하나가 없거나 불능임을 스스로 밝히면서 그 서증으로 증명된다고 한다.",
                                 sent.strip()[:250], status=VerificationStatus.SUSPICIOUS,
                                 features={"rule_id": "EVI.FORM_ELEMENT_ADMITTED", "defect_code": "FORM_ELEMENT_ADMITTED", "exhibit": l}))
+
+    # G5 인라인 자료·별첨·사본의 형식 요소 결여/미첨부 자인 + 원용 (C등급, SUSPICIOUS)
+    _INLINE_MEDIA_NOUN_RE = re.compile(
+        r"(?:(?:별첨|별지|붙임)\s*\d+|(?:음성|녹음|영상|화면|기술\s*검토|제출)\s*(?:자료|파일|사본|내역)|화면\s*사본|원본\s*(?:링크|파일|접근))"
+    )
+    for start, end in sentence_bounds(text):
+        sent = " ".join(text[start:end].split()).strip()
+        if len(sent) < 12 or _EVI_FORM_OPPONENT_CHALLENGE_RE.search(sent):
+            continue
+        if re.search(r"(?:않는다|않았다|아니다|사실과\s*다르|(?:라고|다고)\s*주장)", sent):
+            continue
+        m_media = _INLINE_MEDIA_NOUN_RE.search(sent)
+        if not m_media:
+            continue
+        has_form_admit = (
+            ((_FORM_ELEMENT_RE.search(sent) or _LEGIBILITY_RE.search(sent)) and _INABILITY_RE.search(sent) and _PROOF_CLAIM_RE.search(sent))
+            or bool(re.search(r"(?:첨부(?:한다고|하였다고|함)|등재하였으나)[^.\n]{0,40}?(?:미첨부|첨부되어\s*있지\s*않|누락)", sent))
+        )
+        if has_form_admit:
+            m_lbl = m_media.group(0).strip()
+            out.append(_finding(
+                doc, FindingType.EVIDENCE_FORM_DEFECT, EvidenceGrade.C, Severity.MEDIUM,
+                f"서증 형식 결함: 자료 형식 결여 또는 미첨부 자인 — {m_lbl}",
+                f"'{m_lbl}'에 관하여 원본·판독성·작성 명의 등 형식 요소의 결여나 미첨부를 스스로 드러내면서 증거로 원용하고 있다.",
+                sent[:250], status=VerificationStatus.SUSPICIOUS,
+                features={"rule_id": "EVI.INLINE_FORM_DEFECT", "defect_code": "INLINE_FORM_DEFECT", "exhibit": m_lbl, "human_review": True},
+            ))
     return out
 
 
@@ -3664,11 +3808,15 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
     texts = {d.document_id: build_reading_text(d).text for d in docs}
     doc_kinds = {d.document_id: _document_title_kind(d, texts[d.document_id]) for d in docs}
 
-    # 진술서나 원본 서증이 포함되어 있지 않고 소송서면 간에도 복사 검사 대상이 없으면 종료
+    # 진술서나 원본 서증이 포함되어 있지 않고 소송서면-기타문서 간에도 검사 대상이 없으면 종료
     has_statements = any(k[0] == DOC_KIND_STATEMENT for k in doc_kinds.values())
     has_facts = any(k[0] in (DOC_KIND_FACT_CONFIRMATION, DOC_KIND_EVIDENCE_ORIGINAL)
                     for k in doc_kinds.values())
-    if not has_statements and not has_facts:
+    has_pleading_other = (
+        any(k[0] == DOC_KIND_PLEADING for k in doc_kinds.values())
+        and any(k[0] in (DOC_KIND_OTHER, DOC_KIND_EVIDENCE_EXPLANATION) for k in doc_kinds.values())
+    )
+    if not has_statements and not has_facts and not has_pleading_other:
         return []
 
     prepared = {d.document_id: _sentences_for_copy(d) for d in docs}
@@ -3822,6 +3970,77 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                               "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
                                         for a, b, s in matched[:5]]}
                 ))
+
+    if has_pleading_other:
+        # 6순위: 표제 분류가 OTHER인 서증/증거설명서와 소송서면(PLEADING) 간 비정형·비상투 문장 2건 이상 중복 복제 검출
+        already_pairs = {
+            (f.document_id, (f.confidence_features or {}).get("other_document_id"))
+            for f in out
+        }
+        key_doc_freq: Dict[str, int] = {}
+        for d in docs:
+            seen_keys = set()
+            for _, k in prepared[d.document_id]:
+                if k not in seen_keys:
+                    seen_keys.add(k)
+                    key_doc_freq[k] = key_doc_freq.get(k, 0) + 1
+
+        for d_other in docs:
+            d_kind = doc_kinds[d_other.document_id][0]
+            top_head = texts[d_other.document_id][:400]
+            is_evi_expl = (d_kind == DOC_KIND_EVIDENCE_EXPLANATION) or ("증거설명서" in top_head) or ("증거목록" in top_head)
+            if not is_evi_expl:
+                continue
+            head_lines = [ln.strip() for ln in top_head.splitlines() if ln.strip()][:5]
+            if any(
+                len(ln) <= 80
+                and not _HEADING_LIST_ITEM_RE.search(ln)
+                and _DERIVED_DOC_NAME_RE.search(ln)
+                for ln in head_lines
+            ):
+                continue
+            for d_plead in docs:
+                if d_plead.document_id == d_other.document_id or doc_kinds[d_plead.document_id][0] != DOC_KIND_PLEADING:
+                    continue
+                owner_doc, target_doc = (d_other, d_plead) if is_evi_expl else (d_plead, d_other)
+                if (owner_doc.document_id, target_doc.document_id) in already_pairs or (target_doc.document_id, owner_doc.document_id) in already_pairs:
+                    continue
+                matched_po: List[Tuple[str, str, float]] = []
+                for s1, k1 in prepared[d_other.document_id]:
+                    if len(k1) < 25 or _EXHIBIT_REFERENCE_RE.search(s1) or key_doc_freq.get(k1, 0) > 2:
+                        continue
+                    if d_kind == DOC_KIND_EVIDENCE_EXPLANATION and _is_in_corresponding_exhibit_entry(s1, d_other, texts[d_other.document_id]):
+                        continue
+                    g1 = _shingles(k1)
+                    if len(g1) < 8:
+                        continue
+                    for s2, k2 in prepared[d_plead.document_id]:
+                        if _EXHIBIT_REFERENCE_RE.search(s2):
+                            continue
+                        g2 = _shingles(k2)
+                        if not g2:
+                            continue
+                        ov = len(g1 & g2) / max(1, min(len(g1), len(g2)))
+                        if ov >= COPY_SIMILARITY:
+                            matched_po.append((s1, s2, round(ov, 2)))
+                            break
+                if len(matched_po) >= 2:
+                    already_pairs.add((owner_doc.document_id, target_doc.document_id))
+                    out.append(_finding(
+                        owner_doc, FindingType.CROSS_DOC_COPY, EvidenceGrade.C, Severity.MEDIUM,
+                        f"{owner_doc.filename}에 다른 문서({target_doc.filename})와 같은 서술 문장이 {len(matched_po)}건 있다",
+                        "소송서면과 서증·증거설명서 사이에 인용 표기 없이 동일한 서술 문장이 반복 기재되어 있다. "
+                        "통복제 또는 대필 여부를 사람이 확인한다.",
+                        matched_po[0][0], status=VerificationStatus.SUSPICIOUS,
+                        features={
+                            "other_document_id": target_doc.document_id,
+                            "similarity": matched_po[0][2],
+                            "sources": [{"document_id": owner_doc.document_id}],
+                            "rule_id": "EVI.COPY_OTHER_PLEADING",
+                            "human_review": True,
+                            "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s} for a, b, s in matched_po[:5]],
+                        },
+                    ))
 
     return out
 
