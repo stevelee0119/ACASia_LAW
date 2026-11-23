@@ -739,5 +739,37 @@
   "rer": 0.1338,
   "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
   "decided_at": "2026-11-22"
+ },
+ {
+  "version": "0.28.0",
+  "level": "minor",
+  "basis": [
+   "added",
+   "fixed",
+   "changed"
+  ],
+  "measured_commit": "d5241370",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.11",
+   "tesseract": "5.3.0 / 5.3.4",
+   "baseline_commit": "12be4fa58650bf59aacf30d9f21b87c1249582d5",
+   "scoring": "scripts/scorecard.py(dev 86.2, holdout 86.6) 및 scripts/retired_compare.py(56.5/54.6/56.9/53.8/44.3), PR #417~#420 필수 CI 전수 통과."
+  },
+  "evidence": {
+   "M1": "dev 86.2(v2 44/56), holdout 86.6(v2 44/54); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 회귀 0.",
+   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+   "M3": "은퇴 5세트 평균 51.48→53.22(+1.74), 후퇴 0(56.5/54.6/56.9/53.8/44.3, sealed_20261010 +1.9, sealed_20261025 +6.8, v2 1009 31→32, 전 세트 오탐 0·A등급 0).",
+   "M4": "포함 PR #418(과제 2: 미운영 LV_RAG_EMBEDDING_ENDPOINT 제거·3중 진단 일치), #419(과제 4: EVALUATION_V2 4차원 PII-free 구조화 출력 계약), #417(과제 3: law_go_kr NFKC/제로폭·사건명 fallback 및 학술 429 백오프 단축), #420(과제 1: 은퇴 세트 구조적 일반화 규칙).",
+   "CI": "PR #417~#420 전량 필수 CI(점수 하락 게이트, 평가 세트 문구 대조, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
+   "open_p1_regression": 0,
+   "unmeasured": "격리 봉인 세트, 운영 온라인 실측(U2 2015모2524 해소, Drive 16쪽 재색인, 상용 임베딩 실호출, case9, 4차원 출력 실측).",
+   "record": "docs/scorecards/release_028_candidate_20261123.md"
+  },
+  "rer": 0.0,
+  "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
+  "decided_at": "2026-11-23",
+  "from": "0.27.0"
  }
 ]
