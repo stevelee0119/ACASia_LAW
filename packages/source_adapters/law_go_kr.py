@@ -37,11 +37,26 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
         return self.settings.law_go_kr_oc or ("CASSETTE_REPLAY" if replay_mode_active() else None)
 
     def _record_matches_case_number(self, record: dict, wanted: tuple) -> bool:
-        """레코드의 사건번호(병합 판결·구분자 변형 포함) 중 하나라도 wanted 사건번호와 일치하는지 확인한다."""
+        """레코드의 사건번호(병합 판결·구분자·전각 변형 포함) 중 하나라도 wanted 사건번호와 일치하는지 확인한다."""
+        import unicodedata
         from packages.legal_engine.normalize import extract_all_case_numbers
-        raw = str(record.get("case_number") or "")
-        all_cases = extract_all_case_numbers(raw, allow_separators=True)
-        return wanted in all_cases
+
+        def _clean(val: Any) -> str:
+            s = unicodedata.normalize("NFKC", str(val or ""))
+            return re.sub(r"[\u200b-\u200d\ufeff]+", "", s)
+
+        raw_obj = record.get("raw") if isinstance(record.get("raw"), dict) else {}
+        cn_text = _clean(record.get("case_number") or raw_obj.get("사건번호") or "")
+        all_cases = extract_all_case_numbers(cn_text, allow_separators=True)
+        if wanted in all_cases:
+            return True
+        # 일부 응답에서 사건번호 필드가 비어 있고 사건명에만 사건번호가 실리는 경우를 보완한다.
+        # extract_all_case_numbers는 (연도, 부호, 정수형 일련번호) 완전 일치 튜플만 반환하므로 유사 오번호 오매칭을 차단한다.
+        if not all_cases:
+            name_text = _clean(record.get("case_name") or raw_obj.get("사건명") or "")
+            if wanted in extract_all_case_numbers(name_text, allow_separators=True):
+                return True
+        return False
 
     # -- 판례 -------------------------------------------------------------
     def search_case(self, case_number: str, *, court: Optional[str] = None) -> AdapterResponse:
@@ -80,26 +95,27 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                 diagnostics={"cause": str(status)},
             )
         # legal_engine이 source_adapters를 불러오므로 모듈 최상단에서 가져오지 않는다.
+        import unicodedata
         from packages.legal_engine.normalize import extract_all_case_numbers, split_case_number
 
-        extracted_wanted = extract_all_case_numbers(case_number, allow_separators=True)
-        wanted = extracted_wanted[0] if extracted_wanted else split_case_number(case_number)
-        canonical = f"{wanted[0]}{wanted[1]}{wanted[2]}" if wanted else case_number.strip()
+        cleaned_input = unicodedata.normalize("NFKC", re.sub(r"[\u200b-\u200d\ufeff]+", "", case_number or ""))
+        extracted_wanted = extract_all_case_numbers(cleaned_input, allow_separators=True)
+        wanted = extracted_wanted[0] if extracted_wanted else split_case_number(cleaned_input)
+        canonical = f"{wanted[0]}{wanted[1]}{wanted[2]}" if wanted else cleaned_input.strip()
         # 조회할 DB는 사건부호가 정한다(헌가·헌바·헌마 … → 헌재결정례). 문서의 법원 표시가 틀려도(예: '대법원 …
         # 2005헌바28 판결') 부호가 가리키는 DB에서 찾는다. 부호가 없으면 문서의 법원 표시를 따른다.
         constitutional = wanted[1].startswith("헌") if wanted else court == "헌법재판소"
         target = "detc" if constitutional else "prec"
 
         # 사건번호 지정 조회(nb) → 본문검색(search=2) 순서로 시도한다.
-        # 구분자 변형('2019-다-54321', '2019. 다. 54321')도 정규화된 사건번호로 nb·search=2를 조회하고,
-        # 채택 조건은 "사건번호 완전일치(allow_separators=True)"뿐이라 오탐을 만들지 않는다.
-        bare = wanted is not None and re.fullmatch(r"\s*\d{2,4}[\s.\-]*[가-힣]{1,3}[\s.\-]*\d+\s*", case_number) is not None
+        # 채택 조건은 "(연도, 부호, 일련번호) 완전 일치"뿐이라 유사 오번호 오매칭을 만들지 않는다.
+        bare = wanted is not None and re.fullmatch(r"\s*\d{2,4}[\s.\-]*[가-힣]{1,3}[\s.\-]*\d+\s*", cleaned_input) is not None
         attempts: List[Dict[str, Any]] = []
         if bare:
             attempts.append({"nb": canonical})
             attempts.append({"search": 2, "query": canonical, "display": CASE_PAGE_SIZE})
         else:
-            attempts.append({"search": 2, "query": case_number, "display": CASE_PAGE_SIZE})
+            attempts.append({"search": 2, "query": cleaned_input, "display": CASE_PAGE_SIZE})
 
         first: Optional[AdapterResponse] = None
         first_skipped = 0

@@ -202,6 +202,7 @@ class SemanticScholarAdapter(AcademicSourceAdapter):
             self.ENDPOINT,
             params={"query": query, "limit": 5, "fields": "title,year,authors,venue,externalIds"},
             headers=headers,
+            base_backoff=0.15 if self.api_key else 0.05,
         )
         if err_resp is not None or response is None:
             return err_resp  # type: ignore[return-value]
