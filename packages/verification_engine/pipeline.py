@@ -1702,6 +1702,8 @@ class VerificationPipeline:
                 "recovery_used": lookup.recovery_used,
                 "retry_exhausted_count": sum(bool(v.get("source_lookup", {}).get("retryable")) for v in verdicts),
             }
+        from .eval_contract import build_evaluation_dimensions
+        result.engine_data["evaluation_dimensions"] = build_evaluation_dimensions(result)
 
     @staticmethod
     def _provider_reason(text: str) -> str:
