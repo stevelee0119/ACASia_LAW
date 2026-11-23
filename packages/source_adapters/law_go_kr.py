@@ -107,13 +107,13 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
         constitutional = wanted[1].startswith("헌") if wanted else court == "헌법재판소"
         target = "detc" if constitutional else "prec"
 
-        # 사건번호 지정 조회(nb) → 사건명/번호 검색(search=1) → 본문검색(search=2) 순서로 시도한다.
+        # 사건번호 지정 조회(nb) → 본문검색(search=2) 순서로 시도한다.
         # 채택 조건은 "(연도, 부호, 일련번호) 완전 일치"뿐이라 유사 오번호 오매칭을 만들지 않는다.
+        bare = wanted is not None and re.fullmatch(r"\s*\d{2,4}[\s.\-]*[가-힣]{1,3}[\s.\-]*\d+\s*", cleaned_input) is not None
         attempts: List[Dict[str, Any]] = []
-        if wanted is not None:
+        if bare:
             attempts.append({"nb": canonical})
             attempts.append({"search": 2, "query": canonical, "display": CASE_PAGE_SIZE})
-            attempts.append({"search": 1, "query": canonical, "display": CASE_PAGE_SIZE})
         else:
             attempts.append({"search": 2, "query": cleaned_input, "display": CASE_PAGE_SIZE})
 

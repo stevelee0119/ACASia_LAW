@@ -27,7 +27,7 @@ def test_law_go_kr_case_number_variant_positives(monkeypatch):
     a1, c1 = _make_adapter(monkeypatch, [
         {"PrecSearch": {"totalCnt": "1", "prec": [{"판례일련번호": "1001", "사건번호": "２０１５ 모 ２５２４(재항고)", "법원명": "대법원", "선고일자": "2015.11.27"}]}}
     ])
-    r1 = a1.search_case("대법원 2015모2524 결정")
+    r1 = a1.search_case("２０１５\u200b모 ２５２４")
     assert r1.status == AdapterStatus.READY and len(r1.records) == 1
     assert c1[0].get("nb") == "2015모2524"
 
