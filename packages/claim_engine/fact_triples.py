@@ -133,8 +133,10 @@ def _normalize_target(raw: str) -> str:
     return s
 
 
-def extract_fact_triples(doc: NormalizedDocument) -> List[FactTriple]:
+def extract_fact_triples(doc: Optional[NormalizedDocument]) -> List[FactTriple]:
     """1단계: 문서 본문에서 구조화 FactTriple 목록을 추출한다."""
+    if doc is None:
+        return []
     reading = build_reading_text(doc)
     text = reading.text or ""
     if not text.strip():
