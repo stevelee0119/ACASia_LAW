@@ -1,4 +1,8 @@
 {
+  "0.29": [
+    "Added: 2단계 구조화 Fact Triple 추출·결정론 검산 엔진(fact_triples.py) 및 pipeline.py(engine_data['fact_triples']·문서 간 교차 검산) 연동(방안 A/C, #423)",
+    "평가·미측정: 고정 dev 86.2/holdout 86.6·은퇴 5세트(평균 53.22) 회귀 0·오탐 0·필수 CI 전수 통과, Source 카세트 REPLAY 트랙(방안 B)·EVALUATION_V2 실측(방안 D) 및 온라인 실측은 후속 시행"
+  ],
   "0.28": [
     "Performance·Added: 은퇴 세트 구조적 일반화 규칙(DRAFT_ARTIFACT·EVI-LOGIC/NUM/INCONS·OVR·다중 줄 합계·ZWSP/메타 지시어, #420)으로 은퇴 5세트 평균 51.48→53.22(sealed_20261025 37.5→44.3, sealed_20261010 51.9→53.8, 후퇴 0·오탐 0)",
     "Added: EVALUATION_V2 4차원(identity/quote/claim_applicability/source_retrieval) PII-free 구조화 출력 계약(eval_contract.py, #419)",

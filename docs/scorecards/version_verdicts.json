@@ -771,5 +771,35 @@
   "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
   "decided_at": "2026-11-23",
   "from": "0.27.0"
+ },
+ {
+  "version": "0.29.0",
+  "from": "0.28.0",
+  "level": "minor",
+  "basis": [
+   "added"
+  ],
+  "measured_commit": "e880f425",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.11",
+   "tesseract": "5.3.0 / 5.3.4",
+   "baseline_commit": "1ef3e4fe877f83fba4d7936e790c7843c80e4603",
+   "scoring": "scripts/scorecard.py(dev 86.2, holdout 86.6) 및 scripts/retired_compare.py(56.5/54.6/56.9/53.8/44.3), PR #423 필수 CI 전수 통과."
+  },
+  "evidence": {
+   "M1": "dev 86.2(v2 44/56), holdout 86.6(v2 44/54); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 회귀 0.",
+   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+   "M3": "은퇴 5세트 평균 53.22(56.5/54.6/56.9/53.8/44.3), 전 세트 회귀 0·오탐 0·A등급 0.",
+   "M4": "포함 PR #423(방안 A/C: packages/claim_engine/fact_triples.py 2단계 구조화 Fact Triple 추출·결정론 검산 및 pipeline.py engine_data['fact_triples']·교차 검산 연동).",
+   "CI": "PR #423 필수 CI(점수 하락 게이트, 평가 세트 문구 대조, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
+   "open_p1_regression": 0,
+   "unmeasured": "격리 봉인 세트, 운영 온라인 실측(fact_triples 실서면 추출, 2015모2524 원응답 3건, 0.28.0 4차원 출력·Drive 16쪽·상용 임베딩·case9).",
+   "record": "docs/scorecards/release_029_candidate_20261123.md"
+  },
+  "rer": 0.0,
+  "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
+  "decided_at": "2026-11-23"
  }
 ]

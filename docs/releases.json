@@ -563,5 +563,15 @@
       "Changed (과제 2): 미운영 HttpEmbeddingAdapter/LV_RAG_EMBEDDING_ENDPOINT 분기 제거 및 next_gen_feature_diagnostics() configured_mode/effective_mode/actual_calls 3중 일치 계약 강제(#418)",
       "미측정: 격리 봉인 세트 및 운영 온라인 실측(U2 2015모2524 해소, Drive 16쪽 재색인, 상용 임베딩 실호출, case9, 4차원 출력 실측) — 배포 후 온라인 점검 시행"
     ]
+  },
+  {
+    "version": "0.29.0",
+    "date": "2026-11-23",
+    "changes": [
+      "평가 측 minor 판정(0.28.0 → 0.29.0, e880f425 기준, 분류 added): PR #423 필수 CI 전수 통과. 운영 main(1ef3e4fe) 대비 고정 dev 86.2(v2 44/56)·holdout 86.6(v2 44/54)·확인 오탐 0·A등급 오탐 0·인젝션 방어 유지, 은퇴 5세트 평균 53.22(56.5/54.6/56.9/53.8/44.3) 회귀 0",
+      "Added (방안 A·C): 2단계 구조화 Fact Triple 추출·결정론 검산 엔진(packages/claim_engine/fact_triples.py — extract_fact_triples·verify_fact_triples·verify_project_fact_triples) 및 pipeline.py(_run_document·_cross_check) 연동으로 engine_data['fact_triples'] 배출 및 단일/문서 간 값 충돌·인과 단계 선후 역전 검산(#423)",
+      "평가 측 후속 요청(0290_fact_triple_and_cassette_track.md): 보호 경로 Source 카세트 REPLAY 오프라인 평가 트랙(방안 B) 및 EVALUATION_V2 4차원 실측(방안 D) 별도 검토",
+      "미측정: 격리 봉인 세트 및 운영 온라인 실측(fact_triples 실서면 추출, 2015모2524 원응답, 0.28.0 4차원 출력·Drive 16쪽·상용 임베딩·case9) — 배포 후 온라인 점검 시행"
+    ]
   }
 ]
