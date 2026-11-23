@@ -742,7 +742,6 @@
  },
  {
   "version": "0.28.0",
-  "previous": "0.27.0",
   "level": "minor",
   "basis": [
    "added",
@@ -770,6 +769,7 @@
   },
   "rer": 0.0,
   "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
-  "decided_at": "2026-11-23"
+  "decided_at": "2026-11-23",
+  "from": "0.27.0"
  }
 ]
