@@ -1688,7 +1688,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
                                     page=block.page,
-                                    excerpt=matched_str,
+                                    excerpt=f"{matched_str} — {text[max(0, m.start() - 120):min(len(text), m.end() + 120)].strip()}",
                                     supports=True,
                                 )
                             ],
@@ -1744,7 +1744,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                                     document_id=doc.document_id,
                                     block_id=block.block_id,
                                     page=block.page,
-                                    excerpt=matched_str,
+                                    excerpt=f"{matched_str} — {text[max(0, m_feb29.start() - 120):min(len(text), m_feb29.end() + 120)].strip()}",
                                     supports=True,
                                 )
                             ],
@@ -2222,7 +2222,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                         d_effect = effect_slot.date_obj
 
                         if d_effect < d_cause:
-                            excerpt = f"{cause_slot.surface_form}({cause_slot.date_raw}) <-> {effect_slot.surface_form}({effect_slot.date_raw})"
+                            excerpt = f"{cause_slot.surface_form}({cause_slot.date_raw}) <-> {effect_slot.surface_form}({effect_slot.date_raw}) — {cause_slot.clause_text} ... {effect_slot.clause_text}"
                             sub_id = rule["rule_id"]
 
                             _emit_temporal_inversion(
@@ -2254,7 +2254,7 @@ def verify_dates_in_document(doc: NormalizedDocument) -> List[Finding]:
                             e_ts = effect_slot.time_str or f"{effect_slot.time_min // 60:02d}:{effect_slot.time_min % 60:02d}"
                             excerpt = (
                                 f"{cause_slot.surface_form}({cause_slot.date_raw} {c_ts}) <-> "
-                                f"{effect_slot.surface_form}({effect_slot.date_raw} {e_ts})"
+                                f"{effect_slot.surface_form}({effect_slot.date_raw} {e_ts}) — {cause_slot.clause_text} ... {effect_slot.clause_text}"
                             )
                             sub_id = rule["rule_id"]
 

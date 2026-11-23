@@ -563,5 +563,16 @@
       "Changed (과제 2): 미운영 HttpEmbeddingAdapter/LV_RAG_EMBEDDING_ENDPOINT 분기 제거 및 next_gen_feature_diagnostics() configured_mode/effective_mode/actual_calls 3중 일치 계약 강제(#418)",
       "미측정: 격리 봉인 세트 및 운영 온라인 실측(U2 2015모2524 해소, Drive 16쪽 재색인, 상용 임베딩 실호출, case9, 4차원 출력 실측) — 배포 후 온라인 점검 시행"
     ]
+  },
+  {
+    "version": "0.29.0",
+    "date": "2026-11-23",
+    "changes": [
+      "평가 측 minor 판정(0.28.0 → 0.29.0, 154a1297 기준, 분류 added·fixed·changed): #423·#425·#426 필수 CI 전수 통과. 운영 main(1ef3e4fe) 대비 고정 dev 86.2→89.7(v2 47/56)·holdout 86.6→87.5(v2 45/54, 합산 RER 16.18%)·확인 오탐 0·A등급 오탐 0·인젝션 방어 유지, 은퇴 5세트 평균 53.22→58.00(+4.78%p, 56.5/54.6/63.8/59.4/55.7, 후퇴 0)",
+      "Added: 2단계 구조화 FactTriple 추출·결정론적 검증기(fact_triples.py, #423·#425), 다중 AI 문체 잔재 승격 및 문서간 복제(EVI-COPY)·증거 불일치 일반화 규칙(#425), 2단 운영 구조·정보 격리·동적 변형 시험 하네스(eval_perturbation.py, eval_cassette_track.py, #426)",
+      "Fixed: FactTriple·EVI-COPY·EVI-OVR·ClauseNormalizer·exporters·scanner 경계 오탐 및 직렬화 가드 보완(#425)",
+      "Changed: 2단 운영 원칙에 따른 오프라인 게이트·온라인 실측 분리 운영(#426)",
+      "미측정: 격리 봉인 세트 및 운영 온라인 실측(U2 live-source-check, Drive 16쪽 재색인, 상용 임베딩 실호출, case9, 4차원 출력 실측) — 배포 후 온라인 점검 시행"
+    ]
   }
 ]

@@ -185,6 +185,17 @@ def verify_statute_source(verifier, citation, *, as_of=None, incident_date=None,
             verdict.notes.append("직접 인용문은 해당 조항호목 원문 대조가 더 필요하다")
     else:
         _compare_asserted_content(verdict, provision)
+    statute_hyp = str(citation.quoted_text or (citation.attributes or {}).get("claim_text") or "").strip()
+    prov_text = str(provision.get("text") or "").strip()
+    if statute_hyp and prov_text and "stage2_nli" not in verdict.review:
+        try:
+            from packages.common.config import get_settings
+            nli_mode = str(getattr(get_settings(), "legal_nli_mode", "shadow") or "shadow").strip().lower()
+            if nli_mode != "off":
+                from .nli_verifier import evaluate_citation_nli_stage2
+                verdict.review["stage2_nli"] = evaluate_citation_nli_stage2(prov_text, statute_hyp).to_dict()
+        except Exception:  # pragma: no cover - defensive
+            pass
     if (verdict.levels["content"] in ("VERIFIED", "NOT_ASSERTED") and verdict.levels["temporal"] == "VERIFIED"
             and verdict.status != VerificationStatus.CONTRADICTED):
         # 법령·조문 존재, 문서가 주장한 내용(또는 주장 없음), 기준일 시행 버전까지 확인했다.

@@ -71,7 +71,7 @@ _NEGATION_RE = re.compile(
 # Modality markers
 _HYPOTHETICAL_LEAD_RE = re.compile(r"(?:설령|설사|가사|가령|만약|만일|혹시)\s")
 _HYPOTHETICAL_TAIL_RE = re.compile(
-    r"(?:하더라도|더라도|이라도|라도|라면|이라면|다면|한다면|된다면|하면|였을지|일지라도|ㄹ지라도)(?:\s|,|;|$)"
+    r"(?:하더라도|더라도|이라도|라도|라면|이라면|다면|한다면|된다면|(?<!의)하면|였을지|일지라도|ㄹ지라도)(?:\s|,|;|$)"
 )
 _ALTERNATIVE_RE = re.compile(r"(?:예비적(?:으로)?|또는|아니면|혹은|가정적(?:으로)?|선택적(?:으로)?)")
 _INTERROGATIVE_RE = re.compile(r"(?:\?\s*$|인지\s*여부|하였는지|했는지|여부(?:에|가|를)|할\s*것인가|인가\s*$)")

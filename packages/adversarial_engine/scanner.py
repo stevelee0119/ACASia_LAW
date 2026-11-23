@@ -315,8 +315,8 @@ class AdversarialScanner:
             classification = classify(normalized, source_layer="metadata", visible=False, block_type="metadata")
             meta_directive = bool(
                 (
-                    re.search(r"\b(?:PASS|VERIFIED|SKIP|OVERRIDE|IGNORE|BYPASS|ALLOW|APPROVE|SUPPRESS|DISREGARD|NO_DEFECTS)\b", normalized, re.IGNORECASE)
-                    and re.search(r"\b(?:review|verdict|audit|check|defect|finding|status|claim|document|brief|result|output|all)\b", normalized, re.IGNORECASE)
+                    re.search(r"\b(?:PASS|VERIFIED|SKIP\w*|OVERRID\w*|IGNOR\w*|BYPASS\w*|ALLOW\w*|APPROV\w*|SUPPRESS\w*|DISREGARD\w*|NO_DEFECTS)\b", normalized, re.IGNORECASE)
+                    and re.search(r"\b(?:review|verdict|audit|check|defect|finding|status|claim|document|brief|result|output|all|task|emit|instruction|rule|system|prompt|report|score|evaluation)\b", normalized, re.IGNORECASE)
                 )
                 or re.search(r"(?:검토\s*생략|검증\s*생략|정상\s*판정|결함\s*없음\s*처리|무결점\s*처리)", normalized)
             )
@@ -425,8 +425,8 @@ class AdversarialScanner:
         for layer_name, text in doc.raw_layers.items():
             if not text:
                 continue
-            # 페이지별 레이어가 있으면 합쳐진 pypdf_stream_text는 중복 스캔하지 않는다
-            if layer_name == "pypdf_stream_text" and has_page_layers:
+            # 페이지별 레이어가 있으면 합쳐진 전체 레이어는 중복 스캔하지 않는다
+            if layer_name in ("pypdf_stream_text", "rendered_text", "raw_text") and has_page_layers:
                 continue
             for signal in scan_unicode(text):
                 recovered = signal.recovered_text

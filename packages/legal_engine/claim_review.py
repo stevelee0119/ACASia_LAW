@@ -579,9 +579,9 @@ def _civil_inference(sentence: str, previous: str) -> Optional[ClaimMatch]:
     """Flag a missing inference step for human review, not a merits determination."""
     compact = re.sub(r"\s+", "", sentence)
     context = re.sub(r"\s+", "", previous + " " + sentence)
-    if (re.search(r"사기죄(?:를|가|의)?(?:구성|성립|해당)", compact)
-            and re.search(r"채무불이행|납기.{0,10}(?:지연|지체)|이행지체|대금미지급", context)
-            and (re.search(r"만으로|곧바로|자동으로|당연히", compact) or compact.startswith("이는"))):
+    if (re.search(r"(?:사기죄?|횡령죄?|배임죄?|형사(?:상)?범죄).{0,15}?(?:구성|성립|해당|인정)", compact)
+            and re.search(r"채무불이행|(?:납기|지급|이행|대금|정산금|반환).{0,10}?(?:지연|지체|미지급|불이행)", context)
+            and (re.search(r"만으로|곧바로|자동으로|당연히|단순", compact) or compact.startswith("이는"))):
         return ClaimMatch("CIVIL_FRAUD_INFERENCE", sentence, 0, "채무불이행에서 사기 고의로의 추론 검토", "C", "SUSPICIOUS",
             [_source("사기죄의 행위 당시 판단 기준")],
             "사후의 지체·불이행만으로 계약 당시 기망이나 편취 고의를 확정할 수 없다. 계약 체결 당시의 "
@@ -761,6 +761,7 @@ def _to_finding(doc: NormalizedDocument, match: ClaimMatch, reading) -> Finding:
     block, _ = reading.locate(match.start)
     kind = (FindingType.UNSUPPORTED_GENERALIZATION if match.claim_type == "UNSUPPORTED_GENERALIZATION"
             else FindingType.OVERCLAIM if match.claim_type == "UNCONDITIONAL_LEGAL_OVERCLAIM"
+            else FindingType.CASE_HOLDING_DISTORTION if match.claim_type == "PRECEDENT_OVERGENERALIZATION"
             else FindingType.LAW_CITATION_ERROR if match.claim_type == "UNVERIFIED_ADMIN_INTERPRETATION"
             else FindingType.LEGAL_ARGUMENT_INVALID)
     grade = {"A": EvidenceGrade.A, "B": EvidenceGrade.B, "C": EvidenceGrade.C, "U": EvidenceGrade.U}.get(
@@ -809,23 +810,25 @@ _TYPE_LABELS = {"LIMITATION_PERIOD_DISTORTION": "소멸시효 기간 왜곡",
                 "STATUTORY_RULE_EXCLUSION": "법정 규정 적용 배제",
                 "UNSOURCED_STANDARD": "출처 불명 기준", "LITIGATION_REQUIREMENT_EXCLUSION": "소송요건 배제",
                 "UNCONDITIONAL_LEGAL_OVERCLAIM": "요건 생략 절대 단정",
+                "PRECEDENT_OVERGENERALIZATION": "판례 취지 절대화·확대해석",
                 "UNVERIFIED_ADMIN_INTERPRETATION": "행정해석·유권해석 미확인"}
 
 
-_ABSOLUTE_MODALITY_RE = re.compile(r"(?:무조건|당연히|자동으로|예외\s*없이|어떠한\s*경우에도|언제나|반드시|절대로)")
+_ABSOLUTE_MODALITY_RE = re.compile(r"(?:무조건|당연히|자동으로|예외\s*없이|어떠한\s*경우에도|언제나|반드시|절대로|전면\s*(?:무효|배제|부정|거부|면책))")
 _BROAD_OVR_MODALITY_RE = re.compile(
     r"(?:만으로\s*(?:곧바로|즉시|바로)|을\s*불문하고|와\s*무관하게|에\s*관계\s*없이|여부와\s*상관\s*없이|"
     r"일률적으로|할\s*여지가\s*없|볼\s*수밖에\s*없|배제될\s*수\s*없|(?:로|으로)\s*(?:의제|간주)(?:되|된|합)|"
     r"(?:요건|절차|고의|과실|손해|인과관계|입증|증명|최고|통지|동의|승낙)(?:을|를|은|는|이|가)?\s*(?:요하지\s*않|필요가\s*없|거칠\s*필요)|"
-    r"(?:일체|전부|누구나)\s+[^.!?\n]{0,25}(?:성립|인정|무효|책임|배상|위법|해당))"
+    r"(?:일체|전부|누구나|모든)\s+[^.!?\n]{0,25}(?:성립|인정|무효|책임|배상|위법|해당))"
 )
-_QUOTED_ATTRIBUTION_RE = re.compile(r"(?:원고는|피고는|상대방은|라고\s*주장|주장에\s*따르면|에\s*의하면)")
+_QUOTED_ATTRIBUTION_RE = re.compile(r"(?:상대방은|(?:라고|다고)\s*(?:주장|항변|진술)|주장에\s*(?:따르면|의하면))")
+_CASE_NO_HINT_RE = re.compile(r"(?:19|20)?\d{2}\s*[가-힣]{1,3}\s*\d{2,6}")
 
 
 _LEGAL_EFFECT_RE = re.compile(
     r"(?:성립|인정|무효|취소|면책|책임|배상|위법|적법|해제|해지|적용|배제|추정|간주|조각|상계|시효|입증|증명|소급)"
 )
-_PROVISO_TEXT_RE = re.compile(r"(?:다만|단,|예외적으로|특별한\s*사정이\s*없는\s*한|경우에\s*한하여)")
+_PROVISO_TEXT_RE = re.compile(r"(?:다만|단,|예외적으로|특별한\s*사정이\s*없는\s*한|원칙적으로)")
 
 
 def _clause_normalizer_overclaims(text: str) -> List[ClaimMatch]:
@@ -858,7 +861,8 @@ def _clause_normalizer_overclaims(text: str) -> List[ClaimMatch]:
         ]
         if not main_clauses:
             continue
-        has_abs = any(c.modality == "MANDATORY" or _ABSOLUTE_MODALITY_RE.search(c.raw_text) for c in main_clauses)
+        has_abs = any(c.modality == "MANDATORY" or _ABSOLUTE_MODALITY_RE.search(c.raw_text) for c in main_clauses) or bool(_ABSOLUTE_MODALITY_RE.search(sentence))
+        has_broad = bool(_BROAD_OVR_MODALITY_RE.search(sentence))
 
         # 3대 일반 법리 과장 구조 (부정·반박·상대방 인용 제외)
         joined_main = " ".join(c.raw_text for c in main_clauses)
@@ -870,48 +874,51 @@ def _clause_normalizer_overclaims(text: str) -> List[ClaimMatch]:
             r"(?:(?:간주|인정|단정|추정|성립)(?:할|될|하기)\s*수\s*없|성립하지\s*않)",
             sentence,
         ))
-        doctrinal_ovr = False
-        if not is_rebuttal_or_neg:
-            # 1) 단순 침묵/미회신/부작위 -> 동의·승낙·합의·인정·효력 간주
-            if (
-                re.search(r"(?:미회신|회신(?:을|이)?\s*(?:하지\s*않|없)|답변(?:을|이)?\s*(?:하지\s*않|없)|침묵|무응답|이의(?:를)?\s*(?:제기하지\s*않|제기(?:가)?\s*없))", sentence)
-                and re.search(r"(?:동의|승낙|승인|수락|합의|인정|자백|추인|수용|간주|추정)(?:한\s*것|으로\s*보|된다|한다|이다|되므로|하므로|에\s*해당|셈)", sentence)
-                and not re.search(r"(?:특약|약정|법령|규정|상법|민법\s*제\d+조)", sentence)
-            ):
-                doctrinal_ovr = True
-            # 2) 내부 지침/안내/매뉴얼 -> 대외적 법규범·상위법/법률 우선·법적 무효 단정
-            elif (
-                re.search(r"(?:내부\s*(?:지침|안내|규정|매뉴얼|기준|방침)|업무\s*편람|사내\s*규정)", sentence)
-                and re.search(r"(?:법규범|법률상\s*의무|상위법|(?:법령|법률|시행령)(?:에|보다)\s*우선|대외적\s*구속력|직접\s*적용|당연히\s*(?:무효|위법)|무효(?:가|로)\s*된다)", sentence)
-            ):
-                doctrinal_ovr = True
-            # 3) 단순 착오/누락/지연/불이행 -> 곧바로 고의·기망·범죄 성립 단정
-            elif (
-                re.search(r"(?:단순\s*)?(?:누락|착오|오류|지연|미지급|불일치|미기재|채무불이행)", sentence)
-                and re.search(r"(?:곧바로|당연히|자동으로|그\s*자체로|즉시)\s*[^.!?]{0,20}?(?:고의|기망|사기|배임|악의|범의|불법영득)", sentence)
-                and re.search(r"(?:성립|인정|추정|단정|해당)", sentence)
-            ):
-                doctrinal_ovr = True
-
-        if not has_abs and not doctrinal_ovr:
+        if is_rebuttal_or_neg:
             continue
 
-        # Multi-element / discretionary doctrines (short category tokens only)
+        doctrinal_ovr = False
+        # 1) 단순 침묵/미회신/부작위 -> 동의·승낙·합의·인정·효력 간주
+        if (
+            re.search(r"(?:미회신|회신(?:을|이)?\s*(?:하지\s*않|없)|답변(?:을|이)?\s*(?:하지\s*않|없)|침묵|무응답|이의(?:를)?\s*(?:제기하지\s*않|제기(?:가)?\s*없))", sentence)
+            and re.search(r"(?:동의|승낙|승인|수락|합의|인정|자백|추인|수용|간주|추정)(?:한\s*것|으로\s*보|된다|한다|이다|되므로|하므로|에\s*해당|셈)", sentence)
+            and not re.search(r"(?:특약|약정|법령|규정|상법|민법\s*제\d+조)", sentence)
+        ):
+            doctrinal_ovr = True
+        # 2) 내부 지침/안내/매뉴얼 -> 대외적 법규범·상위법/법률 우선·법적 무효 단정
+        elif (
+            re.search(r"(?:내부\s*(?:지침|안내|규정|매뉴얼|기준|방침)|업무\s*편람|사내\s*규정)", sentence)
+            and re.search(r"(?:법규범|법률상\s*의무|상위법|(?:법령|법률|시행령)(?:에|보다)\s*우선|대외적\s*구속력|직접\s*적용|당연히\s*(?:무효|위법)|무효(?:가|로)\s*된다)", sentence)
+        ):
+            doctrinal_ovr = True
+        # 3) 단순 착오/누락/지연/불이행 -> 곧바로 고의·기망·사기·범죄 성립 단정
+        elif (
+            re.search(r"(?:단순(?:한)?\s*(?:지급\s*지연|지연|미지급|불이행|착오|누락|오류|불일치|미기재)|(?:지연|미지급|불이행|착오|누락)[^.\n]{0,12}?(?:곧바로|당연히|즉시))", sentence)
+            and re.search(r"(?:고의|기망|사기죄?|배임죄?|횡령죄?|범죄|형사(?:상)?\s*(?:처벌|책임)|악의|범의|불법영득)", sentence)
+            and re.search(r"(?:성립|인정|추정|단정|해당)", sentence)
+        ):
+            doctrinal_ovr = True
+
+        if not has_abs and not has_broad and not doctrinal_ovr:
+            continue
+
+        # Multi-element / discretionary doctrines
         has_doctrine = doctrinal_ovr or (
             ("위법성" in sentence and "조각" in sentence)
             or ("과실상계" in sentence)
-            or ("손해배상" in sentence and ("자동" in sentence or "무조건" in sentence or "당연" in sentence))
-            or (("소멸시효" in sentence or "제소기간" in sentence) and ("무조건" in sentence or "예외" in sentence or "당연" in sentence))
-            or (("입증책임" in sentence or "증명책임" in sentence) and ("전부" in sentence or "전가" in sentence or "무조건" in sentence or "항상" in sentence))
+            or ("손해배상" in sentence and (has_abs or has_broad or "당연" in sentence))
+            or (("소멸시효" in sentence or "제소기간" in sentence) and (has_abs or has_broad or "당연" in sentence))
+            or (("입증책임" in sentence or "증명책임" in sentence) and (has_abs or has_broad or "전부" in sentence or "전가" in sentence or "항상" in sentence))
             or ("법률" in sentence and "개정" in sentence and ("소급" in sentence or "면책" in sentence))
-            or ("기본권" in sentence and ("절대" in sentence or "어떠한" in sentence))
-            or ("계약" in sentence and ("해제" in sentence or "해지" in sentence) and ("자동" in sentence or "무조건" in sentence or "당연" in sentence))
-            or (("징계" in sentence or "해고" in sentence) and ("당연" in sentence or "무조건" in sentence or "자동" in sentence))
-            or (("처분" in sentence or "재량" in sentence) and ("당연" in sentence or "무조건" in sentence or "자동" in sentence))
-            or (("신의칙" in sentence or "권리남용" in sentence) and ("배제" in sentence or "무조건" in sentence or "당연" in sentence))
-            or (("부당이득" in sentence or "원상회복" in sentence) and ("자동" in sentence or "무조건" in sentence or "당연" in sentence))
-            or (("보증" in sentence or "연대책임" in sentence) and ("무조건" in sentence or "자동" in sentence or "전부" in sentence))
-            or (("명의신탁" in sentence or "강행법규" in sentence) and ("무조건" in sentence or "당연" in sentence or "자동" in sentence))
+            or (("기본권" in sentence or "저항권" in sentence) and (has_abs or has_broad or "절대" in sentence or "어떠한" in sentence or "전면" in sentence or "당연" in sentence or "발동" in sentence))
+            or ("계약" in sentence and ("해제" in sentence or "해지" in sentence) and (has_abs or has_broad or "당연" in sentence))
+            or (("징계" in sentence or "해고" in sentence) and (has_abs or has_broad or "당연" in sentence))
+            or (("처분" in sentence or "재량" in sentence) and (has_abs or has_broad or "당연" in sentence))
+            or (("신의칙" in sentence or "권리남용" in sentence) and (has_abs or has_broad or "배제" in sentence or "당연" in sentence))
+            or (("부당이득" in sentence or "원상회복" in sentence) and (has_abs or has_broad or "당연" in sentence))
+            or (("보증" in sentence or "연대책임" in sentence) and (has_abs or has_broad or "전부" in sentence))
+            or (("명의신탁" in sentence or "강행법규" in sentence) and (has_abs or has_broad or "당연" in sentence))
+            or (("포기" in sentence or "면책" in sentence or "고의" in sentence or "진정성립" in sentence) and (has_abs or has_broad))
         )
         if not has_doctrine:
             continue
@@ -920,12 +927,24 @@ def _clause_normalizer_overclaims(text: str) -> List[ClaimMatch]:
             sentence=sentence,
             start=start,
             judgment="복합 요건·예외·재량 검토 없이 절대 단정",
-            grade="B" if (has_abs or doctrinal_ovr) else "C",
+            grade="C",
             status="SUSPICIOUS",
             basis=[],
             detail="법률상 복합 요건·예외 단서 또는 법원 재량이 필요한 법리를 조건·예외 검토 없이 무조건·당연 성립/배제로 단정하고 있다.",
             extra={"defect_type": "OVERCLAIM", "clause_normalizer": True},
         ))
+        if _CASE_NO_HINT_RE.search(sentence):
+            out.append(ClaimMatch(
+                claim_type="PRECEDENT_OVERGENERALIZATION",
+                sentence=sentence,
+                start=start,
+                judgment="판례 취지를 예외 없는 절대 법리로 확대 단정",
+                grade="C",
+                status="SUSPICIOUS",
+                basis=[],
+                detail="구체적 사안과 복합 요건을 전제로 한 판례 취지를 예외 없는 절대적·일률적 법리로 확대해 원용하고 있다.",
+                extra={"defect_type": "CIT-MIS", "clause_normalizer": True},
+            ))
     return out
 
 
@@ -963,11 +982,17 @@ def review_claims(doc: NormalizedDocument, *, lookup: Optional[HistoryLookup] = 
     reading = build_reading_text(doc)
     text = reading.text
     skip = {re.sub(r"\s+", "", s) for s in skip_sentences if s}
+    req_matches = requirement_mismatches(doc, provisions)
+    req_keys = {re.sub(r"\s+", "", m.sentence) for m in req_matches}
+    overclaims = [
+        m for m in _clause_normalizer_overclaims(text)
+        if re.sub(r"\s+", "", m.sentence) not in req_keys
+    ]
     matches = (
         classify_claims(text, lookup)
-        + requirement_mismatches(doc, provisions)
+        + req_matches
         + _provisional_relief_references(text)
-        + _clause_normalizer_overclaims(text)
+        + overclaims
         + _unverified_admin_interpretations(text)
     )
     out, seen = [], set()

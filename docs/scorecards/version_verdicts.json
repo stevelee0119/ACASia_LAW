@@ -771,5 +771,37 @@
   "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
   "decided_at": "2026-11-23",
   "from": "0.27.0"
+ },
+ {
+  "version": "0.29.0",
+  "level": "minor",
+  "basis": [
+   "added",
+   "fixed",
+   "changed"
+  ],
+  "measured_commit": "154a1297",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.11",
+   "tesseract": "5.3.4 / 5.5.0",
+   "baseline_commit": "1ef3e4fe",
+   "scoring": "scripts/scorecard.py(dev 89.7, holdout 87.5) 및 scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #423·#425·#426 필수 CI 전수 통과."
+  },
+  "evidence": {
+   "M1": "dev 86.2→89.7(v2 47/56), holdout 86.6→87.5(v2 45/54); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 회귀 0.",
+   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+   "M3": "은퇴 5세트 평균 53.22→58.00(+4.78%p), 후퇴 0(56.5/54.6/63.8/59.4/55.7, sealed_20261009 +6.9, sealed_20261010 +5.6, sealed_20261025 +11.4, 전 세트 오탐 0·A등급 0).",
+   "M4": "포함 PR #423(FactTriple 2단계 추출·검증기), #426(2단 운영·정보 격리·동적 변형 시험 하네스), #425(일반화 FactTriple·다중 AI잔재 승격·EVI-COPY 복제 탐지 보완).",
+   "CI": "PR #423·#425·#426 전량 필수 CI(점수 하락 게이트, 평가 세트 문구 대조, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
+   "open_p1_regression": 0,
+   "unmeasured": "격리 봉인 세트, 운영 온라인 실측(U2 live-source-check, Drive 16쪽 재색인, 상용 임베딩 실호출, case9, 4차원 출력 실측).",
+   "record": "docs/scorecards/release_029_candidate_20261123.md"
+  },
+  "rer": 0.1618,
+  "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
+  "decided_at": "2026-11-23",
+  "from": "0.28.0"
  }
 ]
