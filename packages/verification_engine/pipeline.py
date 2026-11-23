@@ -1405,6 +1405,14 @@ class VerificationPipeline:
             statuses,
             evidence_graph=active_graph if graph_mode in ("canary", "default") else None,
         )
+        result.engine_data.setdefault(
+            "fact_triples",
+            {"count": 0, "asserted_self_count": 0, "conflict_finding_count": 0, "stages": {}, "triples": []},
+        )
+        from .eval_contract import build_evaluation_dimensions
+        result.engine_data["evaluation_dimensions"] = build_evaluation_dimensions(
+            result, doc_sha256=getattr(doc, "sha256", "") or ""
+        )
         # F2: 통합 검토 항목(review_items) 생성 (단일 판정 및 Finding 누락 0 보장)
         from .review_items import build_document_review_items
         result.review_items = build_document_review_items(result, doc, context)
@@ -1703,17 +1711,29 @@ class VerificationPipeline:
                 "retry_exhausted_count": sum(bool(v.get("source_lookup", {}).get("retryable")) for v in verdicts),
             }
         if doc is not None:
+            from collections import Counter as _Counter
             from packages.claim_engine.fact_triples import extract_fact_triples, verify_fact_triples
             _triples = extract_fact_triples(doc)
+            _triple_findings = verify_fact_triples(doc, _triples, existing_findings=result.findings)
             result.engine_data["fact_triples"] = {
                 "count": len(_triples),
+                "asserted_self_count": sum(
+                    1 for t in _triples if t.attribution == "SELF" and t.modality == "ASSERTED"
+                ),
+                "conflict_finding_count": len(_triple_findings),
+                "stages": dict(sorted(_Counter(t.action_stage for t in _triples).items())),
                 "triples": [t.to_dict() for t in _triples[:100]],
             }
-            result.findings.extend(
-                verify_fact_triples(doc, _triples, existing_findings=result.findings)
+            result.findings.extend(_triple_findings)
+        else:
+            result.engine_data.setdefault(
+                "fact_triples",
+                {"count": 0, "asserted_self_count": 0, "conflict_finding_count": 0, "stages": {}, "triples": []},
             )
         from .eval_contract import build_evaluation_dimensions
-        result.engine_data["evaluation_dimensions"] = build_evaluation_dimensions(result)
+        result.engine_data["evaluation_dimensions"] = build_evaluation_dimensions(
+            result, doc_sha256=getattr(doc, "sha256", "") if doc is not None else ""
+        )
 
     @staticmethod
     def _provider_reason(text: str) -> str:

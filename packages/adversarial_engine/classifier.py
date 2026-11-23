@@ -398,9 +398,21 @@ def classify(
     if not is_hidden and not addresses_ai and hits:
         hits = [h for h in hits if not _is_narrated_legal_context(text, h, index=index)]
 
-    if is_hidden and (addresses_ai or has_imperative) and channel_actionable and not hits:
+    hidden_nominal_directive = bool(
+        is_hidden
+        and (is_output or is_suppress)
+        and (
+            (is_output and is_suppress)
+            or re.search(
+                r"(?:지시|명령|통과\s*처리|무결점|결함\s*없음|정상\s*판정|검증\s*통과|directive|instruction|override|bypass|emit\s+pass|no[_\s]defects?)",
+                text,
+                re.IGNORECASE,
+            )
+        )
+    )
+    if is_hidden and (addresses_ai or has_imperative or hidden_nominal_directive) and channel_actionable and not hits:
         # 정상 법률 서면 표현(피고는 원고에게 금원을 지급하라 등)이고 AI 호명이 없으면 제외
-        if not (benign_context and not addresses_ai):
+        if not (benign_context and not addresses_ai and not hidden_nominal_directive):
             if is_output:
                 intent = InjectionIntent.OUTPUT_MANIPULATION
             elif is_suppress:

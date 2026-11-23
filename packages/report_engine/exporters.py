@@ -38,6 +38,84 @@ def to_json(run_result: Any, *, reveal_sealed: bool = False) -> bytes:
     return dumps(to_payload(run_result, reveal_sealed=reveal_sealed), indent=2).encode("utf-8")
 
 
+def _serialize_engine_data(d: Any, *, is_frozen_report: bool = False) -> Dict[str, Any]:
+    raw_ed = getattr(d, "engine_data", None) or {}
+    if is_frozen_report:
+        return raw_ed
+    from collections import Counter as _Counter
+    ed = dict(raw_ed)
+    ft = ed.get("fact_triples")
+    if not isinstance(ft, dict):
+        norm = getattr(d, "normalized", None)
+        if norm is not None and hasattr(norm, "pages"):
+            from packages.claim_engine.fact_triples import extract_fact_triples
+            triples = extract_fact_triples(norm)
+            ed["fact_triples"] = {
+                "count": len(triples),
+                "asserted_self_count": sum(
+                    1 for t in triples if t.attribution == "SELF" and t.modality == "ASSERTED"
+                ),
+                "conflict_finding_count": sum(
+                    1
+                    for f in (getattr(d, "findings", None) or [])
+                    if getattr(f, "engine", "") == "claim_engine.fact_triples"
+                ),
+                "stages": dict(sorted(_Counter(t.action_stage for t in triples).items())),
+                "triples": [t.to_dict() for t in triples[:100]],
+            }
+        else:
+            ed["fact_triples"] = {
+                "count": 0,
+                "asserted_self_count": 0,
+                "conflict_finding_count": 0,
+                "stages": {},
+                "triples": [],
+            }
+    else:
+        ft_copy = dict(ft)
+        triples_list = ft_copy.get("triples") if isinstance(ft_copy.get("triples"), list) else []
+        ft_copy.setdefault("count", len(triples_list))
+        ft_copy.setdefault(
+            "asserted_self_count",
+            sum(
+                1
+                for t in triples_list
+                if isinstance(t, dict) and t.get("attribution") == "SELF" and t.get("modality") == "ASSERTED"
+            ),
+        )
+        ft_copy.setdefault(
+            "conflict_finding_count",
+            sum(
+                1
+                for f in (getattr(d, "findings", None) or [])
+                if getattr(f, "engine", "") == "claim_engine.fact_triples"
+            ),
+        )
+        ft_copy.setdefault(
+            "stages",
+            dict(
+                sorted(
+                    _Counter(
+                        str(t.get("action_stage"))
+                        for t in triples_list
+                        if isinstance(t, dict) and t.get("action_stage")
+                    ).items()
+                )
+            ),
+        )
+        ft_copy.setdefault("triples", triples_list)
+        ed["fact_triples"] = ft_copy
+
+    from packages.verification_engine.eval_contract import build_evaluation_dimensions
+    doc_sha = (
+        getattr(getattr(d, "normalized", None), "sha256", "")
+        or getattr(d, "sha256", "")
+        or ""
+    )
+    ed["evaluation_dimensions"] = build_evaluation_dimensions(d, doc_sha256=doc_sha)
+    return ed
+
+
 def to_payload(run_result: Any, *, reveal_sealed: bool = False) -> dict:
     """같은 내용을 파이썬 객체로 돌려준다.
 
@@ -45,6 +123,7 @@ def to_payload(run_result: Any, *, reveal_sealed: bool = False) -> dict:
     큰 결과에서 그 왕복은 수 초가 걸리고, json.dumps/loads는 그동안 GIL을
     놓지 않아 임차 갱신 스레드가 밀린다.
     """
+    is_frozen = hasattr(run_result, "report_metadata")
     payload = {
         "product": "ACASia_LAW",
         "terminology_version": TERMINOLOGY_VERSION,
@@ -81,7 +160,7 @@ def to_payload(run_result: Any, *, reveal_sealed: bool = False) -> dict:
                 "claims": d.claims,
                 "entities": d.entities,
                 "events": d.events,
-                "engine_data": d.engine_data,
+                "engine_data": _serialize_engine_data(d, is_frozen_report=is_frozen),
                 "source_records": [r.to_dict() if hasattr(r, "to_dict") else r for r in d.source_records],
                 "pages": ([{"page_number": p.page_number, "width": p.width, "height": p.height,
                             "blocks": [b.to_dict() for b in p.blocks if b.visible and b.source_layer in ("visible_text", "ocr_layer")]}

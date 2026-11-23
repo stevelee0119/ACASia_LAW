@@ -101,7 +101,9 @@ class KCIAdapter(AcademicSourceAdapter):
 
     @property
     def api_key(self) -> Optional[str]:
-        return self.settings.kci_key
+        from .cassette import replay_mode_active
+
+        return self.settings.kci_key or ("CASSETTE_REPLAY" if replay_mode_active() else None)
 
     def search(self, query: str, **kwargs: Any) -> AdapterResponse:
         status = self.status()

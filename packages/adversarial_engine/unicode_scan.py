@@ -153,7 +153,15 @@ def _context(text: str, index: int, width: int = 60) -> str:
 
 
 def _context_for_range(text: str, start_idx: int, end_idx: int, padding: int = 40) -> str:
-    """지정된 인덱스 범위를 포함하는 문맥 문자열을 추출한다."""
+    """지정된 인덱스 범위를 포함하는 문맥 문자열을 추출한다(동일 줄 내에서는 줄바꿈 경계를 넘지 않음)."""
     start = max(0, start_idx - padding)
     end = min(len(text), end_idx + padding + 1)
+    if "\n" not in text[start_idx : end_idx + 1]:
+        nl_before = text.rfind("\n", start, start_idx)
+        if nl_before != -1:
+            start = nl_before + 1
+        nl_after = text.find("\n", end_idx + 1, end)
+        if nl_after != -1:
+            end = nl_after
     return text[start:end].replace("\n", " ")
+

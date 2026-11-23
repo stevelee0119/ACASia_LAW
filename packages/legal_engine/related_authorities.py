@@ -293,8 +293,10 @@ def _discover_tk137_authorities(citations, verifier, case_date: Optional[str] = 
     if adapter is None or getattr(adapter, "name", "") != "law_go_kr":
         return [], [], "ADAPTER_UNAVAILABLE"
 
-    # N3: allow_network False 또는 OC 없음 시 탐색 생략
-    if not getattr(adapter.settings, "allow_network", True) or adapter.status() != AdapterStatus.READY:
+    from packages.source_adapters.cassette import replay_mode_active
+
+    # N3: allow_network False(카세트 REPLAY 제외) 또는 OC 없음 시 탐색 생략
+    if (not getattr(adapter.settings, "allow_network", True) and not replay_mode_active()) or adapter.status() != AdapterStatus.READY:
         return [], [], "NETWORK_DISABLED"
 
     # N3: 출처 장애·차단 상태이거나 예산 소진 시 조기 생략 (기존 파이프라인 복구 동작 보호)
@@ -494,8 +496,10 @@ def _discover_tk138_precedents(
     if adapter is None or getattr(adapter, "name", "") != "law_go_kr":
         return [], "ADAPTER_UNAVAILABLE"
 
-    # P5: allow_network False 또는 OC 없음 시 판례 탐색 생략 (오프라인 점수 변화 0)
-    if not getattr(adapter.settings, "allow_network", True) or adapter.status() != AdapterStatus.READY:
+    from packages.source_adapters.cassette import replay_mode_active
+
+    # P5: allow_network False(카세트 REPLAY 제외) 또는 OC 없음 시 판례 탐색 생략 (오프라인 점수 변화 0)
+    if (not getattr(adapter.settings, "allow_network", True) and not replay_mode_active()) or adapter.status() != AdapterStatus.READY:
         return [], "NETWORK_DISABLED"
 
     # 출처 장애·차단 상태이거나 예산 소진 시 조기 생략
@@ -644,7 +648,9 @@ def _discover_tk139_disposition_criteria(
     if adapter is None or getattr(adapter, "name", "") != "law_go_kr":
         return None, "ADAPTER_UNAVAILABLE"
 
-    if not getattr(adapter.settings, "allow_network", True) or adapter.status() != AdapterStatus.READY:
+    from packages.source_adapters.cassette import replay_mode_active
+
+    if (not getattr(adapter.settings, "allow_network", True) and not replay_mode_active()) or adapter.status() != AdapterStatus.READY:
         return None, "NETWORK_DISABLED"
 
     # TK-139 시간 상한(사용자 결정 11-04 'TK-139 별도 상한'): 문서 15초 예산과 별도로 10초, 외부 호출 전 잔여 3초 이상
