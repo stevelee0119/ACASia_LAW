@@ -1078,31 +1078,41 @@ class CalculationEngine:
                 if block.block_id in seen_blocks:
                     run = []
                     continue
-                amounts = parse_amounts(block.text, block_id=block.block_id, page=block.page)
-                is_total = bool(TOTAL_LABEL_RE.search(block.text))
+                raw_lines = block.text.splitlines()
+                lines_to_check = (
+                    raw_lines
+                    if len(raw_lines) >= 3 and TOTAL_LABEL_RE.search(block.text)
+                    else [block.text]
+                )
+                for line_text in lines_to_check:
+                    line_s = line_text.strip()
+                    if not line_s:
+                        continue
+                    amounts = parse_amounts(line_s, block_id=block.block_id, page=block.page)
+                    is_total = bool(TOTAL_LABEL_RE.search(line_s))
 
-                if is_total and amounts and len(run) >= MIN_LINE_ITEMS:
-                    check = check_sum([a for a, _ in run], amounts[-1])
-                    check.rows = [label for _, label in run]
-                    if not check.matches:
-                        excerpt = "\n".join(
-                            [label for _, label in run] + [f"{TOTAL_LABEL_RE.search(block.text).group(0)} {amounts[-1].raw}"]
-                        )
-                        findings.append(self._mismatch_finding(doc, check, block.block_id, block.page, excerpt))
-                    run = []
-                    continue
+                    if is_total and amounts and len(run) >= MIN_LINE_ITEMS:
+                        check = check_sum([a for a, _ in run], amounts[-1])
+                        check.rows = [label for _, label in run]
+                        if not check.matches:
+                            excerpt = "\n".join(
+                                [label for _, label in run] + [f"{TOTAL_LABEL_RE.search(line_s).group(0)} {amounts[-1].raw}"]
+                            )
+                            findings.append(self._mismatch_finding(doc, check, block.block_id, block.page, excerpt))
+                        run = []
+                        continue
 
-                # 행마다 최종 금액을 쓴다. 산식 행('a원 + b원 = c원')은 '=' 뒤 금액을 쓰고 산식은 따로 검산한다(J3).
-                final, formula = row_final_amount(block.text) if amounts else (None, None)
-                if formula is not None and not formula.matches:
-                    findings.append(self._formula_finding(doc, formula, block.block_id, block.page, block.text))
-                if is_total:
-                    run = []
-                elif final is not None:
-                    final.block_id, final.page = block.block_id, block.page
-                    run.append((final, " ".join(block.text.split())[:120]))
-                else:
-                    run = []  # 금액 없는 줄이나 최종 금액을 가를 수 없는 줄에서 묶음을 끊는다
+                    # 행마다 최종 금액을 쓴다. 산식 행('a원 + b원 = c원')은 '=' 뒤 금액을 쓰고 산식은 따로 검산한다(J3).
+                    final, formula = row_final_amount(line_s) if amounts else (None, None)
+                    if formula is not None and not formula.matches:
+                        findings.append(self._formula_finding(doc, formula, block.block_id, block.page, line_s))
+                    if is_total:
+                        run = []
+                    elif final is not None:
+                        final.block_id, final.page = block.block_id, block.page
+                        run.append((final, " ".join(line_s.split())[:120]))
+                    else:
+                        run = []  # 금액 없는 줄이나 최종 금액을 가를 수 없는 줄에서 묶음을 끊는다
         return findings
 
     def _verify_statement_formulas(self, doc: NormalizedDocument) -> List[Finding]:

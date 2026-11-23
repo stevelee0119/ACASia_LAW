@@ -981,7 +981,7 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                     kind=FindingType.FACT_CONTRADICTION,
                     grade=EvidenceGrade.C,
                     severity=Severity.MEDIUM,
-                    status=VerificationStatus.UNVERIFIED,
+                    status=VerificationStatus.SUSPICIOUS,
                     title=title,
                     detail=detail,
                     excerpt=excerpt,
@@ -1019,7 +1019,7 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                     kind=FindingType.FACT_CONTRADICTION,
                     grade=EvidenceGrade.C,
                     severity=Severity.MEDIUM,
-                    status=VerificationStatus.UNVERIFIED,
+                    status=VerificationStatus.SUSPICIOUS,
                     title=title,
                     detail=detail,
                     excerpt=excerpt,
@@ -1243,7 +1243,7 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
                         kind=FindingType.FACT_CONTRADICTION,
                         grade=EvidenceGrade.C,
                         severity=Severity.MEDIUM,
-                        status=VerificationStatus.UNVERIFIED,
+                        status=VerificationStatus.SUSPICIOUS,
                         title=title,
                         detail=detail,
                         excerpt=excerpt,
@@ -1278,6 +1278,14 @@ def check_internal_inconsistency(doc: NormalizedDocument) -> List[Finding]:
             emitted_internal_date_kinds=emitted_internal_date_kinds,
         )
     )
+    findings.extend(
+        _check_anchored_scalar_inconsistency(
+            doc=doc,
+            reading=reading,
+            author_party=author_party,
+            existing_findings=findings,
+        )
+    )
 
     return findings
 
@@ -1288,6 +1296,7 @@ SAME_EVENT_NOUNS: Tuple[str, ...] = (
     "회신", "답변", "통지", "통보", "고지", "발송", "송부", "송달", "전달",
     "해지", "해제", "취소", "철회", "결의", "의결", "처분", "결정", "명령", "징계", "해고",
     "신청", "청구", "체결", "합의", "약정", "보고", "신고",
+    "접수", "발신", "수신", "작성", "발급", "확인", "제출",
     # 평가 측 후속 I2(사용자 결정 11-09): 같은 사건을 전달 수단 명사로 적은 꼴 — 알림 단계(NOTIFY_SEND)로 본다
     "문자메시지", "이메일", "전자우편", "메일", "문자", "서신", "편지", "팩스",
 )
@@ -1437,7 +1446,10 @@ _DEFAULT_NOUN_STAGE: Dict[str, str] = {
     "결의": "DECIDE", "의결": "DECIDE", "처분": "DECIDE", "결정": "DECIDE",
     "명령": "DECIDE", "징계": "DECIDE", "해고": "DECIDE", "체결": "DECIDE",
     "합의": "DECIDE", "약정": "DECIDE",
-    "신청": "SUBMIT_FILE", "청구": "SUBMIT_FILE", "신고": "SUBMIT_FILE",
+    "신청": "SUBMIT_FILE", "청구": "SUBMIT_FILE", "신고": "SUBMIT_FILE", "제출": "SUBMIT_FILE",
+    "접수": "ARRIVE_RECEIVE", "수신": "ARRIVE_RECEIVE",
+    "발신": "NOTIFY_SEND", "발급": "NOTIFY_SEND",
+    "작성": "DRAFT", "확인": "DECIDE",
     "문자메시지": "NOTIFY_SEND", "이메일": "NOTIFY_SEND", "전자우편": "NOTIFY_SEND", "메일": "NOTIFY_SEND",
     "문자": "NOTIFY_SEND", "서신": "NOTIFY_SEND", "편지": "NOTIFY_SEND", "팩스": "NOTIFY_SEND",
 }
@@ -1979,4 +1991,151 @@ def _check_same_event_datetime_inconsistency(
             break
 
     return findings
+
+
+_ANCHOR_STAGE_QUALIFIER_RE = re.compile(
+    r"(?:변경|증액|감액|인상|인하|할인|조정|갱신|연장|단축|추가|잔여|잔금|계약금|중도금|일부|예정|가정|"
+    r"당초|종전|신규|기존|최초|최종|1차|2차|3차|상한|하한|최대|최소|이상|이하|초과|미만|"
+    r"가량|정도|범위|내지|까지|부터|매월|연간|월간|분기|반면|달리|(?<![가-힣])(?:약|각)(?![가-힣]))"
+)
+
+_ANCHOR_DATE_NOUNS = (
+    "계약체결일|계약일|해지일|해제일|변제기일|변제기|지급기일|인도일|완공일|입사일|퇴사일|해고일|선고일|송달일"
+)
+_ANCHOR_AMOUNT_NOUNS = (
+    "계약금액|매매대금|임대차보증금|보증금액|차용원금|대여원금|공사대금|용역대금|합의금액|위약금액"
+)
+_ANCHOR_RATE_NOUNS = (
+    "약정이율|연체이율|지연손해금률|이자율|지분율|수수료율"
+)
+_ANCHOR_EXHIBIT_PREFIX = r"(?P<exhibit>(?:갑|을)\s*제?\s*\d+호증(?:의\s*\d+)?)"
+
+_ANCHOR_DATE_RE = re.compile(
+    rf"(?:{_ANCHOR_EXHIBIT_PREFIX}\s*(?:의\s*)?(?P<eattr>작성일|일자|일시)|(?P<noun>{_ANCHOR_DATE_NOUNS}))"
+    r"(?:은|는|이|가|을|를|의|인|:|：)?\s*"
+    r"(?P<y>(?:19|20)\d{2})\s*[.\-년/]\s*(?P<m>\d{1,2})\s*[.\-월/]\s*(?P<d>\d{1,2})\s*일?"
+)
+_ANCHOR_AMOUNT_RE = re.compile(
+    rf"(?:{_ANCHOR_EXHIBIT_PREFIX}\s*(?:의\s*)?(?P<eattr>금액|대금|보증금|원금)|(?P<noun>{_ANCHOR_AMOUNT_NOUNS}))"
+    r"(?:은|는|이|가|을|를|의|인|:|：)?\s*(?:금\s*)?"
+    r"(?P<num>\d[\d,]*(?:\.\d+)?)\s*(?P<unit>억원|억\s*원|억|만원|만\s*원|원)"
+)
+_ANCHOR_RATE_RE = re.compile(
+    rf"(?:{_ANCHOR_EXHIBIT_PREFIX}\s*(?:의\s*)?(?P<eattr>이자율|이율|비율)|(?P<noun>{_ANCHOR_RATE_NOUNS}))"
+    r"(?:은|는|이|가|을|를|의|인|:|：)?\s*(?P<period>연|월)?\s*"
+    r"(?P<rate>\d{1,3}(?:\.\d+)?)\s*(?:%|퍼센트)"
+)
+
+
+def _parse_krw_amount(num_str: str, unit: str) -> Optional[int]:
+    try:
+        val = Decimal(num_str.replace(",", ""))
+    except InvalidOperation:
+        return None
+    u = re.sub(r"\s+", "", unit)
+    if u in ("억", "억원"):
+        val *= Decimal(100_000_000)
+    elif u in ("만", "만원"):
+        val *= Decimal(10_000)
+    return int(val)
+
+
+def _check_anchored_scalar_inconsistency(
+    *,
+    doc: Any,
+    reading: Any,
+    author_party: Optional[str],
+    existing_findings: List[Finding],
+) -> List[Finding]:
+    """문서 내 동일 법적·서증 앵커(계약일·매매대금·약정이율·갑 제N호증 등)의 상이한 값 모순을 탐지한다."""
+    findings: List[Finding] = []
+    if not reading or not getattr(reading, "text", ""):
+        return findings
+
+    already_emitted_keys = {
+        f.confidence_features.get("anchor_key")
+        for f in existing_findings
+        if f.confidence_features.get("anchor_key")
+    }
+
+    buckets: Dict[Tuple[str, str], List[Tuple[str, int, str]]] = defaultdict(list)
+
+    for s_start, s_end in sentence_bounds(reading.text):
+        sent = reading.text[s_start:s_end].strip()
+        if not sent or len(sent) < 6:
+            continue
+        if _LEGITIMATE_EXCEPTION_RE.search(sent) or _VAT_RE.search(sent):
+            continue
+        if _is_opponent_claim_sentence(sent, author_party):
+            continue
+        if _ANCHOR_STAGE_QUALIFIER_RE.search(sent):
+            continue
+        page = reading.page_at(s_start) if hasattr(reading, "page_at") else 1
+
+        for m in _ANCHOR_DATE_RE.finditer(sent):
+            ex = re.sub(r"\s+", "", m.group("exhibit") or "")
+            attr = m.group("eattr") or m.group("noun") or ""
+            key = (f"{ex}:{attr}" if ex else attr, "DATE")
+            y, mo, d = int(m.group("y")), int(m.group("m")), int(m.group("d"))
+            if 1 <= mo <= 12 and 1 <= d <= 31:
+                buckets[key].append((f"{y:04d}-{mo:02d}-{d:02d}", page, sent))
+
+        for m in _ANCHOR_AMOUNT_RE.finditer(sent):
+            ex = re.sub(r"\s+", "", m.group("exhibit") or "")
+            attr = m.group("eattr") or m.group("noun") or ""
+            key = (f"{ex}:{attr}" if ex else attr, "AMOUNT")
+            krw = _parse_krw_amount(m.group("num"), m.group("unit"))
+            if krw is not None and krw > 0:
+                buckets[key].append((str(krw), page, sent))
+
+        for m in _ANCHOR_RATE_RE.finditer(sent):
+            ex = re.sub(r"\s+", "", m.group("exhibit") or "")
+            attr = m.group("eattr") or m.group("noun") or ""
+            period = m.group("period") or ""
+            key = (f"{ex}:{attr}:{period}" if ex else f"{attr}:{period}", "RATE")
+            try:
+                rate_val = str(Decimal(m.group("rate")).normalize())
+            except InvalidOperation:
+                continue
+            buckets[key].append((rate_val, page, sent))
+
+    for (anchor, kind), obs in buckets.items():
+        if anchor in already_emitted_keys:
+            continue
+        distinct_vals: List[Tuple[str, int, str]] = []
+        seen_v = set()
+        for val, pg, st in obs:
+            if val not in seen_v:
+                seen_v.add(val)
+                distinct_vals.append((val, pg, st))
+        if len(distinct_vals) < 2:
+            continue
+        first_val, first_pg, first_sent = distinct_vals[0]
+        second_val, second_pg, second_sent = distinct_vals[1]
+        if first_sent == second_sent:
+            continue
+        findings.append(
+            _make_incons_finding(
+                doc=doc,
+                kind=FindingType.FACT_CONTRADICTION,
+                grade=EvidenceGrade.C,
+                severity=Severity.MEDIUM,
+                status=VerificationStatus.SUSPICIOUS,
+                title=f"동일 항목 값 불일치: {anchor} ({first_val} ↔ {second_val})",
+                detail=f"문서 내 동일 항목 '{anchor}'에 대해 서로 다른 값({first_val} vs {second_val})이 기재되어 모순된다.",
+                excerpt=f"[{first_pg}쪽] {first_sent[:110]} ↔ [{second_pg}쪽] {second_sent[:110]}",
+                page=second_pg,
+                features={
+                    "rule_id": "EVI.INCONS_INTERNAL_ANCHOR",
+                    "inconsistency_type": f"ANCHOR_{kind}",
+                    "anchor_key": anchor,
+                    "first_value": first_val,
+                    "second_value": second_val,
+                    "statements": [first_sent[:200], second_sent[:200]],
+                    "human_review": True,
+                },
+            )
+        )
+    return findings
+
 

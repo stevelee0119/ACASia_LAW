@@ -382,7 +382,7 @@ def reference_candidates(text: str) -> List[Dict[str, Any]]:
             kinds = []
             if ACT_SUBJECT_RE.search(before) and ACT_SENTENCE_RE.search(sentence):
                 kinds.append("OFFENSE")
-            if DISPOSITION_AFTER_RE.match(after) or DISPOSITION_BEFORE_RE.search(before):
+            if (DISPOSITION_AFTER_RE.match(after) or DISPOSITION_BEFORE_RE.search(before)) and not re.match(r"^\s*(?:에\s*)?선고", after):
                 kinds.append("DISPOSITION")
             if LOWER_JUDGMENT_RE.search(sentence) and re.match(r"^\s*(?:에\s*)?선고", after):
                 kinds.append("LOWER_JUDGMENT")
