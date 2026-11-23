@@ -47,7 +47,7 @@ def _serialize_engine_data(d: Any, *, is_frozen_report: bool = False) -> Dict[st
     ft = ed.get("fact_triples")
     if not isinstance(ft, dict):
         norm = getattr(d, "normalized", None)
-        if norm is not None and hasattr(norm, "pages"):
+        if norm is not None and hasattr(norm, "pages") and hasattr(norm, "body_blocks"):
             from packages.claim_engine.fact_triples import extract_fact_triples
             triples = extract_fact_triples(norm)
             ed["fact_triples"] = {

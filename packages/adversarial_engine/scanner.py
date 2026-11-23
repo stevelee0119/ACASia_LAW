@@ -443,8 +443,6 @@ class AdversarialScanner:
                     "unicode_kind": signal.kind,
                     "layer": layer_name,
                     "recovered_instruction": hidden_instruction,
-                    "raw_sample": _excerpt(signal.sample) if signal.sample else None,
-                    "recovered_text": _excerpt(recovered) if recovered else None,
                     **({"injection_path": "ZERO_WIDTH"} if signal.kind == "ZERO_WIDTH" else {}),
                 }
                 # 레이어 이름에 페이지 번호가 포함되어 있다면 추출

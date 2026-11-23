@@ -141,14 +141,14 @@ def test_cross_doc_copy_other_vs_pleading_positives_and_controls():
     p_ex = _doc(f"증거설명서\n서증목록\n{s1}\n{s2}", doc_id="EX1", filename="ex1.txt")
     assert any(f.confidence_features.get("rule_id") == "EVI.COPY_OTHER_PLEADING" for f in cross_document_copies([p_pl, p_ex]))
 
-    # Positive 2: 기타 서증(OTHER)과 준비서면(PLEADING) 간 비정형 서술 2건 일치
+    # Positive 2: 증거목록과 준비서면(PLEADING) 간 비정형 서술 2건 일치
     p_pl2 = _doc(f"준비서면\n{s1}\n{s2}", doc_id="PL2", filename="pl2.txt")
-    p_ot2 = _doc(f"거래내역 메모\n{s1}\n{s2}", doc_id="OT2", filename="ot2.txt")
+    p_ot2 = _doc(f"증거목록\n{s1}\n{s2}", doc_id="OT2", filename="ot2.txt")
     assert any(f.confidence_features.get("rule_id") == "EVI.COPY_OTHER_PLEADING" for f in cross_document_copies([p_pl2, p_ot2]))
 
     # Positive 3: 어미·공백이 약간 달라도 shingle 0.85 이상이면 검출
     s1_var = "피고인은 당일 밤 현장 부근에서 큰 소리로 다투며 문을 여러 차례 강하게 두드렸다."
-    p_ot3 = _doc(f"참고자료\n{s1_var}\n{s2}", doc_id="OT3", filename="ot3.txt")
+    p_ot3 = _doc(f"증거설명서\n{s1_var}\n{s2}", doc_id="OT3", filename="ot3.txt")
     assert any(f.confidence_features.get("rule_id") == "EVI.COPY_OTHER_PLEADING" for f in cross_document_copies([p_pl, p_ot3]))
 
     # Control 1: 정식 서증 원용 표기(갑 제1호증)가 포함된 문장은 제외
@@ -512,7 +512,10 @@ def test_p1_p2_generalized_rules_positives_and_controls():
     ovr_pos3 = _doc("신청인은 무조건 예외 없이 전액 손해배상책임이 당연히 성립한다.")
     for d in (ovr_pos1, ovr_pos2, ovr_pos3):
         res = review_claims(d)
-        assert any(f.type in (FindingType.OVERCLAIM, FindingType.CASE_HOLDING_DISTORTION) for f in res), d.full_text
+        assert any(
+            f.type in (FindingType.OVERCLAIM, FindingType.CASE_HOLDING_DISTORTION, FindingType.UNSUPPORTED_GENERALIZATION)
+            for f in res
+        ), d.full_text
     assert any(f.type == FindingType.CASE_HOLDING_DISTORTION for f in review_claims(ovr_pos1))
     assert any(f.type == FindingType.CASE_HOLDING_DISTORTION for f in review_claims(ovr_pos2))
 

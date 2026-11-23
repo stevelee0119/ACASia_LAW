@@ -3987,9 +3987,11 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
 
         for d_other in docs:
             d_kind = doc_kinds[d_other.document_id][0]
-            if d_kind not in (DOC_KIND_OTHER, DOC_KIND_EVIDENCE_EXPLANATION):
+            top_head = texts[d_other.document_id][:400]
+            is_evi_expl = (d_kind == DOC_KIND_EVIDENCE_EXPLANATION) or ("증거설명서" in top_head) or ("증거목록" in top_head)
+            if not is_evi_expl:
                 continue
-            head_lines = [ln.strip() for ln in texts[d_other.document_id][:400].splitlines() if ln.strip()][:5]
+            head_lines = [ln.strip() for ln in top_head.splitlines() if ln.strip()][:5]
             if any(
                 len(ln) <= 80
                 and not _HEADING_LIST_ITEM_RE.search(ln)
@@ -3997,8 +3999,6 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                 for ln in head_lines
             ):
                 continue
-            top_head = texts[d_other.document_id][:400]
-            is_evi_expl = (d_kind == DOC_KIND_EVIDENCE_EXPLANATION) or ("증거설명서" in top_head) or ("증거목록" in top_head)
             for d_plead in docs:
                 if d_plead.document_id == d_other.document_id or doc_kinds[d_plead.document_id][0] != DOC_KIND_PLEADING:
                     continue
