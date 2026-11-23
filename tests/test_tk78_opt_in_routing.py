@@ -17,7 +17,7 @@ from test_operations_completion import ops, seeded_run, completed  # noqa: F401
 
 # 0.13.0 production commit b68cfeec2c5c168a3b9e6e2e92653ea6892521bf.
 LEGACY_MODELS = {"anthropic": "claude-opus-5-5", "openai": "gpt-6-luna",
-                 "gemini": "gemini-4-hydrogen", "local": "local-model"}
+                 "gemini": "gemini-4-hydrogen"}
 ROUTING_FIELDS = {"llm_cross_check", "llm_efficient_routing", "llm_prompt_caching",
                   "llm_review_sample_percent", "llm_routing", "llm_model_overrides", "llm_default_models"}
 

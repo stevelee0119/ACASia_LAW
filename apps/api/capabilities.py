@@ -144,13 +144,13 @@ def _llm_state() -> Dict[str, Any]:
             continue
         providers.append({"name": name, "model": config.model,
                           "key_present": bool(config.api_key), "kind": config.kind})
-    usable = [p for p in providers if p["key_present"] or p["kind"] == "local"]
+    usable = [p for p in providers if p["key_present"]]
     mode = (settings.llm_cross_check or "all").lower()
     return {
         "providers": providers,
         "usable_count": len(usable),
-        "local_count": sum(1 for p in providers if p["kind"] == "local"),
-        "cloud_count": sum(1 for p in providers if p["kind"] != "local"),
+        "local_count": 0,
+        "cloud_count": len(providers),
         # 교차검증 범위. 공급자 수만큼 호출 비용이 늘어난다.
         "cross_check": mode,
         "cross_check_note": {

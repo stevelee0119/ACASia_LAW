@@ -541,5 +541,16 @@
       "Performance: AI 문체 잔재 교차 보강 일반화로 dev 83.9→84.8·holdout 83.3→83.8 상승(TK-230, #395)",
       "미측정: 격리 봉인 세트 및 운영 온라인 실측(case9 3회 연속 5/5·6/6, RapidOCR 저품질 0.611/Drive 16쪽, Dense/Reranker 실서버 ON/OFF, LOCAL_ONLY 로컬 모델 짝 비교, Legal NLI assist 반전 재측정) — 배포 후 온라인 점검 시행"
     ]
+  },
+  {
+    "version": "0.27.0",
+    "date": "2026-11-22",
+    "changes": [
+      "평가 측 minor 판정(0.26.0 → 0.27.0, c26df113 기준, 합산 RER 13.38%): #409~#412 필수 CI 전수 통과. 운영 main(19efff6a) 대비 고정 dev 84.8→86.2(RER 9.21%, v2 44/56)·holdout 83.8→86.6(RER 17.28%, v2 44/54)·확인 오탐 0·A등급 오탐 0·인젝션 방어 유지, 은퇴 5세트 중 4세트 상승·후퇴 0(53.3→56.5 / 50.0→54.6 / 56.9→56.9 / 45.8→51.9 / 34.1→37.5). 포함 범위 #409(TK-232)~#412(TK-234)",
+      "Changed·Removed: 미운영 로컬 LLM(local_ollama·헬스체크/라우팅 분기) 및 원격 HttpRerankerAdapter 삭제, /api/diagnostics lexical_only/off 100% 일치화 및 OpenAI/Gemini 상용 API 임베딩 청크 리비전 캐시 연결(TK-232, #409)",
+      "Added: RapidOCR 저품질 이미지 전처리(그레이스케일·업스케일·CLAHE·샤프닝, 정상 스캔 재처리 0건) 및 Drive 캐시 OCR_LOW_QUALITY 쪽 선택 재색인·전후 델타 기록(TK-231, #410)",
+      "Performance: 법원급-사건부호(행정심판 포함)·불가 선고일·핵심 법전 상한/형식 불가(LAW-NX)·ClauseNormalizer 절대 단정(OVR) 일반화(TK-233, #411), 내용어 3-shingle/어미 변환 복제(EVI-COPY)·전제-결론 지각 모순(EVI-LOGIC)·내심 단정(EVI-OVR)·인젝션 매핑(INJ-ZWSP/META)·복수 객관적 AI 잔재 클러스터(AIGEN) 정밀화(TK-234, #412)",
+      "미측정: 격리 봉인 세트 및 운영 온라인 실측(Drive 저품질 16쪽 재색인 델타, RapidOCR 저품질 회복, lexical_only 진단 일치, 상용 API 임베딩 캐시, case9) — 배포 후 온라인 점검 시행"
+    ]
   }
 ]

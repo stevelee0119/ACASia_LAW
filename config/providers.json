@@ -19,12 +19,5 @@
     "model": "gemini-4-hydrogen",
     "base_url": "https://generativelanguage.googleapis.com/v1beta",
     "kind": "cloud"
-  },
-  "local": {
-    "enabled": false,
-    "api_key_env": "LV_LOCAL_LLM_API_KEY",
-    "model": "local-model",
-    "base_url": "http://localhost:11434/v1",
-    "kind": "local"
   }
 }

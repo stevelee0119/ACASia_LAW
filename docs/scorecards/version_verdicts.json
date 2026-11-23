@@ -692,6 +692,52 @@
   },
   "rer": 0.0427,
   "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
+  "decided_at": "2026-11-22",
+  "release_status": "DEPLOYED_ONLINE_EVALUATED",
+  "release_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+  "release_tag": "v.0.26.0",
+  "deployment_evidence": "docs/scorecards/release_026_deployment_20261122.json",
+  "online_eval_20261122": {
+   "deployed_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+   "verdict": "기록 수용. case9 동일 조건 3회 연속 23/23·RAG 5/5·건강 6/6·검색 중단 0/3(TK-225), AI 반복 U5 3/3 일치(SAME, 유보 0), Legal NLI Stage 2 반전 인용 CONTRADICTED 해소(TK-226), 저품질 스캔 RapidOCR 채택 9자→25자(TK-227). Drive 16쪽 캐시 재사용(TK-231)·configured_mode=HYBRID 표시 불일치(TK-232) 후속 발행.",
+   "unmeasured": [
+    "Drive 저품질 16쪽 명시적 재색인 개선 (TK-231)",
+    "Hybrid RAG Dense·Reranker ON/OFF 실서버 비교 (TK-228, 서버 미구축)",
+    "로컬 모델 LOCAL_ONLY 실호출 짝 비교 (TK-229, 서버 미구축)"
+   ],
+   "record": "docs/scorecards/online_0260_20261122.md"
+  }
+ },
+ {
+  "version": "0.27.0",
+  "from": "0.26.0",
+  "level": "minor",
+  "basis": [
+   "added",
+   "fixed",
+   "performance_minor"
+  ],
+  "measured_commit": "c26df11300a11d7b8b1865dc20a4f3aded8cc3c8",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.11",
+   "tesseract": "5.3.0 / 5.3.4",
+   "baseline_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+   "scoring": "scripts/scorecard.py(dev 86.2, holdout 86.6) 및 scripts/retired_compare.py(56.5/54.6/56.9/51.9/37.5), PR #409~#412 필수 CI 전수 통과."
+  },
+  "evidence": {
+   "M1": "dev 84.8→86.2(v2 44/56, RER 9.21%), holdout 83.8→86.6(v2 44/54, RER 17.28%); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 합산 RER 13.38%.",
+   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+   "M3": "은퇴 5세트 중 4세트 상승·후퇴 0(53.3→56.5 / 50.0→54.6 / 56.9→56.9 / 45.8→51.9 / 34.1→37.5, 전 세트 오탐 0·A등급 0).",
+   "M4": "포함 PR #409(TK-232), #410(TK-231), #411(TK-233), #412(TK-234): 미운영 로컬 LLM/HTTP Reranker 코드 삭제 및 상용 임베딩·진단 일치화, RapidOCR 저품질 전처리·Drive 선택 재색인, 법리·인용 불변식(CIT-META/LAW-NX/OVR) 및 EVI/INJ/AIGEN 일반화.",
+   "CI": "PR #409~#412 전량 필수 CI(점수 하락 게이트, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
+   "open_p1_regression": 0,
+   "unmeasured": "격리 봉인 세트, 운영 온라인 실측(Drive 저품질 16쪽 재색인 델타, RapidOCR 저품질 회복, lexical_only 진단 일치, 상용 API 임베딩 캐시, case9).",
+   "record": "docs/scorecards/release_027_candidate_20261122.md"
+  },
+  "rer": 0.1338,
+  "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
   "decided_at": "2026-11-22"
  }
 ]

@@ -1,0 +1,38 @@
+{
+  "version": "0.26.0",
+  "release_pr": 402,
+  "release_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+  "release_tag": "v.0.26.0",
+  "deployed_on": "2026-11-22",
+  "health_check": {
+    "status": "ok",
+    "app": "ACASia_LAW",
+    "version": "0.26.0",
+    "commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+    "principles": [
+      "Source First",
+      "Evidence First",
+      "Human Final Decision"
+    ],
+    "database": {
+      "status": "ok"
+    }
+  },
+  "u2_live_source_check": {
+    "run_id": 45028928660,
+    "url": "https://github.com/stevelee0119/ACASia_LAW/actions/runs/45028928660",
+    "strict": true,
+    "with_llm": true,
+    "conclusion": "failure",
+    "summary": "consensus(AI 작성 판별·주장 타당성) 3공급자(openai/gemini/anthropic) 전부 OK, 학술 Source 429 오류 0건. 유일 실패 1건은 기존 law_go_kr:사건번호조회(2015모2524)로 공급자 원응답 3건 수신·일치 0건(공식 DB 색인 미보유)."
+  },
+  "deployed_tickets": [
+    "TK-225",
+    "TK-226",
+    "TK-227",
+    "TK-228",
+    "TK-229",
+    "TK-230"
+  ],
+  "online_check_status": "PENDING_ONLINE_CHECK"
+}

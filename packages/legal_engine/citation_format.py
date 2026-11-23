@@ -37,7 +37,7 @@ LEVEL_FAMILY = {"SUPREME": "대법원", "FIRST": "하급법원", "APPELLATE": "�
 
 
 def court_family(court: str) -> Optional[str]:
-    """문서에 적힌 법원 → 대법원 / 헌법재판소 / 하급법원. 알 수 없으면 None."""
+    """문서에 적힌 법원 → 대법원 / 헌법재판소 / 행정심판 / 하급법원. 알 수 없으면 None."""
     name = (court or "").replace(" ", "")
     if not name:
         return None
@@ -45,6 +45,8 @@ def court_family(court: str) -> Optional[str]:
         return "대법원"
     if "헌법재판소" in name:
         return "헌법재판소"
+    if "행정심판" in name or "행심" in name:
+        return "행정심판"
     if name.endswith("법원") or "법원" in name or name.endswith("지원"):
         return "하급법원"
     return None
@@ -52,6 +54,8 @@ def court_family(court: str) -> Optional[str]:
 
 def code_court_family(code: str) -> Optional[str]:
     """사건부호가 가리키는 법원 종류. 표에 없거나 여러 법원에 쓰이는 부호는 None(unknown)."""
+    if code == "행심":
+        return "행정심판"
     table = case_code_table()
     if code in (table.get("constitutional_codes") or {}):
         return "헌법재판소"
@@ -125,8 +129,13 @@ def _decision(citation: Any) -> tuple:
     value = citation.decision_date or ""
     m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", value)
     if not m:
-        return None, None, False
-    y, mo, d = (int(g) for g in m.groups())
+        raw = getattr(citation, "raw_text", None) or getattr(citation, "text", None) or ""
+        rm = re.search(r"((?:19|20)\d{2})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?", raw)
+        if not rm:
+            return None, None, False
+        y, mo, d = (int(g) for g in rm.groups())
+    else:
+        y, mo, d = (int(g) for g in m.groups())
     written = f"{y}. {mo}. {d}."
     try:
         return date(y, mo, d), written, False

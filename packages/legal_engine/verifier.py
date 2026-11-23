@@ -909,6 +909,9 @@ class LegalVerifier:
         range_error = check_statute_article_range(citation.law_name, citation.article)
         if range_error is not None:
             verdict.notes.append(range_error["message"])
+        from .statute_ranges import provision_form_violations
+        raw_cit = getattr(citation, "raw_text", None) or getattr(citation, "text", None) or ""
+        form_impossible = [v for v in provision_form_violations(raw_cit) if v.get("certainty") == "IMPOSSIBLE"]
 
         if any(value is not None and not legal_date(value) for value in (as_of, incident_date, current_date)):
             verdict.levels["temporal"] = "UNVERIFIED"
@@ -918,14 +921,68 @@ class LegalVerifier:
         mirror = getattr(self.registry.law, "mirror", None)
         mirrored = mirror.all_versions(citation.law_name, citation.article) if mirror else []
         if resolver is not None and not mirrored:
-            return verify_statute_source(self, citation, as_of=as_of,
-                                         incident_date=incident_date, current_date=current_date)
+            verdict = verify_statute_source(self, citation, as_of=as_of,
+                                            incident_date=incident_date, current_date=current_date)
+            _core_laws = frozenset({
+                "대한민국헌법", "헌법", "민법", "형법", "상법", "민사소송법", "형사소송법",
+                "행정소송법", "행정기본법", "국가배상법", "근로기준법",
+            })
+            _norm_law = re.sub(r"[\s\-_ㆍ·「」『』\[\]()]+", "", citation.law_name or "")
+            _clear_range_exceeded = range_error is not None and (
+                _norm_law in _core_laws or int(range_error.get("excess") or 0) >= 20
+            )
+            if verdict.status == VerificationStatus.UNVERIFIED and (form_impossible or _clear_range_exceeded):
+                if form_impossible:
+                    verdict.status = VerificationStatus.CONTRADICTED
+                rule_id = form_impossible[0]["rule_id"] if form_impossible else range_error["rule_id"]
+                detail_msg = form_impossible[0]["reason"] if form_impossible else range_error["message"]
+                feats = {"deterministic_rule": True, "statute_range_exceeded": bool(range_error), "rule_id": rule_id}
+                verdict.findings.append(
+                    Finding.create(
+                        type=FindingType.LAW_CITATION_ERROR,
+                        status=VerificationStatus.CONTRADICTED if form_impossible else VerificationStatus.NOT_FOUND,
+                        severity=Severity.HIGH,
+                        evidence_grade=EvidenceGrade.B,
+                        title=f"법령 조문 범위·형식 성립 불가: {citation.raw_text}",
+                        detail=detail_msg,
+                        confidence=confidence_score(feats),
+                        confidence_features=feats,
+                        document_id=citation.document_id,
+                        page=citation.page,
+                        engine=ENGINE_NAME,
+                        tags=["LEGAL", "LAW_CITATION_ERROR", "LAW_NX"],
+                    )
+                )
+            return verdict
 
         response = self.registry.law.search_law(citation.law_name, article=citation.article, as_of=as_of)
         if response.source_record:
             verdict.source_records.append(response.source_record)
 
         if response.status != AdapterStatus.READY:
+            _outage_statuses = (AdapterStatus.TIMEOUT, AdapterStatus.RATE_LIMITED, AdapterStatus.ERROR)
+            if form_impossible or (range_error is not None and response.status not in _outage_statuses):
+                verdict.status = VerificationStatus.CONTRADICTED if form_impossible else VerificationStatus.NOT_FOUND
+                rule_id = form_impossible[0]["rule_id"] if form_impossible else range_error["rule_id"]
+                detail_msg = form_impossible[0]["reason"] if form_impossible else range_error["message"]
+                feats = {"deterministic_rule": True, "statute_range_exceeded": bool(range_error), "rule_id": rule_id}
+                verdict.findings.append(
+                    Finding.create(
+                        type=FindingType.LAW_CITATION_ERROR,
+                        status=verdict.status,
+                        severity=Severity.HIGH,
+                        evidence_grade=EvidenceGrade.B,
+                        title=f"법령 조문 범위·형식 성립 불가: {citation.raw_text}",
+                        detail=detail_msg,
+                        confidence=confidence_score(feats),
+                        confidence_features=feats,
+                        document_id=citation.document_id,
+                        page=citation.page,
+                        engine=ENGINE_NAME,
+                        tags=["LEGAL", "LAW_CITATION_ERROR", "LAW_NX"],
+                    )
+                )
+                return verdict
             verdict.notes.append(f"공식 Source 조회 불가({response.status})")
             verdict.findings.append(self._unverified_finding(citation, response.message, response.source_record))
             return verdict

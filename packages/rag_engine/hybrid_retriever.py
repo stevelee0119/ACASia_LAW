@@ -148,57 +148,153 @@ class HttpEmbeddingAdapter(EmbeddingAdapter):
         return []
 
 
-class HttpRerankerAdapter(RerankerAdapter):
-    """HTTP client adapter for /rerank endpoints (Cohere/BGE/Jina compatible)."""
+class OpenAIEmbeddingAdapter(EmbeddingAdapter):
+    """Commercial OpenAI Embeddings API adapter reusing OPENAI_API_KEY."""
 
-    name = "http_reranker"
+    name = "openai_embedding"
+    _BASE_URL = "https://api.openai.com"
+    _PATH = "/v1/embeddings"
 
     def __init__(
         self,
-        endpoint: str,
+        api_key: str,
         *,
-        model: str = "",
-        api_key: Optional[str] = None,
-        timeout: float = 5.0,
+        model: str = "text-embedding-3-small",
+        timeout: float = 8.0,
         post_fn: Optional[Callable[..., Any]] = None,
     ) -> None:
-        self.endpoint = (endpoint or "").strip()
-        self.model = (model or "").strip()
-        self._api_key = (api_key or "").strip() or None
+        self._api_key = (api_key or "").strip()
+        self.model = (model or "text-embedding-3-small").strip()
         self.timeout = max(0.5, float(timeout))
         self._post_fn = post_fn
-        split = _split_validated_http_endpoint(self.endpoint)
-        self._base_url, self._path = split if split else ("", "")
-        self.available = bool(split)
+        self.available = bool(self._api_key)
 
-    def score(self, query: str, passages: Sequence[str]) -> List[float]:
-        if not self.available or not passages:
-            return [0.0 for _ in passages]
-        headers: Dict[str, str] = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
-        payload: Dict[str, Any] = {"query": query, "documents": list(passages)}
-        if self.model:
-            payload["model"] = self.model
+    def embed(self, texts: Sequence[str]) -> List[List[float]]:
+        if not self.available or not texts:
+            return []
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self._api_key}",
+        }
+        payload = {"input": list(texts), "model": self.model}
         if self._post_fn is not None:
-            resp = self._post_fn(self.endpoint, json=payload, headers=headers, timeout=self.timeout)
+            resp = self._post_fn(f"{self._BASE_URL}{self._PATH}", json=payload, headers=headers, timeout=self.timeout)
         else:
             import httpx
-            with httpx.Client(base_url=self._base_url, timeout=self.timeout) as client:
-                resp = client.post(self._path, json=payload, headers=headers)
+            with httpx.Client(base_url=self._BASE_URL, timeout=self.timeout) as client:
+                resp = client.post(self._PATH, json=payload, headers=headers)
         if getattr(resp, "status_code", 200) >= 400:
-            raise RuntimeError(f"RERANKER_HTTP_{getattr(resp, 'status_code', 500)}")
+            raise RuntimeError(f"OPENAI_EMBEDDING_HTTP_{getattr(resp, 'status_code', 500)}")
         data = resp.json()
-        results = data.get("results") if isinstance(data, dict) else None
-        if not isinstance(results, list):
+        items = data.get("data") if isinstance(data, dict) else None
+        if isinstance(items, list):
+            ordered = sorted(items, key=lambda x: int(x.get("index", 0)) if isinstance(x, dict) else 0)
+            return [list(map(float, x.get("embedding") or [])) for x in ordered if isinstance(x, dict)]
+        return []
+
+
+class GeminiEmbeddingAdapter(EmbeddingAdapter):
+    """Commercial Gemini Embeddings API adapter reusing GEMINI_API_KEY."""
+
+    name = "gemini_embedding"
+    _BASE_URL = "https://generativelanguage.googleapis.com"
+    _DEFAULT_MODEL = "text-embedding-004"
+    _ALLOWED_MODEL_PATHS = {
+        "text-embedding-004": "/v1beta/models/text-embedding-004:batchEmbedContents",
+        "gemini-embedding-001": "/v1beta/models/gemini-embedding-001:batchEmbedContents",
+        "gemini-embedding-exp-03-07": "/v1beta/models/gemini-embedding-exp-03-07:batchEmbedContents",
+        "embedding-001": "/v1beta/models/embedding-001:batchEmbedContents",
+    }
+
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        model: str = "text-embedding-004",
+        timeout: float = 8.0,
+        post_fn: Optional[Callable[..., Any]] = None,
+    ) -> None:
+        self._api_key = (api_key or "").strip()
+        clean_model = (model or self._DEFAULT_MODEL).strip()
+        if clean_model.startswith("models/"):
+            clean_model = clean_model[len("models/"):]
+        if clean_model not in self._ALLOWED_MODEL_PATHS:
+            clean_model = self._DEFAULT_MODEL
+        self.model = clean_model
+        self._path = self._ALLOWED_MODEL_PATHS[clean_model]
+        self.timeout = max(0.5, float(timeout))
+        self._post_fn = post_fn
+        self.available = bool(self._api_key and self.model)
+
+    def embed(self, texts: Sequence[str]) -> List[List[float]]:
+        if not self.available or not texts:
+            return []
+        path = self._path
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self._api_key,
+        }
+        payload = {
+            "requests": [
+                {"model": f"models/{self.model}", "content": {"parts": [{"text": str(t)}]}}
+                for t in texts
+            ]
+        }
+        if self._post_fn is not None:
+            resp = self._post_fn(f"{self._BASE_URL}{path}", json=payload, headers=headers, timeout=self.timeout)
+        else:
+            import httpx
+            with httpx.Client(base_url=self._BASE_URL, timeout=self.timeout) as client:
+                resp = client.post(path, json=payload, headers=headers)
+        if getattr(resp, "status_code", 200) >= 400:
+            raise RuntimeError(f"GEMINI_EMBEDDING_HTTP_{getattr(resp, 'status_code', 500)}")
+        data = resp.json()
+        embeddings = data.get("embeddings") if isinstance(data, dict) else None
+        if isinstance(embeddings, list):
+            return [list(map(float, item.get("values") or [])) for item in embeddings if isinstance(item, dict)]
+        return []
+
+
+class DeterministicLegalReranker(RerankerAdapter):
+    """In-process deterministic legal reranker (token + bigram + legal identifier overlap)."""
+
+    name = "deterministic_legal"
+
+    def __init__(self) -> None:
+        self.available = True
+
+    @staticmethod
+    def _tokens(text: str) -> List[str]:
+        import re
+        return [t for t in re.findall(r"[0-9A-Za-z가-힣]+", (text or "").lower()) if len(t) >= 2]
+
+    @staticmethod
+    def _bigrams(tokens: Sequence[str]) -> set[tuple[str, str]]:
+        return {(tokens[i], tokens[i + 1]) for i in range(len(tokens) - 1)}
+
+    def score(self, query: str, passages: Sequence[str]) -> List[float]:
+        if not passages:
+            return []
+        q_toks = self._tokens(query)
+        q_set = set(q_toks)
+        q_bi = self._bigrams(q_toks)
+        if not q_set:
             return [0.0 for _ in passages]
-        scores = [0.0 for _ in passages]
-        for idx, item in enumerate(results):
-            if not isinstance(item, dict):
+        scores: List[float] = []
+        for p in passages:
+            p_toks = self._tokens(p)
+            p_set = set(p_toks)
+            if not p_set:
+                scores.append(0.0)
                 continue
-            pos = int(item.get("index", idx))
-            if 0 <= pos < len(scores):
-                scores[pos] = float(item.get("relevance_score", item.get("score", 0.0)) or 0.0)
+            unigram_cov = len(q_set & p_set) / float(len(q_set))
+            p_bi = self._bigrams(p_toks)
+            bigram_cov = (len(q_bi & p_bi) / float(len(q_bi))) if q_bi else 0.0
+            # Small bonus when numeric/case tokens in query appear in passage
+            q_nums = {t for t in q_set if any(ch.isdigit() for ch in t)}
+            num_cov = (len(q_nums & p_set) / float(len(q_nums))) if q_nums else 0.0
+            score_val = 0.65 * unigram_cov + 0.25 * bigram_cov + 0.10 * num_cov
+            scores.append(round(min(1.0, score_val), 4))
         return scores
 
 
@@ -206,30 +302,60 @@ def build_rag_adapters_from_env(
     *,
     allow_network: bool = True,
 ) -> Tuple[Optional[EmbeddingAdapter], Optional[RerankerAdapter], Dict[str, Any]]:
-    """Build configured HTTP embedding & reranker adapters from environment settings."""
+    """Build configured embedding adapter (HTTP or commercial OpenAI/Gemini) and deterministic legal reranker."""
     import os
 
-    mode = (os.getenv("LV_RAG_RETRIEVAL_MODE") or "auto").strip().lower()
+    raw_mode = (os.getenv("LV_RAG_RETRIEVAL_MODE") or "auto").strip().lower()
+    if raw_mode in ("off", "lexical", "lexical_only"):
+        return None, None, {
+            "configured_mode": "LEXICAL_ONLY",
+            "effective_mode": "LEXICAL_ONLY",
+            "reranker_enabled": False,
+            "fallback_reason": "LEXICAL_MODE_CONFIGURED",
+        }
+    if not allow_network:
+        return None, None, {
+            "configured_mode": "HYBRID",
+            "effective_mode": "LEXICAL_ONLY",
+            "reranker_enabled": False,
+            "fallback_reason": "NETWORK_DISABLED",
+        }
+
     emb_endpoint = (os.getenv("LV_RAG_EMBEDDING_ENDPOINT") or "").strip()
     emb_model = (os.getenv("LV_EMBEDDING_MODEL") or "").strip()
     emb_key = (os.getenv("LV_RAG_EMBEDDING_API_KEY") or "").strip() or None
-    rerank_endpoint = (os.getenv("LV_RAG_RERANKER_ENDPOINT") or "").strip()
-    rerank_model = (os.getenv("LV_RERANKER_MODEL") or "").strip()
-    rerank_key = (os.getenv("LV_RAG_RERANKER_API_KEY") or "").strip() or None
+    openai_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+    gemini_key = (os.getenv("GEMINI_API_KEY") or "").strip()
 
-    if mode in ("off", "lexical", "lexical_only"):
-        return None, None, {"configured_mode": mode, "fallback_reason": "LEXICAL_MODE_CONFIGURED"}
-    if not allow_network:
-        return None, None, {"configured_mode": mode, "fallback_reason": "NETWORK_DISABLED"}
+    emb: Optional[EmbeddingAdapter] = None
+    provider_kind = "none"
+    if emb_endpoint:
+        emb = HttpEmbeddingAdapter(emb_endpoint, model=emb_model, api_key=emb_key)
+        provider_kind = "http_endpoint"
+    elif openai_key:
+        emb = OpenAIEmbeddingAdapter(openai_key, model=emb_model or "text-embedding-3-small")
+        provider_kind = "openai"
+    elif gemini_key:
+        emb = GeminiEmbeddingAdapter(gemini_key, model=emb_model or "text-embedding-004")
+        provider_kind = "gemini"
 
-    emb = HttpEmbeddingAdapter(emb_endpoint, model=emb_model, api_key=emb_key) if emb_endpoint else None
-    rerank = HttpRerankerAdapter(rerank_endpoint, model=rerank_model, api_key=rerank_key) if rerank_endpoint else None
-    reasons: List[str] = []
-    if not emb_endpoint:
-        reasons.append("EMBEDDING_ENDPOINT_UNCONFIGURED")
-    if not rerank_endpoint:
-        reasons.append("RERANKER_ENDPOINT_UNCONFIGURED")
-    return emb, rerank, {"configured_mode": mode, "fallback_reasons": reasons}
+    if emb is None or not emb.available:
+        return None, None, {
+            "configured_mode": "HYBRID",
+            "effective_mode": "LEXICAL_ONLY",
+            "reranker_enabled": False,
+            "provider_kind": "none",
+            "fallback_reasons": ["NO_EMBEDDING_ADAPTER_CONFIGURED"],
+        }
+
+    rerank = DeterministicLegalReranker()
+    return emb, rerank, {
+        "configured_mode": "HYBRID",
+        "effective_mode": "HYBRID",
+        "reranker_enabled": True,
+        "provider_kind": provider_kind,
+        "fallback_reasons": [],
+    }
 
 
 def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:

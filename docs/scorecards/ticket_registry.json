@@ -857,40 +857,76 @@
       "note": "0.24.0 U2 실연동: law_go_kr 정확 조회 일치 개선 및 학술 Source 오류 원인 분리. 해소: #387(e4757ee5) 병합 02d3a5c0, 0.25.0(023fc33c) 배포 후 U2 학술 2/4→3/4·2015모2524 원응답 3/일치 0 진단 분리 확인."
     },
     "TK-225": {
-      "status": "merged",
+      "status": "deployed",
       "priority": "P1",
       "kind": "regression",
-      "note": "0.25.0 온라인(023fc33c, I-1): case9 4회 중 2회 reference_review 약 5.1초에 sqlite3.OperationalError: interrupted로 중단. 해소: #393(9b18219d) 병합(구간별 축소 재시도·부분 보존·UNVERIFIED 노출, CI 11개 통과)."
+      "deployed_on": "2026-11-22",
+      "deployed_sha": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+      "note": "0.25.0 온라인(023fc33c, I-1): case9 4회 중 2회 reference_review 약 5.1초에 sqlite3.OperationalError: interrupted로 중단. 해소: #393(9b18219d) 병합, 0.26.0(19efff6a, v.0.26.0) 배포 및 health 확인 완료."
     },
     "TK-226": {
-      "status": "merged",
+      "status": "deployed",
       "priority": "P2",
       "kind": "new",
-      "note": "0.25.0 온라인(023fc33c, I-2): Legal NLI Stage 2가 의미 반전 인용을 SUPPORTED(0.9508)로 오분류. 해소: #394(8601d44d) 병합(부정 활용형·반의어·다문장 정렬·짝수 패리티 보강, CI 11개 통과)."
+      "deployed_on": "2026-11-22",
+      "deployed_sha": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+      "note": "0.25.0 온라인(023fc33c, I-2): Legal NLI Stage 2가 의미 반전 인용을 SUPPORTED(0.9508)로 오분류. 해소: #394(8601d44d) 병합, 0.26.0(19efff6a, v.0.26.0) 배포 및 health 확인 완료."
     },
     "TK-227": {
-      "status": "merged",
+      "status": "deployed",
       "priority": "P2",
       "kind": "new",
-      "note": "0.25.0 온라인(023fc33c, I-3): 한국어 OCR 폴백 운영 활성화. 해소: #398(fd926b5f) 병합(RapidOCR requirements.in/해시 고정/Docker 반영 및 LV_OCR_FALLBACK_MODE 연동, CI 12개 통과)."
+      "deployed_on": "2026-11-22",
+      "deployed_sha": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+      "note": "0.25.0 온라인(023fc33c, I-3): 한국어 OCR 폴백 운영 활성화. 해소: #398(fd926b5f) 병합, 0.26.0(19efff6a, v.0.26.0) 배포 및 health 확인 완료."
     },
     "TK-228": {
-      "status": "merged",
+      "status": "deployed",
       "priority": "P2",
       "kind": "new",
-      "note": "0.25.0 온라인(023fc33c, I-4): 임베딩·재순위 서버 실제 RAG 연결. 해소: #396(df3fe2e8) 병합(HTTP 어댑터·청크 리비전 캐시·실요청 effective_mode, CI 11개 통과)."
+      "deployed_on": "2026-11-22",
+      "deployed_sha": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+      "note": "0.25.0 온라인(023fc33c, I-4): 임베딩·재순위 서버 실제 RAG 연결. 해소: #396(df3fe2e8) + CodeQL SSRF #404(de0a1776) 병합, 0.26.0(19efff6a, v.0.26.0) 배포 및 health 확인 완료."
     },
     "TK-229": {
-      "status": "merged",
+      "status": "deployed",
       "priority": "P2",
       "kind": "new",
-      "note": "0.25.0 온라인(023fc33c, I-4): 로컬 모델 설정·라우팅 활성화. 해소: #397(f2ec9fd0) 병합(providers.json 안전 설정·헬스체크·스키마 검증·호출 계측, CI 11개 통과)."
+      "deployed_on": "2026-11-22",
+      "deployed_sha": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+      "note": "0.25.0 온라인(023fc33c, I-4): 로컬 모델 설정·라우팅 활성화. 해소: #397(f2ec9fd0) 병합, 0.26.0(19efff6a, v.0.26.0) 배포 및 health 확인 완료."
     },
     "TK-230": {
+      "status": "deployed",
+      "priority": "P1",
+      "kind": "existing",
+      "deployed_on": "2026-11-22",
+      "deployed_sha": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+      "note": "0.25.0 후속 객관지표 상승(dev > 83.9, holdout > 83.3). 해소: #395(39b253db) 병합(dev 83.9→84.8, holdout 83.3→83.8), 0.26.0(19efff6a, v.0.26.0) 배포 및 health 확인 완료."
+    },
+    "TK-231": {
+      "status": "merged",
+      "priority": "P1",
+      "kind": "new",
+      "note": "0.27.0 트랙 1(실전화): PR #410 병합 완료. 한국어 RapidOCR 저품질 이미지 전처리(그레이스케일·대비/이진화·샤프닝, 정상 스캔 재처리 0건) 및 Drive 기존 OCR_LOW_QUALITY 선택 재색인·전후 델타 계측."
+    },
+    "TK-232": {
+      "status": "merged",
+      "priority": "P1",
+      "kind": "new",
+      "note": "0.27.0 트랙 1(코드 삭제·실전화): PR #409 병합 완료. 미운영 로컬 LLM·원격 Reranker 서버 코드 삭제, /api/diagnostics configured_mode=lexical_only 정합화, 기존 OpenAI/Gemini API 키 기반 상용 임베딩 캐시 연결."
+    },
+    "TK-233": {
       "status": "merged",
       "priority": "P1",
       "kind": "existing",
-      "note": "0.25.0 후속 객관지표 상승(dev > 83.9, holdout > 83.3). 해소: #395(39b253db) 병합(AI 문체 잔재 교차 보강 일반화, dev 83.9→84.8, holdout 83.3→83.8, 오탐 0, CI 11개 통과)."
+      "note": "0.27.0 트랙 2(점수 상승 1축): PR #411 병합 완료. 한국 법제 형식 불변식(CIT-META 법원급-사건부호/선고일 역전, LAW-NX 기본법 조문 상한) 및 ClauseNormalizer 기반 복합 법리 절대 단정 양태(LAW-MIS/OVR) 일반화 탐지."
+    },
+    "TK-234": {
+      "status": "merged",
+      "priority": "P1",
+      "kind": "existing",
+      "note": "0.27.0 트랙 2(점수 상승 2축): PR #412 병합 완료. 내용어 shingle 유사도·어미 변환(EVI-COPY), 인지 양립 불가(EVI-LOGIC), 내심 단정(EVI-OVR), 인젝션 스팬 매핑(INJ-ZWSP/META), AIGEN 클러스터 배출 정밀화(dev 86.2, holdout 86.6, 은퇴 4/5세트 상승)."
     }
   },
   "updated_on": "2026-11-22"

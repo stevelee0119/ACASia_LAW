@@ -932,6 +932,19 @@ def create_ai_detector_findings(doc: NormalizedDocument, result: AIDetectorResul
             )
         )
     elif result.verdict == "AI_PARTIAL_GENERATION":
+        partial_ev = [
+            Evidence.create(
+                description=f"상위 기여 문단: {exc.get('reason') or 'AI 문체 신호'}",
+                grade=EvidenceGrade.C,
+                document_id=doc.document_id,
+                page=exc.get("page"),
+                span=exc.get("span"),
+                excerpt=str(exc.get("snippet") or "")[:300],
+                supports=False,
+            )
+            for exc in result.suspicious_excerpts[:4]
+            if exc.get("snippet")
+        ]
         findings.append(
             Finding.create(
                 type=FindingType.AI_AUTHORSHIP_LIKELY,
@@ -945,6 +958,7 @@ def create_ai_detector_findings(doc: NormalizedDocument, result: AIDetectorResul
                 document_id=doc.document_id,
                 engine=ENGINE_NAME,
                 tags=["AUTHORSHIP", "AI_DETECTION"],
+                evidence=partial_ev,
             )
         )
 
@@ -1005,6 +1019,60 @@ def create_ai_detector_findings(doc: NormalizedDocument, result: AIDetectorResul
                                       supports=False)],
         ))
 
+    if corroborated_style and result.verdict not in ("AI_FULL_GENERATION_SUSPECTED", "AI_PARTIAL_GENERATION"):
+        obj_matches = [
+            m for r in all_residues if r.get("objective") for m in (r.get("matches") or [])[:2]
+        ]
+        cluster_ev = [
+            Evidence.create(
+                description=f"상위 기여 문단: {exc.get('reason') or 'AI 문체 신호'}",
+                grade=EvidenceGrade.C,
+                document_id=doc.document_id,
+                page=exc.get("page"),
+                span=exc.get("span"),
+                excerpt=str(exc.get("snippet") or "")[:300],
+                supports=False,
+            )
+            for exc in result.suspicious_excerpts[:4]
+            if exc.get("snippet")
+        ]
+        if not cluster_ev and obj_matches:
+            cluster_ev = [
+                Evidence.create(
+                    description="객관적 AI 잔재 근거 토큰",
+                    grade=EvidenceGrade.B,
+                    document_id=doc.document_id,
+                    excerpt=" / ".join(obj_matches)[:300],
+                    supports=False,
+                )
+            ]
+        findings.append(
+            Finding.create(
+                type=FindingType.AI_AUTHORSHIP_LIKELY,
+                status=VerificationStatus.SUSPICIOUS,
+                severity=Severity.MEDIUM,
+                evidence_grade=EvidenceGrade.C,
+                title=f"복수 객관적 AI 잔재 동반 의심 ({len(objective_cats)}종)",
+                detail=(
+                    f"객관적 AI 잔재({', '.join(sorted(objective_cats))})가 복수로 관찰되었으며 "
+                    f"근거 토큰: {' / '.join(obj_matches[:4])}. "
+                    + ("; ".join(result.reasons[:2]) if result.reasons else "")
+                    + scope_note
+                ),
+                confidence=max(0.65, confidence_score(features)),
+                confidence_features={
+                    **features,
+                    "corroborated_by_objective_residue": True,
+                    "objective_residue_categories": sorted(objective_cats),
+                    "objective_residue_tokens": obj_matches[:6],
+                },
+                document_id=doc.document_id,
+                engine=ENGINE_NAME,
+                tags=["AUTHORSHIP", "AI_DETECTION", "AI_RESIDUE"],
+                evidence=cluster_ev,
+            )
+        )
+
     # 개별 의심 문단: 작성 주체에 관한 참고 신호다. 내용의 오류(환각)와 섞지 않는다.
     for exc in result.suspicious_excerpts[:4]:
         snippet = exc.get("snippet", "")
@@ -1029,6 +1097,8 @@ def create_ai_detector_findings(doc: NormalizedDocument, result: AIDetectorResul
                             description="의심 문구 발췌",
                             grade=EvidenceGrade.C,
                             document_id=doc.document_id,
+                            page=exc.get("page"),
+                            span=exc.get("span"),
                             excerpt=snippet[:300],
                             supports=False,
                         )

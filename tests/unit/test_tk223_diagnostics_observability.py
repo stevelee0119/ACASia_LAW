@@ -16,25 +16,12 @@ def test_next_gen_diagnostics_exposes_effective_modes_without_secrets(monkeypatc
     monkeypatch.setenv("LV_SOURCE_REPLAY_MODE", "REPLAY")
     monkeypatch.setenv("LV_SOURCE_CASSETTE_DIR", "/tmp/cassettes-secret-path")
     monkeypatch.setenv("LV_ALLOW_NETWORK", "0")
-    monkeypatch.setenv("LV_EMBEDDING_MODEL", "bge-m3")
-    monkeypatch.setenv("LV_RERANKER_MODEL", "bge-reranker")
-    monkeypatch.setenv("LV_LOCAL_LLM_URL", "http://127.0.0.1:11434/v1")
+    monkeypatch.setenv("LV_RAG_EMBEDDING_ENDPOINT", "https://emb.example.com/v1/embeddings")
     monkeypatch.setenv("LV_OPENAI_API_KEY", "sk-super-secret-token-12345")
     reset_settings()
 
     try:
-        settings = Settings(
-            providers={
-                "local": ProviderConfig(
-                    name="local",
-                    kind="local",
-                    model="qwen2.5:14b",
-                    api_key_env="LV_LOCAL_API_KEY",
-                    base_url="http://user:pass@localhost:11434/v1",
-                    enabled=True,
-                )
-            }
-        )
+        settings = Settings(providers={})
         diag = next_gen_feature_diagnostics(settings)
         # 양성 1: 유효 기능 모드 노출
         modes = diag["feature_modes"]
@@ -47,11 +34,12 @@ def test_next_gen_diagnostics_exposes_effective_modes_without_secrets(monkeypatc
         assert diag["rag"]["dense_enabled"] is True
         assert diag["rag"]["reranker_enabled"] is True
         assert diag["rag"]["fallback_reason"] is None
-        # 양성 3: 로컬 LLM 등록 및 카세트 모드
-        assert diag["local_llm"]["registered"] is True
-        assert diag["local_llm"]["provider_count"] == 1
-        assert diag["local_llm"]["providers"][0]["endpoint_configured"] is True
+        # 양성 3: 로컬 LLM 미운영 제거 상태 및 카세트 모드(평가 전용)
+        assert diag["local_llm"]["registered"] is False
+        assert diag["local_llm"]["provider_count"] == 0
+        assert diag["local_llm"]["status"] == "REMOVED_NOT_OPERATIONAL"
         assert diag["source_cassette"]["mode"] == "REPLAY"
+        assert diag["source_cassette"]["evaluation_only"] is True
         assert diag["source_cassette"]["allow_network"] is False
 
         # 불변식(대조): 비밀값·토큰·자격포함 URL·원시 경로가 절대 포함되지 않음
