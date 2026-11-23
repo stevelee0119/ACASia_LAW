@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import re
 import shutil
 import sys
@@ -139,7 +140,15 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
 
-    payload = run_perturbation_eval(args.testset, modes=args.modes)
+    root_real = os.path.realpath(ROOT)
+    testset_real = os.path.realpath(args.testset)
+    if not (testset_real == root_real or testset_real.startswith(root_real + os.sep)):
+        raise ValueError(f"testset must reside under repository root: {root_real}")
+    testset_path = Path(testset_real)
+    if not testset_path.is_dir():
+        raise ValueError(f"testset directory not found: {testset_path}")
+
+    payload = run_perturbation_eval(testset_path, modes=args.modes)
     rendered = json.dumps(payload, ensure_ascii=False, indent=2)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
