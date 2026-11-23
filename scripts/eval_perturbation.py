@@ -23,6 +23,10 @@ sys.path.insert(0, str(ROOT))
 from scripts import evaluation_v2
 
 DEFAULT_TESTSET = ROOT / "tests" / "fixtures" / "legal_verifier_testset"
+ALLOWED_TESTSETS: Dict[str, Path] = {
+    "dev": ROOT / "tests" / "fixtures" / "legal_verifier_testset",
+    "holdout": ROOT / "tests" / "fixtures" / "legal_verifier_testset_holdout",
+}
 TEXT_EXTS = {".txt", ".md"}
 
 _REGISTER_SUBS = (
@@ -97,7 +101,7 @@ def run_perturbation_eval(testset: Path, modes: Sequence[str] = ("register", "da
     base_v2 = evaluation_v2.score(base_res, testset, base_rep)
 
     with tempfile.TemporaryDirectory(prefix="acas_perturb_") as tmp:
-        p_dir = build_perturbed_copy(testset, Path(tmp) / testset.name, modes)
+        p_dir = build_perturbed_copy(testset, Path(tmp) / "perturbed_testset", modes)
         pert_res = evaluator.run_pipeline(p_dir)
         pert_rep = evaluator.score(pert_res, p_dir, db_available=False)
         pert_v2 = evaluation_v2.score(pert_res, p_dir, pert_rep)
@@ -135,19 +139,12 @@ def run_perturbation_eval(testset: Path, modes: Sequence[str] = ("register", "da
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run dynamic perturbation evaluation on an existing testset.")
-    parser.add_argument("--testset", type=Path, default=DEFAULT_TESTSET)
+    parser.add_argument("--testset", choices=sorted(ALLOWED_TESTSETS.keys()), default="dev")
     parser.add_argument("--modes", nargs="+", default=["register", "date_format"], choices=["register", "date_format", "party_role"])
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
 
-    root_real = os.path.realpath(ROOT)
-    testset_real = os.path.realpath(args.testset)
-    if not (testset_real == root_real or testset_real.startswith(root_real + os.sep)):
-        raise ValueError(f"testset must reside under repository root: {root_real}")
-    testset_path = Path(testset_real)
-    if not testset_path.is_dir():
-        raise ValueError(f"testset directory not found: {testset_path}")
-
+    testset_path = ALLOWED_TESTSETS[args.testset]
     payload = run_perturbation_eval(testset_path, modes=args.modes)
     rendered = json.dumps(payload, ensure_ascii=False, indent=2)
     if args.out:
