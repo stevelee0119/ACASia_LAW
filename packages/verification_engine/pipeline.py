@@ -1702,15 +1702,16 @@ class VerificationPipeline:
                 "recovery_used": lookup.recovery_used,
                 "retry_exhausted_count": sum(bool(v.get("source_lookup", {}).get("retryable")) for v in verdicts),
             }
-        from packages.claim_engine.fact_triples import extract_fact_triples, verify_fact_triples
-        _triples = extract_fact_triples(doc)
-        result.engine_data["fact_triples"] = {
-            "count": len(_triples),
-            "triples": [t.to_dict() for t in _triples[:100]],
-        }
-        result.findings.extend(
-            verify_fact_triples(doc, _triples, existing_findings=result.findings)
-        )
+        if doc is not None:
+            from packages.claim_engine.fact_triples import extract_fact_triples, verify_fact_triples
+            _triples = extract_fact_triples(doc)
+            result.engine_data["fact_triples"] = {
+                "count": len(_triples),
+                "triples": [t.to_dict() for t in _triples[:100]],
+            }
+            result.findings.extend(
+                verify_fact_triples(doc, _triples, existing_findings=result.findings)
+            )
         from .eval_contract import build_evaluation_dimensions
         result.engine_data["evaluation_dimensions"] = build_evaluation_dimensions(result)
 
