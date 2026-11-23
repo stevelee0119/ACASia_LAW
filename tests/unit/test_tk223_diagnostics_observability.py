@@ -15,19 +15,22 @@ def test_next_gen_diagnostics_exposes_effective_modes_without_secrets(monkeypatc
     monkeypatch.setenv("LV_OCR_FALLBACK_ENGINE", "rapidocr")
     monkeypatch.setenv("LV_SOURCE_REPLAY_MODE", "REPLAY")
     monkeypatch.setenv("LV_SOURCE_CASSETTE_DIR", "/tmp/cassettes-secret-path")
-    monkeypatch.setenv("LV_ALLOW_NETWORK", "0")
-    monkeypatch.setenv("LV_RAG_EMBEDDING_ENDPOINT", "https://emb.example.com/v1/embeddings")
+    monkeypatch.setenv("LV_ALLOW_NETWORK", "1")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-emb-secret-key")
     monkeypatch.setenv("LV_OPENAI_API_KEY", "sk-super-secret-token-12345")
     reset_settings()
 
     try:
-        settings = Settings(providers={})
+        settings = Settings(providers={}, allow_network=True)
         diag = next_gen_feature_diagnostics(settings)
         # 양성 1: 유효 기능 모드 노출
         modes = diag["feature_modes"]
         assert modes["legal_nli_mode"] == "assist"
         assert modes["source_replay_mode"] == "REPLAY"
         assert modes["rag_retrieval_mode"] == "HYBRID"
+        assert diag["rag"]["configured_mode"] == "HYBRID"
+        assert diag["rag"]["effective_mode"] == "HYBRID"
+        assert diag["rag"]["actual_calls"] == 0
         assert modes["clause_normalizer_mode"] == "default"
         # 양성 2: Hybrid RAG 활성 및 폴백 사유 없음
         assert diag["rag"]["effective_mode"] == "HYBRID"
@@ -40,7 +43,7 @@ def test_next_gen_diagnostics_exposes_effective_modes_without_secrets(monkeypatc
         assert diag["local_llm"]["status"] == "REMOVED_NOT_OPERATIONAL"
         assert diag["source_cassette"]["mode"] == "REPLAY"
         assert diag["source_cassette"]["evaluation_only"] is True
-        assert diag["source_cassette"]["allow_network"] is False
+        assert diag["source_cassette"]["allow_network"] is True
 
         # 불변식(대조): 비밀값·토큰·자격포함 URL·원시 경로가 절대 포함되지 않음
         serialized = json.dumps(diag, ensure_ascii=False)
