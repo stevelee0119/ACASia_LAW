@@ -80,3 +80,89 @@ def test_project_fact_triple_cross_doc_positives_and_controls():
     d5 = _doc("2022. 3. 10. 매매계약을 체결하였습니다.", doc_id="E", filename="e.txt")
     f_ctrl = verify_project_fact_triples([(d3, extract_fact_triples(d3)), (d5, extract_fact_triples(d5))])
     assert not f_ctrl
+
+
+def test_fact_triple_exhibit_table_and_extended_stages_positives_and_controls():
+    # Positive 1: exhibit-anchored DRAFT date conflict across different noun phrasing
+    pos_ex = _doc("갑 제1호증 확인서를 2023. 3. 1. 작성하였습니다.\n위 서류는 2023. 3. 15. 작성되었다고 기재되어 있습니다(갑 제1호증).")
+    # Positive 2: WORK_START > WORK_END causal inversion
+    pos_work = _doc("근로자는 2022. 5. 10. 퇴사하였습니다.\n근로자의 입사일은 2022. 8. 1.입니다.")
+    # Positive 3: Table/KV line vs prose conflict
+    pos_kv = NormalizedDocument(
+        document_id="KV1",
+        filename="kv.txt",
+        mime_type="text/plain",
+        sha256="0" * 64,
+        pages=[
+            Page(
+                page_number=1,
+                blocks=[
+                    Block(block_id="B1", page=1, block_type="table", text="계약일 | 2021. 2. 1.", visible=True, source_layer="visible_text"),
+                    Block(block_id="B2", page=1, block_type="paragraph", text="원고는 2021. 4. 1. 계약을 체결하였습니다.", visible=True, source_layer="visible_text"),
+                ],
+            )
+        ],
+    )
+    for d in (pos_ex, pos_work, pos_kv):
+        findings = verify_fact_triples(d, extract_fact_triples(d))
+        assert findings, d.full_text
+
+    # Controls: distinct exhibits, normal WORK_START < WORK_END, table distinct stages
+    ctrl_ex = _doc("갑 제1호증 확인서를 2023. 3. 1. 작성하였습니다.\n갑 제2호증 진술서를 2023. 3. 15. 작성하였습니다.")
+    ctrl_work = _doc("근로자는 2022. 2. 1. 입사하였고, 2022. 5. 10. 퇴사하였습니다.")
+    ctrl_kv = NormalizedDocument(
+        document_id="KV2",
+        filename="kv2.txt",
+        mime_type="text/plain",
+        sha256="0" * 64,
+        pages=[
+            Page(
+                page_number=1,
+                blocks=[
+                    Block(block_id="B1", page=1, block_type="table", text="작성일 | 2021. 2. 1.", visible=True, source_layer="visible_text"),
+                    Block(block_id="B2", page=1, block_type="paragraph", text="원고는 2021. 2. 5. 문서를 발송하였습니다.", visible=True, source_layer="visible_text"),
+                ],
+            )
+        ],
+    )
+    for d in (ctrl_ex, ctrl_work, ctrl_kv):
+        findings = verify_fact_triples(d, extract_fact_triples(d))
+        assert not findings, d.full_text
+
+
+def test_cross_doc_copy_other_vs_pleading_positives_and_controls():
+    from packages.claim_engine.evidence_consistency import cross_document_copies
+
+    s1 = "피고인은 당일 밤 현장 부근에서 큰 소리로 다투며 문을 여러 차례 강하게 두드렸습니다."
+    s2 = "피해자는 즉시 경찰에 신고하였고 현장에 출동한 경찰관이 관련 경위를 청취하였습니다."
+
+    # Positive 1: 증거설명서(OTHER)가 소장(PLEADING)의 서술 문장 2건을 그대로 복사
+    p_pl = _doc(f"소장\n원고 대리인\n청구원인\n{s1}\n{s2}", doc_id="PL1", filename="pl1.txt")
+    p_ex = _doc(f"증거설명서\n서증목록\n{s1}\n{s2}", doc_id="EX1", filename="ex1.txt")
+    assert any(f.confidence_features.get("rule_id") == "EVI.COPY_OTHER_PLEADING" for f in cross_document_copies([p_pl, p_ex]))
+
+    # Positive 2: 기타 서증(OTHER)과 준비서면(PLEADING) 간 비정형 서술 2건 일치
+    p_pl2 = _doc(f"준비서면\n{s1}\n{s2}", doc_id="PL2", filename="pl2.txt")
+    p_ot2 = _doc(f"거래내역 메모\n{s1}\n{s2}", doc_id="OT2", filename="ot2.txt")
+    assert any(f.confidence_features.get("rule_id") == "EVI.COPY_OTHER_PLEADING" for f in cross_document_copies([p_pl2, p_ot2]))
+
+    # Positive 3: 어미·공백이 약간 달라도 shingle 0.85 이상이면 검출
+    s1_var = "피고인은 당일 밤 현장 부근에서 큰 소리로 다투며 문을 여러 차례 강하게 두드렸다."
+    p_ot3 = _doc(f"참고자료\n{s1_var}\n{s2}", doc_id="OT3", filename="ot3.txt")
+    assert any(f.confidence_features.get("rule_id") == "EVI.COPY_OTHER_PLEADING" for f in cross_document_copies([p_pl, p_ot3]))
+
+    # Control 1: 정식 서증 원용 표기(갑 제1호증)가 포함된 문장은 제외
+    c_pl1 = _doc(f"준비서면\n갑 제1호증에 의하면 {s1}\n을 제2호증에 의하면 {s2}", doc_id="CPL1", filename="cpl1.txt")
+    assert not cross_document_copies([c_pl1, p_ot2])
+
+    # Control 2: 3개 이상 문서에 공통 등장하는 상투 문구(boilerplate)는 제외
+    c_pl2 = _doc(f"준비서면\n{s1}\n{s2}", doc_id="CPL2", filename="cpl2.txt")
+    c_ot2 = _doc(f"참고자료\n{s1}\n{s2}", doc_id="COT2", filename="cot2.txt")
+    c_ot3 = _doc(f"안내자료\n{s1}\n{s2}", doc_id="COT3", filename="cot3.txt")
+    assert not cross_document_copies([c_pl2, c_ot2, c_ot3])
+
+    # Control 3: 1문장만 일치하는 경우는 제외
+    c_ot1 = _doc(f"참고자료\n{s1}", doc_id="COT1", filename="cot1.txt")
+    assert not cross_document_copies([p_pl, c_ot1])
+
+
