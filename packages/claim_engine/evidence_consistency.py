@@ -1606,7 +1606,7 @@ def check_evidence_overreach(
         ),
         (
             "NOTICE_OVERREACH",
-            re.compile(r"(?:일방(?:적)?\s*통지(?:서)?|통지서|내용증명|최고서|발송\s*내역|제출\s*자료\s*및\s*통지)"),
+            re.compile(r"(?:일방(?:적)?\s*통지(?:서|자료)?|통지서|내용증명|최고서|발송\s*내역)"),
             re.compile(r"(?:상대방(?:의)?\s*(?:동의|승낙|수락|합의)|합의(?:가|를)?\s*(?:성립|완성)|계약(?:이|을)?\s*성립)"),
             "일방의 통지·발송 자료만으로 상대방의 의사 합치나 합의 성립을 단정",
         ),
@@ -2291,7 +2291,7 @@ def check_evidence_numbering_mismatches(
                     EvidenceGrade.A,
                     Severity.MEDIUM,
                     f"같은 호증 번호가 두 번 쓰였다: {p_lbl} — {n1}, {n2}",
-                    "증거 목록에서 한 번호를 서로 다른 증거에 중복 부여하였다.",
+                    "서증 목록에 같은 호증 번호를 서로 다른 증거에 중복 부여하였다.",
                     p_ctx,
                     features={
                         "rule_id": "EVI.EVIDENCE_NUMBER_DUPLICATE",
@@ -3210,7 +3210,7 @@ def check_evidence_form_structure(doc: NormalizedDocument, exhibits: Sequence[Di
             continue
         has_form_admit = (
             ((_FORM_ELEMENT_RE.search(sent) or _LEGIBILITY_RE.search(sent)) and _INABILITY_RE.search(sent) and _PROOF_CLAIM_RE.search(sent))
-            or bool(re.search(r"(?:첨부(?:한다고|하였다고|함)|등재하였으나)[^.\n]{0,40}?(?:미첨부|첨부되어\s*있지\s*않|누락|추후\s*제출\s*예정\s*\(\s*미첨부\s*\))", sent))
+            or bool(re.search(r"(?:첨부(?:한다고|하였다고|함)|등재하였으나)[^.\n]{0,40}?(?:미첨부|첨부되어\s*있지\s*않|누락)", sent))
         )
         if has_form_admit:
             m_lbl = m_media.group(0).strip()
