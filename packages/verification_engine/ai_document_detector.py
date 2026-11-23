@@ -998,7 +998,7 @@ def create_ai_detector_findings(doc: NormalizedDocument, result: AIDetectorResul
             status=VerificationStatus.SUSPICIOUS if (residue["objective"] or elevated) else VerificationStatus.UNVERIFIED,
             severity=Severity.LOW if (residue["objective"] or elevated) else Severity.INFO,
             evidence_grade=EvidenceGrade.B if (residue["objective"] or elevated) else EvidenceGrade.C,
-            advisory_only=True,
+            advisory_only=not elevated,
             title=f"AI 응답 잔재 신호: {residue['label']} — '{sample[:60]}'" + (
                 " (객관적 AI 흔적 다중 동반)" if elevated else " (참고용, 확정 불가)"
             ),

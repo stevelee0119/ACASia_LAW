@@ -3664,11 +3664,15 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
     texts = {d.document_id: build_reading_text(d).text for d in docs}
     doc_kinds = {d.document_id: _document_title_kind(d, texts[d.document_id]) for d in docs}
 
-    # 진술서나 원본 서증이 포함되어 있지 않고 소송서면 간에도 복사 검사 대상이 없으면 종료
+    # 진술서나 원본 서증이 포함되어 있지 않고 소송서면-기타문서 간에도 검사 대상이 없으면 종료
     has_statements = any(k[0] == DOC_KIND_STATEMENT for k in doc_kinds.values())
     has_facts = any(k[0] in (DOC_KIND_FACT_CONFIRMATION, DOC_KIND_EVIDENCE_ORIGINAL)
                     for k in doc_kinds.values())
-    if not has_statements and not has_facts:
+    has_pleading_other = (
+        any(k[0] == DOC_KIND_PLEADING for k in doc_kinds.values())
+        and any(k[0] in (DOC_KIND_OTHER, DOC_KIND_EVIDENCE_EXPLANATION) for k in doc_kinds.values())
+    )
+    if not has_statements and not has_facts and not has_pleading_other:
         return []
 
     prepared = {d.document_id: _sentences_for_copy(d) for d in docs}
@@ -3822,6 +3826,69 @@ def cross_document_copies(documents: Iterable[NormalizedDocument]) -> List[Findi
                               "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s}
                                         for a, b, s in matched[:5]]}
                 ))
+
+    if has_pleading_other:
+        # 6순위: 표제 분류가 OTHER인 서증/증거설명서와 소송서면(PLEADING) 간 비정형·비상투 문장 2건 이상 중복 복제 검출
+        already_pairs = {
+            (f.document_id, (f.confidence_features or {}).get("other_document_id"))
+            for f in out
+        }
+        key_doc_freq: Dict[str, int] = {}
+        for d in docs:
+            seen_keys = set()
+            for _, k in prepared[d.document_id]:
+                if k not in seen_keys:
+                    seen_keys.add(k)
+                    key_doc_freq[k] = key_doc_freq.get(k, 0) + 1
+
+        for d_other in docs:
+            d_kind = doc_kinds[d_other.document_id][0]
+            if d_kind not in (DOC_KIND_OTHER, DOC_KIND_EVIDENCE_EXPLANATION):
+                continue
+            top_head = texts[d_other.document_id][:400]
+            is_evi_expl = (d_kind == DOC_KIND_EVIDENCE_EXPLANATION) or ("증거설명서" in top_head) or ("증거목록" in top_head)
+            for d_plead in docs:
+                if d_plead.document_id == d_other.document_id or doc_kinds[d_plead.document_id][0] != DOC_KIND_PLEADING:
+                    continue
+                owner_doc, target_doc = (d_other, d_plead) if is_evi_expl else (d_plead, d_other)
+                if (owner_doc.document_id, target_doc.document_id) in already_pairs or (target_doc.document_id, owner_doc.document_id) in already_pairs:
+                    continue
+                matched_po: List[Tuple[str, str, float]] = []
+                for s1, k1 in prepared[d_other.document_id]:
+                    if len(k1) < 25 or _EXHIBIT_REFERENCE_RE.search(s1) or key_doc_freq.get(k1, 0) > 2:
+                        continue
+                    if d_kind == DOC_KIND_EVIDENCE_EXPLANATION and _is_in_corresponding_exhibit_entry(s1, d_other, texts[d_other.document_id]):
+                        continue
+                    g1 = _shingles(k1)
+                    if len(g1) < 8:
+                        continue
+                    for s2, k2 in prepared[d_plead.document_id]:
+                        if _EXHIBIT_REFERENCE_RE.search(s2):
+                            continue
+                        g2 = _shingles(k2)
+                        if not g2:
+                            continue
+                        ov = len(g1 & g2) / max(1, min(len(g1), len(g2)))
+                        if ov >= COPY_SIMILARITY:
+                            matched_po.append((s1, s2, round(ov, 2)))
+                            break
+                if len(matched_po) >= 2:
+                    already_pairs.add((owner_doc.document_id, target_doc.document_id))
+                    out.append(_finding(
+                        owner_doc, FindingType.CROSS_DOC_COPY, EvidenceGrade.C, Severity.MEDIUM,
+                        f"{owner_doc.filename}에 다른 문서({target_doc.filename})와 같은 서술 문장이 {len(matched_po)}건 있다",
+                        "소송서면과 서증·증거설명서 사이에 인용 표기 없이 동일한 서술 문장이 반복 기재되어 있다. "
+                        "통복제 또는 대필 여부를 사람이 확인한다.",
+                        matched_po[0][0], status=VerificationStatus.SUSPICIOUS,
+                        features={
+                            "other_document_id": target_doc.document_id,
+                            "similarity": matched_po[0][2],
+                            "sources": [{"document_id": owner_doc.document_id}],
+                            "rule_id": "EVI.COPY_OTHER_PLEADING",
+                            "human_review": True,
+                            "pairs": [{"statement": a[:200], "other": b[:200], "similarity": s} for a, b, s in matched_po[:5]],
+                        },
+                    ))
 
     return out
 
