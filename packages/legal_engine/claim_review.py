@@ -982,17 +982,19 @@ def review_claims(doc: NormalizedDocument, *, lookup: Optional[HistoryLookup] = 
     reading = build_reading_text(doc)
     text = reading.text
     skip = {re.sub(r"\s+", "", s) for s in skip_sentences if s}
-    primary_matches = (
-        classify_claims(text, lookup)
-        + requirement_mismatches(doc, provisions)
-        + _provisional_relief_references(text)
-    )
-    primary_keys = {re.sub(r"\s+", "", m.sentence) for m in primary_matches}
+    req_matches = requirement_mismatches(doc, provisions)
+    req_keys = {re.sub(r"\s+", "", m.sentence) for m in req_matches}
     overclaims = [
         m for m in _clause_normalizer_overclaims(text)
-        if re.sub(r"\s+", "", m.sentence) not in primary_keys
+        if re.sub(r"\s+", "", m.sentence) not in req_keys
     ]
-    matches = primary_matches + overclaims + _unverified_admin_interpretations(text)
+    matches = (
+        classify_claims(text, lookup)
+        + req_matches
+        + _provisional_relief_references(text)
+        + overclaims
+        + _unverified_admin_interpretations(text)
+    )
     out, seen = [], set()
     for match in matches:
         sentence_key = re.sub(r"\s+", "", match.sentence)
