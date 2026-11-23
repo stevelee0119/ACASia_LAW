@@ -1702,6 +1702,16 @@ class VerificationPipeline:
                 "recovery_used": lookup.recovery_used,
                 "retry_exhausted_count": sum(bool(v.get("source_lookup", {}).get("retryable")) for v in verdicts),
             }
+        if doc is not None:
+            from packages.claim_engine.fact_triples import extract_fact_triples, verify_fact_triples
+            _triples = extract_fact_triples(doc)
+            result.engine_data["fact_triples"] = {
+                "count": len(_triples),
+                "triples": [t.to_dict() for t in _triples[:100]],
+            }
+            result.findings.extend(
+                verify_fact_triples(doc, _triples, existing_findings=result.findings)
+            )
         from .eval_contract import build_evaluation_dimensions
         result.engine_data["evaluation_dimensions"] = build_evaluation_dimensions(result)
 
@@ -2151,6 +2161,12 @@ class VerificationPipeline:
             if len(readable) < 2:
                 stage.skip_reason = "읽을 수 있는 문서가 2건 미만"
             candidates.extend(verify_cross_document_entities(readable))
+        with manifest.stage("fact_triples", candidates, inputs=len(readable), unit="문서") as stage:
+            if len(readable) < 2:
+                stage.skip_reason = "읽을 수 있는 문서가 2건 미만"
+            else:
+                from packages.claim_engine.fact_triples import extract_fact_triples, verify_project_fact_triples
+                candidates.extend(verify_project_fact_triples([(d, extract_fact_triples(d)) for d in readable]))
         findings, seen = [], set()
         for finding in candidates:
             features = finding.confidence_features
