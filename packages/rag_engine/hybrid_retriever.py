@@ -321,18 +321,13 @@ def build_rag_adapters_from_env(
             "fallback_reason": "NETWORK_DISABLED",
         }
 
-    emb_endpoint = (os.getenv("LV_RAG_EMBEDDING_ENDPOINT") or "").strip()
     emb_model = (os.getenv("LV_EMBEDDING_MODEL") or "").strip()
-    emb_key = (os.getenv("LV_RAG_EMBEDDING_API_KEY") or "").strip() or None
     openai_key = (os.getenv("OPENAI_API_KEY") or "").strip()
     gemini_key = (os.getenv("GEMINI_API_KEY") or "").strip()
 
     emb: Optional[EmbeddingAdapter] = None
     provider_kind = "none"
-    if emb_endpoint:
-        emb = HttpEmbeddingAdapter(emb_endpoint, model=emb_model, api_key=emb_key)
-        provider_kind = "http_endpoint"
-    elif openai_key:
+    if openai_key:
         emb = OpenAIEmbeddingAdapter(openai_key, model=emb_model or "text-embedding-3-small")
         provider_kind = "openai"
     elif gemini_key:
@@ -345,6 +340,7 @@ def build_rag_adapters_from_env(
             "effective_mode": "LEXICAL_ONLY",
             "reranker_enabled": False,
             "provider_kind": "none",
+            "fallback_reason": "NO_EMBEDDING_ADAPTER_CONFIGURED",
             "fallback_reasons": ["NO_EMBEDDING_ADAPTER_CONFIGURED"],
         }
 
@@ -354,6 +350,7 @@ def build_rag_adapters_from_env(
         "effective_mode": "HYBRID",
         "reranker_enabled": True,
         "provider_kind": provider_kind,
+        "fallback_reason": None,
         "fallback_reasons": [],
     }
 

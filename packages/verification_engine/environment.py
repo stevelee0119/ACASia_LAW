@@ -168,10 +168,10 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
     else:
         ocr_reason = "ENGINE_UNAVAILABLE"
 
+    allow_network = os.getenv("LV_ALLOW_NETWORK", "1") != "0" and bool(getattr(settings, "allow_network", True))
     rag_flag = bool(getattr(settings, "rag_hybrid_semantic", True))
     rag_env_mode = (os.getenv("LV_RAG_RETRIEVAL_MODE") or "").strip().upper()
     has_commercial_emb_key = bool((os.getenv("OPENAI_API_KEY") or "").strip() or (os.getenv("GEMINI_API_KEY") or "").strip())
-    has_emb_endpoint = bool((os.getenv("LV_RAG_EMBEDDING_ENDPOINT") or "").strip())
     if not rag_flag or rag_env_mode in ("OFF", "LEXICAL", "LEXICAL_ONLY"):
         rag_configured = "LEXICAL_ONLY"
         rag_effective = "LEXICAL_ONLY"
@@ -184,15 +184,23 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
         )
     else:
         rag_configured = "HYBRID"
-        dense_enabled = has_emb_endpoint or has_commercial_emb_key
-        if dense_enabled:
-            rag_effective = "HYBRID"
-            reranker_enabled = True
-            rag_reason = None
-        else:
+        if not has_commercial_emb_key:
             rag_effective = "LEXICAL_ONLY"
+            dense_enabled = False
             reranker_enabled = False
             rag_reason = "NO_EMBEDDING_ADAPTER_CONFIGURED"
+        elif not allow_network:
+            rag_effective = "LEXICAL_ONLY"
+            dense_enabled = False
+            reranker_enabled = False
+            rag_reason = "NETWORK_DISABLED"
+        else:
+            rag_effective = "HYBRID"
+            dense_enabled = True
+            reranker_enabled = True
+            rag_reason = None
+
+    ocr_effective = ocr_mode if (ocr_mode != "off" and ocr_available) else "off"
 
     try:
         from packages.source_adapters.cassette import get_replay_mode
@@ -207,13 +215,14 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
             "clause_normalizer_mode": clause_mode,
             "legal_nli_mode": nli_mode,
             "evidence_graph_mode": graph_mode,
-            "ocr_fallback_mode": ocr_mode,
+            "ocr_fallback_mode": ocr_effective,
             "rag_retrieval_mode": rag_effective,
             "source_replay_mode": cassette_mode,
         },
         "rag": {
             "configured_mode": rag_configured,
             "effective_mode": rag_effective,
+            "actual_calls": 0,
             "dense_enabled": dense_enabled,
             "reranker_enabled": reranker_enabled,
             "reranker_mode": "deterministic_legal" if reranker_enabled else "off",
@@ -222,6 +231,9 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
         "ocr_fallback": {
             "engine": ocr_engine,
             "mode": ocr_mode,
+            "configured_mode": ocr_mode,
+            "effective_mode": ocr_effective,
+            "actual_calls": 0,
             "available": ocr_available,
             "fallback_reason": ocr_reason,
         },
@@ -229,7 +241,7 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
             "mode": cassette_mode,
             "evaluation_only": True,
             "cassette_dir_configured": bool((os.getenv("LV_SOURCE_CASSETTE_DIR") or "").strip()),
-            "allow_network": os.getenv("LV_ALLOW_NETWORK", "1") != "0",
+            "allow_network": allow_network,
         },
         "local_llm": {
             "registered": False,
