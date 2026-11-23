@@ -100,17 +100,16 @@ def test_tk228_pos2_library_select_persists_and_reuses_chunk_embeddings_by_revis
 
 
 def test_tk228_pos3_build_rag_adapters_from_env_connects_without_leaking_keys(monkeypatch) -> None:
-    """build_rag_adapters_from_env constructs adapters when endpoints are configured and never leaks secrets."""
+    """build_rag_adapters_from_env constructs commercial adapters when API keys are configured and never leaks secrets."""
     monkeypatch.setenv("LV_RAG_RETRIEVAL_MODE", "hybrid")
-    monkeypatch.setenv("LV_RAG_EMBEDDING_ENDPOINT", "https://emb.example.com/v1/embeddings")
-    monkeypatch.setenv("LV_EMBEDDING_MODEL", "bge-m3")
-    monkeypatch.setenv("LV_RAG_EMBEDDING_API_KEY", "super-secret-emb-key")
-    monkeypatch.setenv("LV_RAG_RERANKER_ENDPOINT", "https://rerank.example.com/v1/rerank")
-    monkeypatch.setenv("LV_RERANKER_MODEL", "bge-reranker")
+    monkeypatch.setenv("OPENAI_API_KEY", "super-secret-emb-key")
+    monkeypatch.setenv("LV_EMBEDDING_MODEL", "text-embedding-3-small")
 
     emb, rerank, diag = build_rag_adapters_from_env(allow_network=True)
     assert emb is not None and emb.available is True
     assert rerank is not None and rerank.available is True
+    assert diag["effective_mode"] == "HYBRID"
+    assert diag["provider_kind"] == "openai"
     assert "super-secret-emb-key" not in str(diag)
 
 
