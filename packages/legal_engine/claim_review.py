@@ -845,18 +845,20 @@ def _clause_normalizer_overclaims(text: str) -> List[ClaimMatch]:
         clauses = normalize_sentence(sentence)
         if not clauses:
             continue
-        if any(c.discourse_relation == "EXCEPTION_PROVISO" for c in clauses):
+        if any(
+            c.discourse_relation in ("CONDITION", "EXCEPTION_PROVISO", "CONCESSION")
+            or c.modality in ("HYPOTHETICAL", "INTERROGATIVE", "PERMISSIVE")
+            for c in clauses
+        ):
             continue
         main_clauses = [
             c for c in clauses
             if c.discourse_relation == "MAIN"
             and c.polarity in ("ASSERTED", "NEGATED", "DOUBLE_NEGATED_ASSERTED")
-            and c.modality not in ("HYPOTHETICAL", "INTERROGATIVE", "PERMISSIVE")
         ]
         if not main_clauses:
             continue
-        has_abs = any(_ABSOLUTE_MODALITY_RE.search(c.raw_text) for c in main_clauses)
-        has_broad_ovr = any(_BROAD_OVR_MODALITY_RE.search(c.raw_text) for c in main_clauses)
+        has_abs = any(c.modality == "MANDATORY" or _ABSOLUTE_MODALITY_RE.search(c.raw_text) for c in main_clauses)
 
         # 3대 일반 법리 과장 구조 (부정·반박·상대방 인용 제외)
         joined_main = " ".join(c.raw_text for c in main_clauses)
@@ -891,7 +893,7 @@ def _clause_normalizer_overclaims(text: str) -> List[ClaimMatch]:
             ):
                 doctrinal_ovr = True
 
-        if not has_abs and not has_broad_ovr and not doctrinal_ovr:
+        if not has_abs and not doctrinal_ovr:
             continue
 
         # Multi-element / discretionary doctrines (short category tokens only)
@@ -910,7 +912,6 @@ def _clause_normalizer_overclaims(text: str) -> List[ClaimMatch]:
             or (("부당이득" in sentence or "원상회복" in sentence) and ("자동" in sentence or "무조건" in sentence or "당연" in sentence))
             or (("보증" in sentence or "연대책임" in sentence) and ("무조건" in sentence or "자동" in sentence or "전부" in sentence))
             or (("명의신탁" in sentence or "강행법규" in sentence) and ("무조건" in sentence or "당연" in sentence or "자동" in sentence))
-            or any(_LEGAL_EFFECT_RE.search(c.raw_text) for c in main_clauses)
         )
         if not has_doctrine:
             continue

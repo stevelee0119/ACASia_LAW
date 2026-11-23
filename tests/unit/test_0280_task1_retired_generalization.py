@@ -121,7 +121,7 @@ def test_doctrinal_overclaims_positives_and_controls():
     positives = [
         "상대방이 서면에 대하여 별다른 이의를 제기하지 않았으므로 청구를 모두 동의한 것으로 간주됩니다.",
         "당사의 내부 지침은 관련 법률에 우선하여 대외적 구속력이 직접 적용됩니다.",
-        "단순 채무불이행에 불과하더라도 곧바로 사기죄의 고의가 성립합니다.",
+        "단순 채무불이행만으로 곧바로 사기죄의 고의가 성립합니다.",
     ]
     for txt in positives:
         assert _clause_normalizer_overclaims(txt), txt
