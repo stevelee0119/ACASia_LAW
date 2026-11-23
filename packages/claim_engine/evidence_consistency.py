@@ -534,6 +534,17 @@ def _exhibit_lines(doc: NormalizedDocument) -> List[Dict[str, Any]]:
         raw_items = split_items(cand_text) if is_leading_exhibit else []
         items = []
         for ref, rest in raw_items:
+            rest_s = rest.strip()
+            if (
+                not re.match(r"^의\s*\d+", rest_s)
+                and re.match(r"^(?:[이가은는을를에와과도만]|에서|으로|부터|까지|보다)(?:\s|$)", rest_s)
+                and (
+                    _EXHIBIT_REF_SENTENCE_RE.search(rest_s)
+                    or re.search(r"(?:나열되어|기재되어|제출되어|있으며|한다|하였다|였다|된다|되었다)[.,]?\s*$", rest_s)
+                    or re.search(r"(?:나열되어|기재되어|제출되어)", rest_s)
+                )
+            ):
+                continue
             # 입증방법 구역 안이면 제목에 '발췌'가 있어도 정식 목록으로 수용
             if in_exhibit_section:
                 items.append((ref, rest))
@@ -646,35 +657,48 @@ def check_exhibits(doc: NormalizedDocument) -> List[Finding]:
 
 # B-1 1. 7대 서증 닫힌 범주 사전 (조건 1: '현장'·'감정서' 완전 제외, 조건 5: 서증 명칭에서만 추출, V3: 접미 일치 표면형 보강, BB3: 거래내역 통합, CC1: 각서·합의서 제외, 배달증명 추가)
 EVIDENCE_KIND_CATEGORIES: Dict[str, Tuple[str, ...]] = {
-    "일방통지": ("내용증명", "최고서", "통고서", "통지서", "안내문", "공문", "내용증명우편", "배달증명"),
-    "견적계획": ("견적서", "견적", "공사계획서", "산출내역서", "공사비산출내역서", "공사비 산출내역서", "설계도", "예산서", "내역서"),
-    "명의식별": ("통장표지", "통장사본", "통장 표지", "사업자등록증", "등록증", "신분증", "가족관계증명서", "주민등록등본", "법인등기부"),
-    "진단상태": ("진단서", "소견서", "진료기록", "의무기록", "상해진단서"),  # 감정서 제외
-    "영상사진": ("사진", "영상", "캡처", "녹화", "동영상", "화면캡처"),      # 현장 제외
+    "일방통지": (
+        "내용증명", "최고서", "통고서", "통지서", "안내문", "공문", "내용증명우편", "배달증명",
+        "이메일", "전자우편", "문자", "문자메시지", "카카오톡", "카톡", "요청서", "질의서",
+    ),
+    "견적계획": (
+        "견적서", "견적", "공사계획서", "산출내역서", "공사비산출내역서", "공사비 산출내역서",
+        "설계도", "예산서", "내역서", "청구서", "명세서", "제안서", "계획서",
+    ),
+    "명의식별": (
+        "통장표지", "통장사본", "통장 표지", "사업자등록증", "등록증", "신분증", "가족관계증명서",
+        "주민등록등본", "법인등기부", "등기부등본", "건축물대장", "토지대장", "재직증명서",
+    ),
+    "진단상태": ("진단서", "소견서", "진료기록", "의무기록", "상해진단서", "처방전", "진료확인서", "입퇴원확인서"),  # 감정서 제외
+    "영상사진": ("사진", "영상", "캡처", "녹화", "동영상", "화면캡처", "녹취록", "녹음", "블랙박스", "CCTV"),  # 현장 제외
     "영수입금": (
         "영수증", "입금증", "이체확인증", "송금확인증", "무통장입금표", "계좌이체영수증", "입금확인증",
         "계좌거래내역", "통장거래내역", "거래내역", "세금계산서", "지급증명서", "확인증",
+        "출금내역", "카드내역", "매출전표", "현금영수증", "납입확인서", "지급내역",
     ),
     "진술확인": (
-        "확인서", "인우보증서", "진술서", "사실확인서",
+        "확인서", "인우보증서", "진술서", "사실확인서", "경위서", "사실경위서", "탄원서",
+        "진정서", "회의록", "업무일지", "메모",
     ),
 }
 
 # B-1 2. 4대 주장 술어 닫힌 범주 사전 (S1: '의사' 단독 삭제, '과실·불법행위' 법률 평가 삭제, 계약성립 술어 추가)
 CLAIM_PREDICATE_CATEGORIES: Dict[str, Tuple[str, ...]] = {
     "전칭_전기간": (
-        "항상", "매번", "모든", "계속", "내내", "줄곧", "일체",
+        "항상", "매번", "모든", "계속", "내내", "줄곧", "일체", "전기간", "계속하여",
+        "전 공정", "전 구간", "계속적으로", "상시", "항시",
     ),
     "내심의상태": (
-        "고의", "악의", "인식", "공모", "통모",
+        "고의", "고의적", "고의로", "악의", "인식", "공모", "통모", "기망", "편취",
     ),
     "완료_확정": (
         "완납", "완료", "변제", "이행완료", "지급완료", "정산완료", "시공완료", "준공", "완성",
-        "확정", "확정되었", "확정적으로",
+        "확정", "확정되었", "확정적으로", "완공", "이행되었", "실제 지급", "실제 지출", "실제 시공",
     ),
     "상대방의사표시": (
         "승낙", "승인", "동의", "합의", "수락",
-        "계약체결", "약정성립", "체결되었", "성립되었",
+        "계약체결", "약정성립", "체결되었", "성립되었", "해지합의", "합의해지",
+        "양해", "의사표시", "인정하였", "자백하였",
     ),
 }
 
@@ -1144,10 +1168,25 @@ def check_evidence_overreach(
     # 공용 입력(exhibit_rows)은 바꾸지 않고, 이 검사 안에서만 목록 줄을 보충 행으로 읽는다(본문 인용은 '갑/을'로 풀리므로 같은 키)
     rows = rows + _ovr_so_exhibit_rows(text, rows)
 
-    # 호증별 행 인덱싱 (party, number) -> row
-    row_by_key = {}
+    # 호증별 행 인덱싱 (party, number) -> row (분류 가능한 호증명이 있는 행을 우선 보존)
+    row_by_key: Dict[Tuple[str, int], Dict[str, Any]] = {}
+    def _row_has_cat(row_item: Dict[str, Any]) -> bool:
+        nm = re.sub(r"\s+", "", (row_item.get("name") or ""))
+        if not nm:
+            return False
+        return any(
+            re.sub(r"\s+", "", w) in nm
+            for ws in EVIDENCE_KIND_CATEGORIES.values()
+            for w in ws
+        )
+
     for r in rows:
-        row_by_key[(r["party"], r["number"])] = r
+        key = (r["party"], r["number"])
+        prev = row_by_key.get(key)
+        if prev is None:
+            row_by_key[key] = r
+        elif not _row_has_cat(prev) and (_row_has_cat(r) or len((r.get("name") or "")) > len((prev.get("name") or ""))):
+            row_by_key[key] = r
 
     # 문장 단위 분할
     sentences = re.split(r"(?<=[.!?])\s+", text)
@@ -1912,6 +1951,19 @@ def check_statements(doc: NormalizedDocument, exhibits: Sequence[Dict[str, Any]]
                                     f"{prev_limit_shown} / {shown}",
                                     status=VerificationStatus.SUSPICIOUS,
                                     features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION_ADJACENT"}))
+            elif (
+                re.search(r"(?:뇌파\s*(?:분석|검사|측정)|거짓말\s*탐지기|폴리그래프|관상|사주|점술|최면\s*진술)", sentence)
+                and re.search(r"(?:의사|고의|의도|내심|진의|범의)", sentence)
+                and re.search(r"(?:명백히|과학적으로|확실히|입증|증명|확인|단정)", sentence)
+                and not re.search(r"(?:증거능력이\s*없|인정되지\s*않|배척|아니다|없다|불가)", sentence)
+                and not _ATTR_QUOTE_RE.search(sentence)
+            ):
+                out.append(_finding(doc, FindingType.STATEMENT_BEYOND_PERCEPTION, EvidenceGrade.C, Severity.MEDIUM,
+                                    "비과학적·인지 불가 수단에 의한 내심 단정: 객관적 입증 수단이 될 수 없는 자료로 내심 의사를 단정",
+                                    "뇌파·거짓말탐지기 등 내심 의사를 직접·과학적으로 증명할 수 없는 수단으로 주관적 의도가 명백히 입증되었다고 단정하고 있다.",
+                                    shown,
+                                    status=VerificationStatus.SUSPICIOUS,
+                                    features={"human_review": True, "rule_id": "EVI.BEYOND_PERCEPTION_IMPOSSIBLE_PROOF"}))
         if has_limit and not has_cert_or_perc:
             prev_limit_idx = sent_idx
             prev_limit_shown = shown
@@ -2079,11 +2131,6 @@ def check_evidence_numbering_mismatches(
                         nm = m_name.group(1).strip()
                         list_name_by_key[k] = (nm, re.sub(r"\s+", "", nm))
 
-    # 자기 당사자 부호 집합 (상대방 증거 판단 배제용)
-    listed_parties = {k[0] for k in list_keys if k[0]}
-    if not listed_parties:
-        return out
-
     # 본문 텍스트 분리: 입증방법/첨부서류/증거목록 섹션 헤더 이전의 순수 본문만 분리 (목록 내 기재 오인 방지)
     m_sec = re.search(
         r"(?:^|\n|[.!?]\s*)\s*(?:(?:(?:\d{1,2}|[가-하])\s*[.)]|\(\s*(?:\d{1,2}|[가-하])\s*\)|[①-⑳]|\[(?:\s*(?:\d{1,2}|[가-하]))?\s*\]?)\s*){0,3}"
@@ -2091,6 +2138,61 @@ def check_evidence_numbering_mismatches(
         text,
     )
     body_text = text[:m_sec.start()] if m_sec else text
+
+    # 3-2. 본문 내 동일 서증명(4자 이상)에 서로 다른 호증 번호가 부여된 경우 (목록 유무와 무관)
+    _TITLE_CORE = r"[가-힣A-Za-z0-9]{2,16}(?:계약서|확인서|진술서|영수증|계산서|보고서|내역서|처분서|통지서|결정서|명세서|견적서|판결문|녹취록)"
+    _BODY_TITLE_RE = re.compile(
+        rf"(?P<party>[갑을병정증])\s*제\s*(?P<num>\d+)\s*호증(?!\s*의\s*\d+)(?:\s*의\s*|\s*\(\s*|\s+)(?P<title>{_TITLE_CORE})(?=[이가은는을를의로에와과,.\s\(\)]|$)"
+        rf"|(?P<title2>{_TITLE_CORE})\s*\(\s*(?P<party2>[갑을병정증])\s*제\s*(?P<num2>\d+)\s*호증(?!\s*의\s*\d+)\s*\)"
+    )
+    body_title_nums: Dict[Tuple[str, str], List[Tuple[int, str]]] = {}
+    for bm in _BODY_TITLE_RE.finditer(body_text):
+        bp = bm.group("party") or bm.group("party2")
+        bn = int(bm.group("num") or bm.group("num2"))
+        bt = bm.group("title") or bm.group("title2")
+        if not bp or not bt or len(bt) < 4:
+            continue
+        win = body_text[max(0, bm.start() - 25) : min(len(body_text), bm.end() + 25)]
+        if _PRIOR_SUBMISSION_RE.search(win):
+            continue
+        if (bp, bn) in list_name_by_key:
+            _, ln = list_name_by_key[(bp, bn)]
+            if ln and bt != ln and bt not in ln and ln not in bt:
+                continue
+        body_title_nums.setdefault((bp, bt), []).append((bn, f"{bp} 제{bn}호증"))
+    for (bp, bt), occs in body_title_nums.items():
+        distinct = []
+        seen_n = set()
+        for bn, blbl in occs:
+            if bn not in seen_n:
+                seen_n.add(bn)
+                distinct.append((bn, blbl))
+        if len(distinct) >= 2:
+            l1, l2 = distinct[0][1], distinct[1][1]
+            out.append(
+                _finding(
+                    doc,
+                    FindingType.EVIDENCE_LIST_MISMATCH,
+                    EvidenceGrade.B,
+                    Severity.MEDIUM,
+                    f"본문 내 동일 서증명의 호증 번호가 일치하지 않는다: '{bt}' ({l1} ↔ {l2})",
+                    f"같은 서증명 '{bt}'에 대해 본문에서 {l1}과 {l2}로 서로 다른 번호를 기재하였다.",
+                    f"{l1} {bt} ↔ {l2} {bt}",
+                    status=VerificationStatus.SUSPICIOUS,
+                    features={
+                        "rule_id": "EVI.EXHIBIT_NUMBER_NAME_MISMATCH_BODY",
+                        "defect_code": "EXHIBIT_NUMBER_NAME_MISMATCH",
+                        "body_exhibit": l1,
+                        "list_exhibit": l2,
+                        "name": bt,
+                    },
+                )
+            )
+
+    # 자기 당사자 부호 집합 (상대방 증거 판단 배제용)
+    listed_parties = {k[0] for k in list_keys if k[0]}
+    if not listed_parties:
+        return out
 
     # 1. 완결 선언 목록과 본문 번호 대조 (축 1)
     # 목록 머리글 괄호 안의 완결 선언이 괄호 제거 등으로 유실되지 않도록 원문 text 전체에서 최우선 판정
@@ -2123,15 +2225,17 @@ def check_evidence_numbering_mismatches(
                             _finding(
                                 doc,
                                 FindingType.EVIDENCE_LIST_MISMATCH,
-                                EvidenceGrade.B,
+                                EvidenceGrade.B if has_completion else EvidenceGrade.C,
                                 Severity.MEDIUM,
-                                f"완결 목록에 없는 호증 번호가 인용되었다: {lbl}",
-                                f"증거 목록의 완결을 선언하였으나, 목록에 포함되지 않은 {lbl}이 본문에 원용되었다.",
+                                f"목록에 없는 호증 번호가 인용되었다: {lbl}",
+                                f"증거 목록에 포함되지 않은 {lbl}이 본문에 원용되었다.",
                                 sentence.strip()[:200],
+                                status=VerificationStatus.CONTRADICTED if has_completion else VerificationStatus.SUSPICIOUS,
                                 features={
                                     "rule_id": "EVI.EVIDENCE_REFERENCE_MISSING",
                                     "defect_code": "EVIDENCE_REFERENCE_MISSING",
                                     "exhibit": lbl,
+                                    "human_review": not has_completion,
                                 },
                             )
                         )
@@ -3336,7 +3440,10 @@ _EVIDENCE_ORIGINAL_TITLE_RE = re.compile(
     r"|소\s*견\s*서"
     r"|진\s*단\s*서"
     r"|진\s*료\s*기\s*록(?:\s*부)?|의\s*무\s*기\s*록(?:\s*지)?"
-    r"|시\s*말\s*서"
+    r"|시\s*말\s*서|자\s*술\s*서|사\s*유\s*서|해\s*명\s*서"
+    r"|사\s*실\s*확\s*인\s*서|확\s*인\s*서|진\s*술\s*서"
+    r"|(?:운\s*행|업\s*무|작\s*업|근\s*무)\s*일\s*지"
+    r"|(?:진\s*술|조\s*사)\s*조\s*서"
     r")\s*[\]】>」』]*"
     r"(?:"
     r"\s*$"

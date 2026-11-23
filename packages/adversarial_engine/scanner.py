@@ -313,7 +313,14 @@ class AdversarialScanner:
                 continue
             normalized, kinds = normalize_for_classification(text)
             classification = classify(normalized, source_layer="metadata", visible=False, block_type="metadata")
-            if classification.label in (AdversarialClass.BENIGN_CONTENT, AdversarialClass.INSTRUCTION_LIKE):
+            meta_directive = bool(
+                (
+                    re.search(r"\b(?:PASS|VERIFIED|SKIP|OVERRIDE|IGNORE|BYPASS|ALLOW|APPROVE|SUPPRESS|DISREGARD|NO_DEFECTS)\b", normalized, re.IGNORECASE)
+                    and re.search(r"\b(?:review|verdict|audit|check|defect|finding|status|claim|document|brief|result|output|all)\b", normalized, re.IGNORECASE)
+                )
+                or re.search(r"(?:검토\s*생략|검증\s*생략|정상\s*판정|결함\s*없음\s*처리|무결점\s*처리)", normalized)
+            )
+            if classification.label in (AdversarialClass.BENIGN_CONTENT, AdversarialClass.INSTRUCTION_LIKE) and not meta_directive:
                 continue
             features = {"deterministic_rule": True, "cross_layer_mismatch": True, **classification.features,
                         "injection_path": "METADATA", "metadata_key": key, "obfuscation": kinds,
@@ -436,6 +443,7 @@ class AdversarialScanner:
                     "unicode_kind": signal.kind,
                     "layer": layer_name,
                     "recovered_instruction": hidden_instruction,
+                    **({"injection_path": "ZERO_WIDTH"} if signal.kind == "ZERO_WIDTH" else {}),
                 }
                 # 레이어 이름에 페이지 번호가 포함되어 있다면 추출
                 page_no = None
@@ -443,6 +451,8 @@ class AdversarialScanner:
                 if p_match:
                     page_no = int(p_match.group(1))
                 sig_span = (0, len(signal.sample)) if signal.sample else None
+                page_label = f"{page_no}쪽 " if page_no is not None else ""
+                recovered_note = f" (복원: {_excerpt(recovered)})" if recovered else ""
 
                 out.append(
                     Finding.create(
@@ -453,8 +463,9 @@ class AdversarialScanner:
                         page=page_no,
                         span=sig_span,
                         title=f"Unicode 은닉 신호: {signal.kind}" + (f" — {signal.detail}" if signal.kind == "ZERO_WIDTH" else ""),
-                        detail=f"{layer_name} 레이어. {signal.detail}"
-                        + (" 복원된 문자열에 지시형 표현이 있다." if hidden_instruction else ""),
+                        detail=f"{page_label}{layer_name} 레이어. {signal.detail}"
+                        + (" 복원된 문자열에 지시형 표현이 있다." if hidden_instruction else "")
+                        + recovered_note,
                         confidence=confidence_score(features),
                         confidence_features=features,
                         document_id=doc.document_id,
@@ -465,12 +476,12 @@ class AdversarialScanner:
                         tags=[signal.kind] + (["ZERO_WIDTH", "INJ-ZWSP"] if signal.kind == "ZERO_WIDTH" else []),
                         evidence=[
                             Evidence.create(
-                                description=f"{layer_name} 레이어 Unicode 신호",
+                                description=f"{page_label}{layer_name} 레이어 Unicode 신호",
                                 grade=EvidenceGrade.A,
                                 document_id=doc.document_id,
                                 page=page_no,
                                 span=sig_span,
-                                excerpt=_excerpt(signal.sample),
+                                excerpt=_excerpt(recovered or signal.sample),
                                 sealed=True,
                             )
                         ],
