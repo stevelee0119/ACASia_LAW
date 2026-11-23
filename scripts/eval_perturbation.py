@@ -35,7 +35,13 @@ _REGISTER_SUBS = (
 _DATE_DOT_RE = re.compile(r"(?<!\d)(19\d{2}|20\d{2})\.\s*(\d{1,2})\.\s*(\d{1,2})\.")
 
 _PARTY_SUBS = (
+    (re.compile(r"피고는"), "피신청인은"),
+    (re.compile(r"피고가"), "피신청인이"),
+    (re.compile(r"피고를"), "피신청인을"),
     (re.compile(r"피고"), "피신청인"),
+    (re.compile(r"원고는"), "신청인은"),
+    (re.compile(r"원고가"), "신청인이"),
+    (re.compile(r"원고를"), "신청인을"),
     (re.compile(r"원고"), "신청인"),
 )
 
