@@ -139,9 +139,18 @@ class SourceAdapter(ABC):
         from .transport import SourceRequestStopped
 
         if isinstance(exc, SourceRequestStopped):
-            return self._unavailable(query, exc.status, str(exc))
+            return self._unavailable(query, exc.status, str(exc), diagnostics=getattr(exc, "diagnostics", None))
         if isinstance(exc, httpx.TimeoutException):
-            return self._unavailable(query, AdapterStatus.TIMEOUT, "외부 출처 조회 시간이 초과되었습니다")
+            return self._unavailable(
+                query,
+                AdapterStatus.TIMEOUT,
+                "외부 출처 조회 시간이 초과되었습니다",
+                diagnostics={"failure_classification": "TIMEOUT", "error_type": type(exc).__name__},
+            )
         # Raw transport errors can include credential-bearing URLs. 예외 이름만 남긴다.
-        return self._unavailable(query, AdapterStatus.ERROR,
-                                 f"외부 출처 연결 또는 응답 처리에 실패했습니다({type(exc).__name__})")
+        return self._unavailable(
+            query,
+            AdapterStatus.ERROR,
+            f"외부 출처 연결 또는 응답 처리에 실패했습니다({type(exc).__name__})",
+            diagnostics={"failure_classification": "UPSTREAM_ERROR", "error_type": type(exc).__name__},
+        )
