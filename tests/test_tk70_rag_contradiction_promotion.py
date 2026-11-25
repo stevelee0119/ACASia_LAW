@@ -133,7 +133,7 @@ def test_tk70_positive_three_cases_promoted_to_low_c_suspicious(tmp_path, monkey
     ]
     assert len(promoted) == 3
     for f in promoted:
-        assert f.type == FindingType.FACT_CONTRADICTION
+        assert f.type == FindingType.REFERENCE_CONTRADICTION
         assert f.status == VerificationStatus.SUSPICIOUS
         assert f.severity == Severity.LOW
         assert f.evidence_grade == EvidenceGrade.C

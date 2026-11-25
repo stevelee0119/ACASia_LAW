@@ -147,7 +147,7 @@ def verify_rag_candidate(
             ),
         ]
         finding = Finding.create(
-            type=FindingType.FACT_CONTRADICTION,
+            type=FindingType.REFERENCE_CONTRADICTION,
             status=VerificationStatus.SUSPICIOUS,
             severity=Severity.LOW,
             evidence_grade=EvidenceGrade.C,
@@ -175,7 +175,7 @@ def verify_rag_candidate(
             document_id=document_id,
             engine=ENGINE_NAME,
             tags=["RAG", "MODEL_CANDIDATE", "HUMAN_REVIEW_REQUIRED", "INTERNAL_REFERENCE_ONLY"],
-            advisory_only=False,
+            advisory_only=True,
             evidence=evidences,
         )
         return finding, None

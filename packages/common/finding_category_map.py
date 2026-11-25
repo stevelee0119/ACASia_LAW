@@ -134,6 +134,7 @@ FINDING_CATEGORY_MAP: Dict[FindingType, ScreenCategory] = {
     # 5. 사실관계·수치·서증 모순 행 (25개: MODEL_FACT_REMARK 포함)
     # -----------------------------------------------------------------------
     FindingType.FACT_CONTRADICTION: ScreenCategory.FACT_DISCREPANCY,
+    FindingType.REFERENCE_CONTRADICTION: ScreenCategory.FACT_DISCREPANCY,
     FindingType.CROSS_DOCUMENT_CONTRADICTION: ScreenCategory.FACT_DISCREPANCY,
     FindingType.FACT_UNSUPPORTED: ScreenCategory.FACT_DISCREPANCY,
     FindingType.ARITHMETIC_MISMATCH: ScreenCategory.FACT_DISCREPANCY,
