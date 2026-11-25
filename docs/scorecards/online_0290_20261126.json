@@ -175,7 +175,6 @@
   }
  },
  "not_measured": [
-  "Dense/Reranker 실호출(TK-228)",
   "로컬 모델(TK-229, REMOVED_NOT_OPERATIONAL)",
   "격리 봉인 세트",
   "실무 법률 정확도",
@@ -235,5 +234,71 @@
    "commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03"
   }
  },
- "measured_window_utc": "2026-11-25T20:29Z~20:50Z"
+ "measured_window_utc": "2026-11-25T20:29Z~20:50Z",
+ "corrections_20261126": {
+  "2015mo2524": {
+   "verdict": "NOT_A_PRODUCT_DEFECT",
+   "diagnosis_run": 45702074019,
+   "nb_lookup": {
+    "total_count": 1,
+    "raw": 1,
+    "adopted": 0,
+    "returned": [
+     "2015도6980"
+    ]
+   },
+   "search2_lookup": {
+    "total_count": 2,
+    "raw": 2,
+    "adopted": 0,
+    "returned": [
+     "2022도15950",
+     "2015도6980"
+    ]
+   },
+   "control_2011mo1839": {
+    "nb": {
+     "total_count": 1,
+     "raw": 1,
+     "adopted": 1,
+     "returned": [
+      "2011모1839"
+     ]
+    }
+   },
+   "conclusion": "공개 prec DB 미수록. law.go.kr nb는 미수록 시 무관 대체 레코드를 totalCnt=1로 반환. #417 완전 튜플 일치 필터는 오매칭을 올바르게 차단했으므로 유지.",
+   "retracted": "2절 1항의 '#417 의도 미달성'·'후보 단위 원인 재특정 필요'",
+   "remaining_work": "분류·보고(NOT_IN_PUBLIC_DB vs LOOKUP_FAILED), CASE_NOT_FOUND 범위 표시, U2 분모 분리 → TK-235"
+  },
+  "u2_law_go_kr_success_reinterpreted": {
+   "denominator_excluding_not_in_db": 5,
+   "2026-11-23": "5/5",
+   "2026-11-25": "4/5",
+   "remaining_failure": "law_go_kr:판례검색(키워드) 간헐 ERROR → TK-236"
+  },
+  "TK-228_dense_reranker": {
+   "was": "NOT_MEASURED",
+   "now": "MEASURED_WORKING",
+   "evidence": "문서 단위 search_diagnostics.retrieval: HYBRID_RERANK, embedding 1/1, reranker 1/1, cache_hits 9 (m1·m2·m3), 다문서 1/3문서",
+   "note": "TK-232 상용 API 임베딩 실전화 운영 확인"
+  },
+  "actual_calls_zero": {
+   "reclassified": "집계 누락(Dense 미작동 아님)",
+   "code_site": [
+    "packages/verification_engine/environment.py:230",
+    "packages/verification_engine/environment.py:241"
+   ],
+   "ticket": "TK-238"
+  },
+  "TK-231_drive_16pages": {
+   "root_cause": "참고자료 41건 전부 사유·관측 필드 0/41 → _needs_low_quality_ocr_reprocess() 항상 False(library.py:582-588), retry_reason None(library.py:604-607)",
+   "ticket": "TK-237"
+  },
+  "tickets_issued": [
+   "TK-235",
+   "TK-236",
+   "TK-237",
+   "TK-238"
+  ]
+ }
 }
