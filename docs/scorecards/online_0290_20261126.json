@@ -300,5 +300,213 @@
    "TK-237",
    "TK-238"
   ]
+ },
+ "additional_measurements_20261126": {
+  "ocr_fallback": {
+   "input_hashes": {
+    "clean_scanned.pdf": "4b062f82…",
+    "low_quality_scanned.pdf": "8d0347b7…"
+   },
+   "clean": {
+    "primary": "tesseract 5.5.0",
+    "primary_confidence": 0.89,
+    "fallback_attempted": false,
+    "fallback_adopted": false,
+    "page_status": "OCR_EXTRACTED",
+    "state": "COMPLETED",
+    "claims": 4,
+    "verdict": "PASS"
+   },
+   "low_quality": {
+    "primary_confidence": 0.483,
+    "fallback_engine": "rapidocr 3.10.0",
+    "fallback_attempted": true,
+    "fallback_adopted": true,
+    "fallback_confidence": 0.537,
+    "decision_reason": "FALLBACK_IMPROVED_QUALITY",
+    "page_status": "UNVERIFIED",
+    "page_reason": "OCR_LOW_CONFIDENCE",
+    "state": "PARTIAL_COMPLETED",
+    "claims": 0,
+    "verdict": "FAIL"
+   },
+   "cross_version": {
+    "0.26.0": {
+     "selected_confidence": 0.582,
+     "page_status": "OCR_LOW_QUALITY"
+    },
+    "0.29.0": {
+     "selected_confidence": 0.537,
+     "page_status": "UNVERIFIED"
+    },
+    "note": "1차 신뢰도는 두 판 모두 0.483 동일. 각 1회 측정이므로 회귀로 확정하지 않음"
+   },
+   "ticket": "TK-239"
+  },
+  "legal_nli_stage2": {
+   "case": "2011모1839",
+   "full_text_chars": 30211,
+   "exact_quote": {
+    "nli": "SUPPORTED",
+    "final": "VERIFIED",
+    "findings": 0,
+    "verdict": "PASS"
+   },
+   "reversed_quote": {
+    "nli": "CONTRADICTED",
+    "assisted": 1,
+    "final": "CONTRADICTED",
+    "findings": [
+     "CASE_QUOTE_MISMATCH HIGH A",
+     "LEGAL_ARGUMENT_INVALID HIGH B advisory"
+    ],
+    "quote_similarity": 0.83,
+    "verdict": "PASS"
+   },
+   "opponent_hearsay_control": {
+    "nli": "CONTRADICTED",
+    "semantic_review": "SUPPORTED",
+    "final": "CONTRADICTED",
+    "findings": [
+     "CASE_QUOTE_MISMATCH HIGH A (오탐)"
+    ],
+    "verdict": "FALSE_POSITIVE",
+    "ticket": "TK-240"
+   },
+   "reference_review_noise": {
+    "total_findings_single_brief": 21,
+    "fact_contradiction_count": 19,
+    "advisory_only": false,
+    "severity": "LOW",
+    "grade": "C",
+    "ticket": "TK-241"
+   }
+  },
+  "u5_repeat": {
+   "runs": 3,
+   "verdicts": [
+    "AI_PARTIAL_GENERATION",
+    "AI_PARTIAL_GENERATION",
+    "AI_PARTIAL_GENERATION"
+   ],
+   "agreement": 1.0,
+   "uncertain": 0,
+   "expected_ratio": 1.0,
+   "providers": {
+    "openai": [
+     0.78,
+     0.82
+    ],
+    "gemini": [
+     0.65,
+     0.75
+    ]
+   },
+   "note": "AI 작성 판별 참여 공급자 2개(anthropic 미참여). 도구의 조건 표시 DIFFERENT는 context(프로젝트) 차이뿐"
+  },
+  "embedding_cache": {
+   "cache_hits": 9,
+   "cache_misses": 0,
+   "hit_rate": 1.0,
+   "embedding_requests": 1,
+   "latency_ms": null,
+   "latency_note": "제품이 retrieval 단계 소요를 기록하지 않음 → TK-238"
+  },
+  "tickets_issued": [
+   "TK-239",
+   "TK-240",
+   "TK-241"
+  ],
+  "cleanup": {
+   "additional_projects": 6,
+   "trashed": 6,
+   "cumulative_trashed": 13,
+   "purged": 0
+  }
+ },
+ "offline_vs_online_compare": {
+  "run_id": 45703102485,
+  "conditions": "같은 SHA 9c63772f·같은 시험문서·같은 채점기(eval_testset.py)·같은 OCR, 네트워크/키만 차이",
+  "dev": {
+   "offline": 89.7,
+   "online": 98.2,
+   "delta": 8.5,
+   "rer_pct": 82.5,
+   "per_document": {
+    "TC-02": [
+     0.841,
+     1.0
+    ],
+    "TC-03": [
+     1.0,
+     1.0
+    ],
+    "TC-04": [
+     1.0,
+     1.0
+    ],
+    "TC-05": [
+     1.0,
+     1.0
+    ],
+    "TC-06": [
+     0.429,
+     0.857
+    ]
+   }
+  },
+  "holdout": {
+   "offline": 87.5,
+   "online": 95.4,
+   "delta": 7.9,
+   "rer_pct": 63.2,
+   "per_document": {
+    "HO-02": [
+     0.917,
+     1.0
+    ],
+    "HO-03": [
+     1.0,
+     1.0
+    ],
+    "HO-04": [
+     0.938,
+     0.938
+    ],
+    "HO-05": [
+     0.909,
+     0.909
+    ],
+    "HO-06": [
+     0.429,
+     0.929
+    ]
+   }
+  },
+  "false_positives": {
+   "fp_trap": [
+    0,
+    0
+   ],
+   "control": [
+    0,
+    0
+   ],
+   "a_grade": [
+    0,
+    0
+   ],
+   "duplicate_citation": [
+    0,
+    0
+   ]
+  },
+  "injection_defense": {
+   "offline": "defended",
+   "online": "defended"
+  },
+  "validation": "오프라인 값이 0.29.0 릴리스 판정 CI 값(dev 89.7/holdout 87.5)과 일치",
+  "interpretation": "상승은 외부 원문 필수 문서(TC-06·HO-06)에 집중. 미변동 문서의 미탐은 알고리즘 한계(SOURCE_AVAILABLE_MISSED). NEXT_GEN_EVALUATION의 온라인 법률 재현율 75% 목표는 두 문서에서 충족(85.7%·92.9%)",
+  "governance": "조건이 다르므로 릴리스 게이트 증감 비교에 합산하지 않음(VERSION_POLICY 3절·EVALUATION_V2)"
  }
 }
