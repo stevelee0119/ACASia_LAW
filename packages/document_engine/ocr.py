@@ -263,7 +263,11 @@ def build_ocr_page_telemetry(adapter: Any, quality: dict, *, page: Optional[int]
             "selected_engine": route.get("selected_engine") or route.get("selected"),
             "selected_version": route.get("selected_version"),
             "selected_confidence": route.get("selected_confidence"),
+            "recovered": not bool((quality or {}).get("low_quality")) and bool(route.get("fallback_adopted")),
         }
+        pre_tel = route.get("preprocess_telemetry")
+        if isinstance(pre_tel, dict):
+            telemetry.update(pre_tel)
     else:
         engine_name = getattr(adapter, "name", None) or "unknown"
         engine_ver = _adapter_version(adapter)
@@ -283,6 +287,7 @@ def build_ocr_page_telemetry(adapter: Any, quality: dict, *, page: Optional[int]
             "selected_engine": engine_name,
             "selected_version": engine_ver,
             "selected_confidence": conf,
+            "recovered": False,
         }
     if page is not None:
         telemetry["page"] = int(page)
@@ -466,6 +471,7 @@ class CompositeOCRAdapter(OCRAdapter):
             }
             return lines
 
+        fb_pre = getattr(self.fallback, "last_preprocess_telemetry", None)
         if not fb_err and _fallback_improved(lines, q_pri, fb_lines, q_fb):
             self.last_error = None
             self.last_route = {
@@ -486,6 +492,7 @@ class CompositeOCRAdapter(OCRAdapter):
                 "selected_engine": self.fallback.name,
                 "selected_version": fb_ver,
                 "selected_confidence": fb_conf,
+                **({"preprocess_telemetry": fb_pre} if isinstance(fb_pre, dict) else {}),
             }
             return fb_lines
 
@@ -509,6 +516,7 @@ class CompositeOCRAdapter(OCRAdapter):
             "selected_engine": self.primary.name,
             "selected_version": pri_ver,
             "selected_confidence": round(float(q_pri.get("confidence") or 0.0), 3),
+            **({"preprocess_telemetry": fb_pre} if isinstance(fb_pre, dict) else {}),
         }
         return lines
 
@@ -697,7 +705,7 @@ class RapidOCRAdapter(OCRAdapter):
 
     @staticmethod
     def _preprocess_low_quality_image(image: Any) -> Tuple[Any, float]:
-        """Apply grayscale + upscale + CLAHE contrast + mild sharpening for low-quality scans."""
+        """Apply adaptive grayscale + upscale + contrast/sharpen based on image contrast and resolution."""
         try:
             import cv2  # type: ignore
             import numpy as np  # type: ignore
@@ -711,6 +719,7 @@ class RapidOCRAdapter(OCRAdapter):
                 return image, 1.0
 
             h, w = gray.shape[:2]
+            contrast_std = float(np.std(gray))
             up = 1.0
             if min(h, w) > 0 and max(h, w) < 1800:
                 up = min(2.0, 1800.0 / float(max(h, w)))
@@ -719,10 +728,20 @@ class RapidOCRAdapter(OCRAdapter):
                 else:
                     up = 1.0
 
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            enhanced = clahe.apply(gray)
-            blurred = cv2.GaussianBlur(enhanced, (0, 0), sigmaX=1.2)
-            sharpened = cv2.addWeighted(enhanced, 1.45, blurred, -0.45, 0)
+            if contrast_std < 35.0:
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                enhanced = clahe.apply(gray)
+            elif contrast_std < 55.0:
+                clahe = cv2.createCLAHE(clipLimit=1.2, tileGridSize=(8, 8))
+                enhanced = clahe.apply(gray)
+            else:
+                enhanced = gray
+
+            if contrast_std < 45.0:
+                blurred = cv2.GaussianBlur(enhanced, (0, 0), sigmaX=1.0)
+                sharpened = cv2.addWeighted(enhanced, 1.25, blurred, -0.25, 0)
+            else:
+                sharpened = enhanced
             rgb = cv2.cvtColor(sharpened, cv2.COLOR_GRAY2RGB)
             return rgb, up
         except Exception:
@@ -744,17 +763,51 @@ class RapidOCRAdapter(OCRAdapter):
         if not self._ensure_engine() or self._engine is None:
             return []
         raw_lines = self._parse_raw_output(self._engine(image), page=page, scale=scale)
+        q_raw = page_quality(raw_lines)
+        raw_conf = round(float(q_raw.get("confidence") or 0.0), 3)
+        raw_chars = int(q_raw.get("chars") or 0)
         if not preprocess or image is None:
+            self.last_preprocess_telemetry = {
+                "preprocess_applied": False,
+                "raw_confidence": raw_conf,
+                "preprocessed_confidence": None,
+                "raw_chars": raw_chars,
+                "preprocessed_chars": None,
+                "selected_variant": "raw",
+                "selection_reason": "PREPROCESS_DISABLED",
+            }
             return raw_lines
         pre_img, up = self._preprocess_low_quality_image(image)
         if pre_img is image and up == 1.0:
+            self.last_preprocess_telemetry = {
+                "preprocess_applied": False,
+                "raw_confidence": raw_conf,
+                "preprocessed_confidence": None,
+                "raw_chars": raw_chars,
+                "preprocessed_chars": None,
+                "selected_variant": "raw",
+                "selection_reason": "PREPROCESS_SKIPPED",
+            }
             return raw_lines
         pre_lines = self._parse_raw_output(self._engine(pre_img), page=page, scale=scale * up)
-        if not pre_lines:
-            return raw_lines
-        if not raw_lines:
-            return pre_lines
-        return pre_lines if _quality_rank(page_quality(pre_lines)) > _quality_rank(page_quality(raw_lines)) else raw_lines
+        q_pre = page_quality(pre_lines)
+        pre_conf = round(float(q_pre.get("confidence") or 0.0), 3)
+        pre_chars = int(q_pre.get("chars") or 0)
+        choose_pre = bool(pre_lines) and (not raw_lines or _quality_rank(q_pre) > _quality_rank(q_raw))
+        self.last_preprocess_telemetry = {
+            "preprocess_applied": True,
+            "raw_confidence": raw_conf,
+            "preprocessed_confidence": pre_conf,
+            "raw_chars": raw_chars,
+            "preprocessed_chars": pre_chars,
+            "selected_variant": "preprocessed" if choose_pre else "raw",
+            "selection_reason": (
+                "PREPROCESSED_NO_RAW" if (choose_pre and not raw_lines)
+                else "PREPROCESSED_HIGHER_QUALITY" if choose_pre
+                else "RAW_HIGHER_OR_EQUAL_QUALITY"
+            ),
+        }
+        return pre_lines if choose_pre else raw_lines
 
 
 class PaddleOCRAdapter(OCRAdapter):
