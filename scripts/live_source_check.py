@@ -191,6 +191,7 @@ def check_law_go_kr(registry) -> List[CheckResult]:
     #
     # 판결(도·다·두)과 결정(모·마) 형태를 함께 넣는다. prec 검색이 결정 유형을
     # 수록하지 않는다면 그 사실이 여기서 드러난다.
+    _known_unlisted_probes = {"2015모2524"}
     for case_number, note in (("2011모1839", "형사 재항고 결정"),
                               ("2015모2524", "형사 재항고 결정"),
                               ("2014다236311", "민사 상고 판결"),
@@ -199,20 +200,29 @@ def check_law_go_kr(registry) -> List[CheckResult]:
         matched = [r for r in response.records
                    if same_case_number(case_number, str(r.get("case_number") or ""))]
         MATCHED_CASES.extend(matched[:1])
+        diag = getattr(response, "diagnostics", None) or {}
+        lookup_outcome = diag.get("lookup_outcome") or (
+            "MATCHED" if matched else ("NOT_IN_PUBLIC_DB" if response.status == AdapterStatus.READY else "LOOKUP_FAILED")
+        )
+        is_known_unlisted = (case_number in _known_unlisted_probes) and lookup_outcome == "NOT_IN_PUBLIC_DB"
+        returned_cns = ", ".join(
+            sanitize(cn, 24) for cn in (diag.get("returned_candidate_case_numbers") or [])[:5]
+        ) or ", ".join(sanitize(r.get("case_number"), 24) for r in response.records[:5]) or "없음"
         out.append(
             CheckResult(
                 name=f"law_go_kr:사건번호조회({case_number} · {note})",
                 category="live_legal",
                 configured=adapter.status() == AdapterStatus.READY,
-                status=str(response.status),
-                # 조회가 READY인데 같은 사건번호가 없으면 그것이 문제의 신호다.
+                status="NOT_IN_PUBLIC_DB" if is_known_unlisted else str(response.status),
+                # 조회가 READY이고 미수록 확인 대상이 아닌데 일치 기록이 없으면 실패로 본다.
                 ok=response.status == AdapterStatus.READY and bool(matched),
-                detail=(f"사건번호 일치 {len(matched)}건 / 응답 {len(response.records)}건. "
-                        + ("일치하는 기록을 찾지 못했다. 이 상태면 실재하는 판례가 "
-                           "'공식 DB 미확인'으로 남는다. 돌아온 사건번호: "
-                           + (", ".join(sanitize(r.get("case_number"), 24)
-                                        for r in response.records[:5]) or "없음")
-                           if not matched else "정상")
+                advisory=is_known_unlisted,
+                detail=(f"사건번호 일치 {len(matched)}건 / 응답 {len(response.records)}건 ({lookup_outcome}). "
+                        + ("공개 DB 조회 범위에 없음(미수록 확인 대상 — 부존재 단정 아님, 성공률 분모 분리). 돌아온 사건번호: "
+                           + returned_cns
+                           if is_known_unlisted
+                           else (f"공개 DB 조회 범위에 없거나 일치하는 기록을 찾지 못했다. 돌아온 사건번호: {returned_cns}"
+                                 if not matched else "정상"))
                         + f" | {_diagnose(response)}"),
                 records=len(response.records),
                 fields=_record_fields(response.records),

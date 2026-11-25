@@ -143,6 +143,7 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                                 "provider_raw_count": total_provider_raw,
                                 "matched_count": 0,
                                 "filtered_out_count": total_filtered_out,
+                                "lookup_outcome": "LOOKUP_FAILED",
                                 "cause": "RATE_LIMITED",
                                 "attempts": attempt_diags,
                             },
@@ -160,6 +161,7 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                                 "provider_raw_count": total_provider_raw,
                                 "matched_count": 0,
                                 "filtered_out_count": total_filtered_out,
+                                "lookup_outcome": "LOOKUP_FAILED",
                                 "cause": "PROVIDER_ERROR",
                                 "http_status": response.status_code,
                                 "attempts": attempt_diags,
@@ -176,6 +178,7 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                         "provider_raw_count": total_provider_raw,
                         "matched_count": 0,
                         "filtered_out_count": total_filtered_out,
+                        "lookup_outcome": "LOOKUP_FAILED",
                         "cause": "TRANSIENT_ERROR",
                         "error_type": type(exc).__name__,
                         "attempts": attempt_diags,
@@ -194,6 +197,7 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                             "provider_raw_count": total_provider_raw,
                             "matched_count": 0,
                             "filtered_out_count": total_filtered_out,
+                            "lookup_outcome": "LOOKUP_FAILED",
                             "cause": "INVALID_PAYLOAD_SHAPE",
                             "attempts": attempt_diags,
                         },
@@ -210,6 +214,7 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                     skipped = len(listed) - len(records)
                 total_provider_raw += len(listed)
                 total_filtered_out += skipped
+                returned_cns = [str(r.get("case_number") or "").strip() for r in listed if r.get("case_number")]
                 attempt_diags.append({
                     "attempt": label,
                     "page": page,
@@ -217,6 +222,7 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                     "provider_raw_count": len(listed),
                     "matched_count": len(records),
                     "filtered_out_count": skipped,
+                    "returned_case_numbers": returned_cns[:5],
                 })
                 matched = wanted is not None and bool(records)
                 diag = {
@@ -226,7 +232,9 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                     "provider_total": total,
                     "matched_count": len(records),
                     "filtered_out_count": skipped if matched else total_filtered_out,
+                    "lookup_outcome": "MATCHED" if matched else "NOT_IN_PUBLIC_DB",
                     "cause": "MATCHED" if matched else ("FILTER_REJECTED_ALL" if total_provider_raw > 0 else "NO_PROVIDER_RESULTS"),
+                    "returned_candidate_case_numbers": returned_cns[:10] if not matched else [],
                     "attempts": list(attempt_diags),
                 }
                 result = AdapterResponse(
@@ -248,13 +256,20 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
 
         if first is not None and not first.message:
             overall_cause = "FILTER_REJECTED_ALL" if total_provider_raw > 0 else "NO_PROVIDER_RESULTS"
+            all_returned_cns: List[str] = []
+            for ad in attempt_diags:
+                for cn in ad.get("returned_case_numbers") or []:
+                    if cn not in all_returned_cns:
+                        all_returned_cns.append(cn)
             overall_diag = {
                 "target": target,
                 "normalized_case_number": canonical if wanted else None,
                 "provider_raw_count": total_provider_raw,
                 "matched_count": 0,
                 "filtered_out_count": total_filtered_out,
+                "lookup_outcome": "NOT_IN_PUBLIC_DB",
                 "cause": overall_cause,
+                "returned_candidate_case_numbers": all_returned_cns[:10],
                 "attempts": attempt_diags,
             }
             cause_detail = (
@@ -266,14 +281,14 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                 first.status,
                 first.records,
                 first.source_record,
-                f"사건번호 일치 없음(조회 DB {target}, 시도: {' → '.join(tried)}; {cause_detail})",
+                f"공개 DB 조회 범위에 없음(조회 DB {target}, 시도: {' → '.join(tried)}; {cause_detail})",
                 diagnostics=overall_diag,
             )
         return first if first is not None else self._unavailable(
             case_number,
             AdapterStatus.ERROR,
             "조회를 수행하지 못했다",
-            diagnostics={"target": target, "cause": "NO_ATTEMPTS"},
+            diagnostics={"target": target, "lookup_outcome": "LOOKUP_FAILED", "cause": "NO_ATTEMPTS"},
         )
 
     def search_cases_by_query(
