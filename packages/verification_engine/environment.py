@@ -227,6 +227,7 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
         "rag": {
             "configured_mode": rag_configured,
             "effective_mode": rag_effective,
+            "measured": False,
             "actual_calls": 0,
             "dense_enabled": dense_enabled,
             "reranker_enabled": reranker_enabled,
@@ -238,6 +239,7 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
             "mode": ocr_mode,
             "configured_mode": ocr_mode,
             "effective_mode": ocr_effective,
+            "measured": False,
             "actual_calls": 0,
             "available": ocr_available,
             "fallback_reason": ocr_reason,
@@ -255,6 +257,86 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
             "status": "REMOVED_NOT_OPERATIONAL",
         },
     }
+
+
+def aggregate_run_feature_diagnostics(
+    next_gen_diag: Dict[str, Any],
+    documents: Sequence[Any],
+    references_summary: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Aggregate per-document RAG retrieval and OCR fallback telemetry into run-level diagnostics."""
+    rag = dict(next_gen_diag.get("rag") or {})
+    if references_summary and references_summary.get("retrieval_mode"):
+        rag["effective_mode"] = references_summary.get("retrieval_mode")
+
+    emb_req = emb_ok = emb_fail = emb_ms = 0
+    rerank_req = rerank_ok = rerank_fail = rerank_ms = 0
+    retrieval_ms = cache_hits = cache_misses = 0
+
+    ocr_attempted = ocr_adopted = ocr_rejected = 0
+
+    for doc in documents or ():
+        eng = getattr(doc, "engine_data", None)
+        if not isinstance(eng, dict):
+            continue
+        ret = ((eng.get("rag") or {}).get("search_diagnostics") or {}).get("retrieval")
+        if isinstance(ret, dict):
+            emb_req += int(ret.get("embedding_requests") or 0)
+            emb_ok += int(ret.get("embedding_successes") or 0)
+            emb_fail += int(ret.get("embedding_failures") or 0)
+            emb_ms += int(ret.get("embedding_ms") or 0)
+            rerank_req += int(ret.get("reranker_requests") or 0)
+            rerank_ok += int(ret.get("reranker_successes") or 0)
+            rerank_fail += int(ret.get("reranker_failures") or 0)
+            rerank_ms += int(ret.get("reranker_ms") or 0)
+            retrieval_ms += int(ret.get("retrieval_ms") or 0)
+            cache_hits += int(ret.get("cache_hits") or 0)
+            cache_misses += int(ret.get("cache_misses") or 0)
+
+        fb = eng.get("ocr_fallback_summary")
+        if isinstance(fb, dict):
+            att_list = fb.get("attempted_pages") or []
+            ado_list = fb.get("adopted_pages") or []
+            rej_list = fb.get("rejected_pages")
+            att = len(att_list) if isinstance(att_list, (list, tuple)) else int(att_list or 0)
+            ado = len(ado_list) if isinstance(ado_list, (list, tuple)) else int(ado_list or 0)
+            rej = (
+                (len(rej_list) if isinstance(rej_list, (list, tuple)) else int(rej_list or 0))
+                if rej_list is not None
+                else max(0, att - ado)
+            )
+            ocr_attempted += att
+            ocr_adopted += ado
+            ocr_rejected += rej
+
+    rag_actual = emb_req + rerank_req
+    rag["measured"] = True
+    rag["actual_calls"] = rag_actual
+    rag["embedding_requests"] = emb_req
+    rag["embedding_successes"] = emb_ok
+    rag["embedding_failures"] = emb_fail
+    rag["embedding_ms"] = emb_ms
+    rag["reranker_requests"] = rerank_req
+    rag["reranker_successes"] = rerank_ok
+    rag["reranker_failures"] = rerank_fail
+    rag["reranker_ms"] = rerank_ms
+    rag["retrieval_ms"] = retrieval_ms
+    rag["cache_hits"] = cache_hits
+    rag["cache_misses"] = cache_misses
+    if str(rag.get("effective_mode") or "").upper() == "HYBRID" and rag_actual == 0 and not rag.get("fallback_reason"):
+        rag["fallback_reason"] = "NO_RELEVANT_DOCUMENTS_OR_CHUNKS_FOR_DENSE"
+
+    ocr = dict(next_gen_diag.get("ocr_fallback") or {})
+    ocr["measured"] = True
+    ocr["actual_calls"] = ocr_attempted
+    ocr["attempted_pages"] = ocr_attempted
+    ocr["adopted_pages"] = ocr_adopted
+    ocr["rejected_pages"] = ocr_rejected
+
+    updated = dict(next_gen_diag)
+    updated["rag"] = rag
+    updated["ocr_fallback"] = ocr
+    return updated
 
 
 def fingerprint(environment: Dict[str, Any]) -> str:

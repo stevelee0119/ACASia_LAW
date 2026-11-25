@@ -7,6 +7,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import ipaddress
 import math
+import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlsplit
 
@@ -394,6 +395,7 @@ def retrieve_hybrid_chunks(
     rerank_top_n: int = 30,
 ) -> Dict[str, Any]:
     """Execute 4-tier hybrid retrieval and return ranked chunks with retrieval mode telemetry."""
+    retrieval_start = time.monotonic()
     if not chunks:
         return {
             "retrieval_mode": "EMPTY",
@@ -405,9 +407,12 @@ def retrieve_hybrid_chunks(
                 "embedding_requests": 0,
                 "embedding_successes": 0,
                 "embedding_failures": 0,
+                "embedding_ms": 0,
                 "reranker_requests": 0,
                 "reranker_successes": 0,
                 "reranker_failures": 0,
+                "reranker_ms": 0,
+                "retrieval_ms": round((time.monotonic() - retrieval_start) * 1000),
                 "cache_hits": 0,
                 "cache_misses": 0,
                 "fallback_reasons": ["EMPTY_CHUNKS"],
@@ -426,15 +431,18 @@ def retrieve_hybrid_chunks(
     emb_requests = 0
     emb_successes = 0
     emb_failures = 0
+    emb_ms = 0
     rerank_requests = 0
     rerank_successes = 0
     rerank_failures = 0
+    rerank_ms = 0
     cache_hits = 0
     cache_misses = 0
     cached_map = dict(chunk_vectors or {})
 
     emb = embedding_adapter or NullEmbeddingAdapter()
     if emb.available:
+        emb_started = time.monotonic()
         try:
             missing_chunks: List[Dict[str, Any]] = []
             for ch in chunks:
@@ -472,6 +480,8 @@ def retrieve_hybrid_chunks(
             retrieval_warnings.append(f"EMBEDDING_FALLBACK:{type(exc).__name__}")
             dense_scores.clear()
             retrieval_mode = "LEXICAL_ONLY"
+        finally:
+            emb_ms = round((time.monotonic() - emb_started) * 1000)
 
     rrf_scores = reciprocal_rank_fusion(ranked_lists)
     by_id = {str(c.get("chunk_id") or ""): c for c in lexical_ranked}
@@ -489,6 +499,7 @@ def retrieve_hybrid_chunks(
 
     reranker = reranker_adapter or NullRerankerAdapter()
     if reranker.available and fused:
+        rerank_started = time.monotonic()
         try:
             head = fused[:max(1, rerank_top_n)]
             tail = fused[max(1, rerank_top_n):]
@@ -513,6 +524,8 @@ def retrieve_hybrid_chunks(
         except Exception as exc:
             rerank_failures += 1
             retrieval_warnings.append(f"RERANKER_FALLBACK:{type(exc).__name__}")
+        finally:
+            rerank_ms = round((time.monotonic() - rerank_started) * 1000)
 
     annotated = annotate_applicability(
         fused,
@@ -536,9 +549,12 @@ def retrieve_hybrid_chunks(
             "embedding_requests": emb_requests,
             "embedding_successes": emb_successes,
             "embedding_failures": emb_failures,
+            "embedding_ms": emb_ms,
             "reranker_requests": rerank_requests,
             "reranker_successes": rerank_successes,
             "reranker_failures": rerank_failures,
+            "reranker_ms": rerank_ms,
+            "retrieval_ms": round((time.monotonic() - retrieval_start) * 1000),
             "cache_hits": cache_hits,
             "cache_misses": cache_misses,
             "fallback_reasons": list(retrieval_warnings),
