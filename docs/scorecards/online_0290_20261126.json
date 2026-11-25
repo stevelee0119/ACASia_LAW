@@ -1,0 +1,239 @@
+{
+ "schema": 1,
+ "measured_on_kst": "2026-11-26",
+ "agent": "evaluator",
+ "mode": "evaluator_rerun",
+ "deployment": {
+  "version": "0.29.0",
+  "commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03",
+  "health": "ok",
+  "database": "ok"
+ },
+ "conditions": {
+  "network": true,
+  "external_ai_policy": "MASKED",
+  "profile": "STANDARD",
+  "legal_nli_mode": "assist",
+  "ocr_fallback_mode": "auto",
+  "rag_retrieval_mode": "HYBRID",
+  "source_replay_mode": "LIVE",
+  "input_sha256": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92",
+  "scoring_rules": {
+   "case9_standard": 2,
+   "rag_controls": 1,
+   "pipeline_health": 1
+  }
+ },
+ "case9_three_runs": {
+  "standard": [
+   23,
+   23,
+   23
+  ],
+  "standard_total": 23,
+  "rag_controls": [
+   5,
+   5,
+   5
+  ],
+  "rag_controls_total": 5,
+  "pipeline_health": [
+   6,
+   6,
+   6
+  ],
+  "pipeline_health_total": 6,
+  "search_interrupted": "0/3",
+  "state": [
+   "PARTIAL_COMPLETED",
+   "PARTIAL_COMPLETED",
+   "PARTIAL_COMPLETED"
+  ],
+  "engine_errors": [
+   0,
+   0,
+   0
+  ],
+  "model_calls": [
+   49,
+   48,
+   48
+  ],
+  "reference_snapshot_hash": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+  "files_indexed": "41/41"
+ },
+ "excluded_run": {
+  "run_id": "run_ac49191dc6f54541",
+  "reason": "external_ai_policy=LOCAL_ONLY(기본값) + 로컬 공급자 0개 → 모델 호출 0건, 측정 조건 설정 누락",
+  "scores": {
+   "standard": "17/23",
+   "rag_controls": "4/5",
+   "pipeline_health": "5/6"
+  },
+  "failed_checks": [
+   "AI-1",
+   "AI-2",
+   "AI-3",
+   "AI-4",
+   "RAG-1",
+   "RAG-2",
+   "RAGC-S3",
+   "H-MODEL"
+  ],
+  "product_regression": false
+ },
+ "eval_contract_4d": {
+  "identity": 10,
+  "quote": 3,
+  "claim_applicability": 47,
+  "source_retrieval": 10,
+  "pii_free": true
+ },
+ "features_0290": {
+  "input": "평가 측 비공개 합성 3문서(.txt)",
+  "run_state": "COMPLETED",
+  "model_calls": 32,
+  "cross_document_copies": {
+   "executed": true,
+   "findings": 1,
+   "type": "CROSS_DOC_COPY",
+   "status": "SUSPICIOUS"
+  },
+  "project_fact_triples": {
+   "executed": true,
+   "findings": 1,
+   "type": "FACT_CONTRADICTION",
+   "status": "SUSPICIOUS"
+  },
+  "controls": {
+   "opponent_attribution_excluded": true,
+   "cross_document_entities": 0,
+   "cross_document_events": 0,
+   "false_positives": 0
+  },
+  "offline_precheck": "동일 입력 오프라인 사전 검증에서 같은 양성 2건·오탐 0 재현"
+ },
+ "u2_live_source_check": {
+  "runs": [
+   {
+    "id": 45696943498,
+    "date": "2026-11-25",
+    "conclusion": "failure",
+    "law_go_kr_success": "4/6",
+    "failures": [
+     "law_go_kr:판례검색(키워드) ERROR",
+     "law_go_kr:사건번호조회(2015모2524) 일치 0건"
+    ]
+   },
+   {
+    "id": 45282137413,
+    "date": "2026-11-23",
+    "conclusion": "failure",
+    "law_go_kr_success": "5/6",
+    "failures": [
+     "law_go_kr:사건번호조회(2015모2524) 일치 0건"
+    ]
+   }
+  ],
+  "denominator_definition": "U2 보고서 3절의 law_go_kr 실호출 항목 6건(법령검색 1 + 판례검색 1 + 사건번호조회 4)",
+  "llm_providers": "3/3 OK",
+  "cascade": "4/4 OK",
+  "consensus": "8/8 OK",
+  "academic": {
+   "kci": "OK",
+   "openalex": "OK",
+   "crossref": "OK",
+   "semantic_scholar": "RATE_LIMITED",
+   "success": "3/4"
+  }
+ },
+ "open_defects": {
+  "2015모2524": {
+   "status": "UNRESOLVED",
+   "reproduced": 2,
+   "evidence": "공급자 원응답 3건 수신, 후보 필터 후 일치 0건(필터 탈락 3건)",
+   "code_site": "packages/source_adapters/law_go_kr.py:39 _record_matches_case_number()",
+   "intended_fix": "0.28.0 #417",
+   "note": "'DB 색인 미보유' 해석과 불일치 — 후보 단위 재특정 필요",
+   "evaluator_limit": "평가 컨테이너에서 www.law.go.kr TLS 연결 원격 초기화로 후보 값 직접 확인 불가"
+  },
+  "precedent_keyword_search": {
+   "status": "INTERMITTENT",
+   "observed": "11-23 100건 OK / 11-25 ERROR"
+  },
+  "rag_mode_display": {
+   "status": "OBSERVED",
+   "detail": "effective_mode=HYBRID인데 actual_calls=0"
+  },
+  "TK-231": {
+   "status": "UNRESOLVED",
+   "pages_incomplete": 16,
+   "pages_total": 8823,
+   "pages_completed": 8807,
+   "files_with_gaps": 7,
+   "cache_reused": "41/41"
+  }
+ },
+ "not_measured": [
+  "Dense/Reranker 실호출(TK-228)",
+  "로컬 모델(TK-229, REMOVED_NOT_OPERATIONAL)",
+  "격리 봉인 세트",
+  "실무 법률 정확도",
+  "검색/주장 타당성",
+  "검토 효율"
+ ],
+ "cleanup": {
+  "projects_created": 7,
+  "trashed": 7,
+  "verified_via": "GET /api/projects?deleted=true",
+  "purged": 0
+ },
+ "run_evidence": {
+  "r1": {
+   "run_id": "run_ac49191dc6f54541",
+   "state": "PARTIAL_COMPLETED",
+   "policy": "LOCAL_ONLY",
+   "model_calls": 0,
+   "engine_errors": 0,
+   "report_sha256": "521a044b835a78f0d8acc44129abd624bdf6d591aa17884731b86bfa5ef7fbca",
+   "commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03"
+  },
+  "m1": {
+   "run_id": "run_9d073c67f34c4004",
+   "state": "PARTIAL_COMPLETED",
+   "policy": "MASKED",
+   "model_calls": 49,
+   "engine_errors": 0,
+   "report_sha256": "f7c7cf9f3dafdf8dd1d78636692ae64857fb7afb2a8c32966b75dadaef197a0d",
+   "commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03"
+  },
+  "m2": {
+   "run_id": "run_237a8b8b2ea543c1",
+   "state": "PARTIAL_COMPLETED",
+   "policy": "MASKED",
+   "model_calls": 48,
+   "engine_errors": 0,
+   "report_sha256": "b4f23af29ee8dbf63ffde2b7c62de606151904d3d286c48a48255f411e80d137",
+   "commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03"
+  },
+  "m3": {
+   "run_id": "run_5753ae91f520434c",
+   "state": "PARTIAL_COMPLETED",
+   "policy": "MASKED",
+   "model_calls": 48,
+   "engine_errors": 0,
+   "report_sha256": "f8ecbe99f7bb5c4172d76b5945603305bd9a57e24dc40f0fa29241ebc2472b11",
+   "commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03"
+  },
+  "feat": {
+   "run_id": "run_506449134d3d4df4",
+   "state": "COMPLETED",
+   "policy": "MASKED",
+   "model_calls": 32,
+   "engine_errors": 0,
+   "report_sha256": "0ce99d4e8baba77d4c59abac62b0676231837068fda1e9825c0f74f42c98af14",
+   "commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03"
+  }
+ },
+ "measured_window_utc": "2026-11-25T20:29Z~20:50Z"
+}
