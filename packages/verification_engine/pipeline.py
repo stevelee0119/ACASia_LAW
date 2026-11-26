@@ -773,12 +773,16 @@ class VerificationPipeline:
         result.run_manifest["legal_nli_summary"] = _summarize_legal_nli(
             result.documents, mode=str(getattr(self.settings, "legal_nli_mode", "shadow") or "shadow").strip().lower()
         )
-        next_gen_diag = env_info.get("next_gen_features") or {}
+        from packages.verification_engine.environment import aggregate_run_feature_diagnostics
+        next_gen_diag = aggregate_run_feature_diagnostics(
+            env_info.get("next_gen_features") or {},
+            result.documents,
+            references.summary,
+        )
+        env_info["next_gen_features"] = next_gen_diag
         result.run_manifest["source_cassette"] = next_gen_diag.get("source_cassette") or {}
-        rag_diag = dict(next_gen_diag.get("rag") or {})
-        if references.summary.get("retrieval_mode"):
-            rag_diag["effective_mode"] = references.summary.get("retrieval_mode")
-        result.run_manifest["rag_retrieval_diagnostics"] = rag_diag
+        result.run_manifest["rag_retrieval_diagnostics"] = dict(next_gen_diag.get("rag") or {})
+        result.run_manifest["ocr_fallback_diagnostics"] = dict(next_gen_diag.get("ocr_fallback") or {})
         result.timeline = build_timeline(
             [e for d in result.documents for e in _events_from(d)]
         )
