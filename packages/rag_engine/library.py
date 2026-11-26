@@ -37,6 +37,159 @@ CASE_TABLE_MAX_BYTES = 96 * 1024 * 1024
 # 이어 읽기(continuation) 중인 파일만 임시 보관하는 raw_cache 총량 상한:
 # 단일 파일 상한(96 MiB) 기준 최대 2~3건 동시 이어 읽기를 수용하되 디스크 점유를 256 MiB 이하로 제한한다.
 MAX_RAW_CACHE_BYTES = 256 * 1024 * 1024
+_RETRYABLE_UNREAD_CAUSES = ("BUDGET_EXHAUSTED", "READ_TIMEOUT", "PARSE_FAILED", "OCR_LOW_QUALITY")
+_ALL_UNREAD_CAUSES = (
+    "BUDGET_EXHAUSTED",
+    "READ_TIMEOUT",
+    "PARSE_FAILED",
+    "OCR_UNAVAILABLE",
+    "OCR_LOW_QUALITY",
+    "CONTENT_NO_TEXT",
+    "CONFIG_BLOCKED",
+    "UNKNOWN",
+)
+
+
+def _has_any_unread_reason_fields(p: dict) -> bool:
+    by_cause = p.get("unread_pages_by_cause") or {}
+    if isinstance(by_cause, dict) and any(bool(v) for v in by_cause.values()):
+        return True
+    for key in (
+        "unread_pages",
+        "ocr_low_quality_pages",
+        "confirmed_unreadable_pages",
+        "config_blocked_pages",
+        "no_text_pages",
+        "error_pages",
+        "scanned_pages",
+        "unprocessed_pages",
+    ):
+        if p.get(key):
+            return True
+    return False
+
+
+def _is_legacy_unread_without_reasons(p: dict) -> bool:
+    if p.get("legacy_unread_reevaluated"):
+        return False
+    pages = int(p.get("pages") or 0)
+    completed = p.get("completed_pages") if p.get("completed_pages") is not None else p.get("read_pages")
+    if pages <= 0 or completed is None or int(completed) >= pages:
+        return False
+    return not _has_any_unread_reason_fields(p)
+
+
+def _reconcile_unread_causes(parsed: dict) -> None:
+    """Ensure unread causes account for the exact pages - completed_pages gap without fabricating pages."""
+    pages = int(parsed.get("pages") or 0)
+    if pages <= 0:
+        return
+    if parsed.get("completed_pages") is None and parsed.get("read_pages") is not None:
+        parsed["completed_pages"] = int(parsed.get("read_pages") or 0)
+    completed = int(parsed.get("completed_pages") or 0)
+    gap = max(0, pages - completed)
+    raw_by_cause = parsed.get("unread_pages_by_cause")
+    by_cause: dict[str, list[int]] = {k: list((raw_by_cause or {}).get(k) or []) for k in _ALL_UNREAD_CAUSES}
+    if isinstance(raw_by_cause, dict):
+        for k, v in raw_by_cause.items():
+            if k not in by_cause and isinstance(v, list):
+                by_cause[k] = list(v)
+
+    accounted_pages: set[int] = set()
+    for plist in by_cause.values():
+        for pg in plist:
+            accounted_pages.add(int(pg))
+
+    unknown_count = 0
+    if gap > len(accounted_pages):
+        needed = gap - len(accounted_pages)
+        for pg in (parsed.get("config_blocked_pages") or []):
+            if needed <= 0:
+                break
+            pg_int = int(pg)
+            if pg_int not in accounted_pages:
+                by_cause["CONFIG_BLOCKED"].append(pg_int)
+                accounted_pages.add(pg_int)
+                needed -= 1
+        for pg in (parsed.get("blank_pages") or []):
+            if needed <= 0:
+                break
+            pg_int = int(pg)
+            if pg_int not in accounted_pages:
+                by_cause["CONTENT_NO_TEXT"].append(pg_int)
+                accounted_pages.add(pg_int)
+                needed -= 1
+        for pg in (parsed.get("ocr_low_quality_pages") or []):
+            if needed <= 0:
+                break
+            pg_int = int(pg)
+            if pg_int not in accounted_pages:
+                by_cause["OCR_LOW_QUALITY"].append(pg_int)
+                accounted_pages.add(pg_int)
+                needed -= 1
+        for pg in (parsed.get("error_pages") or []):
+            if needed <= 0:
+                break
+            pg_int = int(pg)
+            if pg_int not in accounted_pages:
+                by_cause["PARSE_FAILED"].append(pg_int)
+                accounted_pages.add(pg_int)
+                needed -= 1
+        for pg in (parsed.get("unprocessed_pages") or []):
+            if needed <= 0:
+                break
+            pg_int = int(pg)
+            if pg_int not in accounted_pages:
+                cause = "BUDGET_EXHAUSTED" if parsed.get("continuation") else "PARSE_FAILED"
+                by_cause[cause].append(pg_int)
+                accounted_pages.add(pg_int)
+                needed -= 1
+        for pg in (parsed.get("no_text_pages") or []):
+            if needed <= 0:
+                break
+            pg_int = int(pg)
+            if pg_int not in accounted_pages:
+                by_cause["CONTENT_NO_TEXT"].append(pg_int)
+                accounted_pages.add(pg_int)
+                needed -= 1
+
+        if needed > 0:
+            reason_upper = str(parsed.get("reason") or "").upper()
+            if "TIMEOUT" in reason_upper:
+                fallback_cause: Optional[str] = "READ_TIMEOUT"
+            elif "BUDGET" in reason_upper or parsed.get("continuation"):
+                fallback_cause = "BUDGET_EXHAUSTED"
+            elif "OCR_LOW" in reason_upper:
+                fallback_cause = "OCR_LOW_QUALITY"
+            elif "OCR" in reason_upper:
+                fallback_cause = "OCR_UNAVAILABLE"
+            elif "BLANK" in reason_upper or "NO_TEXT" in reason_upper:
+                fallback_cause = "CONTENT_NO_TEXT"
+            elif "PARSE_FAILED" in reason_upper or "PARSE_ERROR" in reason_upper:
+                fallback_cause = "PARSE_FAILED"
+            else:
+                fallback_cause = None
+
+            if fallback_cause is not None:
+                candidate_pages = [p for p in range(1, pages + 1) if p not in accounted_pages][:needed]
+                for pg_int in candidate_pages:
+                    by_cause[fallback_cause].append(pg_int)
+                    accounted_pages.add(pg_int)
+                    needed -= 1
+            if needed > 0:
+                # Legacy or unattributed gap: record UNKNOWN count without fabricating page numbers
+                unknown_count = needed
+
+    for k in list(by_cause.keys()):
+        by_cause[k] = sorted({int(x) for x in by_cause[k]})
+    parsed["unread_pages_by_cause"] = by_cause
+    cause_counts = {k: len(v) for k, v in by_cause.items() if v}
+    if unknown_count > 0:
+        cause_counts["UNKNOWN"] = unknown_count
+    parsed["unread_cause_counts"] = cause_counts
+    if gap > 0 and not parsed.get("unread_pages") and accounted_pages:
+        parsed["unread_pages"] = sorted(accounted_pages)
+
 
 
 def is_case_table_candidate(item: dict) -> bool:
@@ -288,6 +441,8 @@ class ReferenceLibrary:
             "OCR_UNAVAILABLE": 0,
             "OCR_LOW_QUALITY": 0,
             "CONTENT_NO_TEXT": 0,
+            "CONFIG_BLOCKED": 0,
+            "UNKNOWN": 0,
         }
         unread_cause_files: dict[str, int] = {
             "BUDGET_EXHAUSTED": 0,
@@ -296,6 +451,8 @@ class ReferenceLibrary:
             "OCR_UNAVAILABLE": 0,
             "OCR_LOW_QUALITY": 0,
             "CONTENT_NO_TEXT": 0,
+            "CONFIG_BLOCKED": 0,
+            "UNKNOWN": 0,
         }
         confirmed_unreadable_files = 0
         confirmed_unreadable_pages = 0
@@ -346,10 +503,17 @@ class ReferenceLibrary:
             for k, v in (item.get("page_state_counts") or {}).items():
                 page_states[k] = page_states.get(k, 0) + int(v or 0)
             by_cause = item.get("unread_pages_by_cause") or {}
-            if by_cause:
+            cause_counts = item.get("unread_cause_counts") or {}
+            if by_cause or cause_counts:
+                seen_causes: set[str] = set()
                 for cause_key, plist in by_cause.items():
                     if plist:
                         unread_cause_pages[cause_key] = unread_cause_pages.get(cause_key, 0) + len(plist)
+                        unread_cause_files[cause_key] = unread_cause_files.get(cause_key, 0) + 1
+                        seen_causes.add(cause_key)
+                for cause_key, cnt in cause_counts.items():
+                    if cnt and cause_key not in seen_causes:
+                        unread_cause_pages[cause_key] = unread_cause_pages.get(cause_key, 0) + int(cnt)
                         unread_cause_files[cause_key] = unread_cause_files.get(cause_key, 0) + 1
             elif item.get("unread_cause"):
                 c = item["unread_cause"]
@@ -557,7 +721,7 @@ class ReferenceLibrary:
                     by_cause = p.get("unread_pages_by_cause") or {}
                     config_blocked = set(p.get("config_blocked_pages") or [])
                     confirmed = set(p.get("confirmed_unreadable_pages") or [])
-                    for cause_key in ("BUDGET_EXHAUSTED", "READ_TIMEOUT"):
+                    for cause_key in _RETRYABLE_UNREAD_CAUSES:
                         pages_for_cause = [pg for pg in (by_cause.get(cause_key) or []) if pg not in config_blocked and pg not in confirmed]
                         if pages_for_cause:
                             return True
@@ -580,7 +744,8 @@ class ReferenceLibrary:
                 )
 
                 def _needs_low_quality_ocr_reprocess(p: dict) -> bool:
-                    low_pages = p.get("ocr_low_quality_pages") or []
+                    by_cause = p.get("unread_pages_by_cause") or {}
+                    low_pages = p.get("ocr_low_quality_pages") or by_cause.get("OCR_LOW_QUALITY") or []
                     if not low_pages:
                         return False
                     if reprocess_low_quality is True:
@@ -593,17 +758,21 @@ class ReferenceLibrary:
                 if continuation:
                     row = None  # Only a progressing structured table or bounded OCR is retried at the same revision.
                     retry_reason = "continuation"
+                elif prior and _needs_low_quality_ocr_reprocess(prior):
+                    row = None
+                    retry_reason = "reprocess_low_quality"
                 elif prior and _has_retryable_unread(prior):
                     row = None
                     retry_reason = "retryable_unread"
                 elif prior and _needs_unreadable_confirmation(prior):
                     row = None
                     retry_reason = "confirm_unreadable"
-                elif prior and _needs_low_quality_ocr_reprocess(prior):
+                elif prior and _is_legacy_unread_without_reasons(prior):
                     row = None
-                    retry_reason = "reprocess_low_quality"
+                    retry_reason = "legacy_unread_reeval"
                 if row:
                     parsed = json.loads(row[0])
+                    _reconcile_unread_causes(parsed)
                     self.summary["files_reused"] += 1
                     entry["reused"] = True
                 elif not chosen(file_id) and not is_candidate(file_id):
@@ -624,7 +793,7 @@ class ReferenceLibrary:
                         raise ReferenceError(problem)
                     item = {**fresh, "folder_path": folder_path, "listed_parent": item.get("listed_parent")}
                     version = revision(item) + ":" + EXTRACTOR_VERSION
-                    if prior and (continuation or retry_reason in ("retryable_unread", "confirm_unreadable", "reprocess_low_quality")):
+                    if prior and (continuation or retry_reason in ("retryable_unread", "confirm_unreadable", "reprocess_low_quality", "legacy_unread_reeval")):
                         stored = db.execute("SELECT revision FROM files WHERE id=?", (file_id,)).fetchone()
                         if not stored or stored[0] != version:
                             prior, continuation = None, None
@@ -636,7 +805,7 @@ class ReferenceLibrary:
                     reused_local_bytes = False
                     if (
                         prior
-                        and (continuation or retry_reason in ("retryable_unread", "confirm_unreadable"))
+                        and (continuation or retry_reason in ("retryable_unread", "confirm_unreadable", "legacy_unread_reeval"))
                         and prior.get("sha256")
                         and cache_path.is_file()
                     ):
@@ -704,6 +873,9 @@ class ReferenceLibrary:
                     parsed["chunk_count"] = len(chunks) + (prior.get("chunk_count", 0) if append_batch else 0)
                     parsed["cached_filename"] = filename
                     parsed["cached_mime"] = mime
+                    _reconcile_unread_causes(parsed)
+                    if retry_reason == "legacy_unread_reeval" or (prior and prior.get("legacy_unread_reevaluated")):
+                        parsed["legacy_unread_reevaluated"] = True
                     if retry_reason == "retryable_unread" and prior:
                         prior_best = int(
                             prior.get("best_read_pages")
@@ -740,13 +912,24 @@ class ReferenceLibrary:
                         if prev_searchable is not None:
                             parsed["previous_searchable_pages"] = int(prev_searchable)
                             parsed["searchable_pages_delta"] = int(cur_searchable) - int(prev_searchable)
-                    if retry_reason == "reprocess_low_quality" and prior_for_searchable:
+                    if retry_reason in ("reprocess_low_quality", "legacy_unread_reeval") and prior_for_searchable:
                         prev_low_pages = len(prior_for_searchable.get("ocr_low_quality_pages") or [])
                         cur_low_pages = len(parsed.get("ocr_low_quality_pages") or [])
-                        parsed["low_quality_pages_before"] = prev_low_pages
-                        parsed["low_quality_pages_after"] = cur_low_pages
-                        parsed["reprocessed_pages"] = prev_low_pages
-                        parsed["recovered_pages"] = max(0, prev_low_pages - cur_low_pages)
+                        if prev_low_pages == 0 and retry_reason == "legacy_unread_reeval":
+                            prev_pages = int(prior_for_searchable.get("pages") or 0)
+                            prev_comp = prior_for_searchable.get("completed_pages")
+                            if prev_comp is None:
+                                prev_comp = prior_for_searchable.get("read_pages") or 0
+                            prev_gap = max(0, prev_pages - int(prev_comp))
+                            parsed["low_quality_pages_before"] = prev_low_pages
+                            parsed["low_quality_pages_after"] = cur_low_pages
+                            parsed["reprocessed_pages"] = prev_gap
+                            parsed["recovered_pages"] = max(0, int(parsed.get("searchable_pages_delta") or 0))
+                        else:
+                            parsed["low_quality_pages_before"] = prev_low_pages
+                            parsed["low_quality_pages_after"] = cur_low_pages
+                            parsed["reprocessed_pages"] = prev_low_pages
+                            parsed["recovered_pages"] = max(0, prev_low_pages - cur_low_pages)
                     if parsed.get("ocr_low_quality_pages") or retry_reason == "reprocess_low_quality":
                         parsed["low_quality_reprocess_version"] = OCR_REPROCESS_VERSION
                     if parsed.get("confirmed_unreadable_pages"):
@@ -940,7 +1123,7 @@ class ReferenceLibrary:
                             "page_diagnostics", "ocr_pages", "ocr_low_quality_pages", "ocr_fallback_summary",
                             "blank_pages", "scanned_pages",
                             "error_pages", "incomplete_pages", "page_state_counts", "text_parser", "fallback_pages",
-                            "unread_pages", "unread_pages_by_cause", "execution_incomplete_pages", "content_unreadable_pages",
+                            "unread_pages", "unread_pages_by_cause", "unread_cause_counts", "execution_incomplete_pages", "content_unreadable_pages",
                             "retryable_unread_pages", "config_blocked_pages", "confirmed_unreadable_pages",
                             "confirmed_unreadable_causes", "native_open_error", "read_completeness",
                             "stats", "read_ranges", "excluded_rows", "table_version"):

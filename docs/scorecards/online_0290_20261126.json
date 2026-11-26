@@ -1,0 +1,575 @@
+{
+  "schema": 1,
+  "measured_on_kst": "2026-11-26",
+  "agent": "evaluator",
+  "mode": "evaluator_rerun",
+  "deployment": {
+    "version": "0.29.0",
+    "commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03",
+    "health": "ok",
+    "database": "ok"
+  },
+  "conditions": {
+    "network": true,
+    "external_ai_policy": "MASKED",
+    "profile": "STANDARD",
+    "legal_nli_mode": "assist",
+    "ocr_fallback_mode": "auto",
+    "rag_retrieval_mode": "HYBRID",
+    "source_replay_mode": "LIVE",
+    "input_sha256": "f79abba4abe4ffa4fecc273a8fc89ccbccc3a91f3e3259a92a5c4003a8d4df92",
+    "scoring_rules": {
+      "case9_standard": 2,
+      "rag_controls": 1,
+      "pipeline_health": 1
+    }
+  },
+  "case9_three_runs": {
+    "standard": [
+      23,
+      23,
+      23
+    ],
+    "standard_total": 23,
+    "rag_controls": [
+      5,
+      5,
+      5
+    ],
+    "rag_controls_total": 5,
+    "pipeline_health": [
+      6,
+      6,
+      6
+    ],
+    "pipeline_health_total": 6,
+    "search_interrupted": "0/3",
+    "state": [
+      "PARTIAL_COMPLETED",
+      "PARTIAL_COMPLETED",
+      "PARTIAL_COMPLETED"
+    ],
+    "engine_errors": [
+      0,
+      0,
+      0
+    ],
+    "model_calls": [
+      49,
+      48,
+      48
+    ],
+    "reference_snapshot_hash": "11922706a8a6e337c0999f7dfadfdad7eb3cffc49a2e7312c76ed9126b6a8553",
+    "files_indexed": "41/41"
+  },
+  "excluded_run": {
+    "run_id": "run_ac49191dc6f54541",
+    "reason": "external_ai_policy=LOCAL_ONLY(기본값) + 로컬 공급자 0개 → 모델 호출 0건, 측정 조건 설정 누락",
+    "scores": {
+      "standard": "17/23",
+      "rag_controls": "4/5",
+      "pipeline_health": "5/6"
+    },
+    "failed_checks": [
+      "AI-1",
+      "AI-2",
+      "AI-3",
+      "AI-4",
+      "RAG-1",
+      "RAG-2",
+      "RAGC-S3",
+      "H-MODEL"
+    ],
+    "product_regression": false
+  },
+  "eval_contract_4d": {
+    "identity": 10,
+    "quote": 3,
+    "claim_applicability": 47,
+    "source_retrieval": 10,
+    "pii_free": true
+  },
+  "features_0290": {
+    "input": "평가 측 비공개 합성 3문서(.txt)",
+    "run_state": "COMPLETED",
+    "model_calls": 32,
+    "cross_document_copies": {
+      "executed": true,
+      "findings": 1,
+      "type": "CROSS_DOC_COPY",
+      "status": "SUSPICIOUS"
+    },
+    "project_fact_triples": {
+      "executed": true,
+      "findings": 1,
+      "type": "FACT_CONTRADICTION",
+      "status": "SUSPICIOUS"
+    },
+    "controls": {
+      "opponent_attribution_excluded": true,
+      "cross_document_entities": 0,
+      "cross_document_events": 0,
+      "false_positives": 0
+    },
+    "offline_precheck": "동일 입력 오프라인 사전 검증에서 같은 양성 2건·오탐 0 재현"
+  },
+  "u2_live_source_check": {
+    "runs": [
+      {
+        "id": 45696943498,
+        "date": "2026-11-25",
+        "conclusion": "failure",
+        "law_go_kr_success": "4/6",
+        "failures": [
+          "law_go_kr:판례검색(키워드) ERROR",
+          "law_go_kr:사건번호조회(2015모2524) 일치 0건"
+        ]
+      },
+      {
+        "id": 45282137413,
+        "date": "2026-11-23",
+        "conclusion": "failure",
+        "law_go_kr_success": "5/6",
+        "failures": [
+          "law_go_kr:사건번호조회(2015모2524) 일치 0건"
+        ]
+      }
+    ],
+    "denominator_definition": "U2 보고서 3절의 law_go_kr 실호출 항목 6건(법령검색 1 + 판례검색 1 + 사건번호조회 4)",
+    "llm_providers": "3/3 OK",
+    "cascade": "4/4 OK",
+    "consensus": "8/8 OK",
+    "academic": {
+      "kci": "OK",
+      "openalex": "OK",
+      "crossref": "OK",
+      "semantic_scholar": "RATE_LIMITED",
+      "success": "3/4"
+    }
+  },
+  "open_defects": {
+    "2015모2524": {
+      "status": "UNRESOLVED",
+      "reproduced": 2,
+      "evidence": "공급자 원응답 3건 수신, 후보 필터 후 일치 0건(필터 탈락 3건)",
+      "code_site": "packages/source_adapters/law_go_kr.py:39 _record_matches_case_number()",
+      "intended_fix": "0.28.0 #417",
+      "note": "'DB 색인 미보유' 해석과 불일치 — 후보 단위 재특정 필요",
+      "evaluator_limit": "평가 컨테이너에서 www.law.go.kr TLS 연결 원격 초기화로 후보 값 직접 확인 불가"
+    },
+    "precedent_keyword_search": {
+      "status": "INTERMITTENT",
+      "observed": "11-23 100건 OK / 11-25 ERROR"
+    },
+    "rag_mode_display": {
+      "status": "OBSERVED",
+      "detail": "effective_mode=HYBRID인데 actual_calls=0"
+    },
+    "TK-231": {
+      "status": "UNRESOLVED",
+      "pages_incomplete": 16,
+      "pages_total": 8823,
+      "pages_completed": 8807,
+      "files_with_gaps": 7,
+      "cache_reused": "41/41"
+    }
+  },
+  "not_measured": [
+    "격리 봉인 세트",
+    "실무 법률 정확도",
+    "검색/주장 타당성",
+    "검토 효율"
+  ],
+  "cleanup": {
+    "projects_created": 7,
+    "trashed": 7,
+    "verified_via": "GET /api/projects?deleted=true",
+    "purged": 0
+  },
+  "run_evidence": {
+    "r1": {
+      "run_id": "run_ac49191dc6f54541",
+      "state": "PARTIAL_COMPLETED",
+      "policy": "LOCAL_ONLY",
+      "model_calls": 0,
+      "engine_errors": 0,
+      "report_sha256": "521a044b835a78f0d8acc44129abd624bdf6d591aa17884731b86bfa5ef7fbca",
+      "commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03"
+    },
+    "m1": {
+      "run_id": "run_9d073c67f34c4004",
+      "state": "PARTIAL_COMPLETED",
+      "policy": "MASKED",
+      "model_calls": 49,
+      "engine_errors": 0,
+      "report_sha256": "f7c7cf9f3dafdf8dd1d78636692ae64857fb7afb2a8c32966b75dadaef197a0d",
+      "commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03"
+    },
+    "m2": {
+      "run_id": "run_237a8b8b2ea543c1",
+      "state": "PARTIAL_COMPLETED",
+      "policy": "MASKED",
+      "model_calls": 48,
+      "engine_errors": 0,
+      "report_sha256": "b4f23af29ee8dbf63ffde2b7c62de606151904d3d286c48a48255f411e80d137",
+      "commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03"
+    },
+    "m3": {
+      "run_id": "run_5753ae91f520434c",
+      "state": "PARTIAL_COMPLETED",
+      "policy": "MASKED",
+      "model_calls": 48,
+      "engine_errors": 0,
+      "report_sha256": "f8ecbe99f7bb5c4172d76b5945603305bd9a57e24dc40f0fa29241ebc2472b11",
+      "commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03"
+    },
+    "feat": {
+      "run_id": "run_506449134d3d4df4",
+      "state": "COMPLETED",
+      "policy": "MASKED",
+      "model_calls": 32,
+      "engine_errors": 0,
+      "report_sha256": "0ce99d4e8baba77d4c59abac62b0676231837068fda1e9825c0f74f42c98af14",
+      "commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03"
+    }
+  },
+  "measured_window_utc": "2026-11-25T20:29Z~20:50Z",
+  "corrections_20261126": {
+    "2015mo2524": {
+      "verdict": "NOT_A_PRODUCT_DEFECT",
+      "diagnosis_run": 45702074019,
+      "nb_lookup": {
+        "total_count": 1,
+        "raw": 1,
+        "adopted": 0,
+        "returned": [
+          "2015도6980"
+        ]
+      },
+      "search2_lookup": {
+        "total_count": 2,
+        "raw": 2,
+        "adopted": 0,
+        "returned": [
+          "2022도15950",
+          "2015도6980"
+        ]
+      },
+      "control_2011mo1839": {
+        "nb": {
+          "total_count": 1,
+          "raw": 1,
+          "adopted": 1,
+          "returned": [
+            "2011모1839"
+          ]
+        }
+      },
+      "conclusion": "공개 prec DB 미수록. law.go.kr nb는 미수록 시 무관 대체 레코드를 totalCnt=1로 반환. #417 완전 튜플 일치 필터는 오매칭을 올바르게 차단했으므로 유지.",
+      "retracted": "2절 1항의 '#417 의도 미달성'·'후보 단위 원인 재특정 필요'",
+      "remaining_work": "분류·보고(NOT_IN_PUBLIC_DB vs LOOKUP_FAILED), CASE_NOT_FOUND 범위 표시, U2 분모 분리 → TK-235"
+    },
+    "u2_law_go_kr_success_reinterpreted": {
+      "denominator_excluding_not_in_db": 5,
+      "2026-11-23": "5/5",
+      "2026-11-25": "4/5",
+      "remaining_failure": "law_go_kr:판례검색(키워드) 간헐 ERROR → TK-236"
+    },
+    "TK-228_dense_reranker": {
+      "was": "NOT_MEASURED",
+      "now": "MEASURED_WORKING",
+      "evidence": "문서 단위 search_diagnostics.retrieval: HYBRID_RERANK, embedding 1/1, reranker 1/1, cache_hits 9 (m1·m2·m3), 다문서 1/3문서",
+      "note": "TK-232 상용 API 임베딩 실전화 운영 확인"
+    },
+    "actual_calls_zero": {
+      "reclassified": "집계 누락(Dense 미작동 아님)",
+      "code_site": [
+        "packages/verification_engine/environment.py:230",
+        "packages/verification_engine/environment.py:241"
+      ],
+      "ticket": "TK-238"
+    },
+    "TK-231_drive_16pages": {
+      "root_cause": "참고자료 41건 전부 사유·관측 필드 0/41 → _needs_low_quality_ocr_reprocess() 항상 False(library.py:582-588), retry_reason None(library.py:604-607)",
+      "ticket": "TK-237"
+    },
+    "tickets_issued": [
+      "TK-235",
+      "TK-236",
+      "TK-237",
+      "TK-238"
+    ]
+  },
+  "additional_measurements_20261126": {
+    "ocr_fallback": {
+      "input_hashes": {
+        "clean_scanned.pdf": "4b062f82…",
+        "low_quality_scanned.pdf": "8d0347b7…"
+      },
+      "clean": {
+        "primary": "tesseract 5.5.0",
+        "primary_confidence": 0.89,
+        "fallback_attempted": false,
+        "fallback_adopted": false,
+        "page_status": "OCR_EXTRACTED",
+        "state": "COMPLETED",
+        "claims": 4,
+        "verdict": "PASS"
+      },
+      "low_quality": {
+        "primary_confidence": 0.483,
+        "fallback_engine": "rapidocr 3.10.0",
+        "fallback_attempted": true,
+        "fallback_adopted": true,
+        "fallback_confidence": 0.537,
+        "decision_reason": "FALLBACK_IMPROVED_QUALITY",
+        "page_status": "UNVERIFIED",
+        "page_reason": "OCR_LOW_CONFIDENCE",
+        "state": "PARTIAL_COMPLETED",
+        "claims": 0,
+        "verdict": "FAIL"
+      },
+      "cross_version": {
+        "0.26.0": {
+          "selected_confidence": 0.582,
+          "page_status": "OCR_LOW_QUALITY"
+        },
+        "0.29.0": {
+          "selected_confidence": 0.537,
+          "page_status": "UNVERIFIED"
+        },
+        "note": "1차 신뢰도는 두 판 모두 0.483 동일. 각 1회 측정이므로 회귀로 확정하지 않음"
+      },
+      "ticket": "TK-239"
+    },
+    "legal_nli_stage2": {
+      "case": "2011모1839",
+      "full_text_chars": 30211,
+      "exact_quote": {
+        "nli": "SUPPORTED",
+        "final": "VERIFIED",
+        "findings": 0,
+        "verdict": "PASS"
+      },
+      "reversed_quote": {
+        "nli": "CONTRADICTED",
+        "assisted": 1,
+        "final": "CONTRADICTED",
+        "findings": [
+          "CASE_QUOTE_MISMATCH HIGH A",
+          "LEGAL_ARGUMENT_INVALID HIGH B advisory"
+        ],
+        "quote_similarity": 0.83,
+        "verdict": "PASS"
+      },
+      "opponent_hearsay_control": {
+        "nli": "CONTRADICTED",
+        "semantic_review": "SUPPORTED",
+        "final": "CONTRADICTED",
+        "findings": [
+          "CASE_QUOTE_MISMATCH HIGH A (오탐)"
+        ],
+        "verdict": "FALSE_POSITIVE",
+        "ticket": "TK-240"
+      },
+      "reference_review_noise": {
+        "total_findings_single_brief": 21,
+        "fact_contradiction_count": 19,
+        "advisory_only": false,
+        "severity": "LOW",
+        "grade": "C",
+        "ticket": "TK-241"
+      }
+    },
+    "u5_repeat": {
+      "runs": 3,
+      "verdicts": [
+        "AI_PARTIAL_GENERATION",
+        "AI_PARTIAL_GENERATION",
+        "AI_PARTIAL_GENERATION"
+      ],
+      "agreement": 1.0,
+      "uncertain": 0,
+      "expected_ratio": 1.0,
+      "providers": {
+        "openai": [
+          0.78,
+          0.82
+        ],
+        "gemini": [
+          0.65,
+          0.75
+        ]
+      },
+      "note": "AI 작성 판별 참여 공급자 2개(anthropic 미참여). 도구의 조건 표시 DIFFERENT는 context(프로젝트) 차이뿐"
+    },
+    "embedding_cache": {
+      "cache_hits": 9,
+      "cache_misses": 0,
+      "hit_rate": 1.0,
+      "embedding_requests": 1,
+      "latency_ms": null,
+      "latency_note": "제품이 retrieval 단계 소요를 기록하지 않음 → TK-238"
+    },
+    "tickets_issued": [
+      "TK-239",
+      "TK-240",
+      "TK-241"
+    ],
+    "cleanup": {
+      "additional_projects": 6,
+      "trashed": 6,
+      "cumulative_trashed": 13,
+      "purged": 0
+    }
+  },
+  "offline_vs_online_compare": {
+    "run_id": 45703102485,
+    "conditions": "같은 SHA 9c63772f·같은 시험문서·같은 채점기(eval_testset.py)·같은 OCR, 네트워크/키만 차이",
+    "dev": {
+      "offline": 89.7,
+      "online": 98.2,
+      "delta": 8.5,
+      "rer_pct": 82.5,
+      "per_document": {
+        "TC-02": [
+          0.841,
+          1.0
+        ],
+        "TC-03": [
+          1.0,
+          1.0
+        ],
+        "TC-04": [
+          1.0,
+          1.0
+        ],
+        "TC-05": [
+          1.0,
+          1.0
+        ],
+        "TC-06": [
+          0.429,
+          0.857
+        ]
+      }
+    },
+    "holdout": {
+      "offline": 87.5,
+      "online": 95.4,
+      "delta": 7.9,
+      "rer_pct": 63.2,
+      "per_document": {
+        "HO-02": [
+          0.917,
+          1.0
+        ],
+        "HO-03": [
+          1.0,
+          1.0
+        ],
+        "HO-04": [
+          0.938,
+          0.938
+        ],
+        "HO-05": [
+          0.909,
+          0.909
+        ],
+        "HO-06": [
+          0.429,
+          0.929
+        ]
+      }
+    },
+    "false_positives": {
+      "fp_trap": [
+        0,
+        0
+      ],
+      "control": [
+        0,
+        0
+      ],
+      "a_grade": [
+        0,
+        0
+      ],
+      "duplicate_citation": [
+        0,
+        0
+      ]
+    },
+    "injection_defense": {
+      "offline": "defended",
+      "online": "defended"
+    },
+    "validation": "오프라인 값이 0.29.0 릴리스 판정 CI 값(dev 89.7/holdout 87.5)과 일치",
+    "interpretation": "상승은 외부 원문 필수 문서(TC-06·HO-06)에 집중. 미변동 문서의 미탐은 알고리즘 한계(SOURCE_AVAILABLE_MISSED). NEXT_GEN_EVALUATION의 온라인 법률 재현율 75% 목표는 두 문서에서 충족(85.7%·92.9%)",
+    "governance": "조건이 다르므로 릴리스 게이트 증감 비교에 합산하지 않음(VERSION_POLICY 3절·EVALUATION_V2)"
+  },
+  "out_of_scope": {
+    "TK-229": {
+      "status": "CLOSED",
+      "decided_by": "user",
+      "decided_on": "2026-11-26",
+      "reason": "TK-232(0.27.0)가 로컬 공급자 코드를 제거 — local_llm.status=REMOVED_NOT_OPERATIONAL, provider_count 0. 측정할 기능이 제품에 없음",
+      "classification": "범위 밖(기능 제거)",
+      "note": "재도입 시 새 티켓 발행"
+    }
+  },
+  "record_corrections_20261126b": {
+    "trigger": "PR #439 검토(Sourcery 자동 검토 10건) 및 평가 측 자체 재확인",
+    "product_code_changed": false,
+    "remeasured": false,
+    "note": "측정을 다시 하지 않았다. 기록의 표기·분류·공개 범위만 고쳤다.",
+    "probe_disclosure_violation": {
+      "severity": "평가 규약 위반(시정 완료)",
+      "rule": "CLAUDE.md 2026-10-24 — 평가 측 탐침 문장과 은퇴 소제목 겹침 낱말은 공개하지 않고 꼴만 적는다",
+      "where": [
+        "docs/handoff/tickets/TK-240.md",
+        "docs/scorecards/pr_431_437_verdict_20261126.md",
+        "docs/scorecards/DAILY_TREND.md",
+        "docs/handoff/NEXT_FOR_ANTIGRAVITY_0290_ONLINE.md"
+      ],
+      "action": "탐침 문장·변형 어절을 꼴 설명으로 교체. 제품 출력 문구와 공개 판례 번호는 공개 대상이므로 유지."
+    },
+    "excluded_run_failure_count": {
+      "was": "실패 6건(표준 세트만 센 표기)",
+      "now": "세 세트 합 8건 — 표준 6(AI-1~AI-4·RAG-1·RAG-2) + RAG 대조군 1(RAGC-S3) + 건강 1(H-MODEL)",
+      "note": "검사 ID 8개와 점수 차(23-17, 5-4, 6-5)가 일치한다. 측정값 오류가 아니라 표기 결함이다."
+    },
+    "verdict_failure_total": {
+      "was": "15건",
+      "now": "13건(분류 근거 있는 수)",
+      "unresolved": "차이 2건은 그 실행의 실패 목록을 보존하지 않아 시험 이름으로 복원 불가 — 미분류로 적었다",
+      "followup": "#438 병합 뒤 #435 재판정에서 전체 suite 재실행, 실패 목록 전문을 매니페스트로 남긴다"
+    },
+    "condition_comparison_guard": "조건 간 비교(오프라인↔네트워크 켬)는 사용자 2026-11-26 지시에 따른 자원 기여도 측정 목적이며, 버전 판정·점수 하락 게이트·baseline.json에 쓰지 않는다. '같은 조건 RER'이라는 잘못된 표기를 '조건 간 대조 지표'로 교정했다.",
+    "ticket_registry": {
+      "registered": [
+        "TK-235",
+        "TK-236",
+        "TK-237",
+        "TK-238",
+        "TK-239",
+        "TK-240",
+        "TK-241"
+      ],
+      "closed": [
+        "TK-229"
+      ],
+      "file": "docs/scorecards/ticket_registry.json",
+      "note": "ticket_metrics.py는 docs/handoff/TK-*.md(최상위)만 읽어 tickets/ 하위 티켓을 세지 않는다. 그래서 --check와 레지스트리 시험은 등재 전에도 통과했다 — 점검기의 한계이지 등재가 불필요했다는 뜻이 아니다."
+    },
+    "ticket_criteria_tightened": {
+      "TK-235": "INCONCLUSIVE_SCOPE 분류 추가 — 검색 범위 완전성을 확인할 수 없는 조회를 미수록으로 확정하지 않고 성공률 분모에 남긴다",
+      "TK-238": "작업별 카운터 분리 + 임베딩·재순위 지연 기록을 수용 기준에 추가",
+      "TK-239": "복구 없이 진단 기록만으로는 수용하지 않는다 — 관측 보강 완료(복구 미해소)를 따로 적고 복구 요구를 닫지 않는다"
+    },
+    "rejected_findings": {
+      "ticket_registry_checks_fail": "재현되지 않음 — `ticket_metrics.py --check`와 `test_ticket_registry_covers_every_ticket`은 등재 전에도 통과했다(위 note의 경로 한계). 다만 등재 누락 자체는 사실이어서 고쳤다.",
+      "unmeasured_md_line44": "이 문서 2.4절은 이미 TK-229 폐기·TK-228 실측을 정확히 적고 있었다. 지적 위치가 빗나갔다."
+    }
+  }
+}

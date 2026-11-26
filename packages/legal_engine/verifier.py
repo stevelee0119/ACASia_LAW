@@ -465,7 +465,7 @@ class LegalVerifier:
                 finding_status = VerificationStatus.NOT_FOUND
                 severity = Severity.HIGH
                 tags = ["LEGAL", "CASE", "ENBANC_NOT_FOUND"]
-                title = f"공개 대상인 대법원 전원합의체 판결을 조회 범위에서 찾지 못함(부존재 의심): {citation.raw_text}"
+                title = f"공개 대상인 대법원 전원합의체 판결을 조회 범위에서 찾지 못함(부존재 의심 · 공개 DB 조회 범위 밖 가능성 있음): {citation.raw_text}"
                 reason = ("대법원 전원합의체 판결은 판례공보 게재·종합법률정보 등록 대상인데, 선고 후 "
                           f"{ENBANC_PUBLICATION_LAG_DAYS}일이 지나도록 조회한 공식 DB에서 찾지 못했다. 사건번호·선고일 "
                           "오기이거나 실재하지 않는 판결일 가능성이 높다. 조회 DB의 전수 수록이 증명된 것은 아니므로 "
