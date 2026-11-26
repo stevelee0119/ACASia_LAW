@@ -167,8 +167,14 @@ def test_spec_rejects_unknown_scope_and_records_rule_version(tmp_path):
 
 def test_case9_online_spec_rag1_uses_claim_scope():
     spec = sr.load_spec(ROOT / "tests" / "fixtures" / "probes" / "case9_state_compensation_online.json")
-    assert spec["rule_version"] == "2"
-    assert {c["id"]: c.get("scope") for c in spec["checks"]}["RAG-1"] == "claim"
+    # 2판(2026-10-09 사용자 결정)의 RAG-1 scope claim은 이후 판에서도 유지된다.
+    # 3판(2026-11-26 사용자 승인)은 RAG-2의 기대 유형만 TK-241 새 요구로 바꿨다 — 그 조건도 함께 지킨다.
+    assert int(spec["rule_version"]) >= 2
+    checks = {c["id"]: c for c in spec["checks"]}
+    assert checks["RAG-1"].get("scope") == "claim"
+    assert checks["RAG-2"]["types"] == ["INTERNAL_REFERENCE_CONTRADICTION"]
+    assert checks["RAG-2"]["statuses"] == ["SUSPICIOUS"]
+    assert checks["RAG-2"]["text_any"] == ["제22조"]
 
 
 def test_no_rag_relationship_is_the_negation_with_claim_scope(tmp_path):
