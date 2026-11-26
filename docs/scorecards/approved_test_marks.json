@@ -287,9 +287,19 @@
       "ticket": "TK-241",
       "approved": "2026-11-26",
       "scope": {
+        "body": "1e69f91f3460d3af"
+      },
+      "reason": "실제 삭제가 아니라 이름 변경이다. TK-241로 FindingType에 INTERNAL_REFERENCE_CONTRADICTION이 추가되어 총수가 97 → 98이 되었고, 유형이 바뀔 때마다 시험 이름을 고치지 않도록 이름에서 개수를 뺐다. 본문도 97 → 98로 갱신했으므로 점검기가 본문 같은 이름 변경(twin)으로 보지 않는다. 대체: test_all_finding_types_allocated_without_omission_or_excess — enum ↔ 배정표 1:1 검증과 누락·초과 0 검사는 그대로이며 검사 항목 감소는 없다. 사용자 승인 2026-11-26 원문 \"두 시험을 고쳐 PR을 올리고 #435를 다시 판정 승인\". 근거: docs/scorecards/online_0290_20261126.md 7절, docs/scorecards/pr_431_437_verdict_20261126.md 적용 범위 지문은 파이썬 3.11/3.12 기준이다(CI 러너 3.11.18)."
+    },
+    {
+      "test": "tests/test_finding_categories.py::test_all_97_finding_types_allocated_without_omission_or_excess",
+      "mark": "delete",
+      "ticket": "TK-241",
+      "approved": "2026-11-26",
+      "scope": {
         "body": "32ea042c74344f37"
       },
-      "reason": "실제 삭제가 아니라 이름 변경이다. TK-241로 FindingType에 INTERNAL_REFERENCE_CONTRADICTION이 추가되어 총수가 97 → 98이 되었고, 유형이 바뀔 때마다 시험 이름을 고치지 않도록 이름에서 개수를 뺐다. 본문도 97 → 98로 갱신했으므로 점검기가 본문 같은 이름 변경(twin)으로 보지 않는다. 대체: test_all_finding_types_allocated_without_omission_or_excess — enum ↔ 배정표 1:1 검증과 누락·초과 0 검사는 그대로이며 검사 항목 감소는 없다. 사용자 승인 2026-11-26 원문 \"두 시험을 고쳐 PR을 올리고 #435를 다시 판정 승인\". 근거: docs/scorecards/online_0290_20261126.md 7절, docs/scorecards/pr_431_437_verdict_20261126.md"
+      "reason": "실제 삭제가 아니라 이름 변경이다. TK-241로 FindingType에 INTERNAL_REFERENCE_CONTRADICTION이 추가되어 총수가 97 → 98이 되었고, 유형이 바뀔 때마다 시험 이름을 고치지 않도록 이름에서 개수를 뺐다. 본문도 97 → 98로 갱신했으므로 점검기가 본문 같은 이름 변경(twin)으로 보지 않는다. 대체: test_all_finding_types_allocated_without_omission_or_excess — enum ↔ 배정표 1:1 검증과 누락·초과 0 검사는 그대로이며 검사 항목 감소는 없다. 사용자 승인 2026-11-26 원문 \"두 시험을 고쳐 PR을 올리고 #435를 다시 판정 승인\". 근거: docs/scorecards/online_0290_20261126.md 7절, docs/scorecards/pr_431_437_verdict_20261126.md 같은 승인의 파이썬 3.13 기준 지문이다. `signatures()`가 `ast.dump`를 쓰므로 적용 범위 지문이 파이썬 판에 따라 달라진다(3.11/3.12 → 1e69f91f3460d3af, 3.13 → 32ea042c74344f37). 같은 승인을 두 판 모두에서 유효하게 두려고 항목을 둘로 적는다. 승인 대상 시험·사유는 동일하다."
     }
   ]
 }
