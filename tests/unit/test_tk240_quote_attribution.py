@@ -170,3 +170,52 @@ def test_tk240_full_axis_matrix():
                 checked += 1
 
     assert checked == 270
+
+
+def test_tk240_object_invocation_10_cell_matrix():
+    """B 보완: 「주체 + 목적어 + 를/을 + 원용/인용 계열 서술어」 10칸(주체 5종 × 반박 유무 2) 전수 통과 및 자기채택 회귀 금지."""
+    subjects = ["피고는", "원고 측은", "피청구인은", "상대방은", "제3자는"]
+    official = "임대차보증금 반환채무와 목적물 인도의무는 동시이행 관계에 있다."
+    mismatched_quote = "임대차보증금 반환채무와 목적물 인도의무는 동시이행 관계에 있지 않다."
+    rebuttals = ["", " 그러나 이는 판결의 취지와 다릅니다."]
+
+    cells_checked = 0
+    for subj in subjects:
+        for reb in rebuttals:
+            ctx = (
+                f'{subj} 대법원 2021다99001 판결의 "{mismatched_quote}" 부분을 원용합니다.{reb}'
+            )
+            verdict = _verify_quote(ctx, mismatched_quote, official)
+            assert verdict.status != VerificationStatus.CONTRADICTED, f"CONTRADICTED raised for: {ctx}"
+            assert not any(
+                f.type == FindingType.CASE_QUOTE_MISMATCH and f.evidence_grade == EvidenceGrade.A
+                for f in verdict.findings
+            ), f"A-grade raised for: {ctx}"
+            assert all(
+                f.advisory_only for f in verdict.findings if f.type == FindingType.CASE_QUOTE_MISMATCH
+            )
+            cells_checked += 1
+
+    assert cells_checked == 10
+
+    # 회귀 금지 1: 작성자 자기 주장에서 목적격 원용은 A등급 유지
+    self_ctx = f'본 소송대리인은 대법원 2021다99001 판결의 "{mismatched_quote}" 부분을 원용합니다.'
+    self_verdict = _verify_quote(self_ctx, mismatched_quote, official)
+    assert self_verdict.status == VerificationStatus.CONTRADICTED
+    assert any(
+        f.type == FindingType.CASE_QUOTE_MISMATCH and f.evidence_grade == EvidenceGrade.A
+        for f in self_verdict.findings
+    )
+
+    # 회귀 금지 2: 상대방 원용 후 자기 채택(adopted_by_author)은 A등급 유지
+    adopt_ctx = (
+        f'피고는 대법원 2021다99001 판결의 "{mismatched_quote}" 부분을 원용합니다. '
+        "따라서 본 소송대리인도 같은 취지에서 그 주장이 타당하고 적용되어야 한다고 본다."
+    )
+    adopt_verdict = _verify_quote(adopt_ctx, mismatched_quote, official)
+    assert adopt_verdict.status == VerificationStatus.CONTRADICTED
+    assert any(
+        f.type == FindingType.CASE_QUOTE_MISMATCH and f.evidence_grade == EvidenceGrade.A
+        for f in adopt_verdict.findings
+    )
+

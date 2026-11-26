@@ -47,9 +47,11 @@ _STANCE_NOUN_ENDING = (
 )
 
 _QUOTE_PARTICLE_RE = r"(?:라고|다고|라는|다는|취지로|것처럼|듯이|것으로)"
+_OBJECT_INVOCATION_STEMS = r"(?:원용|인용|언급|지적|거론|적시)"
 
 _REPORTED_SPEECH_RE = re.compile(
     rf"{_QUOTE_PARTICLE_RE}\s*(?:{_HA_STEMS}{_HA_ENDINGS}|{_DATU_STEM_ENDING}|{_BO_STEM_ENDING})|"
+    rf"(?:을|를)\s*{_OBJECT_INVOCATION_STEMS}{_HA_ENDINGS}|"
     rf"(?:라는|다는|한다는|본다는|다툰다는)\s*{_STANCE_NOUN_ENDING}"
 )
 
