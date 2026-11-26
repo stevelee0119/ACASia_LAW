@@ -141,9 +141,9 @@ def test_tk238_a1_actual_calls_spec_matches_code():
 
 
 def test_tk238_a2_zero_documents_stays_unmeasured():
-    """A-2: 문서 0개 실행은 measured=False로 미집계 유지(양성), 문서 1개 이상 실행은 measured=True(대조)."""
+    """A-2: 문서 0개 및 검색 기록 없는 문서는 rag.measured=False(사유 없음)로 미집계 유지, 검색 기록 있는 문서는 measured=True."""
     base = {
-        "rag": {"configured_mode": "HYBRID", "effective_mode": "HYBRID", "measured": False, "actual_calls": 0},
+        "rag": {"configured_mode": "HYBRID", "effective_mode": "HYBRID", "measured": False, "actual_calls": 0, "fallback_reason": None},
         "ocr_fallback": {"configured_mode": "auto", "effective_mode": "auto", "measured": False, "actual_calls": 0},
     }
     agg_empty = aggregate_run_feature_diagnostics(base, [])
@@ -152,8 +152,16 @@ def test_tk238_a2_zero_documents_stays_unmeasured():
 
     doc = SimpleNamespace(engine_data={})
     agg_one = aggregate_run_feature_diagnostics(base, [doc])
-    assert agg_one["rag"]["measured"] is True
+    assert agg_one["rag"]["measured"] is False
+    assert agg_one["rag"].get("fallback_reason") is None
     assert agg_one["ocr_fallback"]["measured"] is True
+
+    doc_with_ret = SimpleNamespace(engine_data={"rag": {"search_diagnostics": {"retrieval": {
+        "effective_mode": "HYBRID_RERANK", "embedding_requests": 1, "reranker_requests": 1,
+    }}}})
+    agg_measured = aggregate_run_feature_diagnostics(base, [doc_with_ret])
+    assert agg_measured["rag"]["measured"] is True
+    assert agg_measured["rag"]["actual_calls"] == 2
 
 
 def test_tk238_a3_effective_mode_unified_with_document_level():

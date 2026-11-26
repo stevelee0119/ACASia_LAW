@@ -283,6 +283,7 @@ def aggregate_run_feature_diagnostics(
     rerank_req = rerank_ok = rerank_fail = rerank_ms = 0
     retrieval_ms = cache_hits = cache_misses = 0
     observed_modes: list[str] = []
+    measured_docs = 0
 
     ocr_attempted = ocr_adopted = ocr_rejected = 0
 
@@ -292,6 +293,7 @@ def aggregate_run_feature_diagnostics(
             continue
         ret = ((eng.get("rag") or {}).get("search_diagnostics") or {}).get("retrieval")
         if isinstance(ret, dict):
+            measured_docs += 1
             doc_eff = str(ret.get("effective_mode") or "").strip().upper()
             if doc_eff:
                 observed_modes.append(doc_eff)
@@ -329,7 +331,7 @@ def aggregate_run_feature_diagnostics(
             break
 
     rag_actual = emb_req + rerank_req
-    rag["measured"] = True
+    rag["measured"] = measured_docs > 0
     rag["actual_calls"] = rag_actual
     rag["embedding_requests"] = emb_req
     rag["embedding_successes"] = emb_ok
@@ -342,7 +344,12 @@ def aggregate_run_feature_diagnostics(
     rag["retrieval_ms"] = retrieval_ms
     rag["cache_hits"] = cache_hits
     rag["cache_misses"] = cache_misses
-    if str(rag.get("effective_mode") or "").upper() in ("HYBRID", "HYBRID_RERANK", "HYBRID_DENSE") and rag_actual == 0 and not rag.get("fallback_reason"):
+    if (
+        str(rag.get("effective_mode") or "").upper() in ("HYBRID", "HYBRID_RERANK", "HYBRID_DENSE")
+        and rag_actual == 0
+        and measured_docs > 0
+        and not rag.get("fallback_reason")
+    ):
         rag["fallback_reason"] = "NO_RELEVANT_DOCUMENTS_OR_CHUNKS_FOR_DENSE"
 
     ocr["measured"] = True

@@ -11,7 +11,7 @@
 ## 2. 미측정 구분 (`measured`) (A-2)
 
 - 실행 전 스냅샷(`next_gen_feature_diagnostics()`)과 측정 대상 문서가 0개인 실행(`len(documents) == 0`)에서는 `rag.measured = False`, `ocr_fallback.measured = False`로 남긴다.
-- 측정 대상 문서가 1개 이상(`len(documents) >= 1`)인 실행에서만 `measured = True`로 집계한다.
+- 문서는 있으나 검색 기록(`engine_data.rag.search_diagnostics.retrieval`)이 있는 문서가 0개(`measured_docs == 0`)이면 `rag.measured = False`로 남기고 `NO_RELEVANT_DOCUMENTS_OR_CHUNKS_FOR_DENSE` 사유를 단정하지 않는다. 검색 기록이 있는 문서가 1개 이상(`measured_docs > 0`)일 때만 `rag.measured = True`로 집계한다.
 
 ## 3. `effective_mode` 표기 정합성 (A-3)
 
