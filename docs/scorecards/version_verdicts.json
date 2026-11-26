@@ -803,5 +803,36 @@
   "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
   "decided_at": "2026-11-23",
   "from": "0.28.0"
+ },
+ {
+  "version": "0.30.0",
+  "level": "minor",
+  "basis": [
+   "added",
+   "fixed"
+  ],
+  "measured_commit": "3810bfb",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.11",
+   "tesseract": "5.3.4 / 5.5.0",
+   "baseline_commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03",
+   "scoring": "scripts/scorecard.py(dev 89.7, holdout 87.5) 및 scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #431~#437 필수 CI 전수 통과."
+  },
+  "evidence": {
+   "M1": "dev 89.7, holdout 87.5(0.29.0과 동일); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 회귀 0.",
+   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+   "M3": "은퇴 5세트 평균 58.00(56.5/54.6/63.8/59.4/55.7, 전 세트 오탐 0·A등급 0·후퇴 0).",
+   "M4": "포함 PR #431(TK-237: 미완독 원인별 unread_cause_counts 및 CONFIG_BLOCKED 분리), #432(TK-238: run 단위 RAG/OCR 폴백 actual_calls 및 임베딩·재순위 지연 ms 기록), #433(TK-235: law_go_kr INCONCLUSIVE_SCOPE·lookup_outcome 분리), #434(TK-240: 상대방 전언 인용 귀속 어간+어미·반박 조건부 원용류 A등급 오탐 방지), #435(TK-241: INTERNAL_REFERENCE_CONTRADICTION 전용 유형·advisory_only=True·주장당 1건 병합), #436(TK-239: OCR 폴백 원본/전처리 이중 비교·적응형 파라미터·PREPROCESS_UNAVAILABLE 구분), #437(TK-236: 판례 키워드 검색 실패 4종 분류·마스킹 body_head·lookup_outcome 병합).",
+   "CI": "PR #431~#437 전량 필수 CI(점수 하락 게이트, 평가 세트 문구 대조, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
+   "open_p1_regression": 0,
+   "unmeasured": "격리 봉인 세트, 운영 온라인 실측(TK-235~TK-241 온라인 효과, U2 live-source-check, Drive 16쪽 재색인, case9 3회 연속).",
+   "record": "docs/scorecards/release_030_candidate_20261126.md"
+  },
+  "rer": 0.0,
+  "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
+  "decided_at": "2026-11-26",
+  "from": "0.29.0"
  }
 ]
