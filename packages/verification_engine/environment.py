@@ -265,22 +265,36 @@ def aggregate_run_feature_diagnostics(
     references_summary: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Aggregate per-document RAG retrieval and OCR fallback telemetry into run-level diagnostics."""
+    doc_list = list(documents or ())
     rag = dict(next_gen_diag.get("rag") or {})
+    ocr = dict(next_gen_diag.get("ocr_fallback") or {})
+    if not doc_list:
+        rag["measured"] = False
+        ocr["measured"] = False
+        updated = dict(next_gen_diag)
+        updated["rag"] = rag
+        updated["ocr_fallback"] = ocr
+        return updated
+
     if references_summary and references_summary.get("retrieval_mode"):
         rag["effective_mode"] = references_summary.get("retrieval_mode")
 
     emb_req = emb_ok = emb_fail = emb_ms = 0
     rerank_req = rerank_ok = rerank_fail = rerank_ms = 0
     retrieval_ms = cache_hits = cache_misses = 0
+    observed_modes: list[str] = []
 
     ocr_attempted = ocr_adopted = ocr_rejected = 0
 
-    for doc in documents or ():
+    for doc in doc_list:
         eng = getattr(doc, "engine_data", None)
         if not isinstance(eng, dict):
             continue
         ret = ((eng.get("rag") or {}).get("search_diagnostics") or {}).get("retrieval")
         if isinstance(ret, dict):
+            doc_eff = str(ret.get("effective_mode") or "").strip().upper()
+            if doc_eff:
+                observed_modes.append(doc_eff)
             emb_req += int(ret.get("embedding_requests") or 0)
             emb_ok += int(ret.get("embedding_successes") or 0)
             emb_fail += int(ret.get("embedding_failures") or 0)
@@ -309,6 +323,11 @@ def aggregate_run_feature_diagnostics(
             ocr_adopted += ado
             ocr_rejected += rej
 
+    for candidate_mode in ("HYBRID_RERANK", "HYBRID_DENSE", "LEXICAL_RERANK"):
+        if candidate_mode in observed_modes:
+            rag["effective_mode"] = candidate_mode
+            break
+
     rag_actual = emb_req + rerank_req
     rag["measured"] = True
     rag["actual_calls"] = rag_actual
@@ -323,10 +342,9 @@ def aggregate_run_feature_diagnostics(
     rag["retrieval_ms"] = retrieval_ms
     rag["cache_hits"] = cache_hits
     rag["cache_misses"] = cache_misses
-    if str(rag.get("effective_mode") or "").upper() == "HYBRID" and rag_actual == 0 and not rag.get("fallback_reason"):
+    if str(rag.get("effective_mode") or "").upper() in ("HYBRID", "HYBRID_RERANK", "HYBRID_DENSE") and rag_actual == 0 and not rag.get("fallback_reason"):
         rag["fallback_reason"] = "NO_RELEVANT_DOCUMENTS_OR_CHUNKS_FOR_DENSE"
 
-    ocr = dict(next_gen_diag.get("ocr_fallback") or {})
     ocr["measured"] = True
     ocr["actual_calls"] = ocr_attempted
     ocr["attempted_pages"] = ocr_attempted

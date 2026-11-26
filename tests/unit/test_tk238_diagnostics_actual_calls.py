@@ -124,3 +124,50 @@ def test_tk238_ctrl3_prerun_hybrid_unmeasured_distinguished(monkeypatch):
     assert diag["rag"]["measured"] is False
     assert diag["ocr_fallback"]["effective_mode"] == "auto"
     assert diag["ocr_fallback"]["measured"] is False
+
+
+def test_tk238_a1_actual_calls_spec_matches_code():
+    """A-1: 설계 명세에 actual_calls 정의가 명시되고 코드 집계식(embedding_requests + reranker_requests)과 일치한다."""
+    from pathlib import Path
+
+    spec_text = Path("docs/handoff/requests/TK-238_rag_diagnostics_contract.md").read_text(encoding="utf-8")
+    assert "actual_calls = embedding_requests + reranker_requests" in spec_text
+
+    doc = SimpleNamespace(engine_data={"rag": {"search_diagnostics": {"retrieval": {
+        "effective_mode": "HYBRID_RERANK", "embedding_requests": 2, "reranker_requests": 3,
+    }}}})
+    agg = aggregate_run_feature_diagnostics({"rag": {}, "ocr_fallback": {}}, [doc])
+    assert agg["rag"]["actual_calls"] == agg["rag"]["embedding_requests"] + agg["rag"]["reranker_requests"] == 5
+
+
+def test_tk238_a2_zero_documents_stays_unmeasured():
+    """A-2: 문서 0개 실행은 measured=False로 미집계 유지(양성), 문서 1개 이상 실행은 measured=True(대조)."""
+    base = {
+        "rag": {"configured_mode": "HYBRID", "effective_mode": "HYBRID", "measured": False, "actual_calls": 0},
+        "ocr_fallback": {"configured_mode": "auto", "effective_mode": "auto", "measured": False, "actual_calls": 0},
+    }
+    agg_empty = aggregate_run_feature_diagnostics(base, [])
+    assert agg_empty["rag"]["measured"] is False
+    assert agg_empty["ocr_fallback"]["measured"] is False
+
+    doc = SimpleNamespace(engine_data={})
+    agg_one = aggregate_run_feature_diagnostics(base, [doc])
+    assert agg_one["rag"]["measured"] is True
+    assert agg_one["ocr_fallback"]["measured"] is True
+
+
+def test_tk238_a3_effective_mode_unified_with_document_level():
+    """A-3: 같은 실행에서 문서 단위 effective_mode(HYBRID_RERANK)와 run 단위 effective_mode가 일치한다."""
+    ret = retrieve_hybrid_chunks(
+        "계약 해지",
+        [{"chunk_id": "c1", "text": "계약 해지에 관한 판례"}],
+        embedding_adapter=_StubEmbedder(),
+        reranker_adapter=DeterministicLegalReranker(),
+    )
+    telem = ret["retrieval_telemetry"]
+    assert telem["effective_mode"] == "HYBRID_RERANK"
+    doc = SimpleNamespace(engine_data={"rag": {"search_diagnostics": {"retrieval": telem}}})
+    base = {"rag": {"configured_mode": "HYBRID", "effective_mode": "HYBRID", "measured": False, "actual_calls": 0}, "ocr_fallback": {}}
+    agg = aggregate_run_feature_diagnostics(base, [doc], references_summary={"retrieval_mode": "HYBRID"})
+    assert agg["rag"]["effective_mode"] == telem["effective_mode"] == "HYBRID_RERANK"
+
