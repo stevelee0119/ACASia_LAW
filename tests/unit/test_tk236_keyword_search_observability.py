@@ -2,10 +2,19 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 
+from packages.common.config import reset_settings
 from packages.common.enums import AdapterStatus
 from packages.source_adapters.law_go_kr import LawGoKrAdapter
 from packages.source_adapters.transport import source_get, source_lookup_session
+
+
+@pytest.fixture(autouse=True)
+def _isolated_settings():
+    reset_settings()
+    yield
+    reset_settings()
 
 
 class _StubResp:
@@ -31,6 +40,7 @@ def test_tk236_pos1_transport_retry_exhaustion_records_status_and_masked_body(mo
 
     monkeypatch.setenv("LV_LAW_GO_KR_OC", "my_secret_oc_123")
     monkeypatch.setenv("LV_ALLOW_NETWORK", "1")
+    reset_settings()
     adapter = LawGoKrAdapter()
 
     with source_lookup_session(30.0, max_attempts=2, retry_backoff=0.01):
@@ -52,6 +62,7 @@ def test_tk236_pos2_shape_mismatch_classified_separately(monkeypatch):
     """양성 2: _case_payload_shape_ok() 실패 응답은 SHAPE_MISMATCH로 별도 분류한다."""
     monkeypatch.setenv("LV_LAW_GO_KR_OC", "test_oc")
     monkeypatch.setenv("LV_ALLOW_NETWORK", "1")
+    reset_settings()
     adapter = LawGoKrAdapter()
     monkeypatch.setattr(
         adapter,
@@ -69,6 +80,7 @@ def test_tk236_pos3_rate_limited_429_classified_with_masked_body(monkeypatch):
     """양성 3: 429 응답은 RATE_LIMITED 분류와 함께 OC가 마스킹된 body_head를 남긴다."""
     monkeypatch.setenv("LV_LAW_GO_KR_OC", "secret_oc_999")
     monkeypatch.setenv("LV_ALLOW_NETWORK", "1")
+    reset_settings()
     adapter = LawGoKrAdapter()
     monkeypatch.setattr(
         adapter,
@@ -86,6 +98,7 @@ def test_tk236_ctrl1_keyword_failure_does_not_degrade_nb_lookup(monkeypatch):
     """대조 1: 키워드 검색 실패 1건이 사건번호 지정 조회(nb) 결과를 깎지 않는다."""
     monkeypatch.setenv("LV_LAW_GO_KR_OC", "test_oc")
     monkeypatch.setenv("LV_ALLOW_NETWORK", "1")
+    reset_settings()
     adapter = LawGoKrAdapter()
 
     def _fake_get(url, params=None):
@@ -108,6 +121,7 @@ def test_tk236_ctrl2_normal_keyword_search_returns_ready(monkeypatch):
     """대조 2: 정상 키워드 검색 응답은 READY와 레코드를 반환한다."""
     monkeypatch.setenv("LV_LAW_GO_KR_OC", "test_oc")
     monkeypatch.setenv("LV_ALLOW_NETWORK", "1")
+    reset_settings()
     adapter = LawGoKrAdapter()
     monkeypatch.setattr(
         adapter,
@@ -126,6 +140,7 @@ def test_tk236_ctrl3_timeout_classified_as_timeout(monkeypatch):
     """대조 3: ReadTimeout 예외는 TIMEOUT으로 분류된다."""
     monkeypatch.setenv("LV_LAW_GO_KR_OC", "test_oc")
     monkeypatch.setenv("LV_ALLOW_NETWORK", "1")
+    reset_settings()
     adapter = LawGoKrAdapter()
 
     def _raise_timeout(url, params=None):
