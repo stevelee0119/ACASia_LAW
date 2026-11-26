@@ -72,13 +72,16 @@ def page_quality(lines, *, lang: Optional[str] = None, min_confidence: Optional[
     hangul, latin = len(HANGUL_RE.findall(joined)), len(LATIN_RE.findall(joined))
     confidence = sum(line.confidence for line in texts) / len(texts) if texts else 0.0
     ratio = hangul / (hangul + latin) if hangul + latin else None
+    hangul_assessed = ("kor" in lang) and (ratio is not None) and (hangul + latin >= MIN_LETTERS_FOR_RATIO)
+    hangul_ok = (not hangul_assessed) or (ratio is not None and ratio >= min_hangul_ratio)
     reasons = []
     if texts and confidence < min_confidence:
         reasons.append(f"평균 신뢰도 {confidence:.2f} < {min_confidence:.2f}")
-    if "kor" in lang and ratio is not None and hangul + latin >= MIN_LETTERS_FOR_RATIO and ratio < min_hangul_ratio:
+    if not hangul_ok and ratio is not None:
         reasons.append(f"한글 비율 {ratio:.2f} < {min_hangul_ratio:.2f}")
     return {"lines": len(texts), "chars": chars, "confidence": round(confidence, 3),
             "hangul_ratio": None if ratio is None else round(ratio, 3),
+            "hangul_assessed": hangul_assessed, "hangul_ok": hangul_ok,
             "low_quality": bool(reasons), "reasons": reasons}
 
 
@@ -261,6 +264,7 @@ def build_ocr_page_telemetry(adapter: Any, quality: dict, *, page: Optional[int]
             "fallback_confidence": route.get("fallback_confidence"),
             "fallback_error": route.get("fallback_error"),
             "decision_reason": route.get("decision_reason"),
+            "route_deciding_key": route.get("route_deciding_key"),
             "selected_engine": route.get("selected_engine") or route.get("selected"),
             "selected_version": route.get("selected_version"),
             "selected_confidence": route.get("selected_confidence"),
@@ -473,6 +477,11 @@ class CompositeOCRAdapter(OCRAdapter):
             return lines
 
         fb_pre = getattr(self.fallback, "last_preprocess_telemetry", None)
+        route_deciding_key = (
+            "EMPTY_FALLBACK" if not fb_lines
+            else "EMPTY_PRIMARY" if not lines
+            else _quality_deciding_key(q_pri, q_fb)
+        )
         if not fb_err and _fallback_improved(lines, q_pri, fb_lines, q_fb):
             self.last_error = None
             self.last_route = {
@@ -490,6 +499,7 @@ class CompositeOCRAdapter(OCRAdapter):
                 "fallback_confidence": fb_conf,
                 "fallback_error": None,
                 "decision_reason": "FALLBACK_IMPROVED_QUALITY",
+                "route_deciding_key": route_deciding_key,
                 "selected_engine": self.fallback.name,
                 "selected_version": fb_ver,
                 "selected_confidence": fb_conf,
@@ -514,6 +524,7 @@ class CompositeOCRAdapter(OCRAdapter):
             "fallback_confidence": fb_conf,
             "fallback_error": fb_err,
             "decision_reason": reason,
+            "route_deciding_key": route_deciding_key,
             "selected_engine": self.primary.name,
             "selected_version": pri_ver,
             "selected_confidence": round(float(q_pri.get("confidence") or 0.0), 3),
@@ -540,13 +551,40 @@ class CompositeOCRAdapter(OCRAdapter):
         )
 
 
-def _quality_rank(q: dict) -> tuple[bool, float, float, int]:
+_QUALITY_RANK_KEYS = (
+    "LOW_QUALITY",
+    "HANGUL_RATIO_THRESHOLD",
+    "CONFIDENCE",
+    "HANGUL_RATIO",
+    "LINES",
+)
+
+
+def _hangul_ok(q: dict) -> bool:
+    """page_quality()가 반올림 전 값·글자 수 조건으로 계산한 hangul_ok를 우선 사용한다."""
+    if "hangul_ok" in q and q["hangul_ok"] is not None:
+        return bool(q["hangul_ok"])
+    r = q.get("hangul_ratio")
+    return r is None or float(r) >= get_settings().ocr_min_hangul_ratio
+
+
+def _quality_rank(q: dict) -> tuple[bool, bool, float, float, int]:
     return (
         not bool(q.get("low_quality")),
-        float(q.get("hangul_ratio") or 0.0),
+        _hangul_ok(q),
         float(q.get("confidence") or 0.0),
+        float(q.get("hangul_ratio") or 0.0),
         int(q.get("lines") or 0),
     )
+
+
+def _quality_deciding_key(q_a: dict, q_b: dict) -> str:
+    rank_a = _quality_rank(q_a)
+    rank_b = _quality_rank(q_b)
+    for name, va, vb in zip(_QUALITY_RANK_KEYS, rank_a, rank_b):
+        if va != vb:
+            return name
+    return "EQUAL"
 
 
 def _fallback_improved(
@@ -558,14 +596,6 @@ def _fallback_improved(
     if not fb_lines:
         return False
     if not pri_lines:
-        return True
-    if q_pri["low_quality"] and not q_fb["low_quality"]:
-        return True
-    if not q_pri["low_quality"] and q_fb["low_quality"]:
-        return False
-    fb_conf = float(q_fb.get("confidence") or 0.0)
-    pri_conf = float(q_pri.get("confidence") or 0.0)
-    if fb_conf > pri_conf and float(q_fb.get("hangul_ratio") or 0.0) >= float(q_pri.get("hangul_ratio") or 0.0):
         return True
     return _quality_rank(q_fb) > _quality_rank(q_pri)
 
@@ -773,6 +803,8 @@ class RapidOCRAdapter(OCRAdapter):
         q_raw = page_quality(raw_lines)
         raw_conf = round(float(q_raw.get("confidence") or 0.0), 3)
         raw_chars = int(q_raw.get("chars") or 0)
+        raw_hr = q_raw.get("hangul_ratio")
+        raw_lq = bool(q_raw.get("low_quality")) or not raw_lines
         if not preprocess or image is None:
             self.last_preprocess_telemetry = {
                 "preprocess_applied": False,
@@ -780,6 +812,11 @@ class RapidOCRAdapter(OCRAdapter):
                 "preprocessed_confidence": None,
                 "raw_chars": raw_chars,
                 "preprocessed_chars": None,
+                "raw_hangul_ratio": raw_hr,
+                "preprocessed_hangul_ratio": None,
+                "raw_low_quality": raw_lq,
+                "preprocessed_low_quality": None,
+                "deciding_key": None,
                 "selected_variant": "raw",
                 "selection_reason": "PREPROCESS_DISABLED",
             }
@@ -796,6 +833,11 @@ class RapidOCRAdapter(OCRAdapter):
                 "preprocessed_confidence": None,
                 "raw_chars": raw_chars,
                 "preprocessed_chars": None,
+                "raw_hangul_ratio": raw_hr,
+                "preprocessed_hangul_ratio": None,
+                "raw_low_quality": raw_lq,
+                "preprocessed_low_quality": None,
+                "deciding_key": None,
                 "selected_variant": "raw",
                 "selection_reason": reason,
             }
@@ -804,13 +846,31 @@ class RapidOCRAdapter(OCRAdapter):
         q_pre = page_quality(pre_lines)
         pre_conf = round(float(q_pre.get("confidence") or 0.0), 3)
         pre_chars = int(q_pre.get("chars") or 0)
-        choose_pre = bool(pre_lines) and (not raw_lines or _quality_rank(q_pre) > _quality_rank(q_raw))
+        pre_hr = q_pre.get("hangul_ratio")
+        pre_lq = bool(q_pre.get("low_quality")) or not pre_lines
+        if not pre_lines and not raw_lines:
+            deciding_key = "EQUAL"
+            choose_pre = False
+        elif not pre_lines:
+            deciding_key = "LINES"
+            choose_pre = False
+        elif not raw_lines:
+            deciding_key = "LINES"
+            choose_pre = True
+        else:
+            deciding_key = _quality_deciding_key(q_raw, q_pre)
+            choose_pre = _quality_rank(q_pre) > _quality_rank(q_raw)
         self.last_preprocess_telemetry = {
             "preprocess_applied": True,
             "raw_confidence": raw_conf,
             "preprocessed_confidence": pre_conf,
             "raw_chars": raw_chars,
             "preprocessed_chars": pre_chars,
+            "raw_hangul_ratio": raw_hr,
+            "preprocessed_hangul_ratio": pre_hr,
+            "raw_low_quality": raw_lq,
+            "preprocessed_low_quality": pre_lq,
+            "deciding_key": deciding_key,
             "selected_variant": "preprocessed" if choose_pre else "raw",
             "selection_reason": (
                 "PREPROCESSED_NO_RAW" if (choose_pre and not raw_lines)
