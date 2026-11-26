@@ -889,12 +889,11 @@
       "note": "0.25.0 온라인(023fc33c, I-4): 임베딩·재순위 서버 실제 RAG 연결. 해소: #396(df3fe2e8) + CodeQL SSRF #404(de0a1776) 병합, 0.26.0(19efff6a, v.0.26.0) 배포 및 health 확인 완료."
     },
     "TK-229": {
-      "status": "deployed",
+      "status": "closed",
       "priority": "P2",
       "kind": "new",
-      "deployed_on": "2026-11-22",
-      "deployed_sha": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
-      "note": "0.25.0 온라인(023fc33c, I-4): 로컬 모델 설정·라우팅 활성화. 해소: #397(f2ec9fd0) 병합, 0.26.0(19efff6a, v.0.26.0) 배포 및 health 확인 완료."
+      "closed_on": "2026-11-26",
+      "note": "2026-11-26 사용자 결정으로 폐기(범위 밖). 제품에서 로컬 모델이 제거되어(`local_llm.status=REMOVED_NOT_OPERATIONAL`, 공급자 0개) 측정 대상이 아니다. 앞선 `deployed`(0.26.0 `19efff6a`) 기록은 그 시점 사실이며, 이후 제거로 티켓 자체가 닫혔다. 근거: docs/handoff/tickets/TK-229.md, docs/scorecards/online_0290_unmeasured_20261126.md"
     },
     "TK-230": {
       "status": "deployed",
@@ -927,7 +926,49 @@
       "priority": "P1",
       "kind": "existing",
       "note": "0.27.0 트랙 2(점수 상승 2축): PR #412 병합 완료. 내용어 shingle 유사도·어미 변환(EVI-COPY), 인지 양립 불가(EVI-LOGIC), 내심 단정(EVI-OVR), 인젝션 스팬 매핑(INJ-ZWSP/META), AIGEN 클러스터 배출 정밀화(dev 86.2, holdout 86.6, 은퇴 4/5세트 상승)."
+    },
+    "TK-235": {
+      "status": "open",
+      "priority": "P1",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: `2015모2524` 공개 DB 미수록 + `nb` 대체 레코드. 분류·보고 수정(탐지 결함 아님). #417 필터는 정상."
+    },
+    "TK-236": {
+      "status": "open",
+      "priority": "P2",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: 판례 키워드 검색 간헐 실패 — 분류 가능한 관측부터."
+    },
+    "TK-237": {
+      "status": "open",
+      "priority": "P1",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: Drive 미완독 쪽 사유 미기록으로 재처리 트리거 영구 미발동. #431 수용(수정 커밋), 배포 후 재측정 대기."
+    },
+    "TK-238": {
+      "status": "open",
+      "priority": "P2",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: `actual_calls` 상수 0 — 실호출 집계 누락. #432 조건부 수용, 배포 후 재측정 대기."
+    },
+    "TK-239": {
+      "status": "open",
+      "priority": "P1",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: 저품질 스캔 OCR 복구 미달 및 폴백 신뢰도 후퇴 관측. #436 조건부 수용, 배포 후 재측정 대기."
+    },
+    "TK-240": {
+      "status": "open",
+      "priority": "P1",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: 상대방 전언 인용에 A등급 확정 경고(확인 오탐). #434 조건부 수용, 배포 후 재측정 대기."
+    },
+    "TK-241": {
+      "status": "open",
+      "priority": "P1",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: 참고자료 대조 안내의 유형·중복·등급. #435 보류(#438 시험 계약 갱신 병합 대기)."
     }
   },
-  "updated_on": "2026-11-22"
+  "updated_on": "2026-11-26"
 }
