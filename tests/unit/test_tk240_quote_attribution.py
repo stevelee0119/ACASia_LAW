@@ -173,7 +173,7 @@ def test_tk240_full_axis_matrix():
 
 
 def test_tk240_object_invocation_10_cell_matrix():
-    """B 보완: 「주체 + 목적어 + 를/을 + 원용/인용 계열 서술어」 10칸(주체 5종 × 반박 유무 2) 전수 통과 및 자기채택 회귀 금지."""
+    """원용류 꼴(을/를 원용·인용 등)은 반박 조건부 전언: 반박 있음 5칸은 하향(advisory_only), 반박 없음 5칸은 CONTRADICTED + A등급 유지."""
     subjects = ["피고는", "원고 측은", "피청구인은", "상대방은", "제3자는"]
     official = "임대차보증금 반환채무와 목적물 인도의무는 동시이행 관계에 있다."
     mismatched_quote = "임대차보증금 반환채무와 목적물 인도의무는 동시이행 관계에 있지 않다."
@@ -186,14 +186,21 @@ def test_tk240_object_invocation_10_cell_matrix():
                 f'{subj} 대법원 2021다99001 판결의 "{mismatched_quote}" 부분을 원용합니다.{reb}'
             )
             verdict = _verify_quote(ctx, mismatched_quote, official)
-            assert verdict.status != VerificationStatus.CONTRADICTED, f"CONTRADICTED raised for: {ctx}"
-            assert not any(
-                f.type == FindingType.CASE_QUOTE_MISMATCH and f.evidence_grade == EvidenceGrade.A
-                for f in verdict.findings
-            ), f"A-grade raised for: {ctx}"
-            assert all(
-                f.advisory_only for f in verdict.findings if f.type == FindingType.CASE_QUOTE_MISMATCH
-            )
+            if reb:
+                assert verdict.status != VerificationStatus.CONTRADICTED, f"CONTRADICTED raised for rebutted: {ctx}"
+                assert not any(
+                    f.type == FindingType.CASE_QUOTE_MISMATCH and f.evidence_grade == EvidenceGrade.A
+                    for f in verdict.findings
+                ), f"A-grade raised for rebutted: {ctx}"
+                assert all(
+                    f.advisory_only for f in verdict.findings if f.type == FindingType.CASE_QUOTE_MISMATCH
+                )
+            else:
+                assert verdict.status == VerificationStatus.CONTRADICTED, f"Expected CONTRADICTED without rebuttal: {ctx}"
+                assert any(
+                    f.type == FindingType.CASE_QUOTE_MISMATCH and f.evidence_grade == EvidenceGrade.A
+                    for f in verdict.findings
+                ), f"Expected A-grade CASE_QUOTE_MISMATCH without rebuttal: {ctx}"
             cells_checked += 1
 
     assert cells_checked == 10
@@ -218,4 +225,5 @@ def test_tk240_object_invocation_10_cell_matrix():
         f.type == FindingType.CASE_QUOTE_MISMATCH and f.evidence_grade == EvidenceGrade.A
         for f in adopt_verdict.findings
     )
+
 

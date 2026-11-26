@@ -49,9 +49,12 @@ _STANCE_NOUN_ENDING = (
 _QUOTE_PARTICLE_RE = r"(?:라고|다고|라는|다는|취지로|것처럼|듯이|것으로)"
 _OBJECT_INVOCATION_STEMS = r"(?:원용|인용|언급|지적|거론|적시)"
 
+_OBJECT_INVOCATION_RE = re.compile(
+    rf"(?:을|를)\s*{_OBJECT_INVOCATION_STEMS}{_HA_ENDINGS}"
+)
+
 _REPORTED_SPEECH_RE = re.compile(
     rf"{_QUOTE_PARTICLE_RE}\s*(?:{_HA_STEMS}{_HA_ENDINGS}|{_DATU_STEM_ENDING}|{_BO_STEM_ENDING})|"
-    rf"(?:을|를)\s*{_OBJECT_INVOCATION_STEMS}{_HA_ENDINGS}|"
     rf"(?:라는|다는|한다는|본다는|다툰다는)\s*{_STANCE_NOUN_ENDING}"
 )
 
@@ -108,10 +111,15 @@ def assess_reported_quote_attribution(
     )
     has_reported_verb = bool(_REPORTED_SPEECH_RE.search(window))
     has_concessive = bool(_CONCESSIVE_REPORT_RE.search(window))
+    has_invocation = bool(_OBJECT_INVOCATION_RE.search(window))
     has_rebuttal = bool(_REBUTTAL_MARKER_RE.search(window)) or has_concessive
     adopted_by_author = bool(_SELF_ADOPTION_RE.search(window)) and not has_rebuttal
 
-    is_reported = bool(has_opponent and (has_reported_verb or has_concessive) and not adopted_by_author)
+    is_reported = bool(
+        has_opponent
+        and (has_reported_verb or has_concessive or (has_invocation and has_rebuttal))
+        and not adopted_by_author
+    )
     return {
         "is_reported_opponent_quote": is_reported,
         "has_opponent_marker": has_opponent,
