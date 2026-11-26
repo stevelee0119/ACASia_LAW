@@ -152,6 +152,9 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                                 "matched_count": 0,
                                 "filtered_out_count": total_filtered_out,
                                 "lookup_outcome": "LOOKUP_FAILED",
+                                "failure_classification": "RATE_LIMITED",
+                                "http_status": 429,
+                                "body_head": _safe_body_head(response),
                                 "cause": "RATE_LIMITED",
                                 "attempts": attempt_diags,
                             },
@@ -172,8 +175,10 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                                 "matched_count": 0,
                                 "filtered_out_count": total_filtered_out,
                                 "lookup_outcome": "LOOKUP_FAILED",
+                                "failure_classification": "UPSTREAM_ERROR",
                                 "cause": "PROVIDER_ERROR",
                                 "http_status": response.status_code,
+                                "body_head": _safe_body_head(response),
                                 "attempts": attempt_diags,
                             },
                         )
@@ -184,6 +189,7 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                         attempt_failed = True
                         break
                     resp = self._transport_unavailable(case_number, exc)
+                    base_diag = dict(resp.diagnostics or {})
                     resp.diagnostics = {
                         "target": target,
                         "normalized_case_number": canonical if wanted else None,
@@ -191,9 +197,10 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                         "matched_count": 0,
                         "filtered_out_count": total_filtered_out,
                         "lookup_outcome": "LOOKUP_FAILED",
-                        "cause": "TRANSIENT_ERROR",
+                        "cause": base_diag.get("failure_classification") or "TRANSIENT_ERROR",
                         "error_type": type(exc).__name__,
-                        "attempts": attempt_diags,
+                        "attempts": base_diag.get("attempts") or attempt_diags,
+                        **{k: v for k, v in base_diag.items() if k not in ("attempts",)},
                     }
                     return resp
                 if not _case_payload_shape_ok(payload):
@@ -214,6 +221,9 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                             "matched_count": 0,
                             "filtered_out_count": total_filtered_out,
                             "lookup_outcome": "LOOKUP_FAILED",
+                            "failure_classification": "SHAPE_MISMATCH",
+                            "http_status": getattr(response, "status_code", 200),
+                            "body_head": _safe_body_head(response),
                             "cause": "INVALID_PAYLOAD_SHAPE",
                             "attempts": attempt_diags,
                         },
@@ -366,16 +376,43 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
         try:
             response = self._http_get(SEARCH_URL, params=params)
             if response.status_code == 429:
-                return self._unavailable(query, AdapterStatus.RATE_LIMITED, "요청 한도 초과")
+                return self._unavailable(
+                    query,
+                    AdapterStatus.RATE_LIMITED,
+                    "요청 한도 초과",
+                    diagnostics={
+                        "failure_classification": "RATE_LIMITED",
+                        "http_status": 429,
+                        "body_head": _safe_body_head(response),
+                    },
+                )
             if response.status_code >= 400:
-                return self._unavailable(query, AdapterStatus.ERROR, f"HTTP {response.status_code}")
+                return self._unavailable(
+                    query,
+                    AdapterStatus.ERROR,
+                    f"HTTP {response.status_code}",
+                    diagnostics={
+                        "failure_classification": "UPSTREAM_ERROR",
+                        "http_status": response.status_code,
+                        "body_head": _safe_body_head(response),
+                    },
+                )
             payload = response.json()
         except Exception as exc:
             return self._transport_unavailable(query, exc)
 
         if not _case_payload_shape_ok(payload):
             keys = list(payload)[:5] if isinstance(payload, dict) else type(payload).__name__
-            return self._unavailable(query, AdapterStatus.ERROR, f"prec 응답 형식이 예상과 다름(최상위 {keys})")
+            return self._unavailable(
+                query,
+                AdapterStatus.ERROR,
+                f"prec 응답 형식이 예상과 다름(최상위 {keys})",
+                diagnostics={
+                    "failure_classification": "SHAPE_MISMATCH",
+                    "http_status": getattr(response, "status_code", 200),
+                    "body_head": _safe_body_head(response),
+                },
+            )
 
         listed = _normalize_case_payload(payload)
         total = _total_count(payload, len(listed))
@@ -750,6 +787,18 @@ def mask_oc(value: Any) -> Any:
     if isinstance(value, list):
         return [mask_oc(v) for v in value]
     return value
+
+
+def _safe_body_head(response: Any, limit: int = 200) -> str:
+    try:
+        raw = getattr(response, "text", "")
+        if not raw and hasattr(response, "json"):
+            raw = str(response.json())
+    except Exception:
+        raw = ""
+    masked = str(mask_oc(str(raw or "")))
+    masked = re.sub(r"(?i)\bOC=[^&\s\"'<>]+", "OC=[REDACTED]", masked)
+    return re.sub(r"\s+", " ", masked).strip()[:limit]
 
 
 def _first(d: Dict[str, Any], *keys: str) -> Optional[str]:
