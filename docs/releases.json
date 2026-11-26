@@ -574,5 +574,16 @@
       "Changed: 2단 운영 원칙에 따른 오프라인 게이트·온라인 실측 분리 운영(#426)",
       "미측정: 격리 봉인 세트 및 운영 온라인 실측(U2 live-source-check, Drive 16쪽 재색인, 상용 임베딩 실호출, case9, 4차원 출력 실측) — 배포 후 온라인 점검 시행"
     ]
+  },
+  {
+    "version": "0.30.0",
+    "date": "2026-11-26",
+    "changes": [
+      "TK-241(#435): 참고자료 대조 INTERNAL_REFERENCE_CONTRADICTION 전용 유형(98개 매핑)·advisory_only=True·주장당 1건 병합 및 공백 정규화 재매칭",
+      "TK-240(#434): 상대방 전언 인용 귀속 어간+어미·반박 조건부 원용류 A등급 오탐 방지",
+      "TK-239(#436)·TK-238(#432)·TK-237(#431): OCR 폴백 원본/전처리 이중 비교, run 단위 RAG·OCR 폴백 actual_calls 및 지연(ms) 집계, 미완독 unread_cause_counts·CONFIG_BLOCKED 분리",
+      "TK-235(#433)·TK-236(#437): law_go_kr INCONCLUSIVE_SCOPE·lookup_outcome 분리 및 판례 검색 실패 4종 분류·마스킹 body_head 관측",
+      "오프라인 게이트: dev 89.7 · holdout 87.5 · 은퇴 5세트 평균 58.00(0.29.0 동일, 합산 RER 0.0%, 확인 오탐·A등급 오탐 0)"
+    ]
   }
 ]
