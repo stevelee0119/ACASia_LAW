@@ -1,4 +1,10 @@
 {
+  "0.30": [
+    "Added: 참고자료 대조 INTERNAL_REFERENCE_CONTRADICTION 전용 유형(98개 매핑)·advisory_only=True·주장당 1건 병합(공백 정규화 재매칭, TK-241 #435)",
+    "Fixed: 상대방 전언 인용 귀속 어간+어미·반박 조건부 원용류 A등급 오탐 방지(TK-240 #434)",
+    "Added·Fixed: OCR 폴백 이중 비교·적응형 파라미터(TK-239 #436), run 단위 RAG/OCR actual_calls·지연 집계(TK-238 #432), 미완독 unread_cause_counts·CONFIG_BLOCKED(TK-237 #431), law_go_kr INCONCLUSIVE_SCOPE·실패 4종 분류·마스킹 body_head(TK-235 #433, TK-236 #437)",
+    "평가·미측정: dev 89.7 · holdout 87.5 · 은퇴 5세트 평균 58.00(합산 RER 0.0%, 오탐 0, 필수 CI 전수 통과), 격리 봉인 및 운영 온라인 실측은 배포 후 시행"
+  ],
   "0.29": [
     "Performance·Added: 2단계 구조화 FactTriple 추출·검증(#423·#425), 다중 AI잔재 승격·문서간 복제(EVI-COPY) 일반화로 dev 86.2→89.7·holdout 86.6→87.5(합산 RER 16.18%), 은퇴 5세트 평균 53.22→58.00(+4.78%p, 후퇴 0·오탐 0)",
     "Added·Changed: 2단 운영 구조·정보 격리·동적 변형 시험 하네스(eval_perturbation.py, eval_cassette_track.py, #426)",

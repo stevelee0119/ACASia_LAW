@@ -1,45 +1,305 @@
 {
   "note": "평가 측이 승인한 시험 표시 목록. scripts/check_test_edits.py가 이 목록의 (시험, 표시)만 승인으로 본다. 이 파일은 평가 측 커밋(Agent: evaluator)으로만 바꾼다. · 2026-11-19 TK-208 3건(PR #343 내부 시험 교체)은 평가 측 승인으로 올렸고 2026-11-19 사용자 확인을 받았다(원문 \"(나) 시험 교체 삭제 승인도 권고대로 할께. 평가측 승인으로 하자\") — 평가 측 승인으로 둔다. 지워진 세 시험은 Steve_ACASiaLAW에 없던 PR 내부 시험이며 그중 하나는 F1의 잘못된 동작을 단언하고 있었다. 상세는 docs/scorecards/round2_verdicts_20261119.md 8·9절. · 2026-11-19 **그 TK-208 3건을 철회했다**(사용자 결정, 원문 \"#343 승인 3건의 철회\"). TK-212 수정 뒤 확인한 결과 그 승인은 불필요했다 — 게이트 기준이 PR 병합 시험 커밋의 첫 부모로 고정되면 그 세 시험은 base에 없던 것이어서 '삭제'로 집히지 않는다. 832c439f 작업 폴더에서 승인 목록에 TK-208 항목이 없는 상태로 돌려 새 기준 종료 0(삭제 0건), 옛 push 규칙 종료 1(삭제 3건)을 확인했다. 승인을 남겨 두면 같은 이름의 나중 삭제까지 통과하므로(TK-215) 철회한다. 경위는 docs/handoff/TK-212_ci_duplicate_runs.md에 있다. · 2026-11-19 TK-215: 승인은 \"scope\": {\"body\": \"<지문>\"}로 그 시험 본문에 한정한다. 2026-11-19 이후 올리는 항목은 범위가 없으면 승인으로 보지 않는다.",
   "approved": [
-    {"test": "tests/regression/test_r8d_key_context.py::test_name_fields_outside_exact_label_vocabulary_fail_closed", "mark": "xfail", "ticket": "TK-56", "approved": "2026-10-04", "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"},
-    {"test": "tests/regression/test_r8d_key_context.py::test_name_key_values_with_spacing_lists_titles_or_particles_are_blocked", "mark": "xfail", "ticket": "TK-56", "approved": "2026-10-04", "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"},
-    {"test": "tests/regression/test_r8d_key_context.py::test_person_role_key_with_attached_particle_keeps_name_stem_context", "mark": "xfail", "ticket": "TK-56", "approved": "2026-10-04", "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"},
-    {"test": "tests/regression/test_r8d_key_context.py::test_non_person_keys_keep_scanning_without_name_key_fail_closed", "mark": "xfail", "ticket": "TK-56", "approved": "2026-10-04", "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C(매개변수 1건)"},
-    {"test": "tests/regression/test_r8d_key_context.py::test_uncertain_non_korean_or_non_string_name_field_values_are_blocked", "mark": "xfail", "ticket": "TK-56", "approved": "2026-10-04", "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"},
-    {"test": "tests/regression/test_r8e_key_context.py::test_explicit_person_name_fields_keep_fail_closed_value_shapes", "mark": "xfail", "ticket": "TK-56", "approved": "2026-10-04", "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"},
-    {"test": "tests/regression/test_r8e_key_context.py::test_name_field_fail_closed_blocks_actual_router_send_in_both_positions", "mark": "xfail", "ticket": "TK-56", "approved": "2026-10-04", "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"},
-    {"test": "tests/test_upload_privacy_notice_api.py::test_unauthenticated_privacy_notice_get_returns_200_without_sensitive_data", "mark": "delete", "ticket": "업로드 안내 9절", "approved": "2026-10-04", "reason": "비인증 공개 되돌림(평가 측 지시) — 로그인 전 차단·로그인 뒤 재로드 시험으로 교체"},
-    {"test": "tests/test_upload_privacy_notice_browser.py::test_upload_blocked_when_privacy_notice_returns_401_unauthenticated", "mark": "delete", "ticket": "업로드 안내 9절", "approved": "2026-10-04", "reason": "로그인 뒤 재로드까지 검사하는 시험으로 교체(평가 측 지시)"},
-    {"test": "tests/test_tk74_case_table_indexing.py::test_non_case_table_spreadsheet_control_not_indexed_as_rag", "mark": "delete", "ticket": "TK-74", "approved": "2026-10-10", "reason": "평가 요구인 DB 캐시 보존·eligible 격리·질의 재선별 복구와 기존 chunk_count==0의 충돌을 직접 재현. ed29027의 test_non_case_table_spreadsheet_control_and_resync_recovery로 교체하는 1건만 승인. PR #68 코멘트 6096835381; 제품 구현 수용은 별도"},
-    {"test": "tests/test_korean_amount_heading.py::test_korean_amount_heading_positive_case_1_bracket", "mark": "delete", "ticket": "TK-76", "approved": "2026-10-17", "reason": "#120 1차 제출(5aef198)에만 있던 시험. 평가 측 보완 요구(소제목 대체 금지, 같은 줄 항목명만)로 c49df80에서 교체. Steve에는 없던 시험. PR #120 코멘트 6233735661"},
-    {"test": "tests/test_korean_amount_heading.py::test_korean_amount_heading_positive_case_2_thick_bracket", "mark": "delete", "ticket": "TK-76", "approved": "2026-10-17", "reason": "#120 1차 제출(5aef198)에만 있던 시험. 평가 측 보완 요구(소제목 대체 금지, 같은 줄 항목명만)로 c49df80에서 교체. Steve에는 없던 시험. PR #120 코멘트 6233735661"},
-    {"test": "tests/test_korean_amount_heading.py::test_korean_amount_heading_positive_case_3_numbered_heading", "mark": "delete", "ticket": "TK-76", "approved": "2026-10-17", "reason": "#120 1차 제출(5aef198)에만 있던 시험. 평가 측 보완 요구(소제목 대체 금지, 같은 줄 항목명만)로 c49df80에서 교체. Steve에는 없던 시험. PR #120 코멘트 6233735661"},
-    {"test": "tests/test_korean_amount_heading.py::test_korean_amount_heading_control_case_2_consistent_without_heading", "mark": "delete", "ticket": "TK-76", "approved": "2026-10-17", "reason": "#120 1차 제출(5aef198)에만 있던 시험. 평가 측 보완 요구(소제목 대체 금지, 같은 줄 항목명만)로 c49df80에서 교체. Steve에는 없던 시험. PR #120 코멘트 6233735661"},
-    {"test": "tests/test_korean_amount_heading.py::test_korean_amount_heading_control_case_3_non_amount_text", "mark": "delete", "ticket": "TK-76", "approved": "2026-10-17", "reason": "#120 1차 제출(5aef198)에만 있던 시험. 평가 측 보완 요구(소제목 대체 금지, 같은 줄 항목명만)로 c49df80에서 교체. Steve에는 없던 시험. PR #120 코멘트 6233735661"},
-    {"test": "tests/test_korean_amount_heading.py::test_item_heading_regex_performance", "mark": "delete", "ticket": "TK-76", "approved": "2026-10-17", "reason": "#120 1차 제출(5aef198)에만 있던 시험. 평가 측 보완 요구(소제목 대체 금지, 같은 줄 항목명만)로 c49df80에서 교체. Steve에는 없던 시험. PR #120 코멘트 6233735661"},
-    {"test": "tests/test_f2_review_screen_browser.py::test_f2_inline_workflow_manipulation", "mark": "delete", "ticket": "TK-87", "approved": "2026-10-21", "reason": "행 안 검토 상태·우선순위·담당자 입력 UI 제거(TK-87 요구 1, 사용자 개선안 3나·기존 시험 수정 승인 10-19). 사유서 requests/96_tk87. 대체: test_f2_review_summary_content_elements, test_review_items_preflight 3건. PR #155"},
-    {"test": "tests/test_f2_review_screen_browser.py::test_f2_inline_workflow_agreed_manipulation", "mark": "delete", "ticket": "TK-87", "approved": "2026-10-21", "reason": "같은 사유(행 안 검토 흐름 전이 UI 제거, TK-87 요구 1). PR #155"},
-    {"test": "tests/test_evi_incons_internal.py::test_positive_arithmetic_multiplier_mismatch", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 3차 T1(병렬 산식 삭제, calculation.py 시험 3개로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_positive_arithmetic_addition_mismatch", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 3차 T1(병렬 산식 삭제, calculation.py 시험 3개로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_positive_arithmetic_subtraction_mismatch", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 3차 T1(병렬 산식 삭제, calculation.py 시험 3개로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_positive_party_role_inversion", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_positive_exhibit_clause_contradiction", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_control_1_partial_amount_vs_total", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_control_2_incident_date_vs_subsequent_date", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_control_3_sublease_multiple_roles", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_control_4_correction_filter", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_control_5_primary_vs_alternative_claim", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_control_6_different_exhibit_clauses", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_control_7_non_exclusive_location_movement", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_control_8_joint_multiple_signers", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_control_9_opponent_claim_citation", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/test_evi_incons_internal.py::test_control_10_valid_arithmetic_formula", "mark": "delete", "ticket": "TK-90", "approved": "2026-10-25", "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"},
-    {"test": "tests/acceptance/test_evaluation_v2.py::test_dashboard_does_not_attach_another_products_kbl_score", "mark": "delete", "ticket": "PR #277 KBL cleanup", "approved": "2026-11-13", "reason": "User approval recorded at https://github.com/stevelee0119/ACASia_LAW/pull/277#issuecomment-6866901823; replaced by NOT_APPLIED/input-rejection coverage"},
-    {"test": "tests/acceptance/test_evaluation_v2.py::test_kbl_duplicate_or_unknown_id_rejected", "mark": "delete", "ticket": "PR #277 KBL cleanup", "approved": "2026-11-13", "reason": "User approval recorded at https://github.com/stevelee0119/ACASia_LAW/pull/277#issuecomment-6866901823; replaced by NOT_APPLIED/input-rejection coverage"},
-    {"test": "tests/acceptance/test_evaluation_v2.py::test_kbl_missing_invalid_answers_stay_in_denominator", "mark": "delete", "ticket": "PR #277 KBL cleanup", "approved": "2026-11-13", "reason": "User approval recorded at https://github.com/stevelee0119/ACASia_LAW/pull/277#issuecomment-6866901823; replaced by NOT_APPLIED/input-rejection coverage"},
-    {"test": "tests/acceptance/test_evaluation_v2.py::test_kbl_wrong_dataset_rejected", "mark": "delete", "ticket": "PR #277 KBL cleanup", "approved": "2026-11-13", "reason": "User approval recorded at https://github.com/stevelee0119/ACASia_LAW/pull/277#issuecomment-6866901823; replaced by NOT_APPLIED/input-rejection coverage"},
-    {"test": "tests/acceptance/test_evaluation_v2.py::test_no_kbl_execution_is_not_zero_accuracy", "mark": "delete", "ticket": "PR #277 KBL cleanup", "approved": "2026-11-13", "reason": "User approval recorded at https://github.com/stevelee0119/ACASia_LAW/pull/277#issuecomment-6866901823; replaced by NOT_APPLIED/input-rejection coverage"},
-    {"test": "tests/test_tk171_overview_real_data.py::test_activity_timeline_shows_only_recorded_events_newest_first", "mark": "delete", "ticket": "TK-171", "approved": "2026-11-14", "reason": "#290 보완 1(c011a7b)에서 이 PR이 처음 만든 시험. 평가 측 TK-171 보완 2 지시(NEXT 2-59-8, 사용자 11-14 '최근 작업 활동·핵심 기능 바로가기 제외')로 교체. Steve에는 없던 시험. 대체: test_overview_has_no_activity_timeline_or_shortcut_cards"},
-    {"test": "tests/test_tk171_overview_real_data.py::test_before_verification_nothing_is_shown_as_zero_and_no_events_are_invented", "mark": "delete", "ticket": "TK-171", "approved": "2026-11-14", "reason": "#290 보완 1(c011a7b)에서 이 PR이 처음 만든 시험. 평가 측 TK-171 보완 2 지시(NEXT 2-59-8)로 활동 목록 확인 줄을 빼고 이름을 바꿈. Steve에는 없던 시험. 대체: test_before_verification_nothing_is_shown_as_zero(나머지 단언 그대로)"}
+    {
+      "test": "tests/regression/test_r8d_key_context.py::test_name_fields_outside_exact_label_vocabulary_fail_closed",
+      "mark": "xfail",
+      "ticket": "TK-56",
+      "approved": "2026-10-04",
+      "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"
+    },
+    {
+      "test": "tests/regression/test_r8d_key_context.py::test_name_key_values_with_spacing_lists_titles_or_particles_are_blocked",
+      "mark": "xfail",
+      "ticket": "TK-56",
+      "approved": "2026-10-04",
+      "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"
+    },
+    {
+      "test": "tests/regression/test_r8d_key_context.py::test_person_role_key_with_attached_particle_keeps_name_stem_context",
+      "mark": "xfail",
+      "ticket": "TK-56",
+      "approved": "2026-10-04",
+      "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"
+    },
+    {
+      "test": "tests/regression/test_r8d_key_context.py::test_non_person_keys_keep_scanning_without_name_key_fail_closed",
+      "mark": "xfail",
+      "ticket": "TK-56",
+      "approved": "2026-10-04",
+      "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C(매개변수 1건)"
+    },
+    {
+      "test": "tests/regression/test_r8d_key_context.py::test_uncertain_non_korean_or_non_string_name_field_values_are_blocked",
+      "mark": "xfail",
+      "ticket": "TK-56",
+      "approved": "2026-10-04",
+      "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"
+    },
+    {
+      "test": "tests/regression/test_r8e_key_context.py::test_explicit_person_name_fields_keep_fail_closed_value_shapes",
+      "mark": "xfail",
+      "ticket": "TK-56",
+      "approved": "2026-10-04",
+      "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"
+    },
+    {
+      "test": "tests/regression/test_r8e_key_context.py::test_name_field_fail_closed_blocks_actual_router_send_in_both_positions",
+      "mark": "xfail",
+      "ticket": "TK-56",
+      "approved": "2026-10-04",
+      "reason": "8C 수렴(사용자 결정) — 8F 지시서 2절 C"
+    },
+    {
+      "test": "tests/test_upload_privacy_notice_api.py::test_unauthenticated_privacy_notice_get_returns_200_without_sensitive_data",
+      "mark": "delete",
+      "ticket": "업로드 안내 9절",
+      "approved": "2026-10-04",
+      "reason": "비인증 공개 되돌림(평가 측 지시) — 로그인 전 차단·로그인 뒤 재로드 시험으로 교체"
+    },
+    {
+      "test": "tests/test_upload_privacy_notice_browser.py::test_upload_blocked_when_privacy_notice_returns_401_unauthenticated",
+      "mark": "delete",
+      "ticket": "업로드 안내 9절",
+      "approved": "2026-10-04",
+      "reason": "로그인 뒤 재로드까지 검사하는 시험으로 교체(평가 측 지시)"
+    },
+    {
+      "test": "tests/test_tk74_case_table_indexing.py::test_non_case_table_spreadsheet_control_not_indexed_as_rag",
+      "mark": "delete",
+      "ticket": "TK-74",
+      "approved": "2026-10-10",
+      "reason": "평가 요구인 DB 캐시 보존·eligible 격리·질의 재선별 복구와 기존 chunk_count==0의 충돌을 직접 재현. ed29027의 test_non_case_table_spreadsheet_control_and_resync_recovery로 교체하는 1건만 승인. PR #68 코멘트 6096835381; 제품 구현 수용은 별도"
+    },
+    {
+      "test": "tests/test_korean_amount_heading.py::test_korean_amount_heading_positive_case_1_bracket",
+      "mark": "delete",
+      "ticket": "TK-76",
+      "approved": "2026-10-17",
+      "reason": "#120 1차 제출(5aef198)에만 있던 시험. 평가 측 보완 요구(소제목 대체 금지, 같은 줄 항목명만)로 c49df80에서 교체. Steve에는 없던 시험. PR #120 코멘트 6233735661"
+    },
+    {
+      "test": "tests/test_korean_amount_heading.py::test_korean_amount_heading_positive_case_2_thick_bracket",
+      "mark": "delete",
+      "ticket": "TK-76",
+      "approved": "2026-10-17",
+      "reason": "#120 1차 제출(5aef198)에만 있던 시험. 평가 측 보완 요구(소제목 대체 금지, 같은 줄 항목명만)로 c49df80에서 교체. Steve에는 없던 시험. PR #120 코멘트 6233735661"
+    },
+    {
+      "test": "tests/test_korean_amount_heading.py::test_korean_amount_heading_positive_case_3_numbered_heading",
+      "mark": "delete",
+      "ticket": "TK-76",
+      "approved": "2026-10-17",
+      "reason": "#120 1차 제출(5aef198)에만 있던 시험. 평가 측 보완 요구(소제목 대체 금지, 같은 줄 항목명만)로 c49df80에서 교체. Steve에는 없던 시험. PR #120 코멘트 6233735661"
+    },
+    {
+      "test": "tests/test_korean_amount_heading.py::test_korean_amount_heading_control_case_2_consistent_without_heading",
+      "mark": "delete",
+      "ticket": "TK-76",
+      "approved": "2026-10-17",
+      "reason": "#120 1차 제출(5aef198)에만 있던 시험. 평가 측 보완 요구(소제목 대체 금지, 같은 줄 항목명만)로 c49df80에서 교체. Steve에는 없던 시험. PR #120 코멘트 6233735661"
+    },
+    {
+      "test": "tests/test_korean_amount_heading.py::test_korean_amount_heading_control_case_3_non_amount_text",
+      "mark": "delete",
+      "ticket": "TK-76",
+      "approved": "2026-10-17",
+      "reason": "#120 1차 제출(5aef198)에만 있던 시험. 평가 측 보완 요구(소제목 대체 금지, 같은 줄 항목명만)로 c49df80에서 교체. Steve에는 없던 시험. PR #120 코멘트 6233735661"
+    },
+    {
+      "test": "tests/test_korean_amount_heading.py::test_item_heading_regex_performance",
+      "mark": "delete",
+      "ticket": "TK-76",
+      "approved": "2026-10-17",
+      "reason": "#120 1차 제출(5aef198)에만 있던 시험. 평가 측 보완 요구(소제목 대체 금지, 같은 줄 항목명만)로 c49df80에서 교체. Steve에는 없던 시험. PR #120 코멘트 6233735661"
+    },
+    {
+      "test": "tests/test_f2_review_screen_browser.py::test_f2_inline_workflow_manipulation",
+      "mark": "delete",
+      "ticket": "TK-87",
+      "approved": "2026-10-21",
+      "reason": "행 안 검토 상태·우선순위·담당자 입력 UI 제거(TK-87 요구 1, 사용자 개선안 3나·기존 시험 수정 승인 10-19). 사유서 requests/96_tk87. 대체: test_f2_review_summary_content_elements, test_review_items_preflight 3건. PR #155"
+    },
+    {
+      "test": "tests/test_f2_review_screen_browser.py::test_f2_inline_workflow_agreed_manipulation",
+      "mark": "delete",
+      "ticket": "TK-87",
+      "approved": "2026-10-21",
+      "reason": "같은 사유(행 안 검토 흐름 전이 UI 제거, TK-87 요구 1). PR #155"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_positive_arithmetic_multiplier_mismatch",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 3차 T1(병렬 산식 삭제, calculation.py 시험 3개로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_positive_arithmetic_addition_mismatch",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 3차 T1(병렬 산식 삭제, calculation.py 시험 3개로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_positive_arithmetic_subtraction_mismatch",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 3차 T1(병렬 산식 삭제, calculation.py 시험 3개로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_positive_party_role_inversion",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_positive_exhibit_clause_contradiction",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_control_1_partial_amount_vs_total",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_control_2_incident_date_vs_subsequent_date",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_control_3_sublease_multiple_roles",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_control_4_correction_filter",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_control_5_primary_vs_alternative_claim",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_control_6_different_exhibit_clauses",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_control_7_non_exclusive_location_movement",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_control_8_joint_multiple_signers",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_control_9_opponent_claim_citation",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/test_evi_incons_internal.py::test_control_10_valid_arithmetic_formula",
+      "mark": "delete",
+      "ticket": "TK-90",
+      "approved": "2026-10-25",
+      "reason": "B-3 이름 변경·3변형 확장(내용은 새 이름 시험으로 이전). 사유서 requests/130_tk90(대응표 14·15행 새 시험 이름 오기 정정 조건: _disputes·_recants·_no_arithmetic_mismatch_in_b3). PR #167"
+    },
+    {
+      "test": "tests/acceptance/test_evaluation_v2.py::test_dashboard_does_not_attach_another_products_kbl_score",
+      "mark": "delete",
+      "ticket": "PR #277 KBL cleanup",
+      "approved": "2026-11-13",
+      "reason": "User approval recorded at https://github.com/stevelee0119/ACASia_LAW/pull/277#issuecomment-6866901823; replaced by NOT_APPLIED/input-rejection coverage"
+    },
+    {
+      "test": "tests/acceptance/test_evaluation_v2.py::test_kbl_duplicate_or_unknown_id_rejected",
+      "mark": "delete",
+      "ticket": "PR #277 KBL cleanup",
+      "approved": "2026-11-13",
+      "reason": "User approval recorded at https://github.com/stevelee0119/ACASia_LAW/pull/277#issuecomment-6866901823; replaced by NOT_APPLIED/input-rejection coverage"
+    },
+    {
+      "test": "tests/acceptance/test_evaluation_v2.py::test_kbl_missing_invalid_answers_stay_in_denominator",
+      "mark": "delete",
+      "ticket": "PR #277 KBL cleanup",
+      "approved": "2026-11-13",
+      "reason": "User approval recorded at https://github.com/stevelee0119/ACASia_LAW/pull/277#issuecomment-6866901823; replaced by NOT_APPLIED/input-rejection coverage"
+    },
+    {
+      "test": "tests/acceptance/test_evaluation_v2.py::test_kbl_wrong_dataset_rejected",
+      "mark": "delete",
+      "ticket": "PR #277 KBL cleanup",
+      "approved": "2026-11-13",
+      "reason": "User approval recorded at https://github.com/stevelee0119/ACASia_LAW/pull/277#issuecomment-6866901823; replaced by NOT_APPLIED/input-rejection coverage"
+    },
+    {
+      "test": "tests/acceptance/test_evaluation_v2.py::test_no_kbl_execution_is_not_zero_accuracy",
+      "mark": "delete",
+      "ticket": "PR #277 KBL cleanup",
+      "approved": "2026-11-13",
+      "reason": "User approval recorded at https://github.com/stevelee0119/ACASia_LAW/pull/277#issuecomment-6866901823; replaced by NOT_APPLIED/input-rejection coverage"
+    },
+    {
+      "test": "tests/test_tk171_overview_real_data.py::test_activity_timeline_shows_only_recorded_events_newest_first",
+      "mark": "delete",
+      "ticket": "TK-171",
+      "approved": "2026-11-14",
+      "reason": "#290 보완 1(c011a7b)에서 이 PR이 처음 만든 시험. 평가 측 TK-171 보완 2 지시(NEXT 2-59-8, 사용자 11-14 '최근 작업 활동·핵심 기능 바로가기 제외')로 교체. Steve에는 없던 시험. 대체: test_overview_has_no_activity_timeline_or_shortcut_cards"
+    },
+    {
+      "test": "tests/test_tk171_overview_real_data.py::test_before_verification_nothing_is_shown_as_zero_and_no_events_are_invented",
+      "mark": "delete",
+      "ticket": "TK-171",
+      "approved": "2026-11-14",
+      "reason": "#290 보완 1(c011a7b)에서 이 PR이 처음 만든 시험. 평가 측 TK-171 보완 2 지시(NEXT 2-59-8)로 활동 목록 확인 줄을 빼고 이름을 바꿈. Steve에는 없던 시험. 대체: test_before_verification_nothing_is_shown_as_zero(나머지 단언 그대로)"
+    },
+    {
+      "test": "tests/test_finding_categories.py::test_all_97_finding_types_allocated_without_omission_or_excess",
+      "mark": "delete",
+      "ticket": "TK-241",
+      "approved": "2026-11-26",
+      "scope": {
+        "body": "1e69f91f3460d3af"
+      },
+      "reason": "실제 삭제가 아니라 이름 변경이다. TK-241로 FindingType에 INTERNAL_REFERENCE_CONTRADICTION이 추가되어 총수가 97 → 98이 되었고, 유형이 바뀔 때마다 시험 이름을 고치지 않도록 이름에서 개수를 뺐다. 본문도 97 → 98로 갱신했으므로 점검기가 본문 같은 이름 변경(twin)으로 보지 않는다. 대체: test_all_finding_types_allocated_without_omission_or_excess — enum ↔ 배정표 1:1 검증과 누락·초과 0 검사는 그대로이며 검사 항목 감소는 없다. 사용자 승인 2026-11-26 원문 \"두 시험을 고쳐 PR을 올리고 #435를 다시 판정 승인\". 근거: docs/scorecards/online_0290_20261126.md 7절, docs/scorecards/pr_431_437_verdict_20261126.md 적용 범위 지문은 파이썬 3.11/3.12 기준이다(CI 러너 3.11.18)."
+    },
+    {
+      "test": "tests/test_finding_categories.py::test_all_97_finding_types_allocated_without_omission_or_excess",
+      "mark": "delete",
+      "ticket": "TK-241",
+      "approved": "2026-11-26",
+      "scope": {
+        "body": "32ea042c74344f37"
+      },
+      "reason": "실제 삭제가 아니라 이름 변경이다. TK-241로 FindingType에 INTERNAL_REFERENCE_CONTRADICTION이 추가되어 총수가 97 → 98이 되었고, 유형이 바뀔 때마다 시험 이름을 고치지 않도록 이름에서 개수를 뺐다. 본문도 97 → 98로 갱신했으므로 점검기가 본문 같은 이름 변경(twin)으로 보지 않는다. 대체: test_all_finding_types_allocated_without_omission_or_excess — enum ↔ 배정표 1:1 검증과 누락·초과 0 검사는 그대로이며 검사 항목 감소는 없다. 사용자 승인 2026-11-26 원문 \"두 시험을 고쳐 PR을 올리고 #435를 다시 판정 승인\". 근거: docs/scorecards/online_0290_20261126.md 7절, docs/scorecards/pr_431_437_verdict_20261126.md 같은 승인의 파이썬 3.13 기준 지문이다. `signatures()`가 `ast.dump`를 쓰므로 적용 범위 지문이 파이썬 판에 따라 달라진다(3.11/3.12 → 1e69f91f3460d3af, 3.13 → 32ea042c74344f37). 같은 승인을 두 판 모두에서 유효하게 두려고 항목을 둘로 적는다. 승인 대상 시험·사유는 동일하다."
+    }
   ]
 }

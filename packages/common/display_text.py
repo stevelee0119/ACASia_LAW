@@ -21,6 +21,7 @@ FINDING_TYPE_NAMES: Dict[str, str] = {
     "TEMPORAL_LAW_MISMATCH": "법령 적용 시점 불일치",
     "ACADEMIC_CITATION_ERROR": "학술 문헌 인용 오류",
     "FACT_CONTRADICTION": "사실관계 불일치",
+    "INTERNAL_REFERENCE_CONTRADICTION": "내부 참고자료 대조(구속력 미판단)",
     "CROSS_DOCUMENT_CONTRADICTION": "문서 간 모순",
     "TIMELINE_CONTRADICTION": "날짜 선후 불일치",
     "ARITHMETIC_MISMATCH": "계산 불일치",

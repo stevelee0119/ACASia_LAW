@@ -1,6 +1,6 @@
 """유형별 화면 배정표 (Single Source of Truth)
 
-F1/F2 화면 개편에 따라 전체 97개 FindingType을
+F1/F2 화면 개편에 따라 전체 98개 FindingType을
 1) AI 작성·보안 진단 탭 (AI 진단 카드, 인젝션 검증 카드, 보안 카드)
 2) 검토 항목 탭 (법률·판례 인용, 사실관계 모순, 시간축·연표, MM4 권고, 처리 품질)
 으로 1:1 전수 배정하는 서버 단일 기준 모듈입니다.
@@ -53,7 +53,7 @@ CATEGORY_TO_TAB: Dict[ScreenCategory, ScreenTab] = {
 
 
 # ---------------------------------------------------------------------------
-# 97개 전수 FindingType 배정표 (누락·초과 0 보장)
+# 98개 전수 FindingType 배정표 (누락·초과 0 보장)
 # ---------------------------------------------------------------------------
 FINDING_CATEGORY_MAP: Dict[FindingType, ScreenCategory] = {
     # -----------------------------------------------------------------------
@@ -134,6 +134,7 @@ FINDING_CATEGORY_MAP: Dict[FindingType, ScreenCategory] = {
     # 5. 사실관계·수치·서증 모순 행 (25개: MODEL_FACT_REMARK 포함)
     # -----------------------------------------------------------------------
     FindingType.FACT_CONTRADICTION: ScreenCategory.FACT_DISCREPANCY,
+    FindingType.INTERNAL_REFERENCE_CONTRADICTION: ScreenCategory.FACT_DISCREPANCY,
     FindingType.CROSS_DOCUMENT_CONTRADICTION: ScreenCategory.FACT_DISCREPANCY,
     FindingType.FACT_UNSUPPORTED: ScreenCategory.FACT_DISCREPANCY,
     FindingType.ARITHMETIC_MISMATCH: ScreenCategory.FACT_DISCREPANCY,

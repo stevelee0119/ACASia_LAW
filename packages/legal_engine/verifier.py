@@ -465,7 +465,7 @@ class LegalVerifier:
                 finding_status = VerificationStatus.NOT_FOUND
                 severity = Severity.HIGH
                 tags = ["LEGAL", "CASE", "ENBANC_NOT_FOUND"]
-                title = f"공개 대상인 대법원 전원합의체 판결을 조회 범위에서 찾지 못함(부존재 의심): {citation.raw_text}"
+                title = f"공개 대상인 대법원 전원합의체 판결을 조회 범위에서 찾지 못함(부존재 의심 · 공개 DB 조회 범위 밖 가능성 있음): {citation.raw_text}"
                 reason = ("대법원 전원합의체 판결은 판례공보 게재·종합법률정보 등록 대상인데, 선고 후 "
                           f"{ENBANC_PUBLICATION_LAG_DAYS}일이 지나도록 조회한 공식 DB에서 찾지 못했다. 사건번호·선고일 "
                           "오기이거나 실재하지 않는 판결일 가능성이 높다. 조회 DB의 전수 수록이 증명된 것은 아니므로 "
@@ -652,9 +652,17 @@ class LegalVerifier:
                 alignment = align_quote(citation.quoted_text, official_text)
                 if alignment is not None:
                     verdict.review["quote_alignment"] = alignment
+            from .quote_attribution import assess_reported_quote_attribution
+            quote_attrib = assess_reported_quote_attribution(
+                citation.context,
+                raw_text=citation.raw_text,
+                quoted_text=citation.quoted_text,
+            )
+            is_reported_opponent = bool(quote_attrib.get("is_reported_opponent_quote"))
+            if is_reported_opponent:
+                verdict.review["quote_attribution"] = quote_attrib
+
             if level3 == "CONTRADICTED":
-                verdict.status = VerificationStatus.CONTRADICTED
-                is_fabricated_quote = False
                 diff_cats = (modified.get("diff_categories", []) if modified else []) or ["CONTENT_MISMATCH"]
                 verdict.review["quote_diff_categories"] = diff_cats
                 features = {
@@ -664,56 +672,108 @@ class LegalVerifier:
                     "quote_similarity": round(ratio, 3),
                     "quote_diff_categories": diff_cats,
                     "is_fabricated_quote": False,
+                    "reported_opponent_quote": is_reported_opponent,
                     "defect_summary": f"직접 인용문 불일치(원문과 최대 유사도 {ratio:.2f})",
                 }
-                title = f"직접 인용문이 공식 원문과 일치하지 않는다: {citation.raw_text}"
-                detail = (
-                    f"문서의 인용문과 공식 판시사항·판결요지의 최대 유사도는 {ratio:.2f}이다. "
-                    "따옴표로 표시된 직접 인용은 원문과 일치해야 한다."
-                )
-                verdict.findings.append(
-                    Finding.create(
-                        type=FindingType.CASE_QUOTE_MISMATCH,
-                        status=VerificationStatus.CONTRADICTED,
-                        severity=Severity.HIGH,
-                        evidence_grade=EvidenceGrade.A,
-                        title=title,
-                        detail=detail,
-                        confidence=confidence_score(features),
-                        confidence_features=features,
-                        document_id=citation.document_id,
-                        block_id=citation.block_id,
-                        page=citation.page,
-                        span=citation.span,
-                        engine=ENGINE_NAME,
-                        source_record_ids=[r.source_record_id for r in verdict.source_records],
-                        tags=["LEGAL", "CASE", "QUOTE"],
-                        evidence=[
-                            Evidence.create(
-                                description="문서의 인용문",
-                                grade=EvidenceGrade.A,
-                                document_id=citation.document_id,
-                                block_id=citation.block_id,
-                                excerpt=citation.quoted_text[:300],
-                                supports=False,
+                if is_reported_opponent:
+                    if verdict.status == VerificationStatus.VERIFIED:
+                        verdict.status = VerificationStatus.PARTIALLY_VERIFIED
+                    verdict.levels["level3"] = "REPORTED_OPPONENT_QUOTE"
+                    verdict.findings.append(
+                        Finding.create(
+                            type=FindingType.CASE_QUOTE_MISMATCH,
+                            status=VerificationStatus.PARTIALLY_VERIFIED,
+                            severity=Severity.INFO,
+                            evidence_grade=EvidenceGrade.C,
+                            advisory_only=True,
+                            title=f"상대방 전언 인용 참고(확정 경고 아님): {citation.raw_text}",
+                            detail=(
+                                f"문서의 인용문은 상대방 주장을 전언·반박하는 문맥에 포함돼 있으며, 공식 원문과 최대 유사도는 {ratio:.2f}이다. "
+                                "전언 인용이므로 확정 결함으로 판정하지 않고 참고 신호로만 표시한다."
                             ),
-                            Evidence.create(
-                                description="공식 판시사항·판결요지",
-                                grade=EvidenceGrade.A,
-                                excerpt=official_text[:300],
-                            ),
-                        ],
+                            confidence=confidence_score(features),
+                            confidence_features=features,
+                            document_id=citation.document_id,
+                            block_id=citation.block_id,
+                            page=citation.page,
+                            span=citation.span,
+                            engine=ENGINE_NAME,
+                            source_record_ids=[r.source_record_id for r in verdict.source_records],
+                            tags=["LEGAL", "CASE", "QUOTE", "REPORTED_SPEECH"],
+                            evidence=[
+                                Evidence.create(
+                                    description="상대방 전언 인용 문맥",
+                                    grade=EvidenceGrade.C,
+                                    document_id=citation.document_id,
+                                    block_id=citation.block_id,
+                                    excerpt=citation.quoted_text[:300],
+                                    supports=True,
+                                ),
+                            ],
+                        )
                     )
-                )
+                else:
+                    verdict.status = VerificationStatus.CONTRADICTED
+                    title = f"직접 인용문이 공식 원문과 일치하지 않는다: {citation.raw_text}"
+                    detail = (
+                        f"문서의 인용문과 공식 판시사항·판결요지의 최대 유사도는 {ratio:.2f}이다. "
+                        "따옴표로 표시된 직접 인용은 원문과 일치해야 한다."
+                    )
+                    verdict.findings.append(
+                        Finding.create(
+                            type=FindingType.CASE_QUOTE_MISMATCH,
+                            status=VerificationStatus.CONTRADICTED,
+                            severity=Severity.HIGH,
+                            evidence_grade=EvidenceGrade.A,
+                            title=title,
+                            detail=detail,
+                            confidence=confidence_score(features),
+                            confidence_features=features,
+                            document_id=citation.document_id,
+                            block_id=citation.block_id,
+                            page=citation.page,
+                            span=citation.span,
+                            engine=ENGINE_NAME,
+                            source_record_ids=[r.source_record_id for r in verdict.source_records],
+                            tags=["LEGAL", "CASE", "QUOTE"],
+                            evidence=[
+                                Evidence.create(
+                                    description="문서의 인용문",
+                                    grade=EvidenceGrade.A,
+                                    document_id=citation.document_id,
+                                    block_id=citation.block_id,
+                                    excerpt=citation.quoted_text[:300],
+                                    supports=False,
+                                ),
+                                Evidence.create(
+                                    description="공식 판시사항·판결요지",
+                                    grade=EvidenceGrade.A,
+                                    excerpt=official_text[:300],
+                                ),
+                            ],
+                        )
+                    )
             elif level3 == "TRUNCATED":
                 verdict.notes.append("인용문이 원문의 일부만 포함한다. 인용 절단 여부는 MM-4 참고신호로 전달된다.")
             if modified:
-                verdict.levels["level3"] = "CONTRADICTED" if modified["meaningful"] else "MODIFIED"
-                if modified["meaningful"]:
-                    verdict.status = VerificationStatus.CONTRADICTED
-                elif verdict.status == VerificationStatus.VERIFIED:
-                    verdict.status = VerificationStatus.PARTIALLY_VERIFIED
-                verdict.findings.append(self._modified_quote_finding(citation, modified, official_text, verdict))
+                if is_reported_opponent:
+                    verdict.levels["level3"] = "REPORTED_OPPONENT_QUOTE"
+                    if verdict.status == VerificationStatus.VERIFIED:
+                        verdict.status = VerificationStatus.PARTIALLY_VERIFIED
+                    mod_f = self._modified_quote_finding(citation, modified, official_text, verdict)
+                    mod_f.status = VerificationStatus.PARTIALLY_VERIFIED
+                    mod_f.severity = Severity.INFO
+                    mod_f.evidence_grade = EvidenceGrade.C
+                    mod_f.advisory_only = True
+                    mod_f.title = f"상대방 전언 인용 참고(확정 경고 아님): {citation.raw_text}"
+                    verdict.findings.append(mod_f)
+                else:
+                    verdict.levels["level3"] = "CONTRADICTED" if modified["meaningful"] else "MODIFIED"
+                    if modified["meaningful"]:
+                        verdict.status = VerificationStatus.CONTRADICTED
+                    elif verdict.status == VerificationStatus.VERIFIED:
+                        verdict.status = VerificationStatus.PARTIALLY_VERIFIED
+                    verdict.findings.append(self._modified_quote_finding(citation, modified, official_text, verdict))
                 # AI 교차검토가 인용문이 아니라 원문 기준으로 평가하도록 차이를 판정에 싣는다.
                 verdict.review["quote_diff"] = render_quote_diff(modified)
                 verdict.review["quote_meaningful_change"] = modified["meaningful"]
