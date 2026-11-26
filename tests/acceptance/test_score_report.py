@@ -26,8 +26,11 @@ def _load():
 sr = _load()
 
 
-def _finding(ftype, severity="MEDIUM", status="SUSPICIOUS", title=""):
-    return {"type": ftype, "severity": severity, "status": status, "title": title}
+def _finding(ftype, severity="MEDIUM", status="SUSPICIOUS", title="", advisory_only=None):
+    f = {"type": ftype, "severity": severity, "status": status, "title": title}
+    if advisory_only is not None:
+        f["advisory_only"] = advisory_only
+    return f
 
 
 def _report(findings=(), kinds=None, verdict="UNCERTAIN", models=(), rag=()):
@@ -169,27 +172,37 @@ def test_case9_online_spec_rag1_uses_claim_scope():
     spec = sr.load_spec(ROOT / "tests" / "fixtures" / "probes" / "case9_state_compensation_online.json")
     # 2판(2026-10-09 사용자 결정)의 RAG-1 scope claim은 이후 판에서도 유지된다.
     # 3판(2026-11-26 사용자 승인)은 RAG-2의 기대 유형만 TK-241 새 요구로 바꿨다 — 그 조건도 함께 지킨다.
-    # RAG-2 3판 기대값이 있으면 판 표기도 3 이상이어야 한다(옛 판 표기로 새 규칙 점수가 기록되는 것을 막는다).
-    assert int(spec["rule_version"]) >= 3
+    # 4판(2026-11-27 사용자 승인)은 RAG-2에 심각도 상한·권고 표시를 더했다. 판 표기도 4 이상이어야 한다
+    # (옛 판 표기로 새 규칙 점수가 기록되는 것을 막는다).
+    assert int(spec["rule_version"]) >= 4
     checks = {c["id"]: c for c in spec["checks"]}
     assert checks["RAG-1"].get("scope") == "claim"
     assert checks["RAG-2"]["types"] == ["INTERNAL_REFERENCE_CONTRADICTION"]
     assert checks["RAG-2"]["statuses"] == ["SUSPICIOUS"]
     assert checks["RAG-2"]["text_any"] == ["제22조"]
+    assert checks["RAG-2"]["max_severity"] == "LOW"
+    assert checks["RAG-2"]["advisory_only"] is True
 
 
 CASE9_ONLINE = ROOT / "tests" / "fixtures" / "probes" / "case9_state_compensation_online.json"
 
 
-@pytest.mark.parametrize("ftype, status, text, expected", [
-    ("INTERNAL_REFERENCE_CONTRADICTION", "SUSPICIOUS", "육군 규정 제22조와 다르다", True),    # 3판 양성
-    ("FACT_CONTRADICTION", "SUSPICIOUS", "육군 규정 제22조와 다르다", False),                 # 2판 유형은 3판에서 실패
-    ("INTERNAL_REFERENCE_CONTRADICTION", "VERIFIED", "육군 규정 제22조와 다르다", False),       # 상태 불일치
-    ("INTERNAL_REFERENCE_CONTRADICTION", "SUSPICIOUS", "육군 규정 제23조와 다르다", False),     # 근거 조항 불일치
+IRC = "INTERNAL_REFERENCE_CONTRADICTION"
+
+
+@pytest.mark.parametrize("ftype, severity, status, text, advisory, expected", [
+    (IRC, "LOW", "SUSPICIOUS", "육군 규정 제22조와 다르다", True, True),                 # 양성(LOW·권고)
+    (IRC, "INFO", "SUSPICIOUS", "육군 규정 제22조와 다르다", True, True),                # 상한 이하
+    ("FACT_CONTRADICTION", "LOW", "SUSPICIOUS", "육군 규정 제22조와 다르다", True, False),  # 2판 유형
+    (IRC, "LOW", "VERIFIED", "육군 규정 제22조와 다르다", True, False),                  # 상태 불일치
+    (IRC, "LOW", "SUSPICIOUS", "육군 규정 제23조와 다르다", True, False),                # 근거 조항 불일치
+    (IRC, "HIGH", "SUSPICIOUS", "육군 규정 제22조와 다르다", True, False),               # 4판: 심각도 격상
+    (IRC, "LOW", "SUSPICIOUS", "육군 규정 제22조와 다르다", False, False),               # 4판: 확정 경고로 표시
+    (IRC, "LOW", "SUSPICIOUS", "육군 규정 제22조와 다르다", None, False),                # 4판: 권고 표시 없음
 ])
-def test_case9_online_spec_rag2_scores_synthetic_reports(tmp_path, ftype, status, text, expected):
-    """합성 보고서를 실제 case9 3판 명세로 채점해 RAG-2 판정을 확인한다(FEATURE_ONLINE_EVALUATION: 합성 성공/실패 보고서)."""
-    report = _report([_finding(ftype, "LOW", status, text)])
+def test_case9_online_spec_rag2_scores_synthetic_reports(tmp_path, ftype, severity, status, text, advisory, expected):
+    """합성 보고서를 실제 case9 명세(4판)로 채점해 RAG-2 판정을 확인한다(FEATURE_ONLINE_EVALUATION: 합성 성공/실패 보고서)."""
+    report = _report([_finding(ftype, severity, status, text, advisory)])
     rows = {r["id"]: r["passed"] for r in sr.score(_write(tmp_path, report), CASE9_ONLINE)["rows"]}
     assert rows["RAG-2"] is expected
 

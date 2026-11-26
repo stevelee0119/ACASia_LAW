@@ -1,10 +1,11 @@
 {
   "name": "case9_state_compensation_online",
-  "rule_version": "3",
+  "rule_version": "4",
   "rule_history": [
     "1: 2026-10-01 첫 판(RAG-1은 claim_quote 기준)",
     "2: 2026-10-09 사용자 결정 — RAG-1에 scope claim(의견의 claim_id로 찾은 주장 원문도 인정). 1판 점수와 증감 비교하지 않는다",
-    "3: 2026-11-26 사용자 승인(\"변경 승인\") — RAG-2의 기대 유형을 FACT_CONTRADICTION에서 INTERNAL_REFERENCE_CONTRADICTION으로, 상태를 SUSPICIOUS로 바꿈. TK-241(0.30.0)이 참고자료 대조를 법적 구속력 미판단 참고 신호로 분리한 새 요구를 반영(CLAUDE.md 2026-10-25 옛 요구 시험 갱신 원칙). 모순 존재와 '제22조' 근거 요구는 그대로. 2판 점수와 증감 비교하지 않는다"
+    "3: 2026-11-26 사용자 승인(\"변경 승인\") — RAG-2의 기대 유형을 FACT_CONTRADICTION에서 INTERNAL_REFERENCE_CONTRADICTION으로, 상태를 SUSPICIOUS로 바꿈. TK-241(0.30.0)이 참고자료 대조를 법적 구속력 미판단 참고 신호로 분리한 새 요구를 반영(CLAUDE.md 2026-10-25 옛 요구 시험 갱신 원칙). 모순 존재와 '제22조' 근거 요구는 그대로. 2판 점수와 증감 비교하지 않는다",
+    "4: 2026-11-27 사용자 승인(\"승인\", #444 검토 지적) — RAG-2에 max_severity LOW·advisory_only true 추가. TK-241이 만든 참고 신호(LOW·권고)가 확정 경고로 올라가는 회귀를 잡는다. 유형·상태·'제22조' 조건은 그대로. 3판 점수와 증감 비교하지 않는다"
   ],
   "description": "2026가합61942 준비서면 정답지 7대 영역 중 사용자 온라인 보고서(JSON)로 잴 수 있는 항목. 오프라인 명세(case9_state_compensation.json)와 조건이 달라 점수를 서로 비교하지 않는다. 사용자 온라인 실행의 입력은 같은 서면의 PDF(Google Docs 렌더러)였다. 항목별 마스킹 여부는 보고서에 없어 종류 단위로만 재고 항목별은 오프라인 명세로 잰다. EX-2s·FP-1은 정답지 문구의 평가 측 해석이다.",
   "checks": [
@@ -207,7 +208,9 @@
       "text_any": [
         "제22조"
       ],
-      "label": "Drive 대조: 모순이 내부 참고자료 대조 참고 신호(INTERNAL_REFERENCE_CONTRADICTION)로 finding 목록에 오름"
+      "label": "Drive 대조: 모순이 내부 참고자료 대조 참고 신호(INTERNAL_REFERENCE_CONTRADICTION, LOW 이하·권고 표시)로 finding 목록에 오름",
+      "max_severity": "LOW",
+      "advisory_only": true
     },
     {
       "id": "PII-K1",
