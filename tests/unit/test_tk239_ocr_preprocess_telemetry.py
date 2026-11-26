@@ -43,6 +43,8 @@ def test_tk239_pos1_dual_compare_picks_raw_when_preprocess_degrades():
     assert tel["preprocess_applied"] is True
     assert tel["raw_confidence"] == 0.72
     assert tel["preprocessed_confidence"] == 0.51
+    assert tel["raw_chars"] == 13
+    assert tel["preprocessed_chars"] == 4
     assert tel["selected_variant"] == "raw"
     assert tel["selection_reason"] == "RAW_HIGHER_OR_EQUAL_QUALITY"
 
@@ -73,6 +75,8 @@ def test_tk239_pos2_dual_compare_picks_preprocessed_when_improved():
     assert tel["selection_reason"] == "PREPROCESSED_HIGHER_QUALITY"
     assert tel["raw_confidence"] == 0.45
     assert tel["preprocessed_confidence"] == 0.86
+    assert tel["raw_chars"] == 2
+    assert tel["preprocessed_chars"] == 11
 
 
 def test_tk239_pos3_composite_telemetry_exposes_both_confidences_and_recovered():
