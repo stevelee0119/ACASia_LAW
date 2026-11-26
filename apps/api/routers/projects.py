@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 @router.get("/finding-categories")
 def get_finding_categories() -> dict:
-    """97개 FindingType의 화면 배정 매핑 및 탭 분류를 반환합니다 (F1 단일 기준)."""
+    """98개 FindingType의 화면 배정 매핑 및 탭 분류를 반환합니다 (F1 단일 기준)."""
     return {
         "categories": {ft.value: cat.value for ft, cat in FINDING_CATEGORY_MAP.items()},
         "tabs": {ft.value: CATEGORY_TO_TAB[cat].value for ft, cat in FINDING_CATEGORY_MAP.items()},

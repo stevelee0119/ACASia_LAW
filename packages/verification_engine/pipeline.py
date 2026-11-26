@@ -623,7 +623,22 @@ class VerificationPipeline:
                         sources = review.get("sources", [])
                         claims_by_id = {c.get("claim_id"): c for c in getattr(document_result, "claims", []) if isinstance(c, dict) and c.get("claim_id")}
 
-                        promoted_groups: Dict[Tuple[str, str], Any] = {}
+                        def _is_reported_claim_ctx(text_ctx: str, quote_str: str) -> bool:
+                            try:
+                                from packages.legal_engine.quote_attribution import assess_reported_quote_attribution
+                                return bool(assess_reported_quote_attribution(text_ctx, quoted_text=quote_str).get("is_reported_opponent_quote"))
+                            except ImportError:
+                                import re as _re
+                                subj = _re.search(r"(?<!본\s)(?<!당\s)(?:원고|피고|상대방|청구인|피청구인|신청인|피신청인|채권자|채무자|피고인|제3자)(?:\s*측)?(?:\s*(?:은|는|이|가|의))?", text_ctx)
+                                rep = _re.search(
+                                    r"(?:라고|다고|라는|다는|취지로)\s*(?:(?:주장|항변|진술|원용|인용|언급|해석|이해|판단)(?:하|합|했|하였|하고\s*있|한다)|다투|다툽|보|봅니)|"
+                                    r"(?:라는|다는|한다는)\s*(?:입장|주장|취지|항변|견해)(?:이|입니)",
+                                    text_ctx,
+                                )
+                                reb = _re.search(r"(?:그러나|하지만|다만|그렇지만)[^.!?\n]{0,120}(?:다르|타당하지\s*않|이유\s*없|맞지\s*않)|(?:주장|항변)(?:하나|하지만|하였으나|합니다만)", text_ctx)
+                                return bool(subj and (rep or reb))
+
+                        promoted_groups: Dict[str, Any] = {}
                         for obs in review.get("observations", []):
                             # exhibit_facts 등 결정론 정규식 관찰은 승격 대상에서 제외 (한국어 주석)
                             if obs.get("engine") == "exhibit_facts" or obs.get("source_type") == "deterministic":
@@ -634,19 +649,27 @@ class VerificationPipeline:
                                 if c_id and c_id in claims_by_id:
                                     c_text = claims_by_id[c_id].get("text", "")
                                 if not c_text and getattr(document_result, "claims", []):
-                                    c_quote = obs.get("claim_quote", "")
+                                    c_quote_norm = " ".join((obs.get("claim_quote") or "").split())
                                     for cl in document_result.claims:
-                                        if isinstance(cl, dict) and c_quote and c_quote in cl.get("text", ""):
+                                        if isinstance(cl, dict) and c_quote_norm and c_quote_norm in " ".join((cl.get("text") or "").split()):
                                             c_id = c_id or cl.get("claim_id", "")
                                             c_text = cl.get("text", "")
                                             break
                                 if not c_text:
                                     c_text = obs.get("claim_quote", "")
 
+                                claim_quote_str = obs.get("claim_quote", "")
+                                if _is_reported_claim_ctx(c_text or doc_text, claim_quote_str):
+                                    review.setdefault("rejected_observations", []).append({
+                                        "candidate_id": obs.get("source_id", ""),
+                                        "reason": "OPPONENT_REPORTED_SPEECH_ATTRIBUTED",
+                                    })
+                                    continue
+
                                 candidate = ModelCandidate(
                                     candidate_id=obs.get("source_id", ""),
-                                    claim_quote=obs.get("claim_quote", ""),
-                                    defect_type="FACT_CONTRADICTION",
+                                    claim_quote=claim_quote_str,
+                                    defect_type="INTERNAL_REFERENCE_CONTRADICTION",
                                     basis_quote=obs.get("source_quote", ""),
                                     source_id=obs.get("source_id"),
                                     explanation=obs.get("explanation", ""),
@@ -672,9 +695,8 @@ class VerificationPipeline:
                                     if f_masked:
                                         f, rej = f_masked, None
                                 if f:
-                                    # 동일 주장(claim_id 없으면 정규화된 claim_quote) 및 동일 참고자료(source_id) 중복 합치기
-                                    group_claim = c_id or " ".join(candidate.claim_quote.split())
-                                    group_key = (group_claim, candidate.source_id or "")
+                                    # 주장 1건당 1건으로 병합하고 참고자료 목록·개별 의견은 그 안에 접어 넣는다(TK-241).
+                                    group_key = c_id or " ".join(candidate.claim_quote.split())
                                     prov_entry = {
                                         "source_id": f.confidence_features.get("source_id"),
                                         "file_id": f.confidence_features.get("file_id"),
@@ -684,15 +706,16 @@ class VerificationPipeline:
                                     }
                                     if group_key in promoted_groups:
                                         existing_f = promoted_groups[group_key]
-                                        # 설명 및 근거 병합
                                         if candidate.explanation and candidate.explanation not in existing_f.detail:
-                                            existing_f.detail += f" / [추가 대조 의견]: {candidate.explanation.strip()}"
+                                            existing_f.detail += f" / [추가 참고자료({prov_entry.get('source_title') or ''})]: {candidate.explanation.strip()}"
                                         for ev in f.evidence:
                                             if not any(ev.excerpt == e.excerpt for e in existing_f.evidence):
                                                 existing_f.evidence.append(ev)
                                         provs = existing_f.confidence_features.setdefault("source_provenances", [])
                                         if prov_entry not in provs:
                                             provs.append(prov_entry)
+                                        if len(provs) > 1:
+                                            existing_f.title = f"내부 참고자료 대조({len(provs)}건) — 법적 구속력 미판단"
                                     else:
                                         f.confidence_features["source_provenances"] = [prov_entry]
                                         promoted_groups[group_key] = f

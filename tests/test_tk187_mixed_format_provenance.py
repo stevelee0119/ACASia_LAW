@@ -507,14 +507,23 @@ def test_tk187_single_format_independent_runs_pdf_docx_xlsx_parity(tmp_path, mon
     # 2. 무관 자료 3건 미선택 확인
     assert not (used_fids & {"f_ctrl_1", "f_ctrl_2", "f_ctrl_3"})
 
-    # 3. 입력 주장에 대한 비자문 모순 근거(Finding) 승격 및 출처(file_id·format·page) 기록 확인
+    # 3. 입력 주장에 대한 참고자료 대조 근거(Finding) 승격 및 출처(file_id·format·page) 기록 확인
+    #
+    # TK-241(2026-11-26 사용자 승인): 참고자료 대조 결과는 법적 구속력을 판단하지 않는 **참고 신호**다.
+    # 이 시험은 원래 `advisory_only is False`(본문 확정 경고)를 요구했는데, 그것은 TK-241 이전의 옛
+    # 요구다. 운영 실측에서 단일 쟁점 서면 한 장에 이 유형이 19건 쏟아져 본질 결함 2건을 묻는 것이
+    # 확인됐다(docs/scorecards/online_0290_20261126.md 7절). 새 요구에 맞춰 기대를 바꾸되, 신호가
+    # 사라지지 않는지(존재·유형·출처·근거 보존)는 그대로, 더 촘촘하게 검사한다.
     promo_findings = [
         f for f in doc_res.findings
         if (f.confidence_features or {}).get("rule_id") == "RAG.REFERENCE_CONTRADICTION"
     ]
-    assert promo_findings, f"{fmt_mode}: non-advisory CONTRADICTS finding missing"
+    assert promo_findings, f"{fmt_mode}: reference-contradiction finding missing"
     pf = promo_findings[0]
-    assert pf.advisory_only is False
+    assert pf.advisory_only is True, f"{fmt_mode}: 참고자료 대조는 참고 신호여야 한다(TK-241)"
+    assert getattr(pf.type, "value", str(pf.type)) == "INTERNAL_REFERENCE_CONTRADICTION", (
+        f"{fmt_mode}: 참고자료 대조는 사실 모순과 구분된 전용 유형이어야 한다(TK-241)"
+    )
     assert pf.status == VerificationStatus.SUSPICIOUS
     assert pf.confidence_features["file_id"] == "f_target"
     assert pf.confidence_features["source_format"] == ext_fmt
