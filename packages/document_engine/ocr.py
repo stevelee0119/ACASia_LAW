@@ -704,8 +704,8 @@ class RapidOCRAdapter(OCRAdapter):
         return lines
 
     @staticmethod
-    def _preprocess_low_quality_image(image: Any) -> Tuple[Any, float]:
-        """Apply adaptive grayscale + upscale + contrast/sharpen based on image contrast and resolution."""
+    def _preprocess_low_quality_image_with_status(image: Any) -> Tuple[Any, float, str]:
+        """Apply adaptive grayscale + upscale + contrast/sharpen; return (image, scale, status)."""
         try:
             import cv2  # type: ignore
             import numpy as np  # type: ignore
@@ -716,7 +716,7 @@ class RapidOCRAdapter(OCRAdapter):
             elif arr.ndim == 3 and arr.shape[2] >= 3:
                 gray = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2GRAY)
             else:
-                return image, 1.0
+                return image, 1.0, "SKIPPED"
 
             h, w = gray.shape[:2]
             contrast_std = float(np.std(gray))
@@ -743,9 +743,15 @@ class RapidOCRAdapter(OCRAdapter):
             else:
                 sharpened = enhanced
             rgb = cv2.cvtColor(sharpened, cv2.COLOR_GRAY2RGB)
-            return rgb, up
+            return rgb, up, "APPLIED"
         except Exception:
-            return image, 1.0
+            return image, 1.0, "UNAVAILABLE"
+
+    @staticmethod
+    def _preprocess_low_quality_image(image: Any) -> Tuple[Any, float]:
+        """Apply adaptive grayscale + upscale + contrast/sharpen based on image contrast and resolution."""
+        img, up, _ = RapidOCRAdapter._preprocess_low_quality_image_with_status(image)
+        return img, up
 
     def recognize(self, path: str, page_numbers: Optional[List[int]] = None) -> List[OCRLine]:
         if not self.available:
@@ -777,8 +783,12 @@ class RapidOCRAdapter(OCRAdapter):
                 "selection_reason": "PREPROCESS_DISABLED",
             }
             return raw_lines
-        pre_img, up = self._preprocess_low_quality_image(image)
-        if pre_img is image and up == 1.0:
+        try:
+            pre_img, up, pre_status = self._preprocess_low_quality_image_with_status(image)
+        except Exception:
+            pre_img, up, pre_status = image, 1.0, "UNAVAILABLE"
+        if pre_status != "APPLIED" or (pre_img is image and up == 1.0):
+            reason = "PREPROCESS_UNAVAILABLE" if pre_status == "UNAVAILABLE" else "PREPROCESS_SKIPPED"
             self.last_preprocess_telemetry = {
                 "preprocess_applied": False,
                 "raw_confidence": raw_conf,
@@ -786,7 +796,7 @@ class RapidOCRAdapter(OCRAdapter):
                 "raw_chars": raw_chars,
                 "preprocessed_chars": None,
                 "selected_variant": "raw",
-                "selection_reason": "PREPROCESS_SKIPPED",
+                "selection_reason": reason,
             }
             return raw_lines
         pre_lines = self._parse_raw_output(self._engine(pre_img), page=page, scale=scale * up)

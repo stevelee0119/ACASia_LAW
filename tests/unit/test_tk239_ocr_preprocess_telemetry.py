@@ -165,3 +165,59 @@ def test_tk239_ctrl3_low_confidence_not_marked_recovered():
     assert q["low_quality"] is True
     tel = build_ocr_page_telemetry(comp, q, page=1)
     assert tel["recovered"] is False
+
+
+def test_tk239_d1_preprocess_unavailable_distinguished_from_applied(monkeypatch):
+    """D-1: cv2/numpy 임포트 실패·예외 시 PREPROCESS_UNAVAILABLE로 기록되고 정상 전처리와 구분된다."""
+    import builtins
+
+    adapter = RapidOCRAdapter()
+    adapter.available = True
+    adapter._ensure_engine = lambda: True  # type: ignore[method-assign]
+    adapter._engine = lambda img: ([[[[0, 0], [50, 0], [50, 20], [0, 20]], "판결 원문 본문", 0.582]], None)
+
+    real_import = builtins.__import__
+
+    def _fail_cv2(name, *args, **kwargs):
+        if name == "cv2":
+            raise ImportError("cv2 missing")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _fail_cv2)
+    img = np.full((80, 120, 3), 200, dtype=np.uint8)
+    lines = adapter.recognize_image(img, preprocess=True)
+    assert len(lines) == 1
+    tel = adapter.last_preprocess_telemetry
+    assert tel["preprocess_applied"] is False
+    assert tel["selection_reason"] == "PREPROCESS_UNAVAILABLE"
+
+    # 대조: 정상 전처리 가능 시에는 preprocess_applied=True로 구분된다
+    monkeypatch.setattr(builtins, "__import__", real_import)
+    adapter.recognize_image(img, preprocess=True)
+    assert adapter.last_preprocess_telemetry["preprocess_applied"] is True
+    assert adapter.last_preprocess_telemetry["selection_reason"] != "PREPROCESS_UNAVAILABLE"
+
+
+def test_tk239_d2_dual_compare_recovers_0582_over_0537_for_ocr_extracted():
+    """D-2: 전처리가 0.537로 하락시켜도 이중 비교가 원본 0.582를 선택해 ocr_min_confidence(0.55)를 넘겨 OCR_EXTRACTED로 복구된다."""
+    adapter = RapidOCRAdapter()
+    adapter.available = True
+    adapter._ensure_engine = lambda: True  # type: ignore[method-assign]
+    calls = 0
+
+    def _engine(img):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ([[[[0, 0], [100, 0], [100, 20], [0, 20]], "임대차 계약 해지 통지서 본문", 0.582]], None)
+        return ([[[[0, 0], [100, 0], [100, 20], [0, 20]], "임대차 계약 해지 통지서 본문", 0.537]], None)
+
+    adapter._engine = _engine
+    img = np.full((120, 200, 3), 220, dtype=np.uint8)
+    img[20:40, 20:100] = 40
+    lines = adapter.recognize_image(img, preprocess=True)
+    assert lines[0].confidence == 0.582
+    assert adapter.last_preprocess_telemetry["selected_variant"] == "raw"
+    assert adapter.last_preprocess_telemetry["raw_confidence"] == 0.582
+    assert adapter.last_preprocess_telemetry["preprocessed_confidence"] == 0.537
+
