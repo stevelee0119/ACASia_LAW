@@ -8,7 +8,8 @@ AI 작성 판정·공식 DB 대조·Drive 대조·모델 경로를 이 도구가
     python scripts/score_report.py --report ... --spec ... --record --note "서면7 수신 직후"   # docs/scorecards/first_touch_log.jsonl에 한 줄
 
 명세 항목(kind)
-- finding       : 조건에 맞는 finding이 있다(probe_document와 같은 조건: types, min_severity, statuses, text_all, text_any)
+- finding       : 조건에 맞는 finding이 있다(probe_document와 같은 조건: types, min_severity, max_severity, advisory_only, statuses,
+                  text_all, text_any). advisory_only는 보고서 finding의 advisory_only 값과 비교한다(없으면 False)
 - no_finding    : 조건에 맞는 finding이 없다
 - pii_kind      : 마스킹 요약(masked_preview.kinds)에 kind가 1건 이상 있다(종류 단위. 항목별 마스킹 여부는 보고서에 없다)
 - ai_verdict    : 문서별 AI 작성 판정이 any_of 중 하나다
@@ -89,7 +90,8 @@ def observe_report(report: Dict[str, Any]) -> Dict[str, Any]:
                 claim_texts[str(claim["claim_id"])] = str(claim.get("text") or "")
         for f in doc.get("findings", []):
             findings.append({"type": str(f.get("type")), "severity": str(f.get("severity")),
-                             "status": str(f.get("status")), "text": json.dumps(f, ensure_ascii=False, default=str)})
+                             "status": str(f.get("status")), "advisory_only": bool(f.get("advisory_only")),
+                             "text": json.dumps(f, ensure_ascii=False, default=str)})
         for kind, count in ((doc.get("masked_preview") or {}).get("kinds") or {}).items():
             pii_kinds[kind] = pii_kinds.get(kind, 0) + int(count)
         detector = doc.get("ai_detector_result") or {}
@@ -101,7 +103,8 @@ def observe_report(report: Dict[str, Any]) -> Dict[str, Any]:
             rag.append({**observation, "_source_title": titles.get(str(observation.get("source_id")), "")})
     for f in report.get("project_findings") or []:
         findings.append({"type": str(f.get("type")), "severity": str(f.get("severity")),
-                         "status": str(f.get("status")), "text": json.dumps(f, ensure_ascii=False, default=str)})
+                         "status": str(f.get("status")), "advisory_only": bool(f.get("advisory_only")),
+                             "text": json.dumps(f, ensure_ascii=False, default=str)})
     for entry in ((report.get("scores") or {}).get("axes") or {}).get("ai_authorship", {}).get("documents", []):
         verdicts.append(str(entry.get("verdict")))
     manifest = report.get("run_manifest") or {}

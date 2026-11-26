@@ -14,7 +14,8 @@
 - citation      : 인용 추출 결과에 있다(case_number | law_contains + article | raw_contains)
 - masked        : 개인정보 마스킹 뒤 본문(공백 제거)에 value가 남아 있지 않다
 - not_masked    : 개인정보 마스킹 뒤 본문(공백 제거)에 value가 그대로 남아 있다(마스킹하지 않기로 한 것의 과잉 마스킹 점검)
-- finding       : 조건에 맞는 finding이 있다(types, min_severity, statuses, text_all[정규식 목록, 모두], text_any)
+- finding       : 조건에 맞는 finding이 있다(types, min_severity, max_severity, advisory_only, statuses, text_all[정규식 목록, 모두], text_any)
+                  max_severity·advisory_only는 2026-11-27 사용자 승인(case9 온라인 명세 4판): 참고 신호가 확정 경고로 올라가는 회귀를 잡는다
 - no_finding    : 조건에 맞는 finding이 없다(오탐 점검)
 
 측정 조건은 오프라인(네트워크 끔)이다. AI 작성 판별·공식 DB 대조·Drive 대조는 재지 못한다.
@@ -129,6 +130,11 @@ def _finding_matches(finding: Dict[str, str], check: Dict[str, Any]) -> bool:
         return False
     minimum = check.get("min_severity")
     if minimum and SEVERITY.index(finding["severity"]) < SEVERITY.index(minimum):
+        return False
+    maximum = check.get("max_severity")
+    if maximum and (finding["severity"] not in SEVERITY or SEVERITY.index(finding["severity"]) > SEVERITY.index(maximum)):
+        return False
+    if "advisory_only" in check and bool(finding.get("advisory_only")) is not bool(check["advisory_only"]):
         return False
     text = finding["text"]
     if any(not re.search(pattern, text) for pattern in check.get("text_all", [])):
