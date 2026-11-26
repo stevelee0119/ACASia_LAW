@@ -120,3 +120,53 @@ def test_tk240_ctrl3_exact_quote_verified_no_finding():
     verdict = _verify_quote(ctx, "채무불이행으로 인한 손해배상액은 통상손해를 한도로 한다.", official)
     assert verdict.status == VerificationStatus.VERIFIED
     assert not any(f.type == FindingType.CASE_QUOTE_MISMATCH for f in verdict.findings)
+
+
+def test_tk240_full_axis_matrix():
+    """축 조합 점검표(귀속 주체 6종 × 전언 동사·어미 15종 × 반박/채택/단독 3종 = 270칸) 전수 통과 확인."""
+    from packages.legal_engine.quote_attribution import assess_reported_quote_attribution
+
+    opponent_subjects = ["피고는 ", "원고는 ", "상대방 측은 ", "제3자는 "]
+    self_subjects = ["", "본 소송대리인은 "]
+    verb_endings = [
+        "판시하였다고 주장한다.",
+        "판시하였다고 주장합니다.",
+        "판시하였다고 주장했습니다.",
+        "판시하였다고 주장하였습니다.",
+        "판시하였다고 주장하고 있습니다.",
+        "판시하였다고 주장한다는 입장입니다.",
+        "판시하였다고 항변합니다.",
+        "판시하였다고 진술합니다.",
+        "판시하였다고 원용합니다.",
+        "판시하였다고 인용합니다.",
+        "판시하였다고 언급합니다.",
+        "판시하였다고 해석합니다.",
+        "판시하였다고 이해합니다.",
+        "판시하였다고 판단합니다.",
+        "판시하였다고 봅니다.",
+    ]
+    rebuttal_tail = " 그러나 이는 위 결정의 취지와 다릅니다."
+    adopt_tail = " 따라서 본 소송대리인도 같은 취지에서 그 주장이 타당하고 적용되어야 한다고 본다."
+
+    checked = 0
+    for subj in opponent_subjects:
+        for ve in verb_endings:
+            # 1) 단독 전언 -> True
+            res_plain = assess_reported_quote_attribution(f'{subj}대법원 2021다99001 판결이 "원문"이라고 {ve}')
+            assert res_plain["is_reported_opponent_quote"] is True, f"missed plain: {subj}{ve}"
+            # 2) 전언 + 반박 -> True
+            res_reb = assess_reported_quote_attribution(f'{subj}대법원 2021다99001 판결이 "원문"이라고 {ve}{rebuttal_tail}')
+            assert res_reb["is_reported_opponent_quote"] is True, f"missed rebuttal: {subj}{ve}"
+            # 3) 전언 + 자기 주장 채택 -> False (회피 차단)
+            res_adopt = assess_reported_quote_attribution(f'{subj}대법원 2021다99001 판결이 "원문"이라고 {ve}{adopt_tail}')
+            assert res_adopt["is_reported_opponent_quote"] is False, f"evasion leaked: {subj}{ve}"
+            checked += 3
+
+    for subj in self_subjects:
+        for ve in verb_endings:
+            for tail in ("", rebuttal_tail, adopt_tail):
+                res_self = assess_reported_quote_attribution(f'{subj}대법원 2021다99001 판결이 "원문"이라고 {ve}{tail}')
+                assert res_self["is_reported_opponent_quote"] is False, f"self misattributed: {subj}{ve}{tail}"
+                checked += 1
+
+    assert checked == 270
