@@ -156,3 +156,38 @@ def test_tk241_ctrl3_non_reference_candidate_keeps_b_grade():
     assert f.type == FindingType.FACT_CONTRADICTION
     assert f.evidence_grade == EvidenceGrade.B
     assert f.advisory_only is False
+
+
+def test_tk241_pos4_whitespace_variant_without_claim_id_merges(tmp_path, monkeypatch):
+    """양성 4: claim_id가 비어 있고 공백/개행만 다른 동일 인용 4종도 같은 주장으로 재매칭되어 1건으로 병합된다."""
+    sources = [
+        {"source_id": f"REF{i}", "title": f"참고자료_{i}.pdf", "text": f"규정 {i}: 사전 승인 없이 반출할 수 없다."}
+        for i in range(1, 5)
+    ]
+    quote_variants = [
+        "지체상금률 1/1000을 납부한다.",
+        "지체상금률  1/1000을  납부한다.",
+        "지체상금률\n1/1000을\t납부한다.",
+        "  지체상금률 1/1000을 납부한다.  ",
+    ]
+    observations = [
+        {
+            "relationship": "CONTRADICTS",
+            "claim_id": "",
+            "claim_quote": q,
+            "source_id": f"REF{i}",
+            "source_quote": "사전 승인 없이 반출할 수 없다.",
+            "explanation": f"참고자료 {i}와 상충.",
+            "advisory_only": True,
+        }
+        for i, q in enumerate(quote_variants, start=1)
+    ]
+    pipeline, context, doc_inputs = _setup_pipeline_test(tmp_path, monkeypatch, observations, sources)
+    result = pipeline.run("tk241-ws-merge", context, doc_inputs)
+    promoted = [
+        f for f in result.documents[0].findings
+        if f.type == FindingType.INTERNAL_REFERENCE_CONTRADICTION
+    ]
+    assert len(promoted) == 1
+    assert len(promoted[0].confidence_features["source_provenances"]) == 4
+

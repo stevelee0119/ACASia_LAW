@@ -649,9 +649,9 @@ class VerificationPipeline:
                                 if c_id and c_id in claims_by_id:
                                     c_text = claims_by_id[c_id].get("text", "")
                                 if not c_text and getattr(document_result, "claims", []):
-                                    c_quote = obs.get("claim_quote", "")
+                                    c_quote_norm = " ".join((obs.get("claim_quote") or "").split())
                                     for cl in document_result.claims:
-                                        if isinstance(cl, dict) and c_quote and c_quote in cl.get("text", ""):
+                                        if isinstance(cl, dict) and c_quote_norm and c_quote_norm in " ".join((cl.get("text") or "").split()):
                                             c_id = c_id or cl.get("claim_id", "")
                                             c_text = cl.get("text", "")
                                             break
