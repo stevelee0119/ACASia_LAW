@@ -889,12 +889,11 @@
       "note": "0.25.0 온라인(023fc33c, I-4): 임베딩·재순위 서버 실제 RAG 연결. 해소: #396(df3fe2e8) + CodeQL SSRF #404(de0a1776) 병합, 0.26.0(19efff6a, v.0.26.0) 배포 및 health 확인 완료."
     },
     "TK-229": {
-      "status": "deployed",
+      "status": "closed",
       "priority": "P2",
       "kind": "new",
-      "deployed_on": "2026-11-22",
-      "deployed_sha": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
-      "note": "0.25.0 온라인(023fc33c, I-4): 로컬 모델 설정·라우팅 활성화. 해소: #397(f2ec9fd0) 병합, 0.26.0(19efff6a, v.0.26.0) 배포 및 health 확인 완료."
+      "closed_on": "2026-11-26",
+      "note": "2026-11-26 사용자 결정으로 폐기(범위 밖). 제품에서 로컬 모델이 제거되어(`local_llm.status=REMOVED_NOT_OPERATIONAL`, 공급자 0개) 측정 대상이 아니다. 앞선 `deployed`(0.26.0 `19efff6a`) 기록은 그 시점 사실이며, 이후 제거로 티켓 자체가 닫혔다. 근거: docs/handoff/tickets/TK-229.md, docs/scorecards/online_0290_unmeasured_20261126.md"
     },
     "TK-230": {
       "status": "deployed",
@@ -927,7 +926,62 @@
       "priority": "P1",
       "kind": "existing",
       "note": "0.27.0 트랙 2(점수 상승 2축): PR #412 병합 완료. 내용어 shingle 유사도·어미 변환(EVI-COPY), 인지 양립 불가(EVI-LOGIC), 내심 단정(EVI-OVR), 인젝션 스팬 매핑(INJ-ZWSP/META), AIGEN 클러스터 배출 정밀화(dev 86.2, holdout 86.6, 은퇴 4/5세트 상승)."
+    },
+    "TK-235": {
+      "status": "merged",
+      "priority": "P1",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: `2015모2524` 공개 DB 미수록 + `nb` 대체 레코드. 분류·보고 수정(탐지 결함 아님). #417 필터는 정상. 2026-11-26 #433 Steve_ACASiaLAW 병합 완료.",
+      "merged_on": "2026-11-26"
+    },
+    "TK-236": {
+      "status": "merged",
+      "priority": "P2",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: 판례 키워드 검색 간헐 실패 — 분류 가능한 관측부터. 2026-11-26 #437 Steve_ACASiaLAW 병합 완료.",
+      "merged_on": "2026-11-26"
+    },
+    "TK-237": {
+      "status": "merged",
+      "priority": "P1",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: Drive 미완독 쪽 사유 미기록으로 재처리 트리거 영구 미발동. #431 수용(수정 커밋), 배포 후 재측정 대기. 2026-11-26 #431 Steve_ACASiaLAW 병합 완료.",
+      "merged_on": "2026-11-26"
+    },
+    "TK-238": {
+      "status": "merged",
+      "priority": "P2",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: `actual_calls` 상수 0 — 실호출 집계 누락. #432 조건부 수용, 배포 후 재측정 대기. 2026-11-26 #432 Steve_ACASiaLAW 병합 완료.",
+      "merged_on": "2026-11-26"
+    },
+    "TK-239": {
+      "status": "merged",
+      "priority": "P1",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: 저품질 스캔 OCR 복구 미달 및 폴백 신뢰도 후퇴 관측. #436 조건부 수용, 배포 후 재측정 대기. 2026-11-26 #436 Steve_ACASiaLAW 병합 완료.",
+      "merged_on": "2026-11-26"
+    },
+    "TK-240": {
+      "status": "merged",
+      "priority": "P1",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: 상대방 전언 인용에 A등급 확정 경고(확인 오탐). #434 조건부 수용, 배포 후 재측정 대기. 2026-11-26 #434 Steve_ACASiaLAW 병합 완료.",
+      "merged_on": "2026-11-26"
+    },
+    "TK-241": {
+      "status": "merged",
+      "priority": "P1",
+      "kind": "existing",
+      "note": "0.29.0 운영 온라인 실측: 참고자료 대조 안내의 유형·중복·등급. #435 보류(#438 시험 계약 갱신 병합 대기). 2026-11-26 #435 Steve_ACASiaLAW 병합 완료.",
+      "merged_on": "2026-11-26"
+    },
+    "TK-242": {
+      "status": "open",
+      "priority": "P1",
+      "kind": "existing",
+      "note": "평가 도구 결함(제품 결함 아님, 담당자 evaluator). 2026-11-26 사용자 지시 '평가 도구 티켓 발행해'. (1) check_test_edits.py의 적용 범위 지문이 ast.dump를 써 파이썬 판마다 달라진다(3.11/3.12 ≠ 3.13) — #438 게이트 2차 실패 원인. (2) all_evaluator_commits()가 PR 병합 시험 커밋 때문에 PR에서 발동하지 않아 로컬 통과·CI 실패가 갈린다 — 2026-11-26 사용자 승인으로 (가) 보수 확정(판정 기준 불변, 문서·메시지에 명시, 승인 목록 경로로만 처리). (3) ticket_metrics.read_tickets()가 docs/handoff 최상위만 읽고 식별자에서 .md를 떼지 않아 하위 티켓 22건이 집계 밖이다. 사전 검증 완료(3.11/3.12/3.13 지문 일치, 관련 시험 50건 통과, --check 178건 전부 등재). #435 병합 뒤 적용(앞서 '#438 뒤'로 적은 것을 정정 — #438의 기준은 fix/tk241이라 그 CI는 영향받지 않고, 지문이 어긋나는 시점은 기준이 Steve인 #435다). #435보다 먼저 적용하려면 #438이 등재한 두 항목을 scope.body=4a723b0216718f21·scope.algo=2 한 항목으로 합친다(새 알고리즘 지문은 두 기준·세 판 모두 같은 값)."
     }
   },
-  "updated_on": "2026-11-22"
+  "updated_on": "2026-11-26"
 }

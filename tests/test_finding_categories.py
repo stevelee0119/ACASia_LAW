@@ -1,13 +1,17 @@
 """유형별 화면 배정표(finding_category_map) 전수 및 제약 검증 시험
 
 평가 측 회신서(docs/handoff/F1_DESIGN_REVIEW_REPLY.md 3절)의 필수 수정 사항을 검증합니다:
-1. 97개 FindingType 멤버의 누락·초과 0 검증
+1. 98개 FindingType 멤버의 누락·초과 0 검증
 2. ADVERSARIAL_FINDING_TYPES 16개 전수 인젝션 카드 배정 검증
 3. MM4_ADVISORY_TYPES 5개 전수 권고 신호(검토 항목 탭) 배정 검증
 4. LEGAL_FINDING_TYPES 9개 전수 검토 항목 탭 배정 검증
 5. MODEL_FACT_REMARK -> 검토 항목(사실관계) 재배정 검증 (T4 배타성 보호)
 6. OCR_LOW_QUALITY -> 검토 항목(처리 상태) 재배정 검증
 """
+# TK-241(2026-11-26 사용자 승인): FindingType에 INTERNAL_REFERENCE_CONTRADICTION이 추가되어
+# 유형 총수가 97 → 98이 되었다. 상수를 사실에 맞게 갱신한 것이며 검사 항목은 줄이지 않았다.
+# 근거: docs/scorecards/pr_431_437_verdict_20261126.md R5절.
+
 import pytest
 from packages.common.enums import (
     ADVERSARIAL_FINDING_TYPES,
@@ -27,12 +31,12 @@ from packages.common.finding_category_map import (
 )
 
 
-def test_all_97_finding_types_allocated_without_omission_or_excess():
-    """97개 FindingType 전체가 누락이나 초과 없이 1:1 매핑되어야 합니다."""
+def test_all_finding_types_allocated_without_omission_or_excess():
+    """98개 FindingType 전체가 누락이나 초과 없이 1:1 매핑되어야 합니다."""
     all_enum_members = set(FindingType)
     allocated_types = set(FINDING_CATEGORY_MAP.keys())
 
-    assert len(all_enum_members) == 97, f"FindingType 정의 개수가 97개가 아님: {len(all_enum_members)}"
+    assert len(all_enum_members) == 98, f"FindingType 정의 개수가 98개가 아님: {len(all_enum_members)}"
     assert all_enum_members == allocated_types, (
         f"배정표 누락/초과 발생: "
         f"누락={all_enum_members - allocated_types}, "
@@ -86,14 +90,14 @@ def test_ocr_low_quality_reassigned_to_processing_quality():
 
 
 def test_category_counts_integrity():
-    """카테고리별 통계 합계가 97개와 일치해야 합니다."""
+    """카테고리별 통계 합계가 98개와 일치해야 합니다."""
     counts = get_category_counts()
-    assert counts["TOTAL"] == 97
-    assert counts[ScreenTab.AI_SECURITY.value] + counts[ScreenTab.REVIEW_ITEMS.value] == 97
+    assert counts["TOTAL"] == 98
+    assert counts[ScreenTab.AI_SECURITY.value] + counts[ScreenTab.REVIEW_ITEMS.value] == 98
 
 
 def test_api_finding_categories_endpoint():
-    """GET /api/finding-categories 엔드포인트가 97개 매핑을 정상 반환해야 합니다."""
+    """GET /api/finding-categories 엔드포인트가 98개 매핑을 정상 반환해야 합니다."""
     from fastapi.testclient import TestClient
     from apps.api.main import app
 
@@ -104,7 +108,7 @@ def test_api_finding_categories_endpoint():
     assert "categories" in data
     assert "tabs" in data
     assert "counts" in data
-    assert len(data["categories"]) == 97
-    assert len(data["tabs"]) == 97
-    assert data["counts"]["TOTAL"] == 97
+    assert len(data["categories"]) == 98
+    assert len(data["tabs"]) == 98
+    assert data["counts"]["TOTAL"] == 98
 

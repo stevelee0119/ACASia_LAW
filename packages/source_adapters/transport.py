@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import math
+import re
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -24,12 +25,21 @@ MAX_CACHE_BYTES = 16 * 1024 * 1024
 MAX_CACHE_ENTRIES = 64
 FAILURE_THRESHOLD = 2
 
+_SECRET_PARAM_RE = re.compile(r"(?i)(oc|api[_-]?key|token|secret|key)\s*=\s*[^&\s\"']+")
+
+
+def _mask_secret_text(value: Optional[str], limit: int = 200) -> str:
+    text = _SECRET_PARAM_RE.sub(r"\1=***", str(value or ""))
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:limit]
+
 
 class SourceRequestStopped(httpx.RequestError):
-    def __init__(self, message, status=AdapterStatus.TIMEOUT, *, retryable=None):
+    def __init__(self, message, status=AdapterStatus.TIMEOUT, *, retryable=None, diagnostics=None):
         super().__init__(message)
         self.status = status
         self.retryable = status == AdapterStatus.TIMEOUT if retryable is None else retryable
+        self.diagnostics = dict(diagnostics or {})
 
 
 @dataclass
@@ -305,19 +315,30 @@ def source_get(adapter, url, *, params=None, headers=None, timeout=12):
                                            session.blocked[adapter], retryable=True)
             session.blocked.pop(adapter)
             session.blocked_until.pop(adapter, None)
+        attempt_details = []
+        last_http_status = None
+        last_body_head = ""
         for attempt in range(session.max_attempts):
             session.check_active()
             remaining = session.remaining()
             if remaining <= 0:
-                raise SourceRequestStopped("이 문서의 외부 출처 조회 시간 한도를 소진했습니다")
+                raise SourceRequestStopped("이 문서의 외부 출처 조회 시간 한도를 소진했습니다",
+                                           diagnostics={"failure_classification": "TIMEOUT", "attempts": attempt_details})
             _pace(session, adapter)
             attempts += 1
             started = time.monotonic()
             delay = 0.0
+            code = None
+            err_type = None
             try:
                 response = asyncio.run(_fetch_with_deadline(url, params=params, headers=headers,
                     timeout=min(timeout * (attempt + 1), 45.0, remaining)))
                 code = response.status_code
+                last_http_status = code
+                try:
+                    last_body_head = _mask_secret_text(getattr(response, "text", ""))
+                except Exception:
+                    last_body_head = ""
                 status = (AdapterStatus.READY if 200 <= code < 300 else
                           AdapterStatus.RATE_LIMITED if code == 429 else AdapterStatus.ERROR)
                 retryable = code in (408, 429) or 500 <= code < 600
@@ -330,13 +351,23 @@ def source_get(adapter, url, *, params=None, headers=None, timeout=12):
                     session.blocked[adapter] = status
                     session.blocked_until.pop(adapter, None)
             except (httpx.RequestError, OSError) as exc:
+                err_type = type(exc).__name__
                 status = (exc.status if isinstance(exc, SourceRequestStopped) else
                           AdapterStatus.TIMEOUT if isinstance(exc, httpx.TimeoutException) else AdapterStatus.ERROR)
                 retryable = exc.retryable if isinstance(exc, SourceRequestStopped) else True
                 if not retryable:
                     raise
             finally:
-                session.spent_seconds += time.monotonic() - started
+                elapsed_ms = round((time.monotonic() - started) * 1000)
+                session.spent_seconds += (elapsed_ms / 1000.0)
+            wait_sec = max(delay, min(8, session.retry_backoff * 2 ** attempt)) if (retryable and attempt + 1 < session.max_attempts) else 0.0
+            attempt_details.append({
+                "attempt": attempt + 1,
+                "elapsed_ms": elapsed_ms,
+                "wait_ms": round(wait_sec * 1000),
+                "http_status": code,
+                "error_type": err_type,
+            })
             if not retryable:
                 session.failures[adapter] = 0
                 if status == AdapterStatus.READY:
@@ -348,9 +379,23 @@ def source_get(adapter, url, *, params=None, headers=None, timeout=12):
                 return response
             if attempt + 1 < session.max_attempts:
                 session.message(f"외부 출처 재조회 {attempt + 2}/{session.max_attempts}회")
-                _wait(session, max(delay, min(8, session.retry_backoff * 2 ** attempt)))
-        raise SourceRequestStopped("자동 재조회 후에도 외부 출처 응답을 확보하지 못했습니다",
-                                   status, retryable=True)
+                _wait(session, wait_sec)
+        failure_cls = (
+            "RATE_LIMITED" if status == AdapterStatus.RATE_LIMITED
+            else "TIMEOUT" if status == AdapterStatus.TIMEOUT
+            else "UPSTREAM_ERROR"
+        )
+        raise SourceRequestStopped(
+            "자동 재조회 후에도 외부 출처 응답을 확보하지 못했습니다",
+            status,
+            retryable=True,
+            diagnostics={
+                "failure_classification": failure_cls,
+                "http_status": last_http_status,
+                "body_head": last_body_head,
+                "attempts": attempt_details,
+            },
+        )
     except SourceRequestStopped as exc:
         status, retryable = exc.status, exc.retryable
         if retryable and attempts:
