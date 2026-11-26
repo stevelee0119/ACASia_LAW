@@ -3,9 +3,19 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
+from packages.common.config import reset_settings
 from packages.source_adapters.base import AdapterStatus
 from packages.source_adapters.law_go_kr import LawGoKrAdapter
 from scripts.live_source_check import check_law_go_kr, partition_failures
+
+
+@pytest.fixture(autouse=True)
+def _isolated_settings():
+    reset_settings()
+    yield
+    reset_settings()
 
 
 class _StubResp:
@@ -21,6 +31,7 @@ def test_tk235_pos1_nb_fallback_unrelated_classified_not_in_public_db(monkeypatc
     """양성 1: nb 조회가 totalCnt=1로 무관한 사건번호를 반환해도 오매칭하지 않고 NOT_IN_PUBLIC_DB로 분류한다."""
     monkeypatch.setenv("LV_LAW_GO_KR_OC", "test_oc")
     monkeypatch.setenv("LV_ALLOW_NETWORK", "1")
+    reset_settings()
     adapter = LawGoKrAdapter()
     monkeypatch.setattr(
         adapter,
@@ -41,6 +52,7 @@ def test_tk235_pos2_http_error_classified_lookup_failed(monkeypatch):
     """양성 2: 업스트림 HTTP 503 오류는 NOT_IN_PUBLIC_DB가 아니라 LOOKUP_FAILED로 분류한다."""
     monkeypatch.setenv("LV_LAW_GO_KR_OC", "test_oc")
     monkeypatch.setenv("LV_ALLOW_NETWORK", "1")
+    reset_settings()
     adapter = LawGoKrAdapter()
     monkeypatch.setattr(adapter, "_http_get", lambda url, params=None: _StubResp(503, {}))
     resp = adapter.search_case("2021모9001")
@@ -81,6 +93,7 @@ def test_tk235_ctrl1_exact_match_classified_matched(monkeypatch):
     """대조 1: 완전 튜플 일치 시 MATCHED로 분류되고 레코드를 채택한다."""
     monkeypatch.setenv("LV_LAW_GO_KR_OC", "test_oc")
     monkeypatch.setenv("LV_ALLOW_NETWORK", "1")
+    reset_settings()
     adapter = LawGoKrAdapter()
     monkeypatch.setattr(
         adapter,
@@ -100,6 +113,7 @@ def test_tk235_ctrl2_empty_results_classified_not_in_public_db(monkeypatch):
     """대조 2: 공급자 원응답 0건도 NOT_IN_PUBLIC_DB로 분류된다."""
     monkeypatch.setenv("LV_LAW_GO_KR_OC", "test_oc")
     monkeypatch.setenv("LV_ALLOW_NETWORK", "1")
+    reset_settings()
     adapter = LawGoKrAdapter()
     monkeypatch.setattr(adapter, "_http_get", lambda url, params=None: _StubResp(200, {"PrecSearch": {"totalCnt": "0", "prec": []}}))
     resp = adapter.search_case("2021모9001")
