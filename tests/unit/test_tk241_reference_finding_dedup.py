@@ -1,4 +1,4 @@
-"""TK-241 unit tests: REFERENCE_CONTRADICTION type separation, advisory_only=True, per-claim merge, and attribution guard."""
+"""TK-241 unit tests: INTERNAL_REFERENCE_CONTRADICTION type separation, advisory_only=True, per-claim merge, and attribution guard."""
 from __future__ import annotations
 
 from packages.common.enums import EvidenceGrade, FindingType, Severity, VerificationStatus
@@ -7,7 +7,7 @@ from tests.test_tk70_rag_contradiction_promotion import _setup_pipeline_test
 
 
 def test_tk241_pos1_19_sources_same_claim_merged_into_one(tmp_path, monkeypatch):
-    """양성 1: 단일 주장에 대해 19개 참고자료 모순 관찰이 올라와도 주장 1건당 1건(REFERENCE_CONTRADICTION)으로 병합된다."""
+    """양성 1: 단일 주장에 대해 19개 참고자료 모순 관찰이 올라와도 주장 1건당 1건(INTERNAL_REFERENCE_CONTRADICTION)으로 병합된다."""
     sources = [
         {"source_id": f"REF{i}", "title": f"참고자료_{i}.pdf", "text": f"규정 {i}: 사전 승인 없이 반출할 수 없다."}
         for i in range(1, 20)
@@ -28,7 +28,7 @@ def test_tk241_pos1_19_sources_same_claim_merged_into_one(tmp_path, monkeypatch)
     result = pipeline.run("tk241-merge", context, doc_inputs)
     promoted = [
         f for f in result.documents[0].findings
-        if f.type == FindingType.REFERENCE_CONTRADICTION
+        if f.type == FindingType.INTERNAL_REFERENCE_CONTRADICTION
     ]
     assert len(promoted) == 1
     assert promoted[0].advisory_only is True
@@ -62,16 +62,16 @@ def test_tk241_pos2_distinct_claims_remain_separate(tmp_path, monkeypatch):
     ]
     pipeline, context, doc_inputs = _setup_pipeline_test(tmp_path, monkeypatch, observations, sources)
     result = pipeline.run("tk241-distinct", context, doc_inputs)
-    promoted = [f for f in result.documents[0].findings if f.type == FindingType.REFERENCE_CONTRADICTION]
+    promoted = [f for f in result.documents[0].findings if f.type == FindingType.INTERNAL_REFERENCE_CONTRADICTION]
     assert len(promoted) == 2
 
 
 def test_tk241_pos3_reference_contradiction_type_and_advisory():
-    """양성 3: verify_rag_candidate(is_reference_contradiction=True)는 REFERENCE_CONTRADICTION·advisory_only=True·LOW/C를 반환한다."""
+    """양성 3: verify_rag_candidate(is_reference_contradiction=True)는 INTERNAL_REFERENCE_CONTRADICTION·advisory_only=True·LOW/C를 반환한다."""
     cand = ModelCandidate(
         candidate_id="cand1",
         claim_quote="계약금은 반환하지 않는다.",
-        defect_type="REFERENCE_CONTRADICTION",
+        defect_type="INTERNAL_REFERENCE_CONTRADICTION",
         basis_quote="계약 해제 시 계약금은 반환한다.",
         source_id="REF1",
         explanation="반환 조항 상충",
@@ -84,7 +84,7 @@ def test_tk241_pos3_reference_contradiction_type_and_advisory():
     )
     assert rej is None
     assert f is not None
-    assert f.type == FindingType.REFERENCE_CONTRADICTION
+    assert f.type == FindingType.INTERNAL_REFERENCE_CONTRADICTION
     assert f.advisory_only is True
     assert f.severity == Severity.LOW
     assert f.evidence_grade == EvidenceGrade.C
@@ -114,11 +114,11 @@ def test_tk241_ctrl1_opponent_reported_claim_not_promoted(tmp_path, monkeypatch)
     norm.raw_layers["visible_text"] = "피고는 원상회복 의무가 없다고 주장하나, 이는 타당하지 않습니다."
     monkeypatch.setattr("packages.verification_engine.pipeline.parse_document", lambda *a, **kw: norm)
     result = pipeline.run("tk241-opp", context, doc_inputs)
-    assert not any(f.type == FindingType.REFERENCE_CONTRADICTION for f in result.documents[0].findings)
+    assert not any(f.type == FindingType.INTERNAL_REFERENCE_CONTRADICTION for f in result.documents[0].findings)
 
 
 def test_tk241_ctrl2_supports_observation_not_promoted(tmp_path, monkeypatch):
-    """대조 2: SUPPORTS 관계 관찰은 REFERENCE_CONTRADICTION으로 승격하지 않는다."""
+    """대조 2: SUPPORTS 관계 관찰은 INTERNAL_REFERENCE_CONTRADICTION으로 승격하지 않는다."""
     sources = [{"source_id": "REF1", "title": "규정.pdf", "text": "지체상금률 1/1000을 납부한다."}]
     observations = [
         {
@@ -132,7 +132,7 @@ def test_tk241_ctrl2_supports_observation_not_promoted(tmp_path, monkeypatch):
     ]
     pipeline, context, doc_inputs = _setup_pipeline_test(tmp_path, monkeypatch, observations, sources)
     result = pipeline.run("tk241-sup", context, doc_inputs)
-    assert not any(f.type == FindingType.REFERENCE_CONTRADICTION for f in result.documents[0].findings)
+    assert not any(f.type == FindingType.INTERNAL_REFERENCE_CONTRADICTION for f in result.documents[0].findings)
 
 
 def test_tk241_ctrl3_non_reference_candidate_keeps_b_grade():

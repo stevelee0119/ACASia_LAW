@@ -93,6 +93,7 @@ F1/F3 확장은 이 경로를 우회하지 않는다. `ORIGINAL`, `LOCAL_ONLY`�
 | TEMPORAL_LAW_MISMATCH | 시간축 검토 | 확인 필요 |
 | ACADEMIC_CITATION_ERROR | 참고자료 부합성 | 확인 필요 |
 | FACT_CONTRADICTION | 참고자료 부합성 | 확인 필요 |
+| INTERNAL_REFERENCE_CONTRADICTION | 사실관계·수치·서증 모순 행 | 확인 필요(참고 신호) |
 | CROSS_DOCUMENT_CONTRADICTION | 일반 내용 검토 | 확인 필요 |
 | TIMELINE_CONTRADICTION | 시간축 검토 | 확인 필요 |
 | ARITHMETIC_MISMATCH | 일반 내용 검토 | 확인 필요 |

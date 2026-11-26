@@ -629,9 +629,13 @@ class VerificationPipeline:
                                 return bool(assess_reported_quote_attribution(text_ctx, quoted_text=quote_str).get("is_reported_opponent_quote"))
                             except ImportError:
                                 import re as _re
-                                subj = _re.search(r"(?:원고|피고|상대방|청구인|피청구인|신청인|피신청인|채권자|채무자|피고인|제3자)(?:\s*측)?(?:은|는|이|가|의)?", text_ctx)
-                                rep = _re.search(r"(?:라고|다고|라는|다는|취지로)\s*(?:주장하|주장했|주장하였|주장하나|주장하지만|주장한다|항변하|다투|인용하)", text_ctx)
-                                reb = _re.search(r"(?:그러나|하지만|다만|그렇지만)[^.!?\n]{0,120}(?:다르|타당하지\s*않|이유\s*없|맞지\s*않)|(?:주장|항변)(?:하나|하지만|하였으나)", text_ctx)
+                                subj = _re.search(r"(?<!본\s)(?<!당\s)(?:원고|피고|상대방|청구인|피청구인|신청인|피신청인|채권자|채무자|피고인|제3자)(?:\s*측)?(?:\s*(?:은|는|이|가|의))?", text_ctx)
+                                rep = _re.search(
+                                    r"(?:라고|다고|라는|다는|취지로)\s*(?:(?:주장|항변|진술|원용|인용|언급|해석|이해|판단)(?:하|합|했|하였|하고\s*있|한다)|다투|다툽|보|봅니)|"
+                                    r"(?:라는|다는|한다는)\s*(?:입장|주장|취지|항변|견해)(?:이|입니)",
+                                    text_ctx,
+                                )
+                                reb = _re.search(r"(?:그러나|하지만|다만|그렇지만)[^.!?\n]{0,120}(?:다르|타당하지\s*않|이유\s*없|맞지\s*않)|(?:주장|항변)(?:하나|하지만|하였으나|합니다만)", text_ctx)
                                 return bool(subj and (rep or reb))
 
                         promoted_groups: Dict[str, Any] = {}
@@ -665,7 +669,7 @@ class VerificationPipeline:
                                 candidate = ModelCandidate(
                                     candidate_id=obs.get("source_id", ""),
                                     claim_quote=claim_quote_str,
-                                    defect_type="REFERENCE_CONTRADICTION",
+                                    defect_type="INTERNAL_REFERENCE_CONTRADICTION",
                                     basis_quote=obs.get("source_quote", ""),
                                     source_id=obs.get("source_id"),
                                     explanation=obs.get("explanation", ""),
