@@ -940,20 +940,33 @@ def _build_optional_fallback(engine_name: str) -> Optional[OCRAdapter]:
 _adapter: Optional[OCRAdapter] = None
 
 
+def resolve_ocr_fallback_config(environ: Optional[Any] = None) -> dict[str, Any]:
+    """Single source of truth for OCR fallback engine/mode resolution across parent and child processes."""
+    import os
+
+    src = os.environ if environ is None else environ
+    raw_engine = str(src.get("LV_OCR_FALLBACK_ENGINE") or "none").strip().lower()
+    engine = "none" if raw_engine in ("", "none", "off") else raw_engine
+    raw_mode = str(
+        src.get("LV_OCR_FALLBACK_MODE")
+        or ("auto" if engine != "none" else "off")
+    ).strip().lower()
+    mode = "off" if (engine == "none" or raw_mode in ("", "off", "none")) else raw_mode
+    return {
+        "engine": engine,
+        "mode": mode,
+        "enabled": bool(engine != "none" and mode != "off"),
+    }
+
+
 def get_ocr_adapter() -> OCRAdapter:
     global _adapter
     if _adapter is None:
-        import os
-
         candidate = TesseractOCRAdapter()
         primary: OCRAdapter = candidate if candidate.available else NullOCRAdapter(candidate.diagnostics)
-        engine_name = (os.getenv("LV_OCR_FALLBACK_ENGINE") or "none").strip().lower()
-        mode = (
-            os.getenv("LV_OCR_FALLBACK_MODE")
-            or ("auto" if engine_name not in ("", "none", "off") else "off")
-        ).strip().lower()
-        fallback = None if mode == "off" else _build_optional_fallback(engine_name)
-        _adapter = CompositeOCRAdapter(primary, fallback, mode=mode) if fallback is not None else primary
+        cfg = resolve_ocr_fallback_config()
+        fallback = None if not cfg["enabled"] else _build_optional_fallback(cfg["engine"])
+        _adapter = CompositeOCRAdapter(primary, fallback, mode=cfg["mode"]) if fallback is not None else primary
     return _adapter
 
 
@@ -965,4 +978,5 @@ def set_ocr_adapter(adapter: OCRAdapter) -> None:
 def reset_ocr_adapter() -> None:
     global _adapter
     _adapter = None
+
 

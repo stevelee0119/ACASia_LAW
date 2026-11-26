@@ -19,7 +19,7 @@ from packages.common.config import REPO_ROOT
 from .drive import DriveClient, EXPORTS, ReferenceError, access_problem, revision, valid_id
 from .extract import EXTRACTOR_VERSION
 
-OCR_REPROCESS_VERSION = "tk231-rapidocr-preproc-v1"
+OCR_REPROCESS_VERSION = "tk245-fallback-env-v2"
 from . import relevance
 from .relevance import tokens
 from .case_table import lookup_records
@@ -37,7 +37,7 @@ CASE_TABLE_MAX_BYTES = 96 * 1024 * 1024
 # 이어 읽기(continuation) 중인 파일만 임시 보관하는 raw_cache 총량 상한:
 # 단일 파일 상한(96 MiB) 기준 최대 2~3건 동시 이어 읽기를 수용하되 디스크 점유를 256 MiB 이하로 제한한다.
 MAX_RAW_CACHE_BYTES = 256 * 1024 * 1024
-_RETRYABLE_UNREAD_CAUSES = ("BUDGET_EXHAUSTED", "READ_TIMEOUT", "PARSE_FAILED", "OCR_LOW_QUALITY")
+_RETRYABLE_UNREAD_CAUSES = ("BUDGET_EXHAUSTED", "READ_TIMEOUT", "PARSE_FAILED")
 _ALL_UNREAD_CAUSES = (
     "BUDGET_EXHAUSTED",
     "READ_TIMEOUT",
@@ -48,6 +48,16 @@ _ALL_UNREAD_CAUSES = (
     "CONFIG_BLOCKED",
     "UNKNOWN",
 )
+
+
+def _low_quality_page_set(p: dict | None) -> set[int]:
+    """Return union of ocr_low_quality_pages and unread_pages_by_cause['OCR_LOW_QUALITY'] page numbers."""
+    if not isinstance(p, dict):
+        return set()
+    by_cause = p.get("unread_pages_by_cause")
+    cause_pages = (by_cause.get("OCR_LOW_QUALITY") or []) if isinstance(by_cause, dict) else []
+    raw_pages = p.get("ocr_low_quality_pages") or []
+    return {int(pg) for pg in (*raw_pages, *cause_pages) if pg is not None}
 
 
 def _has_any_unread_reason_fields(p: dict) -> bool:
@@ -207,7 +217,52 @@ def is_case_table_candidate(item: dict) -> bool:
     return ext in CASE_TABLE_EXTENSIONS
 
 
-def isolated_extract(data, filename, mime, *, directory, timeout, continuation=None):
+EXTRACT_ENV_ALLOWLIST = frozenset({
+    "PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "LANG", "PYTHONUTF8",
+    "APPDATA", "USERPROFILE", "HOME",
+    "LV_CASE_TABLE_MAX_EXCLUDED_ROWS",
+    "LV_REFERENCE_OCR_MAX_PAGES",
+    "LV_OCR_FALLBACK_ENGINE",
+    "LV_OCR_FALLBACK_MODE",
+    "LV_OCR_LANG",
+    "LV_OCR_PSM",
+    "LV_OCR_DPI",
+    "LV_OCR_MIN_CONFIDENCE",
+    "LV_OCR_QUALITY_MIN_CONFIDENCE",
+    "LV_OCR_MIN_HANGUL_RATIO",
+    "LV_OCR_TIMEOUT_SECONDS",
+    "TESSDATA_PREFIX",
+})
+
+
+def build_isolated_extract_env(
+    temporary_dir: Path | str,
+    *,
+    source_env: dict[str, str] | None = None,
+    ocr_fallback_config: dict | None = None,
+) -> dict[str, str]:
+    """Build sanitized subprocess environment for isolated_extract using strict allowlist + shared OCR fallback config."""
+    from packages.document_engine.ocr import resolve_ocr_fallback_config
+
+    raw_env = os.environ if source_env is None else source_env
+    env = {k: str(v) for k, v in raw_env.items() if k.upper() in EXTRACT_ENV_ALLOWLIST and v is not None}
+    fb_cfg = ocr_fallback_config if isinstance(ocr_fallback_config, dict) else resolve_ocr_fallback_config(raw_env)
+    env["LV_OCR_FALLBACK_ENGINE"] = str(fb_cfg.get("engine") or "none")
+    env["LV_OCR_FALLBACK_MODE"] = str(fb_cfg.get("mode") or "off")
+    env.update(
+        LV_ALLOW_NETWORK="0",
+        LV_OCR_MAX_PAGES="5",
+        LV_INDEPENDENT_OCR="off",
+        OPENBLAS_NUM_THREADS="1",
+        OMP_NUM_THREADS="1",
+        MKL_NUM_THREADS="1",
+        LV_DATA_DIR=str(Path(temporary_dir) / "data"),
+        LV_STORAGE_ROOT=str(Path(temporary_dir) / "storage"),
+    )
+    return env
+
+
+def isolated_extract(data, filename, mime, *, directory, timeout, continuation=None, ocr_fallback_config: dict | None = None):
     from apps.api.security import scan_upload
 
     # MIME and signature take precedence over cosmetic names such as "x.pdf copy".
@@ -225,13 +280,7 @@ def isolated_extract(data, filename, mime, *, directory, timeout, continuation=N
             checkpoint = Path(temporary) / "continuation.json"
             checkpoint.write_text(json.dumps(continuation, ensure_ascii=False), encoding="utf-8")
             arguments.append(str(checkpoint))
-        env = {k: v for k, v in os.environ.items() if k.upper() in {
-            "PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "LANG", "PYTHONUTF8",
-            "APPDATA", "USERPROFILE", "HOME",
-            "LV_CASE_TABLE_MAX_EXCLUDED_ROWS", "LV_REFERENCE_OCR_MAX_PAGES"}}
-        env.update(LV_ALLOW_NETWORK="0", LV_OCR_MAX_PAGES="5", LV_INDEPENDENT_OCR="off",
-                   OPENBLAS_NUM_THREADS="1", OMP_NUM_THREADS="1", MKL_NUM_THREADS="1",
-                   LV_DATA_DIR=str(Path(temporary) / "data"), LV_STORAGE_ROOT=str(Path(temporary) / "storage"))
+        env = build_isolated_extract_env(temporary, ocr_fallback_config=ocr_fallback_config)
         try:
             subprocess.run(arguments, cwd=REPO_ROOT, env=env, timeout=timeout,
                            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -311,13 +360,24 @@ class ReferenceLibrary:
             db.close()
 
     def sync(self, query="", *, collect_all: bool | None = None, reprocess_low_quality: Optional[bool] = None):
+        from packages.document_engine.ocr import resolve_ocr_fallback_config
+
         started = time.monotonic()
         self.eligible = {}
         self._case_rows_cache = None
         self._case_number_index = {}
+        self._run_ocr_fallback_config = resolve_ocr_fallback_config()
+        self._run_auto_reprocess = bool(
+            reprocess_low_quality
+            if reprocess_low_quality is not None
+            else self._run_ocr_fallback_config["enabled"]
+        )
         self.summary.update(checked_at=None, snapshot_hash=None, files_seen=0, files_indexed=0,
                             files_reused=0, issues=[], sources=[], duplicates=[], similar_names=[], inventory=[])
         self.summary.pop("coverage_ledger", None)
+        self.summary.pop("ocr_reprocess", None)
+        self.summary.pop("ocr_fallback_attempted_pages", None)
+        self.summary.pop("ocr_fallback_adopted_pages", None)
         # 분석 문서마다 따로 받은 질의(목록)나 하나로 합친 질의(문자열) 모두 받는다.
         raw_queries = [q for q in (query if isinstance(query, (list, tuple)) else [query]) if q]
         eff_collect_all = self._default_collect_all if collect_all is None else collect_all
@@ -408,6 +468,8 @@ class ReferenceLibrary:
             {"stage": name, "ms": round((time.monotonic() - mark) * 1000), **values})
 
     def _finish(self, started, client):
+        from packages.document_engine.ocr import resolve_ocr_fallback_config
+
         diagnostics = self.summary["diagnostics"]
         status_info = self.case_table_status()
         diagnostics["case_table_candidates"] = status_info["candidates"]
@@ -429,6 +491,9 @@ class ReferenceLibrary:
         low_quality_pages_after = 0
         reprocessed_pages = 0
         recovered_pages = 0
+        reprocessed_files = 0
+        fresh_child_ocr_configs: list[dict] = []
+        cached_child_ocr_configs: list[dict] = []
         page_states: dict[str, int] = {}
         files_complete = 0
         files_partial = 0
@@ -491,6 +556,14 @@ class ReferenceLibrary:
             )
             if item.get("searchable_pages_delta") is not None:
                 searchable_pages_delta += int(item.get("searchable_pages_delta") or 0)
+            if item.get("reprocessed_in_run"):
+                reprocessed_files += 1
+            child_cfg = item.get("child_ocr_config")
+            if isinstance(child_cfg, dict):
+                if item.get("reused"):
+                    cached_child_ocr_configs.append(child_cfg)
+                else:
+                    fresh_child_ocr_configs.append(child_cfg)
             if item.get("low_quality_pages_before") is not None:
                 low_quality_pages_before += int(item.get("low_quality_pages_before") or 0)
                 low_quality_pages_after += int(item.get("low_quality_pages_after") or 0)
@@ -536,6 +609,56 @@ class ReferenceLibrary:
             )
         else:
             self.summary["read_completeness"] = self.summary["status"]
+
+        parent_fb_cfg = getattr(self, "_run_ocr_fallback_config", None) or resolve_ocr_fallback_config()
+        auto_reprocess_on = bool(getattr(self, "_run_auto_reprocess", parent_fb_cfg["enabled"]))
+        observed_child_cfg = (
+            fresh_child_ocr_configs[-1]
+            if fresh_child_ocr_configs
+            else (cached_child_ocr_configs[-1] if cached_child_ocr_configs else None)
+        )
+        zero_fallback_attempt_reason: str | None = None
+        if auto_reprocess_on and ocr_fallback_attempted_pages == 0:
+            extractions_run = int((diagnostics.get("extractions") or {}).get("count") or 0)
+            if extractions_run == 0:
+                zero_fallback_attempt_reason = "NO_FILES_EXTRACTED_ALL_REUSED"
+            elif any(not c.get("fallback_enabled") for c in fresh_child_ocr_configs):
+                zero_fallback_attempt_reason = "CHILD_FALLBACK_CONFIG_DISABLED"
+            elif any(c.get("fallback_enabled") and not c.get("fallback_adapter") for c in fresh_child_ocr_configs):
+                zero_fallback_attempt_reason = "CHILD_FALLBACK_ADAPTER_UNAVAILABLE"
+            elif any(
+                "PRIMARY_QUALITY_SUFFICIENT" in ((it.get("ocr_fallback_summary") or {}).get("reason_counts") or {})
+                for it in self.summary["inventory"]
+                if not it.get("reused")
+            ):
+                zero_fallback_attempt_reason = "PRIMARY_OCR_QUALITY_SUFFICIENT"
+            elif any(it.get("config_blocked_pages") for it in self.summary["inventory"] if not it.get("reused")):
+                zero_fallback_attempt_reason = "OCR_CONFIG_BLOCKED"
+            elif not fresh_child_ocr_configs:
+                zero_fallback_attempt_reason = "NO_CHILD_OCR_TELEMETRY"
+            else:
+                zero_fallback_attempt_reason = "NO_LOW_QUALITY_SCANNED_PAGES_IN_EXTRACTED_FILES"
+
+        self.summary["ocr_fallback_attempted_pages"] = ocr_fallback_attempted_pages
+        self.summary["ocr_fallback_adopted_pages"] = ocr_fallback_adopted_pages
+        self.summary["ocr_reprocess"] = {
+            "reprocess_version": OCR_REPROCESS_VERSION,
+            "auto_reprocess_enabled": auto_reprocess_on,
+            "parent_ocr_config": {
+                "fallback_engine": parent_fb_cfg["engine"],
+                "fallback_mode": parent_fb_cfg["mode"],
+                "fallback_enabled": bool(parent_fb_cfg["enabled"]),
+            },
+            "child_ocr_config": observed_child_cfg,
+            "reprocessed_files": reprocessed_files,
+            "reprocessed_pages": reprocessed_pages,
+            "low_quality_pages_before": low_quality_pages_before,
+            "low_quality_pages_after": low_quality_pages_after,
+            "recovered_pages": recovered_pages,
+            "ocr_fallback_attempted_pages": ocr_fallback_attempted_pages,
+            "ocr_fallback_adopted_pages": ocr_fallback_adopted_pages,
+            "zero_fallback_attempt_reason": zero_fallback_attempt_reason,
+        }
         self.summary["coverage_ledger"] = {
             "collection_mode": diagnostics.get("collection_mode"),
             "global_library": {
@@ -554,8 +677,11 @@ class ReferenceLibrary:
                 "ocr_fallback_adopted_pages": ocr_fallback_adopted_pages,
                 "low_quality_pages_before": low_quality_pages_before,
                 "low_quality_pages_after": low_quality_pages_after,
+                "reprocessed_files": reprocessed_files,
                 "reprocessed_pages": reprocessed_pages,
                 "recovered_pages": recovered_pages,
+                "child_ocr_config": observed_child_cfg,
+                "zero_fallback_attempt_reason": zero_fallback_attempt_reason,
                 "completed_pages": completed_pages,
                 "page_states": page_states,
                 "unread_cause_pages": unread_cause_pages,
@@ -734,18 +860,17 @@ class ReferenceLibrary:
                         and int(p.get("unreadable_confirm_attempts") or 0) < 2
                     )
 
+                from packages.document_engine.ocr import resolve_ocr_fallback_config
+
+                ocr_fb_cfg = getattr(self, "_run_ocr_fallback_config", None) or resolve_ocr_fallback_config()
                 auto_reprocess = bool(
                     reprocess_low_quality
                     if reprocess_low_quality is not None
-                    else (
-                        (os.getenv("LV_OCR_FALLBACK_ENGINE") or "").strip().lower() not in ("", "none", "off")
-                        and (os.getenv("LV_OCR_FALLBACK_MODE") or "auto").strip().lower() != "off"
-                    )
+                    else ocr_fb_cfg["enabled"]
                 )
 
                 def _needs_low_quality_ocr_reprocess(p: dict) -> bool:
-                    by_cause = p.get("unread_pages_by_cause") or {}
-                    low_pages = p.get("ocr_low_quality_pages") or by_cause.get("OCR_LOW_QUALITY") or []
+                    low_pages = _low_quality_page_set(p)
                     if not low_pages:
                         return False
                     if reprocess_low_quality is True:
@@ -840,6 +965,8 @@ class ReferenceLibrary:
                         kwargs = {"directory": self.directory, "timeout": 30}
                         if continuation:
                             kwargs["continuation"] = continuation
+                        if self.extractor is isolated_extract:
+                            kwargs["ocr_fallback_config"] = ocr_fb_cfg
                         parsed = self.extractor(data, filename, mime, **kwargs)
                         if (continuation and not parsed.get("resumed")
                                 and parsed.get("reason") in ("REFERENCE_PARSE_TIMEOUT", "REFERENCE_PARSE_FAILED")):
@@ -863,6 +990,8 @@ class ReferenceLibrary:
                     finally:
                         diagnostics["extractions"]["count"] += 1
                         diagnostics["extractions"]["ms"] += round((time.monotonic() - mark) * 1000)
+                    if retry_reason == "reprocess_low_quality":
+                        entry["reprocessed_in_run"] = True
                     chunks = parsed.pop("chunks", [])
                     case_records = parsed.pop("case_records", [])
                     is_case_table = bool(parsed.get("structured_case_table"))
@@ -912,9 +1041,11 @@ class ReferenceLibrary:
                         if prev_searchable is not None:
                             parsed["previous_searchable_pages"] = int(prev_searchable)
                             parsed["searchable_pages_delta"] = int(cur_searchable) - int(prev_searchable)
+                    cur_low_set = _low_quality_page_set(parsed)
                     if retry_reason in ("reprocess_low_quality", "legacy_unread_reeval") and prior_for_searchable:
-                        prev_low_pages = len(prior_for_searchable.get("ocr_low_quality_pages") or [])
-                        cur_low_pages = len(parsed.get("ocr_low_quality_pages") or [])
+                        prev_low_set = _low_quality_page_set(prior_for_searchable)
+                        prev_low_pages = len(prev_low_set)
+                        cur_low_pages = len(cur_low_set)
                         if prev_low_pages == 0 and retry_reason == "legacy_unread_reeval":
                             prev_pages = int(prior_for_searchable.get("pages") or 0)
                             prev_comp = prior_for_searchable.get("completed_pages")
@@ -930,13 +1061,16 @@ class ReferenceLibrary:
                             parsed["low_quality_pages_after"] = cur_low_pages
                             parsed["reprocessed_pages"] = prev_low_pages
                             parsed["recovered_pages"] = max(0, prev_low_pages - cur_low_pages)
-                    if parsed.get("ocr_low_quality_pages") or retry_reason == "reprocess_low_quality":
+                    if (auto_reprocess and cur_low_set) or retry_reason == "reprocess_low_quality":
                         parsed["low_quality_reprocess_version"] = OCR_REPROCESS_VERSION
                     if parsed.get("confirmed_unreadable_pages"):
-                        attempts = int((prior or {}).get("unreadable_confirm_attempts") or 0) + 1
+                        base_attempts = int((prior or {}).get("unreadable_confirm_attempts") or 0)
+                        if retry_reason == "reprocess_low_quality" and prior:
+                            base_attempts = max(1, base_attempts)
+                        attempts = base_attempts + 1
                         parsed["unreadable_confirm_attempts"] = attempts
                         if (
-                            retry_reason == "confirm_unreadable"
+                            retry_reason in ("confirm_unreadable", "reprocess_low_quality")
                             and prior
                             and sorted(parsed.get("confirmed_unreadable_pages") or []) == sorted(prior.get("confirmed_unreadable_pages") or [])
                         ) or attempts >= 2:
@@ -1120,7 +1254,7 @@ class ReferenceLibrary:
                     if bool_key in parsed:
                         entry[bool_key] = bool(parsed[bool_key])
                 for key in ("excluded_pages", "scan_findings", "no_text_pages", "unprocessed_pages", "coverage_note",
-                            "page_diagnostics", "ocr_pages", "ocr_low_quality_pages", "ocr_fallback_summary",
+                            "page_diagnostics", "ocr_pages", "ocr_low_quality_pages", "ocr_fallback_summary", "child_ocr_config",
                             "blank_pages", "scanned_pages",
                             "error_pages", "incomplete_pages", "page_state_counts", "text_parser", "fallback_pages",
                             "unread_pages", "unread_pages_by_cause", "unread_cause_counts", "execution_incomplete_pages", "content_unreadable_pages",
