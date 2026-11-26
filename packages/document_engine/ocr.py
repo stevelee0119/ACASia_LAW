@@ -67,6 +67,7 @@ def page_quality(lines, *, lang: Optional[str] = None, min_confidence: Optional[
     min_confidence = settings.ocr_quality_min_confidence if min_confidence is None else min_confidence
     min_hangul_ratio = settings.ocr_min_hangul_ratio if min_hangul_ratio is None else min_hangul_ratio
     texts = [line for line in lines if (line.text or "").strip() and not is_noise(line.text)]
+    chars = sum(len("".join((line.text or "").split())) for line in texts)
     joined = " ".join(line.text for line in texts)
     hangul, latin = len(HANGUL_RE.findall(joined)), len(LATIN_RE.findall(joined))
     confidence = sum(line.confidence for line in texts) / len(texts) if texts else 0.0
@@ -76,7 +77,7 @@ def page_quality(lines, *, lang: Optional[str] = None, min_confidence: Optional[
         reasons.append(f"평균 신뢰도 {confidence:.2f} < {min_confidence:.2f}")
     if "kor" in lang and ratio is not None and hangul + latin >= MIN_LETTERS_FOR_RATIO and ratio < min_hangul_ratio:
         reasons.append(f"한글 비율 {ratio:.2f} < {min_hangul_ratio:.2f}")
-    return {"lines": len(texts), "confidence": round(confidence, 3),
+    return {"lines": len(texts), "chars": chars, "confidence": round(confidence, 3),
             "hangul_ratio": None if ratio is None else round(ratio, 3),
             "low_quality": bool(reasons), "reasons": reasons}
 
