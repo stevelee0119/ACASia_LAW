@@ -45,6 +45,8 @@ _ALL_UNREAD_CAUSES = (
     "OCR_UNAVAILABLE",
     "OCR_LOW_QUALITY",
     "CONTENT_NO_TEXT",
+    "CONFIG_BLOCKED",
+    "UNKNOWN",
 )
 
 
@@ -78,7 +80,7 @@ def _is_legacy_unread_without_reasons(p: dict) -> bool:
 
 
 def _reconcile_unread_causes(parsed: dict) -> None:
-    """Ensure unread_pages_by_cause accounts for the exact pages - completed_pages gap."""
+    """Ensure unread causes account for the exact pages - completed_pages gap without fabricating pages."""
     pages = int(parsed.get("pages") or 0)
     if pages <= 0:
         return
@@ -93,19 +95,30 @@ def _reconcile_unread_causes(parsed: dict) -> None:
             if k not in by_cause and isinstance(v, list):
                 by_cause[k] = list(v)
 
-    blank_verified_pages = set(int(p) for p in (parsed.get("blank_pages") or []))
     accounted_pages: set[int] = set()
-    for cause_key, plist in by_cause.items():
+    for plist in by_cause.values():
         for pg in plist:
-            pg_int = int(pg)
-            if cause_key == "CONTENT_NO_TEXT" and pg_int in blank_verified_pages:
-                continue
-            accounted_pages.add(pg_int)
+            accounted_pages.add(int(pg))
 
+    unknown_count = 0
     if gap > len(accounted_pages):
         needed = gap - len(accounted_pages)
-        candidate_pages = [p for p in range(1, pages + 1) if p not in accounted_pages and p not in blank_verified_pages]
-        # Prefer explicit page lists if present
+        for pg in (parsed.get("config_blocked_pages") or []):
+            if needed <= 0:
+                break
+            pg_int = int(pg)
+            if pg_int not in accounted_pages:
+                by_cause["CONFIG_BLOCKED"].append(pg_int)
+                accounted_pages.add(pg_int)
+                needed -= 1
+        for pg in (parsed.get("blank_pages") or []):
+            if needed <= 0:
+                break
+            pg_int = int(pg)
+            if pg_int not in accounted_pages:
+                by_cause["CONTENT_NO_TEXT"].append(pg_int)
+                accounted_pages.add(pg_int)
+                needed -= 1
         for pg in (parsed.get("ocr_low_quality_pages") or []):
             if needed <= 0:
                 break
@@ -135,7 +148,7 @@ def _reconcile_unread_causes(parsed: dict) -> None:
             if needed <= 0:
                 break
             pg_int = int(pg)
-            if pg_int not in accounted_pages and pg_int not in blank_verified_pages:
+            if pg_int not in accounted_pages:
                 by_cause["CONTENT_NO_TEXT"].append(pg_int)
                 accounted_pages.add(pg_int)
                 needed -= 1
@@ -143,7 +156,7 @@ def _reconcile_unread_causes(parsed: dict) -> None:
         if needed > 0:
             reason_upper = str(parsed.get("reason") or "").upper()
             if "TIMEOUT" in reason_upper:
-                fallback_cause = "READ_TIMEOUT"
+                fallback_cause: Optional[str] = "READ_TIMEOUT"
             elif "BUDGET" in reason_upper or parsed.get("continuation"):
                 fallback_cause = "BUDGET_EXHAUSTED"
             elif "OCR_LOW" in reason_upper:
@@ -152,17 +165,29 @@ def _reconcile_unread_causes(parsed: dict) -> None:
                 fallback_cause = "OCR_UNAVAILABLE"
             elif "BLANK" in reason_upper or "NO_TEXT" in reason_upper:
                 fallback_cause = "CONTENT_NO_TEXT"
-            else:
+            elif "PARSE_FAILED" in reason_upper or "PARSE_ERROR" in reason_upper:
                 fallback_cause = "PARSE_FAILED"
-            remaining = [p for p in candidate_pages if p not in accounted_pages][:needed]
-            for pg_int in remaining:
-                by_cause[fallback_cause].append(pg_int)
-                accounted_pages.add(pg_int)
+            else:
+                fallback_cause = None
+
+            if fallback_cause is not None:
+                candidate_pages = [p for p in range(1, pages + 1) if p not in accounted_pages][:needed]
+                for pg_int in candidate_pages:
+                    by_cause[fallback_cause].append(pg_int)
+                    accounted_pages.add(pg_int)
+                    needed -= 1
+            if needed > 0:
+                # Legacy or unattributed gap: record UNKNOWN count without fabricating page numbers
+                unknown_count = needed
 
     for k in list(by_cause.keys()):
         by_cause[k] = sorted({int(x) for x in by_cause[k]})
     parsed["unread_pages_by_cause"] = by_cause
-    if gap > 0 and not parsed.get("unread_pages"):
+    cause_counts = {k: len(v) for k, v in by_cause.items() if v}
+    if unknown_count > 0:
+        cause_counts["UNKNOWN"] = unknown_count
+    parsed["unread_cause_counts"] = cause_counts
+    if gap > 0 and not parsed.get("unread_pages") and accounted_pages:
         parsed["unread_pages"] = sorted(accounted_pages)
 
 
@@ -416,6 +441,8 @@ class ReferenceLibrary:
             "OCR_UNAVAILABLE": 0,
             "OCR_LOW_QUALITY": 0,
             "CONTENT_NO_TEXT": 0,
+            "CONFIG_BLOCKED": 0,
+            "UNKNOWN": 0,
         }
         unread_cause_files: dict[str, int] = {
             "BUDGET_EXHAUSTED": 0,
@@ -424,6 +451,8 @@ class ReferenceLibrary:
             "OCR_UNAVAILABLE": 0,
             "OCR_LOW_QUALITY": 0,
             "CONTENT_NO_TEXT": 0,
+            "CONFIG_BLOCKED": 0,
+            "UNKNOWN": 0,
         }
         confirmed_unreadable_files = 0
         confirmed_unreadable_pages = 0
@@ -474,10 +503,17 @@ class ReferenceLibrary:
             for k, v in (item.get("page_state_counts") or {}).items():
                 page_states[k] = page_states.get(k, 0) + int(v or 0)
             by_cause = item.get("unread_pages_by_cause") or {}
-            if by_cause:
+            cause_counts = item.get("unread_cause_counts") or {}
+            if by_cause or cause_counts:
+                seen_causes: set[str] = set()
                 for cause_key, plist in by_cause.items():
                     if plist:
                         unread_cause_pages[cause_key] = unread_cause_pages.get(cause_key, 0) + len(plist)
+                        unread_cause_files[cause_key] = unread_cause_files.get(cause_key, 0) + 1
+                        seen_causes.add(cause_key)
+                for cause_key, cnt in cause_counts.items():
+                    if cnt and cause_key not in seen_causes:
+                        unread_cause_pages[cause_key] = unread_cause_pages.get(cause_key, 0) + int(cnt)
                         unread_cause_files[cause_key] = unread_cause_files.get(cause_key, 0) + 1
             elif item.get("unread_cause"):
                 c = item["unread_cause"]
@@ -1087,7 +1123,7 @@ class ReferenceLibrary:
                             "page_diagnostics", "ocr_pages", "ocr_low_quality_pages", "ocr_fallback_summary",
                             "blank_pages", "scanned_pages",
                             "error_pages", "incomplete_pages", "page_state_counts", "text_parser", "fallback_pages",
-                            "unread_pages", "unread_pages_by_cause", "execution_incomplete_pages", "content_unreadable_pages",
+                            "unread_pages", "unread_pages_by_cause", "unread_cause_counts", "execution_incomplete_pages", "content_unreadable_pages",
                             "retryable_unread_pages", "config_blocked_pages", "confirmed_unreadable_pages",
                             "confirmed_unreadable_causes", "native_open_error", "read_completeness",
                             "stats", "read_ranges", "excluded_rows", "table_version"):

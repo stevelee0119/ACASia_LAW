@@ -118,6 +118,7 @@ def test_tk237_pos2_parse_failed_cause_reconciled_and_retried(tmp_path):
                 "pages": 4,
                 "read_pages": 2,
                 "completed_pages": 2,
+                "error_pages": [3, 4],
                 "partial": True,
                 "coverage_complete": False,
                 "content_readable_complete": False,
@@ -309,3 +310,29 @@ def test_tk237_ctrl3_config_blocked_pages_not_retried(tmp_path):
     assert calls == 0
     assert downloaded == []
     assert s["inventory"][0].get("reused") is True
+
+
+def test_tk237_reconcile_legacy_unknown_blank_and_config_blocked():
+    """수용 기준 1항 정합성: 레거시는 UNKNOWN(쪽 번호 미생성), 빈 쪽은 중복 계상 없음, 설정 차단은 CONFIG_BLOCKED."""
+    from packages.rag_engine.library import _reconcile_unread_causes
+
+    # 1) 사유 없는 레거시
+    legacy = {"pages": 178, "completed_pages": 176}
+    _reconcile_unread_causes(legacy)
+    assert legacy["unread_pages_by_cause"]["PARSE_FAILED"] == []
+    assert legacy["unread_cause_counts"] == {"UNKNOWN": 2}
+    assert sum(legacy["unread_cause_counts"].values()) == 178 - 176
+
+    # 2) 확인된 빈 쪽
+    blank = {"pages": 4, "completed_pages": 2, "blank_pages": [3, 4], "unread_pages_by_cause": {"CONTENT_NO_TEXT": [3, 4]}}
+    _reconcile_unread_causes(blank)
+    assert blank["unread_pages_by_cause"]["CONTENT_NO_TEXT"] == [3, 4]
+    assert blank["unread_pages_by_cause"]["PARSE_FAILED"] == []
+    assert sum(len(v) for v in blank["unread_pages_by_cause"].values()) == 4 - 2
+
+    # 3) 설정 차단
+    blocked = {"pages": 5, "completed_pages": 4, "config_blocked_pages": [5]}
+    _reconcile_unread_causes(blocked)
+    assert blocked["unread_pages_by_cause"]["CONFIG_BLOCKED"] == [5]
+    assert blocked["unread_pages_by_cause"]["PARSE_FAILED"] == []
+    assert sum(len(v) for v in blocked["unread_pages_by_cause"].values()) == 5 - 4
