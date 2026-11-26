@@ -123,16 +123,24 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
         total_filtered_out = 0
         tried: List[str] = []
         attempt_diags: List[Dict[str, Any]] = []
+        scope_inconclusive_reasons: List[str] = []
+        completed_axes: List[str] = []
         for extra in attempts:
             label = ",".join(f"{k}={v}" for k, v in extra.items() if k not in ("query", "display")) or "query"
             # 헌재결정례는 정확한 결정이 첫 페이지 밖에 있을 수 있어 페이지를 넘겨 본다(추가지시 J1).
             pages = CASE_MAX_PAGES if target == "detc" and "nb" not in extra else 1
+            attempt_raw_count = 0
+            attempt_failed = False
             for page in range(1, pages + 1):
                 params = {"OC": self.api_key, "target": target, "type": "JSON", **extra,
                           **({"page": page} if page > 1 else {})}
                 try:
                     response = self._http_get(SEARCH_URL, params=params)
                     if response.status_code == 429:
+                        if first is not None:
+                            scope_inconclusive_reasons.append("PARTIAL_RESPONSE_RATE_LIMITED")
+                            attempt_failed = True
+                            break
                         return self._unavailable(
                             case_number,
                             AdapterStatus.RATE_LIMITED,
@@ -150,6 +158,8 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                         )
                     if response.status_code >= 400:
                         if first is not None:
+                            scope_inconclusive_reasons.append("PARTIAL_RESPONSE_HTTP_ERROR")
+                            attempt_failed = True
                             break
                         return self._unavailable(
                             case_number,
@@ -170,6 +180,8 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                     payload = response.json()
                 except Exception as exc:  # 네트워크·파싱 오류는 Job을 실패시키지 않는다
                     if first is not None:
+                        scope_inconclusive_reasons.append("PARTIAL_RESPONSE_EXCEPTION")
+                        attempt_failed = True
                         break
                     resp = self._transport_unavailable(case_number, exc)
                     resp.diagnostics = {
@@ -185,6 +197,10 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                     }
                     return resp
                 if not _case_payload_shape_ok(payload):
+                    if first is not None:
+                        scope_inconclusive_reasons.append("PARTIAL_RESPONSE_INVALID_SHAPE")
+                        attempt_failed = True
+                        break
                     # 빈 결과와 형식이 다른 응답을 구분한다. 형식 이상은 '찾지 못함'이 아니라 조회 실패다.
                     keys = list(payload)[:5] if isinstance(payload, dict) else type(payload).__name__
                     return self._unavailable(
@@ -212,6 +228,7 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                 else:
                     records = [r for r in listed if self._record_matches_case_number(r, wanted)]
                     skipped = len(listed) - len(records)
+                attempt_raw_count += len(listed)
                 total_provider_raw += len(listed)
                 total_filtered_out += skipped
                 returned_cns = [str(r.get("case_number") or "").strip() for r in listed if r.get("case_number")]
@@ -252,10 +269,25 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                 if wanted is None:
                     return result  # 사건번호가 아닌 키워드 조회(예: "손해배상")는 첫 응답으로 끝낸다
                 if page * CASE_PAGE_SIZE >= total:
+                    if attempt_raw_count != total:
+                        scope_inconclusive_reasons.append("TOTAL_COUNT_MISMATCH")
                     break
+                if page == pages and total > page * CASE_PAGE_SIZE:
+                    scope_inconclusive_reasons.append("PAGE_TRUNCATED")
+            if not attempt_failed and label not in completed_axes:
+                completed_axes.append(label)
 
         if first is not None and not first.message:
-            overall_cause = "FILTER_REJECTED_ALL" if total_provider_raw > 0 else "NO_PROVIDER_RESULTS"
+            if wanted is not None and (not bare or len(completed_axes) < len(attempts)):
+                scope_inconclusive_reasons.append("SCOPED_QUERY_ONLY")
+            unique_scope_reasons = list(dict.fromkeys(scope_inconclusive_reasons))
+            is_inconclusive = bool(unique_scope_reasons)
+            overall_outcome = "INCONCLUSIVE_SCOPE" if is_inconclusive else "NOT_IN_PUBLIC_DB"
+            overall_cause = (
+                unique_scope_reasons[0]
+                if is_inconclusive
+                else ("FILTER_REJECTED_ALL" if total_provider_raw > 0 else "NO_PROVIDER_RESULTS")
+            )
             all_returned_cns: List[str] = []
             for ad in attempt_diags:
                 for cn in ad.get("returned_case_numbers") or []:
@@ -267,8 +299,11 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                 "provider_raw_count": total_provider_raw,
                 "matched_count": 0,
                 "filtered_out_count": total_filtered_out,
-                "lookup_outcome": "NOT_IN_PUBLIC_DB",
+                "lookup_outcome": overall_outcome,
                 "cause": overall_cause,
+                "scope_confirmed": not is_inconclusive,
+                "scope_inconclusive_reasons": unique_scope_reasons,
+                "completed_axes": completed_axes,
                 "returned_candidate_case_numbers": all_returned_cns[:10],
                 "attempts": attempt_diags,
             }
@@ -277,11 +312,16 @@ class LawGoKrAdapter(OfficialLegalMixin, SourceAdapter):
                 if total_provider_raw > 0
                 else "공급자 원응답 0건(색인 부재)"
             )
+            prefix = (
+                f"검색 범위 완전성 미확인({', '.join(unique_scope_reasons)}; 미수록 단정 불가"
+                if is_inconclusive
+                else "공개 DB 조회 범위에 없음("
+            )
             first = AdapterResponse(
                 first.status,
                 first.records,
                 first.source_record,
-                f"공개 DB 조회 범위에 없음(조회 DB {target}, 시도: {' → '.join(tried)}; {cause_detail})",
+                f"{prefix}조회 DB {target}, 시도: {' → '.join(tried)}; {cause_detail})",
                 diagnostics=overall_diag,
             )
         return first if first is not None else self._unavailable(

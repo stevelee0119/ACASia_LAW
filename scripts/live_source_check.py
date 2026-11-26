@@ -213,7 +213,9 @@ def check_law_go_kr(registry) -> List[CheckResult]:
                 name=f"law_go_kr:사건번호조회({case_number} · {note})",
                 category="live_legal",
                 configured=adapter.status() == AdapterStatus.READY,
-                status="NOT_IN_PUBLIC_DB" if is_known_unlisted else str(response.status),
+                status="NOT_IN_PUBLIC_DB" if is_known_unlisted else (
+                    "INCONCLUSIVE_SCOPE" if lookup_outcome == "INCONCLUSIVE_SCOPE" else str(response.status)
+                ),
                 # 조회가 READY이고 미수록 확인 대상이 아닌데 일치 기록이 없으면 실패로 본다.
                 ok=response.status == AdapterStatus.READY and bool(matched),
                 advisory=is_known_unlisted,
