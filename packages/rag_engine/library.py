@@ -9,6 +9,7 @@ import inspect
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import subprocess
 import sys
@@ -18,16 +19,22 @@ import time
 from filelock import FileLock, Timeout
 
 from packages.common.config import REPO_ROOT
-from .drive import DriveClient, EXPORTS, ReferenceError, access_problem, revision, valid_id
+from .drive import DriveClient, EXPORTS, FOLDER, ReferenceError, access_problem, revision, valid_id
 from .extract import EXTRACTOR_VERSION
 
 OCR_REPROCESS_VERSION = "tk245-fallback-env-v2"
+IDENTIFIER_INDEX_VERSION = "v1"
 DEFAULT_REFERENCE_REPROCESS_TIMEOUT_SECONDS = 120
 _REPROCESS_RETRY_REASONS = (
     "reprocess_low_quality",
     "retryable_unread",
     "confirm_unreadable",
     "legacy_unread_reeval",
+)
+_BASE_ARTICLE_RE = re.compile(r"제[0-9]+조(?:의[0-9]+)?")
+_NON_DIGIT_WS_RE = re.compile(
+    r"(?<![0-9])[\u0009-\u000D\u001C-\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]+"
+    r"|[\u0009-\u000D\u001C-\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]+(?![0-9])"
 )
 from . import relevance
 from .relevance import tokens
@@ -70,6 +77,49 @@ def resolve_reprocess_timeout_seconds(environ: dict[str, str] | None = None) -> 
     except (TypeError, ValueError):
         return DEFAULT_REFERENCE_REPROCESS_TIMEOUT_SECONDS
     return max(1, min(600, val))
+
+
+def resolve_inline_reprocess_enabled(environ: dict[str, str] | None = None) -> bool:
+    """일반 검증 경로에서의 자동 저품질 OCR 재처리 허용 여부(기본 활성)."""
+    env = os.environ if environ is None else environ
+    raw = str(env.get("LV_RAG_INLINE_REPROCESS") or "true").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def _extract_chunk_identifier_rows(file_id: str, version: str, chunk_rows: list[tuple]) -> list[tuple]:
+    """청크 본문에서 사건번호·기본 조문 식별자를 추출해 색인 행으로 변환한다."""
+    from .reference_binding import CASE_RE, authority_text
+
+    out: list[tuple] = []
+    for chunk_rowid, page, start, raw_text in chunk_rows:
+        text_str = str(raw_text or "")
+        if not text_str:
+            continue
+        norm = authority_text(text_str)
+        spaced_digits = re.sub(r"[「」『』]", "", _NON_DIGIT_WS_RE.sub("", text_str))
+        seen_keys: set[tuple[str, str]] = set()
+        for m in CASE_RE.finditer(norm):
+            seen_keys.add(("case", m.group(1)))
+        for m in CASE_RE.finditer(spaced_digits):
+            seen_keys.add(("case", m.group(1)))
+        for m in _BASE_ARTICLE_RE.finditer(norm):
+            seen_keys.add(("article", m.group(0)))
+        for kind, key in seen_keys:
+            out.append((kind, key, int(chunk_rowid), file_id, version, int(page), int(start)))
+    return out
+
+
+def _citation_lookup_key(ident: tuple | None) -> tuple[str, str] | None:
+    """reference_binding.identifier() 결과를 chunk_identifiers 조회 키로 변환한다."""
+    if not ident:
+        return None
+    if ident[0] == "case":
+        return ("case", str(ident[1]))
+    if ident[0] == "law":
+        m = _BASE_ARTICLE_RE.match(str(ident[2] or ""))
+        if m:
+            return ("article", m.group(0))
+    return None
 
 
 def _prior_has_body(p: dict | None) -> bool:
@@ -376,12 +426,26 @@ class ReferenceLibrary:
         page_size = db.execute("PRAGMA page_size").fetchone()[0]
         db.execute(f"PRAGMA max_page_count={512 * 1024 * 1024 // page_size}")
         db.execute("CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, revision TEXT, payload TEXT)")
+        db.execute("CREATE TABLE IF NOT EXISTS dataset_state (key TEXT PRIMARY KEY, value TEXT)")
         db.execute("CREATE TABLE IF NOT EXISTS chunk_embeddings ("
                    "file_id TEXT, revision TEXT, page INTEGER, start INTEGER, model TEXT, vector_json TEXT, "
                    "PRIMARY KEY (file_id, revision, page, start, model))")
         db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5("
                    "file_id UNINDEXED, revision UNINDEXED, page UNINDEXED, start UNINDEXED, text UNINDEXED, terms)")
         db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS chunk_terms USING fts5vocab(chunks, 'row')")
+        db.execute("""CREATE TABLE IF NOT EXISTS chunk_identifiers (
+            ident_kind TEXT NOT NULL,
+            ident_key TEXT NOT NULL,
+            chunk_rowid INTEGER NOT NULL,
+            file_id TEXT NOT NULL,
+            revision TEXT NOT NULL,
+            page INTEGER NOT NULL,
+            start INTEGER NOT NULL
+        )""")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_chunk_identifiers_lookup "
+                   "ON chunk_identifiers (ident_kind, ident_key, file_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_chunk_identifiers_file "
+                   "ON chunk_identifiers (file_id)")
         db.execute("""CREATE TABLE IF NOT EXISTS case_rows (
             record_id TEXT PRIMARY KEY, file_id TEXT NOT NULL, revision TEXT NOT NULL,
             sheet TEXT, row_number INTEGER, source_cell_range TEXT,
@@ -400,6 +464,241 @@ class ReferenceLibrary:
         finally:
             db.close()
 
+    def _load_dataset_snapshot(self, db) -> dict | None:
+        row = db.execute("SELECT value FROM dataset_state WHERE key='inventory_snapshot'").fetchone()
+        if not row or not row[0]:
+            return None
+        try:
+            snap = json.loads(row[0])
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(snap, dict) or snap.get("folder_id") != self.folder:
+            return None
+        return snap
+
+    def _save_dataset_snapshot(
+        self,
+        db,
+        *,
+        items: list[dict],
+        folders: dict[str, str],
+        start_page_token: str | None,
+        snapshot_hash: str | None,
+        inventory_mode: str,
+    ) -> None:
+        payload = {
+            "folder_id": self.folder,
+            "items": items,
+            "folders": folders,
+            "start_page_token": start_page_token or "",
+            "snapshot_hash": snapshot_hash or "",
+            "inventory_mode": inventory_mode,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with db:
+            db.execute(
+                "INSERT OR REPLACE INTO dataset_state (key, value) VALUES (?, ?)",
+                ("inventory_snapshot", json.dumps(payload, ensure_ascii=False)),
+            )
+
+    @staticmethod
+    def _compute_dataset_diff(prev_items: list[dict], cur_items: list[dict]) -> dict:
+        prev_map = {it["id"]: it for it in (prev_items or []) if isinstance(it, dict) and it.get("id")}
+        cur_map = {it["id"]: it for it in (cur_items or []) if isinstance(it, dict) and it.get("id")}
+        added = sorted(fid for fid in cur_map if fid not in prev_map)
+        deleted = sorted(fid for fid in prev_map if fid not in cur_map)
+        modified: list[str] = []
+        unchanged = 0
+        for fid, cur in cur_map.items():
+            prev = prev_map.get(fid)
+            if prev is None:
+                continue
+            same_rev = (
+                prev.get("modifiedTime") == cur.get("modifiedTime")
+                and prev.get("version") == cur.get("version")
+                and prev.get("md5Checksum") == cur.get("md5Checksum")
+                and prev.get("name") == cur.get("name")
+                and prev.get("trashed") == cur.get("trashed")
+                and prev.get("capabilities") == cur.get("capabilities")
+                and prev.get("folder_path") == cur.get("folder_path")
+            )
+            if same_rev:
+                unchanged += 1
+            else:
+                modified.append(fid)
+        return {
+            "added": len(added),
+            "modified": len(modified),
+            "deleted": len(deleted),
+            "unchanged": unchanged,
+            "dataset_up_to_date": (len(added) == 0 and len(modified) == 0 and len(deleted) == 0),
+        }
+
+    def _resolve_inventory(self, client, db) -> tuple[list[dict], dict[str, str], str, str | None, dict]:
+        """Drive 변경 감지(Changes API) 또는 묶음 폴더 조회로 최신 파일 목록을 확보한다.
+
+        권한 회수·휴지통·목록 실패 시에는 Fail-Closed 원칙에 따라 예외를 발생시킨다.
+        """
+        snapshot = self._load_dataset_snapshot(db)
+        prev_items = list((snapshot or {}).get("items") or [])
+        prev_folders = dict((snapshot or {}).get("folders") or {})
+        prev_token = str((snapshot or {}).get("start_page_token") or "").strip()
+        credential_mode = getattr(client, "credential_mode", "injected")
+
+        # 1) Changes API 기반 증분 동기화 (OAuth / 서비스 계정 / 테스트 더블)
+        if (
+            snapshot is not None
+            and prev_token
+            and credential_mode != "api_key"
+            and hasattr(client, "list_changes")
+        ):
+            root = client.metadata(self.folder)
+            if root.get("mimeType") != FOLDER or root.get("trashed"):
+                raise ReferenceError("ROOT_FOLDER_UNAVAILABLE")
+            try:
+                changes, new_token, overflowed = client.list_changes(prev_token)
+                if not overflowed:
+                    if not changes:
+                        if hasattr(client, "folders"):
+                            client.folders = dict(prev_folders)
+                        diff = self._compute_dataset_diff(prev_items, prev_items)
+                        return prev_items, prev_folders, "CHANGES_UNCHANGED", (new_token or prev_token), diff
+
+                    folder_ids = set(prev_folders.keys())
+                    by_id = {it["id"]: dict(it) for it in prev_items if isinstance(it, dict) and it.get("id")}
+                    needs_full_scan = False
+                    for ch in changes:
+                        fid = str(ch.get("fileId") or (ch.get("file") or {}).get("id") or "")
+                        if not fid:
+                            continue
+                        f_obj = ch.get("file")
+                        if fid in folder_ids or (isinstance(f_obj, dict) and f_obj.get("mimeType") == FOLDER):
+                            needs_full_scan = True
+                            break
+                        removed = bool(ch.get("removed"))
+                        if removed or not isinstance(f_obj, dict) or f_obj.get("trashed"):
+                            by_id.pop(fid, None)
+                            continue
+                        parents = f_obj.get("parents") or []
+                        matched_parent = next((p for p in parents if p in folder_ids), None)
+                        if matched_parent is None:
+                            if fid in by_id and not parents:
+                                matched_parent = by_id[fid].get("listed_parent")
+                            elif fid in by_id and parents:
+                                by_id.pop(fid, None)
+                                continue
+                            else:
+                                # 외부 폴더 파일의 변경은 무시한다.
+                                continue
+                        updated = dict(f_obj)
+                        updated["folder_path"] = prev_folders.get(matched_parent, "")
+                        updated["listed_parent"] = matched_parent
+                        by_id[fid] = updated
+                    if not needs_full_scan:
+                        cur_items = list(by_id.values())
+                        if len(cur_items) <= self.settings.rag_inventory_max_files:
+                            if hasattr(client, "folders"):
+                                client.folders = dict(prev_folders)
+                            diff = self._compute_dataset_diff(prev_items, cur_items)
+                            return cur_items, prev_folders, "CHANGES_DELTA_APPLIED", (new_token or prev_token), diff
+            except ReferenceError as exc:
+                if str(exc) == "SYNC_BUDGET_EXHAUSTED":
+                    raise
+
+        # 2) 다중 폴더 묶음 조회(API Key 포함 모든 모드) 또는 표준 순회
+        # 목록 조회 직전에 변경 토큰을 먼저 확보해 목록 응답~토큰 발급 사이의 삭제·권한 회수 누락을 막는다 (TK-250).
+        next_token: str | None = None
+        if credential_mode != "api_key" and hasattr(client, "get_start_page_token"):
+            try:
+                next_token = client.get_start_page_token()
+            except ReferenceError as exc:
+                if str(exc) == "SYNC_BUDGET_EXHAUSTED":
+                    raise
+                next_token = None
+        if len(prev_folders) > 1 and hasattr(client, "batched_inventory"):
+            items = client.batched_inventory(
+                self.folder,
+                prev_folders,
+                max_files=self.settings.rag_inventory_max_files,
+            )
+            inventory_mode = "BATCHED_INVENTORY"
+        else:
+            items = client.inventory(self.folder, max_files=self.settings.rag_inventory_max_files)
+            inventory_mode = "FULL_INVENTORY"
+        folders = dict(getattr(client, "folders", {}) or {})
+        diff = (
+            self._compute_dataset_diff(prev_items, items)
+            if snapshot is not None
+            else {"added": len(items), "modified": 0, "deleted": 0, "unchanged": 0, "dataset_up_to_date": False}
+        )
+        return items, folders, inventory_mode, next_token, diff
+
+    def dataset_status(self) -> dict:
+        """현재 로컬 참조자료 데이터셋(index.sqlite3)의 최신화·색인 상태를 반환한다."""
+        configured = bool(self.folder)
+        base = {
+            "configured": configured,
+            "initialized": False,
+            "updated_at": None,
+            "snapshot_hash": None,
+            "inventory_mode": None,
+            "has_change_token": False,
+            "files_cached": 0,
+            "files_indexed": 0,
+            "chunks_cached": 0,
+            "case_rows_cached": 0,
+            "identifiers_cached": 0,
+            "searchable_pages": 0,
+            "pending_continuations": 0,
+            "pending_low_quality_reprocess": 0,
+            "failed_updates": 0,
+            "inline_reprocess_enabled": resolve_inline_reprocess_enabled(),
+        }
+        if not configured or not self.db_path.is_file():
+            return base
+        with self.connect() as db:
+            snap = self._load_dataset_snapshot(db)
+            files_rows = db.execute("SELECT payload FROM files").fetchall()
+            chunks_cached = int((db.execute("SELECT COUNT(*) FROM chunks").fetchone() or [0])[0])
+            case_rows_cached = int((db.execute("SELECT COUNT(*) FROM case_rows").fetchone() or [0])[0])
+            identifiers_cached = int((db.execute("SELECT COUNT(*) FROM chunk_identifiers").fetchone() or [0])[0])
+        searchable_pages = 0
+        pending_continuations = 0
+        pending_low_quality = 0
+        failed_updates = 0
+        files_indexed = 0
+        for (raw_payload,) in files_rows:
+            try:
+                p = json.loads(raw_payload or "{}")
+            except (TypeError, ValueError):
+                continue
+            if int(p.get("chunk_count") or 0) > 0 or p.get("structured_case_table"):
+                files_indexed += 1
+            searchable_pages += int(p.get("searchable_pages") or 0)
+            if p.get("continuation"):
+                pending_continuations += 1
+            if _low_quality_page_set(p) and p.get("low_quality_reprocess_version") != OCR_REPROCESS_VERSION:
+                pending_low_quality += 1
+            if p.get("modified_update_failed"):
+                failed_updates += 1
+        base.update({
+            "initialized": bool(snap is not None or len(files_rows) > 0),
+            "updated_at": (snap or {}).get("updated_at"),
+            "snapshot_hash": (snap or {}).get("snapshot_hash"),
+            "inventory_mode": (snap or {}).get("inventory_mode"),
+            "has_change_token": bool((snap or {}).get("start_page_token")),
+            "files_cached": len(files_rows),
+            "files_indexed": files_indexed,
+            "chunks_cached": chunks_cached,
+            "case_rows_cached": case_rows_cached,
+            "identifiers_cached": identifiers_cached,
+            "searchable_pages": searchable_pages,
+            "pending_continuations": pending_continuations,
+            "pending_low_quality_reprocess": pending_low_quality,
+            "failed_updates": failed_updates,
+        })
+        return base
+
     def sync(self, query="", *, collect_all: bool | None = None, reprocess_low_quality: Optional[bool] = None):
         from packages.document_engine.ocr import resolve_ocr_fallback_config
 
@@ -408,10 +707,11 @@ class ReferenceLibrary:
         self._case_rows_cache = None
         self._case_number_index = {}
         self._run_ocr_fallback_config = resolve_ocr_fallback_config()
+        inline_reprocess = resolve_inline_reprocess_enabled()
         self._run_auto_reprocess = bool(
             reprocess_low_quality
             if reprocess_low_quality is not None
-            else self._run_ocr_fallback_config["enabled"]
+            else (self._run_ocr_fallback_config["enabled"] and inline_reprocess)
         )
         self.summary.update(checked_at=None, snapshot_hash=None, files_seen=0, files_indexed=0,
                             files_reused=0, issues=[], sources=[], duplicates=[], similar_names=[], inventory=[])
@@ -423,6 +723,7 @@ class ReferenceLibrary:
         self.summary.pop("reprocess_deferred", None)
         self.summary.pop("restored_files", None)
         self.summary.pop("restore_failed", None)
+        self.summary.pop("dataset", None)
         # 분석 문서마다 따로 받은 질의(목록)나 하나로 합친 질의(문자열) 모두 받는다.
         raw_queries = [q for q in (query if isinstance(query, (list, tuple)) else [query]) if q]
         eff_collect_all = self._default_collect_all if collect_all is None else collect_all
@@ -458,8 +759,11 @@ class ReferenceLibrary:
             self.directory.mkdir(parents=True, exist_ok=True)
             with FileLock(str(self.db_path) + ".lock", timeout=min(3, client.remaining())):
                 mark = time.monotonic()
-                items = client.inventory(self.folder, max_files=self.settings.rag_inventory_max_files)
-                self._stage("inventory", mark, files=len(items))
+                with self.connect() as db:
+                    items, folders, inventory_mode, next_change_token, dataset_diff = self._resolve_inventory(client, db)
+                self._stage("inventory", mark, files=len(items), mode=inventory_mode)
+                diagnostics["inventory_mode"] = inventory_mode
+                diagnostics["dataset_diff"] = dataset_diff
                 self.summary["checked_at"] = datetime.now(timezone.utc).isoformat()
                 self.summary["files_seen"] = len(items)
                 # inventory 항목에 mimeType을 보존하여 확장자가 없는 Google Sheets 등 표 후보 식별이 누락되지 않도록 한다 (TK-74)
@@ -469,7 +773,6 @@ class ReferenceLibrary:
                     "metadata": relevance.metadata_priority(item, self.sync_query),
                     "status": "SELECTED_PENDING", "reason": "NOT_PROCESSED", "background_queued": False}
                     for item in items]
-                folders = getattr(client, "folders", {}) or {}
                 diagnostics["folders_seen"] = len(folders)
                 diagnostics["folder_paths"] = sorted(p for p in folders.values() if p)[:200]
                 extensions = {}
@@ -496,11 +799,25 @@ class ReferenceLibrary:
                 mark = time.monotonic()
                 with self.connect() as db:
                     self._sync_files(client, db, items, skip, gate, reprocess_low_quality=reprocess_low_quality)
+                    snap_hash = hashlib.sha256(json.dumps(
+                        sorted((k, v["revision"], v["sha256"]) for k, v in self.eligible.items())).encode()).hexdigest()
+                    self._save_dataset_snapshot(
+                        db,
+                        items=items,
+                        folders=folders,
+                        start_page_token=next_change_token,
+                        snapshot_hash=snap_hash,
+                        inventory_mode=inventory_mode,
+                    )
                 self._stage("files", mark, indexed=len(self.eligible))
                 self.summary["sources"] = list(self.eligible.values())
                 self.summary["files_indexed"] = len(self.eligible)
-                self.summary["snapshot_hash"] = hashlib.sha256(json.dumps(
-                    sorted((k, v["revision"], v["sha256"]) for k, v in self.eligible.items())).encode()).hexdigest()
+                self.summary["snapshot_hash"] = snap_hash
+                self.summary["dataset"] = {
+                    "inventory_mode": inventory_mode,
+                    **dataset_diff,
+                    "has_change_token": bool(next_change_token),
+                }
                 self.summary["status"] = "PARTIAL" if self.summary["issues"] else "READY"
         except Exception as exc:
             # No offline fallback: previous cached references are ineligible on listing/auth failure.
@@ -863,6 +1180,7 @@ class ReferenceLibrary:
 
         def _purge_file(target_id: str) -> None:
             db.execute("DELETE FROM chunks WHERE file_id=?", (target_id,))
+            db.execute("DELETE FROM chunk_identifiers WHERE file_id=?", (target_id,))
             db.execute("DELETE FROM case_rows WHERE file_id=?", (target_id,))
             db.execute("DELETE FROM files WHERE id=?", (target_id,))
             db.commit()
@@ -874,6 +1192,7 @@ class ReferenceLibrary:
         for (file_id,) in db.execute("SELECT id FROM files").fetchall():
             if file_id not in seen:
                 db.execute("DELETE FROM chunks WHERE file_id=?", (file_id,))
+                db.execute("DELETE FROM chunk_identifiers WHERE file_id=?", (file_id,))
                 db.execute("DELETE FROM case_rows WHERE file_id=?", (file_id,))
                 db.execute("DELETE FROM files WHERE id=?", (file_id,))
                 _delete_raw_cache(file_id)
@@ -921,9 +1240,31 @@ class ReferenceLibrary:
                     raise ReferenceError(problem)
                 folder_path = item.get("folder_path", "")
                 version = revision(item) + ":" + EXTRACTOR_VERSION
-                prior_any_row = db.execute("SELECT payload FROM files WHERE id=?", (file_id,)).fetchone()
-                prior_any = json.loads(prior_any_row[0]) if prior_any_row else None
+                prior_any_row = db.execute("SELECT revision, payload FROM files WHERE id=?", (file_id,)).fetchone()
+                prior_any_rev = prior_any_row[0] if prior_any_row else None
+                prior_any = json.loads(prior_any_row[1]) if prior_any_row else None
                 row = db.execute("SELECT payload FROM files WHERE id=? AND revision=?", (file_id, version)).fetchone()
+                if (
+                    row is None
+                    and prior_any is not None
+                    and prior_any_rev
+                    and item.get("md5Checksum")
+                    and prior_any.get("drive_md5") == item.get("md5Checksum")
+                    and prior_any.get("extractor_version") == EXTRACTOR_VERSION
+                    and _prior_has_body(prior_any)
+                    and not prior_any.get("continuation")
+                    and not stale_quarantine(prior_any)
+                ):
+                    # 이름·폴더 위치만 변경되고 본문 md5가 동일하면 기존 청크·임베딩·식별자를 새 revision으로 승계한다.
+                    with db:
+                        db.execute("UPDATE files SET revision=? WHERE id=? AND revision=?", (version, file_id, prior_any_rev))
+                        db.execute("UPDATE chunks SET revision=? WHERE file_id=? AND revision=?", (version, file_id, prior_any_rev))
+                        db.execute("UPDATE chunk_identifiers SET revision=? WHERE file_id=? AND revision=?", (version, file_id, prior_any_rev))
+                        db.execute("UPDATE chunk_embeddings SET revision=? WHERE file_id=? AND revision=?", (version, file_id, prior_any_rev))
+                        db.execute("UPDATE case_rows SET revision=? WHERE file_id=? AND revision=?", (version, file_id, prior_any_rev))
+                    prior_any_rev = version
+                    entry["metadata_only_renamed_or_moved"] = True
+                    row = db.execute("SELECT payload FROM files WHERE id=? AND revision=?", (file_id, version)).fetchone()
                 if row and stale_quarantine(json.loads(row[0])):
                     row = None                    # 예전 규칙(파일 전체 격리, 근거 미기록)의 결과는 다시 읽는다
                 def _has_retryable_unread(p: dict) -> bool:
@@ -953,7 +1294,7 @@ class ReferenceLibrary:
                 auto_reprocess = bool(
                     reprocess_low_quality
                     if reprocess_low_quality is not None
-                    else ocr_fb_cfg["enabled"]
+                    else (ocr_fb_cfg["enabled"] and resolve_inline_reprocess_enabled())
                 )
                 reprocess_cap = resolve_reprocess_timeout_seconds()
 
@@ -1016,6 +1357,24 @@ class ReferenceLibrary:
                 if row:
                     parsed = json.loads(row[0])
                     _reconcile_unread_causes(parsed)
+                    if parsed.get("identifier_index_version") != IDENTIFIER_INDEX_VERSION:
+                        existing_chunks = db.execute(
+                            "SELECT rowid, page, start, text FROM chunks WHERE file_id=? AND revision=?",
+                            (file_id, version),
+                        ).fetchall()
+                        ident_rows = _extract_chunk_identifier_rows(file_id, version, existing_chunks)
+                        parsed["identifier_index_version"] = IDENTIFIER_INDEX_VERSION
+                        with db:
+                            db.execute("DELETE FROM chunk_identifiers WHERE file_id=?", (file_id,))
+                            if ident_rows:
+                                db.executemany(
+                                    "INSERT INTO chunk_identifiers VALUES (?,?,?,?,?,?,?)",
+                                    ident_rows,
+                                )
+                            db.execute(
+                                "UPDATE files SET payload=? WHERE id=? AND revision=?",
+                                (json.dumps(parsed), file_id, version),
+                            )
                     self.summary["files_reused"] += 1
                     entry["reused"] = True
                 elif not chosen(file_id) and not is_candidate(file_id):
@@ -1206,6 +1565,29 @@ class ReferenceLibrary:
                             entry["reprocess_failed"] = True
                             entry["reprocess_failures"] = failures
                             entry["last_reprocess_error"] = extract_fail_reason
+                        elif (
+                            extract_fail_reason is not None
+                            and prior is None
+                            and prior_any is not None
+                            and prior_any_rev
+                            and _prior_has_body(prior_any)
+                        ):
+                            # 수정본 추출이 실패하면 기존 정상 색인·청크·식별자를 덮어쓰지 않고 유지한다.
+                            preserved = copy.deepcopy(prior_any)
+                            preserved["last_update_error"] = extract_fail_reason
+                            preserved["modified_update_failed"] = True
+                            with db:
+                                db.execute(
+                                    "UPDATE files SET payload=? WHERE id=? AND revision=?",
+                                    (json.dumps(preserved), file_id, prior_any_rev),
+                                )
+                            parsed = copy.deepcopy(preserved)
+                            _reconcile_unread_causes(parsed)
+                            version = prior_any_rev
+                            entry["modified_update_failed"] = True
+                            entry["fallback_to_prior_version"] = True
+                            entry["prior_indexed_at"] = prior_any.get("indexed_at")
+                            entry["last_update_error"] = extract_fail_reason
                         else:
                             if retry_reason == "reprocess_low_quality" and extract_fail_reason is None:
                                 entry["reprocessed_in_run"] = True
@@ -1223,6 +1605,11 @@ class ReferenceLibrary:
                             parsed["chunk_count"] = len(chunks) + (prior.get("chunk_count", 0) if append_batch else 0)
                             parsed["cached_filename"] = filename
                             parsed["cached_mime"] = mime
+                            parsed["drive_md5"] = item.get("md5Checksum") or ""
+                            parsed["extractor_version"] = EXTRACTOR_VERSION
+                            parsed["indexed_at"] = datetime.now(timezone.utc).isoformat()
+                            parsed.pop("modified_update_failed", None)
+                            parsed.pop("last_update_error", None)
                             _reconcile_unread_causes(parsed)
                             if retry_reason == "legacy_unread_reeval" or (prior and prior.get("legacy_unread_reevaluated")):
                                 parsed["legacy_unread_reevaluated"] = True
@@ -1348,13 +1735,27 @@ class ReferenceLibrary:
                             else:
                                 _delete_raw_cache(file_id)
                             # Cache terminal parse outcomes, too; a large unreadable file must not starve later files.
+                            parsed["identifier_index_version"] = IDENTIFIER_INDEX_VERSION
                             with db:
                                 if not append_batch:
                                     db.execute("DELETE FROM chunks WHERE file_id=?", (file_id,))
+                                    db.execute("DELETE FROM chunk_identifiers WHERE file_id=?", (file_id,))
                                     db.execute("DELETE FROM case_rows WHERE file_id=?", (file_id,))
                                 db.execute("INSERT OR REPLACE INTO files VALUES (?,?,?)", (file_id, version, json.dumps(parsed)))
-                                db.executemany("INSERT INTO chunks VALUES (?,?,?,?,?,?)", [
-                                    (file_id, version, c["page"], c["start"], c["text"], " ".join(tokens(c["text"]))) for c in chunks])
+                                inserted_ident_rows: list[tuple] = []
+                                for c in chunks:
+                                    cur = db.execute(
+                                        "INSERT INTO chunks VALUES (?,?,?,?,?,?)",
+                                        (file_id, version, c["page"], c["start"], c["text"], " ".join(tokens(c["text"]))),
+                                    )
+                                    inserted_ident_rows.append((cur.lastrowid, c["page"], c["start"], c["text"]))
+                                if inserted_ident_rows:
+                                    ident_rows = _extract_chunk_identifier_rows(file_id, version, inserted_ident_rows)
+                                    if ident_rows:
+                                        db.executemany(
+                                            "INSERT INTO chunk_identifiers VALUES (?,?,?,?,?,?,?)",
+                                            ident_rows,
+                                        )
                                 if case_records:
                                     db.executemany("""INSERT OR REPLACE INTO case_rows
                                         (record_id,file_id,revision,sheet,row_number,source_cell_range,
@@ -1549,7 +1950,8 @@ class ReferenceLibrary:
                         "chunk_count": chunk_count,
                         "structured_case_table": is_case_table,
                         "case_table_stats": parsed.get("stats", {}),
-                        "case_table_only": bool(is_case_table and not chosen(file_id))}
+                        "case_table_only": bool(is_case_table and not chosen(file_id)),
+                        "identifier_indexed": parsed.get("identifier_index_version") == IDENTIFIER_INDEX_VERSION}
             except ReferenceError as exc:
                 code = str(exc)
                 reason_detail = code
@@ -2255,13 +2657,24 @@ class ReferenceLibrary:
                     if not (meta.get("structured_case_table") or meta.get("case_table_only"))}
         if not eligible:
             return []
-        # 식별자의 가장 긴 숫자열은 공백·괄호 정규화와 무관하게 원문에 그대로 있다. 색인 전체를
-        # 한 번만 훑어 그 숫자열이 있는 청크만 가져온다(파일마다·청크마다 Python 대조를 하지 않는다).
-        digits = max(_re.findall(r"[0-9]+", anchor_of(ident)), key=len, default="")
+        # 사전 추출된 식별자 색인(chunk_identifiers)이 모든 대상 파일에 준비되어 있으면 B-Tree 인덱스로 즉시 조회한다.
+        # (미색인 캐시가 섞여 있을 때만 기존 instr(text, digits) 전체 스캔으로 폴백한다.)
+        lookup = _citation_lookup_key(ident)
+        all_indexed = all(bool(meta.get("identifier_indexed")) for meta in eligible.values())
         found = []
         with self.connect() as db:
-            rows = db.execute("SELECT file_id, revision, page, start, text FROM chunks WHERE instr(text, ?) > 0",
-                              (digits,)).fetchall()
+            if lookup and all_indexed:
+                rows = db.execute(
+                    "SELECT c.file_id, c.revision, c.page, c.start, c.text "
+                    "FROM chunk_identifiers idx "
+                    "JOIN chunks c ON c.rowid = idx.chunk_rowid "
+                    "WHERE idx.ident_kind = ? AND idx.ident_key = ?",
+                    lookup,
+                ).fetchall()
+            else:
+                digits = max(_re.findall(r"[0-9]+", anchor_of(ident)), key=len, default="")
+                rows = db.execute("SELECT file_id, revision, page, start, text FROM chunks WHERE instr(text, ?) > 0",
+                                  (digits,)).fetchall()
         for file_id, revision, page, start, text in sorted(rows, key=lambda r: (r[0], int(r[2]), int(r[3]))):
             meta = eligible.get(file_id)
             if not meta or revision != meta["revision"]:
