@@ -463,13 +463,15 @@ def test_online_evaluation_export_completeness_positives_and_controls():
         assert set(dims.keys()) == {"identity", "quote", "claim_applicability", "source_retrieval"}
         assert len(dims["identity"]) == 1 and dims["identity"][0]["status"] == "VERIFIED"
         assert len(dims["quote"]) == 1 and dims["quote"][0]["status"] == "VERIFIED"
-        assert len(dims["claim_applicability"]) == 1 and dims["claim_applicability"][0]["judgment"] == "SUPPORTS"
+        # TK-248: 법령 존재 확인(VERIFIED)과 주장 상태는 주장 지지가 아니다(적용성 검토 없음 -> INSUFFICIENT).
+        assert len(dims["claim_applicability"]) == 1 and dims["claim_applicability"][0]["judgment"] == "INSUFFICIENT"
+        assert dims["claim_applicability"][0]["judgment_basis"] == "NOT_ASSESSED"
         assert len(dims["source_retrieval"]) == 1 and dims["source_retrieval"][0]["source_name"] == "law_go_kr"
         ft = ed["fact_triples"]
         assert ft["count"] >= 2 and ft["asserted_self_count"] >= 2 and "CONTRACT" in ft["stages"]
 
     assert payload["documents"][1]["engine_data"]["fact_triples"]["count"] >= 2
-    assert payload["documents"][2]["engine_data"]["evaluation_dimensions"]["claim_applicability"][0]["judgment"] == "CONTRADICTS"
+    assert payload["documents"][2]["engine_data"]["evaluation_dimensions"]["claim_applicability"][0]["judgment"] == "INSUFFICIENT"
 
     # Control 1: Empty document with no citations/claims produces empty 4D lists and count=0 without errors
     d_empty = DocumentResult(document_id="D_EMPTY", filename="empty.txt", normalized=_doc("단순 안내문입니다.", doc_id="D_EMPTY"))
