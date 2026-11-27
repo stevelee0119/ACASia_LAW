@@ -4,22 +4,39 @@
   benchmark_audit_2026-11-13.md). 새 릴리스를 같은 조건으로 재면 이 파일에 한 줄을 더한다.
 - 출력: docs/assets/performance_trend.png(README가 이 그림을 싣는다. 그림 아래 벤치마크 설명은
   scripts/update_readme.py가 같은 CSV에서 만든다).
-- 문서 도구다. 제품 실행에는 필요 없고 matplotlib가 있어야 한다(pip install matplotlib).
+- 정본 규칙(TK-252): 로컬 OS·글꼴 차이로 인한 바이트 변동을 막기 위해 `.github/workflows/readme-sync.yml`이
+  고정 환경(ubuntu-24.04, fonts-nanum NanumGothic, matplotlib==3.9.4)에서 렌더한 PNG만 정본으로 삼는다.
+  로컬에서 실행한 PNG 결과는 미리보기 전용이며 커밋하지 않는다.
 
-사용: python scripts/render_performance_chart.py
+사용: python scripts/render_performance_chart.py [--canonical-ci]
 """
 from __future__ import annotations
 
+import argparse
 import csv
 from datetime import date, timedelta
 import json
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "docs" / "scorecards" / "version_performance.csv"
 RELEASES = ROOT / "docs" / "releases.json"
 OUT = ROOT / "docs" / "assets" / "performance_trend.png"
-KOREAN_FONTS = ("Noto Sans CJK KR", "NanumGothic", "NanumBarunGothic", "Malgun Gothic", "AppleGothic")
+CANONICAL_FONT = "NanumGothic"
+KOREAN_FONTS = (CANONICAL_FONT, "Noto Sans CJK KR", "NanumBarunGothic", "Malgun Gothic", "AppleGothic")
+
+
+def resolve_chart_font(installed: set[str], *, canonical_only: bool = False) -> str:
+    """렌더에 사용할 한글 글꼴을 결정한다. canonical_only=True면 정본 글꼴만 허용한다."""
+    if canonical_only:
+        if CANONICAL_FONT not in installed:
+            raise SystemExit(f"정본 렌더 글꼴이 없습니다: {CANONICAL_FONT}")
+        return CANONICAL_FONT
+    family = next((name for name in KOREAN_FONTS if name in installed), None)
+    if family is None:
+        raise SystemExit("한국어 글꼴이 없습니다: " + ", ".join(KOREAN_FONTS))
+    return family
 
 
 def load_rows(path: Path = DATA) -> list:
@@ -72,7 +89,14 @@ def select_milestone_rows(rows: list, release_dates: dict[str, date] | None = No
     return [rows[i] for i in chosen_indices]
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--canonical-ci", action="store_true", help="고정 정본 글꼴(NanumGothic)만 허용")
+    parser.add_argument("--out", type=Path, default=None, help="출력 PNG 경로(기본: docs/assets/performance_trend.png)")
+    args = parser.parse_args(argv)
+    canonical_only = bool(args.canonical_ci or os.getenv("LV_CANONICAL_CHART") == "1")
+    out_path = args.out if args.out is not None else OUT
+
     import matplotlib
 
     matplotlib.use("Agg")
@@ -80,9 +104,7 @@ def main() -> int:
     from matplotlib import font_manager
 
     installed = {f.name for f in font_manager.fontManager.ttflist}
-    family = next((name for name in KOREAN_FONTS if name in installed), None)
-    if family is None:
-        raise SystemExit("한국어 글꼴이 없습니다: " + ", ".join(KOREAN_FONTS))
+    family = resolve_chart_font(installed, canonical_only=canonical_only)
     plt.rcParams.update({"font.family": family, "axes.unicode_minus": False})
 
     rows = select_milestone_rows(load_rows())
@@ -118,9 +140,11 @@ def main() -> int:
         axis.legend(loc="lower right", fontsize=9, frameon=False)
         axis.set_xlabel("릴리스")
     fig.tight_layout()
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(OUT, metadata={"Software": None, "Creation Time": None})
-    print(f"저장: {OUT.relative_to(ROOT)} ({len(rows)}개 릴리스)")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, metadata={"Software": None, "Creation Time": None})
+    plt.close(fig)
+    display_path = out_path.relative_to(ROOT) if out_path.is_relative_to(ROOT) else out_path
+    print(f"저장: {display_path} ({len(rows)}개 릴리스)")
     return 0
 
 
