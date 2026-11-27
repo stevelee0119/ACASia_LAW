@@ -1066,10 +1066,10 @@
       "note": "#460(README 자동 갱신)에서 구현 측이 평가 측에 요청: docs/scorecards/version_performance.csv에 v0.24~v0.30.2 동일 조건 재채점 행 추가. 평가 측 업무이며 시행 여부는 사용자 결정. / 2026-11-27 사용자 결정: 0.31.0부터. 0.31.0 후보 판정에서 기존 산식 열은 측정(89.7/87.5/58.00)했으나 365항목 엄격 재현율 채점기가 저장소에 없어 엄격 열 미측정 → 행 추가 방식 사용자 결정 대기."
     },
     "TK-252": {
-      "status": "open",
+      "status": "accepted",
       "priority": "P3",
       "kind": "defect",
-      "note": "#460 병합(c03197bd) 후 readme-sync 첫 실행 46077119477 실패: CI 글꼴로 다시 그린 performance_trend.png가 저장소 파일과 달라 커밋했으나 Steve_ACASiaLAW 저장소 규칙(GH013, 필수 상태 검사 5개)이 봇 직접 푸시를 거절. 푸시마다 반복 실패. 보완: 보호 브랜치 직접 푸시 대신 봇 브랜치+PR로 전환하고 PNG 렌더 글꼴을 고정. 확인된 결함(CI 실기록)."
+      "note": "#460 병합(c03197bd) 후 readme-sync 첫 실행 46077119477 실패: CI 글꼴로 다시 그린 performance_trend.png가 저장소 파일과 달라 커밋했으나 Steve_ACASiaLAW 저장소 규칙(GH013, 필수 상태 검사 5개)이 봇 직접 푸시를 거절. 푸시마다 반복 실패. 보완: 보호 브랜치 직접 푸시 대신 봇 브랜치+PR로 전환하고 PNG 렌더 글꼴을 고정. 확인된 결함(CI 실기록). / 2026-11-27 #465(b55f2086) 조건부 수용: 봇 브랜치+PR 전환·PNG 렌더 고정, 실행 2건 성공. 제약: 저장소 설정상 GITHUB_TOKEN 신규 PR 생성 불가·GITHUB_TOKEN 푸시는 필수 CI 미기동 → README_SYNC_TOKEN 설정 필요(사용자 결정). #464 봇 PNG PR 수용."
     }
   },
   "updated_on": "2026-11-27"
