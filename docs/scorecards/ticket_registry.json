@@ -1064,6 +1064,12 @@
       "priority": "P3",
       "kind": "request",
       "note": "#460(README 자동 갱신)에서 구현 측이 평가 측에 요청: docs/scorecards/version_performance.csv에 v0.24~v0.30.2 동일 조건 재채점 행 추가. 평가 측 업무이며 시행 여부는 사용자 결정."
+    },
+    "TK-252": {
+      "status": "open",
+      "priority": "P3",
+      "kind": "defect",
+      "note": "#460 병합(c03197bd) 후 readme-sync 첫 실행 46077119477 실패: CI 글꼴로 다시 그린 performance_trend.png가 저장소 파일과 달라 커밋했으나 Steve_ACASiaLAW 저장소 규칙(GH013, 필수 상태 검사 5개)이 봇 직접 푸시를 거절. 푸시마다 반복 실패. 보완: 보호 브랜치 직접 푸시 대신 봇 브랜치+PR로 전환하고 PNG 렌더 글꼴을 고정. 확인된 결함(CI 실기록)."
     }
   },
   "updated_on": "2026-11-27"
