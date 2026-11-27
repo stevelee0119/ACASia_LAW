@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import copy
 from datetime import datetime, timezone
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -20,6 +22,13 @@ from .drive import DriveClient, EXPORTS, ReferenceError, access_problem, revisio
 from .extract import EXTRACTOR_VERSION
 
 OCR_REPROCESS_VERSION = "tk245-fallback-env-v2"
+DEFAULT_REFERENCE_REPROCESS_TIMEOUT_SECONDS = 120
+_REPROCESS_RETRY_REASONS = (
+    "reprocess_low_quality",
+    "retryable_unread",
+    "confirm_unreadable",
+    "legacy_unread_reeval",
+)
 from . import relevance
 from .relevance import tokens
 from .case_table import lookup_records
@@ -48,6 +57,38 @@ _ALL_UNREAD_CAUSES = (
     "CONFIG_BLOCKED",
     "UNKNOWN",
 )
+
+
+def resolve_reprocess_timeout_seconds(environ: dict[str, str] | None = None) -> int:
+    """Resolve dedicated timeout upper bound for Drive reprocess extractions (default 120s)."""
+    env = os.environ if environ is None else environ
+    raw = env.get("LV_REFERENCE_REPROCESS_TIMEOUT")
+    if raw is None or not str(raw).strip():
+        return DEFAULT_REFERENCE_REPROCESS_TIMEOUT_SECONDS
+    try:
+        val = int(float(str(raw).strip()))
+    except (TypeError, ValueError):
+        return DEFAULT_REFERENCE_REPROCESS_TIMEOUT_SECONDS
+    return max(1, min(600, val))
+
+
+def _prior_has_body(p: dict | None) -> bool:
+    """Return True when cached payload holds extracted body chunks or searchable pages."""
+    if not isinstance(p, dict):
+        return False
+    return int(p.get("chunk_count") or 0) > 0 or int(p.get("searchable_pages") or 0) > 0
+
+
+def _accepts_kwarg(fn, name: str) -> bool:
+    """Check whether callable accepts keyword argument `name` or `**kwargs`."""
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return False
+    for param in sig.parameters.values():
+        if param.kind == inspect.Parameter.VAR_KEYWORD or param.name == name:
+            return True
+    return False
 
 
 def _low_quality_page_set(p: dict | None) -> set[int]:
@@ -378,6 +419,10 @@ class ReferenceLibrary:
         self.summary.pop("ocr_reprocess", None)
         self.summary.pop("ocr_fallback_attempted_pages", None)
         self.summary.pop("ocr_fallback_adopted_pages", None)
+        self.summary.pop("reprocess_failed", None)
+        self.summary.pop("reprocess_deferred", None)
+        self.summary.pop("restored_files", None)
+        self.summary.pop("restore_failed", None)
         # 분석 문서마다 따로 받은 질의(목록)나 하나로 합친 질의(문자열) 모두 받는다.
         raw_queries = [q for q in (query if isinstance(query, (list, tuple)) else [query]) if q]
         eff_collect_all = self._default_collect_all if collect_all is None else collect_all
@@ -385,17 +430,20 @@ class ReferenceLibrary:
         self.sync_query = "\n".join(raw_queries) if (raw_queries and (not decoupled or eff_collect_all)) else ""
         queries = raw_queries if (raw_queries and not decoupled) else []
         budget = max(1, min(600, self.settings.rag_sync_seconds))
+        reprocess_timeout_cap = resolve_reprocess_timeout_seconds()
         collection_mode = "DECOUPLED_FULL_CORPUS" if decoupled else ("METADATA_GATE" if queries else "FULL_CORPUS")
         selection_strategy = "METADATA_GATE" if queries else ("FULL_CORPUS_INDEX" if raw_queries else "CACHE_SIZE_ORDER")
         diagnostics = self.summary["diagnostics"] = {
             "started_at": datetime.now(timezone.utc).isoformat(), "folder_id": self.folder,
             "network_allowed": bool(self.settings.allow_network), "budget_seconds": budget,
+            "reprocess_timeout_seconds": reprocess_timeout_cap,
             "max_files": self.settings.rag_max_files, "inventory_max_files": self.settings.rag_inventory_max_files,
             "selection_strategy": selection_strategy,
             "collection_mode": collection_mode,
             "download_budget_mb": self.settings.rag_download_mb,
             "credential_mode": None, "stages": [], "downloads": {"count": 0, "bytes": 0},
-            "extractions": {"count": 0, "ms": 0}, "duplicates_skipped": 0, "deferred": 0}
+            "extractions": {"count": 0, "ms": 0}, "duplicates_skipped": 0, "deferred": 0,
+            "reprocess_failed": 0, "reprocess_deferred": 0, "restored_files": 0, "restore_failed": 0}
         if not self.folder:
             return self.summary
         self.summary["status"] = "UNAVAILABLE"
@@ -492,6 +540,10 @@ class ReferenceLibrary:
         reprocessed_pages = 0
         recovered_pages = 0
         reprocessed_files = 0
+        reprocess_failed_files = 0
+        reprocess_deferred_files = 0
+        restored_files = 0
+        restore_failed_files = 0
         fresh_child_ocr_configs: list[dict] = []
         cached_child_ocr_configs: list[dict] = []
         page_states: dict[str, int] = {}
@@ -558,9 +610,17 @@ class ReferenceLibrary:
                 searchable_pages_delta += int(item.get("searchable_pages_delta") or 0)
             if item.get("reprocessed_in_run"):
                 reprocessed_files += 1
+            if item.get("reprocess_failed"):
+                reprocess_failed_files += 1
+            if item.get("reprocess_deferred"):
+                reprocess_deferred_files += 1
+            if item.get("restored_in_run"):
+                restored_files += 1
+            if item.get("restore_failed"):
+                restore_failed_files += 1
             child_cfg = item.get("child_ocr_config")
             if isinstance(child_cfg, dict):
-                if item.get("reused"):
+                if item.get("reused") or item.get("reprocess_failed"):
                     cached_child_ocr_configs.append(child_cfg)
                 else:
                     fresh_child_ocr_configs.append(child_cfg)
@@ -568,7 +628,8 @@ class ReferenceLibrary:
                 low_quality_pages_before += int(item.get("low_quality_pages_before") or 0)
                 low_quality_pages_after += int(item.get("low_quality_pages_after") or 0)
                 reprocessed_pages += int(item.get("reprocessed_pages") or 0)
-                recovered_pages += int(item.get("recovered_pages") or 0)
+                if not item.get("reprocess_failed"):
+                    recovered_pages += int(item.get("recovered_pages") or 0)
             fb_sum = item.get("ocr_fallback_summary")
             if isinstance(fb_sum, dict):
                 ocr_fallback_attempted_pages += len(fb_sum.get("attempted_pages") or [])
@@ -612,6 +673,11 @@ class ReferenceLibrary:
 
         parent_fb_cfg = getattr(self, "_run_ocr_fallback_config", None) or resolve_ocr_fallback_config()
         auto_reprocess_on = bool(getattr(self, "_run_auto_reprocess", parent_fb_cfg["enabled"]))
+        reprocess_timeout_cap = int(diagnostics.get("reprocess_timeout_seconds") or resolve_reprocess_timeout_seconds())
+        diagnostics["reprocess_failed"] = reprocess_failed_files
+        diagnostics["reprocess_deferred"] = reprocess_deferred_files
+        diagnostics["restored_files"] = restored_files
+        diagnostics["restore_failed"] = restore_failed_files
         observed_child_cfg = (
             fresh_child_ocr_configs[-1]
             if fresh_child_ocr_configs
@@ -621,7 +687,15 @@ class ReferenceLibrary:
         if auto_reprocess_on and ocr_fallback_attempted_pages == 0:
             extractions_run = int((diagnostics.get("extractions") or {}).get("count") or 0)
             if extractions_run == 0:
-                zero_fallback_attempt_reason = "NO_FILES_EXTRACTED_ALL_REUSED"
+                zero_fallback_attempt_reason = (
+                    "REPROCESS_DEFERRED_SYNC_BUDGET"
+                    if reprocess_deferred_files > 0
+                    else "NO_FILES_EXTRACTED_ALL_REUSED"
+                )
+            elif reprocess_failed_files > 0 and not fresh_child_ocr_configs:
+                zero_fallback_attempt_reason = "REPROCESS_EXTRACTION_FAILED_OR_TIMEOUT"
+            elif restored_files > 0 and fresh_child_ocr_configs and all(not c.get("fallback_enabled") for c in fresh_child_ocr_configs):
+                zero_fallback_attempt_reason = "RESTORE_PRIMARY_OCR_ONLY_FALLBACK_NEXT_RUN"
             elif any(not c.get("fallback_enabled") for c in fresh_child_ocr_configs):
                 zero_fallback_attempt_reason = "CHILD_FALLBACK_CONFIG_DISABLED"
             elif any(c.get("fallback_enabled") and not c.get("fallback_adapter") for c in fresh_child_ocr_configs):
@@ -641,9 +715,14 @@ class ReferenceLibrary:
 
         self.summary["ocr_fallback_attempted_pages"] = ocr_fallback_attempted_pages
         self.summary["ocr_fallback_adopted_pages"] = ocr_fallback_adopted_pages
+        self.summary["reprocess_failed"] = reprocess_failed_files
+        self.summary["reprocess_deferred"] = reprocess_deferred_files
+        self.summary["restored_files"] = restored_files
+        self.summary["restore_failed"] = restore_failed_files
         self.summary["ocr_reprocess"] = {
             "reprocess_version": OCR_REPROCESS_VERSION,
             "auto_reprocess_enabled": auto_reprocess_on,
+            "reprocess_timeout_seconds": reprocess_timeout_cap,
             "parent_ocr_config": {
                 "fallback_engine": parent_fb_cfg["engine"],
                 "fallback_mode": parent_fb_cfg["mode"],
@@ -652,6 +731,10 @@ class ReferenceLibrary:
             "child_ocr_config": observed_child_cfg,
             "reprocessed_files": reprocessed_files,
             "reprocessed_pages": reprocessed_pages,
+            "reprocess_failed": reprocess_failed_files,
+            "reprocess_deferred": reprocess_deferred_files,
+            "restored_files": restored_files,
+            "restore_failed": restore_failed_files,
             "low_quality_pages_before": low_quality_pages_before,
             "low_quality_pages_after": low_quality_pages_after,
             "recovered_pages": recovered_pages,
@@ -679,6 +762,10 @@ class ReferenceLibrary:
                 "low_quality_pages_after": low_quality_pages_after,
                 "reprocessed_files": reprocessed_files,
                 "reprocessed_pages": reprocessed_pages,
+                "reprocess_failed": reprocess_failed_files,
+                "reprocess_deferred": reprocess_deferred_files,
+                "restored_files": restored_files,
+                "restore_failed": restore_failed_files,
                 "recovered_pages": recovered_pages,
                 "child_ocr_config": observed_child_cfg,
                 "zero_fallback_attempt_reason": zero_fallback_attempt_reason,
@@ -868,6 +955,21 @@ class ReferenceLibrary:
                     if reprocess_low_quality is not None
                     else ocr_fb_cfg["enabled"]
                 )
+                reprocess_cap = resolve_reprocess_timeout_seconds()
+
+                def _needs_damaged_extract_restore(p: dict) -> bool:
+                    if p.get("continuation"):
+                        return False
+                    if int(p.get("resume_failures") or 0) >= 2:
+                        return False
+                    if p.get("reason") not in ("REFERENCE_PARSE_TIMEOUT", "REFERENCE_PARSE_FAILED"):
+                        return False
+                    if int(p.get("chunk_count") or 0) != 0:
+                        return False
+                    attempts = int(p.get("restore_attempts") or 0)
+                    if attempts >= 2:
+                        return False
+                    return int(p.get("previous_searchable_pages") or 0) > 0 or attempts > 0
 
                 def _needs_low_quality_ocr_reprocess(p: dict) -> bool:
                     low_pages = _low_quality_page_set(p)
@@ -877,12 +979,16 @@ class ReferenceLibrary:
                         return True
                     return auto_reprocess and p.get("low_quality_reprocess_version") != OCR_REPROCESS_VERSION
 
+                prior_same_rev_row = row
                 prior = json.loads(row[0]) if row else None
                 continuation = prior.get("continuation") if prior else None
                 retry_reason = None
                 if continuation:
                     row = None  # Only a progressing structured table or bounded OCR is retried at the same revision.
                     retry_reason = "continuation"
+                elif prior and _needs_damaged_extract_restore(prior):
+                    row = None
+                    retry_reason = "restore_failed_extract"
                 elif prior and _needs_low_quality_ocr_reprocess(prior):
                     row = None
                     retry_reason = "reprocess_low_quality"
@@ -895,6 +1001,18 @@ class ReferenceLibrary:
                 elif prior and _is_legacy_unread_without_reasons(prior):
                     row = None
                     retry_reason = "legacy_unread_reeval"
+
+                if (
+                    row is None
+                    and prior_same_rev_row is not None
+                    and retry_reason in _REPROCESS_RETRY_REASONS
+                    and min(float(reprocess_cap), float(client.remaining()) - 60.0) < 30.0
+                ):
+                    # 예산 부족(한도 30초 미만 / 남은 예산 90초 미만)이면 기존 결과를 쓰고 다음 실행으로 미룬다 (TK-247)
+                    row = prior_same_rev_row
+                    retry_reason = None
+                    entry["reprocess_deferred"] = True
+
                 if row:
                     parsed = json.loads(row[0])
                     _reconcile_unread_causes(parsed)
@@ -918,10 +1036,14 @@ class ReferenceLibrary:
                         raise ReferenceError(problem)
                     item = {**fresh, "folder_path": folder_path, "listed_parent": item.get("listed_parent")}
                     version = revision(item) + ":" + EXTRACTOR_VERSION
-                    if prior and (continuation or retry_reason in ("retryable_unread", "confirm_unreadable", "reprocess_low_quality", "legacy_unread_reeval")):
+                    if prior and (
+                        continuation
+                        or retry_reason in (*_REPROCESS_RETRY_REASONS, "restore_failed_extract")
+                    ):
                         stored = db.execute("SELECT revision FROM files WHERE id=?", (file_id,)).fetchone()
                         if not stored or stored[0] != version:
                             prior, continuation = None, None
+                            retry_reason = None
                     mime = item.get("mimeType", "")
                     if (mime not in EXPORTS and mime != "application/pdf"
                             and relevance.extension(item.get("name")) not in SUPPORTED):
@@ -958,167 +1080,299 @@ class ReferenceLibrary:
                             raise ReferenceError("REFERENCE_CHANGED_DURING_DOWNLOAD")
                         if item.get("md5Checksum") and hashlib.md5(data).hexdigest() != item["md5Checksum"]:
                             raise ReferenceError("REFERENCE_CHECKSUM_MISMATCH")
-                    if client.remaining() < 30:
-                        raise ReferenceError("SYNC_BUDGET_EXHAUSTED")
-                    mark = time.monotonic()
-                    try:
-                        kwargs = {"directory": self.directory, "timeout": 30}
-                        if continuation:
-                            kwargs["continuation"] = continuation
-                        if self.extractor is isolated_extract:
-                            kwargs["ocr_fallback_config"] = ocr_fb_cfg
-                        parsed = self.extractor(data, filename, mime, **kwargs)
-                        if (continuation and not parsed.get("resumed")
-                                and parsed.get("reason") in ("REFERENCE_PARSE_TIMEOUT", "REFERENCE_PARSE_FAILED")):
-                            raise ReferenceError(parsed["reason"])
-                    except ReferenceError as exc:
-                        if str(exc) not in ("REFERENCE_PARSE_TIMEOUT", "REFERENCE_PARSE_FAILED"):
-                            raise
-                        if continuation:
-                            # Retain committed rows/cursor, but do not retry a stuck row forever.
-                            failed_batch = dict(prior)
-                            failed_batch["resume_failures"] = int(prior.get("resume_failures", 0)) + 1
-                            if failed_batch["resume_failures"] >= 2:
-                                failed_batch["continuation"] = None
-                                failed_batch.update(partial=True, reason=str(exc))
+                    if (
+                        prior is not None
+                        and retry_reason in _REPROCESS_RETRY_REASONS
+                        and min(float(reprocess_cap), float(client.remaining()) - 60.0) < 30.0
+                    ):
+                        # 내려받기 뒤 남은 예산이 90초 미만으로 줄었으면 추출하지 않고 기존 결과를 유지한다 (TK-247)
+                        parsed = copy.deepcopy(prior)
+                        _reconcile_unread_causes(parsed)
+                        self.summary["files_reused"] += 1
+                        entry["reused"] = True
+                        entry["reprocess_deferred"] = True
+                    else:
+                        if client.remaining() < 30:
+                            raise ReferenceError("SYNC_BUDGET_EXHAUSTED")
+                        if retry_reason in _REPROCESS_RETRY_REASONS:
+                            extract_timeout = int(min(float(reprocess_cap), float(client.remaining()) - 60.0))
+                        elif retry_reason == "restore_failed_extract":
+                            extract_timeout = max(30, int(min(60.0, float(client.remaining()) - 30.0)))
+                        else:
+                            extract_timeout = 30
+                        effective_ocr_fb_cfg = (
+                            {"engine": "none", "mode": "off", "enabled": False}
+                            if retry_reason == "restore_failed_extract"
+                            else ocr_fb_cfg
+                        )
+                        extract_fail_reason: str | None = None
+                        mark = time.monotonic()
+                        try:
+                            kwargs = {"directory": self.directory, "timeout": extract_timeout}
+                            if continuation:
+                                kwargs["continuation"] = continuation
+                            if self.extractor is isolated_extract or _accepts_kwarg(self.extractor, "ocr_fallback_config"):
+                                kwargs["ocr_fallback_config"] = effective_ocr_fb_cfg
+                            parsed = self.extractor(data, filename, mime, **kwargs)
+                            if (continuation and not parsed.get("resumed")
+                                    and parsed.get("reason") in ("REFERENCE_PARSE_TIMEOUT", "REFERENCE_PARSE_FAILED")):
+                                raise ReferenceError(parsed["reason"])
+                            if (
+                                not continuation
+                                and not parsed.get("chunks")
+                                and not parsed.get("case_records")
+                                and parsed.get("reason") in ("REFERENCE_PARSE_TIMEOUT", "REFERENCE_PARSE_FAILED")
+                            ):
+                                extract_fail_reason = str(parsed["reason"])
+                        except ReferenceError as exc:
+                            if str(exc) not in ("REFERENCE_PARSE_TIMEOUT", "REFERENCE_PARSE_FAILED"):
+                                raise
+                            if continuation:
+                                # Retain committed rows/cursor, but do not retry a stuck row forever.
+                                failed_batch = dict(prior)
+                                failed_batch["resume_failures"] = int(prior.get("resume_failures", 0)) + 1
+                                if failed_batch["resume_failures"] >= 2:
+                                    failed_batch["continuation"] = None
+                                    failed_batch.update(partial=True, reason=str(exc))
+                                    _delete_raw_cache(file_id)
+                                with db:
+                                    db.execute("UPDATE files SET payload=? WHERE id=? AND revision=?",
+                                               (json.dumps(failed_batch), file_id, version))
+                                raise
+                            extract_fail_reason = str(exc)
+                            parsed = {"chunks": [], "partial": True, "reason": extract_fail_reason}
+                        finally:
+                            diagnostics["extractions"]["count"] += 1
+                            diagnostics["extractions"]["ms"] += round((time.monotonic() - mark) * 1000)
+
+                        if (
+                            extract_fail_reason is not None
+                            and retry_reason in _REPROCESS_RETRY_REASONS
+                            and _prior_has_body(prior)
+                        ):
+                            # TK-247 ①: 재처리 실패 시 기존 조각·기록을 보존하고 이번 실행에서도 기존 본문으로 색인한다.
+                            preserved = copy.deepcopy(prior)
+                            prev_fail_ver = preserved.get("reprocess_failures_version")
+                            base_failures = (
+                                0
+                                if (prev_fail_ver is not None and prev_fail_ver != OCR_REPROCESS_VERSION)
+                                else int(preserved.get("reprocess_failures") or 0)
+                            )
+                            failures = base_failures + 1
+                            preserved["reprocess_failures"] = failures
+                            preserved["reprocess_failures_version"] = OCR_REPROCESS_VERSION
+                            preserved["last_reprocess_error"] = extract_fail_reason
+                            preserved["recovered_pages"] = 0
+                            preserved["searchable_pages_delta"] = 0
+                            if retry_reason == "reprocess_low_quality":
+                                prev_low_cnt = len(_low_quality_page_set(preserved))
+                                preserved["low_quality_pages_before"] = prev_low_cnt
+                                preserved["low_quality_pages_after"] = prev_low_cnt
+                                preserved["reprocessed_pages"] = 0
+                                if failures >= 2:
+                                    preserved["low_quality_reprocess_version"] = OCR_REPROCESS_VERSION
+                                    if preserved.get("confirmed_unreadable_pages"):
+                                        preserved["unreadable_confirm_attempts"] = max(
+                                            2, int(preserved.get("unreadable_confirm_attempts") or 0) + 1
+                                        )
+                                        preserved["unreadable_confirmed"] = True
+                            elif retry_reason == "retryable_unread":
+                                if failures >= 2:
+                                    preserved["retry_attempts"] = max(2, int(preserved.get("retry_attempts") or 0) + 1)
+                                else:
+                                    preserved["retry_attempts"] = max(1, int(preserved.get("retry_attempts") or 0))
+                            elif retry_reason == "confirm_unreadable":
+                                if failures >= 2:
+                                    preserved["unreadable_confirm_attempts"] = max(
+                                        2, int(preserved.get("unreadable_confirm_attempts") or 0) + 1
+                                    )
+                                    preserved["unreadable_confirmed"] = True
+                                else:
+                                    preserved["unreadable_confirm_attempts"] = max(
+                                        1, int(preserved.get("unreadable_confirm_attempts") or 0)
+                                    )
+                            elif retry_reason == "legacy_unread_reeval":
+                                if failures >= 2:
+                                    preserved["legacy_unread_reevaluated"] = True
+                            if not preserved.get("continuation"):
                                 _delete_raw_cache(file_id)
                             with db:
-                                db.execute("UPDATE files SET payload=? WHERE id=? AND revision=?",
-                                           (json.dumps(failed_batch), file_id, version))
-                            raise
-                        parsed = {"chunks": [], "partial": True, "reason": str(exc)}
-                    finally:
-                        diagnostics["extractions"]["count"] += 1
-                        diagnostics["extractions"]["ms"] += round((time.monotonic() - mark) * 1000)
-                    if retry_reason == "reprocess_low_quality":
-                        entry["reprocessed_in_run"] = True
-                    chunks = parsed.pop("chunks", [])
-                    case_records = parsed.pop("case_records", [])
-                    is_case_table = bool(parsed.get("structured_case_table"))
-                    # 판례표가 아닌 일반 스프레드시트라 하더라도 추후 문서 선별 시 캐시 재사용을 위해
-                    # chunks 및 parsed 메타데이터는 DB에 온전히 보존하여 저장한다 (TK-74 회귀 방지 보완).
-                    append_batch = bool(prior and parsed.get("resumed") and prior.get("sha256") == parsed.get("sha256")
-                                        and parsed.get("reason") != "REFERENCE_QUARANTINED")
-                    parsed["chunk_count"] = len(chunks) + (prior.get("chunk_count", 0) if append_batch else 0)
-                    parsed["cached_filename"] = filename
-                    parsed["cached_mime"] = mime
-                    _reconcile_unread_causes(parsed)
-                    if retry_reason == "legacy_unread_reeval" or (prior and prior.get("legacy_unread_reevaluated")):
-                        parsed["legacy_unread_reevaluated"] = True
-                    if retry_reason == "retryable_unread" and prior:
-                        prior_best = int(
-                            prior.get("best_read_pages")
-                            if prior.get("best_read_pages") is not None
-                            else (prior.get("read_pages") or 0)
-                        )
-                        cur_read = int(parsed.get("read_pages") or 0)
-                        if cur_read > prior_best:
-                            parsed["best_read_pages"] = cur_read
-                            parsed["retry_attempts"] = 0
+                                db.execute(
+                                    "UPDATE files SET payload=? WHERE id=? AND revision=?",
+                                    (json.dumps(preserved), file_id, version),
+                                )
+                            parsed = copy.deepcopy(preserved)
+                            _reconcile_unread_causes(parsed)
+                            entry["reprocess_failed"] = True
+                            entry["reprocess_failures"] = failures
+                            entry["last_reprocess_error"] = extract_fail_reason
                         else:
-                            parsed["best_read_pages"] = prior_best
-                            parsed["retry_attempts"] = int(prior.get("retry_attempts") or 0) + 1
-                    elif parsed.get("read_pages") is not None:
-                        prior_best = int(
-                            (prior or {}).get("best_read_pages")
-                            if (prior or {}).get("best_read_pages") is not None
-                            else ((prior or {}).get("read_pages") or 0)
-                        )
-                        parsed["best_read_pages"] = max(prior_best, int(parsed.get("read_pages") or 0))
-                    cur_searchable = parsed.get("searchable_pages")
-                    if cur_searchable is None:
-                        cur_searchable = len({int(c["page"]) for c in chunks if isinstance(c, dict) and c.get("page") is not None})
-                        parsed["searchable_pages"] = cur_searchable
-                    prior_for_searchable = prior or prior_any
-                    if prior_for_searchable:
-                        prev_searchable = prior_for_searchable.get("searchable_pages")
-                        if prev_searchable is None:
-                            prev_searchable = (
-                                prior_for_searchable.get("extracted_text_pages")
-                                if prior_for_searchable.get("extracted_text_pages") is not None
-                                else prior_for_searchable.get("read_pages")
-                            )
-                        if prev_searchable is not None:
-                            parsed["previous_searchable_pages"] = int(prev_searchable)
-                            parsed["searchable_pages_delta"] = int(cur_searchable) - int(prev_searchable)
-                    cur_low_set = _low_quality_page_set(parsed)
-                    if retry_reason in ("reprocess_low_quality", "legacy_unread_reeval") and prior_for_searchable:
-                        prev_low_set = _low_quality_page_set(prior_for_searchable)
-                        prev_low_pages = len(prev_low_set)
-                        cur_low_pages = len(cur_low_set)
-                        if prev_low_pages == 0 and retry_reason == "legacy_unread_reeval":
-                            prev_pages = int(prior_for_searchable.get("pages") or 0)
-                            prev_comp = prior_for_searchable.get("completed_pages")
-                            if prev_comp is None:
-                                prev_comp = prior_for_searchable.get("read_pages") or 0
-                            prev_gap = max(0, prev_pages - int(prev_comp))
-                            parsed["low_quality_pages_before"] = prev_low_pages
-                            parsed["low_quality_pages_after"] = cur_low_pages
-                            parsed["reprocessed_pages"] = prev_gap
-                            parsed["recovered_pages"] = max(0, int(parsed.get("searchable_pages_delta") or 0))
-                        else:
-                            parsed["low_quality_pages_before"] = prev_low_pages
-                            parsed["low_quality_pages_after"] = cur_low_pages
-                            parsed["reprocessed_pages"] = prev_low_pages
-                            parsed["recovered_pages"] = max(0, prev_low_pages - cur_low_pages)
-                    if (auto_reprocess and cur_low_set) or retry_reason == "reprocess_low_quality":
-                        parsed["low_quality_reprocess_version"] = OCR_REPROCESS_VERSION
-                    if parsed.get("confirmed_unreadable_pages"):
-                        base_attempts = int((prior or {}).get("unreadable_confirm_attempts") or 0)
-                        if retry_reason == "reprocess_low_quality" and prior:
-                            base_attempts = max(1, base_attempts)
-                        attempts = base_attempts + 1
-                        parsed["unreadable_confirm_attempts"] = attempts
-                        if (
-                            retry_reason in ("confirm_unreadable", "reprocess_low_quality")
-                            and prior
-                            and sorted(parsed.get("confirmed_unreadable_pages") or []) == sorted(prior.get("confirmed_unreadable_pages") or [])
-                        ) or attempts >= 2:
-                            parsed["unreadable_confirmed"] = True
-                        elif parsed.get("unreadable_confirmed") is not True:
-                            parsed["unreadable_confirmed"] = False
-                    if parsed.get("continuation"):
-                        limit_bytes = max(0, int(getattr(self, "max_raw_cache_bytes", MAX_RAW_CACHE_BYTES)))
-                        if len(data) <= limit_bytes:
-                            cache_dir.mkdir(parents=True, exist_ok=True)
-                            try:
-                                os.chmod(cache_dir, 0o700)
-                            except OSError:
-                                pass
-                            cache_path.write_bytes(data)
-                            try:
-                                os.chmod(cache_path, 0o600)
-                            except OSError:
-                                pass
-                            _enforce_raw_cache_limit(protect_path=cache_path)
-                    else:
-                        _delete_raw_cache(file_id)
-                    # Cache terminal parse outcomes, too; a large unreadable file must not starve later files.
-                    with db:
-                        if not append_batch:
-                            db.execute("DELETE FROM chunks WHERE file_id=?", (file_id,))
-                            db.execute("DELETE FROM case_rows WHERE file_id=?", (file_id,))
-                        db.execute("INSERT OR REPLACE INTO files VALUES (?,?,?)", (file_id, version, json.dumps(parsed)))
-                        db.executemany("INSERT INTO chunks VALUES (?,?,?,?,?,?)", [
-                            (file_id, version, c["page"], c["start"], c["text"], " ".join(tokens(c["text"]))) for c in chunks])
-                        if case_records:
-                            db.executemany("""INSERT OR REPLACE INTO case_rows
-                                (record_id,file_id,revision,sheet,row_number,source_cell_range,
-                                 original_number,title,case_info,court,decision_date,case_numbers,
-                                 target_case_numbers,referenced_case_numbers,issue,facts,reason,holding,
-                                 hyperlinks,quality_warnings,case_head,indexed_text,raw_cells) VALUES
-                                (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", [
-                                (r.get("record_id"), file_id, version, r.get("sheet"), r.get("row"),
-                                 r.get("source_cell_range"), r.get("original_number"), r.get("title"),
-                                 r.get("case_info"), r.get("court"), r.get("decision_date"),
-                                 json.dumps(r.get("case_numbers", []), ensure_ascii=False),
-                                 json.dumps(r.get("target_case_numbers", r.get("case_numbers", [])), ensure_ascii=False),
-                                 json.dumps(r.get("referenced_case_numbers", []), ensure_ascii=False), r.get("issue"),
-                                 r.get("facts"), r.get("reason"), r.get("holding"),
-                                 json.dumps(r.get("hyperlinks", []), ensure_ascii=False),
-                                 json.dumps(r.get("quality_warnings", []), ensure_ascii=False),
-                                 r.get("case_head"), r.get("indexed_text"),
-                                 json.dumps(r.get("raw_cells", {}), ensure_ascii=False)) for r in case_records])
+                            if retry_reason == "reprocess_low_quality" and extract_fail_reason is None:
+                                entry["reprocessed_in_run"] = True
+                            if retry_reason in _REPROCESS_RETRY_REASONS and extract_fail_reason is None:
+                                parsed["reprocess_failures"] = 0
+                                parsed.pop("last_reprocess_error", None)
+                                parsed.pop("reprocess_failures_version", None)
+                            chunks = parsed.pop("chunks", [])
+                            case_records = parsed.pop("case_records", [])
+                            is_case_table = bool(parsed.get("structured_case_table"))
+                            # 판례표가 아닌 일반 스프레드시트라 하더라도 추후 문서 선별 시 캐시 재사용을 위해
+                            # chunks 및 parsed 메타데이터는 DB에 온전히 보존하여 저장한다 (TK-74 회귀 방지 보완).
+                            append_batch = bool(prior and parsed.get("resumed") and prior.get("sha256") == parsed.get("sha256")
+                                                and parsed.get("reason") != "REFERENCE_QUARANTINED")
+                            parsed["chunk_count"] = len(chunks) + (prior.get("chunk_count", 0) if append_batch else 0)
+                            parsed["cached_filename"] = filename
+                            parsed["cached_mime"] = mime
+                            _reconcile_unread_causes(parsed)
+                            if retry_reason == "legacy_unread_reeval" or (prior and prior.get("legacy_unread_reevaluated")):
+                                parsed["legacy_unread_reevaluated"] = True
+                            if retry_reason == "retryable_unread" and prior:
+                                prior_best = int(
+                                    prior.get("best_read_pages")
+                                    if prior.get("best_read_pages") is not None
+                                    else (prior.get("read_pages") or 0)
+                                )
+                                cur_read = int(parsed.get("read_pages") or 0)
+                                if cur_read > prior_best:
+                                    parsed["best_read_pages"] = cur_read
+                                    parsed["retry_attempts"] = 0
+                                else:
+                                    parsed["best_read_pages"] = prior_best
+                                    parsed["retry_attempts"] = int(prior.get("retry_attempts") or 0) + 1
+                            elif parsed.get("read_pages") is not None:
+                                prior_best = int(
+                                    (prior or {}).get("best_read_pages")
+                                    if (prior or {}).get("best_read_pages") is not None
+                                    else ((prior or {}).get("read_pages") or 0)
+                                )
+                                parsed["best_read_pages"] = max(prior_best, int(parsed.get("read_pages") or 0))
+                            cur_searchable = parsed.get("searchable_pages")
+                            if cur_searchable is None:
+                                cur_searchable = len({int(c["page"]) for c in chunks if isinstance(c, dict) and c.get("page") is not None})
+                                parsed["searchable_pages"] = cur_searchable
+                            prior_for_searchable = prior or prior_any
+                            if prior_for_searchable:
+                                prev_searchable = prior_for_searchable.get("searchable_pages")
+                                if prev_searchable is None:
+                                    prev_searchable = (
+                                        prior_for_searchable.get("extracted_text_pages")
+                                        if prior_for_searchable.get("extracted_text_pages") is not None
+                                        else prior_for_searchable.get("read_pages")
+                                    )
+                                if (
+                                    retry_reason == "restore_failed_extract"
+                                    and extract_fail_reason is not None
+                                    and int(prev_searchable or 0) == 0
+                                    and int(prior_for_searchable.get("previous_searchable_pages") or 0) > 0
+                                ):
+                                    # 손상 파일 복원 실패 시 원래의 previous_searchable_pages 표식을 덮어쓰지 않는다.
+                                    prev_searchable = int(prior_for_searchable["previous_searchable_pages"])
+                                if prev_searchable is not None:
+                                    parsed["previous_searchable_pages"] = int(prev_searchable)
+                                    parsed["searchable_pages_delta"] = int(cur_searchable) - int(prev_searchable)
+                            cur_low_set = _low_quality_page_set(parsed)
+                            if (
+                                extract_fail_reason is None
+                                and retry_reason in ("reprocess_low_quality", "legacy_unread_reeval")
+                                and prior_for_searchable
+                            ):
+                                prev_low_set = _low_quality_page_set(prior_for_searchable)
+                                prev_low_pages = len(prev_low_set)
+                                cur_low_pages = len(cur_low_set)
+                                if prev_low_pages == 0 and retry_reason == "legacy_unread_reeval":
+                                    prev_pages = int(prior_for_searchable.get("pages") or 0)
+                                    prev_comp = prior_for_searchable.get("completed_pages")
+                                    if prev_comp is None:
+                                        prev_comp = prior_for_searchable.get("read_pages") or 0
+                                    prev_gap = max(0, prev_pages - int(prev_comp))
+                                    parsed["low_quality_pages_before"] = prev_low_pages
+                                    parsed["low_quality_pages_after"] = cur_low_pages
+                                    parsed["reprocessed_pages"] = prev_gap
+                                    parsed["recovered_pages"] = max(0, int(parsed.get("searchable_pages_delta") or 0))
+                                else:
+                                    parsed["low_quality_pages_before"] = prev_low_pages
+                                    parsed["low_quality_pages_after"] = cur_low_pages
+                                    parsed["reprocessed_pages"] = prev_low_pages
+                                    parsed["recovered_pages"] = max(0, prev_low_pages - cur_low_pages)
+                            if retry_reason == "restore_failed_extract":
+                                if extract_fail_reason is not None:
+                                    restore_attempts = int((prior or {}).get("restore_attempts") or 0) + 1
+                                    parsed["restore_attempts"] = restore_attempts
+                                    parsed["last_restore_error"] = extract_fail_reason
+                                    parsed["recovered_pages"] = 0
+                                    entry["restore_failed"] = True
+                                    entry["restore_attempts"] = restore_attempts
+                                else:
+                                    # TK-247 ④: 1차 OCR로 손상 복원에 성공하면 판 기록을 비워 다음 실행에서 폴백 재처리를 보존 규칙 아래 시도하게 한다.
+                                    parsed.pop("low_quality_reprocess_version", None)
+                                    parsed.pop("restore_attempts", None)
+                                    parsed.pop("last_restore_error", None)
+                                    parsed["reprocess_failures"] = 0
+                                    parsed.pop("last_reprocess_error", None)
+                                    parsed.pop("reprocess_failures_version", None)
+                                    parsed["restored_from_failed_extract"] = True
+                                    entry["restored_in_run"] = True
+                            elif extract_fail_reason is None and (
+                                (auto_reprocess and effective_ocr_fb_cfg.get("enabled") and cur_low_set)
+                                or retry_reason == "reprocess_low_quality"
+                            ):
+                                parsed["low_quality_reprocess_version"] = OCR_REPROCESS_VERSION
+                            if parsed.get("confirmed_unreadable_pages"):
+                                base_attempts = int((prior or {}).get("unreadable_confirm_attempts") or 0)
+                                if retry_reason in ("reprocess_low_quality", "restore_failed_extract") and prior:
+                                    base_attempts = max(1, base_attempts)
+                                attempts = base_attempts + 1
+                                parsed["unreadable_confirm_attempts"] = attempts
+                                if (
+                                    retry_reason in ("confirm_unreadable", "reprocess_low_quality")
+                                    and prior
+                                    and sorted(parsed.get("confirmed_unreadable_pages") or []) == sorted(prior.get("confirmed_unreadable_pages") or [])
+                                ) or attempts >= 2:
+                                    parsed["unreadable_confirmed"] = True
+                                elif parsed.get("unreadable_confirmed") is not True:
+                                    parsed["unreadable_confirmed"] = False
+                            if parsed.get("continuation"):
+                                limit_bytes = max(0, int(getattr(self, "max_raw_cache_bytes", MAX_RAW_CACHE_BYTES)))
+                                if len(data) <= limit_bytes:
+                                    cache_dir.mkdir(parents=True, exist_ok=True)
+                                    try:
+                                        os.chmod(cache_dir, 0o700)
+                                    except OSError:
+                                        pass
+                                    cache_path.write_bytes(data)
+                                    try:
+                                        os.chmod(cache_path, 0o600)
+                                    except OSError:
+                                        pass
+                                    _enforce_raw_cache_limit(protect_path=cache_path)
+                            else:
+                                _delete_raw_cache(file_id)
+                            # Cache terminal parse outcomes, too; a large unreadable file must not starve later files.
+                            with db:
+                                if not append_batch:
+                                    db.execute("DELETE FROM chunks WHERE file_id=?", (file_id,))
+                                    db.execute("DELETE FROM case_rows WHERE file_id=?", (file_id,))
+                                db.execute("INSERT OR REPLACE INTO files VALUES (?,?,?)", (file_id, version, json.dumps(parsed)))
+                                db.executemany("INSERT INTO chunks VALUES (?,?,?,?,?,?)", [
+                                    (file_id, version, c["page"], c["start"], c["text"], " ".join(tokens(c["text"]))) for c in chunks])
+                                if case_records:
+                                    db.executemany("""INSERT OR REPLACE INTO case_rows
+                                        (record_id,file_id,revision,sheet,row_number,source_cell_range,
+                                         original_number,title,case_info,court,decision_date,case_numbers,
+                                         target_case_numbers,referenced_case_numbers,issue,facts,reason,holding,
+                                         hyperlinks,quality_warnings,case_head,indexed_text,raw_cells) VALUES
+                                        (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", [
+                                        (r.get("record_id"), file_id, version, r.get("sheet"), r.get("row"),
+                                         r.get("source_cell_range"), r.get("original_number"), r.get("title"),
+                                         r.get("case_info"), r.get("court"), r.get("decision_date"),
+                                         json.dumps(r.get("case_numbers", []), ensure_ascii=False),
+                                         json.dumps(r.get("target_case_numbers", r.get("case_numbers", [])), ensure_ascii=False),
+                                         json.dumps(r.get("referenced_case_numbers", []), ensure_ascii=False), r.get("issue"),
+                                         r.get("facts"), r.get("reason"), r.get("holding"),
+                                         json.dumps(r.get("hyperlinks", []), ensure_ascii=False),
+                                         json.dumps(r.get("quality_warnings", []), ensure_ascii=False),
+                                         r.get("case_head"), r.get("indexed_text"),
+                                         json.dumps(r.get("raw_cells", {}), ensure_ascii=False)) for r in case_records])
                 is_case_table = bool(parsed.get("structured_case_table"))
                 raw_reason = parsed.get("reason") or ""
                 has_continuation = bool(parsed.get("continuation"))
@@ -1260,13 +1514,15 @@ class ReferenceLibrary:
                             "unread_pages", "unread_pages_by_cause", "unread_cause_counts", "execution_incomplete_pages", "content_unreadable_pages",
                             "retryable_unread_pages", "config_blocked_pages", "confirmed_unreadable_pages",
                             "confirmed_unreadable_causes", "native_open_error", "read_completeness",
+                            "last_reprocess_error", "last_restore_error",
                             "stats", "read_ranges", "excluded_rows", "table_version"):
                     if parsed.get(key):
                         entry[key] = parsed[key]
                 for count_key in ("extracted_text_pages", "completed_pages", "best_read_pages",
                                   "searchable_pages", "previous_searchable_pages", "searchable_pages_delta",
                                   "low_quality_pages_before", "low_quality_pages_after",
-                                  "reprocessed_pages", "recovered_pages"):
+                                  "reprocessed_pages", "recovered_pages",
+                                  "reprocess_failures", "restore_attempts"):
                     if count_key in parsed and parsed[count_key] is not None:
                         entry[count_key] = parsed[count_key]
                 if parsed.get("structured_case_table"):
