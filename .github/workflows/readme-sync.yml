@@ -1,11 +1,11 @@
-name: README 변경표 갱신
+name: README 변경표·성능 추이 자동 갱신
 
-# 푸시될 때마다 README의 '버전별 변경 내역'(릴리스 계열 요약)과 docs/RELEASE_HISTORY.md(버전별 상세)를 docs/releases.json과 프로그램 버전에 맞춘다.
-# 버전을 올렸는데 기록이 없으면 마지막 커밋 제목으로 항목을 채운다. 바뀐 것이 있을 때만 커밋한다.
+# main(릴리스)·Steve_ACASiaLAW(통합) 푸시마다 성능 추이 그래프(docs/assets/performance_trend.png),
+# README(프로그램 버전·탭·모델·최근 변경·벤치마크 설명), docs/RELEASE_HISTORY.md를 자동 갱신한다.
+# 바뀐 것이 있을 때만 [skip ci]로 커밋한다.
 on:
   push:
-    branches: ["main", "claude/**"]
-    paths-ignore: ["README.md", "docs/releases.json", "docs/RELEASE_HISTORY.md"]
+    branches: ["main", "Steve_ACASiaLAW", "claude/**"]
   workflow_dispatch:
 
 permissions:
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   sync:
-    name: README 버전별 변경표 갱신
+    name: README 및 성능 추이 자동 갱신
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -27,16 +27,23 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - name: 변경표 생성
-        run: python scripts/update_readme.py
+      - name: 성능 그래프 렌더러 준비
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk >/dev/null
+          python -m pip install --quiet matplotlib
+      - name: 성능 추이 그래프 및 README·이력 생성
+        run: |
+          python scripts/render_performance_chart.py
+          python scripts/update_readme.py
       - name: 바뀐 경우에만 커밋
         run: |
-          if git diff --quiet -- README.md docs/releases.json docs/RELEASE_HISTORY.md && [ -z "$(git ls-files --others --exclude-standard docs/RELEASE_HISTORY.md)" ]; then
-            echo "README가 이미 최신입니다."
+          if git diff --quiet -- README.md docs/releases.json docs/RELEASE_HISTORY.md docs/assets/performance_trend.png && [ -z "$(git ls-files --others --exclude-standard docs/RELEASE_HISTORY.md docs/assets/performance_trend.png)" ]; then
+            echo "README와 성능 추이가 이미 최신입니다."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md docs/releases.json docs/RELEASE_HISTORY.md
-          git commit -m "docs: README 버전별 변경표 자동 갱신 [skip ci]"
+          git add README.md docs/releases.json docs/RELEASE_HISTORY.md docs/assets/performance_trend.png
+          git commit -m "docs: README 프로그램 정보 및 성능 추이 자동 갱신 [skip ci]"
           git push origin "HEAD:${GITHUB_REF_NAME}"
