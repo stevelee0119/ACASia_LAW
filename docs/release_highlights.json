@@ -1,4 +1,9 @@
 {
+  "0.30.1": [
+    "Fixed: page_quality() 공백 제거 글자 수(chars) 기록 및 hangul_ok 기반 신뢰도 우선 OCR 변형 선택·deciding_key 관측(TK-243·TK-244 #445)",
+    "Fixed: Drive 저품질 재처리 하위 프로세스 OCR 폴백 환경 전파·합집합 복구 집계·child_ocr_config 관측(TK-245 #446)",
+    "평가·미측정: dev 89.7 · holdout 87.5 · 은퇴 5세트 평균 58.00(합산 RER 0.0%, 오탐 0, 필수 CI 전수 통과), 온라인 재측정 및 격리 봉인은 배포 후 시행"
+  ],
   "0.30": [
     "Added: 참고자료 대조 INTERNAL_REFERENCE_CONTRADICTION 전용 유형(98개 매핑)·advisory_only=True·주장당 1건 병합(공백 정규화 재매칭, TK-241 #435)",
     "Fixed: 상대방 전언 인용 귀속 어간+어미·반박 조건부 원용류 A등급 오탐 방지(TK-240 #434)",
