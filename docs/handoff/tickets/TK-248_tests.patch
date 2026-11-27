@@ -1,0 +1,143 @@
+diff --git a/tests/unit/test_0280_task4_4d_contract.py b/tests/unit/test_0280_task4_4d_contract.py
+index 11a53b05..223ca241 100644
+--- a/tests/unit/test_0280_task4_4d_contract.py
++++ b/tests/unit/test_0280_task4_4d_contract.py
+@@ -33,6 +33,7 @@ def _sample_doc_result() -> DocumentResult:
+                 "page": 2,
+                 "span": [80, 140],
+                 "status": "VERIFIED",
++                "citation_ids": ["CIT_1"],
+             },
+             {
+                 "claim_id": "CL_2",
+@@ -40,6 +41,7 @@ def _sample_doc_result() -> DocumentResult:
+                 "page": 4,
+                 "span": [200, 250],
+                 "status": "CONTRADICTED",
++                "citation_ids": ["CIT_2"],
+             },
+         ],
+         engine_data={
+@@ -48,6 +50,9 @@ def _sample_doc_result() -> DocumentResult:
+                     "citation_id": "CIT_1",
+                     "status": "VERIFIED",
+                     "levels": {"level1": "VERIFIED", "level3": "CONTRADICTED"},
++                    "review": {"quote_span": {"field": "full_text+holding+summary", "normalization": "normalize_quote",
++                                              "start": 300, "end": 312, "similarity": 1.0}},
++                    "reference_date": "2024-01-01",
+                     "source_lookup": {"source": "law_go_kr", "status": "READY", "matched_count": 1, "cause": "MATCHED"},
+                     "findings": [],
+                 },
+@@ -59,9 +64,12 @@ def _sample_doc_result() -> DocumentResult:
+                     "findings": [],
+                 },
+             ],
++            # TK-248: 생산 함수(source_review.case_applicability_review)와 같은 꼴. 결론은 applies_to_case로만 표시된다.
+             "case_applicability_reviews": [
+-                {"verdict": "VERIFIED"},
+-                {"verdict": "CONTRADICTED"},
++                {"citation_id": "CIT_1", "status": "REVIEW_NEEDED", "applies_to_case": True,
++                 "source_record_ids": ["SR_1"], "sections": {"rules": [{"excerpt": "e", "span": [40, 60]}]}},
++                {"citation_id": "CIT_2", "status": "REVIEW_NEEDED", "applies_to_case": False,
++                 "source_record_ids": [], "sections": {}},
+             ],
+         },
+     )
+@@ -76,21 +84,35 @@ def test_4d_contract_positives():
+     assert len(dims["identity"]) == 2
+     assert len(dims["quote"]) == 1  # only CIT_1 has quoted_text
+ 
+-    # Pos 2: claim_applicability maps to SUPPORTS / CONTRADICTS with evidence_spans
++    # Pos 2 (TK-248): 주장 판정은 사건 적용성 검토의 명시적 결론(applies_to_case)에서만 온다.
+     judgments = [c["judgment"] for c in dims["claim_applicability"]]
+     assert judgments == ["SUPPORTS", "CONTRADICTS"]
+-    assert dims["claim_applicability"][0]["evidence_spans"][0] == {
++    assert [c["judgment_basis"] for c in dims["claim_applicability"]] == ["APPLICABILITY_REVIEW"] * 2
++    # 근거 구간은 공식 원문 좌표(적용성 검토가 고정한 발췌)이고, 서면 위치는 submitted_span에 따로 둔다.
++    assert dims["claim_applicability"][0]["evidence_spans"] == [
++        {"citation_id": "CIT_1", "section": "rules", "span": [40, 60], "length": 20, "source_record_ids": ["SR_1"]}
++    ]
++    assert dims["claim_applicability"][1]["evidence_spans"] == []
++    assert dims["claim_applicability"][0]["submitted_span"] == {
+         "document_id": "doc_4d_1",
+         "page": 2,
+         "span": [80, 140],
+         "length": 60,
+     }
++    assert dims["claim_applicability"][0]["citation_identity"] == [{"citation_id": "CIT_1", "status": "VERIFIED"}]
++    assert dims["claim_applicability"][0]["as_of"] == "2024-01-01"
+ 
+     # Pos 3: source_retrieval carries source_name, status, matched_count, cause, official_span
+     assert dims["source_retrieval"][0]["source_name"] == "law_go_kr"
+     assert dims["source_retrieval"][0]["matched_count"] == 1
+     assert dims["source_retrieval"][0]["cause"] == "MATCHED"
+-    assert dims["source_retrieval"][0]["official_span"]["length"] == 25
++    # TK-248: official_span은 공식 원문 좌표만 담는다. 서면 위치는 submitted_span.
++    assert dims["source_retrieval"][0]["official_span"] == {
++        "field": "full_text+holding+summary", "normalization": "normalize_quote", "start": 300, "end": 312, "similarity": 1.0}
++    assert dims["source_retrieval"][0]["official_span_status"] == "AVAILABLE"
++    assert dims["source_retrieval"][0]["submitted_span"]["length"] == 25
++    assert dims["source_retrieval"][1]["official_span"] is None
++    assert dims["source_retrieval"][1]["official_span_status"] == "NOT_AVAILABLE"
+ 
+ 
+ def test_4d_contract_controls_and_pii_masking():
+@@ -115,3 +137,36 @@ def test_4d_contract_controls_and_pii_masking():
+         doc_sha256="000",
+     )
+     assert unk["claim_applicability"][0]["judgment"] == "INSUFFICIENT"
++
++
++def test_tk248_existence_is_not_claim_support():
++    """TK-248 대조: 인용 존재·주장 상태·순번만으로는 SUPPORTS/CONTRADICTS가 나오지 않는다."""
++    cits = [{"citation_id": "C1", "raw_text": "판례", "page": 1, "span": [0, 4]},
++            {"citation_id": "C2", "raw_text": "판례2", "page": 1, "span": [5, 9]}]
++    verdicts = [{"citation_id": "C1", "status": "VERIFIED", "levels": {"level1": "VERIFIED"}},
++                {"citation_id": "C2", "status": "NOT_FOUND", "levels": {"level1": "NOT_FOUND"}}]
++    # Ctrl A: 존재 확인 + 적용성 미정(운영 꼴) -> INSUFFICIENT
++    # Ctrl B: 존재 없음 -> CONTRADICTS 아님
++    # Ctrl C: 주장 자체 status VERIFIED만 -> SUPPORTS 아님
++    # Ctrl D: 적용성 결과가 다른 인용 것이면 순번이 같아도 쓰지 않는다
++    res = DocumentResult(document_id="d", filename="d.pdf", citations=cits, claims=[
++        {"claim_id": "A", "text": "a", "citation_ids": ["C1"]},
++        {"claim_id": "B", "text": "b", "citation_ids": ["C2"]},
++        {"claim_id": "C", "text": "c", "status": "VERIFIED"},
++    ], engine_data={"legal_verdicts": verdicts, "case_applicability_reviews": [
++        {"citation_id": "C9", "status": "REVIEW_NEEDED", "applies_to_case": True},
++        {"citation_id": "C1", "status": "REVIEW_NEEDED", "applies_to_case": None},
++    ]})
++    rows = {c["claim_id"]: c for c in build_evaluation_dimensions(res, doc_sha256="x")["claim_applicability"]}
++    assert {k: v["judgment"] for k, v in rows.items()} == {"A": "INSUFFICIENT", "B": "INSUFFICIENT", "C": "INSUFFICIENT"}
++    assert rows["A"]["judgment_basis"] == "APPLICABILITY_NOT_DETERMINED"
++    assert rows["A"]["applicability_statuses"] == ["REVIEW_NEEDED"]
++    assert rows["B"]["judgment_basis"] == "NOT_ASSESSED"
++    assert rows["B"]["citation_identity"] == [{"citation_id": "C2", "status": "NOT_FOUND"}]
++    # Ctrl E: 같은 주장에 적용·비적용이 함께 있으면 INSUFFICIENT(충돌)
++    res2 = DocumentResult(document_id="d", filename="d.pdf", citations=cits,
++                          claims=[{"claim_id": "K", "text": "k", "citation_ids": ["C1", "C2"]}],
++                          engine_data={"legal_verdicts": verdicts, "case_applicability_reviews": [
++                              {"citation_id": "C1", "applies_to_case": True}, {"citation_id": "C2", "applies_to_case": False}]})
++    k = build_evaluation_dimensions(res2, doc_sha256="x")["claim_applicability"][0]
++    assert (k["judgment"], k["judgment_basis"]) == ("INSUFFICIENT", "APPLICABILITY_CONFLICT")
+diff --git a/tests/unit/test_0290_fact_triples.py b/tests/unit/test_0290_fact_triples.py
+index 0fa9bc8b..9f994003 100644
+--- a/tests/unit/test_0290_fact_triples.py
++++ b/tests/unit/test_0290_fact_triples.py
+@@ -463,13 +463,15 @@ def test_online_evaluation_export_completeness_positives_and_controls():
+         assert set(dims.keys()) == {"identity", "quote", "claim_applicability", "source_retrieval"}
+         assert len(dims["identity"]) == 1 and dims["identity"][0]["status"] == "VERIFIED"
+         assert len(dims["quote"]) == 1 and dims["quote"][0]["status"] == "VERIFIED"
+-        assert len(dims["claim_applicability"]) == 1 and dims["claim_applicability"][0]["judgment"] == "SUPPORTS"
++        # TK-248: 법령 존재 확인(VERIFIED)과 주장 상태는 주장 지지가 아니다(적용성 검토 없음 -> INSUFFICIENT).
++        assert len(dims["claim_applicability"]) == 1 and dims["claim_applicability"][0]["judgment"] == "INSUFFICIENT"
++        assert dims["claim_applicability"][0]["judgment_basis"] == "NOT_ASSESSED"
+         assert len(dims["source_retrieval"]) == 1 and dims["source_retrieval"][0]["source_name"] == "law_go_kr"
+         ft = ed["fact_triples"]
+         assert ft["count"] >= 2 and ft["asserted_self_count"] >= 2 and "CONTRACT" in ft["stages"]
+ 
+     assert payload["documents"][1]["engine_data"]["fact_triples"]["count"] >= 2
+-    assert payload["documents"][2]["engine_data"]["evaluation_dimensions"]["claim_applicability"][0]["judgment"] == "CONTRADICTS"
++    assert payload["documents"][2]["engine_data"]["evaluation_dimensions"]["claim_applicability"][0]["judgment"] == "INSUFFICIENT"
+ 
+     # Control 1: Empty document with no citations/claims produces empty 4D lists and count=0 without errors
+     d_empty = DocumentResult(document_id="D_EMPTY", filename="empty.txt", normalized=_doc("단순 안내문입니다.", doc_id="D_EMPTY"))
