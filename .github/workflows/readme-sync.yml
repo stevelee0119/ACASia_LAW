@@ -73,5 +73,10 @@ jobs:
             gh pr edit "$EXISTING_PR" --title "$PR_TITLE" --body "$PR_BODY"
             echo "기존 봇 PR #${EXISTING_PR} 갱신 완료"
           else
-            gh pr create --base "$BASE_BRANCH" --head "$BOT_BRANCH" --title "$PR_TITLE" --body "$PR_BODY"
+            if ! CREATE_OUT=$(gh pr create --base "$BASE_BRANCH" --head "$BOT_BRANCH" --title "$PR_TITLE" --body "$PR_BODY" 2>&1); then
+              echo "$CREATE_OUT" >&2
+              echo "::error::봇 브랜치(${BOT_BRANCH}) 푸시는 완료됐으나 PR 생성이 거절됐습니다. Settings > Actions > General > Workflow permissions에서 'Allow GitHub Actions to create and approve pull requests'를 켜거나 secrets.README_SYNC_TOKEN을 설정하십시오."
+              exit 1
+            fi
+            echo "$CREATE_OUT"
           fi
