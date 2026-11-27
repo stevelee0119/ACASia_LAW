@@ -497,6 +497,19 @@ def extract(path, filename, mime, *, continuation=None):
     if ocr_fallback_per_page:
         from packages.document_engine.ocr import summarize_ocr_fallback_telemetry
         ocr_fallback_summary = summarize_ocr_fallback_telemetry(ocr_fallback_per_page)
+    from packages.document_engine import ocr as _ocr_mod
+
+    child_fb_cfg = _ocr_mod.resolve_ocr_fallback_config()
+    adapter_inst = _ocr_mod._adapter
+    if adapter_inst is None and child_fb_cfg["enabled"] and (mime == "application/pdf" or path.suffix.lower() == ".pdf"):
+        adapter_inst = _ocr_mod.get_ocr_adapter()
+    child_ocr_config = {
+        "fallback_engine": child_fb_cfg["engine"],
+        "fallback_mode": child_fb_cfg["mode"],
+        "fallback_enabled": bool(child_fb_cfg["enabled"]),
+        "adapter_type": type(adapter_inst).__name__ if adapter_inst is not None else None,
+        "fallback_adapter": getattr(getattr(adapter_inst, "fallback", None), "name", None) if adapter_inst is not None else None,
+    }
     searchable_pages = len({int(c["page"]) for c in chunks if c.get("page") is not None})
     return {"chunks": chunks, "sha256": digest, "partial": partial,
             "coverage_complete": coverage_complete,
@@ -518,6 +531,7 @@ def extract(path, filename, mime, *, continuation=None):
             "scanned_pages": scanned_pages,
             "ocr_pages": ocr_pages,
             "ocr_low_quality_pages": ocr_low_quality_pages,
+            "child_ocr_config": child_ocr_config,
             **({"ocr_fallback_summary": ocr_fallback_summary} if ocr_fallback_summary else {}),
             "error_pages": error_pages,
             "incomplete_pages": incomplete_pages,
