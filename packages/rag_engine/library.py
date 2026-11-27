@@ -622,8 +622,9 @@ class ReferenceLibrary:
             try:
                 next_token = client.get_start_page_token()
             except ReferenceError as exc:
-                if str(exc) not in ("DRIVE_HTTP_400", "DRIVE_HTTP_401", "DRIVE_HTTP_403", "DRIVE_HTTP_404", "INVALID_CHANGE_TOKEN"):
+                if str(exc) == "SYNC_BUDGET_EXHAUSTED":
                     raise
+                next_token = None
         diff = (
             self._compute_dataset_diff(prev_items, items)
             if snapshot is not None
