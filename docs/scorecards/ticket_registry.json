@@ -1040,10 +1040,10 @@
       "deployed_sha": "d9fa1e4b60e1f3c955d37de7441ff2a2ed549389"
     },
     "TK-248": {
-      "status": "open",
+      "status": "accepted",
       "priority": "P1",
       "kind": "defect",
-      "note": "2026-11-27 외부 평가(아스트라) 지적을 평가 측 코드 확인·재현(평가 SHA 05097e93). eval_contract.py가 적용성 결과의 verdict 키를 찾으나 생산 함수(source_review.py:814)는 status REVIEW_NEEDED·applies_to_case만 냄 → 인용 존재 상태가 주장 SUPPORTS/CONTRADICTS로 대체, 순번 짝짓기(:187), official_span·evidence_spans에 서면 위치(:155-160·:199-206), 기존 시험이 실제와 다른 꼴 가정. 0.30.2 운영 m1 기록 재계산 SUPPORTS 2·CONTRADICTS 3 → 수정 사본 0·0. 사용자 승인: '0.31.0 계획 승인', '248용 기존 시험 수정 승인'(TK-248_tests.patch f34899360786). 관련 시험 17개 파일 통과(환경 실패 4 제외). 릴리스: 0.31.0 통합(사용자 '추가 기능 보완 후 통합 시행'). / 개선 등급: 확인된 결함(운영 기록 재현)."
+      "note": "2026-11-27 외부 평가(아스트라) 지적을 평가 측 코드 확인·재현(평가 SHA 05097e93). eval_contract.py가 적용성 결과의 verdict 키를 찾으나 생산 함수(source_review.py:814)는 status REVIEW_NEEDED·applies_to_case만 냄 → 인용 존재 상태가 주장 SUPPORTS/CONTRADICTS로 대체, 순번 짝짓기(:187), official_span·evidence_spans에 서면 위치(:155-160·:199-206), 기존 시험이 실제와 다른 꼴 가정. 0.30.2 운영 m1 기록 재계산 SUPPORTS 2·CONTRADICTS 3 → 수정 사본 0·0. 사용자 승인: '0.31.0 계획 승인', '248용 기존 시험 수정 승인'(TK-248_tests.patch f34899360786). 관련 시험 17개 파일 통과(환경 실패 4 제외). 릴리스: 0.31.0 통합(사용자 '추가 기능 보완 후 통합 시행'). / 개선 등급: 확인된 결함(운영 기록 재현). / 2026-11-27 #459(d126cee5) 판정 수용(pr_459_verdict_20261127.md): 시험 패치 동일, 탐침 10종 사전 검증안과 같음, 운영 기록 5건 재계산 오판 0, 관련 시험 17개 파일 403 통과. citation_identity.status는 identity 차원과 같은 규칙(level1 우선)으로, 사전 검증안(종합 status)과 21곳 다르나 취지에 맞아 수용. 조건: CI 전수 통과."
     },
     "TK-250": {
       "status": "open",
