@@ -162,3 +162,18 @@ TK-206·208·209 구현 수용·병합 뒤 재배포하고, 2회차에서는 (�
 | Legal Evidence Graph (#366·#369·#374) | 근거 단절·요건 누락·서증 단절의 검토 목록, 같은 원인 중복 축소와 다른 위치·금액 결함 보존, 기존 경고·오탐 회귀 | `LV_EVIDENCE_GRAPH_MODE`(기본 default)와 문서별 그래프·Finding 식별자를 함께 기록. **NOT_RUN** |
 
 기존 `pipeline_health_online.json`, case9 정답·건강·RAG 대조 및 TK-180 입력 보호를 유지한다. 0.23.0 3회차 생략에서 이월된 TK-208 Drive READY, TK-216 H-ENGINE, 완독 스냅샷 23항목 비교, 미독 안내의 운영 화면, TK-218 목표 자료 후보 청크 집계를 함께 실행한다. 온라인·리플레이 결과와 102건 경고 라벨링, 법률 실무 정확도는 실제 측정 전까지 **NOT_MEASURED**다. 신규 기능이 포함됐으므로 `RELEASE_PROCEDURE` 2-7에 따라 배포 후 온라인 점검 대상이다.
+
+## #458 Drive 증분 데이터셋 동기화·식별자 색인 — 온라인 평가 계획 (2026-11-27, 배포 전, 미실행)
+- **사용자 원문:** "이 구현이 반영되었을 때를 고려해 drive 기능 관련 시험, 평가를 진행"(2026-11-27). 근거: [pr_458_verdict_20261127](pr_458_verdict_20261127.md).
+- **영향 경로:** `ReferenceLibrary.sync`(`_resolve_inventory`: 변경 토큰·묶음 목록·이름 변경 승계), `search_citation`(`chunk_identifiers`), `GET /api/settings/reference-dataset`, `POST /api/admin/reference-dataset/sync`.
+- **오프라인(평가 측, 저장소 밖):** 가짜 Drive REST와 축 조합 점검표 30칸. 기준 30/30, `5b8a55ce` 28/30(D1), 보완안 30/30.
+- **온라인 성공 조건:**
+  - 첫 실행: 토큰 저장, `READY` 41/41, 스냅샷 해시가 0.30.2와 같다.
+  - 둘째 실행: `CHANGES_UNCHANGED`, 다운로드 0, `reference_sync.seconds`가 2.2~4.2초 이하다.
+  - case9 표준 23/23·RAG 대조 5/5·건강 6/6 유지.
+- **온라인 대조(사용자 협조 필요):** 시험 파일 추가·이름 변경·삭제·권한 회수 뒤 다음 실행에서 반영되는지, 그리고 삭제·회수 파일 누출이 0인지 확인한다.
+- **회귀 보호:**
+  - TK-247 보존·복원
+  - `test_permission_and_listing_failures_never_fall_back_to_cache`
+  - TK-82 네트워크 오류 사유 기록
+- **미측정:** 공유 드라이브·서비스 계정 권한 회수 때 변경 API의 실제 보고, 운영 시간 절감, 관리자 동기화 API의 요청 시간 한도.
