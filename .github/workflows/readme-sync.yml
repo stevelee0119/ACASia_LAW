@@ -35,7 +35,7 @@ jobs:
       - name: 성능 그래프 고정 렌더러 준비
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq fonts-noto-cjk >/dev/null
+          sudo apt-get install -y -qq fonts-nanum >/dev/null
           python -m pip install --quiet "matplotlib==3.9.4" "pillow==11.1.0" "numpy==2.2.3"
       - name: 성능 추이 그래프 및 README·이력 생성
         run: |
@@ -68,7 +68,7 @@ jobs:
           git push --force origin "HEAD:refs/heads/${BOT_BRANCH}"
           EXISTING_PR=$(gh pr list --base "$BASE_BRANCH" --head "$BOT_BRANCH" --state open --json number --jq '.[0].number // empty')
           PR_TITLE="docs: README 프로그램 정보 및 성능 추이 자동 갱신 (${BASE_BRANCH})"
-          PR_BODY="워크플로(\`readme-sync.yml\`)가 고정 렌더 환경(\`ubuntu-24.04\`, \`Noto Sans CJK KR\`, \`matplotlib==3.9.4\`)에서 생성한 정본 갱신 PR입니다. 필수 CI 통과 후 병합합니다."
+          PR_BODY="워크플로(\`readme-sync.yml\`)가 고정 렌더 환경(\`ubuntu-24.04\`, \`NanumGothic\`, \`matplotlib==3.9.4\`)에서 생성한 정본 갱신 PR입니다. 필수 CI 통과 후 병합합니다."
           if [ -n "$EXISTING_PR" ]; then
             gh pr edit "$EXISTING_PR" --title "$PR_TITLE" --body "$PR_BODY"
             echo "기존 봇 PR #${EXISTING_PR} 갱신 완료"

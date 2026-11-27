@@ -5,7 +5,7 @@
 - 출력: docs/assets/performance_trend.png(README가 이 그림을 싣는다. 그림 아래 벤치마크 설명은
   scripts/update_readme.py가 같은 CSV에서 만든다).
 - 정본 규칙(TK-252): 로컬 OS·글꼴 차이로 인한 바이트 변동을 막기 위해 `.github/workflows/readme-sync.yml`이
-  고정 환경(ubuntu-24.04, Noto Sans CJK KR, matplotlib==3.9.4)에서 렌더한 PNG만 정본으로 삼는다.
+  고정 환경(ubuntu-24.04, fonts-nanum NanumGothic, matplotlib==3.9.4)에서 렌더한 PNG만 정본으로 삼는다.
   로컬에서 실행한 PNG 결과는 미리보기 전용이며 커밋하지 않는다.
 
 사용: python scripts/render_performance_chart.py [--canonical-ci]
@@ -23,8 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "docs" / "scorecards" / "version_performance.csv"
 RELEASES = ROOT / "docs" / "releases.json"
 OUT = ROOT / "docs" / "assets" / "performance_trend.png"
-CANONICAL_FONT = "Noto Sans CJK KR"
-KOREAN_FONTS = (CANONICAL_FONT, "NanumGothic", "NanumBarunGothic", "Malgun Gothic", "AppleGothic")
+CANONICAL_FONT = "NanumGothic"
+KOREAN_FONTS = (CANONICAL_FONT, "Noto Sans CJK KR", "NanumBarunGothic", "Malgun Gothic", "AppleGothic")
 
 
 def resolve_chart_font(installed: set[str], *, canonical_only: bool = False) -> str:
@@ -91,7 +91,7 @@ def select_milestone_rows(rows: list, release_dates: dict[str, date] | None = No
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--canonical-ci", action="store_true", help="고정 정본 글꼴(Noto Sans CJK KR)만 허용")
+    parser.add_argument("--canonical-ci", action="store_true", help="고정 정본 글꼴(NanumGothic)만 허용")
     parser.add_argument("--out", type=Path, default=None, help="출력 PNG 경로(기본: docs/assets/performance_trend.png)")
     args = parser.parse_args(argv)
     canonical_only = bool(args.canonical_ci or os.getenv("LV_CANONICAL_CHART") == "1")

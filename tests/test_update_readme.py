@@ -226,11 +226,11 @@ def _chart_module():
     return chart
 
 
-def test_tk252_pos1_canonical_ci_font_enforces_noto_sans_cjk_kr():
+def test_tk252_pos1_canonical_ci_font_enforces_nanum_gothic():
     chart = _chart_module()
     assert (
-        chart.resolve_chart_font({"Noto Sans CJK KR", "NanumGothic", "Malgun Gothic"}, canonical_only=True)
-        == "Noto Sans CJK KR"
+        chart.resolve_chart_font({"NanumGothic", "Malgun Gothic", "AppleGothic"}, canonical_only=True)
+        == "NanumGothic"
     )
 
 
@@ -238,8 +238,8 @@ def test_tk252_pos2_canonical_ci_fails_closed_without_canonical_font():
     import pytest
 
     chart = _chart_module()
-    with pytest.raises(SystemExit, match="정본 렌더 글꼴이 없습니다: Noto Sans CJK KR"):
-        chart.resolve_chart_font({"NanumGothic", "Malgun Gothic"}, canonical_only=True)
+    with pytest.raises(SystemExit, match="정본 렌더 글꼴이 없습니다: NanumGothic"):
+        chart.resolve_chart_font({"Malgun Gothic", "AppleGothic"}, canonical_only=True)
 
 
 def test_tk252_pos3_workflow_uses_bot_branch_and_pr_not_direct_protected_push():
@@ -249,6 +249,7 @@ def test_tk252_pos3_workflow_uses_bot_branch_and_pr_not_direct_protected_push():
     assert "contents: write" in workflow
     assert "pull-requests: write" in workflow
     assert "ubuntu-24.04" in workflow
+    assert "fonts-nanum" in workflow
     assert 'matplotlib==3.9.4' in workflow
     assert "--canonical-ci" in workflow
     assert 'BOT_BRANCH="bot/readme-sync"' in workflow
@@ -257,7 +258,7 @@ def test_tk252_pos3_workflow_uses_bot_branch_and_pr_not_direct_protected_push():
 
 def test_tk252_neg1_local_preview_mode_allows_fallback_korean_font():
     chart = _chart_module()
-    assert chart.resolve_chart_font({"NanumGothic"}, canonical_only=False) == "NanumGothic"
+    assert chart.resolve_chart_font({"Malgun Gothic"}, canonical_only=False) == "Malgun Gothic"
 
 
 def test_tk252_neg2_repeated_renders_produce_identical_png_bytes(tmp_path, monkeypatch):
