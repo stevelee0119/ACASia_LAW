@@ -1,8 +1,8 @@
 name: README 변경표·성능 추이 자동 갱신
 
-# main(릴리스)·Steve_ACASiaLAW(통합) 푸시마다 성능 추이 그래프(docs/assets/performance_trend.png),
-# README(프로그램 버전·탭·모델·최근 변경·벤치마크 설명), docs/RELEASE_HISTORY.md를 자동 갱신한다.
-# 바뀐 것이 있을 때만 [skip ci]로 커밋한다.
+# main(릴리스)·Steve_ACASiaLAW(통합) 푸시마다 고정 환경에서 성능 추이 그래프(docs/assets/performance_trend.png),
+# README(프로그램 버전·탭·모델·최근 변경·벤치마크 설명), docs/RELEASE_HISTORY.md를 생성한다.
+# 보호 브랜치(GH013)에 직접 푸시하지 않고, 변경이 있을 때만 고정 봇 브랜치(bot/readme-sync*)로 푸시해 PR을 열거나 갱신한다.
 on:
   push:
     branches: ["main", "Steve_ACASiaLAW", "claude/**"]
@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: readme-sync-${{ github.ref }}
@@ -18,32 +19,59 @@ concurrency:
 jobs:
   sync:
     name: README 및 성능 추이 자동 갱신
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
+    env:
+      PYTHONHASHSEED: "0"
+      LV_CANONICAL_CHART: "1"
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 2
+          token: ${{ secrets.README_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - name: 성능 그래프 렌더러 준비
+      - name: 성능 그래프 고정 렌더러 준비
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-noto-cjk >/dev/null
-          python -m pip install --quiet matplotlib
+          python -m pip install --quiet "matplotlib==3.9.4" "pillow==11.1.0" "numpy==2.2.3"
       - name: 성능 추이 그래프 및 README·이력 생성
         run: |
-          python scripts/render_performance_chart.py
+          python scripts/render_performance_chart.py --canonical-ci
           python scripts/update_readme.py
-      - name: 바뀐 경우에만 커밋
+      - name: 변경이 있으면 봇 브랜치 푸시 및 PR 생성·갱신
+        env:
+          GH_TOKEN: ${{ secrets.README_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           if git diff --quiet -- README.md docs/releases.json docs/RELEASE_HISTORY.md docs/assets/performance_trend.png && [ -z "$(git ls-files --others --exclude-standard docs/RELEASE_HISTORY.md docs/assets/performance_trend.png)" ]; then
             echo "README와 성능 추이가 이미 최신입니다."
             exit 0
           fi
+          BASE_BRANCH="${GITHUB_REF_NAME}"
+          if [ "$BASE_BRANCH" = "Steve_ACASiaLAW" ]; then
+            BOT_BRANCH="bot/readme-sync"
+          else
+            SAFE_BASE=$(echo "$BASE_BRANCH" | tr '/' '-')
+            BOT_BRANCH="bot/readme-sync-${SAFE_BASE}"
+          fi
+          if [[ "$BASE_BRANCH" == bot/readme-sync* ]]; then
+            echo "봇 동기화 브랜치 자체 실행이므로 PR 생성을 생략합니다."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BOT_BRANCH"
           git add README.md docs/releases.json docs/RELEASE_HISTORY.md docs/assets/performance_trend.png
-          git commit -m "docs: README 프로그램 정보 및 성능 추이 자동 갱신 [skip ci]"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git commit -m "docs: README 프로그램 정보 및 성능 추이 자동 갱신 (${BASE_BRANCH})" -m "Agent: implementer"
+          git push --force origin "HEAD:refs/heads/${BOT_BRANCH}"
+          EXISTING_PR=$(gh pr list --base "$BASE_BRANCH" --head "$BOT_BRANCH" --state open --json number --jq '.[0].number // empty')
+          PR_TITLE="docs: README 프로그램 정보 및 성능 추이 자동 갱신 (${BASE_BRANCH})"
+          PR_BODY="워크플로(\`readme-sync.yml\`)가 고정 렌더 환경(\`ubuntu-24.04\`, \`Noto Sans CJK KR\`, \`matplotlib==3.9.4\`)에서 생성한 정본 갱신 PR입니다. 필수 CI 통과 후 병합합니다."
+          if [ -n "$EXISTING_PR" ]; then
+            gh pr edit "$EXISTING_PR" --title "$PR_TITLE" --body "$PR_BODY"
+            echo "기존 봇 PR #${EXISTING_PR} 갱신 완료"
+          else
+            gh pr create --base "$BASE_BRANCH" --head "$BOT_BRANCH" --title "$PR_TITLE" --body "$PR_BODY"
+          fi

@@ -266,7 +266,8 @@ def updated_readme(releases: list) -> str:
     recent_section = f"\n\n{recent_block}" if recent_block else ""
     note = ("\n\n버전별 변경 내역은 [변경 이력](docs/RELEASE_HISTORY.md)에 있습니다(`docs/releases.json`에서 자동 생성). "
             "아래 그래프와 설명은 `python scripts/render_performance_chart.py`·`python scripts/update_readme.py`가 "
-            "`docs/scorecards/version_performance.csv`로 만듭니다.\n\n")
+            "`docs/scorecards/version_performance.csv`로 만듭니다"
+            "(그래프 PNG는 `readme-sync.yml` 워크플로 렌더본만 정본으로 삼으며 로컬 렌더 결과는 커밋하지 않습니다).\n\n")
     return f"{head}{START}{note}{render_performance(perf_rows)}{perf_gap_note}{recent_section}\n\n{END}{tail}"
 
 
