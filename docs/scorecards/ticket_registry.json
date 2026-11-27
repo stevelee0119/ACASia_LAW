@@ -1063,7 +1063,7 @@
       "status": "open",
       "priority": "P3",
       "kind": "request",
-      "note": "#460(README 자동 갱신)에서 구현 측이 평가 측에 요청: docs/scorecards/version_performance.csv에 v0.24~v0.30.2 동일 조건 재채점 행 추가. 평가 측 업무이며 시행 여부는 사용자 결정."
+      "note": "#460(README 자동 갱신)에서 구현 측이 평가 측에 요청: docs/scorecards/version_performance.csv에 v0.24~v0.30.2 동일 조건 재채점 행 추가. 평가 측 업무이며 시행 여부는 사용자 결정. / 2026-11-27 사용자 결정: 0.31.0부터. 0.31.0 후보 판정에서 기존 산식 열은 측정(89.7/87.5/58.00)했으나 365항목 엄격 재현율 채점기가 저장소에 없어 엄격 열 미측정 → 행 추가 방식 사용자 결정 대기."
     },
     "TK-252": {
       "status": "open",
