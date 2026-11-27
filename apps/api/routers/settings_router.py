@@ -4,12 +4,15 @@ API Key 값 자체는 어떤 응답에도 포함하지 않는다. 보유 여부�
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from packages.common.config import get_settings
 from packages.llm_router import LLMRouter
+from packages.rag_engine.library import ReferenceLibrary
+from packages.rag_engine.preindex import preindex_drive_library
 
 from ..schemas import ProviderOut, ProviderPatch
 from ..services import get_registry
@@ -18,6 +21,11 @@ from ..auth import current_user, require_admin
 from ..db import User
 
 router = APIRouter(tags=["settings"])
+
+
+class ReferenceDatasetSyncRequest(BaseModel):
+    max_rounds: int = Field(default=3, ge=1, le=20)
+    reprocess_low_quality: Optional[bool] = None
 
 
 @router.get("/settings/providers", response_model=List[ProviderOut])
@@ -60,6 +68,30 @@ def list_sources(user: User = Depends(current_user)) -> Dict[str, Any]:
         "adapters": [s.to_dict() for s in registry.states()],
         "local_mirror_available": registry.mirror.available,
         "notice": "Key 미설정·장애 Source는 전체 검증을 중단시키지 않고 해당 항목만 UNVERIFIED로 표시한다.",
+    }
+
+
+@router.get("/settings/reference-dataset")
+def reference_dataset_status(user: User = Depends(current_user)) -> Dict[str, Any]:
+    settings = get_settings()
+    return ReferenceLibrary(settings).dataset_status()
+
+
+@router.post("/admin/reference-dataset/sync")
+def sync_reference_dataset(
+    payload: Optional[ReferenceDatasetSyncRequest] = None,
+    admin: User = Depends(require_admin),
+) -> Dict[str, Any]:
+    settings = get_settings()
+    req = payload or ReferenceDatasetSyncRequest()
+    report = preindex_drive_library(
+        settings,
+        max_rounds=req.max_rounds,
+        reprocess_low_quality=req.reprocess_low_quality,
+    )
+    return {
+        "report": report.to_dict(),
+        "dataset": ReferenceLibrary(settings).dataset_status(),
     }
 
 
