@@ -649,7 +649,13 @@ class PdfParser(DocumentParser):
                                                 timeout=2 * max(1.0, settings.ocr_timeout_seconds))
             engine_error = getattr(adapter, "last_error", None) if not lines else None
             quality = page_quality(lines)
-            if raster.page_number in missing_pages and (quality["low_quality"] or not lines):
+            route_info = getattr(adapter, "last_route", None)
+            unassessed_fallback = bool(
+                isinstance(route_info, dict)
+                and route_info.get("fallback_adopted")
+                and not quality.get("hangul_assessed")
+            )
+            if raster.page_number in missing_pages and (quality["low_quality"] or not lines or unassessed_fallback):
                 # 돌려 스캔한 쪽: OSD로 방향을 찾고, 못 찾으면 90·180·270도를 모두 읽어 품질이 가장 좋은 쪽을 쓴다(v4 P8)
                 rotated = _reoriented(adapter, raster, quality)
                 if rotated is not None:
@@ -937,15 +943,21 @@ def parser_disagreement(raw: bytes, page_texts: Dict[int, str], *, max_pages: in
 
 
 def _quality_key(quality: Dict[str, Any]):
-    return (not quality["low_quality"], quality.get("hangul_ratio") or 0.0, quality["confidence"], quality["lines"])
+    from .ocr import _quality_rank
+
+    return _quality_rank(quality)
 
 
 def _reoriented(adapter, raster, quality):
     """방향을 바로잡아 다시 읽은 결과 (lines, quality, 각도). 나아지지 않으면 None. 좌표(bbox)는 돌린 이미지 기준이다."""
+    from copy import deepcopy
+
+    initial_route = deepcopy(getattr(adapter, "last_route", None)) if hasattr(adapter, "last_route") else None
     detect = getattr(adapter, "detect_rotation", None)
     angle = detect(raster.image) if detect else None
     candidates = [angle] if angle else [90, 180, 270]
     best = None
+    best_route = None
     for candidate in candidates:
         # OSD의 rotate는 시계 방향 각도다. PIL rotate는 반시계 방향이므로 음수로 돌린다.
         image = raster.image.rotate(-candidate, expand=True)
@@ -953,8 +965,13 @@ def _reoriented(adapter, raster, quality):
         found = page_quality(lines)
         if best is None or _quality_key(found) > _quality_key(best[1]):
             best = (lines, found, candidate)
+            best_route = deepcopy(getattr(adapter, "last_route", None)) if hasattr(adapter, "last_route") else None
     if best is None or _quality_key(best[1]) <= _quality_key(quality):
+        if initial_route is not None:
+            adapter.last_route = initial_route
         return None
+    if best_route is not None:
+        adapter.last_route = best_route
     return best
 
 

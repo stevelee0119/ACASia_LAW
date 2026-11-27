@@ -243,6 +243,7 @@ def next_gen_feature_diagnostics(settings: Any = None) -> Dict[str, Any]:
             "actual_calls": 0,
             "available": ocr_available,
             "fallback_reason": ocr_reason,
+            **({"use_cls": False} if ocr_engine == "rapidocr" else {}),
         },
         "source_cassette": {
             "mode": cassette_mode,
