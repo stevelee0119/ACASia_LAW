@@ -522,3 +522,220 @@ def test_ctrl4_modified_extract_failure_preserves_prior_verified_index(tmp_path)
     hits = lib2.search_citation({"case_number": "2022다99999", "raw_text": "2022다99999"})
     assert len(hits) == 1
 
+
+def test_tk250_pos1_delete_right_after_inventory_captured_by_pre_listing_token(tmp_path):
+    """전체 재조회가 일어나는 실행에서 목록 응답 직후 이미 색인된 파일이 영구 삭제돼도 다음 두 실행에서 본문·인용 검색 모두 0건이 된다."""
+    settings = _make_settings(tmp_path)
+    doc = "대법원 2024다12345 판결 핵심 법리 손해배상 책임 인정.".encode("utf-8")
+
+    class _RaceDeleteDrive(_MockChangesDrive):
+        def __init__(self):
+            super().__init__()
+            self.token_counter = 0
+            self.changes_by_token: dict[str, list[dict]] = {}
+            self.issued_tokens: list[str] = []
+            self.trigger_relist_race = False
+
+        def get_start_page_token(self) -> str:
+            self.token_counter += 1
+            tok = f"tok_{self.token_counter}"
+            self.issued_tokens.append(tok)
+            return tok
+
+        def inventory(self, folder_id: str, max_files: int = 1000) -> list[dict]:
+            result = super().inventory(folder_id, max_files=max_files)
+            # 2회차(폴더 변경으로 인한 전체 재조회)에서 목록 응답 직후 이미 색인된 파일이 영구 삭제됨:
+            # 목록 전 토큰(tok_2)에는 삭제 이력이 남지만, 목록 후 토큰(tok_3)에는 남지 않는 레이스 재현
+            if self.trigger_relist_race:
+                self.trigger_relist_race = False
+                self.changes_by_token["tok_2"] = [{"fileId": "file_race_del_111", "removed": True}]
+                self.items = []
+            return result
+
+        def list_changes(self, page_token: str, *, max_changes: int = 500):
+            self.changes_calls += 1
+            if self.trigger_relist_race:
+                # 폴더 변경으로 전체 재조회를 유발
+                return [{"fileId": self.root_id, "removed": False, "file": {"id": self.root_id, "mimeType": FOLDER}}], "tok_ignored", False
+            return list(self.changes_by_token.get(page_token, [])), "tok_after", False
+
+    drive = _RaceDeleteDrive()
+    drive.items = [_item("file_race_del_111", "삭제레이스.txt", data=doc)]
+    drive.contents = {"file_race_del_111": doc}
+
+    # 1회차: 정상 색인
+    lib1 = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+    assert lib1.sync(collect_all=True)["status"] == "READY"
+    assert len(lib1.search_citation({"case_number": "2024다12345", "raw_text": "2024다12345"})) == 1
+
+    # 2회차: 전체 재조회 직후 파일 영구 삭제
+    drive.trigger_relist_race = True
+    lib2 = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+    assert lib2.sync(collect_all=True)["status"] == "READY"
+    assert drive.issued_tokens[-1] == "tok_2"
+
+    # 3·4회차: 다음 두 실행 모두 본문·인용 검색 0건
+    for _ in range(2):
+        lib_next = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+        s_next = lib_next.sync(collect_all=True)
+        assert s_next["status"] == "READY"
+        assert lib_next.search_citation({"case_number": "2024다12345", "raw_text": "2024다12345"}) == []
+        assert lib_next.select("손해배상 책임 인정")["sources"] == []
+
+
+def test_tk250_pos2_revoke_right_after_inventory_captured_by_pre_listing_token(tmp_path):
+    """전체 재조회가 일어나는 실행에서 목록 응답 직후 이미 색인된 파일의 권한이 회수돼도 다음 두 실행에서 본문·인용 검색 모두 0건이 된다."""
+    settings = _make_settings(tmp_path)
+    doc = "대법원 2024다54321 판결 불법행위 손해배상 법리.".encode("utf-8")
+
+    class _RaceRevokeDrive(_MockChangesDrive):
+        def __init__(self):
+            super().__init__()
+            self.token_counter = 0
+            self.changes_by_token: dict[str, list[dict]] = {}
+            self.trigger_relist_race = False
+
+        def get_start_page_token(self) -> str:
+            self.token_counter += 1
+            return f"tok_{self.token_counter}"
+
+        def inventory(self, folder_id: str, max_files: int = 1000) -> list[dict]:
+            result = super().inventory(folder_id, max_files=max_files)
+            if self.trigger_relist_race:
+                self.trigger_relist_race = False
+                revoked = _item("file_race_rev_111", "권한회수레이스.txt", can_download=False, data=doc)
+                self.changes_by_token["tok_2"] = [{"fileId": "file_race_rev_111", "removed": False, "file": revoked}]
+                self.items = [revoked]
+            return result
+
+        def list_changes(self, page_token: str, *, max_changes: int = 500):
+            self.changes_calls += 1
+            if self.trigger_relist_race:
+                return [{"fileId": self.root_id, "removed": False, "file": {"id": self.root_id, "mimeType": FOLDER}}], "tok_ignored", False
+            return list(self.changes_by_token.get(page_token, [])), "tok_after", False
+
+    drive = _RaceRevokeDrive()
+    drive.items = [_item("file_race_rev_111", "권한회수레이스.txt", data=doc)]
+    drive.contents = {"file_race_rev_111": doc}
+
+    lib1 = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+    assert lib1.sync(collect_all=True)["status"] == "READY"
+    assert len(lib1.search_citation({"case_number": "2024다54321", "raw_text": "2024다54321"})) == 1
+
+    drive.trigger_relist_race = True
+    lib2 = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+    assert lib2.sync(collect_all=True)["status"] == "READY"
+
+    for _ in range(2):
+        lib_next = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+        lib_next.sync(collect_all=True)
+        assert lib_next.search_citation({"case_number": "2024다54321", "raw_text": "2024다54321"}) == []
+        assert lib_next.select("불법행위 손해배상 법리")["sources"] == []
+
+
+def test_tk250_pos3_changes_500_and_network_error_fallback_to_full_inventory(tmp_path):
+    """변경 조회가 500 또는 DRIVE_NETWORK_ERROR로 실패해도 전체 목록 조회로 내려가 READY를 유지한다."""
+    settings = _make_settings(tmp_path)
+    doc_keep = "대법원 2023다10101 유지 판결.".encode("utf-8")
+    doc_del = "대법원 2023다20202 삭제 판결.".encode("utf-8")
+
+    drive = _MockChangesDrive()
+    drive.items = [
+        _item("file_keep_500", "유지.txt", data=doc_keep),
+        _item("file_del_500", "삭제.txt", data=doc_del),
+    ]
+    drive.contents = {"file_keep_500": doc_keep, "file_del_500": doc_del}
+
+    lib1 = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+    assert lib1.sync(collect_all=True)["status"] == "READY"
+
+    # 2회차: file_del_500 삭제 + list_changes 500 오류
+    drive.items = [drive.items[0]]
+    drive.changes_error = "DRIVE_HTTP_500"
+    lib2 = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+    s2 = lib2.sync(collect_all=True)
+    assert s2["status"] == "READY"
+    assert s2["dataset"]["inventory_mode"] == "FULL_INVENTORY"
+    assert lib2.search_citation({"case_number": "2023다20202", "raw_text": "2023다20202"}) == []
+    assert len(lib2.search_citation({"case_number": "2023다10101", "raw_text": "2023다10101"})) == 1
+
+    # 3회차: list_changes DRIVE_NETWORK_ERROR
+    drive.changes_error = "DRIVE_NETWORK_ERROR"
+    lib3 = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+    s3 = lib3.sync(collect_all=True)
+    assert s3["status"] == "READY"
+    assert s3["dataset"]["inventory_mode"] == "FULL_INVENTORY"
+    assert lib3.search_citation({"case_number": "2023다20202", "raw_text": "2023다20202"}) == []
+
+
+def test_tk250_ctrl1_unchanged_changes_zero_downloads(tmp_path):
+    """변경이 없으면 다운로드 0회, CHANGES_UNCHANGED로 동작한다."""
+    settings = _make_settings(tmp_path)
+    doc = "대법원 2022다30303 무변경 판결.".encode("utf-8")
+    drive = _MockChangesDrive()
+    drive.items = [_item("file_ctrl_unchanged", "무변경.txt", data=doc)]
+    drive.contents = {"file_ctrl_unchanged": doc}
+
+    lib1 = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+    assert lib1.sync(collect_all=True)["status"] == "READY"
+    dl_after_first = drive.download_calls
+
+    lib2 = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+    s2 = lib2.sync(collect_all=True)
+    assert s2["status"] == "READY"
+    assert s2["dataset"]["inventory_mode"] == "CHANGES_UNCHANGED"
+    assert drive.download_calls == dl_after_first
+
+
+def test_tk250_ctrl2_first_sync_token_error_still_ready(tmp_path):
+    """첫 동기화에서 get_start_page_token이 실패해도 READY를 유지한다 (D2)."""
+    settings = _make_settings(tmp_path)
+    doc = "대법원 2022다40404 첫토큰실패 판결.".encode("utf-8")
+
+    class _TokenFailDrive(_MockChangesDrive):
+        def get_start_page_token(self) -> str:
+            raise ReferenceError("DRIVE_NETWORK_ERROR")
+
+    drive = _TokenFailDrive()
+    drive.items = [_item("file_ctrl_tokfail", "토큰실패.txt", data=doc)]
+    drive.contents = {"file_ctrl_tokfail": doc}
+
+    lib = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+    s = lib.sync(collect_all=True)
+    assert s["status"] == "READY"
+    assert s["dataset"]["has_change_token"] is False
+    assert len(lib.search_citation({"case_number": "2022다40404", "raw_text": "2022다40404"})) == 1
+
+
+def test_tk250_ctrl3_inventory_403_unavailable_and_zero_cache_search(tmp_path):
+    """목록 조회가 403으로 실패하면 UNAVAILABLE이며 캐시 검색 결과는 0건이다."""
+    settings = _make_settings(tmp_path)
+    doc = "대법원 2022다50505 권한차단 판결 본문.".encode("utf-8")
+
+    class _ListingFailDrive(_MockChangesDrive):
+        def __init__(self):
+            super().__init__()
+            self.fail_inventory = False
+
+        def inventory(self, folder_id: str, max_files: int = 1000) -> list[dict]:
+            if self.fail_inventory:
+                raise ReferenceError("DRIVE_HTTP_403")
+            return super().inventory(folder_id, max_files=max_files)
+
+    drive = _ListingFailDrive()
+    drive.items = [_item("file_ctrl_403", "차단대상.txt", data=doc)]
+    drive.contents = {"file_ctrl_403": doc}
+
+    lib1 = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+    assert lib1.sync(collect_all=True)["status"] == "READY"
+
+    drive.fail_inventory = True
+    drive.changes_error = "DRIVE_HTTP_500"
+    lib2 = ReferenceLibrary(settings, client_factory=lambda **kw: drive, extractor=_simple_extractor({}))
+    s2 = lib2.sync(collect_all=True)
+    assert s2["status"] == "UNAVAILABLE"
+    assert lib2.eligible == {}
+    assert lib2.search_citation({"case_number": "2022다50505", "raw_text": "2022다50505"}) == []
+    assert lib2.select("권한차단 판결 본문")["sources"] == []
+
+

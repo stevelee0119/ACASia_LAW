@@ -602,10 +602,19 @@ class ReferenceLibrary:
                             diff = self._compute_dataset_diff(prev_items, cur_items)
                             return cur_items, prev_folders, "CHANGES_DELTA_APPLIED", (new_token or prev_token), diff
             except ReferenceError as exc:
-                if str(exc) not in ("DRIVE_HTTP_400", "DRIVE_HTTP_401", "DRIVE_HTTP_403", "DRIVE_HTTP_404", "INVALID_CHANGE_TOKEN"):
+                if str(exc) == "SYNC_BUDGET_EXHAUSTED":
                     raise
 
         # 2) 다중 폴더 묶음 조회(API Key 포함 모든 모드) 또는 표준 순회
+        # 목록 조회 직전에 변경 토큰을 먼저 확보해 목록 응답~토큰 발급 사이의 삭제·권한 회수 누락을 막는다 (TK-250).
+        next_token: str | None = None
+        if credential_mode != "api_key" and hasattr(client, "get_start_page_token"):
+            try:
+                next_token = client.get_start_page_token()
+            except ReferenceError as exc:
+                if str(exc) == "SYNC_BUDGET_EXHAUSTED":
+                    raise
+                next_token = None
         if len(prev_folders) > 1 and hasattr(client, "batched_inventory"):
             items = client.batched_inventory(
                 self.folder,
@@ -617,14 +626,6 @@ class ReferenceLibrary:
             items = client.inventory(self.folder, max_files=self.settings.rag_inventory_max_files)
             inventory_mode = "FULL_INVENTORY"
         folders = dict(getattr(client, "folders", {}) or {})
-        next_token: str | None = None
-        if credential_mode != "api_key" and hasattr(client, "get_start_page_token"):
-            try:
-                next_token = client.get_start_page_token()
-            except ReferenceError as exc:
-                if str(exc) == "SYNC_BUDGET_EXHAUSTED":
-                    raise
-                next_token = None
         diff = (
             self._compute_dataset_diff(prev_items, items)
             if snapshot is not None
