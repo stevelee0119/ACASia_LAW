@@ -864,5 +864,35 @@
   "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
   "decided_at": "2026-11-26",
   "from": "0.30.0"
+ },
+ {
+  "version": "0.30.2",
+  "level": "patch",
+  "basis": [
+   "fixed"
+  ],
+  "measured_commit": "c33a2aa",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.13.18 (CI 3.11, --allow-env-mismatch)",
+   "tesseract": "5.3.4",
+   "baseline_commit": "55efe21a05d8477270779e54af10d3abdd6b3577",
+   "scoring": "scripts/verify_all.py 전체 모드(평가 측 재실행), scripts/scorecard.py(dev 89.7, holdout 87.5), scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #452 필수 CI 11/11."
+  },
+  "evidence": {
+   "M1": "dev 89.7, holdout 87.5(0.30.1과 동일); 확인 오탐·A등급 오탐 0, 기존 방어 유지, 엔진 오류 0. 회귀 0.",
+   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED.",
+   "M3": "은퇴 5세트 평균 58.00(56.5/54.6/63.8/59.4/55.7, 오탐 0·A 0·후퇴 없음).",
+   "M4": "#452(TK-247 P0): Drive 재처리 실패 시 기존 본문 보존, 재처리 전용 한도(min(120, 남은 예산-60)), 예산 미룸, 손상 파일 1차 OCR 복원(최대 2회), 허위 복구 집계 제거. 평가 측 탐침 시나리오 6종·다수 복원 예산 탐침 기대대로.",
+   "CI": "PR #452 필수 11/11. verify_all 전체: 수용 1284·원장 2357·브라우저 200 통과, 전체 11677 통과/5 실패(5건 모두 기준 55efe21a에서도 같은 환경 요인, CI 통과).",
+   "open_p1_regression": 0,
+   "unmeasured": "격리 봉인 세트, 배포 후 운영 온라인 재측정(Drive 41/41 복원·건강 6/6), 운영 CPU에서 한도 충분성.",
+   "record": "docs/scorecards/release_0302_candidate_20261127.md"
+  },
+  "rer": 0.0,
+  "decided_by": "Claude Code 평가 세션",
+  "decided_at": "2026-11-27",
+  "from": "0.30.1"
  }
 ]
