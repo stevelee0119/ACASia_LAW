@@ -1,4 +1,9 @@
 {
+  "0.30.2": [
+    "Fixed(P0): Drive 재처리 시간 초과·실패 시 기존 조각·검색 가능 쪽 및 READY 색인 보존·허위 복구 집계 제거(TK-247 #452)",
+    "Fixed: 재처리 전용 시간 한도(min(120, 남은 예산-60))·예산 부족 시 미룸(reprocess_deferred) 및 손상된 빈 기록의 1차 OCR 자동 복원(restore_failed_extract, TK-247 #452)",
+    "평가·미측정: dev 89.7 · holdout 87.5 · 은퇴 5세트 평균 58.00(합산 RER 0.0%, 오탐 0, 필수 CI 전수 통과), 운영 Drive 41/41 복원 온라인 재측정 및 격리 봉인은 배포 후 시행"
+  ],
   "0.30.1": [
     "Fixed: page_quality() 공백 제거 글자 수(chars) 기록 및 hangul_ok 기반 신뢰도 우선 OCR 변형 선택·deciding_key 관측(TK-243·TK-244 #445)",
     "Fixed: Drive 저품질 재처리 하위 프로세스 OCR 폴백 환경 전파·합집합 복구 집계·child_ocr_config 관측(TK-245 #446)",

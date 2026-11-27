@@ -595,5 +595,15 @@
       "TK-245(#446): isolated_extract() OCR 폴백 환경 변수 전파·tk245-fallback-env-v2 1회 재처리·저품질 합집합 복구 집계·child_ocr_config 관측",
       "오프라인 게이트: dev 89.7 · holdout 87.5 · 은퇴 5세트 평균 58.00(0.30.0 동일, 합산 RER 0.0%, 확인 오탐·A등급 오탐 0)"
     ]
+  },
+  {
+    "version": "0.30.2",
+    "date": "2026-11-27",
+    "changes": [
+      "TK-247(#452, P0 회귀 수정): Drive 재처리 시간 초과·실패 시 기존 본문(조각·검색 가능 쪽) 및 READY 색인 보존·허위 복구 집계 제거(recovered_pages=0, 2회 실패 후 정지)",
+      "TK-247(#452): 재처리 전용 시간 한도(LV_REFERENCE_REPROCESS_TIMEOUT 기본 120초, min(120, 남은 예산-60)) 및 예산 부족(한도 30초 미만) 시 reprocess_deferred 미룸으로 뒤 캐시 파일 기아 차단",
+      "TK-247(#452): 이미 손상된 빈 기록(previous_searchable_pages>0)에 대한 폴백 해제 1차 OCR 자동 복원(restore_failed_extract, 최대 2회) 및 매니페스트 노출",
+      "오프라인 게이트: dev 89.7 · holdout 87.5 · 은퇴 5세트 평균 58.00(0.30.1 동일, 합산 RER 0.0%, 확인 오탐·A등급 오탐 0)"
+    ]
   }
 ]
