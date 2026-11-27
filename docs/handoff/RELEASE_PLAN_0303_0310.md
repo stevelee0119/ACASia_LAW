@@ -8,6 +8,8 @@
 - "릴리스는 추가 기능 보완 후 통합 시행": 0.30.3을 따로 내지 않는다. TK-246을 0.31.0에 묶는다.
 - "0.31.0 계획 승인"
 - "248용 기존 시험 수정 승인": [TK-248_tests.patch](tickets/TK-248_tests.patch)
+- OCR 폴백 시작 기준 후보: 사용자 "권고대로 보류하고 실측 진행". 실측 결과 운영 Drive 영향이 1/8,823쪽이라 **접음 권고**([근거](../scorecards/ocr_trigger_candidate_20261127.md)).
+- "앞으로 기능개선 구현을 검토할때는 확인된 개선인지 여부를 체크해서 권고" → 규칙화([AGENT_ROLES 2.1](../AGENT_ROLES.md) 개선 확인 등급, [CLAUDE.md](../../CLAUDE.md)).
 - 진행 상태표: [NEXT_FOR_ANTIGRAVITY_0310.md](NEXT_FOR_ANTIGRAVITY_0310.md)
 
 ## 1. 아스트라 지적 검증 결과
