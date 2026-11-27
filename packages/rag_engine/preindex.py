@@ -57,7 +57,7 @@ def _has_pending_work(summary: Dict[str, Any]) -> tuple[int, int]:
     """Return (remaining_continuations, partial_count) from a ReferenceLibrary summary."""
     continuations = 0
     partials = 0
-    for item in summary.get("files") or []:
+    for item in (summary.get("files") or summary.get("inventory") or []):
         if not isinstance(item, dict):
             continue
         if item.get("continuation"):
@@ -74,7 +74,7 @@ def _compute_page_stats(summary: Dict[str, Any]) -> tuple[int, int, int, int, in
     pages_total = 0
     pages_read = 0
     has_unknown_pages = False
-    for item in summary.get("files") or []:
+    for item in (summary.get("files") or summary.get("inventory") or []):
         if not isinstance(item, dict):
             continue
         status = str(item.get("status") or "")
@@ -104,6 +104,7 @@ def preindex_drive_library(
     *,
     max_rounds: int = 10,
     ocr_pages_per_batch: Optional[int] = None,
+    reprocess_low_quality: Optional[bool] = None,
     library_factory: Callable[..., ReferenceLibrary] = ReferenceLibrary,
     **library_kwargs: Any,
 ) -> PreindexReport:
@@ -129,7 +130,10 @@ def preindex_drive_library(
         for round_idx in range(1, bounded_rounds + 1):
             rounds = round_idx
             lib = library_factory(settings, **library_kwargs)
-            last_summary = lib.sync(collect_all=True)
+            if reprocess_low_quality is not None:
+                last_summary = lib.sync(collect_all=True, reprocess_low_quality=reprocess_low_quality)
+            else:
+                last_summary = lib.sync(collect_all=True)
             continuations, partials = _has_pending_work(last_summary)
             if continuations == 0 and partials == 0:
                 converged = True

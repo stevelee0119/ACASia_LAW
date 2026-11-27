@@ -102,11 +102,17 @@ class DriveClient:
         self.fulltext_batch = 40
 
     def _record(self, path, params, status, started, size, error=None, *, reason=None, retried=False):
-        operation = ("list" if path == "files" else "export" if path.endswith("/export")
-                     else "download" if (params or {}).get("alt") == "media" else "metadata")
+        operation = (
+            "changes_token" if path == "changes/startPageToken"
+            else "changes" if path == "changes"
+            else "list" if path == "files"
+            else "export" if path.endswith("/export")
+            else "download" if (params or {}).get("alt") == "media"
+            else "metadata"
+        )
         entry = {"operation": operation, "status": status, "ms": round((time.monotonic() - started) * 1000),
                  "bytes": size}
-        if path != "files":
+        if path.startswith("files/"):
             entry["file_id"] = path.split("/")[1]
         if error:
             entry["error"] = error
@@ -224,9 +230,13 @@ class DriveClient:
         root = self.metadata(folder_id)
         if root.get("mimeType") != FOLDER or root.get("trashed"):
             raise ReferenceError("ROOT_FOLDER_UNAVAILABLE")
+        return self._inventory_from_root(folder_id, max_files=max_files)
+
+    def _inventory_from_root(self, folder_id, max_files=1000, *, prefetched_children=None):
         queue, visited, files = [(folder_id, 0)], set(), {}
         # Folder path relative to the root ("" for the root) lets retrieval weigh folder names.
         self.folders = {folder_id: ""}
+        prefetched = prefetched_children or {}
         while queue:
             parent, depth = queue.pop(0)
             if parent in visited:
@@ -234,35 +244,147 @@ class DriveClient:
             if depth > 12 or len(visited) >= 200:
                 raise ReferenceError("FOLDER_LIMIT")
             visited.add(parent)
-            token, tokens = None, set()
-            while True:
-                params = {"q": f"'{valid_id(parent)}' in parents and trashed = false",
-                          "fields": f"nextPageToken,incompleteSearch,files({FIELDS})", "pageSize": 100,
-                          "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"}
-                if token:
-                    params["pageToken"] = token
-                page = json.loads(self.read("files", params))
-                if page.get("incompleteSearch"):
-                    raise ReferenceError("INCOMPLETE_LISTING")
-                for item in page.get("files", []):
-                    valid_id(item["id"])
-                    if item.get("mimeType") == FOLDER:
-                        queue.append((item["id"], depth + 1))
-                        base = self.folders.get(parent, "")
-                        self.folders[item["id"]] = (base + "/" if base else "") + str(item.get("name", ""))
-                    else:
-                        item["folder_path"] = self.folders.get(parent, "")
-                        item["listed_parent"] = parent
-                        files[item["id"]] = item
-                        if len(files) > max_files:
-                            raise ReferenceError("FILE_COUNT_LIMIT")
-                token = page.get("nextPageToken")
-                if not token:
-                    break
-                if token in tokens:
-                    raise ReferenceError("REPEATED_PAGE_TOKEN")
-                tokens.add(token)
+            if parent in prefetched:
+                parent_items = prefetched[parent]
+            else:
+                parent_items = []
+                token, tokens = None, set()
+                while True:
+                    params = {"q": f"'{valid_id(parent)}' in parents and trashed = false",
+                              "fields": f"nextPageToken,incompleteSearch,files({FIELDS})", "pageSize": 100,
+                              "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"}
+                    if token:
+                        params["pageToken"] = token
+                    page = json.loads(self.read("files", params))
+                    if page.get("incompleteSearch"):
+                        raise ReferenceError("INCOMPLETE_LISTING")
+                    parent_items.extend(page.get("files", []))
+                    token = page.get("nextPageToken")
+                    if not token:
+                        break
+                    if token in tokens:
+                        raise ReferenceError("REPEATED_PAGE_TOKEN")
+                    tokens.add(token)
+            for item in parent_items:
+                valid_id(item["id"])
+                if item.get("mimeType") == FOLDER:
+                    queue.append((item["id"], depth + 1))
+                    base = self.folders.get(parent, "")
+                    self.folders[item["id"]] = (base + "/" if base else "") + str(item.get("name", ""))
+                else:
+                    copied = dict(item)
+                    copied["folder_path"] = self.folders.get(parent, "")
+                    copied["listed_parent"] = parent
+                    files[copied["id"]] = copied
+                    if len(files) > max_files:
+                        raise ReferenceError("FILE_COUNT_LIMIT")
         return list(files.values())
+
+    def batched_inventory(self, folder_id: str, known_folders: dict[str, str] | None = None, *, max_files: int = 1000) -> list[dict]:
+        """이미 확인된 하위 폴더들을 묶음 질의로 한 번에 조회하고, 새로 생긴 하위 폴더만 추가 탐색한다."""
+        root = self.metadata(folder_id)
+        if root.get("mimeType") != FOLDER or root.get("trashed"):
+            raise ReferenceError("ROOT_FOLDER_UNAVAILABLE")
+        seed_ids = [valid_id(folder_id)]
+        for fid in (known_folders or {}):
+            if fid != folder_id:
+                seed_ids.append(valid_id(fid))
+                if len(seed_ids) >= 200:
+                    break
+        if len(seed_ids) <= 1:
+            return self._inventory_from_root(folder_id, max_files=max_files)
+
+        batch_size = max(1, min(40, int(self.fulltext_batch or 40)))
+        if batch_size <= 1:
+            return self._inventory_from_root(folder_id, max_files=max_files)
+
+        prefetched: dict[str, list[dict]] = {fid: [] for fid in seed_ids}
+        start = 0
+        while start < len(seed_ids):
+            batch = seed_ids[start:start + batch_size]
+            batch_set = set(batch)
+            scope = " or ".join(f"'{fid}' in parents" for fid in batch)
+            token, tokens = None, set()
+            try:
+                while True:
+                    params = {
+                        "q": f"({scope}) and trashed = false",
+                        "fields": f"nextPageToken,incompleteSearch,files({FIELDS})",
+                        "pageSize": 100,
+                        "supportsAllDrives": "true",
+                        "includeItemsFromAllDrives": "true",
+                    }
+                    if token:
+                        params["pageToken"] = token
+                    page = json.loads(self.read("files", params))
+                    if page.get("incompleteSearch"):
+                        raise ReferenceError("INCOMPLETE_LISTING")
+                    for item in page.get("files", []):
+                        valid_id(item["id"])
+                        parents = item.get("parents") or []
+                        matched_parents = [p for p in parents if p in batch_set]
+                        if not matched_parents and len(batch) > 1:
+                            # 익명 API 키 응답처럼 parents가 생략되면 소속 폴더를 특정할 수 없으므로 표준 순회로 전환한다.
+                            return self._inventory_from_root(folder_id, max_files=max_files)
+                        target_parent = matched_parents[0] if matched_parents else batch[0]
+                        prefetched[target_parent].append(item)
+                    token = page.get("nextPageToken")
+                    if not token:
+                        break
+                    if token in tokens:
+                        raise ReferenceError("REPEATED_PAGE_TOKEN")
+                    tokens.add(token)
+            except ReferenceError as exc:
+                if str(exc) == "DRIVE_HTTP_403" and len(batch) > 1:
+                    self.fulltext_batch = 1
+                    return self._inventory_from_root(folder_id, max_files=max_files)
+                raise
+            start += len(batch)
+
+        return self._inventory_from_root(folder_id, max_files=max_files, prefetched_children=prefetched)
+
+    def get_start_page_token(self) -> str:
+        """Drive Changes API의 현재 기준 토큰(startPageToken)을 조회한다."""
+        data = json.loads(self.read("changes/startPageToken", {"supportsAllDrives": "true"}))
+        token = str(data.get("startPageToken") or "").strip()
+        if not token:
+            raise ReferenceError("INVALID_CHANGE_TOKEN")
+        return token
+
+    def list_changes(self, page_token: str, *, max_changes: int = 500) -> tuple[list[dict], str, bool]:
+        """기준 토큰 이후의 변경 내역, 새 startPageToken, 변경 한도 초과 여부를 반환한다."""
+        token = str(page_token or "").strip()
+        if not token:
+            raise ReferenceError("INVALID_CHANGE_TOKEN")
+        changes: list[dict] = []
+        seen_tokens: set[str] = set()
+        new_start_token = ""
+        while True:
+            params = {
+                "pageToken": token,
+                "fields": f"nextPageToken,newStartPageToken,changes(fileId,removed,file({FIELDS}))",
+                "pageSize": 100,
+                "supportsAllDrives": "true",
+                "includeItemsFromAllDrives": "true",
+            }
+            page = json.loads(self.read("changes", params))
+            for entry in page.get("changes") or []:
+                fid = entry.get("fileId") or (entry.get("file") or {}).get("id")
+                if fid:
+                    valid_id(fid)
+                changes.append(entry)
+                if len(changes) > max_changes:
+                    return changes, "", True
+            if page.get("newStartPageToken"):
+                new_start_token = str(page["newStartPageToken"])
+            next_token = page.get("nextPageToken")
+            if not next_token:
+                break
+            if next_token in seen_tokens:
+                raise ReferenceError("REPEATED_PAGE_TOKEN")
+            seen_tokens.add(next_token)
+            token = str(next_token)
+        return changes, (new_start_token or token), False
 
     def search_fulltext(self, folder_ids, terms, *, max_results=200):
         """Drive 서버의 본문 검색으로, 내려받지 않고 모든 단어를 본문에 가진 파일 ID를 찾는다.
