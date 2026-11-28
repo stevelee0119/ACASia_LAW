@@ -272,8 +272,11 @@ class AnthropicProvider(LLMProvider):
             }
             if include_temperature:
                 payload["temperature"] = request.temperature
-            if getattr(self.settings, "llm_prompt_caching", False):
-                payload["cache_control"] = {"type": "ephemeral"}
+            # 자동 캐시(최상위 cache_control)는 매번 바뀌는 마지막 사용자 블록에 지점을 둬
+            # 쓰기 할증만 생긴다. 안정된 지시문(system) 블록에 명시 지점을 둔다.
+            if getattr(self.settings, "llm_prompt_caching", False) and request.system:
+                payload["system"] = [{"type": "text", "text": request.system,
+                                      "cache_control": {"type": "ephemeral"}}]
             return payload
 
         try:
@@ -323,6 +326,10 @@ _GEMINI_MINIMAL_LEVEL_PREFIXES = (
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
 )
+
+
+def _gemini_omits_temperature(model: str) -> bool:
+    return str(model or "").lower() in {"gemini-4-hydrogen", "gemini-4-neon"}
 
 
 def _gemini_thinking_config(model: str, request: LLMRequest, quirks: set) -> Optional[Dict[str, Any]]:
@@ -397,7 +404,7 @@ class GeminiProvider(LLMProvider):
                 # 형식이 정해진 요청은 JSON으로만 답하게 한다(OpenAI의 json_object와 같은 역할).
                 **({"responseMimeType": "application/json"} if request.schema else {}),
             }
-            if self.config.model != "gemini-4-hydrogen" and "no_temperature" not in quirks:
+            if not _gemini_omits_temperature(self.config.model) and "no_temperature" not in quirks:
                 gen_cfg["temperature"] = request.temperature
             thinking_cfg = _gemini_thinking_config(self.config.model, request, quirks)
             if thinking_cfg is not None:

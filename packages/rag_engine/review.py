@@ -858,6 +858,15 @@ def review_document(result, library, router, context, pii):
         # C3 최악 상한: 전체 호출 수(재시도·분할 포함) <= 2 * ceil(N / 6) * len(doc_chunks)
         max_total_calls = (2 * math.ceil(len(sources) / 6) if sources else 2) * len(doc_chunks)
         rag_concurrency = 4
+        # TK-255: 공급자 거절(HTTP 4xx/5xx)로 대체 공급자에 넘기는 재시도는 호출 상한에 세지 않는다.
+        uncounted_retry_ids: set = set()
+
+        def _provider_rejected(execution) -> bool:
+            if isinstance(execution, dict):
+                err, ok_flag = str(execution.get("error", "") or ""), execution.get("ok")
+            else:
+                err, ok_flag = str(getattr(execution, "error", "") or ""), getattr(execution, "ok", None)
+            return ok_flag is False and re.match(r"HTTP [45]\d\d", err) is not None
 
         async def _run_rag_wave(wave_reqs: List[tuple[LLMRequest, Optional[List[str]]]]):
             sem = asyncio.Semaphore(rag_concurrency)
@@ -873,16 +882,27 @@ def review_document(result, library, router, context, pii):
 
             return await asyncio.gather(*(_call(r, exc) for r, exc in wave_reqs))
 
-        while queue and total_calls < max_total_calls:
+        while queue and (total_calls < max_total_calls or id(queue[0]) in uncounted_retry_ids):
             remaining_budget = max_total_calls - total_calls
-            wave_cap = 1 if len(doc_chunks) == 1 else min(remaining_budget, rag_concurrency)
-            wave_items = queue[:wave_cap]
+            wave_cap = 1 if len(doc_chunks) == 1 else rag_concurrency
+            wave_items = []
+            counted_in_wave = 0
+            for q_item in queue:
+                if len(wave_items) >= wave_cap:
+                    break
+                if id(q_item) not in uncounted_retry_ids:
+                    if counted_in_wave >= remaining_budget:
+                        break
+                    counted_in_wave += 1
+                wave_items.append(q_item)
             queue = queue[len(wave_items):]
 
             wave_reqs: List[tuple[LLMRequest, Optional[List[str]]]] = []
             wave_batch_nos: List[int] = []
-            for doc_chunk, chunk_spans, s_batch, _depth, exc_providers, orig_batch_no in wave_items:
-                total_calls += 1
+            for w_item in wave_items:
+                doc_chunk, chunk_spans, s_batch, _depth, exc_providers, orig_batch_no = w_item
+                if id(w_item) not in uncounted_retry_ids:
+                    total_calls += 1
                 batch_no = orig_batch_no if orig_batch_no is not None else total_calls
                 wave_batch_nos.append(batch_no)
                 for s in s_batch:
@@ -929,7 +949,8 @@ def review_document(result, library, router, context, pii):
                 executed_any |= bool(batch_outcome.executions or batch_outcome.used)
 
                 is_truncated = any("OUTPUT_TRUNCATED" in getattr(e, "error", "") for e in batch_outcome.executions)
-                remaining_calls = max_total_calls - total_calls - len(retry_tasks)
+                remaining_calls = max_total_calls - total_calls - sum(
+                    1 for t in retry_tasks if id(t) not in uncounted_retry_ids)
 
                 # TK-68: OUTPUT_TRUNCATED 발생 시 적응형 분할
                 # - 남은 호출 예산이 2회 이상이면 절반으로 분할(Adaptive Halving)
@@ -942,10 +963,17 @@ def review_document(result, library, router, context, pii):
                     continue
 
                 failed = [e.provider for e in batch_outcome.executions if getattr(e, "provider", "") and not e.ok]
-                if not batch_outcome.used and failed and exc_providers is None and remaining_calls >= 1:
+                all_rejected = bool(batch_outcome.executions) and all(
+                    _provider_rejected(e) for e in batch_outcome.executions if not e.ok
+                ) and any(not e.ok for e in batch_outcome.executions)
+                if (not batch_outcome.used and failed and exc_providers is None
+                        and (remaining_calls >= 1 or all_rejected)):
                     if failed:
                         review.setdefault("retried_after", []).extend(failed)
-                    retry_tasks.append((doc_chunk, chunk_spans, s_batch, depth, failed, batch_no))
+                    retry_item = (doc_chunk, chunk_spans, s_batch, depth, failed, batch_no)
+                    if all_rejected:
+                        uncounted_retry_ids.add(id(retry_item))
+                    retry_tasks.append(retry_item)
                     continue
 
                 batch_accepted = bool(batch_outcome.used and not batch_outcome.quarantined)
@@ -990,6 +1018,7 @@ def review_document(result, library, router, context, pii):
         start_mono = time.monotonic()
         accumulated_cost_usd = 0.0
         accumulated_uncertain_usd = 0.0
+        accumulated_rejected_usd = 0.0  # TK-255: 공급자 거절 예약액(전역 원장 예약은 그대로, 단계 판단에서만 제외)
         dispatched_claims_count = 0
 
         async def _run_claim_wave(prepared_items: List[tuple[str, LLMRequest, List[Dict[str, Any]]]]):
@@ -1018,7 +1047,7 @@ def review_document(result, library, router, context, pii):
                 halt_reason = "TIME"
                 exceeded_claims.extend(sorted_claims[cursor_idx:])
                 break
-            if budget_usd > 0 and accumulated_cost_usd >= budget_usd:
+            if budget_usd > 0 and (accumulated_cost_usd - accumulated_rejected_usd) >= budget_usd:
                 halt_reason = "COST"
                 exceeded_claims.extend(sorted_claims[cursor_idx:])
                 break
@@ -1027,9 +1056,10 @@ def review_document(result, library, router, context, pii):
             remaining_slots = max_claims - len(bounded_claims)
             if dispatched_claims_count == 0:
                 wave_cap = 1
-            elif budget_usd > 0 and accumulated_cost_usd > 0:
-                avg_cost = accumulated_cost_usd / dispatched_claims_count
-                affordable = max(1, int((budget_usd - accumulated_cost_usd) // avg_cost)) if avg_cost > 0 else rag_concurrency
+            elif budget_usd > 0 and (accumulated_cost_usd - accumulated_rejected_usd) > 0:
+                effective_cost = accumulated_cost_usd - accumulated_rejected_usd
+                avg_cost = effective_cost / dispatched_claims_count
+                affordable = max(1, int((budget_usd - effective_cost) // avg_cost)) if avg_cost > 0 else rag_concurrency
                 wave_cap = min(rag_concurrency, affordable, remaining_slots)
             else:
                 wave_cap = min(rag_concurrency, remaining_slots)
@@ -1315,6 +1345,8 @@ def review_document(result, library, router, context, pii):
                         c_val = float(getattr(e, "cost_usd", 0.0) if hasattr(e, "cost_usd") else (e.get("cost_usd", 0.0) if isinstance(e, dict) else 0.0) or 0.0)
                         c_st = str(getattr(e, "cost_status", "") if hasattr(e, "cost_status") else (e.get("cost_status", "") if isinstance(e, dict) else ""))
                         accumulated_cost_usd += c_val
+                        if _provider_rejected(e):
+                            accumulated_rejected_usd += c_val
                         if c_st == "RESERVED_UNCERTAIN":
                             accumulated_uncertain_usd += c_val
 
@@ -1457,6 +1489,7 @@ def review_document(result, library, router, context, pii):
                 "halt_reason": halt_reason,
                 "spent_usd": round(accumulated_cost_usd, 4),
                 "uncertain_usd": round(accumulated_uncertain_usd, 4),
+                "provider_rejected_usd": round(accumulated_rejected_usd, 4),
             },
         }
 

@@ -1,6 +1,6 @@
 # ACAS AegisLAW
 
-[![Version](https://img.shields.io/badge/운영%20버전-0.31.0-blue.svg)](#버전별-성능-발전-추이)
+[![Version](https://img.shields.io/badge/운영%20버전-0.31.1-blue.svg)](#버전별-성능-발전-추이)
 [![Inspection Domains](https://img.shields.io/badge/검증%20영역-7대%20영역%20(결정론%20검사%20%2B%20AI%20참고%20의견)-green.svg)](#무엇을-검사하나-7대-검증-영역)
 [![Official Sources](https://img.shields.io/badge/공식%20출처-국가법령정보%20%C2%B7%20KCI%20%C2%B7%20Drive-0A66C2.svg)](#무엇을-검사하나-7대-검증-영역)
 [![Cross Check](https://img.shields.io/badge/AI%20교차검증-GPT%20%C2%B7%20Claude%20%C2%B7%20Gemini-purple.svg)](#환경변수)
@@ -16,7 +16,7 @@
 - **법률 판단을 대신하지 않습니다.** 진정성립·위조·고의와 주장의 당부는 사용자가 최종 판단합니다.
 - **AI 모델의 의견은 참고입니다.** 판정은 공식 출처 조회와 결정론적 구조 검사가 먼저 정합니다.
 
-**현재 운영 버전:** 0.31.0 (2026-11-27 배포). 버전별 성능 추이는 [아래 그래프](#버전별-성능-발전-추이), 버전별 변경은 [변경 이력](docs/RELEASE_HISTORY.md), 개발 중인 변경과 평가 결과는 [일자별 추이표](docs/scorecards/DAILY_TREND.md)를 보세요.
+**현재 운영 버전:** 0.31.1 (2026-11-28 배포). 버전별 성능 추이는 [아래 그래프](#버전별-성능-발전-추이), 버전별 변경은 [변경 이력](docs/RELEASE_HISTORY.md), 개발 중인 변경과 평가 결과는 [일자별 추이표](docs/scorecards/DAILY_TREND.md)를 보세요.
 
 ---
 
@@ -263,15 +263,15 @@ docker compose up --build
 > **왼쪽** 같은 항목을 같은 규칙으로 일대일 재채점한 재현율(%) · **오른쪽** 기존 산식 회귀 점수(/100). 두 패널은 분모·산식이 달라 서로 합산·비교하지 않는다.<br>
 > 실무 법률 정확도나 KBL 등 공개 벤치마크 점수가 아니다. 공식 DB를 조회하지 않으므로 법률 결함 재현율은 원문 대조 성능을 대표하지 않는다. 측정 방법: [평가 기준 감사](docs/scorecards/benchmark_audit_2026-11-13.md) · [평가 v2 규약](docs/scorecards/EVALUATION_V2.md) · 자료: [version_performance.csv](docs/scorecards/version_performance.csv)
 
-> **측정 범위 안내:** 현재 프로그램 버전은 `v0.31.0`이며, 위 오프라인 365항목 재채점 그래프는 `docs/scorecards/version_performance.csv`에 등록된 `v0.23`까지 반영되어 있습니다.
+> **측정 범위 안내:** 현재 프로그램 버전은 `v0.31.1`이며, 위 오프라인 365항목 재채점 그래프는 `docs/scorecards/version_performance.csv`에 등록된 `v0.23`까지 반영되어 있습니다.
 
 ### 최근 릴리스 주요 변경
 
-- **v0.31.0** (2026-11-27): TK-246(#457): RapidOCR 글줄 방향 분류기 끄기(use_cls=False)로 저품질 한국어 스캔 복구 / TK-250(#458): Drive 변경 토큰 증분 동기화·묶음 목록·이름 변경 승계·식별자 역색인·데이터셋 상태/관리자 동기화 API(목록 조회 전 토큰 확보, 변경 조회 실패 시 전체 목록 폴백) / TK-248(#459): 평가 출력 주장 판정을 인용 존재와 분리하고 공식 근거 좌표 기록 / #460 README 자동 갱신
+- **v0.31.1** (2026-11-28): TK-253(#468): 모델 조정 — OpenAI 검토 gpt-6.2-sol, Gemini gemini-4-neon(단가 등록·temperature 생략·표시명 반영) / TK-254(#469): Anthropic 캐시 지점을 system 블록으로 바로잡고 claude-haiku-5-5 단가 등록 / TK-255(#469): 공급자 거절(HTTP 오류 응답)이 RAG 호출 상한·주장 대조 비용 예산을 소진하던 결함 수정
+- **v0.31.0** (2026-11-28): TK-246(#457): RapidOCR 글줄 방향 분류기 끄기(use_cls=False)로 저품질 한국어 스캔 복구 / TK-250(#458): Drive 변경 토큰 증분 동기화·묶음 목록·이름 변경 승계·식별자 역색인·데이터셋 상태/관리자 동기화 API(목록 조회 전 토큰 확보, 변경 조회 실패 시 전체 목록 폴백) / TK-248(#459): 평가 출력 주장 판정을 인용 존재와 분리하고 공식 근거 좌표 기록 / #460 README 자동 갱신
 - **v0.30.2** (2026-11-27): TK-247(#452, P0 회귀 수정): Drive 재처리 시간 초과·실패 시 기존 본문(조각·검색 가능 쪽) 및 READY 색인 보존·허위 복구 집계 제거(recovered_pages=0, 2회 실패 후 정지) / TK-247(#452): 재처리 전용 시간 한도(LV_REFERENCE_REPROCESS_TIMEOUT 기본 120초, min(120, 남은 예산-60)) 및 예산 부족(한도 30초 미만) 시 reprocess_deferred 미룸으로 뒤 캐시 파일 기아 차단 / TK-247(#452): 이미 손상된 빈 기록(previous_searchable_pages>0)에 대한 폴백 해제 1차 OCR 자동 복원(restore_failed_extract, 최대 2회) 및 매니페스트 노출
 - **v0.30.1** (2026-11-27): TK-243(#445): page_quality() 잡음 제외·공백 제거 글자 수(chars, raw_chars, preprocessed_chars) 기록 / TK-244(#445): 반올림 전 hangul_ok 일원화 및 신뢰도 우선 _quality_rank 변형 선택·deciding_key 관측 / TK-245(#446): isolated_extract() OCR 폴백 환경 변수 전파·tk245-fallback-env-v2 1회 재처리·저품질 합집합 복구 집계·child_ocr_config 관측
 - **v0.30.0** (2026-11-26): TK-241(#435): 참고자료 대조 INTERNAL_REFERENCE_CONTRADICTION 전용 유형(98개 매핑)·advisory_only=True·주장당 1건 병합 및 공백 정규화 재매칭 / TK-240(#434): 상대방 전언 인용 귀속 어간+어미·반박 조건부 원용류 A등급 오탐 방지 / TK-239(#436)·TK-238(#432)·TK-237(#431): OCR 폴백 원본/전처리 이중 비교, run 단위 RAG·OCR 폴백 actual_calls 및 지연(ms) 집계, 미완독 unread_cause_counts·CONFIG_BLOCKED 분리
-- **v0.29.0** (2026-11-23): 평가 측 minor 판정(0.28.0 → 0.29.0, 154a1297 기준, 분류 added·fixed·changed): #423·#425·#426 필수 CI 전수 통과. 운영 main(1ef3e4fe) 대비 고정 dev 86.2→89.7(v2 47/56)·holdout 86.6→87.5(v2 45/54, 합산 RER 16.18%)·확인 오탐 0·A등급 오탐 0·인젝션 방어 유지, 은퇴 5세트 평균 53.22→58.00(+4.78%p, 56.5/54.6/63.8/59.4/55.7, 후퇴 0) / Added: 2단계 구조화 FactTriple 추출·결정론적 검증기(fact_triples.py, #423·#425), 다중 AI 문체 잔재 승격 및 문서간 복제(EVI-COPY)·증거 불일치 일반화 규칙(#425), 2단 운영 구조·정보 격리·동적 변형 시험 하네스(eval_perturbation.py, eval_cassette_track.py, #426) / Fixed: FactTriple·EVI-COPY·EVI-OVR·ClauseNormalizer·exporters·scanner 경계 오탐 및 직렬화 가드 보완(#425)
 
 <!-- RELEASES:END -->
 
@@ -283,7 +283,7 @@ docker compose up --build
 |---|---|---|
 | `LV_LAW_GO_KR_OC` | 권장 | 국가법령정보 공동활용 OC (판례·법령 공식 검증) |
 | `LV_KCI_KEY` | 선택 | KCI 학술 API Key |
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | 선택 | LLM Provider. 기본 모델은 `config/providers.json`(gpt-6-luna · claude-opus-5-5 · gemini-4-hydrogen). 보고서의 모델별 판정에는 "OpenAI · GPT-6 Luna"처럼 공급자와 모델명이 함께 표시된다 |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | 선택 | LLM Provider. 기본 모델은 `config/providers.json`(gpt-6-luna · claude-opus-5-5 · gemini-4-neon). 보고서의 모델별 판정에는 "OpenAI · GPT-6 Luna"처럼 공급자와 모델명이 함께 표시된다 |
 | `LV_OPENAI_MODEL` / `LV_ANTHROPIC_MODEL` / `LV_GEMINI_MODEL` | 선택 | 모델 ID 덮어쓰기(공급자가 모델을 바꿨을 때) |
 | `LV_LLM_CROSS_CHECK` | 선택 | AI 교차검증 범위. `all`(기본, 사용 가능한 모델 모두) · `auto`(판례 의미·적용 검토에서만 신뢰도가 낮거나 중요도가 높을 때 반증 모델 사용, 다른 검토는 `all`과 같음) · `off`(1순위 모델 하나) |
 | `LV_LLM_EFFICIENT_ROUTING` | 선택 | 효율 라우팅(기본 OFF). `1`이면 작업별로 모델을 나눠 쓰고, `LV_LLM_CROSS_CHECK=auto`와 함께 법리 검토에서 의견이 엇갈린 항목만 세 번째 모델에 보낸다 |
