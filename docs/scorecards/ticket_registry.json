@@ -1079,23 +1079,26 @@
       "merged_on": "2026-11-27"
     },
     "TK-253": {
-      "status": "merged",
+      "status": "deployed",
       "priority": "P2",
       "kind": "user_request",
-      "note": "사용자 요구 '제미나이 권고에 따라 모델 조정'·'비용과 성능 최고 효율'·'모델 조정 진행'(2026-11-28). openai_review gpt-6.2-sol, gemini gemini-4-neon, pricing 2종, GeminiProvider temperature 생략 명시 목록, 표시명 정규식. 개선 등급 미확인(OpenAI·Gemini는 실행당 비용 약 5%). 평가 측 시험 패치 TK-253_tests.patch. 사전 검증 76개 파일 5,530 통과(환경 실패 3 제외). #467 대체. 시험 수정 사용자 승인 2026-11-28. #467 닫음. #468 수용(7cafd9a0, CI 11/11, 시험 패치 동일, U2 Neon 실호출 성공·6.2 Sol 목록 확인, 실호출은 배포 뒤 확인). 사용자 지시로 병합(Steve_ACASiaLAW 49e1f5b0, 2026-11-28)."
+      "note": "사용자 요구 '제미나이 권고에 따라 모델 조정'·'비용과 성능 최고 효율'·'모델 조정 진행'(2026-11-28). openai_review gpt-6.2-sol, gemini gemini-4-neon, pricing 2종, GeminiProvider temperature 생략 명시 목록, 표시명 정규식. 개선 등급 미확인(OpenAI·Gemini는 실행당 비용 약 5%). 평가 측 시험 패치 TK-253_tests.patch. 사전 검증 76개 파일 5,530 통과(환경 실패 3 제외). #467 대체. 시험 수정 사용자 승인 2026-11-28. #467 닫음. #468 수용(7cafd9a0, CI 11/11, 시험 패치 동일, U2 Neon 실호출 성공·6.2 Sol 목록 확인, 실호출은 배포 뒤 확인). 사용자 지시로 병합(Steve_ACASiaLAW 49e1f5b0, 2026-11-28).",
+      "deployed_on": "2026-11-28"
     },
     "TK-254": {
-      "status": "merged",
+      "status": "deployed",
       "priority": "P2",
       "kind": "cost_improvement",
-      "note": "Anthropic 캐시 지점을 system 블록에 두고 LV_LLM_PROMPT_CACHING 켬 + claude-haiku-5-5 단가 등록. 비용 확인된 개선(품질 영향 없음, 실행당 약 $0.13~0.20). 사용자 '캐시 적용 구현'(2026-11-28). 시험 패치 TK-254_255_tests.patch. 사전 검증 120개 파일 6,475 통과. #469 수용(e6932970, CI 11/11, 시험 패치 동일, 평가 측 재실행 120개 파일·탐침 4종). 사용자 지시로 병합(Steve_ACASiaLAW c6a48c51, 2026-11-28)."
+      "note": "Anthropic 캐시 지점을 system 블록에 두고 LV_LLM_PROMPT_CACHING 켬 + claude-haiku-5-5 단가 등록. 비용 확인된 개선(품질 영향 없음, 실행당 약 $0.13~0.20). 사용자 '캐시 적용 구현'(2026-11-28). 시험 패치 TK-254_255_tests.patch. 사전 검증 120개 파일 6,475 통과. #469 수용(e6932970, CI 11/11, 시험 패치 동일, 평가 측 재실행 120개 파일·탐침 4종). 사용자 지시로 병합(Steve_ACASiaLAW c6a48c51, 2026-11-28).",
+      "deployed_on": "2026-11-28"
     },
     "TK-255": {
-      "status": "merged",
+      "status": "deployed",
       "priority": "P1",
       "kind": "defect",
-      "note": "공급자 HTTP 거절이 Drive 호출 상한·주장 비용 예산을 소진(0.31.0 m3 참고자료 33/83 미대조, 주장 COST 중단). review.py만 수정, 원장 불변. 사용자 '결함1건 해소'(2026-11-28). 새 시험 3건 원래 코드 실패·수정본 통과. #469 수용(e6932970, CI 11/11, 시험 패치 동일, 평가 측 재실행 120개 파일·탐침 4종). 사용자 지시로 병합(Steve_ACASiaLAW c6a48c51, 2026-11-28)."
+      "note": "공급자 HTTP 거절이 Drive 호출 상한·주장 비용 예산을 소진(0.31.0 m3 참고자료 33/83 미대조, 주장 COST 중단). review.py만 수정, 원장 불변. 사용자 '결함1건 해소'(2026-11-28). 새 시험 3건 원래 코드 실패·수정본 통과. #469 수용(e6932970, CI 11/11, 시험 패치 동일, 평가 측 재실행 120개 파일·탐침 4종). 사용자 지시로 병합(Steve_ACASiaLAW c6a48c51, 2026-11-28).",
+      "deployed_on": "2026-11-28"
     }
   },
-  "updated_on": "2026-11-27"
+  "updated_on": "2026-11-28"
 }
