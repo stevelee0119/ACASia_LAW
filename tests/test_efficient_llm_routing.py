@@ -300,7 +300,12 @@ def test_provider_cache_writes_require_explicit_opt_in(transport):
     router.settings.llm_prompt_caching = True
     router.clear_result_cache()
     assert asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request)).used
-    assert requests[-1][1]["cache_control"] == {"type": "ephemeral"}
+    # TK-254: 캐시 지점은 고정 지시문(system) 블록에만 둔다. 최상위 자동 캐시는 쓰지 않는다.
+    assert "cache_control" not in requests[-1][1]
+    system_blocks = requests[-1][1]["system"]
+    assert len(system_blocks) == 1 and system_blocks[0]["type"] == "text"
+    assert system_blocks[0]["text"].endswith("system")
+    assert system_blocks[0]["cache_control"] == {"type": "ephemeral"}
 
 
 def test_authorship_disagreement_adds_third_provider(transport):
