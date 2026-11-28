@@ -16,7 +16,7 @@
   "gemini": {
     "enabled": true,
     "api_key_env": "GEMINI_API_KEY",
-    "model": "gemini-4-hydrogen",
+    "model": "gemini-4-neon",
     "base_url": "https://generativelanguage.googleapis.com/v1beta",
     "kind": "cloud"
   }
