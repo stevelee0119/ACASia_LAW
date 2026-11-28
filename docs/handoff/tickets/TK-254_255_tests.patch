@@ -1,0 +1,196 @@
+diff --git a/tests/test_efficient_llm_routing.py b/tests/test_efficient_llm_routing.py
+index 79f6829d..2214a5ac 100644
+--- a/tests/test_efficient_llm_routing.py
++++ b/tests/test_efficient_llm_routing.py
+@@ -300,7 +300,12 @@ def test_provider_cache_writes_require_explicit_opt_in(transport):
+     router.settings.llm_prompt_caching = True
+     router.clear_result_cache()
+     assert asyncio.run(router.run(LLMRole.PRIMARY_REASONER, request)).used
+-    assert requests[-1][1]["cache_control"] == {"type": "ephemeral"}
++    # TK-254: 캐시 지점은 고정 지시문(system) 블록에만 둔다. 최상위 자동 캐시는 쓰지 않는다.
++    assert "cache_control" not in requests[-1][1]
++    system_blocks = requests[-1][1]["system"]
++    assert len(system_blocks) == 1 and system_blocks[0]["type"] == "text"
++    assert system_blocks[0]["text"].endswith("system")
++    assert system_blocks[0]["cache_control"] == {"type": "ephemeral"}
+ 
+ 
+ def test_authorship_disagreement_adds_third_provider(transport):
+diff --git a/tests/test_tk254_prompt_cache_breakpoint.py b/tests/test_tk254_prompt_cache_breakpoint.py
+new file mode 100644
+index 00000000..48b1b1e2
+--- /dev/null
++++ b/tests/test_tk254_prompt_cache_breakpoint.py
+@@ -0,0 +1,62 @@
++"""TK-254: Anthropic 프롬프트 캐시 지점을 고정 지시문(system)에 둔다(합성 입력)."""
++from __future__ import annotations
++
++import asyncio
++import json
++
++import httpx
++
++from packages.common.config import ProviderConfig, Settings
++from packages.llm_router.providers import AnthropicProvider, LLMRequest
++
++
++def _capture(settings, request, monkeypatch):
++    monkeypatch.setenv("TK254_ANTHROPIC_KEY", "synthetic")
++    sent = []
++
++    def handler(req: httpx.Request):
++        sent.append(json.loads(req.content))
++        return httpx.Response(200, json={"content": [{"type": "text", "text": "{}"}], "stop_reason": "end_turn",
++                                         "usage": {"input_tokens": 10, "output_tokens": 2,
++                                                   "cache_read_input_tokens": 900, "cache_creation_input_tokens": 0}})
++
++    orig = httpx.AsyncClient
++    def client(*a, **k):
++        k["transport"] = httpx.MockTransport(handler)
++        return orig(*a, **k)
++    httpx.AsyncClient = client
++    try:
++        provider = AnthropicProvider(ProviderConfig(name="anthropic", enabled=True, api_key_env="TK254_ANTHROPIC_KEY",
++                                                    model="claude-sonnet-5-5",
++                                                    base_url="https://api.anthropic.test/v1"))
++        provider.settings = settings
++        resp = asyncio.run(provider.generate(request))
++    finally:
++        httpx.AsyncClient = orig
++    return sent[-1], resp
++
++
++def test_tk254_cache_breakpoint_on_system_block_only(tmp_path, monkeypatch):
++    settings = Settings(storage_root=tmp_path, llm_prompt_caching=True, allow_network=True)
++    body, resp = _capture(settings, LLMRequest("고정 지시문", "매번 바뀌는 입력"), monkeypatch)
++    assert "cache_control" not in body
++    assert body["system"] == [{"type": "text", "text": "고정 지시문", "cache_control": {"type": "ephemeral"}}]
++    assert body["messages"] == [{"role": "user", "content": "매번 바뀌는 입력"}]
++    assert resp.cache_read_tokens == 900 and resp.input_tokens == 910
++
++
++def test_tk254_no_cache_markup_when_disabled_or_system_empty(tmp_path, monkeypatch):
++    off = Settings(storage_root=tmp_path, llm_prompt_caching=False, allow_network=True)
++    body, _ = _capture(off, LLMRequest("고정 지시문", "입력"), monkeypatch)
++    assert body["system"] == "고정 지시문" and "cache_control" not in body
++    on = Settings(storage_root=tmp_path, llm_prompt_caching=True, allow_network=True)
++    body, _ = _capture(on, LLMRequest("", "입력"), monkeypatch)
++    assert body["system"] == "" and "cache_control" not in body
++
++
++def test_tk254_pricing_has_claude_haiku_5_5_for_measurement():
++    """Haiku 5.5 확인 실측 전 단가 등록(공식 표: 10만 토큰 이하 $0.10/$0.50, 캐시 읽기 0.1배, 5분 쓰기 1.25배)."""
++    from pathlib import Path
++    pricing = json.loads((Path(__file__).resolve().parents[1] / "config" / "pricing.json").read_text(encoding="utf-8"))
++    assert pricing["claude-haiku-5-5"] == {"input": 0.1, "output": 0.5, "cache_read": 0.01, "cache_write": 0.125}
++    assert pricing["claude-sonnet-5-5"]["cache_read"] == 0.1 and pricing["claude-sonnet-5-5"]["cache_write"] == 2.5
+diff --git a/tests/test_tk255_provider_rejection_budget.py b/tests/test_tk255_provider_rejection_budget.py
+new file mode 100644
+index 00000000..2d89dd22
+--- /dev/null
++++ b/tests/test_tk255_provider_rejection_budget.py
+@@ -0,0 +1,104 @@
++"""TK-255: 공급자 거절(HTTP 오류 응답)이 참고자료 대조의 호출 상한·비용 예산을 소진하지 않는다.
++
++0.31.0 운영 m3: Anthropic 사용 한도로 Sonnet이 HTTP 400을 내자
++- Drive 대조: 실패 시도가 호출 상한(2*ceil(N/6))의 절반을 써 참고자료 33/83이 미대조
++- 주장 대조: 실패 예약액(RESERVED_UNCERTAIN)이 단계 비용 예산을 채워 19개 중 4개에서 COST 중단
++합성 입력(사건 무관)으로 두 증상을 재현하고, 응답 시간 초과는 계속 예산에 세는지(Fail-Closed) 확인한다.
++"""
++from __future__ import annotations
++
++from types import SimpleNamespace
++
++from packages.common.enums import ExternalAIPolicy, VerificationProfile
++from packages.rag_engine.review import review_document
++
++_WORD = "계약 대금 지급 의무 이행 기한 "
++
++
++def _sources(n=12, chars=1900):
++    body = (_WORD * (chars // len(_WORD) + 1))[:chars]
++    return [{"file_id": f"fid_{i:02d}", "source_id": f"R{i}", "title": f"참고자료{i}.txt",
++             "folder_path": "", "page": 1, "text": body} for i in range(n)]
++
++
++def _exec(ok, provider, cost, status, error=""):
++    d = {"ok": ok, "provider": provider, "cost_usd": cost, "cost_status": status, "error": error}
++    return SimpleNamespace(**d, to_dict=lambda d=d: dict(d))
++
++
++class _Router:
++    def __init__(self, failure_error="HTTP 400: usage limit reached"):
++        self.failure_error = failure_error
++        self.drive_calls = []
++        self.claim_calls = 0
++
++    def has_available_provider(self, **kwargs):
++        return True
++
++    async def run(self, role, request, **kwargs):
++        stage = request.metadata.get("stage")
++        empty = {"observations": []}
++        if stage == "drive_rag_advisory":
++            exclude = kwargs.get("exclude")
++            self.drive_calls.append(exclude)
++            if not exclude:
++                return SimpleNamespace(used=False, quarantined=False, parsed=None,
++                                       executions=[_exec(False, "anthropic", 0.30, "RESERVED_UNCERTAIN", self.failure_error)])
++            return SimpleNamespace(used=True, quarantined=False, parsed=empty,
++                                   executions=[_exec(True, "openai", 0.02, "REPORTED")])
++        if stage == "claim_rag_advisory":
++            self.claim_calls += 1
++            return SimpleNamespace(used=True, quarantined=False, parsed=empty, executions=[
++                _exec(False, "anthropic", 0.30, "RESERVED_UNCERTAIN", self.failure_error),
++                _exec(True, "openai", 0.02, "REPORTED")])
++        return SimpleNamespace(used=True, quarantined=False, executions=[], parsed=empty)
++
++    run_any = run
++
++
++def _review(router, n_claims=8):
++    sources = _sources()
++    text = _WORD * 20
++    library = SimpleNamespace(
++        summary={"status": "READY", "snapshot_hash": "h"}, folder="f",
++        select=lambda t: {"decision": "USED", "reason": "RELEVANT_REFERENCE_FOUND",
++                          "coverage": "CHECKED_INDEXED_CORPUS", "sources": sources})
++    result = SimpleNamespace(
++        document_id="doc_tk255", findings=[], citations=[], engine_data={},
++        normalized=SimpleNamespace(visible_text=text, pages=[SimpleNamespace(text=text)], blocks=[]),
++        claims=[{"claim_id": f"C{i}", "text": f"피고는 계약 대금 지급 의무를 이행 기한 안에 이행하여야 한다 {i}."}
++                for i in range(n_claims)])
++    context = SimpleNamespace(requested_issues=[], profile=VerificationProfile.STANDARD,
++                              external_ai_policy=ExternalAIPolicy.ORIGINAL)
++    pii = SimpleNamespace(mask_text=lambda t: SimpleNamespace(masked_text=t))
++    return review_document(result, library, router, context, pii)
++
++
++def test_tk255_provider_rejection_does_not_consume_drive_call_cap(monkeypatch):
++    monkeypatch.setattr("packages.rag_engine.review.analysis_text", lambda d, f: (_WORD * 20, {"omitted_chars": 0}))
++    router = _Router()
++    review = _review(router)
++    assert not review.get("unreviewed_drive_sources"), review.get("unreviewed_drive_sources")
++    first = [c for c in router.drive_calls if not c]
++    failover = [c for c in router.drive_calls if c]
++    assert len(first) == len(failover) == 4  # 12개 자료 → 3개씩 4묶음, 묶음마다 거절 1회 + 대체 1회
++
++
++def test_tk255_provider_rejection_does_not_halt_claim_budget(monkeypatch):
++    monkeypatch.setattr("packages.rag_engine.review.analysis_text", lambda d, f: (_WORD * 20, {"omitted_chars": 0}))
++    router = _Router()
++    budget = _review(router)["claim_coverage"]["budget"]
++    assert budget["halt_reason"] is None
++    assert router.claim_calls == 8
++    assert budget["provider_rejected_usd"] == round(0.30 * 8, 4)
++    assert budget["uncertain_usd"] == round(0.30 * 8, 4)  # 기록은 그대로 남는다
++
++
++def test_tk255_timeouts_still_count_toward_claim_budget(monkeypatch):
++    """대조: 응답 시간 초과(과금 여부 불확실)는 종전대로 단계 예산에 센다(Fail-Closed)."""
++    monkeypatch.setattr("packages.rag_engine.review.analysis_text", lambda d, f: (_WORD * 20, {"omitted_chars": 0}))
++    router = _Router(failure_error="PROVIDER_TIMEOUT: AI 응답 시간 초과. 해당 검토는 미검증입니다")
++    budget = _review(router)["claim_coverage"]["budget"]
++    assert budget["halt_reason"] == "COST"
++    assert router.claim_calls < 8
++    assert budget["provider_rejected_usd"] == 0.0
