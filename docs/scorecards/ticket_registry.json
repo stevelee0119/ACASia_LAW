@@ -1100,7 +1100,7 @@
       "status": "open",
       "priority": "P1",
       "kind": "defect",
-      "note": "0.31.1 운영 N5(원용 반박 서면)에서 LEGAL_ARGUMENT_INVALID가 MEDIUM C→HIGH B, 4/4회 재현. 원인 가설: argument_validity가 상대방 귀속(원용)을 보지 않고 CONTRADICTED 합의만으로 HIGH B(critic gpt-6.2-sol 교체로 드러남, 인과 미확정). 사용자 승인 2026-11-28 '발행 승인, 단 다음 릴리스에 포함'. 티켓 작성·사전 검증은 Codex 대행."
+      "note": "0.31.1 운영 N5(원용 반박 서면)에서 LEGAL_ARGUMENT_INVALID가 MEDIUM C→HIGH B, 4/4회 재현. 원인 가설: argument_validity가 상대방 귀속(원용)을 보지 않고 CONTRADICTED 합의만으로 HIGH B(critic gpt-6.2-sol 교체로 드러남, 인과 미확정). 사용자 승인 2026-11-28 '발행 승인, 단 다음 릴리스에 포함'. 티켓 작성·사전 검증은 Codex 대행. GitHub 이슈 #476(다음 릴리스 필수), PR #475 코멘트 등록."
     }
   },
   "updated_on": "2026-11-27"
