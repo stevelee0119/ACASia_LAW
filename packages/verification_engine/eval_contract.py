@@ -31,13 +31,30 @@ def _span_length(span: Any) -> int:
     return 0
 
 
-def _map_claim_judgment(status: str) -> str:
-    st = str(status or "").upper()
-    if st == "VERIFIED":
+def _applicability_judgment(review: Any) -> str:
+    if not isinstance(review, dict):
+        return "INSUFFICIENT"
+    applies = review.get("applies_to_case")
+    if applies is True:
         return "SUPPORTS"
-    if st in ("CONTRADICTED", "NOT_FOUND", "INVALID", "INVALID_FORMAT", "SUSPICIOUS"):
+    if applies is False:
         return "CONTRADICTS"
     return "INSUFFICIENT"
+
+
+def _official_quote_span(verdict: Dict[str, Any]) -> Dict[str, Any] | None:
+    review = verdict.get("review")
+    if not isinstance(review, dict):
+        return None
+    quote_span = review.get("quote_span")
+    if not isinstance(quote_span, dict) or not quote_span:
+        return None
+    extracted = {
+        key: quote_span[key]
+        for key in ("field", "normalization", "start", "end", "similarity")
+        if key in quote_span
+    }
+    return extracted or None
 
 
 def build_evaluation_dimensions(doc_result: Any, *, doc_sha256: str = "") -> Dict[str, List[Dict[str, Any]]]:
@@ -145,6 +162,7 @@ def build_evaluation_dimensions(doc_result: Any, *, doc_sha256: str = "") -> Dic
             "source_name": src_name,
             "dimension": "source_retrieval",
         }
+        official_span = _official_quote_span(v)
         source_items.append({
             "item_id": "source-" + _sha256_json(s_anchor),
             "citation_id": cid,
@@ -152,12 +170,15 @@ def build_evaluation_dimensions(doc_result: Any, *, doc_sha256: str = "") -> Dic
             "status": raw_src_status,
             "matched_count": int(sl.get("matched_count") or (1 if v.get("official_record") else 0)),
             "cause": sl.get("cause"),
-            "official_span": {
+            "official_span": official_span,
+            "official_span_status": "AVAILABLE" if official_span is not None else "NOT_AVAILABLE",
+            "submitted_span": {
                 "document_id": doc_id,
                 "page": page,
                 "span": span,
                 "length": _span_length(span),
             },
+            "as_of": v.get("reference_date"),
         })
 
     verdict_by_cid = {str(v.get("citation_id")): v for v in verdicts if isinstance(v, dict) and v.get("citation_id")}
@@ -177,33 +198,80 @@ def build_evaluation_dimensions(doc_result: Any, *, doc_sha256: str = "") -> Dic
             "claim_sha256": _sha256_text(claim_text or f"claim:{idx}"),
             "dimension": "claim_applicability",
         }
-        linked_statuses: List[str] = []
-        for cid in (cl.get("citation_ids") or []):
-            cid_str = str(cid)
-            if cid_str in app_by_cid and app_by_cid[cid_str].get("verdict"):
-                linked_statuses.append(str(app_by_cid[cid_str]["verdict"]))
-            elif cid_str in verdict_by_cid and verdict_by_cid[cid_str].get("status"):
-                linked_statuses.append(str(verdict_by_cid[cid_str]["status"]))
-        app_match = applicability[idx] if idx < len(applicability) and isinstance(applicability[idx], dict) else {}
-        raw_claim_status = (
-            app_match.get("verdict")
-            or (linked_statuses[0] if linked_statuses else None)
-            or cl.get("status")
-            or "UNVERIFIED"
-        )
-        judgment = _map_claim_judgment(raw_claim_status)
+        cids = [str(cid) for cid in (cl.get("citation_ids") or []) if cid is not None and str(cid)]
+        reviews = [app_by_cid[cid_str] for cid_str in cids if cid_str in app_by_cid]
+        judgments = [_applicability_judgment(r) for r in reviews]
+        has_supports = "SUPPORTS" in judgments
+        has_contradicts = "CONTRADICTS" in judgments
+        if has_supports and has_contradicts:
+            judgment = "INSUFFICIENT"
+            judgment_basis = "APPLICABILITY_CONFLICT"
+        elif has_supports:
+            judgment = "SUPPORTS"
+            judgment_basis = "APPLICABILITY_REVIEW"
+        elif has_contradicts:
+            judgment = "CONTRADICTS"
+            judgment_basis = "APPLICABILITY_REVIEW"
+        elif reviews:
+            judgment = "INSUFFICIENT"
+            judgment_basis = "APPLICABILITY_NOT_DETERMINED"
+        else:
+            judgment = "INSUFFICIENT"
+            judgment_basis = "NOT_ASSESSED"
+
+        applicability_statuses = [str(r.get("status")) for r in reviews if r.get("status")]
+        citation_identity = []
+        as_of = None
+        for cid_str in cids:
+            v = verdict_by_cid.get(cid_str)
+            if not v:
+                continue
+            v_levels = v.get("levels") or {}
+            citation_identity.append({
+                "citation_id": cid_str,
+                "status": str(v_levels.get("level1") or v_levels.get("existence") or v.get("status") or "UNVERIFIED"),
+            })
+            if as_of is None and v.get("reference_date"):
+                as_of = v.get("reference_date")
+
+        evidence_spans: List[Dict[str, Any]] = []
+        for r in reviews:
+            r_cid = str(r.get("citation_id") or "")
+            r_sources = list(r.get("source_record_ids") or [])
+            sections = r.get("sections") or {}
+            if not isinstance(sections, dict):
+                continue
+            for sec_name, sec_items in sections.items():
+                if not isinstance(sec_items, list):
+                    continue
+                for sec_item in sec_items:
+                    if not isinstance(sec_item, dict) or sec_item.get("span") is None:
+                        continue
+                    sec_span = sec_item.get("span")
+                    evidence_spans.append({
+                        "citation_id": r_cid,
+                        "section": str(sec_name),
+                        "span": sec_span,
+                        "length": _span_length(sec_span),
+                        "source_record_ids": r_sources,
+                    })
+
         claim_items.append({
             "item_id": "claim-" + _sha256_json(c_anchor),
             "claim_id": str(cl.get("claim_id") or f"C_{idx}"),
             "judgment": judgment,
-            "evidence_spans": [
-                {
-                    "document_id": doc_id,
-                    "page": page,
-                    "span": span,
-                    "length": _span_length(span),
-                }
-            ],
+            "judgment_basis": judgment_basis,
+            "citation_ids": cids,
+            "applicability_statuses": applicability_statuses,
+            "citation_identity": citation_identity,
+            "as_of": as_of,
+            "evidence_spans": evidence_spans,
+            "submitted_span": {
+                "document_id": doc_id,
+                "page": page,
+                "span": span,
+                "length": _span_length(span),
+            },
         })
 
     return {

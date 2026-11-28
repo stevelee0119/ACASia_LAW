@@ -894,5 +894,37 @@
   "decided_by": "Claude Code 평가 세션",
   "decided_at": "2026-11-27",
   "from": "0.30.1"
+ },
+ {
+  "version": "0.31.0",
+  "level": "minor",
+  "basis": [
+   "added",
+   "fixed",
+   "changed"
+  ],
+  "measured_commit": "c03197b",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.13.18 (CI 3.11, --allow-env-mismatch)",
+   "tesseract": "5.3.4",
+   "baseline_commit": "d9fa1e4b60e1f3c955d37de7441ff2a2ed549389",
+   "scoring": "scripts/verify_all.py 전체 모드(평가 측 재실행), scripts/scorecard.py(dev 89.7, holdout 87.5), scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #457·#458·#459·#460 필수 CI."
+  },
+  "evidence": {
+   "M1": "dev 89.7, holdout 87.5(0.30.2와 동일); 확인 오탐·A등급 오탐 0, 기존 방어 유지, 엔진 오류 0. 회귀 0.",
+   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED.",
+   "M3": "은퇴 5세트 평균 58.00(56.5/54.6/63.8/59.4/55.7, 오탐 0·A 0·후퇴 없음).",
+   "M4": "#457 TK-246 RapidOCR use_cls=False(저품질 스캔 OCR_EXTRACTED 0.75 오프라인), #458 TK-250 Drive 증분 데이터셋(가짜 Drive 점검표 30/30, 변경 없는 재동기화 호출 4→2), #459 TK-248 평가 출력 오판 0(운영 기록 5건 재계산), #460 README 자동 갱신.",
+   "CI": "#457·#458·#459·#460 필수 CI 성공. verify_all 전체: 수용 1284·원장 2357·브라우저 200 통과, 전체 11699 통과/5 실패(5건 모두 0.30.2 후보에서도 같은 환경 요인, CI 통과).",
+   "open_p1_regression": 0,
+   "unmeasured": "격리 봉인 세트, 배포 후 운영 온라인 재측정(TK-246·TK-250·TK-248), 실제 Drive 변경 API 의미, 365항목 엄격 재현율(채점기 저장소 부재).",
+   "record": "docs/scorecards/release_0310_candidate_20261127.md"
+  },
+  "rer": 0.0,
+  "decided_by": "Claude Code 평가 세션",
+  "decided_at": "2026-11-27",
+  "from": "0.30.2"
  }
 ]

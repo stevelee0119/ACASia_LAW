@@ -352,12 +352,20 @@ class CompositeOCRAdapter(OCRAdapter):
     name = "composite"
 
     def __init__(self, primary: OCRAdapter, fallback: Optional[OCRAdapter] = None, *, mode: str = "auto") -> None:
+        from copy import deepcopy
+
         self.primary = primary
         self.fallback = fallback
         self.mode = (mode or "auto").strip().lower()
         self.available = bool(primary.available or (fallback and fallback.available))
+        self.diagnostics = deepcopy(getattr(primary, "diagnostics", None))
         self.last_error: Optional[str] = None
         self.last_route: dict = {}
+
+    def detect_rotation(self, image: Any) -> Optional[int]:
+        """1차 OCR 엔진의 OSD 회전 감지기를 그대로 위임한다."""
+        detect = getattr(self.primary, "detect_rotation", None)
+        return detect(image) if callable(detect) else None
 
     def _route(self, pri_fn, fb_fn) -> List[OCRLine]:
         self.last_error = None
@@ -477,9 +485,11 @@ class CompositeOCRAdapter(OCRAdapter):
             return lines
 
         fb_pre = getattr(self.fallback, "last_preprocess_telemetry", None)
+        unassessed_severe_truncation = _is_unassessed_severe_truncation(q_pri, q_fb)
         route_deciding_key = (
             "EMPTY_FALLBACK" if not fb_lines
             else "EMPTY_PRIMARY" if not lines
+            else "UNASSESSED_SEVERE_TRUNCATION" if unassessed_severe_truncation
             else _quality_deciding_key(q_pri, q_fb)
         )
         if not fb_err and _fallback_improved(lines, q_pri, fb_lines, q_fb):
@@ -587,6 +597,22 @@ def _quality_deciding_key(q_a: dict, q_b: dict) -> str:
     return "EQUAL"
 
 
+def _is_unassessed_severe_truncation(q_pri: dict, q_fb: dict) -> bool:
+    """회전(90·180°)된 다줄 쪽에서 폴백이 대부분 줄을 버리고 한글 비율 미평가(<20자) 단편만 고신뢰도로 남긴 경우를 차단한다 (TK-246)."""
+    if bool(q_fb.get("hangul_assessed")):
+        return False
+    pri_lines_cnt = int(q_pri.get("lines") or 0)
+    fb_lines_cnt = int(q_fb.get("lines") or 0)
+    pri_chars_cnt = int(q_pri.get("chars") or 0)
+    fb_chars_cnt = int(q_fb.get("chars") or 0)
+    return (
+        pri_lines_cnt >= 2
+        and pri_chars_cnt >= 15
+        and fb_lines_cnt < pri_lines_cnt
+        and fb_chars_cnt * 2 < pri_chars_cnt
+    )
+
+
 def _fallback_improved(
     pri_lines: List[OCRLine],
     q_pri: dict,
@@ -597,6 +623,8 @@ def _fallback_improved(
         return False
     if not pri_lines:
         return True
+    if _is_unassessed_severe_truncation(q_pri, q_fb):
+        return False
     return _quality_rank(q_fb) > _quality_rank(q_pri)
 
 
@@ -643,6 +671,7 @@ class RapidOCRAdapter(OCRAdapter):
     """Optional RapidOCR ONNX fallback adapter (lazy-loaded to avoid startup RAM overhead)."""
 
     name = "rapidocr"
+    USE_CLS: bool = False
 
     def __init__(self, *, lazy: bool = True) -> None:
         import importlib.util
@@ -666,7 +695,6 @@ class RapidOCRAdapter(OCRAdapter):
             self._ensure_engine()
 
     def _ensure_engine(self) -> bool:
-        import importlib.util
         import sys
 
         if self._engine is not None:
@@ -688,8 +716,12 @@ class RapidOCRAdapter(OCRAdapter):
         try:
             from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR  # type: ignore
 
+            # TK-246: 중국어 학습 글줄 방향 분류기(Global.use_cls=True 기본값)는 정방향 한국어 줄을
+            # 180° 뒤집힘으로 오판해 이미지를 회전시키고 Global.text_score(0.5) 미만으로 소실시킨다.
+            # 쪽 단위 회전(90·180·270°)은 이미 PdfParser._reoriented()가 담당하므로 글줄 분류기는 끈다.
             self._engine = RapidOCR(
                 params={
+                    "Global.use_cls": self.USE_CLS,
                     "Rec.lang_type": LangRec.KOREAN,
                     "Rec.ocr_version": OCRVersion.PPOCRV5,
                     "Rec.model_type": ModelType.MOBILE,
@@ -708,6 +740,37 @@ class RapidOCRAdapter(OCRAdapter):
                 self._engine = None
                 self.available = False
                 return False
+
+    def _effective_use_cls(self) -> Optional[bool]:
+        """실제 생성된 엔진 인스턴스(또는 설정 상수)에서 use_cls 활성 여부를 읽어 다음 판 기본값 변경도 드러낸다."""
+        eng = self._engine
+        if eng is not None:
+            if hasattr(eng, "use_cls") and getattr(eng, "use_cls") is not None:
+                return bool(getattr(eng, "use_cls"))
+            cfg = getattr(eng, "cfg", None)
+            if cfg is not None:
+                try:
+                    global_cfg = cfg.get("Global") if hasattr(cfg, "get") else getattr(cfg, "Global", None)
+                    if global_cfg is not None and "use_cls" in global_cfg:
+                        return bool(global_cfg["use_cls"])
+                except Exception:
+                    pass
+            if getattr(eng, "text_cls", None) is not None:
+                return True
+        return bool(self.USE_CLS)
+
+    def engine_config_diagnostics(self, *, ensure_loaded: bool = False) -> dict[str, Any]:
+        """Expose RapidOCR runtime configuration (including use_cls) for check_ocr_runtime and /api/diagnostics."""
+        if ensure_loaded and self.available and self._engine is None:
+            self._ensure_engine()
+        loaded = self._engine is not None
+        return {
+            "available": bool(self.available),
+            "engine_loaded": loaded,
+            "use_cls": self._effective_use_cls(),
+            "configured_use_cls": bool(self.USE_CLS),
+            "text_cls_loaded": bool(getattr(self._engine, "text_cls", None) is not None) if loaded else False,
+        }
 
     def _parse_raw_output(self, raw: Any, *, page: int, scale: float) -> List[OCRLine]:
         entries = []
@@ -799,6 +862,7 @@ class RapidOCRAdapter(OCRAdapter):
     ) -> List[OCRLine]:
         if not self._ensure_engine() or self._engine is None:
             return []
+        eff_use_cls = self._effective_use_cls()
         raw_lines = self._parse_raw_output(self._engine(image), page=page, scale=scale)
         q_raw = page_quality(raw_lines)
         raw_conf = round(float(q_raw.get("confidence") or 0.0), 3)
@@ -807,6 +871,7 @@ class RapidOCRAdapter(OCRAdapter):
         raw_lq = bool(q_raw.get("low_quality")) or not raw_lines
         if not preprocess or image is None:
             self.last_preprocess_telemetry = {
+                "rapidocr_use_cls": eff_use_cls,
                 "preprocess_applied": False,
                 "raw_confidence": raw_conf,
                 "preprocessed_confidence": None,
@@ -828,6 +893,7 @@ class RapidOCRAdapter(OCRAdapter):
         if pre_status != "APPLIED" or (pre_img is image and up == 1.0):
             reason = "PREPROCESS_UNAVAILABLE" if pre_status == "UNAVAILABLE" else "PREPROCESS_SKIPPED"
             self.last_preprocess_telemetry = {
+                "rapidocr_use_cls": eff_use_cls,
                 "preprocess_applied": False,
                 "raw_confidence": raw_conf,
                 "preprocessed_confidence": None,
@@ -861,6 +927,7 @@ class RapidOCRAdapter(OCRAdapter):
             deciding_key = _quality_deciding_key(q_raw, q_pre)
             choose_pre = _quality_rank(q_pre) > _quality_rank(q_raw)
         self.last_preprocess_telemetry = {
+            "rapidocr_use_cls": eff_use_cls,
             "preprocess_applied": True,
             "raw_confidence": raw_conf,
             "preprocessed_confidence": pre_conf,

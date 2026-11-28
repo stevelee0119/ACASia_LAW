@@ -98,7 +98,7 @@ def run_ocr_smoke() -> dict:
 
 
 def ocr_readiness(*, refresh: bool = False) -> dict:
-    from .ocr import get_ocr_adapter
+    from .ocr import RapidOCRAdapter, get_ocr_adapter, resolve_ocr_fallback_config
     from packages.common.config import get_settings
 
     adapter = get_ocr_adapter()
@@ -108,6 +108,19 @@ def ocr_readiness(*, refresh: bool = False) -> dict:
         "required_languages": get_settings().ocr_lang.split("+"), "missing_languages": None,
         "status": "NOT_INSTALLED"})
     state["available"] = bool(adapter.available)
+    fb_cfg = resolve_ocr_fallback_config()
+    fb_adapter = getattr(adapter, "fallback", None)
+    if fb_adapter is None and isinstance(adapter, RapidOCRAdapter):
+        fb_adapter = adapter
+    fb_state: dict = {
+        "configured_engine": fb_cfg["engine"],
+        "mode": fb_cfg["mode"],
+        "enabled": bool(fb_cfg["enabled"]),
+        "available": bool(fb_adapter and fb_adapter.available),
+    }
+    if isinstance(fb_adapter, RapidOCRAdapter):
+        fb_state["rapidocr"] = fb_adapter.engine_config_diagnostics(ensure_loaded=bool(refresh and fb_cfg["enabled"]))
+    state["fallback"] = fb_state
     state["self_test"] = {"status": "NOT_RUN", "reason": state["status"]}
     state["ready"] = False
     if not adapter.available:

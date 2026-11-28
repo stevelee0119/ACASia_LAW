@@ -187,6 +187,20 @@ def _default_models_label() -> str:
     return " · ".join(models)
 
 
+def render_recent_releases(releases: list, *, limit: int = 5) -> str:
+    """최근 릴리스의 주요 변경 내역을 간결한 목록으로 만든다(기존 릴리스 계열 표와 구분)."""
+    recent = list(reversed(releases))[:limit]
+    if not recent:
+        return ""
+    lines = ["### 최근 릴리스 주요 변경", ""]
+    for item in recent:
+        ver = item.get("version", "")
+        rel_date = item.get("date", "")
+        changes = " / ".join(_cell(c) for c in (item.get("changes") or [])[:3])
+        lines.append(f"- **v{ver}** ({rel_date}): {changes}")
+    return "\n".join(lines)
+
+
 def updated_readme(releases: list) -> str:
     text = README.read_text(encoding="utf-8")
     if START not in text or END not in text:
@@ -240,10 +254,21 @@ def updated_readme(releases: list) -> str:
 
     head, rest = text.split(START, 1)
     _, tail = rest.split(END, 1)
+    perf_rows = load_performance()
+    last_perf_ver = perf_rows[-1]["version"].lstrip("v") if perf_rows else ""
+    perf_gap_note = ""
+    if last_perf_ver and _version_key(ver) > _version_key(last_perf_ver):
+        perf_gap_note = (
+            f"\n\n> **측정 범위 안내:** 현재 프로그램 버전은 `v{ver}`이며, 위 오프라인 365항목 재채점 그래프는 "
+            f"`docs/scorecards/version_performance.csv`에 등록된 `v{last_perf_ver}`까지 반영되어 있습니다."
+        )
+    recent_block = render_recent_releases(releases)
+    recent_section = f"\n\n{recent_block}" if recent_block else ""
     note = ("\n\n버전별 변경 내역은 [변경 이력](docs/RELEASE_HISTORY.md)에 있습니다(`docs/releases.json`에서 자동 생성). "
             "아래 그래프와 설명은 `python scripts/render_performance_chart.py`·`python scripts/update_readme.py`가 "
-            "`docs/scorecards/version_performance.csv`로 만듭니다.\n\n")
-    return f"{head}{START}{note}{render_performance(load_performance())}\n\n{END}{tail}"
+            "`docs/scorecards/version_performance.csv`로 만듭니다"
+            "(그래프 PNG는 `readme-sync.yml` 워크플로 렌더본만 정본으로 삼으며 로컬 렌더 결과는 커밋하지 않습니다).\n\n")
+    return f"{head}{START}{note}{render_performance(perf_rows)}{perf_gap_note}{recent_section}\n\n{END}{tail}"
 
 
 def main() -> int:
