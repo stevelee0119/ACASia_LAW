@@ -272,8 +272,11 @@ class AnthropicProvider(LLMProvider):
             }
             if include_temperature:
                 payload["temperature"] = request.temperature
-            if getattr(self.settings, "llm_prompt_caching", False):
-                payload["cache_control"] = {"type": "ephemeral"}
+            # 자동 캐시(최상위 cache_control)는 매번 바뀌는 마지막 사용자 블록에 지점을 둬
+            # 쓰기 할증만 생긴다. 안정된 지시문(system) 블록에 명시 지점을 둔다.
+            if getattr(self.settings, "llm_prompt_caching", False) and request.system:
+                payload["system"] = [{"type": "text", "text": request.system,
+                                      "cache_control": {"type": "ephemeral"}}]
             return payload
 
         try:
