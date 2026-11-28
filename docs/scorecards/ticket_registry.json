@@ -1077,6 +1077,12 @@
       "kind": "defect",
       "note": "#460 병합(c03197bd) 후 readme-sync 첫 실행 46077119477 실패: CI 글꼴로 다시 그린 performance_trend.png가 저장소 파일과 달라 커밋했으나 Steve_ACASiaLAW 저장소 규칙(GH013, 필수 상태 검사 5개)이 봇 직접 푸시를 거절. 푸시마다 반복 실패. 보완: 보호 브랜치 직접 푸시 대신 봇 브랜치+PR로 전환하고 PNG 렌더 글꼴을 고정. 확인된 결함(CI 실기록). / 2026-11-27 #465(b55f2086) 조건부 수용: 봇 브랜치+PR 전환·PNG 렌더 고정, 실행 2건 성공. 제약: 저장소 설정상 GITHUB_TOKEN 신규 PR 생성 불가·GITHUB_TOKEN 푸시는 필수 CI 미기동 → README_SYNC_TOKEN 설정 필요(사용자 결정). #464 봇 PNG PR 수용. / #465 병합 de0ca69b, #464 병합 c4263918. 병합 후 readme-sync 실행 46083420707 성공(변경 0). README_SYNC_TOKEN 봇 PR 생성 경로는 변경이 생기는 실행에서 확인 예정(미검증).",
       "merged_on": "2026-11-27"
+    },
+    "TK-253": {
+      "status": "open",
+      "priority": "P2",
+      "kind": "user_request",
+      "note": "사용자 요구 '제미나이 권고에 따라 모델 조정'·'비용과 성능 최고 효율'·'모델 조정 진행'(2026-11-28). openai_review gpt-6.2-sol, gemini gemini-4-neon, pricing 2종, GeminiProvider temperature 생략 명시 목록, 표시명 정규식. 개선 등급 미확인(OpenAI·Gemini는 실행당 비용 약 5%). 평가 측 시험 패치 TK-253_tests.patch. 사전 검증 76개 파일 5,530 통과(환경 실패 3 제외). #467 대체."
     }
   },
   "updated_on": "2026-11-27"
