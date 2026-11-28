@@ -926,5 +926,35 @@
   "decided_by": "Claude Code 평가 세션",
   "decided_at": "2026-11-27",
   "from": "0.30.2"
+ },
+ {
+  "version": "0.31.1",
+  "level": "patch",
+  "basis": [
+   "fixed"
+  ],
+  "measured_commit": "c6a48c5",
+  "conditions": {
+   "network": false,
+   "os": "Linux",
+   "python": "3.13.18 (CI 3.11, --allow-env-mismatch)",
+   "tesseract": "5.3.4",
+   "baseline_commit": "9b30e24604799f7e511287926af79b28e8eaa5bb",
+   "scoring": "scripts/verify_all.py 전체 모드(평가 측 재실행), scripts/scorecard.py(dev 89.7, holdout 87.5), scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #468·#469 필수 CI."
+  },
+  "evidence": {
+   "M1": "dev 89.7, holdout 87.5(0.31.0과 동일); 확인 오탐·A등급 오탐 0, 기존 방어 유지, 엔진 오류 0. 회귀 0.",
+   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED.",
+   "M3": "은퇴 5세트 평균 58.00(56.5/54.6/63.8/59.4/55.7, 오탐 0·A 0·후퇴 없음).",
+   "M4": "#469 TK-255 공급자 거절이 RAG 상한·예산을 소진하던 운영 결함(0.31.0 1차 m3 참고자료 33/83 미대조·주장 COST 중단) 수정: 합성 시험 3건 원래 코드 실패→수정본 통과, 탐침 4종. #468 TK-253 모델 설정, #469 TK-254 캐시 지점(분류 없음).",
+   "CI": "#468·#469 필수 CI 11/11 성공. verify_all 전체: 수용 1284·원장 2357·브라우저 200 통과, 전체 11712 통과/5 실패(0.31.0 후보와 같은 환경 요인, CI 통과).",
+   "open_p1_regression": 0,
+   "unmeasured": "격리 봉인 세트, 배포 후 gpt-6.2-sol 실호출·캐시 적중·RAG 비용·Haiku 실측.",
+   "record": "docs/scorecards/release_0311_candidate_20261128.md"
+  },
+  "rer": 0.0,
+  "decided_by": "Claude Code 평가 세션",
+  "decided_at": "2026-11-28",
+  "from": "0.31.0"
  }
 ]

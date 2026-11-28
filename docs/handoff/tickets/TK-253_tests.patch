@@ -1,0 +1,152 @@
+diff --git a/tests/test_efficient_llm_routing.py b/tests/test_efficient_llm_routing.py
+index 79f6829d..d8eea82e 100644
+--- a/tests/test_efficient_llm_routing.py
++++ b/tests/test_efficient_llm_routing.py
+@@ -67,7 +67,7 @@ def test_model_tiers_do_not_mutate_shared_provider(transport):
+     for role, req in ((LLMRole.PRIMARY_REASONER, request), (LLMRole.INDEPENDENT_CRITIC, request),
+                       (LLMRole.PRIMARY_REASONER, replace(request, model_tier="escalation"))):
+         assert asyncio.run(router.run(role, req)).used
+-    assert [body["model"] for _, body in requests] == ["claude-sonnet-5-5", "gpt-6.1-sol", "claude-opus-5-5"]
++    assert [body["model"] for _, body in requests] == ["claude-sonnet-5-5", "gpt-6.2-sol", "claude-opus-5-5"]
+     assert router.providers["anthropic"].config.model == original
+ 
+ 
+@@ -128,7 +128,7 @@ def test_failed_primary_falls_back_and_retains_failure_record(transport):
+     result = asyncio.run(router.run_any(LLMRole.PRIMARY_REASONER, LLMRequest("system", "synthetic text")))
+     assert result.used and [e.provider for e in result.executions] == ["anthropic", "openai"]
+     assert not result.executions[0].ok
+-    assert requests[-1][1]["model"] == "gpt-6.1-sol"
++    assert requests[-1][1]["model"] == "gpt-6.2-sol"
+ 
+ 
+ def test_gemini_thinking_is_settled_from_reported_usage(transport):
+@@ -137,13 +137,13 @@ def test_gemini_thinking_is_settled_from_reported_usage(transport):
+     execution = result.executions[0]
+     assert execution.output_tokens == 15 and execution.thinking_tokens == 5
+     assert execution.cost_status == "REPORTED"
+-    assert Decimal(str(execution.cost_usd)) == Decimal("0.0002625")
++    assert Decimal(str(execution.cost_usd)) == Decimal("0.000525")  # gemini-4-neon $3/$15 (2026-11-28 모델 조정)
+ 
+ 
+ def test_hydrogen_standard_and_cache_rates(transport):
+     router, _, _ = transport
+     provider = router.providers["gemini"]
+-    assert provider.config.model == "gemini-4-hydrogen"
++    assert "gemini-4-hydrogen" in router.settings.pricing  # 기본은 neon으로 바뀌었으나 hydrogen 단가는 유지한다
+     # 1M input ($1.50) + 1M output ($7.50) = $9.00
+     cost_1m, status_1m = usage_cost(
+         LLMResponse(True, input_tokens=1_000_000, output_tokens=1_000_000),
+@@ -274,7 +274,7 @@ def test_explicit_default_model_has_distinct_identity_and_routing_is_frozen(tran
+     # Exercise a task that differs from the restored 0.13.0 default (Luna).
+     request = LLMRequest("system", "synthetic text")
+     provider = router.providers["openai"]
+-    assert task_provider(provider, LLMRole.INDEPENDENT_CRITIC, request, initial).config.model == "gpt-6.1-sol"
++    assert task_provider(provider, LLMRole.INDEPENDENT_CRITIC, request, initial).config.model == "gpt-6.2-sol"
+     assert task_provider(provider, LLMRole.INDEPENDENT_CRITIC, request, explicit).config.model == "gpt-6-luna"
+     monkeypatch.delenv("LV_OPENAI_MODEL")
+     assert task_provider(provider, LLMRole.INDEPENDENT_CRITIC, request, explicit).config.model == "gpt-6-luna"
+diff --git a/tests/test_gemini4_hydrogen_config.py b/tests/test_gemini4_hydrogen_config.py
+index 86685fdf..cf56902c 100644
+--- a/tests/test_gemini4_hydrogen_config.py
++++ b/tests/test_gemini4_hydrogen_config.py
+@@ -13,9 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
+ 
+ def test_providers_json_uses_gemini_4_hydrogen():
+     providers = json.loads((ROOT / "config/providers.json").read_text(encoding="utf-8"))
+-    assert providers["gemini"]["model"] == "gemini-4-hydrogen"
++    # 2026-11-28 모델 조정(사용자 승인): 기본 Gemini는 gemini-4-neon. hydrogen 설정 지원(단가·표시·temperature)은 아래 시험이 계속 지킨다.
++    assert providers["gemini"]["model"] == "gemini-4-neon"
+     settings = get_settings()
+-    assert settings.providers["gemini"].model == "gemini-4-hydrogen"
++    assert settings.providers["gemini"].model == "gemini-4-neon"
+ 
+ 
+ def test_pricing_json_has_gemini_4_hydrogen():
+@@ -31,8 +32,10 @@ def test_pricing_json_has_gemini_4_hydrogen():
+ 
+     from packages.llm_router.providers import GeminiProvider
+ 
++    from dataclasses import replace
++
+     settings = get_settings()
+-    provider = GeminiProvider(settings.providers["gemini"])
++    provider = GeminiProvider(replace(settings.providers["gemini"], model="gemini-4-hydrogen"))
+     for day in ("2026-11-15", "2026-12-31", "2027-01-01"):
+         table = effective_pricing(settings, provider, today=day)
+         assert (table["input"], table["output"], table["cache_read"]) == (1.5, 7.5, 0.075)
+@@ -80,6 +83,7 @@ def test_gemini_provider_omits_temperature_only_for_hydrogen(monkeypatch):
+ 
+         for model_name, expect_temp in (
+             ("gemini-4-hydrogen", False),
++            ("gemini-4-neon", False),
+             ("gemini-3.8-flash", True),
+             ("operator-custom-gemini", True),
+         ):
+@@ -97,3 +101,24 @@ def test_gemini_provider_omits_temperature_only_for_hydrogen(monkeypatch):
+                 assert "temperature" not in gen_cfg
+     finally:
+         reset_settings()
++
++
++def test_pricing_json_has_gemini_4_neon_and_gpt_6_2_sol():
++    """2026-11-28 모델 조정: 공식 가격표(aistudio.google.com/docs/pricing, openai.com GPT-6.2 발표) 단가."""
++    from dataclasses import replace
++    from packages.llm_router.budget import effective_pricing
++    from packages.llm_router.providers import GeminiProvider
++
++    pricing = json.loads((ROOT / "config/pricing.json").read_text(encoding="utf-8"))
++    assert (pricing["gemini-4-neon"]["input"], pricing["gemini-4-neon"]["output"], pricing["gemini-4-neon"]["cache_read"]) == (3.0, 15.0, 0.15)
++    assert (pricing["gpt-6.2-sol"]["input"], pricing["gpt-6.2-sol"]["output"], pricing["gpt-6.2-sol"]["cache_read"]) == (2.0, 10.0, 0.1)
++    settings = get_settings()
++    provider = GeminiProvider(replace(settings.providers["gemini"], model="gemini-4-neon"))
++    table = effective_pricing(settings, provider, today="2026-11-28")
++    assert (table["input"], table["output"], table["cache_read"]) == (3.0, 15.0, 0.15)
++
++
++def test_model_display_name_formats_gemini_4_neon():
++    assert model_display_name("gemini-4-neon") == "Gemini 4 Neon"
++    assert model_label("gemini", "gemini-4-neon") == "Gemini · Gemini 4 Neon (gemini-4-neon)"
++    assert model_display_name("gpt-6.2-sol") == "GPT-6.2 Sol"
+diff --git a/tests/test_tk78_opt_in_routing.py b/tests/test_tk78_opt_in_routing.py
+index 66d4306b..131bcdfc 100644
+--- a/tests/test_tk78_opt_in_routing.py
++++ b/tests/test_tk78_opt_in_routing.py
+@@ -15,9 +15,9 @@ from test_efficient_llm_routing import transport, authorship_request  # noqa: F4
+ from test_operations_completion import ops, seeded_run, completed  # noqa: F401
+ 
+ 
+-# 0.13.0 production commit b68cfeec2c5c168a3b9e6e2e92653ea6892521bf.
++# 0.13.0 production commit b68cfeec2c5c168a3b9e6e2e92653ea6892521bf. Gemini 기본은 0.32.0 모델 조정(2026-11-28 사용자 승인)으로 gemini-4-neon.
+ LEGACY_MODELS = {"anthropic": "claude-opus-5-5", "openai": "gpt-6-luna",
+-                 "gemini": "gemini-4-hydrogen"}
++                 "gemini": "gemini-4-neon"}
+ ROUTING_FIELDS = {"llm_cross_check", "llm_efficient_routing", "llm_prompt_caching",
+                   "llm_review_sample_percent", "llm_routing", "llm_model_overrides", "llm_default_models"}
+ 
+@@ -66,7 +66,7 @@ def test_off_uses_all_legacy_models_and_does_not_reuse_requests(transport, unset
+         answers = asyncio.run(router.consult_all(LLMRole.PRIMARY_REASONER, request))
+         assert len(answers) == 3 and all(a.used for a in answers)
+         assert not any(e.reused for a in answers for e in a.executions)
+-    assert sent_models(requests) == ["claude-opus-5-5", "gpt-6-luna", "gemini-4-hydrogen"] * 2
++    assert sent_models(requests) == ["claude-opus-5-5", "gpt-6-luna", "gemini-4-neon"] * 2
+     assert all("cache_control" not in body for _, body in requests)
+ 
+ 
+@@ -74,7 +74,7 @@ def test_off_cascade_retains_0130_wire_and_three_calls(transport, unset_routing_
+     router, requests, responses = make_default_router(transport)
+     responses["anthropic"] = {"status": "VERIFIED", "confidence": 1, "rationale": "synthetic"}
+     result = asyncio.run(router.cascade(question="q", evidence={"official": {"full_text": "source"}}))
+-    assert sent_models(requests) == ["claude-opus-5-5", "gpt-6-luna", "gemini-4-hydrogen"]
++    assert sent_models(requests) == ["claude-opus-5-5", "gpt-6-luna", "gemini-4-neon"]
+     assert '"confidence": 1' in requests[1][1]["messages"][1]["content"]
+     assert not any(s["name"] == "escalation" for s in result.stages)
+ 
+@@ -99,7 +99,7 @@ def test_on_flag_selects_task_models_without_changing_provider_defaults(transpor
+                       (LLMRole.PRIMARY_REASONER, replace(request, model_tier="escalation"))]:
+         exclude = ["gemini", "anthropic"] if role == LLMRole.LOW_COST_EXTRACTOR else None
+         assert asyncio.run(router.run(role, req, exclude=exclude)).used
+-    assert sent_models(requests) == ["claude-sonnet-5-5", "gpt-6.1-sol", "gpt-6-luna", "claude-opus-5-5"]
++    assert sent_models(requests) == ["claude-sonnet-5-5", "gpt-6.2-sol", "gpt-6-luna", "claude-opus-5-5"]
+     assert {name: p.model for name, p in router.settings.providers.items()} == LEGACY_MODELS
+ 
+ 
