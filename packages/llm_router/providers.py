@@ -325,6 +325,10 @@ _GEMINI_MINIMAL_LEVEL_PREFIXES = (
 )
 
 
+def _gemini_omits_temperature(model: str) -> bool:
+    return str(model or "").lower() in {"gemini-4-hydrogen", "gemini-4-neon"}
+
+
 def _gemini_thinking_config(model: str, request: LLMRequest, quirks: set) -> Optional[Dict[str, Any]]:
     """모델 계열별 공식 thinking 파라미터를 고른다(미지 모델 추측 금지, 거절 시 _quirks로 우회)."""
     if "no_thinking_config" in quirks:
@@ -397,7 +401,7 @@ class GeminiProvider(LLMProvider):
                 # 형식이 정해진 요청은 JSON으로만 답하게 한다(OpenAI의 json_object와 같은 역할).
                 **({"responseMimeType": "application/json"} if request.schema else {}),
             }
-            if self.config.model != "gemini-4-hydrogen" and "no_temperature" not in quirks:
+            if not _gemini_omits_temperature(self.config.model) and "no_temperature" not in quirks:
                 gen_cfg["temperature"] = request.temperature
             thinking_cfg = _gemini_thinking_config(self.config.model, request, quirks)
             if thinking_cfg is not None:

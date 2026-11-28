@@ -283,7 +283,7 @@ docker compose up --build
 |---|---|---|
 | `LV_LAW_GO_KR_OC` | 권장 | 국가법령정보 공동활용 OC (판례·법령 공식 검증) |
 | `LV_KCI_KEY` | 선택 | KCI 학술 API Key |
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | 선택 | LLM Provider. 기본 모델은 `config/providers.json`(gpt-6-luna · claude-opus-5-5 · gemini-4-hydrogen). 보고서의 모델별 판정에는 "OpenAI · GPT-6 Luna"처럼 공급자와 모델명이 함께 표시된다 |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | 선택 | LLM Provider. 기본 모델은 `config/providers.json`(gpt-6-luna · claude-opus-5-5 · gemini-4-neon). 보고서의 모델별 판정에는 "OpenAI · GPT-6 Luna"처럼 공급자와 모델명이 함께 표시된다 |
 | `LV_OPENAI_MODEL` / `LV_ANTHROPIC_MODEL` / `LV_GEMINI_MODEL` | 선택 | 모델 ID 덮어쓰기(공급자가 모델을 바꿨을 때) |
 | `LV_LLM_CROSS_CHECK` | 선택 | AI 교차검증 범위. `all`(기본, 사용 가능한 모델 모두) · `auto`(판례 의미·적용 검토에서만 신뢰도가 낮거나 중요도가 높을 때 반증 모델 사용, 다른 검토는 `all`과 같음) · `off`(1순위 모델 하나) |
 | `LV_LLM_EFFICIENT_ROUTING` | 선택 | 효율 라우팅(기본 OFF). `1`이면 작업별로 모델을 나눠 쓰고, `LV_LLM_CROSS_CHECK=auto`와 함께 법리 검토에서 의견이 엇갈린 항목만 세 번째 모델에 보낸다 |

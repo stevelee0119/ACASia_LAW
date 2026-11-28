@@ -67,7 +67,7 @@ def test_model_tiers_do_not_mutate_shared_provider(transport):
     for role, req in ((LLMRole.PRIMARY_REASONER, request), (LLMRole.INDEPENDENT_CRITIC, request),
                       (LLMRole.PRIMARY_REASONER, replace(request, model_tier="escalation"))):
         assert asyncio.run(router.run(role, req)).used
-    assert [body["model"] for _, body in requests] == ["claude-sonnet-5-5", "gpt-6.1-sol", "claude-opus-5-5"]
+    assert [body["model"] for _, body in requests] == ["claude-sonnet-5-5", "gpt-6.2-sol", "claude-opus-5-5"]
     assert router.providers["anthropic"].config.model == original
 
 
@@ -128,7 +128,7 @@ def test_failed_primary_falls_back_and_retains_failure_record(transport):
     result = asyncio.run(router.run_any(LLMRole.PRIMARY_REASONER, LLMRequest("system", "synthetic text")))
     assert result.used and [e.provider for e in result.executions] == ["anthropic", "openai"]
     assert not result.executions[0].ok
-    assert requests[-1][1]["model"] == "gpt-6.1-sol"
+    assert requests[-1][1]["model"] == "gpt-6.2-sol"
 
 
 def test_gemini_thinking_is_settled_from_reported_usage(transport):
@@ -137,13 +137,13 @@ def test_gemini_thinking_is_settled_from_reported_usage(transport):
     execution = result.executions[0]
     assert execution.output_tokens == 15 and execution.thinking_tokens == 5
     assert execution.cost_status == "REPORTED"
-    assert Decimal(str(execution.cost_usd)) == Decimal("0.0002625")
+    assert Decimal(str(execution.cost_usd)) == Decimal("0.000525")  # gemini-4-neon $3/$15 (2026-11-28 모델 조정)
 
 
 def test_hydrogen_standard_and_cache_rates(transport):
     router, _, _ = transport
     provider = router.providers["gemini"]
-    assert provider.config.model == "gemini-4-hydrogen"
+    assert "gemini-4-hydrogen" in router.settings.pricing  # 기본은 neon으로 바뀌었으나 hydrogen 단가는 유지한다
     # 1M input ($1.50) + 1M output ($7.50) = $9.00
     cost_1m, status_1m = usage_cost(
         LLMResponse(True, input_tokens=1_000_000, output_tokens=1_000_000),
@@ -274,7 +274,7 @@ def test_explicit_default_model_has_distinct_identity_and_routing_is_frozen(tran
     # Exercise a task that differs from the restored 0.13.0 default (Luna).
     request = LLMRequest("system", "synthetic text")
     provider = router.providers["openai"]
-    assert task_provider(provider, LLMRole.INDEPENDENT_CRITIC, request, initial).config.model == "gpt-6.1-sol"
+    assert task_provider(provider, LLMRole.INDEPENDENT_CRITIC, request, initial).config.model == "gpt-6.2-sol"
     assert task_provider(provider, LLMRole.INDEPENDENT_CRITIC, request, explicit).config.model == "gpt-6-luna"
     monkeypatch.delenv("LV_OPENAI_MODEL")
     assert task_provider(provider, LLMRole.INDEPENDENT_CRITIC, request, explicit).config.model == "gpt-6-luna"

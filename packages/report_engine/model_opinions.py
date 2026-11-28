@@ -28,7 +28,7 @@ def model_display_name(model: str) -> str:
     if claude:
         family, major, minor = claude.groups()
         return f"Claude {family.title()} {major}{'.' + minor if minor else ''}"
-    gemini = re.fullmatch(r"gemini-([\d.]+)-(flash|pro|hydrogen)(-lite)?(-preview)?", model)
+    gemini = re.fullmatch(r"gemini-([\d.]+)-(flash|pro|hydrogen|neon|carbon|argon)(-lite)?(-preview)?", model)
     if gemini:
         version, tier, lite, preview = gemini.groups()
         return f"Gemini {version} {tier.title()}{' Lite' if lite else ''}{' Preview' if preview else ''}"
