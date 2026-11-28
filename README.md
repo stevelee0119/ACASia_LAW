@@ -16,7 +16,7 @@
 - **법률 판단을 대신하지 않습니다.** 진정성립·위조·고의와 주장의 당부는 사용자가 최종 판단합니다.
 - **AI 모델의 의견은 참고입니다.** 판정은 공식 출처 조회와 결정론적 구조 검사가 먼저 정합니다.
 
-**현재 운영 버전:** 0.31.1 (2026-11-27 배포). 버전별 성능 추이는 [아래 그래프](#버전별-성능-발전-추이), 버전별 변경은 [변경 이력](docs/RELEASE_HISTORY.md), 개발 중인 변경과 평가 결과는 [일자별 추이표](docs/scorecards/DAILY_TREND.md)를 보세요.
+**현재 운영 버전:** 0.31.1 (2026-11-28 배포). 버전별 성능 추이는 [아래 그래프](#버전별-성능-발전-추이), 버전별 변경은 [변경 이력](docs/RELEASE_HISTORY.md), 개발 중인 변경과 평가 결과는 [일자별 추이표](docs/scorecards/DAILY_TREND.md)를 보세요.
 
 ---
 
@@ -267,8 +267,8 @@ docker compose up --build
 
 ### 최근 릴리스 주요 변경
 
-- **v0.31.1** (2026-11-27): TK-253(#468): 모델 조정 — OpenAI 검토 gpt-6.2-sol, Gemini gemini-4-neon(단가 등록·temperature 생략·표시명 반영) / TK-254(#469): Anthropic 캐시 지점을 system 블록으로 바로잡고 claude-haiku-5-5 단가 등록 / TK-255(#469): 공급자 거절(HTTP 오류 응답)이 RAG 호출 상한·주장 대조 비용 예산을 소진하던 결함 수정
-- **v0.31.0** (2026-11-27): TK-246(#457): RapidOCR 글줄 방향 분류기 끄기(use_cls=False)로 저품질 한국어 스캔 복구 / TK-250(#458): Drive 변경 토큰 증분 동기화·묶음 목록·이름 변경 승계·식별자 역색인·데이터셋 상태/관리자 동기화 API(목록 조회 전 토큰 확보, 변경 조회 실패 시 전체 목록 폴백) / TK-248(#459): 평가 출력 주장 판정을 인용 존재와 분리하고 공식 근거 좌표 기록 / #460 README 자동 갱신
+- **v0.31.1** (2026-11-28): TK-253(#468): 모델 조정 — OpenAI 검토 gpt-6.2-sol, Gemini gemini-4-neon(단가 등록·temperature 생략·표시명 반영) / TK-254(#469): Anthropic 캐시 지점을 system 블록으로 바로잡고 claude-haiku-5-5 단가 등록 / TK-255(#469): 공급자 거절(HTTP 오류 응답)이 RAG 호출 상한·주장 대조 비용 예산을 소진하던 결함 수정
+- **v0.31.0** (2026-11-28): TK-246(#457): RapidOCR 글줄 방향 분류기 끄기(use_cls=False)로 저품질 한국어 스캔 복구 / TK-250(#458): Drive 변경 토큰 증분 동기화·묶음 목록·이름 변경 승계·식별자 역색인·데이터셋 상태/관리자 동기화 API(목록 조회 전 토큰 확보, 변경 조회 실패 시 전체 목록 폴백) / TK-248(#459): 평가 출력 주장 판정을 인용 존재와 분리하고 공식 근거 좌표 기록 / #460 README 자동 갱신
 - **v0.30.2** (2026-11-27): TK-247(#452, P0 회귀 수정): Drive 재처리 시간 초과·실패 시 기존 본문(조각·검색 가능 쪽) 및 READY 색인 보존·허위 복구 집계 제거(recovered_pages=0, 2회 실패 후 정지) / TK-247(#452): 재처리 전용 시간 한도(LV_REFERENCE_REPROCESS_TIMEOUT 기본 120초, min(120, 남은 예산-60)) 및 예산 부족(한도 30초 미만) 시 reprocess_deferred 미룸으로 뒤 캐시 파일 기아 차단 / TK-247(#452): 이미 손상된 빈 기록(previous_searchable_pages>0)에 대한 폴백 해제 1차 OCR 자동 복원(restore_failed_extract, 최대 2회) 및 매니페스트 노출
 - **v0.30.1** (2026-11-27): TK-243(#445): page_quality() 잡음 제외·공백 제거 글자 수(chars, raw_chars, preprocessed_chars) 기록 / TK-244(#445): 반올림 전 hangul_ok 일원화 및 신뢰도 우선 _quality_rank 변형 선택·deciding_key 관측 / TK-245(#446): isolated_extract() OCR 폴백 환경 변수 전파·tk245-fallback-env-v2 1회 재처리·저품질 합집합 복구 집계·child_ocr_config 관측
 - **v0.30.0** (2026-11-26): TK-241(#435): 참고자료 대조 INTERNAL_REFERENCE_CONTRADICTION 전용 유형(98개 매핑)·advisory_only=True·주장당 1건 병합 및 공백 정규화 재매칭 / TK-240(#434): 상대방 전언 인용 귀속 어간+어미·반박 조건부 원용류 A등급 오탐 방지 / TK-239(#436)·TK-238(#432)·TK-237(#431): OCR 폴백 원본/전처리 이중 비교, run 단위 RAG·OCR 폴백 actual_calls 및 지연(ms) 집계, 미완독 unread_cause_counts·CONFIG_BLOCKED 분리
