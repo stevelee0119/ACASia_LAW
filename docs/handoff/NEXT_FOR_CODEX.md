@@ -8,6 +8,14 @@
 - #128 본문의 '별도 평가 세션'은 Claude Code 평가 세션을 뜻한다(사용자 확인). 평가 측 판정은 [PR 코멘트](https://github.com/stevelee0119/ACASia_LAW/pull/128#issuecomment-6241878062)에 있다. 병합 커밋 메시지의 '평가 측 기술 수용'은 이 판정과 다르다. 앞으로 커밋·PR에 평가 측 수용을 적을 때는 평가 측 코멘트 링크만 인용한다.
 - 봉인 세트·고정 비공개 벤치마크·개발 말뭉치 출제는 저장소를 연결하지 않은 Codex **격리 세션**이 맡는다. 이 구현 세션은 출제·채점에 쓰지 않는다.
 
+## 0-M. 0.31.1 운영 재측정 대행과 후속 업무 (2026-11-28 사용자 지시) — 최우선
+- 후속 업무까지 인계(사용자 "운영 재측정 및 그 후 후속 업무까지 codex가 진행할께"): [CODEX_HANDOFF_20261128.md](CODEX_HANDOFF_20261128.md)
+- 사용자 원문: "운영재측정은 codex에서 하도록 지시문을 구체적으로 만들어줘"(2026-11-28).
+- 이 지시는 이 문서 2절의 '운영(Render)에서 벤치마크 실행 금지'보다 앞선다. 단, 범위는 아래 측정만이다.
+- 지시 전문: 사용자에게 준 코드 블록(평가 측 기록 `docs/scorecards/online_0311_measurement_order_20261128.md`와 같음).
+- 판정은 평가 측(Claude Code)이 한다. Codex는 측정·원자료·요약만 낸다.
+- 인용 대조군 N1~N5·다문서 입력은 저장소 밖 비공개 자료라 평가 측이 따로 잰다.
+
 ## 0. 구현 한시 대행 2차 (2026-11-02 사용자 지시) — 최우선
 - 범위: lexdiff 비교 후속 개선 TK-130a·130b·131(메모)·132(메모). 지시 원본: [NEXT_FOR_ANTIGRAVITY 2-7절](NEXT_FOR_ANTIGRAVITY.md). 사용자에게 전달한 Codex용 전문과 같다.
 - 수정본: `patches/TK-130a_circled_paragraphs_on_debbe83.diff`, `patches/TK-130b_abbreviation_inference_v2_on_debbe83.diff`(평가 측 사전 검증 완료).
