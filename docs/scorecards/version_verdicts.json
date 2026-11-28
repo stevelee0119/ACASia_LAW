@@ -1,930 +1,960 @@
 [
- {
-  "version": "0.10.0",
-  "from": "0.9.13",
-  "level": "minor",
-  "measured_commit": "33b509f05c951e68fdd7cb4438bb850ec80ef4d3",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11.15",
-   "tesseract": "5.3.4",
-   "scoring": "scripts/scorecard.py(dev·holdout), regression_gate probe 12종"
+  {
+    "version": "0.10.0",
+    "from": "0.9.13",
+    "level": "minor",
+    "measured_commit": "33b509f05c951e68fdd7cb4438bb850ec80ef4d3",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11.15",
+      "tesseract": "5.3.4",
+      "scoring": "scripts/scorecard.py(dev·holdout), regression_gate probe 12종"
+    },
+    "evidence": {
+      "M1": {
+        "baseline": "baseline.json(0.9.13, 430543d) dev 79.9 / holdout 77.3",
+        "candidate": "dev 81.7 / holdout 79.2(오탐 0)",
+        "delta": "+1.8 / +1.9 → 첫째 자리 범위(+1.0 이상 +5.0 미만)"
+      },
+      "M3": "인계 티켓 TK-57(연락처·주민등록번호 표기 변형) 수용 기준 모두 충족·해소(평가 측 비공개 세트 1·2·3판 누락·도달·오탐 0). 8차 구조화 요청 실명 도달 246 → 0/324(TK-51) 해소",
+      "P1": "regression_gate --base 430543d: probe 회귀 0·개선 70(성적표는 기준 커밋에 도구 없음 → baseline.json과 점수 게이트로 비교, 통과). --base 9933548(main): 회귀 없음",
+      "P2": "점수 게이트 통과(종합점수 하락·오탐 증가 0)",
+      "P3": "하드코딩 변경분 점검 통과(9933548..33b509f). 새 rule_id는 각 라운드 판정에서 확인",
+      "P4": "verify_all 전체 모드 종료 0(수용 925·원장 501·전체 3220·브라우저 197), 같은 SHA CI 필수 3개 성공",
+      "P5": "열린 신규 회귀 티켓 0(남은 것은 strict xfail로 고정한 알려진 미해결)",
+      "P6": "판정서 f1_gate_verdict '첫 릴리스 후보 판정'",
+      "not_measured": "AI 작성 판별·공식 DB 대조·Drive 대조(오프라인). 봉인 시험은 첫 릴리스에 한해 생략(세트 없음, 사용자 결정 2026-10-04)"
+    },
+    "decided_by": "evaluator(claude-code)",
+    "decided_at": "2026-10-04",
+    "note": "첫 판정. 등급 임계값 재검토 결과 현행 유지(사용자 결정 2026-10-04)."
   },
-  "evidence": {
-   "M1": {
-    "baseline": "baseline.json(0.9.13, 430543d) dev 79.9 / holdout 77.3",
-    "candidate": "dev 81.7 / holdout 79.2(오탐 0)",
-    "delta": "+1.8 / +1.9 → 첫째 자리 범위(+1.0 이상 +5.0 미만)"
-   },
-   "M3": "인계 티켓 TK-57(연락처·주민등록번호 표기 변형) 수용 기준 모두 충족·해소(평가 측 비공개 세트 1·2·3판 누락·도달·오탐 0). 8차 구조화 요청 실명 도달 246 → 0/324(TK-51) 해소",
-   "P1": "regression_gate --base 430543d: probe 회귀 0·개선 70(성적표는 기준 커밋에 도구 없음 → baseline.json과 점수 게이트로 비교, 통과). --base 9933548(main): 회귀 없음",
-   "P2": "점수 게이트 통과(종합점수 하락·오탐 증가 0)",
-   "P3": "하드코딩 변경분 점검 통과(9933548..33b509f). 새 rule_id는 각 라운드 판정에서 확인",
-   "P4": "verify_all 전체 모드 종료 0(수용 925·원장 501·전체 3220·브라우저 197), 같은 SHA CI 필수 3개 성공",
-   "P5": "열린 신규 회귀 티켓 0(남은 것은 strict xfail로 고정한 알려진 미해결)",
-   "P6": "판정서 f1_gate_verdict '첫 릴리스 후보 판정'",
-   "not_measured": "AI 작성 판별·공식 DB 대조·Drive 대조(오프라인). 봉인 시험은 첫 릴리스에 한해 생략(세트 없음, 사용자 결정 2026-10-04)"
+  {
+    "version": "0.11.0",
+    "from": "0.10.0",
+    "level": "minor",
+    "measured_commit": "34e1c9ad855f70137f0acf58f3aadc2ec22ae02d",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11.15",
+      "tesseract": "5.3.4",
+      "scoring": "scripts/scorecard.py(dev·holdout, 은퇴 세트 2종 --sealed-dir) 평가 측 재실행; 봉인 sealed_20261009는 사용자 환경(Python 3.12.14, tesseract 5.5.0 kor 없음)에서 운영본·후보 같은 조건"
+    },
+    "evidence": {
+      "M1": {
+        "baseline": "main 4c18528(= a31b561 탐지 코드) dev 81.7 / holdout 79.2 / 오탐 0",
+        "candidate": "dev 81.7 / holdout 79.2 / 오탐 0",
+        "delta": "0 (상향 근거 아님)"
+      },
+      "M2": "봉인 sealed_20261009(문서 8·결함 58, 지문 cf2944d9059d4ba6): 운영본 4c18528 24.2/0.362/오탐 3(대조군 3, A 2) → 후보 34e1c9a 34.2/0.362/오탐 1(대조군 1, A 0), 인젝션 방어 유지(같은 PC·같은 환경). 은퇴 sealed_20261008b(평가 측 표준 환경): 24.6/0.296/오탐 1(A 1) → 29.6/0.296/0, 은퇴 sealed_20261008: 19.0 → 19.0",
+      "M3": "인계 티켓 TK-64(A등급 증거번호 중복 오탐) 수용 기준(6절·개정 1) 모두 충족·해소 → 첫째 자리 기준('인계 티켓 1건이 수용 기준을 모두 충족하며 해소')",
+      "P1": "verify_all regression_gate --base a31b561 회귀 없음",
+      "P2": "점수 게이트 통과(종합점수 하락·오탐 증가 0), 봉인 오탐·A등급 감소",
+      "P3": "하드코딩 변경분 점검 통과(새 rule_id 없음)",
+      "P4": "verify_all 전체 모드 종료 0(f1ba73c: acceptance 989·원장 501·전체 3,284·브라우저 197), 같은 SHA CI 필수 3개 성공",
+      "P5": "열린 신규 회귀 티켓 0",
+      "P6": "판정서 f1_gate_verdict 'TK-64 보완'·'릴리스 후보(TK-64)'",
+      "not_measured": "AI 작성 판별·공식 DB 대조·Drive 대조(오프라인). 봉인 세트 자체 점검(별도 세션) 미실시 — 지문은 채점 세션 계산값"
+    },
+    "decided_by": "evaluator(claude-code)",
+    "decided_at": "2026-10-09",
+    "note": "TK-63·TK-65 릴리스는 같은 조건의 오프라인 성능 상승이 측정되지 않아 0.10.0 유지였다. 이번에는 봉인·은퇴 세트에서 같은 조건의 오탐 감소·종합점수 상승이 측정되었다. 여러 기준 중 가장 높은 등급(첫째 자리) 하나만 적용."
   },
-  "decided_by": "evaluator(claude-code)",
-  "decided_at": "2026-10-04",
-  "note": "첫 판정. 등급 임계값 재검토 결과 현행 유지(사용자 결정 2026-10-04)."
- },
- {
-  "version": "0.11.0",
-  "from": "0.10.0",
-  "level": "minor",
-  "measured_commit": "34e1c9ad855f70137f0acf58f3aadc2ec22ae02d",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11.15",
-   "tesseract": "5.3.4",
-   "scoring": "scripts/scorecard.py(dev·holdout, 은퇴 세트 2종 --sealed-dir) 평가 측 재실행; 봉인 sealed_20261009는 사용자 환경(Python 3.12.14, tesseract 5.5.0 kor 없음)에서 운영본·후보 같은 조건"
+  {
+    "version": "0.12.0",
+    "from": "0.11.0",
+    "level": "minor",
+    "measured_commit": "0bf4ccc2f625c2bacbfefbc1c73164049a463b34",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11.15",
+      "tesseract": "5.3.4",
+      "scoring": "scripts/scorecard.py(dev·holdout) 평가 측 재실행; 봉인 sealed_20261010은 사용자 환경(Python 3.12.14, tesseract 5.5.0 kor 없음)에서 운영본·후보 같은 조건"
+    },
+    "evidence": {
+      "M1": {
+        "baseline": "main a8b2a7e dev 81.7 / holdout 79.2 / 오탐 0",
+        "candidate": "dev 81.7 / holdout 79.2 / 오탐 0",
+        "delta": "0 (상향 근거 아님)"
+      },
+      "M2": "봉인 sealed_20261010(문서 8·결함 53, 지문 cb5789b33d3c6655, 별도 세션 자체 점검 오류 0): 운영본 a8b2a7e 15.2/0.302/오탐 3(대조군 3, A 3) = 후보 0bf4ccc 15.2/0.302/오탐 3(대조군 3, A 3), 인젝션 방어 — 후보가 낮지 않음. 은퇴 sealed_20261009(평가 측 표준 환경, TK-67 수용 시): 34.2/오탐 1 → 36.2/오탐 0",
+      "M3": "인계 티켓 TK-67(증거 목록 결번 판정 범위) 수용 기준 모두 충족·해소 → 첫째 자리 기준('인계 티켓 1건이 수용 기준을 모두 충족하며 해소'). 함께 해소: TK-58(계좌번호 종류), TK-71(표준판례 표 행 단위 색인·사건정보 대조), TK-68(문서 단위 Drive 대조 잘림)",
+      "P1": "verify_all regression_gate --base a8b2a7e 회귀 없음",
+      "P2": "점수 게이트 통과, 봉인 종합점수·오탐 운영본과 같음",
+      "P3": "하드코딩 변경분 점검 통과",
+      "P4": "verify_all 전체 모드 종료 0(0bf4ccc: acceptance 1002·원장 527·전체 3,340·브라우저 197), 같은 SHA CI 필수 3개 성공(PR #59 병합 전 5e9f339 기준)",
+      "P5": "열린 신규 회귀 티켓 0",
+      "P6": "판정서 f1_gate_verdict 'TK-67'·'TK-58'·'TK-71 2차 보완'·'TK-68 3차 보완'·'릴리스 후보 0bf4ccc'",
+      "not_measured": "AI 작성 판별·공식 DB 대조·Drive 대조(오프라인, 배포 직후 온라인 점검). 봉인 대조군 A등급 오탐 3은 운영본에도 있는 기존 결함 — 세트 개발용 이동 뒤 원인 확인"
+    },
+    "decided_by": "evaluator(claude-code)",
+    "decided_at": "2026-10-10",
+    "note": "봉인 점수는 운영본과 같아 상향 근거로 쓰지 않았다. 0.11.0(TK-64)과 같은 기준인 '인계 티켓 수용 기준 충족·해소'로 첫째 자리 하나만 적용."
   },
-  "evidence": {
-   "M1": {
-    "baseline": "main 4c18528(= a31b561 탐지 코드) dev 81.7 / holdout 79.2 / 오탐 0",
-    "candidate": "dev 81.7 / holdout 79.2 / 오탐 0",
-    "delta": "0 (상향 근거 아님)"
-   },
-   "M2": "봉인 sealed_20261009(문서 8·결함 58, 지문 cf2944d9059d4ba6): 운영본 4c18528 24.2/0.362/오탐 3(대조군 3, A 2) → 후보 34e1c9a 34.2/0.362/오탐 1(대조군 1, A 0), 인젝션 방어 유지(같은 PC·같은 환경). 은퇴 sealed_20261008b(평가 측 표준 환경): 24.6/0.296/오탐 1(A 1) → 29.6/0.296/0, 은퇴 sealed_20261008: 19.0 → 19.0",
-   "M3": "인계 티켓 TK-64(A등급 증거번호 중복 오탐) 수용 기준(6절·개정 1) 모두 충족·해소 → 첫째 자리 기준('인계 티켓 1건이 수용 기준을 모두 충족하며 해소')",
-   "P1": "verify_all regression_gate --base a31b561 회귀 없음",
-   "P2": "점수 게이트 통과(종합점수 하락·오탐 증가 0), 봉인 오탐·A등급 감소",
-   "P3": "하드코딩 변경분 점검 통과(새 rule_id 없음)",
-   "P4": "verify_all 전체 모드 종료 0(f1ba73c: acceptance 989·원장 501·전체 3,284·브라우저 197), 같은 SHA CI 필수 3개 성공",
-   "P5": "열린 신규 회귀 티켓 0",
-   "P6": "판정서 f1_gate_verdict 'TK-64 보완'·'릴리스 후보(TK-64)'",
-   "not_measured": "AI 작성 판별·공식 DB 대조·Drive 대조(오프라인). 봉인 세트 자체 점검(별도 세션) 미실시 — 지문은 채점 세션 계산값"
+  {
+    "version": "0.13.0",
+    "from": "0.12.0",
+    "level": "minor",
+    "measured_commit": "3389e9e5cf55aea55eb8327a3bba463cdc44eac4",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11.15",
+      "tesseract": "5.5.0 kor; localallow-env-mismatch explicit, independent exactCI tesseract5.3.4 cited",
+      "scoring": "Unchanged fixedscorer, original20+18/actualTXT20 and retired4 maintenance; firstsealedprod/candidatepair in separate newPythonprocesses/cleanworktrees; publicactualTK57 M4 samefixtures54files"
+    },
+    "evidence": {
+      "M1": {
+        "production": "9c1b218 existingevaluator fixed81.7/79.2/FP0; freshsameprocessconditions holdout79.2/FP0",
+        "candidate": "3389 full fixed81.7/79.2/FP0; freshholdout79.2/FP0",
+        "delta": "0; no historicalbaseline79.9/77.3 improvement reused"
+      },
+      "M2": "Firstsealed8documents57defects, fingerprint1abd74597ec4b25a: production9c=3389candidate28.1/.281/FP0/control0/A0/injectiontrue. Originalretired4 alsoequalproduction19.0/29.6/36.2/15.2,FP0/0/0/3. No globalprivate passrate improvement claimed.",
+      "M3": "TK57 #81 accepted0261 andcombined244: originalPHONE omission1/54→0/54,RRN0/84,mockprovider0/216·0/336,normalFP0/10; alloriginalmandatorygates met. Onecompletehandoverticket+M4 satisfiesminor. Partial44/49/55 and rejected45/73 notcountedasclosed.",
+      "M4": "Samepublicactual54TXT/PDF/DOCXfiles atphysicalwidths240/600; contactwhole-span0/36→36/36, contactmockprovider0/144 both, legalcontrolsFP0/18 andnormalprovider72/72 both. FixturesSHA25607ab9c519e5c0f5ae551b5dc0cee8b3eb23b442a8e1b1ee966a3aa63fc32538b. NarrowpublicM4, notglobalM2/major evidence; no livecalls.",
+      "P1": "3389 evaluator verify_all full --base9c regression_gate exit0; no regression",
+      "P2": "Fixed81.7/79.2/FP0 maintained; firstsealed28.1/.281/FP0 equalproduction; injections maintained",
+      "P3": "3389 wholehardcoding/test-edits/protected-path gatesexit0; newunapprovedrule_id0",
+      "P4": "3389 exactCI38120524487/score38120524471/DockerALLSUCCESS; evaluator corrected-permissionfull exit0 acceptance1214/ledger949/full6653/browser197, realfailures0/strictXPASS0. Originaldefault-sandboxfull interruptedacceptance229reports/1ChromiumIPC failure andTestClientwait retained; neverrewrittenasPASS. Candidate/prod same2screen/authPASS withrequiredIPCpermissions; no source/test/limit change.",
+      "P5": "NewopenP1regression0 inacceptedsubset, publicindependent3389auditPASS/synthetic7PASS. ExistingUNKNOWNprimary/ActualText,legacyroles,excludedTK45/TK73,LEG2/RAG2 stayknown/open.",
+      "P6": "f1_gate_verdict deployment-first accepted3389scope verdict; Codexevaluatorsession",
+      "not_measured": "OnlineAI/officialDB/Drive, ClaudeOFF/ONquality/tokens/latency andoneblindedlawyer grading pendingpostdeploy. User42documentfixedbenchmark notconnected/notmeasured; old20.5 notcandidate result."
+    },
+    "decided_by": "evaluator(Codex evaluation session)",
+    "decided_at": "2026-10-11",
+    "note": "Deployment-first acceptedsubset only. Minorone-step0.12→0.13 throughcompleteTK57criteria+M4; no globalM2/majorclaim/no baselinechange. Version-onlyimplementercommit3files1commit andfinalSHA3requiredchecks pending; deployment/featureON notyetclaimed.",
+    "implementation_commit": "a4b0688a36f1c1f1a0e8dc8b13c01dd97ab26964",
+    "release_commit": "8280a597db40b0905dbacf10c56fa3e9915cafd5",
+    "deployment_receipt": "docs/scorecards/release_completion_2026-10-11.json"
   },
-  "decided_by": "evaluator(claude-code)",
-  "decided_at": "2026-10-09",
-  "note": "TK-63·TK-65 릴리스는 같은 조건의 오프라인 성능 상승이 측정되지 않아 0.10.0 유지였다. 이번에는 봉인·은퇴 세트에서 같은 조건의 오탐 감소·종합점수 상승이 측정되었다. 여러 기준 중 가장 높은 등급(첫째 자리) 하나만 적용."
- },
- {
-  "version": "0.12.0",
-  "from": "0.11.0",
-  "level": "minor",
-  "measured_commit": "0bf4ccc2f625c2bacbfefbc1c73164049a463b34",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11.15",
-   "tesseract": "5.3.4",
-   "scoring": "scripts/scorecard.py(dev·holdout) 평가 측 재실행; 봉인 sealed_20261010은 사용자 환경(Python 3.12.14, tesseract 5.5.0 kor 없음)에서 운영본·후보 같은 조건"
+  {
+    "version": "0.13.1",
+    "from": "0.13.0",
+    "level": "patch",
+    "measured_commit": "94e7c390bccf485178d6a97f74bc7296e1a545ee",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11.15",
+      "tesseract": "5.3.4 kor (CI와 같음)",
+      "scoring": "고정 채점기 불변. 직전 릴리스 main b68cfee(0.13.0)와 후보 94e7c39를 같은 환경·같은 날(2026-10-18) 평가 측이 각각 측정"
+    },
+    "evidence": {
+      "M1": {
+        "production": "main b68cfee(0.13.0) dev 81.7 / holdout 79.2 / 오탐 0 / A 0",
+        "candidate": "94e7c39 dev 82.6 / holdout 80.1 / 오탐 0 / A 0",
+        "delta": "dev +0.9, holdout +0.9 → 둘째 자리 기준(+0.1 이상 +1.0 미만)"
+      },
+      "M2": "미측정. 이번 릴리스는 봉인 생략(사용자 결정 2026-10-17). 고정 비공개 벤치 2판은 이 평가 세션 컨테이너에 세트가 없어 후보 미측정(10-17 오프라인 7지점 모두 15.9로 변별력 없음). 참고(공개된 은퇴 세트라 M2 근거 아님): 은퇴 08/08b/09/10 b68cfee 기준 19.0/29.6/36.2/15.2(0.13.0 판정서) → 후보 27.2/40.7/48.3/35.1",
+      "M3": "상향 근거로 세지 않음. 이번에 해소된 인계 티켓 TK-77(시험 측정 견고화, 제품 diff 0)·TK-79(효율 라우팅 기본 OFF, 품질·비용은 배포 뒤 온라인 대조)·TK-80(Dockerfile 그룹, 배포 뒤 확인)은 성능 개선이 아니거나 배포 뒤 확인이 남음. TK-81은 이번 릴리스 안에서 생긴 결함의 수정",
+      "M4": "해당 없음(입력 형식별 변경 없음)",
+      "P1": "94e7c39 verify_all full --base b68cfee: regression_gate 회귀 없음, 종료 0",
+      "P2": "고정 오탐 0 유지, 은퇴 4세트 후퇴 0(각 PR CI·평가 측 재실행), 인젝션 방어 유지",
+      "P3": "verify_all hardcoding_diff·test_edits·protected_paths 통과, 평가 세트 문구 대조 의심 0. #125 정답 어휘 맞춤 분기는 병합 전에 삭제됨",
+      "P4": "verify_all full: acceptance 1220·regression_ledger 2357·full_tests 8693·browser_tests 197 통과, 실제 실패 0·strict XPASS 0. 비공개 세트(contact_rrn 3종·round8_privacy) 0.13.0과 같거나 나음(이름 normal 31→32/35)",
+      "P5": "열린 신규 회귀 티켓 0(TK-81은 #137로 수정·병합)",
+      "P6": "이 판정서와 HISTORY 2026-10-18"
+    },
+    "decided_by": "claude-code (평가 측)",
+    "decided_at": "2026-10-18"
   },
-  "evidence": {
-   "M1": {
-    "baseline": "main a8b2a7e dev 81.7 / holdout 79.2 / 오탐 0",
-    "candidate": "dev 81.7 / holdout 79.2 / 오탐 0",
-    "delta": "0 (상향 근거 아님)"
-   },
-   "M2": "봉인 sealed_20261010(문서 8·결함 53, 지문 cb5789b33d3c6655, 별도 세션 자체 점검 오류 0): 운영본 a8b2a7e 15.2/0.302/오탐 3(대조군 3, A 3) = 후보 0bf4ccc 15.2/0.302/오탐 3(대조군 3, A 3), 인젝션 방어 — 후보가 낮지 않음. 은퇴 sealed_20261009(평가 측 표준 환경, TK-67 수용 시): 34.2/오탐 1 → 36.2/오탐 0",
-   "M3": "인계 티켓 TK-67(증거 목록 결번 판정 범위) 수용 기준 모두 충족·해소 → 첫째 자리 기준('인계 티켓 1건이 수용 기준을 모두 충족하며 해소'). 함께 해소: TK-58(계좌번호 종류), TK-71(표준판례 표 행 단위 색인·사건정보 대조), TK-68(문서 단위 Drive 대조 잘림)",
-   "P1": "verify_all regression_gate --base a8b2a7e 회귀 없음",
-   "P2": "점수 게이트 통과, 봉인 종합점수·오탐 운영본과 같음",
-   "P3": "하드코딩 변경분 점검 통과",
-   "P4": "verify_all 전체 모드 종료 0(0bf4ccc: acceptance 1002·원장 527·전체 3,340·브라우저 197), 같은 SHA CI 필수 3개 성공(PR #59 병합 전 5e9f339 기준)",
-   "P5": "열린 신규 회귀 티켓 0",
-   "P6": "판정서 f1_gate_verdict 'TK-67'·'TK-58'·'TK-71 2차 보완'·'TK-68 3차 보완'·'릴리스 후보 0bf4ccc'",
-   "not_measured": "AI 작성 판별·공식 DB 대조·Drive 대조(오프라인, 배포 직후 온라인 점검). 봉인 대조군 A등급 오탐 3은 운영본에도 있는 기존 결함 — 세트 개발용 이동 뒤 원인 확인"
+  {
+    "version": "0.14.0",
+    "from": "0.13.1",
+    "level": "minor",
+    "basis": [
+      "added",
+      "changed",
+      "removed",
+      "fixed",
+      "performance_patch"
+    ],
+    "rer": 0.048,
+    "measured_commit": "907c2fafb21691f09c115a09394b45ff1b59b90f",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11.15",
+      "tesseract": "5.3.4 kor (CI와 같음)",
+      "scoring": "고정 채점기 불변. 직전 릴리스 main c512462(0.13.1)와 후보 907c2fa를 같은 환경·같은 날(2026-10-25) 평가 측이 각각 측정(오프라인, 항목 단위)"
+    },
+    "evidence": {
+      "M1": {
+        "production": "main c512462(0.13.1) dev 82.6 / holdout 80.1 / 오탐 0 / A 0",
+        "candidate": "907c2fa dev 82.6 / holdout 81.9 / 오탐 0 / A 0",
+        "delta": "dev 0, holdout +1.8(INJ-ZWSP 1항목, TK-89 인젝션 채널 구조 탐지). 합산 RER (164.5-162.7)/(200-162.7)=4.8% → performance_patch. 같은 인젝션 유형이 train에서도 함께 오름(평가 세트 문구 일치 아님)"
+      },
+      "M2": "미측정. 봉인 세트는 이 평가 세션 컨테이너에 없음. 참고(공개된 은퇴 세트·개발 말뭉치라 M2 근거 아님): 은퇴 08/08b/09/10 27.2/40.7/48.3/35.1(FP 1) → 48.9/42.6/50.0/43.9(FP 0), train 01~04 26.5×4 → 37.5/37.5/37.5/36.5. 오른 항목 유형: EVI-COPY 15, INJ 채널 34, EVI-DATE 2, EVI-INCONS 1. 하락 항목 0",
+      "M3": "added: A-4 #175 사건 순서 역전(EVI-DATE), B-3 #167(TK-90) 문서 안 장소·서명자·수량 불일치, B-2 #168 경위서 원문 통째 복제(EVI-COPY), B-1 #165(TK-91) 서증 원용 범위 초과(EVI-OVR, 세트 득점 없음·일반 표현 탐침 26/28·오탐 0/62로만 검증, 사용자 결정 10-25), #164(TK-94) 미확인 판례·법령 외부 AI 검증 프롬프트. changed: #171(TK-88) 검토 화면 3단·보고서 3단 소제목, #155(TK-87) '확인이 필요한 내용' 요약, #153(TK-85) 업로드 시점 개인정보 확인, #150(TK-84) 참고자료 의견·인용 전문 표시, #166(TK-83) auto 법리 검토 부분 에스컬레이션. removed: #154(TK-86) 버전 비교·근거 찾기·금액 계산·사건 일지 탭(API 유지, 공개 API 제거 없음). fixed: 은퇴 10 오탐 1→0(#176 A-3), #147(TK-92) 정상 서술 지시문 오탐, #149(TK-81)·#163 증거 목록 오탐, #152(TK-82) Drive 내려받기 재시도. 각 PR은 평가 측 수용 판정(HISTORY)과 진입점·화면 시험·대응표로 확인",
+      "M4": "해당 없음(입력 형식별 변경 없음). 개인정보 엔진(packages/pii_engine) 변경 0",
+      "P1": "907c2fa verify_all full --base c512462: regression_gate 회귀 없음, score_gate 통과, 종료 0",
+      "P2": "고정 오탐 0·A등급 0 유지, 은퇴 4세트·train 하락 항목 0(평가 측 재실행)",
+      "P3": "verify_all hardcoding_diff·test_edits·protected_paths 통과. 탐지 PR 3건(#165·#167·#175)은 전달문 2-2절 규약과 평가 측 탐침(문장 비공개)으로 수용",
+      "P4": "verify_all full: acceptance 1231·regression_ledger 2357·full_tests 8989·browser_tests 197 통과, 실제 실패 0·strict XPASS 0. 비공개 개인정보 세트는 이 세션에 없어 미측정(개인정보 엔진 변경 0)",
+      "P5": "열린 신규 회귀 티켓 0",
+      "P6": "이 판정서와 HISTORY 2026-10-25",
+      "unmeasured": "AI 작성 판별·공식 DB 대조·Drive 대조(온라인 영역), 봉인 세트"
+    },
+    "decided_by": "claude-code (평가 측)",
+    "decided_at": "2026-10-25"
   },
-  "decided_by": "evaluator(claude-code)",
-  "decided_at": "2026-10-10",
-  "note": "봉인 점수는 운영본과 같아 상향 근거로 쓰지 않았다. 0.11.0(TK-64)과 같은 기준인 '인계 티켓 수용 기준 충족·해소'로 첫째 자리 하나만 적용."
- },
- {
-  "version": "0.13.0",
-  "from": "0.12.0",
-  "level": "minor",
-  "measured_commit": "3389e9e5cf55aea55eb8327a3bba463cdc44eac4",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11.15",
-   "tesseract": "5.5.0 kor; localallow-env-mismatch explicit, independent exactCI tesseract5.3.4 cited",
-   "scoring": "Unchanged fixedscorer, original20+18/actualTXT20 and retired4 maintenance; firstsealedprod/candidatepair in separate newPythonprocesses/cleanworktrees; publicactualTK57 M4 samefixtures54files"
+  {
+    "version": "0.15.0",
+    "from": "0.14.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "changed",
+      "removed",
+      "fixed",
+      "security"
+    ],
+    "measured_commit": "2f61f82a0b87cc48b7014690b7c9b9d21d0f9460",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11.15",
+      "tesseract": "5.3.4 kor (CI와 같음)",
+      "scoring": "고정 채점기 불변. 수용 SHA 2f61f82에서 평가 측 측정(오프라인). Steve 3fee071과 제품 diff 0. 기준선(운영 0.14.0 main 28d3397과 같은 값) 대비",
+      "track": "RELEASE_PROCEDURE 2-6 직전 릴리스 결함 교정 간소 경로(2026-10-25 사용자 지시)"
+    },
+    "evidence": {
+      "M1": "dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 기준선(0.14.0)과 같음(변화 0). score_gate 통과, regression_gate(기준 e980640) 회귀 없음. 합산 RER 0",
+      "M2": "봉인 생략(2-6 간소 경로). 개인정보 엔진 변경은 동등성 근거로 대체: 시험 자료 문장 9,728개 detect() 결과 차이 0(의도된 차이 1꼴 — '처방 5mg'류 위치 앞 공백 1자 제외), '군' 표기 줄바꿈·공백 21자 이상 경우 이름을 더 가림(보호 강화 쪽). CI 은퇴 세트 비교 통과",
+      "M3": "fixed: TK-126(0.14.0 화면 오구현 — '확인 방법' 반복 삭제, 프롬프트 버튼 강조, 판정 문구 셀 넘침, 3번째 탭 '법률적으로 무리한 주장' 독립, 배포 캐시), TK-127 1단계(주요참고문헌 대조 의견을 표 행에 통합, 하단 절 제거). changed: 상단 평면 탭 5개, '확인할 항목' → '출처가 확인되지 않는 항목'. removed: 쟁점·활동 기록 화면(API 유지). added: TK-128 두 표 엘박스/AI 프롬프트·외부 AI 답변 붙여넣기→표에 반영(공식 확인 아님), 3단 프롬프트 서버 가림 API. security: 개인정보 탐지 정규식 ReDoS(CodeQL py/polynomial-redos 5건, 최악 입력 40초 초과 → 0.97초/200×2,000자). 모두 #183에서 평가 측 수용·사용자 화면 확인(10-25)",
+      "M4": "개인정보 엔진(packages/pii_engine/detector.py) 정규식 동등 변환 — M2 동등성 근거",
+      "P1": "2f61f82 regression_gate 회귀 없음; verify_all 전체 모드는 2-6에 따라 수용 SHA 단계별 실행(scorecard·score_gate·regression_gate·hardcoding_diff·check_test_edits·check_protected_paths·check_version_policy 모두 0)과 같은 SHA CI로 갈음",
+      "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
+      "P3": "hardcoding_diff 통과(추가 340줄에 시험 입력 값 없음)",
+      "P4": "평가 측 관련 시험 3,837건 실패 0(건너뜀 25), CI 전 스위트(SQLite·PostgreSQL) 성공",
+      "P5": "열린 신규 회귀 티켓 0(TK-126·127은 이 릴리스로 교정, TK-127 2단계·TK-129는 새 기능 과제)",
+      "P6": "이 판정서",
+      "unmeasured": "온라인 경로(공식 DB·Drive·모델) — 이번 변경은 화면·가림 API·개인정보 정규식이라 배포 직후 health SHA·버전 확인으로 갈음(2-6). 실제 운영 데이터 화면은 배포 뒤 사용자 확인"
+    },
+    "decided_by": "claude-code (평가 측)",
+    "decided_at": "2026-10-25"
   },
-  "evidence": {
-   "M1": {
-    "production": "9c1b218 existingevaluator fixed81.7/79.2/FP0; freshsameprocessconditions holdout79.2/FP0",
-    "candidate": "3389 full fixed81.7/79.2/FP0; freshholdout79.2/FP0",
-    "delta": "0; no historicalbaseline79.9/77.3 improvement reused"
-   },
-   "M2": "Firstsealed8documents57defects, fingerprint1abd74597ec4b25a: production9c=3389candidate28.1/.281/FP0/control0/A0/injectiontrue. Originalretired4 alsoequalproduction19.0/29.6/36.2/15.2,FP0/0/0/3. No globalprivate passrate improvement claimed.",
-   "M3": "TK57 #81 accepted0261 andcombined244: originalPHONE omission1/54→0/54,RRN0/84,mockprovider0/216·0/336,normalFP0/10; alloriginalmandatorygates met. Onecompletehandoverticket+M4 satisfiesminor. Partial44/49/55 and rejected45/73 notcountedasclosed.",
-   "M4": "Samepublicactual54TXT/PDF/DOCXfiles atphysicalwidths240/600; contactwhole-span0/36→36/36, contactmockprovider0/144 both, legalcontrolsFP0/18 andnormalprovider72/72 both. FixturesSHA25607ab9c519e5c0f5ae551b5dc0cee8b3eb23b442a8e1b1ee966a3aa63fc32538b. NarrowpublicM4, notglobalM2/major evidence; no livecalls.",
-   "P1": "3389 evaluator verify_all full --base9c regression_gate exit0; no regression",
-   "P2": "Fixed81.7/79.2/FP0 maintained; firstsealed28.1/.281/FP0 equalproduction; injections maintained",
-   "P3": "3389 wholehardcoding/test-edits/protected-path gatesexit0; newunapprovedrule_id0",
-   "P4": "3389 exactCI38120524487/score38120524471/DockerALLSUCCESS; evaluator corrected-permissionfull exit0 acceptance1214/ledger949/full6653/browser197, realfailures0/strictXPASS0. Originaldefault-sandboxfull interruptedacceptance229reports/1ChromiumIPC failure andTestClientwait retained; neverrewrittenasPASS. Candidate/prod same2screen/authPASS withrequiredIPCpermissions; no source/test/limit change.",
-   "P5": "NewopenP1regression0 inacceptedsubset, publicindependent3389auditPASS/synthetic7PASS. ExistingUNKNOWNprimary/ActualText,legacyroles,excludedTK45/TK73,LEG2/RAG2 stayknown/open.",
-   "P6": "f1_gate_verdict deployment-first accepted3389scope verdict; Codexevaluatorsession",
-   "not_measured": "OnlineAI/officialDB/Drive, ClaudeOFF/ONquality/tokens/latency andoneblindedlawyer grading pendingpostdeploy. User42documentfixedbenchmark notconnected/notmeasured; old20.5 notcandidate result."
+  {
+    "version": "0.16.0",
+    "from": "0.15.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "changed",
+      "fixed"
+    ],
+    "measured_commit": "d2aa19a0f0bfc26a745d3749c0caf2133ae99011",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11.15",
+      "tesseract": "5.3.4 kor (CI와 같음)",
+      "scoring": "고정 채점기 불변. 후보 Steve d2aa19a에서 평가 측 verify_all 전체 모드(기준 0.15.0 main 08d40ff, 환경 CI와 일치)",
+      "track": "일반 경로(RELEASE_PROCEDURE 2절·2-5). 구현은 2026-10-28 사용자 지시로 Codex 별도 세션 한시 대행"
+    },
+    "evidence": {
+      "M1": "dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 0.15.0과 같음(변화 0). score_gate 통과, regression_gate(기준 08d40ff) 회귀 없음. 합산 RER 0",
+      "M2": "봉인 시험 생략(2절 2 적용 범위 밖): main 대비 바뀐 제품 파일은 RAG(packages/rag_engine), 참고자료 상태 연결(verification_engine/review_items.py — reference_status·reference_observations만), 보고서(report_engine), API(apps/api reports·schemas), 화면(apps/web). 오프라인 탐지·채점·개인정보 엔진 출력 불변 — 고정·은퇴 항목 변화 0(regression_gate)으로 확인. CI 은퇴 세트 비교 통과",
+      "M3": "added: TK-129 보고서에 표에 반영한 외부 AI 답변 포함(PDF·Word 절, Excel 시트, JSON 고정본, 공식 확인 아님), TK-127 2단계 인용 행 Drive 참고문헌 대조(식별자 색인 검색, 비구속 참고 표시, 보고서 4종). changed: reference_status 산정(구조 연결 + 전체 식별자 일치·충돌 없음일 때만 SUPPORTED, 그 밖 PENDING_REVIEW; 이전 식별자 존재만으로의 SUPPORTED 경로 대체). fixed: 0.15.0(TK-128) 외부 AI 답변이 프롬프트 번호 재할당 시 다른 행에 붙던 문제, 참고문헌 별도 행 id 서버·화면 불일치. #185·#191 평가 측 수용·사용자 화면 확인(10-28)",
+      "M4": "성능: 인용별 Drive 색인 검색 합성 색인 8,000청크·인용 10개 0.28초(수정 전 73.5초), 결과 동일",
+      "P1": "verify_all 전체 모드 종료 0(d2aa19a): environment·acceptance 1238·regression_ledger 2357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths·version_policy·full_tests 9094·browser_tests 197 모두 통과, 실제 실패 0",
+      "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
+      "P3": "hardcoding_diff 통과(기준 08d40ff, 추가 715줄에 시험 입력 값 없음)",
+      "P4": "#185·#191 같은 SHA CI 전부 성공(인용), 평가 측 관련 시험 재실행 실패 0",
+      "P5": "열린 신규 회귀 티켓 0",
+      "P6": "이 판정서",
+      "unmeasured": "온라인 경로(Drive 대조 정확도·검색 시간, 모델) — RAG 경로를 바꿨으므로 배포 직후 4절 온라인 점검 전체를 한다(2-6 갈음 아님). Microsoft Word·Excel 앱 직접 표시 미확인. 배포 뒤 보완(10-29): 4절 온라인 점검 2판 23/23(커밋 2f06f9a 일치, 법률지침 ON·kr2), OFF 재실행 2판 23/23(4.3 정상, 0.12.0 통과 21항목 새 실패 0; 라우팅·Drive 색인 조건 차이로 LEG-2·RAG-2 통과는 코드 귀속 안 함). Drive 대조 정확도는 측정 못 함, HISTORY 참조"
+    },
+    "decided_by": "claude-code (평가 측)",
+    "decided_at": "2026-10-29"
   },
-  "decided_by": "evaluator(Codex evaluation session)",
-  "decided_at": "2026-10-11",
-  "note": "Deployment-first acceptedsubset only. Minorone-step0.12→0.13 throughcompleteTK57criteria+M4; no globalM2/majorclaim/no baselinechange. Version-onlyimplementercommit3files1commit andfinalSHA3requiredchecks pending; deployment/featureON notyetclaimed.",
-  "implementation_commit": "a4b0688a36f1c1f1a0e8dc8b13c01dd97ab26964",
-  "release_commit": "8280a597db40b0905dbacf10c56fa3e9915cafd5",
-  "deployment_receipt": "docs/scorecards/release_completion_2026-10-11.json"
- },
- {
-  "version": "0.13.1",
-  "from": "0.13.0",
-  "level": "patch",
-  "measured_commit": "94e7c390bccf485178d6a97f74bc7296e1a545ee",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11.15",
-   "tesseract": "5.3.4 kor (CI와 같음)",
-   "scoring": "고정 채점기 불변. 직전 릴리스 main b68cfee(0.13.0)와 후보 94e7c39를 같은 환경·같은 날(2026-10-18) 평가 측이 각각 측정"
+  {
+    "version": "0.17.0",
+    "from": "0.16.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "changed",
+      "fixed"
+    ],
+    "measured_commit": "b14d7d9aac3d815f0744935101caf5c3a411ac57",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11.15",
+      "tesseract": "5.3.4 kor (CI와 같음)",
+      "scoring": "고정 채점기 불변. 후보 Steve b14d7d9에서 평가 측 verify_all 전체 모드(기준 0.16.0 main 2f06f9a). 은퇴 5세트는 0.16.0과 후보를 같은 세트 파일·같은 환경으로 함께 채점",
+      "track": "일반 경로(RELEASE_PROCEDURE 2절). 구현은 TK-130a·b·131·132·133 Codex 별도 세션 한시 대행(사용자 지시 11-02), TK-76 Antigravity"
+    },
+    "evidence": {
+      "M1": "고정 dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 0.16.0과 같음(변화 0). 합산 RER 0. score_gate 통과, regression_gate(기준 2f06f9a) 회귀 없음",
+      "M2": "봉인 시험 실시(오프라인 탐지 엔진 변경: evidence_consistency·hwp_parser·source_review 등 제품 파일 14개). sealed_20261102(문서 8·결함 51·유형 27, 지문 8b16cdc0829acee7, 작성 측 자체 점검 오류 0·경고 0, 독립 자체 점검 없음) 사용자 채점(Linux, python 3.11.17, OCR 5.5.0, 두 실행 같은 환경, 채점기 sha256 같음): 운영본 2f06f9a 40.2/0.402/오탐 0/A 0/방어, 후보 b14d7d9 40.2/0.402/오탐 0/A 0/방어 — 후보가 낮지 않음·오탐 증가 0(통과). 홀드아웃 환경 점검 81.9/81.9",
+      "M3": "은퇴 5세트(같은 조건, 평가 측 재실행) 0.16.0 → 후보: 08 48.9→53.3, 08b 42.6→46.8, 09 50.0→53.4, 10 43.9→45.8, 25 27.3→29.5, 오탐 0·A 0. 오른 유형은 EVI-LOGIC뿐(다른 유형 차이 0, 하락 0). 규칙 설계 때 은퇴 항목 꼴을 보았으므로 일반화 근거는 평가 측 비공개 탐침 3·4·5차(양성 7/8·9/9·8/8, 대조 오탐 0)로 둔다. train EVI-LOGIC 0/4 → 0/4·오탐 0(구현 측 측정)",
+      "M4": "added: TK-76 2주기 1항 EVI-LOGIC 지각 범위 구조 탐지(#204), TK-130b 비공식 약칭 법령명의 공식 법령 추정(#198), TK-132 HWPX 표 구조(#201), TK-133 구형 HWP 표 구조 연결(#203). changed: TK-131 판례 의미 검토에 앞 24,000자 대신 근거 구간 발췌 전송·마스킹 투영(#202). fixed: TK-130a 제21항 이상 원숫자(㉑~㊿) 항 분리(#197), TK-132 HWPX 표 셀 글자 중복 수집",
+      "P1": "verify_all 전체 모드 종료 0(b14d7d9): environment·acceptance 1238·regression_ledger 2357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths·version_policy·full_tests 9219·browser_tests 197, 실제 실패 0",
+      "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0, 봉인 세트 하락 0",
+      "P3": "hardcoding_diff 통과(기준 2f06f9a), 각 PR 평가 세트 문구 대조 통과",
+      "P4": "#197·#198·#201·#202·#203·#204 같은 SHA 필수 CI 성공(인용), 평가 측 관련 시험 재실행 실패 0",
+      "P5": "열린 신규 회귀 티켓 0",
+      "P6": "이 판정서",
+      "unmeasured": "온라인 경로: 약칭 추정 정확도(국가법령정보 목록), 판례 근거 발췌의 근거 포함률(모델), 실제 한글 프로그램 HWP·HWPX 파일과 운영 입력 비율, 개발 말뭉치 check 세트. 배포 직후 4절 온라인 점검 전체를 한다"
+    },
+    "decided_by": "claude-code (평가 측)",
+    "decided_at": "2026-11-02"
   },
-  "evidence": {
-   "M1": {
-    "production": "main b68cfee(0.13.0) dev 81.7 / holdout 79.2 / 오탐 0 / A 0",
-    "candidate": "94e7c39 dev 82.6 / holdout 80.1 / 오탐 0 / A 0",
-    "delta": "dev +0.9, holdout +0.9 → 둘째 자리 기준(+0.1 이상 +1.0 미만)"
-   },
-   "M2": "미측정. 이번 릴리스는 봉인 생략(사용자 결정 2026-10-17). 고정 비공개 벤치 2판은 이 평가 세션 컨테이너에 세트가 없어 후보 미측정(10-17 오프라인 7지점 모두 15.9로 변별력 없음). 참고(공개된 은퇴 세트라 M2 근거 아님): 은퇴 08/08b/09/10 b68cfee 기준 19.0/29.6/36.2/15.2(0.13.0 판정서) → 후보 27.2/40.7/48.3/35.1",
-   "M3": "상향 근거로 세지 않음. 이번에 해소된 인계 티켓 TK-77(시험 측정 견고화, 제품 diff 0)·TK-79(효율 라우팅 기본 OFF, 품질·비용은 배포 뒤 온라인 대조)·TK-80(Dockerfile 그룹, 배포 뒤 확인)은 성능 개선이 아니거나 배포 뒤 확인이 남음. TK-81은 이번 릴리스 안에서 생긴 결함의 수정",
-   "M4": "해당 없음(입력 형식별 변경 없음)",
-   "P1": "94e7c39 verify_all full --base b68cfee: regression_gate 회귀 없음, 종료 0",
-   "P2": "고정 오탐 0 유지, 은퇴 4세트 후퇴 0(각 PR CI·평가 측 재실행), 인젝션 방어 유지",
-   "P3": "verify_all hardcoding_diff·test_edits·protected_paths 통과, 평가 세트 문구 대조 의심 0. #125 정답 어휘 맞춤 분기는 병합 전에 삭제됨",
-   "P4": "verify_all full: acceptance 1220·regression_ledger 2357·full_tests 8693·browser_tests 197 통과, 실제 실패 0·strict XPASS 0. 비공개 세트(contact_rrn 3종·round8_privacy) 0.13.0과 같거나 나음(이름 normal 31→32/35)",
-   "P5": "열린 신규 회귀 티켓 0(TK-81은 #137로 수정·병합)",
-   "P6": "이 판정서와 HISTORY 2026-10-18"
+  {
+    "version": "0.18.0",
+    "from": "0.17.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "changed",
+      "fixed"
+    ],
+    "measured_commit": "db7e81c3724da05d5cbe82e1c793b242e2c1e127",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11.18",
+      "tesseract": "5.3.4 kor (CI와 같음)",
+      "scoring": "고정 채점기 불변. 후보 Steve db7e81c에서 평가 측 verify_all 전체 모드(기준 0.17.0 main deb387d) 2회 — 1회차 브라우저 시험 1건 시간 초과(단독 3회·묶음 재실행 통과), 2회차 종료 0. 은퇴 세트는 0.17.0과 후보를 같은 세트 파일·같은 환경으로 함께 채점",
+      "track": "일반 경로(RELEASE_PROCEDURE 2절). 범위 #209~#258(구현 Antigravity, TK-134~148 일부 Codex 대행 포함). 봉인 시험은 사용자 결정(11-12 '봉인시험 미시행')으로 하지 않고, 배포 뒤 0.17.0 대 0.18.0 온라인 비교로 갈음(online_compare_0170_0180_plan.md)"
+    },
+    "evidence": {
+      "M1": "고정 dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 0.17.0과 같음. 합산 RER 0. score_gate 통과, regression_gate(기준 deb387d) 회귀 없음",
+      "M2": "봉인 시험 미실시(사용자 결정 11-12). 갈음: 배포 직후 case9 23항목(0.17.0 23/23)과 신기능 온라인 탐침 4종 47항목(0.17.0 기록 online_probe_0170_20261103.md)을 같은 조건으로 0.18.0에서 다시 재어 비교한다. 결과는 판정서 보충으로 적는다",
+      "M3": "은퇴 세트(0.17.0 시점 4세트, 같은 조건·평가 측 재실행) 0.17.0 → 후보: 08 53.3→53.3, 08b 46.8→48.6, 09 53.4→56.9, 10 45.8→45.8, 오탐 0·A 0·인젝션 방어 유지. 20261025는 0.17.0 이후 은퇴(후보 34.1·오탐 0). 오른 몫의 일반화 근거는 각 PR 판정의 평가 측 비공개 확인 탐침(보정 미사용)으로 둔다",
+      "M4": "added: LV-03 판례·법령 존재 3단 판정, LV-04 인용문 차이 유형(부정·당사자·수치·단서), LV-05 판시 왜곡 결정 규칙(변경된 판례·파기환송 원심 판단), LV-01 제소기간 계산 전제(날짜 역할·계산 보류)와 행정기본법 제36조 제4항 반영(TK-150), TK-134 자치법규 조회, TK-137 관련 근거 탐색, TK-138 관련 판례·권위 가중, TK-139 처분기준 별표 대조, TK-144 DOCX 표 구조, TK-76 3주기 EVI-INCONS·EVI-OVR·EVI-FORM·EVI-NUM·EVI-DATE·EVI-COPY·EVI-LOGIC 확장, TK-149 소갑·소을. changed: 형식은 맞는데 조회 범위에서 찾지 못한 판례를 CRITICAL에서 확인 불가(MEDIUM)로(LV-03, 사용자 P1·X6 승인), 지각 구조 L1 기본 비활성화(TK-151, 사용자 결정 D4), 외부 AI 검증 프롬프트 엄격성(TK-136), 판례 의견 귀속(TK-135). fixed: TK-143·148 두 음절 약칭 CRITICAL 오단정, TK-145 같은 판례 반복 인용 병합, TK-146 표 비율 진단, TK-140 파서 후속, TK-141 발췌 입력 한도, TK-142·147 시간 시험 흔들림, 각 TK-76 보완의 오탐 감소. LV-06 요건사실 점검은 기본 꺼짐(환경 변수)",
+      "P1": "verify_all 전체 모드 종료 0(db7e81c, 2회차): environment·acceptance 1239·regression_ledger 2357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths(바뀐 보호 경로 16개 모두 평가 측 커밋 또는 승인)·version_policy·full_tests 9973·browser_tests 197, 실제 실패 0",
+      "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
+      "P3": "hardcoding_diff 통과(기준 deb387d), 각 PR 평가 세트 문구 대조 통과(LV 문안 일반 표현 11건 허용 등록 22d3fd7)",
+      "P4": "#209~#258 같은 SHA 필수 CI 성공(인용), LV 최종 head 105ce3f CI SQLite·PostgreSQL 각 2회 성공, 평가 측 PostgreSQL 16 + pgvector 재실행 API 31건·LV 사본 전체 11,443건 통과",
+      "P5": "열린 신규 회귀 티켓 0(브라우저 화면 시험 test_web_shows_drive_health_selection_and_duplicates 시간 흔들림은 결함 아님 — 안정화 후속 후보)",
+      "P6": "이 판정서",
+      "unmeasured": "온라인 경로 전체(공식 DB 대조·모델 의견·Drive 대조·약칭 추정 실제 응답), 봉인 세트 새 출제분(사용자 결정으로 미실시), train. 판시 왜곡·행정기본법 제36조·처분기준 별표·관련 판례 탐색은 온라인 비교 세트에 해당 입력이 없어 측정 못 함"
+    },
+    "decided_by": "claude-code (평가 측)",
+    "decided_at": "2026-11-12"
   },
-  "decided_by": "claude-code (평가 측)",
-  "decided_at": "2026-10-18"
- },
- {
-  "version": "0.14.0",
-  "from": "0.13.1",
-  "level": "minor",
-  "basis": [
-   "added",
-   "changed",
-   "removed",
-   "fixed",
-   "performance_patch"
-  ],
-  "rer": 0.048,
-  "measured_commit": "907c2fafb21691f09c115a09394b45ff1b59b90f",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11.15",
-   "tesseract": "5.3.4 kor (CI와 같음)",
-   "scoring": "고정 채점기 불변. 직전 릴리스 main c512462(0.13.1)와 후보 907c2fa를 같은 환경·같은 날(2026-10-25) 평가 측이 각각 측정(오프라인, 항목 단위)"
+  {
+    "version": "0.19.0",
+    "from": "0.18.0",
+    "level": "minor",
+    "basis": [
+      "changed",
+      "fixed"
+    ],
+    "measured_commit": "9406d9cdca88bfd84119a495488c87deb4a79091",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11.18",
+      "tesseract": "5.3.4 kor (CI와 같음)",
+      "scoring": "고정 채점기 불변. 후보 Steve 9406d9c에서 평가 측 verify_all 전체 모드(기준 0.18.0 main 3c75071) 1회 종료 0. 은퇴 세트는 0.18.0과 후보를 같은 세트 파일·같은 환경으로 함께 채점",
+      "track": "일반 경로(RELEASE_PROCEDURE 2절). 범위 #264(TK-152)·#265(TK-153)·#266(TK-154), 구현 Antigravity. 봉인 시험은 사용자 결정(11-12 '봉인시험 미시행')으로 하지 않고, 배포 뒤 0.18.0 대 0.19.0 온라인 비교로 갈음(이번 변경은 모두 공식 DB 응답 경로라 오프라인 봉인 시험으로 효과를 재지 못함)"
+    },
+    "evidence": {
+      "M1": "고정 dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 0.18.0과 같음. 합산 RER 0. score_gate 통과, regression_gate(기준 3c75071) 회귀 없음",
+      "M2": "봉인 시험 미실시(사용자 결정 11-12). 갈음: 배포 직후 case9 23항목(0.18.0 22/23 — EX-1 회귀)과 온라인 탐침 4종 47항목(0.18.0 38/47, online_compare_0170_0180_20261112.md)을 같은 조건으로 0.19.0에서 다시 재어 비교한다. 결과는 판정서 보충으로 적는다",
+      "M3": "은퇴 세트(같은 조건·평가 측 재실행) 0.18.0 → 후보: 08 53.3→53.3, 08b 48.6→48.6, 09 56.9→56.9, 10 45.8→45.8, 20261025 34.1→34.1(Steve 기준), 오탐 0·A 0·인젝션 방어 유지",
+      "M4": "changed: 서면이 '전원합의체'라고 밝힌 대법원 판결을 선고 180일 뒤에도 공식 DB에서 찾지 못하면 '부존재 의심'(HIGH·NOT_FOUND, authority_status SUSPICIOUS — CRITICAL·부존재 확정은 쓰지 않음)(TK-154, 사용자 'EX-1 둘 다 처리'). 두 음절 어간 약칭이 첫 글자 목록에서 후보 0건이면 CRITICAL 대신 미결 MEDIUM(TK-152 (d), 사용자 X7 승인). fixed: 두 음절 약칭 추정 순위(약칭 가산·연속 정렬)와 추정 후보에 인용 조문이 없을 때 CRITICAL로 떨어지던 결함(TK-152), 공식 판결 전문의 번호 붙은 의견 머리말·쟁점 한정 판결요지 표지 미인식으로 결정적 의견 귀속 검사가 작동하지 않던 결함(TK-153)",
+      "P1": "verify_all 전체 모드 종료 0(9406d9c): environment·acceptance 1239·regression_ledger 2357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths(바뀐 보호 경로 16개 모두 평가 측 커밋 또는 승인)·version_policy·full_tests 9997·browser_tests 197, 실제 실패 0",
+      "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
+      "P3": "hardcoding_diff 통과(기준 3c75071), 각 PR 평가 세트 문구 대조 통과(점수 하락 게이트 CI 성공)",
+      "P4": "#264·#265·#266 같은 SHA 필수 CI 성공(인용), 평가 측 사본·합본 재실행(합본 전체 11,422건, 관련 296건) 실패 0, 구현 PR 제품 코드 = 평가 측 사본 diff 0",
+      "P5": "열린 신규 회귀 티켓 0(case9 EX-1 회귀는 TK-154로 대응 — 온라인 확인 대기)",
+      "P6": "이 판정서",
+      "unmeasured": "온라인 경로 전체(이번 변경 3건 모두: 약칭 추정 실제 목록 응답, 판결 의견 귀속의 AI 검토 단계 변화, 전원합의체 미발견 판정과 국가법령정보 판례 DB 수록률·180일 값 적정성), 봉인 세트 새 출제분(사용자 결정으로 미실시), train"
+    },
+    "decided_by": "claude-code (평가 측)",
+    "decided_at": "2026-11-12"
   },
-  "evidence": {
-   "M1": {
-    "production": "main c512462(0.13.1) dev 82.6 / holdout 80.1 / 오탐 0 / A 0",
-    "candidate": "907c2fa dev 82.6 / holdout 81.9 / 오탐 0 / A 0",
-    "delta": "dev 0, holdout +1.8(INJ-ZWSP 1항목, TK-89 인젝션 채널 구조 탐지). 합산 RER (164.5-162.7)/(200-162.7)=4.8% → performance_patch. 같은 인젝션 유형이 train에서도 함께 오름(평가 세트 문구 일치 아님)"
-   },
-   "M2": "미측정. 봉인 세트는 이 평가 세션 컨테이너에 없음. 참고(공개된 은퇴 세트·개발 말뭉치라 M2 근거 아님): 은퇴 08/08b/09/10 27.2/40.7/48.3/35.1(FP 1) → 48.9/42.6/50.0/43.9(FP 0), train 01~04 26.5×4 → 37.5/37.5/37.5/36.5. 오른 항목 유형: EVI-COPY 15, INJ 채널 34, EVI-DATE 2, EVI-INCONS 1. 하락 항목 0",
-   "M3": "added: A-4 #175 사건 순서 역전(EVI-DATE), B-3 #167(TK-90) 문서 안 장소·서명자·수량 불일치, B-2 #168 경위서 원문 통째 복제(EVI-COPY), B-1 #165(TK-91) 서증 원용 범위 초과(EVI-OVR, 세트 득점 없음·일반 표현 탐침 26/28·오탐 0/62로만 검증, 사용자 결정 10-25), #164(TK-94) 미확인 판례·법령 외부 AI 검증 프롬프트. changed: #171(TK-88) 검토 화면 3단·보고서 3단 소제목, #155(TK-87) '확인이 필요한 내용' 요약, #153(TK-85) 업로드 시점 개인정보 확인, #150(TK-84) 참고자료 의견·인용 전문 표시, #166(TK-83) auto 법리 검토 부분 에스컬레이션. removed: #154(TK-86) 버전 비교·근거 찾기·금액 계산·사건 일지 탭(API 유지, 공개 API 제거 없음). fixed: 은퇴 10 오탐 1→0(#176 A-3), #147(TK-92) 정상 서술 지시문 오탐, #149(TK-81)·#163 증거 목록 오탐, #152(TK-82) Drive 내려받기 재시도. 각 PR은 평가 측 수용 판정(HISTORY)과 진입점·화면 시험·대응표로 확인",
-   "M4": "해당 없음(입력 형식별 변경 없음). 개인정보 엔진(packages/pii_engine) 변경 0",
-   "P1": "907c2fa verify_all full --base c512462: regression_gate 회귀 없음, score_gate 통과, 종료 0",
-   "P2": "고정 오탐 0·A등급 0 유지, 은퇴 4세트·train 하락 항목 0(평가 측 재실행)",
-   "P3": "verify_all hardcoding_diff·test_edits·protected_paths 통과. 탐지 PR 3건(#165·#167·#175)은 전달문 2-2절 규약과 평가 측 탐침(문장 비공개)으로 수용",
-   "P4": "verify_all full: acceptance 1231·regression_ledger 2357·full_tests 8989·browser_tests 197 통과, 실제 실패 0·strict XPASS 0. 비공개 개인정보 세트는 이 세션에 없어 미측정(개인정보 엔진 변경 0)",
-   "P5": "열린 신규 회귀 티켓 0",
-   "P6": "이 판정서와 HISTORY 2026-10-25",
-   "unmeasured": "AI 작성 판별·공식 DB 대조·Drive 대조(온라인 영역), 봉인 세트"
+  {
+    "version": "0.20.0",
+    "from": "0.19.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "changed",
+      "fixed"
+    ],
+    "measured_commit": "2cc7ac2a8d35e5c3f0b1d0f05f5bc5b23a90753c",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11.18",
+      "tesseract": "5.3.4 kor (CI와 같음)",
+      "scoring": "고정 채점기 불변. 후보 Steve 2cc7ac2에서 평가 측 verify_all 전체 모드(기준 0.19.0 main 5b878a1) 1회 실패 0(앞선 후보 db410c4도 같은 결과). 은퇴 세트는 0.19.0과 후보(db410c4)를 같은 세트 파일·같은 환경으로 함께 채점, 이후 #282는 화면·이미지만 바꿔 채점 경로 변경 없음(CI 은퇴 세트 비교 성공)",
+      "track": "일반 경로(RELEASE_PROCEDURE 2절). 범위 #270~#282(TK-155~160·162·163·169, 평가 v2 전환, KBL 경로 정리, 엠블럼 교체). 봉인 시험은 사용자 결정(11-14 '미시행, 온라인 비교로 갈음')으로 하지 않고 배포 뒤 0.19.0 대 0.20.0 온라인 비교로 갈음"
+    },
+    "evidence": {
+      "M1": "고정 dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 0.19.0과 같음. 평가 v2 일대일 재현율 dev 42/56·holdout 41/54. score_gate 통과, regression_gate(기준 5b878a1) 회귀 없음",
+      "M2": "봉인 시험 미실시(사용자 결정 11-14). 갈음: 배포 직후 case9와 온라인 탐침을 0.19.0과 같은 조건으로 0.20.0에서 다시 재어 비교하고 판정서 보충으로 적는다",
+      "M3": "은퇴 세트(같은 조건·평가 측 재실행, 후보 db410c4) 0.19.0 → 후보: 08 53.3→53.3, 08b 48.6→48.6, 09 56.9→56.9, 10 45.8→45.8, 20261025 34.1→34.1, v2 22/46·24/54·31/58·23/53·12/44 같음, 오탐 0·A 0·인젝션 방어 유지",
+      "M4": "added: 판정별 공식 원문 근거 구간(TK-159), 주장 3분류와 근거 의무(TK-160), 원문 대조 보기·3분류 배지·보고서 차이 요약(TK-163), 뒤의 전원합의체 판결 변경 판례 경고(TK-162), 검토 결정 유형별 집계 API·화면(TK-157a·b). changed: AI 작성 판별 두 모델 고정·엇갈림 시 추가 호출(TK-156), 평가 v2 전환·README 성능 그래프, 외부 벤치마크 미적용 정리, 엠블럼·문서 제목(#282). fixed: 화면·보고서 영문 코드·조사(TK-155), 같은 시행일 복수 개정판 법령 판 미확정(TK-158), 지각 범위 문장 규칙(TK-169), LV-05 '이를 모두 변경' 꼴 미탐(TK-162)",
+      "P1": "verify_all 전체 모드 실패 0(2cc7ac2): environment·acceptance 1275·regression_ledger 2357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths(바뀐 보호 경로 41개 모두 평가 측 커밋 또는 승인)·version_policy·full_tests 10143·browser_tests 197, 실제 실패 0",
+      "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
+      "P3": "hardcoding_diff 통과(기준 5b878a1), 각 PR 평가 세트 문구 대조 통과(점수 하락 게이트 CI 성공)",
+      "P4": "#270~#282 같은 SHA 필수 CI 성공(인용), 각 PR 평가 측 재실행 판정(엔진 변경 PR은 verify_all 전체), 사본 지시 PR은 평가 측 사본과 diff 0",
+      "P5": "열린 신규 회귀 티켓 0",
+      "P6": "이 판정서",
+      "unmeasured": "온라인 경로(판례 변경 역조회의 공식 DB 회수율·소요 시간, 원문 대조 정렬 품질, 3분류 분포, AI 판별 두 모델 반복 안정성 TK-161), 실사용 검토 결정 누적 뒤 유형별 비율, 봉인 세트 새 출제분(사용자 결정으로 미실시), README 성능 그래프의 v0.20 점(같은 방법 재측정 전)"
+    },
+    "decided_by": "claude-code (평가 측)",
+    "decided_at": "2026-11-14"
   },
-  "decided_by": "claude-code (평가 측)",
-  "decided_at": "2026-10-25"
- },
- {
-  "version": "0.15.0",
-  "from": "0.14.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "changed",
-   "removed",
-   "fixed",
-   "security"
-  ],
-  "measured_commit": "2f61f82a0b87cc48b7014690b7c9b9d21d0f9460",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11.15",
-   "tesseract": "5.3.4 kor (CI와 같음)",
-   "scoring": "고정 채점기 불변. 수용 SHA 2f61f82에서 평가 측 측정(오프라인). Steve 3fee071과 제품 diff 0. 기준선(운영 0.14.0 main 28d3397과 같은 값) 대비",
-   "track": "RELEASE_PROCEDURE 2-6 직전 릴리스 결함 교정 간소 경로(2026-10-25 사용자 지시)"
+  {
+    "version": "0.21.0",
+    "from": "0.20.0",
+    "level": "minor",
+    "basis": [
+      "changed",
+      "fixed",
+      "security"
+    ],
+    "measured_commit": "86434b6a8b260a8ea2142723ecb70b653c3fbb4d",
+    "conditions": {
+      "network": false,
+      "os": "Linux (Ubuntu 24.04 container)",
+      "python": "3.11.17",
+      "tesseract": "5.3.4 kor/eng",
+      "scoring": "고정 채점기 불변. 후보 86434b6a에서 평가 측 verify_all 전체 모드(기준 0.20.0 main 034343f) 실패 0, 환경 점검 통과. 별도 은퇴 5세트 같은 환경 재채점(기준 034343f) 후퇴 없음",
+      "track": "일반 경로. #290~#294(TK-171~176)와 #297~#300(TK-177~180), 평가 체계 감사·온라인 평가 갱신 포함. 봉인시험은 사용자 결정(2026-11-15, Claude Code 권고 수용)으로 시행하지 않고 0.20.0 대 0.21.0 온라인 평가로 갈음",
+      "prior_candidate": "0653872: 11-14 이전 후보 검증. 통합 7ca13a34 full은 평가 도구 점 경로 거절 시험 1건 실패(나머지 단계 통과); e452be6b로 검증/시험을 수정한 후 이 후보에서 다시 전체 검증. 최종 근거는 새 measured_commit이다"
+    },
+    "evidence": {
+      "M1": "고정 dev 82.6 / holdout 81.9 / 확인 오탐 0 / A 0 / 인젝션 방어 유지. v2 dev 42/56·holdout 41/54. score_gate·regression_gate 통과. 엔진 오류 dev·holdout 각 0(법리 규칙 NameError 해소, TK-177)",
+      "M2": "봉인 시험 미실시(사용자 결정 2026-11-15). online_compare_0200_0210_plan.md에 따라 배포 전 가능한 0.20.0 기준 실행 확보, 배포 뒤 case9 정답·공식 DB/모델/Drive 실행 건강·기존 회귀·TK-180 8보고서·AI 판별 반복 평가. 온라인 준비·오프라인 시험을 온라인 실측 통과로 계산하지 않는다. 현재 운영 실측 미시행 배포 및 GitHub 실제 API/모델 점검 시작: 외부 Source 점검43683347281은 failure(공식 판례1건 미일치·인용검증 개인정보 차단·외부 서비스 제한 등); 문서별 온라인 평가는 아직 NOT_RUN. 실연동 통합43683349002 성공, 이번 커밋 기록7항목 모두 통과. 별도 합성 모델 실행63건 중61성공·2개인정보 차단. 운영 문서별8보고서/case9 반복 검증을 대체하지 않음. 사용자 운영7보고서 수신: case9정답23/23·추가건강1/1, 공통건강7건 각5/6(H-REF실패), 모델124기록실패0. 온라인전체수용 보류; online_0210_20261115.md/json 참조. 후속 정답지 확정: A~D 정답지 구조요건46/47(HWPX D-C2경계), 기존계산/탐지 비교기준47/47. 조건차이 구분, 온라인전체수용보류 유지. online_0210_47_adjudication_20261115.md/json.  case9 추가2회 각23/23·건강5/6(H-REF). AI3회 일부/전체/일부·일치2/3, 최초Drive스냅샷차이로 고정조건3반복미완료. online_0210_case9_repeat_20261115.json 및 online_0210_remaining_test_procedure.md. 인증API 자동6실행 완료: case9두회 각23/23·공통5/6(H-REF), 입력공격4종HIGH통과. 사용자2+자동2의고정조건4회AI부분3/전체1(일치75%). Drive19자료163쪽미추출/암호화1사유유지, 0.22목표TK182~185등록·제품미적용. online_0210_automated_20261115.md/json.",
+      "M3": "은퇴 5세트(기준 034343f, 같은 평가 코드·환경): 53.3/48.6/56.9/45.8/34.1, 확인 오탐 0·A 0·v2/미판정 후퇴 없음. artifacts/retired_021.json",
+      "M4": "changed: 템플릿 A 화면 리디자인·모바일·태블릿 반응형(서랍·하단 내비), 개요 KPI 실값·사람 검토 낮은 띠, Pretendard 자체 호스팅, 넓은 화면 사이드바 접기, 좁은 화면 표 카드화, 브랜드 문구 AegisLAW, 탭 아이콘 판 표지(TK-171·172, 사용자 화면 확인). fixed: 이미 결정론 판정으로 잡힌 오류를 모델 지적이 '재계산으로 확인하지 못함'으로 다시 표시하던 중복(TK-173), Drive 참고자료 대조 미완료 사유 오표시·처리 사유 코드 10개 영문 노출(TK-174). security: 저장소·삭제 경로 주입 10건·진단 응답 예외 문구 노출 1건·암호화 캐시 형제 폴더 통과(TK-175 제품), 평가 도구·시험 경로 묶기·부분 SSRF 13건(TK-175 평가). CI 액션 Node 24 전환(TK-176, 제품 동작 무관) 추가 fixed: 법리 규칙 단계 NameError 해소(TK-177), Drive 판례표 링크·문헌 속성 오격리 보완 및 진단(TK-178), 모델 JSON 추출·오류 모양 기록·판례 판단 출력 한도 4096(TK-179). 추가 changed: 입력 법률문서는 검증 대상, 공식 DB·검증 등록 RAG는 판단 기준 자료로 역할 분리. 기준 자료의 지시문 분류/격리·쪽/행 제외를 해제하고 캐시 재추출, 모델 역할 프롬프트 정리. 입력 문서의 인젝션 탐지·개인정보·출력 경계 유지(TK-180). 평가 측: 엔진 오류 게이트·온라인 건강 상태·기능별 온라인 평가 갱신·RAG 대조군·AI 반복 집계·봉인 온라인 채점 도구",
+      "P1": "verify_all 전체 86434b6a 실패 0: 수용 1278·회귀 장부 2357·전체 10328·브라우저 197, 점수·회귀·하드코딩·시험 편집·보호 경로·버전·환경 점검 통과. artifacts/verify_all_021.json",
+      "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
+      "P3": "hardcoding_diff 통과(기준 034343f). test_edits의 참고자료 쪽 제외 시험 assert 5→4 경고는 사용자 TK-180 요구에 따른 보존 기대 변경이며 입력 문서 탐지 시험 약화 없음. 기존 보호 경로 변경은 평가 측 커밋/승인으로 통과",
+      "P4": "#295 head9f36dbeb·#296 head571be926 각 CI 성공17/건너뜀2, 사용자 승인 병합. #301 head4973f850 CI 성공16/실패0/CLEAN, 사용자 순차 릴리스 승인으로 main83d862e7 병합. 운영 health version0.21.0·정확한 SHA·DB ok 확인, 태그 v.0.21.0.",
+      "P5": "열린 신규 회귀 티켓 0",
+      "P6": "이 판정서",
+      "unmeasured": "TK-178 이전 격리 자료 실제 재색인/판례표 행수, TK-179 운영 응답 형식 오류·잘림 비율, TK-180 기준 자료 활용·입력 공격 차단 운영8보고서, case9 반복/AI 안정성, 실기기 화면. GitHub 실연동 API/모델 결과는 release_021_deployment_20261115.json에 별도 기록. 봉인시험은 승인된 미시행; README 성능 그래프 새 점은 같은 방법 측정 전.",
+      "P7": "통합 검증에서 평가 도구 export_security_alerts의 점 경로 허용 및 거절 시험의 HTTP 오류 의존을 발견해 e452be6b에서 수정. 기존 정규식 재현은 새 거절 시험 4실패/4통과, 수정 후 관련 19건 통과. 초기 Node 경로 누락은 환경을 보완했으며 제품 코드 변경 없음"
+    },
+    "decided_by": "Codex 평가 승계 세션 (사용자 2026-11-15 지시)",
+    "decided_at": "2026-11-15",
+    "release_commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+    "release_tag": "v.0.21.0",
+    "deployment_evidence": "release_021_deployment_20261115.json"
   },
-  "evidence": {
-   "M1": "dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 기준선(0.14.0)과 같음(변화 0). score_gate 통과, regression_gate(기준 e980640) 회귀 없음. 합산 RER 0",
-   "M2": "봉인 생략(2-6 간소 경로). 개인정보 엔진 변경은 동등성 근거로 대체: 시험 자료 문장 9,728개 detect() 결과 차이 0(의도된 차이 1꼴 — '처방 5mg'류 위치 앞 공백 1자 제외), '군' 표기 줄바꿈·공백 21자 이상 경우 이름을 더 가림(보호 강화 쪽). CI 은퇴 세트 비교 통과",
-   "M3": "fixed: TK-126(0.14.0 화면 오구현 — '확인 방법' 반복 삭제, 프롬프트 버튼 강조, 판정 문구 셀 넘침, 3번째 탭 '법률적으로 무리한 주장' 독립, 배포 캐시), TK-127 1단계(주요참고문헌 대조 의견을 표 행에 통합, 하단 절 제거). changed: 상단 평면 탭 5개, '확인할 항목' → '출처가 확인되지 않는 항목'. removed: 쟁점·활동 기록 화면(API 유지). added: TK-128 두 표 엘박스/AI 프롬프트·외부 AI 답변 붙여넣기→표에 반영(공식 확인 아님), 3단 프롬프트 서버 가림 API. security: 개인정보 탐지 정규식 ReDoS(CodeQL py/polynomial-redos 5건, 최악 입력 40초 초과 → 0.97초/200×2,000자). 모두 #183에서 평가 측 수용·사용자 화면 확인(10-25)",
-   "M4": "개인정보 엔진(packages/pii_engine/detector.py) 정규식 동등 변환 — M2 동등성 근거",
-   "P1": "2f61f82 regression_gate 회귀 없음; verify_all 전체 모드는 2-6에 따라 수용 SHA 단계별 실행(scorecard·score_gate·regression_gate·hardcoding_diff·check_test_edits·check_protected_paths·check_version_policy 모두 0)과 같은 SHA CI로 갈음",
-   "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
-   "P3": "hardcoding_diff 통과(추가 340줄에 시험 입력 값 없음)",
-   "P4": "평가 측 관련 시험 3,837건 실패 0(건너뜀 25), CI 전 스위트(SQLite·PostgreSQL) 성공",
-   "P5": "열린 신규 회귀 티켓 0(TK-126·127은 이 릴리스로 교정, TK-127 2단계·TK-129는 새 기능 과제)",
-   "P6": "이 판정서",
-   "unmeasured": "온라인 경로(공식 DB·Drive·모델) — 이번 변경은 화면·가림 API·개인정보 정규식이라 배포 직후 health SHA·버전 확인으로 갈음(2-6). 실제 운영 데이터 화면은 배포 뒤 사용자 확인"
+  {
+    "version": "0.22.0",
+    "from": "0.21.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "changed",
+      "fixed",
+      "security"
+    ],
+    "measured_commit": "fca75347c5612b3a5960005726b4a31f7143b38a",
+    "conditions": {
+      "network": false,
+      "python": "3.11.17",
+      "tesseract": "5.3.4 eng/kor/osd",
+      "os": "Ubuntu 24.04 container",
+      "baseline_commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
+      "track": "일반 경로. 봉인 동일 조건 비교·main 병합·운영 health 확인 완료; 온라인 평가는 별도 세션에서 진행.",
+      "scoring": "main과 후보의 동일 고정/은퇴 자료·채점기·의존성 비교. 원문/정답/기준선 변경 없음."
+    },
+    "evidence": {
+      "M1": "main/후보 모두 dev 82.6, holdout 81.9, 확인 오탐/A 0, 구 인젝션 방어 대리값 유지. v2 dev 42/56, holdout 41/54; 엔진 오류 0.",
+      "M2": "사용자 제공 main/후보 집계 JSON 직접 비교 수용: main 83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca, 후보 fca75347c5612b3a5960005726b4a31f7143b38a; 동일 오프라인 환경 Python 3.11.18, Tesseract 5.3.4 eng/kor/osd, 자료 SHA-256 940bcdcefcdca102f8081d7baf22e5a88eac75b737088e069c520dec2ef1da61. 봉인 8문서/62항목/36유형, 구 산식 23.0=23.0, v2 13/62=13/62, macro 16.67% 동일, 개인정보 종류 13/26, FP/A/오류 0, 유형별 감소 없음. 보안 탐지 0/10 양쪽 동일이며 실무 정확도·보안성 입증 아님. 집계 JSON SHA-256 147b8f560880261f3cb70ea8669441cc841e8a67b8fff5ded26191ca41f5432f / 049d15939157034e682abd3156e8245d81538dae8ae5ba72210118cbd0088ea5. 상세 release_022_sealed_comparison_20261115.json.",
+      "M3": "은퇴5세트 양쪽 53.3/48.6/56.9/45.8/34.1, 확인오탐/A 0, v2 유형별 후퇴 없음. 같은365항목 0.20/0.21/후보 모두195/365(53.4%), 법률43/123(35.0%), RER0. 실무 정확도 아님.",
+      "M4": "Added Time Table(#305). Changed Gemini 기본 모델(#304), AI 관여/범위/이견/표본/근거 정보(#308). Fixed Drive/HWPX/비율근거/개인정보 진단(#307), 건수표시(#310), 모바일 목록(#312). 의존성 해시 잠금·runtime·감사(#303), README 동기화(#306).",
+      "P1": "verify_all 전체 최종 종료0, 수용1278·원장2357·전체10430·브라우저200, 실제실패/strict XPASS0. 최초 환경실패는 최종 근거에서 제외하고 원인/재검증 보존.",
+      "P2": "고정/은퇴 비교의 회귀0. 점수 순증을 근거로 버전을 올리지 않음.",
+      "P3": "하드코딩·시험삭제·보호경로·버전 검사 통과. TK185 평가 조건 P1 보완은 별도 evaluator 커밋; 관련43시험 통과, README12시험 통과.",
+      "P4": "#316 head e84141d7: 필수 CI 점수 게이트·은퇴 비교·SQLite·PostgreSQL/pgvector+Celery·Docker OCR·pip-audit·CodeQL 성공. main 병합 SHA 5b9957932259526e1f7edca9ba7d92767771618e, 태그 v.0.22.0 확인. 사용자 제공 /api/health status=ok·version=0.22.0·동일 SHA·database.status=ok. 배포 확인 완료; 온라인 기능 평가는 별도 세션 대기.",
+      "P5": "새 제품 P1 회귀 없음. TK-182~186은 운영 코드 배포 상태로 deployed 처리했으며, 운영 효과/문제 해소 판정은 온라인 평가 전까지 미확정.",
+      "unmeasured": "별도 세션 온라인 평가 대기: Drive 원본/암호화/HWPX, Gemini 호출·비용·품질, AI 범위 정확도/반복, 공식 Source cascade, 실기기 화면, 온라인 봉인(U1).",
+      "record": "release_022_candidate_20261115.md / release_022_verification_20261115.json / release_022_sealed_comparison_20261115.json",
+      "online_20261116": "운영183f3d22의 단일15+다문서1실행 수집. 구조45/47(이전46/47, HWPX1개선/B정상인용2미확인), 구계산45/47(이전47/47). case9 4회23/23·건강5/6·RAG3/5. TXT역할5/5·입력공격4종HIGH. 모델229호출6실패. Drive동일해시25자료148→134쪽미추출(OCR14/빈쪽127/스캔7). AI조건SAME4회일치100%는정확도아님. TK182·186~191 미해소/보완. 정상참고3형식·실기기/독립정확도/온라인봉인 등 미완료, 전체온라인수용보류. online_compare_0210_0220_20261116.md/json."
+    },
+    "rer": 0.0,
+    "decided_by": "Codex 평가 세션 (사용자 진행 지시)",
+    "decided_at": "2026-11-15",
+    "release_status": "DEPLOYED_ONLINE_EVALUATION_PENDING",
+    "release_commit": "5b9957932259526e1f7edca9ba7d92767771618e",
+    "release_tag": "v.0.22.0",
+    "deployment_evidence": "release_022_deployment_20261116.json"
   },
-  "decided_by": "claude-code (평가 측)",
-  "decided_at": "2026-10-25"
- },
- {
-  "version": "0.16.0",
-  "from": "0.15.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "changed",
-   "fixed"
-  ],
-  "measured_commit": "d2aa19a0f0bfc26a745d3749c0caf2133ae99011",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11.15",
-   "tesseract": "5.3.4 kor (CI와 같음)",
-   "scoring": "고정 채점기 불변. 후보 Steve d2aa19a에서 평가 측 verify_all 전체 모드(기준 0.15.0 main 08d40ff, 환경 CI와 일치)",
-   "track": "일반 경로(RELEASE_PROCEDURE 2절·2-5). 구현은 2026-10-28 사용자 지시로 Codex 별도 세션 한시 대행"
+  {
+    "version": "0.23.0",
+    "from": "0.22.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "changed",
+      "fixed"
+    ],
+    "measured_commit": "2633d91c65d529683b48a5997ca1368bfa0c90e2",
+    "conditions": {
+      "network": false,
+      "python": "3.13.18",
+      "tesseract": "5.3.4 eng/kor/osd",
+      "os": "Linux 6.18.44 (glibc 2.39)",
+      "baseline_commit": "183f3d22791bb01d4c8a39ce842e193000c663b8",
+      "fonts": "fonts-nanum. CI 설치 목록과 동일(tesseract-ocr·-kor·-eng·fonts-nanum)",
+      "track": "일반 경로. 후보 SHA에서 verify_all 전체 1회, 고정·은퇴 동일 조건 재측정. main 병합·태그·운영 health는 미시행이며 온라인 평가는 별도 세션.",
+      "scoring": "기준(main 183f3d22)과 후보의 동일 고정/은퇴 자료·채점기·의존성 비교. 원문/정답/기준선 변경 없음.",
+      "python_note": "평가 환경은 python 3.13.18이고 CI는 3.11이다. verify_all의 environment 단계가 이 불일치를 실패로 잡는다. 같은 단계를 CI가 3.11에서 모두 통과시켰다(PR #349·#350·#351·#352 필수 검사 전부 성공). 숨기지 않고 적는다.",
+      "measured_on": "2026-11-19"
+    },
+    "evidence": {
+      "M1": "기준/후보 모두 dev 82.6(부분점수율 0.826), holdout 81.9(0.819), 확인 오탐 0·A등급 0·구 인젝션 방어 대리값 방어 유지. v2 일대일 dev 42/56(75.0%)·holdout 41/54(75.9%), 미판정 경고 10·9, 참고 경고 10·4, 엔진 오류 0, 결함 유형 28·27종. 0.21.0·0.22.0과 같은 값으로 점수 이동 없음.",
+      "M2": "봉인 세트 동일 조건 비교 미측정. 봉인 시험문서·정답은 저장소 밖 사용자 보관이고 출제·자체 점검은 저장소 미연결 격리 세션이 맡으므로 이 평가 세션에서 잴 수 없다. 0.22.0 판정서 M2(사용자 제공 집계 JSON 직접 비교)에 해당하는 근거가 0.23.0에는 없다. 합격으로 간주하지 않는다. 2026-11-18 사용자 지시 '봉인세트비교 제외'로 이번 0.23.0 판정에서 봉인 비교를 제외한다. 미측정 사실은 그대로 남기며, 제외가 통과를 뜻하지 않는다. 보강(2026-11-18): 이 릴리스는 pii_engine·claim_engine 등 오프라인 탐지·개인정보 엔진을 바꾸므로 RELEASE_PROCEDURE 2절 조건 2의 봉인 시험 적용 범위 '안'이다. 따라서 이 제외는 '범위 밖 생략'이 아니라 사용자 결정에 의한 릴리스 조건 면제다. 릴리스 PR에 그대로 적는다.",
+      "M3": "은퇴 5세트 기준/후보 동일: sealed_20261008 53.3(v2 22/46·미판정 6), 20261008b 48.6(24/54·20), 20261009 56.9(31/58·30), 20261010 45.8(23/53·11), 20261025 34.1(12/44·16). 확인 오탐 0·A 0·방어 유지, 유형별 후퇴 없음. 실무 법률 정확도가 아니다.",
+      "M4": "Added: RAG Drive 분리 수집·쪽별 상태 커버리지·주장 단위 다중 경로 검색(#325 TK-182·187), 전체 analysis_text 근거화·행정규칙 별칭·LLM 동시성 제한(#327 TK-197), 현행 법령 승격·무리한 주장 4종 탐지·인용 경계·NER·메타표 격리(#329 TK-195·196), 외부 AI 답변 서버 영속·모델명 표시·검토 표 3열 역할 분리·Time-Table 사실관계 중심(#335 TK-198~206). Changed: 참고자료 상세 펼침 상태 보존(#320 TK-189), Gemini 추론·출력 예산 조율(#322 TK-190), 구간 표지 연결·3축 진단 분리(#323 TK-191), 대조표 법령 오인 제외·AI 의견 행 정렬·구 사건부호·헌재 라우팅(#326 P0-1·P1-1). Fixed: Time Table 인접 호증 결속(#321 TK-188), 공식 Source cascade 마스킹(#324 TK-186), PII 마스킹 멱등성·1·2차 규칙 동기화(#328 TK-193), 주장 엔진 NER 규칙 공유(#330 P2-1②), 파생 문서명 가드(#332 TK-76 E2), ReDoS 선형성 시험 계측(#334). 평가 기록: #331 온라인 비교 계획, #333 TK-192~197 등록. 139파일 +19,560/-1,334, #320~#335 16건.",
+      "P1": "verify_all 전체(후보 SHA d79d6b2, 작업 트리 깨끗, matches_ci=true) 11단계 전부 통과·종료 0: 수용 1,276 · 원장 2,357 · 전체 11,027 · 브라우저 200, 실제 실패 0 · strict XPASS 0. 1차 실행의 regression_gate·full_tests 5건 실패는 평가 환경 결함(fonts-nanum 미설치로 PDF가 CID 대체 폰트로 떨어짐, HOME 불일치로 기준 쪽 탐침 경로가 path_guard에 거부됨)으로 확인했고 base 6e7bf01에서도 같이 실패해 제품 회귀가 아님을 확인한 뒤 환경을 CI와 일치시켜 재실행했다. 1차 기록은 원인과 함께 보존한다.",
+      "P2": "고정·은퇴 비교의 회귀 0. 회귀 게이트 12칸 전부 동일(회귀 없음). 점수 순증을 근거로 버전을 올리지 않는다.",
+      "P3": "하드코딩·시험 삭제·보호 경로·버전 검사 통과. 보호 경로 20개 모두 평가 측 커밋 또는 승인. 평가 기록(TK-198~206 등록) 커밋은 Agent: evaluator 꼬리표로 분리했고 같은 네 게이트를 커밋 상태에서 재확인했다.",
+      "P4": "#335 최종 head 2b676c842a2df895cbc2a2b8077746a18c745fc1의 필수 CI 전부 성공(테스트 3벌·점수 하락 게이트·은퇴 세트 비교·Docker OCR readiness·CodeQL python/js base·head·새 경고 게이트). Steve 병합 d79d6b21. main 병합·태그·운영 health 확인은 미시행.",
+      "P5": "사용자 원문 [261116 AegisLAW 개선 필요 사항 정리] 1~9항을 TK-198~206으로 등록하고 원문 문장별 대응표로 판정했다. 11개 문장 중 10개 충족, 2항(개인정보 입력 차단으로 AI 교차검토 미실행)은 오프라인 근거만 있고 운영 재현 미확인. 화면 캡처는 사용자 '이상없음' 확인 접수(2026-11-18). #335는 3차 판정에서 수용했고 1차 P1·P2·P3, 2차 R1·R2 보완을 거쳤다.",
+      "unmeasured": "봉인 세트 동일 조건 비교(M2) — 2026-11-18 사용자 지시로 이번 판정에서 제외. 온라인 실연동 전부: 공식 DB 대조, Drive 대조·원본/암호화/HWPX, 실제 모델 호출·비용·품질, AI 작성 판별, 사용자 실제 문서(35,674자)의 개인정보 입력 차단 해소(TK-199), 실기기 화면, 온라인 봉인. 실무 법률 정확도·검색/주장 타당성·검토 효율은 EVALUATION_V2 기준 NOT_MEASURED. [2026-11-19 추가] 온라인 점검 3회차 생략으로 다음이 **미측정으로 남는다**: (1) TK-208이 노린 'Drive 참고자료 라이브러리가 운영에서 READY에 도달하는가' — 오프라인 합성 스텁으로는 확정할 수 없다. (2) TK-216의 RAG 실패가 운영 H-ENGINE에 실제로 드러나는가. (3) 완독 스냅샷 기준 운영 표준 23항목 비교(2회차까지 Drive PARTIAL로 두 회차 연속 불가). (4) TK-208의 미독 안내 표시가 운영 화면·보고서에 보이는가(오프라인 코드 확인과 합성 캡처까지만 했다). (5) TK-218 목표 자료의 후보 청크 집계 — 2회차에서 전달된 387자 발췌가 그 자료에 있던 전부였는지, 더 긴 청크가 떨어진 것인지. 이 다섯은 0.24.0 온라인 점검으로 넘긴다(3회차 지시서 맨 끝 절의 확인 항목 전부). **TK-217**(법률 시행일 서술 꼴 비사실형 행 1개, P3)은 이 목록에 넣지 않는다 — 3회차 점검 항목이 아니었고, 미뤄진 '확인'이 아니라 아직 구현되지 않은 열린 티켓이다. 상태는 ticket_registry.json에서 open으로 유지한다.",
+      "record": "release_023_candidate_verification_20261119.md(최종 후보 2633d91의 전체 검증 — 6절이 최종 결과, 2~5절은 첫 후보 2b8b4bd의 기록), release_023_candidate_20261118.md(범위 변경 전 중간 측정 d79d6b21)",
+      "tooling_defect": "scripts/path_guard.py의 INPUT_ROOTS가 Path.home()에 의존해, 저장소가 사용자 홈 밖에 있는 환경에서는 regression_gate 기준 쪽 탐침 13항목이 전부 '허용 폴더 밖의 경로'로 거부된다. CI는 저장소가 러너 홈 아래에 있어 우연히 통과한다. 평가 도구의 재현성 결함으로 별도 보완 대상이며 이번 판정은 HOME을 맞춰 측정했다.",
+      "scope_change_20261118": "2026-11-18 사용자 결정으로 릴리스 범위를 바꿨다. 당초 (가) '#336~PR4를 0.24.0으로 분리'를 평가 측이 권고하고 사용자가 채택했으나, 같은 날 '릴리스는 온라인 테스트 후 일부 오류개선을 #336과 함께 반영'으로 재결정했다. 따라서 0.23.0 범위는 #320~#335에 더해 #336(TK-76 3주기 PR1)과 온라인 테스트에서 나올 오류개선을 포함한다. 확정된 순서: ① #336 보완·판정·병합 → ② 합본을 main에 병합해 배포(Render 배포 브랜치는 main) → ③ 온라인 테스트 → ④ 오류개선을 같은 릴리스에 반영 → ⑤ 최종 후보에서 verify_all 전체 1회 및 이 판정서 재측정·갱신 → ⑥ 버전 커밋 → 릴리스 PR → 태그 v.0.23.0. ②는 버전 커밋 전이므로 /api/health의 version이 0.22.0으로 보인다(VERSION_POLICY 6절: 상향 요건을 채우지 못하면 버전을 유지한 채 배포). 온라인 테스트 기록의 빌드 식별은 version이 아니라 commit(SHA)으로 한다. measured_commit d79d6b21은 범위 변경 전 중간 측정이며, 최종 후보 SHA로 갱신한다.",
+      "pr336_20261118": "PR #336(TK-76 3주기 PR1, head 51546edd) 판정 NEEDS_CHANGES. 축 A 23/23·축 B 30/30·축 C2 31/31 수용. 새 오탐 2건: F1 수량 슬롯 미래·예정 가드 누락(동사×서법 교차 25동사×4꼴 중 신규 20동사 80칸이 base 0 → PR 80; 기존 5동사 20칸은 base와 같은 부채), F2 호증 키 정규화가 소갑↔갑·소을↔을을 같은 앵커로 묶어 서로 다른 호증 사이에 없는 모순을 발화(5칸 중 2칸, base 5칸 전부 0건). 둘 다 평가 측 사본에서 사전 검증을 마쳤다. 보완 지시는 NEXT_FOR_ANTIGRAVITY 2026-11-18절. 이 PR의 결함은 미병합 PR의 것이며 Steve에 들어가지 않았다(열린 P1 회귀 0 판단 근거). 3차 판정(2026-11-18): head 7cd95476 **ACCEPTED**. 평가 측 탐침 5세대 233칸 집계 — base 119/233 → head 225/233, 남은 8칸은 전부 base에서도 실패하므로 base 대비 회귀 0·순증 106칸. 필수 CI 5개 전부 성공, 관련 시험 738 통과, 고정 82.6/81.9/확인 오탐 0 변화 없음. 잔여 미래·의도 서법 8칸은 TK-207로 분리 등록했고 PR #336을 막지 않는다. 0.23.0 범위에 이 PR이 포함되므로 최종 후보 SHA는 이 PR 병합 뒤의 Steve tip이 되며, verify_all 전체와 measured_commit은 온라인 테스트 오류개선까지 반영한 최종 후보에서 다시 잰다.",
+      "F1": "최종 후보 2633d91에서 verify_all 전체 모드 1회: acceptance 1,276 · regression_ledger 2,357 · full_tests 11,416 · browser_tests 200, 실제 실패 0 · strict XPASS 0. score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths·version_policy 전부 통과. environment 단계만 실패(python 3.13.18 ≠ CI 3.11).",
+      "F2": "회귀 게이트 '회귀 없음' — 명세 전 항목 base(v.0.22.0)=head. 고정 세트 dev 82.6(가중 재현율 0.826, 56항목)·holdout 81.9(0.819, 54항목), 확인 오탐 0·A등급 오탐 0·대조 오탐 0·엔진 오류 0. v2 일대일 dev 42/56(75.0%)·holdout 41/54(75.9%), 미판정 경고 9·8, 참고 경고 10·4. 0.21.0·0.22.0과 같은 값으로 점수 이동 없음.",
+      "F3": "이 판에 담긴 변경: TK-208 Drive 미완독 3갈래 분류·재시도 상한·미독 표시(#349), TK-218 발췌 선택 관측성(#351, 선택 결과 불변), TK-216 RAG 실패 건강 게이트(#350), TK-212 CI 기준 단일화·트리거 축소(#348), TK-219 회귀 게이트 기준 입력 경로(#352, 평가 자산). 앞선 범위는 #320~#347.",
+      "F4": "TK-219 확인: 첫 전체 실행(2b8b4bd)에서 regression_gate가 '측정하지 못한 항목이 있다'로 exit 2였다. 원인을 평가 측 게이트 자산 결함으로 확정하고 고친 뒤, 최종 후보에서 같은 단계가 전 항목을 측정해 '회귀 없음'으로 통과한다. 제품 회귀가 아니었음을 CI 동등 조건 재측정으로 먼저 분리 확인했다.",
+      "online_check_20261119": "2026-11-19 사용자 결정으로 이 릴리스의 **배포 뒤 온라인 점검(RELEASE_PROCEDURE 4절)을 생략**한다. 원문: '지난번 릴리스를 할때 온라인 점검을 했고, 그 이후 오류 등을 일부 수정, 보완해서 다시 릴리스 하는 것이니 점검을 모두 생략. 릴리스 후 그 후속조치의 일환으로 작은 범위로 수정, 보완하는 경우에는 추가 온라인 점검을 실시하지 않고, 새로운 기능 구현을 포함해 릴리스가 이루어지는 경우에는 온라인 점검을 시행하는 것으로 정해'. 같은 결정으로 RELEASE_PROCEDURE 2-7을 신설했다. 정확한 사실관계: 이 릴리스 주기에 온라인 점검은 **두 번 돌았다** — 1회차 배포 32d9c485(PR #340), 2회차 배포 aaf51806(PR #347). 그 뒤 변경(#348~#352)은 두 회차에서 드러난 결함의 수정·보완과 평가 자산이며, 그 변경분을 겨냥한 3회차를 생략하는 것이다. '이 릴리스는 온라인 점검을 받지 않았다'가 아니라 '2회차까지 받았고 그 뒤 수정분에 대한 3회차를 생략했다'가 맞다. **생략은 통과가 아니다.** 아래 unmeasured의 해당 항목을 합격으로 계산하지 않으며, 3회차 지시서(INSTRUCTION_0230_ROUND3_20261119.md)의 확인 항목은 0.24.0 온라인 점검으로 넘긴다."
+    },
+    "rer": 0.0,
+    "decided_by": "Claude Code 평가 세션 (2026-10-17 사용자 지시로 평가 업무 승계)",
+    "decided_at": "2026-11-18",
+    "release_status": "CANDIDATE_VERIFIED_AWAITING_VERSION_COMMIT",
+    "release_commit": null,
+    "release_tag": null,
+    "deployment_evidence": null,
+    "online_round1_20261119": {
+      "deployed_commit": "32d9c485bc04ef0487fc4c6a32a91c9d39d29948",
+      "record_pr": 340,
+      "verdict": "기록 수용. 운영 표준 23항목 3회 모두 23/23이나 TK75 ON으로 지정 조건(OFF) 실행이 없어 2026-10-10의 21/23과 증감 비교하지 않는다.",
+      "regression_reopened": [
+        "TK-206"
+      ],
+      "new_tickets": [
+        "TK-208",
+        "TK-209"
+      ],
+      "preexisting_not_regression": [
+        "law_go_kr 사건번호조회 2015모2524 일치 0건",
+        "gemini 2.5-flash/-lite HTTP 404(평가 측 점검 도구 결함)",
+        "semantic_scholar RATE_LIMITED"
+      ],
+      "tk199_evidence": "같은 워크플로 0.21.0 기록 대비 2011모1839 전문 30,211자에서 cascade:stage2:primary의 INPUT_PRIVACY_BLOCKED 소멸, 참여 공급자 0개→3개. 사용자 실제 문서는 여전히 미측정.",
+      "scope_decision": "2026-11-19 사용자: I-1·I-2를 0.23.0에 넣고 온라인 회차를 한 번 더 돌린다.",
+      "evaluator_defects": [
+        "PR #335 3차 판정이 TK-206을 충족으로 적었다. 점검표에 재판행위 어간의 활용 축이 없었다.",
+        "온라인 지시문이 RELEASE_PROCEDURE 경로를 docs/RELEASE_PROCEDURE.md로 잘못 적었다. 실제는 docs/scorecards/RELEASE_PROCEDURE.md다."
+      ],
+      "unmeasured": [
+        "사용자 실제 문서의 TK-199",
+        "TK75 OFF 조건의 표준 23항목",
+        "U1 봉인 온라인·U4 봉인 출제",
+        "실무 법률 정확도·검색/주장 타당성·검토 효율",
+        "TK-208 주원인·TK-209 끊기는 지점(운영 접근 필요)"
+      ],
+      "record": "docs/scorecards/online_round1_0230_verdict_20261119.md"
+    }
   },
-  "evidence": {
-   "M1": "dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 0.15.0과 같음(변화 0). score_gate 통과, regression_gate(기준 08d40ff) 회귀 없음. 합산 RER 0",
-   "M2": "봉인 시험 생략(2절 2 적용 범위 밖): main 대비 바뀐 제품 파일은 RAG(packages/rag_engine), 참고자료 상태 연결(verification_engine/review_items.py — reference_status·reference_observations만), 보고서(report_engine), API(apps/api reports·schemas), 화면(apps/web). 오프라인 탐지·채점·개인정보 엔진 출력 불변 — 고정·은퇴 항목 변화 0(regression_gate)으로 확인. CI 은퇴 세트 비교 통과",
-   "M3": "added: TK-129 보고서에 표에 반영한 외부 AI 답변 포함(PDF·Word 절, Excel 시트, JSON 고정본, 공식 확인 아님), TK-127 2단계 인용 행 Drive 참고문헌 대조(식별자 색인 검색, 비구속 참고 표시, 보고서 4종). changed: reference_status 산정(구조 연결 + 전체 식별자 일치·충돌 없음일 때만 SUPPORTED, 그 밖 PENDING_REVIEW; 이전 식별자 존재만으로의 SUPPORTED 경로 대체). fixed: 0.15.0(TK-128) 외부 AI 답변이 프롬프트 번호 재할당 시 다른 행에 붙던 문제, 참고문헌 별도 행 id 서버·화면 불일치. #185·#191 평가 측 수용·사용자 화면 확인(10-28)",
-   "M4": "성능: 인용별 Drive 색인 검색 합성 색인 8,000청크·인용 10개 0.28초(수정 전 73.5초), 결과 동일",
-   "P1": "verify_all 전체 모드 종료 0(d2aa19a): environment·acceptance 1238·regression_ledger 2357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths·version_policy·full_tests 9094·browser_tests 197 모두 통과, 실제 실패 0",
-   "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
-   "P3": "hardcoding_diff 통과(기준 08d40ff, 추가 715줄에 시험 입력 값 없음)",
-   "P4": "#185·#191 같은 SHA CI 전부 성공(인용), 평가 측 관련 시험 재실행 실패 0",
-   "P5": "열린 신규 회귀 티켓 0",
-   "P6": "이 판정서",
-   "unmeasured": "온라인 경로(Drive 대조 정확도·검색 시간, 모델) — RAG 경로를 바꿨으므로 배포 직후 4절 온라인 점검 전체를 한다(2-6 갈음 아님). Microsoft Word·Excel 앱 직접 표시 미확인. 배포 뒤 보완(10-29): 4절 온라인 점검 2판 23/23(커밋 2f06f9a 일치, 법률지침 ON·kr2), OFF 재실행 2판 23/23(4.3 정상, 0.12.0 통과 21항목 새 실패 0; 라우팅·Drive 색인 조건 차이로 LEG-2·RAG-2 통과는 코드 귀속 안 함). Drive 대조 정확도는 측정 못 함, HISTORY 참조"
+  {
+    "version": "0.24.0",
+    "from": "0.23.0",
+    "level": "minor",
+    "basis": [
+      "added"
+    ],
+    "measured_commit": "0055fa728202c2d4b500099fa2b6c29d8258c07e",
+    "conditions": {
+      "network": false,
+      "python": "3.11.17",
+      "tesseract": "5.3.4 kor/eng",
+      "os": "Linux 6.18.57 (glibc 2.41)",
+      "baseline_commit": "f7a7f49056fa4fc6239ffdad803eed53443d9045",
+      "scoring": "운영 main과 통합 후보를 같은 채점기·고정/은퇴 자료·오프라인 조건에서 비교. 봉인은 사용자 제공 동일 세트 짝 비교 집계.",
+      "verification": "후보 깨끗한 트리에서 verify_all 전체 종료 0. CI 버전 Python·OCR, 한글 글꼴과 호스트 Chromium을 격리 환경에 결합. 제품·시험·채점기 변경 없음.",
+      "measured_on": "2026-11-21"
+    },
+    "evidence": {
+      "M1": "dev 82.6→82.6, holdout 81.9→81.9; 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 세트별·합산 RER 0. score_gate·regression_gate 종료 0.",
+      "M2": "사용자 제공 신규 봉인 짝 비교: 동일 입력 지문 4b9c00017908d038cf03e5c8f018d2fa85ae43c1c2493d19fa1b533cf118792f, 10문서·60결함, main·후보 종료 0, 종합 37.9, 가중 재현율 0.379, v2 22/60, 오탐·A등급 오탐·엔진 오류 0, injection_defended 양쪽 true. 원본 무결성·임시 사본 삭제 확인. 재채점하지 않음.",
+      "M3": "은퇴 5세트 후퇴 0, 항목별 회귀 0. 후보 전체 verify_all 종료 0: 수용 1,278·회귀 원장 2,357·일반 11,470·브라우저 200 통과, 실제 실패·strict XPASS 0. 집계 SHA-256 35116076386ae9590a2bbc9af66f97b0830c8c21db6574d70e8f27b0c6a50602.",
+      "M4": "Added: 로컬 LLM·공식 Source 카세트, RAG 식별자/Dense·Reranker, 법률 절 정규화, 인용 NLI, 표 구조·OCR 폴백, 증거 그래프. 기능 진입점과 기본 shadow/none 설정은 포함 PR의 시험·CI로 확인. 오프라인 점수 순증이나 기존 결함 감소 수치 주장은 없음.",
+      "CI": "제품 후보와 동일 Git tree의 마지막 제품 PR #371 필수 CI 성공; 평가 기록 PR #375의 79a9b93a 필수 CI 전부 성공. 판정 문서 추가 후 새 head CI는 병합 전 재확인.",
+      "open_p1_regression": 0,
+      "unmeasured": "고정 비공개 벤치마크 NOT_MEASURED(참고 지표). 공식 DB·Drive·모델을 포함한 운영 온라인 실측 NOT_RUN, 실무 법률 정확도·검색/주장 타당성·검토 효율 NOT_MEASURED. 새 기능 릴리스이므로 배포 뒤 온라인 점검.",
+      "record": "docs/scorecards/release_024_candidate_20261121.md"
+    },
+    "rer": 0.0,
+    "decided_by": "Codex 평가 세션 (사용자 진행 지시)",
+    "decided_at": "2026-11-21",
+    "release_status": "DEPLOYED_ONLINE_EVALUATED",
+    "release_commit": "684f3469028dc38e539345501191cc7c9832b13a",
+    "release_tag": "v.0.24.0",
+    "deployment_evidence": "docs/scorecards/release_024_deployment_20261121.json",
+    "online_eval_20261121": {
+      "deployed_commit": "684f3469028dc38e539345501191cc7c9832b13a",
+      "verdict": "기록 수용. case9 OFF 4회 모두 23/23(회귀 0), READY_WITH_UNREADABLE 41/41(8,807/8,823쪽, OCR_LOW_QUALITY 16), 공통 건강 r2~r4 6/6, AI 반복 3회 일치율 1.0(SAME), INJ-1 4/4·공격 4/4·정상 기준자료 5/5, live_integration 7/7 성공. RAGC-S3 연속 실패(미해소).",
+      "unmeasured": [
+        "Hybrid RAG Dense·Reranker 성능 (LEXICAL_ONLY 관측)",
+        "Legal NLI Stage 2 및 ClauseNormalizer assist 효과",
+        "적응형 OCR 폴백 및 저품질 16쪽 재색인 개선",
+        "로컬 LLM·Source 카세트 RECORD/REPLAY",
+        "Evidence Graph 실무 타당성·TK-216 H-ENGINE·실무 법률 정확도"
+      ],
+      "record": "docs/scorecards/online_0240_20261121.md"
+    }
   },
-  "decided_by": "claude-code (평가 측)",
-  "decided_at": "2026-10-29"
- },
- {
-  "version": "0.17.0",
-  "from": "0.16.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "changed",
-   "fixed"
-  ],
-  "measured_commit": "b14d7d9aac3d815f0744935101caf5c3a411ac57",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11.15",
-   "tesseract": "5.3.4 kor (CI와 같음)",
-   "scoring": "고정 채점기 불변. 후보 Steve b14d7d9에서 평가 측 verify_all 전체 모드(기준 0.16.0 main 2f06f9a). 은퇴 5세트는 0.16.0과 후보를 같은 세트 파일·같은 환경으로 함께 채점",
-   "track": "일반 경로(RELEASE_PROCEDURE 2절). 구현은 TK-130a·b·131·132·133 Codex 별도 세션 한시 대행(사용자 지시 11-02), TK-76 Antigravity"
+  {
+    "version": "0.25.0",
+    "from": "0.24.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "fixed",
+      "performance_patch"
+    ],
+    "measured_commit": "02d3a5c0e312c5f8139bcf11e52ac1c9836c1f83",
+    "conditions": {
+      "network": false,
+      "python": "3.11 (GitHub Actions)",
+      "tesseract": "5.3.4 kor/eng",
+      "os": "Linux (GitHub Actions)",
+      "baseline_commit": "684f3469028dc38e539345501191cc7c9832b13a",
+      "scoring": "CI 점수 하락 게이트 및 은퇴 세트 비교(PR #387 동일 트리 02d3a5c0, run 44930911547) 기준."
+    },
+    "evidence": {
+      "M1": "dev 82.6→83.9(v2 43/56), holdout 81.9→83.3(v2 42/54); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 합산 RER 7.61%(dev 7.47%, holdout 7.73%).",
+      "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+      "M3": "은퇴 5세트 후퇴 0(sealed_20261008b 48.6→50.0 v2 25/54, 나머지 4세트 53.3/56.9/45.8/34.1 유지, 전 세트 오탐 0·A등급 0).",
+      "M4": "포함 PR #383(TK-221)~#387(TK-224): ClauseNormalizer 승격·메타/논리/증거/AI 탐지 일반화, 실행 경로 진단 가시성(/api/diagnostics·run_manifest), 전달 청크 SUPPORTS 보강(RAGC-S3), OCR 폴백 텔레메트리·재색인 델타, law_go_kr 정규화 진단 및 학술 Source 오류 원인 분리.",
+      "CI": "PR #387(e4757ee5 / 병합 02d3a5c0) 필수 CI 11개 전수 통과(점수 하락 게이트, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis).",
+      "open_p1_regression": 0,
+      "unmeasured": "격리 봉인 세트, 운영 온라인 실측(Hybrid RAG Dense·Reranker, Legal NLI Stage 2, 운영 OCR 폴백 채택, 로컬 LLM·카세트 RECORD/REPLAY, RAGC-S3 운영 재현, 실무 법률 정확도).",
+      "record": "docs/scorecards/release_025_candidate_20261121.md"
+    },
+    "rer": 0.0761,
+    "decided_by": "Antigravity 평가 세션 (사용자 릴리스 진행 지시)",
+    "decided_at": "2026-11-21",
+    "release_status": "DEPLOYED_ONLINE_EVALUATED",
+    "release_commit": "023fc33ced8c8080629c743a2e9fcb0e6b0b0850",
+    "online_eval_20261122": {
+      "deployed_commit": "023fc33ced8c8080629c743a2e9fcb0e6b0b0850",
+      "verdict": "기록 수용(부분 개선 확인·I-1 P1 안정성 보완 필수). case9 정상 2회 23/23·RAG 5/5(RAGC-S3 개선)·건강 6/6·INJ-1 4/4, 중단 2회(interrupted) 21/23·RAG 3/5·건강 5/6. live_integration 7/7, U2 공식 5/6·학술 3/4. Legal NLI Stage 2 반전 인용 SUPPORTED 오분류(I-2), OCR 폴백 미구성(I-3), Dense/Reranker·로컬 모델 미연결(I-4) 확인.",
+      "unmeasured": [
+        "안정된 RAG 3회 연속 5/5 (I-1 해결 후 재측정)",
+        "적응형 OCR 폴백 복구 효과 (I-3)",
+        "Hybrid RAG Dense·Reranker 및 로컬 LLM (I-4)",
+        "Source 카세트 운영 RECORD/REPLAY 및 근거 그래프 법률 정확도"
+      ],
+      "record": "docs/scorecards/online_0250_20261122.md"
+    }
   },
-  "evidence": {
-   "M1": "고정 dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 0.16.0과 같음(변화 0). 합산 RER 0. score_gate 통과, regression_gate(기준 2f06f9a) 회귀 없음",
-   "M2": "봉인 시험 실시(오프라인 탐지 엔진 변경: evidence_consistency·hwp_parser·source_review 등 제품 파일 14개). sealed_20261102(문서 8·결함 51·유형 27, 지문 8b16cdc0829acee7, 작성 측 자체 점검 오류 0·경고 0, 독립 자체 점검 없음) 사용자 채점(Linux, python 3.11.17, OCR 5.5.0, 두 실행 같은 환경, 채점기 sha256 같음): 운영본 2f06f9a 40.2/0.402/오탐 0/A 0/방어, 후보 b14d7d9 40.2/0.402/오탐 0/A 0/방어 — 후보가 낮지 않음·오탐 증가 0(통과). 홀드아웃 환경 점검 81.9/81.9",
-   "M3": "은퇴 5세트(같은 조건, 평가 측 재실행) 0.16.0 → 후보: 08 48.9→53.3, 08b 42.6→46.8, 09 50.0→53.4, 10 43.9→45.8, 25 27.3→29.5, 오탐 0·A 0. 오른 유형은 EVI-LOGIC뿐(다른 유형 차이 0, 하락 0). 규칙 설계 때 은퇴 항목 꼴을 보았으므로 일반화 근거는 평가 측 비공개 탐침 3·4·5차(양성 7/8·9/9·8/8, 대조 오탐 0)로 둔다. train EVI-LOGIC 0/4 → 0/4·오탐 0(구현 측 측정)",
-   "M4": "added: TK-76 2주기 1항 EVI-LOGIC 지각 범위 구조 탐지(#204), TK-130b 비공식 약칭 법령명의 공식 법령 추정(#198), TK-132 HWPX 표 구조(#201), TK-133 구형 HWP 표 구조 연결(#203). changed: TK-131 판례 의미 검토에 앞 24,000자 대신 근거 구간 발췌 전송·마스킹 투영(#202). fixed: TK-130a 제21항 이상 원숫자(㉑~㊿) 항 분리(#197), TK-132 HWPX 표 셀 글자 중복 수집",
-   "P1": "verify_all 전체 모드 종료 0(b14d7d9): environment·acceptance 1238·regression_ledger 2357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths·version_policy·full_tests 9219·browser_tests 197, 실제 실패 0",
-   "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0, 봉인 세트 하락 0",
-   "P3": "hardcoding_diff 통과(기준 2f06f9a), 각 PR 평가 세트 문구 대조 통과",
-   "P4": "#197·#198·#201·#202·#203·#204 같은 SHA 필수 CI 성공(인용), 평가 측 관련 시험 재실행 실패 0",
-   "P5": "열린 신규 회귀 티켓 0",
-   "P6": "이 판정서",
-   "unmeasured": "온라인 경로: 약칭 추정 정확도(국가법령정보 목록), 판례 근거 발췌의 근거 포함률(모델), 실제 한글 프로그램 HWP·HWPX 파일과 운영 입력 비율, 개발 말뭉치 check 세트. 배포 직후 4절 온라인 점검 전체를 한다"
+  {
+    "version": "0.26.0",
+    "from": "0.25.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "fixed",
+      "performance_patch"
+    ],
+    "measured_commit": "40396ff6",
+    "conditions": {
+      "network": false,
+      "python": "3.11 (GitHub Actions)",
+      "tesseract": "5.3.4 kor/eng",
+      "os": "Linux (GitHub Actions)",
+      "baseline_commit": "023fc33ced8c8080629c743a2e9fcb0e6b0b0850",
+      "scoring": "CI 점수 하락 게이트 및 은퇴 세트 비교(PR #395·#398, run 44986035521·44986769790) 기준."
+    },
+    "evidence": {
+      "M1": "dev 83.9→84.8(v2 43/56, RER 5.59%), holdout 83.3→83.8(v2 42/54, RER 2.99%); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 합산 RER 4.27%.",
+      "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+      "M3": "은퇴 5세트 후퇴 0(53.3/50.0/56.9/45.8/34.1, 전 세트 오탐 0·A등급 0).",
+      "M4": "포함 PR #393(TK-225)~#398(TK-227): RAG interrupted 복원력, NLI Stage 2 반전 수정, AI 문체 잔재 교차 보강 일반화, Dense/Reranker HTTP 어댑터·청크 리비전 캐시, 로컬 LLM 안전 설정·스키마 검증, 한국어 RapidOCR 의존성·모드 제어.",
+      "CI": "PR #393~#398 전량 필수 CI(점수 하락 게이트, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis, pip-audit) 통과.",
+      "open_p1_regression": 0,
+      "unmeasured": "격리 봉인 세트, 운영 온라인 실측(case9 3회 연속 5/5·6/6, RapidOCR 저품질 0.611/Drive 16쪽, Dense/Reranker 실서버 ON/OFF, LOCAL_ONLY 로컬 모델 짝 비교, NLI assist 반전 재측정).",
+      "record": "docs/scorecards/release_026_candidate_20261122.md"
+    },
+    "rer": 0.0427,
+    "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
+    "decided_at": "2026-11-22",
+    "release_status": "DEPLOYED_ONLINE_EVALUATED",
+    "release_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+    "release_tag": "v.0.26.0",
+    "deployment_evidence": "docs/scorecards/release_026_deployment_20261122.json",
+    "online_eval_20261122": {
+      "deployed_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+      "verdict": "기록 수용. case9 동일 조건 3회 연속 23/23·RAG 5/5·건강 6/6·검색 중단 0/3(TK-225), AI 반복 U5 3/3 일치(SAME, 유보 0), Legal NLI Stage 2 반전 인용 CONTRADICTED 해소(TK-226), 저품질 스캔 RapidOCR 채택 9자→25자(TK-227). Drive 16쪽 캐시 재사용(TK-231)·configured_mode=HYBRID 표시 불일치(TK-232) 후속 발행.",
+      "unmeasured": [
+        "Drive 저품질 16쪽 명시적 재색인 개선 (TK-231)",
+        "Hybrid RAG Dense·Reranker ON/OFF 실서버 비교 (TK-228, 서버 미구축)",
+        "로컬 모델 LOCAL_ONLY 실호출 짝 비교 (TK-229, 서버 미구축)"
+      ],
+      "record": "docs/scorecards/online_0260_20261122.md"
+    }
   },
-  "decided_by": "claude-code (평가 측)",
-  "decided_at": "2026-11-02"
- },
- {
-  "version": "0.18.0",
-  "from": "0.17.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "changed",
-   "fixed"
-  ],
-  "measured_commit": "db7e81c3724da05d5cbe82e1c793b242e2c1e127",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11.18",
-   "tesseract": "5.3.4 kor (CI와 같음)",
-   "scoring": "고정 채점기 불변. 후보 Steve db7e81c에서 평가 측 verify_all 전체 모드(기준 0.17.0 main deb387d) 2회 — 1회차 브라우저 시험 1건 시간 초과(단독 3회·묶음 재실행 통과), 2회차 종료 0. 은퇴 세트는 0.17.0과 후보를 같은 세트 파일·같은 환경으로 함께 채점",
-   "track": "일반 경로(RELEASE_PROCEDURE 2절). 범위 #209~#258(구현 Antigravity, TK-134~148 일부 Codex 대행 포함). 봉인 시험은 사용자 결정(11-12 '봉인시험 미시행')으로 하지 않고, 배포 뒤 0.17.0 대 0.18.0 온라인 비교로 갈음(online_compare_0170_0180_plan.md)"
+  {
+    "version": "0.27.0",
+    "from": "0.26.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "fixed",
+      "performance_minor"
+    ],
+    "measured_commit": "c26df11300a11d7b8b1865dc20a4f3aded8cc3c8",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11",
+      "tesseract": "5.3.0 / 5.3.4",
+      "baseline_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
+      "scoring": "scripts/scorecard.py(dev 86.2, holdout 86.6) 및 scripts/retired_compare.py(56.5/54.6/56.9/51.9/37.5), PR #409~#412 필수 CI 전수 통과."
+    },
+    "evidence": {
+      "M1": "dev 84.8→86.2(v2 44/56, RER 9.21%), holdout 83.8→86.6(v2 44/54, RER 17.28%); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 합산 RER 13.38%.",
+      "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+      "M3": "은퇴 5세트 중 4세트 상승·후퇴 0(53.3→56.5 / 50.0→54.6 / 56.9→56.9 / 45.8→51.9 / 34.1→37.5, 전 세트 오탐 0·A등급 0).",
+      "M4": "포함 PR #409(TK-232), #410(TK-231), #411(TK-233), #412(TK-234): 미운영 로컬 LLM/HTTP Reranker 코드 삭제 및 상용 임베딩·진단 일치화, RapidOCR 저품질 전처리·Drive 선택 재색인, 법리·인용 불변식(CIT-META/LAW-NX/OVR) 및 EVI/INJ/AIGEN 일반화.",
+      "CI": "PR #409~#412 전량 필수 CI(점수 하락 게이트, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
+      "open_p1_regression": 0,
+      "unmeasured": "격리 봉인 세트, 운영 온라인 실측(Drive 저품질 16쪽 재색인 델타, RapidOCR 저품질 회복, lexical_only 진단 일치, 상용 API 임베딩 캐시, case9).",
+      "record": "docs/scorecards/release_027_candidate_20261122.md"
+    },
+    "rer": 0.1338,
+    "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
+    "decided_at": "2026-11-22"
   },
-  "evidence": {
-   "M1": "고정 dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 0.17.0과 같음. 합산 RER 0. score_gate 통과, regression_gate(기준 deb387d) 회귀 없음",
-   "M2": "봉인 시험 미실시(사용자 결정 11-12). 갈음: 배포 직후 case9 23항목(0.17.0 23/23)과 신기능 온라인 탐침 4종 47항목(0.17.0 기록 online_probe_0170_20261103.md)을 같은 조건으로 0.18.0에서 다시 재어 비교한다. 결과는 판정서 보충으로 적는다",
-   "M3": "은퇴 세트(0.17.0 시점 4세트, 같은 조건·평가 측 재실행) 0.17.0 → 후보: 08 53.3→53.3, 08b 46.8→48.6, 09 53.4→56.9, 10 45.8→45.8, 오탐 0·A 0·인젝션 방어 유지. 20261025는 0.17.0 이후 은퇴(후보 34.1·오탐 0). 오른 몫의 일반화 근거는 각 PR 판정의 평가 측 비공개 확인 탐침(보정 미사용)으로 둔다",
-   "M4": "added: LV-03 판례·법령 존재 3단 판정, LV-04 인용문 차이 유형(부정·당사자·수치·단서), LV-05 판시 왜곡 결정 규칙(변경된 판례·파기환송 원심 판단), LV-01 제소기간 계산 전제(날짜 역할·계산 보류)와 행정기본법 제36조 제4항 반영(TK-150), TK-134 자치법규 조회, TK-137 관련 근거 탐색, TK-138 관련 판례·권위 가중, TK-139 처분기준 별표 대조, TK-144 DOCX 표 구조, TK-76 3주기 EVI-INCONS·EVI-OVR·EVI-FORM·EVI-NUM·EVI-DATE·EVI-COPY·EVI-LOGIC 확장, TK-149 소갑·소을. changed: 형식은 맞는데 조회 범위에서 찾지 못한 판례를 CRITICAL에서 확인 불가(MEDIUM)로(LV-03, 사용자 P1·X6 승인), 지각 구조 L1 기본 비활성화(TK-151, 사용자 결정 D4), 외부 AI 검증 프롬프트 엄격성(TK-136), 판례 의견 귀속(TK-135). fixed: TK-143·148 두 음절 약칭 CRITICAL 오단정, TK-145 같은 판례 반복 인용 병합, TK-146 표 비율 진단, TK-140 파서 후속, TK-141 발췌 입력 한도, TK-142·147 시간 시험 흔들림, 각 TK-76 보완의 오탐 감소. LV-06 요건사실 점검은 기본 꺼짐(환경 변수)",
-   "P1": "verify_all 전체 모드 종료 0(db7e81c, 2회차): environment·acceptance 1239·regression_ledger 2357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths(바뀐 보호 경로 16개 모두 평가 측 커밋 또는 승인)·version_policy·full_tests 9973·browser_tests 197, 실제 실패 0",
-   "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
-   "P3": "hardcoding_diff 통과(기준 deb387d), 각 PR 평가 세트 문구 대조 통과(LV 문안 일반 표현 11건 허용 등록 22d3fd7)",
-   "P4": "#209~#258 같은 SHA 필수 CI 성공(인용), LV 최종 head 105ce3f CI SQLite·PostgreSQL 각 2회 성공, 평가 측 PostgreSQL 16 + pgvector 재실행 API 31건·LV 사본 전체 11,443건 통과",
-   "P5": "열린 신규 회귀 티켓 0(브라우저 화면 시험 test_web_shows_drive_health_selection_and_duplicates 시간 흔들림은 결함 아님 — 안정화 후속 후보)",
-   "P6": "이 판정서",
-   "unmeasured": "온라인 경로 전체(공식 DB 대조·모델 의견·Drive 대조·약칭 추정 실제 응답), 봉인 세트 새 출제분(사용자 결정으로 미실시), train. 판시 왜곡·행정기본법 제36조·처분기준 별표·관련 판례 탐색은 온라인 비교 세트에 해당 입력이 없어 측정 못 함"
+  {
+    "version": "0.28.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "fixed",
+      "changed"
+    ],
+    "measured_commit": "d5241370",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11",
+      "tesseract": "5.3.0 / 5.3.4",
+      "baseline_commit": "12be4fa58650bf59aacf30d9f21b87c1249582d5",
+      "scoring": "scripts/scorecard.py(dev 86.2, holdout 86.6) 및 scripts/retired_compare.py(56.5/54.6/56.9/53.8/44.3), PR #417~#420 필수 CI 전수 통과."
+    },
+    "evidence": {
+      "M1": "dev 86.2(v2 44/56), holdout 86.6(v2 44/54); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 회귀 0.",
+      "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+      "M3": "은퇴 5세트 평균 51.48→53.22(+1.74), 후퇴 0(56.5/54.6/56.9/53.8/44.3, sealed_20261010 +1.9, sealed_20261025 +6.8, v2 1009 31→32, 전 세트 오탐 0·A등급 0).",
+      "M4": "포함 PR #418(과제 2: 미운영 LV_RAG_EMBEDDING_ENDPOINT 제거·3중 진단 일치), #419(과제 4: EVALUATION_V2 4차원 PII-free 구조화 출력 계약), #417(과제 3: law_go_kr NFKC/제로폭·사건명 fallback 및 학술 429 백오프 단축), #420(과제 1: 은퇴 세트 구조적 일반화 규칙).",
+      "CI": "PR #417~#420 전량 필수 CI(점수 하락 게이트, 평가 세트 문구 대조, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
+      "open_p1_regression": 0,
+      "unmeasured": "격리 봉인 세트, 운영 온라인 실측(U2 2015모2524 해소, Drive 16쪽 재색인, 상용 임베딩 실호출, case9, 4차원 출력 실측).",
+      "record": "docs/scorecards/release_028_candidate_20261123.md"
+    },
+    "rer": 0.0,
+    "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
+    "decided_at": "2026-11-23",
+    "from": "0.27.0"
   },
-  "decided_by": "claude-code (평가 측)",
-  "decided_at": "2026-11-12"
- },
- {
-  "version": "0.19.0",
-  "from": "0.18.0",
-  "level": "minor",
-  "basis": [
-   "changed",
-   "fixed"
-  ],
-  "measured_commit": "9406d9cdca88bfd84119a495488c87deb4a79091",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11.18",
-   "tesseract": "5.3.4 kor (CI와 같음)",
-   "scoring": "고정 채점기 불변. 후보 Steve 9406d9c에서 평가 측 verify_all 전체 모드(기준 0.18.0 main 3c75071) 1회 종료 0. 은퇴 세트는 0.18.0과 후보를 같은 세트 파일·같은 환경으로 함께 채점",
-   "track": "일반 경로(RELEASE_PROCEDURE 2절). 범위 #264(TK-152)·#265(TK-153)·#266(TK-154), 구현 Antigravity. 봉인 시험은 사용자 결정(11-12 '봉인시험 미시행')으로 하지 않고, 배포 뒤 0.18.0 대 0.19.0 온라인 비교로 갈음(이번 변경은 모두 공식 DB 응답 경로라 오프라인 봉인 시험으로 효과를 재지 못함)"
+  {
+    "version": "0.29.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "fixed",
+      "changed"
+    ],
+    "measured_commit": "154a1297",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11",
+      "tesseract": "5.3.4 / 5.5.0",
+      "baseline_commit": "1ef3e4fe",
+      "scoring": "scripts/scorecard.py(dev 89.7, holdout 87.5) 및 scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #423·#425·#426 필수 CI 전수 통과."
+    },
+    "evidence": {
+      "M1": "dev 86.2→89.7(v2 47/56), holdout 86.6→87.5(v2 45/54); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 회귀 0.",
+      "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+      "M3": "은퇴 5세트 평균 53.22→58.00(+4.78%p), 후퇴 0(56.5/54.6/63.8/59.4/55.7, sealed_20261009 +6.9, sealed_20261010 +5.6, sealed_20261025 +11.4, 전 세트 오탐 0·A등급 0).",
+      "M4": "포함 PR #423(FactTriple 2단계 추출·검증기), #426(2단 운영·정보 격리·동적 변형 시험 하네스), #425(일반화 FactTriple·다중 AI잔재 승격·EVI-COPY 복제 탐지 보완).",
+      "CI": "PR #423·#425·#426 전량 필수 CI(점수 하락 게이트, 평가 세트 문구 대조, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
+      "open_p1_regression": 0,
+      "unmeasured": "격리 봉인 세트, 운영 온라인 실측(U2 live-source-check, Drive 16쪽 재색인, 상용 임베딩 실호출, case9, 4차원 출력 실측).",
+      "record": "docs/scorecards/release_029_candidate_20261123.md"
+    },
+    "rer": 0.1618,
+    "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
+    "decided_at": "2026-11-23",
+    "from": "0.28.0"
   },
-  "evidence": {
-   "M1": "고정 dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 0.18.0과 같음. 합산 RER 0. score_gate 통과, regression_gate(기준 3c75071) 회귀 없음",
-   "M2": "봉인 시험 미실시(사용자 결정 11-12). 갈음: 배포 직후 case9 23항목(0.18.0 22/23 — EX-1 회귀)과 온라인 탐침 4종 47항목(0.18.0 38/47, online_compare_0170_0180_20261112.md)을 같은 조건으로 0.19.0에서 다시 재어 비교한다. 결과는 판정서 보충으로 적는다",
-   "M3": "은퇴 세트(같은 조건·평가 측 재실행) 0.18.0 → 후보: 08 53.3→53.3, 08b 48.6→48.6, 09 56.9→56.9, 10 45.8→45.8, 20261025 34.1→34.1(Steve 기준), 오탐 0·A 0·인젝션 방어 유지",
-   "M4": "changed: 서면이 '전원합의체'라고 밝힌 대법원 판결을 선고 180일 뒤에도 공식 DB에서 찾지 못하면 '부존재 의심'(HIGH·NOT_FOUND, authority_status SUSPICIOUS — CRITICAL·부존재 확정은 쓰지 않음)(TK-154, 사용자 'EX-1 둘 다 처리'). 두 음절 어간 약칭이 첫 글자 목록에서 후보 0건이면 CRITICAL 대신 미결 MEDIUM(TK-152 (d), 사용자 X7 승인). fixed: 두 음절 약칭 추정 순위(약칭 가산·연속 정렬)와 추정 후보에 인용 조문이 없을 때 CRITICAL로 떨어지던 결함(TK-152), 공식 판결 전문의 번호 붙은 의견 머리말·쟁점 한정 판결요지 표지 미인식으로 결정적 의견 귀속 검사가 작동하지 않던 결함(TK-153)",
-   "P1": "verify_all 전체 모드 종료 0(9406d9c): environment·acceptance 1239·regression_ledger 2357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths(바뀐 보호 경로 16개 모두 평가 측 커밋 또는 승인)·version_policy·full_tests 9997·browser_tests 197, 실제 실패 0",
-   "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
-   "P3": "hardcoding_diff 통과(기준 3c75071), 각 PR 평가 세트 문구 대조 통과(점수 하락 게이트 CI 성공)",
-   "P4": "#264·#265·#266 같은 SHA 필수 CI 성공(인용), 평가 측 사본·합본 재실행(합본 전체 11,422건, 관련 296건) 실패 0, 구현 PR 제품 코드 = 평가 측 사본 diff 0",
-   "P5": "열린 신규 회귀 티켓 0(case9 EX-1 회귀는 TK-154로 대응 — 온라인 확인 대기)",
-   "P6": "이 판정서",
-   "unmeasured": "온라인 경로 전체(이번 변경 3건 모두: 약칭 추정 실제 목록 응답, 판결 의견 귀속의 AI 검토 단계 변화, 전원합의체 미발견 판정과 국가법령정보 판례 DB 수록률·180일 값 적정성), 봉인 세트 새 출제분(사용자 결정으로 미실시), train"
+  {
+    "version": "0.30.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "fixed"
+    ],
+    "measured_commit": "3810bfb",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11",
+      "tesseract": "5.3.4 / 5.5.0",
+      "baseline_commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03",
+      "scoring": "scripts/scorecard.py(dev 89.7, holdout 87.5) 및 scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #431~#437 필수 CI 전수 통과."
+    },
+    "evidence": {
+      "M1": "dev 89.7, holdout 87.5(0.29.0과 동일); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 회귀 0.",
+      "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+      "M3": "은퇴 5세트 평균 58.00(56.5/54.6/63.8/59.4/55.7, 전 세트 오탐 0·A등급 0·후퇴 0).",
+      "M4": "포함 PR #431(TK-237: 미완독 원인별 unread_cause_counts 및 CONFIG_BLOCKED 분리), #432(TK-238: run 단위 RAG/OCR 폴백 actual_calls 및 임베딩·재순위 지연 ms 기록), #433(TK-235: law_go_kr INCONCLUSIVE_SCOPE·lookup_outcome 분리), #434(TK-240: 상대방 전언 인용 귀속 어간+어미·반박 조건부 원용류 A등급 오탐 방지), #435(TK-241: INTERNAL_REFERENCE_CONTRADICTION 전용 유형·advisory_only=True·주장당 1건 병합), #436(TK-239: OCR 폴백 원본/전처리 이중 비교·적응형 파라미터·PREPROCESS_UNAVAILABLE 구분), #437(TK-236: 판례 키워드 검색 실패 4종 분류·마스킹 body_head·lookup_outcome 병합).",
+      "CI": "PR #431~#437 전량 필수 CI(점수 하락 게이트, 평가 세트 문구 대조, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
+      "open_p1_regression": 0,
+      "unmeasured": "격리 봉인 세트, 운영 온라인 실측(TK-235~TK-241 온라인 효과, U2 live-source-check, Drive 16쪽 재색인, case9 3회 연속).",
+      "record": "docs/scorecards/release_030_candidate_20261126.md"
+    },
+    "rer": 0.0,
+    "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
+    "decided_at": "2026-11-26",
+    "from": "0.29.0"
   },
-  "decided_by": "claude-code (평가 측)",
-  "decided_at": "2026-11-12"
- },
- {
-  "version": "0.20.0",
-  "from": "0.19.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "changed",
-   "fixed"
-  ],
-  "measured_commit": "2cc7ac2a8d35e5c3f0b1d0f05f5bc5b23a90753c",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11.18",
-   "tesseract": "5.3.4 kor (CI와 같음)",
-   "scoring": "고정 채점기 불변. 후보 Steve 2cc7ac2에서 평가 측 verify_all 전체 모드(기준 0.19.0 main 5b878a1) 1회 실패 0(앞선 후보 db410c4도 같은 결과). 은퇴 세트는 0.19.0과 후보(db410c4)를 같은 세트 파일·같은 환경으로 함께 채점, 이후 #282는 화면·이미지만 바꿔 채점 경로 변경 없음(CI 은퇴 세트 비교 성공)",
-   "track": "일반 경로(RELEASE_PROCEDURE 2절). 범위 #270~#282(TK-155~160·162·163·169, 평가 v2 전환, KBL 경로 정리, 엠블럼 교체). 봉인 시험은 사용자 결정(11-14 '미시행, 온라인 비교로 갈음')으로 하지 않고 배포 뒤 0.19.0 대 0.20.0 온라인 비교로 갈음"
+  {
+    "version": "0.30.1",
+    "level": "patch",
+    "basis": [
+      "fixed"
+    ],
+    "measured_commit": "9aaa5dc",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.11",
+      "tesseract": "5.3.4 / 5.5.0",
+      "baseline_commit": "71a8ffc385cf62e47a99de4c1b772f3192d4a15d",
+      "scoring": "scripts/scorecard.py(dev 89.7, holdout 87.5) 및 scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #445·#446 필수 CI 전수 통과."
+    },
+    "evidence": {
+      "M1": "dev 89.7, holdout 87.5(0.30.0과 동일); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 회귀 0.",
+      "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
+      "M3": "은퇴 5세트 평균 58.00(56.5/54.6/63.8/59.4/55.7, 전 세트 오탐 0·A등급 0·후퇴 0).",
+      "M4": "포함 PR #445(TK-243: page_quality() 공백 제외 글자 수 chars 추가, TK-244: 반올림 전 hangul_ok 일원화·신뢰도 우선 _quality_rank·deciding_key 관측), #446(TK-245: isolated_extract() OCR 폴백 환경 변수 전파·OCR_REPROCESS_VERSION=\"tk245-fallback-env-v2\" 1회 재처리·저품질 합집합 복구 집계·child_ocr_config 관측).",
+      "CI": "PR #445(12/12)·#446(필수 11/11) 전량 필수 CI(점수 하락 게이트, 평가 세트 문구 대조, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
+      "open_p1_regression": 0,
+      "unmeasured": "격리 봉인 세트, 배포 후 운영 온라인 재측정(0.30.0 온라인 실측 결함 TK-243·TK-244·TK-245 해소 확인).",
+      "record": "docs/scorecards/release_0301_candidate_20261126.md"
+    },
+    "rer": 0.0,
+    "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
+    "decided_at": "2026-11-26",
+    "from": "0.30.0"
   },
-  "evidence": {
-   "M1": "고정 dev 82.6 / holdout 81.9 / 오탐 0 / A 0 / 인젝션 방어 — 0.19.0과 같음. 평가 v2 일대일 재현율 dev 42/56·holdout 41/54. score_gate 통과, regression_gate(기준 5b878a1) 회귀 없음",
-   "M2": "봉인 시험 미실시(사용자 결정 11-14). 갈음: 배포 직후 case9와 온라인 탐침을 0.19.0과 같은 조건으로 0.20.0에서 다시 재어 비교하고 판정서 보충으로 적는다",
-   "M3": "은퇴 세트(같은 조건·평가 측 재실행, 후보 db410c4) 0.19.0 → 후보: 08 53.3→53.3, 08b 48.6→48.6, 09 56.9→56.9, 10 45.8→45.8, 20261025 34.1→34.1, v2 22/46·24/54·31/58·23/53·12/44 같음, 오탐 0·A 0·인젝션 방어 유지",
-   "M4": "added: 판정별 공식 원문 근거 구간(TK-159), 주장 3분류와 근거 의무(TK-160), 원문 대조 보기·3분류 배지·보고서 차이 요약(TK-163), 뒤의 전원합의체 판결 변경 판례 경고(TK-162), 검토 결정 유형별 집계 API·화면(TK-157a·b). changed: AI 작성 판별 두 모델 고정·엇갈림 시 추가 호출(TK-156), 평가 v2 전환·README 성능 그래프, 외부 벤치마크 미적용 정리, 엠블럼·문서 제목(#282). fixed: 화면·보고서 영문 코드·조사(TK-155), 같은 시행일 복수 개정판 법령 판 미확정(TK-158), 지각 범위 문장 규칙(TK-169), LV-05 '이를 모두 변경' 꼴 미탐(TK-162)",
-   "P1": "verify_all 전체 모드 실패 0(2cc7ac2): environment·acceptance 1275·regression_ledger 2357·score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths(바뀐 보호 경로 41개 모두 평가 측 커밋 또는 승인)·version_policy·full_tests 10143·browser_tests 197, 실제 실패 0",
-   "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
-   "P3": "hardcoding_diff 통과(기준 5b878a1), 각 PR 평가 세트 문구 대조 통과(점수 하락 게이트 CI 성공)",
-   "P4": "#270~#282 같은 SHA 필수 CI 성공(인용), 각 PR 평가 측 재실행 판정(엔진 변경 PR은 verify_all 전체), 사본 지시 PR은 평가 측 사본과 diff 0",
-   "P5": "열린 신규 회귀 티켓 0",
-   "P6": "이 판정서",
-   "unmeasured": "온라인 경로(판례 변경 역조회의 공식 DB 회수율·소요 시간, 원문 대조 정렬 품질, 3분류 분포, AI 판별 두 모델 반복 안정성 TK-161), 실사용 검토 결정 누적 뒤 유형별 비율, 봉인 세트 새 출제분(사용자 결정으로 미실시), README 성능 그래프의 v0.20 점(같은 방법 재측정 전)"
+  {
+    "version": "0.30.2",
+    "level": "patch",
+    "basis": [
+      "fixed"
+    ],
+    "measured_commit": "c33a2aa",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.13.18 (CI 3.11, --allow-env-mismatch)",
+      "tesseract": "5.3.4",
+      "baseline_commit": "55efe21a05d8477270779e54af10d3abdd6b3577",
+      "scoring": "scripts/verify_all.py 전체 모드(평가 측 재실행), scripts/scorecard.py(dev 89.7, holdout 87.5), scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #452 필수 CI 11/11."
+    },
+    "evidence": {
+      "M1": "dev 89.7, holdout 87.5(0.30.1과 동일); 확인 오탐·A등급 오탐 0, 기존 방어 유지, 엔진 오류 0. 회귀 0.",
+      "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED.",
+      "M3": "은퇴 5세트 평균 58.00(56.5/54.6/63.8/59.4/55.7, 오탐 0·A 0·후퇴 없음).",
+      "M4": "#452(TK-247 P0): Drive 재처리 실패 시 기존 본문 보존, 재처리 전용 한도(min(120, 남은 예산-60)), 예산 미룸, 손상 파일 1차 OCR 복원(최대 2회), 허위 복구 집계 제거. 평가 측 탐침 시나리오 6종·다수 복원 예산 탐침 기대대로.",
+      "CI": "PR #452 필수 11/11. verify_all 전체: 수용 1284·원장 2357·브라우저 200 통과, 전체 11677 통과/5 실패(5건 모두 기준 55efe21a에서도 같은 환경 요인, CI 통과).",
+      "open_p1_regression": 0,
+      "unmeasured": "격리 봉인 세트, 배포 후 운영 온라인 재측정(Drive 41/41 복원·건강 6/6), 운영 CPU에서 한도 충분성.",
+      "record": "docs/scorecards/release_0302_candidate_20261127.md"
+    },
+    "rer": 0.0,
+    "decided_by": "Claude Code 평가 세션",
+    "decided_at": "2026-11-27",
+    "from": "0.30.1"
   },
-  "decided_by": "claude-code (평가 측)",
-  "decided_at": "2026-11-14"
- },
- {
-  "version": "0.21.0",
-  "from": "0.20.0",
-  "level": "minor",
-  "basis": [
-   "changed",
-   "fixed",
-   "security"
-  ],
-  "measured_commit": "86434b6a8b260a8ea2142723ecb70b653c3fbb4d",
-  "conditions": {
-   "network": false,
-   "os": "Linux (Ubuntu 24.04 container)",
-   "python": "3.11.17",
-   "tesseract": "5.3.4 kor/eng",
-   "scoring": "고정 채점기 불변. 후보 86434b6a에서 평가 측 verify_all 전체 모드(기준 0.20.0 main 034343f) 실패 0, 환경 점검 통과. 별도 은퇴 5세트 같은 환경 재채점(기준 034343f) 후퇴 없음",
-   "track": "일반 경로. #290~#294(TK-171~176)와 #297~#300(TK-177~180), 평가 체계 감사·온라인 평가 갱신 포함. 봉인시험은 사용자 결정(2026-11-15, Claude Code 권고 수용)으로 시행하지 않고 0.20.0 대 0.21.0 온라인 평가로 갈음",
-   "prior_candidate": "0653872: 11-14 이전 후보 검증. 통합 7ca13a34 full은 평가 도구 점 경로 거절 시험 1건 실패(나머지 단계 통과); e452be6b로 검증/시험을 수정한 후 이 후보에서 다시 전체 검증. 최종 근거는 새 measured_commit이다"
+  {
+    "version": "0.31.0",
+    "level": "minor",
+    "basis": [
+      "added",
+      "fixed",
+      "changed"
+    ],
+    "measured_commit": "c03197b",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.13.18 (CI 3.11, --allow-env-mismatch)",
+      "tesseract": "5.3.4",
+      "baseline_commit": "d9fa1e4b60e1f3c955d37de7441ff2a2ed549389",
+      "scoring": "scripts/verify_all.py 전체 모드(평가 측 재실행), scripts/scorecard.py(dev 89.7, holdout 87.5), scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #457·#458·#459·#460 필수 CI."
+    },
+    "evidence": {
+      "M1": "dev 89.7, holdout 87.5(0.30.2와 동일); 확인 오탐·A등급 오탐 0, 기존 방어 유지, 엔진 오류 0. 회귀 0.",
+      "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED.",
+      "M3": "은퇴 5세트 평균 58.00(56.5/54.6/63.8/59.4/55.7, 오탐 0·A 0·후퇴 없음).",
+      "M4": "#457 TK-246 RapidOCR use_cls=False(저품질 스캔 OCR_EXTRACTED 0.75 오프라인), #458 TK-250 Drive 증분 데이터셋(가짜 Drive 점검표 30/30, 변경 없는 재동기화 호출 4→2), #459 TK-248 평가 출력 오판 0(운영 기록 5건 재계산), #460 README 자동 갱신.",
+      "CI": "#457·#458·#459·#460 필수 CI 성공. verify_all 전체: 수용 1284·원장 2357·브라우저 200 통과, 전체 11699 통과/5 실패(5건 모두 0.30.2 후보에서도 같은 환경 요인, CI 통과).",
+      "open_p1_regression": 0,
+      "unmeasured": "격리 봉인 세트, 배포 후 운영 온라인 재측정(TK-246·TK-250·TK-248), 실제 Drive 변경 API 의미, 365항목 엄격 재현율(채점기 저장소 부재).",
+      "record": "docs/scorecards/release_0310_candidate_20261127.md"
+    },
+    "rer": 0.0,
+    "decided_by": "Claude Code 평가 세션",
+    "decided_at": "2026-11-27",
+    "from": "0.30.2"
   },
-  "evidence": {
-   "M1": "고정 dev 82.6 / holdout 81.9 / 확인 오탐 0 / A 0 / 인젝션 방어 유지. v2 dev 42/56·holdout 41/54. score_gate·regression_gate 통과. 엔진 오류 dev·holdout 각 0(법리 규칙 NameError 해소, TK-177)",
-   "M2": "봉인 시험 미실시(사용자 결정 2026-11-15). online_compare_0200_0210_plan.md에 따라 배포 전 가능한 0.20.0 기준 실행 확보, 배포 뒤 case9 정답·공식 DB/모델/Drive 실행 건강·기존 회귀·TK-180 8보고서·AI 판별 반복 평가. 온라인 준비·오프라인 시험을 온라인 실측 통과로 계산하지 않는다. 현재 운영 실측 미시행 배포 및 GitHub 실제 API/모델 점검 시작: 외부 Source 점검43683347281은 failure(공식 판례1건 미일치·인용검증 개인정보 차단·외부 서비스 제한 등); 문서별 온라인 평가는 아직 NOT_RUN. 실연동 통합43683349002 성공, 이번 커밋 기록7항목 모두 통과. 별도 합성 모델 실행63건 중61성공·2개인정보 차단. 운영 문서별8보고서/case9 반복 검증을 대체하지 않음. 사용자 운영7보고서 수신: case9정답23/23·추가건강1/1, 공통건강7건 각5/6(H-REF실패), 모델124기록실패0. 온라인전체수용 보류; online_0210_20261115.md/json 참조. 후속 정답지 확정: A~D 정답지 구조요건46/47(HWPX D-C2경계), 기존계산/탐지 비교기준47/47. 조건차이 구분, 온라인전체수용보류 유지. online_0210_47_adjudication_20261115.md/json.  case9 추가2회 각23/23·건강5/6(H-REF). AI3회 일부/전체/일부·일치2/3, 최초Drive스냅샷차이로 고정조건3반복미완료. online_0210_case9_repeat_20261115.json 및 online_0210_remaining_test_procedure.md. 인증API 자동6실행 완료: case9두회 각23/23·공통5/6(H-REF), 입력공격4종HIGH통과. 사용자2+자동2의고정조건4회AI부분3/전체1(일치75%). Drive19자료163쪽미추출/암호화1사유유지, 0.22목표TK182~185등록·제품미적용. online_0210_automated_20261115.md/json.",
-   "M3": "은퇴 5세트(기준 034343f, 같은 평가 코드·환경): 53.3/48.6/56.9/45.8/34.1, 확인 오탐 0·A 0·v2/미판정 후퇴 없음. artifacts/retired_021.json",
-   "M4": "changed: 템플릿 A 화면 리디자인·모바일·태블릿 반응형(서랍·하단 내비), 개요 KPI 실값·사람 검토 낮은 띠, Pretendard 자체 호스팅, 넓은 화면 사이드바 접기, 좁은 화면 표 카드화, 브랜드 문구 AegisLAW, 탭 아이콘 판 표지(TK-171·172, 사용자 화면 확인). fixed: 이미 결정론 판정으로 잡힌 오류를 모델 지적이 '재계산으로 확인하지 못함'으로 다시 표시하던 중복(TK-173), Drive 참고자료 대조 미완료 사유 오표시·처리 사유 코드 10개 영문 노출(TK-174). security: 저장소·삭제 경로 주입 10건·진단 응답 예외 문구 노출 1건·암호화 캐시 형제 폴더 통과(TK-175 제품), 평가 도구·시험 경로 묶기·부분 SSRF 13건(TK-175 평가). CI 액션 Node 24 전환(TK-176, 제품 동작 무관) 추가 fixed: 법리 규칙 단계 NameError 해소(TK-177), Drive 판례표 링크·문헌 속성 오격리 보완 및 진단(TK-178), 모델 JSON 추출·오류 모양 기록·판례 판단 출력 한도 4096(TK-179). 추가 changed: 입력 법률문서는 검증 대상, 공식 DB·검증 등록 RAG는 판단 기준 자료로 역할 분리. 기준 자료의 지시문 분류/격리·쪽/행 제외를 해제하고 캐시 재추출, 모델 역할 프롬프트 정리. 입력 문서의 인젝션 탐지·개인정보·출력 경계 유지(TK-180). 평가 측: 엔진 오류 게이트·온라인 건강 상태·기능별 온라인 평가 갱신·RAG 대조군·AI 반복 집계·봉인 온라인 채점 도구",
-   "P1": "verify_all 전체 86434b6a 실패 0: 수용 1278·회귀 장부 2357·전체 10328·브라우저 197, 점수·회귀·하드코딩·시험 편집·보호 경로·버전·환경 점검 통과. artifacts/verify_all_021.json",
-   "P2": "고정·은퇴 항목 회귀 0, 오탐·A 증가 0",
-   "P3": "hardcoding_diff 통과(기준 034343f). test_edits의 참고자료 쪽 제외 시험 assert 5→4 경고는 사용자 TK-180 요구에 따른 보존 기대 변경이며 입력 문서 탐지 시험 약화 없음. 기존 보호 경로 변경은 평가 측 커밋/승인으로 통과",
-   "P4": "#295 head9f36dbeb·#296 head571be926 각 CI 성공17/건너뜀2, 사용자 승인 병합. #301 head4973f850 CI 성공16/실패0/CLEAN, 사용자 순차 릴리스 승인으로 main83d862e7 병합. 운영 health version0.21.0·정확한 SHA·DB ok 확인, 태그 v.0.21.0.",
-   "P5": "열린 신규 회귀 티켓 0",
-   "P6": "이 판정서",
-   "unmeasured": "TK-178 이전 격리 자료 실제 재색인/판례표 행수, TK-179 운영 응답 형식 오류·잘림 비율, TK-180 기준 자료 활용·입력 공격 차단 운영8보고서, case9 반복/AI 안정성, 실기기 화면. GitHub 실연동 API/모델 결과는 release_021_deployment_20261115.json에 별도 기록. 봉인시험은 승인된 미시행; README 성능 그래프 새 점은 같은 방법 측정 전.",
-   "P7": "통합 검증에서 평가 도구 export_security_alerts의 점 경로 허용 및 거절 시험의 HTTP 오류 의존을 발견해 e452be6b에서 수정. 기존 정규식 재현은 새 거절 시험 4실패/4통과, 수정 후 관련 19건 통과. 초기 Node 경로 누락은 환경을 보완했으며 제품 코드 변경 없음"
-  },
-  "decided_by": "Codex 평가 승계 세션 (사용자 2026-11-15 지시)",
-  "decided_at": "2026-11-15",
-  "release_commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
-  "release_tag": "v.0.21.0",
-  "deployment_evidence": "release_021_deployment_20261115.json"
- },
- {
-  "version": "0.22.0",
-  "from": "0.21.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "changed",
-   "fixed",
-   "security"
-  ],
-  "measured_commit": "fca75347c5612b3a5960005726b4a31f7143b38a",
-  "conditions": {
-   "network": false,
-   "python": "3.11.17",
-   "tesseract": "5.3.4 eng/kor/osd",
-   "os": "Ubuntu 24.04 container",
-   "baseline_commit": "83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca",
-   "track": "일반 경로. 봉인 동일 조건 비교·main 병합·운영 health 확인 완료; 온라인 평가는 별도 세션에서 진행.",
-   "scoring": "main과 후보의 동일 고정/은퇴 자료·채점기·의존성 비교. 원문/정답/기준선 변경 없음."
-  },
-  "evidence": {
-   "M1": "main/후보 모두 dev 82.6, holdout 81.9, 확인 오탐/A 0, 구 인젝션 방어 대리값 유지. v2 dev 42/56, holdout 41/54; 엔진 오류 0.",
-   "M2": "사용자 제공 main/후보 집계 JSON 직접 비교 수용: main 83d862e78ba3e4d489dcab3fdc5b1bcc7c5838ca, 후보 fca75347c5612b3a5960005726b4a31f7143b38a; 동일 오프라인 환경 Python 3.11.18, Tesseract 5.3.4 eng/kor/osd, 자료 SHA-256 940bcdcefcdca102f8081d7baf22e5a88eac75b737088e069c520dec2ef1da61. 봉인 8문서/62항목/36유형, 구 산식 23.0=23.0, v2 13/62=13/62, macro 16.67% 동일, 개인정보 종류 13/26, FP/A/오류 0, 유형별 감소 없음. 보안 탐지 0/10 양쪽 동일이며 실무 정확도·보안성 입증 아님. 집계 JSON SHA-256 147b8f560880261f3cb70ea8669441cc841e8a67b8fff5ded26191ca41f5432f / 049d15939157034e682abd3156e8245d81538dae8ae5ba72210118cbd0088ea5. 상세 release_022_sealed_comparison_20261115.json.",
-   "M3": "은퇴5세트 양쪽 53.3/48.6/56.9/45.8/34.1, 확인오탐/A 0, v2 유형별 후퇴 없음. 같은365항목 0.20/0.21/후보 모두195/365(53.4%), 법률43/123(35.0%), RER0. 실무 정확도 아님.",
-   "M4": "Added Time Table(#305). Changed Gemini 기본 모델(#304), AI 관여/범위/이견/표본/근거 정보(#308). Fixed Drive/HWPX/비율근거/개인정보 진단(#307), 건수표시(#310), 모바일 목록(#312). 의존성 해시 잠금·runtime·감사(#303), README 동기화(#306).",
-   "P1": "verify_all 전체 최종 종료0, 수용1278·원장2357·전체10430·브라우저200, 실제실패/strict XPASS0. 최초 환경실패는 최종 근거에서 제외하고 원인/재검증 보존.",
-   "P2": "고정/은퇴 비교의 회귀0. 점수 순증을 근거로 버전을 올리지 않음.",
-   "P3": "하드코딩·시험삭제·보호경로·버전 검사 통과. TK185 평가 조건 P1 보완은 별도 evaluator 커밋; 관련43시험 통과, README12시험 통과.",
-   "P4": "#316 head e84141d7: 필수 CI 점수 게이트·은퇴 비교·SQLite·PostgreSQL/pgvector+Celery·Docker OCR·pip-audit·CodeQL 성공. main 병합 SHA 5b9957932259526e1f7edca9ba7d92767771618e, 태그 v.0.22.0 확인. 사용자 제공 /api/health status=ok·version=0.22.0·동일 SHA·database.status=ok. 배포 확인 완료; 온라인 기능 평가는 별도 세션 대기.",
-   "P5": "새 제품 P1 회귀 없음. TK-182~186은 운영 코드 배포 상태로 deployed 처리했으며, 운영 효과/문제 해소 판정은 온라인 평가 전까지 미확정.",
-   "unmeasured": "별도 세션 온라인 평가 대기: Drive 원본/암호화/HWPX, Gemini 호출·비용·품질, AI 범위 정확도/반복, 공식 Source cascade, 실기기 화면, 온라인 봉인(U1).",
-   "record": "release_022_candidate_20261115.md / release_022_verification_20261115.json / release_022_sealed_comparison_20261115.json",
-   "online_20261116": "운영183f3d22의 단일15+다문서1실행 수집. 구조45/47(이전46/47, HWPX1개선/B정상인용2미확인), 구계산45/47(이전47/47). case9 4회23/23·건강5/6·RAG3/5. TXT역할5/5·입력공격4종HIGH. 모델229호출6실패. Drive동일해시25자료148→134쪽미추출(OCR14/빈쪽127/스캔7). AI조건SAME4회일치100%는정확도아님. TK182·186~191 미해소/보완. 정상참고3형식·실기기/독립정확도/온라인봉인 등 미완료, 전체온라인수용보류. online_compare_0210_0220_20261116.md/json."
-  },
-  "rer": 0.0,
-  "decided_by": "Codex 평가 세션 (사용자 진행 지시)",
-  "decided_at": "2026-11-15",
-  "release_status": "DEPLOYED_ONLINE_EVALUATION_PENDING",
-  "release_commit": "5b9957932259526e1f7edca9ba7d92767771618e",
-  "release_tag": "v.0.22.0",
-  "deployment_evidence": "release_022_deployment_20261116.json"
- },
- {
-  "version": "0.23.0",
-  "from": "0.22.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "changed",
-   "fixed"
-  ],
-  "measured_commit": "2633d91c65d529683b48a5997ca1368bfa0c90e2",
-  "conditions": {
-   "network": false,
-   "python": "3.13.18",
-   "tesseract": "5.3.4 eng/kor/osd",
-   "os": "Linux 6.18.44 (glibc 2.39)",
-   "baseline_commit": "183f3d22791bb01d4c8a39ce842e193000c663b8",
-   "fonts": "fonts-nanum. CI 설치 목록과 동일(tesseract-ocr·-kor·-eng·fonts-nanum)",
-   "track": "일반 경로. 후보 SHA에서 verify_all 전체 1회, 고정·은퇴 동일 조건 재측정. main 병합·태그·운영 health는 미시행이며 온라인 평가는 별도 세션.",
-   "scoring": "기준(main 183f3d22)과 후보의 동일 고정/은퇴 자료·채점기·의존성 비교. 원문/정답/기준선 변경 없음.",
-   "python_note": "평가 환경은 python 3.13.18이고 CI는 3.11이다. verify_all의 environment 단계가 이 불일치를 실패로 잡는다. 같은 단계를 CI가 3.11에서 모두 통과시켰다(PR #349·#350·#351·#352 필수 검사 전부 성공). 숨기지 않고 적는다.",
-   "measured_on": "2026-11-19"
-  },
-  "evidence": {
-   "M1": "기준/후보 모두 dev 82.6(부분점수율 0.826), holdout 81.9(0.819), 확인 오탐 0·A등급 0·구 인젝션 방어 대리값 방어 유지. v2 일대일 dev 42/56(75.0%)·holdout 41/54(75.9%), 미판정 경고 10·9, 참고 경고 10·4, 엔진 오류 0, 결함 유형 28·27종. 0.21.0·0.22.0과 같은 값으로 점수 이동 없음.",
-   "M2": "봉인 세트 동일 조건 비교 미측정. 봉인 시험문서·정답은 저장소 밖 사용자 보관이고 출제·자체 점검은 저장소 미연결 격리 세션이 맡으므로 이 평가 세션에서 잴 수 없다. 0.22.0 판정서 M2(사용자 제공 집계 JSON 직접 비교)에 해당하는 근거가 0.23.0에는 없다. 합격으로 간주하지 않는다. 2026-11-18 사용자 지시 '봉인세트비교 제외'로 이번 0.23.0 판정에서 봉인 비교를 제외한다. 미측정 사실은 그대로 남기며, 제외가 통과를 뜻하지 않는다. 보강(2026-11-18): 이 릴리스는 pii_engine·claim_engine 등 오프라인 탐지·개인정보 엔진을 바꾸므로 RELEASE_PROCEDURE 2절 조건 2의 봉인 시험 적용 범위 '안'이다. 따라서 이 제외는 '범위 밖 생략'이 아니라 사용자 결정에 의한 릴리스 조건 면제다. 릴리스 PR에 그대로 적는다.",
-   "M3": "은퇴 5세트 기준/후보 동일: sealed_20261008 53.3(v2 22/46·미판정 6), 20261008b 48.6(24/54·20), 20261009 56.9(31/58·30), 20261010 45.8(23/53·11), 20261025 34.1(12/44·16). 확인 오탐 0·A 0·방어 유지, 유형별 후퇴 없음. 실무 법률 정확도가 아니다.",
-   "M4": "Added: RAG Drive 분리 수집·쪽별 상태 커버리지·주장 단위 다중 경로 검색(#325 TK-182·187), 전체 analysis_text 근거화·행정규칙 별칭·LLM 동시성 제한(#327 TK-197), 현행 법령 승격·무리한 주장 4종 탐지·인용 경계·NER·메타표 격리(#329 TK-195·196), 외부 AI 답변 서버 영속·모델명 표시·검토 표 3열 역할 분리·Time-Table 사실관계 중심(#335 TK-198~206). Changed: 참고자료 상세 펼침 상태 보존(#320 TK-189), Gemini 추론·출력 예산 조율(#322 TK-190), 구간 표지 연결·3축 진단 분리(#323 TK-191), 대조표 법령 오인 제외·AI 의견 행 정렬·구 사건부호·헌재 라우팅(#326 P0-1·P1-1). Fixed: Time Table 인접 호증 결속(#321 TK-188), 공식 Source cascade 마스킹(#324 TK-186), PII 마스킹 멱등성·1·2차 규칙 동기화(#328 TK-193), 주장 엔진 NER 규칙 공유(#330 P2-1②), 파생 문서명 가드(#332 TK-76 E2), ReDoS 선형성 시험 계측(#334). 평가 기록: #331 온라인 비교 계획, #333 TK-192~197 등록. 139파일 +19,560/-1,334, #320~#335 16건.",
-   "P1": "verify_all 전체(후보 SHA d79d6b2, 작업 트리 깨끗, matches_ci=true) 11단계 전부 통과·종료 0: 수용 1,276 · 원장 2,357 · 전체 11,027 · 브라우저 200, 실제 실패 0 · strict XPASS 0. 1차 실행의 regression_gate·full_tests 5건 실패는 평가 환경 결함(fonts-nanum 미설치로 PDF가 CID 대체 폰트로 떨어짐, HOME 불일치로 기준 쪽 탐침 경로가 path_guard에 거부됨)으로 확인했고 base 6e7bf01에서도 같이 실패해 제품 회귀가 아님을 확인한 뒤 환경을 CI와 일치시켜 재실행했다. 1차 기록은 원인과 함께 보존한다.",
-   "P2": "고정·은퇴 비교의 회귀 0. 회귀 게이트 12칸 전부 동일(회귀 없음). 점수 순증을 근거로 버전을 올리지 않는다.",
-   "P3": "하드코딩·시험 삭제·보호 경로·버전 검사 통과. 보호 경로 20개 모두 평가 측 커밋 또는 승인. 평가 기록(TK-198~206 등록) 커밋은 Agent: evaluator 꼬리표로 분리했고 같은 네 게이트를 커밋 상태에서 재확인했다.",
-   "P4": "#335 최종 head 2b676c842a2df895cbc2a2b8077746a18c745fc1의 필수 CI 전부 성공(테스트 3벌·점수 하락 게이트·은퇴 세트 비교·Docker OCR readiness·CodeQL python/js base·head·새 경고 게이트). Steve 병합 d79d6b21. main 병합·태그·운영 health 확인은 미시행.",
-   "P5": "사용자 원문 [261116 AegisLAW 개선 필요 사항 정리] 1~9항을 TK-198~206으로 등록하고 원문 문장별 대응표로 판정했다. 11개 문장 중 10개 충족, 2항(개인정보 입력 차단으로 AI 교차검토 미실행)은 오프라인 근거만 있고 운영 재현 미확인. 화면 캡처는 사용자 '이상없음' 확인 접수(2026-11-18). #335는 3차 판정에서 수용했고 1차 P1·P2·P3, 2차 R1·R2 보완을 거쳤다.",
-   "unmeasured": "봉인 세트 동일 조건 비교(M2) — 2026-11-18 사용자 지시로 이번 판정에서 제외. 온라인 실연동 전부: 공식 DB 대조, Drive 대조·원본/암호화/HWPX, 실제 모델 호출·비용·품질, AI 작성 판별, 사용자 실제 문서(35,674자)의 개인정보 입력 차단 해소(TK-199), 실기기 화면, 온라인 봉인. 실무 법률 정확도·검색/주장 타당성·검토 효율은 EVALUATION_V2 기준 NOT_MEASURED. [2026-11-19 추가] 온라인 점검 3회차 생략으로 다음이 **미측정으로 남는다**: (1) TK-208이 노린 'Drive 참고자료 라이브러리가 운영에서 READY에 도달하는가' — 오프라인 합성 스텁으로는 확정할 수 없다. (2) TK-216의 RAG 실패가 운영 H-ENGINE에 실제로 드러나는가. (3) 완독 스냅샷 기준 운영 표준 23항목 비교(2회차까지 Drive PARTIAL로 두 회차 연속 불가). (4) TK-208의 미독 안내 표시가 운영 화면·보고서에 보이는가(오프라인 코드 확인과 합성 캡처까지만 했다). (5) TK-218 목표 자료의 후보 청크 집계 — 2회차에서 전달된 387자 발췌가 그 자료에 있던 전부였는지, 더 긴 청크가 떨어진 것인지. 이 다섯은 0.24.0 온라인 점검으로 넘긴다(3회차 지시서 맨 끝 절의 확인 항목 전부). **TK-217**(법률 시행일 서술 꼴 비사실형 행 1개, P3)은 이 목록에 넣지 않는다 — 3회차 점검 항목이 아니었고, 미뤄진 '확인'이 아니라 아직 구현되지 않은 열린 티켓이다. 상태는 ticket_registry.json에서 open으로 유지한다.",
-   "record": "release_023_candidate_verification_20261119.md(최종 후보 2633d91의 전체 검증 — 6절이 최종 결과, 2~5절은 첫 후보 2b8b4bd의 기록), release_023_candidate_20261118.md(범위 변경 전 중간 측정 d79d6b21)",
-   "tooling_defect": "scripts/path_guard.py의 INPUT_ROOTS가 Path.home()에 의존해, 저장소가 사용자 홈 밖에 있는 환경에서는 regression_gate 기준 쪽 탐침 13항목이 전부 '허용 폴더 밖의 경로'로 거부된다. CI는 저장소가 러너 홈 아래에 있어 우연히 통과한다. 평가 도구의 재현성 결함으로 별도 보완 대상이며 이번 판정은 HOME을 맞춰 측정했다.",
-   "scope_change_20261118": "2026-11-18 사용자 결정으로 릴리스 범위를 바꿨다. 당초 (가) '#336~PR4를 0.24.0으로 분리'를 평가 측이 권고하고 사용자가 채택했으나, 같은 날 '릴리스는 온라인 테스트 후 일부 오류개선을 #336과 함께 반영'으로 재결정했다. 따라서 0.23.0 범위는 #320~#335에 더해 #336(TK-76 3주기 PR1)과 온라인 테스트에서 나올 오류개선을 포함한다. 확정된 순서: ① #336 보완·판정·병합 → ② 합본을 main에 병합해 배포(Render 배포 브랜치는 main) → ③ 온라인 테스트 → ④ 오류개선을 같은 릴리스에 반영 → ⑤ 최종 후보에서 verify_all 전체 1회 및 이 판정서 재측정·갱신 → ⑥ 버전 커밋 → 릴리스 PR → 태그 v.0.23.0. ②는 버전 커밋 전이므로 /api/health의 version이 0.22.0으로 보인다(VERSION_POLICY 6절: 상향 요건을 채우지 못하면 버전을 유지한 채 배포). 온라인 테스트 기록의 빌드 식별은 version이 아니라 commit(SHA)으로 한다. measured_commit d79d6b21은 범위 변경 전 중간 측정이며, 최종 후보 SHA로 갱신한다.",
-   "pr336_20261118": "PR #336(TK-76 3주기 PR1, head 51546edd) 판정 NEEDS_CHANGES. 축 A 23/23·축 B 30/30·축 C2 31/31 수용. 새 오탐 2건: F1 수량 슬롯 미래·예정 가드 누락(동사×서법 교차 25동사×4꼴 중 신규 20동사 80칸이 base 0 → PR 80; 기존 5동사 20칸은 base와 같은 부채), F2 호증 키 정규화가 소갑↔갑·소을↔을을 같은 앵커로 묶어 서로 다른 호증 사이에 없는 모순을 발화(5칸 중 2칸, base 5칸 전부 0건). 둘 다 평가 측 사본에서 사전 검증을 마쳤다. 보완 지시는 NEXT_FOR_ANTIGRAVITY 2026-11-18절. 이 PR의 결함은 미병합 PR의 것이며 Steve에 들어가지 않았다(열린 P1 회귀 0 판단 근거). 3차 판정(2026-11-18): head 7cd95476 **ACCEPTED**. 평가 측 탐침 5세대 233칸 집계 — base 119/233 → head 225/233, 남은 8칸은 전부 base에서도 실패하므로 base 대비 회귀 0·순증 106칸. 필수 CI 5개 전부 성공, 관련 시험 738 통과, 고정 82.6/81.9/확인 오탐 0 변화 없음. 잔여 미래·의도 서법 8칸은 TK-207로 분리 등록했고 PR #336을 막지 않는다. 0.23.0 범위에 이 PR이 포함되므로 최종 후보 SHA는 이 PR 병합 뒤의 Steve tip이 되며, verify_all 전체와 measured_commit은 온라인 테스트 오류개선까지 반영한 최종 후보에서 다시 잰다.",
-   "F1": "최종 후보 2633d91에서 verify_all 전체 모드 1회: acceptance 1,276 · regression_ledger 2,357 · full_tests 11,416 · browser_tests 200, 실제 실패 0 · strict XPASS 0. score_gate·regression_gate·hardcoding_diff·test_edits·protected_paths·version_policy 전부 통과. environment 단계만 실패(python 3.13.18 ≠ CI 3.11).",
-   "F2": "회귀 게이트 '회귀 없음' — 명세 전 항목 base(v.0.22.0)=head. 고정 세트 dev 82.6(가중 재현율 0.826, 56항목)·holdout 81.9(0.819, 54항목), 확인 오탐 0·A등급 오탐 0·대조 오탐 0·엔진 오류 0. v2 일대일 dev 42/56(75.0%)·holdout 41/54(75.9%), 미판정 경고 9·8, 참고 경고 10·4. 0.21.0·0.22.0과 같은 값으로 점수 이동 없음.",
-   "F3": "이 판에 담긴 변경: TK-208 Drive 미완독 3갈래 분류·재시도 상한·미독 표시(#349), TK-218 발췌 선택 관측성(#351, 선택 결과 불변), TK-216 RAG 실패 건강 게이트(#350), TK-212 CI 기준 단일화·트리거 축소(#348), TK-219 회귀 게이트 기준 입력 경로(#352, 평가 자산). 앞선 범위는 #320~#347.",
-   "F4": "TK-219 확인: 첫 전체 실행(2b8b4bd)에서 regression_gate가 '측정하지 못한 항목이 있다'로 exit 2였다. 원인을 평가 측 게이트 자산 결함으로 확정하고 고친 뒤, 최종 후보에서 같은 단계가 전 항목을 측정해 '회귀 없음'으로 통과한다. 제품 회귀가 아니었음을 CI 동등 조건 재측정으로 먼저 분리 확인했다.",
-   "online_check_20261119": "2026-11-19 사용자 결정으로 이 릴리스의 **배포 뒤 온라인 점검(RELEASE_PROCEDURE 4절)을 생략**한다. 원문: '지난번 릴리스를 할때 온라인 점검을 했고, 그 이후 오류 등을 일부 수정, 보완해서 다시 릴리스 하는 것이니 점검을 모두 생략. 릴리스 후 그 후속조치의 일환으로 작은 범위로 수정, 보완하는 경우에는 추가 온라인 점검을 실시하지 않고, 새로운 기능 구현을 포함해 릴리스가 이루어지는 경우에는 온라인 점검을 시행하는 것으로 정해'. 같은 결정으로 RELEASE_PROCEDURE 2-7을 신설했다. 정확한 사실관계: 이 릴리스 주기에 온라인 점검은 **두 번 돌았다** — 1회차 배포 32d9c485(PR #340), 2회차 배포 aaf51806(PR #347). 그 뒤 변경(#348~#352)은 두 회차에서 드러난 결함의 수정·보완과 평가 자산이며, 그 변경분을 겨냥한 3회차를 생략하는 것이다. '이 릴리스는 온라인 점검을 받지 않았다'가 아니라 '2회차까지 받았고 그 뒤 수정분에 대한 3회차를 생략했다'가 맞다. **생략은 통과가 아니다.** 아래 unmeasured의 해당 항목을 합격으로 계산하지 않으며, 3회차 지시서(INSTRUCTION_0230_ROUND3_20261119.md)의 확인 항목은 0.24.0 온라인 점검으로 넘긴다."
-  },
-  "rer": 0.0,
-  "decided_by": "Claude Code 평가 세션 (2026-10-17 사용자 지시로 평가 업무 승계)",
-  "decided_at": "2026-11-18",
-  "release_status": "CANDIDATE_VERIFIED_AWAITING_VERSION_COMMIT",
-  "release_commit": null,
-  "release_tag": null,
-  "deployment_evidence": null,
-  "online_round1_20261119": {
-   "deployed_commit": "32d9c485bc04ef0487fc4c6a32a91c9d39d29948",
-   "record_pr": 340,
-   "verdict": "기록 수용. 운영 표준 23항목 3회 모두 23/23이나 TK75 ON으로 지정 조건(OFF) 실행이 없어 2026-10-10의 21/23과 증감 비교하지 않는다.",
-   "regression_reopened": [
-    "TK-206"
-   ],
-   "new_tickets": [
-    "TK-208",
-    "TK-209"
-   ],
-   "preexisting_not_regression": [
-    "law_go_kr 사건번호조회 2015모2524 일치 0건",
-    "gemini 2.5-flash/-lite HTTP 404(평가 측 점검 도구 결함)",
-    "semantic_scholar RATE_LIMITED"
-   ],
-   "tk199_evidence": "같은 워크플로 0.21.0 기록 대비 2011모1839 전문 30,211자에서 cascade:stage2:primary의 INPUT_PRIVACY_BLOCKED 소멸, 참여 공급자 0개→3개. 사용자 실제 문서는 여전히 미측정.",
-   "scope_decision": "2026-11-19 사용자: I-1·I-2를 0.23.0에 넣고 온라인 회차를 한 번 더 돌린다.",
-   "evaluator_defects": [
-    "PR #335 3차 판정이 TK-206을 충족으로 적었다. 점검표에 재판행위 어간의 활용 축이 없었다.",
-    "온라인 지시문이 RELEASE_PROCEDURE 경로를 docs/RELEASE_PROCEDURE.md로 잘못 적었다. 실제는 docs/scorecards/RELEASE_PROCEDURE.md다."
-   ],
-   "unmeasured": [
-    "사용자 실제 문서의 TK-199",
-    "TK75 OFF 조건의 표준 23항목",
-    "U1 봉인 온라인·U4 봉인 출제",
-    "실무 법률 정확도·검색/주장 타당성·검토 효율",
-    "TK-208 주원인·TK-209 끊기는 지점(운영 접근 필요)"
-   ],
-   "record": "docs/scorecards/online_round1_0230_verdict_20261119.md"
+  {
+    "version": "0.31.1",
+    "level": "patch",
+    "basis": [
+      "fixed"
+    ],
+    "measured_commit": "c6a48c5",
+    "conditions": {
+      "network": false,
+      "os": "Linux",
+      "python": "3.13.18 (CI 3.11, --allow-env-mismatch)",
+      "tesseract": "5.3.4",
+      "baseline_commit": "9b30e24604799f7e511287926af79b28e8eaa5bb",
+      "scoring": "scripts/verify_all.py 전체 모드(평가 측 재실행), scripts/scorecard.py(dev 89.7, holdout 87.5), scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #468·#469 필수 CI."
+    },
+    "evidence": {
+      "M1": "dev 89.7, holdout 87.5(0.31.0과 동일); 확인 오탐·A등급 오탐 0, 기존 방어 유지, 엔진 오류 0. 회귀 0.",
+      "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED.",
+      "M3": "은퇴 5세트 평균 58.00(56.5/54.6/63.8/59.4/55.7, 오탐 0·A 0·후퇴 없음).",
+      "M4": "#469 TK-255 공급자 거절이 RAG 상한·예산을 소진하던 운영 결함(0.31.0 1차 m3 참고자료 33/83 미대조·주장 COST 중단) 수정: 합성 시험 3건 원래 코드 실패→수정본 통과, 탐침 4종. #468 TK-253 모델 설정, #469 TK-254 캐시 지점(분류 없음).",
+      "CI": "#468·#469 필수 CI 11/11 성공. verify_all 전체: 수용 1284·원장 2357·브라우저 200 통과, 전체 11712 통과/5 실패(0.31.0 후보와 같은 환경 요인, CI 통과).",
+      "open_p1_regression": 0,
+      "unmeasured": "격리 봉인 세트, 배포 후 gpt-6.2-sol 실호출·캐시 적중·RAG 비용·Haiku 실측.",
+      "record": "docs/scorecards/release_0311_candidate_20261128.md"
+    },
+    "rer": 0.0,
+    "decided_by": "Claude Code 평가 세션",
+    "decided_at": "2026-11-28",
+    "from": "0.31.0"
   }
- },
- {
-  "version": "0.24.0",
-  "from": "0.23.0",
-  "level": "minor",
-  "basis": [
-   "added"
-  ],
-  "measured_commit": "0055fa728202c2d4b500099fa2b6c29d8258c07e",
-  "conditions": {
-   "network": false,
-   "python": "3.11.17",
-   "tesseract": "5.3.4 kor/eng",
-   "os": "Linux 6.18.57 (glibc 2.41)",
-   "baseline_commit": "f7a7f49056fa4fc6239ffdad803eed53443d9045",
-   "scoring": "운영 main과 통합 후보를 같은 채점기·고정/은퇴 자료·오프라인 조건에서 비교. 봉인은 사용자 제공 동일 세트 짝 비교 집계.",
-   "verification": "후보 깨끗한 트리에서 verify_all 전체 종료 0. CI 버전 Python·OCR, 한글 글꼴과 호스트 Chromium을 격리 환경에 결합. 제품·시험·채점기 변경 없음.",
-   "measured_on": "2026-11-21"
-  },
-  "evidence": {
-   "M1": "dev 82.6→82.6, holdout 81.9→81.9; 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 세트별·합산 RER 0. score_gate·regression_gate 종료 0.",
-   "M2": "사용자 제공 신규 봉인 짝 비교: 동일 입력 지문 4b9c00017908d038cf03e5c8f018d2fa85ae43c1c2493d19fa1b533cf118792f, 10문서·60결함, main·후보 종료 0, 종합 37.9, 가중 재현율 0.379, v2 22/60, 오탐·A등급 오탐·엔진 오류 0, injection_defended 양쪽 true. 원본 무결성·임시 사본 삭제 확인. 재채점하지 않음.",
-   "M3": "은퇴 5세트 후퇴 0, 항목별 회귀 0. 후보 전체 verify_all 종료 0: 수용 1,278·회귀 원장 2,357·일반 11,470·브라우저 200 통과, 실제 실패·strict XPASS 0. 집계 SHA-256 35116076386ae9590a2bbc9af66f97b0830c8c21db6574d70e8f27b0c6a50602.",
-   "M4": "Added: 로컬 LLM·공식 Source 카세트, RAG 식별자/Dense·Reranker, 법률 절 정규화, 인용 NLI, 표 구조·OCR 폴백, 증거 그래프. 기능 진입점과 기본 shadow/none 설정은 포함 PR의 시험·CI로 확인. 오프라인 점수 순증이나 기존 결함 감소 수치 주장은 없음.",
-   "CI": "제품 후보와 동일 Git tree의 마지막 제품 PR #371 필수 CI 성공; 평가 기록 PR #375의 79a9b93a 필수 CI 전부 성공. 판정 문서 추가 후 새 head CI는 병합 전 재확인.",
-   "open_p1_regression": 0,
-   "unmeasured": "고정 비공개 벤치마크 NOT_MEASURED(참고 지표). 공식 DB·Drive·모델을 포함한 운영 온라인 실측 NOT_RUN, 실무 법률 정확도·검색/주장 타당성·검토 효율 NOT_MEASURED. 새 기능 릴리스이므로 배포 뒤 온라인 점검.",
-   "record": "docs/scorecards/release_024_candidate_20261121.md"
-  },
-  "rer": 0.0,
-  "decided_by": "Codex 평가 세션 (사용자 진행 지시)",
-  "decided_at": "2026-11-21",
-  "release_status": "DEPLOYED_ONLINE_EVALUATED",
-  "release_commit": "684f3469028dc38e539345501191cc7c9832b13a",
-  "release_tag": "v.0.24.0",
-  "deployment_evidence": "docs/scorecards/release_024_deployment_20261121.json",
-  "online_eval_20261121": {
-   "deployed_commit": "684f3469028dc38e539345501191cc7c9832b13a",
-   "verdict": "기록 수용. case9 OFF 4회 모두 23/23(회귀 0), READY_WITH_UNREADABLE 41/41(8,807/8,823쪽, OCR_LOW_QUALITY 16), 공통 건강 r2~r4 6/6, AI 반복 3회 일치율 1.0(SAME), INJ-1 4/4·공격 4/4·정상 기준자료 5/5, live_integration 7/7 성공. RAGC-S3 연속 실패(미해소).",
-   "unmeasured": [
-    "Hybrid RAG Dense·Reranker 성능 (LEXICAL_ONLY 관측)",
-    "Legal NLI Stage 2 및 ClauseNormalizer assist 효과",
-    "적응형 OCR 폴백 및 저품질 16쪽 재색인 개선",
-    "로컬 LLM·Source 카세트 RECORD/REPLAY",
-    "Evidence Graph 실무 타당성·TK-216 H-ENGINE·실무 법률 정확도"
-   ],
-   "record": "docs/scorecards/online_0240_20261121.md"
-  }
- },
- {
-  "version": "0.25.0",
-  "from": "0.24.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "fixed",
-   "performance_patch"
-  ],
-  "measured_commit": "02d3a5c0e312c5f8139bcf11e52ac1c9836c1f83",
-  "conditions": {
-   "network": false,
-   "python": "3.11 (GitHub Actions)",
-   "tesseract": "5.3.4 kor/eng",
-   "os": "Linux (GitHub Actions)",
-   "baseline_commit": "684f3469028dc38e539345501191cc7c9832b13a",
-   "scoring": "CI 점수 하락 게이트 및 은퇴 세트 비교(PR #387 동일 트리 02d3a5c0, run 44930911547) 기준."
-  },
-  "evidence": {
-   "M1": "dev 82.6→83.9(v2 43/56), holdout 81.9→83.3(v2 42/54); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 합산 RER 7.61%(dev 7.47%, holdout 7.73%).",
-   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
-   "M3": "은퇴 5세트 후퇴 0(sealed_20261008b 48.6→50.0 v2 25/54, 나머지 4세트 53.3/56.9/45.8/34.1 유지, 전 세트 오탐 0·A등급 0).",
-   "M4": "포함 PR #383(TK-221)~#387(TK-224): ClauseNormalizer 승격·메타/논리/증거/AI 탐지 일반화, 실행 경로 진단 가시성(/api/diagnostics·run_manifest), 전달 청크 SUPPORTS 보강(RAGC-S3), OCR 폴백 텔레메트리·재색인 델타, law_go_kr 정규화 진단 및 학술 Source 오류 원인 분리.",
-   "CI": "PR #387(e4757ee5 / 병합 02d3a5c0) 필수 CI 11개 전수 통과(점수 하락 게이트, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis).",
-   "open_p1_regression": 0,
-   "unmeasured": "격리 봉인 세트, 운영 온라인 실측(Hybrid RAG Dense·Reranker, Legal NLI Stage 2, 운영 OCR 폴백 채택, 로컬 LLM·카세트 RECORD/REPLAY, RAGC-S3 운영 재현, 실무 법률 정확도).",
-   "record": "docs/scorecards/release_025_candidate_20261121.md"
-  },
-  "rer": 0.0761,
-  "decided_by": "Antigravity 평가 세션 (사용자 릴리스 진행 지시)",
-  "decided_at": "2026-11-21",
-  "release_status": "DEPLOYED_ONLINE_EVALUATED",
-  "release_commit": "023fc33ced8c8080629c743a2e9fcb0e6b0b0850",
-  "online_eval_20261122": {
-   "deployed_commit": "023fc33ced8c8080629c743a2e9fcb0e6b0b0850",
-   "verdict": "기록 수용(부분 개선 확인·I-1 P1 안정성 보완 필수). case9 정상 2회 23/23·RAG 5/5(RAGC-S3 개선)·건강 6/6·INJ-1 4/4, 중단 2회(interrupted) 21/23·RAG 3/5·건강 5/6. live_integration 7/7, U2 공식 5/6·학술 3/4. Legal NLI Stage 2 반전 인용 SUPPORTED 오분류(I-2), OCR 폴백 미구성(I-3), Dense/Reranker·로컬 모델 미연결(I-4) 확인.",
-   "unmeasured": [
-    "안정된 RAG 3회 연속 5/5 (I-1 해결 후 재측정)",
-    "적응형 OCR 폴백 복구 효과 (I-3)",
-    "Hybrid RAG Dense·Reranker 및 로컬 LLM (I-4)",
-    "Source 카세트 운영 RECORD/REPLAY 및 근거 그래프 법률 정확도"
-   ],
-   "record": "docs/scorecards/online_0250_20261122.md"
-  }
- },
- {
-  "version": "0.26.0",
-  "from": "0.25.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "fixed",
-   "performance_patch"
-  ],
-  "measured_commit": "40396ff6",
-  "conditions": {
-   "network": false,
-   "python": "3.11 (GitHub Actions)",
-   "tesseract": "5.3.4 kor/eng",
-   "os": "Linux (GitHub Actions)",
-   "baseline_commit": "023fc33ced8c8080629c743a2e9fcb0e6b0b0850",
-   "scoring": "CI 점수 하락 게이트 및 은퇴 세트 비교(PR #395·#398, run 44986035521·44986769790) 기준."
-  },
-  "evidence": {
-   "M1": "dev 83.9→84.8(v2 43/56, RER 5.59%), holdout 83.3→83.8(v2 42/54, RER 2.99%); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 합산 RER 4.27%.",
-   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
-   "M3": "은퇴 5세트 후퇴 0(53.3/50.0/56.9/45.8/34.1, 전 세트 오탐 0·A등급 0).",
-   "M4": "포함 PR #393(TK-225)~#398(TK-227): RAG interrupted 복원력, NLI Stage 2 반전 수정, AI 문체 잔재 교차 보강 일반화, Dense/Reranker HTTP 어댑터·청크 리비전 캐시, 로컬 LLM 안전 설정·스키마 검증, 한국어 RapidOCR 의존성·모드 제어.",
-   "CI": "PR #393~#398 전량 필수 CI(점수 하락 게이트, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis, pip-audit) 통과.",
-   "open_p1_regression": 0,
-   "unmeasured": "격리 봉인 세트, 운영 온라인 실측(case9 3회 연속 5/5·6/6, RapidOCR 저품질 0.611/Drive 16쪽, Dense/Reranker 실서버 ON/OFF, LOCAL_ONLY 로컬 모델 짝 비교, NLI assist 반전 재측정).",
-   "record": "docs/scorecards/release_026_candidate_20261122.md"
-  },
-  "rer": 0.0427,
-  "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
-  "decided_at": "2026-11-22",
-  "release_status": "DEPLOYED_ONLINE_EVALUATED",
-  "release_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
-  "release_tag": "v.0.26.0",
-  "deployment_evidence": "docs/scorecards/release_026_deployment_20261122.json",
-  "online_eval_20261122": {
-   "deployed_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
-   "verdict": "기록 수용. case9 동일 조건 3회 연속 23/23·RAG 5/5·건강 6/6·검색 중단 0/3(TK-225), AI 반복 U5 3/3 일치(SAME, 유보 0), Legal NLI Stage 2 반전 인용 CONTRADICTED 해소(TK-226), 저품질 스캔 RapidOCR 채택 9자→25자(TK-227). Drive 16쪽 캐시 재사용(TK-231)·configured_mode=HYBRID 표시 불일치(TK-232) 후속 발행.",
-   "unmeasured": [
-    "Drive 저품질 16쪽 명시적 재색인 개선 (TK-231)",
-    "Hybrid RAG Dense·Reranker ON/OFF 실서버 비교 (TK-228, 서버 미구축)",
-    "로컬 모델 LOCAL_ONLY 실호출 짝 비교 (TK-229, 서버 미구축)"
-   ],
-   "record": "docs/scorecards/online_0260_20261122.md"
-  }
- },
- {
-  "version": "0.27.0",
-  "from": "0.26.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "fixed",
-   "performance_minor"
-  ],
-  "measured_commit": "c26df11300a11d7b8b1865dc20a4f3aded8cc3c8",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11",
-   "tesseract": "5.3.0 / 5.3.4",
-   "baseline_commit": "19efff6a4acb11a22b9e8311dc04680a984aa76b",
-   "scoring": "scripts/scorecard.py(dev 86.2, holdout 86.6) 및 scripts/retired_compare.py(56.5/54.6/56.9/51.9/37.5), PR #409~#412 필수 CI 전수 통과."
-  },
-  "evidence": {
-   "M1": "dev 84.8→86.2(v2 44/56, RER 9.21%), holdout 83.8→86.6(v2 44/54, RER 17.28%); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 합산 RER 13.38%.",
-   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
-   "M3": "은퇴 5세트 중 4세트 상승·후퇴 0(53.3→56.5 / 50.0→54.6 / 56.9→56.9 / 45.8→51.9 / 34.1→37.5, 전 세트 오탐 0·A등급 0).",
-   "M4": "포함 PR #409(TK-232), #410(TK-231), #411(TK-233), #412(TK-234): 미운영 로컬 LLM/HTTP Reranker 코드 삭제 및 상용 임베딩·진단 일치화, RapidOCR 저품질 전처리·Drive 선택 재색인, 법리·인용 불변식(CIT-META/LAW-NX/OVR) 및 EVI/INJ/AIGEN 일반화.",
-   "CI": "PR #409~#412 전량 필수 CI(점수 하락 게이트, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
-   "open_p1_regression": 0,
-   "unmeasured": "격리 봉인 세트, 운영 온라인 실측(Drive 저품질 16쪽 재색인 델타, RapidOCR 저품질 회복, lexical_only 진단 일치, 상용 API 임베딩 캐시, case9).",
-   "record": "docs/scorecards/release_027_candidate_20261122.md"
-  },
-  "rer": 0.1338,
-  "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
-  "decided_at": "2026-11-22"
- },
- {
-  "version": "0.28.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "fixed",
-   "changed"
-  ],
-  "measured_commit": "d5241370",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11",
-   "tesseract": "5.3.0 / 5.3.4",
-   "baseline_commit": "12be4fa58650bf59aacf30d9f21b87c1249582d5",
-   "scoring": "scripts/scorecard.py(dev 86.2, holdout 86.6) 및 scripts/retired_compare.py(56.5/54.6/56.9/53.8/44.3), PR #417~#420 필수 CI 전수 통과."
-  },
-  "evidence": {
-   "M1": "dev 86.2(v2 44/56), holdout 86.6(v2 44/54); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 회귀 0.",
-   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
-   "M3": "은퇴 5세트 평균 51.48→53.22(+1.74), 후퇴 0(56.5/54.6/56.9/53.8/44.3, sealed_20261010 +1.9, sealed_20261025 +6.8, v2 1009 31→32, 전 세트 오탐 0·A등급 0).",
-   "M4": "포함 PR #418(과제 2: 미운영 LV_RAG_EMBEDDING_ENDPOINT 제거·3중 진단 일치), #419(과제 4: EVALUATION_V2 4차원 PII-free 구조화 출력 계약), #417(과제 3: law_go_kr NFKC/제로폭·사건명 fallback 및 학술 429 백오프 단축), #420(과제 1: 은퇴 세트 구조적 일반화 규칙).",
-   "CI": "PR #417~#420 전량 필수 CI(점수 하락 게이트, 평가 세트 문구 대조, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
-   "open_p1_regression": 0,
-   "unmeasured": "격리 봉인 세트, 운영 온라인 실측(U2 2015모2524 해소, Drive 16쪽 재색인, 상용 임베딩 실호출, case9, 4차원 출력 실측).",
-   "record": "docs/scorecards/release_028_candidate_20261123.md"
-  },
-  "rer": 0.0,
-  "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
-  "decided_at": "2026-11-23",
-  "from": "0.27.0"
- },
- {
-  "version": "0.29.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "fixed",
-   "changed"
-  ],
-  "measured_commit": "154a1297",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11",
-   "tesseract": "5.3.4 / 5.5.0",
-   "baseline_commit": "1ef3e4fe",
-   "scoring": "scripts/scorecard.py(dev 89.7, holdout 87.5) 및 scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #423·#425·#426 필수 CI 전수 통과."
-  },
-  "evidence": {
-   "M1": "dev 86.2→89.7(v2 47/56), holdout 86.6→87.5(v2 45/54); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 회귀 0.",
-   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
-   "M3": "은퇴 5세트 평균 53.22→58.00(+4.78%p), 후퇴 0(56.5/54.6/63.8/59.4/55.7, sealed_20261009 +6.9, sealed_20261010 +5.6, sealed_20261025 +11.4, 전 세트 오탐 0·A등급 0).",
-   "M4": "포함 PR #423(FactTriple 2단계 추출·검증기), #426(2단 운영·정보 격리·동적 변형 시험 하네스), #425(일반화 FactTriple·다중 AI잔재 승격·EVI-COPY 복제 탐지 보완).",
-   "CI": "PR #423·#425·#426 전량 필수 CI(점수 하락 게이트, 평가 세트 문구 대조, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
-   "open_p1_regression": 0,
-   "unmeasured": "격리 봉인 세트, 운영 온라인 실측(U2 live-source-check, Drive 16쪽 재색인, 상용 임베딩 실호출, case9, 4차원 출력 실측).",
-   "record": "docs/scorecards/release_029_candidate_20261123.md"
-  },
-  "rer": 0.1618,
-  "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
-  "decided_at": "2026-11-23",
-  "from": "0.28.0"
- },
- {
-  "version": "0.30.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "fixed"
-  ],
-  "measured_commit": "3810bfb",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11",
-   "tesseract": "5.3.4 / 5.5.0",
-   "baseline_commit": "9c63772fb1ad6a13b3994f530e57ba8ad586be03",
-   "scoring": "scripts/scorecard.py(dev 89.7, holdout 87.5) 및 scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #431~#437 필수 CI 전수 통과."
-  },
-  "evidence": {
-   "M1": "dev 89.7, holdout 87.5(0.29.0과 동일); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 회귀 0.",
-   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
-   "M3": "은퇴 5세트 평균 58.00(56.5/54.6/63.8/59.4/55.7, 전 세트 오탐 0·A등급 0·후퇴 0).",
-   "M4": "포함 PR #431(TK-237: 미완독 원인별 unread_cause_counts 및 CONFIG_BLOCKED 분리), #432(TK-238: run 단위 RAG/OCR 폴백 actual_calls 및 임베딩·재순위 지연 ms 기록), #433(TK-235: law_go_kr INCONCLUSIVE_SCOPE·lookup_outcome 분리), #434(TK-240: 상대방 전언 인용 귀속 어간+어미·반박 조건부 원용류 A등급 오탐 방지), #435(TK-241: INTERNAL_REFERENCE_CONTRADICTION 전용 유형·advisory_only=True·주장당 1건 병합), #436(TK-239: OCR 폴백 원본/전처리 이중 비교·적응형 파라미터·PREPROCESS_UNAVAILABLE 구분), #437(TK-236: 판례 키워드 검색 실패 4종 분류·마스킹 body_head·lookup_outcome 병합).",
-   "CI": "PR #431~#437 전량 필수 CI(점수 하락 게이트, 평가 세트 문구 대조, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
-   "open_p1_regression": 0,
-   "unmeasured": "격리 봉인 세트, 운영 온라인 실측(TK-235~TK-241 온라인 효과, U2 live-source-check, Drive 16쪽 재색인, case9 3회 연속).",
-   "record": "docs/scorecards/release_030_candidate_20261126.md"
-  },
-  "rer": 0.0,
-  "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
-  "decided_at": "2026-11-26",
-  "from": "0.29.0"
- },
- {
-  "version": "0.30.1",
-  "level": "patch",
-  "basis": [
-   "fixed"
-  ],
-  "measured_commit": "9aaa5dc",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.11",
-   "tesseract": "5.3.4 / 5.5.0",
-   "baseline_commit": "71a8ffc385cf62e47a99de4c1b772f3192d4a15d",
-   "scoring": "scripts/scorecard.py(dev 89.7, holdout 87.5) 및 scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #445·#446 필수 CI 전수 통과."
-  },
-  "evidence": {
-   "M1": "dev 89.7, holdout 87.5(0.30.0과 동일); 확인 오탐·A등급 오탐 0, 인젝션 방어 유지. 회귀 0.",
-   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED(배포 후 온라인 점검 시행).",
-   "M3": "은퇴 5세트 평균 58.00(56.5/54.6/63.8/59.4/55.7, 전 세트 오탐 0·A등급 0·후퇴 0).",
-   "M4": "포함 PR #445(TK-243: page_quality() 공백 제외 글자 수 chars 추가, TK-244: 반올림 전 hangul_ok 일원화·신뢰도 우선 _quality_rank·deciding_key 관측), #446(TK-245: isolated_extract() OCR 폴백 환경 변수 전파·OCR_REPROCESS_VERSION=\"tk245-fallback-env-v2\" 1회 재처리·저품질 합집합 복구 집계·child_ocr_config 관측).",
-   "CI": "PR #445(12/12)·#446(필수 11/11) 전량 필수 CI(점수 하락 게이트, 평가 세트 문구 대조, 은퇴 세트 비교, CodeQL 새 경고 0건, Docker OCR readiness, SQLite, PostgreSQL, Redis) 통과.",
-   "open_p1_regression": 0,
-   "unmeasured": "격리 봉인 세트, 배포 후 운영 온라인 재측정(0.30.0 온라인 실측 결함 TK-243·TK-244·TK-245 해소 확인).",
-   "record": "docs/scorecards/release_0301_candidate_20261126.md"
-  },
-  "rer": 0.0,
-  "decided_by": "Antigravity 평가 세션 (/aegis-autonomous-releasing)",
-  "decided_at": "2026-11-26",
-  "from": "0.30.0"
- },
- {
-  "version": "0.30.2",
-  "level": "patch",
-  "basis": [
-   "fixed"
-  ],
-  "measured_commit": "c33a2aa",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.13.18 (CI 3.11, --allow-env-mismatch)",
-   "tesseract": "5.3.4",
-   "baseline_commit": "55efe21a05d8477270779e54af10d3abdd6b3577",
-   "scoring": "scripts/verify_all.py 전체 모드(평가 측 재실행), scripts/scorecard.py(dev 89.7, holdout 87.5), scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #452 필수 CI 11/11."
-  },
-  "evidence": {
-   "M1": "dev 89.7, holdout 87.5(0.30.1과 동일); 확인 오탐·A등급 오탐 0, 기존 방어 유지, 엔진 오류 0. 회귀 0.",
-   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED.",
-   "M3": "은퇴 5세트 평균 58.00(56.5/54.6/63.8/59.4/55.7, 오탐 0·A 0·후퇴 없음).",
-   "M4": "#452(TK-247 P0): Drive 재처리 실패 시 기존 본문 보존, 재처리 전용 한도(min(120, 남은 예산-60)), 예산 미룸, 손상 파일 1차 OCR 복원(최대 2회), 허위 복구 집계 제거. 평가 측 탐침 시나리오 6종·다수 복원 예산 탐침 기대대로.",
-   "CI": "PR #452 필수 11/11. verify_all 전체: 수용 1284·원장 2357·브라우저 200 통과, 전체 11677 통과/5 실패(5건 모두 기준 55efe21a에서도 같은 환경 요인, CI 통과).",
-   "open_p1_regression": 0,
-   "unmeasured": "격리 봉인 세트, 배포 후 운영 온라인 재측정(Drive 41/41 복원·건강 6/6), 운영 CPU에서 한도 충분성.",
-   "record": "docs/scorecards/release_0302_candidate_20261127.md"
-  },
-  "rer": 0.0,
-  "decided_by": "Claude Code 평가 세션",
-  "decided_at": "2026-11-27",
-  "from": "0.30.1"
- },
- {
-  "version": "0.31.0",
-  "level": "minor",
-  "basis": [
-   "added",
-   "fixed",
-   "changed"
-  ],
-  "measured_commit": "c03197b",
-  "conditions": {
-   "network": false,
-   "os": "Linux",
-   "python": "3.13.18 (CI 3.11, --allow-env-mismatch)",
-   "tesseract": "5.3.4",
-   "baseline_commit": "d9fa1e4b60e1f3c955d37de7441ff2a2ed549389",
-   "scoring": "scripts/verify_all.py 전체 모드(평가 측 재실행), scripts/scorecard.py(dev 89.7, holdout 87.5), scripts/retired_compare.py(56.5/54.6/63.8/59.4/55.7), PR #457·#458·#459·#460 필수 CI."
-  },
-  "evidence": {
-   "M1": "dev 89.7, holdout 87.5(0.30.2와 동일); 확인 오탐·A등급 오탐 0, 기존 방어 유지, 엔진 오류 0. 회귀 0.",
-   "M2": "격리 봉인 세트 원격 VM 미보유로 NOT_MEASURED.",
-   "M3": "은퇴 5세트 평균 58.00(56.5/54.6/63.8/59.4/55.7, 오탐 0·A 0·후퇴 없음).",
-   "M4": "#457 TK-246 RapidOCR use_cls=False(저품질 스캔 OCR_EXTRACTED 0.75 오프라인), #458 TK-250 Drive 증분 데이터셋(가짜 Drive 점검표 30/30, 변경 없는 재동기화 호출 4→2), #459 TK-248 평가 출력 오판 0(운영 기록 5건 재계산), #460 README 자동 갱신.",
-   "CI": "#457·#458·#459·#460 필수 CI 성공. verify_all 전체: 수용 1284·원장 2357·브라우저 200 통과, 전체 11699 통과/5 실패(5건 모두 0.30.2 후보에서도 같은 환경 요인, CI 통과).",
-   "open_p1_regression": 0,
-   "unmeasured": "격리 봉인 세트, 배포 후 운영 온라인 재측정(TK-246·TK-250·TK-248), 실제 Drive 변경 API 의미, 365항목 엄격 재현율(채점기 저장소 부재).",
-   "record": "docs/scorecards/release_0310_candidate_20261127.md"
-  },
-  "rer": 0.0,
-  "decided_by": "Claude Code 평가 세션",
-  "decided_at": "2026-11-27",
-  "from": "0.30.2"
- }
 ]
