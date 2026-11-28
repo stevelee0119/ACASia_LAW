@@ -217,3 +217,71 @@ def test_render_performance_chart_shrinks_10_releases_over_90_days_and_preserves
     assert [r["version"] for r in chart.select_milestone_rows(rows, release_dates=dates_missing)] == [r["version"] for r in rows]
 
 
+def _chart_module():
+    spec = importlib.util.spec_from_file_location(
+        "render_performance_chart", ROOT / "scripts" / "render_performance_chart.py"
+    )
+    chart = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(chart)
+    return chart
+
+
+def test_tk252_pos1_canonical_ci_font_enforces_nanum_gothic():
+    chart = _chart_module()
+    assert (
+        chart.resolve_chart_font({"NanumGothic", "Malgun Gothic", "AppleGothic"}, canonical_only=True)
+        == "NanumGothic"
+    )
+
+
+def test_tk252_pos2_canonical_ci_fails_closed_without_canonical_font():
+    import pytest
+
+    chart = _chart_module()
+    with pytest.raises(SystemExit, match="정본 렌더 글꼴이 없습니다: NanumGothic"):
+        chart.resolve_chart_font({"Malgun Gothic", "AppleGothic"}, canonical_only=True)
+
+
+def test_tk252_pos3_workflow_uses_bot_branch_and_pr_not_direct_protected_push():
+    workflow = (ROOT / ".github" / "workflows" / "readme-sync.yml").read_text(encoding="utf-8")
+    assert 'git push origin "HEAD:${GITHUB_REF_NAME}"' not in workflow
+    assert "[skip ci]" not in workflow
+    assert "contents: write" in workflow
+    assert "pull-requests: write" in workflow
+    assert "ubuntu-24.04" in workflow
+    assert "fonts-nanum" in workflow
+    assert 'matplotlib==3.9.4' in workflow
+    assert "--canonical-ci" in workflow
+    assert 'BOT_BRANCH="bot/readme-sync"' in workflow
+    assert "gh pr create" in workflow and "gh pr edit" in workflow
+
+
+def test_tk252_neg1_local_preview_mode_allows_fallback_korean_font():
+    chart = _chart_module()
+    assert chart.resolve_chart_font({"Malgun Gothic"}, canonical_only=False) == "Malgun Gothic"
+
+
+def test_tk252_neg2_repeated_renders_produce_identical_png_bytes(tmp_path, monkeypatch):
+    import pytest
+
+    pytest.importorskip("matplotlib")
+    from matplotlib import font_manager
+
+    chart = _chart_module()
+    installed = {f.name for f in font_manager.fontManager.ttflist}
+    if not (installed & set(chart.KOREAN_FONTS)):
+        pytest.skip("한국어 글꼴 미설치 환경")
+
+    monkeypatch.delenv("LV_CANONICAL_CHART", raising=False)
+    out1 = tmp_path / "run1.png"
+    out2 = tmp_path / "run2.png"
+    assert chart.main(["--out", str(out1)]) == 0
+    assert chart.main(["--out", str(out2)]) == 0
+    assert out1.read_bytes() == out2.read_bytes()
+
+
+def test_tk252_neg3_bot_sync_branch_guard_and_canonical_png_note():
+    workflow = (ROOT / ".github" / "workflows" / "readme-sync.yml").read_text(encoding="utf-8")
+    assert 'if [[ "$BASE_BRANCH" == bot/readme-sync* ]]; then' in workflow
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "로컬 렌더 결과는 커밋하지 않습니다" in readme
