@@ -1095,6 +1095,12 @@
       "priority": "P1",
       "kind": "defect",
       "note": "공급자 HTTP 거절이 Drive 호출 상한·주장 비용 예산을 소진(0.31.0 m3 참고자료 33/83 미대조, 주장 COST 중단). review.py만 수정, 원장 불변. 사용자 '결함1건 해소'(2026-11-28). 새 시험 3건 원래 코드 실패·수정본 통과. #469 수용(e6932970, CI 11/11, 시험 패치 동일, 평가 측 재실행 120개 파일·탐침 4종). 사용자 지시로 병합(Steve_ACASiaLAW c6a48c51, 2026-11-28)."
+    },
+    "TK-256": {
+      "status": "open",
+      "priority": "P1",
+      "kind": "defect",
+      "note": "0.31.1 운영 N5(원용 반박 서면)에서 LEGAL_ARGUMENT_INVALID가 MEDIUM C→HIGH B, 4/4회 재현. 원인 가설: argument_validity가 상대방 귀속(원용)을 보지 않고 CONTRADICTED 합의만으로 HIGH B(critic gpt-6.2-sol 교체로 드러남, 인과 미확정). 사용자 승인 2026-11-28 '발행 승인, 단 다음 릴리스에 포함'. 티켓 작성·사전 검증은 Codex 대행. GitHub 이슈 #476(다음 릴리스 필수), PR #475 코멘트 등록."
     }
   },
   "updated_on": "2026-11-27"
